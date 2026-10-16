@@ -7,7 +7,7 @@ import type { ProcessMessageDeliveryService } from '../processes/process-message
 import type { ChatProvider } from '../tasks/task-types';
 import type { RalphLaunchInput } from '../ralph/ralph-launch-service';
 import { SentinelTodoError, type SentinelTodoItem, type SentinelTodoLedger, type SentinelTodoOwner } from './sentinel-todo-store';
-import type { SentinelTodoService } from './sentinel-todo-service';
+import type { SentinelTodoItemView, SentinelTodoService } from './sentinel-todo-service';
 import { SentinelDependencyStore, dependencyWakePrompt, type DependencyAdmissionRecord, type DependencyWake } from './sentinel-dependency-store';
 
 const text = z.string().trim().min(1);
@@ -174,20 +174,25 @@ export class SentinelDependencyActions {
         return item;
     }
 
-    project(owner: SentinelTodoOwner, item: SentinelTodoItem) {
-        const evaluation = this.deps.receipts.evaluation(owner, item.id);
-        const graphRevision = this.deps.receipts.todos.dependencyRevision(owner, item.id);
-        const wake = this.deps.receipts.currentWake(owner, item.id, generation(item, graphRevision), graphRevision, item.dependsOn);
-        const records = this.deps.receipts.records(owner).filter(candidate => candidate.itemId === item.id);
-        const sources = new Map(this.deps.receipts.todos.get(owner).items.map(source => [source.id, source]));
-        const current = evaluation?.itemRevision === item.revision && evaluation.edges.every(edge =>
-            sources.get(edge.dependency.itemId)?.revision === edge.sourceRevision);
-        return item.dependsOn.length || records.length ? { dependencyReadiness: {
-            state: current && evaluation?.state === 'ready' ? 'ready' as const : 'waiting' as const,
-            evaluation, requiresReview: records.some(candidate => candidate.record.requiresReview),
-            error: records.find(candidate => candidate.record.error)?.record.error ?? wake?.invalidatedReason ?? wake?.error,
-            ...(wake ? { activationId: wake.id, delivery: wake.delivery, transportTriggerId: wake.transportTriggerId } : {}),
-        } } : {};
+    /** Projects items of one ledger snapshot; owner admission rows are read once, not per item. */
+    project(owner: SentinelTodoOwner, ledger: SentinelTodoLedger) {
+        const admissions = this.deps.receipts.records(owner);
+        const sources = new Map(ledger.items.map(source => [source.id, source]));
+        return (item: SentinelTodoItem): Pick<SentinelTodoItemView, 'dependencyReadiness'> => {
+            const records = admissions.filter(candidate => candidate.itemId === item.id);
+            if (!item.dependsOn.length && !records.length) return {};
+            const evaluation = this.deps.receipts.evaluation(owner, item.id);
+            const graphRevision = this.deps.receipts.todos.dependencyRevision(owner, item.id);
+            const wake = this.deps.receipts.currentWake(owner, item.id, generation(item, graphRevision), graphRevision, item.dependsOn);
+            const current = evaluation?.itemRevision === item.revision && evaluation.edges.every(edge =>
+                sources.get(edge.dependency.itemId)?.revision === edge.sourceRevision);
+            return { dependencyReadiness: {
+                state: current && evaluation?.state === 'ready' ? 'ready' : 'waiting',
+                evaluation, requiresReview: records.some(candidate => candidate.record.requiresReview),
+                error: records.find(candidate => candidate.record.error)?.record.error ?? wake?.invalidatedReason ?? wake?.error,
+                ...(wake ? { activationId: wake.id, delivery: wake.delivery, transportTriggerId: wake.transportTriggerId } : {}),
+            } };
+        };
     }
 
     async context(owner: SentinelTodoOwner, itemId: string): Promise<SentinelTodoTrackedAdmission> {

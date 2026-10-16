@@ -3,8 +3,8 @@
  *
  * Workspace aliases mount one chat list, avoiding duplicate subscriptions.
  */
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, beforeAll, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
 import { createPortal } from 'react-dom';
 import { useState } from 'react';
 
@@ -148,7 +148,8 @@ vi.mock('../../../../../src/server/spa/client/react/layout/MobileTabBar', () => 
     MobileTabBar: () => null,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
+vi.mock('../../../../../src/server/spa/client/react/utils/config', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../../../../../src/server/spa/client/react/utils/config')>()),
     getHostname: () => 'Local',
     isContainerMode: () => false,
     getApiBase: () => '',
@@ -263,8 +264,9 @@ vi.mock('../../../../../src/server/spa/client/react/repos/repoGrouping', () => (
 import { RepoDetail } from '../../../../../src/server/spa/client/react/features/repo-detail/RepoDetail';
 import { openUnifiedPanelTab } from '../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 import { activeTab, findTab } from '../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
-import { readUnifiedPanelState } from '../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { clearUnifiedPanelState, readUnifiedPanelState } from '../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { setWorkspaceDockOpen } from '../../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
+import { _resetRuntimeConfig, applyRuntimeConfigPatch } from '../../../../../src/server/spa/client/react/utils/config';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -287,6 +289,32 @@ function gitTabRedirectCalls() {
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
+
+describe('RepoDetail — panel reordering configuration', () => {
+    const workspaceId = 'ws-panel-config';
+
+    afterEach(() => {
+        cleanup();
+        _resetRuntimeConfig();
+        clearUnifiedPanelState(workspaceId);
+    });
+
+    it.each([undefined, false, true])('mounts the real panel and honors reordering=%s', enabled => {
+        _resetRuntimeConfig();
+        if (enabled !== undefined) applyRuntimeConfigPatch({ panelTabReorderingEnabled: enabled });
+        mockActiveRepoSubTab = 'activity';
+        const ids = (['terminal', 'diff'] as const).map(kind => openUnifiedPanelTab(workspaceId, {
+            kind, ownerWorkspaceId: workspaceId, chatId: null, resourceId: kind, label: kind,
+        }));
+        renderDetail(makeRepo(workspaceId));
+
+        const first = screen.getByTestId(`unified-panel-tab-${ids[0]}`);
+        fireEvent.keyDown(first, { key: 'ArrowRight', altKey: true });
+
+        expect(screen.getAllByRole('tab').map(tab => tab.getAttribute('data-tab-id')))
+            .toEqual(enabled === false ? ids : [...ids].reverse());
+    });
+});
 
 describe('RepoDetail — layout mode chat tab mounting', () => {
     beforeEach(() => {

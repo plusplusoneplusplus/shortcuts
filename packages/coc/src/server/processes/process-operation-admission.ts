@@ -31,3 +31,16 @@ export class ProcessOperationAdmission {
 }
 
 export const processOperationAdmission = new ProcessOperationAdmission();
+
+// Provider execution has a longer lifetime than mutation admission. Keeping the
+// gates separate lets messages and cancellation be admitted during compaction.
+const executionAdmissions = new WeakMap<object, ProcessOperationAdmission>();
+
+export function conversationExecutionAdmission(owner: object): ProcessOperationAdmission {
+    let admission = executionAdmissions.get(owner);
+    if (!admission) {
+        admission = new ProcessOperationAdmission();
+        executionAdmissions.set(owner, admission);
+    }
+    return admission;
+}

@@ -22,7 +22,8 @@ function readEnabled() {
 
 type Props = {
     ready?: boolean;
-    children?: ReactNode;
+    /** A function child places the Scrubber itself; otherwise it renders before the children. */
+    children?: ReactNode | ((scrubber: ReactNode) => ReactNode);
     toolbar?: ReactNode;
     onLedgerChange?: () => Promise<void>;
     owner: SentinelTodoOwner;
@@ -30,14 +31,18 @@ type Props = {
     onFollowLink: (event: MouseEvent<HTMLAnchorElement>, key: string) => void;
 };
 
+function place(children: Props['children'], scrubber: ReactNode) {
+    return typeof children === 'function' ? children(scrubber) : <>{scrubber}{children}</>;
+}
+
 /** The owner and transport form a remount boundary for drafts and late results. */
 export function SentinelTodoScrubber(props: Props) {
     const enabled = useSyncExternalStore(subscribeConfig, readEnabled, readEnabled);
     const ref = props.owner.ownerRoutingRef === null ? undefined : props.owner.ownerRoutingRef ?? props.owner.ownerWorkspaceId;
     const client = useCocClient(ref);
     const route = resolveCloneRoute(ref);
-    if (!enabled || props.ready === false) return <>{props.toolbar}{props.children}</>;
-    if (route.kind === 'unresolved-remote') return <>{props.toolbar}<p role="status">Scrubber unavailable: owning server is not connected.</p>{props.children}</>;
+    if (!enabled || props.ready === false) return <>{props.toolbar}{place(props.children, null)}</>;
+    if (route.kind === 'unresolved-remote') return <>{props.toolbar}{place(props.children, <p role="status">Scrubber unavailable: owning server is not connected.</p>)}</>;
     return <ScrubberStrip key={`${sentinelTodoOwnerKey(props.owner)}:${route.kind === 'remote' ? route.baseUrl : 'local'}`}
         {...props} client={client} />;
 }
@@ -205,8 +210,9 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, 
     };
     return <ScrubberFindingsContext.Provider value={{ findings, busy: busy || !!loadError || !!findingsError, mutationPending: busy, act: findingAction, proposalCount: proposals.length, acceptAll }}>
         {toolbar}
+        {place(children, <>
         <section aria-label="To-do Scrubber" data-testid="sentinel-scrubber-strip"
-            className="sticky top-0 z-10 flex flex-col gap-1 rounded border border-[#e0e0e0] bg-white p-2 dark:border-[#3c3c3c] dark:bg-[#1e1e1e]">
+            className="flex min-w-0 flex-col gap-1 break-words rounded border border-[#e0e0e0] bg-white p-2 [overflow-wrap:anywhere] dark:border-[#3c3c3c] dark:bg-[#1e1e1e]">
             <div className="flex flex-wrap items-center gap-1">
                 <strong className="mr-auto">Scrubber</strong>
                 <AcceptAllScrubProposals />
@@ -246,22 +252,22 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, 
                 })} />{item.title}{item.type === 'manual' && ' · Manual'}</label>)}
                 {!openItems.length && <span>No open items.</span>}
             </fieldset>}
-            {schedule && <form aria-label="Scrubber schedule" onSubmit={event => { event.preventDefault(); if (!cronError) void saveConfig(schedule); }} className="absolute right-0 top-full z-20 flex w-full flex-col gap-1 rounded border border-[#e0e0e0] bg-white p-2 shadow-lg dark:border-[#3c3c3c] dark:bg-[#1e1e1e]">
+            {schedule && <form aria-label="Scrubber schedule" onSubmit={event => { event.preventDefault(); if (!cronError) void saveConfig(schedule); }} className="flex min-w-0 flex-col gap-1 rounded border border-[#e0e0e0] p-2 dark:border-[#3c3c3c]">
                 <label><input type="checkbox" checked={schedule.enabled} disabled={busy} onChange={event => setSchedule({ ...schedule, enabled: event.target.checked })} /> Enable schedule</label>
                 <label htmlFor={`${id}-preset`}>Preset</label>
-                <select id={`${id}-preset`} value={SCRUB_CRON_PRESETS.some(preset => preset.cron === schedule.cron) ? schedule.cron : 'custom'} disabled={busy}
+                <select id={`${id}-preset`} className="max-w-full" value={SCRUB_CRON_PRESETS.some(preset => preset.cron === schedule.cron) ? schedule.cron : 'custom'} disabled={busy}
                     onChange={event => { if (event.target.value !== 'custom') setSchedule({ ...schedule, cron: event.target.value }); }}>
                     {SCRUB_CRON_PRESETS.map(preset => <option key={preset.cron} value={preset.cron}>{preset.label}</option>)}<option value="custom">Custom</option>
                 </select>
                 <label htmlFor={`${id}-cron`}>Custom cron (5 fields; at least 1h apart)</label>
                 <input id={`${id}-cron`} value={schedule.cron} disabled={busy} maxLength={200} aria-invalid={!!cronError} aria-describedby={`${id}-preview`}
-                    className="rounded border border-[#e0e0e0] bg-transparent px-2 py-1 dark:border-[#3c3c3c]" onChange={event => setSchedule({ ...schedule, cron: event.target.value })} />
+                    className="min-w-0 rounded border border-[#e0e0e0] bg-transparent px-2 py-1 dark:border-[#3c3c3c]" onChange={event => setSchedule({ ...schedule, cron: event.target.value })} />
                 <p id={`${id}-preview`} role={cronError ? 'alert' : 'status'}>{cronError ?? (describeCron(schedule.cron) || schedule.cron)}</p>
                 <div className="flex justify-end gap-1"><Button size="sm" variant="secondary" disabled={busy} onClick={() => setSchedule(null)}>Close schedule</Button>
                     <Button size="sm" type="submit" disabled={busy || !!cronError || !!loadError}>Save schedule</Button></div>
             </form>}
         </section>
         {historyOpen && data && <SentinelTodoScrubHistory client={client} owner={owner} runs={data.runs} items={items} onFollowLink={onFollowLink} />}
-        {children}
+        </>)}
     </ScrubberFindingsContext.Provider>;
 }

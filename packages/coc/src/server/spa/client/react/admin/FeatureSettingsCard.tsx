@@ -14,7 +14,8 @@ import {
     getFeatureSettingTab,
 } from '../../../../../config/admin-setting-definitions';
 import type { AdminSettingDefinition, FeatureSettingTab } from '../../../../../config/admin-setting-definitions';
-import { getSettingsSubTabMeta } from './adminNavigation';
+import { getFeatureSettingTabLink } from './adminNavigation';
+import { isContainerMode } from '../utils/config';
 import type { FeatureValues } from './useAdminFeatureSettings';
 
 const FEATURE_BADGES: Record<string, { className: string; label: string }> = {
@@ -166,7 +167,7 @@ export function FeatureSettingsCard({
                         <div className="ar-feature-group-head">{group.heading}</div>
                         {defs.map(def => {
                             const tab = getFeatureSettingTab(def);
-                            return tab === 'features' ? (
+                            if (tab === 'features') return (
                                 <FeatureSettingRow
                                     key={def.key}
                                     def={def}
@@ -175,14 +176,16 @@ export function FeatureSettingsCard({
                                     sources={sources}
                                     isDefaultValue={isDefaultValue}
                                 />
-                            ) : (
+                            );
+                            const link = getFeatureSettingTabLink(tab, isContainerMode());
+                            return (
                                 <AdminRow key={def.key} name={def.ui!.label} hint={def.ui!.hint}>
                                     <a
-                                        href={`#admin/settings/${tab}`}
+                                        href={link.href}
                                         onClick={() => onNavigateToTab(tab)}
                                         data-testid={`feature-search-link-${def.ui!.testId}`}
                                     >
-                                        in {getSettingsSubTabMeta(tab).label}
+                                        in {link.label}
                                     </a>
                                 </AdminRow>
                             );
@@ -204,13 +207,16 @@ export interface TabFeatureSettingsCardProps {
     onCancel: () => void;
     sources: Record<string, string>;
     isDefaultValue: (key: string) => boolean | undefined;
+    title?: string;
+    description?: string;
 }
 
 /**
  * Registry-driven "Features" section for a non-Features settings tab. Lists
  * only toggles placed on `tab`, with group headings shown when the tab spans
- * more than one `FEATURE_CARD_GROUPS` group. Renders nothing when no visible
- * toggle is placed on the tab.
+ * more than one `FEATURE_CARD_GROUPS` group. Each group carries the DOM id
+ * `<tab>-group-<groupId>` for in-page navigation. Renders nothing when no
+ * visible toggle is placed on the tab.
  */
 export function TabFeatureSettingsCard({
     tab,
@@ -222,6 +228,8 @@ export function TabFeatureSettingsCard({
     onCancel,
     sources,
     isDefaultValue,
+    title = 'Features',
+    description = 'Optional features for this area.',
 }: TabFeatureSettingsCardProps) {
     const groups = FEATURE_CARD_GROUPS
         .map(group => ({
@@ -237,8 +245,8 @@ export function TabFeatureSettingsCard({
 
     return (
         <SettingsCard
-            title="Features"
-            description="Optional features for this area."
+            title={title}
+            description={description}
             dirty={dirty}
             saving={saving}
             onSave={onSave}
@@ -246,7 +254,7 @@ export function TabFeatureSettingsCard({
             data-testid={`settings-tab-features-${tab}`}
         >
             {groups.map(({ group, defs }) => (
-                <div className="ar-feature-group" key={group.id}>
+                <div className="ar-feature-group" key={group.id} id={`${tab}-group-${group.id}`} data-testid={`${tab}-group-${group.id}`}>
                     {showHeadings && <div className="ar-feature-group-head">{group.heading}</div>}
                     {defs.map(def => (
                         <FeatureSettingRow

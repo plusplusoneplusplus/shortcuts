@@ -103,7 +103,11 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     formatRelativeTime: (d: string) => d,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/features/git/diff/GitFileReview', () => ({ GitFileReview: () => <div /> }));
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/GitFileReview', async () => {
+    // Render the real single-row toolbar so header slots stay observable.
+    const { GitReviewToolbar } = await vi.importActual<typeof import('../../../../src/server/spa/client/react/features/git/diff/GitReviewToolbar')>('../../../../src/server/spa/client/react/features/git/diff/GitReviewToolbar');
+    return { GitFileReview: (props: any) => <div data-testid="git-file-review"><GitReviewToolbar header={props.header} /></div> };
+});
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useCommitReviewFiles', () => ({ useCommitReviewFiles: () => ({ files: [], loading: false }) }));
 
 import { CommitDetail } from '../../../../src/server/spa/client/react/features/git/commits/CommitDetail';
@@ -149,7 +153,21 @@ describe('CommitDetail — collapsible header', () => {
     it('keeps subject and short hash available while collapsed', async () => {
         await renderDetail({ commit: makeCommit({ subject: 'fix: a bug', hash: 'deadbeef123456' }) });
         expect(screen.getByTestId('commit-info-summary').textContent).toContain('fix: a bug');
-        expect(screen.getByTestId('commit-info-summary').textContent).toContain('deadbeef');
+        expect(screen.getByTestId('commit-summary-copy-hash').textContent).toContain('deadbeef');
+        expect(screen.getByTestId('commit-info-summary').getAttribute('title')).toContain('fix: a bug');
+    });
+    it('ellipsizes long titles in the toolbar and reveals the full title accessibly', async () => {
+        const subject = `feat: ${'x'.repeat(300)} end`;
+        await renderDetail({ commit: makeCommit({ subject }) });
+        const summary = screen.getByTestId('commit-info-summary');
+        expect(summary.className).toContain('git-review-title');
+        expect(summary.closest('.git-review-identity')).toBeTruthy();
+        expect(screen.getByRole('button', { name: subject })).toBe(summary);
+        expect(summary.getAttribute('title')).toContain(subject);
+        expect(summary.getAttribute('aria-expanded')).toBe('false');
+        fireEvent.click(summary);
+        expect(summary.getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getByTestId('commit-info-subject').textContent).toBe(subject);
     });
     it.each(['commit', 'workspace'])('resets expanded disclosure on %s change', async change => {
         const { rerender } = await renderDetail({ commit: makeCommit() });

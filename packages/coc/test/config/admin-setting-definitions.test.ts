@@ -17,6 +17,7 @@ import {
     NAMESPACED_ADMIN_SETTING_KEYS,
     getConfigValueAtPath,
     setConfigValueAtPath,
+    getAdminSettingDefinition,
     getFeatureCardSettings,
     getFeatureSettingTab,
     FEATURE_SETTING_TABS,
@@ -614,11 +615,11 @@ describe('Features card UI metadata', () => {
         expect(def!.runtime).toBe('live');
         expect(def!.runtimeFlag).toBe('chatFoldersEnabled');
         expect(def!.ui, 'chat folders must appear on the Features card').toBeDefined();
-        expect(def!.ui!.group).toBe('dashboard');
+        expect(def!.ui).toMatchObject({ tab: 'appearance', group: 'uiChat' });
         expect(def!.ui!.label).toBe('Chat folders');
         expect(def!.ui!.badge).toBe('experimental');
         expect(def!.ui!.hint).toMatch(/disabled by default/i);
-        expect(getFeatureCardSettings('dashboard').some(d => d.key === 'features.chatFolders')).toBe(true);
+        expect(getFeatureCardSettings('uiChat', 'appearance').some(d => d.key === 'features.chatFolders')).toBe(true);
         // Off in the resolved default config, off when absent from a partial
         // config, and on only when the config file opts in.
         expect(DEFAULT_CONFIG.features.chatFolders).toBe(false);
@@ -631,7 +632,7 @@ describe('Features card UI metadata', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.sentinelResultCards')!;
         expect(def.default).toBe(true);
         expect(def.runtime).toBe('live');
-        expect(def.ui?.tab).toBe('sentinel');
+        expect(def.ui).toMatchObject({ tab: 'appearance', group: 'uiChat' });
         expect(def.ui?.hint).toMatch(/enabled by default/i);
         expect(def.ui?.hint).toMatch(/presentation only/i);
         expect(DEFAULT_CONFIG.features.sentinelResultCards).toBe(true);
@@ -709,11 +710,11 @@ describe('Features card UI metadata', () => {
         expect(def!.runtime).toBe('live');
         expect(def!.runtimeFlag).toBe('explorerEditorTabsEnabled');
         expect(def!.ui, 'explorer editor tabs must appear on the Features card').toBeDefined();
-        expect(def!.ui!.group).toBe('dashboard');
+        expect(def!.ui!.group).toBe('editorFiles');
         expect(def!.ui!.label).toBe('Explorer editor tabs');
         expect(def!.ui!.badge).toBe('experimental');
         expect(def!.ui!.hint).toMatch(/disabled by default/i);
-        expect(getFeatureCardSettings('dashboard').some(d => d.key === 'features.explorerEditorTabs')).toBe(true);
+        expect(getFeatureCardSettings('editorFiles').some(d => d.key === 'features.explorerEditorTabs')).toBe(true);
         // Off in the resolved default config, off when absent from a partial
         // config, and on only when the config file opts in.
         expect(DEFAULT_CONFIG.features.explorerEditorTabs).toBe(false);
@@ -722,15 +723,27 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { explorerEditorTabs: true } }).explorerEditorTabsEnabled).toBe(true);
     });
 
-    it('keeps permanent Explorer deletion off for defaults and partial configs', () => {
-        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.explorerDelete')!;
-        expect(def.default).toBe(false);
+    it.each([
+        ['features.explorerDelete', 'explorerDelete', 'explorerDeleteEnabled', 60],
+        ['features.panelTabReordering', 'panelTabReordering', 'panelTabReorderingEnabled', 40],
+    ] as const)('enables experimental %s by default with an explicit false opt-out', (key, field, flag, order) => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === key)!;
+        expect(def.default).toBe(true);
+        expect(def.absentFallback).toBeUndefined();
         expect(def.runtime).toBe('live');
-        expect(def.runtimeFlag).toBe('explorerDeleteEnabled');
-        expect(DEFAULT_CONFIG.features.explorerDelete).toBe(false);
-        expect(buildRuntimeFeatures(DEFAULT_CONFIG).explorerDeleteEnabled).toBe(false);
-        expect(buildRuntimeFeatureFlags({}).explorerDeleteEnabled).toBe(false);
-        expect(buildRuntimeFeatureFlags({ features: {} }).explorerDeleteEnabled).toBe(false);
+        expect(def.runtimeFlag).toBe(flag);
+        expect(def.ui).toMatchObject({ tab: 'appearance', group: 'editorFiles', order, badge: 'experimental' });
+        expect(def.ui!.hint).toMatch(/enabled by default/i);
+        expect(def.ui!.hint).not.toMatch(/disabled by default/i);
+        expect(DEFAULT_CONFIG.features[field]).toBe(true);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG)[flag]).toBe(true);
+        expect(buildRuntimeFeatureFlags({})[flag]).toBe(true);
+        expect(buildRuntimeFeatureFlags({ features: {} })[flag]).toBe(true);
+        expect(buildRuntimeFeatureFlags({ features: { [field]: true } })[flag]).toBe(true);
+        expect(buildRuntimeFeatureFlags({ features: { [field]: false } })[flag]).toBe(false);
+    });
+
+    it('keeps the explicit permanent Explorer deletion switch', () => {
         expect(buildRuntimeFeatureFlags({ features: { explorerDelete: true } }).explorerDeleteEnabled).toBe(true);
         expect(buildRuntimeFeatureFlags({ features: { explorerDelete: false } }).explorerDeleteEnabled).toBe(false);
     });
@@ -744,10 +757,10 @@ describe('Features card UI metadata', () => {
         expect(def!.default).toBe(false);
         expect(def!.runtime).toBe('live');
         expect(def!.runtimeFlag).toBe('repoGroupAggregatedChatsEnabled');
-        expect(def!.ui!.group).toBe('dashboard');
+        expect(def!.ui).toMatchObject({ tab: 'appearance', group: 'uiChat' });
         expect(def!.ui!.badge).toBe('experimental');
         expect(def!.ui!.hint).toMatch(/disabled by default/i);
-        expect(getFeatureCardSettings('dashboard').some(d => d.key === 'features.repoGroupAggregatedChats')).toBe(true);
+        expect(getFeatureCardSettings('uiChat', 'appearance').some(d => d.key === 'features.repoGroupAggregatedChats')).toBe(true);
         expect(DEFAULT_CONFIG.features.repoGroupAggregatedChats).toBe(false);
         expect(buildRuntimeFeatures(DEFAULT_CONFIG).repoGroupAggregatedChatsEnabled).toBe(false);
         expect(buildRuntimeFeatureFlags({}).repoGroupAggregatedChatsEnabled).toBe(false);
@@ -778,11 +791,9 @@ describe('feature toggle settings-tab placement', () => {
         'effortLevels.enabled': 'ai',
         'copilot.transformTransport': 'ai',
         'features.gitWorktreeExecution': 'ai',
-        // Chat
-        'features.chatFolders': 'chat',
+        // Chat (functional chat behavior only; chat UI lives on Appearance)
         'features.chatProviderSwitching': 'chat',
         'features.chatHistoryPaging': 'chat',
-        'features.composerWordHint': 'chat',
         'features.quickAskSidenotes': 'chat',
         'features.sessionContextAttachments': 'chat',
         'features.chatStyleSelector': 'chat',
@@ -793,9 +804,18 @@ describe('feature toggle settings-tab placement', () => {
         'features.sentinelTodoExternalReferences': 'sentinel',
         'features.sentinelTodoScrubber': 'sentinel',
         'features.sentinelPrOutcomeWake': 'sentinel',
-        'features.sentinelResultCards': 'sentinel',
         'features.sentinelDesktopMirror': 'sentinel',
-        // Appearance
+        // Appearance — every UI-only preference and feature toggle
+        'features.composerWordHint': 'appearance',
+        'features.chatFolders': 'appearance',
+        'features.repoGroupAggregatedChats': 'appearance',
+        'features.sentinelResultCards': 'appearance',
+        'features.commitChatLens': 'appearance',
+        'features.commitChatLensDormantMode': 'appearance',
+        'features.schedulesInScheduledSlide': 'appearance',
+        'features.explorerEditorTabs': 'appearance',
+        'features.markdownPanelPreview': 'appearance',
+        'features.diffFilePicker': 'appearance',
         'vimNavigation.enabled': 'appearance',
         'features.scopeSwitcher': 'appearance',
         'features.pinnedScopes': 'appearance',
@@ -803,21 +823,21 @@ describe('feature toggle settings-tab placement', () => {
         'features.railGitSummary': 'appearance',
         'features.railStatusActions': 'appearance',
         'features.schedulerDelayHint': 'appearance',
-        'features.explorerEditorTabs': 'appearance',
         'features.explorerDelete': 'appearance',
-        'features.markdownPanelPreview': 'appearance',
         'features.panelTabReordering': 'appearance',
-        'features.htmlPageTab': 'appearance',
+        'features.htmlPageTab': 'browser',
         'scratchpad.layout': 'appearance',
-        // Integrations
-        'features.teamsBridgeObservability': 'integrations',
-        'features.teamsAiAnswerRelay': 'integrations',
-        'features.teamsMessageReaction': 'integrations',
+        // Editors (functional editor behavior only)
+        'features.arxivPaperIngest': 'editors',
+        // Connectors → Teams
+        'features.teamsBridgeObservability': 'teams',
+        'features.teamsAiAnswerRelay': 'teams',
+        'features.teamsMessageReaction': 'teams',
+        // Integrations (bot-managed conversations also covers WhatsApp)
         'features.botManagedConversations': 'integrations',
         'mcpOauth.enabled': 'integrations',
         'mcpOauth.autoRefresh.enabled': 'integrations',
         'kusto.enabled': 'integrations',
-        'features.arxivPaperIngest': 'integrations',
         'workItems.sync.enabled': 'integrations',
         // Features (module/tool-level toggles stay)
         'notes.enabled': 'features',
@@ -838,22 +858,16 @@ describe('feature toggle settings-tab placement', () => {
         'cron.enabled': 'features',
         'triggers.enabled': 'features',
         'canvas.enabled': 'features',
-        'browserControl.enabled': 'features',
+        'browserControl.enabled': 'browser',
         'excalidraw.enabled': 'features',
         'LLMToolSystemOne.enabled': 'features',
         'features.toolScripting': 'features',
         'features.canvasHostApis': 'features',
-        'features.sensitiveInput': 'features',
+        'features.sensitiveInput': 'browser',
         'features.focusedDiff': 'features',
         'features.gitCrossCloneCherryPick': 'features',
-        'features.diffFilePicker': 'features',
-        'features.commitChatLens': 'features',
-        'features.commitChatLensDormantMode': 'features',
         'features.nativeCliSessions': 'features',
-        'features.repoGroupAggregatedChats': 'features',
         'features.repoGroupExclusiveWriter': 'features',
-        // Not named in the placement spec — falls back to the Features default.
-        'features.schedulesInScheduledSlide': 'features',
     };
 
     const uiDefs = ADMIN_SETTING_DEFINITIONS.filter(d => d.ui);
@@ -861,7 +875,8 @@ describe('feature toggle settings-tab placement', () => {
     it('keeps exactly the existing Sentinel inventory, defaults and runtime contracts', () => {
         const sentinelDefs = ADMIN_SETTING_DEFINITIONS.filter(d => /sentinel/i.test(d.key));
         const sentinelKeys = Object.keys(EXPECTED_TABS).filter(key => EXPECTED_TABS[key] === 'sentinel').sort();
-        expect(sentinelDefs.map(d => d.key).sort()).toEqual(sentinelKeys);
+        // Result cards are presentation-only, so they live on Appearance.
+        expect(sentinelDefs.map(d => d.key).sort()).toEqual([...sentinelKeys, 'features.sentinelResultCards'].sort());
         expect(uiDefs.filter(d => getFeatureSettingTab(d) === 'sentinel').map(d => d.key).sort()).toEqual(sentinelKeys);
         const runtime = buildRuntimeFeatureFlags({});
         for (const def of sentinelDefs) {
@@ -875,6 +890,76 @@ describe('feature toggle settings-tab placement', () => {
             expect(def.ui?.dependsOn, def.key).toBeUndefined();
             expect(def.ui?.badge, def.key).toBe('experimental');
         }
+    });
+
+    // The Editors tab keeps only functional editor behavior; editor UI
+    // toggles moved to Appearance without changing keys, defaults, live
+    // runtime or opt-in badges.
+    it('keeps only functional editor settings on the Editors tab', () => {
+        const editorDefs = uiDefs.filter(d => getFeatureSettingTab(d) === 'editors');
+        expect(editorDefs.map(d => [d.key, d.ui!.group])).toEqual([['features.arxivPaperIngest', 'editorNotes']]);
+        for (const key of ['features.explorerEditorTabs', 'features.markdownPanelPreview']) {
+            const def = getAdminSettingDefinition(key)!;
+            expect(def.ui).toMatchObject({ tab: 'appearance', group: 'editorFiles', badge: 'experimental' });
+            expect(def.default, key).toBe(false);
+            expect(def.runtime, key).toBe('live');
+            expect(buildRuntimeFeatureFlags({})[def.runtimeFlag!], key).toBe(false);
+        }
+        expect(FEATURE_CARD_GROUPS.find(g => g.id === 'editorNotes')?.heading).toBe('Notes Editor');
+    });
+
+    // Appearance owns every UI-only toggle, grouped under three headings; each
+    // appearance group is used only on Appearance so its rows never split.
+    it('groups every Appearance toggle under the interface headings', () => {
+        const appearanceDefs = uiDefs.filter(d => getFeatureSettingTab(d) === 'appearance');
+        const byGroup: Record<string, string[]> = {};
+        for (const def of appearanceDefs) (byGroup[def.ui!.group] ??= []).push(def.key);
+        expect(Object.keys(byGroup).sort()).toEqual(['editorFiles', 'uiChat', 'uiGeneral']);
+        for (const group of ['editorFiles', 'uiChat', 'uiGeneral'] as const) {
+            expect(getFeatureCardSettings(group).every(d => getFeatureSettingTab(d) === 'appearance'), group).toBe(true);
+        }
+        expect(getFeatureCardSettings('uiChat').map(d => d.key)).toEqual([
+            'features.composerWordHint',
+            'features.chatFolders',
+            'features.repoGroupAggregatedChats',
+            'features.sentinelResultCards',
+            'features.commitChatLens',
+            'features.commitChatLensDormantMode',
+        ]);
+        expect(FEATURE_CARD_GROUPS.filter(g => ['uiGeneral', 'uiChat', 'editorFiles'].includes(g.id)).map(g => g.heading))
+            .toEqual(['Layout & Navigation', 'Chat Interface', 'Editors & Files']);
+        // Dependent rows stay on the same tab as their parent toggle.
+        expect(getFeatureSettingTab(getAdminSettingDefinition('features.commitChatLensDormantMode')!)).toBe('appearance');
+    });
+
+    // Teams-only feature settings live on Connectors → Teams; moving them must
+    // not change their keys, defaults, live runtime or badges.
+    it('keeps exactly the Teams-only settings on the Teams page with unchanged contracts', () => {
+        const teamsDefs = uiDefs.filter(d => getFeatureSettingTab(d) === 'teams');
+        expect(teamsDefs.map(d => [d.key, d.default, d.runtime, d.runtimeFlag, d.ui!.badge])).toEqual([
+            ['features.teamsBridgeObservability', false, 'live', 'teamsBridgeObservabilityEnabled', 'experimental'],
+            ['features.teamsAiAnswerRelay', true, 'live', 'teamsAiAnswerRelayEnabled', 'experimental'],
+            ['features.teamsMessageReaction', false, 'live', 'teamsMessageReactionEnabled', 'experimental'],
+        ]);
+        expect(uiDefs.filter(d => /^features\.teams/.test(d.key)).map(d => d.key).sort())
+            .toEqual(teamsDefs.map(d => d.key).sort());
+        expect(uiDefs.filter(d => getFeatureSettingTab(d) === 'integrations').some(d => /teams/i.test(d.key))).toBe(false);
+    });
+
+    // Browser-related settings live on Admin → Browser; moving them must not
+    // change their keys, defaults, opt-in absent fallbacks, live runtime,
+    // runtime flags or badges, and no browser setting may stay elsewhere.
+    it('keeps exactly the browser settings on the Browser page with unchanged contracts', () => {
+        const browserDefs = uiDefs.filter(d => getFeatureSettingTab(d) === 'browser');
+        expect(browserDefs.map(d => [d.key, d.ui!.group, d.default, d.absentFallback, d.runtime, d.runtimeFlag, d.ui!.badge, d.ui!.testId])).toEqual([
+            ['browserControl.enabled', 'browserAutomation', false, undefined, 'live', 'browserControlEnabled', 'experimental', 'toggle-browser-control-enabled'],
+            ['features.htmlPageTab', 'browserPages', true, undefined, 'live', 'htmlPageTabEnabled', undefined, 'toggle-html-page-tab-enabled'],
+            ['features.sensitiveInput', 'browserAutomation', false, undefined, 'live', undefined, 'experimental', 'toggle-sensitive-input-enabled'],
+        ]);
+        expect(getFeatureCardSettings('browserAutomation').map(d => d.key)).toEqual(['browserControl.enabled', 'features.sensitiveInput']);
+        expect(getFeatureCardSettings('browserPages').map(d => d.key)).toEqual(['features.htmlPageTab']);
+        expect(FEATURE_CARD_GROUPS.filter(g => g.id.startsWith('browser')).map(g => g.heading)).toEqual(['AI Browser Control', 'Pages & Previews']);
+        expect(uiDefs.filter(d => getFeatureSettingTab(d) !== 'browser' && /browser/i.test(`${d.key} ${d.ui!.label}`)).map(d => d.key)).toEqual([]);
     });
 
     it('places every ui setting on a valid settings tab', () => {

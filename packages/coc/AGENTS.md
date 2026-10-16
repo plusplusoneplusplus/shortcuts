@@ -152,9 +152,13 @@ references before editing. Paths are package-relative.
 - Memory V2 tools `save_memory` and `recall_memory` default off in `LLM_TOOL_REGISTRY`.
   Honor explicit workspace `disabledLlmTools` lists; keep memory scope gates and prompt context independent.
 
-- Conversation compaction shares process admission and durable queue dependencies.
-  Promote buffered turns before the boundary; later arrivals cannot steer across it.
-  Cancel removes queued compaction only. Running compaction never retries after restart.
+- Conversation compaction shares store-owned execution admission with queued turns;
+  mutation admission stays short so messages and cancellation can enter during SDK work.
+  Manual compaction follows admitted/buffered turns. Due auto-compaction reserves the
+  persisted response boundary before draining: queue admission atomically inserts it
+  ahead of queued successors, then promotes buffered messages in order behind it.
+  Later arrivals cannot steer across the boundary. Cancel removes queued compaction
+  only. Running compaction never retries after restart.
   Already-admitted messaging callbacks use `enqueueAdmitted` to avoid nested admission locks.
   `compact-process.ts` resolves one shared Sentinel instruction from `metadata.mode` for
   automatic and unfocused manual compaction; explicit manual focus overrides it verbatim.
@@ -240,7 +244,7 @@ references before editing. Paths are package-relative.
   `src/server/repos/types.ts` aliases native tree/search result types and coc-client
   contracts for metadata, HTTP options and the file-search envelope.
   Permanent Explorer deletion uses native `RepoFiles.deleteEntry` on a worker and
-  requires a physical workspace plus the owning server's live, default-off
+  requires a physical workspace plus the owning server's live, default-on
   `features.explorerDelete` flag. Preserve partial-error counts and refresh indexes
   after any mutation; never substitute a Node walker or success on failure.
 - Content search reads fresh bytes via `RepoFiles`; WSL runs Rust-prepared argv via forge.
@@ -261,7 +265,10 @@ references before editing. Paths are package-relative.
 - PR tool `autoFix` uses late-bound `getTriggerInfra().createTrigger` and the shared
   `triggers/create-trigger-service.ts` creation path. Explicit `ci-and-conflicts`
   scope authorizes CI/conflict repairs; missing/`ci` scope authorizes CI only.
-  Validate the PR-bound owner/workspace, poll authoritative merge previews and
+  Validate the PR-bound owner/workspace, resolving owners through
+  `processes/process-workspace-resolver.ts` (live queue task, then persisted process
+  metadata, so completed owners survive restarts; trigger infra builds it from its
+  own bridge/store, and routes/cron share it). Poll authoritative merge previews and
   current-head checks, and serialize automatic/manual repairs with the durable
   PR-qualified writer and `deliverPrRepairOnce`. Repair execution uses high-priority
   FIFO with `respectQueueBarriers`; pending messages retain scheduling metadata
@@ -288,6 +295,13 @@ references before editing. Paths are package-relative.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated
   consumers stay derived. Non-admin leaves use `src/config/namespace-registry.ts`.
+- Browser-related Admin controls, including browser-specific UI toggles, live on
+  Admin → Browser (`ui.tab: 'browser'`, or the desktop-bridge Desktop Preferences
+  card for installation-wide engine/profile/history data). Other UI-only Admin
+  controls (presentation, layout, navigation, editor UI and interface-only
+  toggles) live on Configure → Appearance (`ui.tab: 'appearance'` or the
+  Appearance card); functional, auth, transport, AI-behavior and
+  response-style settings stay on their domain tab.
 - Sentinel-specific Admin controls use registry `ui.tab: 'sentinel'` at
   `#admin/settings/sentinel`. Features search links to that tab; saves and cancels
   affect only its registry keys. Shared triggers and messaging settings keep their own tabs.
@@ -299,7 +313,7 @@ references before editing. Paths are package-relative.
   pausing retains existing suggestions. Keep desktop settings out of server config.
 - New experimental flags default off; gate server/tools and UI
   boundaries; preserve existing defaults and live/restart semantics.
-- Explorer permanent deletion uses the owning server's default-off
+- Explorer permanent deletion uses the owning server's default-on
   `features.explorerDelete` gate. File panes register owner-qualified dirty paths
   and saves in the window-local Explorer store; affected edits/saves block
   admission, and an admitted deletion makes affected panes read-only. Close
@@ -358,6 +372,8 @@ references before editing. Paths are package-relative.
   item-ID lookup is exact. Saved fulfillment determines selection, not job execution.
   `SentinelTodoService.list` and store reads
   remain full-ledger; the 500-item storage capacity is independent of presentation.
+  `list` projects every item from one ledger snapshot and one admission read; owner
+  checks use the store's transcript-free `getProcessOwnerProjection` when available.
   REST `full=true` supplies complete authoring/projection snapshots.
   The internal `setDependencies` graph command replaces ordered, typed prerequisites
   in the same writer transaction as item/ledger revisions. Edges resolve only in the
@@ -457,8 +473,8 @@ references before editing. Paths are package-relative.
   The SPA's To-do tab lives in the unified right panel (see its `AGENTS.md`): a hosted
   Sentinel `ChatDetail` publishes its ledger owner; stored tabs remain visible.
   Scrubber REST commands live in `src/server/sentinel-scrubber/scrubber-routes.ts`;
-  prove the Sentinel owner through `SentinelTodoService.list` before accessing
-  scrubber state, and use the engine for revision-checked Accept/Undo. The shared
+  prove the Sentinel owner through `SentinelTodoService.assertOwner` before accessing
+  scrubber state (never a full ledger list), and use the engine for revision-checked Accept/Undo. The shared
   `client.sentinelTodos.scrubber` resource uses the owning client transport for config,
   runs and finding actions; reads support abort signals and conflicts retain the current
   item in `CocApiError.body.current`. Route composition
@@ -704,7 +720,9 @@ references before editing. Paths are package-relative.
   invalid messages keep ordinary rendering. Inert summary Markdown and exact raw JSON
   never change model payloads, assessment or authorization. Job links inherit the source owner.
   `send_to_conversation` create mode from a
-  sentinel defaults to `autopilot`. Delegation prefers explicit `provider: "auto"` unless the user
+  sentinel defaults to `autopilot`. Handoffs prefer relevant same-task, same-owner chats when
+  tracking and reuse are supported; follow-ups retain their provider. New-chat delegation
+  prefers explicit `provider: "auto"` unless the user
   requests a particular provider/model. Enabled Auto uses target routing without parent AI
   inheritance. Disabled/unavailable Auto uses the parent's concrete provider after target
   validation; local model/effort inherit normally, remote defaults stay destination-owned.
@@ -985,7 +1003,7 @@ references before editing. Paths are package-relative.
   new chats retain confirmations. Relay captured terminal turns by request ID
   to the original thread/workspace.
   Normal Teams AI answer relay defaults on for missing settings, independently of
-  bridge connectivity, Trouter, Likes and observability. The Integrations toggle is
+  bridge connectivity, Trouter, Likes and observability. The Connectors → Teams toggle is
   live, without restart/reconnect; disabling stops relay and thread reply polling.
   The registry suppresses its experimental badge for the enabled default.
   Selection changes never redirect answers. Persist accepted multipart progress;

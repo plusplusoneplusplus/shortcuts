@@ -118,7 +118,7 @@ Gated by `canvas.enabled` (default on). Mutations emit `canvas-updated` on WebSo
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/repos/:repoId/search/content` | Bounded content search with text/regex/glob filters. `fileScope=tracked` includes ignored tracked files; `includeUntracked` adds non-ignored files. Non-Git tracked search → `409 TRACKED_CONTENT_SEARCH_UNAVAILABLE` |
-| DELETE | `/api/repos/:repoId/entry?path=<relative>` | Permanent guarded deletion on the owning server, physical workspaces only; live `features.explorerDelete` defaults off (`404 EXPLORER_DELETE_DISABLED`). Success `{success:true}`; errors `{error,code,partial,removedEntries}`: invalid/protected → `400`, missing → `404`, changed → `409`, permission/offline/I/O → `500`. Links are unlinked, partial mutations refresh indexes, no rollback; race revalidation is best effort |
+| DELETE | `/api/repos/:repoId/entry?path=<relative>` | Permanent guarded deletion on the owning server, physical workspaces only; live `features.explorerDelete` defaults on; explicit `false` returns `404 EXPLORER_DELETE_DISABLED`. Success `{success:true}`; errors `{error,code,partial,removedEntries}`: invalid/protected → `400`, missing → `404`, changed → `409`, permission/offline/I/O → `500`. Links are unlinked, partial mutations refresh indexes, no rollback; race revalidation is best effort |
 
 ## Git
 
@@ -272,7 +272,7 @@ workspace and Sentinel process; mutation methods carry the rule revision.
 
 ### To-do Scrubber
 
-`sentinel-scrubber/scrubber-routes.ts` defines owner-validated commands below the ledger's `/scrubber` path: GET config/active run/history, PUT `/config`, POST `/runs`, GET `/runs/:runId`, POST `/runs/:runId/cancel`, and POST `/runs/:runId/findings/:itemId/{accept|dismiss|undo}`. 
+`sentinel-scrubber/scrubber-routes.ts` defines owner-validated commands below the ledger's `/scrubber` path: GET config/active run/history, PUT `/config`, POST `/runs`, GET `/runs/:runId`, POST `/runs/:runId/cancel`, and POST `/runs/:runId/findings/:itemId/{accept|dismiss|undo}`. Each request proves the Sentinel owner with the transcript-free `SentinelTodoService.assertOwner`, not a full ledger list. 
 
 `client.sentinelTodos.scrubber` exposes `get`, `updateConfig`, `start`, `getRun`, `cancel`, `accept`, `dismiss` and `undo`; contracts live in `coc-client/src/contracts/sentinel-scrubber.ts`. Each call requires the ledger workspace and Sentinel process and uses the chosen client's transport. Run detail includes snapshot revisions, deferred/awaiting-review IDs, evidence, demotion reasons and audit entries. Accept/Undo return a stored item plus finding; Dismiss returns only the finding.
 

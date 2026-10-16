@@ -183,6 +183,24 @@ describe('CommitDetail — chat panel integration', () => {
         expect(screen.queryByTestId('commit-chat-panel')).toBeNull();
     });
 
+    it('opens and closes chat through the overflow action with synchronized pressed state', async () => {
+        await renderDetail();
+        const button = screen.getByTestId('toggle-chat-btn');
+        const more = screen.getByTestId('git-review-more');
+
+        for (const open of [true, false]) {
+            await act(async () => { fireEvent.click(more); });
+            const action = screen.getByRole('menuitemcheckbox', { name: 'Toggle AI chat' });
+            expect(action.getAttribute('aria-checked')).toBe(String(!open));
+            await act(async () => { fireEvent.click(action); });
+
+            expect(screen.queryByTestId('commit-chat-panel') !== null).toBe(open);
+            expect(button.getAttribute('aria-pressed')).toBe(String(open));
+            expect(screen.queryByRole('menu')).toBeNull();
+            expect(document.activeElement).toBe(more);
+        }
+    });
+
     // 6. Chat panel and CommentSidebar can be open simultaneously
     it('chat panel and comment sidebar can both be open', async () => {
         await renderDetail({ filePath: 'src/foo.ts' });

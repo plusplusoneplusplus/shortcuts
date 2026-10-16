@@ -126,7 +126,10 @@ interface DashboardConfig {
     explorerEditorTabsEnabled?: boolean;
     /** Whether unified right-panel Markdown file tabs offer a rendered preview. Default false. */
     markdownPanelPreviewEnabled?: boolean;
+    /** Whether unified right-panel resource tabs can be reordered. Default true. */
     panelTabReorderingEnabled?: boolean;
+    /** Whether the owning server allows confirmed permanent Explorer deletion. Default true. */
+    explorerDeleteEnabled?: boolean;
     /** Desktop: whether local .html/.htm chat links open as a rendered page tab. Default true. */
     htmlPageTabEnabled?: boolean;
     /** Typing-driven client prewarm debounce (ms), resolved from env on the server. */
@@ -336,6 +339,16 @@ export function isTerminalEnabled(): boolean {
 /** Desktop HTML page tabs (`features.htmlPageTab`); on unless the server says off. */
 export function isHtmlPageTabEnabled(): boolean {
     return getConfig().htmlPageTabEnabled !== false;
+}
+
+/** Unified right-panel tab reordering (`features.panelTabReordering`); on unless the server says off. */
+export function isPanelTabReorderingEnabled(): boolean {
+    return getConfig().panelTabReorderingEnabled !== false;
+}
+
+/** Local Explorer deletion (`features.explorerDelete`); on unless the server says off. */
+export function isExplorerDeleteEnabled(): boolean {
+    return getConfig().explorerDeleteEnabled !== false;
 }
 
 export function isNotesEnabled(): boolean {

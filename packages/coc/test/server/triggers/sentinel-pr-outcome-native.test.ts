@@ -34,7 +34,6 @@ describe('native delegated PR outcomes across observation, admission and restart
             findTaskByProcessId: id => queue.getAll().find(task => task.processId === id),
             executeFollowUp: vi.fn(),
         } as unknown as QueueExecutorBridge,
-        resolveWorkspaceId: async () => owner.workspaceId,
         ciChecksFetcher: vi.fn(), prStatusFetcher: fetchPr, getPrOutcomeEnabled: () => enabled,
         recoverPendingMessages: async (workspaceId, processId) => executor?.recoverPendingMessages(workspaceId, processId),
     });

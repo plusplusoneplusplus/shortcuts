@@ -22,6 +22,7 @@ const processes = {
 let fixture: ReturnType<typeof createTodoTestDatabase>;
 let todos: SentinelTodoStore;
 let scrubber: ScrubberStore;
+let service: SentinelTodoService;
 let engine: ScrubberEngine;
 let runs: ScrubberRunService;
 let server: http.Server;
@@ -54,7 +55,7 @@ beforeEach(async () => {
     todos = new SentinelTodoStore(fixture.db);
     scrubber = new ScrubberStore(fixture.db);
     engine = new ScrubberEngine({ todos, scrubber, now: () => new Date('2026-10-11T10:10:00.000Z') });
-    const service = new SentinelTodoService({ todos, store: {
+    service = new SentinelTodoService({ todos, store: {
         getProcess: async id => {
             const metadata = processes[id as keyof typeof processes];
             return metadata ? { id, metadata } as never : undefined;
@@ -101,6 +102,20 @@ describe('Scrubber REST commands', () => {
         expect(accepted.item).toMatchObject({ status: 'done', archived: true });
         expect(accepted.finding.audit[0]).toMatchObject({ action: 'accepted', actor: 'user', before: { status: 'todo' } });
         await expect(client.get(owner.workspaceId, 'queue_s2')).rejects.toMatchObject({ status: 404 });
+    });
+
+    it('authorizes reads with the owner check alone, never a full ledger list', async () => {
+        settle(item().id);
+        const list = vi.spyOn(service, 'list');
+        const assertOwner = vi.spyOn(service, 'assertOwner');
+        const client = new CocClient({ baseUrl: url }).sentinelTodos.scrubber;
+        expect((await client.get(owner.workspaceId, owner.processId)).runs).toHaveLength(1);
+        expect((await client.getRun(owner.workspaceId, owner.processId, 'run')).findings).toHaveLength(1);
+        await expect(client.get(owner.workspaceId, 'queue_ask')).rejects.toMatchObject({ status: 404 });
+        await expect(client.getRun('ws-b', owner.processId, 'run')).rejects.toMatchObject({ status: 404 });
+        await expect(client.get(owner.workspaceId, 'queue_missing')).rejects.toMatchObject({ status: 404 });
+        expect(assertOwner).toHaveBeenCalledTimes(5);
+        expect(list).not.toHaveBeenCalled();
     });
 
     it('round-trips Undo and Dismiss through the shared client with stale-write errors', async () => {

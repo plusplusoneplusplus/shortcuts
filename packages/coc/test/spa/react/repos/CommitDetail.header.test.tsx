@@ -12,9 +12,11 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useCommitReviewFiles', () => ({
     useCommitReviewFiles: () => ({ files: [], loading: false, retry: vi.fn() }),
 }));
-vi.mock('../../../../src/server/spa/client/react/features/git/diff/GitFileReview', () => ({
-    GitFileReview: () => <div data-testid="git-file-review" />,
-}));
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/GitFileReview', async () => {
+    // Render the real single-row toolbar so header slots stay observable.
+    const { GitReviewToolbar } = await vi.importActual<typeof import('../../../../src/server/spa/client/react/features/git/diff/GitReviewToolbar')>('../../../../src/server/spa/client/react/features/git/diff/GitReviewToolbar');
+    return { GitFileReview: (props: any) => <div data-testid="git-file-review"><GitReviewToolbar header={props.header} /></div> };
+});
 
 // --- Module mocks (hoisted by Vitest) ---
 

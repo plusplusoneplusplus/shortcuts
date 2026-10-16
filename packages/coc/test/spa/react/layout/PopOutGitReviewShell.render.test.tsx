@@ -385,6 +385,10 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
         });
         render(<PopOutGitReviewShell />);
         await screen.findByTestId('commit-info-header');
+        const toolbar = screen.getByTestId('git-review-toolbar');
+        for (const id of ['commit-info-summary', 'commit-summary-copy-hash', 'commit-popout-chat-toggle']) {
+            expect(toolbar.contains(screen.getByTestId(id))).toBe(true);
+        }
         fireEvent.click(screen.getByTestId('commit-info-summary'));
         expect(screen.getByTestId('popout-git-review-title')).toHaveTextContent('Explain the real commit');
         expect(screen.getByTestId('popout-git-review-identifier')).toHaveTextContent('Commit abc123');

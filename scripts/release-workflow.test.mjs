@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 const workflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
@@ -132,12 +136,76 @@ test("release image smoke requires both native indexes", () => {
     assert.match(job, /native Notes index: loaded/);
 });
 
-// The release page ships installers only. The coc-native-* artifacts are the
+// The release page ships installers and their checksums. The coc-native-* artifacts are the
 // raw N-API binaries the build jobs feed to electron-builder (already packed
 // inside each installer), and CoCContainer is an internal variant.
-test("release attaches only the CoC installers", () => {
+test("release attaches only the CoC installers and their checksums", () => {
     assert.match(workflow, /pattern: coc-\{mac,win\}/);
     assert.match(workflow, /find artifacts -type f \\\( -name '\*\.dmg' -o -name '\*\.exe' \\\)/);
     assert.match(workflow, /! -name 'CoCContainer\*' ! -name '\*\.node'/);
     assert.doesNotMatch(workflow, /### Windows — CoCContainer/);
+});
+
+// Execute the actual release shell with fixture artifacts and a local gh stub.
+// This job runs on Ubuntu, so its GNU shell/tooling checks are Linux-only.
+function runRelease(t, artifacts, failHash = false) {
+    const dir = mkdtempSync(path.join(tmpdir(), "coc-release-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    mkdirSync(path.join(dir, "artifacts"));
+    mkdirSync(path.join(dir, "bin"));
+    for (const [name, content] of Object.entries(artifacts)) {
+        writeFileSync(path.join(dir, "artifacts", name), content);
+    }
+    const gh = path.join(dir, "bin", "gh");
+    writeFileSync(gh, '#!/bin/bash\nprintf "%s\\0" "$@" > "$RELEASE_ARGS"\n');
+    chmodSync(gh, 0o755);
+    if (failHash) {
+        const hash = path.join(dir, "bin", "sha256sum");
+        writeFileSync(hash, "#!/bin/bash\necho 'checksum read failed' >&2\nexit 1\n");
+        chmodSync(hash, 0o755);
+    }
+    const block = jobBlock("create-release");
+    const script = block.slice(block.indexOf("        run: |\n") + "        run: |\n".length)
+        .split("\n").map(line => line.replace(/^ {10}/, "")).join("\n");
+    const result = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", script], {
+        cwd: dir,
+        encoding: "utf8",
+        env: { ...process.env, PATH: `${path.join(dir, "bin")}:${process.env.PATH}`,
+            TAG: "v3.5.2", OWNER: "fixture", TMPDIR: dir, RELEASE_ARGS: path.join(dir, "args") },
+    });
+    return { dir, result };
+}
+
+test("release uploads matching SHA-256 sidecars for every installer and excludes internal assets", {
+    skip: process.platform !== "linux",
+}, t => {
+    const installers = { "CoC-3.5.2-arm64.dmg": "mac installer", "CoC Setup 3.5.2.exe": "windows installer" };
+    const { dir, result } = runRelease(t, {
+        ...installers, "CoCContainer.Setup.exe": "private", "CoCContainer.dmg": "private mac",
+        "coc.node": "native", "latest.yml": "metadata", "CoC Setup 3.5.2.exe.sha256": "stale",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const args = readFileSync(path.join(dir, "args"), "utf8").split("\0").filter(Boolean);
+    const expected = Object.keys(installers).flatMap(name => [`artifacts/${name}`, `artifacts/${name}.sha256`]).sort();
+    assert.deepEqual(args.filter(arg => arg.startsWith("artifacts/")).sort(), expected);
+    for (const [name, content] of Object.entries(installers)) {
+        const digest = createHash("sha256").update(content).digest("hex");
+        assert.equal(readFileSync(path.join(dir, "artifacts", `${name}.sha256`), "utf8"), `${digest}  ${name}\n`);
+    }
+    assert.ok(args.includes("--draft"));
+    assert.equal(existsSync(path.join(dir, "artifacts", "CoCContainer.Setup.exe.sha256")), false);
+});
+
+test("release refuses to publish without eligible installers", { skip: process.platform !== "linux" }, t => {
+    const { dir, result } = runRelease(t, { "CoCContainer.Setup.exe": "private", "coc.node": "native" });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout, /No artifacts were downloaded/);
+    assert.equal(existsSync(path.join(dir, "args")), false);
+});
+
+test("release refuses to publish when checksum generation fails", { skip: process.platform !== "linux" }, t => {
+    const { dir, result } = runRelease(t, { "CoC.dmg": "installer" }, true);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /checksum read failed/);
+    assert.equal(existsSync(path.join(dir, "args")), false);
 });

@@ -637,6 +637,14 @@ describe('SentinelTodoService', () => {
         expect(store.get(forged).items).toEqual([]);
     });
 
+    it('checks loaded processes without the owner projection and never treats metadata-free ones as queued', async () => {
+        const getTask = vi.fn(() => ({ type: 'chat', status: 'queued', repoId: 'ws-a', payload: { kind: 'chat', mode: 'sentinel' } }) as never);
+        const service = makeService({ getTask, store: { getProcess: async (id: string) => ({ id }) as never } });
+        await expect(service.list({ workspaceId: 'ws-a', processId: 'queue_bare' })).rejects.toMatchObject({ code: 'not_found' });
+        expect(getTask).not.toHaveBeenCalled();
+        await expect(makeService().list(owner)).resolves.toMatchObject({ items: [] });
+    });
+
     it('accepts a Sentinel whose first turn is still queued', async () => {
         const service = makeService({
             getTask: (taskId: string) => taskId === 'live' ? {
@@ -705,7 +713,23 @@ describe('linked job mode projection', () => {
         await addChild(mode);
         const hydrate = vi.spyOn(processes, 'getProcess');
         expect((await read()).mode).toBe(mode === 'plan' ? 'ask' : mode);
-        expect(hydrate.mock.calls.map(call => call[0])).toEqual([owner.processId]);
+        expect(hydrate).not.toHaveBeenCalled();
+    });
+    it('proves owners from the transcript-free projection without weakening rejection', async () => {
+        const hydrate = vi.spyOn(processes, 'getProcess');
+        const projection = vi.spyOn(processes, 'getProcessOwnerProjection');
+        await expect(service.list(owner)).resolves.toMatchObject({ items: [] });
+        await processes.addProcess({ id: 'queue_ask', type: 'clarification', status: 'completed',
+            startTime: new Date(), metadata: { workspaceId: owner.workspaceId, mode: 'ask' } });
+        queueMode = 'sentinel'; queueWorkspace = owner.workspaceId; queueStatus = 'running';
+        // A stored non-Sentinel process wins over live queue metadata.
+        await expect(service.list({ ...owner, processId: 'queue_ask' })).rejects.toMatchObject({ code: 'not_found' });
+        await expect(service.list({ ...owner, workspaceId: 'ws-forged' })).rejects.toMatchObject({ code: 'not_found' });
+        await expect(service.list({ ...owner, processId: 'queue_first' })).resolves.toMatchObject({ items: [] });
+        queueStatus = 'completed';
+        await expect(service.list({ ...owner, processId: 'queue_missing' })).rejects.toMatchObject({ code: 'not_found' });
+        expect(projection).toHaveBeenCalledTimes(5);
+        expect(hydrate).not.toHaveBeenCalled();
     });
     it('batch-projects different linked job modes with one query and no per-job hydration', async () => {
         const itemId = link(); await addChild('ask');
@@ -716,7 +740,7 @@ describe('linked job mode projection', () => {
         const hydration = vi.spyOn(processes, 'getProcess');
         expect((await service.list(owner)).items[0].jobs.map(job => job.mode)).toEqual(['ask', 'autopilot']);
         expect(projection).toHaveBeenCalledOnce();
-        expect(hydration.mock.calls.map(call => call[0])).toEqual([owner.processId]);
+        expect(hydration).not.toHaveBeenCalled();
     });
     it('uses persisted follow-up mode over original admission and preserves revisions after reload', async () => {
         const itemId = link(); await addChild('ask');

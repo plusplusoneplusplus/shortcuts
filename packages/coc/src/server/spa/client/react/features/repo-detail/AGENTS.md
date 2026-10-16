@@ -243,10 +243,10 @@ the tree becomes a rail-toggled overlay and the note chat starts collapsed.
 
 ### Permanent deletion
 
-Default-off `features.explorerDelete` adds a separated destructive context-menu
+Default-on `features.explorerDelete` adds a separated destructive context-menu
 action through `ExplorerDeleteDialog`, with Cancel initial focus and explicit
 permanent/folder-content warnings. `useExplorerDeleteEnabled` probes remote
-capabilities on the exact owner; `explorerApi.deleteEntry` rejects unresolved
+capabilities on the exact owner, treating an omitted remote flag as off; `explorerApi.deleteEntry` rejects unresolved
 remote routes before dispatch. The tree's workspace is physical, including
 repo-group members. Virtual roots and Git metadata are protected.
 

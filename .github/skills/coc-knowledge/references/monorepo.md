@@ -266,6 +266,53 @@ with its CLI. Enabled Windows DevTunnel hosting prefers a configured tunnel's
 single HTTP binding. The hosts use separate tunnel identities.
 `packages/coc-desktop/electron-builder.container.cjs` selects the container variant.
 
+`coc-desktop/src/update-install.ts` provides Electron-free installer downloads for
+CoC macOS arm64 and Windows x64. It requires the selected installer's exact
+`.sha256` release asset, streams bytes to a private temp directory with progress
+callbacks, and verifies SHA-256 before returning an installer path. Fetch and
+filesystem seams support plain Node tests. Failure or abort removes the attempt's
+directory; successful downloads expose caller-owned cleanup for deferred installs.
+`update-install-mac.ts` rejects translocated, disk-image and unwritable bundle
+locations. It mounts the DMG readonly, stages beside the destination, and detaches
+before returning a detached helper launch plan. The helper waits for the old PID,
+swaps bundles with rollback, clears quarantine when present, and relaunches.
+Successful installation removes staging/downloads; helper failures retain an
+`install-error.txt` diagnostic and reopen the restored app. Failed detach preserves
+the mount directory for safety. `update-install-win.ts` launches a detached,
+hidden PowerShell helper that waits for the old PID before starting NSIS, avoiding
+NSIS process termination during shutdown. It uses `/S --force-run` and a final,
+unquoted `/D=` argument for the current executable's directory. Installer failures
+retain `install-error.txt` and reopen CoC; success removes downloads. Encoded
+PowerShell commands carry quoted path literals.
+
+`update-coordinator.ts` owns the user-requested download/restart lifecycle through
+injected UI and installer hooks. One process-wide instance coalesces clicks,
+reports determinate or indeterminate progress, retains verified bytes for Later
+or cancelled restarts, and discards a retained release before replacing it. It
+checks restart confirmation before installation and transfers file ownership to
+the helper before quitting. Failures report their reason and offer the existing
+`pickDownloadUrl` browser path. `dispose()`, called from `before-quit` alongside
+browser disposal, aborts a download, removes deferred bytes and suppresses
+further dialogs/installs; bytes being handed to a helper stay. The hooks accept an owned-server check, helper
+launch and normal quit drain. `update-restart.ts` implements the restart check:
+it queries the owned server's unfiltered `GET /api/queue` with a ten-second
+timeout, counts `running` across all workspaces, and requests confirmation only
+for a nonempty list. Attached or absent servers bypass the check. Invalid or
+unavailable queue data rejects restart; cancellation retains verified bytes.
+`main.ts` shares one coordinator across windows and connects platform helpers,
+normal quit, window progress bars and the native menu. `update-ui.ts` supplies
+injected native Restart/Later, running-count confirmation and browser-fallback
+dialogs. The initial Update button explicitly starts the download; Skip, Later
+and channel selection retain their check semantics. Downloading disables the
+menu action and displays progress. A retained download exposes Restart to update
+and bypasses release fetching when reopened, including offline.
+`update-recovery.ts` writes `<userData>/pending-update.json` (release, download
+directory, macOS staging) before helper launch and removes it if launch fails.
+Packaged launches inspect it before the auto check: `install-error.txt` shows the
+reason with browser fallback; a removed download directory is success; a present
+directory younger than one hour is still installing and left untouched. Recovery
+removes macOS staging only when `image` is empty and `previous.app` is absent.
+
 URL hosts expose optional `BrowserHostedView.cdp(method, params)`. Electron's
 `ElectronBrowserCdp` lazily attaches to the adopted guest debugger and detaches
 its own attachment on close and retains the debugger emitter for destruction-safe
@@ -351,8 +398,10 @@ CoC build metadata uses the root package version and Git commit, with
 `.github/workflows/release.yml` handles stable/prerelease version tags and manual
 dispatch for an existing tag. It copies tag semver into the desktop manifest for
 packaging. Stable releases are drafts; prereleases are published as prereleases.
-Public downloads are CoC macOS DMG and Windows NSIS installers, not the
-CoCContainer variant or loose native binaries.
+Public downloads are CoC macOS DMG and Windows NSIS installers with mandatory
+`<installer>.sha256` sidecars computed from the installer bytes in the release
+job. Sidecars use standard SHA-256 output with asset basenames. CoCContainer
+installers and loose native binaries are excluded.
 
 Release CI audits dependencies and builds/tests native artifacts for Linux,
 macOS and Windows on x64/ARM64; installers stage their matching target.

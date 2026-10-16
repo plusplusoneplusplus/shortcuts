@@ -179,6 +179,7 @@ import type { CronStore } from '../cron/cron-store';
 import type { CronExecutor, CronEventEmit } from '../cron/cron-executor';
 import { registerTriggerRoutes } from '../triggers/trigger-handler';
 import { createPrRepairOwnerValidator } from '../triggers/pr-repair-owner';
+import { createProcessWorkspaceResolver } from '../processes/process-workspace-resolver';
 import { registerSentinelTodoTriggerRoutes } from '../triggers/sentinel-todo-trigger-routes';
 import type { SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
 import type { TriggerStore } from '../triggers/trigger-store';
@@ -685,7 +686,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             if (!(await store.getWorkspaces()).some(workspace => workspace.id === owner.workspaceId)) {
                 throw new Error('Scrubber workspace not found');
             }
-            await sentinelTodos.list(owner);
+            await sentinelTodos.assertOwner(owner);
         } });
     const scrubberReady = scrubberRuns.interruptActive().then(async count => {
         scrubberScheduler?.refreshAll();
@@ -833,7 +834,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
     repoTreeService.trackWorkspaces(store);
     registerRepoRoutes(routes, dataDir, repoTreeService, undefined, () =>
-        (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.explorerDelete === true);
+        (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.explorerDelete !== false);
     const isPullRequestTeamAutoClassificationEnabled = (): boolean => {
         const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
         return config?.pullRequests?.enabled === true
@@ -1028,19 +1029,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     // Resolve a process (conversation) ID to its owning workspace. Backs the
     // automation route workspace-boundary checks (legacy cron compatibility and
-    // trigger create verification). Prefers the live queue task's repoId and
-    // falls back to the persisted process metadata.
-    const resolveProcessWorkspaceId = async (processId: string): Promise<string | undefined> => {
-        try {
-            const taskId = processId.startsWith('queue_') ? processId.slice('queue_'.length) : processId;
-            const fromTask = bridge.getTask(taskId)?.repoId;
-            if (fromTask) return fromTask;
-            const proc = await store.getProcess(processId) ?? await store.getProcess(taskId);
-            return proc?.metadata?.workspaceId;
-        } catch {
-            return undefined;
-        }
-    };
+    // trigger create verification).
+    const resolveProcessWorkspaceId = createProcessWorkspaceResolver(bridge, store);
 
     if (opts.cronStore && opts.cronExecutor) {
         registerCronRoutes(routes, {

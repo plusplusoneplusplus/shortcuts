@@ -37,8 +37,8 @@ new chat in strip order with rebuilt ids and the same active/preview state; the
 draft originals remain available for the next new conversation.
 Display grouping is separate from ownership: `displayGroupForKind` puts
 `canvas`, `git`, and `todo` with workspace kinds as `tools` and
-`file | diff | external | paste` in `resources`. With default-off
-`features.panelTabReordering` disabled, the strip groups workspace tools, chat
+`file | diff | external | paste` in `resources`. With default-on
+`features.panelTabReordering` set to `false`, the strip groups workspace tools, chat
 tools and resources, and confines moves to a section. Enabled, `moveVisibleTab`
 stores a mixed id order in `orderByScope` for the selected chat/draft within the
 owner-qualified panel storage scope. Drag target halves, Alt+Left/Right and
@@ -729,7 +729,9 @@ owns its draft and idempotency key (`useAddItemForm`). Every write carries the i
 conflict reloads the ledger and keeps the typed draft, and the next save is based
 on the newer revision. Creates carry one idempotency key per draft across retries.
 Event invalidation, manual toolbar refresh and post-write reloads share the
-owner-scoped full-snapshot loader. Pending reads disable manual refresh with a
+owner-scoped full-snapshot loader. Creates and saves wait until a snapshot at
+or above the write's returned `ledgerRevision` is applied, reusing an in-flight
+read only when its result covers that revision; otherwise they fetch once. Pending reads disable manual refresh with a
 synchronous admission guard and busy indicator; reloads retain rows, selection,
 drafts and older-item expansion. Selection and changes to its tracking type or
 active/Done/Archived membership reveal its containing sections, including restored
@@ -845,8 +847,11 @@ read-only `test/e2e/sentinel-todo-job-preview.spec.ts` native-style fixture.
 
 ### To-do Scrubber
 
-`SentinelTodoScrubber` mounts above the list after a ledger loads, gated by the
-live, default-off scrubber flag. Its owner/endpoint-keyed strip uses
+`SentinelTodoScrubber` wraps the To-do body after a ledger loads, gated by the
+live, default-off scrubber flag. `UnifiedTodoTab` passes a function child that places
+the single strip (and its history) in the list column below triggers, beside the
+detail pane; a plain child renders the strip first. The strip is not sticky and its
+schedule editor and selection wrap inline. Its owner/endpoint-keyed strip uses
 `client.sentinelTodos.scrubber` and an exact workspace/process WebSocket filter;
 late reads and mutations cannot update a remounted owner. A visibility-aware
 poll refreshes missed events. All-open and selected runs start separate queued
@@ -866,7 +871,7 @@ stops on other errors, reports partial results and reloads ledger/findings.
 Owner/endpoint remounts or flag disabling stop remaining batch requests.
 Successful actions reload the ledger for derived job states. Evidence links allow
 HTTP(S) only; other references render as text. `SentinelTodoScrubHistory` lists
-retained summaries outside the pinned strip and lazily reads owner-routed details.
+retained summaries after the strip and lazily reads owner-routed details.
 Run changes refresh selected details; switching, pruning or closing aborts reads
 and rejects late results. The read-only log retains all finding states and audit
 actors, timestamps, before/after revisions, outcomes, exclusions and evidence.

@@ -1,6 +1,6 @@
 ---
 name: delegate
-description: Delegate a job from the current chat to a new conversation. Use when the user asks to delegate or hand off work.
+description: Delegate a job to a relevant existing chat or a new conversation. Use when the user asks to delegate or hand off work.
 metadata:
   author: Yiheng Tao
   version: "0.0.6"
@@ -8,34 +8,36 @@ metadata:
 
 # Delegate
 
-Based on this conversation, delegate the requested job to a new conversation with the relevant context, constraints, and expected outcome.
+Delegate the requested job via `send_to_conversation`. Prefer a follow-up to an existing chat with relevant context for the same task and owner. Create a new chat only when requested, unrelated, or reuse is unsupported. Preserve tracking and authorization.
 
 ## Invocation
 
-Users reach this skill either through plain language ("hand this off to a new chat") or through the `/delegate [provider] <task>` command. Provider is the only optional parameter; there is no flag grammar.
+Users reach this skill either through plain language ("hand this off") or through the `/delegate [provider] <task>` command. Provider is the only optional parameter; there is no flag grammar.
 
 | Input | Outcome |
 | --- | --- |
-| `/delegate Review the plan` | Delegate the review in `ask` mode with `provider: "auto"`. |
-| `/delegate claude Review the plan` | Delegate the review to Claude using its defaults. |
-| `/delegate claude Review the plan with high effort` | Delegate to Claude at its High effort tier. |
+| `/delegate Review the plan` | Delegate the review in `ask` mode; prefer Auto for a new chat. |
+| `/delegate claude Review the plan` | Reuse a relevant Claude chat, or create one using its defaults. |
+| `/delegate claude Review the plan with high effort` | Reuse a relevant Claude chat with High effort, or create one at that tier. |
 | `/delegate Submit the outgoing commits as a PR` | Delegate in `autopilot` mode, since the job must push and open a PR. |
 
 ## Writing the handoff
 
-Assemble a self-contained prompt holding the context, constraints, decisions, and expected outcome. Prefer file path references over pasted file contents. Describe the actual work so the child does it rather than delegating it onward.
+Choose a chat with relevant context for the same task and owning workspace/server. Existing-chat sends include `processId` and use that chat's current provider; provider selection cannot switch a follow-up's provider. If an explicit provider request cannot be met by reuse, create a new chat.
 
-Call `send_to_conversation` **without** a `processId` so a new conversation is created. Always include a short, task-specific `title` in this create-mode call, along with `content`. Use a non-empty title of at most 80 characters; surrounding whitespace is trimmed. The title stays the conversation's visible custom title across AI title generation and restarts.
+For a new chat, omit `processId` and include a short, task-specific `title` plus self-contained `content` holding the context, constraints, decisions, and expected outcome. Use a non-empty title of at most 80 characters; surrounding whitespace is trimmed. The title stays the conversation's visible custom title across AI title generation and restarts. Prefer file path references over pasted file contents. Describe the actual work so the child does it rather than delegating it onward.
 
-Return the created chat link plus a one-line summary of the task and the chosen provider. A queued chat is queued, not finished — say so.
+Preserve required To-do/job tracking and user authorization. Tracked sends with `todoItemId` cannot use `processId`; existing remote-chat sends are also unsupported. Report these limitations and use a fresh explicitly authorized tracked launch when required. Never drop tracking to make reuse work, and never relaunch an uncertain send.
+
+Return the destination chat link plus a one-line summary of the task and its provider. A queued chat is queued, not finished — say so.
 
 ## Choosing a provider
 
 Concrete providers are `copilot`, `codex`, `claude`, and `opencode`, matched case-insensitively; whether one is usable depends on the server's enabled providers. `auto` uses the target workspace/server's existing routing rules at execution time.
 
-- Prefer `provider: "auto"` unless the user requests a particular provider/model. Enabled Auto does not inherit the parent's provider, model, or effort. When Auto is disabled or unavailable, the tool uses the invoking conversation's concrete provider after target validation. Local fallback inherits model/effort normally, honoring explicit overrides; remote fallback uses destination model/effort defaults.
-- Honor explicit user provider/model/effort requests through supported options. If only a model is requested, omit `provider` to keep the parent provider; an explicit model wins over `effortTier`. Omitted provider keeps ordinary local parent inheritance of provider, model, and effort.
-- An explicit concrete provider selects that provider's own defaults, including when it matches the parent. Do not carry over the parent's model or effort.
+- For new chats, prefer `provider: "auto"` unless the user requests a particular provider/model. Enabled Auto does not inherit the parent's provider, model, or effort. When Auto is disabled or unavailable, the tool uses the invoking conversation's concrete provider after target validation. Local fallback inherits model/effort normally, honoring explicit overrides; remote fallback uses destination model/effort defaults.
+- Follow-ups retain their existing provider; Auto preference applies only to new chats. Honor explicit user provider/model/effort requests through supported options for new chats. If only a model is requested, omit `provider` to keep the parent provider; an explicit model wins over `effortTier`. Omitted provider keeps ordinary local parent inheritance of provider, model, and effort.
+- For new chats, an explicit concrete provider selects that provider's own defaults, including when it matches the parent. Do not carry over the parent's model or effort.
 - Apply clear natural-language overrides such as effort through the tool's supported options.
 - Pick `mode` from what the job does. Use `ask` for read-only jobs: review, research, analysis, questions, and planning. Use `autopilot` for jobs that change files, the repo, or external state: implementing or fixing code, committing, pushing, opening PRs, and editing docs or skills. When it is unclear whether the job writes, ask one short question.
 - Use `ralph` (create mode only) for long, multi-step build-until-done goals that write to the repo. It starts an autonomous Ralph loop with no clarifying questions, so write `content` as a self-contained goal spec: goal, acceptance criteria, constraints, and references by path. It shares the autopilot queue and returns a `sessionId` with the chat link.
@@ -48,4 +50,4 @@ Concrete providers are `copilot`, `codex`, `claude`, and `opencode`, matched cas
 - Treat an unambiguous leading provider name as provider selection. Keep provider mentions inside ordinary task text as task text. For wording like "Claude integration review," ask whether Claude is the provider or the subject. An unknown first word is not a provider — clarify an apparent typo or unsupported provider.
 - With a bare `/delegate` or a provider alone, proceed only when the conversation clearly identifies one task and outcome. Otherwise ask one focused question first.
 - If a provider is unavailable or an override is incompatible, explain the specific problem and offer the known alternatives. Explicit provider/model/effort failures never trigger substitution. Auto's capability fallback is resolved before dispatch; quota/runtime and dispatch errors do not trigger fallback or retries.
-- If dispatch is rejected, report the reason and correct the request before retrying. If the result is uncertain or timed out, do not dispatch again — check existing conversation state, return the child link if creation is confirmed, and otherwise say creation is unconfirmed.
+- If dispatch is rejected, report the reason and correct the request before retrying. If the result is uncertain or timed out, do not dispatch again — check existing conversation state, return the destination link if dispatch is confirmed, and otherwise say dispatch is unconfirmed.

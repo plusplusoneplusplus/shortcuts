@@ -10,6 +10,19 @@ import type { Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { seedWorkspace } from './seed';
 
+/** Toggle review chat through the visible toolbar action at any pane width. */
+export async function toggleCommitChat(page: Page): Promise<void> {
+    const button = page.getByTestId('toggle-chat-btn').filter({ visible: true });
+    const more = page.getByTestId('git-review-more').filter({ visible: true });
+    await expect(button.or(more).first()).toBeVisible();
+    if (await button.count()) {
+        await button.click();
+    } else {
+        await more.click();
+        await page.getByTestId('toggle-chat-btn-menu-item').click();
+    }
+}
+
 function runGit(repoDir: string, ...args: string[]): void {
     execFileSync('git', args, { cwd: repoDir, stdio: 'ignore' });
 }

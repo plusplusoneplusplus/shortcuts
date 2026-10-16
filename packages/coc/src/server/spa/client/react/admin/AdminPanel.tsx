@@ -23,7 +23,7 @@ import { DbBrowserSection } from './DbBrowserSection';
 import { PromptsPanel } from './PromptsPanel';
 import { ProviderTokensSection } from './ProviderTokensSection';
 import { SettingsCard } from './SettingsCard';
-import { DesktopBrowserPreferences } from './DesktopBrowserPreferences';
+import { BrowserSectionNav, DesktopBrowserPreferences } from './DesktopBrowserPreferences';
 import { AdminRow, AdminToggle, SourceBadge } from './adminControls';
 
 import { isContainerMode, isServersEnabled } from '../utils/config';
@@ -47,7 +47,7 @@ import type { FeatureSettingTab } from '../../../../../config/admin-setting-defi
 import { ChatStyleSettingsCard } from './ChatStyleSettingsCard';
 import { useAdminConfigForm } from './useAdminConfigForm';
 import { useAdminPreferencesForm } from './useAdminPreferencesForm';
-import { AiExecutionCard, AppearanceCard, ChatExperienceCard } from './configSettingsCards';
+import { AiExecutionCard, AppearanceCard, AppearanceSectionNav, ChatExperienceCard } from './configSettingsCards';
 import { useAdminProviderSettings } from './useAdminProviderSettings';
 import { useDreamsAdminConfig } from './useDreamsAdminConfig';
 import { useServerRuntime } from './useServerRuntime';
@@ -159,26 +159,11 @@ export function AdminPanel() {
         addToast,
         searchActive: settingsSubTab === 'features',
     });
-    // The Chat Style section is gated on the composer style selector: with the
-    // flag off there is no style to configure, so the sub-tab is hidden and a
-    // deep link to `#admin/settings/chat-style` falls back to the default one.
-    // `features.chatStyleSelector` reads as off until the config lands (its
-    // absent-fallback is `false`), so the gate waits for the load rather than
-    // bouncing a valid deep link on the first render.
-    const chatStyleConfigLoaded = !configLoading && !configError;
-    const chatStyleSelectorEnabled = chatStyleConfigLoaded
-        && features.featureValues['features.chatStyleSelector'] === true;
-    const visibleSettingsSubTabs = chatStyleSelectorEnabled || !chatStyleConfigLoaded
-        ? SETTINGS_SUBTABS
-        : SETTINGS_SUBTABS.filter(t => t.id !== 'chat-style');
-    // Landing on `#admin/settings/chat-style` with the selector flag off (deep
-    // link, or the flag turned off while the section is open) falls back to the
-    // default section instead of showing an empty page.
-    useEffect(() => {
-        if (settingsSubTab === 'chat-style' && chatStyleConfigLoaded && !chatStyleSelectorEnabled) {
-            handleSettingsSubTabChange(DEFAULT_SETTINGS_SUBTAB);
-        }
-    }, [settingsSubTab, chatStyleConfigLoaded, chatStyleSelectorEnabled, handleSettingsSubTabChange]);
+    // The Chat Style card inside the Chat tab is gated on the composer style
+    // selector: with the flag off there is no style to configure.
+    // `features.chatStyleSelector` reads as off until the config lands, which
+    // is fine here because the cards only render after the load.
+    const chatStyleSelectorEnabled = features.featureValues['features.chatStyleSelector'] === true;
 
     // Chat Style section — the default style plus (later) per-style prompt
     // text. Kept out of the registry-driven Features card because the prompt
@@ -212,10 +197,14 @@ export function AdminPanel() {
     });
     const settingsSaveTargets: Record<Exclude<SettingsSubTab, 'advanced'>, AdminSaveShortcutTarget[]> = {
         ai: [{ dirty: configFormCtl.aiExecDirty, saving: configFormCtl.aiExecSaving, onSave: configFormCtl.handleSaveAiExec }, featureTarget('ai')],
-        chat: [{ dirty: configFormCtl.chatDirty, saving: configFormCtl.chatSaving, onSave: configFormCtl.handleSaveChat }, featureTarget('chat')],
-        'chat-style': [{ dirty: chatStyle.dirty, saving: chatStyle.saving, onSave: chatStyle.handleSave }],
+        chat: [
+            { dirty: configFormCtl.chatDirty, saving: configFormCtl.chatSaving, onSave: configFormCtl.handleSaveChat },
+            ...(chatStyleSelectorEnabled ? [{ dirty: chatStyle.dirty, saving: chatStyle.saving, onSave: chatStyle.handleSave }] : []),
+            featureTarget('chat'),
+        ],
         sentinel: [featureTarget('sentinel')],
         appearance: [{ dirty: prefsCtl.appearanceDirty, saving: prefsCtl.appearanceSaving, onSave: prefsCtl.handleSaveAppearance }, featureTarget('appearance')],
+        editors: [featureTarget('editors')],
         features: [featureTarget('features')],
         integrations: [featureTarget('integrations')],
         providers: [],
@@ -225,9 +214,16 @@ export function AdminPanel() {
             ? settingsSaveTargets[settingsSubTab]
             : activeTab === 'server' && !isToolEmbedded
                 ? [{ dirty: serverRuntime.serverNameDirty, saving: serverRuntime.serverNameSaving, onSave: serverRuntime.handleSaveServerName }]
-                : activeToolItem?.tab === 'dreams-admin'
-                    ? [{ dirty: dreams.dreamsDirty, saving: dreams.dreamsSaving, onSave: dreams.handleSaveDreams }]
-                    : null;
+                // Teams connection settings save through their own actions and
+                // desktop browser preferences save immediately; Ctrl/Cmd+S only
+                // saves those pages' registry feature toggles.
+                : activeTab === 'messaging' && !isToolEmbedded
+                    ? [featureTarget('teams')]
+                    : activeTab === 'browser' && !isToolEmbedded
+                        ? [featureTarget('browser')]
+                        : activeToolItem?.tab === 'dreams-admin'
+                            ? [{ dirty: dreams.dreamsDirty, saving: dreams.dreamsSaving, onSave: dreams.handleSaveDreams }]
+                            : null;
     useAdminSaveShortcut(saveShortcutTargets !== null, saveShortcutTargets ?? []);
 
     // Link handlers — shared module-level state via hook
@@ -239,13 +235,6 @@ export function AdminPanel() {
     // controls there until a desktop-side supervisor is wired up. The plumbing
     // (handleRestart / admin.restart) stays intact for the web/CLI-served path.
     const isDesktop = isDesktopShell();
-    // The Browser page is desktop-only. A `#admin/browser` deep link in the web
-    // dashboard falls back to the default admin page, like an unknown tab.
-    useEffect(() => {
-        if (activeTab === 'browser' && !isDesktop) {
-            handleTabChange('settings');
-        }
-    }, [activeTab, isDesktop, handleTabChange]);
 
     // Version info
     const [versionInfo, setVersionInfo] = useState<{ version: string; commit: string } | null>(null);
@@ -359,9 +348,11 @@ export function AdminPanel() {
 
     // Registry toggles placed on a non-Features tab render in their own
     // section card below that tab's existing card(s).
-    const renderTabFeatures = (tab: Exclude<FeatureSettingTab, 'features'>) => (
+    const renderTabFeatures = (tab: Exclude<FeatureSettingTab, 'features'>, title?: string, description?: string) => (
         <TabFeatureSettingsCard
             tab={tab}
+            title={title}
+            description={description}
             featureValues={features.featureValues}
             setFeatureValues={features.setFeatureValues}
             dirty={features.isTabDirty(tab)}
@@ -380,7 +371,7 @@ export function AdminPanel() {
 
     // Sidebar nav groups are pure policy — container mode and the runtime
     // `serversEnabled` gate are passed as explicit inputs (see adminNavigation).
-    const navGroups = buildAdminNavGroups({ isContainer: isContainerMode(), serversEnabled: isServersEnabled(), isDesktop });
+    const navGroups = buildAdminNavGroups({ isContainer: isContainerMode(), serversEnabled: isServersEnabled() });
 
     const handleNavItemClick = useCallback((item: AdminNavItem) => {
         switch (item.action.kind) {
@@ -563,7 +554,7 @@ export function AdminPanel() {
                                     {/* Sub-tab bar — shown for the main settings sections (not advanced) */}
                                     {settingsSubTab !== 'advanced' && (
                                         <nav className="ar-subtab-row" role="tablist" aria-label="Settings sections">
-                                            {visibleSettingsSubTabs.filter(t => t.id !== 'advanced').map(tab => (
+                                            {SETTINGS_SUBTABS.filter(t => t.id !== 'advanced').map(tab => (
                                                 <button
                                                     key={tab.id}
                                                     type="button"
@@ -616,10 +607,6 @@ export function AdminPanel() {
                                                         setChatFollowUpCount={configFormCtl.setChatFollowUpCount}
                                                         chatAskUserEnabled={configFormCtl.chatAskUserEnabled}
                                                         setChatAskUserEnabled={configFormCtl.setChatAskUserEnabled}
-                                                        showReportIntent={configFormCtl.showReportIntent}
-                                                        setShowReportIntent={configFormCtl.setShowReportIntent}
-                                                        toolCompactness={configFormCtl.toolCompactness}
-                                                        setToolCompactness={configFormCtl.setToolCompactness}
                                                         dirty={configFormCtl.chatDirty}
                                                         saving={configFormCtl.chatSaving}
                                                         onSave={configFormCtl.handleSaveChat}
@@ -627,34 +614,35 @@ export function AdminPanel() {
                                                         sources={sources}
                                                         isDefaultValue={isDefaultValue}
                                                     />
+                                                    {chatStyleSelectorEnabled && (
+                                                        <ChatStyleSettingsCard
+                                                            defaultChatStyle={chatStyle.defaultChatStyle}
+                                                            setDefaultChatStyle={chatStyle.setDefaultChatStyle}
+                                                            selectorEnabled={chatStyleSelectorEnabled}
+                                                            prompts={chatStyle.prompts}
+                                                            setPrompt={chatStyle.setPrompt}
+                                                            resetPrompt={chatStyle.resetPrompt}
+                                                            isPromptCustomized={chatStyle.isPromptCustomized}
+                                                            dirty={chatStyle.dirty}
+                                                            saving={chatStyle.saving}
+                                                            onSave={chatStyle.handleSave}
+                                                            onCancel={chatStyle.handleCancel}
+                                                            sources={sources}
+                                                            isDefaultValue={isDefaultValue}
+                                                        />
+                                                    )}
                                                     {renderTabFeatures('chat')}
                                                 </>
                                             )}
 
                                             {settingsSubTab === 'sentinel' && renderTabFeatures('sentinel')}
 
-                                            {/* ── Chat Style ── */}
-                                            {settingsSubTab === 'chat-style' && chatStyleSelectorEnabled && (
-                                                <ChatStyleSettingsCard
-                                                    defaultChatStyle={chatStyle.defaultChatStyle}
-                                                    setDefaultChatStyle={chatStyle.setDefaultChatStyle}
-                                                    selectorEnabled={chatStyleSelectorEnabled}
-                                                    prompts={chatStyle.prompts}
-                                                    setPrompt={chatStyle.setPrompt}
-                                                    resetPrompt={chatStyle.resetPrompt}
-                                                    isPromptCustomized={chatStyle.isPromptCustomized}
-                                                    dirty={chatStyle.dirty}
-                                                    saving={chatStyle.saving}
-                                                    onSave={chatStyle.handleSave}
-                                                    onCancel={chatStyle.handleCancel}
-                                                    sources={sources}
-                                                    isDefaultValue={isDefaultValue}
-                                                />
-                                            )}
-
-                                            {/* ── Appearance & Navigation ── */}
+                                            {/* ── Appearance & Navigation ── every UI preference and
+                                                UI-only feature toggle, grouped; the two cards keep their
+                                                own Save/Cancel and Ctrl+S saves both. */}
                                             {settingsSubTab === 'appearance' && (
                                                 <>
+                                                    <AppearanceSectionNav />
                                                     <AppearanceCard
                                                         theme={prefsCtl.theme}
                                                         setTheme={prefsCtl.setTheme}
@@ -671,6 +659,10 @@ export function AdminPanel() {
                                                         setTaskCardDensity={prefsCtl.setTaskCardDensity}
                                                         historyGrouping={prefsCtl.historyGrouping}
                                                         setHistoryGrouping={prefsCtl.setHistoryGrouping}
+                                                        showReportIntent={prefsCtl.showReportIntent}
+                                                        setShowReportIntent={prefsCtl.setShowReportIntent}
+                                                        toolCompactness={prefsCtl.toolCompactness}
+                                                        setToolCompactness={prefsCtl.setToolCompactness}
                                                         dirty={prefsCtl.appearanceDirty}
                                                         saving={prefsCtl.appearanceSaving}
                                                         onSave={prefsCtl.handleSaveAppearance}
@@ -678,9 +670,16 @@ export function AdminPanel() {
                                                         sources={sources}
                                                         isDefaultValue={isDefaultValue}
                                                     />
-                                                    {renderTabFeatures('appearance')}
+                                                    {renderTabFeatures(
+                                                        'appearance',
+                                                        'Interface features',
+                                                        'Optional layout, chat, and editor interface behavior.',
+                                                    )}
                                                 </>
                                             )}
+
+                                            {/* ── Editors ── */}
+                                            {settingsSubTab === 'editors' && renderTabFeatures('editors')}
 
                                             {/* ── Workspace Features ── */}
                                             {settingsSubTab === 'features' && (
@@ -693,7 +692,7 @@ export function AdminPanel() {
                                                     saving={features.savingTab === 'features'}
                                                     onSave={() => { void features.handleSaveTab('features'); }}
                                                     onCancel={() => features.handleCancelTab('features')}
-                                                    onNavigateToTab={handleSettingsSubTabChange}
+                                                    onNavigateToTab={tab => (tab === 'teams' ? handleTabChange('messaging') : tab === 'browser' ? handleTabChange('browser') : handleSettingsSubTabChange(tab))}
                                                     sources={sources}
                                                     isDefaultValue={isDefaultValue}
                                                 />
@@ -778,7 +777,21 @@ export function AdminPanel() {
                                 </div>
                             )}
 
-                            {activeTab === 'browser' && isDesktop && <DesktopBrowserPreferences />}
+                            {/* ── Browser ── desktop-installation preferences (saved
+                                immediately through the desktop bridge) plus the
+                                server-backed browser feature toggles. */}
+                            {activeTab === 'browser' && (
+                                <>
+                                    <BrowserSectionNav />
+                                    <DesktopBrowserPreferences />
+                                    {/* Hidden until the admin config loads so edits are never overwritten by hydration. */}
+                                    {!configLoading && !configError && renderTabFeatures(
+                                        'browser',
+                                        'Browser features',
+                                        'AI browser control and in-app page behavior. Saved to this server\'s config, separately from the desktop preferences.',
+                                    )}
+                                </>
+                            )}
 
                             {/* ── Data tab ── */}
                             {activeTab === 'data' && (
@@ -869,6 +882,12 @@ export function AdminPanel() {
                                 <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
                                     <TeamsConnectionCard />
                                 </Suspense>
+                            )}
+                            {/* Hidden until the admin config loads so edits are never overwritten by hydration. */}
+                            {activeTab === 'messaging' && !configLoading && !configError && renderTabFeatures(
+                                'teams',
+                                'Teams features',
+                                'Optional Teams bridge behavior. Saved separately from the connection settings.',
                             )}
                             {activeTab === 'whatsapp' && !isContainerMode() && (
                                 <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DesktopBrowserPreferences } from '../../../../src/server/spa/client/react/admin/DesktopBrowserPreferences';
+import { BrowserSectionNav, DesktopBrowserPreferences, getBrowserSections } from '../../../../src/server/spa/client/react/admin/DesktopBrowserPreferences';
 import type { BrowserHistoryResult, BrowserPreferences, DesktopBrowserBridge, DesktopBrowserHistory } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
 
 const mocks = vi.hoisted(() => ({ bridge: undefined as DesktopBrowserBridge | undefined }));
@@ -90,9 +90,35 @@ describe('Desktop Preferences browser engines', () => {
         expect(changed).toBeUndefined();
     });
 
-    it('renders nothing outside the desktop shell', () => {
+    it('shows a desktop-only availability state outside the desktop shell without controls', () => {
         mocks.bridge = undefined;
-        expect(render(<DesktopBrowserPreferences />).container.textContent).toBe('');
+        const fetch = vi.spyOn(globalThis, 'fetch');
+        render(<DesktopBrowserPreferences />);
+        expect(screen.getByTestId('desktop-browser-unavailable').textContent).toContain('available only in the CoC desktop app');
+        expect(screen.getByText('Desktop only')).toBeTruthy();
+        expect(screen.queryByLabelText('Default browser engine')).toBeNull();
+        expect(screen.queryByRole('button', { name: /Clear .* data/ })).toBeNull();
+        expect(screen.queryByLabelText('Record browser history')).toBeNull();
+        expect(getBrowserSections(undefined).map(section => section.id)).toEqual([
+            'browser-group-desktop', 'browser-group-browserAutomation', 'browser-group-browserPages',
+        ]);
+        expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('groups engine and profile controls under jump-bar sections', async () => {
+        render(<><BrowserSectionNav /><DesktopBrowserPreferences /></>);
+        const engine = await screen.findByTestId('browser-group-engine');
+        expect(engine.textContent).toContain('Default browser engine');
+        expect(screen.getByTestId('browser-group-profiles').textContent).toContain('Electron browser data');
+        expect(screen.queryByTestId('browser-group-history')).toBeNull();
+        const nav = screen.getByRole('navigation', { name: 'Browser sections' });
+        expect(Array.from(nav.querySelectorAll('button')).map(b => b.textContent)).toEqual([
+            'Engine', 'Profiles & sign-ins', 'AI Browser Control', 'Pages & Previews',
+        ]);
+        const scrollIntoView = vi.fn();
+        engine.scrollIntoView = scrollIntoView;
+        fireEvent.click(screen.getByTestId('browser-jump-browser-group-engine'));
+        expect(scrollIntoView).toHaveBeenCalled();
     });
 });
 
@@ -126,6 +152,8 @@ describe('Desktop history recording preferences', () => {
         render(<DesktopBrowserPreferences />);
         const toggle = await screen.findByRole('checkbox', { name: 'Record browser history' });
         expect((toggle as HTMLInputElement).checked).toBe(true);
+        expect(screen.getByTestId('browser-group-history').contains(toggle)).toBe(true);
+        expect(getBrowserSections().map(section => section.label)).toContain('History');
         expect(query).toHaveBeenCalledWith('', 0, 1);
         fireEvent.click(toggle);
         await waitFor(() => expect((toggle as HTMLInputElement).checked).toBe(false));

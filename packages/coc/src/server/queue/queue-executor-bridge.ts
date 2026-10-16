@@ -4,7 +4,7 @@ import { applyFollowUpToTask, truncateDisplayName } from '../shared/queue-utils'
 import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { AIProcess, Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, StoredEffortTiersMap, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
 import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, sdkServiceRegistry, SDK_PROVIDER_COPILOT, getLogger, LogCategory, normalizeExecutionPath, resolveModelForProvider, resolveWorkspaceExecutionContext, isQueueProcessId, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
-import { processOperationAdmission } from '../processes/process-operation-admission';
+import { conversationExecutionAdmission, processOperationAdmission } from '../processes/process-operation-admission';
 import { guardSentinelPrOutcomeExecution } from '../triggers/sentinel-pr-outcome-execution';
 import { compactProcess } from '../processes/compact-process';
 import { maybeAutoCompactAfterResponse, settleAutoCompaction } from '../processes/auto-compact';
@@ -608,6 +608,14 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     }
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
+        // Compaction acquires the same gate in compactProcess. Its queue metadata
+        // admission stays short so incoming messages can still be buffered.
+        if (task.payload.kind === 'compact') return this.executeAdmitted(task);
+        const processId = task.processId ?? task.payload.processId ?? toQueueProcessId(task.id);
+        return conversationExecutionAdmission(this.store).runExclusive(String(processId), () => this.executeAdmitted(task));
+    }
+
+    private async executeAdmitted(task: QueuedTask): Promise<TaskExecutionResult> {
         try {
             if (task.payload.kind === 'compact') {
                 const proc = await processOperationAdmission.runExclusive(task.processId!, async () => {
@@ -1042,12 +1050,17 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         try {
             const queue = this.queueManager;
             if (!queue) return;
-            // The conversation's own queue: per-process serialization keeps the
-            // compaction behind the finished turn and already admitted messages.
+            // The conversation's own queue reserves automatic compaction directly
+            // after this response, ahead of its queued successors.
             const active = (pid: string, compact: boolean) => queue.getAll().find(task =>
                 (task.processId ?? task.payload.processId ?? toQueueProcessId(task.id)) === pid && (task.payload.kind === 'compact') === compact
                 && (task.status === 'queued' || task.status === 'running'));
-            const enqueue = async (input: Parameters<TaskQueueManager['enqueue']>[0]) => queue.enqueue(input);
+            const enqueue = async (input: Parameters<TaskQueueManager['enqueue']>[0]) => {
+                // The finishing turn still owns its execution reservation. Insert
+                // this boundary before its queued successors using durable edges;
+                // priorities and UI reordering cannot move work across it.
+                return queue.enqueue(input, { beforeQueuedProcessTasks: input.payload.kind === 'compact' });
+            };
             await maybeAutoCompactAfterResponse(this.store, {
                 enqueue, enqueueAdmitted: enqueue,
                 getTask: id => queue.getTask(id),

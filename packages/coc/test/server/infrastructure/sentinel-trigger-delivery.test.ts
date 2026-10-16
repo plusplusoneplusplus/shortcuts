@@ -67,7 +67,6 @@ describe('Sentinel trigger durable delivery infrastructure', () => {
         infra?.dispose();
         infra = await createTriggerInfrastructure({
             dataDir: '', store, queueFacade: queue, deliveryBridge: bridge,
-            resolveWorkspaceId: async () => owner.workspaceId,
             recoverPendingMessages: recover, emit: vi.fn(),
             ciChecksFetcher: vi.fn(), prStatusFetcher: fetchPr, now: () => Date.now(),
         });

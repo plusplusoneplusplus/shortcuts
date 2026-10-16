@@ -14,6 +14,13 @@ vi.mock('@plusplusoneplusplus/forge', async importOriginal => ({
     sdkServiceRegistry: { getOrThrow: () => ({ ...sdk.service, compactSession }) },
 }));
 
+function deferred<T = void>() {
+    let resolve!: (value: T) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+    return { promise, resolve, reject };
+}
+
 const message = (id: string) => ({ id, content: id, createdAt: new Date().toISOString(), provider: 'copilot' as const });
 
 describe('queued conversation compaction admission', () => {
@@ -52,7 +59,7 @@ describe('queued conversation compaction admission', () => {
         vi.spyOn((executor as any).executors.runner, 'run').mockImplementation(async (value: unknown) => {
             const task = value as QueuedTask;
             executed.push(task.payload.prompt as string);
-            await store.appendConversationTurn(proc.id, index => ({ role: 'assistant', content: `answer:${task.payload.prompt}`,
+            await store.appendConversationTurn(task.processId ?? proc.id, index => ({ role: 'assistant', content: `answer:${task.payload.prompt}`,
                 timestamp: new Date(), turnIndex: index, timeline: [] }), { additionalUpdates: { status: 'completed', sdkSessionId: `session-${task.payload.prompt}` } });
             return { success: true, durationMs: 0 };
         });
@@ -230,6 +237,96 @@ describe('queued conversation compaction admission', () => {
         expect(executed.at(-1)).toBe('during');
         await runNext();
         expect(executed.at(-1)).toBe('after-sdk');
+    });
+
+    it.each([false, true])('serializes a turn arriving during idle manual compaction (failure=%s)', async failure => {
+        await finishActive();
+        await store.updateProcess(proc.id, { pendingMessages: [] });
+        const entered = deferred();
+        const finish = deferred<any>();
+        compactSession.mockImplementationOnce(() => { entered.resolve(); return finish.promise; });
+        const compact = compactProcess(store as any, (await store.getProcess(proc.id))!, undefined, bridge);
+        await entered.promise;
+        const turn = queue.enqueue({ id: 'next', processId: proc.id, type: 'chat', priority: 'normal',
+            payload: { kind: 'chat', processId: proc.id, prompt: 'next' }, config: {} });
+        queue.markStarted(turn);
+        const running = executor.execute(queue.getTask(turn)!);
+        try {
+            const other = { ...proc, id: 'independent', status: 'completed' as const, pendingMessages: [],
+                metadata: { ...proc.metadata!, workspaceId: 'ws-b' } };
+            await store.addProcess(other);
+            await executor.execute({ ...queue.getTask(turn)!, id: 'independent', processId: other.id,
+                payload: { kind: 'chat', processId: other.id, prompt: 'independent' } });
+            // An independent turn completes while this owner's provider remains held.
+            // It also proves the blocked turn had an opportunity to enter execution.
+            expect(executed).toEqual(['independent']);
+            executed.length = 0;
+            const arrival = await arrive('during');
+            expect(arrival.taskId).toBeDefined();
+            expect(await cancelQueuedCompaction(store as any, (await store.getProcess(proc.id))!, bridge)).toBe(false);
+            expect(executed).toEqual([]);
+            // Attach the rejection handler before releasing the provider barrier.
+            const settled = compact.then(value => value, error => error);
+            if (failure) finish.reject(new Error('compact failed'));
+            else finish.resolve({ success: true, tokensRemoved: 10 });
+            const result = await settled;
+            if (failure) expect(result.message).toContain('compact failed');
+            await running;
+            queue.markCompleted(turn);
+            await runNext();
+            expect(executed).toEqual(['next', 'during']);
+            expect((await store.getProcess(proc.id))!.pendingMessages).toEqual([]);
+        } finally {
+            finish.resolve({ success: true });
+            await Promise.allSettled([compact, running]);
+        }
+    });
+
+    it('waits for turn cleanup when manual compaction observes a terminal process', async () => {
+        await finishActive();
+        await store.updateProcess(proc.id, { pendingMessages: [] });
+        const entered = deferred();
+        const cleanup = deferred();
+        vi.mocked((executor as any).executors.runner.run).mockImplementationOnce(async () => {
+            await store.updateProcess(proc.id, { status: 'completed' });
+            entered.resolve();
+            await cleanup.promise;
+            return { success: true, durationMs: 0 };
+        });
+        const taskId = queue.enqueue({ processId: proc.id, type: 'chat', priority: 'normal',
+            payload: { kind: 'chat', processId: proc.id, prompt: 'turn' }, config: {} });
+        queue.markStarted(taskId);
+        const running = executor.execute(queue.getTask(taskId)!);
+        await entered.promise;
+        // Queue cancellation/settlement can precede executor cleanup; the
+        // reservation and execution lifetime still belong to this turn.
+        queue.markCompleted(taskId);
+        const compact = compactProcess(store as any, (await store.getProcess(proc.id))!, undefined, bridge);
+        // FIFO mutation admission proves the manual request reached admission.
+        const { processOperationAdmission } = await import('../../../src/server/processes/process-operation-admission');
+        await processOperationAdmission.runExclusive(proc.id, async () => {});
+        expect(compactSession).not.toHaveBeenCalled();
+        cleanup.resolve();
+        await running;
+        await compact;
+        expect(compactSession).toHaveBeenCalledTimes(1);
+    });
+
+    it('isolates execution and dedupe for equal conversation IDs in separate store owners', async () => {
+        await finishActive();
+        await store.updateProcess(proc.id, { pendingMessages: [] });
+        const otherStore = createMockProcessStore();
+        const other = { ...(await store.getProcess(proc.id))!, sdkSessionId: 'other-owner' };
+        await otherStore.addProcess(other);
+        const entered = deferred();
+        const finish = deferred<any>();
+        compactSession.mockImplementationOnce(() => { entered.resolve(); return finish.promise; });
+        const blocked = compactProcess(store as any, (await store.getProcess(proc.id))!, undefined, bridge);
+        await entered.promise;
+        await compactProcess(otherStore as any, other);
+        expect(compactSession).toHaveBeenCalledWith('other-owner', undefined);
+        finish.resolve({ success: true });
+        await blocked;
     });
 
     it('does not block another conversation or workspace', async () => {

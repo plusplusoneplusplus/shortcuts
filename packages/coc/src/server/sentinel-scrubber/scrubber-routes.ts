@@ -22,7 +22,7 @@ const actionSchema = z.object({ expectedItemRevision: z.number().int().positive(
 /** Owner-validated REST commands. Remote callers use their ledger's owning server. */
 export function registerScrubberRoutes(opts: {
     routes: Route[];
-    todos: Pick<SentinelTodoService, 'list'>;
+    todos: Pick<SentinelTodoService, 'assertOwner'>;
     scrubber: ScrubberStore;
     engine: Pick<ScrubberEngine, 'accept' | 'dismiss' | 'undo'>;
     runs: Pick<ScrubberRunService, 'start' | 'cancel'>;
@@ -51,7 +51,7 @@ export function registerScrubberRoutes(opts: {
                     return sendError(res, 400, 'Invalid workspace or chat');
                 }
                 // Prove the Sentinel/workspace identity before any scrubber read or write.
-                await todos.list(owner);
+                await todos.assertOwner(owner);
                 await command(req, res, owner, match!);
             } catch (error) {
                 if (error instanceof URIError) return sendError(res, 400, 'Invalid URL encoding');

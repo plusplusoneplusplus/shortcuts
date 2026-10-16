@@ -11,6 +11,7 @@ import {
     deriveActiveNav,
     getAdminTabLabel,
     getAdminTabIcon,
+    getFeatureSettingTabLink,
     getSettingsSubTabMeta,
     parseSettingsSubTabFromHash,
     SETTINGS_SUBTABS,
@@ -37,20 +38,26 @@ describe('parseSettingsSubTabFromHash', () => {
         expect(parseSettingsSubTabFromHash('#admin/settings/nope')).toBeNull();
     });
 
-    // The hyphen in `chat-style` is the only sub-tab id that is not a single
-    // word, so it is the one most likely to break a naive hash split.
-    it('parses the chat-style sub-tab', () => {
-        expect(parseSettingsSubTabFromHash('#admin/settings/chat-style')).toBe('chat-style');
+    // Chat Style lives as a card inside the Chat tab; its old sub-tab id is gone.
+    it('no longer accepts a chat-style sub-tab', () => {
+        expect(parseSettingsSubTabFromHash('#admin/settings/chat-style')).toBeNull();
+        expect(parseSettingsSubTabFromHash('#admin/settings/chat')).toBe('chat');
     });
 });
 
-describe('chat-style sub-tab registration', () => {
-    it('is listed right after Chat with a label, icon, and description', () => {
-        const ids = SETTINGS_SUBTABS.map(t => t.id);
-        expect(ids.indexOf('chat-style')).toBe(ids.indexOf('chat') + 1);
-        expect(getSettingsSubTabMeta('chat-style').label).toBe('Chat Style');
-        expect(getSettingsSubTabMeta('chat-style').icon).toBeTruthy();
-        expect(SETTINGS_SUBTAB_DESCRIPTIONS['chat-style']).toBeTruthy();
+describe('Chat sub-tab registration', () => {
+    it('has exactly one chat-related settings tab that covers chat style', () => {
+        expect(SETTINGS_SUBTABS.filter(t => /chat/i.test(t.id) || /chat/i.test(t.label))).toEqual([
+            { id: 'chat', label: 'Chat', icon: '◌' },
+        ]);
+        expect(SETTINGS_SUBTAB_DESCRIPTIONS.chat).toMatch(/chat style/i);
+        expect(getSettingsSubTabMeta('chat').label).toBe('Chat');
+    });
+
+    it('keeps the other settings tabs, including Editors, in order', () => {
+        expect(SETTINGS_SUBTABS.map(t => t.id)).toEqual([
+            'ai', 'chat', 'sentinel', 'appearance', 'editors', 'features', 'integrations', 'providers', 'advanced',
+        ]);
     });
 });
 
@@ -69,6 +76,42 @@ describe('Sentinel sub-tab registration', () => {
             activeTabLabel: 'Sentinel',
             activeBreadcrumbGroup: 'Configure',
         });
+    });
+});
+
+describe('Editors sub-tab registration', () => {
+    it('is listed right after Appearance and deep-links through #admin/settings/editors', () => {
+        const ids = SETTINGS_SUBTABS.map(t => t.id);
+        expect(ids.filter(id => id === 'editors')).toHaveLength(1);
+        expect(ids.indexOf('editors')).toBe(ids.indexOf('appearance') + 1);
+        expect(getSettingsSubTabMeta('editors')).toMatchObject({ label: 'Editors' });
+        expect(SETTINGS_SUBTAB_DESCRIPTIONS.editors).toBeTruthy();
+        expect(parseSettingsSubTabFromHash('#admin/settings/editors')).toBe('editors');
+        expect(deriveActiveNav({
+            isContainer: false, isToolEmbedded: false,
+            activeDashboardTab: 'admin', activeTab: 'settings', settingsSubTab: 'editors',
+        })).toMatchObject({ activeNavKey: 'settings:configure', activeTabLabel: 'Editors', activeBreadcrumbGroup: 'Configure' });
+    });
+});
+
+describe('getFeatureSettingTabLink', () => {
+    it('targets Connectors → Teams for Teams placements without adding a settings sub-tab', () => {
+        expect(getFeatureSettingTabLink('teams', false)).toEqual({ href: '#admin/messaging', label: 'Teams' });
+        expect(getFeatureSettingTabLink('teams', true)).toEqual({ href: '#admin/messaging', label: 'Messaging' });
+        expect(SETTINGS_SUBTABS.map(t => t.id)).not.toContain('teams');
+        expect(parseSettingsSubTabFromHash('#admin/settings/teams')).toBeNull();
+    });
+
+    it('targets the existing Admin → Browser page for browser placements, not a settings sub-tab', () => {
+        expect(getFeatureSettingTabLink('browser', false)).toEqual({ href: '#admin/browser', label: 'Browser' });
+        expect(getFeatureSettingTabLink('browser', true)).toEqual({ href: '#admin/browser', label: 'Browser' });
+        expect(SETTINGS_SUBTABS.map(t => t.id)).not.toContain('browser');
+        expect(parseSettingsSubTabFromHash('#admin/settings/browser')).toBeNull();
+    });
+
+    it('keeps Configure → Settings links for every other placement', () => {
+        expect(getFeatureSettingTabLink('integrations', false)).toEqual({ href: '#admin/settings/integrations', label: 'Integrations' });
+        expect(getFeatureSettingTabLink('editors', true)).toEqual({ href: '#admin/settings/editors', label: 'Editors' });
     });
 });
 
@@ -92,7 +135,7 @@ describe('buildAdminNavGroups', () => {
         groups.find(g => g.label === label)?.items.map(i => i.key) ?? [];
 
     it('non-container + servers disabled: Teams and WhatsApp get their own rows, no container agents, no servers row', () => {
-        const groups = buildAdminNavGroups({ isContainer: false, serversEnabled: false, isDesktop: true });
+        const groups = buildAdminNavGroups({ isContainer: false, serversEnabled: false });
         expect(labels(groups)).toEqual(['Configure', 'Knowledge', 'Connections', 'Operations', 'Developer / Internals']);
         expect(keys(groups, 'Connections')).toEqual(['admin:messaging', 'admin:whatsapp']);
         const connections = groups.find(g => g.label === 'Connections')?.items ?? [];
@@ -103,12 +146,12 @@ describe('buildAdminNavGroups', () => {
     });
 
     it('non-container + servers enabled: adds the servers tool row to Configure', () => {
-        const groups = buildAdminNavGroups({ isContainer: false, serversEnabled: true, isDesktop: true });
+        const groups = buildAdminNavGroups({ isContainer: false, serversEnabled: true });
         expect(keys(groups, 'Configure')).toEqual(['settings:configure', 'admin:agents', 'admin:browser', 'tool:servers']);
     });
 
     it('container: Connections group holds messaging + agents, Configure has no agents', () => {
-        const groups = buildAdminNavGroups({ isContainer: true, serversEnabled: false, isDesktop: true });
+        const groups = buildAdminNavGroups({ isContainer: true, serversEnabled: false });
         expect(labels(groups)).toContain('Connections');
         expect(keys(groups, 'Connections')).toEqual(['admin:messaging', 'admin:agents']);
         expect(keys(groups, 'Connections')).not.toContain('admin:whatsapp');
@@ -118,27 +161,24 @@ describe('buildAdminNavGroups', () => {
     });
 
     it('Browser row follows AI Provider with its own label, icon, and test id', () => {
-        const configure = buildAdminNavGroups({ isContainer: false, serversEnabled: true, isDesktop: true }).find(g => g.label === 'Configure')?.items ?? [];
+        const configure = buildAdminNavGroups({ isContainer: false, serversEnabled: true }).find(g => g.label === 'Configure')?.items ?? [];
         const browser = configure.find(i => i.key === 'admin:browser');
         expect(configure.map(i => i.label)).toEqual(['Configure', 'AI Provider', 'Browser', 'Servers']);
         expect(browser).toMatchObject({ label: 'Browser', icon: '◎', testId: 'admin-tab-browser', action: { kind: 'admin', tab: 'browser' } });
     });
 
-    it('web dashboard (isDesktop false) hides the Browser row', () => {
-        const web = buildAdminNavGroups({ isContainer: false, serversEnabled: true, isDesktop: false });
-        expect(keys(web, 'Configure')).toEqual(['settings:configure', 'admin:agents', 'tool:servers']);
-        expect(web.flatMap(g => g.items).some(i => i.key === 'admin:browser')).toBe(false);
-        const container = buildAdminNavGroups({ isContainer: true, serversEnabled: false, isDesktop: false });
-        expect(keys(container, 'Configure')).toEqual(['settings:configure']);
-    });
-
-    it('desktop shell (isDesktop true) shows the Browser row', () => {
-        const desktop = buildAdminNavGroups({ isContainer: false, serversEnabled: false, isDesktop: true });
-        expect(keys(desktop, 'Configure')).toContain('admin:browser');
+    // Browser hosts server-backed browser features too, so the row shows in
+    // the web dashboard and container mode, not just the desktop shell.
+    it('always shows the Browser row, including the web dashboard and container mode', () => {
+        const web = buildAdminNavGroups({ isContainer: false, serversEnabled: true });
+        expect(keys(web, 'Configure')).toEqual(['settings:configure', 'admin:agents', 'admin:browser', 'tool:servers']);
+        const container = buildAdminNavGroups({ isContainer: true, serversEnabled: false });
+        expect(keys(container, 'Configure')).toEqual(['settings:configure', 'admin:browser']);
+        expect(web.flatMap(g => g.items).filter(i => i.key === 'admin:browser')).toHaveLength(1);
     });
 
     it('Knowledge group always lists memory, skills, dreams in order', () => {
-        const groups = buildAdminNavGroups({ isContainer: false, serversEnabled: false, isDesktop: true });
+        const groups = buildAdminNavGroups({ isContainer: false, serversEnabled: false });
         expect(keys(groups, 'Knowledge')).toEqual(['tool:memory', 'tool:skills', 'tool:dreams-admin']);
     });
 });
@@ -162,7 +202,7 @@ describe('deriveActiveNav', () => {
         expect(d.activeNavKey).toBe('admin:browser');
         expect(d.activeTabLabel).toBe('Browser');
         expect(d.activeBreadcrumbGroup).toBe('Configure');
-        expect(d.activePageDescription).toBe('Browser engines and sign-ins for this desktop installation.');
+        expect(d.activePageDescription).toBe('Desktop browser engines, sign-ins and history, plus AI browser features.');
     });
 
     it('settings sub-tab (non-advanced) highlights settings:configure', () => {

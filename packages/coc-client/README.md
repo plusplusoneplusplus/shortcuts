@@ -53,7 +53,7 @@ const { items } = await coc.workItems.listForOrigin(originId);
 
 Call `coc.explorer.deleteEntry(workspaceId, relativePath)` on the client for the
 workspace's owning server, using a physical member ID for group views. The server
-requires its live `features.explorerDelete` setting (default off), exposed as
+requires its live `features.explorerDelete` setting (default on; explicit `false` disables it), exposed as
 `explorerDeleteEnabled` in runtime configuration. Success returns `{ success: true }`.
 `CocApiError.body` retains `{ error, code, partial, removedEntries }`; partial failure
 has no rollback and requires refreshing the tree without discarding editor buffers.

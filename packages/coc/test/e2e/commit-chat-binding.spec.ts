@@ -13,7 +13,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
-import { createMultiCommitRepo, navigateToGitTab } from './fixtures/git-fixtures';
+import { createMultiCommitRepo, navigateToGitTab, toggleCommitChat } from './fixtures/git-fixtures';
 import { request, seedWorkspace } from './fixtures/seed';
 
 /** Dismiss onboarding overlays (welcome modal + concept tour) so they don't block UI. */
@@ -46,7 +46,7 @@ test.describe('Commit-Chat Binding — CommitChatPanel rendering', () => {
             await expect(page.getByTestId('commit-detail')).toBeVisible({ timeout: 10_000 });
 
             // Open the chat panel
-            await page.getByTestId('toggle-chat-btn').click();
+            await toggleCommitChat(page);
             await expect(page.getByTestId('commit-chat-panel')).toBeVisible({ timeout: 5_000 });
 
             // Should show empty state with send button
@@ -69,10 +69,10 @@ test.describe('Commit-Chat Binding — CommitChatPanel rendering', () => {
             await expect(page.getByTestId('commit-detail')).toBeVisible({ timeout: 10_000 });
 
             // Open then close
-            await page.getByTestId('toggle-chat-btn').click();
+            await toggleCommitChat(page);
             await expect(page.getByTestId('commit-chat-panel')).toBeVisible({ timeout: 5_000 });
 
-            await page.getByTestId('toggle-chat-btn').click();
+            await toggleCommitChat(page);
             await expect(page.getByTestId('commit-chat-panel')).toBeHidden({ timeout: 5_000 });
         } finally {
             safeRmSync(tmpDir);
@@ -354,7 +354,7 @@ test.describe('Commit-Chat Binding — UI create flow', () => {
             await expect(page.getByTestId('commit-detail')).toBeVisible({ timeout: 10_000 });
 
             // Open the chat panel
-            await page.getByTestId('toggle-chat-btn').click();
+            await toggleCommitChat(page);
             await expect(page.getByTestId('commit-chat-panel')).toBeVisible({ timeout: 5_000 });
 
             // Type a message in the contentEditable input
@@ -408,7 +408,7 @@ test.describe('Commit-Chat Binding — UI create flow', () => {
             await page.locator('[data-testid^="commit-row-"]').first().click();
             await expect(page.getByTestId('commit-detail')).toBeVisible({ timeout: 10_000 });
 
-            await page.getByTestId('toggle-chat-btn').click();
+            await toggleCommitChat(page);
             await expect(page.getByTestId('commit-chat-panel')).toBeVisible({ timeout: 5_000 });
 
             // The panel should NOT show the empty-state send button — it should

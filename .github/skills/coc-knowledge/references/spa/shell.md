@@ -127,7 +127,7 @@ SPA side: `desktopHtmlPageBridge()` adapts the `file` source and its attachment 
 
 ### Browser profiles and preferences
 
-`desktop-browser.json` stores `defaultEngine` (Electron) and `pageZoomPercent` (100%). Engine and zoom writes preserve each other. The Admin **Browser** page (`#admin/browser`, Configure group after AI Provider; desktop shell only, hidden on the web) hosts Desktop Preferences, which uses local IPC, not workspace-server APIs.
+`desktop-browser.json` stores `defaultEngine` (Electron) and `pageZoomPercent` (100%). Engine and zoom writes preserve each other. The Admin **Browser** page (`#admin/browser`, Configure group after AI Provider) hosts Desktop Preferences (Engine, Profiles & sign-ins, History groups), which uses local IPC, not workspace-server APIs, and shows a desktop-only notice on the web; the page's server-backed Browser features card holds browser control, sensitive input and HTML page tabs.
 Its optional history recording toggle reads committed state through a bounded history query and saves through `setRecording`; history invalidations refresh all open settings views. Pausing preserves existing suggestions. Loading, storage and operation failures are explicit, with retry and stale-query/unmount guards.
 Separate persistent `browser/electron` and `browser/webview2` profiles share sign-ins across workspaces/windows, isolating the SPA/HTML previews. Confirmed cleanup closes target-engine tabs and excludes new views.
 Electron forces its locked `session.fromPath` profile onto each guest. The returned
@@ -589,7 +589,7 @@ ephemeral request to `TerminalView`. Successful session hydration precedes empty
 creation through the canonical PTY lifecycle; pending creates coalesce repeated
 requests. Existing sessions receive focus, and passive mounting/restoration only
 hydrates. Failed hydration surfaces a terminal notice and retries on a new request.
-With default-off `features.panelTabReordering` disabled, the strip divides
+With default-on `features.panelTabReordering` set to `false`, the strip divides
 tools from resources and confines moves to a section. Enabled, native drag,
 Alt+Arrow and tab-menu moves share `moveVisibleTab`: per-chat `orderByScope`
 interleaves stable ids without changing ownership, activation or keyed views.
@@ -632,7 +632,8 @@ while distinct job titles remain visible. Full content and controls live in deta
 detail text uses native selection, with attachment dragging scoped to Attach.
 List cards retain whole-card attachment dragging.
 Events, manual refresh and post-write reloads share
-the owner/generation-guarded loader. Pending reads block duplicate manual admission;
+the owner/generation-guarded loader. Writes reuse an in-flight or applied read only
+once its snapshot reaches the write's `ledgerRevision`. Pending reads block duplicate manual admission;
 reloads retain the snapshot, selection and drafts. Selection or movement between
 tracking type and active/Done/Archived groups reveals its containing sections;
 other refreshes preserve collapse choices. Collapsing a containing group clears
@@ -681,7 +682,8 @@ launch/retry/cancel or authorization controls.
 ### Sentinel To-do Scrubber
 
 `SentinelTodoScrubber` mounts after the ledger loads when both live ledger and
-scrubber flags are enabled. Owner/endpoint remounts isolate async state and drafts.
+scrubber flags are enabled; its function child places one inline strip and history in
+the list column below triggers, beside the detail pane. Owner/endpoint remounts isolate async state and drafts.
 Its typed owner-routed client reads config/run summaries, starts all-open/selected
 assessments, cancels runs and saves revision-bound schedules. Exact owner WebSocket
 invalidation and visibility-aware polling refresh runs; chat links share To-do

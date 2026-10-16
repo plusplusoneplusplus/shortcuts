@@ -1,14 +1,12 @@
 /**
  * Commit adapter for the pop-out review kernel.
  *
- * Loads commit and file metadata, then configures the shared toolbar, review
- * model, and layout. Commit review progress is session-local — there is no
+ * Loads commit and file metadata, then configures the shared single-row review
+ * toolbar, review model, and layout. Commit review progress is session-local — there is no
  * server persistence for commits.
  */
 
-import { useEffect, useMemo, useState, useId } from 'react';
-import { CommitInfoHeader } from '../../features/git/commits/CommitInfoHeader';
-import { copyToClipboard } from '../../utils/format';
+import { useEffect, useMemo, useState } from 'react';
 import { Spinner } from '../../ui';
 import { getGitReviewClient } from '../../features/git/diff/diffSource';
 import { CommitChatPanel } from '../../features/git/commits/CommitChatPanel';
@@ -20,7 +18,8 @@ import { useCommitChatPresentation } from '../../features/git/hooks/useCommitCha
 import { useClassification } from '../../features/git/diff/useClassification';
 import { usePrReviewProgress } from '../../features/git/diff/usePrReviewProgress';
 import { useModalJobAiSelection } from '../../shared/ModalJobAiControls';
-import { PopOutClassificationToolbar } from './PopOutClassificationToolbar';
+import { useCommitReviewHeader } from '../../features/git/commits/useCommitReviewHeader';
+import { CommitDetailIcon } from '../../features/git/commits/CommitDetailIcon';
 import { PopOutReviewChatLens, PopOutReviewChatSidePanel } from './PopOutReviewChatSlot';
 import { usePopOutReviewModel } from './usePopOutReviewModel';
 import type { ClassificationKey } from '../../features/git/diff/diffSource';
@@ -36,9 +35,6 @@ export interface CommitReviewContentProps {
 export function CommitReviewContent({ workspaceId, commitHash, attachmentDestinationId, onTitleLoaded }: CommitReviewContentProps) {
     const [commit, setCommit] = useState<GitCommitItem | null>(null);
     const [loading, setLoading] = useState(true);
-    const [headerCollapsed, setHeaderCollapsed] = useState(true);
-    const [hashCopied, setHashCopied] = useState(false);
-    const headerId = useId();
     const chat = useCommitChatPresentation({ workspaceId, commitHash });
 
     // Classification hook — uses commit hash as the identifier; session-scoped
@@ -56,8 +52,6 @@ export function CommitReviewContent({ workspaceId, commitHash, attachmentDestina
         let cancelled = false;
         setLoading(true);
         setCommit(null);
-        setHeaderCollapsed(true);
-        setHashCopied(false);
         onTitleLoaded?.(undefined);
         Promise.resolve().then(() => getGitReviewClient(workspaceId, attachmentDestinationId === workspaceId ? null : attachmentDestinationId).git.getCommit(workspaceId, commitHash))
             .then((data: GitCommitItem) => {
@@ -70,17 +64,16 @@ export function CommitReviewContent({ workspaceId, commitHash, attachmentDestina
         return () => { cancelled = true; };
     }, [workspaceId, commitHash, attachmentDestinationId, onTitleLoaded]);
 
-    useEffect(() => {
-        if (!hashCopied) return;
-        const timer = setTimeout(() => setHashCopied(false), 2000);
-        return () => clearTimeout(timer);
-    }, [hashCopied]);
-
     const fileState = useCommitReviewFiles(workspaceId, commitHash, attachmentDestinationId);
     const fileList = fileState.files;
     const filePaths = useMemo(() => fileList.map(file => file.path), [fileList]);
     const source = useMemo(() => createCommitDiffSource(workspaceId, commitHash, { commit: commit ?? undefined, files: filePaths, routingTarget: attachmentDestinationId === workspaceId ? null : attachmentDestinationId }), [workspaceId, commitHash, commit, filePaths, attachmentDestinationId]);
     const model = usePopOutReviewModel({ files: fileList, progress, classification, diffIdentity: `${attachmentDestinationId ?? workspaceId}:${workspaceId}:${commitHash}` });
+    const header = useCommitReviewHeader({
+        commit, fileCount: fileList.length, classification, aiSelection, classificationEnabled: model.classificationEnabled,
+        testIdPrefix: 'commit-popout', resetKey: JSON.stringify([attachmentDestinationId ?? workspaceId, workspaceId, commitHash]),
+        actions: [{ id: 'chat', label: 'Toggle AI chat', icon: <CommitDetailIcon name="spark" />, onClick: chat.toggleChat, pressed: chat.chatOpen, testId: 'commit-popout-chat-toggle' }],
+    });
 
     if (loading) {
         return (
@@ -92,29 +85,12 @@ export function CommitReviewContent({ workspaceId, commitHash, attachmentDestina
 
     return (
         <div className="relative flex flex-col flex-1 min-h-0 min-w-0">
-            {commit && <CommitInfoHeader
-                commit={commit}
-                fileCount={fileList.length}
-                headerCollapsed={headerCollapsed}
-                headerId={headerId}
-                hashCopied={hashCopied}
-                onToggle={() => setHeaderCollapsed(value => !value)}
-                onCopy={() => { void copyToClipboard(commit.hash).then(() => setHashCopied(true)); }}
-            />}
-            <PopOutClassificationToolbar
-                testIdPrefix="commit-popout"
-                classification={classification}
-                classificationEnabled={model.classificationEnabled}
-                aiSelection={aiSelection}
-                chatOpen={chat.chatOpen}
-                onToggleChat={chat.toggleChat}
-            />
             <div className="relative flex flex-1 min-h-0 min-w-0">
                 <GitFileReview workspaceId={workspaceId} attachmentDestinationId={attachmentDestinationId}
                     comparisonKey={commitHash} source={source} files={fileList} selectedPath={model.selectedFilePath}
                     onSelect={model.handleNavigateToFile} initialHunkTarget={model.hunkTarget} onDiffEngineChange={model.onDiffEngineChange} reviewChat={chat}
                     loading={fileState.loading} error={fileState.error} onRetry={fileState.retry}
-                    reviewedFiles={progress.state.reviewedFiles} onToggleReviewed={progress.toggleReviewed}
+                    reviewedFiles={progress.state.reviewedFiles} onToggleReviewed={progress.toggleReviewed} header={header}
                     getHunkClassification={classification.getHunkClassification}
                     hunkActiveFilters={classification.state.status === 'ready' ? classification.state.activeFilters : undefined}
                 />

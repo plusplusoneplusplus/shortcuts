@@ -19,7 +19,7 @@ import type {
 } from '@plusplusoneplusplus/forge';
 import { randomUUID } from 'crypto';
 import type { QueueExecutorBridge } from '../core/api-handler';
-import { processOperationAdmission } from './process-operation-admission';
+import { conversationExecutionAdmission, processOperationAdmission } from './process-operation-admission';
 import { pendingMessageTask } from './queued-pending-message';
 import { APIError, badRequest, internalError } from '../errors';
 import { normalizeChatMode, type ChatProvider } from '../tasks/task-types';
@@ -34,7 +34,7 @@ function resolveCompactionInstructions(proc: AIProcess, customInstructions?: str
 
 /** Terminal statuses: the only ones idle enough to compact. */
 const IDLE_STATUSES: Set<string> = new Set(['completed', 'failed', 'cancelled']);
-const compactionAdmissions = new Map<string, Promise<CompactProcessOutcome>>();
+const compactionAdmissions = new WeakMap<object, Map<string, Promise<CompactProcessOutcome>>>();
 
 /** The queue capabilities durable compaction admission needs. */
 export type CompactionQueueBridge = Pick<QueueExecutorBridge,
@@ -122,15 +122,38 @@ export async function compactProcess(
     customInstructions?: string,
     bridge?: CompactionQueueBridge,
     onQueued?: (taskId: string) => void,
-    options?: { trigger?: 'auto' },
+    options?: { trigger?: 'auto'; admissionHeld?: boolean },
+): Promise<CompactProcessOutcome> {
+    // Acquire execution before mutation admission: turns need mutation admission
+    // again at their boundary. Waiting in the reverse order would deadlock.
+    if (options?.admissionHeld) return admitCompaction(store, proc, customInstructions, bridge, onQueued, options);
+    const inline = !bridge;
+    const key = `${proc.metadata?.workspaceId ?? ''}\0${proc.id}\0${bridge ? 'admission' : 'execution'}`;
+    // Dedupe before waiting for execution ownership, including idle requests.
+    let admissions = compactionAdmissions.get(store);
+    if (!admissions) { admissions = new Map(); compactionAdmissions.set(store, admissions); }
+    const existing = admissions.get(key);
+    if (existing) return existing;
+    const operation = () => admitCompaction(store, proc, customInstructions, bridge, onQueued, options);
+    const pending = inline ? conversationExecutionAdmission(store).runExclusive(proc.id, operation) : operation();
+    admissions.set(key, pending);
+    try { return await pending; }
+    finally { if (admissions.get(key) === pending) admissions.delete(key); }
+}
+
+async function admitCompaction(
+    store: Pick<ProcessStore, 'updateProcess' | 'emitProcessEvent' | 'appendConversationTurn'>,
+    proc: AIProcess,
+    customInstructions?: string,
+    bridge?: CompactionQueueBridge,
+    onQueued?: (taskId: string) => void,
+    options?: { trigger?: 'auto'; admissionHeld?: boolean },
+    executionHeld = false,
 ): Promise<CompactProcessOutcome> {
     const auto = options?.trigger === 'auto';
     if (bridge) {
         const fullStore = store as ProcessStore;
-        const key = `${proc.metadata?.workspaceId ?? ''}\0${proc.id}`;
-        const existingAdmission = compactionAdmissions.get(key);
-        if (existingAdmission) return existingAdmission;
-        const operation = processOperationAdmission.runExclusive(proc.id, async () => {
+        const admit = async (): Promise<CompactProcessOutcome | AIProcess> => {
             const current = await fullStore.getProcess(proc.id, proc.metadata?.workspaceId) ?? proc;
             const pending = current.metadata?.compaction;
             const task = bridge.findCompactionTask?.(current.id)
@@ -142,13 +165,13 @@ export async function compactProcess(
             const busy = !IDLE_STATUSES.has(current.status) || !!current.pendingMessages?.length
                 || owningTask?.status === 'queued' || owningTask?.status === 'running';
             // Automatic compaction always runs as a background queue task.
-            if (!busy && !auto) return compactProcess(store, current, customInstructions);
+            if (!busy && !auto) return current;
             if (!bridge.enqueue) throw compactGuardError(current) ?? internalError('Queue unavailable');
             // An admitted first turn may not have reported its session yet. Execution validates its latest binding.
             if (!readActiveProviderSession(current).sessionId && !owningTask) {
                 throw badRequest('Process has no SDK session to compact');
             }
-            for (const message of current.pendingMessages ?? []) {
+            for (const message of auto ? [] : current.pendingMessages ?? []) {
                 const input = pendingMessageTask(current, message);
                 if (!bridge.getTask?.(input.id!)) await (bridge.enqueueAdmitted ?? bridge.enqueue).call(bridge, input);
             }
@@ -170,6 +193,12 @@ export async function compactProcess(
                     ...(auto && current.metadata?.autoCompact
                         ? { autoCompact: { ...(current.metadata.autoCompact as object), taskId } } : {}),
                 } });
+                // Buffered work follows an automatic boundary, retaining its
+                // original receipt/order ahead of messages admitted afterwards.
+                if (auto) for (const message of current.pendingMessages ?? []) {
+                    const input = pendingMessageTask(current, message);
+                    if (!bridge.getTask?.(input.id!)) await (bridge.enqueueAdmitted ?? bridge.enqueue).call(bridge, input);
+                }
                 onQueued?.(taskId);
             } catch (error) {
                 bridge.cancelQueuedTask?.(taskId);
@@ -177,10 +206,14 @@ export async function compactProcess(
                 throw error;
             }
             return { taskId, result: { state: 'queued', taskId } };
-        });
-        compactionAdmissions.set(key, operation);
-        try { return await operation; }
-        finally { if (compactionAdmissions.get(key) === operation) compactionAdmissions.delete(key); }
+        };
+        const admitted = await (options?.admissionHeld ? admit() : processOperationAdmission.runExclusive(proc.id, admit));
+        if (!('id' in admitted)) return admitted;
+        if (executionHeld) return admitCompaction(store, admitted, customInstructions);
+        // Recheck admission after waiting: queued turns or an automatic boundary
+        // may have arrived while the prior executor was cleaning up.
+        return conversationExecutionAdmission(store).runExclusive(proc.id, () =>
+            admitCompaction(store, admitted, customInstructions, bridge, onQueued, options, true));
     }
     const guard = compactGuardError(proc);
     if (guard) throw guard;

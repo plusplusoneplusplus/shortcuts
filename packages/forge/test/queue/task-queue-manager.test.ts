@@ -3841,6 +3841,64 @@ describe('durable conversation admission dependencies', () => {
         expect(manager.peek()?.id).toBe('compact');
     });
 
+    it('inserts a boundary before queued successors and publishes the complete dependency graph', () => {
+        const manager = new TaskQueueManager();
+        manager.enqueue(input('active')); manager.markStarted('active');
+        manager.enqueue(input('user')); manager.enqueue(input('review'));
+        manager.enqueue(input('other', 'chat-b'));
+        const published: string[] = [];
+        manager.on('change', (event: QueueChangeEvent) => {
+            if (event.type === 'added' && event.taskId === 'compact') {
+                published.push(manager.getTask('user')!.config.processPredecessorId!);
+            }
+        });
+        manager.enqueue(input('compact'), { beforeQueuedProcessTasks: true });
+        expect(published).toEqual(['compact']);
+        expect(manager.getTask('compact')!.config.processPredecessorId).toBe('active');
+        expect(manager.getTask('review')!.config.processPredecessorId).toBe('user');
+        expect(manager.getTask('other')!.config.processPredecessorId).toBeUndefined();
+        manager.moveToTop('review');
+        expect(manager.peek()!.id).toBe('other');
+        manager.cancelTask('other'); manager.markCompleted('active');
+        expect(manager.peek()!.id).toBe('compact');
+        manager.cancelTask('compact');
+        expect(manager.peek()!.id).toBe('user');
+    });
+
+    it('includes initial and payload-only process identities in the boundary', () => {
+        const manager = new TaskQueueManager();
+        manager.enqueue({ ...input('origin'), processId: undefined });
+        manager.markStarted('origin');
+        manager.enqueue({ ...input('later'), processId: undefined, payload: { processId: 'queue_origin' } });
+        manager.enqueue(input('compact', 'queue_origin'), { beforeQueuedProcessTasks: true });
+        expect(manager.getTask('compact')!.config.processPredecessorId).toBe('origin');
+        expect(manager.getTask('later')!.config.processPredecessorId).toBe('compact');
+        manager.markCompleted('origin');
+        expect(manager.peek()!.id).toBe('compact');
+    });
+
+    it('rolls back a rejected boundary and its rewired successors before compensation', () => {
+        const manager = new TaskQueueManager();
+        manager.enqueue(input('active')); manager.markStarted('active');
+        manager.enqueue(input('user')); manager.enqueue(input('review'));
+        const added = vi.fn();
+        manager.on('taskAdded', added);
+        const compensation: string[] = [];
+        manager.on('change', (event: QueueChangeEvent) => {
+            if (event.taskId !== 'compact') return;
+            if (event.type === 'added') throw new Error('persist failed');
+            if (event.type === 'removed') compensation.push(manager.getTask('user')!.config.processPredecessorId!);
+        });
+        expect(() => manager.enqueue(input('compact'), { beforeQueuedProcessTasks: true })).toThrow('persist failed');
+        expect(compensation).toEqual(['active']);
+        expect(added).not.toHaveBeenCalled();
+        expect(manager.getTask('compact')).toBeUndefined();
+        manager.markCompleted('active');
+        expect(manager.peek()!.id).toBe('user');
+        manager.markStarted('user'); manager.markCompleted('user');
+        expect(manager.peek()!.id).toBe('review');
+    });
+
     it('rewires cancellation dependencies even without history', () => {
         const manager = new TaskQueueManager({ keepHistory: false });
         manager.enqueue(input('first')); manager.enqueue(input('compact')); manager.enqueue(input('later'));

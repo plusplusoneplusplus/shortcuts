@@ -69,7 +69,14 @@ IC3 sign-in must match MCP; notification wakes retain authoritative reads and a
 It displays `notificationStatus` and sanitized errors separately from connected reader
 status, making fallback degradation visible without misreporting the whole bridge offline.
 
-The Integrations setting `features.teamsAiAnswerRelay` defaults on, including omitted
+The Teams-only registry toggles (`features.teamsBridgeObservability`,
+`features.teamsAiAnswerRelay`, `features.teamsMessageReaction`; `ui.tab: 'teams'`) render
+only in a "Teams features" card below the connection card on Connectors → Teams. That card
+saves only those keys through `PUT /api/admin/config`, separately from the connection's
+`/api/messaging/teams/*` actions; Ctrl+S there saves only the card. Features search links
+them to `#admin/messaging`. Shared `features.botManagedConversations` stays on Integrations.
+
+`features.teamsAiAnswerRelay` defaults on, including omitted
 config, with explicit false as a live opt-out. The registry suppresses its experimental
 badge for this enabled default. Its hint and the Connections routing help explain
 captured-thread Ask answers and safe terminal notices, independent bridge activation,

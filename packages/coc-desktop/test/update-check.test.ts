@@ -24,7 +24,6 @@ import {
     getUpdateChannel,
     setUpdateChannel,
     checkForUpdate,
-    MAC_QUARANTINE_FIX,
     LATEST_RELEASE_API,
     RELEASES_LIST_API,
     ReleaseInfo,
@@ -348,21 +347,20 @@ describe('pickDownloadUrl', () => {
 });
 
 describe('formatUpdatePrompt', () => {
-    it('macOS prompt offers the quarantine fix and the right buttons', () => {
+    it('macOS prompt offers an explicit verified download and preserves Skip/Later', () => {
         const p = formatUpdatePrompt(release(), '3.4.2', 'darwin');
         expect(p.version).toBe('3.4.6');
         expect(p.message).toContain('3.4.6');
         expect(p.message).toContain('3.4.2');
-        expect(p.buttons).toEqual(['Download', 'Copy fix command', 'Skip This Version', 'Later']);
-        expect(p.quarantineFix).toBe(MAC_QUARANTINE_FIX);
-        expect(p.detail).toContain(MAC_QUARANTINE_FIX);
+        expect(p.buttons).toEqual(['Update', 'Skip This Version', 'Later']);
+        expect(p.detail).toContain('download and verify');
+        expect(p.detail).toContain('choose when to restart');
     });
 
-    it('Windows prompt has no copy-fix button and mentions SmartScreen', () => {
+    it('Windows prompt offers an explicit verified download', () => {
         const p = formatUpdatePrompt(release(), '3.4.2', 'win32');
-        expect(p.buttons).toEqual(['Download', 'Skip This Version', 'Later']);
-        expect(p.quarantineFix).toBeUndefined();
-        expect(p.detail).toContain('SmartScreen');
+        expect(p.buttons).toEqual(['Update', 'Skip This Version', 'Later']);
+        expect(p.detail).toContain('download and verify');
     });
 
     it('normalizes a v-prefixed current version in the message', () => {
@@ -499,7 +497,7 @@ describe('checkForUpdate', () => {
         });
         expect(result.reason).toBe('newer');
         expect(result.release!.version).toBe('3.4.6');
-        expect(result.prompt!.buttons).toContain('Copy fix command');
+        expect(result.prompt!.buttons).toContain('Update');
     });
 
     it('reports up-to-date when the latest equals the current version', async () => {
@@ -665,7 +663,7 @@ describe('checkForUpdate', () => {
         });
         expect(result.reason).toBe('newer');
         expect(result.release!.version).toBe('3.4.6');
-        expect(result.prompt!.buttons).toContain('Download');
+        expect(result.prompt!.buttons).toContain('Update');
     });
 
     it('[AC] auto check skips a prerelease that was skipped — list API with skip marker', async () => {

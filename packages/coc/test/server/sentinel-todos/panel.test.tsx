@@ -55,6 +55,7 @@ const fakeClient = {
         evaluateDependencies: (...args: unknown[]) => dependencyEvaluate(...args),
         listPrOutcomes: (...args: unknown[]) => prOutcomesGet(...args),
     },
+    triggers: { listSentinelTodo: async () => [] },
     events: { connect: (...args: unknown[]) => connect(...args) },
 };
 
@@ -119,7 +120,7 @@ function conflict(current: SentinelTodoItem) {
 
 beforeEach(() => {
     vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
-    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false, sentinelPrOutcomeWakeEnabled: false });
+    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false, sentinelPrOutcomeWakeEnabled: false, triggersEnabled: false });
     resetCloneRegistryForTests();
     dependencyEvaluate.mockReset();
     prOutcomesGet.mockReset();
@@ -140,7 +141,7 @@ beforeEach(() => {
 afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
-    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false, sentinelPrOutcomeWakeEnabled: false });
+    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false, sentinelPrOutcomeWakeEnabled: false, triggersEnabled: false });
 });
 
 describe('UnifiedTodoTab', () => {
@@ -220,6 +221,62 @@ describe('UnifiedTodoTab', () => {
         expect(close.disabled).toBe(false);
         fireEvent.click(close);
         expect(detail.hidden).toBe(true);
+    });
+
+    describe('save refresh coordination', () => {
+        const changed = (ledgerRevision: number) => act(() => connect.mock.calls[0][0].onMessage({ type: 'sentinel-todos-changed',
+            workspaceId: OWNER.ownerWorkspaceId, processId: OWNER.processId, ledgerRevision, itemId: 'i1' }));
+        async function startDoneSave() {
+            const row = await screen.findByTestId('sentinel-todo-row-i1');
+            fireEvent.click(within(row).getByRole('button'));
+            chooseStatus(document.body, 'Done');
+            fireEvent.click(screen.getByRole('button', { name: 'Set status' }));
+            return screen.getByRole('button', { name: 'Close To-do details' }) as HTMLButtonElement;
+        }
+        const saved = ledger([item({ status: 'done', revision: 5 })], 5);
+
+        it('reuses the committed change event\'s read instead of fetching the ledger again', async () => {
+            get.mockResolvedValueOnce(ledger([item({ revision: 4 })], 4));
+            render(<UnifiedTodoTab owner={OWNER} />);
+            const patch = deferred<object>();
+            const eventRead = deferred<SentinelTodoLedgerResponse>();
+            update.mockReturnValueOnce(patch.promise);
+            get.mockReturnValueOnce(eventRead.promise);
+            const close = await startDoneSave();
+            changed(5);
+            await act(async () => patch.resolve({ item: item(), ledgerRevision: 5 }));
+            expect(close.disabled).toBe(true);
+            await act(async () => eventRead.resolve(saved));
+            expect(close.disabled).toBe(false);
+            expect(get).toHaveBeenCalledTimes(2);
+            expect(screen.getByTestId('sentinel-todo-row-i1').querySelector('[data-testid="sentinel-todo-status-done"]')).toBeTruthy();
+        });
+
+        it('never accepts an older in-flight read as the saved state', async () => {
+            get.mockResolvedValueOnce(ledger([item({ revision: 4 })], 4));
+            render(<UnifiedTodoTab owner={OWNER} />);
+            await screen.findByTestId('sentinel-todo-row-i1');
+            const stale = deferred<SentinelTodoLedgerResponse>();
+            const fresh = deferred<SentinelTodoLedgerResponse>();
+            get.mockReturnValueOnce(stale.promise).mockReturnValueOnce(fresh.promise);
+            fireEvent.click(screen.getByRole('button', { name: 'Refresh to-do list' }));
+            update.mockResolvedValueOnce({ item: item(), ledgerRevision: 5 });
+            const close = await startDoneSave();
+            await act(async () => stale.resolve(ledger([item({ revision: 4 })], 4)));
+            expect(close.disabled).toBe(true);
+            expect(get).toHaveBeenCalledTimes(3);
+            await act(async () => fresh.resolve(saved));
+            expect(close.disabled).toBe(false);
+        });
+
+        it('fetches once itself when no change event arrives', async () => {
+            get.mockResolvedValueOnce(ledger([item({ revision: 4 })], 4)).mockResolvedValueOnce(saved);
+            update.mockResolvedValueOnce({ item: item(), ledgerRevision: 5 });
+            render(<UnifiedTodoTab owner={OWNER} />);
+            const close = await startDoneSave();
+            await waitFor(() => expect(close.disabled).toBe(false));
+            expect(get).toHaveBeenCalledTimes(2);
+        });
     });
 
     it('shows older active work plus recent Done with Refresh and older access', async () => {
@@ -456,8 +513,8 @@ describe('UnifiedTodoTab', () => {
         await screen.findByTestId('sentinel-todo-row-i1');
     });
 
-    it('mounts the enabled scrubber above the list only after the ledger loads', async () => {
-        applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: true });
+    it('mounts the enabled scrubber once in the list column below triggers only after the ledger loads', async () => {
+        applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: true, triggersEnabled: true });
         const read = deferred<SentinelTodoLedgerResponse>();
         get.mockReturnValue(read.promise);
         scrubGet.mockResolvedValue({ config: { enabled: false, cron: '0 9 * * *', paused: false, consecutiveFailures: 0, revision: 0 }, runs: [] });
@@ -467,9 +524,29 @@ describe('UnifiedTodoTab', () => {
         await act(async () => read.resolve(ledger([item()])));
         await screen.findByText('Manual only');
         expect(scrubGet).toHaveBeenCalledWith(OWNER.ownerWorkspaceId, OWNER.processId);
+        expect(screen.getAllByTestId('sentinel-scrubber-strip')).toHaveLength(1);
         const strip = screen.getByTestId('sentinel-scrubber-strip');
-        const row = screen.getByTestId('sentinel-todo-row-i1');
-        expect(strip.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        const list = screen.getByTestId('sentinel-todo-list');
+        const addTrigger = await within(list).findByRole('button', { name: '+ Add trigger' });
+        const follows = (a: Node, b: Node) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+        expect(list.contains(strip)).toBe(true);
+        expect(screen.getByTestId('sentinel-todo-details').contains(strip)).toBe(false);
+        expect(follows(screen.getByTestId('sentinel-todo-row-i1'), strip)).toBe(true);
+        expect(follows(addTrigger, strip)).toBe(true);
+        expect(follows(screen.getByRole('toolbar', { name: 'To-do actions' }), list)).toBe(true);
+        expect(strip.className).not.toMatch(/\bsticky\b/);
+        for (const name of ['Scrub now', 'Schedule ▾', 'History (0)', 'Select items']) within(strip).getByRole('button', { name });
+        fireEvent.click(within(strip).getByRole('button', { name: 'Select items' }));
+        expect(list.contains(within(strip).getByRole('group', { name: 'Select open items' }))).toBe(true);
+        fireEvent.click(within(strip).getByRole('button', { name: 'Schedule ▾' }));
+        const schedule = within(list).getByRole('form', { name: 'Scrubber schedule' });
+        expect(schedule.className).not.toMatch(/\babsolute\b/);
+        fireEvent.click(within(strip).getByRole('button', { name: 'History (0)' }));
+        const history = within(list).getByRole('region', { name: 'Scrubber run history' });
+        expect(follows(strip, history)).toBe(true);
+        fireEvent.click(screen.getByRole('button', { name: /Fix login/ }));
+        expect(screen.getAllByTestId('sentinel-scrubber-strip')).toHaveLength(1);
+        expect(scrubGet).toHaveBeenCalledOnce();
     });
 
     it('resolves latest and earlier job owners independently of targetRepo and preserves links', async () => {

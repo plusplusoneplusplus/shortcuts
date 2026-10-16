@@ -135,6 +135,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isSchedulesInScheduledSlideEnabled: () => false,
     getScratchpadLayout: () => 'horizontal',
     isFeatureEnabled: () => false,
+    isPanelTabReorderingEnabled: () => true,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
 }));
 

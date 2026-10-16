@@ -225,7 +225,7 @@ test.describe('Admin: Display settings', () => {
         });
 
         await navigateToAdmin(page, serverUrl);
-        await gotoSettingsSubTab(page, 'chat');
+        await gotoSettingsSubTab(page, 'appearance');
         // The AdminToggle input is sr-only (opacity:0, width:0, height:0), so
         // toBeVisible() reports it as hidden and Playwright also refuses to
         // click it because it has zero size. Use a direct DOM .click() on the
@@ -237,7 +237,7 @@ test.describe('Admin: Display settings', () => {
         const putPromise = page.waitForRequest(req =>
             req.url().includes('/api/admin/config') && req.method() === 'PUT',
         );
-        await page.click('[data-testid="settings-chat-save"]');
+        await page.click('[data-testid="settings-appearance-save"]');
 
         const putReq = await putPromise;
         const body = JSON.parse(putReq.postData() ?? '{}');
@@ -268,7 +268,7 @@ test.describe('Admin: Display settings', () => {
         });
 
         await navigateToAdmin(page, serverUrl);
-        await gotoSettingsSubTab(page, 'chat');
+        await gotoSettingsSubTab(page, 'appearance');
         await expect(page.locator('[data-testid="tool-compactness-minimal"]')).toBeVisible({ timeout: 5000 });
 
         await page.locator('[data-testid="tool-compactness-minimal"]').click();
@@ -277,7 +277,7 @@ test.describe('Admin: Display settings', () => {
         const putPromise = page.waitForRequest(req =>
             req.url().includes('/api/admin/config') && req.method() === 'PUT',
         );
-        await page.click('[data-testid="settings-chat-save"]');
+        await page.click('[data-testid="settings-appearance-save"]');
 
         const putReq = await putPromise;
         const body = JSON.parse(putReq.postData() ?? '{}');

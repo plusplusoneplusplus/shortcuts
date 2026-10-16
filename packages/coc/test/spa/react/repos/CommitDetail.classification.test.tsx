@@ -94,9 +94,11 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useCommitReviewFiles', () => ({
     useCommitReviewFiles: () => ({ files: MOCK_FILES, loading: false, retry: vi.fn() }),
 }));
-vi.mock('../../../../src/server/spa/client/react/features/git/diff/GitFileReview', () => ({
-    GitFileReview: () => <div data-testid="git-file-review" />,
-}));
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/GitFileReview', async () => {
+    // Render the real single-row toolbar so header slots stay observable.
+    const { GitReviewToolbar } = await vi.importActual<typeof import('../../../../src/server/spa/client/react/features/git/diff/GitReviewToolbar')>('../../../../src/server/spa/client/react/features/git/diff/GitReviewToolbar');
+    return { GitFileReview: (props: any) => <div data-testid="git-file-review"><GitReviewToolbar header={props.header} /></div> };
+});
 
 // Stub UnifiedDiffViewer with parseDiffFileList returning a predictable list
 const MOCK_FILES = [
@@ -175,9 +177,13 @@ describe('CommitDetail — classification toolbar (AC-05)', () => {
         mockActiveFilters = new Set(['logic', 'mechanical', 'test', 'simple', 'generated']);
     });
 
-    it('renders the classification toolbar (commit-classify-bar)', async () => {
+    it('renders Classify as a split button inside the single review toolbar', async () => {
         await renderDetail();
-        expect(screen.getByTestId('commit-classify-bar')).toBeTruthy();
+        const toolbar = screen.getByTestId('git-review-toolbar');
+        expect(screen.getAllByTestId('git-review-toolbar')).toHaveLength(1);
+        expect(toolbar.contains(screen.getByTestId('commit-classify-split'))).toBe(true);
+        expect(screen.getByTestId('commit-classify-button').getAttribute('aria-label')).toBe('Classify');
+        expect(screen.getByTestId('commit-classify-settings-toggle').getAttribute('aria-haspopup')).toBe('dialog');
     });
 
     it('renders the Classify button when status is idle', async () => {
@@ -198,7 +204,7 @@ describe('CommitDetail — classification toolbar (AC-05)', () => {
         await renderDetail();
         const error = screen.getByRole('alert');
         expect(error.textContent).toBe(mockClassificationError);
-        expect(screen.getByTestId('commit-classify-bar').contains(error)).toBe(false);
+        expect(screen.getByTestId('git-review-toolbar').contains(error)).toBe(false);
         expect(screen.queryByTestId('commit-classify-settings')).toBeNull();
     });
 
@@ -254,64 +260,60 @@ describe('CommitDetail — classification toolbar (AC-05)', () => {
         expect(screen.queryByTestId('commit-classify-settings')).toBeNull();
     });
 
-    it('keeps commit actions together above the focused review', async () => {
-        await renderDetail();
-        const bar = screen.getByTestId('commit-classify-bar');
-        for (const id of ['commit-classify-button', 'commit-reviewed-count', 'toggle-comments-btn', 'toggle-chat-btn', 'commit-popout-btn']) {
-            expect(bar.contains(screen.getByTestId(id))).toBe(true);
-        }
-        expect(bar.contains(screen.getByTestId('git-file-review'))).toBe(false);
-    });
-
-    it('wraps review and view groups independently inside a size container', async () => {
+    it('keeps every commit control in one toolbar row', async () => {
         mockClassificationStatus = 'ready';
         await renderDetail();
-        const bar = screen.getByTestId('commit-classify-bar');
-        const left = screen.getByTestId('commit-classify-left');
-        const right = screen.getByTestId('commit-classify-right');
-        expect(bar.className).toContain('flex-wrap');
-        expect(bar.parentElement!.className).toContain('[container-type:inline-size]');
-        for (const group of [left, right]) {
-            expect(group.parentElement).toBe(bar);
+        const toolbar = screen.getByTestId('git-review-toolbar');
+        for (const id of ['commit-classify-button', 'commit-classify-settings-toggle', 'commit-prev-priority-btn', 'commit-next-priority-btn', 'toggle-comments-btn', 'toggle-chat-btn', 'commit-popout-btn', 'git-review-more']) {
+            expect(toolbar.contains(screen.getByTestId(id))).toBe(true);
         }
-        expect(right.className).toContain('ml-auto');
-        expect(right.className).toContain('flex-wrap');
-        for (const id of ['commit-review-controls', 'commit-view-controls']) {
-            expect(screen.getByTestId(id).className).toContain('flex-nowrap');
-            expect(screen.getByTestId(id).parentElement).toBe(right);
-        }
-        for (const id of ['commit-classify-settings-toggle', 'commit-classify-button', 'commit-prev-priority-btn', 'commit-next-priority-btn']) {
-            expect(left.contains(screen.getByTestId(id))).toBe(true);
-        }
-        for (const id of ['commit-reviewed-count', 'toggle-comments-btn', 'toggle-chat-btn', 'commit-popout-btn']) {
-            expect(right.contains(screen.getByTestId(id))).toBe(true);
-        }
-        expect(right.contains(screen.getByTestId('git-file-review'))).toBe(false);
+        expect(screen.getByTestId('git-review-header').contains(screen.getByTestId('commit-filter-bar'))).toBe(true);
+        expect(toolbar.contains(screen.getByTestId('commit-filter-bar'))).toBe(false);
     });
 
-    it('never lets a toolbar control wrap its own text', async () => {
+    it('compacts labels and moves secondary actions to an accessible overflow menu', async () => {
         mockClassificationStatus = 'ready';
         await renderDetail();
-        for (const id of ['commit-classify-button', 'commit-prev-priority-btn', 'commit-next-priority-btn', 'commit-reviewed-count', 'toggle-comments-btn', 'toggle-chat-btn', 'commit-popout-btn']) {
-            expect(screen.getByTestId(id).className).toContain('whitespace-nowrap');
-            expect(screen.getByTestId(id).className).toContain('shrink-0');
-        }
+        expect(screen.getByTestId('commit-classify-button').querySelector('span:last-child')!.className).toContain('git-review-md');
+        expect(screen.getByTestId('commit-classify-summary').className).toContain('git-review-wide');
+        expect(screen.getByTestId('commit-classify-summary').textContent).toBe('Copilot · Default model');
+        const ids = ['commit-prev-priority-btn', 'commit-next-priority-btn', 'toggle-comments-btn', 'toggle-chat-btn', 'commit-popout-btn'];
+        for (const id of ids) expect(screen.getByTestId(id).className).toContain('git-review-wide');
+        const more = screen.getByTestId('git-review-more');
+        // Nothing is overflow-only for commits, so the menu trigger hides in wide panes.
+        expect(more.className).toContain('git-review-collapsible');
+        await act(async () => { fireEvent.click(more); });
+        expect(more.getAttribute('aria-expanded')).toBe('true');
+        const menu = screen.getByRole('menu', { name: 'More review actions' });
+        for (const id of ids) expect(menu.contains(screen.getByTestId(`${id}-menu-item`))).toBe(true);
+        expect(screen.getByTestId('toggle-comments-btn-menu-item').getAttribute('role')).toBe('menuitemcheckbox');
+        expect(document.activeElement).toBe(screen.getByTestId('commit-prev-priority-btn-menu-item'));
+        await act(async () => { fireEvent.click(screen.getByTestId('toggle-comments-btn-menu-item')); });
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(screen.getByTestId('toggle-comments-btn').getAttribute('aria-pressed')).toBe('true');
+        await act(async () => { fireEvent.click(more); });
+        await act(async () => { fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' }); });
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(document.activeElement).toBe(more);
     });
 
-    it('collapses Prev/Next to arrows in a narrow pane but keeps accessible names', async () => {
+    it('names priority navigation icons accessibly', async () => {
         mockClassificationStatus = 'ready';
         await renderDetail();
-        for (const [id, name, label] of [
-            ['commit-prev-priority-btn', 'Previous priority file', 'Prev'],
-            ['commit-next-priority-btn', 'Next priority file', 'Next'],
-        ]) {
+        for (const [id, name] of [['commit-prev-priority-btn', 'Previous priority file'], ['commit-next-priority-btn', 'Next priority file']]) {
             const btn = screen.getByTestId(id);
             expect(btn.getAttribute('aria-label')).toBe(name);
             expect(btn.getAttribute('title')).toBe(name);
-            const span = btn.querySelector('span')!;
-            expect(span.textContent).toBe(label);
-            expect(span.className).toContain('[@container_(max-width:559px)]:hidden');
         }
+    });
+
+    it('closes classification settings on Escape and returns focus to the caret', async () => {
+        await renderDetail();
+        const toggle = screen.getByTestId('commit-classify-settings-toggle');
+        await act(async () => { fireEvent.click(toggle); });
+        await act(async () => { fireEvent.keyDown(screen.getByRole('dialog', { name: 'Classification settings' }), { key: 'Escape' }); });
+        expect(screen.queryByTestId('commit-classify-settings')).toBeNull();
+        expect(document.activeElement).toBe(toggle);
     });
 });
 
@@ -362,25 +364,5 @@ describe('CommitDetail — priority navigation buttons (AC-05)', () => {
         await renderDetail();
         expect(screen.getByTestId('commit-prev-priority-btn')).toBeTruthy();
         expect(screen.getByTestId('commit-next-priority-btn')).toBeTruthy();
-    });
-});
-
-describe('CommitDetail — reviewed count (AC-05)', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-        mockClassificationStatus = 'idle';
-        mockActiveFilters = new Set(['logic', 'mechanical', 'test', 'simple', 'generated']);
-    });
-
-    it('shows reviewed count once file list is available', async () => {
-        await renderDetail();
-        const badge = screen.getByTestId('commit-reviewed-count');
-        // parseDiffFileList is mocked to return 2 files
-        expect(badge.textContent).toBe('0/2 reviewed');
-        expect(badge.getAttribute('title')).toBe('0 of 2 files reviewed');
-        const progress = screen.getByRole('progressbar', { name: 'Files reviewed' });
-        expect(progress.getAttribute('aria-valuenow')).toBe('0');
-        expect(progress.getAttribute('aria-valuemax')).toBe('2');
-        expect(badge.querySelector('span')!.className).toContain('[@container_(max-width:559px)]:hidden');
     });
 });

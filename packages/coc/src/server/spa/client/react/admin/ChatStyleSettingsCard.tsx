@@ -1,11 +1,11 @@
 /**
- * ChatStyleSettingsCard — the "Chat Style" settings section.
+ * ChatStyleSettingsCard — the "Chat Style" card on the Chat settings tab.
  *
- * Chat styles get their own section rather than a slot on the Features card:
+ * Chat styles get their own card rather than a slot on the Features card:
  * the per-style prompt text is multiline free text, which the registry-driven
- * `AdminSettingUiSpec.control` shapes cannot express. The section is only
- * reachable while `features.chatStyleSelector` is on (AdminPanel hides the
- * sub-tab otherwise), so nothing here re-checks that flag — it is mirrored
+ * `AdminSettingUiSpec.control` shapes cannot express. The card is only
+ * rendered while `features.chatStyleSelector` is on (AdminPanel hides it
+ * otherwise), so nothing here re-checks that flag — it is mirrored
  * read-only just so the dependency is discoverable from here.
  *
  * Pure presentation; state and the save payload live in
@@ -120,7 +120,7 @@ export function ChatStyleSettingsCard({
 
             <AdminRow
                 name="Style selector"
-                hint="The composer style dropdown is a feature flag, edited on the Features tab. This whole section is hidden while it is off."
+                hint="The composer style dropdown is a feature flag, edited on the Features tab. This card is hidden while it is off."
             >
                 <span className="ar-muted" data-testid="chat-style-selector-mirror" style={{ fontSize: 12.5 }}>
                     {selectorEnabled ? 'Enabled' : 'Disabled'}

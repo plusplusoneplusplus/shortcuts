@@ -27,7 +27,9 @@ here.
   uses `BranchRangeOverview` with the same navigator and focused file panel.
   Both retain concrete owner routing and session-local viewed state. PR review
   uses `PopOutReviewLayout` and its origin-persisted review progress.
-  Commit descriptions use the collapsed `CommitInfoHeader`; PR descriptions use
+  Commit review passes `useCommitReviewHeader` (title/SHA, Classify split button,
+  chat action, collapsed `CommitInfoHeader` details) into the `GitFileReview`
+  single-row toolbar; PR descriptions use
   `PrDescription` and `getPullRequestReviewSummaryText`. Metadata has bounded
   overflow, resets by owner/target and discards superseded reads. The shell keeps
   loaded subjects/titles and identifiers in the window header.
@@ -52,5 +54,5 @@ here.
 - Commit and branch viewed state is session-local and owner/comparison scoped;
   PR progress persists per
   `(originId, workspaceId, repoId, prId)` and is keyed by head SHA.
-- Test-id prefixes are `commit-popout` and `pr-popout`; the toolbar renders
-  identical markup for both, and a parity test asserts that.
+- Test-id prefixes are `commit-popout` and `pr-popout`. `PopOutClassificationToolbar`
+  serves PR review; both share `ClassificationFilterBar`.

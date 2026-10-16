@@ -1260,6 +1260,7 @@ timeout: 300
         describe.each([
             'sentinelTodoDependencies', 'sentinelResultCards', 'sentinelPrOutcomeWake',
             'sentinelTodoExternalReferences', 'railManualRefresh', 'railStatusActions',
+            'explorerDelete', 'panelTabReordering',
         ] as const)('%s', feature => {
             it.each([undefined, false, true])('resolves its value and source (%s)', value => {
                 const configPath = path.join(tmpDir, `${feature}.yaml`);
@@ -1534,7 +1535,7 @@ timeout: 300
                     "composerWordHint": true,
                     "defaultChatStyle": "default",
                     "diffFilePicker": true,
-                    "explorerDelete": false,
+                    "explorerDelete": true,
                     "explorerEditorTabs": false,
                     "focusedDiff": true,
                     "gitCommitLookup": false,
@@ -1543,7 +1544,7 @@ timeout: 300
                     "htmlPageTab": true,
                     "markdownPanelPreview": false,
                     "nativeCliSessions": false,
-                    "panelTabReordering": false,
+                    "panelTabReordering": true,
                     "pinnedScopes": true,
                     "quickAskSidenotes": true,
                     "railGitSummary": false,

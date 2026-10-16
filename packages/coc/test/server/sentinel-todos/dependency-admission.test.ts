@@ -99,6 +99,29 @@ describe('native dependency readiness and durable admission', () => {
         wire();
     }
 
+    it('lists readiness from one ledger snapshot with reads independent of item count', async () => {
+        await service.evaluateDependencies(owner, itemId);
+        const list = async () => {
+            const ledgerReads = vi.spyOn(todos, 'get');
+            const admissionReads = vi.spyOn(receipts, 'records');
+            const view = await service.list(owner);
+            const reads = [ledgerReads.mock.calls.length, admissionReads.mock.calls.length];
+            ledgerReads.mockRestore();
+            admissionReads.mockRestore();
+            return { reads, readiness: (id: string) => view.items.find(item => item.id === id)?.dependencyReadiness };
+        };
+        const small = await list();
+        expect(small.readiness(itemId)?.state).toBe('ready');
+        for (let index = 0; index < 30; index++) todos.create(owner, { title: `Unrelated ${index}` }, { actor: 'user' });
+        const large = await list();
+        expect(large.reads).toEqual(small.reads);
+        expect(large.readiness(itemId)?.state).toBe('ready');
+        expect(large.readiness(sourceId)).toBeUndefined();
+        // Readiness still compares evidence with the snapshot's current source revisions.
+        todos.update(owner, sourceId, current(sourceId).revision, { notes: 'Changed after evaluation' }, 'user');
+        expect((await list()).readiness(itemId)?.state).toBe('waiting');
+    });
+
     it.each(['ask', 'autopilot', 'ralph'])('admits normally authorized %s without an approval snapshot or prior poll', async mode => {
         const tracking = createSentinelTodoTracking({ service, owner });
         expect(await tracking.check(itemId)).toBeUndefined();
@@ -110,7 +133,7 @@ describe('native dependency readiness and durable admission', () => {
         expect(current().jobs[0].workspaceId).toBe('ws-child');
         expect((await service.list(owner)).items.find(item => item.id === itemId)).not.toHaveProperty('dependencyAction');
         await service.evaluateDependencies(owner, itemId);
-        expect(actions.project(owner, current()).dependencyReadiness?.state).toBe('ready');
+        expect(actions.project(owner, todos.get(owner))(current()).dependencyReadiness?.state).toBe('ready');
         await actions.guard(task, 'check');
         expect(record()?.started).not.toBe(true);
         await actions.guard(task, 'start');

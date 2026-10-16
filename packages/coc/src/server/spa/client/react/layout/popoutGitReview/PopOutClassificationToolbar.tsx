@@ -1,21 +1,15 @@
 /**
- * Classification toolbar + filter bar shared by the commit and PR pop-out
- * reviews.
- *
- * Classification guides where a reviewer spends attention, so the two review
- * types must offer the exact same controls, disabled states, labels, and error
- * placement. `testIdPrefix` is the only thing that differs
- * (`commit-popout` / `pr-popout`).
+ * Classification toolbar + filter bar for the PR pop-out review. Commit
+ * reviews use the single-row `GitReviewToolbar` with the same filter bar.
  */
 
 import { ClassifyDiffAiControls } from '../../features/git/diff/ClassifyDiffAiControls';
-import { HUNK_CATEGORIES, CATEGORY_LABELS } from '../../features/pull-requests/classification-types';
-import type { HunkCategory } from '../../features/pull-requests/classification-types';
+import { ClassificationFilterBar } from '../../features/git/diff/ClassificationFilterBar';
 import type { UseClassificationReturn } from '../../features/git/diff/useClassification';
 import type { UseModalJobAiSelectionResult } from '../../shared/ModalJobAiControls';
 
 export interface PopOutClassificationToolbarProps {
-    /** `commit-popout` or `pr-popout`. */
+    /** e.g. `pr-popout`. */
     testIdPrefix: string;
     classification: UseClassificationReturn;
     aiSelection: UseModalJobAiSelectionResult;
@@ -90,35 +84,7 @@ export function PopOutClassificationToolbar({
                     </div>
                 </div>
             </div>
-            {/* Classification filter bar — visible when results are ready */}
-            {classificationEnabled && classifyStatus === 'ready' && (
-                <div
-                    className="flex items-center gap-3 px-3 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#262626]"
-                    data-testid={`${testIdPrefix}-filter-bar`}
-                >
-                    <span className="text-[10px] text-[#616161] dark:text-[#999] font-medium">Filter:</span>
-                    {HUNK_CATEGORIES.map(cat => {
-                        const active = classification.state.activeFilters.has(cat);
-                        return (
-                            <label
-                                key={cat}
-                                className="flex items-center gap-1 text-[11px] cursor-pointer select-none"
-                                data-testid={`${testIdPrefix}-filter-${cat}`}
-                            >
-                                <input
-                                    type="checkbox"
-                                    checked={active}
-                                    onChange={() => classification.toggleFilter(cat as HunkCategory)}
-                                    className="h-3 w-3 rounded"
-                                />
-                                <span className={active ? 'text-[#1e1e1e] dark:text-[#ccc]' : 'text-[#848484]'}>
-                                    {CATEGORY_LABELS[cat]}
-                                </span>
-                            </label>
-                        );
-                    })}
-                </div>
-            )}
+            {classificationEnabled && <ClassificationFilterBar classification={classification} testIdPrefix={testIdPrefix} />}
         </>
     );
 }

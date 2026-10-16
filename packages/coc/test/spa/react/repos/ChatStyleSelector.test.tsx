@@ -148,7 +148,7 @@ describe('ChatStyleSelector', () => {
             fireEvent.click(screen.getByTestId('chat-style-configure'));
 
             expect(window.location.hash).toBe(CHAT_STYLE_SETTINGS_HASH);
-            expect(CHAT_STYLE_SETTINGS_HASH).toBe('#admin/settings/chat-style');
+            expect(CHAT_STYLE_SETTINGS_HASH).toBe('#admin/settings/chat');
             expect(onChange).not.toHaveBeenCalled();
             expect(screen.queryByTestId('chat-style-menu')).toBeNull();
             // The chip label is untouched by the jump.

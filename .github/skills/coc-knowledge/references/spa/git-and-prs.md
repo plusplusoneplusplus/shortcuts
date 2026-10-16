@@ -139,7 +139,15 @@ No-upstream fallback reports `baseModeFallback`; pop-out URLs serialize the mode
 
 Commit and branch review share `GitFileReview`: searchable directory groups,
 kind/status/viewed filters, overview, file navigation and a narrow drawer around
-one `FileDiffPanel`. `useCommitReviewFiles` loads metadata rather than a combined
+one `FileDiffPanel`. Its `GitReviewToolbar` is one nonwrapping 34px row: optional
+context `header` slots (identity, classify, secondary `actions`, overflow-only
+`menuActions`, below-row content), Overview, previous/index/next, change stats,
+reviewed count with a decorative progress line, and Mark viewed (toggle only, no
+auto-advance). `git-file-review.css` container queries compact labels and move
+secondary actions into the accessible More menu, portaled to the body outside
+clipping ancestors. Its overlay retains the source pane's query width and tracks
+the trigger within viewport bounds; core navigation and Mark viewed stay inline.
+`useCommitReviewFiles` loads metadata rather than a combined
 patch. Owner/workspace/comparison keys isolate transient state. Range sources
 include resolved base/head SHAs in patch URLs and editor keys, preventing
 mutable-range cache reuse. Commit metadata starts collapsed. Commit/file and
@@ -244,8 +252,8 @@ switches. Both engines share the persisted comment shape.
 
 ### Changed-file navigation
 
-Live admin setting `features.diffFilePicker` (Admin -> Configure -> Features ->
-Code Review & Collaboration -> Diff header file picker; runtime flag
+Live admin setting `features.diffFilePicker` (Admin -> Configure -> Appearance ->
+Editors & Files -> Diff header file picker; runtime flag
 `diffFilePickerEnabled`) defaults on; only an explicit false disables it.
 `DiffFilePicker` reads it through `useDiffFilePickerEnabled`, so toggling applies
 without a reload and disabling dismisses an open picker. When enabled,
@@ -333,14 +341,15 @@ Classic classify-diff toolbars call `useModalJobAiSelection()` directly and rend
 one provider is selectable and shows either an effort-tier selector or the
 pickable-model command picker.
 
-`commits/CommitDetail.tsx` shares `CommitInfoHeader` with commit pop-outs for
-subject, body, metadata, SHA copying, and header disclosure. It mounts those controls
-in a classification-settings disclosure, with selection owned by the workspace-scoped
-hook. Header and settings
-disclosures reset on workspace or commit changes. The collapsed header retains SHA
-copying and hides the metadata subtree from keyboard navigation. Its toolbar wraps
-review and view controls as independent groups; `DiffViewToggle` accepts a quiet
-appearance for this surface.
+`commits/CommitDetail.tsx` and the commit pop-out build the toolbar header with
+`useCommitReviewHeader`: `CommitInfoSummary` (ellipsized title disclosure whose
+accessible name and tooltip carry the full subject, plus SHA copy), the
+`ClassifySplitButton` (main part runs classification; the caret popover hosts
+`ClassifyDiffAiControls` with the workspace-scoped selection, disabled while
+running), and below-row `CommitInfoHeader` details, classification errors and
+`ClassificationFilterBar`. Disclosure resets on owner, workspace or commit
+changes; collapsed metadata stays out of keyboard navigation. The PR pop-out keeps
+`PopOutClassificationToolbar`; `DiffViewToggle` accepts a quiet appearance.
 
 Categories: `logic`, `mechanical`, `test`, `simple`, `generated`; `simple` is
 low-attention by default. PR and commit pop-out file rails show category badges plus a

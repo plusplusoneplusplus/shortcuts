@@ -34,6 +34,7 @@ import { SentinelTodoTriggerFirer } from '../triggers/sentinel-todo-trigger-fire
 import { SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
 import { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import { createPrRepairOwnerValidator } from '../triggers/pr-repair-owner';
+import { createProcessWorkspaceResolver } from '../processes/process-workspace-resolver';
 import { DelegatedJobStore } from '../delegation/delegated-job-store';
 import { SentinelPrOutcomeControls } from '../triggers/sentinel-pr-outcome-controls';
 import { SentinelPrOutcomeService } from '../triggers/sentinel-pr-outcome-service';
@@ -70,8 +71,6 @@ export interface TriggerInfrastructureOptions {
     store: ProcessStore;
     /** Emit trigger change events (for WebSocket broadcasting). */
     emit: TriggerEventEmit;
-    /** Resolve processId → workspaceId for multi-repo routing. */
-    resolveWorkspaceId: (processId: string) => Promise<string | undefined>;
     /**
      * Fetch a PR's checks snapshot for the ci-failure monitor. Production wiring
      * passes the headless server-side checks fetcher (`createCiChecksFetcher`).
@@ -105,7 +104,10 @@ export interface TriggerInfrastructureOptions {
 export async function createTriggerInfrastructure(
     options: TriggerInfrastructureOptions,
 ): Promise<TriggerInfrastructure> {
-    const { dataDir, queueFacade, store, emit, resolveWorkspaceId, ciChecksFetcher, ciLogFetcher, now } = options;
+    const { dataDir, queueFacade, store, emit, ciChecksFetcher, ciLogFetcher, now } = options;
+    // Owner workspace for multi-repo routing: live queue, then persisted process
+    // (completed owners are absent from the queue after a restart).
+    const resolveWorkspaceId = createProcessWorkspaceResolver(options.deliveryBridge, store);
 
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or open processes.db in dataDir.
     let db: NativeDatabase;
@@ -264,7 +266,7 @@ export async function createTriggerInfrastructure(
         triggerStore, triggerManager, sentinelTodoFirer, sentinelTodoTriggers, sentinelPrOutcomes, timerRegistry, emit, dispose,
         createTrigger: (workspaceId, body, reuseCiMonitor) => createTrigger({
             store: triggerStore, manager: triggerManager, emit, enabled: true,
-            resolveWorkspaceId: options.resolveWorkspaceId, now: options.now,
+            resolveWorkspaceId, now: options.now,
             validatePrOwner: createPrRepairOwnerValidator(store, resolveWorkspaceId),
         }, workspaceId, body, reuseCiMonitor),
     };
