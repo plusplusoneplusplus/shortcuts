@@ -19,6 +19,9 @@ vi.mock('../../src/utils/workspace-execution', async importOriginal => ({
 }));
 
 const patch = 'diff --git a/a.txt b/a.txt\n@@ -1 +1 @@\n-old\n+new\n';
+// Real child processes start and die slower on loaded Windows runners than
+// waitFor's 1s default; stay below the children's 10s self-exit.
+const processWait = { timeout: 5_000 };
 const roots: string[] = [];
 afterEach(() => {
     vi.restoreAllMocks();
@@ -64,7 +67,7 @@ const reads = [
     ['working-tree', (root: string, options?: LocalPatchOptions) => loadWorkingTreePatch(root, 'all', undefined, options)],
 ] as const;
 
-describe('WSL executing patch transport cancellation', () => {
+describe('WSL executing patch transport cancellation', { timeout: 30_000 }, () => {
     it.each(reads)('stops %s children through the caller signal and removes its listener', async (name, read) => {
         const { root, store, begin, wslRoot } = fixture();
         const controller = new AbortController(), reason = new Error('WSL read abandoned');
@@ -73,11 +76,11 @@ describe('WSL executing patch transport cancellation', () => {
         const rejected = expect(pending).rejects.toBe(reason);
         try {
             const markers = name === 'working-tree' ? ['staged', 'unstaged'] : ['unstaged'];
-            await vi.waitFor(() => markers.forEach(marker => expect(fs.existsSync(path.join(root, marker))).toBe(true)));
+            await vi.waitFor(() => markers.forEach(marker => expect(fs.existsSync(path.join(root, marker))).toBe(true)), processWait);
             const pids = markers.map(marker => Number(fs.readFileSync(path.join(root, marker), 'utf8')));
             controller.abort(reason);
             await rejected;
-            await vi.waitFor(() => pids.forEach(pid => expect(exited(pid)).toBe(true)));
+            await vi.waitFor(() => pids.forEach(pid => expect(exited(pid)).toBe(true)), processWait);
             expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
             expect(() => begin.mock.results[0].value.checkActive()).toThrow('Cancelled');
             expect(() => begin.mock.results[0].value.process('')).toThrow('Closed');
@@ -140,11 +143,11 @@ describe('WSL executing patch transport cancellation', () => {
         const pending = loadCommitPatch(wslRoot, 'HEAD', undefined, { signal: controller.signal });
         const rejected = expect(pending).rejects.toBe(reason);
         try {
-            await vi.waitFor(() => expect(fs.existsSync(path.join(root, 'unstaged'))).toBe(true));
+            await vi.waitFor(() => expect(fs.existsSync(path.join(root, 'unstaged'))).toBe(true), processWait);
             const pid = Number(fs.readFileSync(path.join(root, 'unstaged'), 'utf8'));
             controller.abort(reason);
             await rejected;
-            await vi.waitFor(() => expect(exited(pid)).toBe(true));
+            await vi.waitFor(() => expect(exited(pid)).toBe(true), processWait);
             expect(begin).not.toHaveBeenCalled();
         } finally { controller.abort(reason); store.dispose(); await pending.catch(() => undefined); }
     });
@@ -156,7 +159,7 @@ describe('WSL executing patch transport cancellation', () => {
         const rejected = expect(cancelled).rejects.toThrow('Cancelled');
         try {
             await vi.waitFor(() => ['unstaged', 'other'].forEach(marker =>
-                expect(fs.existsSync(path.join(root, marker))).toBe(true)));
+                expect(fs.existsSync(path.join(root, marker))).toBe(true)), processWait);
             begin.mock.results[0].value.cancel();
             await rejected;
             const independentPid = Number(fs.readFileSync(path.join(root, 'other'), 'utf8'));
@@ -165,7 +168,7 @@ describe('WSL executing patch transport cancellation', () => {
             expect(call?.[2]?.signal?.aborted).toBe(false);
             fs.writeFileSync(path.join(root, 'other.release'), '');
             expect((await independent).content.raw).toContain('+new');
-            await vi.waitFor(() => expect(exited(independentPid)).toBe(true));
+            await vi.waitFor(() => expect(exited(independentPid)).toBe(true), processWait);
         } finally {
             begin.mock.results.forEach(result => result.value?.cancel());
             store.dispose();
@@ -181,12 +184,12 @@ describe('WSL executing patch transport cancellation', () => {
                 pending = read(wslRoot);
                 const rejected = expect(pending).rejects.toThrow(action === 'cancel' ? 'Cancelled' : action === 'refresh' ? 'Stale' : 'Closed');
                 const markers = _name === 'working-tree' ? ['staged', 'unstaged'] : ['unstaged'];
-                await vi.waitFor(() => markers.forEach(marker => expect(fs.existsSync(path.join(root, marker))).toBe(true)));
+                await vi.waitFor(() => markers.forEach(marker => expect(fs.existsSync(path.join(root, marker))).toBe(true)), processWait);
                 const pids = markers.map(marker => Number(fs.readFileSync(path.join(root, marker), 'utf8')));
                 const ticket = begin.mock.results[0].value;
                 if (action === 'cancel') ticket.cancel(); else store[action]();
                 await rejected;
-                await vi.waitFor(() => pids.forEach(pid => expect(exited(pid)).toBe(true)));
+                await vi.waitFor(() => pids.forEach(pid => expect(exited(pid)).toBe(true)), processWait);
                 expect(() => ticket.process(patch)).toThrow('Closed');
                 if (action !== 'dispose') {
                     vi.mocked(execFileAsync).mockResolvedValue({ stdout: patch, stderr: '' });
@@ -230,13 +233,13 @@ describe('WSL executing patch transport cancellation', () => {
         const blocked = vi.mocked(execFileAsync).getMockImplementation()!;
         vi.mocked(execFileAsync).mockImplementation(async (exec, args, options) => {
             if (!args?.includes('--cached')) return blocked(exec, args, options);
-            await vi.waitFor(() => expect(fs.existsSync(path.join(root, 'unstaged'))).toBe(true));
+            await vi.waitFor(() => expect(fs.existsSync(path.join(root, 'unstaged'))).toBe(true), processWait);
             throw { stderr: 'staged command failed' };
         });
         try {
             await expect(loadWorkingTreePatch(wslRoot, 'all')).rejects.toThrow('staged command failed');
             const pid = Number(fs.readFileSync(path.join(root, 'unstaged'), 'utf8'));
-            await vi.waitFor(() => expect(exited(pid)).toBe(true));
+            await vi.waitFor(() => expect(exited(pid)).toBe(true), processWait);
             expect(() => begin.mock.results[0].value.processWorkingTree([patch, ''])).toThrow('Closed');
         } finally { store.dispose(); }
     });

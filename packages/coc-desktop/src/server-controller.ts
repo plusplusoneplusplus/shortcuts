@@ -31,6 +31,9 @@ export const DEFAULT_HOST = '127.0.0.1';
 /** The well-known port a CLI `coc serve` binds by default (attach target). */
 export const CLI_DEFAULT_PORT = 4000;
 
+/** Default wait for a forked server to report `listening`; slow VMs need minutes. */
+export const DEFAULT_START_TIMEOUT_MS = 120_000;
+
 /** Default shared data dir — the same `~/.coc` the CLI uses. */
 export function defaultDataDir(): string {
     return path.join(os.homedir(), '.coc');
@@ -63,7 +66,7 @@ export interface AttachOrStartOptions {
     attachPort?: number;
     /** Path to the compiled `server-entry.js` (default next to this file). */
     serverEntryPath?: string;
-    /** How long to wait for the forked server to report `listening` (default 30s). */
+    /** How long to wait for the forked server to report `listening` (default {@link DEFAULT_START_TIMEOUT_MS}). */
     startTimeoutMs?: number;
     /**
      * Fix 2: sink for the forked server's stdout/stderr. When provided (and there
@@ -242,7 +245,7 @@ export async function attachOrStart(options: AttachOrStartOptions = {}): Promise
     const host = options.host ?? DEFAULT_HOST;
     const dataDir = options.dataDir ?? defaultDataDir();
     const attachPort = options.attachPort ?? CLI_DEFAULT_PORT;
-    const startTimeoutMs = options.startTimeoutMs ?? 30_000;
+    const startTimeoutMs = options.startTimeoutMs ?? DEFAULT_START_TIMEOUT_MS;
     const serverEntryPath = options.serverEntryPath ?? path.join(__dirname, 'server-entry.js');
 
     const deps = options.deps ?? {};

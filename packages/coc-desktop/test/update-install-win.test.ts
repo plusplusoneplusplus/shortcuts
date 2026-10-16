@@ -63,6 +63,8 @@ describe('Windows update helper', () => {
     });
 
     // Execute the generated helper on Windows with only process operations stubbed.
+    // The first powershell.exe spawn pays a multi-second cold start on CI runners,
+    // which exceeded Vitest's 5s default.
     it.skipIf(process.platform !== 'win32').each(['success', 'start-error', 'exit-code', 'timeout'])(
         'executes %s with diagnostics, relaunch and cleanup', async outcome => {
             const root = await fs.mkdtemp(path.join(os.tmpdir(), 'win-update-'));
@@ -101,6 +103,7 @@ describe('Windows update helper', () => {
                 await fs.rm(root, { recursive: true, force: true });
             }
         },
+        30_000,
     );
 });
 
