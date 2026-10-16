@@ -266,6 +266,13 @@ with its CLI. Enabled Windows DevTunnel hosting prefers a configured tunnel's
 single HTTP binding. The hosts use separate tunnel identities.
 `packages/coc-desktop/electron-builder.container.cjs` selects the container variant.
 
+`coc-desktop/src/update-install.ts` provides Electron-free installer downloads for
+CoC macOS arm64 and Windows x64. It requires the selected installer's exact
+`.sha256` release asset, streams bytes to a private temp directory with progress
+callbacks, and verifies SHA-256 before returning an installer path. Fetch and
+filesystem seams support plain Node tests. Failure or abort removes the attempt's
+directory; successful downloads expose caller-owned cleanup for deferred installs.
+
 URL hosts expose optional `BrowserHostedView.cdp(method, params)`. Electron's
 `ElectronBrowserCdp` lazily attaches to the adopted guest debugger and detaches
 its own attachment on close and retains the debugger emitter for destruction-safe
