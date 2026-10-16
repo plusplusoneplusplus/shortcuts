@@ -429,6 +429,12 @@ jobs:
             echo "::error::No artifacts were downloaded for the release."
             exit 1
           fi
+          # Hash the exact installer bytes and publish a standard checksum file
+          # using the asset basename so it can also be checked after download.
+          for installer in "${files[@]}"; do
+            (cd "$(dirname "$installer")" && sha256sum -- "$(basename "$installer")") > "$installer.sha256"
+            files+=("$installer.sha256")
+          done
           echo "Attaching ${#files[@]} file(s) to the release:"
           printf '  %s\n' "${files[@]}"
 
