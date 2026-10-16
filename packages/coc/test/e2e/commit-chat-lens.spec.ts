@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures/server-fixture';
-import { createMultiCommitRepo } from './fixtures/git-fixtures';
+import { createMultiCommitRepo, toggleCommitChat } from './fixtures/git-fixtures';
 import { request, seedProcess, seedWorkspace } from './fixtures/seed';
 import { execFileSync } from 'child_process';
 import { writeFileSync } from 'fs';
@@ -150,7 +150,7 @@ async function verifyPinCloseUnpinCycle(page: import('@playwright/test').Page, s
     await expect(page.getByTestId('commit-chat-side-panel')).toHaveCount(0);
     await expect.poll(() => page.evaluate(key => localStorage.getItem(key), storageKey)).toBeNull();
 
-    await page.getByTestId('toggle-chat-btn').click();
+    await toggleCommitChat(page);
     await expectBottomRightLens(page);
 
     await page.getByTestId('commit-chat-pin-btn').click();
@@ -162,7 +162,7 @@ async function verifyPinCloseUnpinCycle(page: import('@playwright/test').Page, s
     await expect(page.getByTestId('commit-chat-side-panel')).toHaveCount(0);
     await expect.poll(() => page.evaluate(key => localStorage.getItem(key), storageKey)).toBe('side-panel');
 
-    await page.getByTestId('toggle-chat-btn').click();
+    await toggleCommitChat(page);
     await expect(page.getByTestId('commit-chat-side-panel')).toBeVisible();
 
     await page.getByTestId('commit-chat-unpin-btn').click();
@@ -220,7 +220,7 @@ test.describe('feature-flagged commit chat lens', () => {
         await page.goto(`${serverUrl}/?workspace=${workspaceId}#repos/${workspaceId}/git/${commit.hash}/${encodeURIComponent('src/index.ts')}`);
         const editor = page.getByTestId('file-diff-editor');
         await expect(editor).toBeVisible();
-        await page.getByTestId('toggle-chat-btn').click();
+        await toggleCommitChat(page);
         const lens = page.getByTestId('commit-chat-lens');
         const input = lens.getByTestId('commit-chat-input');
         await expect(input).toBeVisible();
@@ -254,7 +254,7 @@ test.describe('feature-flagged commit chat lens', () => {
 
         await page.goto(`${serverUrl}/?workspace=${encodeURIComponent(workspaceId)}#repos/${encodeURIComponent(workspaceId)}/git/${encodeURIComponent(commit.hash)}`);
         await expect(page.getByTestId('file-diff-section')).toBeVisible();
-        await page.getByTestId('toggle-chat-btn').click();
+        await toggleCommitChat(page);
 
         const lens = page.getByTestId('commit-chat-lens');
         await expect(lens).toBeVisible();
@@ -325,7 +325,7 @@ test.describe('feature-flagged commit chat lens', () => {
         const url = `${serverUrl}/?workspace=${encodeURIComponent(workspaceId)}#repos/${encodeURIComponent(workspaceId)}/git/${encodeURIComponent(commit.hash)}`;
         await page.goto(url);
         await expect(page.getByTestId('file-diff-section')).toBeVisible();
-        await page.getByTestId('toggle-chat-btn').click();
+        await toggleCommitChat(page);
 
         const lens = page.getByTestId('commit-chat-lens');
         await expect(lens).toBeVisible();
@@ -342,7 +342,7 @@ test.describe('feature-flagged commit chat lens', () => {
         await gotoFresh(page, url);
         await expect(page.getByTestId('file-diff-section')).toBeVisible();
         if (await page.getByTestId('commit-chat-lens').count() === 0) {
-            await page.getByTestId('toggle-chat-btn').click();
+            await toggleCommitChat(page);
         }
         await expect(page.getByTestId('commit-chat-lens').getByTestId('activity-chat-detail')).toBeVisible();
     });
@@ -368,7 +368,7 @@ test.describe('feature-flagged commit chat lens', () => {
         await expect(page.getByTestId(`commit-row-${commit.shortHash}`)).toBeVisible();
         await expect(page.getByTestId('file-diff-section')).toBeVisible();
 
-        await page.getByTestId('toggle-chat-btn').click();
+        await toggleCommitChat(page);
         await expectBottomRightLens(page);
         await expectCompactInitialComposer(page);
         await verifyPinCloseUnpinCycle(page, storageKey);
@@ -376,7 +376,7 @@ test.describe('feature-flagged commit chat lens', () => {
 
         await gotoFresh(page, `${serverUrl}/?workspace=${encodeURIComponent(WORKSPACE_ID)}&surface=file#repos/${encodeURIComponent(WORKSPACE_ID)}/git/${encodeURIComponent(commit.hash)}/${encodeURIComponent(CHANGED_FILE)}`);
         await expect(page.getByTestId('file-diff-section')).toBeVisible();
-        await page.getByTestId('toggle-chat-btn').click();
+        await toggleCommitChat(page);
         await expectBottomRightLens(page);
         await expectCompactInitialComposer(page);
         await page.getByTestId('commit-chat-frame-close-btn').click();
@@ -384,7 +384,7 @@ test.describe('feature-flagged commit chat lens', () => {
         await gotoFresh(page, `${serverUrl}/?workspace=${encodeURIComponent(WORKSPACE_ID)}&surface=work-item#repos/${encodeURIComponent(WORKSPACE_ID)}/work-items/${encodeURIComponent(WORK_ITEM_ID)}/commit/${encodeURIComponent(commit.hash)}/${CHANGED_FILE.split('/').map(encodeURIComponent).join('/')}`);
         await expect(page.getByTestId('work-item-commit-review')).toBeVisible();
         await expect(page.getByTestId('file-diff-section')).toBeVisible();
-        await page.getByTestId('toggle-chat-btn').click();
+        await toggleCommitChat(page);
         await expectBottomRightLens(page);
         await expectCompactInitialComposer(page);
 
@@ -404,7 +404,7 @@ test.describe('feature-flagged commit chat lens', () => {
         await expect(page.getByTestId('commit-chat-lens')).toHaveCount(0);
         await expect.poll(() => page.evaluate(key => localStorage.getItem(key), storageKey)).toBeNull();
 
-        await page.getByTestId('toggle-chat-btn').click();
+        await toggleCommitChat(page);
         await expectBottomRightLens(page);
         await expectCompactInitialComposer(page);
 
