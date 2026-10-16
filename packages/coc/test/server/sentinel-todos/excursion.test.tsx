@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, renderHook, screen, within } from '@testing-library/react';
-import type { SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
+import type { SentinelTodoItem, SentinelTodoConversationReference, WorkspaceInfo } from '@plusplusoneplusplus/coc-client';
 
 const get = vi.fn();
 const fakeClient = {
@@ -46,6 +46,8 @@ import {
 } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoExcursion';
 import { sentinelTodoTabInput } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoPanelModel';
 import { resolveDashboardRoute, buildRepoGroupChatHash } from '../../../src/server/spa/client/react/layout/dashboardRoutes';
+import { publishDashboardTopology } from '../../../src/server/spa/client/react/shared/dashboard-discovery/topology';
+import { tagRemoteWorkspaces } from '../../../src/server/spa/client/react/repos/remoteWorkspaceAggregation';
 import { buildRemoteCloneKey } from '../../../src/server/spa/client/react/repos/cloneIdentity';
 import { queueReducer, type QueueContextState } from '../../../src/server/spa/client/react/contexts/QueueContext';
 
@@ -79,6 +81,8 @@ beforeEach(() => {
 afterEach(() => {
     vi.restoreAllMocks();
     cleanup();
+    publishDashboardTopology(null, []);
+    vi.unstubAllGlobals();
     clearSentinelTodoExcursion();
     clearSentinelTodoChats();
     clearUnifiedPanelState();
@@ -250,9 +254,30 @@ describe('UnifiedTodoTab links and remembered view', () => {
         const { link } = await renderOrigin();
         fireEvent.click(link, { button: 0 });
         expect(getSentinelTodoExcursion()).toEqual({
-            origin: { ...ORIGIN, linkKey: 'i1|ref:chat-a' },
+            origin: { ...ORIGIN, linkKey: 'i1|ref:[null,"ws-1","chat-a"]' },
             trail: [],
         });
+    });
+
+    it('starts a remote reference excursion after verification and restores its qualified link focus on Back', async () => {
+        const reference: SentinelTodoConversationReference = { ...(item().references![0] as SentinelTodoConversationReference), serverIdentity: 'destination', verification: 'unverified' as const };
+        get.mockResolvedValue({ revision: 1, items: [item({ references: [reference] })] });
+        publishDashboardTopology('ws-1', tagRemoteWorkspaces({ id: 'ssh', label: 'Laptop', kind: 'ssh', serverIdentity: 'destination' },
+            'http://localhost:7000', [{ id: 'ws-1', name: 'Remote' } as WorkspaceInfo]), 'local');
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify(
+            String(input).includes('/health') ? { serverIdentity: 'destination' }
+                : { process: { id: 'chat-a', workspaceId: 'ws-1', type: 'chat' } }),
+            { headers: { 'Content-Type': 'application/json' } })));
+        const first = await renderOrigin();
+        await act(async () => { fireEvent.click(first.link); });
+        const key = 'i1|ref:["destination","ws-1","chat-a"]';
+        expect(getSentinelTodoExcursion()?.origin).toMatchObject({ href: ORIGIN.href, linkKey: key, owner: OWNER });
+        expect(window.location.hash).toBe('#repos/remote%3Assh%3Aws-1/chats/chat-a');
+        first.unmount();
+        act(() => { window.location.hash = returnFromSentinelTodoExcursion()!; });
+        const second = await renderOrigin();
+        expect(document.activeElement).toBe(second.link);
+        expect(getSentinelTodoExcursion()).toBeNull();
     });
 
     it.each([{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { button: 1 }])('leaves modified clicks (%o) to the browser', async init => {

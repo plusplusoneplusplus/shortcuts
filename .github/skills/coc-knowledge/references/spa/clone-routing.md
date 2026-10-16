@@ -251,6 +251,14 @@ requested process through failed reachability probes so ChatDetail can display
 the owning read error; unresolved remote owners skip local probes. Reloads,
 history and Sentinel returns use this same identity.
 
+`SentinelTodoConversationReferences` verifies durable remote references before
+applying the resolver's current clone-qualified href and starting a To-do
+excursion. Its ten-second deadline and navigation/owner/unmount cancellation
+suppress late results; failures retain the current chat with retry guidance.
+Same-server references use the ledger owner's clone route. Display labels and
+unverified badges are metadata only; opening does not write the ledger.
+Reference and Back-focus keys qualify server, workspace and process identity.
+
 Rail Open job links select through the tab's `selectTask`: pinned and Sentinel shortcuts
 are portaled from the tab, and Running/Queued rows (`RailJobStatuses`, rendered by
 `SplitWorkspacePanel`) use the `{ routeId, open }` the tab publishes via
