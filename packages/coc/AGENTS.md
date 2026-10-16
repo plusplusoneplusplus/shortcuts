@@ -44,11 +44,15 @@ references before editing. Paths are package-relative.
   ChatDetail owner WebSocket refreshes coalesce matching notifications per microtask
   batch; preserve later refreshes and discard scheduled work on effect cleanup.
   Dashboard discovery uses `ProcessWebSocketServer.dashboardDiscovery` for targeted,
-  read-only topology requests. Capabilities bind a raw owner workspace and dashboard
+  read-only topology and title-search requests. Capabilities bind a raw owner workspace and dashboard
   revision; scope/topology changes revoke pending reads. `ReposContext` publishes the
   visible topology to `shared/dashboard-discovery`; the designated local socket and
   remote owner sockets advertise only for the exact selected owner. Include cached
   offline rows, and keep identities/labels separate from private endpoints and aliases.
+  Title-search relay requests pin a durable server/workspace selector and bounded
+  pagination; replies require matching identity, labels, verification, full match
+  count and title-only rows. Reject malformed/partial results and cross-kind replies.
+  The SPA producer serves topology; chat reads/tool wiring require separate composition.
   Topology observations are not ownership verification; discovery never broadcasts.
   Reject late responses after scope changes. Sidebar queue snapshots supersede
   stale queue reads, not independent history reads; reconcile admitted history

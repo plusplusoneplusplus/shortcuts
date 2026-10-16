@@ -208,8 +208,18 @@ describe('dashboard discovery on real WebSocket connections', () => {
                 if (message.type === 'dashboard-workspaces-request') a.send(JSON.stringify({
                     type: 'dashboard-workspaces-result', reply: { id: message.request.id, ok: true, workspaces: [workspace()] },
                 }));
+                if (message.type === 'dashboard-chats-request') a.send(JSON.stringify({
+                    type: 'dashboard-chats-result', reply: { id: message.request.id, ok: true, result: {
+                        target: message.request.query.target, serverLabel: 'Remote', workspaceLabel: 'Project',
+                        serverKind: 'devtunnel', verification: 'verified', total: 1,
+                        conversations: [{ processId: 'chat', title: 'Release plan' }],
+                    } },
+                }));
             });
             await expect(sockets.dashboardDiscovery.listWorkspaces('owner')).resolves.toEqual([workspace()]);
+            await expect(sockets.dashboardDiscovery.searchChats('owner', {
+                target: { serverIdentity: 'destination', workspaceId: 'same-workspace' }, title: 'release', limit: 10, offset: 0,
+            })).resolves.toMatchObject({ total: 1, conversations: [{ processId: 'chat', title: 'Release plan' }] });
             a.removeAllListeners('message');
             const withdrawn = sockets.dashboardDiscovery.listWorkspaces('owner');
             const withdrawnAssertion = expect(withdrawn).rejects.toThrow('disconnected');
@@ -225,6 +235,7 @@ describe('dashboard discovery on real WebSocket connections', () => {
             await closedAssertion;
             await barrier(b);
             expect(observed).not.toContain('dashboard-workspaces-request');
+            expect(observed).not.toContain('dashboard-chats-request');
             expect(observed).not.toContain('dashboard-discovery-cancel');
             b.send(JSON.stringify({ type: 'dashboard-discovery-capability', workspaceId: 'owner', revision: 'r', focused: true }));
             await barrier(b);

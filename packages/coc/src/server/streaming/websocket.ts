@@ -447,6 +447,9 @@ export class ProcessWebSocketServer {
             case 'dashboard-workspaces-result':
                 this.dashboardDiscovery.reply(client, message.reply);
                 break;
+            case 'dashboard-chats-result':
+                this.dashboardDiscovery.reply(client, message.reply, 'chats');
+                break;
             case 'browser-capability':
                 this.browserControl.advertise(client, message.workspaceId, message.focused);
                 break;

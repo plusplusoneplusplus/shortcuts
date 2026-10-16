@@ -180,10 +180,10 @@ The bot-presentation observer uses those owner-scoped events without adding sock
 or joining remote ownership through the page-origin process index; see
 [spa/chat-conversation.md](spa/chat-conversation.md).
 
-### Targeted dashboard workspace discovery
+### Targeted dashboard discovery
 
 `ProcessWebSocketServer.dashboardDiscovery` owns `DashboardDiscoveryRelay`.
-`coc-client/dashboard-discovery.ts` defines the read-only topology protocol.
+`coc-client/dashboard-discovery.ts` defines read-only topology and title-search protocols.
 `ReposContext` publishes visible repos, groups and cached offline rows through
 `shared/dashboard-discovery/topology.ts`. Its opaque revision changes with selection,
 labels, ownership, availability or endpoint routing; equivalent refreshes preserve it.
@@ -205,6 +205,17 @@ The relay validates at most 2,000 bounded rows, rejecting endpoint fields and du
 known identities. Observations do not verify destination ownership. Abort and the
 10-second deadline forward cancellation and release state. Messages bypass global
 broadcasts/container forwarding; failures expose generic errors without connection details.
+
+`searchChats(ownerWorkspaceId, query, signal)` uses the same selected socket and
+revision with distinct chat request/result kinds. Queries snapshot a durable
+server/workspace target, literal title, limit (1–100) and nonnegative offset.
+Results pin that target and project labels, transport, verification, total count
+before pagination and process/title pairs. Validation rejects incomplete pages,
+identity mismatches, duplicate process IDs, nonmatching titles and extra fields.
+Metadata is bounded to 512 characters and displayed titles to 4,096. Verification
+describes producer observations, not independent server-side ownership proof.
+The SPA producer serves topology; chat read production and tool consumption are
+separate composition points.
 
 ### Targeted desktop browser control
 
