@@ -178,39 +178,42 @@ export async function maybeAutoCompactAfterResponse(
     store: ProcessStore, bridge: CompactionQueueBridge | undefined, processId: string, workspaceId?: string,
 ): Promise<AutoCompactCheckResult> {
     if (!bridge?.enqueue) return { action: 'skipped', reason: 'disabled' };
-    const claim = await processOperationAdmission.runExclusive(processId, async (): Promise<AutoCompactCheckResult | AIProcess> => {
-        const proc = await store.getProcess(processId, workspaceId);
-        if (!proc || !isSentinelProcess(proc)) return { action: 'skipped', reason: 'not-sentinel' };
-        const stored = readAutoCompact(proc.metadata);
-        if (proc.metadata?.autoCompact !== undefined && !stored) {
-            getLogger().warn(LogCategory.AI, `[AutoCompact] Check failed for ${proc.id}: ${UNSUPPORTED_STATE_ERROR}`);
-            return { action: 'failed', error: UNSUPPORTED_STATE_ERROR };
-        }
-        if (!stored?.enabled) return { action: 'skipped', reason: 'disabled' };
-        const state = reconcileStaleAttempt(proc, stored, bridge);
-        const persist = (next: ProcessAutoCompactState) => store.updateProcess(proc.id, { metadata: withAutoCompact(proc.metadata, next) });
-        if (state !== stored) await persist(state);
-        if (state.paused) return { action: 'skipped', reason: 'paused' };
-        const response = latestResponseTurn(proc.conversationTurns);
-        if (!response) return { action: 'skipped', reason: 'no-response' };
-        if ((state.lastEvaluatedTurnIndex ?? -1) >= response.turnIndex) return { action: 'skipped', reason: 'already-evaluated' };
-        const tokens = contextUsageTokens(proc);
-        if (tokens === undefined) return { action: 'skipped', reason: 'unknown-usage' };
-        if (tokens <= state.thresholdTokens) return { action: 'skipped', reason: 'below-threshold' };
-        const compaction = proc.metadata?.compaction;
-        if (state.taskId || compaction?.state === 'queued' || compaction?.state === 'running' || bridge.findCompactionTask?.(proc.id)) {
-            await persist({ ...state, lastEvaluatedTurnIndex: response.turnIndex });
-            return { action: 'skipped', reason: 'already-compacting' };
-        }
-        const claimed: ProcessAutoCompactState = { ...state, lastEvaluatedTurnIndex: response.turnIndex };
-        await persist(claimed);
-        return { ...proc, metadata: withAutoCompact(proc.metadata, claimed) };
-    });
-    if ('action' in claim) return claim;
+    let claim: AIProcess | undefined;
     try {
-        const outcome = await compactProcess(store, claim, undefined, bridge, undefined, { trigger: 'auto' });
-        return { action: 'queued', taskId: outcome.taskId };
+        return await processOperationAdmission.runExclusive(processId, async (): Promise<AutoCompactCheckResult> => {
+            const proc = await store.getProcess(processId, workspaceId);
+            if (!proc || !isSentinelProcess(proc)) return { action: 'skipped', reason: 'not-sentinel' };
+            const stored = readAutoCompact(proc.metadata);
+            if (proc.metadata?.autoCompact !== undefined && !stored) {
+                getLogger().warn(LogCategory.AI, `[AutoCompact] Check failed for ${proc.id}: ${UNSUPPORTED_STATE_ERROR}`);
+                return { action: 'failed', error: UNSUPPORTED_STATE_ERROR };
+            }
+            if (!stored?.enabled) return { action: 'skipped', reason: 'disabled' };
+            const state = reconcileStaleAttempt(proc, stored, bridge);
+            const persist = (next: ProcessAutoCompactState) => store.updateProcess(proc.id, { metadata: withAutoCompact(proc.metadata, next) });
+            if (state !== stored) await persist(state);
+            if (state.paused) return { action: 'skipped', reason: 'paused' };
+            const response = latestResponseTurn(proc.conversationTurns);
+            if (!response) return { action: 'skipped', reason: 'no-response' };
+            if ((state.lastEvaluatedTurnIndex ?? -1) >= response.turnIndex) return { action: 'skipped', reason: 'already-evaluated' };
+            const tokens = contextUsageTokens(proc);
+            if (tokens === undefined) return { action: 'skipped', reason: 'unknown-usage' };
+            if (tokens <= state.thresholdTokens) return { action: 'skipped', reason: 'below-threshold' };
+            const compaction = proc.metadata?.compaction;
+            if (state.taskId || compaction?.state === 'queued' || compaction?.state === 'running' || bridge.findCompactionTask?.(proc.id)) {
+                await persist({ ...state, lastEvaluatedTurnIndex: response.turnIndex });
+                return { action: 'skipped', reason: 'already-compacting' };
+            }
+            const claimed: ProcessAutoCompactState = { ...state, lastEvaluatedTurnIndex: response.turnIndex };
+            await persist(claimed);
+            claim = { ...proc, metadata: withAutoCompact(proc.metadata, claimed) };
+            // Claim and queue admission form one boundary; a later turn cannot slip
+            // between them. enqueueAdmitted avoids taking mutation admission twice.
+            const outcome = await compactProcess(store, claim, undefined, bridge, undefined, { trigger: 'auto', admissionHeld: true });
+            return { action: 'queued', taskId: outcome.taskId };
+        });
     } catch (error) {
+        if (!claim) throw error;
         const message = error instanceof Error ? error.message : String(error);
         try {
             await settleAutoCompaction(store, claim.id, undefined, { error: message });

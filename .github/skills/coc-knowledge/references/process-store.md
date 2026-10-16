@@ -513,9 +513,12 @@ its new process claim without leaving executable rejected work in the queue.
 Conversation tasks persist `config.processPredecessorId` to retain admission order across
 priority changes, reordering and restore. Queued cancellation rewires successors to the
 cancelled task's predecessor. Execution reservations retain conversation ownership until
-provider cleanup settles, including cancellation and timeout. Compaction uses a non-retrying
-queue task with provider-owned timeout and queued-only cancellation. Queued compactions
-recover on restart; interrupted running compactions settle as failed without replay.
+provider cleanup settles, including cancellation and timeout. Store-owned
+`conversationExecutionAdmission` reuses `ProcessOperationAdmission` to serialize queued
+turn execution and inline/manual compaction through provider settlement, independently
+of short mutation admission. Queued compactions use non-retrying tasks with provider-owned
+timeout and queued-only cancellation. They recover on restart; interrupted running
+compactions settle as failed without replay.
 
 ### Sentinel auto-compact
 
@@ -528,14 +531,19 @@ ignores custom instructions and warns.
 
 `processes/auto-compact.ts` owns `metadata.autoCompact`, default off per conversation.
 The default `thresholdTokens` is 700000, a finite positive safe integer. The lifecycle
-runner's `onResponseCompleted` hook checks after a completed, persisted response and
-pending-message drain. Under process admission it claims the latest non-display-only
-assistant turn (`lastEvaluatedTurnIndex`, one attempt per response) only when
+runner's `onResponseCompleted` hook checks after a completed, persisted response,
+before pending-message drain. One mutation admission claims the latest non-display-only
+assistant turn and admits its task (`lastEvaluatedTurnIndex`, one attempt per response) only when
 `currentTokens > thresholdTokens`, independently of `tokenLimit`. Unknown usage, pauses
 and pending manual or automatic compactions skip; settings saves and resume never trigger.
 
 Automatic attempts admit ordinary durable compaction tasks with `payload.trigger: 'auto'`,
-always queued. Ordering, restart recovery and queued-only cancellation match `/compact`;
+always queued. The owning queue's `enqueue(..., { beforeQueuedProcessTasks: true })`
+inserts the boundary and rewires queued successor dependencies before publishing one
+persisted change; rejected admission restores those edges before compensation.
+Buffered messages/reviews retain stable receipts and order behind the boundary,
+ahead of later arrivals. Manual compaction follows existing admitted/buffered work.
+Restart recovery and queued-only cancellation share `/compact` behavior;
 running compactions keep provider-owned lifecycle (Codex 120s timeout, no CoC deadline for
 Copilot/Claude). Usage still above the absolute threshold settles as `insufficient`;
 failed/insufficient attempts pause after two consecutively, unsupported providers pause

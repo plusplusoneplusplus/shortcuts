@@ -95,9 +95,11 @@ export class TaskQueueManager extends EventEmitter {
     /**
      * Add a task to the queue
      * @param input Task input (without auto-generated fields)
+     * @param options Insert a process boundary before queued successors, retaining
+     * running ownership and publishing all dependency changes in one admission.
      * @returns The ID of the queued task
      */
-    enqueue(input: CreateTaskInput): string {
+    enqueue(input: CreateTaskInput, options?: { beforeQueuedProcessTasks?: boolean }): string {
         // Reject new tasks when in drain mode
         if (this.draining) {
             throw new Error('Queue is draining — no new tasks accepted');
@@ -116,15 +118,27 @@ export class TaskQueueManager extends EventEmitter {
             retryCount: 0,
         };
 
-        if (task.processId && !('processPredecessorId' in task.config)) {
+        const repoId = this.resolveTaskRepoId(task);
+        const successors = new Map<QueuedTask, QueuedTask['config']>();
+        const sameProcess = (previous: QueuedTask) => (previous.processId ?? previous.payload.processId
+            ?? (previous.type === 'chat' ? `queue_${previous.id}` : undefined)) === task.processId;
+        if (task.processId && options?.beforeQueuedProcessTasks) {
+            const queued = this.getQueued().filter(sameProcess);
+            const queuedIds = new Set(queued.map(previous => previous.id));
+            const running = [...this.running.values()].find(sameProcess);
+            task.config = { ...task.config, processPredecessorId: running?.id };
+            for (const head of queued.filter(previous => !queuedIds.has(previous.config.processPredecessorId ?? ''))) {
+                successors.set(head, head.config);
+                head.config = { ...head.config, processPredecessorId: task.id };
+            }
+        } else if (task.processId && !('processPredecessorId' in task.config)) {
             const predecessors = [...this.running.values(), ...this.getQueued()]
-                .filter(previous => (previous.processId ?? previous.payload.processId ?? (previous.type === 'chat' ? `queue_${previous.id}` : undefined)) === task.processId);
+                .filter(sameProcess);
             // Dependencies retain admission order even when priority or UI reordering changes queue position.
             const referenced = new Set(predecessors.map(previous => previous.config?.processPredecessorId));
             const last = predecessors.reverse().find(previous => !referenced.has(previous.id));
             if (last) task.config = { ...task.config, processPredecessorId: last.id };
         }
-        const repoId = this.resolveTaskRepoId(task);
         const hadGate = repoId !== undefined && this.repoGates.has(repoId);
         this.insertTask(task);
         try {
@@ -133,6 +147,7 @@ export class TaskQueueManager extends EventEmitter {
         } catch (admissionError) {
             // Reject persistence before publishing successful admission.
             this.queue = this.queue.filter(item => item !== task);
+            for (const [successor, config] of successors) successor.config = config;
             const releasedGate = repoId !== undefined && !hadGate
                 && this.repoGates.get(repoId)?.implementTaskId === task.id;
             if (releasedGate) this.repoGates.delete(repoId);

@@ -6,6 +6,7 @@ import {
     autoCompactCancelledMetadata, maybeAutoCompactAfterResponse, parseAutoCompactSettings, readAutoCompact,
     resumeAutoCompact, saveAutoCompactSettings, settleAutoCompaction,
 } from '../../../src/server/processes/auto-compact';
+import { ProcessMessageDeliveryService } from '../../../src/server/processes/process-message-delivery-service';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
 
@@ -271,6 +272,34 @@ describe('Sentinel auto-compact lifecycle', () => {
         expect(compactTasks()).toHaveLength(1);
     });
 
+    it('keeps response claim and admission atomic against a concurrent manual request', async () => {
+        await enable();
+        await respond({ currentTokens: 500 });
+        await store.updateProcess(proc.id, { currentTokens: 950 });
+        let entered!: () => void;
+        let release!: () => void;
+        const claimed = new Promise<void>(resolve => { entered = resolve; });
+        const proceed = new Promise<void>(resolve => { release = resolve; });
+        const originalUpdate = vi.mocked(store.updateProcess).getMockImplementation()!;
+        vi.mocked(store.updateProcess).mockImplementation(async (id, updates) => {
+            const result = await originalUpdate(id, updates);
+            if ((updates.metadata?.autoCompact as any)?.lastEvaluatedTurnIndex === 0
+                && !updates.metadata?.compaction && !(updates.metadata?.autoCompact as any)?.lastResult) {
+                entered();
+                await proceed;
+            }
+            return result;
+        });
+        const automatic = maybeAutoCompactAfterResponse(store as any, bridge, proc.id);
+        await claimed;
+        const manual = compactProcess(store as any, await current(), 'manual', bridge);
+        release();
+        const [auto, request] = await Promise.all([automatic, manual]);
+        expect(auto).toMatchObject({ action: 'queued', taskId: request.taskId });
+        expect(compactTasks()).toHaveLength(1);
+        expect((await current()).metadata?.compaction?.customInstructions).toBe(SENTINEL_COMPACTION_INSTRUCTIONS);
+    });
+
     it('does not add an automatic compaction while a manual one is pending', async () => {
         await enable();
         await respond({ currentTokens: 100, tokenLimit: LIMIT });
@@ -283,13 +312,79 @@ describe('Sentinel auto-compact lifecycle', () => {
         expect((await autoState())?.taskId).toBeUndefined();
     });
 
-    it('keeps already-buffered turns ahead of the automatic compaction', async () => {
+    it('places automatic compaction before already-buffered turns', async () => {
         await enable();
         await store.updateProcess(proc.id, { pendingMessages: [
             { id: 'p1', content: 'p1', createdAt: new Date().toISOString(), provider: 'copilot' },
         ] } as any);
         await respond({ currentTokens: 950, tokenLimit: LIMIT });
-        expect(queue.getQueued().map(task => task.payload.kind === 'compact' ? 'compact' : task.id)).toEqual([`pending-${proc.id}-p1`, 'compact']);
+        expect(queue.getQueued().map(task => task.payload.kind === 'compact' ? 'compact' : task.id)).toEqual(['compact', `pending-${proc.id}-p1`]);
+        expect((await current()).pendingMessages?.map(message => message.id)).toEqual(['p1']);
+    });
+
+    it.each(['success', 'failure', 'cancel'] as const)('runs boundary compaction before queued users and delegated reviews (%s)', async outcome => {
+        await enable();
+        const first = queue.enqueue({ id: 'first', processId: proc.id, type: 'chat', priority: 'normal',
+            payload: { kind: 'chat', processId: proc.id, prompt: 'first' }, config: {} });
+        queue.markStarted(first);
+        const user = queue.enqueue({ id: 'user', processId: proc.id, type: 'chat', priority: 'high',
+            payload: { kind: 'chat', processId: proc.id, prompt: 'user' }, config: {} });
+        const review = { id: 'review', relayRequestId: 'review', content: 'delegated review',
+            createdAt: new Date().toISOString(), provider: 'copilot' as const,
+            context: { source: 'delegation' } };
+        await store.updateProcess(proc.id, { pendingMessages: [review] });
+        const result = await executor.execute(queue.getTask(first)!);
+        queue.markCompleted(first, result.result);
+        const compact = queuedCompact()!;
+        expect(queue.getTask(user)!.config.processPredecessorId).toBe(compact.id);
+        queue.moveToTop(user);
+        expect(queue.peek()!.id).toBe(compact.id);
+        expect((await current()).pendingMessages).toEqual([review]);
+
+        if (outcome === 'cancel') {
+            expect(await cancelQueuedCompaction(store as any, await current(), bridge)).toBe(true);
+            // Recovery still owns the buffered review after queued cancellation.
+            await executor.recoverPendingMessages('ws-a', proc.id);
+        } else {
+            let finish!: (result: any) => void;
+            let reject!: (error: Error) => void;
+            let entered!: () => void;
+            const started = new Promise<void>(resolve => { entered = resolve; });
+            compactSession.mockImplementationOnce(() => {
+                entered();
+                return new Promise((resolve, fail) => { finish = resolve; reject = fail; });
+            });
+            queue.markStarted(compact.id);
+            const running = executor.execute(compact);
+            await started;
+            const delivery = new ProcessMessageDeliveryService({ store: store as any, bridge });
+            const arrival = await delivery.deliver(await current(), { content: 'during', displayContent: 'during',
+                deliveryMode: 'enqueue', pasteExternalized: false, provider: 'copilot' });
+            expect(arrival.taskId).toBeDefined();
+            expect(queue.peek()).toBeUndefined();
+            expect(await cancelQueuedCompaction(store as any, await current(), bridge)).toBe(false);
+            if (outcome === 'failure') reject(new Error('boundary compaction failed'));
+            else finish({ success: true, tokensRemoved: 700 });
+            const settled = await running;
+            if (settled.success) queue.markCompleted(compact.id, settled.result);
+            else queue.markFailed(compact.id, settled.error!);
+            expect(settled.success).toBe(outcome === 'success');
+        }
+        // Disable new attempts while draining the original ordered work.
+        await saveAutoCompactSettings(store as any, proc.id, 'ws-a', { enabled: false, thresholdTokens: 800 });
+        const prompts: string[] = [];
+        const runner = vi.mocked((executor as any).executors.runner.run);
+        runner.mockImplementation(async (task: QueuedTask, opts: any) => {
+            prompts.push(task.payload.prompt as string);
+            await store.updateProcess(proc.id, { status: 'completed' });
+            await opts.onDrainPendingMessages(proc.id, task.id);
+            return { success: true, durationMs: 0 };
+        });
+        for (let i = 0; i < 4 && queue.peek(); i++) await run(queue.peek() as QueuedTask);
+        expect(prompts).toEqual(outcome === 'cancel' ? ['user', 'delegated review'] : ['user', 'delegated review', 'during']);
+        expect((await current()).pendingMessages).toEqual([]);
+        expect((await current()).conversationTurns?.filter(turn => turn.relayRequestId === 'review')).toHaveLength(1);
+        expect(queue.peek()).toBeUndefined();
     });
 
     it('counts insufficient and failed attempts, pauses after two, and resumes explicitly', async () => {

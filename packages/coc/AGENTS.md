@@ -152,9 +152,13 @@ references before editing. Paths are package-relative.
 - Memory V2 tools `save_memory` and `recall_memory` default off in `LLM_TOOL_REGISTRY`.
   Honor explicit workspace `disabledLlmTools` lists; keep memory scope gates and prompt context independent.
 
-- Conversation compaction shares process admission and durable queue dependencies.
-  Promote buffered turns before the boundary; later arrivals cannot steer across it.
-  Cancel removes queued compaction only. Running compaction never retries after restart.
+- Conversation compaction shares store-owned execution admission with queued turns;
+  mutation admission stays short so messages and cancellation can enter during SDK work.
+  Manual compaction follows admitted/buffered turns. Due auto-compaction reserves the
+  persisted response boundary before draining: queue admission atomically inserts it
+  ahead of queued successors, then promotes buffered messages in order behind it.
+  Later arrivals cannot steer across the boundary. Cancel removes queued compaction
+  only. Running compaction never retries after restart.
   Already-admitted messaging callbacks use `enqueueAdmitted` to avoid nested admission locks.
   `compact-process.ts` resolves one shared Sentinel instruction from `metadata.mode` for
   automatic and unfocused manual compaction; explicit manual focus overrides it verbatim.

@@ -2543,14 +2543,14 @@ describe('ProcessLifecycleRunner — post-response hook', () => {
         runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
     });
 
-    it('fires after a completed new task, after pending messages drain', async () => {
+    it('fires after a completed new task, before pending messages drain', async () => {
         const calls: string[] = [];
         const task = makeTask();
         await runner.run(task, makeOpts({
             onDrainPendingMessages: vi.fn(async () => { calls.push('drain'); }),
             onResponseCompleted: vi.fn(async (pid: string) => { calls.push(`response:${pid}`); }),
         }));
-        expect(calls).toEqual(['drain', `response:queue_${task.id}`]);
+        expect(calls).toEqual([`response:queue_${task.id}`, 'drain']);
     });
 
     it('waits for persisted response and absolute usage before firing, never during execution', async () => {

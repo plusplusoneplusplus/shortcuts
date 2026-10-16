@@ -221,7 +221,7 @@ export interface LifecycleRunnerOptions {
     /** Drain one pending message after task completes (server-side follow-up drain). */
     onDrainPendingMessages?: (processId: string, taskId: string) => Promise<void>;
     onPrOutcomeDeferred?: (processId: string, taskId: string) => void;
-    /** Called after a completed assistant response is persisted (and pending messages drained). */
+    /** Called after a completed assistant response is persisted (before pending messages drain). */
     onResponseCompleted?: (processId: string) => Promise<void>;
     /**
      * Called after a ralph-mode task completes successfully.
@@ -648,7 +648,8 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 if (followUpProcess && this.dataDir) await reconcileRalphGoal(followUpProcess, { dataDir: this.dataDir, store: this.store });
                 const responded = !!opts.onResponseCompleted && !opts.cancelledTasks.has(task.id)
                     && (await this.store.getProcess(followUpPayload.processId!))?.status === 'completed';
-                // Drain pending messages after follow-up completion
+                if (responded) await opts.onResponseCompleted!(followUpPayload.processId!);
+                // Drain pending messages after the response boundary
                 if (opts.onDrainPendingMessages) {
                     try {
                         await opts.onDrainPendingMessages(followUpPayload.processId!, task.id);
@@ -656,7 +657,6 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         logger.warn(LogCategory.AI, `[QueueExecutor] Failed to drain pending messages for ${followUpPayload.processId} — messages may be stranded: ${err instanceof Error ? err.message : String(err)}`);
                     }
                 }
-                if (responded) await opts.onResponseCompleted!(followUpPayload.processId!);
                 // A Ralph final-check format-repair turn runs as a follow-up on
                 // the checker's own conversation so its findings stay in context.
                 // Ralph routing normally fires only on the new-process path, so
@@ -1137,15 +1137,15 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     await reconcileRalphGoal(currentProc, { dataDir: this.dataDir, store: this.store });
                 }
 
+                if (finalStatus === 'completed' && opts.onResponseCompleted) {
+                    await opts.onResponseCompleted(processId);
+                }
                 if (finalStatus === 'completed' && opts.onDrainPendingMessages) {
                     try {
                         await opts.onDrainPendingMessages(processId, task.id);
                     } catch (err) {
                         logger.warn(LogCategory.AI, `[QueueExecutor] Failed to drain pending messages for ${processId} — messages may be stranded: ${err instanceof Error ? err.message : String(err)}`);
                     }
-                }
-                if (finalStatus === 'completed' && opts.onResponseCompleted) {
-                    await opts.onResponseCompleted(processId);
                 }
 
                 // Trigger Ralph auto-loop for ralph-mode tasks

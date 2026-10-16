@@ -547,6 +547,37 @@ describe('SqliteQueuePersistence', () => {
             }
         });
 
+        it('persists boundary insertion and successor rewiring in one transaction', () => {
+            const rootPath = path.join(os.tmpdir(), 'compact-boundary');
+            const rId = repoId(rootPath);
+            bridge.registerRepoId(rId, rootPath);
+            bridge.getOrCreateBridge(rootPath);
+            persistence = new SqliteQueuePersistence(bridge, db);
+            const manager = registry.getQueueForRepo(rootPath)!;
+            const input = (id: string) => ({ id, processId: 'conversation', type: 'chat', priority: 'normal' as const,
+                payload: { kind: 'chat', workspaceId: rId, processId: 'conversation' }, config: {} });
+            manager.enqueue(input('active')); manager.markStarted('active');
+            manager.enqueue(input('user')); manager.enqueue(input('review'));
+            manager.enqueue({ ...input('compact'), payload: { kind: 'compact', workspaceId: rId } },
+                { beforeQueuedProcessTasks: true });
+            const persisted = store.getQueueTasks();
+            expect(persisted.find(task => task.id === 'user')!.config.processPredecessorId).toBe('compact');
+            expect(persisted.find(task => task.id === 'compact')!.config.processPredecessorId).toBe('active');
+            expect(persisted.find(task => task.id === 'review')!.config.processPredecessorId).toBe('user');
+            // A new owner restores exactly the admitted dependency graph.
+            persistence.dispose(); bridge.dispose();
+            registry = new RepoQueueRegistry({ keepHistory: true });
+            bridge = new MultiRepoQueueRouter(registry, createMockProcessStore(), { autoStart: false });
+            persistence = new SqliteQueuePersistence(bridge, db, { restartPolicy: 'requeue' });
+            persistence.restore();
+            const restored = registry.getQueueForRepo(rootPath)!;
+            expect(restored.peek()!.id).toBe('active');
+            restored.markStarted('active'); restored.markCompleted('active');
+            expect(restored.peek()!.id).toBe('compact');
+            restored.markStarted('compact'); restored.markFailed('compact', 'provider failed');
+            expect(restored.peek()!.id).toBe('user');
+        });
+
         it('restores queued compaction dependencies without cycling through a restarted earlier turn', () => {
             const rootPath = path.join(os.tmpdir(), 'compact-recovery');
             const rId = repoId(rootPath);
