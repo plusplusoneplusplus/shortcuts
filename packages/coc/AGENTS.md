@@ -195,7 +195,13 @@ references before editing. Paths are package-relative.
   Health checks bracket a transcript-excluded exact-process metadata read; changed
   topology, ownership or cancellation rejects without fallback. The resolver returns
   a concrete clone chat route without changing selection; callers own read deadlines
-  and immediate navigation. REST attachment stays local-only.
+  and immediate navigation. `dashboardRoutes` reserves durable reference hashes,
+  including malformed links, without selection effects. Router holds them in
+  `DashboardChatReferenceRoute` until exact verification succeeds, waiting up to
+  ten seconds for topology/identity observations and offering explicit Retry on
+  failure. Topology changes revoke pending reads; navigation, pagehide and unmount
+  cancel them. Only verified current clone routes reach normal chat selection.
+  REST attachment stays local-only.
 - `storage/conversation-tool-inventory-store.ts` borrows the process database and
   retains one pending/captured inventory per process outside metadata, transcripts
   and SSE. Server composition shares it through `getToolInventoryStore`; initial

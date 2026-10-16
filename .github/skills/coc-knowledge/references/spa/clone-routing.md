@@ -259,6 +259,15 @@ Same-server references use the ledger owner's clone route. Display labels and
 unverified badges are metadata only; opening does not write the ledger.
 Reference and Back-focus keys qualify server, workspace and process identity.
 
+`dashboardRoutes` reserves `#chat-references/<server>/<workspace>/<process>`
+without dispatching selection effects, including malformed links. Router renders
+`DashboardChatReferenceRoute` for direct links/reloads before mounting workspace
+content. It waits for topology/identity observations within one ten-second deadline,
+verifies through the shared resolver, replaces the hash with the current concrete
+clone href, and synchronously applies normal routing. Unavailable links offer Retry.
+Topology changes revoke old reads; navigation, pagehide and unmount cancel them.
+Late responses cannot select another workspace or chat.
+
 Rail Open job links select through the tab's `selectTask`: pinned and Sentinel shortcuts
 are portaled from the tab, and Running/Queued rows (`RailJobStatuses`, rendered by
 `SplitWorkspacePanel`) use the `{ routeId, open }` the tab publishes via
