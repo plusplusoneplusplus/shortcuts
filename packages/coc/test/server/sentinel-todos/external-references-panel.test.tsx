@@ -37,7 +37,7 @@ import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/ut
 import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../src/server/spa/client/react/repos/cloneRegistry';
 
 const owner = { ownerWorkspaceId: 'ws-owner', processId: 'queue_parent', ownerRoutingRef: null };
-const conversation = { processId: 'queue_ref', workspaceId: 'ws-other', openLink: '#repos/ws-other/chats/ref',
+const conversation = { processId: 'queue_ref', workspaceId: 'ws-other', openLink: '#repos/ws-other/chats/queue_ref',
     title: 'Related conversation', attachedAt: '2026-01-01T00:00:00Z', attachedBy: 'user' as const };
 const links: SentinelTodoExternalReference[] = [
     { kind: 'pr', url: 'https://github.com/example/project/pull/42', title: 'Review change' },

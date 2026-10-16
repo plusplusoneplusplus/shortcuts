@@ -70,6 +70,16 @@ describe('To-do conversation reference navigation', () => {
         fireEvent.click(link);
         expect(follow).toHaveBeenCalledTimes(1);
     });
+    it.each([
+        [null, '#repos/same%2Fproject/chats/queue_ref%2Fchat'],
+        ['remote:laptop:owner', '#repos/remote%3Alaptop%3Asame%252Fproject/chats/queue_ref%2Fchat'],
+    ])('builds same-server links from exact stored IDs for owner %s', (ownerRoutingRef, href) => {
+        render(<SentinelTodoConversationReferences item={item([{
+            ...ref, serverIdentity: undefined, workspaceId: 'same/project', processId: 'queue_ref/chat',
+            openLink: '#repos/wrong-owner/chats/wrong-chat',
+        }])} owner={{ ...owner, ownerRoutingRef }} onFollowLink={follow} />);
+        expect(screen.getByRole('link').getAttribute('href')).toBe(href);
+    });
     it.each([{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }])('preserves durable browser links for modified clicks %j', init => {
         const fetcher = serve();
         render(<SentinelTodoConversationReferences item={item()} owner={owner} onFollowLink={follow} />);
