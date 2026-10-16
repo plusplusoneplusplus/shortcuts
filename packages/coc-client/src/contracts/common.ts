@@ -51,6 +51,8 @@ export interface NativeCapabilityStatus {
 
 export interface HealthResponse {
   status: 'ok' | string;
+  /** Durable installation identity; absent on servers without identity discovery. */
+  serverIdentity?: string;
   uptime: number;
   processCount: number;
   nativeFileIndex: NativeCapabilityStatus;

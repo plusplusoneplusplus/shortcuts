@@ -18,7 +18,7 @@
  */
 
 import type { ChatProvider } from '../tasks/task-types';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { ProcessIndexEntry, ProcessStore } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import { createCache, type CacheHandle } from '../cache';
 import { isRepoGroupWorkspaceId, readRepoGroup } from '../workspaces/repo-group-workspace';
@@ -47,6 +47,8 @@ export interface WorkspaceDirectoryEntry {
     server: string;
     serverKind: WorkspaceServerKind;
     online: boolean;
+    /** Durable destination identity, separate from the connection alias. */
+    serverIdentity?: string;
     /** Repo groups only. Member IDs use the same addressing as `id`. */
     members?: WorkspaceDirectoryMember[];
 }
@@ -90,6 +92,12 @@ export interface RemoteChatSummary {
     startTime?: string;
 }
 
+/** Internal read binding; never include endpoint details in tool output. */
+export interface RemoteChatReadTarget {
+    effectiveUrl: string;
+    serverIdentity?: string;
+}
+
 export interface WorkspaceDirectory {
     list(): Promise<WorkspaceDirectoryListing>;
     isRemoteAutoProviderRoutingAvailable?(serverId: string): Promise<boolean>;
@@ -100,6 +108,11 @@ export interface WorkspaceDirectory {
      * unreachable, and a plain Error when it rejects the request.
      */
     listRemoteChats(serverId: string, workspaceId: string, limit: number): Promise<RemoteChatSummary[]>;
+    /** Index-only metadata, bound to one endpoint/identity for the whole scan. */
+    getRemoteChatSummaries?(serverId: string, workspaceId: string, filter: {
+        limit: number; offset: number; since?: Date; until?: Date;
+        serverIdentity?: string; target?: RemoteChatReadTarget;
+    }): Promise<{ entries: ProcessIndexEntry[]; total: number; target: RemoteChatReadTarget }>;
     /** Start a chat on a remote server. Throws an Error with a model-facing message. */
     startRemoteChat(request: RemoteChatRequest): Promise<RemoteChatResult>;
 }
@@ -255,13 +268,21 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
         return entries;
     }
 
+    function assertCurrentTarget(serverId: string, target: RemoteChatReadTarget): void {
+        const current = options.remoteServers?.list().find(server => server.id === serverId);
+        if (!current || current.effectiveUrl !== target.effectiveUrl || current.serverIdentity !== target.serverIdentity) {
+            throw new Error('Remote destination changed during discovery');
+        }
+    }
+
     async function listRemote(server: RemoteServerWithRuntime): Promise<WorkspaceDirectoryEntry[]> {
         const baseUrl = server.effectiveUrl;
         if (!baseUrl) throw new Error('no reachable endpoint');
         const body = await requestJson(`${baseUrl}/api/workspaces`, listTimeoutMs);
         const workspaces: RawWorkspace[] = Array.isArray(body?.workspaces) ? body.workspaces : Array.isArray(body) ? body : [];
         const names = new Map(workspaces.map(ws => [ws.id, ws.name || ws.id]));
-        const base = { server: serverName(server), serverKind: server.kind, online: true };
+        const base = { server: serverName(server), serverKind: server.kind, online: true,
+            ...(server.serverIdentity ? { serverIdentity: server.serverIdentity } : {}) };
         return Promise.all(workspaces
             .filter(ws => typeof ws?.id === 'string' && (isRepoGroupWorkspaceId(ws.id) || !ws.virtual))
             .map(async (ws): Promise<WorkspaceDirectoryEntry> => {
@@ -289,14 +310,18 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
             const localWorkspaces = (await options.store.getWorkspaces()) as RawWorkspace[];
             const entries = listLocal(localWorkspaces);
             const servers: WorkspaceDirectoryServer[] = [{ server: LOCAL_SERVER_NAME, serverKind: 'local', online: true }];
-            const remotes = options.remoteServers?.list() ?? [];
+            // Snapshot mutable runtime records before any remote I/O.
+            const remotes = (options.remoteServers?.list() ?? []).map(server => ({ ...server }));
             const results = await Promise.all(remotes.map(async server => {
                 try {
                     const remoteEntries = await listRemote(server);
+                    assertCurrentTarget(server.id, { effectiveUrl: server.effectiveUrl!, serverIdentity: server.serverIdentity });
                     lastKnown.set(server.id, remoteEntries);
                     return { server, online: true, entries: remoteEntries };
                 } catch {
-                    const cached = lastKnown.get(server.id) ?? [];
+                    const current = options.remoteServers?.list().find(candidate => candidate.id === server.id);
+                    const cached = (lastKnown.get(server.id) ?? []).filter(entry => current
+                        && (!current.serverIdentity || !entry.serverIdentity || current.serverIdentity === entry.serverIdentity));
                     return {
                         server,
                         online: false,
@@ -309,6 +334,35 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
                 entries.push(...result.entries);
             }
             return { entries, servers };
+        },
+
+        async getRemoteChatSummaries(serverId, workspaceId, filter) {
+            const server = options.remoteServers?.list().find(s => s.id === serverId);
+            if (!server?.effectiveUrl) throw new RemoteServerOfflineError(server ? serverName(server) : serverId);
+            const target = { effectiveUrl: server.effectiveUrl, serverIdentity: server.serverIdentity };
+            if ((filter.serverIdentity && filter.serverIdentity !== target.serverIdentity)
+                || (filter.target && (filter.target.effectiveUrl !== target.effectiveUrl
+                    || filter.target.serverIdentity !== target.serverIdentity))) {
+                throw new Error('Remote destination changed during discovery');
+            }
+            const query = new URLSearchParams({
+                workspace: workspaceId, type: 'chat', limit: String(filter.limit), offset: String(filter.offset),
+            });
+            if (filter.since) query.set('since', filter.since.toISOString());
+            if (filter.until) query.set('until', filter.until.toISOString());
+            const body = await requestJson(`${target.effectiveUrl}/api/processes/summaries?${query}`, listTimeoutMs);
+            assertCurrentTarget(serverId, target);
+            if (!Array.isArray(body?.summaries) || !Number.isSafeInteger(body.total) || body.total < 0
+                || body.summaries.length > filter.limit
+                || body.summaries.some((entry: ProcessIndexEntry) => !entry
+                    || ['id', 'workspaceId', 'type', 'status', 'startTime', 'promptPreview']
+                        .some(key => typeof (entry as unknown as Record<string, unknown>)[key] !== 'string')
+                    || (entry.title !== undefined && typeof entry.title !== 'string')
+                    || (entry.customTitle !== undefined && typeof entry.customTitle !== 'string'))) {
+                throw new Error('Invalid remote chat summaries response');
+            }
+            // Preserve the raw page length for pagination; the caller verifies ownership.
+            return { entries: body.summaries, total: body.total, target };
         },
 
         async listRemoteChats(serverId, workspaceId, limit) {

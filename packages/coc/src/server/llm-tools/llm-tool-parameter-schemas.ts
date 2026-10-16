@@ -45,6 +45,13 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
         type: 'object',
         properties: {
             query: { type: 'string' },
+            title: { type: 'string' },
+            source: { type: 'string', enum: ['registered', 'dashboard'] },
+            target: {
+                type: 'object',
+                properties: { serverIdentity: { type: 'string' }, workspaceId: { type: 'string' } },
+                required: ['serverIdentity', 'workspaceId'], additionalProperties: false,
+            },
             workspaceId: { type: 'string' },
             since: { type: 'string' },
             until: { type: 'string' },
@@ -102,6 +109,7 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
         type: 'object',
         properties: {
             query: { type: 'string' },
+            source: { type: 'string', enum: ['registered', 'dashboard'] },
         },
     },
     ask_user: {

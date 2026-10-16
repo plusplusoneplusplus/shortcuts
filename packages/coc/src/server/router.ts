@@ -63,6 +63,8 @@ export interface RouterOptions {
     staticDir?: string;
     /** Injected process store so /api/health can read count. */
     store: ProcessStore;
+    /** Durable installation identity, supplied by server composition. */
+    serverIdentity?: string;
     /** Optional lookup function to resolve a wiki ID to its filesystem directory. */
     getWikiDir?: (wikiId: string) => string | undefined;
     /** Optional ETag for the SPA HTML response. Enables conditional caching (304 Not Modified). */
@@ -126,6 +128,7 @@ export function createRequestHandler(
                 const nativeRepoFiles = nativeRepoFilesStatus();
                 sendJson(res, {
                     status: 'ok',
+                    serverIdentity: options.serverIdentity,
                     uptime: process.uptime(),
                     processCount,
                     // Every capability is required, and each is surfaced so a

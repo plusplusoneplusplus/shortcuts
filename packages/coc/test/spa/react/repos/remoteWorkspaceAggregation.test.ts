@@ -656,3 +656,81 @@ describe('aggregateRemoteWorkspaces — remote repo groups', () => {
         expect(lookupCloneBaseUrl({ workspaceId: 'group-svc' })).toBe('http://127.0.0.1:4000');
     });
 });
+
+describe('aggregateRemoteWorkspaces — destination identity', () => {
+    it.each(['ssh', 'devtunnel'] as const)('retains %s identity offline and after a forwarded-port change', async kind => {
+        const server = { ...onlineServer('route', 'Remote', 'http://127.0.0.1:4000'), kind, serverIdentity: 'installation-a' } as RemoteServer;
+        serversList.mockResolvedValue([server]);
+        remoteResponses.set(server.effectiveUrl!, { workspaces: [ws('shared'), ws('group-a', 'Group', { virtual: true })] });
+        const live = await aggregateRemoteWorkspaces();
+        expect(live.sources[0].serverIdentity).toBe('installation-a');
+        expect([...live.workspaces, ...live.groupWorkspaces].map(row => row.remote.serverIdentity))
+            .toEqual(['installation-a', 'installation-a']);
+        expect(loadRemoteWorkspaceCache().route.serverIdentity).toBe('installation-a');
+
+        serversList.mockResolvedValue([{ ...server, status: 'offline', effectiveUrl: undefined, serverIdentity: undefined }]);
+        const offline = await aggregateRemoteWorkspaces();
+        expect(offline.sources[0].serverIdentity).toBe('installation-a');
+        expect(offline.workspaces[0].remote).toMatchObject({ serverIdentity: 'installation-a', offline: true });
+        expect(offline.groupWorkspaces[0].remote.serverIdentity).toBe('installation-a');
+        expect(constructedBaseUrls).toEqual(['http://127.0.0.1:4000']);
+
+        const newUrl = 'http://127.0.0.1:5678';
+        serversList.mockResolvedValue([{ ...server, effectiveUrl: newUrl }]);
+        remoteResponses.set(newUrl, { workspaces: [ws('shared')] });
+        const reconnected = await aggregateRemoteWorkspaces();
+        expect(reconnected.workspaces[0].remote).toMatchObject({ serverIdentity: 'installation-a', baseUrl: newUrl, offline: false });
+        expect(lookupCloneBaseUrl(buildRemoteCloneKey('route', 'shared'))).toBe(newUrl);
+    });
+
+    it('keeps equal workspace ids on distinct servers qualified by their destination identities', async () => {
+        serversList.mockResolvedValue(['a', 'b'].map(id => ({
+            ...onlineServer(id, id, `http://${id}`), serverIdentity: `installation-${id}`,
+        })));
+        remoteResponses.set('http://a', { workspaces: [ws('shared')] });
+        remoteResponses.set('http://b', { workspaces: [ws('shared')] });
+        const result = await aggregateRemoteWorkspaces();
+        expect(result.workspaces.map(row => [row.id, row.remote.serverId, row.remote.serverIdentity]))
+            .toEqual([['shared', 'a', 'installation-a'], ['shared', 'b', 'installation-b']]);
+    });
+
+    it.each(['offline', 'failed-read'] as const)('does not attribute cached rows to a replacement installation (%s)', async mode => {
+        saveRemoteWorkspaceCacheEntry('route', {
+            baseUrl: 'http://old', serverIdentity: 'installation-a', workspaces: [ws('shared')],
+        });
+        const server = { ...onlineServer('route', 'Replacement', 'http://new'), serverIdentity: 'installation-b' };
+        serversList.mockResolvedValue([{ ...server, status: mode === 'offline' ? 'offline' : 'online' }]);
+        remoteResponses.set('http://new', { listError: new Error('unreachable') });
+        const result = await aggregateRemoteWorkspaces();
+        expect(result.sources).toEqual([]);
+        expect(result.workspaces).toEqual([]);
+        expect(lookupCloneBaseUrl(buildRemoteCloneKey('route', 'shared'))).toBeUndefined();
+        expect(loadRemoteWorkspaceCache().route.serverIdentity).toBe('installation-a');
+    });
+
+    it('replaces cached ownership on a successful read from a replacement server', async () => {
+        saveRemoteWorkspaceCacheEntry('route', { baseUrl: 'http://old', serverIdentity: 'installation-a', workspaces: [ws('old')] });
+        serversList.mockResolvedValue([{ ...onlineServer('route', 'Replacement', 'http://new'), serverIdentity: 'installation-b' }]);
+        remoteResponses.set('http://new', { workspaces: [ws('shared')] });
+        const result = await aggregateRemoteWorkspaces();
+        expect(result.workspaces[0].remote.serverIdentity).toBe('installation-b');
+        expect(loadRemoteWorkspaceCache().route).toMatchObject({ serverIdentity: 'installation-b', workspaces: [ws('shared')] });
+    });
+
+    it('keeps unknown cached ownership unknown even when the current runtime has an identity', async () => {
+        saveRemoteWorkspaceCacheEntry('route', { baseUrl: 'http://old', workspaces: [ws('shared')] });
+        serversList.mockResolvedValue([{ ...offlineServer('route', 'Remote'), serverIdentity: 'installation-b' }]);
+        const result = await aggregateRemoteWorkspaces();
+        expect(result.sources[0].serverIdentity).toBeUndefined();
+        expect(result.workspaces[0].remote.serverIdentity).toBeUndefined();
+    });
+
+    it('clears cached identity when a successful workspace read has no runtime identity', async () => {
+        saveRemoteWorkspaceCacheEntry('route', { baseUrl: 'http://old', serverIdentity: 'installation-a', workspaces: [ws('old')] });
+        serversList.mockResolvedValue([onlineServer('route', 'Remote', 'http://new')]);
+        remoteResponses.set('http://new', { workspaces: [ws('shared')] });
+        const result = await aggregateRemoteWorkspaces();
+        expect(result.workspaces[0].remote.serverIdentity).toBeUndefined();
+        expect(loadRemoteWorkspaceCache().route.serverIdentity).toBeUndefined();
+    });
+});

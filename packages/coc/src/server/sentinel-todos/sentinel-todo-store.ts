@@ -67,12 +67,17 @@ const jobLinkSchema = z.object({
     specReady: z.object({ eventId: id, recordedAt: z.iso.datetime() }).optional(),
 });
 /**
- * A reference-only link from an item to an existing local conversation
+ * A reference-only link from an item to an existing conversation
  * (design notes, specs, prior discussion). It carries no execution state, is
  * never reviewed, and never changes the item's status.
  */
 const referenceSchema = z.object({
     kind: z.literal('conversation').optional(),
+    // Durable identity, never a forwarded URL or owner-registry routing alias.
+    serverIdentity: id.optional(),
+    serverLabel: z.string().min(1).max(200).optional(),
+    workspaceLabel: z.string().min(1).max(200).optional(),
+    verification: z.enum(['verified', 'unverified']).optional(),
     processId: id,
     workspaceId: id,
     openLink: z.string().min(1).max(2_000),
@@ -412,22 +417,6 @@ export class SentinelTodoStore {
             CREATE INDEX IF NOT EXISTS sentinel_todo_jobs_local_process
                 ON sentinel_todo_jobs (process_id, job_workspace_id)
                 WHERE server_key = '' AND kind = 'local' AND session_id IS NULL;
-            CREATE TABLE IF NOT EXISTS sentinel_todo_references (
-                workspace_id TEXT NOT NULL,
-                parent_process_id TEXT NOT NULL,
-                item_id TEXT NOT NULL,
-                process_id TEXT NOT NULL,
-                reference_order INTEGER NOT NULL CHECK (reference_order >= 0),
-                reference_workspace_id TEXT NOT NULL,
-                open_link TEXT NOT NULL,
-                title TEXT,
-                attached_at TEXT NOT NULL,
-                attached_by TEXT NOT NULL CHECK (attached_by IN ('user', 'sentinel')),
-                PRIMARY KEY (workspace_id, parent_process_id, item_id, process_id),
-                UNIQUE (workspace_id, parent_process_id, item_id, reference_order),
-                FOREIGN KEY (workspace_id, parent_process_id, item_id)
-                    REFERENCES sentinel_todo_items (workspace_id, parent_process_id, id) ON DELETE CASCADE
-            );
             CREATE TABLE IF NOT EXISTS sentinel_todo_dependencies (
                 workspace_id TEXT NOT NULL,
                 parent_process_id TEXT NOT NULL,
@@ -471,6 +460,37 @@ export class SentinelTodoStore {
             );
         `))();
         db.transaction(() => {
+            // Rebuild the additive table atomically when upgrading process-only keys.
+            const referenceColumns = db.prepare('PRAGMA table_info(sentinel_todo_references)').all<{ name: string }>();
+            const migrateReferences = referenceColumns.length > 0 && !referenceColumns.some(column => column.name === 'server_key');
+            if (migrateReferences) db.exec('ALTER TABLE sentinel_todo_references RENAME TO sentinel_todo_references_previous');
+            db.exec(`CREATE TABLE IF NOT EXISTS sentinel_todo_references (
+                workspace_id TEXT NOT NULL,
+                parent_process_id TEXT NOT NULL,
+                item_id TEXT NOT NULL,
+                server_key TEXT NOT NULL,
+                process_id TEXT NOT NULL,
+                reference_order INTEGER NOT NULL CHECK (reference_order >= 0),
+                reference_workspace_id TEXT NOT NULL,
+                open_link TEXT NOT NULL,
+                title TEXT,
+                attached_at TEXT NOT NULL,
+                attached_by TEXT NOT NULL CHECK (attached_by IN ('user', 'sentinel')),
+                metadata TEXT,
+                PRIMARY KEY (workspace_id, parent_process_id, item_id, server_key, reference_workspace_id, process_id),
+                UNIQUE (workspace_id, parent_process_id, item_id, reference_order),
+                FOREIGN KEY (workspace_id, parent_process_id, item_id)
+                    REFERENCES sentinel_todo_items (workspace_id, parent_process_id, id) ON DELETE CASCADE
+            )`);
+            if (migrateReferences) {
+                db.exec(`INSERT INTO sentinel_todo_references (
+                    workspace_id, parent_process_id, item_id, server_key, process_id, reference_order,
+                    reference_workspace_id, open_link, title, attached_at, attached_by
+                ) SELECT workspace_id, parent_process_id, item_id, '', process_id, reference_order,
+                    reference_workspace_id, open_link, title, attached_at, attached_by
+                    FROM sentinel_todo_references_previous`);
+                db.exec('DROP TABLE sentinel_todo_references_previous');
+            }
             const columns = db.prepare('PRAGMA table_info(sentinel_todo_items)').all<{ name: string }>();
             if (!columns.some(column => column.name === 'external_references')) {
                 db.exec("ALTER TABLE sentinel_todo_items ADD COLUMN external_references TEXT NOT NULL DEFAULT '[]'");
@@ -812,7 +832,8 @@ export class SentinelTodoStore {
                 throw new SentinelTodoError('invalid', 'Conversation references attach to normal items only');
             }
             const conversations = current.references.filter(isConversationReference);
-            if (conversations.some(ref => ref.processId === reference.processId)) {
+            if (conversations.some(ref => ref.processId === reference.processId
+                && ref.workspaceId === reference.workspaceId && ref.serverIdentity === reference.serverIdentity)) {
                 return { item: current, ledgerRevision: ledger.revision, changed: false };
             }
             if (current.revision !== expectedRevision) {
@@ -999,8 +1020,10 @@ export class SentinelTodoStore {
         for (const row of this.db.prepare(`SELECT * FROM sentinel_todo_references
             WHERE workspace_id = ? AND parent_process_id = ? ORDER BY reference_order`).all<ReferenceRow>(...scope)) {
             references.set(row.item_id, [...references.get(row.item_id) ?? [], parse(referenceSchema, {
+                ...JSON.parse(row.metadata ?? '{}'),
                 processId: row.process_id, workspaceId: row.reference_workspace_id, openLink: row.open_link,
                 attachedAt: row.attached_at, attachedBy: row.attached_by, ...optional('title', row.title),
+                ...optional('serverIdentity', row.server_key || null),
             })]);
         }
         const dependencies = new Map<string, SentinelTodoDependency[]>();
@@ -1060,13 +1083,14 @@ export class SentinelTodoStore {
 
     private writeReferences(owner: SentinelTodoOwner, item: SentinelTodoItem): void {
         const statement = this.db.prepare(`INSERT INTO sentinel_todo_references (
-            workspace_id, parent_process_id, item_id, process_id, reference_order,
-            reference_workspace_id, open_link, title, attached_at, attached_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT (workspace_id, parent_process_id, item_id, process_id) DO NOTHING`);
+            workspace_id, parent_process_id, item_id, server_key, process_id, reference_order,
+            reference_workspace_id, open_link, title, attached_at, attached_by, metadata
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (workspace_id, parent_process_id, item_id, server_key, reference_workspace_id, process_id) DO NOTHING`);
         item.references.filter(isConversationReference).forEach((ref, order) => statement.run(
-            owner.workspaceId, owner.processId, item.id, ref.processId, order,
+            owner.workspaceId, owner.processId, item.id, ref.serverIdentity ?? '', ref.processId, order,
             ref.workspaceId, ref.openLink, ref.title ?? null, ref.attachedAt, ref.attachedBy,
+            JSON.stringify({ serverLabel: ref.serverLabel, workspaceLabel: ref.workspaceLabel, verification: ref.verification }),
         ));
     }
 
@@ -1116,7 +1140,7 @@ interface ItemRow {
 
 interface ReferenceRow {
     item_id: string; process_id: string; reference_workspace_id: string; open_link: string;
-    title: string | null; attached_at: string; attached_by: string;
+    title: string | null; attached_at: string; attached_by: string; server_key: string; metadata: string | null;
 }
 
 interface JobRow {

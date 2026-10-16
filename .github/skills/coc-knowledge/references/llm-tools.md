@@ -57,7 +57,7 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `ask-user-tool.ts` | `ask_user` | Structured questions (select, multi-select, yes/no, confirm, text). Blocks until the user responds. Persists the pending payload on `AIProcess.pendingAskUser` and emits an SSE event. Results distinguish answers, skips, cancellations, `deferred: true` / `reason: "needs-context"` responses with optional notes, and `reason: "unavailable"` short-circuits on non-interactive turns. With `features.sensitiveInput` (default off, live) the schema adds a `sensitive-input` type with `sink` (`SENSITIVE_INPUT_SINKS`, v1 `browser.cookies`) and `sinkArgs` (`domain`, optional `viewId`); the flag is re-checked per call, and the payload carries sink/sinkArgs but never options, defaults or the secret. It answers only through `answerQuestions` with a strict `receipt` (`{ ok: true, count }` / `{ ok: false, reason: 'invalid-input' | 'import-failed' }`, checked by `parseSensitiveInputReceipt` in the route, live path and post-restart resume); the model gets `{ ok, sink, domain, count | reason }`, and single-answer paths (relay) are refused. `AskUserInline` keeps the paste in a masked field outside the draft store, calls the desktop preload `importCookies` (which returns `{ ok, count }`) through `sensitiveInputSink.ts`, then posts only the receipt; a dashboard without the bridge answers `{ skipped: true, reason: 'unavailable' }` (sensitive-only input), which resolves with the desktop guidance. Sensitive questions never reach the WhatsApp/Teams relay; on a connector-owned turn (`AskUserQuestionRelay.owns`) `buildAskUserWiring` resolves them `unavailable` and leaves them out of `pendingAskUser` and SSE. |
 | `resolve-comment-tool.ts` | `resolve_comment` | Marks inline comments resolved; tracks resolved IDs in a per-invocation Map. |
 | `save-classification-tool.ts` | `saveClassification` | Persists per-hunk diff classifications for PR/commit/branch-range review. Categories: `logic`, `mechanical`, `test`, `simple`, `generated`. New `test` hunks require `testFidelityComment`, `logic` hunks require `summaryComment`; critical metadata is validated rather than dropped. |
-| `search-conversations-tool.ts` | `search_conversations` | FTS5 full-text search over past conversations. Requires a SQLite-backed `ProcessStore`. |
+| `search-conversations-tool.ts` | `search_conversations` | FTS5 transcript search, recent metadata browsing, and workspace-scoped displayed-title lookup — see below. |
 | `send-to-conversation-tool.ts` | `send_to_conversation` | Create/post dispatch and explicit local cancellation — see below. |
 | `list-workspaces-tool.ts` | `list_workspaces` | Read-only local + remote repo/group discovery for `send_to_conversation` targets — see below. |
 | `canvas-tools.ts` | `write_canvas`, `read_canvas`, `extension_canvas` | Chat canvas side-panel artifacts — see below. |
@@ -70,6 +70,33 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `tavily-web-search-tool.ts` | `tavily_web_search` | Live web search via Tavily. Key from `~/.coc/providers.json`. Disabled by default. |
 | `submit-scrub-findings-tool.ts` | `submit_scrub_findings` | One structured findings batch from an owner-bound scrubber child chat. |
 | `sentinel-todos-tool.ts` | `sentinel_todos` | Sentinel chat to-do ledger bookkeeping — see below. |
+
+### search_conversations
+
+`title` selects literal case-insensitive displayed-title matching, scoped by explicit
+or invoking `workspaceId`, and cannot combine with `query`. It scans chat summaries
+in 200-row pages before matching-result pagination, excludes archived/current chats,
+and returns server/workspace labels plus `ambiguous` across all matches.
+Custom titles take precedence over generated titles and prompt previews. Ambiguous
+results instruct the Sentinel to ask which chat to attach. Remote clone keys use
+`WorkspaceDirectory.getRemoteChatSummaries` and the selected registered server's
+current endpoint (`GET /api/processes/summaries`). Results retain the clone key,
+connection alias, optional durable `serverIdentity` and raw workspace ID. Directory
+rows/cache retain observed identity; a known replacement excludes cached rows. A
+summary scan binds to the listing identity and one internal endpoint/identity target;
+changes before or during any page reject the scan. Delayed workspace reads cannot
+publish after destination changes. Only local searches exclude the invoking process
+ID; remote IDs may collide. Unavailable or invalid remote pages discard partial
+matches without local chat fallback. Title lookup reads no transcripts.
+
+`source: dashboard` requires `title` and the exact `target: { serverIdentity,
+workspaceId }` from dashboard workspace discovery; unknown identity is insufficient.
+The invoking workspace's late-bound dashboard relay handles the read and tool abort
+signal, including unregistered destinations. Results retain durable identities,
+server/workspace labels, producer verification, and full counts for pagination and
+ambiguity. This mode accepts only target/title and optional bounded limit/offset;
+workspaceId, query, time filters and summarization are rejected. Failures return
+unavailable without directory/local fallback or transport details.
 
 ### sentinel_todos
 
@@ -85,7 +112,21 @@ internal tracking and graph reads retain the full ledger), `create` (normal item
 optional `idempotencyKey` replay), `update` (requires `itemId` + `expectedRevision`; conflicts
 return `{ code: 'conflict', current }`), `attach_reference` (`itemId` + `expectedRevision` + `conversationId`,
 optional `conversationWorkspaceId` defaulting to the chat's; a reference-only link that never changes status or
-counts as a job/review). Creation accepts immutable `type: normal | manual` (default normal);
+counts as a job/review). Store deduplication uses durable server/workspace/process
+identity; omitted `serverIdentity` denotes the ledger's server. Reference records retain
+server/workspace labels and `verified | unverified` state. Local-row migration preserves
+links, order, attribution and ledger revisions without changing the process schema version.
+`conversationTarget: {serverIdentity, workspaceId}`, `conversationTitle` (discovery
+query) and optional `conversationOffset` select a dashboard result page (100-row
+check) for tool attachment. The service re-reads exact owner-scoped dashboard
+evidence through a late-bound relay, matches the process ID, and derives labels,
+title and verified/unverified state. Missing/misattributed/cancelled reads fail
+without local fallback. It re-proves Sentinel ownership before writing. Owner-server
+targets use local validation and canonical omitted identity, preserving deduplication;
+self checks qualify server/workspace/process. Durable remote links use
+`#chat-references/<serverIdentity>/<workspaceId>/<processId>` with encoded segments.
+The REST attachment command remains local-only and rejects remote metadata.
+Creation accepts immutable `type: normal | manual` (default normal);
 manual items require only a title, with optional Notes/Done when. `create`/`update` accept `priority` (`high`/`regular`,
 default `regular`; ledger metadata only, independent of status). `done`/`needs_attention` require a `reason` (also enforced by the store for non-user actors); `done` stores
 it as the reviewed outcome (`recordedBy: 'sentinel'`) unless `outcome` is given. Archive/restore
@@ -394,20 +435,27 @@ delivery. Reused receipts produce no new realtime events.
 ### list_workspaces
 
 Built in the same addon as `send_to_conversation` (same `enqueueChat` gate, own registry toggle,
-enabled by default), registered for every chat mode, and backed by the same
-`WorkspaceDirectory` (`src/server/servers/workspace-directory.ts`) so its ids always resolve in
-`send_to_conversation`. The route layer builds the directory over the store, `dataDir`, and the
-`RemoteServerRuntimeService` returned by `registerRemoteServerRoutes`, and publishes it as
-`SendToConversationRuntimeOptions.workspaceDirectory` through the late-bound
-`getSendToConversationRuntime` capability; without it the addon falls back to a local-only
-directory. Each remote's `/api/workspaces` (plus `/api/repo-groups/:id` for group members) is
-fetched at its effective URL with a 4s per-request timeout; a failure never fails the call —
-the server reports its last-known entries (module-level `createCache` namespace) with
-`online: false`, or zero entries when none are cached. Entries carry only `id`, `name`,
-`type` (`repo` | `group` with `members: [{ id, name }]`), `server` (`local` for this server),
-`serverKind`, and `online`; a `servers` array lists every consulted server. Optional `query` is a
-case-insensitive substring over repo and server names; results cap at 50 with `total` and
-`truncated`. The repo list never enters the system prompt.
+enabled by default), and registered for every chat mode. Default `source: registered`
+uses `WorkspaceDirectory` (`src/server/servers/workspace-directory.ts`); its IDs resolve
+in `send_to_conversation`. The route layer publishes the store/runtime-backed directory
+as `SendToConversationRuntimeOptions.workspaceDirectory`; standalone executors use a
+local-only directory. Remote workspace/group reads use current endpoints and 4s deadlines.
+Failed reads return last-known entries with `online: false`, or zero cached entries.
+
+Registered entries carry `id`, `name`, repo/group `type`, optional group `members`,
+`server`, `serverKind`, `online` and observed `serverIdentity`; `servers` lists consulted
+servers. Explicit `source: dashboard` uses `getDashboardDiscovery` from the same runtime
+bundle, resolving WebSocket infrastructure at call time. Owner scope comes from the
+invoking chat, never tool arguments. Dashboard observations include unregistered
+destinations and offline rows, with labels, raw workspace ID, optional identity and
+stable `target: { serverIdentity, workspaceId }` only for known identities.
+
+Dashboard targets are read-only selectors, not dispatch IDs or chat ownership proof.
+Unknown identity stays unknown. Missing/disconnected/stale dashboard reads return a
+generic error without registered/local fallback. Both sources filter case-insensitive
+workspace/server labels before the 50-row cap and return `total`/`truncated`.
+Dashboard replies carry `source: dashboard`; they omit registry `servers` and aliases.
+Ambiguous labels require clarification. Workspace listings never enter system prompts.
 
 Post mode supplies `processId`, ignores any `provider` argument so native session continuity
 stays on the existing conversation's provider, expands `effortTier` against that provider, and

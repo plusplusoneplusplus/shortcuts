@@ -17,6 +17,7 @@ import {
 import { useApp } from './AppContext';
 import { useQueue } from './QueueContext';
 import { fetchUnseenCount, SEEN_STATE_CHANGED_EVENT, type SeenStateChange } from '../hooks/preferences/seenStateApi';
+import { publishDashboardTopology } from '../shared/dashboard-discovery/topology';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { countTasks } from '../repos/repoGrouping';
 import { isContainerMode } from '../utils/config';
@@ -123,6 +124,8 @@ export function ReposProvider({ children }: { children: ReactNode }) {
     const [loading, setLoading] = useState(true);
     const [remoteWarnings, setRemoteWarnings] = useState<string[]>([]);
     const [remoteGroupWorkspaces, setRemoteGroupWorkspaces] = useState<RemoteWorkspaceInfo[]>([]);
+    const [pageOriginIdentity, setPageOriginIdentity] = useState<string>();
+    const [pageOriginObservation, setPageOriginObservation] = useState(0);
     const aggregatedChats = useRepoGroupAggregatedChatsEnabled();
     const [groupBadges, setGroupBadges] = useState<Record<string, RepoGroupUnreadBadge>>({});
     const updateGroupBadge = useCallback((key: string, badge: RepoGroupUnreadBadge | undefined) => {
@@ -137,6 +140,39 @@ export function ReposProvider({ children }: { children: ReactNode }) {
         ...appState.workspaces.filter(workspace => isRepoGroupWorkspaceId(workspace.id)),
         ...remoteGroupWorkspaces,
     ] : [], [aggregatedChats, appState.workspaces, remoteGroupWorkspaces]);
+
+    useEffect(() => {
+        setPageOriginIdentity(undefined);
+        const controller = new AbortController();
+        const timer = setTimeout(() => {
+            controller.abort();
+            console.warn('Could not observe dashboard page-origin identity: timed out');
+        }, 5000);
+        void getCocClientFor().health.get({ signal: controller.signal }).then(health => {
+            if (controller.signal.aborted) return;
+            const identity = health?.serverIdentity;
+            if (typeof identity === 'string' && identity.trim().length > 0 && identity.length <= 512) {
+                setPageOriginIdentity(identity);
+            } else if (identity !== undefined) {
+                console.warn('Could not observe dashboard page-origin identity: invalid identity');
+            }
+        }).catch(() => {
+            if (!controller.signal.aborted) console.warn('Could not observe dashboard page-origin identity');
+        }).finally(() => clearTimeout(timer));
+        return () => {
+            controller.abort();
+            clearTimeout(timer);
+        };
+    }, [pageOriginObservation]);
+
+    useEffect(() => {
+        publishDashboardTopology(appState.selectedRepoId, [
+            ...appState.workspaces,
+            ...repos.filter(repo => isRemoteWorkspace(repo.workspace)).map(repo => repo.workspace),
+            ...remoteGroupWorkspaces,
+        ], pageOriginIdentity);
+    }, [appState.selectedRepoId, appState.workspaces, repos, remoteGroupWorkspaces, pageOriginIdentity]);
+    useEffect(() => () => publishDashboardTopology(null, []), []);
 
     const selectedRepoIdRef = useRef<string | null>(null);
 
@@ -558,6 +594,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             }
         }, [dispatch, refreshPipelinesForWorkspace, refreshGitInfoForWorkspace, refreshAttentionForEvent, fetchRepos]),
         onConnect: useCallback(() => {
+            setPageOriginObservation(value => value + 1);
             if (hasConnectedOnceRef.current) {
                 fetchRepos('reconnect');
                 return;

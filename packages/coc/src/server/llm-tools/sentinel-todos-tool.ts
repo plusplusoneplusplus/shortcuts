@@ -48,7 +48,7 @@ export interface SentinelTodosToolDeps {
     reviewOnly?: boolean;
     service: Pick<SentinelTodoService, 'list' | 'create' | 'update' | 'linkJob' | 'attachReference'>
         & Partial<Pick<SentinelTodoService, 'setDependencies' | 'dependenciesEnabled' | 'bindPrOutput' | 'acceptArtifact' | 'evaluateDependencies' | 'dependencyActions'
-            | 'tagsEnabled' | 'getTags' | 'createTag' | 'updateTag' | 'deleteTag' | 'suggestTags' | 'externalReferencesEnabled'>>;
+            | 'attachDashboardReference' | 'tagsEnabled' | 'getTags' | 'createTag' | 'updateTag' | 'deleteTag' | 'suggestTags' | 'externalReferencesEnabled'>>;
     /** The invoking Sentinel chat; every call is scoped to this ledger. */
     owner: SentinelTodoOwner;
     /** Present only when existing triggers.enabled infrastructure is available. */
@@ -82,6 +82,9 @@ export interface SentinelTodosArgs {
     idempotencyKey?: string;
     conversationId?: string;
     conversationWorkspaceId?: string;
+    conversationTarget?: { serverIdentity: string; workspaceId: string };
+    conversationTitle?: string;
+    conversationOffset?: number;
     triggerId?: string;
     prUrl?: string;
     instruction?: string;
@@ -137,9 +140,12 @@ const DESCRIPTION =
     '`execution.review` together with the overall `status` and a short `reason`. Delivery alone never acknowledges ' +
     'assessment; acknowledge only the results you actually judged, not running follow-ups. Unrelated edits do not ' +
     'clear pending reviews. A newer user verdict supersedes stale job reviews; preserve it. ' +
-    '`attach_reference` links an existing local conversation (`conversationId`, plus `conversationWorkspaceId` when it is not this ' +
+    '`attach_reference` links an existing conversation (`conversationId`, plus `conversationWorkspaceId` when it is not this ' +
     'chat\'s workspace) to a normal item as a reference only, with `itemId` and `expectedRevision`: it never sends the ' +
     'conversation anything, never changes status, and is not a job or review evidence. Re-attaching is a no-op. ' +
+    'For dashboard-visible chats, first use list_workspaces and search_conversations with source dashboard. Ask the user when matches are ambiguous. ' +
+    'Pass the selected conversationTarget (exact serverIdentity/workspaceId), conversationTitle (discovery search text), and conversationOffset (selected result page offset, default 0). ' +
+    'The destination is checked again; cached offline matches attach as unverified. Never invent labels or verification. ' +
     'For remote evidence, inspect `unavailable` (remote) jobs in their owning chat and record the reviewed state explicitly. ' +
     MANUAL_TRACKING_GUIDANCE + ' Create manual items with `type: manual`; Notes and Done when are optional. ' +
     'Item type is immutable; existing items remain normal. If a call fails, tell the user the item is not tracked.';
@@ -247,6 +253,11 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                 expectedRevision: { type: 'number', description: 'The item revision for item edits, or rule revision for trigger lifecycle actions.' },
                 conversationId: { type: 'string', description: 'attach_reference: process ID of the existing conversation to reference.' },
                 conversationWorkspaceId: { type: 'string', description: 'attach_reference: that conversation\'s workspace (default: this chat\'s).' },
+                conversationTarget: { type: 'object', additionalProperties: false, required: ['serverIdentity', 'workspaceId'],
+                    properties: { serverIdentity: { type: 'string' }, workspaceId: { type: 'string' } },
+                    description: 'attach_reference: exact target from dashboard discovery; do not combine with conversationWorkspaceId.' },
+                conversationTitle: { type: 'string', description: 'attach_reference with conversationTarget: literal title query used to discover the selected chat.' },
+                conversationOffset: { type: 'integer', minimum: 0, description: 'attach_reference: offset of the discovery page containing the selected chat (100-row check, default 0).' },
                 title: { type: 'string', description: 'create/update: short item title.' },
                 completionCondition: {
                     type: 'string',
@@ -344,7 +355,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
             },
             required: ['action'],
         },
-        handler: async (args: SentinelTodosArgs): Promise<SentinelTodosResult> => {
+        handler: async (args: SentinelTodosArgs, invocation): Promise<SentinelTodosResult> => {
             try {
                 if (deps.reviewOnly) {
                     const allowed = args?.action === 'list'
@@ -529,6 +540,19 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                     case 'attach_reference': {
                         if (!args.itemId || typeof args.expectedRevision !== 'number' || !args.conversationId) {
                             return { error: 'attach_reference requires itemId, expectedRevision and conversationId.', code: 'invalid' };
+                        }
+                        if (args.conversationTarget !== undefined) {
+                            if (args.conversationWorkspaceId !== undefined || !args.conversationTitle || !service.attachDashboardReference) {
+                                return { error: 'Dashboard attachment requires conversationTarget and conversationTitle, without conversationWorkspaceId.', code: 'invalid' };
+                            }
+                            const { item, attached } = await service.attachDashboardReference(owner, args.itemId, args.expectedRevision, {
+                                processId: args.conversationId, target: args.conversationTarget,
+                                title: args.conversationTitle, offset: args.conversationOffset,
+                            }, 'sentinel', invocation?.signal);
+                            return { item, attached };
+                        }
+                        if (args.conversationTitle !== undefined || args.conversationOffset !== undefined) {
+                            return { error: 'Dashboard discovery fields require conversationTarget.', code: 'invalid' };
                         }
                         const { item, attached } = await service.attachReference(owner, args.itemId, args.expectedRevision, {
                             processId: args.conversationId, workspaceId: args.conversationWorkspaceId ?? owner.workspaceId,

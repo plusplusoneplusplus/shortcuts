@@ -8,7 +8,8 @@
  * so existing importers keep working.
  */
 
-import { useEffect, useLayoutEffect, useCallback, useRef } from 'react';
+import { useEffect, useLayoutEffect, useCallback, useRef, useState } from 'react';
+import { DashboardChatReferenceRoute } from './DashboardChatReferenceRoute';
 import { useApp } from '../contexts/AppContext';
 import { useVisibleDashboardTab } from './useVisibleDashboardTab';
 import { useQueue } from '../contexts/QueueContext';
@@ -60,6 +61,8 @@ export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = SHOW_WIKI_TAB
     : Object.fromEntries(Object.entries(ALL_REPO_TAB_SHORTCUTS).filter(([, v]) => v !== 'wiki'));
 
 export function Router() {
+    const [referenceHash, setReferenceHash] = useState<string | null>(() =>
+        location.hash === '#chat-references' || location.hash.startsWith('#chat-references/') ? location.hash : null);
     const { state, dispatch } = useApp();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
     const processDeepLinkContextRef = useRef({
@@ -103,8 +106,9 @@ export function Router() {
 
                 isSchedulesInSlide: isSchedulesInScheduledSlideEnabled,
             };
-            const { effects } = resolveDashboardRoute(location.hash, ctx);
-            applyRouteEffects(effects, { dispatch, queueDispatch });
+            const resolution = resolveDashboardRoute(location.hash, ctx);
+            setReferenceHash(resolution.chatReference !== undefined ? location.hash : null);
+            applyRouteEffects(resolution.effects, { dispatch, queueDispatch });
         };
         handleHash();
         window.addEventListener('hashchange', handleHash);
@@ -116,6 +120,7 @@ export function Router() {
     //   Alt+Q → opens the Queue Task dialog for the selected repo
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
+            if (referenceHash !== null) return;
             const target = e.target as HTMLElement;
             if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
             if (state.activeTab !== 'repos' || !state.selectedRepoId) return;
@@ -164,6 +169,7 @@ export function Router() {
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
     }, [
+        referenceHash,
         dispatch,
         queueDispatch,
         queueState.selectedTaskId,
@@ -179,6 +185,8 @@ export function Router() {
         state.selectedRepoId,
         state.settingsSection,
     ]);
+
+    if (referenceHash !== null) return <DashboardChatReferenceRoute key={referenceHash} hash={referenceHash} />;
 
     // `renderedTab` (above) is the last non-admin view, so it stays mounted —
     // and keeps its scroll position — behind the admin dialog, and is simply

@@ -9,7 +9,7 @@ import { renderHook } from '@testing-library/react';
 const { mockUseRepos, connectSpy, sockets } = vi.hoisted(() => ({
     mockUseRepos: vi.fn(),
     connectSpy: vi.fn(),
-    sockets: new Map<string, { close: ReturnType<typeof vi.fn>; opts: any }>(),
+    sockets: new Map<string, { close: ReturnType<typeof vi.fn>; opts: any; send: ReturnType<typeof vi.fn> }>(),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
@@ -23,14 +23,18 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             connect: (opts: any) => {
                 connectSpy(baseUrl, opts);
                 const close = vi.fn();
-                sockets.set(baseUrl, { close, opts });
-                return { close };
+                const send = vi.fn();
+                sockets.set(baseUrl, { close, opts, send });
+                return { close, send };
             },
         },
     }),
 }));
 
 import { useRemoteCloneEvents } from '../../../../src/server/spa/client/react/features/remote-shell/RemoteCloneEventBridge';
+
+import { publishDashboardTopology } from '../../../../src/server/spa/client/react/shared/dashboard-discovery/topology';
+import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 
 function remoteRepo(id: string, baseUrl: string, connection: string) {
     return {
@@ -54,6 +58,34 @@ function localRepo(id: string) {
 }
 
 describe('useRemoteCloneEvents', () => {
+    it('serves topology on the existing remote-owner socket and keeps requests out of global events', () => {
+        const repo = remoteRepo('w1', 'http://127.0.0.1:5000', 'online');
+        const selected = buildRemoteCloneKey(repo.workspace.remote.serverId, 'w1');
+        publishDashboardTopology(selected, [repo.workspace]);
+        mockUseRepos.mockReturnValue({ repos: [repo] });
+        const onMessage = vi.fn();
+        const listener = vi.fn();
+        window.addEventListener('coc-remote-ws-message', listener);
+        const { unmount } = renderHook(() => useRemoteCloneEvents(onMessage, selected));
+        const socket = sockets.get(repo.workspace.baseUrl)!;
+        socket.opts.onOpen();
+        const capability = socket.send.mock.lastCall![0];
+        expect(capability).toEqual(expect.objectContaining({ type: 'dashboard-discovery-capability', workspaceId: 'w1' }));
+        socket.opts.onMessage({ type: 'dashboard-workspaces-request', request: {
+            id: 'req', workspaceId: 'w1', revision: capability.revision,
+        } });
+        expect(socket.send.mock.lastCall![0]).toEqual({ type: 'dashboard-workspaces-result', reply: {
+            id: 'req', ok: true, workspaces: [expect.objectContaining({ workspaceId: 'w1', online: true })],
+        } });
+        expect(onMessage).not.toHaveBeenCalled();
+        expect(listener).not.toHaveBeenCalled();
+        expect(connectSpy).toHaveBeenCalledOnce();
+        unmount();
+        expect(socket.send).toHaveBeenLastCalledWith({ type: 'dashboard-discovery-clear' });
+        window.removeEventListener('coc-remote-ws-message', listener);
+        publishDashboardTopology(null, []);
+    });
+
     beforeEach(() => {
         vi.clearAllMocks();
         sockets.clear();

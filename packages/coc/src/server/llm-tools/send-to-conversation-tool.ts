@@ -171,6 +171,8 @@ export type ValidateSendToConversationProviderFn = (provider: ChatProvider) => P
 export type GetSendToConversationEffortTiersFn = (provider: ChatProvider) => StoredEffortTiersMap | undefined;
 
 export interface SendToConversationRuntimeOptions {
+    /** Read-only discovery is late-bound because WebSocket infrastructure starts after routes. */
+    getDashboardDiscovery?: () => import('@plusplusoneplusplus/coc-client').DashboardDiscoveryRuntime | undefined;
     /** Shared process/queue cancellation lifecycle, bound on the owning local server. */
     cancelConversation?: (processId: string, workspaceId?: string) => Promise<ConversationCancellationResult>;
     /** Capability check only; routing/quota errors must not trigger fallback. */

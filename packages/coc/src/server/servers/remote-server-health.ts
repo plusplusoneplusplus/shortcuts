@@ -104,13 +104,15 @@ export async function checkRemoteServerHealth(target: HealthTarget): Promise<Rem
             };
         }
 
-        const health = await healthRes.json() as { uptime?: unknown; processCount?: unknown };
+        const health = await healthRes.json() as { uptime?: unknown; processCount?: unknown; serverIdentity?: unknown };
         const version = await versionRes.json() as { version?: unknown; commit?: unknown };
         const serverName = await fetchOptionalServerName(target.baseUrl);
         return {
             serverId: target.serverId,
             kind: target.kind,
             status: 'online',
+            serverIdentity: typeof health.serverIdentity === 'string' && health.serverIdentity.trim()
+                ? health.serverIdentity : undefined,
             effectiveUrl: target.baseUrl,
             version: typeof version.version === 'string' ? version.version : undefined,
             commit: typeof version.commit === 'string' ? version.commit : undefined,

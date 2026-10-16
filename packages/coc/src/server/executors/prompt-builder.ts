@@ -35,7 +35,7 @@ import { createSentinelTodosTool, createSentinelTodoTracking, MANUAL_TRACKING_GU
 import { SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
 import { createSendToConversationTool, type EnqueueChatFn, type SendMessageFn, type SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { createListWorkspacesTool } from '../llm-tools/list-workspaces-tool';
-import { createWorkspaceDirectory } from '../servers/workspace-directory';
+import { createWorkspaceDirectory, type WorkspaceDirectory } from '../servers/workspace-directory';
 import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
 import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
@@ -440,6 +440,8 @@ export function buildSearchConversationsAddon(
     store: ProcessStore,
     workspaceId?: string,
     currentProcessId?: string,
+    directory?: WorkspaceDirectory,
+    getDashboardDiscovery?: SendToConversationRuntimeOptions['getDashboardDiscovery'],
 ): { tools: Tool<any>[]; suffix: string } {
     if (!store.searchConversations) {
         return { tools: [], suffix: '' };
@@ -449,6 +451,8 @@ export function buildSearchConversationsAddon(
         store,
         workspaceId,
         currentProcessId,
+        directory,
+        getDashboardDiscovery,
     });
     const { tool: getTool } = createGetConversationTool({ store, workspaceId });
 
@@ -503,7 +507,9 @@ export function buildSendToConversationAddon(
         store, workspaceId, enqueueChat, sendMessage, launchRalph, parentProcessId, runtime: toolRuntime,
         ...(sentinelTodos ? { todoTracking: createSentinelTodoTracking(sentinelTodos) } : {}),
     });
-    const { tool: listTool } = createListWorkspacesTool({ directory });
+    const { tool: listTool } = createListWorkspacesTool({
+        directory, workspaceId, getDashboardDiscovery: runtime?.getDashboardDiscovery,
+    });
 
     // No prose suffix — the tool descriptions carry their own guidance.
     return { tools: [tool, listTool], suffix: '' };

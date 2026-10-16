@@ -892,7 +892,17 @@ directly. `triggers-panel.test.tsx` covers states, controls and ownership.
 
 ### To-do excursions
 
-A plain primary click on an in-app (`#…`) Job or Ref link starts one in-memory
+`SentinelTodoConversationReferences` displays server/workspace labels and cached
+unverified status. React and return-focus keys include server/workspace/process
+identity. Same-server references use the ledger owner's concrete clone route.
+A plain click on a durable remote reference verifies it through
+`resolveDashboardChatReference` before navigation or excursion creation. Ten-second
+deadlines, new clicks, hash navigation, owner changes and unmount cancel pending
+reads and suppress late results. Unavailable targets keep the current chat and
+show retry guidance; opening never changes the ledger's stored verification.
+Modified clicks keep durable hrefs for the browser.
+
+A plain primary click on an in-app (`#…`) Job or verified Ref link starts one in-memory
 excursion per window (`sentinelTodoExcursion.ts`): the origin's panel scope, chat,
 ledger owner, published title and owner-qualified chat route, the followed link,
 and up to five hosted chats visited since. The owner workspace/process defines

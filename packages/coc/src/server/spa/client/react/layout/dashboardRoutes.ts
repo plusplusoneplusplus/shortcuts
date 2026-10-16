@@ -38,6 +38,7 @@ import { isRepoGroupWorkspaceId } from '../repos/virtualWorkspaceIds';
 import { buildRemoteCloneKey, parseRemoteCloneKey } from '../repos/cloneIdentity';
 import { buildGitRouteSuffix, parseGitRoute } from './gitRoute';
 import { resolveRepoGroupSection } from '../repos/repoGroupSettingsSections';
+import { parseDashboardChatReference, type DashboardChatReference } from '../shared/dashboard-discovery/chat-reference';
 import type { AppAction, AppContextState } from '../contexts/AppContext';
 import type { QueueAction, QueueContextState } from '../contexts/QueueContext';
 import {
@@ -672,6 +673,8 @@ export type RouteEffect =
 
 export interface RouteResolution {
     effects: RouteEffect[];
+    /** Present for the reserved durable-reference route, including invalid links. */
+    chatReference?: DashboardChatReference | null;
 }
 
 /**
@@ -908,6 +911,9 @@ function resolveReposRoute(hashIn: string, ctx: RouteContext, effects: RouteEffe
  */
 export function resolveDashboardRoute(rawHash: string, ctx: RouteContext): RouteResolution {
     const effects: RouteEffect[] = [];
+    if (rawHash === '#chat-references' || rawHash.startsWith('#chat-references/')) {
+        return { effects, chatReference: parseDashboardChatReference(rawHash) };
+    }
     // Strip any `?query` before parsing the path — it's metadata for components
     // (which read it from location.hash directly), never part of the routed path.
     const hash = stripHash(rawHash).split('?')[0];

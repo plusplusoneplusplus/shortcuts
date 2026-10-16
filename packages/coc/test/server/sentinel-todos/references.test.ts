@@ -6,11 +6,13 @@
 import * as http from 'node:http';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AIProcess } from '@plusplusoneplusplus/forge';
+import { DashboardDiscoveryRelay } from '../../../src/server/streaming/dashboard-discovery-relay';
+import type { DashboardChatSearchResult, DashboardDiscoveryRuntime } from '@plusplusoneplusplus/coc-client';
 import { CocClient } from '@plusplusoneplusplus/coc-client';
 import {
     MAX_TODO_REFERENCES, SentinelTodoError, SentinelTodoStore, type SentinelTodoActor,
 } from '../../../src/server/sentinel-todos/sentinel-todo-store';
-import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
+import { SentinelTodoService, type SentinelTodoChange } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { registerSentinelTodoRoutes } from '../../../src/server/sentinel-todos/sentinel-todo-routes';
 import { createSentinelTodosTool } from '../../../src/server/llm-tools/sentinel-todos-tool';
 import { createSentinelTodosDomain } from '../../../src/server/storage/snapshot/delegated-jobs-domain';
@@ -41,7 +43,7 @@ describe('Sentinel to-do conversation references', () => {
     let database: ReturnType<typeof createTodoTestDatabase>;
     let todos: SentinelTodoStore;
     let service: SentinelTodoService;
-    let onChange: ReturnType<typeof vi.fn>;
+    let onChange: ReturnType<typeof vi.fn<(change: SentinelTodoChange) => void>>;
     const processes = new Map<string, AIProcess>();
 
     const pendingItem = () => todos.create(owner, {
@@ -94,6 +96,75 @@ describe('Sentinel to-do conversation references', () => {
             expectTodoError(() => todos.attachReference(owner, item.id, 1,
                 { ...input, processId: 'queue_remote_repo' }, 'user'), 'conflict');
             expect(todos.get(owner).items[0].references).toHaveLength(1);
+        });
+
+        it('distinguishes server and workspace collisions, but replays the same identity before CAS', () => {
+            const item = pendingItem();
+            const base = { processId: 'same-chat', workspaceId: 'ws-a', openLink: '#exact', title: 'Cached chat' };
+            const targets = [base, { ...base, workspaceId: 'ws-b' },
+                { ...base, serverIdentity: 'server-a', serverLabel: 'SSH host', workspaceLabel: 'Workspace A', verification: 'unverified' as const },
+                { ...base, serverIdentity: 'server-b', serverLabel: 'Tunnel host', verification: 'verified' as const },
+                { ...base, serverIdentity: 'server-a', workspaceId: 'ws-b' }];
+            let accepted = item;
+            for (const target of targets) {
+                accepted = todos.attachReference(owner, item.id, accepted.revision, target, 'sentinel').item;
+            }
+            expect(accepted.references).toHaveLength(5);
+            expect(accepted).toMatchObject({ status: item.status, statusReason: item.statusReason, jobs: [] });
+            expect(accepted.userVerdictRevision).toBe(item.userVerdictRevision);
+            accepted = todos.update(owner, item.id, accepted.revision, { notes: 'Retain all conversation identities' }, 'user').item;
+            const ledger = todos.get(owner);
+            for (const target of targets) {
+                expect(todos.attachReference(owner, item.id, 1, { ...target, title: 'Different cached title' }, 'user'))
+                    .toEqual({ item: accepted, ledgerRevision: ledger.revision, changed: false });
+            }
+            expectTodoError(() => todos.attachReference(owner, item.id, 1,
+                { ...base, serverIdentity: 'server-c' }, 'user'), 'conflict');
+            database.close();
+            const reopened = createTodoTestDatabase(database.dataDir);
+            try { expect(new SentinelTodoStore(reopened.db).get(owner)).toEqual(ledger); }
+            finally { reopened.close(); }
+        });
+
+        it('migrates existing local references without changing their data or shared schema version', () => {
+            const item = pendingItem();
+            const local = todos.attachReference(owner, item.id, 1,
+                { processId: 'same-chat', workspaceId: 'ws-a', openLink: '#local', title: 'Local chat' }, 'user');
+            const version = database.db.pragma('user_version', { simple: true });
+            database.db.exec(`ALTER TABLE sentinel_todo_references RENAME TO reference_backup;
+                CREATE TABLE sentinel_todo_references (
+                    workspace_id TEXT NOT NULL, parent_process_id TEXT NOT NULL, item_id TEXT NOT NULL,
+                    process_id TEXT NOT NULL, reference_order INTEGER NOT NULL CHECK (reference_order >= 0),
+                    reference_workspace_id TEXT NOT NULL, open_link TEXT NOT NULL, title TEXT,
+                    attached_at TEXT NOT NULL, attached_by TEXT NOT NULL CHECK (attached_by IN ('user', 'sentinel')),
+                    PRIMARY KEY (workspace_id, parent_process_id, item_id, process_id),
+                    UNIQUE (workspace_id, parent_process_id, item_id, reference_order),
+                    FOREIGN KEY (workspace_id, parent_process_id, item_id)
+                        REFERENCES sentinel_todo_items (workspace_id, parent_process_id, id) ON DELETE CASCADE
+                );
+                INSERT INTO sentinel_todo_references SELECT workspace_id, parent_process_id, item_id,
+                    process_id, reference_order, reference_workspace_id, open_link, title, attached_at, attached_by FROM reference_backup;
+                DROP TABLE reference_backup;`);
+            const migrated = new SentinelTodoStore(database.db);
+            expect(migrated.get(owner)).toEqual({ revision: local.ledgerRevision, items: [local.item] });
+            expect(database.db.pragma('user_version', { simple: true })).toBe(version);
+            const remote = migrated.attachReference(owner, item.id, 2, { processId: 'same-chat', workspaceId: 'ws-a',
+                serverIdentity: 'other-server', openLink: '#remote', verification: 'unverified' }, 'sentinel');
+            expect(new SentinelTodoStore(database.db).get(owner).items[0]).toEqual(remote.item);
+            expect(remote.item.references).toHaveLength(2);
+            expect(database.db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+            database.db.prepare('DELETE FROM sentinel_todo_items WHERE id = ?').run(item.id);
+            expect(database.db.prepare('SELECT COUNT(*) AS count FROM sentinel_todo_references').get()).toEqual({ count: 0 });
+        });
+
+        it('rejects invalid stable identities and verification metadata without writing', () => {
+            const item = pendingItem();
+            const input = { processId: 'chat', workspaceId: 'ws-a', openLink: '#exact' };
+            for (const metadata of [{ serverIdentity: '' }, { serverIdentity: 'x'.repeat(201) },
+                { verification: 'offline' }, { serverLabel: '' }, { workspaceLabel: 'x'.repeat(201) }]) {
+                expectTodoError(() => todos.attachReference(owner, item.id, 1, { ...input, ...metadata } as never, 'user'), 'invalid');
+            }
+            expect(todos.get(owner).items[0]).toEqual(item);
         });
 
         it('rejects manual items, system actors, unknown items, unknown fields and the limit', () => {
@@ -174,6 +245,181 @@ describe('Sentinel to-do conversation references', () => {
         });
     });
 
+    describe('dashboard attachment', () => {
+        const target = { serverIdentity: 'remote-installation', workspaceId: 'ws-a' };
+        const result = (overrides: Partial<DashboardChatSearchResult> = {}): DashboardChatSearchResult => ({
+            target, serverLabel: 'My remote', workspaceLabel: 'Remote repo', serverKind: 'ssh',
+            verification: 'verified', total: 2,
+            conversations: [{ processId: owner.processId, title: 'Browser design' },
+                { processId: 'queue_design', title: 'Browser design again' }], ...overrides,
+        });
+        const setup = (read: ReturnType<typeof vi.fn<DashboardDiscoveryRuntime['searchChats']>> = vi.fn(async () => result())) => {
+            const runtime = { listWorkspaces: vi.fn(), searchChats: read };
+            let active: typeof runtime | undefined = runtime;
+            service = new SentinelTodoService({ todos, onChange, serverIdentity: 'local-installation',
+                store: { getProcess: async id => processes.get(id) }, getDashboardDiscovery: () => active });
+            const tool = createSentinelTodosTool({ service, owner }).tool;
+            return { read, runtime, setActive: (value: typeof active) => { active = value; },
+                call: (args: Record<string, unknown>, signal?: AbortSignal) => (tool as any).handler({
+                    action: 'attach_reference', conversationId: owner.processId, conversationTarget: target,
+                    conversationTitle: 'Browser', ...args,
+                }, { signal }) as Promise<any> };
+        };
+
+        it.each(['ssh', 'devtunnel'] as const)('attaches exact unregistered %s matches with server-derived metadata and persists', async serverKind => {
+            const { call, read } = setup(vi.fn(async () => result({ serverKind })));
+            const item = pendingItem();
+            const attached = await call({ itemId: item.id, expectedRevision: 1, serverLabel: 'forged', verification: 'unverified' });
+            expect(attached).toMatchObject({ attached: true, item: { revision: 2, status: 'todo', statusReason: PENDING, jobs: [],
+                references: [{ ...target, processId: owner.processId, serverLabel: 'My remote', workspaceLabel: 'Remote repo',
+                    verification: 'verified', title: 'Browser design', attachedBy: 'sentinel',
+                    openLink: '#chat-references/remote-installation/ws-a/queue_parent' }] } });
+            expect(read).toHaveBeenCalledWith(owner.workspaceId, { target, title: 'Browser', limit: 100, offset: 0 }, undefined);
+            expect(new SentinelTodoStore(database.db).get(owner).items[0]).toEqual(attached.item);
+            expect(onChange).toHaveBeenCalledTimes(1);
+        });
+
+        it('preserves unverified cached references, attribution and metadata on a stale-revision replay', async () => {
+            const { call, read } = setup(vi.fn(async () => result({ verification: 'unverified' })));
+            const item = pendingItem();
+            const first = await call({ itemId: item.id, expectedRevision: 1 });
+            read.mockImplementation(async () => result({ verification: 'verified', serverLabel: 'Renamed' }));
+            expect(await call({ itemId: item.id, expectedRevision: 1 })).toEqual({ item: first.item, attached: false });
+            expect(first.item.references[0].verification).toBe('unverified');
+            expect(onChange).toHaveBeenCalledTimes(1);
+        });
+
+        it('keeps identical process/workspace IDs separate on distinct servers and enforces CAS for new identities', async () => {
+            const { call, read } = setup();
+            const item = pendingItem();
+            await call({ itemId: item.id, expectedRevision: 1, conversationId: 'queue_design' });
+            await service.attachReference(owner, item.id, 2, { processId: 'queue_design', workspaceId: 'ws-a' }, 'user');
+            const other = { serverIdentity: 'another-installation', workspaceId: 'ws-a' };
+            read.mockImplementation(async () => result({ target: other }));
+            expect(await call({ itemId: item.id, expectedRevision: 2, conversationId: 'queue_design', conversationTarget: other }))
+                .toMatchObject({ code: 'conflict', current: { revision: 3 } });
+            const last = await call({ itemId: item.id, expectedRevision: 3, conversationId: 'queue_design', conversationTarget: other });
+            expect(last.item.references.map((ref: any) => ref.serverIdentity)).toEqual(['remote-installation', undefined, 'another-installation']);
+            expect(last.item.jobs).toEqual([]);
+        });
+
+        it('canonicalizes owner-server references and rejects actual self references without consulting dashboard', async () => {
+            const { call, read } = setup();
+            const item = pendingItem();
+            const local = { serverIdentity: 'local-installation', workspaceId: 'ws-a' };
+            expect(await call({ itemId: item.id, expectedRevision: 1, conversationTarget: local })).toMatchObject({ code: 'invalid' });
+            const first = await call({ itemId: item.id, expectedRevision: 1, conversationTarget: local, conversationId: 'queue_design' });
+            expect(first.item.references[0].serverIdentity).toBeUndefined();
+            expect(await service.attachReference(owner, item.id, 1, { processId: 'queue_design', workspaceId: 'ws-a' }, 'user'))
+                .toMatchObject({ attached: false, item: { revision: 2 } });
+            expect(read).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            { conversationTarget: { workspaceId: 'ws-a' } },
+            { conversationTarget: { ...target, url: 'http://private' } },
+            { conversationTarget: { ...target, serverIdentity: '' } },
+            { conversationTitle: '' }, { conversationOffset: -1 }, { conversationOffset: 0.5 },
+            { conversationWorkspaceId: 'ws-a' }, { conversationTarget: undefined },
+        ])('rejects malformed or mixed selectors %j before reads/writes', async fields => {
+            const { call, read } = setup();
+            const item = pendingItem();
+            expect(await call({ itemId: item.id, expectedRevision: 1, ...fields })).toMatchObject({ code: 'invalid' });
+            expect(read).not.toHaveBeenCalled();
+            expect(todos.get(owner).items[0]).toEqual(item);
+        });
+
+        it('rejects dashboard attachment when the owner installation identity is unavailable', async () => {
+            const item = pendingItem();
+            await expect(service.attachDashboardReference(owner, item.id, 1,
+                { processId: 'queue_design', target, title: 'Browser' }, 'sentinel')).rejects.toMatchObject({ code: 'not_found' });
+            expect(todos.get(owner).items[0]).toEqual(item);
+        });
+
+        it('passes discovery pagination and matches the exact ID among ambiguous titles', async () => {
+            const { call, read } = setup();
+            const item = pendingItem();
+            const attached = await call({ itemId: item.id, expectedRevision: 1, conversationId: 'queue_design', conversationOffset: 200 });
+            expect(attached.item.references[0].title).toBe('Browser design again');
+            expect(read.mock.calls[0][1]).toMatchObject({ offset: 200 });
+        });
+
+        it.each([
+            { conversations: [] }, { target: { ...target, serverIdentity: 'replacement' } },
+            { target: { ...target, workspaceId: 'foreign-workspace' } },
+        ])('rejects missing or misattributed discovery evidence %j', async override => {
+            const { call } = setup(vi.fn(async () => result(override)));
+            const item = pendingItem();
+            expect(await call({ itemId: item.id, expectedRevision: 1 })).toMatchObject({ code: 'not_found' });
+            expect(todos.get(owner).items[0]).toEqual(item);
+            expect(onChange).not.toHaveBeenCalled();
+        });
+
+        it('uses a late-bound runtime and hides discovery failures without falling back to local colliding IDs', async () => {
+            const { call, read, runtime, setActive } = setup();
+            const item = pendingItem();
+            setActive(undefined);
+            expect(await call({ itemId: item.id, expectedRevision: 1, conversationId: 'queue_design' })).toMatchObject({ code: 'not_found' });
+            expect(read).not.toHaveBeenCalled();
+            setActive(runtime);
+            read.mockRejectedValue(new Error('secret forwarded endpoint'));
+            const failed = await call({ itemId: item.id, expectedRevision: 1, conversationId: 'queue_design' });
+            expect(failed).toMatchObject({ code: 'not_found' });
+            expect(JSON.stringify(failed)).not.toContain('secret');
+            expect(todos.get(owner).items[0]).toEqual(item);
+        });
+
+        it('rechecks Sentinel ownership after discovery and never writes after cancellation', async () => {
+            const controller = new AbortController();
+            const read = vi.fn(async () => { controller.abort('private reason'); return result(); });
+            const { call } = setup(read);
+            const item = pendingItem();
+            expect(await call({ itemId: item.id, expectedRevision: 1 }, controller.signal)).toMatchObject({ code: 'not_found' });
+            read.mockImplementation(async () => { processes.delete(owner.processId); return result(); });
+            expect(await call({ itemId: item.id, expectedRevision: 1 })).toMatchObject({ code: 'not_found' });
+            expect(todos.get(owner).items[0]).toEqual(item);
+        });
+
+        it('forwards abort, rejects pre-abort, manual items and foreign owners', async () => {
+            const { call, read } = setup();
+            const controller = new AbortController();
+            controller.abort();
+            const item = pendingItem();
+            expect(await call({ itemId: item.id, expectedRevision: 1 }, controller.signal)).toMatchObject({ code: 'not_found' });
+            expect(read).not.toHaveBeenCalled();
+            const manual = todos.create(owner, { title: 'Manual', type: 'manual' }, { actor: 'user' }).item;
+            expect(await call({ itemId: manual.id, expectedRevision: 1 })).toMatchObject({ code: 'invalid' });
+            await expect(service.attachDashboardReference({ ...owner, workspaceId: 'foreign' }, item.id, 1,
+                { processId: 'queue_design', target, title: 'Browser' }, 'sentinel')).rejects.toMatchObject({ code: 'not_found' });
+            expect(todos.get(owner).items.find(row => row.id === item.id)).toEqual(item);
+        });
+
+        it.each(['ssh', 'devtunnel'] as const)('composes the tool and real relay for %s, reconnect and offline cached evidence', async serverKind => {
+            const relay = new DashboardDiscoveryRelay();
+            const requests: any[] = [];
+            const socket = { id: 'dashboard', send: (data: string) => { requests.push(JSON.parse(data)); } };
+            relay.advertise(socket, owner.workspaceId, 'port-one', true);
+            service = new SentinelTodoService({ todos, onChange, serverIdentity: 'local-installation',
+                store: { getProcess: async id => processes.get(id) }, getDashboardDiscovery: () => relay });
+            const tool = createSentinelTodosTool({ service, owner }).tool as any;
+            const item = pendingItem();
+            const args = { action: 'attach_reference', itemId: item.id, expectedRevision: 1,
+                conversationId: owner.processId, conversationTarget: target, conversationTitle: 'Browser' };
+            const pending = tool.handler(args, {});
+            await vi.waitFor(() => expect(requests).toHaveLength(1));
+            relay.disconnect(socket);
+            expect(await pending).toMatchObject({ code: 'not_found' });
+            relay.advertise(socket, owner.workspaceId, 'changed-port', true);
+            const retried = tool.handler(args, {});
+            await vi.waitFor(() => expect(requests.filter(row => row.type === 'dashboard-chats-request')).toHaveLength(2));
+            const request = requests.filter(row => row.type === 'dashboard-chats-request').at(-1).request;
+            relay.reply(socket, { id: request.id, ok: true, result: result({ serverKind, verification: 'unverified' }) }, 'chats');
+            expect(await retried).toMatchObject({ attached: true, item: { references: [{ ...target, verification: 'unverified' }] } });
+            expect(onChange).toHaveBeenCalledTimes(1);
+            relay.disconnect(socket);
+        });
+    });
+
     describe('REST', () => {
         let server: http.Server;
         let baseUrl: string;
@@ -205,6 +451,8 @@ describe('Sentinel to-do conversation references', () => {
                 .toMatchObject({ status: 409, body: { code: 'conflict', current: { revision: 2 } } });
             expect((await post(item.id, { processId: 'queue_design', workspaceId: 'ws-a' })).status).toBe(400);
             expect((await post(item.id, { expectedRevision: 2, processId: 'queue_design', workspaceId: 'ws-a', jobs: [] })).status).toBe(400);
+            expect((await post(item.id, { expectedRevision: 2, processId: 'queue_design', workspaceId: 'ws-a',
+                serverIdentity: 'untrusted-server', verification: 'verified' })).status).toBe(400);
             expect((await post(item.id, { expectedRevision: 2, processId: 'queue_nope', workspaceId: 'ws-a' })).status).toBe(404);
             expect((await post(item.id, { expectedRevision: 2, processId: 'queue_remote_repo', workspaceId: 'ws-b' })).status).toBe(200);
             expect(todos.get(owner).items[0].references).toHaveLength(2);

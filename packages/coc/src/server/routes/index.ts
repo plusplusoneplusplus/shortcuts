@@ -3,6 +3,7 @@
  * `createExecutionServer` only deals with infrastructure setup.
  */
 
+import { getOrCreateServerIdentity } from '../servers/server-identity';
 import * as fs from 'fs';
 import * as path from 'path';
 import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
@@ -539,6 +540,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const decisionService = opts.decisionService ?? createDecisionService(undefined);
     const sentinelTodos = new SentinelTodoService({
         todos: todoStore, store, jobs: delegatedJobs, dataDir,
+        serverIdentity: getOrCreateServerIdentity(dataDir),
+        getDashboardDiscovery: () => getWsServer()?.dashboardDiscovery,
         fetchPr: createPrStatusFetcher({ dataDir }),
         resolveWorkspaceRoot: async workspaceId => (await store.getWorkspaces()).find(workspace => workspace.id === workspaceId)?.rootPath,
         getDependenciesEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoDependencies === true,
@@ -877,6 +880,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         validateProvider: validateSendToConversationProvider,
         getEffortTiersForProvider,
         workspaceDirectory,
+        getDashboardDiscovery: () => getWsServer()?.dashboardDiscovery,
         trackMessagingJob: job => jobNotices.track(job),
     });
     registerProviderRoutes(routes, dataDir);

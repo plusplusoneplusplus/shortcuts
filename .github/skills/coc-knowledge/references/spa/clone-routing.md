@@ -40,6 +40,7 @@ repos-list/git-info aggregation stay on the page origin.
 | `getCocClientFor(baseUrl?)` (`api/cocClient.ts`) | Default singleton when omitted, else a per-`baseUrl`-cached `CocClient` whose REST (`/api` base) and `events` WebSocket target that origin |
 | `resolveCloneBaseUrl(ref, repos)` (`repos/cloneRouting.ts`) | Maps a workspace object, workspace id, or clone key to its remote `baseUrl` (`undefined` when local) |
 | `resolveCloneRoute(ref)` (`repos/cloneRegistry.ts`) | Classifies a registry target as local, resolved remote, or unresolved remote so strict consumers do not treat a missing remote endpoint as local |
+| `resolveDashboardChatReference(reference, signal)` (`shared/dashboard-discovery/chat-reference.ts`) | Resolves durable server/workspace/process identity against current visible topology, preferring an online alias, then brackets an exact-chat metadata read with health identity checks. Returns the current clone-qualified chat href without changing selection. Offline/unknown/replaced targets and stale or cancelled reads reject without fallback; callers own deadlines and immediate navigation. `parseDashboardChatReference` decodes the durable `#chat-references/` path. |
 | `cloneWsUrl(path, baseUrl?)` (`api/wsUrl.ts`) | With a `baseUrl`, derives `ws(s)://{host:port}{path}` (http→ws, https→wss) keeping path and query verbatim; without one, reproduces `window.location` behavior |
 
 The shared `/ws` process-event stream (`useWebSocket` → `getSpaCocClient().events`) is
@@ -249,6 +250,23 @@ into a remote owner's bare workspace key. Explicit chat routes retain their
 requested process through failed reachability probes so ChatDetail can display
 the owning read error; unresolved remote owners skip local probes. Reloads,
 history and Sentinel returns use this same identity.
+
+`SentinelTodoConversationReferences` verifies durable remote references before
+applying the resolver's current clone-qualified href and starting a To-do
+excursion. Its ten-second deadline and navigation/owner/unmount cancellation
+suppress late results; failures retain the current chat with retry guidance.
+Same-server references use the ledger owner's clone route. Display labels and
+unverified badges are metadata only; opening does not write the ledger.
+Reference and Back-focus keys qualify server, workspace and process identity.
+
+`dashboardRoutes` reserves `#chat-references/<server>/<workspace>/<process>`
+without dispatching selection effects, including malformed links. Router renders
+`DashboardChatReferenceRoute` for direct links/reloads before mounting workspace
+content. It waits for topology/identity observations within one ten-second deadline,
+verifies through the shared resolver, replaces the hash with the current concrete
+clone href, and synchronously applies normal routing. Unavailable links offer Retry.
+Topology changes revoke old reads; navigation, pagehide and unmount cancel them.
+Late responses cannot select another workspace or chat.
 
 Rail Open job links select through the tab's `selectTask`: pinned and Sentinel shortcuts
 are portaled from the tab, and Running/Queued rows (`RailJobStatuses`, rendered by

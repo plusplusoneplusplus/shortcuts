@@ -180,6 +180,69 @@ The bot-presentation observer uses those owner-scoped events without adding sock
 or joining remote ownership through the page-origin process index; see
 [spa/chat-conversation.md](spa/chat-conversation.md).
 
+### Targeted dashboard discovery
+
+`ProcessWebSocketServer.dashboardDiscovery` owns `DashboardDiscoveryRelay`.
+`coc-client/dashboard-discovery.ts` defines read-only topology and title-search protocols.
+`ReposContext` publishes visible repos, groups and cached offline rows through
+`shared/dashboard-discovery/topology.ts`. Its opaque revision changes with selection,
+labels, ownership, availability or endpoint routing; equivalent refreshes preserve it.
+Unknown installation identities stay absent. Local rows use the local server label;
+remote markers retain registry labels and transport kinds.
+
+`ReposContext` observes page-origin identity through its explicit page-origin
+client on mount and every local socket connection, with a five-second health
+deadline. Only local repo/group rows receive that identity; unknown remote markers
+stay unknown. Re-observation withdraws the prior identity, changing topology revision
+and revoking pending reads. Failed/unidentified health keeps ownership unknown.
+Cleanup and newer observations abort reads and suppress late publication even when
+fetch ignores cancellation; diagnostics omit transport details.
+
+`useWebSocket`'s designated local socket and `RemoteCloneEventBridge`'s existing
+remote sockets host `createDashboardDiscoverySocketRelay`. Only the socket owning
+the exact selected workspace advertises its raw workspace and document focus.
+No desktop bridge is required. Scope withdrawal, owner/revision changes, socket
+errors/close and shutdown revoke pending reads. Focus-only changes preserve them.
+The server selects the most recently focused matching socket.
+
+Requests carry a random ID, raw owner workspace and selected revision. Replies
+must come from that exact socket. Producers reject stale/foreign scopes and project
+labels, identity, repo/group type, transport and availability without private routes.
+Known duplicate installation/workspace aliases coalesce, preferring an online row.
+The relay validates at most 2,000 bounded rows, rejecting endpoint fields and duplicate
+known identities. Observations do not verify destination ownership. Abort and the
+10-second deadline forward cancellation and release state. Messages bypass global
+broadcasts/container forwarding; failures expose generic errors without connection details.
+
+`searchChats(ownerWorkspaceId, query, signal)` uses the same selected socket and
+revision with distinct chat request/result kinds. Queries snapshot a durable
+server/workspace target, literal title, limit (1–100) and nonnegative offset.
+Results pin that target and project labels, transport, verification, total count
+before pagination and process/title pairs. Validation rejects incomplete pages,
+identity mismatches, duplicate process IDs, nonmatching titles and extra fields.
+Metadata is bounded to 512 characters and displayed titles to 4,096. Verification
+describes producer observations, not independent server-side ownership proof.
+
+The SPA's `shared/dashboard-discovery/chat-search.ts` selects a visible route by
+exact durable target, preferring online aliases over offline ones. It pins
+that route/revision, checks live health identity before each 200-row summaries
+page and after scanning, and matches custom/generated/preview titles before
+output pagination. Counts, complete pages and unique IDs must remain consistent;
+failures discard partial matches. `processes.summaries` accepts cancellation.
+
+`chat-cache.ts` persists complete verified title inventories under
+`coc-dashboard-chat-cache:` plus the JSON server/workspace tuple, with an in-memory
+mirror for unavailable browser storage. Entries contain version, exact target,
+full row count and process/title pairs; reads reject malformed, truncated or duplicate
+rows. Offline visible targets search only their exact inventory and return unverified
+metadata with full match counts and current labels. Aliases/endpoints stay out of
+storage; reconnect scans replace inventories only after final identity verification.
+
+Socket cancellation, topology changes, close and disposal abort pending reads
+and suppress delayed replies; focus updates preserve them. Unknown identities,
+uncached offline targets and failed online reads are unavailable without fallback.
+The search tool consumes this relay through its invoking owner's late-bound getter.
+
 ### Targeted desktop browser control
 
 `ProcessWebSocketServer.browserControl` implements `BrowserControlRuntime` through

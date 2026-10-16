@@ -3,6 +3,19 @@ import { AUTO_COMPACT_THRESHOLD_DEFAULT, CocClient, ProcessesClient } from '../.
 import { createMockAdapter } from './helpers';
 
 describe('ProcessesClient', () => {
+  it('passes cancellation and owner filters to index-only summary reads', async () => {
+    const adapter = createMockAdapter({ summaries: [], total: 0, limit: 200, offset: 0 });
+    const client = new ProcessesClient(adapter, new CocClient().options);
+    const controller = new AbortController();
+    await client.summaries({ workspace: 'owner', type: 'chat', archived: false, limit: 200, offset: 0 },
+      { signal: controller.signal });
+    expect(adapter.calls).toEqual([{ path: '/processes/summaries', options: {
+      query: { workspace: 'owner', type: 'chat', archived: false, limit: 200, offset: 0,
+        status: undefined, exclude: undefined, include: undefined },
+      signal: controller.signal,
+    } }]);
+  });
+
   it('lazily retrieves startup inventory with exact owner, encoded process ID and cancellation', async () => {
     const adapter = createMockAdapter({ state: 'unavailable' });
     const client = new ProcessesClient(adapter, new CocClient().options);

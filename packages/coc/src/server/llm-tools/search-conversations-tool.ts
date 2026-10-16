@@ -3,19 +3,25 @@
  * The model calls this tool to search past AI conversation history using FTS5
  * full-text search. Requires a SQLite-backed ProcessStore.
  *
- * Two modes:
+ * Three modes:
  *   1. Keyword search — FTS5 full-text search with optional AI summarization
  *   2. Recent browse — no query, returns metadata for recent sessions (zero LLM cost)
+ *   3. Title lookup — literal displayed-title matching within a workspace
  *
  * Per-invocation factory pattern: each AI call gets its own tool instance
  * bound to the store instance, avoiding cross-request contamination.
  */
 
+import type { DashboardDiscoveryRuntime, DashboardWorkspaceTarget } from '@plusplusoneplusplus/coc-client';
 import type { ConversationTurn, ProcessIndexEntry, ProcessStore } from '@plusplusoneplusplus/forge';
+import { parseRemoteCloneKey, type RemoteChatReadTarget, type WorkspaceDirectory } from '../servers/workspace-directory';
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 
 export interface SearchConversationsArgs {
     query?: string;
+    source?: 'registered' | 'dashboard';
+    target?: DashboardWorkspaceTarget;
+    title?: string;
     workspaceId?: string;
     since?: string;
     until?: string;
@@ -53,6 +59,9 @@ export interface SearchConversationsToolOptions {
     currentProcessId?: string;
     /** Optional summarizer callback for AI-generated session summaries. */
     summarizer?: Summarizer;
+    /** Shared owner-server remote directory used by list_workspaces. */
+    directory?: WorkspaceDirectory;
+    getDashboardDiscovery?: () => DashboardDiscoveryRuntime | undefined;
 }
 
 const MAX_RESULTS = 100;
@@ -187,8 +196,13 @@ export function createSearchConversationsTool(
     const tool = defineTool<SearchConversationsArgs>('search_conversations', {
         description:
             'Search your past conversation history in this workspace, or browse recent sessions. Not a Teams/Slack chat search. ' +
-            'Two modes: (1) Recent sessions — no query, lists session metadata only (no LLM cost), scoped by workspaceId and since/until. ' +
+            'Three modes: (1) Recent sessions — no query, lists session metadata only (no LLM cost), scoped by workspaceId and since/until. ' +
             '(2) Keyword search — find topics across past sessions, optionally with AI summaries. ' +
+            '(3) Title lookup — supply title and workspaceId to find existing chats by their displayed title without reading transcripts. ' +
+            'Use source: "dashboard", title and the exact target from list_workspaces(source: "dashboard") to search any dashboard-visible server, including unregistered servers. ' +
+            'Dashboard title lookup returns labels, full match count and verified/unverified metadata; it accepts no workspaceId, time filters, query or summarization. ' +
+            'Unknown identity cannot be searched; never substitute a server label, connection alias or bare workspace ID for target. ' +
+            'If a title lookup is ambiguous, ask the user to choose a chat before attaching a reference. ' +
             'For periodic tasks, use no query + workspaceId + since/until to find processIds, then call get_conversation on the ones you want. ' +
             'Use proactively when the user says "remember when", "last time", "we did this before", or "as I mentioned", or references a past session. ' +
             'Better to search and confirm than to guess.',
@@ -200,9 +214,23 @@ export function createSearchConversationsTool(
                     description:
                         'Search query (FTS5 syntax: quoted phrases, AND/OR/NOT). Omit to browse recent sessions.',
                 },
+                title: {
+                    type: 'string',
+                    description: 'Literal, case-insensitive part of the displayed chat title. Requires a workspace; do not combine with query.',
+                },
+                source: {
+                    type: 'string', enum: ['registered', 'dashboard'],
+                    description: 'Registered/local search (default), or dashboard-visible title lookup using a durable target.',
+                },
+                target: {
+                    type: 'object',
+                    properties: { serverIdentity: { type: 'string' }, workspaceId: { type: 'string' } },
+                    required: ['serverIdentity', 'workspaceId'], additionalProperties: false,
+                    description: 'Exact read-only target returned by list_workspaces with source dashboard. Requires source dashboard and title.',
+                },
                 workspaceId: {
                     type: 'string',
-                    description: 'Optional workspace ID to scope the search.',
+                    description: 'Workspace ID to scope the search. Title lookup also accepts a remote clone key from list_workspaces.',
                 },
                 since: {
                     type: 'string',
@@ -228,7 +256,53 @@ export function createSearchConversationsTool(
             },
             required: [],
         },
-        handler: async (args: SearchConversationsArgs) => {
+        handler: async (args: SearchConversationsArgs, invocation) => {
+            if (args.source !== undefined && args.source !== 'registered' && args.source !== 'dashboard') {
+                return { error: 'Invalid source: must be registered or dashboard.', code: 'invalid' };
+            }
+            if (args.source === 'dashboard') {
+                const target = args.target;
+                const isText = (value: unknown): value is string => typeof value === 'string'
+                    && value.trim().length > 0 && value.length <= 512;
+                if (!target || typeof target !== 'object' || Array.isArray(target)
+                    || Object.keys(target).some(key => key !== 'serverIdentity' && key !== 'workspaceId')
+                    || !isText(target.serverIdentity) || !isText(target.workspaceId) || !isText(args.title)
+                    || args.workspaceId !== undefined || args.query !== undefined || args.since !== undefined
+                    || args.until !== undefined || args.summarize !== undefined
+                    || (args.limit !== undefined && (!Number.isSafeInteger(args.limit) || args.limit < 1 || args.limit > MAX_RESULTS))
+                    || (args.offset !== undefined && (!Number.isSafeInteger(args.offset) || args.offset < 0))) {
+                    return { error: 'Dashboard title lookup requires title and an exact serverIdentity/workspaceId target, with optional limit (1–100) and offset only.', code: 'invalid' };
+                }
+                if (!workspaceId) return { error: 'Dashboard title lookup requires an invoking workspace.', code: 'unavailable' };
+                const limit = args.limit ?? DEFAULT_LIMIT;
+                const offset = args.offset ?? 0;
+                try {
+                    const discovery = opts.getDashboardDiscovery?.();
+                    if (!discovery) return { error: 'Dashboard title lookup is unavailable.', code: 'unavailable' };
+                    const result = await discovery.searchChats(workspaceId, {
+                        target: { serverIdentity: target.serverIdentity, workspaceId: target.workspaceId },
+                        title: args.title.trim(), limit, offset,
+                    }, invocation?.signal);
+                    return {
+                        source: 'dashboard' as const, mode: 'title' as const,
+                        target: result.target, serverLabel: result.serverLabel, workspaceLabel: result.workspaceLabel,
+                        serverKind: result.serverKind, verification: result.verification,
+                        results: result.conversations.map(row => ({
+                            processId: row.processId, title: row.title, serverIdentity: result.target.serverIdentity,
+                            workspaceId: result.target.workspaceId, serverLabel: result.serverLabel,
+                            workspaceLabel: result.workspaceLabel, verification: result.verification,
+                        })),
+                        total: result.total, limit, offset, hasMore: offset + result.conversations.length < result.total,
+                        ambiguous: result.total > 1,
+                        message: result.total > 1 ? 'Multiple chats match. Ask the user which chat to attach.' : `Found ${result.total} matching chat(s).`,
+                    };
+                } catch {
+                    return { error: 'Dashboard title lookup is unavailable.', code: 'unavailable' };
+                }
+            }
+            if (args.target !== undefined) {
+                return { error: 'A dashboard target requires source dashboard.', code: 'invalid' };
+            }
             const effectiveLimit = Math.min(
                 Math.max(1, args.limit ?? DEFAULT_LIMIT),
                 MAX_RESULTS,
@@ -238,6 +312,15 @@ export function createSearchConversationsTool(
             const since = parseIsoDateArg(args.since, 'since');
             const until = parseIsoDateArg(args.until, 'until');
             const query = args.query?.trim() ?? '';
+
+            if (args.title !== undefined) {
+                const title = args.title.trim();
+                if (!title || query || !effectiveWorkspaceId) {
+                    return { error: 'Title lookup requires a nonempty title and workspaceId, without query.', code: 'invalid' };
+                }
+                return handleTitleMode(store, effectiveWorkspaceId, title, since, until,
+                    effectiveLimit, effectiveOffset, currentProcessId, opts.directory);
+            }
 
             // ================================================================
             // Mode 1: Recent sessions (no query)
@@ -335,6 +418,82 @@ function toRecentResult(e: ProcessIndexEntry) {
         preview: e.promptPreview.length > RAW_PREVIEW_LENGTH
             ? e.promptPreview.slice(0, RAW_PREVIEW_LENGTH) + '…'
             : e.promptPreview,
+    };
+}
+
+/** Match metadata before paginating so older titles and duplicate names remain discoverable. */
+async function handleTitleMode(
+    store: ProcessStore,
+    workspaceId: string,
+    title: string,
+    since: Date | undefined,
+    until: Date | undefined,
+    limit: number,
+    offset: number,
+    currentProcessId: string | undefined,
+    directory?: WorkspaceDirectory,
+) {
+    const remote = parseRemoteCloneKey(workspaceId);
+    if (workspaceId.startsWith('remote:') && (!remote || !directory?.getRemoteChatSummaries)) {
+        return { error: 'Remote title lookup is unavailable.', code: 'unavailable' };
+    }
+    if (!remote && !store.getProcessSummaries) {
+        return { error: 'Title lookup is unavailable (requires process summaries).', code: 'unavailable' };
+    }
+    let workspaceLabel: string;
+    let server = 'local';
+    let serverIdentity: string | undefined;
+    let target: RemoteChatReadTarget | undefined;
+    if (remote) {
+        const listing = await directory!.list();
+        const entry = listing.entries.find(ws => ws.id === workspaceId);
+        if (!entry?.online) return { error: 'Remote workspace is unavailable.', code: 'unavailable' };
+        workspaceLabel = entry.name;
+        server = entry.server;
+        serverIdentity = entry.serverIdentity;
+    } else {
+        const workspaces = await store.getWorkspaces();
+        workspaceLabel = workspaces.find(ws => ws.id === workspaceId)?.name ?? workspaceId;
+    }
+    const results: ReturnType<typeof toRecentResult>[] = [];
+    const needle = title.toLowerCase();
+    let total = 0;
+    const pageSize = 200;
+    for (let scanOffset = 0; ; scanOffset += pageSize) {
+        let page: { entries: ProcessIndexEntry[]; total: number; target?: typeof target };
+        try {
+            page = remote
+                ? await directory!.getRemoteChatSummaries!(remote.serverId, remote.workspaceId,
+                    { since, until, limit: pageSize, offset: scanOffset, serverIdentity, target })
+                : await store.getProcessSummaries!({ workspaceId, type: 'chat', since, until, limit: pageSize, offset: scanOffset });
+        } catch (error) {
+            if (!remote) throw error;
+            // Transport details may contain endpoints. Do not expose them or return partial matches.
+            return { error: 'Remote title lookup is unavailable.', code: 'unavailable' };
+        }
+        if (remote && page.target) {
+            target = page.target;
+            serverIdentity = target.serverIdentity;
+        }
+        for (const entry of page.entries) {
+            const displayedTitle = entry.customTitle || entry.title || entry.promptPreview || '';
+            if (entry.workspaceId !== (remote?.workspaceId ?? workspaceId) || (!remote && entry.id === currentProcessId) || entry.archived
+                || entry.type !== 'chat' || !displayedTitle.toLowerCase().includes(needle)) continue;
+            if (total >= offset && results.length < limit) results.push({ ...toRecentResult(entry), workspaceId, title: displayedTitle });
+            total++;
+        }
+        if (!page.entries.length || scanOffset + page.entries.length >= page.total) break;
+    }
+    return {
+        mode: 'title' as const,
+        results: results.map(result => ({
+            ...result, server, workspaceLabel,
+            ...(remote ? { serverId: remote.serverId, conversationWorkspaceId: remote.workspaceId,
+                ...(serverIdentity ? { serverIdentity } : {}) } : {}),
+        })),
+        total, limit, offset, hasMore: offset + results.length < total,
+        ambiguous: total > 1,
+        message: total > 1 ? 'Multiple chats match. Ask the user which chat to attach.' : `Found ${total} matching chat(s).`,
     };
 }
 

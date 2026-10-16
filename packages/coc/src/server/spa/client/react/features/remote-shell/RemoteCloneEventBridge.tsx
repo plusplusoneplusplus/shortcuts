@@ -22,6 +22,7 @@ import { isRemoteWorkspace } from '../../repos/remoteWorkspaceAggregation';
 import type { RepoData } from '../../repos/repoGrouping';
 import { useApp } from '../../contexts/AppContext';
 import { createBrowserSocketRelay } from '../../shared/file-path/browser-control-relay';
+import { createDashboardDiscoverySocketRelay } from '../../shared/dashboard-discovery/socket-relay';
 
 /** Distinct baseUrls of currently-online remote clones (one socket per server). */
 function onlineRemoteBaseUrls(repos: Pick<RepoData, 'workspace'>[]): string[] {
@@ -43,6 +44,7 @@ export function useRemoteCloneEvents(onMessage: (msg: any, baseUrl?: string) => 
     const { repos, remoteGroupWorkspaces } = useRepos();
     const routingRef = useRef(browserRoutingRef);
     routingRef.current = browserRoutingRef;
+    const discoveryRelaysRef = useRef(new Map<string, ReturnType<typeof createDashboardDiscoverySocketRelay>>());
     const relaysRef = useRef(new Map<string, ReturnType<typeof createBrowserSocketRelay>>());
     useEffect(() => { for (const relay of relaysRef.current.values()) void relay.update(browserRoutingRef); }, [browserRoutingRef]);
 
@@ -62,6 +64,8 @@ export function useRemoteCloneEvents(onMessage: (msg: any, baseUrl?: string) => 
         // Drop sockets for clones that went offline or disappeared.
         for (const [baseUrl, conn] of conns) {
             if (!desired.has(baseUrl)) {
+                discoveryRelaysRef.current.get(baseUrl)?.dispose();
+                discoveryRelaysRef.current.delete(baseUrl);
                 relaysRef.current.get(baseUrl)?.dispose();
                 relaysRef.current.delete(baseUrl);
                 conn.close();
@@ -73,11 +77,16 @@ export function useRemoteCloneEvents(onMessage: (msg: any, baseUrl?: string) => 
             if (!conns.has(baseUrl)) {
                 const conn = getCocClientFor(baseUrl).events.connect({
                         onOpen: () => {
+                            discoveryRelaysRef.current.get(baseUrl)?.onOpen();
                             relaysRef.current.get(baseUrl)?.onOpen();
                             window.dispatchEvent(new CustomEvent('coc-remote-ws-connect', { detail: { baseUrl } }));
                         },
-                        onStatusChange: status => { if (status === 'closed') relaysRef.current.get(baseUrl)?.onClose(); },
+                        onStatusChange: status => { if (status === 'closed') {
+                            discoveryRelaysRef.current.get(baseUrl)?.onClose();
+                            relaysRef.current.get(baseUrl)?.onClose();
+                        } },
                         onMessage: (msg: any) => {
+                            if (discoveryRelaysRef.current.get(baseUrl)?.onMessage(msg)) return;
                             if (relaysRef.current.get(baseUrl)?.onMessage(msg)) return;
                             onMessageRef.current(msg, baseUrl);
                             window.dispatchEvent(new CustomEvent('coc-remote-ws-message', {
@@ -86,6 +95,7 @@ export function useRemoteCloneEvents(onMessage: (msg: any, baseUrl?: string) => 
                         },
                     });
                 conns.set(baseUrl, conn);
+                discoveryRelaysRef.current.set(baseUrl, createDashboardDiscoverySocketRelay(conn, baseUrl));
                 const relay = createBrowserSocketRelay(conn, baseUrl);
                 relaysRef.current.set(baseUrl, relay);
                 void relay.update(routingRef.current);
@@ -97,6 +107,8 @@ export function useRemoteCloneEvents(onMessage: (msg: any, baseUrl?: string) => 
     useEffect(() => {
         const conns = connectionsRef.current;
         return () => {
+            for (const relay of discoveryRelaysRef.current.values()) relay.dispose();
+            discoveryRelaysRef.current.clear();
             for (const relay of relaysRef.current.values()) relay.dispose();
             relaysRef.current.clear();
             for (const conn of conns.values()) {

@@ -25,6 +25,7 @@ import type {
 import { SENTINEL_TODO_RECENT_LIMIT } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { SentinelTodoJobPreview } from './SentinelTodoJobPreview';
+import { SentinelTodoConversationReferences } from './SentinelTodoConversationReferences';
 import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/Spinner';
 import { cn } from '../../../ui/cn';
@@ -89,7 +90,7 @@ export interface UnifiedTodoTabProps {
     onErrorChange?: (hasError: boolean) => void;
 }
 
-type FollowLink = (event: MouseEvent<HTMLAnchorElement>, linkKey: string) => void;
+type FollowLink = (event: MouseEvent<HTMLAnchorElement>, linkKey: string, href?: string) => void;
 
 type DraftFieldsValue = { title: string; completionCondition: string; notes: string; priority: SentinelTodoPriority };
 type Draft = DraftFieldsValue & {
@@ -473,8 +474,8 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     const pinned = isPinnedSentinelTodo(excursion, owner, chatId);
     const originTitle = excursion?.origin.title ?? 'Sentinel';
     // A plain click on an in-app chat link leaves for that chat with a way back.
-    const followLink = useCallback<FollowLink>((event, linkKey) => {
-        const href = event.currentTarget.getAttribute('href') ?? '';
+    const followLink = useCallback<FollowLink>((event, linkKey, verifiedHref) => {
+        const href = verifiedHref ?? event.currentTarget.getAttribute('href') ?? '';
         if (chatId === null || scopeWorkspaceId === undefined || !href.startsWith('#') || event.button !== 0
             || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         const itemId = linkKey.split('|')[0];
@@ -976,8 +977,6 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
     const high = sentinelTodoPriority(item) === 'high';
     const displayStatus = sentinelTodoDisplayStatus(item);
     const foldNotes = sentinelTodoFoldNotes(item.notes);
-    // Identifies a followed link within the list, so Back can focus it again.
-    const linkKey = (link: string) => `${item.id}|${link}`;
     // Every row reserves the band's gutter, so changing priority never shifts content.
     return (
         <li hidden={hidden} className="relative select-text rounded border border-[#e0e0e0] pl-1 dark:border-[#3c3c3c]"
@@ -1019,21 +1018,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
             {attachError && <Notice tone="error" testId={`sentinel-todo-attach-error-${item.id}`}>{attachError}</Notice>}
             <TodoJobs item={item} owner={owner} currentWorkspaceId={currentWorkspaceId} expanded onFollowLink={onFollowLink} />
             {!hidden && <SentinelTodoPrOutcomes owner={owner} item={item} ledgerRevision={ledgerRevision} onBusyChange={setOutcomesBusy} />}
-            {/* Reference-only conversations: navigation links with no execution or review state. */}
-            {item.references?.some(ref => ref.kind === undefined || ref.kind === 'conversation') && (
-                <ul className="flex flex-col gap-0.5 px-2 pb-1.5" aria-label={`Referenced conversations for ${item.title}`}>
-                    {item.references!.filter(ref => ref.kind === undefined || ref.kind === 'conversation').map(ref => (
-                        <li key={ref.processId} className="flex min-w-0 items-center gap-1" data-testid={`sentinel-todo-reference-${item.id}-${ref.processId}`}>
-                            <span className="shrink-0 rounded bg-black/[0.06] px-1 text-[10px] font-medium uppercase tracking-wide text-[#616161] dark:bg-white/[0.08] dark:text-[#a0a0a0]">Ref</span>
-                            <a href={ref.openLink} title={ref.title ?? ref.processId}
-                                data-todo-link={linkKey(`ref:${ref.processId}`)} onClick={event => onFollowLink(event, linkKey(`ref:${ref.processId}`))}
-                                className="min-w-0 truncate text-[#0078d4] hover:underline focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:text-[#3794ff]">
-                                {ref.title ?? ref.processId}
-                            </a>
-                        </li>
-                    ))}
-                </ul>
-            )}
+            <SentinelTodoConversationReferences item={item} owner={owner} onFollowLink={onFollowLink} />
             <SentinelTodoExternalReferences item={item} />
             <SentinelTodoDependencies owner={owner} item={item} items={items} ledgerRevision={ledgerRevision}
                 expanded onLedgerChange={onLedgerChange} onItemLink={onItemLink} onArtifactLink={onArtifactLink} onBusyChange={setDependenciesBusy} />

@@ -165,6 +165,8 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
             options.store,
             options.workspaceId,
             options.processId,
+            options.sendToConversationRuntime?.workspaceDirectory,
+            options.sendToConversationRuntime?.getDashboardDiscovery,
         ));
     }
 

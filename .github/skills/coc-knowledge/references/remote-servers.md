@@ -4,7 +4,7 @@ How CoC exposes a server from one machine through Microsoft Dev Tunnels and conn
 from another CoC dashboard. Two flows: **hosting** a CoC server behind a DevTunnel, and
 **registering** that tunnel as a remote server in another dashboard.
 
-Durable identity is the tunnel ID (e.g. `my-remote-coc`), not the public DevTunnel URL. CoC
+Durable connection identity is the tunnel ID (e.g. `my-remote-coc`), not the public DevTunnel URL. CoC
 stores the ID and resolves the current local endpoint at connect time.
 
 ## Host-side setup
@@ -86,6 +86,24 @@ Multiple registered servers may point at the same tunnel ID; CoC deduplicates th
 connection by tunnel ID.
 
 ## Runtime state
+
+### Server identity
+
+Server composition provisions a UUID in `<dataDir>/server-identity.json` through
+`servers/server-identity.ts`; `/api/health` advertises it as `serverIdentity`.
+This installation-wide identity is shared by every workspace and remains stable
+across restarts, SSH/DevTunnel connections and forwarded-port changes. Atomic
+create-only publication makes concurrent startups agree. Corrupt or unreadable
+files fail startup. The optional client contract supports older servers with
+identity unavailable. Registry IDs and tunnel IDs identify connections separately.
+Remote health, runtime and server-list contracts expose the destination identity.
+The runtime caches probes by connection alias, publishes identity only for the
+probed endpoint, and revokes delayed results on registry edits/removals or newer
+probes. A successful response without identity clears the cached value. Dashboard
+server-list reads refresh direct URLs and online managed connections in the
+background; idle/offline managed connections are not connected by listing.
+
+### Connection state
 
 The persisted entry holds durable configuration only. Runtime fields are computed by the
 running server and returned by the API:

@@ -43,6 +43,27 @@ references before editing. Paths are package-relative.
   Unresolved remote selections never fall through locally; admin stays page-origin.
   ChatDetail owner WebSocket refreshes coalesce matching notifications per microtask
   batch; preserve later refreshes and discard scheduled work on effect cleanup.
+  Dashboard discovery uses `ProcessWebSocketServer.dashboardDiscovery` for targeted,
+  read-only topology and title-search requests. Capabilities bind a raw owner workspace and dashboard
+  revision; scope/topology changes revoke pending reads. `ReposContext` publishes the
+  visible topology to `shared/dashboard-discovery`; the designated local socket and
+  remote owner sockets advertise only for the exact selected owner. Include cached
+  offline rows, and keep identities/labels separate from private endpoints and aliases.
+  Page-origin repo/group rows use only identity observed through the page-origin
+  client's bounded health read on mount and each socket connection. Re-observation
+  withdraws stale identity; failure/unidentified health leaves ownership unknown.
+  Abort superseded/disposed reads and suppress late results, including ignored aborts.
+  Title-search relay requests pin a durable server/workspace selector and bounded
+  pagination; replies require matching identity, labels, verification, full match
+  count and title-only rows. Reject malformed/partial results and cross-kind replies.
+  The SPA title producer resolves only a visible durable destination, prefers online
+  aliases, verifies live health identity before every summaries page and after scanning, and matches
+  displayed titles before output pagination. Cancellation, topology changes and socket
+  teardown abort I/O and suppress late publication. Completed verified scans persist
+  title-only inventories in the browser under durable server/workspace identity.
+  Offline visible targets search that exact cached inventory as unverified; unknown
+  identities, malformed caches and failed online reads fail without local fallback.
+  Topology observations are not ownership verification; discovery never broadcasts.
   Reject late responses after scope changes. Sidebar queue snapshots supersede
   stale queue reads, not independent history reads; reconcile admitted history
   against current active jobs and local process title/preview updates.
@@ -70,12 +91,31 @@ references before editing. Paths are package-relative.
 - Exited-terminal Enter uses `TerminalView`'s manual restart lifecycle and synchronous
   per-tab admission guard. Only a plain keydown focused inside the active viewport
   triggers restart; pasted input and transport disconnection are not process exit.
-- `list_workspaces`, `send_to_conversation` remote targets and messaging `list remotes` share one route-layer
+- `list_workspaces` defaults to registered dispatch targets; these, `send_to_conversation`
+  remote targets and messaging `list remotes` share one route-layer
   `src/server/servers/workspace-directory.ts` (clone keys, per-server timeouts, last-known
   offline entries). Remote create mode posts to the remote's own queue/Ralph API with no
   local fallback; output never carries paths, URLs, or credentials. Successful remote
   launches expose unavailable automatic parent result return through `resultDelivery`
-  and retain the clone chat link for inspecting the outcome.
+  and retain the clone chat link for inspecting the outcome. Explicit `source: dashboard`
+  reads the invoking workspace's dashboard relay through a late-bound runtime getter,
+  including unregistered/offline destinations. Its stable server/workspace `target`
+  is read-only, not a dispatch ID or ownership proof; unknown identities have no target.
+  Relay failures never fall back to the registered directory.
+- `search_conversations` title lookup scans workspace-scoped chat summaries before
+  result pagination, uses displayed titles, and reports ambiguity with server/workspace
+  labels. Remote clone keys use the shared workspace directory's index-only summary
+  reader at the current endpoint, binding every page to one endpoint and durable server
+  identity. Directory caches retain observed identity and reject known replacement owners;
+  delayed reads cannot publish after destination changes. Keep connection aliases, durable
+  server identity and raw workspace identity separate in results;
+  exclude the invoking process only for local searches. Unavailable remote reads discard
+  partial matches and never fall back to local chat reads. Explicit `source: dashboard`
+  requires a displayed title and exact `target: { serverIdentity, workspaceId }` from
+  dashboard workspace discovery. Use the invoking owner's late-bound relay, forward
+  tool cancellation, and preserve full match counts, labels and verification. Reject
+  bare workspace IDs and unsupported query/time/summarization filters in this mode;
+  relay failure never retries against the directory or local store.
 - `send_to_conversation` create mode defaults to Medium when model/tier are omitted;
   resolve tiers on the destination server after provider selection. Post/cancel have no default tier.
 - Remote group selection uses a server-qualified clone key; decode the raw
@@ -90,6 +130,18 @@ references before editing. Paths are package-relative.
   Persist state on the source; execute/own PR gates on the target.
 
 ## Runtime, Persistence, and Configuration
+
+- Server composition provisions one UUID in `<dataDir>/server-identity.json` and
+  exposes `serverIdentity` through `/api/health`. It identifies the installation
+  across workspaces, transports and port changes. Preserve it on restart; invalid
+  or unreadable identity files fail startup rather than silently replacing identity.
+  Remote health/runtime/list contracts carry this identity separately from registry
+  aliases. Managed entries refresh identity while online; endpoint changes require a
+  new probe. Registry edits/removals and newer probes revoke delayed health results.
+  Dashboard remote workspace sources/markers and their offline cache retain the
+  identity observed with the workspace list. Cached rows keep that identity while
+  disconnected; a known replacement identity excludes the old cached rows. Missing
+  identity stays unknown and must never be replaced with a registry alias or URL.
 
 - Admitted chat image files stay at their existing per-turn paths after success,
   error or cancellation so local delegated children can read them. This temporary
@@ -126,6 +178,30 @@ references before editing. Paths are package-relative.
   `features.sentinelPrOutcomeWake`, independently of CI/conflict repair permission.
   Outcome reviews use dedicated read-only admission; stopped Sentinel reviews restore
   stop and never promote ordinary buffered work. Per-item pause retains terminal evidence.
+- Sentinel To-do conversation references use durable server/workspace/process identity
+  for storage and idempotent attachment. `SentinelTodoStore` migrates local rows
+  transactionally without changing the shared process schema version; omitted
+  `serverIdentity` means the ledger's server. Persist labels and verification as
+  display metadata, never endpoints or registry aliases as durable identity.
+  `sentinel_todos.attach_reference` uses an exact `conversationTarget`, discovery
+  title and optional result-page offset for dashboard destinations. The service's
+  late-bound owner-scoped relay rechecks the selected process and derives labels
+  and verification, including unverified offline matches. Re-prove Sentinel
+  ownership after I/O; abort/failure never falls back locally. Owner-server targets
+  canonicalize to local references; qualify self checks by workspace and server.
+  Remote links retain encoded durable segments under `#chat-references/`.
+  `shared/dashboard-discovery/chat-reference.ts` parses and resolves these against
+  current visible topology, preferring an online exact server/workspace alias.
+  Health checks bracket a transcript-excluded exact-process metadata read; changed
+  topology, ownership or cancellation rejects without fallback. The resolver returns
+  a concrete clone chat route without changing selection; callers own read deadlines
+  and immediate navigation. `dashboardRoutes` reserves durable reference hashes,
+  including malformed links, without selection effects. Router holds them in
+  `DashboardChatReferenceRoute` until exact verification succeeds, waiting up to
+  ten seconds for topology/identity observations and offering explicit Retry on
+  failure. Topology changes revoke pending reads; navigation, pagehide and unmount
+  cancel them. Only verified current clone routes reach normal chat selection.
+  REST attachment stays local-only.
 - `storage/conversation-tool-inventory-store.ts` borrows the process database and
   retains one pending/captured inventory per process outside metadata, transcripts
   and SSE. Server composition shares it through `getToolInventoryStore`; initial

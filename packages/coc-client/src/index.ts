@@ -11,3 +11,4 @@ export * from './map-reduce-plan';
 export * from './quota';
 export * from './browser-control';
 export * from './pull-request-url';
+export * from './dashboard-discovery';
