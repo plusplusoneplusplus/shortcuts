@@ -261,6 +261,8 @@ augment the server child's `PATH`. Capability details belong in the
 
 `packages/coc-desktop/src/server-controller.ts` attaches to a healthy server or
 forks one on the preferred port, using an ephemeral port when occupied.
+A forked server has 120s (`DEFAULT_START_TIMEOUT_MS`) to report `listening`;
+child errors/exits fail earlier, and failures kill the child.
 CoC defaults to 4000; CoCContainer defaults to 5000 and shares `~/.coccontainer`
 with its CLI. Enabled Windows DevTunnel hosting prefers a configured tunnel's
 single HTTP binding. The hosts use separate tunnel identities.

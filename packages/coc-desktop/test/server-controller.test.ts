@@ -10,7 +10,7 @@
 
 import { EventEmitter } from 'events';
 import * as http from 'http';
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { ChildProcess } from 'child_process';
 import {
     attachOrStart,
@@ -22,6 +22,7 @@ import {
     shouldCaptureChildOutput,
     CLI_DEFAULT_PORT,
     DEFAULT_HOST,
+    DEFAULT_START_TIMEOUT_MS,
 } from '../src/server-controller';
 
 /** A fake forked child: an EventEmitter that records kill() and can be driven. */
@@ -307,6 +308,77 @@ describe('attachOrStart', () => {
             }),
         ).rejects.toThrow(/Timed out/);
         expect(child.killed).toBe(true);
+    });
+
+    describe('default start timeout (slow VM regression: was 30s)', () => {
+        afterEach(() => { vi.useRealTimers(); });
+
+        /** Start with the default timeout; resolves once the child has been forked. */
+        async function startWithDefaultTimeout() {
+            vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+            const child = new FakeChild();
+            let forked!: () => void;
+            const forkedPromise = new Promise<void>((resolve) => { forked = resolve; });
+            const promise = attachOrStart({
+                deps: {
+                    probeHealth: async () => false,
+                    findFreePort: async () => 44000,
+                    fork: () => { forked(); return child as unknown as ChildProcess; },
+                },
+            });
+            // Observe the outcome without leaving an unhandled rejection behind.
+            const outcome = promise.then(
+                (handle) => ({ handle, error: undefined as Error | undefined }),
+                (error: Error) => ({ handle: undefined, error }),
+            );
+            await forkedPromise;
+            return { child, outcome };
+        }
+
+        it('is two minutes', () => {
+            expect(DEFAULT_START_TIMEOUT_MS).toBe(120_000);
+        });
+
+        it('accepts a server that reports listening after 30s but before 120s', async () => {
+            const { child, outcome } = await startWithDefaultTimeout();
+            await vi.advanceTimersByTimeAsync(31_000);
+            child.emit('message', { type: 'listening', port: 44000 });
+            const { handle, error } = await outcome;
+            expect(error).toBeUndefined();
+            expect(handle).toMatchObject({ port: 44000, started: true });
+            expect(child.killed).toBe(false);
+        });
+
+        it('times out at 120s and kills the child', async () => {
+            const { child, outcome } = await startWithDefaultTimeout();
+            let settled = false;
+            void outcome.then(() => { settled = true; });
+            await vi.advanceTimersByTimeAsync(119_999);
+            expect(settled).toBe(false);
+            expect(child.killed).toBe(false);
+            await vi.advanceTimersByTimeAsync(1);
+            const { error } = await outcome;
+            expect(error?.message).toMatch(/Timed out after 120000ms/);
+            expect(child.killed).toBe(true);
+        });
+
+        it('still propagates a child error reported after 30s', async () => {
+            const { child, outcome } = await startWithDefaultTimeout();
+            await vi.advanceTimersByTimeAsync(60_000);
+            child.emit('message', { type: 'error', message: 'slow boom' });
+            const { error } = await outcome;
+            expect(error?.message).toBe('slow boom');
+            expect(child.killed).toBe(true);
+        });
+
+        it('still propagates a child exit after 30s', async () => {
+            const { child, outcome } = await startWithDefaultTimeout();
+            await vi.advanceTimersByTimeAsync(60_000);
+            child.emit('exit', 1, null);
+            const { error } = await outcome;
+            expect(error?.message).toMatch(/exited before listening/);
+            expect(child.killed).toBe(true);
+        });
     });
 
     it('forwards a started server\'s piped stdout/stderr to onServerOutput (Fix 2)', async () => {
