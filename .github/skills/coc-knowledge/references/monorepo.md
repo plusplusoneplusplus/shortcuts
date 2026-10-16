@@ -292,7 +292,12 @@ or cancelled restarts, and discards a retained release before replacing it. It
 checks restart confirmation before installation and transfers file ownership to
 the helper before quitting. Failures report their reason and offer the existing
 `pickDownloadUrl` browser path. The hooks accept an owned-server check, helper
-launch and normal quit drain; native UI integration lives in `main.ts`.
+launch and normal quit drain. `update-restart.ts` implements the restart check:
+it queries the owned server's unfiltered `GET /api/queue` with a ten-second
+timeout, counts `running` across all workspaces, and requests confirmation only
+for a nonempty list. Attached or absent servers bypass the check. Invalid or
+unavailable queue data rejects restart; cancellation retains verified bytes.
+Electron supplies native dialogs, installer selection and quit through the hooks.
 
 URL hosts expose optional `BrowserHostedView.cdp(method, params)`. Electron's
 `ElectronBrowserCdp` lazily attaches to the adopted guest debugger and detaches
