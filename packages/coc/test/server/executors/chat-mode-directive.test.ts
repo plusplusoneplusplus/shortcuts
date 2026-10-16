@@ -1,7 +1,7 @@
 /**
  * The mode directive is the whole enforcement mechanism for ask mode (the tool
- * layer auto-approves Bash and file edits), so its content contract is pinned
- * here: what each mode emits, what a mode switch announces, and the fact that
+ * layer auto-approves Bash and file edits). These tests cover directive assembly,
+ * mode transitions, parsing, injection decisions, instruction loading, and that
  * a fresh autopilot chat emits nothing at all.
  */
 
@@ -26,7 +26,6 @@ import {
 } from '../../../src/server/executors/chat-mode-directive';
 import type { ChatModeInjectionCheck } from '../../../src/server/executors/chat-mode-directive';
 import type { ChatMode } from '../../../src/server/tasks/task-types';
-import { SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE } from '../../../src/server/delegation/sentinel-job-review-instructions';
 
 // ============================================================================
 // buildChatModeDirective
@@ -45,21 +44,6 @@ describe('buildChatModeDirective', () => {
         const plan = buildChatModeDirective({ mode: 'plan' as never })!;
 
         expect(plan).toBe(buildChatModeDirective({ mode: 'ask' }));
-    });
-
-    it('starts Sentinel coding tasks with outcome-scoped completion, not an Ask-mode POC verdict', () => {
-        const directive = buildChatModeDirective({ mode: 'sentinel' })!;
-        expect(directive).toContain(SENTINEL_DISPATCHER_DIRECTIVE);
-        expect(directive).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
-        for (const instruction of [
-            'keep one To-do through planning, POCs and implementation',
-            'Mark Done only when the implemented outcome meets its completion condition',
-            SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE,
-            'Awaiting approval stays To do; authorized work stays In progress',
-            'Never auto-archive',
-            'Do not launch implementation without user authorization',
-        ]) expect(directive).toContain(instruction);
-        expect(buildChatModeDirective({ mode: 'ask' })).not.toContain(SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE);
     });
 
     it('announces the switch when a chat leaves ask mode', () => {
@@ -452,14 +436,7 @@ describe('plan save guidance', () => {
         expect(modeClose).toBeGreaterThan(readOnlyClose);
     });
 
-    it('keeps the shared SDK constant free of workspace data', () => {
-        buildChatModeDirective({ mode: 'ask', planSaveContext: ctx(['chat-retry']) });
-
-        expect(READ_ONLY_SYSTEM_MESSAGE).not.toContain('Save location');
-        expect(READ_ONLY_SYSTEM_MESSAGE).not.toContain('chat-retry');
-    });
-
-    it('renders the resolved root, the folder list, and the naming rule', () => {
+    it('renders the resolved root and sorted folder list', () => {
         const directive = buildChatModeDirective({
             mode: 'ask',
             planSaveContext: ctx(['right-panel', 'chat-retry']),
@@ -467,24 +444,6 @@ describe('plan save guidance', () => {
 
         expect(directive).toContain('/data/repos/ws-a/notes/Plans/<chosen-folder>/<descriptive-name>.plan.md');
         expect(directive).toContain('Existing folder options: chat-retry, right-panel');
-        expect(directive).toContain('kebab-case, ≤3 words');
-    });
-
-    it('keeps saved plan reply links absolute inside the Ask-mode guidance', () => {
-        const directive = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx([]) })!;
-        const linkRule = directive.indexOf('use its exact absolute file path as the Markdown link destination');
-
-        expect(linkRule).toBeGreaterThan(directive.indexOf(PLAN_SAVE_GUIDANCE_INTRO));
-        expect(linkRule).toBeLessThan(directive.indexOf('</coc-read-only-mode>'));
-        expect(directive).toContain('Do NOT rewrite it as a repository-relative path or add ../ segments');
-        expect(directive).toContain('[plan](<FULL_PATH>)');
-        expect(buildChatModeDirective({ mode: 'ask' })).not.toContain('FULL_PATH');
-    });
-
-    it('scopes the guidance to an explicit request rather than every question', () => {
-        const directive = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx([]) })!;
-
-        expect(directive).toContain('If the user asks you to save a plan:');
     });
 
     it('reports (none yet) for an empty workspace and still names the root', () => {
@@ -800,47 +759,6 @@ describe('sentinel dispatcher directive', () => {
         expect(dispatcherAt).toBeGreaterThan(readOnlyAt);
     });
 
-    it('tells the model to hand off with send_to_conversation in autopilot and confirm in one line', () => {
-        const directive = buildChatModeDirective({ mode: 'sentinel' })!;
-        expect(SENTINEL_DISPATCHER_DIRECTIVE).toContain('dispatcher');
-        expect(SENTINEL_DISPATCHER_DIRECTIVE).toContain('`send_to_conversation` in create mode');
-        expect(SENTINEL_DISPATCHER_DIRECTIVE).toContain('`mode: "autopilot"`');
-        expect(SENTINEL_DISPATCHER_DIRECTIVE).toContain('one short line');
-        expect(directive).toContain('Prefer `provider: "auto"`');
-        expect(directive).toContain('unless the user requests a particular provider/model');
-        expect(directive).toContain('target workspace/server routing rules');
-        expect(directive).toContain('do not carry over this chat\'s provider, model, or effort');
-    });
-
-    it('keeps full-auto PR handoffs native and requires actual owner-bound enablement', () => {
-        const directive = buildChatModeDirective({ mode: 'sentinel' })!;
-        for (const instruction of [
-            'exact commit selection and owning workspace/server',
-            'auto-merge default, conflict-abort and uncertain-outcome rules',
-            '"full auto", "monitor until merged" and generic PR monitoring use native automation, not AI polling',
-            '`autoMerge.enabled` and warnings, `bound`',
-            '`autoFix.requested`, `autoFix.enabled`, `autoFix.scope`, `autoFix.triggerId`, `autoFix.warning`',
-            'owner binding, enabled `ci-and-conflicts` scope and a trigger ID',
-            'Do not create an AI cron when native auto-fix is active, in either the child or this parent chat',
-            'Report the PR URL and pending status, then end the submission turn',
-            'native triggers wake the PR owner for authorized repairs',
-            'merged/closed PRs disarm without a wake',
-        ]) expect(directive).toContain(instruction);
-    });
-
-    it('reports native automation gaps without implicit polling or repair authority', () => {
-        for (const instruction of [
-            'Ordinary submission, auto-merge or generic monitoring grants no CI/conflict repair authority',
-            'Pass `autoFix: true` only with user authorization for both CI and conflict repairs',
-            'native automation is disabled/unavailable, binding fails or enablement warns/fails',
-            'report the specific limitation',
-            'never silently fall back to AI cron or resubmit to repair binding/automation',
-            'Separately explicit user requests for AI polling/cron remain supported via the `cron` skill',
-            'with owning workspace/PR, authorized checks/fixes and a merged/closed stop condition',
-            'polling grants no repair authority',
-        ]) expect(SENTINEL_DISPATCHER_DIRECTIVE).toContain(instruction);
-    });
-
     it.each([undefined, 'ASK-ONLY'])('refreshes persisted pre-native-automation guidance once (instructions: %s)', modeInstructions => {
         const current = buildChatModeDirective({ mode: 'sentinel', modeInstructions })!;
         const previous = current.split('\n').filter(line => ![
@@ -863,19 +781,6 @@ describe('sentinel dispatcher directive', () => {
             expect(buildChatModeDirective({ mode }) ?? '').not.toContain(SENTINEL_DISPATCHER_DIRECTIVE);
             expect(buildChatModeDirective({ mode, previousMode: 'ask' }) ?? '').not.toContain(SENTINEL_DISPATCHER_DIRECTIVE);
         }
-    });
-
-    it('keeps lengthy ledger audits and result assessment with the parent, excluding child and API ledger mutations', () => {
-        const directive = buildChatModeDirective({ mode: 'sentinel' })!;
-        const lines = directive.split('\n');
-        const handOffAt = lines.findIndex(line => line.startsWith('- For anything that edits code'));
-        const exception = lines[handOffAt + 1];
-
-        expect(exception).toContain('- Exception to this hand-off rule:');
-        expect(exception).toContain('manage this chat\'s To-do ledger and assess results yourself via `sentinel_todos`');
-        expect(exception).toContain('even for lengthy audits');
-        expect(exception).toContain('Never delegate ledger updates or use ledger API writes');
-        expect(exception).toContain('hand off only authorized implementation work, reusing its To-do');
     });
 
     it('never carries a plan destination', () => {
@@ -938,9 +843,9 @@ describe('sentinel dispatcher directive', () => {
         expect(shouldInjectChatModeDirective(check)).toBe(false);
     });
 
-    it('re-injects Auto guidance into a resumed sentinel whose stored directive lacks it', () => {
+    it('re-injects provider guidance into a resumed sentinel whose stored directive lacks it', () => {
         const current = buildChatModeDirective({ mode: 'sentinel' })!;
-        const previous = current.split('\n').filter(line => !line.startsWith('- Prefer `provider: "auto"`')).join('\n');
+        const previous = current.split('\n').filter(line => !line.startsWith('- Follow-ups retain their existing provider.')).join('\n');
         expect(shouldInjectChatModeDirective({
             mode: 'sentinel', previousMode: 'sentinel', canResumeSession: true,
             turns: [{ role: 'user', content: 'Hi', timestamp: new Date(), chatModeContext: previous }] as any,

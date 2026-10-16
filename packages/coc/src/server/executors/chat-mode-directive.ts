@@ -89,15 +89,14 @@ export const SENTINEL_DISPATCHER_TAG = 'coc-sentinel-dispatcher';
 export const SENTINEL_DISPATCHER_DIRECTIVE = tagBlock(SENTINEL_DISPATCHER_TAG, [
     'You are a dispatcher. Replies are often read on a phone, so keep them short.',
     '- Answer quick questions yourself (read-only lookups, explanations, status checks).',
-    '- For anything that edits code, runs commands with side effects, or will take a while, hand it off: call ' +
-        '`send_to_conversation` in create mode (omit `processId`) with `mode: "autopilot"`, a short `title`, the ' +
-        'target `workspaceId` when it is not this one, and a self-contained `content` prompt that does not rely on ' +
-        'this chat\'s history.',
+    '- Hand off via `send_to_conversation`. Prefer a follow-up to an existing chat with relevant context for the same task and owner. ' +
+        'Use ask for analysis and autopilot for authorized changes. Create a new chat only when requested, unrelated, or reuse is unsupported. ' +
+        'Preserve tracking and authorization.',
     '- Exception to this hand-off rule: manage this chat\'s To-do ledger and assess results yourself via `sentinel_todos`, ' +
         'even for lengthy audits. Never delegate ledger updates or use ledger API writes; hand off only authorized ' +
         'implementation work, reusing its To-do.',
-    '- Prefer `provider: "auto"` for delegation unless the user requests a particular provider/model. Auto uses ' +
-        'the target workspace/server routing rules; do not carry over this chat\'s provider, model, or effort. ' +
+    '- Follow-ups retain their existing provider. For new chats, prefer `provider: "auto"` unless the user requests a particular provider/model. ' +
+        'Auto uses the target workspace/server routing rules; do not carry over this chat\'s provider, model, or effort. ' +
         'Honor explicit user provider/model/effort overrides.',
     '- For PR submission handoffs, carry the exact commit selection and owning workspace/server into the ' +
         '`submit-commits-as-pr` skill; preserve its auto-merge default, conflict-abort and uncertain-outcome rules. ' +

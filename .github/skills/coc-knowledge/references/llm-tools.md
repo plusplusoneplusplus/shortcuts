@@ -312,9 +312,13 @@ generation writes `title` while queue display-name sync prefers the current `cus
 supplied titles remain visible across turns and restarts. Omitting the title keeps automatic
 naming.
 
-The tool and Sentinel mode directive prefer Auto delegation unless the user requests a
-particular provider/model. The tool description asks for short, task-specific create-mode titles.
-The bundled `delegate` skill requires agents to include a title in its handoff calls.
+The Sentinel directive and bundled `delegate` skill prefer relevant same-task, same-owner
+follow-ups when reuse preserves tracking and authorization. Follow-ups retain their existing
+provider; Auto preference applies to new chats unless the user requests a particular
+provider/model. Tracked sends with `todoItemId` reject `processId`; agents report unsupported
+reuse and preserve tracking through a fresh explicitly authorized tracked launch.
+The tool description and bundled skill request short, task-specific create-mode titles
+and self-contained content; existing-chat sends use `processId`.
 The JSON schema requires `content` for send or explicit `action: "cancel"` plus `processId`
 for cancellation; titles remain optional.
 

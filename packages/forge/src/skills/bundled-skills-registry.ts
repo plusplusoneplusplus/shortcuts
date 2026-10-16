@@ -27,7 +27,7 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
     },
     {
         name: 'delegate',
-        description: 'Delegate a job from the current chat to a new conversation. Use when the user asks to delegate or hand off work.',
+        description: 'Delegate a job to a relevant existing chat or a new conversation. Use when the user asks to delegate or hand off work.',
         relativePath: 'delegate',
     },
     {
