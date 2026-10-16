@@ -291,7 +291,9 @@ reports determinate or indeterminate progress, retains verified bytes for Later
 or cancelled restarts, and discards a retained release before replacing it. It
 checks restart confirmation before installation and transfers file ownership to
 the helper before quitting. Failures report their reason and offer the existing
-`pickDownloadUrl` browser path. The hooks accept an owned-server check, helper
+`pickDownloadUrl` browser path. `dispose()`, called from `before-quit` alongside
+browser disposal, aborts a download, removes deferred bytes and suppresses
+further dialogs/installs; bytes being handed to a helper stay. The hooks accept an owned-server check, helper
 launch and normal quit drain. `update-restart.ts` implements the restart check:
 it queries the owned server's unfiltered `GET /api/queue` with a ten-second
 timeout, counts `running` across all workspaces, and requests confirmation only

@@ -25,6 +25,9 @@ export class UpdateCoordinator {
     private ready?: { release: ReleaseInfo; download: DownloadedUpdate };
     private active?: Promise<void>;
     private handedOff = false;
+    private installing = false;
+    private disposed = false;
+    private readonly abort = new AbortController();
 
     constructor(private readonly options: UpdateCoordinatorOptions) {}
 
@@ -33,7 +36,7 @@ export class UpdateCoordinator {
 
     /** Called only after Update, or to offer a retained download again. */
     start(release: ReleaseInfo): Promise<void> {
-        if (this.handedOff) return Promise.resolve();
+        if (this.handedOff || this.disposed) return Promise.resolve();
         if (this.active) return this.active;
         this.active = this.run(release).finally(() => { this.active = undefined; });
         return this.active;
@@ -49,8 +52,10 @@ export class UpdateCoordinator {
             if (!this.ready) {
                 opts.setProgress(undefined);
                 try {
+                    const { signal } = opts.downloadOptions;
                     const download = await (opts.download ?? downloadUpdate)({
                         ...opts.downloadOptions,
+                        signal: signal ? AbortSignal.any([signal, this.abort.signal]) : this.abort.signal,
                         release,
                         onProgress: ({ downloadedBytes, totalBytes }) => {
                             opts.setProgress(totalBytes
@@ -59,32 +64,62 @@ export class UpdateCoordinator {
                         },
                     });
                     this.ready = { release, download };
+                    // A download that finished as the app quit has no other owner.
+                    if (this.disposed) {
+                        await this.discardReady();
+                        return;
+                    }
                 } finally {
                     opts.setProgress(null);
                 }
             }
             // Keep the original release paired with the bytes already verified.
             const ready = this.ready;
-            if (!await opts.promptRestart(ready.release)) return;
-            if (!await opts.confirmRestart()) return;
-            await opts.install(ready.download, ready.release);
+            if (!await opts.promptRestart(ready.release) || this.disposed) return;
+            if (!await opts.confirmRestart() || this.disposed) return;
+            this.installing = true;
+            try {
+                await opts.install(ready.download, ready.release);
+            } finally {
+                this.installing = false;
+            }
             // Ownership passes to the helper before the normal quit drain starts.
             this.handedOff = true;
             this.ready = undefined;
-            opts.quit();
+            // A quit that began during helper launch is already draining.
+            if (!this.disposed) opts.quit();
         } catch (error) {
             let reason = error instanceof Error ? error.message : String(error);
-            if (this.ready && !this.handedOff) {
-                try {
-                    await this.ready.download.cleanup();
-                    this.ready = undefined;
-                } catch (cleanupError) {
-                    reason += `\nCould not remove update files: ${String(cleanupError)}`;
-                }
+            try {
+                await this.discardReady();
+            } catch (cleanupError) {
+                reason += `\nCould not remove update files: ${String(cleanupError)}`;
+            }
+            if (this.disposed) {
+                console.error(`[coc-desktop] Update stopped during quit: ${reason}`);
+                return;
             }
             if (await opts.promptError(reason)) {
                 await opts.openBrowser(pickDownloadUrl(release, opts.downloadOptions.platform ?? process.platform));
             }
         }
+    }
+
+    /**
+     * Ordinary quit: abort a download and remove verified bytes the user
+     * deferred. Bytes already handed to (or being handed to) a helper stay.
+     */
+    async dispose(): Promise<void> {
+        if (this.disposed) return;
+        this.disposed = true;
+        this.abort.abort(new Error('The app is quitting.'));
+        if (!this.installing) await this.discardReady();
+    }
+
+    private async discardReady(): Promise<void> {
+        const ready = this.ready;
+        if (!ready || this.handedOff) return;
+        this.ready = undefined;
+        await ready.download.cleanup();
     }
 }

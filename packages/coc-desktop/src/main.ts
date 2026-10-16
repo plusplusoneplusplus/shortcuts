@@ -1319,8 +1319,13 @@ app.on('before-quit', (event) => {
     devTunnelManager?.dispose();
     event.preventDefault();
     isQuitting = true;
-    void disposeBrowserViews()
-        .catch(error => console.error('[coc-desktop] Browser shutdown failed:', error))
+    void Promise.all([
+        disposeBrowserViews()
+            .catch(error => console.error('[coc-desktop] Browser shutdown failed:', error)),
+        // Abort an in-app update download and remove deferred update files.
+        updateCoordinator?.dispose()
+            .catch(error => console.error('[coc-desktop] Update cleanup failed:', error)),
+    ])
         .then(() => serverHandle?.started ? shutdownServer(serverHandle) : 'detached')
         .then((outcome) => {
             process.stdout.write(`[coc-desktop] server shutdown on quit: ${outcome}\n`);

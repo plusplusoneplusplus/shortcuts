@@ -178,4 +178,114 @@ describe('UpdateCoordinator', () => {
         await f.coordinator.start(release);
         expect(f.options.openBrowser).not.toHaveBeenCalled();
     });
+
+    describe('dispose on ordinary quit', () => {
+        it('removes bytes retained after Later and blocks later starts', async () => {
+            const f = fixture();
+            vi.mocked(f.options.promptRestart).mockResolvedValue(false);
+            await f.coordinator.start(release);
+            await f.coordinator.dispose();
+            expect(f.cleanup).toHaveBeenCalledTimes(1);
+            expect(f.coordinator.readyRelease).toBeUndefined();
+            await f.coordinator.start(release);
+            expect(f.options.download).toHaveBeenCalledTimes(1);
+            await f.coordinator.dispose();
+            expect(f.cleanup).toHaveBeenCalledTimes(1);
+        });
+
+        it('aborts an in-progress download without prompting', async () => {
+            const f = fixture();
+            let signal!: AbortSignal;
+            vi.mocked(f.options.download!).mockImplementation(opts => new Promise((_, reject) => {
+                signal = opts.signal!;
+                signal.addEventListener('abort', () => reject(signal.reason));
+            }));
+            const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+            const pending = f.coordinator.start(release);
+            await vi.waitFor(() => expect(f.options.download).toHaveBeenCalled());
+            expect(signal.aborted).toBe(false);
+            await f.coordinator.dispose();
+            await pending;
+            expect(signal.aborted).toBe(true);
+            expect(f.options.promptError).not.toHaveBeenCalled();
+            expect(f.options.setProgress).toHaveBeenLastCalledWith(null);
+            errors.mockRestore();
+        });
+
+        it('keeps honoring a caller abort signal', async () => {
+            const f = fixture();
+            const caller = new AbortController();
+            f.options.downloadOptions.signal = caller.signal;
+            vi.mocked(f.options.download!).mockImplementation(async opts => {
+                caller.abort();
+                expect(opts.signal!.aborted).toBe(true);
+                return f.download;
+            });
+            vi.mocked(f.options.promptRestart).mockResolvedValue(false);
+            await f.coordinator.start(release);
+        });
+
+        it('removes a download that finishes after quit begins', async () => {
+            const f = fixture();
+            let finish!: () => void;
+            vi.mocked(f.options.download!).mockReturnValue(new Promise(resolve => { finish = () => resolve(f.download); }));
+            const pending = f.coordinator.start(release);
+            await vi.waitFor(() => expect(f.options.download).toHaveBeenCalled());
+            await f.coordinator.dispose();
+            finish();
+            await pending;
+            expect(f.cleanup).toHaveBeenCalledTimes(1);
+            expect(f.options.promptRestart).not.toHaveBeenCalled();
+        });
+
+        it('does not install when quit begins during the restart dialog', async () => {
+            const f = fixture();
+            let answer!: (restart: boolean) => void;
+            vi.mocked(f.options.promptRestart).mockReturnValue(new Promise(resolve => { answer = resolve; }));
+            const pending = f.coordinator.start(release);
+            await vi.waitFor(() => expect(f.options.promptRestart).toHaveBeenCalled());
+            await f.coordinator.dispose();
+            answer(true);
+            await pending;
+            expect(f.cleanup).toHaveBeenCalledTimes(1);
+            expect(f.options.confirmRestart).not.toHaveBeenCalled();
+            expect(f.options.install).not.toHaveBeenCalled();
+        });
+
+        it('leaves bytes to a helper that is launching or launched, without a second quit', async () => {
+            const f = fixture();
+            let launched!: () => void;
+            vi.mocked(f.options.install).mockReturnValue(new Promise(resolve => { launched = resolve; }));
+            const pending = f.coordinator.start(release);
+            await vi.waitFor(() => expect(f.options.install).toHaveBeenCalled());
+            await f.coordinator.dispose();
+            launched();
+            await pending;
+            expect(f.cleanup).not.toHaveBeenCalled();
+            expect(f.options.quit).not.toHaveBeenCalled();
+
+            const g = fixture();
+            await g.coordinator.start(release);
+            await g.coordinator.dispose();
+            expect(g.options.quit).toHaveBeenCalledTimes(1);
+            expect(g.cleanup).not.toHaveBeenCalled();
+        });
+
+        it('removes bytes when a helper launch fails during quit', async () => {
+            const f = fixture();
+            let fail!: () => void;
+            vi.mocked(f.options.install).mockReturnValue(new Promise((_, reject) => { fail = () => reject(new Error('spawn failed')); }));
+            const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+            const pending = f.coordinator.start(release);
+            await vi.waitFor(() => expect(f.options.install).toHaveBeenCalled());
+            await f.coordinator.dispose();
+            expect(f.cleanup).not.toHaveBeenCalled();
+            fail();
+            await pending;
+            expect(f.cleanup).toHaveBeenCalledTimes(1);
+            expect(f.options.promptError).not.toHaveBeenCalled();
+            expect(errors).toHaveBeenCalledWith(expect.stringContaining('spawn failed'));
+            errors.mockRestore();
+        });
+    });
 });
