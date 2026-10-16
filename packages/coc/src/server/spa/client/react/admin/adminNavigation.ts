@@ -9,6 +9,7 @@
  * policy can be unit-tested without mounting `AdminPanel`.
  */
 import type { AdminSubTab, DashboardTab } from '../types/dashboard';
+import type { FeatureSettingTab } from '../../../../../config/admin-setting-definitions';
 
 // ── Settings sub-tabs ───────────────────────────────────────────────────────
 // Settings sections promoted into the sidebar. Each entry maps 1:1 to a
@@ -105,8 +106,21 @@ export function getAdminTabIcon(tab: AdminSubTab, isContainer: boolean): string 
 }
 export function getAdminTabDescription(tab: AdminSubTab, isContainer: boolean): string {
     if (tab === 'agents') return isContainer ? 'View and manage agents connected to this container.' : '';
-    if (tab === 'messaging' && !isContainer) return 'Connect a Teams channel to CoC workspaces.';
+    if (tab === 'messaging' && !isContainer) return 'Connect a Teams channel to CoC workspaces and manage Teams features.';
     return BASE_TAB_DESCRIPTIONS[tab];
+}
+
+/**
+ * Page hosting a registry feature placement, used by Features search links.
+ * Teams toggles live on Connectors → Teams (the `messaging` admin tab); every
+ * other placement is a Configure → Settings sub-tab.
+ */
+export function getFeatureSettingTabLink(
+    tab: Exclude<FeatureSettingTab, 'features'>,
+    isContainer: boolean,
+): { href: string; label: string } {
+    if (tab === 'teams') return { href: '#admin/messaging', label: getAdminTabLabel('messaging', isContainer) };
+    return { href: `#admin/settings/${tab}`, label: getSettingsSubTabMeta(tab).label };
 }
 
 // ── Embedded tool routes ────────────────────────────────────────────────────

@@ -99,13 +99,14 @@ export const FEATURE_CARD_GROUPS: readonly FeatureGroupSpec[] = [
 export type AdminSettingBadge = 'restart' | 'experimental' | 'preview';
 
 /**
- * Configure → Settings tab a registry toggle is rendered on. Mirrors the
- * matching SPA `SettingsSubTab` ids; kept local so this module stays free of
- * SPA imports.
+ * Admin page a registry toggle is rendered on. Every id except `'teams'`
+ * mirrors the matching SPA Configure → Settings `SettingsSubTab`; `'teams'` is
+ * the Connectors → Teams page. Kept local so this module stays free of SPA
+ * imports.
  */
-export type FeatureSettingTab = 'ai' | 'chat' | 'sentinel' | 'appearance' | 'editors' | 'features' | 'integrations';
+export type FeatureSettingTab = 'ai' | 'chat' | 'sentinel' | 'appearance' | 'editors' | 'features' | 'integrations' | 'teams';
 
-export const FEATURE_SETTING_TABS: readonly FeatureSettingTab[] = ['ai', 'chat', 'sentinel', 'appearance', 'editors', 'features', 'integrations'];
+export const FEATURE_SETTING_TABS: readonly FeatureSettingTab[] = ['ai', 'chat', 'sentinel', 'appearance', 'editors', 'features', 'integrations', 'teams'];
 
 export interface AdminSettingUiSpec {
     /** Settings tab the row renders on. Defaults to `'features'` when omitted. */
@@ -917,7 +918,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.teamsBridgeObservability', default: false, runtime: 'live', runtimeFlag: 'teamsBridgeObservabilityEnabled',
         ui: {
-            tab: 'integrations', group: 'dashboard', order: 61, label: 'Teams bridge observability', badge: 'experimental',
+            tab: 'teams', group: 'dashboard', order: 61, label: 'Teams bridge observability', badge: 'experimental',
             hint: 'Collect safe, bounded history for normal CoC Teams channel connections. Disabled by default.',
             testId: 'toggle-teams-bridge-observability-enabled',
         },
@@ -925,7 +926,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.teamsAiAnswerRelay', default: true, runtime: 'live', runtimeFlag: 'teamsAiAnswerRelayEnabled',
         ui: {
-            tab: 'integrations', group: 'dashboard', order: 61.5, label: 'Teams AI answer relay', badge: 'experimental',
+            tab: 'teams', group: 'dashboard', order: 61.5, label: 'Teams AI answer relay', badge: 'experimental',
             hint: 'Enabled by default for a connected bridge. Reply with completed Ask answers or safe terminal notices in their originating Teams threads for new requests. Turn off to stop answer relay and thread reply polling immediately; no restart or reconnect required.',
             testId: 'toggle-teams-ai-answer-relay-enabled',
         },
@@ -933,7 +934,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.teamsMessageReaction', default: false, runtime: 'live', runtimeFlag: 'teamsMessageReactionEnabled',
         ui: {
-            tab: 'integrations', group: 'dashboard', order: 61.75, label: 'Teams message reaction', badge: 'experimental',
+            tab: 'teams', group: 'dashboard', order: 61.75, label: 'Teams message reaction', badge: 'experimental',
             hint: 'Attempt a Like reaction on new channel messages before processing; ordinary replies remain unchanged. Disabled by default.',
             testId: 'toggle-teams-message-reaction-enabled',
         },

@@ -214,9 +214,13 @@ export function AdminPanel() {
             ? settingsSaveTargets[settingsSubTab]
             : activeTab === 'server' && !isToolEmbedded
                 ? [{ dirty: serverRuntime.serverNameDirty, saving: serverRuntime.serverNameSaving, onSave: serverRuntime.handleSaveServerName }]
-                : activeToolItem?.tab === 'dreams-admin'
-                    ? [{ dirty: dreams.dreamsDirty, saving: dreams.dreamsSaving, onSave: dreams.handleSaveDreams }]
-                    : null;
+                // Teams connection settings save through their own actions;
+                // Ctrl/Cmd+S only saves the Teams feature toggles.
+                : activeTab === 'messaging' && !isToolEmbedded
+                    ? [featureTarget('teams')]
+                    : activeToolItem?.tab === 'dreams-admin'
+                        ? [{ dirty: dreams.dreamsDirty, saving: dreams.dreamsSaving, onSave: dreams.handleSaveDreams }]
+                        : null;
     useAdminSaveShortcut(saveShortcutTargets !== null, saveShortcutTargets ?? []);
 
     // Link handlers — shared module-level state via hook
@@ -348,9 +352,11 @@ export function AdminPanel() {
 
     // Registry toggles placed on a non-Features tab render in their own
     // section card below that tab's existing card(s).
-    const renderTabFeatures = (tab: Exclude<FeatureSettingTab, 'features'>) => (
+    const renderTabFeatures = (tab: Exclude<FeatureSettingTab, 'features'>, title?: string, description?: string) => (
         <TabFeatureSettingsCard
             tab={tab}
+            title={title}
+            description={description}
             featureValues={features.featureValues}
             setFeatureValues={features.setFeatureValues}
             dirty={features.isTabDirty(tab)}
@@ -683,7 +689,7 @@ export function AdminPanel() {
                                                     saving={features.savingTab === 'features'}
                                                     onSave={() => { void features.handleSaveTab('features'); }}
                                                     onCancel={() => features.handleCancelTab('features')}
-                                                    onNavigateToTab={handleSettingsSubTabChange}
+                                                    onNavigateToTab={tab => (tab === 'teams' ? handleTabChange('messaging') : handleSettingsSubTabChange(tab))}
                                                     sources={sources}
                                                     isDefaultValue={isDefaultValue}
                                                 />
@@ -859,6 +865,12 @@ export function AdminPanel() {
                                 <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
                                     <TeamsConnectionCard />
                                 </Suspense>
+                            )}
+                            {/* Hidden until the admin config loads so edits are never overwritten by hydration. */}
+                            {activeTab === 'messaging' && !configLoading && !configError && renderTabFeatures(
+                                'teams',
+                                'Teams features',
+                                'Optional Teams bridge behavior. Saved separately from the connection settings.',
                             )}
                             {activeTab === 'whatsapp' && !isContainerMode() && (
                                 <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>

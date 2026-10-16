@@ -988,7 +988,7 @@ references before editing. Paths are package-relative.
   new chats retain confirmations. Relay captured terminal turns by request ID
   to the original thread/workspace.
   Normal Teams AI answer relay defaults on for missing settings, independently of
-  bridge connectivity, Trouter, Likes and observability. The Integrations toggle is
+  bridge connectivity, Trouter, Likes and observability. The Connectors → Teams toggle is
   live, without restart/reconnect; disabling stops relay and thread reply polling.
   The registry suppresses its experimental badge for the enabled default.
   Selection changes never redirect answers. Persist accepted multipart progress;

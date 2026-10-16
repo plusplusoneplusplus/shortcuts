@@ -34,7 +34,7 @@ import type { AdminFeatureSettings } from '../../../src/server/spa/client/react/
 import type { FeatureSettingTab } from '../../../src/config/admin-setting-definitions';
 
 type SectionTab = Exclude<FeatureSettingTab, 'features'>;
-const SECTION_TABS: SectionTab[] = ['ai', 'chat', 'sentinel', 'appearance', 'editors', 'integrations'];
+const SECTION_TABS: SectionTab[] = ['ai', 'chat', 'sentinel', 'appearance', 'editors', 'integrations', 'teams'];
 
 let controller: AdminFeatureSettings;
 
@@ -268,7 +268,7 @@ describe('TabFeatureSettingsCard', () => {
         expect(controller.isTabDirty('chat')).toBe(true);
     });
 
-    it.each<FeatureSettingTab>(['ai', 'chat', 'appearance', 'editors', 'integrations', 'features'])(
+    it.each<FeatureSettingTab>(['ai', 'chat', 'appearance', 'editors', 'integrations', 'teams', 'features'])(
         'saving or canceling %s cannot consume pending Sentinel edits',
         async tab => {
             render(<Harness tabs={['sentinel']} />);

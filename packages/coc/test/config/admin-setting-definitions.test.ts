@@ -823,10 +823,11 @@ describe('feature toggle settings-tab placement', () => {
         'features.explorerEditorTabs': 'editors',
         'features.markdownPanelPreview': 'editors',
         'features.arxivPaperIngest': 'editors',
-        // Integrations
-        'features.teamsBridgeObservability': 'integrations',
-        'features.teamsAiAnswerRelay': 'integrations',
-        'features.teamsMessageReaction': 'integrations',
+        // Connectors → Teams
+        'features.teamsBridgeObservability': 'teams',
+        'features.teamsAiAnswerRelay': 'teams',
+        'features.teamsMessageReaction': 'teams',
+        // Integrations (bot-managed conversations also covers WhatsApp)
         'features.botManagedConversations': 'integrations',
         'mcpOauth.enabled': 'integrations',
         'mcpOauth.autoRefresh.enabled': 'integrations',
@@ -907,6 +908,20 @@ describe('feature toggle settings-tab placement', () => {
         }
         expect(FEATURE_CARD_GROUPS.find(g => g.id === 'editorFiles')?.heading).toBe('File Tabs & Previews');
         expect(FEATURE_CARD_GROUPS.find(g => g.id === 'editorNotes')?.heading).toBe('Notes Editor');
+    });
+
+    // Teams-only feature settings live on Connectors → Teams; moving them must
+    // not change their keys, defaults, live runtime or badges.
+    it('keeps exactly the Teams-only settings on the Teams page with unchanged contracts', () => {
+        const teamsDefs = uiDefs.filter(d => getFeatureSettingTab(d) === 'teams');
+        expect(teamsDefs.map(d => [d.key, d.default, d.runtime, d.runtimeFlag, d.ui!.badge])).toEqual([
+            ['features.teamsBridgeObservability', false, 'live', 'teamsBridgeObservabilityEnabled', 'experimental'],
+            ['features.teamsAiAnswerRelay', true, 'live', 'teamsAiAnswerRelayEnabled', 'experimental'],
+            ['features.teamsMessageReaction', false, 'live', 'teamsMessageReactionEnabled', 'experimental'],
+        ]);
+        expect(uiDefs.filter(d => /^features\.teams/.test(d.key)).map(d => d.key).sort())
+            .toEqual(teamsDefs.map(d => d.key).sort());
+        expect(uiDefs.filter(d => getFeatureSettingTab(d) === 'integrations').some(d => /teams/i.test(d.key))).toBe(false);
     });
 
     it('places every ui setting on a valid settings tab', () => {

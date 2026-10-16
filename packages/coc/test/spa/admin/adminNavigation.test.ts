@@ -11,6 +11,7 @@ import {
     deriveActiveNav,
     getAdminTabLabel,
     getAdminTabIcon,
+    getFeatureSettingTabLink,
     getSettingsSubTabMeta,
     parseSettingsSubTabFromHash,
     SETTINGS_SUBTABS,
@@ -90,6 +91,20 @@ describe('Editors sub-tab registration', () => {
             isContainer: false, isToolEmbedded: false,
             activeDashboardTab: 'admin', activeTab: 'settings', settingsSubTab: 'editors',
         })).toMatchObject({ activeNavKey: 'settings:configure', activeTabLabel: 'Editors', activeBreadcrumbGroup: 'Configure' });
+    });
+});
+
+describe('getFeatureSettingTabLink', () => {
+    it('targets Connectors → Teams for Teams placements without adding a settings sub-tab', () => {
+        expect(getFeatureSettingTabLink('teams', false)).toEqual({ href: '#admin/messaging', label: 'Teams' });
+        expect(getFeatureSettingTabLink('teams', true)).toEqual({ href: '#admin/messaging', label: 'Messaging' });
+        expect(SETTINGS_SUBTABS.map(t => t.id)).not.toContain('teams');
+        expect(parseSettingsSubTabFromHash('#admin/settings/teams')).toBeNull();
+    });
+
+    it('keeps Configure → Settings links for every other placement', () => {
+        expect(getFeatureSettingTabLink('integrations', false)).toEqual({ href: '#admin/settings/integrations', label: 'Integrations' });
+        expect(getFeatureSettingTabLink('editors', true)).toEqual({ href: '#admin/settings/editors', label: 'Editors' });
     });
 });
 

@@ -14,7 +14,8 @@ import {
     getFeatureSettingTab,
 } from '../../../../../config/admin-setting-definitions';
 import type { AdminSettingDefinition, FeatureSettingTab } from '../../../../../config/admin-setting-definitions';
-import { getSettingsSubTabMeta } from './adminNavigation';
+import { getFeatureSettingTabLink } from './adminNavigation';
+import { isContainerMode } from '../utils/config';
 import type { FeatureValues } from './useAdminFeatureSettings';
 
 const FEATURE_BADGES: Record<string, { className: string; label: string }> = {
@@ -166,7 +167,7 @@ export function FeatureSettingsCard({
                         <div className="ar-feature-group-head">{group.heading}</div>
                         {defs.map(def => {
                             const tab = getFeatureSettingTab(def);
-                            return tab === 'features' ? (
+                            if (tab === 'features') return (
                                 <FeatureSettingRow
                                     key={def.key}
                                     def={def}
@@ -175,14 +176,16 @@ export function FeatureSettingsCard({
                                     sources={sources}
                                     isDefaultValue={isDefaultValue}
                                 />
-                            ) : (
+                            );
+                            const link = getFeatureSettingTabLink(tab, isContainerMode());
+                            return (
                                 <AdminRow key={def.key} name={def.ui!.label} hint={def.ui!.hint}>
                                     <a
-                                        href={`#admin/settings/${tab}`}
+                                        href={link.href}
                                         onClick={() => onNavigateToTab(tab)}
                                         data-testid={`feature-search-link-${def.ui!.testId}`}
                                     >
-                                        in {getSettingsSubTabMeta(tab).label}
+                                        in {link.label}
                                     </a>
                                 </AdminRow>
                             );
@@ -204,6 +207,8 @@ export interface TabFeatureSettingsCardProps {
     onCancel: () => void;
     sources: Record<string, string>;
     isDefaultValue: (key: string) => boolean | undefined;
+    title?: string;
+    description?: string;
 }
 
 /**
@@ -222,6 +227,8 @@ export function TabFeatureSettingsCard({
     onCancel,
     sources,
     isDefaultValue,
+    title = 'Features',
+    description = 'Optional features for this area.',
 }: TabFeatureSettingsCardProps) {
     const groups = FEATURE_CARD_GROUPS
         .map(group => ({
@@ -237,8 +244,8 @@ export function TabFeatureSettingsCard({
 
     return (
         <SettingsCard
-            title="Features"
-            description="Optional features for this area."
+            title={title}
+            description={description}
             dirty={dirty}
             saving={saving}
             onSave={onSave}

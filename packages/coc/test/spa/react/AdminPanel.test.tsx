@@ -1374,6 +1374,116 @@ describe('AdminPanel', () => {
             expect(writes).toHaveLength(1);
         });
 
+        // Teams-only feature settings live on Connectors → Teams, next to the
+        // connection card, and nowhere on Configure → Settings.
+        const TEAMS_TOGGLES = [
+            'toggle-teams-bridge-observability-enabled',
+            'toggle-teams-ai-answer-relay-enabled',
+            'toggle-teams-message-reaction-enabled',
+        ];
+        const INTEGRATIONS_TOGGLES = [
+            'toggle-kusto-enabled', 'toggle-mcp-oauth-enabled',
+            'toggle-bot-managed-conversations-enabled', 'toggle-work-items-sync-enabled',
+        ];
+
+        // The real connection card needs a well-formed status; it is only read.
+        function mockTeamsStatus(): void {
+            const baseImpl = mockFetch.getMockImplementation()!;
+            mockFetch.mockImplementation((url: string, options?: any) => url.includes('/messaging/teams/status')
+                ? Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({
+                        enabled: false, status: 'disconnected', error: null, authStatus: 'authenticated',
+                        oauthAvailable: true, teamsOAuthAvailable: true, serverUrl: 'https://example.test/teams',
+                        teamName: 'Engineering', channelName: 'General', botName: 'CoC',
+                    }),
+                })
+                : baseImpl(url, options));
+        }
+
+        async function gotoTeamsPage(): Promise<void> {
+            await waitFor(() => expect(screen.getByTestId('admin-tab-messaging')).toBeDefined());
+            await act(async () => { fireEvent.click(screen.getByTestId('admin-tab-messaging')); });
+            await waitFor(() => expect(screen.getByTestId('settings-tab-features-teams')).toBeDefined());
+        }
+
+        it('renders every Teams feature control exactly once on Connectors → Teams', async () => {
+            mockFullConfig();
+            mockTeamsStatus();
+            await act(async () => { renderWithProviders(); });
+            for (const sub of ['ai', 'chat', 'appearance', 'editors', 'features', 'providers', 'integrations', 'advanced'] as const) {
+                await gotoSettingsSubTab(sub);
+                for (const id of TEAMS_TOGGLES) expect(screen.queryByTestId(id), `${sub}:${id}`).toBeNull();
+                if (sub !== 'integrations') continue;
+                for (const id of INTEGRATIONS_TOGGLES) expect(screen.getAllByTestId(id), id).toHaveLength(1);
+                expect(screen.getByTestId('settings-link-handlers')).toBeDefined();
+            }
+
+            await gotoTeamsPage();
+            expect(window.location.hash).toBe('#admin/messaging');
+            expect(screen.getByTestId('admin-tab-messaging').textContent).toContain('Teams');
+            const card = screen.getByTestId('settings-tab-features-teams');
+            expect(card.textContent).toContain('Teams features');
+            await waitFor(() => expect(screen.getByTestId('teams-connection-card')).toBeDefined());
+            for (const id of TEAMS_TOGGLES) expect(screen.getAllByTestId(id), id).toHaveLength(1);
+            for (const id of INTEGRATIONS_TOGGLES) expect(screen.queryByTestId(id), id).toBeNull();
+            for (const id of ['toggle-teams-bridge-observability-enabled', 'toggle-teams-message-reaction-enabled']) {
+                expect(screen.getByTestId(id).closest('.ar-row')?.textContent, id).toContain('Experimental');
+            }
+            expect((screen.getByTestId('toggle-teams-ai-answer-relay-enabled') as HTMLInputElement).checked).toBe(true);
+            expect((screen.getByTestId('toggle-teams-message-reaction-enabled') as HTMLInputElement).checked).toBe(false);
+        });
+
+        it('links Features search results for Teams settings to Connectors → Teams', async () => {
+            mockFullConfig();
+            mockTeamsStatus();
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('features');
+            await act(async () => {
+                fireEvent.change(screen.getByTestId('feature-search-input'), { target: { value: 'Teams message reaction' } });
+            });
+            const link = screen.getByTestId('feature-search-link-toggle-teams-message-reaction-enabled');
+            expect(link.getAttribute('href')).toBe('#admin/messaging');
+            expect(link.textContent).toBe('in Teams');
+            expect(screen.queryByTestId('toggle-teams-message-reaction-enabled')).toBeNull();
+            await act(async () => { fireEvent.click(link); });
+            await waitFor(() => expect(screen.getByTestId('settings-tab-features-teams')).toBeDefined());
+            expect(window.location.hash).toBe('#admin/messaging');
+            expect(screen.getAllByTestId('toggle-teams-message-reaction-enabled')).toHaveLength(1);
+        });
+
+        it('saves only Teams feature keys from the Teams page, keeping other drafts pending', async () => {
+            mockFullConfig({ features: { teamsAiAnswerRelay: false } });
+            mockTeamsStatus();
+            const writes = recordWrites();
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('integrations');
+            await waitFor(() => expect(screen.getByTestId('toggle-kusto-enabled')).toBeDefined());
+            await act(async () => { fireEvent.click(screen.getByTestId('toggle-kusto-enabled')); });
+
+            await gotoTeamsPage();
+            expect((screen.getByTestId('toggle-teams-ai-answer-relay-enabled') as HTMLInputElement).checked).toBe(false);
+            expect((screen.getByTestId('settings-tab-features-teams-save') as HTMLButtonElement).disabled).toBe(true);
+            await act(async () => { fireEvent.click(screen.getByTestId('toggle-teams-message-reaction-enabled')); });
+            const event = await act(async () => pressSave());
+
+            expect(event.defaultPrevented).toBe(true);
+            await waitFor(() => expect(writes).toHaveLength(1));
+            expect(writes[0].url).toContain('/admin/config');
+            expect(writes[0].body).toEqual({
+                'features.teamsBridgeObservability': false,
+                'features.teamsAiAnswerRelay': false,
+                'features.teamsMessageReaction': true,
+            });
+            await waitFor(() => expect((screen.getByTestId('settings-tab-features-teams-save') as HTMLButtonElement).disabled).toBe(true));
+
+            await act(async () => { fireEvent.click(screen.getByTestId('settings-nav-configure')); });
+            await gotoSettingsSubTab('integrations');
+            expect((screen.getByTestId('toggle-kusto-enabled') as HTMLInputElement).checked).toBe(true);
+            expect((screen.getByTestId('settings-tab-features-integrations-save') as HTMLButtonElement).disabled).toBe(false);
+            expect(writes).toHaveLength(1);
+        });
+
         // Regression: the AI Provider page has a draft Save/Cancel card.
         it.each([
             ['Ctrl+S', { ctrlKey: true }],
