@@ -4,8 +4,8 @@
  * Owns settings sub-tab parsing, tab labels/icons/descriptions, sidebar nav
  * group construction, active-key derivation, breadcrumb group, page
  * description, and mobile <select> option shaping. Everything here is a pure
- * function of its inputs — container mode, `serversEnabled`, and the desktop
- * shell flag are passed in explicitly rather than read from module-level globals — so the routing
+ * function of its inputs — container mode and `serversEnabled` are
+ * passed in explicitly rather than read from module-level globals — so the routing
  * policy can be unit-tested without mounting `AdminPanel`.
  */
 import type { AdminSubTab, DashboardTab } from '../types/dashboard';
@@ -92,7 +92,7 @@ const BASE_TAB_DESCRIPTIONS: Record<AdminSubTab, string> = {
     agents: '',
     messaging: 'Configure messaging connections.',
     whatsapp: 'Receive commands and chat messages in a selected WhatsApp group.',
-    browser: 'Browser engines and sign-ins for this desktop installation.',
+    browser: 'Desktop browser engines, sign-ins and history, plus AI browser features.',
 };
 
 export function getAdminTabLabel(tab: AdminSubTab, isContainer: boolean): string {
@@ -112,14 +112,16 @@ export function getAdminTabDescription(tab: AdminSubTab, isContainer: boolean): 
 
 /**
  * Page hosting a registry feature placement, used by Features search links.
- * Teams toggles live on Connectors → Teams (the `messaging` admin tab); every
- * other placement is a Configure → Settings sub-tab.
+ * Teams toggles live on Connectors → Teams (the `messaging` admin tab) and
+ * browser toggles on Admin → Browser; every other placement is a Configure →
+ * Settings sub-tab.
  */
 export function getFeatureSettingTabLink(
     tab: Exclude<FeatureSettingTab, 'features'>,
     isContainer: boolean,
 ): { href: string; label: string } {
     if (tab === 'teams') return { href: '#admin/messaging', label: getAdminTabLabel('messaging', isContainer) };
+    if (tab === 'browser') return { href: '#admin/browser', label: getAdminTabLabel('browser', isContainer) };
     return { href: `#admin/settings/${tab}`, label: getSettingsSubTabMeta(tab).label };
 }
 
@@ -221,20 +223,18 @@ export function toolNavItem(tab: DashboardTab): AdminNavItem {
 export interface AdminNavContext {
     isContainer: boolean;
     serversEnabled: boolean;
-    /** True inside the Electron desktop shell; the Browser page is desktop-only. */
-    isDesktop: boolean;
 }
 
 /**
  * Builds the sidebar nav groups for the given runtime context. The Servers row
  * is gated by the dashboard runtime config (independent of the editable
  * `serversEnabled` Features form state), and the Agents/Messaging placement
- * depends on container mode. The Browser row only shows in the desktop shell.
- * Empty groups are dropped.
+ * depends on container mode. The Browser row always shows: its server-backed
+ * browser features apply everywhere, and its desktop-only preferences render
+ * an availability state outside the desktop shell. Empty groups are dropped.
  */
-export function buildAdminNavGroups({ isContainer, serversEnabled, isDesktop }: AdminNavContext): AdminNavGroup[] {
+export function buildAdminNavGroups({ isContainer, serversEnabled }: AdminNavContext): AdminNavGroup[] {
     const serversNavItems = serversEnabled ? [toolNavItem('servers')] : [];
-    const browserNavItems = isDesktop ? [adminNavItem('browser', isContainer)] : [];
     // Container mode keeps WhatsApp + Teams in one Messaging section; normal
     // CoC gives each connector its own row.
     const messagingNavItems = isContainer
@@ -255,7 +255,7 @@ export function buildAdminNavGroups({ isContainer, serversEnabled, isDesktop }: 
                     action: { kind: 'settings', subTab: DEFAULT_SETTINGS_SUBTAB } as AdminNavAction,
                 },
                 ...nonContainerAgentsNavItem,
-                ...browserNavItems,
+                adminNavItem('browser', isContainer),
                 ...serversNavItems,
             ],
         },

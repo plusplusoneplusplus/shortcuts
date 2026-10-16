@@ -102,6 +102,13 @@ describe('getFeatureSettingTabLink', () => {
         expect(parseSettingsSubTabFromHash('#admin/settings/teams')).toBeNull();
     });
 
+    it('targets the existing Admin → Browser page for browser placements, not a settings sub-tab', () => {
+        expect(getFeatureSettingTabLink('browser', false)).toEqual({ href: '#admin/browser', label: 'Browser' });
+        expect(getFeatureSettingTabLink('browser', true)).toEqual({ href: '#admin/browser', label: 'Browser' });
+        expect(SETTINGS_SUBTABS.map(t => t.id)).not.toContain('browser');
+        expect(parseSettingsSubTabFromHash('#admin/settings/browser')).toBeNull();
+    });
+
     it('keeps Configure → Settings links for every other placement', () => {
         expect(getFeatureSettingTabLink('integrations', false)).toEqual({ href: '#admin/settings/integrations', label: 'Integrations' });
         expect(getFeatureSettingTabLink('editors', true)).toEqual({ href: '#admin/settings/editors', label: 'Editors' });
@@ -128,7 +135,7 @@ describe('buildAdminNavGroups', () => {
         groups.find(g => g.label === label)?.items.map(i => i.key) ?? [];
 
     it('non-container + servers disabled: Teams and WhatsApp get their own rows, no container agents, no servers row', () => {
-        const groups = buildAdminNavGroups({ isContainer: false, serversEnabled: false, isDesktop: true });
+        const groups = buildAdminNavGroups({ isContainer: false, serversEnabled: false });
         expect(labels(groups)).toEqual(['Configure', 'Knowledge', 'Connections', 'Operations', 'Developer / Internals']);
         expect(keys(groups, 'Connections')).toEqual(['admin:messaging', 'admin:whatsapp']);
         const connections = groups.find(g => g.label === 'Connections')?.items ?? [];
@@ -139,12 +146,12 @@ describe('buildAdminNavGroups', () => {
     });
 
     it('non-container + servers enabled: adds the servers tool row to Configure', () => {
-        const groups = buildAdminNavGroups({ isContainer: false, serversEnabled: true, isDesktop: true });
+        const groups = buildAdminNavGroups({ isContainer: false, serversEnabled: true });
         expect(keys(groups, 'Configure')).toEqual(['settings:configure', 'admin:agents', 'admin:browser', 'tool:servers']);
     });
 
     it('container: Connections group holds messaging + agents, Configure has no agents', () => {
-        const groups = buildAdminNavGroups({ isContainer: true, serversEnabled: false, isDesktop: true });
+        const groups = buildAdminNavGroups({ isContainer: true, serversEnabled: false });
         expect(labels(groups)).toContain('Connections');
         expect(keys(groups, 'Connections')).toEqual(['admin:messaging', 'admin:agents']);
         expect(keys(groups, 'Connections')).not.toContain('admin:whatsapp');
@@ -154,27 +161,24 @@ describe('buildAdminNavGroups', () => {
     });
 
     it('Browser row follows AI Provider with its own label, icon, and test id', () => {
-        const configure = buildAdminNavGroups({ isContainer: false, serversEnabled: true, isDesktop: true }).find(g => g.label === 'Configure')?.items ?? [];
+        const configure = buildAdminNavGroups({ isContainer: false, serversEnabled: true }).find(g => g.label === 'Configure')?.items ?? [];
         const browser = configure.find(i => i.key === 'admin:browser');
         expect(configure.map(i => i.label)).toEqual(['Configure', 'AI Provider', 'Browser', 'Servers']);
         expect(browser).toMatchObject({ label: 'Browser', icon: '◎', testId: 'admin-tab-browser', action: { kind: 'admin', tab: 'browser' } });
     });
 
-    it('web dashboard (isDesktop false) hides the Browser row', () => {
-        const web = buildAdminNavGroups({ isContainer: false, serversEnabled: true, isDesktop: false });
-        expect(keys(web, 'Configure')).toEqual(['settings:configure', 'admin:agents', 'tool:servers']);
-        expect(web.flatMap(g => g.items).some(i => i.key === 'admin:browser')).toBe(false);
-        const container = buildAdminNavGroups({ isContainer: true, serversEnabled: false, isDesktop: false });
-        expect(keys(container, 'Configure')).toEqual(['settings:configure']);
-    });
-
-    it('desktop shell (isDesktop true) shows the Browser row', () => {
-        const desktop = buildAdminNavGroups({ isContainer: false, serversEnabled: false, isDesktop: true });
-        expect(keys(desktop, 'Configure')).toContain('admin:browser');
+    // Browser hosts server-backed browser features too, so the row shows in
+    // the web dashboard and container mode, not just the desktop shell.
+    it('always shows the Browser row, including the web dashboard and container mode', () => {
+        const web = buildAdminNavGroups({ isContainer: false, serversEnabled: true });
+        expect(keys(web, 'Configure')).toEqual(['settings:configure', 'admin:agents', 'admin:browser', 'tool:servers']);
+        const container = buildAdminNavGroups({ isContainer: true, serversEnabled: false });
+        expect(keys(container, 'Configure')).toEqual(['settings:configure', 'admin:browser']);
+        expect(web.flatMap(g => g.items).filter(i => i.key === 'admin:browser')).toHaveLength(1);
     });
 
     it('Knowledge group always lists memory, skills, dreams in order', () => {
-        const groups = buildAdminNavGroups({ isContainer: false, serversEnabled: false, isDesktop: true });
+        const groups = buildAdminNavGroups({ isContainer: false, serversEnabled: false });
         expect(keys(groups, 'Knowledge')).toEqual(['tool:memory', 'tool:skills', 'tool:dreams-admin']);
     });
 });
@@ -198,7 +202,7 @@ describe('deriveActiveNav', () => {
         expect(d.activeNavKey).toBe('admin:browser');
         expect(d.activeTabLabel).toBe('Browser');
         expect(d.activeBreadcrumbGroup).toBe('Configure');
-        expect(d.activePageDescription).toBe('Browser engines and sign-ins for this desktop installation.');
+        expect(d.activePageDescription).toBe('Desktop browser engines, sign-ins and history, plus AI browser features.');
     });
 
     it('settings sub-tab (non-advanced) highlights settings:configure', () => {

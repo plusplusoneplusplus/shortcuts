@@ -3,6 +3,59 @@ import { desktopBrowserBridge, openUrlInSystemBrowser, WEBVIEW2_INSTALL_URL, typ
 import { SettingsCard } from './SettingsCard';
 import { AdminRow, AdminToggle } from './adminControls';
 
+/** Admin → Browser page sections, each the DOM id of a group the jump bar scrolls to. */
+interface BrowserSection { id: string; label: string }
+
+/**
+ * Sections in page order: the desktop-installation groups (or their single
+ * availability notice outside the desktop app), then the registry groups the
+ * "Browser features" card renders as `browser-group-<groupId>`.
+ */
+export function getBrowserSections(bridge = desktopBrowserBridge()): BrowserSection[] {
+    const desktop: BrowserSection[] = !bridge
+        ? [{ id: 'browser-group-desktop', label: 'Desktop data' }]
+        : [
+            { id: 'browser-group-engine', label: 'Engine' },
+            { id: 'browser-group-profiles', label: 'Profiles & sign-ins' },
+            ...(bridge.history ? [{ id: 'browser-group-history', label: 'History' }] : []),
+        ];
+    return [
+        ...desktop,
+        { id: 'browser-group-browserAutomation', label: 'AI Browser Control' },
+        { id: 'browser-group-browserPages', label: 'Pages & Previews' },
+    ];
+}
+
+/** Compact in-page navigation for the Browser page's grouped sections. */
+export function BrowserSectionNav() {
+    return (
+        <nav className="ar-section-jump" aria-label="Browser sections" data-testid="browser-section-nav">
+            {getBrowserSections().map(section => (
+                <button
+                    key={section.id}
+                    type="button"
+                    className="ar-btn ar-btn-ghost ar-btn-sm"
+                    onClick={() => document.getElementById(section.id)?.scrollIntoView({ block: 'start', behavior: 'smooth' })}
+                    data-testid={`browser-jump-${section.id}`}
+                >
+                    {section.label}
+                </button>
+            ))}
+        </nav>
+    );
+}
+
+function BrowserGroup({ id, heading, children }: { id: string; heading: string; children: React.ReactNode }) {
+    return (
+        <div className="ar-feature-group" id={id} data-testid={id}>
+            <div className="ar-feature-group-head">{heading}</div>
+            {children}
+        </div>
+    );
+}
+
+const DESKTOP_CARD_DESCRIPTION = 'Browser engines, sign-ins and history belong to this desktop installation, across every workspace and window. Local HTML previews always use Electron.';
+
 export function DesktopBrowserPreferences() {
     const bridge = desktopBrowserBridge();
     const [preferences, setPreferences] = useState<BrowserPreferences | null>(null);
@@ -28,7 +81,17 @@ export function DesktopBrowserPreferences() {
         return () => { mounted.current = false; generation.current++; off(); };
     }, [bridge]);
 
-    if (!bridge) { return null; }
+    if (!bridge) {
+        return (
+            <SettingsCard title="Desktop Preferences" badge="Desktop only" description={DESKTOP_CARD_DESCRIPTION} data-testid="desktop-browser-preferences">
+                <BrowserGroup id="browser-group-desktop" heading="Desktop data">
+                    <p role="status" className="ar-muted" data-testid="desktop-browser-unavailable">
+                        Engine, profile and history settings are available only in the CoC desktop app. They are saved per desktop installation, never on this server or per workspace.
+                    </p>
+                </BrowserGroup>
+            </SettingsCard>
+        );
+    }
     const operate = async (kind: BrowserEngine | 'select', action: () => Promise<BrowserOperationResult>, success: string) => {
         setBusy(kind);
         setError(null);
@@ -47,43 +110,51 @@ export function DesktopBrowserPreferences() {
     };
 
     return (
-        <SettingsCard title="Desktop Preferences" badge="Global" description="Browser engines and sign-ins belong to this desktop installation, across every workspace and window. Local HTML previews always use Electron." data-testid="desktop-browser-preferences">
+        <SettingsCard title="Desktop Preferences" badge="Global" description={DESKTOP_CARD_DESCRIPTION} data-testid="desktop-browser-preferences">
             {!preferences ? <p role="status" className="ar-muted">Loading browser engines...</p> : (
                 <>
-                    <AdminRow name="Default browser engine" hint="Saved immediately. Applies to new tabs only; existing tabs keep their engine and history.">
-                        <select
-                            aria-label="Default browser engine" className="ar-select"
-                            value={preferences.defaultEngine} disabled={busy !== null}
-                            onChange={event => {
-                                const engine = event.target.value;
-                                if (engine === 'electron' || engine === 'webview2') { void operate('select', () => bridge.setDefaultEngine(engine), 'Default browser engine saved. Existing tabs are unchanged.'); }
-                            }}
-                        >
-                            {preferences.engines.filter(engine => engine.reason !== 'unsupported-platform').map(engine => (
-                                <option key={engine.engine} value={engine.engine}>{engine.engine === 'electron' ? 'Electron' : 'WebView2'}{engine.available ? '' : ' (unavailable)'}</option>
-                            ))}
-                        </select>
-                    </AdminRow>
-                    {preferences.engines.map(engine => (
-                        <AdminRow key={engine.engine} name={engine.engine === 'electron' ? 'Electron browser data' : 'WebView2 browser data'}
-                            hint={engine.message ?? 'Separate persistent cookies, cache and site storage. Clearing data signs you out across all workspaces.'}>
-                            {engine.reason === 'missing-runtime' && (
-                                <button className="ar-btn ar-btn-ghost ar-btn-sm" type="button" onClick={() => {
-                                    void openUrlInSystemBrowser(WEBVIEW2_INSTALL_URL).then(ok => { if (!ok && mounted.current) { setError('Could not open the official WebView2 download page.'); } });
-                                }}>Get WebView2 Runtime</button>
-                            )}
-                            {engine.reason !== 'unsupported-platform' && (
-                                <button className="ar-btn ar-btn-danger-outline ar-btn-sm" type="button"
-                                    disabled={busy !== null || preferences.clearing.includes(engine.engine)}
-                                    onClick={() => { void operate(engine.engine, () => bridge.clearData(engine.engine), `${engine.engine === 'electron' ? 'Electron' : 'WebView2'} browser data cleared across all workspaces.`); }}>
-                                    {busy === engine.engine || preferences.clearing.includes(engine.engine) ? 'Clearing...' : `Clear ${engine.engine === 'electron' ? 'Electron' : 'WebView2'} data...`}
-                                </button>
-                            )}
+                    <BrowserGroup id="browser-group-engine" heading="Engine">
+                        <AdminRow name="Default browser engine" hint="Saved immediately. Applies to new tabs only; existing tabs keep their engine and history.">
+                            <select
+                                aria-label="Default browser engine" className="ar-select"
+                                value={preferences.defaultEngine} disabled={busy !== null}
+                                onChange={event => {
+                                    const engine = event.target.value;
+                                    if (engine === 'electron' || engine === 'webview2') { void operate('select', () => bridge.setDefaultEngine(engine), 'Default browser engine saved. Existing tabs are unchanged.'); }
+                                }}
+                            >
+                                {preferences.engines.filter(engine => engine.reason !== 'unsupported-platform').map(engine => (
+                                    <option key={engine.engine} value={engine.engine}>{engine.engine === 'electron' ? 'Electron' : 'WebView2'}{engine.available ? '' : ' (unavailable)'}</option>
+                                ))}
+                            </select>
                         </AdminRow>
-                    ))}
+                    </BrowserGroup>
+                    <BrowserGroup id="browser-group-profiles" heading="Profiles & sign-ins">
+                        {preferences.engines.map(engine => (
+                            <AdminRow key={engine.engine} name={engine.engine === 'electron' ? 'Electron browser data' : 'WebView2 browser data'}
+                                hint={engine.message ?? 'Separate persistent cookies, cache and site storage. Clearing data signs you out across all workspaces.'}>
+                                {engine.reason === 'missing-runtime' && (
+                                    <button className="ar-btn ar-btn-ghost ar-btn-sm" type="button" onClick={() => {
+                                        void openUrlInSystemBrowser(WEBVIEW2_INSTALL_URL).then(ok => { if (!ok && mounted.current) { setError('Could not open the official WebView2 download page.'); } });
+                                    }}>Get WebView2 Runtime</button>
+                                )}
+                                {engine.reason !== 'unsupported-platform' && (
+                                    <button className="ar-btn ar-btn-danger-outline ar-btn-sm" type="button"
+                                        disabled={busy !== null || preferences.clearing.includes(engine.engine)}
+                                        onClick={() => { void operate(engine.engine, () => bridge.clearData(engine.engine), `${engine.engine === 'electron' ? 'Electron' : 'WebView2'} browser data cleared across all workspaces.`); }}>
+                                        {busy === engine.engine || preferences.clearing.includes(engine.engine) ? 'Clearing...' : `Clear ${engine.engine === 'electron' ? 'Electron' : 'WebView2'} data...`}
+                                    </button>
+                                )}
+                            </AdminRow>
+                        ))}
+                    </BrowserGroup>
                 </>
             )}
-            {bridge.history && <DesktopHistoryRecording history={bridge.history} />}
+            {bridge.history && (
+                <BrowserGroup id="browser-group-history" heading="History">
+                    <DesktopHistoryRecording history={bridge.history} />
+                </BrowserGroup>
+            )}
             {error && <p role="alert" style={{ color: 'var(--ar-danger)' }}>{error}</p>}
             {notice && <p role="status" className="ar-muted">{notice}</p>}
         </SettingsCard>

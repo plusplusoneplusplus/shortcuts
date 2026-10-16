@@ -73,7 +73,7 @@ export type AdminSettingValueSpec =
 
 // ── UI specs (admin Features card) ────────────────────────────────────────────
 
-export type FeatureGroupId = 'dashboard' | 'uiGeneral' | 'uiChat' | 'editorFiles' | 'editorNotes' | 'devTools' | 'workItems' | 'aiModes' | 'review' | 'infrastructure' | 'sentinelMode' | 'sentinelTodos' | 'sentinelMessaging';
+export type FeatureGroupId = 'dashboard' | 'uiGeneral' | 'uiChat' | 'editorFiles' | 'editorNotes' | 'devTools' | 'workItems' | 'aiModes' | 'review' | 'infrastructure' | 'sentinelMode' | 'sentinelTodos' | 'sentinelMessaging' | 'browserAutomation' | 'browserPages';
 
 export interface FeatureGroupSpec {
     id: FeatureGroupId;
@@ -96,19 +96,21 @@ export const FEATURE_CARD_GROUPS: readonly FeatureGroupSpec[] = [
     { id: 'sentinelMessaging', heading: 'Messaging', testId: 'feature-group-sentinel-messaging' },
     { id: 'review', heading: 'Code Review & Collaboration', testId: 'feature-group-review' },
     { id: 'infrastructure', heading: 'Infrastructure', testId: 'feature-group-infrastructure' },
+    { id: 'browserAutomation', heading: 'AI Browser Control', testId: 'feature-group-browser-automation' },
+    { id: 'browserPages', heading: 'Pages & Previews', testId: 'feature-group-browser-pages' },
 ];
 
 export type AdminSettingBadge = 'restart' | 'experimental' | 'preview';
 
 /**
- * Admin page a registry toggle is rendered on. Every id except `'teams'`
- * mirrors the matching SPA Configure → Settings `SettingsSubTab`; `'teams'` is
- * the Connectors → Teams page. Kept local so this module stays free of SPA
- * imports.
+ * Admin page a registry toggle is rendered on. Every id except `'teams'` and
+ * `'browser'` mirrors the matching SPA Configure → Settings `SettingsSubTab`;
+ * `'teams'` is the Connectors → Teams page and `'browser'` the Admin → Browser
+ * page. Kept local so this module stays free of SPA imports.
  */
-export type FeatureSettingTab = 'ai' | 'chat' | 'sentinel' | 'appearance' | 'editors' | 'features' | 'integrations' | 'teams';
+export type FeatureSettingTab = 'ai' | 'chat' | 'sentinel' | 'appearance' | 'editors' | 'features' | 'integrations' | 'teams' | 'browser';
 
-export const FEATURE_SETTING_TABS: readonly FeatureSettingTab[] = ['ai', 'chat', 'sentinel', 'appearance', 'editors', 'features', 'integrations', 'teams'];
+export const FEATURE_SETTING_TABS: readonly FeatureSettingTab[] = ['ai', 'chat', 'sentinel', 'appearance', 'editors', 'features', 'integrations', 'teams', 'browser'];
 
 export interface AdminSettingUiSpec {
     /** Settings tab the row renders on. Defaults to `'features'` when omitted. */
@@ -774,7 +776,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'browserControl.enabled', default: false, runtime: 'live', runtimeFlag: 'browserControlEnabled',
         ui: {
-            group: 'review', order: 65, label: 'Browser control',
+            tab: 'browser', group: 'browserAutomation', order: 10, label: 'Browser control',
             hint: 'Allow AI tools to control the desktop browser. Use /browser to activate browser guidance.',
             badge: 'experimental', testId: 'toggle-browser-control-enabled',
         },
@@ -1217,7 +1219,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.htmlPageTab', default: true, runtime: 'live', runtimeFlag: 'htmlPageTabEnabled',
         ui: {
-            tab: 'appearance', group: 'editorFiles', order: 30, label: 'HTML page tabs',
+            tab: 'browser', group: 'browserPages', order: 10, label: 'HTML page tabs',
             hint: 'Desktop app only: clicking a local .html/.htm link in a chat response opens the rendered page in a right-panel tab. When off, the link opens in the source viewer.',
             testId: 'toggle-html-page-tab-enabled',
         },
@@ -1234,7 +1236,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.sensitiveInput', default: false, runtime: 'live',
         ui: {
-            group: 'review', order: 66, label: 'Sensitive input for ask_user', badge: 'experimental',
+            tab: 'browser', group: 'browserAutomation', order: 20, label: 'Sensitive input for ask_user', badge: 'experimental',
             hint: 'Lets the AI ask for a secret (browser login cookies) with an ask_user sensitive-input question. You paste it in the CoC desktop dashboard and it goes straight to the desktop browser; the AI and server only get a count. Disabled by default.',
             testId: 'toggle-sensitive-input-enabled',
         },

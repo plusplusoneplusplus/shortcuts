@@ -1555,6 +1555,125 @@ describe('AdminPanel', () => {
             expect(writes).toHaveLength(1);
         });
 
+        // Browser-related registry settings live on the existing Admin →
+        // Browser page and nowhere on Configure → Settings or Teams.
+        const BROWSER_TOGGLES = [
+            'toggle-browser-control-enabled',
+            'toggle-sensitive-input-enabled',
+            'toggle-html-page-tab-enabled',
+        ];
+
+        async function gotoBrowserPage(): Promise<void> {
+            await waitFor(() => expect(screen.getByTestId('admin-tab-browser')).toBeDefined());
+            await act(async () => { fireEvent.click(screen.getByTestId('admin-tab-browser')); });
+            await waitFor(() => expect(screen.getByTestId('settings-tab-features-browser')).toBeDefined());
+        }
+
+        it('renders every browser setting exactly once, on Admin → Browser', async () => {
+            mockFullConfig({ canvas: { enabled: true } });
+            mockTeamsStatus();
+            await act(async () => { renderWithProviders(); });
+            // Unrelated tabs keep their own rows.
+            await gotoSettingsSubTab('features');
+            expect(screen.getAllByTestId('toggle-canvas-enabled')).toHaveLength(1);
+            await gotoSettingsSubTab('appearance');
+            expect(screen.getAllByTestId('toggle-panel-tab-reordering-enabled')).toHaveLength(1);
+            expect(screen.getAllByTestId('pref-html-embed-enabled')).toHaveLength(1);
+            for (const sub of ['ai', 'chat', 'sentinel', 'appearance', 'editors', 'features', 'providers', 'integrations', 'advanced'] as const) {
+                await gotoSettingsSubTab(sub);
+                for (const id of BROWSER_TOGGLES) expect(screen.queryByTestId(id), `${sub}:${id}`).toBeNull();
+                expect(screen.queryByTestId('desktop-browser-preferences'), sub).toBeNull();
+            }
+            await gotoTeamsPage();
+            for (const id of BROWSER_TOGGLES) expect(screen.queryByTestId(id), id).toBeNull();
+
+            await gotoBrowserPage();
+            expect(window.location.hash).toBe('#admin/browser');
+            for (const id of BROWSER_TOGGLES) expect(screen.getAllByTestId(id), id).toHaveLength(1);
+            for (const id of TEAMS_TOGGLES) expect(screen.queryByTestId(id), id).toBeNull();
+            expect(screen.getByTestId('browser-group-browserAutomation').textContent).toContain('AI Browser Control');
+            expect(screen.getByTestId('browser-group-browserPages').textContent).toContain('Pages & Previews');
+            for (const id of ['toggle-browser-control-enabled', 'toggle-sensitive-input-enabled']) {
+                expect(screen.getByTestId('browser-group-browserAutomation').contains(screen.getByTestId(id)), id).toBe(true);
+                expect(screen.getByTestId(id).closest('.ar-row')?.textContent, id).toContain('Experimental');
+            }
+            expect(screen.getByTestId('browser-group-browserPages').contains(screen.getByTestId('toggle-html-page-tab-enabled'))).toBe(true);
+            // Defaults and absent-key fallbacks are unchanged.
+            expect((screen.getByTestId('toggle-browser-control-enabled') as HTMLInputElement).checked).toBe(false);
+            expect((screen.getByTestId('toggle-sensitive-input-enabled') as HTMLInputElement).checked).toBe(false);
+            expect((screen.getByTestId('toggle-html-page-tab-enabled') as HTMLInputElement).checked).toBe(true);
+            // Outside the desktop shell the desktop-installation card is an
+            // availability notice, never server-backed controls.
+            expect(screen.getByTestId('desktop-browser-unavailable')).toBeDefined();
+            expect(screen.queryByLabelText('Default browser engine')).toBeNull();
+            expect(screen.getByTestId('browser-section-nav')).toBeDefined();
+        });
+
+        it('links Features search results for browser settings to Admin → Browser', async () => {
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('features');
+            await act(async () => {
+                fireEvent.change(screen.getByTestId('feature-search-input'), { target: { value: 'Browser control' } });
+            });
+            const link = screen.getByTestId('feature-search-link-toggle-browser-control-enabled');
+            expect(link.getAttribute('href')).toBe('#admin/browser');
+            expect(link.textContent).toBe('in Browser');
+            expect(screen.queryByTestId('toggle-browser-control-enabled')).toBeNull();
+            await act(async () => {
+                fireEvent.change(screen.getByTestId('feature-search-input'), { target: { value: 'HTML page tabs' } });
+            });
+            expect(screen.getByTestId('feature-search-link-toggle-html-page-tab-enabled').getAttribute('href')).toBe('#admin/browser');
+            await act(async () => { fireEvent.click(screen.getByTestId('feature-search-link-toggle-html-page-tab-enabled')); });
+            await waitFor(() => expect(screen.getByTestId('settings-tab-features-browser')).toBeDefined());
+            expect(window.location.hash).toBe('#admin/browser');
+            expect(screen.getAllByTestId('toggle-html-page-tab-enabled')).toHaveLength(1);
+        });
+
+        it('saves only browser feature keys from the Browser page with Ctrl+S, keeping other drafts pending', async () => {
+            // An explicit opt-out survives the move and is re-sent unchanged.
+            mockFullConfig({ features: { htmlPageTab: false } });
+            const writes = recordWrites();
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('appearance');
+            await waitFor(() => expect(screen.getByTestId('toggle-panel-tab-reordering-enabled')).toBeDefined());
+            await act(async () => { fireEvent.click(screen.getByTestId('toggle-panel-tab-reordering-enabled')); });
+
+            await gotoBrowserPage();
+            expect((screen.getByTestId('toggle-html-page-tab-enabled') as HTMLInputElement).checked).toBe(false);
+            expect((screen.getByTestId('settings-tab-features-browser-save') as HTMLButtonElement).disabled).toBe(true);
+            await act(async () => { fireEvent.click(screen.getByTestId('toggle-browser-control-enabled')); });
+            expect((screen.getByTestId('settings-tab-features-browser-save') as HTMLButtonElement).disabled).toBe(false);
+            const event = await act(async () => pressSave());
+
+            expect(event.defaultPrevented).toBe(true);
+            await waitFor(() => expect(writes).toHaveLength(1));
+            expect(writes[0].url).toContain('/admin/config');
+            expect(writes[0].body).toEqual({
+                'browserControl.enabled': true,
+                'features.htmlPageTab': false,
+                'features.sensitiveInput': false,
+            });
+            await waitFor(() => expect((screen.getByTestId('settings-tab-features-browser-save') as HTMLButtonElement).disabled).toBe(true));
+
+            await act(async () => { fireEvent.click(screen.getByTestId('settings-nav-configure')); });
+            await gotoSettingsSubTab('appearance');
+            expect((screen.getByTestId('settings-tab-features-appearance-save') as HTMLButtonElement).disabled).toBe(false);
+            expect(writes).toHaveLength(1);
+        });
+
+        it('cancel on the Browser page reverts only browser feature drafts', async () => {
+            mockFullConfig();
+            const writes = recordWrites();
+            await act(async () => { renderWithProviders(); });
+            await gotoBrowserPage();
+            await act(async () => { fireEvent.click(screen.getByTestId('toggle-sensitive-input-enabled')); });
+            await act(async () => { fireEvent.click(screen.getByTestId('settings-tab-features-browser-cancel')); });
+            expect((screen.getByTestId('toggle-sensitive-input-enabled') as HTMLInputElement).checked).toBe(false);
+            expect((screen.getByTestId('settings-tab-features-browser-save') as HTMLButtonElement).disabled).toBe(true);
+            expect(writes).toHaveLength(0);
+        });
+
         // Regression: the AI Provider page has a draft Save/Cancel card.
         it.each([
             ['Ctrl+S', { ctrlKey: true }],
@@ -2477,6 +2596,26 @@ describe('AdminPanel — Browser page (desktop shell)', () => {
         expect(await screen.findByLabelText('Default browser engine')).toBeDefined();
     });
 
+    // Desktop engine/profile/history preferences stay installation-wide desktop
+    // data: they save through the desktop bridge, never server config or
+    // workspace preferences, beside the server-backed browser feature card.
+    it('saves the default engine through the desktop bridge only, beside the server feature card', async () => {
+        await act(async () => { renderWithProviders(); });
+        await act(async () => { fireEvent.click(screen.getByTestId('admin-tab-browser')); });
+        const selector = await screen.findByLabelText('Default browser engine');
+        await waitFor(() => expect(screen.getByTestId('settings-tab-features-browser')).toBeDefined());
+        expect(screen.getByTestId('browser-group-engine').contains(selector)).toBe(true);
+        expect(screen.getByTestId('browser-group-profiles').textContent).toContain('Electron browser data');
+        expect(screen.queryByTestId('desktop-browser-unavailable')).toBeNull();
+        const bridge = (window as unknown as { cocDesktop: { browser: { setDefaultEngine: ReturnType<typeof vi.fn> } } }).cocDesktop.browser;
+        bridge.setDefaultEngine.mockResolvedValue({ ok: true });
+        mockFetch.mockClear();
+        await act(async () => { fireEvent.change(selector, { target: { value: 'electron' } }); });
+        await waitFor(() => expect(bridge.setDefaultEngine).toHaveBeenCalledWith('electron'));
+        const writes = mockFetch.mock.calls.filter(([, options]) => options?.method && options.method !== 'GET');
+        expect(writes).toEqual([]);
+    });
+
     it('Appearance no longer renders the engine card', async () => {
         await act(async () => { renderWithProviders(); });
         await gotoSettingsSubTab('appearance');
@@ -2498,19 +2637,20 @@ describe('AdminPanel — Browser page (web dashboard)', () => {
         mockFetch.mockImplementation(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
     });
 
-    it('hides the Browser row outside the desktop shell', async () => {
+    it('shows the Browser row outside the desktop shell', async () => {
         await act(async () => { renderWithProviders(); });
         await waitFor(() => expect(screen.getByTestId('settings-nav-configure')).toBeDefined());
-        expect(screen.queryByTestId('admin-tab-browser')).toBeNull();
+        expect(screen.getAllByTestId('admin-tab-browser')).toHaveLength(1);
     });
 
-    it('redirects a #admin/browser deep link to the default admin page', async () => {
+    it('keeps a #admin/browser deep link on Browser with a desktop-only availability state', async () => {
         window.location.hash = '#admin/browser';
         await act(async () => {
             render(<AppProvider><OpenBrowserTab /><AdminPanel /></AppProvider>);
         });
-        await waitFor(() => expect(window.location.hash).toBe('#admin/settings'));
-        expect(screen.queryByTestId('desktop-browser-preferences')).toBeNull();
-        expect(screen.getByTestId('settings-nav-configure')).toBeDefined();
+        await waitFor(() => expect(screen.getByTestId('desktop-browser-unavailable')).toBeDefined());
+        expect(window.location.hash).toBe('#admin/browser');
+        expect(screen.queryByLabelText('Default browser engine')).toBeNull();
+        expect(screen.getByTestId('browser-section-nav').textContent).toContain('Desktop data');
     });
 });

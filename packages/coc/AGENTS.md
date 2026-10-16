@@ -291,9 +291,12 @@ references before editing. Paths are package-relative.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated
   consumers stay derived. Non-admin leaves use `src/config/namespace-registry.ts`.
-- UI-only Admin controls (presentation, layout, navigation, editor UI and
-  interface-only toggles) live on Configure → Appearance (`ui.tab: 'appearance'`
-  or the Appearance card); functional, auth, transport, AI-behavior and
+- Browser-related Admin controls, including browser-specific UI toggles, live on
+  Admin → Browser (`ui.tab: 'browser'`, or the desktop-bridge Desktop Preferences
+  card for installation-wide engine/profile/history data). Other UI-only Admin
+  controls (presentation, layout, navigation, editor UI and interface-only
+  toggles) live on Configure → Appearance (`ui.tab: 'appearance'` or the
+  Appearance card); functional, auth, transport, AI-behavior and
   response-style settings stay on their domain tab.
 - Sentinel-specific Admin controls use registry `ui.tab: 'sentinel'` at
   `#admin/settings/sentinel`. Features search links to that tab; saves and cancels

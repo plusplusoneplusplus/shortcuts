@@ -127,7 +127,7 @@ SPA side: `desktopHtmlPageBridge()` adapts the `file` source and its attachment 
 
 ### Browser profiles and preferences
 
-`desktop-browser.json` stores `defaultEngine` (Electron) and `pageZoomPercent` (100%). Engine and zoom writes preserve each other. The Admin **Browser** page (`#admin/browser`, Configure group after AI Provider; desktop shell only, hidden on the web) hosts Desktop Preferences, which uses local IPC, not workspace-server APIs.
+`desktop-browser.json` stores `defaultEngine` (Electron) and `pageZoomPercent` (100%). Engine and zoom writes preserve each other. The Admin **Browser** page (`#admin/browser`, Configure group after AI Provider) hosts Desktop Preferences (Engine, Profiles & sign-ins, History groups), which uses local IPC, not workspace-server APIs, and shows a desktop-only notice on the web; the page's server-backed Browser features card holds browser control, sensitive input and HTML page tabs.
 Its optional history recording toggle reads committed state through a bounded history query and saves through `setRecording`; history invalidations refresh all open settings views. Pausing preserves existing suggestions. Loading, storage and operation failures are explicit, with retry and stale-query/unmount guards.
 Separate persistent `browser/electron` and `browser/webview2` profiles share sign-ins across workspaces/windows, isolating the SPA/HTML previews. Confirmed cleanup closes target-engine tabs and excludes new views.
 Electron forces its locked `session.fromPath` profile onto each guest. The returned

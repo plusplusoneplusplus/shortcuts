@@ -825,7 +825,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.schedulerDelayHint': 'appearance',
         'features.explorerDelete': 'appearance',
         'features.panelTabReordering': 'appearance',
-        'features.htmlPageTab': 'appearance',
+        'features.htmlPageTab': 'browser',
         'scratchpad.layout': 'appearance',
         // Editors (functional editor behavior only)
         'features.arxivPaperIngest': 'editors',
@@ -858,12 +858,12 @@ describe('feature toggle settings-tab placement', () => {
         'cron.enabled': 'features',
         'triggers.enabled': 'features',
         'canvas.enabled': 'features',
-        'browserControl.enabled': 'features',
+        'browserControl.enabled': 'browser',
         'excalidraw.enabled': 'features',
         'LLMToolSystemOne.enabled': 'features',
         'features.toolScripting': 'features',
         'features.canvasHostApis': 'features',
-        'features.sensitiveInput': 'features',
+        'features.sensitiveInput': 'browser',
         'features.focusedDiff': 'features',
         'features.gitCrossCloneCherryPick': 'features',
         'features.nativeCliSessions': 'features',
@@ -944,6 +944,22 @@ describe('feature toggle settings-tab placement', () => {
         expect(uiDefs.filter(d => /^features\.teams/.test(d.key)).map(d => d.key).sort())
             .toEqual(teamsDefs.map(d => d.key).sort());
         expect(uiDefs.filter(d => getFeatureSettingTab(d) === 'integrations').some(d => /teams/i.test(d.key))).toBe(false);
+    });
+
+    // Browser-related settings live on Admin → Browser; moving them must not
+    // change their keys, defaults, opt-in absent fallbacks, live runtime,
+    // runtime flags or badges, and no browser setting may stay elsewhere.
+    it('keeps exactly the browser settings on the Browser page with unchanged contracts', () => {
+        const browserDefs = uiDefs.filter(d => getFeatureSettingTab(d) === 'browser');
+        expect(browserDefs.map(d => [d.key, d.ui!.group, d.default, d.absentFallback, d.runtime, d.runtimeFlag, d.ui!.badge, d.ui!.testId])).toEqual([
+            ['browserControl.enabled', 'browserAutomation', false, undefined, 'live', 'browserControlEnabled', 'experimental', 'toggle-browser-control-enabled'],
+            ['features.htmlPageTab', 'browserPages', true, undefined, 'live', 'htmlPageTabEnabled', undefined, 'toggle-html-page-tab-enabled'],
+            ['features.sensitiveInput', 'browserAutomation', false, undefined, 'live', undefined, 'experimental', 'toggle-sensitive-input-enabled'],
+        ]);
+        expect(getFeatureCardSettings('browserAutomation').map(d => d.key)).toEqual(['browserControl.enabled', 'features.sensitiveInput']);
+        expect(getFeatureCardSettings('browserPages').map(d => d.key)).toEqual(['features.htmlPageTab']);
+        expect(FEATURE_CARD_GROUPS.filter(g => g.id.startsWith('browser')).map(g => g.heading)).toEqual(['AI Browser Control', 'Pages & Previews']);
+        expect(uiDefs.filter(d => getFeatureSettingTab(d) !== 'browser' && /browser/i.test(`${d.key} ${d.ui!.label}`)).map(d => d.key)).toEqual([]);
     });
 
     it('places every ui setting on a valid settings tab', () => {
