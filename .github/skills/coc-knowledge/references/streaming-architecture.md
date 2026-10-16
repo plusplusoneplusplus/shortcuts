@@ -223,17 +223,25 @@ identity mismatches, duplicate process IDs, nonmatching titles and extra fields.
 Metadata is bounded to 512 characters and displayed titles to 4,096. Verification
 describes producer observations, not independent server-side ownership proof.
 
-The SPA's `shared/dashboard-discovery/chat-search.ts` selects an online visible
-route by exact durable target, never a bare workspace registry fallback. It pins
+The SPA's `shared/dashboard-discovery/chat-search.ts` selects a visible route by
+exact durable target, preferring online aliases over offline ones. It pins
 that route/revision, checks live health identity before each 200-row summaries
 page and after scanning, and matches custom/generated/preview titles before
 output pagination. Counts, complete pages and unique IDs must remain consistent;
 failures discard partial matches. `processes.summaries` accepts cancellation.
 
+`chat-cache.ts` persists complete verified title inventories under
+`coc-dashboard-chat-cache:` plus the JSON server/workspace tuple, with an in-memory
+mirror for unavailable browser storage. Entries contain version, exact target,
+full row count and process/title pairs; reads reject malformed, truncated or duplicate
+rows. Offline visible targets search only their exact inventory and return unverified
+metadata with full match counts and current labels. Aliases/endpoints stay out of
+storage; reconnect scans replace inventories only after final identity verification.
+
 Socket cancellation, topology changes, close and disposal abort pending reads
-and suppress delayed replies; focus updates preserve them. Unknown/offline targets
-are unavailable. Offline title caching and tool consumption are separate
-composition points.
+and suppress delayed replies; focus updates preserve them. Unknown identities,
+uncached offline targets and failed online reads are unavailable without fallback.
+The search tool consumes this relay through its invoking owner's late-bound getter.
 
 ### Targeted desktop browser control
 

@@ -1,6 +1,7 @@
 import type { DashboardChatQuery, DashboardChatSearchResult } from '@plusplusoneplusplus/coc-client';
 import { getCocClientFor } from '../../api/cocClient';
 import { getDashboardTopology } from './topology';
+import { loadDashboardChatCache, saveDashboardChatCache } from './chat-cache';
 
 const pageSize = 200;
 const unavailable = () => new Error('Dashboard chat discovery unavailable');
@@ -16,14 +17,29 @@ export async function searchDashboardChats(query: DashboardChatQuery, signal: Ab
     const needle = query.title.trim().toLowerCase();
     const { limit, offset } = query;
     const snapshot = getDashboardTopology();
-    const route = snapshot.routes.find(({ row }) => row.online
-        && row.serverIdentity === target.serverIdentity && row.workspaceId === target.workspaceId);
-    if (!route || (route.row.serverKind !== 'local' && !route.baseUrl)) throw unavailable();
-    const client = getCocClientFor(route.baseUrl);
+    const routes = snapshot.routes.filter(({ row }) =>
+        row.serverIdentity === target.serverIdentity && row.workspaceId === target.workspaceId);
+    const route = routes.find(({ row }) => row.online) ?? routes[0];
+    if (!route) throw unavailable();
     const current = () => {
         signal.throwIfAborted();
         if (getDashboardTopology() !== snapshot) throw unavailable();
     };
+    current();
+    const result = (inventory: DashboardChatSearchResult['conversations'], verification: 'verified' | 'unverified') => {
+        current();
+        const matches = inventory.filter(({ title }) => title.toLowerCase().includes(needle));
+        return { target, serverLabel: route.row.serverLabel, workspaceLabel: route.row.workspaceLabel,
+            serverKind: route.row.serverKind, verification, total: matches.length,
+            conversations: matches.slice(offset, offset + limit) };
+    };
+    if (!route.row.online) {
+        const inventory = loadDashboardChatCache(target);
+        if (!inventory) throw unavailable();
+        return result(inventory, 'unverified');
+    }
+    if (route.row.serverKind !== 'local' && !route.baseUrl) throw unavailable();
+    const client = getCocClientFor(route.baseUrl);
     const verify = async () => {
         current();
         const health = await client.health.get({ signal });
@@ -32,7 +48,6 @@ export async function searchDashboardChats(query: DashboardChatQuery, signal: Ab
     };
     const conversations: DashboardChatSearchResult['conversations'] = [];
     const ids = new Set<string>();
-    let total = 0;
     let inventoryTotal: number | undefined;
     for (let scanOffset = 0; ; scanOffset += pageSize) {
         await verify();
@@ -54,16 +69,14 @@ export async function searchDashboardChats(query: DashboardChatQuery, signal: Ab
                 || (entry.promptPreview !== undefined && typeof entry.promptPreview !== 'string')) throw unavailable();
             ids.add(entry.id);
             const title = entry.customTitle || entry.title || entry.promptPreview || '';
-            if (entry.workspaceId !== target.workspaceId || entry.type !== 'chat' || entry.archived
-                || !title.toLowerCase().includes(needle)) continue;
+            if (entry.workspaceId !== target.workspaceId || entry.type !== 'chat' || entry.archived) continue;
             if (title.length > 4096) throw unavailable();
-            if (total >= offset && conversations.length < limit) conversations.push({ processId: entry.id, title });
-            total++;
+            conversations.push({ processId: entry.id, title });
         }
         if (scanOffset + page.summaries.length >= page.total) break;
     }
     // The last response must not be attributed to an installation that replaced its endpoint.
     await verify();
-    return { target, serverLabel: route.row.serverLabel, workspaceLabel: route.row.workspaceLabel,
-        serverKind: route.row.serverKind, verification: 'verified', total, conversations };
+    saveDashboardChatCache(target, conversations);
+    return result(conversations, 'verified');
 }

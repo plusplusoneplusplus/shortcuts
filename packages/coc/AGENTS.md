@@ -56,11 +56,13 @@ references before editing. Paths are package-relative.
   Title-search relay requests pin a durable server/workspace selector and bounded
   pagination; replies require matching identity, labels, verification, full match
   count and title-only rows. Reject malformed/partial results and cross-kind replies.
-  The SPA title producer resolves only a visible online durable destination, verifies
-  live health identity before every summaries page and after scanning, and matches
+  The SPA title producer resolves only a visible durable destination, prefers online
+  aliases, verifies live health identity before every summaries page and after scanning, and matches
   displayed titles before output pagination. Cancellation, topology changes and socket
-  teardown abort I/O and suppress late publication. Unknown/offline destinations fail
-  without local fallback; offline title caches are a separate seam.
+  teardown abort I/O and suppress late publication. Completed verified scans persist
+  title-only inventories in the browser under durable server/workspace identity.
+  Offline visible targets search that exact cached inventory as unverified; unknown
+  identities, malformed caches and failed online reads fail without local fallback.
   Topology observations are not ownership verification; discovery never broadcasts.
   Reject late responses after scope changes. Sidebar queue snapshots supersede
   stale queue reads, not independent history reads; reconcile admitted history
