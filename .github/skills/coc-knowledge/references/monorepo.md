@@ -278,7 +278,13 @@ before returning a detached helper launch plan. The helper waits for the old PID
 swaps bundles with rollback, clears quarantine when present, and relaunches.
 Successful installation removes staging/downloads; helper failures retain an
 `install-error.txt` diagnostic and reopen the restored app. Failed detach preserves
-the mount directory for safety. Electron owns restart confirmation and quitting.
+the mount directory for safety. `update-install-win.ts` launches a detached,
+hidden PowerShell helper that waits for the old PID before starting NSIS, avoiding
+NSIS process termination during shutdown. It uses `/S --force-run` and a final,
+unquoted `/D=` argument for the current executable's directory. Installer failures
+retain `install-error.txt` and reopen CoC; success removes downloads. Encoded
+PowerShell commands carry quoted path literals. The caller owns restart
+confirmation and quitting, and must await helper spawn before starting its quit drain.
 
 URL hosts expose optional `BrowserHostedView.cdp(method, params)`. Electron's
 `ElectronBrowserCdp` lazily attaches to the adopted guest debugger and detaches
