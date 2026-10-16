@@ -589,7 +589,7 @@ ephemeral request to `TerminalView`. Successful session hydration precedes empty
 creation through the canonical PTY lifecycle; pending creates coalesce repeated
 requests. Existing sessions receive focus, and passive mounting/restoration only
 hydrates. Failed hydration surfaces a terminal notice and retries on a new request.
-With default-off `features.panelTabReordering` disabled, the strip divides
+With default-on `features.panelTabReordering` set to `false`, the strip divides
 tools from resources and confines moves to a section. Enabled, native drag,
 Alt+Arrow and tab-menu moves share `moveVisibleTab`: per-chat `orderByScope`
 interleaves stable ids without changing ownership, activation or keyed views.

@@ -142,7 +142,7 @@ import {
     writeUnifiedTreeState,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
-import { applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
+import { _resetRuntimeConfig, applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
 
 const WS = 'ws-1';
 const CHAT = 'chat-1';
@@ -214,11 +214,23 @@ afterEach(() => {
     clearUnifiedTreeState();
     clearUnifiedDiffSources();
     clearUnifiedCanvasEvents();
-    applyRuntimeConfigPatch({ panelTabReorderingEnabled: false });
+    _resetRuntimeConfig();
 });
 
 describe('UnifiedRightPanel — file tabs (AC-04)', () => {
-    it('keeps the feature off by default and toggles mixed ordering live without remounting views', async () => {
+    it('enables mixed ordering by default', async () => {
+        const fileId = openFile({ path: 'sample.md' });
+        const terminalId = openUnifiedPanelTab(WS, {
+            kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'terminal', label: 'Terminal',
+        });
+        renderPanel();
+        await screen.findByTestId('mock-terminal');
+        fireEvent.keyDown(screen.getByTestId(`unified-panel-tab-${fileId}`), { key: 'ArrowLeft', altKey: true });
+        expect(screen.getAllByRole('tab').map(node => node.getAttribute('data-tab-id'))).toEqual([fileId, terminalId]);
+    });
+
+    it('honors an explicit opt-out and toggles mixed ordering live without remounting views', async () => {
+        applyRuntimeConfigPatch({ panelTabReorderingEnabled: false });
         const fileId = openFile({ path: 'sample.md' });
         const terminalId = openUnifiedPanelTab(WS, {
             kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'terminal', label: 'Terminal',

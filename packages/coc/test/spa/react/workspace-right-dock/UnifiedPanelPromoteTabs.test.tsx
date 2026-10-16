@@ -18,6 +18,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { _resetRuntimeConfig, applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
 
 const mockExplorerApi = vi.hoisted(() => ({
     readBlob: vi.fn(),
@@ -155,6 +156,7 @@ afterEach(() => {
     cleanup();
     clearUnifiedPanelState();
     clearUnifiedTreeState();
+    _resetRuntimeConfig();
 });
 
 
@@ -234,7 +236,8 @@ describe('unified panel tab promotion (AC-04)', () => {
         expect(fileTabs()).toEqual([expect.objectContaining({ label: 'a.ts', preview: false, id })]);
     });
 
-    it('promotes when the tab is dragged to a new position', () => {
+    it('promotes when the tab is dragged to a new position with tab reordering opted out', () => {
+        applyRuntimeConfigPatch({ panelTabReorderingEnabled: false });
         renderPanel();
         fireEvent.click(screen.getByTestId('tree-open-a'));
         fireEvent.click(screen.getByTestId('tree-open-b'));

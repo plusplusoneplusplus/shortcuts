@@ -12,7 +12,9 @@ import {
     isCommitChatLensEnabled,
     isComposerWordHintEnabled,
     isDreamsEnabled,
+    isExplorerDeleteEnabled,
     isFeatureEnabled,
+    isPanelTabReorderingEnabled,
     isPullRequestsAutoClassifyTeamEnabled,
     isRailManualRefreshEnabled,
     isRailStatusActionsEnabled,
@@ -28,6 +30,8 @@ afterEach(() => {
 describe.each([
     ['railManualRefreshEnabled', isRailManualRefreshEnabled],
     ['railStatusActionsEnabled', isRailStatusActionsEnabled],
+    ['explorerDeleteEnabled', isExplorerDeleteEnabled],
+    ['panelTabReorderingEnabled', isPanelTabReorderingEnabled],
 ] as const)('%s default-on behavior', (flag, isEnabled) => {
     it('enables an absent setting with or without bootstrap config', () => {
         expect(isEnabled()).toBe(true);

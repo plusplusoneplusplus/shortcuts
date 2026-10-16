@@ -37,8 +37,8 @@ new chat in strip order with rebuilt ids and the same active/preview state; the
 draft originals remain available for the next new conversation.
 Display grouping is separate from ownership: `displayGroupForKind` puts
 `canvas`, `git`, and `todo` with workspace kinds as `tools` and
-`file | diff | external | paste` in `resources`. With default-off
-`features.panelTabReordering` disabled, the strip groups workspace tools, chat
+`file | diff | external | paste` in `resources`. With default-on
+`features.panelTabReordering` set to `false`, the strip groups workspace tools, chat
 tools and resources, and confines moves to a section. Enabled, `moveVisibleTab`
 stores a mixed id order in `orderByScope` for the selected chat/draft within the
 owner-qualified panel storage scope. Drag target halves, Alt+Left/Right and

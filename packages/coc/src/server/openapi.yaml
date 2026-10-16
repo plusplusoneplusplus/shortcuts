@@ -36,7 +36,7 @@ paths:
       tags: [explorer]
       summary: Permanently delete one workspace file or folder
       description: >-
-        Requires the owning server's live features.explorerDelete flag (default false)
+        Requires the owning server's live features.explorerDelete flag (default true; explicit false disables it)
         and a registered physical workspace. Deletes symlinks themselves, never targets.
         Root, Git metadata, traversal and symlinked ancestors are rejected.
         Partial deletion has no rollback and returns an error with removedEntries.

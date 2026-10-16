@@ -1186,10 +1186,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.explorerDelete', default: false, runtime: 'live', runtimeFlag: 'explorerDeleteEnabled',
+        key: 'features.explorerDelete', default: true, runtime: 'live', runtimeFlag: 'explorerDeleteEnabled',
         ui: {
             tab: 'appearance', group: 'dashboard', order: 70.5, label: 'Explorer deletion', badge: 'experimental',
-            hint: 'Allow confirmed permanent file and folder deletion in the owning workspace. Disabled by default.',
+            hint: 'Allow confirmed permanent file and folder deletion in the owning workspace. Enabled by default.',
             testId: 'toggle-explorer-delete-enabled',
         },
     }),
@@ -1202,10 +1202,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.panelTabReordering', default: false, runtime: 'live', runtimeFlag: 'panelTabReorderingEnabled',
+        key: 'features.panelTabReordering', default: true, runtime: 'live', runtimeFlag: 'panelTabReorderingEnabled',
         ui: {
             tab: 'appearance', group: 'dashboard', order: 71.5, label: 'Panel tab reordering', badge: 'experimental',
-            hint: 'Reorder mixed resource tabs by dragging, Alt+Left/Right, or the tab menu. Saves order per workspace and chat without moving content between owners. Disabled by default.',
+            hint: 'Reorder mixed resource tabs by dragging, Alt+Left/Right, or the tab menu. Saves order per workspace and chat without moving content between owners. Enabled by default.',
             testId: 'toggle-panel-tab-reordering-enabled',
         },
     }),

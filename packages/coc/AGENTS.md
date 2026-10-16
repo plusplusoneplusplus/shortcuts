@@ -240,7 +240,7 @@ references before editing. Paths are package-relative.
   `src/server/repos/types.ts` aliases native tree/search result types and coc-client
   contracts for metadata, HTTP options and the file-search envelope.
   Permanent Explorer deletion uses native `RepoFiles.deleteEntry` on a worker and
-  requires a physical workspace plus the owning server's live, default-off
+  requires a physical workspace plus the owning server's live, default-on
   `features.explorerDelete` flag. Preserve partial-error counts and refresh indexes
   after any mutation; never substitute a Node walker or success on failure.
 - Content search reads fresh bytes via `RepoFiles`; WSL runs Rust-prepared argv via forge.
@@ -299,7 +299,7 @@ references before editing. Paths are package-relative.
   pausing retains existing suggestions. Keep desktop settings out of server config.
 - New experimental flags default off; gate server/tools and UI
   boundaries; preserve existing defaults and live/restart semantics.
-- Explorer permanent deletion uses the owning server's default-off
+- Explorer permanent deletion uses the owning server's default-on
   `features.explorerDelete` gate. File panes register owner-qualified dirty paths
   and saves in the window-local Explorer store; affected edits/saves block
   admission, and an admitted deletion makes affected panes read-only. Close

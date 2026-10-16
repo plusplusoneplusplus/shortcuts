@@ -833,7 +833,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
     repoTreeService.trackWorkspaces(store);
     registerRepoRoutes(routes, dataDir, repoTreeService, undefined, () =>
-        (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.explorerDelete === true);
+        (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.explorerDelete !== false);
     const isPullRequestTeamAutoClassificationEnabled = (): boolean => {
         const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
         return config?.pullRequests?.enabled === true

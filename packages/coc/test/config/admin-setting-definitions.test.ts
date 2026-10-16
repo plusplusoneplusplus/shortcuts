@@ -722,15 +722,27 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { explorerEditorTabs: true } }).explorerEditorTabsEnabled).toBe(true);
     });
 
-    it('keeps permanent Explorer deletion off for defaults and partial configs', () => {
-        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.explorerDelete')!;
-        expect(def.default).toBe(false);
+    it.each([
+        ['features.explorerDelete', 'explorerDelete', 'explorerDeleteEnabled', 70.5],
+        ['features.panelTabReordering', 'panelTabReordering', 'panelTabReorderingEnabled', 71.5],
+    ] as const)('enables experimental %s by default with an explicit false opt-out', (key, field, flag, order) => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === key)!;
+        expect(def.default).toBe(true);
+        expect(def.absentFallback).toBeUndefined();
         expect(def.runtime).toBe('live');
-        expect(def.runtimeFlag).toBe('explorerDeleteEnabled');
-        expect(DEFAULT_CONFIG.features.explorerDelete).toBe(false);
-        expect(buildRuntimeFeatures(DEFAULT_CONFIG).explorerDeleteEnabled).toBe(false);
-        expect(buildRuntimeFeatureFlags({}).explorerDeleteEnabled).toBe(false);
-        expect(buildRuntimeFeatureFlags({ features: {} }).explorerDeleteEnabled).toBe(false);
+        expect(def.runtimeFlag).toBe(flag);
+        expect(def.ui).toMatchObject({ tab: 'appearance', group: 'dashboard', order, badge: 'experimental' });
+        expect(def.ui!.hint).toMatch(/enabled by default/i);
+        expect(def.ui!.hint).not.toMatch(/disabled by default/i);
+        expect(DEFAULT_CONFIG.features[field]).toBe(true);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG)[flag]).toBe(true);
+        expect(buildRuntimeFeatureFlags({})[flag]).toBe(true);
+        expect(buildRuntimeFeatureFlags({ features: {} })[flag]).toBe(true);
+        expect(buildRuntimeFeatureFlags({ features: { [field]: true } })[flag]).toBe(true);
+        expect(buildRuntimeFeatureFlags({ features: { [field]: false } })[flag]).toBe(false);
+    });
+
+    it('keeps the explicit permanent Explorer deletion switch', () => {
         expect(buildRuntimeFeatureFlags({ features: { explorerDelete: true } }).explorerDeleteEnabled).toBe(true);
         expect(buildRuntimeFeatureFlags({ features: { explorerDelete: false } }).explorerDeleteEnabled).toBe(false);
     });

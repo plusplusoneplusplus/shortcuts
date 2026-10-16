@@ -118,7 +118,7 @@ Gated by `canvas.enabled` (default on). Mutations emit `canvas-updated` on WebSo
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/repos/:repoId/search/content` | Bounded content search with text/regex/glob filters. `fileScope=tracked` includes ignored tracked files; `includeUntracked` adds non-ignored files. Non-Git tracked search → `409 TRACKED_CONTENT_SEARCH_UNAVAILABLE` |
-| DELETE | `/api/repos/:repoId/entry?path=<relative>` | Permanent guarded deletion on the owning server, physical workspaces only; live `features.explorerDelete` defaults off (`404 EXPLORER_DELETE_DISABLED`). Success `{success:true}`; errors `{error,code,partial,removedEntries}`: invalid/protected → `400`, missing → `404`, changed → `409`, permission/offline/I/O → `500`. Links are unlinked, partial mutations refresh indexes, no rollback; race revalidation is best effort |
+| DELETE | `/api/repos/:repoId/entry?path=<relative>` | Permanent guarded deletion on the owning server, physical workspaces only; live `features.explorerDelete` defaults on; explicit `false` returns `404 EXPLORER_DELETE_DISABLED`. Success `{success:true}`; errors `{error,code,partial,removedEntries}`: invalid/protected → `400`, missing → `404`, changed → `409`, permission/offline/I/O → `500`. Links are unlinked, partial mutations refresh indexes, no rollback; race revalidation is best effort |
 
 ## Git
 

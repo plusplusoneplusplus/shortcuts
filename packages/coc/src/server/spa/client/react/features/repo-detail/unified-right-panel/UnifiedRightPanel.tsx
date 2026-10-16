@@ -55,7 +55,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../../ui/cn';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled } from '../../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isPanelTabReorderingEnabled } from '../../../utils/config';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import {
     DOCK_MIN_WIDTH,
@@ -219,9 +219,9 @@ export function UnifiedRightPanel({
     repoGroup,
 }: UnifiedRightPanelProps) {
     const { isOpen, mode, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
-    const [reorderEnabled, setReorderEnabled] = useState(() => isFeatureEnabled('panelTabReorderingEnabled'));
+    const [reorderEnabled, setReorderEnabled] = useState(() => isPanelTabReorderingEnabled());
     useEffect(() => {
-        const update = () => setReorderEnabled(isFeatureEnabled('panelTabReorderingEnabled'));
+        const update = () => setReorderEnabled(isPanelTabReorderingEnabled());
         window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
         return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
     }, []);

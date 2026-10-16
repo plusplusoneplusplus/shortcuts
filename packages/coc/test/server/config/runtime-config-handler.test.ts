@@ -106,7 +106,8 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.workItemsWorkflowEnabled).toBe(false);
         expect(result.features.gitWorktreeExecutionEnabled).toBe(false);
         expect(result.features.markdownPanelPreviewEnabled).toBe(false);
-        expect(result.features.panelTabReorderingEnabled).toBe(false);
+        expect(result.features.panelTabReorderingEnabled).toBe(true);
+        expect(result.features.explorerDeleteEnabled).toBe(true);
         expect(result.features.chatHistoryPagingEnabled).toBe(false);
         expect(result.features.railManualRefreshEnabled).toBe(true);
         expect(result.features.railStatusActionsEnabled).toBe(true);

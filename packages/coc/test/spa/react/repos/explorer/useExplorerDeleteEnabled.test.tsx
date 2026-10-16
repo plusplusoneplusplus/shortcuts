@@ -13,7 +13,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/cloneRegistry', () => 
     subscribeCloneBaseUrl: () => () => {},
 }));
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
-    isFeatureEnabled: () => mocks.local,
+    isExplorerDeleteEnabled: () => mocks.local,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'config-updated',
 }));
 import { useExplorerDeleteEnabled } from '../../../../../src/server/spa/client/react/hooks/feature-flags/useExplorerDeleteEnabled';
@@ -26,7 +26,7 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-it('defaults off locally and responds to live config updates', () => {
+it('follows the local accessor and responds to live config updates', () => {
     const { result } = renderHook(() => useExplorerDeleteEnabled('workspace', null));
     expect(result.current.enabled).toBe(false);
     act(() => { mocks.local = true; window.dispatchEvent(new Event('config-updated')); });
@@ -37,10 +37,24 @@ it('defaults off locally and responds to live config updates', () => {
 it('reads the flag from the remote owner, not from a locally enabled flag', async () => {
     mocks.local = true;
     mocks.route.mockReturnValue({ kind: 'remote', baseUrl: 'https://owner.invalid' });
-    mocks.request.mockResolvedValue({ features: {} });
+    mocks.request.mockResolvedValue({ features: { explorerDeleteEnabled: false } });
     const { result } = renderHook(() => useExplorerDeleteEnabled('workspace', 'remote:server-a:workspace'));
     await waitFor(() => expect(mocks.request).toHaveBeenCalledWith('/config/runtime'));
     expect(mocks.client).toHaveBeenCalledWith('remote:server-a:workspace');
+    expect(result.current.enabled).toBe(false);
+});
+
+it('enables a remote owner only when it advertises the capability', async () => {
+    mocks.route.mockReturnValue({ kind: 'remote', baseUrl: 'https://owner.invalid' });
+    mocks.request.mockResolvedValueOnce({ features: { explorerDeleteEnabled: true } });
+    const { result, rerender } = renderHook(({ route }) => useExplorerDeleteEnabled('workspace', route), {
+        initialProps: { route: 'remote:server-a:workspace' },
+    });
+    await waitFor(() => expect(result.current.enabled).toBe(true));
+    // Owners that predate the flag omit it and have no delete route.
+    mocks.request.mockResolvedValueOnce({ features: {} });
+    rerender({ route: 'remote:server-b:workspace' });
+    await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(2));
     expect(result.current.enabled).toBe(false);
 });
 

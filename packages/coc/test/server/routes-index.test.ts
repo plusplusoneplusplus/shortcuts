@@ -639,6 +639,23 @@ describe('registerAllRoutes', () => {
         expect(routes.length).toBeGreaterThan(30);
     });
 
+    it.each([
+        [undefined, 'ENTRY_NOT_FOUND'],
+        [true, 'ENTRY_NOT_FOUND'],
+        [false, 'EXPLORER_DELETE_DISABLED'],
+    ] as const)('gates Explorer deletion on live features.explorerDelete (%s)', async (explorerDelete, code) => {
+        const routes: Route[] = [];
+        const opts = makeOpts();
+        if (explorerDelete !== undefined) Object.assign(opts.runtimeConfigService!.config.features, { explorerDelete });
+        registerAllRoutes(routes, opts);
+        const found = findRoute(routes, 'DELETE', '/api/repos/missing-workspace/entry')!;
+        const res = fakeRes();
+        await found.route.handler({ url: '/api/repos/missing-workspace/entry?path=a.txt' } as any, res, found.match);
+        // An unknown workspace never reaches deletion; only the gate decides the code.
+        expect(res.statusCode).toBe(404);
+        expect(JSON.parse(res.body)).toMatchObject({ code, partial: false, removedEntries: 0 });
+    });
+
     it.each([true, false])('subscribes messaging workers to queue lifecycle events with mirror projections (%s)', async hasMirrorProjections => {
         const queueFacade = makeQueueFacade();
         const store = makeStore();
