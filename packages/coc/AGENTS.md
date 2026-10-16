@@ -183,7 +183,14 @@ references before editing. Paths are package-relative.
   transactionally without changing the shared process schema version; omitted
   `serverIdentity` means the ledger's server. Persist labels and verification as
   display metadata, never endpoints or registry aliases as durable identity.
-  Public attachment remains owner-verified through `SentinelTodoService`.
+  `sentinel_todos.attach_reference` uses an exact `conversationTarget`, discovery
+  title and optional result-page offset for dashboard destinations. The service's
+  late-bound owner-scoped relay rechecks the selected process and derives labels
+  and verification, including unverified offline matches. Re-prove Sentinel
+  ownership after I/O; abort/failure never falls back locally. Owner-server targets
+  canonicalize to local references; qualify self checks by workspace and server.
+  Remote links retain encoded durable segments under `#chat-references/` for
+  destination resolution. REST attachment stays local-only.
 - `storage/conversation-tool-inventory-store.ts` borrows the process database and
   retains one pending/captured inventory per process outside metadata, transcripts
   and SSE. Server composition shares it through `getToolInventoryStore`; initial

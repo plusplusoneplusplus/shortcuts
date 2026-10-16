@@ -28,7 +28,17 @@ import { getRepoDataPath } from '../paths';
 import type { SentinelTodoTagLibrary } from '@plusplusoneplusplus/coc-client';
 import type { DecisionService } from '../decisions/decision-service';
 import { matchTodoTags, tagSuggestSchema } from './sentinel-todo-tags';
+import type { DashboardDiscoveryRuntime, DashboardWorkspaceTarget } from '@plusplusoneplusplus/coc-client';
+import { z } from 'zod';
 import { getServerLogger } from '../logging/server-logger';
+
+const dashboardReferenceSchema = z.object({
+    processId: z.string().min(1).max(200),
+    target: z.object({ serverIdentity: z.string().min(1).max(200),
+        workspaceId: z.string().min(1).max(200) }).strict(),
+    title: z.string().trim().min(1).max(512),
+    offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).default(0),
+}).strict();
 
 export interface SentinelTodoChange {
     owner: SentinelTodoOwner;
@@ -81,6 +91,8 @@ export class SentinelTodoService {
     };
     constructor(private readonly deps: {
         todos: SentinelTodoStore;
+        serverIdentity?: string;
+        getDashboardDiscovery?: () => DashboardDiscoveryRuntime | undefined;
         store: Pick<ProcessStore, 'getProcess'>;
         /** A Sentinel's first turn can still be queued, before its process exists. */
         getTask?: TaskQueueManager['getTask'];
@@ -474,7 +486,7 @@ export class SentinelTodoService {
         if (typeof processId !== 'string' || !processId || typeof workspaceId !== 'string' || !workspaceId) {
             throw new SentinelTodoError('invalid', 'A reference needs the conversation processId and workspaceId');
         }
-        if (processId === owner.processId) {
+        if (processId === owner.processId && workspaceId === owner.workspaceId) {
             throw new SentinelTodoError('invalid', 'A Sentinel chat cannot reference itself');
         }
         const process = await this.deps.store.getProcess(processId);
@@ -487,6 +499,49 @@ export class SentinelTodoService {
         }, actor));
         if (result.changed) this.emit({ owner, item: result.item, ledgerRevision: result.ledgerRevision });
         return this.visibleWrite({ item: result.item, ledgerRevision: result.ledgerRevision, attached: result.changed });
+    }
+
+    /** Resolve exact discovery evidence; caller-authored labels/verification never reach storage. */
+    async attachDashboardReference(
+        owner: SentinelTodoOwner, itemId: string, expectedRevision: number,
+        input: { processId: string; target: DashboardWorkspaceTarget; title: string; offset?: number },
+        actor: SentinelTodoActor, signal?: AbortSignal,
+    ): Promise<{ item: SentinelTodoItem; ledgerRevision: number; attached: boolean }> {
+        await this.assertOwner(owner);
+        const parsed = dashboardReferenceSchema.safeParse(input);
+        if (!parsed.success) throw new SentinelTodoError('invalid', 'An exact dashboard target, conversation ID and discovery title are required');
+        const { processId, target, title, offset } = parsed.data;
+        if (!this.deps.serverIdentity) throw new SentinelTodoError('not_found', 'Dashboard conversation unavailable; nothing was attached');
+        const local = target.serverIdentity === this.deps.serverIdentity;
+        if (local) {
+            if (signal?.aborted) throw new SentinelTodoError('not_found', 'Dashboard conversation unavailable; nothing was attached');
+            return this.attachReference(owner, itemId, expectedRevision, { processId, workspaceId: target.workspaceId }, actor);
+        }
+        let result;
+        try {
+            signal?.throwIfAborted();
+            const runtime = this.deps.getDashboardDiscovery?.();
+            if (!runtime) throw new Error('Unavailable');
+            result = await runtime.searchChats(owner.workspaceId, { target, title, limit: 100, offset }, signal);
+            signal?.throwIfAborted();
+        } catch {
+            throw new SentinelTodoError('not_found', 'Dashboard conversation unavailable; nothing was attached');
+        }
+        const row = result.conversations.find(row => row.processId === processId);
+        if (!row || result.target.serverIdentity !== target.serverIdentity || result.target.workspaceId !== target.workspaceId) {
+            throw new SentinelTodoError('not_found', 'Conversation not found in the selected dashboard destination');
+        }
+        // Re-prove owner after asynchronous I/O before committing to its ledger.
+        await this.assertOwner(owner);
+        if (signal?.aborted) throw new SentinelTodoError('not_found', 'Dashboard conversation unavailable; nothing was attached');
+        const stored = this.withVisibleErrors(() => this.deps.todos.attachReference(owner, itemId, expectedRevision, {
+            processId, workspaceId: target.workspaceId, serverIdentity: target.serverIdentity,
+            serverLabel: result.serverLabel.slice(0, 200), workspaceLabel: result.workspaceLabel.slice(0, 200),
+            verification: result.verification, title: row.title.slice(0, 200),
+            openLink: `#chat-references/${encodeURIComponent(target.serverIdentity)}/${encodeURIComponent(target.workspaceId)}/${encodeURIComponent(processId)}`,
+        }, actor));
+        if (stored.changed) this.emit({ owner, item: stored.item, ledgerRevision: stored.ledgerRevision });
+        return this.visibleWrite({ item: stored.item, ledgerRevision: stored.ledgerRevision, attached: stored.changed });
     }
 
     /**

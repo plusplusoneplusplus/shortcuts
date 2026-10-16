@@ -116,7 +116,16 @@ counts as a job/review). Store deduplication uses durable server/workspace/proce
 identity; omitted `serverIdentity` denotes the ledger's server. Reference records retain
 server/workspace labels and `verified | unverified` state. Local-row migration preserves
 links, order, attribution and ledger revisions without changing the process schema version.
-The public attachment command still resolves conversations on its owning server.
+`conversationTarget: {serverIdentity, workspaceId}`, `conversationTitle` (discovery
+query) and optional `conversationOffset` select a dashboard result page (100-row
+check) for tool attachment. The service re-reads exact owner-scoped dashboard
+evidence through a late-bound relay, matches the process ID, and derives labels,
+title and verified/unverified state. Missing/misattributed/cancelled reads fail
+without local fallback. It re-proves Sentinel ownership before writing. Owner-server
+targets use local validation and canonical omitted identity, preserving deduplication;
+self checks qualify server/workspace/process. Durable remote links use
+`#chat-references/<serverIdentity>/<workspaceId>/<processId>` with encoded segments.
+The REST attachment command remains local-only and rejects remote metadata.
 Creation accepts immutable `type: normal | manual` (default normal);
 manual items require only a title, with optional Notes/Done when. `create`/`update` accept `priority` (`high`/`regular`,
 default `regular`; ledger metadata only, independent of status). `done`/`needs_attention` require a `reason` (also enforced by the store for non-user actors); `done` stores

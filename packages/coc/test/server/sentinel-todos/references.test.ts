@@ -6,11 +6,13 @@
 import * as http from 'node:http';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AIProcess } from '@plusplusoneplusplus/forge';
+import { DashboardDiscoveryRelay } from '../../../src/server/streaming/dashboard-discovery-relay';
+import type { DashboardChatSearchResult, DashboardDiscoveryRuntime } from '@plusplusoneplusplus/coc-client';
 import { CocClient } from '@plusplusoneplusplus/coc-client';
 import {
     MAX_TODO_REFERENCES, SentinelTodoError, SentinelTodoStore, type SentinelTodoActor,
 } from '../../../src/server/sentinel-todos/sentinel-todo-store';
-import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
+import { SentinelTodoService, type SentinelTodoChange } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { registerSentinelTodoRoutes } from '../../../src/server/sentinel-todos/sentinel-todo-routes';
 import { createSentinelTodosTool } from '../../../src/server/llm-tools/sentinel-todos-tool';
 import { createSentinelTodosDomain } from '../../../src/server/storage/snapshot/delegated-jobs-domain';
@@ -41,7 +43,7 @@ describe('Sentinel to-do conversation references', () => {
     let database: ReturnType<typeof createTodoTestDatabase>;
     let todos: SentinelTodoStore;
     let service: SentinelTodoService;
-    let onChange: ReturnType<typeof vi.fn>;
+    let onChange: ReturnType<typeof vi.fn<(change: SentinelTodoChange) => void>>;
     const processes = new Map<string, AIProcess>();
 
     const pendingItem = () => todos.create(owner, {
@@ -240,6 +242,181 @@ describe('Sentinel to-do conversation references', () => {
             expect(await call({ action: 'attach_reference', itemId: item.id, expectedRevision: 3 })).toMatchObject({ code: 'invalid' });
             expect(await call({ action: 'attach_reference', itemId: item.id, expectedRevision: 1, conversationId: 'queue_x' }))
                 .toMatchObject({ code: 'not_found' });
+        });
+    });
+
+    describe('dashboard attachment', () => {
+        const target = { serverIdentity: 'remote-installation', workspaceId: 'ws-a' };
+        const result = (overrides: Partial<DashboardChatSearchResult> = {}): DashboardChatSearchResult => ({
+            target, serverLabel: 'My remote', workspaceLabel: 'Remote repo', serverKind: 'ssh',
+            verification: 'verified', total: 2,
+            conversations: [{ processId: owner.processId, title: 'Browser design' },
+                { processId: 'queue_design', title: 'Browser design again' }], ...overrides,
+        });
+        const setup = (read: ReturnType<typeof vi.fn<DashboardDiscoveryRuntime['searchChats']>> = vi.fn(async () => result())) => {
+            const runtime = { listWorkspaces: vi.fn(), searchChats: read };
+            let active: typeof runtime | undefined = runtime;
+            service = new SentinelTodoService({ todos, onChange, serverIdentity: 'local-installation',
+                store: { getProcess: async id => processes.get(id) }, getDashboardDiscovery: () => active });
+            const tool = createSentinelTodosTool({ service, owner }).tool;
+            return { read, runtime, setActive: (value: typeof active) => { active = value; },
+                call: (args: Record<string, unknown>, signal?: AbortSignal) => (tool as any).handler({
+                    action: 'attach_reference', conversationId: owner.processId, conversationTarget: target,
+                    conversationTitle: 'Browser', ...args,
+                }, { signal }) as Promise<any> };
+        };
+
+        it.each(['ssh', 'devtunnel'] as const)('attaches exact unregistered %s matches with server-derived metadata and persists', async serverKind => {
+            const { call, read } = setup(vi.fn(async () => result({ serverKind })));
+            const item = pendingItem();
+            const attached = await call({ itemId: item.id, expectedRevision: 1, serverLabel: 'forged', verification: 'unverified' });
+            expect(attached).toMatchObject({ attached: true, item: { revision: 2, status: 'todo', statusReason: PENDING, jobs: [],
+                references: [{ ...target, processId: owner.processId, serverLabel: 'My remote', workspaceLabel: 'Remote repo',
+                    verification: 'verified', title: 'Browser design', attachedBy: 'sentinel',
+                    openLink: '#chat-references/remote-installation/ws-a/queue_parent' }] } });
+            expect(read).toHaveBeenCalledWith(owner.workspaceId, { target, title: 'Browser', limit: 100, offset: 0 }, undefined);
+            expect(new SentinelTodoStore(database.db).get(owner).items[0]).toEqual(attached.item);
+            expect(onChange).toHaveBeenCalledTimes(1);
+        });
+
+        it('preserves unverified cached references, attribution and metadata on a stale-revision replay', async () => {
+            const { call, read } = setup(vi.fn(async () => result({ verification: 'unverified' })));
+            const item = pendingItem();
+            const first = await call({ itemId: item.id, expectedRevision: 1 });
+            read.mockImplementation(async () => result({ verification: 'verified', serverLabel: 'Renamed' }));
+            expect(await call({ itemId: item.id, expectedRevision: 1 })).toEqual({ item: first.item, attached: false });
+            expect(first.item.references[0].verification).toBe('unverified');
+            expect(onChange).toHaveBeenCalledTimes(1);
+        });
+
+        it('keeps identical process/workspace IDs separate on distinct servers and enforces CAS for new identities', async () => {
+            const { call, read } = setup();
+            const item = pendingItem();
+            await call({ itemId: item.id, expectedRevision: 1, conversationId: 'queue_design' });
+            await service.attachReference(owner, item.id, 2, { processId: 'queue_design', workspaceId: 'ws-a' }, 'user');
+            const other = { serverIdentity: 'another-installation', workspaceId: 'ws-a' };
+            read.mockImplementation(async () => result({ target: other }));
+            expect(await call({ itemId: item.id, expectedRevision: 2, conversationId: 'queue_design', conversationTarget: other }))
+                .toMatchObject({ code: 'conflict', current: { revision: 3 } });
+            const last = await call({ itemId: item.id, expectedRevision: 3, conversationId: 'queue_design', conversationTarget: other });
+            expect(last.item.references.map((ref: any) => ref.serverIdentity)).toEqual(['remote-installation', undefined, 'another-installation']);
+            expect(last.item.jobs).toEqual([]);
+        });
+
+        it('canonicalizes owner-server references and rejects actual self references without consulting dashboard', async () => {
+            const { call, read } = setup();
+            const item = pendingItem();
+            const local = { serverIdentity: 'local-installation', workspaceId: 'ws-a' };
+            expect(await call({ itemId: item.id, expectedRevision: 1, conversationTarget: local })).toMatchObject({ code: 'invalid' });
+            const first = await call({ itemId: item.id, expectedRevision: 1, conversationTarget: local, conversationId: 'queue_design' });
+            expect(first.item.references[0].serverIdentity).toBeUndefined();
+            expect(await service.attachReference(owner, item.id, 1, { processId: 'queue_design', workspaceId: 'ws-a' }, 'user'))
+                .toMatchObject({ attached: false, item: { revision: 2 } });
+            expect(read).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            { conversationTarget: { workspaceId: 'ws-a' } },
+            { conversationTarget: { ...target, url: 'http://private' } },
+            { conversationTarget: { ...target, serverIdentity: '' } },
+            { conversationTitle: '' }, { conversationOffset: -1 }, { conversationOffset: 0.5 },
+            { conversationWorkspaceId: 'ws-a' }, { conversationTarget: undefined },
+        ])('rejects malformed or mixed selectors %j before reads/writes', async fields => {
+            const { call, read } = setup();
+            const item = pendingItem();
+            expect(await call({ itemId: item.id, expectedRevision: 1, ...fields })).toMatchObject({ code: 'invalid' });
+            expect(read).not.toHaveBeenCalled();
+            expect(todos.get(owner).items[0]).toEqual(item);
+        });
+
+        it('rejects dashboard attachment when the owner installation identity is unavailable', async () => {
+            const item = pendingItem();
+            await expect(service.attachDashboardReference(owner, item.id, 1,
+                { processId: 'queue_design', target, title: 'Browser' }, 'sentinel')).rejects.toMatchObject({ code: 'not_found' });
+            expect(todos.get(owner).items[0]).toEqual(item);
+        });
+
+        it('passes discovery pagination and matches the exact ID among ambiguous titles', async () => {
+            const { call, read } = setup();
+            const item = pendingItem();
+            const attached = await call({ itemId: item.id, expectedRevision: 1, conversationId: 'queue_design', conversationOffset: 200 });
+            expect(attached.item.references[0].title).toBe('Browser design again');
+            expect(read.mock.calls[0][1]).toMatchObject({ offset: 200 });
+        });
+
+        it.each([
+            { conversations: [] }, { target: { ...target, serverIdentity: 'replacement' } },
+            { target: { ...target, workspaceId: 'foreign-workspace' } },
+        ])('rejects missing or misattributed discovery evidence %j', async override => {
+            const { call } = setup(vi.fn(async () => result(override)));
+            const item = pendingItem();
+            expect(await call({ itemId: item.id, expectedRevision: 1 })).toMatchObject({ code: 'not_found' });
+            expect(todos.get(owner).items[0]).toEqual(item);
+            expect(onChange).not.toHaveBeenCalled();
+        });
+
+        it('uses a late-bound runtime and hides discovery failures without falling back to local colliding IDs', async () => {
+            const { call, read, runtime, setActive } = setup();
+            const item = pendingItem();
+            setActive(undefined);
+            expect(await call({ itemId: item.id, expectedRevision: 1, conversationId: 'queue_design' })).toMatchObject({ code: 'not_found' });
+            expect(read).not.toHaveBeenCalled();
+            setActive(runtime);
+            read.mockRejectedValue(new Error('secret forwarded endpoint'));
+            const failed = await call({ itemId: item.id, expectedRevision: 1, conversationId: 'queue_design' });
+            expect(failed).toMatchObject({ code: 'not_found' });
+            expect(JSON.stringify(failed)).not.toContain('secret');
+            expect(todos.get(owner).items[0]).toEqual(item);
+        });
+
+        it('rechecks Sentinel ownership after discovery and never writes after cancellation', async () => {
+            const controller = new AbortController();
+            const read = vi.fn(async () => { controller.abort('private reason'); return result(); });
+            const { call } = setup(read);
+            const item = pendingItem();
+            expect(await call({ itemId: item.id, expectedRevision: 1 }, controller.signal)).toMatchObject({ code: 'not_found' });
+            read.mockImplementation(async () => { processes.delete(owner.processId); return result(); });
+            expect(await call({ itemId: item.id, expectedRevision: 1 })).toMatchObject({ code: 'not_found' });
+            expect(todos.get(owner).items[0]).toEqual(item);
+        });
+
+        it('forwards abort, rejects pre-abort, manual items and foreign owners', async () => {
+            const { call, read } = setup();
+            const controller = new AbortController();
+            controller.abort();
+            const item = pendingItem();
+            expect(await call({ itemId: item.id, expectedRevision: 1 }, controller.signal)).toMatchObject({ code: 'not_found' });
+            expect(read).not.toHaveBeenCalled();
+            const manual = todos.create(owner, { title: 'Manual', type: 'manual' }, { actor: 'user' }).item;
+            expect(await call({ itemId: manual.id, expectedRevision: 1 })).toMatchObject({ code: 'invalid' });
+            await expect(service.attachDashboardReference({ ...owner, workspaceId: 'foreign' }, item.id, 1,
+                { processId: 'queue_design', target, title: 'Browser' }, 'sentinel')).rejects.toMatchObject({ code: 'not_found' });
+            expect(todos.get(owner).items.find(row => row.id === item.id)).toEqual(item);
+        });
+
+        it.each(['ssh', 'devtunnel'] as const)('composes the tool and real relay for %s, reconnect and offline cached evidence', async serverKind => {
+            const relay = new DashboardDiscoveryRelay();
+            const requests: any[] = [];
+            const socket = { id: 'dashboard', send: (data: string) => { requests.push(JSON.parse(data)); } };
+            relay.advertise(socket, owner.workspaceId, 'port-one', true);
+            service = new SentinelTodoService({ todos, onChange, serverIdentity: 'local-installation',
+                store: { getProcess: async id => processes.get(id) }, getDashboardDiscovery: () => relay });
+            const tool = createSentinelTodosTool({ service, owner }).tool as any;
+            const item = pendingItem();
+            const args = { action: 'attach_reference', itemId: item.id, expectedRevision: 1,
+                conversationId: owner.processId, conversationTarget: target, conversationTitle: 'Browser' };
+            const pending = tool.handler(args, {});
+            await vi.waitFor(() => expect(requests).toHaveLength(1));
+            relay.disconnect(socket);
+            expect(await pending).toMatchObject({ code: 'not_found' });
+            relay.advertise(socket, owner.workspaceId, 'changed-port', true);
+            const retried = tool.handler(args, {});
+            await vi.waitFor(() => expect(requests.filter(row => row.type === 'dashboard-chats-request')).toHaveLength(2));
+            const request = requests.filter(row => row.type === 'dashboard-chats-request').at(-1).request;
+            relay.reply(socket, { id: request.id, ok: true, result: result({ serverKind, verification: 'unverified' }) }, 'chats');
+            expect(await retried).toMatchObject({ attached: true, item: { references: [{ ...target, verification: 'unverified' }] } });
+            expect(onChange).toHaveBeenCalledTimes(1);
+            relay.disconnect(socket);
         });
     });
 
