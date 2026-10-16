@@ -441,6 +441,7 @@ export function buildSearchConversationsAddon(
     workspaceId?: string,
     currentProcessId?: string,
     directory?: WorkspaceDirectory,
+    getDashboardDiscovery?: SendToConversationRuntimeOptions['getDashboardDiscovery'],
 ): { tools: Tool<any>[]; suffix: string } {
     if (!store.searchConversations) {
         return { tools: [], suffix: '' };
@@ -451,6 +452,7 @@ export function buildSearchConversationsAddon(
         workspaceId,
         currentProcessId,
         directory,
+        getDashboardDiscovery,
     });
     const { tool: getTool } = createGetConversationTool({ store, workspaceId });
 

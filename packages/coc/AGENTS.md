@@ -60,7 +60,7 @@ references before editing. Paths are package-relative.
   live health identity before every summaries page and after scanning, and matches
   displayed titles before output pagination. Cancellation, topology changes and socket
   teardown abort I/O and suppress late publication. Unknown/offline destinations fail
-  without local fallback; offline title caches and tool consumption are separate seams.
+  without local fallback; offline title caches are a separate seam.
   Topology observations are not ownership verification; discovery never broadcasts.
   Reject late responses after scope changes. Sidebar queue snapshots supersede
   stale queue reads, not independent history reads; reconcile admitted history
@@ -108,7 +108,12 @@ references before editing. Paths are package-relative.
   delayed reads cannot publish after destination changes. Keep connection aliases, durable
   server identity and raw workspace identity separate in results;
   exclude the invoking process only for local searches. Unavailable remote reads discard
-  partial matches and never fall back to local chat reads.
+  partial matches and never fall back to local chat reads. Explicit `source: dashboard`
+  requires a displayed title and exact `target: { serverIdentity, workspaceId }` from
+  dashboard workspace discovery. Use the invoking owner's late-bound relay, forward
+  tool cancellation, and preserve full match counts, labels and verification. Reject
+  bare workspace IDs and unsupported query/time/summarization filters in this mode;
+  relay failure never retries against the directory or local store.
 - `send_to_conversation` create mode defaults to Medium when model/tier are omitted;
   resolve tiers on the destination server after provider selection. Post/cancel have no default tier.
 - Remote group selection uses a server-qualified clone key; decode the raw

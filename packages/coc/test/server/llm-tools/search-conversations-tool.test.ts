@@ -77,6 +77,12 @@ describe('createSearchConversationsTool', () => {
             properties: {
                 query: { type: 'string', description: expect.any(String) },
                 title: { type: 'string', description: expect.any(String) },
+                source: { type: 'string', enum: ['registered', 'dashboard'], description: expect.any(String) },
+                target: {
+                    type: 'object',
+                    properties: { serverIdentity: { type: 'string' }, workspaceId: { type: 'string' } },
+                    required: ['serverIdentity', 'workspaceId'], additionalProperties: false, description: expect.any(String),
+                },
                 workspaceId: { type: 'string', description: expect.any(String) },
                 since: { type: 'string', description: expect.any(String) },
                 until: { type: 'string', description: expect.any(String) },

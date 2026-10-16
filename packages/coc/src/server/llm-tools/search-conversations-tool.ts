@@ -12,12 +12,15 @@
  * bound to the store instance, avoiding cross-request contamination.
  */
 
+import type { DashboardDiscoveryRuntime, DashboardWorkspaceTarget } from '@plusplusoneplusplus/coc-client';
 import type { ConversationTurn, ProcessIndexEntry, ProcessStore } from '@plusplusoneplusplus/forge';
 import { parseRemoteCloneKey, type RemoteChatReadTarget, type WorkspaceDirectory } from '../servers/workspace-directory';
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 
 export interface SearchConversationsArgs {
     query?: string;
+    source?: 'registered' | 'dashboard';
+    target?: DashboardWorkspaceTarget;
     title?: string;
     workspaceId?: string;
     since?: string;
@@ -58,6 +61,7 @@ export interface SearchConversationsToolOptions {
     summarizer?: Summarizer;
     /** Shared owner-server remote directory used by list_workspaces. */
     directory?: WorkspaceDirectory;
+    getDashboardDiscovery?: () => DashboardDiscoveryRuntime | undefined;
 }
 
 const MAX_RESULTS = 100;
@@ -195,6 +199,9 @@ export function createSearchConversationsTool(
             'Three modes: (1) Recent sessions — no query, lists session metadata only (no LLM cost), scoped by workspaceId and since/until. ' +
             '(2) Keyword search — find topics across past sessions, optionally with AI summaries. ' +
             '(3) Title lookup — supply title and workspaceId to find existing chats by their displayed title without reading transcripts. ' +
+            'Use source: "dashboard", title and the exact target from list_workspaces(source: "dashboard") to search any dashboard-visible server, including unregistered servers. ' +
+            'Dashboard title lookup returns labels, full match count and verified/unverified metadata; it accepts no workspaceId, time filters, query or summarization. ' +
+            'Unknown identity cannot be searched; never substitute a server label, connection alias or bare workspace ID for target. ' +
             'If a title lookup is ambiguous, ask the user to choose a chat before attaching a reference. ' +
             'For periodic tasks, use no query + workspaceId + since/until to find processIds, then call get_conversation on the ones you want. ' +
             'Use proactively when the user says "remember when", "last time", "we did this before", or "as I mentioned", or references a past session. ' +
@@ -210,6 +217,16 @@ export function createSearchConversationsTool(
                 title: {
                     type: 'string',
                     description: 'Literal, case-insensitive part of the displayed chat title. Requires a workspace; do not combine with query.',
+                },
+                source: {
+                    type: 'string', enum: ['registered', 'dashboard'],
+                    description: 'Registered/local search (default), or dashboard-visible title lookup using a durable target.',
+                },
+                target: {
+                    type: 'object',
+                    properties: { serverIdentity: { type: 'string' }, workspaceId: { type: 'string' } },
+                    required: ['serverIdentity', 'workspaceId'], additionalProperties: false,
+                    description: 'Exact read-only target returned by list_workspaces with source dashboard. Requires source dashboard and title.',
                 },
                 workspaceId: {
                     type: 'string',
@@ -239,7 +256,53 @@ export function createSearchConversationsTool(
             },
             required: [],
         },
-        handler: async (args: SearchConversationsArgs) => {
+        handler: async (args: SearchConversationsArgs, invocation) => {
+            if (args.source !== undefined && args.source !== 'registered' && args.source !== 'dashboard') {
+                return { error: 'Invalid source: must be registered or dashboard.', code: 'invalid' };
+            }
+            if (args.source === 'dashboard') {
+                const target = args.target;
+                const isText = (value: unknown): value is string => typeof value === 'string'
+                    && value.trim().length > 0 && value.length <= 512;
+                if (!target || typeof target !== 'object' || Array.isArray(target)
+                    || Object.keys(target).some(key => key !== 'serverIdentity' && key !== 'workspaceId')
+                    || !isText(target.serverIdentity) || !isText(target.workspaceId) || !isText(args.title)
+                    || args.workspaceId !== undefined || args.query !== undefined || args.since !== undefined
+                    || args.until !== undefined || args.summarize !== undefined
+                    || (args.limit !== undefined && (!Number.isSafeInteger(args.limit) || args.limit < 1 || args.limit > MAX_RESULTS))
+                    || (args.offset !== undefined && (!Number.isSafeInteger(args.offset) || args.offset < 0))) {
+                    return { error: 'Dashboard title lookup requires title and an exact serverIdentity/workspaceId target, with optional limit (1–100) and offset only.', code: 'invalid' };
+                }
+                if (!workspaceId) return { error: 'Dashboard title lookup requires an invoking workspace.', code: 'unavailable' };
+                const limit = args.limit ?? DEFAULT_LIMIT;
+                const offset = args.offset ?? 0;
+                try {
+                    const discovery = opts.getDashboardDiscovery?.();
+                    if (!discovery) return { error: 'Dashboard title lookup is unavailable.', code: 'unavailable' };
+                    const result = await discovery.searchChats(workspaceId, {
+                        target: { serverIdentity: target.serverIdentity, workspaceId: target.workspaceId },
+                        title: args.title.trim(), limit, offset,
+                    }, invocation?.signal);
+                    return {
+                        source: 'dashboard' as const, mode: 'title' as const,
+                        target: result.target, serverLabel: result.serverLabel, workspaceLabel: result.workspaceLabel,
+                        serverKind: result.serverKind, verification: result.verification,
+                        results: result.conversations.map(row => ({
+                            processId: row.processId, title: row.title, serverIdentity: result.target.serverIdentity,
+                            workspaceId: result.target.workspaceId, serverLabel: result.serverLabel,
+                            workspaceLabel: result.workspaceLabel, verification: result.verification,
+                        })),
+                        total: result.total, limit, offset, hasMore: offset + result.conversations.length < result.total,
+                        ambiguous: result.total > 1,
+                        message: result.total > 1 ? 'Multiple chats match. Ask the user which chat to attach.' : `Found ${result.total} matching chat(s).`,
+                    };
+                } catch {
+                    return { error: 'Dashboard title lookup is unavailable.', code: 'unavailable' };
+                }
+            }
+            if (args.target !== undefined) {
+                return { error: 'A dashboard target requires source dashboard.', code: 'invalid' };
+            }
             const effectiveLimit = Math.min(
                 Math.max(1, args.limit ?? DEFAULT_LIMIT),
                 MAX_RESULTS,

@@ -89,6 +89,15 @@ publish after destination changes. Only local searches exclude the invoking proc
 ID; remote IDs may collide. Unavailable or invalid remote pages discard partial
 matches without local chat fallback. Title lookup reads no transcripts.
 
+`source: dashboard` requires `title` and the exact `target: { serverIdentity,
+workspaceId }` from dashboard workspace discovery; unknown identity is insufficient.
+The invoking workspace's late-bound dashboard relay handles the read and tool abort
+signal, including unregistered destinations. Results retain durable identities,
+server/workspace labels, producer verification, and full counts for pagination and
+ambiguity. This mode accepts only target/title and optional bounded limit/offset;
+workspaceId, query, time filters and summarization are rejected. Failures return
+unavailable without directory/local fallback or transport details.
+
 ### sentinel_todos
 
 Offered to every Sentinel chat (first turn and follow-ups): the route layer
