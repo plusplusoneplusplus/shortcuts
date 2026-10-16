@@ -189,8 +189,13 @@ references before editing. Paths are package-relative.
   and verification, including unverified offline matches. Re-prove Sentinel
   ownership after I/O; abort/failure never falls back locally. Owner-server targets
   canonicalize to local references; qualify self checks by workspace and server.
-  Remote links retain encoded durable segments under `#chat-references/` for
-  destination resolution. REST attachment stays local-only.
+  Remote links retain encoded durable segments under `#chat-references/`.
+  `shared/dashboard-discovery/chat-reference.ts` parses and resolves these against
+  current visible topology, preferring an online exact server/workspace alias.
+  Health checks bracket a transcript-excluded exact-process metadata read; changed
+  topology, ownership or cancellation rejects without fallback. The resolver returns
+  a concrete clone chat route without changing selection; callers own read deadlines
+  and immediate navigation. REST attachment stays local-only.
 - `storage/conversation-tool-inventory-store.ts` borrows the process database and
   retains one pending/captured inventory per process outside metadata, transcripts
   and SSE. Server composition shares it through `getToolInventoryStore`; initial

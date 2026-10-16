@@ -40,6 +40,7 @@ repos-list/git-info aggregation stay on the page origin.
 | `getCocClientFor(baseUrl?)` (`api/cocClient.ts`) | Default singleton when omitted, else a per-`baseUrl`-cached `CocClient` whose REST (`/api` base) and `events` WebSocket target that origin |
 | `resolveCloneBaseUrl(ref, repos)` (`repos/cloneRouting.ts`) | Maps a workspace object, workspace id, or clone key to its remote `baseUrl` (`undefined` when local) |
 | `resolveCloneRoute(ref)` (`repos/cloneRegistry.ts`) | Classifies a registry target as local, resolved remote, or unresolved remote so strict consumers do not treat a missing remote endpoint as local |
+| `resolveDashboardChatReference(reference, signal)` (`shared/dashboard-discovery/chat-reference.ts`) | Resolves durable server/workspace/process identity against current visible topology, preferring an online alias, then brackets an exact-chat metadata read with health identity checks. Returns the current clone-qualified chat href without changing selection. Offline/unknown/replaced targets and stale or cancelled reads reject without fallback; callers own deadlines and immediate navigation. `parseDashboardChatReference` decodes the durable `#chat-references/` path. |
 | `cloneWsUrl(path, baseUrl?)` (`api/wsUrl.ts`) | With a `baseUrl`, derives `ws(s)://{host:port}{path}` (http→ws, https→wss) keeping path and query verbatim; without one, reproduces `window.location` behavior |
 
 The shared `/ws` process-event stream (`useWebSocket` → `getSpaCocClient().events`) is
