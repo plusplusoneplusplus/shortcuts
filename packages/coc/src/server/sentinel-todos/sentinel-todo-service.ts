@@ -82,7 +82,7 @@ export type SentinelTodoLedgerView = { revision: number; items: SentinelTodoItem
 export class SentinelTodoService {
     /** Bound once by route composition; tools share readiness and durable launch tracking. */
     dependencyActions?: {
-        project(owner: SentinelTodoOwner, item: SentinelTodoItem): Pick<SentinelTodoItemView, 'dependencyReadiness'>;
+        project(owner: SentinelTodoOwner, ledger: SentinelTodoLedger): (item: SentinelTodoItem) => Pick<SentinelTodoItemView, 'dependencyReadiness'>;
         guard(input: CreateTaskInput, phase: 'enqueue' | 'check' | 'start'): Promise<void>;
         refresh(owner: SentinelTodoOwner): void;
         evaluated(owner: SentinelTodoOwner, evaluation: SentinelTodoDependencyEvaluation): string[];
@@ -93,7 +93,7 @@ export class SentinelTodoService {
         todos: SentinelTodoStore;
         serverIdentity?: string;
         getDashboardDiscovery?: () => DashboardDiscoveryRuntime | undefined;
-        store: Pick<ProcessStore, 'getProcess'>;
+        store: Pick<ProcessStore, 'getProcess' | 'getProcessOwnerProjection'>;
         /** A Sentinel's first turn can still be queued, before its process exists. */
         getTask?: TaskQueueManager['getTask'];
         /** Delegation receipts, read only to show linked jobs' execution status. */
@@ -437,12 +437,13 @@ export class SentinelTodoService {
             catch { /* Execution status degrades to the recorded link result. */ }
         }
         const modes = this.deps.todos.getJobModeProjections(owner);
+        const dependencies = this.dependencyActions?.project(owner, ledger);
         return {
             revision: ledger.revision,
             ...(this.tagsEnabled() ? { tagLibrary: this.deps.todos.getTags(owner) } : {}),
             items: ledger.items.map(item => ({
                 ...this.visibleItem(item),
-                ...this.dependencyActions?.project(owner, item),
+                ...dependencies?.(item),
                 jobs: item.jobs.map(link => ({ ...link,
                     mode: this.jobMode(link, modes),
                     execution: this.execution(link, owner, delegated, item.userVerdictRevision),
@@ -686,12 +687,17 @@ export class SentinelTodoService {
     }
 
     async assertOwner(owner: SentinelTodoOwner): Promise<void> {
-        const process = await this.deps.store.getProcess(owner.processId);
+        // The owner projection reads only mode/workspace; stores without it load the process.
+        const { store } = this.deps;
+        const process = store.getProcessOwnerProjection
+            ? await store.getProcessOwnerProjection(owner.processId)
+            : await store.getProcess(owner.processId).then(found => found
+                && { workspaceId: found.metadata?.workspaceId, mode: found.metadata?.mode });
         const task = !process && isQueueProcessId(owner.processId)
             ? this.deps.getTask?.(toTaskId(owner.processId)) : undefined;
         const live = task?.type === 'chat' && (task.status === 'queued' || task.status === 'running') ? task : undefined;
-        const mode = process ? process.metadata?.mode : (live?.payload as { mode?: unknown } | undefined)?.mode;
-        const workspaceId = process ? process.metadata?.workspaceId : live?.repoId;
+        const mode = process ? process.mode : (live?.payload as { mode?: unknown } | undefined)?.mode;
+        const workspaceId = process ? process.workspaceId : live?.repoId;
         if (normalizeChatMode(mode) !== 'sentinel' || workspaceId !== owner.workspaceId) {
             throw new SentinelTodoError('not_found', 'Sentinel chat not found in this workspace');
         }

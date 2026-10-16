@@ -729,7 +729,9 @@ owns its draft and idempotency key (`useAddItemForm`). Every write carries the i
 conflict reloads the ledger and keeps the typed draft, and the next save is based
 on the newer revision. Creates carry one idempotency key per draft across retries.
 Event invalidation, manual toolbar refresh and post-write reloads share the
-owner-scoped full-snapshot loader. Pending reads disable manual refresh with a
+owner-scoped full-snapshot loader. Creates and saves wait until a snapshot at
+or above the write's returned `ledgerRevision` is applied, reusing an in-flight
+read only when its result covers that revision; otherwise they fetch once. Pending reads disable manual refresh with a
 synchronous admission guard and busy indicator; reloads retain rows, selection,
 drafts and older-item expansion. Selection and changes to its tracking type or
 active/Done/Archived membership reveal its containing sections, including restored

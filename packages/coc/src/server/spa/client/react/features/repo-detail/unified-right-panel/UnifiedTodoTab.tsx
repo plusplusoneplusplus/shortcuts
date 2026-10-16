@@ -298,7 +298,11 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     const loadSeq = useRef(0);
     const mounted = useRef(true);
     const ownerKey = sentinelTodoOwnerKey(owner);
-    const load = useCallback(async () => {
+    // The applied snapshot's revision and the newest request let a write reuse a
+    // read that already covers its committed revision instead of fetching again.
+    const loadedRevision = useRef(-1);
+    const inFlight = useRef<Promise<void> | null>(null);
+    const fetchLedger = useCallback(async () => {
         if (!mounted.current) return;
         const seq = ++loadSeq.current;
         if (unavailable) {
@@ -311,6 +315,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             // Dependencies, triggers and Scrubber projections need the full snapshot, not just visible rows.
             const next = await client.sentinelTodos.get(owner.ownerWorkspaceId, owner.processId, { full: true });
             if (!mounted.current || seq !== loadSeq.current) return;
+            loadedRevision.current = next.revision;
             setLedger(next);
             setLoadError(null);
         } catch (error) {
@@ -323,6 +328,20 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         // `ownerKey` covers the owner fields read above.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [client, ownerKey, unavailable]);
+    const load = useCallback(() => {
+        const request: Promise<void> = fetchLedger().finally(() => {
+            if (inFlight.current === request) inFlight.current = null;
+        });
+        inFlight.current = request;
+        return request;
+    }, [fetchLedger]);
+    /** Shows at least a committed write's revision, reusing a covering in-flight or applied read. */
+    const showRevision = useCallback(async (revision: number) => {
+        // A missing revision never counts as covered.
+        const covered = () => loadedRevision.current >= revision;
+        while (inFlight.current && !covered()) await inFlight.current;
+        if (!covered()) await load();
+    }, [load]);
 
     const refresh = () => {
         if (pendingLoads.current > 0) return;
@@ -331,6 +350,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
 
     useEffect(() => {
         mounted.current = true;
+        loadedRevision.current = -1;
         setLedger(null);
         setLoadError(null);
         void load();
@@ -366,7 +386,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     const attentionCount = sections.active.filter(item => sentinelTodoDisplayStatus(item) === 'needs_attention').length;
 
     const createItem = useCallback(async (type: SentinelTodoType, draft: Draft, idempotencyKey: string) => {
-        await client.sentinelTodos.create(owner.ownerWorkspaceId, owner.processId, {
+        const { ledgerRevision } = await client.sentinelTodos.create(owner.ownerWorkspaceId, owner.processId, {
             title: draft.title.trim(),
             completionCondition: draft.completionCondition.trim(),
             notes: draft.notes,
@@ -377,9 +397,9 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             idempotencyKey,
             ...(tagLibrary && matchMultiple ? { matchMultiple: true } : {}),
         });
-        await load();
+        await showRevision(ledgerRevision);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [client, ownerKey, load, tagLibrary, matchMultiple, referencesEnabled]);
+    }, [client, ownerKey, showRevision, tagLibrary, matchMultiple, referencesEnabled]);
     const addForm = useAddItemForm((draft, key) => createItem('normal', draft, key));
     const manualForm = useAddItemForm((draft, key) => createItem('manual', draft, key));
     const openAddForm = () => { setDetailOpen(false); addForm.open(); };
@@ -391,8 +411,8 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         expectedRevision = item.revision,
     ): Promise<{ message: string; conflict: boolean; current?: SentinelTodoItem } | null> => {
         try {
-            await client.sentinelTodos.update(owner.ownerWorkspaceId, owner.processId, item.id, { expectedRevision, ...patch });
-            await load();
+            const { ledgerRevision } = await client.sentinelTodos.update(owner.ownerWorkspaceId, owner.processId, item.id, { expectedRevision, ...patch });
+            await showRevision(ledgerRevision);
             return null;
         } catch (error) {
             const failure = sentinelTodoSaveError(error);
@@ -402,7 +422,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             return { ...failure, ...(current ? { current } : {}) };
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [client, ownerKey, load]);
+    }, [client, ownerKey, load, showRevision]);
 
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const highlightTimer = useRef<ReturnType<typeof setTimeout>>();

@@ -223,6 +223,62 @@ describe('UnifiedTodoTab', () => {
         expect(detail.hidden).toBe(true);
     });
 
+    describe('save refresh coordination', () => {
+        const changed = (ledgerRevision: number) => act(() => connect.mock.calls[0][0].onMessage({ type: 'sentinel-todos-changed',
+            workspaceId: OWNER.ownerWorkspaceId, processId: OWNER.processId, ledgerRevision, itemId: 'i1' }));
+        async function startDoneSave() {
+            const row = await screen.findByTestId('sentinel-todo-row-i1');
+            fireEvent.click(within(row).getByRole('button'));
+            chooseStatus(document.body, 'Done');
+            fireEvent.click(screen.getByRole('button', { name: 'Set status' }));
+            return screen.getByRole('button', { name: 'Close To-do details' }) as HTMLButtonElement;
+        }
+        const saved = ledger([item({ status: 'done', revision: 5 })], 5);
+
+        it('reuses the committed change event\'s read instead of fetching the ledger again', async () => {
+            get.mockResolvedValueOnce(ledger([item({ revision: 4 })], 4));
+            render(<UnifiedTodoTab owner={OWNER} />);
+            const patch = deferred<object>();
+            const eventRead = deferred<SentinelTodoLedgerResponse>();
+            update.mockReturnValueOnce(patch.promise);
+            get.mockReturnValueOnce(eventRead.promise);
+            const close = await startDoneSave();
+            changed(5);
+            await act(async () => patch.resolve({ item: item(), ledgerRevision: 5 }));
+            expect(close.disabled).toBe(true);
+            await act(async () => eventRead.resolve(saved));
+            expect(close.disabled).toBe(false);
+            expect(get).toHaveBeenCalledTimes(2);
+            expect(screen.getByTestId('sentinel-todo-row-i1').querySelector('[data-testid="sentinel-todo-status-done"]')).toBeTruthy();
+        });
+
+        it('never accepts an older in-flight read as the saved state', async () => {
+            get.mockResolvedValueOnce(ledger([item({ revision: 4 })], 4));
+            render(<UnifiedTodoTab owner={OWNER} />);
+            await screen.findByTestId('sentinel-todo-row-i1');
+            const stale = deferred<SentinelTodoLedgerResponse>();
+            const fresh = deferred<SentinelTodoLedgerResponse>();
+            get.mockReturnValueOnce(stale.promise).mockReturnValueOnce(fresh.promise);
+            fireEvent.click(screen.getByRole('button', { name: 'Refresh to-do list' }));
+            update.mockResolvedValueOnce({ item: item(), ledgerRevision: 5 });
+            const close = await startDoneSave();
+            await act(async () => stale.resolve(ledger([item({ revision: 4 })], 4)));
+            expect(close.disabled).toBe(true);
+            expect(get).toHaveBeenCalledTimes(3);
+            await act(async () => fresh.resolve(saved));
+            expect(close.disabled).toBe(false);
+        });
+
+        it('fetches once itself when no change event arrives', async () => {
+            get.mockResolvedValueOnce(ledger([item({ revision: 4 })], 4)).mockResolvedValueOnce(saved);
+            update.mockResolvedValueOnce({ item: item(), ledgerRevision: 5 });
+            render(<UnifiedTodoTab owner={OWNER} />);
+            const close = await startDoneSave();
+            await waitFor(() => expect(close.disabled).toBe(false));
+            expect(get).toHaveBeenCalledTimes(2);
+        });
+    });
+
     it('shows older active work plus recent Done with Refresh and older access', async () => {
         const items = Array.from({ length: 105 }, (_, index) => item({
             id: `item-${index}`, title: `Item ${index}`,

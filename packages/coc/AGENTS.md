@@ -372,6 +372,8 @@ references before editing. Paths are package-relative.
   item-ID lookup is exact. Saved fulfillment determines selection, not job execution.
   `SentinelTodoService.list` and store reads
   remain full-ledger; the 500-item storage capacity is independent of presentation.
+  `list` projects every item from one ledger snapshot and one admission read; owner
+  checks use the store's transcript-free `getProcessOwnerProjection` when available.
   REST `full=true` supplies complete authoring/projection snapshots.
   The internal `setDependencies` graph command replaces ordered, typed prerequisites
   in the same writer transaction as item/ledger revisions. Edges resolve only in the
@@ -471,8 +473,8 @@ references before editing. Paths are package-relative.
   The SPA's To-do tab lives in the unified right panel (see its `AGENTS.md`): a hosted
   Sentinel `ChatDetail` publishes its ledger owner; stored tabs remain visible.
   Scrubber REST commands live in `src/server/sentinel-scrubber/scrubber-routes.ts`;
-  prove the Sentinel owner through `SentinelTodoService.list` before accessing
-  scrubber state, and use the engine for revision-checked Accept/Undo. The shared
+  prove the Sentinel owner through `SentinelTodoService.assertOwner` before accessing
+  scrubber state (never a full ledger list), and use the engine for revision-checked Accept/Undo. The shared
   `client.sentinelTodos.scrubber` resource uses the owning client transport for config,
   runs and finding actions; reads support abort signals and conflicts retain the current
   item in `CocApiError.body.current`. Route composition

@@ -686,7 +686,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             if (!(await store.getWorkspaces()).some(workspace => workspace.id === owner.workspaceId)) {
                 throw new Error('Scrubber workspace not found');
             }
-            await sentinelTodos.list(owner);
+            await sentinelTodos.assertOwner(owner);
         } });
     const scrubberReady = scrubberRuns.interruptActive().then(async count => {
         scrubberScheduler?.refreshAll();

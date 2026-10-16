@@ -632,7 +632,8 @@ while distinct job titles remain visible. Full content and controls live in deta
 detail text uses native selection, with attachment dragging scoped to Attach.
 List cards retain whole-card attachment dragging.
 Events, manual refresh and post-write reloads share
-the owner/generation-guarded loader. Pending reads block duplicate manual admission;
+the owner/generation-guarded loader. Writes reuse an in-flight or applied read only
+once its snapshot reaches the write's `ledgerRevision`. Pending reads block duplicate manual admission;
 reloads retain the snapshot, selection and drafts. Selection or movement between
 tracking type and active/Done/Archived groups reveals its containing sections;
 other refreshes preserve collapse choices. Collapsing a containing group clears

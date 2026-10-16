@@ -272,7 +272,7 @@ workspace and Sentinel process; mutation methods carry the rule revision.
 
 ### To-do Scrubber
 
-`sentinel-scrubber/scrubber-routes.ts` defines owner-validated commands below the ledger's `/scrubber` path: GET config/active run/history, PUT `/config`, POST `/runs`, GET `/runs/:runId`, POST `/runs/:runId/cancel`, and POST `/runs/:runId/findings/:itemId/{accept|dismiss|undo}`. 
+`sentinel-scrubber/scrubber-routes.ts` defines owner-validated commands below the ledger's `/scrubber` path: GET config/active run/history, PUT `/config`, POST `/runs`, GET `/runs/:runId`, POST `/runs/:runId/cancel`, and POST `/runs/:runId/findings/:itemId/{accept|dismiss|undo}`. Each request proves the Sentinel owner with the transcript-free `SentinelTodoService.assertOwner`, not a full ledger list. 
 
 `client.sentinelTodos.scrubber` exposes `get`, `updateConfig`, `start`, `getRun`, `cancel`, `accept`, `dismiss` and `undo`; contracts live in `coc-client/src/contracts/sentinel-scrubber.ts`. Each call requires the ledger workspace and Sentinel process and uses the chosen client's transport. Run detail includes snapshot revisions, deferred/awaiting-review IDs, evidence, demotion reasons and audit entries. Accept/Undo return a stored item plus finding; Dismiss returns only the finding.
 
