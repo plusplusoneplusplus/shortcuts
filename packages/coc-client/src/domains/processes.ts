@@ -86,8 +86,11 @@ export class ProcessesClient {
     return this.transport.request<ProcessListResponse>('/processes', { query: serializeListQuery(query) });
   }
 
-  summaries(query?: ProcessListQuery): Promise<ProcessSummariesResponse> {
-    return this.transport.request<ProcessSummariesResponse>('/processes/summaries', { query: serializeListQuery(query) });
+  summaries(query?: ProcessListQuery, options?: Pick<CocRequestOptions, 'signal'>): Promise<ProcessSummariesResponse> {
+    return this.transport.request<ProcessSummariesResponse>('/processes/summaries', {
+      query: serializeListQuery(query),
+      ...(options?.signal ? { signal: options.signal } : {}),
+    });
   }
 
   search(query: ProcessSearchQuery, options?: Pick<CocRequestOptions, 'signal'>): Promise<ProcessSearchResponse> {

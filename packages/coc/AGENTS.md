@@ -52,7 +52,11 @@ references before editing. Paths are package-relative.
   Title-search relay requests pin a durable server/workspace selector and bounded
   pagination; replies require matching identity, labels, verification, full match
   count and title-only rows. Reject malformed/partial results and cross-kind replies.
-  The SPA producer serves topology; chat reads/tool wiring require separate composition.
+  The SPA title producer resolves only a visible online durable destination, verifies
+  live health identity before every summaries page and after scanning, and matches
+  displayed titles before output pagination. Cancellation, topology changes and socket
+  teardown abort I/O and suppress late publication. Unknown/offline destinations fail
+  without local fallback; offline title caches and tool consumption are separate seams.
   Topology observations are not ownership verification; discovery never broadcasts.
   Reject late responses after scope changes. Sidebar queue snapshots supersede
   stale queue reads, not independent history reads; reconcile admitted history

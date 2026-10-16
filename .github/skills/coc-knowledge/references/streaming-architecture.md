@@ -214,8 +214,18 @@ before pagination and process/title pairs. Validation rejects incomplete pages,
 identity mismatches, duplicate process IDs, nonmatching titles and extra fields.
 Metadata is bounded to 512 characters and displayed titles to 4,096. Verification
 describes producer observations, not independent server-side ownership proof.
-The SPA producer serves topology; chat read production and tool consumption are
-separate composition points.
+
+The SPA's `shared/dashboard-discovery/chat-search.ts` selects an online visible
+route by exact durable target, never a bare workspace registry fallback. It pins
+that route/revision, checks live health identity before each 200-row summaries
+page and after scanning, and matches custom/generated/preview titles before
+output pagination. Counts, complete pages and unique IDs must remain consistent;
+failures discard partial matches. `processes.summaries` accepts cancellation.
+
+Socket cancellation, topology changes, close and disposal abort pending reads
+and suppress delayed replies; focus updates preserve them. Unknown/offline targets
+are unavailable. Page-origin identity observation, offline title caching and
+tool consumption are separate composition points.
 
 ### Targeted desktop browser control
 
