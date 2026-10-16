@@ -14,12 +14,11 @@ import type { AdminSubTab, DashboardTab } from '../types/dashboard';
 // Settings sections promoted into the sidebar. Each entry maps 1:1 to a
 // `SettingsCard` in the admin page. Selection is kept in component state and
 // synced to the URL fragment so refreshes land on the same section.
-export type SettingsSubTab = 'ai' | 'chat' | 'chat-style' | 'sentinel' | 'appearance' | 'editors' | 'features' | 'integrations' | 'providers' | 'advanced';
+export type SettingsSubTab = 'ai' | 'chat' | 'sentinel' | 'appearance' | 'editors' | 'features' | 'integrations' | 'providers' | 'advanced';
 
 export const SETTINGS_SUBTABS: { id: SettingsSubTab; label: string; icon: string }[] = [
     { id: 'ai', label: 'AI & Execution', icon: '✦' },
     { id: 'chat', label: 'Chat', icon: '◌' },
-    { id: 'chat-style', label: 'Chat Style', icon: '✎' },
     { id: 'sentinel', label: 'Sentinel', icon: '🛡️' },
     { id: 'appearance', label: 'Appearance', icon: '◐' },
     { id: 'editors', label: 'Editors', icon: '⌨' },
@@ -32,8 +31,7 @@ export const DEFAULT_SETTINGS_SUBTAB: SettingsSubTab = 'ai';
 export const VALID_SETTINGS_SUBTABS = new Set<SettingsSubTab>(SETTINGS_SUBTABS.map(t => t.id));
 export const SETTINGS_SUBTAB_DESCRIPTIONS: Record<SettingsSubTab, string> = {
     ai: '',
-    chat: 'Conversation behavior, follow-up suggestions, and transcript detail.',
-    'chat-style': 'Default chat style and the prompt text each style injects.',
+    chat: 'Conversation behavior, follow-up suggestions, transcript detail, and chat style.',
     sentinel: 'Sentinel mode, To-do tracking, results, and messaging.',
     appearance: 'Theme, layout density, navigation, and prompt autocomplete preferences.',
     editors: 'File editor tabs, Markdown previews, and Notes editor behavior.',

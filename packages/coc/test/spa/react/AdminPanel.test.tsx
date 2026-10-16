@@ -37,7 +37,7 @@ function renderWithProviders() {
  * integrations / advanced), so tests interacting with controls outside of
  * the default 'ai' sub-tab must call this first.
  */
-async function gotoSettingsSubTab(sub: 'ai' | 'chat' | 'chat-style' | 'appearance' | 'editors' | 'features' | 'integrations' | 'providers' | 'advanced'): Promise<void> {
+async function gotoSettingsSubTab(sub: 'ai' | 'chat' | 'appearance' | 'editors' | 'features' | 'integrations' | 'providers' | 'advanced'): Promise<void> {
     await waitFor(() => expect(screen.getByTestId(`settings-subtab-${sub}`)).toBeDefined());
     await act(async () => {
         fireEvent.click(screen.getByTestId(`settings-subtab-${sub}`));
@@ -1092,7 +1092,7 @@ describe('AdminPanel', () => {
 
         // Regression: Ctrl/Cmd+S used to save only the Features section.
         // Every section with a Save button must save its own dirty values.
-        it.each<[string, 'ai' | 'chat' | 'chat-style' | 'appearance', () => void, (writes: Array<{ url: string; body: any }>) => void]>([
+        it.each<[string, 'ai' | 'chat' | 'appearance', () => void, (writes: Array<{ url: string; body: any }>) => void]>([
             ['AI & Execution', 'ai', () => {
                 fireEvent.change(document.getElementById('admin-config-model')!, { target: { value: 'gpt-5' } });
             }, writes => {
@@ -1103,7 +1103,7 @@ describe('AdminPanel', () => {
             }, writes => {
                 expect(writes.some(w => w.url.includes('/admin/config') && w.body['chat.followUpSuggestions.enabled'] === false)).toBe(true);
             }],
-            ['Chat Style', 'chat-style', () => {
+            ['Chat Style', 'chat', () => {
                 fireEvent.change(screen.getByTestId('select-default-chat-style'), { target: { value: 'terse' } });
             }, writes => {
                 expect(writes.some(w => w.url.includes('/admin/config') && w.body['features.defaultChatStyle'] === 'terse')).toBe(true);

@@ -15,7 +15,7 @@
  * tools, or permission mode.
  *
  * The last row of the dropdown is not a style: "Configure styles…" jumps to the
- * admin Chat Style section, where the prompt text behind each style is edited.
+ * admin Chat tab's Chat Style card, where the prompt text behind each style is edited.
  * It sits below a divider, is excluded from the listbox's option roles, and
  * never fires `onChange`.
  */
@@ -33,8 +33,8 @@ export const CHAT_STYLE_DESCRIPTIONS: Record<ChatStyle, string> = {
     structured: 'Easy to scan: key points, decisions, risks, next steps.',
 };
 
-/** In-app hash of the admin section where style prompts are edited. */
-export const CHAT_STYLE_SETTINGS_HASH = '#admin/settings/chat-style';
+/** In-app hash of the admin Chat tab, whose Chat Style card edits style prompts. */
+export const CHAT_STYLE_SETTINGS_HASH = '#admin/settings/chat';
 
 export interface ChatStyleSelectorProps {
     /** Currently selected style. */

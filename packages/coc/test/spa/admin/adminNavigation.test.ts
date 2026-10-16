@@ -37,20 +37,26 @@ describe('parseSettingsSubTabFromHash', () => {
         expect(parseSettingsSubTabFromHash('#admin/settings/nope')).toBeNull();
     });
 
-    // The hyphen in `chat-style` is the only sub-tab id that is not a single
-    // word, so it is the one most likely to break a naive hash split.
-    it('parses the chat-style sub-tab', () => {
-        expect(parseSettingsSubTabFromHash('#admin/settings/chat-style')).toBe('chat-style');
+    // Chat Style lives as a card inside the Chat tab; its old sub-tab id is gone.
+    it('no longer accepts a chat-style sub-tab', () => {
+        expect(parseSettingsSubTabFromHash('#admin/settings/chat-style')).toBeNull();
+        expect(parseSettingsSubTabFromHash('#admin/settings/chat')).toBe('chat');
     });
 });
 
-describe('chat-style sub-tab registration', () => {
-    it('is listed right after Chat with a label, icon, and description', () => {
-        const ids = SETTINGS_SUBTABS.map(t => t.id);
-        expect(ids.indexOf('chat-style')).toBe(ids.indexOf('chat') + 1);
-        expect(getSettingsSubTabMeta('chat-style').label).toBe('Chat Style');
-        expect(getSettingsSubTabMeta('chat-style').icon).toBeTruthy();
-        expect(SETTINGS_SUBTAB_DESCRIPTIONS['chat-style']).toBeTruthy();
+describe('Chat sub-tab registration', () => {
+    it('has exactly one chat-related settings tab that covers chat style', () => {
+        expect(SETTINGS_SUBTABS.filter(t => /chat/i.test(t.id) || /chat/i.test(t.label))).toEqual([
+            { id: 'chat', label: 'Chat', icon: '◌' },
+        ]);
+        expect(SETTINGS_SUBTAB_DESCRIPTIONS.chat).toMatch(/chat style/i);
+        expect(getSettingsSubTabMeta('chat').label).toBe('Chat');
+    });
+
+    it('keeps the other settings tabs, including Editors, in order', () => {
+        expect(SETTINGS_SUBTABS.map(t => t.id)).toEqual([
+            'ai', 'chat', 'sentinel', 'appearance', 'editors', 'features', 'integrations', 'providers', 'advanced',
+        ]);
     });
 });
 

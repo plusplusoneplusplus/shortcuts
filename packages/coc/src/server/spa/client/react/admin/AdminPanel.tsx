@@ -159,26 +159,11 @@ export function AdminPanel() {
         addToast,
         searchActive: settingsSubTab === 'features',
     });
-    // The Chat Style section is gated on the composer style selector: with the
-    // flag off there is no style to configure, so the sub-tab is hidden and a
-    // deep link to `#admin/settings/chat-style` falls back to the default one.
-    // `features.chatStyleSelector` reads as off until the config lands (its
-    // absent-fallback is `false`), so the gate waits for the load rather than
-    // bouncing a valid deep link on the first render.
-    const chatStyleConfigLoaded = !configLoading && !configError;
-    const chatStyleSelectorEnabled = chatStyleConfigLoaded
-        && features.featureValues['features.chatStyleSelector'] === true;
-    const visibleSettingsSubTabs = chatStyleSelectorEnabled || !chatStyleConfigLoaded
-        ? SETTINGS_SUBTABS
-        : SETTINGS_SUBTABS.filter(t => t.id !== 'chat-style');
-    // Landing on `#admin/settings/chat-style` with the selector flag off (deep
-    // link, or the flag turned off while the section is open) falls back to the
-    // default section instead of showing an empty page.
-    useEffect(() => {
-        if (settingsSubTab === 'chat-style' && chatStyleConfigLoaded && !chatStyleSelectorEnabled) {
-            handleSettingsSubTabChange(DEFAULT_SETTINGS_SUBTAB);
-        }
-    }, [settingsSubTab, chatStyleConfigLoaded, chatStyleSelectorEnabled, handleSettingsSubTabChange]);
+    // The Chat Style card inside the Chat tab is gated on the composer style
+    // selector: with the flag off there is no style to configure.
+    // `features.chatStyleSelector` reads as off until the config lands, which
+    // is fine here because the cards only render after the load.
+    const chatStyleSelectorEnabled = features.featureValues['features.chatStyleSelector'] === true;
 
     // Chat Style section — the default style plus (later) per-style prompt
     // text. Kept out of the registry-driven Features card because the prompt
@@ -212,8 +197,11 @@ export function AdminPanel() {
     });
     const settingsSaveTargets: Record<Exclude<SettingsSubTab, 'advanced'>, AdminSaveShortcutTarget[]> = {
         ai: [{ dirty: configFormCtl.aiExecDirty, saving: configFormCtl.aiExecSaving, onSave: configFormCtl.handleSaveAiExec }, featureTarget('ai')],
-        chat: [{ dirty: configFormCtl.chatDirty, saving: configFormCtl.chatSaving, onSave: configFormCtl.handleSaveChat }, featureTarget('chat')],
-        'chat-style': [{ dirty: chatStyle.dirty, saving: chatStyle.saving, onSave: chatStyle.handleSave }],
+        chat: [
+            { dirty: configFormCtl.chatDirty, saving: configFormCtl.chatSaving, onSave: configFormCtl.handleSaveChat },
+            ...(chatStyleSelectorEnabled ? [{ dirty: chatStyle.dirty, saving: chatStyle.saving, onSave: chatStyle.handleSave }] : []),
+            featureTarget('chat'),
+        ],
         sentinel: [featureTarget('sentinel')],
         appearance: [{ dirty: prefsCtl.appearanceDirty, saving: prefsCtl.appearanceSaving, onSave: prefsCtl.handleSaveAppearance }, featureTarget('appearance')],
         editors: [featureTarget('editors')],
@@ -564,7 +552,7 @@ export function AdminPanel() {
                                     {/* Sub-tab bar — shown for the main settings sections (not advanced) */}
                                     {settingsSubTab !== 'advanced' && (
                                         <nav className="ar-subtab-row" role="tablist" aria-label="Settings sections">
-                                            {visibleSettingsSubTabs.filter(t => t.id !== 'advanced').map(tab => (
+                                            {SETTINGS_SUBTABS.filter(t => t.id !== 'advanced').map(tab => (
                                                 <button
                                                     key={tab.id}
                                                     type="button"
@@ -628,30 +616,28 @@ export function AdminPanel() {
                                                         sources={sources}
                                                         isDefaultValue={isDefaultValue}
                                                     />
+                                                    {chatStyleSelectorEnabled && (
+                                                        <ChatStyleSettingsCard
+                                                            defaultChatStyle={chatStyle.defaultChatStyle}
+                                                            setDefaultChatStyle={chatStyle.setDefaultChatStyle}
+                                                            selectorEnabled={chatStyleSelectorEnabled}
+                                                            prompts={chatStyle.prompts}
+                                                            setPrompt={chatStyle.setPrompt}
+                                                            resetPrompt={chatStyle.resetPrompt}
+                                                            isPromptCustomized={chatStyle.isPromptCustomized}
+                                                            dirty={chatStyle.dirty}
+                                                            saving={chatStyle.saving}
+                                                            onSave={chatStyle.handleSave}
+                                                            onCancel={chatStyle.handleCancel}
+                                                            sources={sources}
+                                                            isDefaultValue={isDefaultValue}
+                                                        />
+                                                    )}
                                                     {renderTabFeatures('chat')}
                                                 </>
                                             )}
 
                                             {settingsSubTab === 'sentinel' && renderTabFeatures('sentinel')}
-
-                                            {/* ── Chat Style ── */}
-                                            {settingsSubTab === 'chat-style' && chatStyleSelectorEnabled && (
-                                                <ChatStyleSettingsCard
-                                                    defaultChatStyle={chatStyle.defaultChatStyle}
-                                                    setDefaultChatStyle={chatStyle.setDefaultChatStyle}
-                                                    selectorEnabled={chatStyleSelectorEnabled}
-                                                    prompts={chatStyle.prompts}
-                                                    setPrompt={chatStyle.setPrompt}
-                                                    resetPrompt={chatStyle.resetPrompt}
-                                                    isPromptCustomized={chatStyle.isPromptCustomized}
-                                                    dirty={chatStyle.dirty}
-                                                    saving={chatStyle.saving}
-                                                    onSave={chatStyle.handleSave}
-                                                    onCancel={chatStyle.handleCancel}
-                                                    sources={sources}
-                                                    isDefaultValue={isDefaultValue}
-                                                />
-                                            )}
 
                                             {/* ── Appearance & Navigation ── */}
                                             {settingsSubTab === 'appearance' && (
