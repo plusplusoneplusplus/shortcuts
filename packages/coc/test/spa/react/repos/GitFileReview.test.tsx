@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { GitFileReview } from '../../../../src/server/spa/client/react/features/git/diff/GitFileReview';
 import { filterReviewFiles, groupReviewFiles, reviewFileKind } from '../../../../src/server/spa/client/react/features/git/diff/gitReviewFiles';
@@ -111,6 +113,79 @@ describe('compact focused Git review', () => {
         expect(screen.getByRole('alert').textContent).toContain('Offline');
         fireEvent.click(screen.getByRole('button', { name: 'Retry' })); expect(retry).toHaveBeenCalledOnce();
         expect(panel).not.toHaveBeenCalled();
+    });
+});
+
+describe('single-row review toolbar', () => {
+    const toolbar = () => screen.getByTestId('git-review-toolbar');
+    it('keeps navigation, stats, progress and viewed in one toolbar without auto-advancing', () => {
+        const onToggle = vi.fn();
+        render(<GitFileReview {...props} reviewedFiles={new Set(['docs/README.md'])} onToggleReviewed={onToggle} />); open('src/z.ts');
+        expect(screen.getAllByTestId('git-review-toolbar')).toHaveLength(1);
+        for (const name of ['Overview', 'Previous file', 'Next file', 'Mark viewed', 'Files · 4']) {
+            expect(toolbar().contains(screen.getByRole('button', { name, exact: true }))).toBe(true);
+        }
+        expect(screen.getByTestId('git-review-file-index').textContent).toMatch(/^\d\/4$/);
+        expect(screen.getByTestId('git-review-change-stats').getAttribute('title')).toBe('Modified · 4 additions, 2 deletions');
+        expect(screen.getByTestId('git-review-reviewed-count').textContent).toBe('1/4 reviewed');
+        expect(screen.getByTestId('git-review-progress-line').firstElementChild!.getAttribute('style')).toContain('width: 25%');
+        fireEvent.click(screen.getByRole('button', { name: 'Mark viewed' }));
+        expect(onToggle).toHaveBeenCalledWith('src/z.ts');
+        expect(screen.getByTestId('focused-diff').textContent).toContain('src/z.ts');
+    });
+    it('steps files with previous/next and disables at the ends', () => {
+        render(<GitFileReview {...props} />);
+        const prev = screen.getByRole('button', { name: 'Previous file' });
+        expect(prev).toHaveProperty('disabled', true);
+        fireEvent.click(screen.getByRole('button', { name: 'Next file' }));
+        expect(screen.getByTestId('git-review-file-index').textContent).toBe('2/4');
+        expect(prev).toHaveProperty('disabled', false);
+        fireEvent.click(screen.getByRole('button', { name: 'Overview' }));
+        expect(screen.getByTestId('git-review-file-index').textContent).toBe('4 files');
+        expect(screen.queryByTestId('git-review-change-stats')).toBeNull();
+    });
+    it('renders context identity, classify, actions, overflow-only items and below content', () => {
+        const action = vi.fn(); const menuOnly = vi.fn();
+        const title = 'feat: '.padEnd(400, 'very long commit subject ');
+        render(<GitFileReview {...props} header={{
+            identity: <button type="button" className="git-review-title" title={title}>{title}</button>,
+            classify: <button type="button">Classify</button>,
+            actions: [{ id: 'chat', label: 'Toggle AI chat', icon: <svg aria-hidden="true" />, onClick: action, pressed: false, count: 3, testId: 'chat' }],
+            menuActions: [{ id: 'copy', label: 'Copy full SHA', icon: null, onClick: menuOnly, testId: 'copy' }],
+            below: <div data-testid="below">details</div>,
+        }} />);
+        expect(toolbar().contains(screen.getByRole('button', { name: title }))).toBe(true);
+        expect(toolbar().firstElementChild!.className).toBe('git-review-identity');
+        expect(screen.getByRole('button', { name: 'Toggle AI chat' }).textContent).toBe('3');
+        expect(toolbar().contains(screen.getByTestId('below'))).toBe(false);
+        const more = screen.getByRole('button', { name: 'More review actions' });
+        // Overflow-only items keep the trigger visible in wide panes.
+        expect(more.className).not.toContain('git-review-collapsible');
+        fireEvent.click(more);
+        expect(screen.getByTestId('chat-menu-item').className).toContain('git-review-collapsible');
+        expect(screen.getByTestId('copy-menu-item').className).not.toContain('git-review-collapsible');
+        fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowDown' });
+        expect(document.activeElement).toBe(screen.getByTestId('copy-menu-item'));
+        fireEvent.click(screen.getByTestId('copy-menu-item'));
+        expect(menuOnly).toHaveBeenCalledOnce();
+        expect(screen.queryByRole('menu')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Toggle AI chat' }));
+        expect(action).toHaveBeenCalledOnce();
+    });
+    it('keeps the toolbar and header while files load, without viewed controls', () => {
+        render(<GitFileReview {...props} files={[]} loading header={{ identity: <span>Commit</span> }} />);
+        expect(toolbar().textContent).toContain('Commit');
+        expect(screen.queryByRole('button', { name: 'Mark viewed' })).toBeNull();
+        expect(screen.queryByTestId('git-review-reviewed-count')).toBeNull();
+        expect(screen.queryByTestId('git-review-more')).toBeNull();
+    });
+    it('defines a 34px nonwrapping row with container-driven compaction tiers', () => {
+        const css = readFileSync(join(__dirname, '../../../../src/server/spa/client/react/features/git/diff/git-file-review.css'), 'utf8');
+        expect(css).toMatch(/\.git-review-tools\{[^}]*flex-wrap:nowrap[^}]*height:34px/);
+        expect(css).toContain('@container(min-width:900px){.git-review-collapsible{display:none!important}}');
+        expect(css).toContain('@container(max-width:899px){.git-review-wide{display:none!important}}');
+        expect(css).toContain('@container(max-width:599px){.git-review-md{display:none!important}}');
+        expect(css).toContain('@container(max-width:479px){.git-review-label-sm{display:none!important}}');
     });
 });
 

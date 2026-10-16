@@ -4,10 +4,40 @@
 .git-file-review button{cursor:pointer}
 .git-file-review button:disabled{opacity:.4;cursor:default}
 .git-file-review button:focus-visible,.git-file-review input:focus-visible,.git-file-review select:focus-visible{outline:2px solid #3794ff;outline-offset:-2px}
-.git-review-tools{display:flex;align-items:center;flex-wrap:wrap;gap:3px;padding:2px 6px;min-height:30px;border-bottom:1px solid var(--review-border);flex-shrink:0}
+.git-review-header{flex-shrink:0;min-width:0}
+.git-review-tools{position:relative;display:flex;align-items:center;flex-wrap:nowrap;gap:2px;padding:0 6px;height:34px;min-width:0;border-bottom:1px solid var(--review-border);white-space:nowrap}
+.git-review-tools>*{flex-shrink:0}
 .git-review-tools button,.git-review-filter-row button{min-height:26px;padding:2px 6px;border-radius:3px;white-space:nowrap}
+.git-review-tools button{display:inline-flex;align-items:center;gap:4px}
+.git-review-icon{min-width:26px;justify-content:center}
+.git-review-sep{width:1px;height:18px;margin:0 4px;background:var(--review-border)}
+.git-review-identity{display:flex;align-items:center;gap:2px;flex:1 1 auto!important;min-width:48px;overflow:hidden}
+.git-review-title{flex:1 1 auto;min-width:0;overflow:hidden;text-align:left;font-size:12.5px}
+.git-review-title>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.git-review-hash{font:11px monospace;color:#1674bd}.dark .git-review-hash{color:#3794ff}
+.git-review-file-nav{display:inline-flex;align-items:center;border:1px solid var(--review-border);border-radius:4px;height:26px}
+.git-review-file-nav button{min-height:24px!important;padding:0 6px}
+.git-review-file-nav>span{min-width:34px;padding:0 3px;text-align:center;font-variant-numeric:tabular-nums}
+.git-review-change{display:inline-flex;align-items:center;gap:4px;padding:0 4px}
+.git-review-reviewed{padding:0 4px;font-variant-numeric:tabular-nums}
+.git-review-viewed{border:1px solid var(--review-border)}
+.git-review-viewed[aria-pressed=true]{color:#16825d!important;border-color:#16825d80}
+.git-review-progress-line{position:absolute;left:0;right:0;bottom:-1px;height:2px;pointer-events:none}
+.git-review-progress-line>span{display:block;height:100%;background:#16825d;transition:width .2s}
+.git-review-split{position:relative;display:inline-flex;height:26px}
+.git-review-split>button{color:#fff;background:#0078d4;border-radius:0!important}
+.git-review-split>button:first-child{border-radius:4px 0 0 4px!important}
+.git-review-split>button:nth-child(2){border-radius:0 4px 4px 0!important;border-left:1px solid #005a9e;background:#006cbe;padding:2px 5px}
+.git-review-split>button:hover:not(:disabled){background:#005a9e}
+.git-review-popover,.git-review-menu{position:absolute;top:calc(100% + 4px);z-index:40;padding:6px;border:1px solid var(--review-border);border-radius:6px;background:#fff;box-shadow:0 8px 24px #0003;white-space:normal}
+.dark .git-review-popover,.dark .git-review-menu{background:#252526}
+.git-review-popover{left:0;min-width:220px}
+.git-review-menu{right:4px;min-width:200px;display:flex;flex-direction:column}
+.git-review-menu-item{width:100%;justify-content:flex-start;text-align:left;gap:8px!important}
+.git-review-menu-item:hover,.git-review-menu-item:focus-visible{background:#007acc15}
+.git-review-menu-item[aria-checked=true]{color:#1674bd}
 .git-review-tools button:hover,.git-review-filter-row button:hover{background:var(--review-panel)}
-.git-review-tools button[aria-pressed=true],.git-review-filter-row button[aria-pressed=true]{color:#1674bd;background:#007acc15}
+.git-review-tools button[aria-pressed=true]:not(.git-review-viewed),.git-review-filter-row button[aria-pressed=true]{color:#1674bd;background:#007acc15}
 .git-review-muted{color:var(--review-muted);font-size:11px}.git-review-spacer{flex:1}
 .git-review-body{position:relative;display:flex;flex:1;min-height:0;min-width:0}
 .git-review-nav{width:262px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--review-border);background:var(--review-panel)}
@@ -40,5 +70,10 @@
 .git-review-empty button{min-height:28px;color:#1674bd}
 .git-review-overview{flex:1;overflow:auto}.git-review-overview-summary{padding:8px;border-bottom:1px solid var(--review-border);font-size:11px}
 .git-review-drawer-trigger,.git-review-scrim{display:none}
+/* Container tiers: wide shows everything; medium icon-only and secondary actions move to overflow; narrow drops summaries. */
+@container(min-width:900px){.git-review-collapsible{display:none!important}}
+@container(max-width:899px){.git-review-wide{display:none!important}}
+@container(max-width:599px){.git-review-md{display:none!important}}
+@container(max-width:479px){.git-review-label-sm{display:none!important}}
 @container(max-width:700px){.git-review-nav{display:none}.git-review-nav.open{display:flex;position:absolute;inset:0 auto 0 0;z-index:30;width:min(290px,90%);box-shadow:4px 0 12px #0003}.git-review-drawer-trigger{display:inline-flex;align-items:center;min-height:28px;padding:2px 6px}.git-review-scrim{display:block;position:absolute;inset:0;z-index:29;background:#0003}}
 @media(pointer:coarse){.git-file-review button,.git-review-filter-row label,.git-review-filters>input,.git-review-filter-row select{min-height:36px}}

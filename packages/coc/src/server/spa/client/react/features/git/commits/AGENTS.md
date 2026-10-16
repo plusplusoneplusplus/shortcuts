@@ -5,11 +5,16 @@ detail/diff pane, and the commit-bound chat panels.
 
 ## CommitDetail
 
-`CommitDetail.tsx` and the pop-out adapter use `CommitInfoHeader.tsx` for
-subject, body, author, date, parents, file count and copyable SHA. Metadata starts
-collapsed, uses `hidden` outside the keyboard order, and resets with the owner
-and commit. Classification settings reuse `ClassifyDiffAiControls` and the
-workspace-scoped AI selection; disable selectors during classification.
+`CommitDetail.tsx` and the pop-out adapter build one `GitReviewHeader` with
+`useCommitReviewHeader.tsx` and pass it to `GitFileReview`, so title, SHA,
+Classify, file navigation, progress, Mark viewed and actions share one toolbar
+row. `CommitInfoSummary` is the ellipsized title disclosure; `CommitInfoHeader`
+renders subject, body, author, date, parents, file count and copyable SHA below
+the row. Metadata starts collapsed, uses `hidden` outside the keyboard order, and
+resets with the owner and commit. The Classify split-button caret reuses
+`ClassifyDiffAiControls` and the workspace-scoped AI selection; disable selectors
+during classification. Priority navigation, comments, AI chat and pop-out are
+toolbar actions that move into the More menu in narrower panes.
 
 `useCommitReviewFiles` reads file metadata through the concrete owner client and
 discards superseded results. `GitFileReview` owns directory grouping, search,
@@ -17,7 +22,7 @@ filters, selection, viewed tracking, overview and the narrow file drawer. Only
 the selected `FileDiffPanel` mounts; never load a combined patch for navigation.
 The file panel retains diff engines, hunk navigation, comments, find, truncation
 and fallback behavior. Review state keys include owner, workspace and comparison.
-Commit-level comments and classification remain available above the review.
+Commit-level comments and classification remain available from the toolbar.
 
 Icon buttons need accessible names; panel toggles expose pressed state. Review
 openers serialize `attachmentDestinationId` as `sourceSelectionId` and resolve

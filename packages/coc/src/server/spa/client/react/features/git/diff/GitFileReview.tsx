@@ -1,10 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
 import type { GitFileChange } from '@plusplusoneplusplus/coc-client';
 import { FileDiffPanel } from './FileDiffPanel';
 import type { FileDiffPanelProps } from './FileDiffPanel';
 import { STATUS_LABELS } from './FileTree';
 import { filterReviewFiles, groupReviewFiles, reviewFileParts, reviewFileStatus, type ReviewFileKind } from './gitReviewFiles';
+import { GitReviewToolbar, type GitReviewHeader } from './GitReviewToolbar';
 import './git-file-review.css';
 import { useCloneBaseUrl } from '../../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
@@ -20,7 +20,8 @@ type Props = Pick<FileDiffPanelProps, 'workspaceId' | 'attachmentDestinationId' 
     onRetry?: () => void;
     reviewedFiles?: ReadonlySet<string>;
     onToggleReviewed?: (path: string) => void;
-    headerActions?: ReactNode;
+    /** Context identity, classification and actions merged into the single toolbar row. */
+    header?: GitReviewHeader;
 };
 
 /** The key makes every piece of transient review state owner + comparison scoped. */
@@ -32,7 +33,7 @@ export function GitFileReview(props: Props) {
     return <ReviewBody key={JSON.stringify([props.attachmentDestinationId ?? props.workspaceId, props.workspaceId, props.comparisonKey, endpoint])} {...props} />;
 }
 function ReviewBody({ files, selectedPath, onSelect, loading, error, onRetry, reviewedFiles, onToggleReviewed,
-    comparisonKey: _comparisonKey, headerActions, initialHunkTarget, ...panel }: Props) {
+    comparisonKey: _comparisonKey, header, initialHunkTarget, ...panel }: Props) {
     const [query, setQuery] = useState('');
     const [kind, setKind] = useState<ReviewFileKind>('all');
     const [status, setStatus] = useState('all');
@@ -99,18 +100,29 @@ function ReviewBody({ files, selectedPath, onSelect, loading, error, onRetry, re
         </button>;
     }
     return <div className="git-file-review" data-testid="git-file-review">
-        <div className="git-review-tools">
+        <GitReviewToolbar header={header} progress={{ viewed: viewedCount, total: files.length }}>
             <button type="button" className="git-review-drawer-trigger" ref={drawerTrigger} aria-expanded={drawer} aria-controls={navId} onClick={() => setDrawer(value => !value)}>Files · {files.length}</button>
-            <button type="button" aria-pressed={overview} onClick={() => setOverview(value => !value)}>{overview ? 'Read diff' : 'Overview'}</button>
-            <span className="git-review-muted">{selected && !overview ? `${index + 1} / ${ordered.length}` : `${visible.length} files`}</span>
-            <button type="button" aria-label="Previous file" disabled={index <= 0} onClick={() => select(ordered[index - 1].path)}>←</button>
-            <button type="button" aria-label="Next file" disabled={index < 0 || index >= ordered.length - 1} onClick={() => select(ordered[index + 1].path)}>→</button>
-            {selected && !overview && <><span className="git-review-status" title={STATUS_LABELS[reviewFileStatus(selected.status)] ?? selected.status}>{reviewFileStatus(selected.status)}</span>
-                <span className="git-review-counts"><span className="git-review-add">{selected.additions == null ? '' : `+${selected.additions}`}</span><span className="git-review-del">{selected.deletions == null ? '' : `−${selected.deletions}`}</span></span></>}
+            <button type="button" className="git-review-icon" aria-pressed={overview} aria-label={overview ? 'Read diff' : 'Overview'} title={overview ? 'Read diff' : 'Overview'} onClick={() => setOverview(value => !value)}>
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></svg>
+                <span className="git-review-wide">{overview ? 'Read diff' : 'Overview'}</span>
+            </button>
+            <div className="git-review-file-nav" role="group" aria-label="File navigation">
+                <button type="button" aria-label="Previous file" title="Previous file" disabled={index <= 0} onClick={() => select(ordered[index - 1].path)}>←</button>
+                <span className="git-review-muted" title={selected && !overview ? selected.path : undefined} data-testid="git-review-file-index">{selected && !overview ? `${index + 1}/${ordered.length}` : `${visible.length} files`}</span>
+                <button type="button" aria-label="Next file" title="Next file" disabled={index < 0 || index >= ordered.length - 1} onClick={() => select(ordered[index + 1].path)}>→</button>
+            </div>
+            {selected && !overview && <span className="git-review-change git-review-md" data-testid="git-review-change-stats"
+                title={`${STATUS_LABELS[reviewFileStatus(selected.status)] ?? selected.status} · ${selected.additions ?? 0} additions, ${selected.deletions ?? 0} deletions`}>
+                <span className="git-review-status">{reviewFileStatus(selected.status)}</span>
+                <span className="git-review-counts"><span className="git-review-add">{selected.additions == null ? '' : `+${selected.additions}`}</span><span className="git-review-del">{selected.deletions == null ? '' : `−${selected.deletions}`}</span></span></span>}
             <span className="git-review-spacer" />
-            {selected && <button type="button" aria-pressed={viewed.has(selected.path)} onClick={() => toggleViewed(selected.path)}>{viewed.has(selected.path) ? '✓ Viewed' : 'Mark viewed'}</button>}
-            {headerActions}
-        </div>
+            {files.length > 0 && <span className="git-review-muted git-review-md git-review-reviewed" title={`${viewedCount} of ${files.length} files reviewed`} data-testid="git-review-reviewed-count">
+                {viewedCount}/{files.length}<span className="git-review-wide"> reviewed</span></span>}
+            {selected && <button type="button" className="git-review-viewed" aria-pressed={viewed.has(selected.path)} aria-label={viewed.has(selected.path) ? 'Viewed' : 'Mark viewed'}
+                title={viewed.has(selected.path) ? 'Viewed — click to unmark' : 'Mark viewed'} onClick={() => toggleViewed(selected.path)}>
+                <span aria-hidden="true">{viewed.has(selected.path) ? '✓' : '○'}</span><span className="git-review-label-sm">{viewed.has(selected.path) ? 'Viewed' : 'Mark viewed'}</span>
+            </button>}
+        </GitReviewToolbar>
         <div className="git-review-body">
             {drawer && <button type="button" className="git-review-scrim" aria-label="Close file navigator" onClick={() => setDrawer(false)} />}
             <aside id={navId} ref={navRef} className={`git-review-nav${drawer ? ' open' : ''}`} aria-label="Changed files"

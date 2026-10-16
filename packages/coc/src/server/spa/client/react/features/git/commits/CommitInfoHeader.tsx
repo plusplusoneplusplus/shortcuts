@@ -1,7 +1,45 @@
 import type { GitCommitItem } from './commitListTypes';
 import { CommitDetailIcon } from './CommitDetailIcon';
 
-/** Shared commit description and metadata for inline and pop-out reviews. */
+/** Toolbar identity: ellipsized title disclosure (full title in its name and tooltip) and SHA copy. */
+export function CommitInfoSummary({ commit, headerCollapsed, headerId, hashCopied, onToggle, onCopy }: {
+    commit: GitCommitItem;
+    headerCollapsed: boolean;
+    headerId: string;
+    hashCopied: boolean;
+    onToggle: () => void;
+    onCopy: () => void;
+}) {
+    return (
+        <>
+            <button
+                type="button"
+                data-testid="commit-info-summary"
+                className="git-review-title text-[#1e1e1e] dark:text-[#ddd]"
+                onClick={onToggle}
+                aria-expanded={!headerCollapsed}
+                aria-controls={headerId}
+                title={`${commit.subject}\n${headerCollapsed ? 'Show' : 'Hide'} commit details`}
+            >
+                <CommitDetailIcon name={headerCollapsed ? 'down' : 'up'} />
+                <span>{commit.subject}</span>
+            </button>
+            <button
+                type="button"
+                onClick={onCopy}
+                className="git-review-icon"
+                title={hashCopied ? 'Copied!' : `Copy commit hash ${commit.hash}`}
+                aria-label={hashCopied ? 'Copied!' : `Copy commit hash ${commit.hash.slice(0, 8)}`}
+                data-testid="commit-summary-copy-hash"
+            >
+                <span className="git-review-hash git-review-md">{commit.hash.slice(0, 8)}</span>
+                <CommitDetailIcon name={hashCopied ? 'check' : 'copy'} />
+            </button>
+        </>
+    );
+}
+
+/** Shared commit description and metadata, disclosed from the review toolbar title. */
 export function CommitInfoHeader({ commit, fileCount, headerCollapsed, headerId, hashCopied, onToggle, onCopy }: {
     commit: GitCommitItem;
     fileCount: number;
@@ -14,37 +52,10 @@ export function CommitInfoHeader({ commit, fileCount, headerCollapsed, headerId,
     const formattedDate = commit.date ? new Date(commit.date).toLocaleString() : '';
     return (
         <div className="shrink-0 min-w-0" style={{ maxHeight: '40vh', overflow: 'auto' }}>
-            {headerCollapsed && (
-                <div className="flex items-center gap-2 px-2 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526]">
-                    <button
-                        type="button"
-                        data-testid="commit-info-summary"
-                        className="flex flex-1 min-w-0 items-center gap-2 text-left text-xs text-[#1e1e1e] dark:text-[#ccc] rounded focus-visible:ring-2 focus-visible:ring-[#0078d4]"
-                        onClick={onToggle}
-                        aria-expanded={false}
-                        aria-controls={headerId}
-                        title="Show commit details"
-                    >
-                        <CommitDetailIcon name="down" />
-                        <span className="truncate">{commit.subject}</span>
-                        <span className="sr-only">{commit.hash.slice(0, 8)}</span>
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onCopy}
-                        className="inline-flex shrink-0 items-center gap-2 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] px-1.5 py-0.5 min-h-7 font-mono text-[11px] text-[#0078d4] dark:text-[#3794ff] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-[#0078d4]"
-                        title={hashCopied ? 'Copied!' : 'Copy commit hash'}
-                        aria-label={hashCopied ? 'Copied!' : 'Copy commit hash'}
-                        data-testid="commit-summary-copy-hash"
-                    >
-                        {commit.hash.slice(0, 8)}
-                        <CommitDetailIcon name={hashCopied ? 'check' : 'copy'} />
-                    </button>
-                </div>
-            )}
             <div
                 id={headerId}
                 hidden={headerCollapsed}
+                className="border-b border-[#e0e0e0] dark:border-[#3c3c3c]"
             >
                 <div className="px-4 py-3 bg-white dark:bg-[#252526]" data-testid="commit-info-header">
                     <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2" data-testid="commit-info-title-row">
