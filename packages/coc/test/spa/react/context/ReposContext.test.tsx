@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { useRef, useLayoutEffect, type ReactNode } from 'react';
+import type { HealthResponse } from '@plusplusoneplusplus/coc-client';
 
 // Mock heavy dependencies before importing the context
 const webSocketMock = vi.hoisted(() => ({
@@ -94,6 +95,12 @@ const makeWorkspace = (id: string, name = id) => ({
     name,
     rootPath: `/repos/${id}`,
     virtual: false,
+});
+
+const healthResponse = (serverIdentity?: string): HealthResponse => ({
+    status: 'ok', uptime: 0, processCount: 0,
+    nativeFileIndex: { loaded: false }, nativeNotesIndex: { loaded: false },
+    ...(serverIdentity === undefined ? {} : { serverIdentity }),
 });
 
 function makeWorkspacesResponse(workspaces: any[]) {
@@ -215,6 +222,7 @@ describe('ReposContext', () => {
     beforeEach(() => {
         groupBadgeMocks.enabled = false;
         groupBadgeMocks.getRepoGroupChats.mockReset();
+        vi.spyOn(getCocClientFor().health, 'get').mockResolvedValue(healthResponse());
         vi.spyOn(getCocClientFor().workspaces, 'ralphAttention').mockResolvedValue({ count: 0 });
         vi.mocked(fetchUnseenCount).mockResolvedValue(0);
         webSocketMock.options = null;
@@ -248,6 +256,126 @@ describe('ReposContext', () => {
         unmount();
         expect(getDashboardTopology().routes).toEqual([]);
         expect(getDashboardTopology().selectedRef).toBeNull();
+    });
+
+    it('observes page-origin identity separately from remote rows and publishes repo/group identities', async () => {
+        let release!: (value: HealthResponse) => void;
+        const health = vi.mocked(getCocClientFor().health.get).mockImplementationOnce(() =>
+            new Promise(resolve => { release = resolve; }));
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([
+            makeWorkspace('local'), { ...makeWorkspace('group-g'), virtual: true },
+        ]);
+        const aggregate = remoteAggregate('remote-server', 'http://localhost:5000', 'remote-workspace');
+        aggregate.workspaces[0].remote.serverIdentity = 'remote-identity';
+        aggregateRemoteWorkspacesMock.mockResolvedValue(aggregate);
+        const { unmount } = render(<ProviderWithPreselectedRepo repoId="local" />);
+        await waitFor(() => expect(getDashboardTopology().routes).toHaveLength(3));
+        expect(getDashboardTopology().routes.find(route => route.row.workspaceId === 'local')?.row)
+            .not.toHaveProperty('serverIdentity');
+        const revision = getDashboardTopology().revision;
+        await act(async () => release(healthResponse('origin-identity')));
+        expect(getDashboardTopology().revision).not.toBe(revision);
+        expect(getDashboardTopology().routes.filter(route => !route.baseUrl).map(route => route.row.serverIdentity))
+            .toEqual(['origin-identity', 'origin-identity']);
+        expect(getDashboardTopology().routes.find(route => route.baseUrl)?.row.serverIdentity).toBe('remote-identity');
+        expect(health).toHaveBeenCalledTimes(1);
+        const signal = health.mock.calls[0][0]!.signal!;
+        expect(signal.aborted).toBe(false);
+        unmount();
+        expect(signal.aborted).toBe(true);
+    });
+
+    it('revokes old identity on reconnect and rejects superseded and disposed health observations', async () => {
+        const pending: { signal: AbortSignal; release: (value: HealthResponse) => void }[] = [];
+        vi.mocked(getCocClientFor().health.get).mockImplementation(options =>
+            new Promise(resolve => pending.push({ signal: options!.signal!, release: resolve })));
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([makeWorkspace('local')]);
+        const { unmount } = render(<ProviderWithPreselectedRepo repoId="local" />);
+        await waitFor(() => expect(pending).toHaveLength(1));
+        await act(async () => pending[0].release(healthResponse('initial')));
+        expect(getDashboardTopology().routes[0].row.serverIdentity).toBe('initial');
+        act(() => webSocketMock.options!.onConnect!());
+        expect(pending).toHaveLength(2);
+        expect(getDashboardTopology().routes[0].row).not.toHaveProperty('serverIdentity');
+        act(() => webSocketMock.options!.onConnect!());
+        expect(pending[1].signal.aborted).toBe(true);
+        await act(async () => pending[2].release(healthResponse('replacement')));
+        await act(async () => pending[1].release(healthResponse('stale')));
+        expect(getDashboardTopology().routes[0].row.serverIdentity).toBe('replacement');
+        act(() => webSocketMock.options!.onConnect!());
+        unmount();
+        expect(pending[3].signal.aborted).toBe(true);
+        await act(async () => pending[3].release(healthResponse('disposed')));
+        expect(getDashboardTopology().routes).toEqual([]);
+    });
+
+    it.each([undefined, '', '   ', 'x'.repeat(513)])('keeps unidentified page-origin health %j unknown', async identity => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        vi.mocked(getCocClientFor().health.get).mockResolvedValue(healthResponse(identity));
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([makeWorkspace('local')]);
+        const { unmount } = render(<ProviderWithPreselectedRepo repoId="local" />);
+        await waitFor(() => expect(getDashboardTopology().routes).toHaveLength(1));
+        expect(getDashboardTopology().routes[0].row).not.toHaveProperty('serverIdentity');
+        if (identity !== undefined) expect(warn).toHaveBeenCalledWith('Could not observe dashboard page-origin identity: invalid identity');
+        unmount();
+        warn.mockRestore();
+    });
+
+    it('keeps page-origin ownership unknown after a failed reconnect without exposing error details', async () => {
+        vi.mocked(getCocClientFor().health.get).mockResolvedValueOnce(healthResponse('initial'))
+            .mockRejectedValueOnce(new Error('private transport details'));
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([makeWorkspace('local')]);
+        const { unmount } = render(<ProviderWithPreselectedRepo repoId="local" />);
+        await waitFor(() => expect(getDashboardTopology().routes[0]?.row.serverIdentity).toBe('initial'));
+        await act(async () => {
+            webSocketMock.options!.onConnect!();
+        });
+        expect(getDashboardTopology().routes[0].row).not.toHaveProperty('serverIdentity');
+        expect(warn).toHaveBeenCalledWith('Could not observe dashboard page-origin identity');
+        expect(JSON.stringify(warn.mock.calls)).not.toContain('private transport details');
+        unmount();
+        warn.mockRestore();
+    });
+
+    it('bounds page-origin observation and rejects a late response even when fetch ignores cancellation', async () => {
+        vi.useFakeTimers();
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        let release!: (value: HealthResponse) => void;
+        const health = vi.mocked(getCocClientFor().health.get).mockImplementationOnce(() =>
+            new Promise(resolve => { release = resolve; }));
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([makeWorkspace('local')]);
+        const { unmount } = render(<ProviderWithPreselectedRepo repoId="local" />);
+        try {
+            await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+            expect(health.mock.calls[0][0]!.signal!.aborted).toBe(true);
+            await act(async () => release(healthResponse('late')));
+            expect(getDashboardTopology().routes[0].row).not.toHaveProperty('serverIdentity');
+            expect(warn).toHaveBeenCalledWith('Could not observe dashboard page-origin identity: timed out');
+            expect(warn).toHaveBeenCalledTimes(1);
+        } finally {
+            unmount();
+            vi.useRealTimers();
+            warn.mockRestore();
+        }
+    });
+
+    it('clears the health deadline after successful observation', async () => {
+        vi.useFakeTimers();
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const health = vi.mocked(getCocClientFor().health.get).mockResolvedValue(healthResponse('origin'));
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([makeWorkspace('local')]);
+        const { unmount } = render(<ProviderWithPreselectedRepo repoId="local" />);
+        try {
+            await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+            expect(getDashboardTopology().routes[0].row.serverIdentity).toBe('origin');
+            expect(health.mock.calls[0][0]!.signal!.aborted).toBe(false);
+            expect(warn).not.toHaveBeenCalled();
+        } finally {
+            unmount();
+            vi.useRealTimers();
+            warn.mockRestore();
+        }
     });
 
     it('seeds page-origin queue stats without matching a remote repository by its mirrored root path', async () => {

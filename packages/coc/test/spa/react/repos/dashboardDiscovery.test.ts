@@ -104,6 +104,31 @@ describe('dashboard discovery producer', () => {
         expect(revisions.size).toBe(6);
     });
 
+    it('publishes observed origin identity to remote owners without attributing unknown remote rows to it', () => {
+        const unknown = remote('unknown').map(workspace => ({
+            ...workspace, remote: { ...workspace.remote, serverIdentity: undefined },
+        }));
+        const selected = buildRemoteCloneKey('ssh', 'same');
+        const workspaces = [local(), ...remote('ssh'), ...unknown];
+        publishDashboardTopology(selected, workspaces);
+        const target = socket('http://localhost:5000');
+        const revision = getDashboardTopology().revision;
+        publishDashboardTopology(selected, workspaces, 'origin');
+        const reply = read(target);
+        expect(reply.workspaces).toContainEqual(expect.objectContaining({
+            serverIdentity: 'origin', serverKind: 'local', workspaceId: 'same',
+        }));
+        expect(reply.workspaces.filter((row: any) => row.workspaceId === 'same')).toHaveLength(3);
+        expect(reply.workspaces.find((row: any) => row.serverLabel === 'unknown server')).not.toHaveProperty('serverIdentity');
+        expect(read(target, { revision })).toEqual({ id: 'request', ok: false });
+        const observedRevision = getDashboardTopology().revision;
+        publishDashboardTopology(selected, workspaces, 'origin');
+        expect(getDashboardTopology().revision).toBe(observedRevision);
+        publishDashboardTopology(selected, workspaces);
+        expect(getDashboardTopology().revision).not.toBe(observedRevision);
+        expect(read(target).workspaces.find((row: any) => row.serverKind === 'local')).not.toHaveProperty('serverIdentity');
+    });
+
     it('rejects old revisions and foreign workspace requests after topology/scope changes', () => {
         publishDashboardTopology('same', [local()]);
         const target = socket();

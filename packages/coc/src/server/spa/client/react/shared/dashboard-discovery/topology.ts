@@ -23,6 +23,7 @@ const listeners = new Set<() => void>();
 export function publishDashboardTopology(
     selectedRef: string | null,
     workspaces: readonly (WorkspaceInfo | RemoteWorkspaceInfo)[],
+    pageOriginIdentity?: string,
 ): void {
     const routes: VisibleRoute[] = [];
     const localWorkspaceIds: string[] = [];
@@ -35,11 +36,12 @@ export function publishDashboardTopology(
         const selectionId = getWorkspaceSelectionId(workspace);
         if (selections.has(selectionId)) continue;
         selections.add(selectionId);
+        const serverIdentity = remote ? remote.serverIdentity : pageOriginIdentity;
         routes.push({
             selectionId,
             ...(remote ? { baseUrl: remote.baseUrl } : {}),
             row: {
-                ...(remote?.serverIdentity ? { serverIdentity: remote.serverIdentity } : {}),
+                ...(serverIdentity ? { serverIdentity } : {}),
                 serverLabel: remote?.serverLabel ?? 'Local server',
                 serverKind: remote?.serverKind ?? (remote ? 'url' : 'local'),
                 workspaceId: workspace.id,

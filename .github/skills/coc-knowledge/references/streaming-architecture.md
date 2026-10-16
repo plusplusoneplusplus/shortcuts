@@ -190,6 +190,14 @@ labels, ownership, availability or endpoint routing; equivalent refreshes preser
 Unknown installation identities stay absent. Local rows use the local server label;
 remote markers retain registry labels and transport kinds.
 
+`ReposContext` observes page-origin identity through its explicit page-origin
+client on mount and every local socket connection, with a five-second health
+deadline. Only local repo/group rows receive that identity; unknown remote markers
+stay unknown. Re-observation withdraws the prior identity, changing topology revision
+and revoking pending reads. Failed/unidentified health keeps ownership unknown.
+Cleanup and newer observations abort reads and suppress late publication even when
+fetch ignores cancellation; diagnostics omit transport details.
+
 `useWebSocket`'s designated local socket and `RemoteCloneEventBridge`'s existing
 remote sockets host `createDashboardDiscoverySocketRelay`. Only the socket owning
 the exact selected workspace advertises its raw workspace and document focus.
@@ -224,8 +232,8 @@ failures discard partial matches. `processes.summaries` accepts cancellation.
 
 Socket cancellation, topology changes, close and disposal abort pending reads
 and suppress delayed replies; focus updates preserve them. Unknown/offline targets
-are unavailable. Page-origin identity observation, offline title caching and
-tool consumption are separate composition points.
+are unavailable. Offline title caching and tool consumption are separate
+composition points.
 
 ### Targeted desktop browser control
 

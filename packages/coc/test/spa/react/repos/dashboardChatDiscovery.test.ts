@@ -167,6 +167,48 @@ describe('dashboard title-search producer', () => {
         expect(fetcher.mock.calls.every(([url]) => String(url).startsWith('http://localhost:6000/'))).toBe(true);
     });
 
+    it.each(['ssh', 'devtunnel'] as const)('serves the exact page-origin chat to a %s Sentinel with colliding workspace IDs', async kind => {
+        const localWorkspace = { id: 'same', name: 'Origin repo' } as WorkspaceInfo;
+        publishDashboardTopology(buildRemoteCloneKey(kind, 'same'), [localWorkspace, ...rows(kind)], 'origin');
+        const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+            const url = new URL(String(input), 'http://localhost:4000');
+            return json(url.pathname.endsWith('/health') ? { serverIdentity: 'origin' }
+                : page([entry('same-chat', 'Origin needle')]));
+        });
+        vi.stubGlobal('fetch', fetcher);
+        const target = socket('http://localhost:5000');
+        target.request(query({ target: { serverIdentity: 'origin', workspaceId: 'same' } }));
+        await vi.waitFor(() => expect(target.replies()[0]?.result).toEqual({
+            target: { serverIdentity: 'origin', workspaceId: 'same' }, serverLabel: 'Local server',
+            workspaceLabel: 'Origin repo', serverKind: 'local', verification: 'verified', total: 1,
+            conversations: [{ processId: 'same-chat', title: 'Origin needle' }],
+        }));
+        expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
+            '/api/health', '/api/processes/summaries?workspace=same&type=chat&archived=false&limit=200&offset=0', '/api/health',
+        ]);
+    });
+
+    it('revokes in-flight title reads when page-origin identity is withdrawn', async () => {
+        const workspaces = [{ id: 'same', name: 'Origin' } as WorkspaceInfo, ...rows()];
+        const selected = buildRemoteCloneKey('ssh', 'same');
+        publishDashboardTopology(selected, workspaces, 'origin');
+        let release!: (value: Response) => void;
+        let signal!: AbortSignal;
+        const fetcher = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+            signal = init!.signal!;
+            return new Promise<Response>(resolve => { release = resolve; });
+        });
+        vi.stubGlobal('fetch', fetcher);
+        const target = socket('http://localhost:5000');
+        target.request(query({ target: { serverIdentity: 'origin', workspaceId: 'same' } }));
+        publishDashboardTopology(selected, workspaces);
+        expect(signal.aborted).toBe(true);
+        release(json({ serverIdentity: 'origin' }));
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(target.replies()).toEqual([]);
+        expect(fetcher).toHaveBeenCalledTimes(1);
+    });
+
     it('snapshots caller selectors and pagination before awaiting health', async () => {
         publishDashboardTopology('owner', [owner, ...rows()]);
         serve();

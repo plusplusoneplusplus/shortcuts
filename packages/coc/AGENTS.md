@@ -49,6 +49,10 @@ references before editing. Paths are package-relative.
   visible topology to `shared/dashboard-discovery`; the designated local socket and
   remote owner sockets advertise only for the exact selected owner. Include cached
   offline rows, and keep identities/labels separate from private endpoints and aliases.
+  Page-origin repo/group rows use only identity observed through the page-origin
+  client's bounded health read on mount and each socket connection. Re-observation
+  withdraws stale identity; failure/unidentified health leaves ownership unknown.
+  Abort superseded/disposed reads and suppress late results, including ignored aborts.
   Title-search relay requests pin a durable server/workspace selector and bounded
   pagination; replies require matching identity, labels, verification, full match
   count and title-only rows. Reject malformed/partial results and cross-kind replies.
