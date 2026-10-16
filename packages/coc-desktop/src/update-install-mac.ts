@@ -87,6 +87,8 @@ fi
 export interface PreparedMacUpdate {
     helperPath: string;
     helperArgs: string[];
+    /** Staging beside the app bundle; the helper removes it after success. */
+    stageDir: string;
     /** Before helper launch, discard staging while retaining the verified download. */
     cleanup(): Promise<void>;
 }
@@ -137,6 +139,7 @@ export async function prepareMacUpdate(options: {
         return {
             helperPath,
             helperArgs: [String(options.oldPid), bundle, stageDir, options.download.tempDir],
+            stageDir,
             cleanup,
         };
     } catch (error) {

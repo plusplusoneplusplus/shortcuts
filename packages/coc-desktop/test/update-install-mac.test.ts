@@ -83,6 +83,7 @@ describe('macOS staging', () => {
         expect(deps.run).toHaveBeenNthCalledWith(4, '/usr/bin/hdiutil', ['detach', mount]);
         expect(deps.fs.writeFile).toHaveBeenCalledWith(prepared.helperPath, macInstallHelper, { mode: 0o700 });
         expect(prepared.helperArgs).toEqual(['1234', bundle, stage, download.tempDir]);
+        expect(prepared.stageDir).toBe(stage);
         expect(deps.fs.rm).not.toHaveBeenCalled();
         await prepared.cleanup();
         expect(deps.fs.rm).toHaveBeenCalledWith(stage, { recursive: true, force: true });
@@ -143,7 +144,7 @@ describe('detached helper', () => {
     it('launches detached and resolves only when spawn succeeds', async () => {
         const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
         const spawnFn = vi.fn(() => child);
-        const launch = launchMacUpdate({ helperPath: '/temp/helper', helperArgs: ['123'], cleanup: vi.fn() }, spawnFn as never);
+        const launch = launchMacUpdate({ helperPath: '/temp/helper', helperArgs: ['123'], stageDir: '/apps/stage', cleanup: vi.fn() }, spawnFn as never);
         expect(child.unref).not.toHaveBeenCalled();
         child.emit('spawn');
         await launch;
@@ -155,7 +156,7 @@ describe('detached helper', () => {
 
     it('reports spawn failure so caller can keep the app running', async () => {
         const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
-        const launch = launchMacUpdate({ helperPath: '/temp/helper', helperArgs: [], cleanup: vi.fn() }, (() => child) as never);
+        const launch = launchMacUpdate({ helperPath: '/temp/helper', helperArgs: [], stageDir: '/apps/stage', cleanup: vi.fn() }, (() => child) as never);
         child.emit('error', new Error('spawn failed'));
         await expect(launch).rejects.toThrow('spawn failed');
         expect(child.unref).not.toHaveBeenCalled();

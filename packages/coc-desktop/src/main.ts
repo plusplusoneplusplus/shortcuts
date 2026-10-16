@@ -40,9 +40,11 @@ import {
     UpdateChannel,
     UpdatePrompt,
     ReleaseInfo,
+    pickDownloadUrl,
 } from './update-check';
 import { UpdateCoordinator } from './update-coordinator';
 import { createUpdateDialogs } from './update-ui';
+import { clearPendingUpdate, recordPendingUpdate, recoverPendingUpdate } from './update-recovery';
 import { confirmUpdateRestart } from './update-restart';
 import { prepareMacUpdate, launchMacUpdate } from './update-install-mac';
 import { launchWindowsUpdate } from './update-install-win';
@@ -385,7 +387,11 @@ function getUpdateCoordinator(): UpdateCoordinator {
         confirmRestart: () => confirmUpdateRestart({
             server: serverHandle, confirmRunningTasks: dialogs.confirmRunningTasks,
         }),
-        install: async download => {
+        install: async (download, release) => {
+            // Recorded before handoff so the relaunched app can report helper failures.
+            const record = (stageDir?: string) => recordPendingUpdate(pendingUpdateFile(), {
+                release, tempDir: download.tempDir, stageDir, startedAt: Date.now(),
+            });
             if (process.platform === 'darwin') {
                 const prepared = await prepareMacUpdate({
                     download,
@@ -393,13 +399,21 @@ function getUpdateCoordinator(): UpdateCoordinator {
                     oldPid: process.pid,
                 });
                 try {
+                    await record(prepared.stageDir);
                     await launchMacUpdate(prepared);
                 } catch (error) {
+                    await clearPendingUpdate(pendingUpdateFile());
                     await prepared.cleanup();
                     throw error;
                 }
             } else if (process.platform === 'win32') {
-                await launchWindowsUpdate({ download, execPath: process.execPath, oldPid: process.pid });
+                await record();
+                try {
+                    await launchWindowsUpdate({ download, execPath: process.execPath, oldPid: process.pid });
+                } catch (error) {
+                    await clearPendingUpdate(pendingUpdateFile());
+                    throw error;
+                }
             } else {
                 throw new Error('In-app updates are supported only on macOS arm64 and Windows x64.');
             }
@@ -409,6 +423,28 @@ function getUpdateCoordinator(): UpdateCoordinator {
         openBrowser: url => shell.openExternal(url),
     });
     return updateCoordinator;
+}
+
+function pendingUpdateFile(): string {
+    return path.join(app.getPath('userData'), 'pending-update.json');
+}
+
+/** Reports a failed helper install from the previous run, then runs the launch check. */
+async function recoverUpdateThenCheck(): Promise<void> {
+    try {
+        const status = await recoverPendingUpdate(pendingUpdateFile(), { currentVersion: app.getVersion() });
+        if (status.state === 'installing') return;
+        if (status.state === 'failed') {
+            const dialogs = createUpdateDialogs(options => dialog.showMessageBox(options));
+            if (await dialogs.promptError(status.reason)) {
+                await shell.openExternal(pickDownloadUrl(status.release, process.platform));
+            }
+            return;
+        }
+    } catch (error) {
+        process.stderr.write(`[coc-desktop] update recovery failed: ${String(error)}\n`);
+    }
+    await runUpdateCheck(true);
 }
 
 /** Automatic checks honor Skip; manual checks can resume a retained update offline. */
@@ -1236,7 +1272,7 @@ async function bootstrap(): Promise<void> {
         // In-app update check: only for packaged builds (a dev run has no
         // meaningful release to compare against). Fire-and-forget; never blocks.
         if (app.isPackaged) {
-            void runUpdateCheck(true);
+            void recoverUpdateThenCheck();
         }
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

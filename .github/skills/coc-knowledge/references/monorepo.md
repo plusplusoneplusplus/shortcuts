@@ -304,6 +304,12 @@ dialogs. The initial Update button explicitly starts the download; Skip, Later
 and channel selection retain their check semantics. Downloading disables the
 menu action and displays progress. A retained download exposes Restart to update
 and bypasses release fetching when reopened, including offline.
+`update-recovery.ts` writes `<userData>/pending-update.json` (release, download
+directory, macOS staging) before helper launch and removes it if launch fails.
+Packaged launches inspect it before the auto check: `install-error.txt` shows the
+reason with browser fallback; a removed download directory is success; a present
+directory younger than one hour is still installing and left untouched. Recovery
+removes macOS staging only when `image` is empty and `previous.app` is absent.
 
 URL hosts expose optional `BrowserHostedView.cdp(method, params)`. Electron's
 `ElectronBrowserCdp` lazily attaches to the adopted guest debugger and detaches
