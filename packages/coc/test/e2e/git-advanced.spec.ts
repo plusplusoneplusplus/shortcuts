@@ -17,7 +17,7 @@ import {
     createRepoWithUnpushedCommits,
     navigateToGitTab,
 } from './fixtures/git-fixtures';
-import { seedWorkspace } from './fixtures/seed';
+import { request, seedWorkspace } from './fixtures/seed';
 import { gotoWorkspace } from './fixtures/remote-shell';
 
 // ================================================================
@@ -257,6 +257,13 @@ test.describe('Git advanced — Branch large diff', () => {
     test('large diff loads in the focused file review', async ({ page, serverUrl }) => {
         const wsId = 'ws-showall-1';
         await seedWorkspace(serverUrl, wsId, 'showall-repo');
+        // This patch-only fixture exercises the Classic renderer.
+        const preferences = await request(`${serverUrl}/api/preferences`, {
+            method: 'PATCH',
+            body: JSON.stringify({ diffEngine: 'legacy' }),
+        });
+        expect(preferences.status).toBe(200);
+        await page.addInitScript(() => localStorage.setItem('coc-diff-engine', 'legacy'));
 
         // The Git sub-tab is filtered out unless `gitInfo.isGitRepo` is true.
         // Mock the per-workspace and batch git-info endpoints so the SPA
@@ -394,9 +401,6 @@ test.describe('Git advanced — Branch large diff', () => {
         await expect(page.getByTestId('file-diff-panel')).toBeVisible({ timeout: 10_000 });
         await expect(page.getByTestId('file-diff-loading')).toBeHidden({ timeout: 10_000 });
 
-        await expect(page.getByTestId('diff-engine-toggle')).toHaveAttribute('data-value', 'monaco');
-        await page.getByTestId('diff-engine-toggle').click();
-        await expect(page.getByTestId('diff-engine-toggle')).toHaveAttribute('data-value', 'legacy');
         await expect(page.getByTestId('file-diff-content')).toBeVisible({ timeout: 5_000 });
     });
 });
