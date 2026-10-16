@@ -7,7 +7,8 @@
  * ledger and keeps whatever the user typed. Job links only navigate; the
  * optional Scrubber strip controls its separate read-only assessment chats. Active normal items come first, then
  * the chat's Manual tracking section with its own add form and groups, then the
- * normal Done and Archived sections.
+ * normal Done and Archived sections, then triggers and the Scrubber strip,
+ * all in the list column beside the detail pane.
  */
 
 import { useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type MouseEvent, type ReactNode } from 'react';
@@ -620,6 +621,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                     )}
                 </div>
             </div>}>
+            {scrubber => <>
             {tagsEnabled && <SentinelTodoTagToolbar owner={owner} client={client} library={tagLibrary} onLedgerChange={load}
                 loading={loading} loadError={loadError} onRetry={refresh}
                 filter={effectiveTagFilter} onFilter={setTagFilter} multiple={matchMultiple} onMultiple={setMatchMultiple} />}
@@ -729,6 +731,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                         </Button>
                     )}
                     <SentinelTodoTriggers owner={owner} items={ledger.items} onItemLink={followTriggerItem} />
+                    {scrubber}
                 </>
             )}
             </div>
@@ -750,6 +753,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                 </ul>
             </section>
             </div>
+            </>}
             </SentinelTodoScrubber>
         </div>
     );

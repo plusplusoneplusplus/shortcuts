@@ -845,8 +845,11 @@ read-only `test/e2e/sentinel-todo-job-preview.spec.ts` native-style fixture.
 
 ### To-do Scrubber
 
-`SentinelTodoScrubber` mounts above the list after a ledger loads, gated by the
-live, default-off scrubber flag. Its owner/endpoint-keyed strip uses
+`SentinelTodoScrubber` wraps the To-do body after a ledger loads, gated by the
+live, default-off scrubber flag. `UnifiedTodoTab` passes a function child that places
+the single strip (and its history) in the list column below triggers, beside the
+detail pane; a plain child renders the strip first. The strip is not sticky and its
+schedule editor and selection wrap inline. Its owner/endpoint-keyed strip uses
 `client.sentinelTodos.scrubber` and an exact workspace/process WebSocket filter;
 late reads and mutations cannot update a remounted owner. A visibility-aware
 poll refreshes missed events. All-open and selected runs start separate queued
@@ -866,7 +869,7 @@ stops on other errors, reports partial results and reloads ledger/findings.
 Owner/endpoint remounts or flag disabling stop remaining batch requests.
 Successful actions reload the ledger for derived job states. Evidence links allow
 HTTP(S) only; other references render as text. `SentinelTodoScrubHistory` lists
-retained summaries outside the pinned strip and lazily reads owner-routed details.
+retained summaries after the strip and lazily reads owner-routed details.
 Run changes refresh selected details; switching, pruning or closing aborts reads
 and rejects late results. The read-only log retains all finding states and audit
 actors, timestamps, before/after revisions, outcomes, exclusions and evidence.

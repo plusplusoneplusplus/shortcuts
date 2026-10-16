@@ -681,7 +681,8 @@ launch/retry/cancel or authorization controls.
 ### Sentinel To-do Scrubber
 
 `SentinelTodoScrubber` mounts after the ledger loads when both live ledger and
-scrubber flags are enabled. Owner/endpoint remounts isolate async state and drafts.
+scrubber flags are enabled; its function child places one inline strip and history in
+the list column below triggers, beside the detail pane. Owner/endpoint remounts isolate async state and drafts.
 Its typed owner-routed client reads config/run summaries, starts all-open/selected
 assessments, cancels runs and saves revision-bound schedules. Exact owner WebSocket
 invalidation and visibility-aware polling refresh runs; chat links share To-do
