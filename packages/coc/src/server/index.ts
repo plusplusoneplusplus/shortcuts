@@ -28,6 +28,7 @@ import type { ModelInfo } from '@plusplusoneplusplus/forge';
 import { warmWslDistroCache, disposeAdoTokenResolver } from '@plusplusoneplusplus/forge';
 import { CopilotSDKService, sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_OPENCODE, modelMetadataStore, registerCodexSDKService, registerClaudeSDKService, registerOpenCodeSDKService } from '@plusplusoneplusplus/forge';
 import { cleanupAllStalePasteFiles, SqliteProcessStore } from '@plusplusoneplusplus/forge';
+import { createProcessWorkspaceResolver } from './processes/process-workspace-resolver';
 import { MultiRepoQueueRouter } from './queue/multi-repo-queue-router';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
 import { sweepOrphanedRunningProcesses, collectResumableFollowUpProcessIds } from './processes/finalize-orphaned-turn';
@@ -453,13 +454,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 store: cronInfra.cronStore,
                 executor: cronInfra.cronExecutor,
                 emit: cronInfra.emit,
-                resolveWorkspaceId: async (processId: string) => {
-                    try {
-                        const taskId = processId.startsWith('queue_') ? processId.slice(6) : processId;
-                        const task = bridge.getTask(taskId);
-                        return task?.repoId;
-                    } catch { return undefined; }
-                },
+                resolveWorkspaceId: resolveProcessWorkspaceId,
                 enqueueWakeup: createEnqueueWakeup({
                     store: cronInfra!.wakeupStore,
                     executor: cronInfra!.wakeupExecutor,
@@ -515,6 +510,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 registered: false, warning: 'Native PR outcome monitoring is unavailable because triggers are disabled.',
             })) : undefined,
     );
+    // Owner workspace for cron automation: live queue task, then persisted process.
+    const resolveProcessWorkspaceId = createProcessWorkspaceResolver(bridge, store);
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
     // an unclean shutdown, before we accept client requests. Chat follow-ups
@@ -592,15 +589,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                     });
                 } catch { /* best-effort broadcast */ }
             },
-            resolveWorkspaceId: async (processId: string) => {
-                try {
-                    const taskId = processId.startsWith('queue_') ? processId.slice(6) : processId;
-                    const task = bridge.getTask(taskId);
-                    return task?.repoId;
-                } catch {
-                    return undefined;
-                }
-            },
+            resolveWorkspaceId: resolveProcessWorkspaceId,
             executeFollowUp: (processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource) =>
                 bridge.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource),
             emitWakeup: (event) => {
@@ -645,15 +634,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                         timestamp: Date.now(),
                     });
                 } catch { /* best-effort broadcast */ }
-            },
-            resolveWorkspaceId: async (processId: string) => {
-                try {
-                    const taskId = processId.startsWith('queue_') ? processId.slice(6) : processId;
-                    const task = bridge.getTask(taskId);
-                    return task?.repoId;
-                } catch {
-                    return undefined;
-                }
             },
             ciChecksFetcher: createCiChecksFetcher({ dataDir, store }),
             ciLogFetcher: createCiLogFetcher({ store }),

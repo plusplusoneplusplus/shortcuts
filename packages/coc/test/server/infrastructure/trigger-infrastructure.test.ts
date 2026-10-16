@@ -89,7 +89,6 @@ describe('createTriggerInfrastructure', () => {
                 enqueue: async input => queueFacade.enqueue(input), getTask: id => queueFacade.getTask(id) },
             store,
             emit: vi.fn(),
-            resolveWorkspaceId: async () => 'ws_a',
             ciChecksFetcher: fetcher,
         });
     }
@@ -135,7 +134,6 @@ describe('createTriggerInfrastructure', () => {
                 enqueue: async input => queueFacade.enqueue(input), getTask: id => queueFacade.getTask(id) },
             store,
             emit: vi.fn(),
-            resolveWorkspaceId: async () => 'ws_a',
             ciChecksFetcher: fetcher,
         });
 
@@ -202,5 +200,90 @@ describe('createTriggerInfrastructure', () => {
                 repairStatus: expect.stringContaining('fresh CI'),
             } });
         } finally { restored.dispose(); }
+    });
+    describe('PR repair owner resolution after restart (owner absent from the queue)', () => {
+        const FAILING = { prStatus: 'open' as const, prNumber: 42,
+            checks: [{ id: 'build', name: 'build', status: 'failure' as const, detailsUrl: 'https://ci/build' }] };
+        const OWNER = 'queue_owner-1';
+
+        beforeEach(async () => {
+            // A completed owner persisted with a queue-prefixed id; the restarted
+            // queue does not hold its task. The PR binding uses the bare task id.
+            await store.addProcess({ id: OWNER, type: 'chat', status: 'completed', promptPreview: 'PR owner',
+                startTime: new Date(BASE), metadata: { workspaceId: 'ws_a', mode: 'autopilot' } });
+            new PullRequestChatBindingStore(store.getDatabase()).bind('origin_1', '43', 'owner-1');
+        });
+
+        async function fire(overrides: Partial<Trigger>) {
+            const fetcher = makeFetcher(FAILING);
+            const queueFacade = makeQueueFacade();
+            const infra = await createTriggerInfrastructure({
+                dataDir: '/tmp/coc-trigger-infra-test', queueFacade,
+                deliveryBridge: { executeFollowUp: vi.fn(), isSessionAlive: vi.fn(),
+                    enqueue: async input => queueFacade.enqueue(input), getTask: id => queueFacade.getTask(id) },
+                store, emit: vi.fn(), ciChecksFetcher: fetcher,
+            });
+            const base = makeTrigger();
+            infra.triggerStore.insert(makeTrigger({
+                id: 'repair', processId: OWNER, nextTickAt: new Date(BASE).toISOString(),
+                event: { ...base.event, prId: '43' } as Trigger['event'],
+                action: { ...base.action, processId: OWNER }, ...overrides,
+            }));
+            infra.triggerManager.arm(infra.triggerStore.getById('repair')!);
+            await vi.advanceTimersByTimeAsync(1);
+            return { infra, queueFacade };
+        }
+
+        const receipt = (infra: Awaited<ReturnType<typeof createTriggerInfrastructure>>) => {
+            const event = infra.triggerStore.getById('repair')!.event;
+            return event.type === 'condition-monitor' && event.monitor === 'ci-failure' ? event.repairDelivery : undefined;
+        };
+
+        it('admits the repair through the persisted owner exactly once, even when the receipt is replayed', async () => {
+            const { infra, queueFacade } = await fire({});
+            try {
+                expect(queueFacade.enqueue).toHaveBeenCalledTimes(1);
+                expect(queueFacade.enqueue.mock.calls[0][0]).toMatchObject({
+                    payload: { processId: OWNER, context: { triggerId: 'repair', source: 'trigger' } } });
+                const admitted = receipt(infra)!;
+                expect(admitted).toMatchObject({ state: 'admitted', attempts: 1 });
+
+                // Replay the same durable receipt (e.g. crash before 'admitted' was saved).
+                const replay = infra.triggerStore.getById('repair')!;
+                if (replay.event.type === 'condition-monitor' && replay.event.monitor === 'ci-failure') {
+                    replay.event.repairDelivery = { ...admitted, state: 'pending', retryAt: undefined };
+                }
+                replay.nextTickAt = new Date(Date.now()).toISOString();
+                infra.triggerStore.update(replay);
+                infra.triggerManager.arm(replay);
+                await vi.advanceTimersByTimeAsync(1);
+
+                expect(queueFacade.enqueue).toHaveBeenCalledTimes(1);
+                expect(receipt(infra)).toMatchObject({ id: admitted.id, state: 'admitted' });
+            } finally { infra.dispose(); }
+        });
+
+        it.each([
+            ['the trigger workspace differs from the owner', { workspaceId: 'ws_b' }],
+            ['the owner conversation is missing', { processId: 'queue_missing',
+                action: { type: 'send-message', processId: 'queue_missing', prompt: 'fix', mode: 'autopilot' } }],
+        ] as Array<[string, Partial<Trigger>]>)('rejects without admission when %s', async (_label, overrides) => {
+            const { infra, queueFacade } = await fire(overrides);
+            try {
+                expect(queueFacade.enqueue).not.toHaveBeenCalled();
+                expect(receipt(infra)).toMatchObject({ state: 'pending', attempts: 1 });
+                expect(infra.triggerStore.getById('repair')!.event).toMatchObject({
+                    repairStatus: expect.stringContaining('failed') });
+            } finally { infra.dispose(); }
+        });
+
+        it('rejects without admission when the PR is bound to a different conversation', async () => {
+            new PullRequestChatBindingStore(store.getDatabase()).bind('origin_1', '43', 'other-task');
+            const { infra, queueFacade } = await fire({});
+            try {
+                expect(queueFacade.enqueue).not.toHaveBeenCalled();
+                expect(receipt(infra)).toMatchObject({ state: 'pending', attempts: 1 });
+            } finally { infra.dispose(); }
+        });
     });
 });

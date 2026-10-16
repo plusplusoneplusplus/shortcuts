@@ -261,7 +261,10 @@ references before editing. Paths are package-relative.
 - PR tool `autoFix` uses late-bound `getTriggerInfra().createTrigger` and the shared
   `triggers/create-trigger-service.ts` creation path. Explicit `ci-and-conflicts`
   scope authorizes CI/conflict repairs; missing/`ci` scope authorizes CI only.
-  Validate the PR-bound owner/workspace, poll authoritative merge previews and
+  Validate the PR-bound owner/workspace, resolving owners through
+  `processes/process-workspace-resolver.ts` (live queue task, then persisted process
+  metadata, so completed owners survive restarts; trigger infra builds it from its
+  own bridge/store, and routes/cron share it). Poll authoritative merge previews and
   current-head checks, and serialize automatic/manual repairs with the durable
   PR-qualified writer and `deliverPrRepairOnce`. Repair execution uses high-priority
   FIFO with `respectQueueBarriers`; pending messages retain scheduling metadata
