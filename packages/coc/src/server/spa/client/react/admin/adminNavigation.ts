@@ -32,10 +32,10 @@ export const DEFAULT_SETTINGS_SUBTAB: SettingsSubTab = 'ai';
 export const VALID_SETTINGS_SUBTABS = new Set<SettingsSubTab>(SETTINGS_SUBTABS.map(t => t.id));
 export const SETTINGS_SUBTAB_DESCRIPTIONS: Record<SettingsSubTab, string> = {
     ai: '',
-    chat: 'Conversation behavior, follow-up suggestions, transcript detail, and chat style.',
-    sentinel: 'Sentinel mode, To-do tracking, results, and messaging.',
-    appearance: 'Theme, layout density, navigation, and prompt autocomplete preferences.',
-    editors: 'File editor tabs, Markdown previews, and Notes editor behavior.',
+    chat: 'Conversation behavior, follow-up suggestions, chat style, and chat capabilities.',
+    sentinel: 'Sentinel mode, To-do tracking, PR outcomes, and messaging.',
+    appearance: 'Every interface preference: theme and layout, navigation, chat display, and editor UI.',
+    editors: 'Notes editor behavior.',
     features: 'Enable or disable optional workspace and dashboard features.',
     integrations: 'Desktop link handlers and local integration preferences.',
     providers: 'Manage credentials for GitHub, Azure DevOps, and other connected providers.',

@@ -250,8 +250,8 @@ switches. Both engines share the persisted comment shape.
 
 ### Changed-file navigation
 
-Live admin setting `features.diffFilePicker` (Admin -> Configure -> Features ->
-Code Review & Collaboration -> Diff header file picker; runtime flag
+Live admin setting `features.diffFilePicker` (Admin -> Configure -> Appearance ->
+Editors & Files -> Diff header file picker; runtime flag
 `diffFilePickerEnabled`) defaults on; only an explicit false disables it.
 `DiffFilePicker` reads it through `useDiffFilePickerEnabled`, so toggling applies
 without a reload and disabling dismisses an open picker. When enabled,

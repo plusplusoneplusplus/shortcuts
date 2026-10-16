@@ -1,6 +1,7 @@
 /**
  * configSettingsCards — presentational cards for the AI & Execution, Chat
- * Experience, and Appearance & Navigation settings sections.
+ * Experience, and Appearance & Navigation settings sections, plus the
+ * Appearance tab's section jump bar.
  *
  * These are pure UI over the values owned by `useAdminConfigForm` and
  * `useAdminPreferencesForm`. They keep the shared primitives (`SettingsCard`,
@@ -9,8 +10,8 @@
  */
 import { SettingsCard } from './SettingsCard';
 import { AdminInputSuffix, AdminRow, AdminSeg, AdminToggle, SourceBadge } from './adminControls';
-import { VALID_OUTPUT_OPTIONS, type ToolCompactness } from './useAdminConfigForm';
-import type { TaskCardDensity, Theme } from './useAdminPreferencesForm';
+import { VALID_OUTPUT_OPTIONS } from './useAdminConfigForm';
+import type { TaskCardDensity, Theme, ToolCompactness } from './useAdminPreferencesForm';
 
 interface SourceProps {
     sources: Record<string, string>;
@@ -124,10 +125,6 @@ export interface ChatExperienceCardProps extends SourceProps {
     setChatFollowUpCount: (v: string) => void;
     chatAskUserEnabled: boolean;
     setChatAskUserEnabled: (v: boolean) => void;
-    showReportIntent: boolean;
-    setShowReportIntent: (v: boolean) => void;
-    toolCompactness: ToolCompactness;
-    setToolCompactness: (v: ToolCompactness) => void;
     dirty: boolean;
     saving: boolean;
     onSave: () => void;
@@ -138,8 +135,6 @@ export function ChatExperienceCard({
     chatFollowUpEnabled, setChatFollowUpEnabled,
     chatFollowUpCount, setChatFollowUpCount,
     chatAskUserEnabled, setChatAskUserEnabled,
-    showReportIntent, setShowReportIntent,
-    toolCompactness, setToolCompactness,
     dirty, saving, onSave, onCancel, sources, isDefaultValue,
 }: ChatExperienceCardProps) {
     return (
@@ -189,39 +184,57 @@ export function ChatExperienceCard({
                     data-testid="toggle-chat-askuser-enabled"
                 />
             </AdminRow>
-            <AdminRow
-                name="Intent announcements"
-                hint="Show the report_intent badge above each tool call (“I'm about to read X…”)."
-            >
-                <SourceBadge source={sources['showReportIntent']} isDefault={isDefaultValue('showReportIntent')} />
-                <AdminToggle
-                    checked={showReportIntent}
-                    onChange={setShowReportIntent}
-                    data-testid="toggle-show-report-intent"
-                />
-            </AdminRow>
-            <AdminRow
-                name="Tool call verbosity"
-                hint="How much detail to show for each tool invocation in the transcript."
-            >
-                <SourceBadge source={sources['toolCompactness']} isDefault={isDefaultValue('toolCompactness')} />
-                <AdminSeg<ToolCompactness>
-                    value={toolCompactness}
-                    onChange={setToolCompactness}
-                    aria-label="Tool call verbosity"
-                    options={[
-                        { value: 0, label: 'Full', testId: 'tool-compactness-full' },
-                        { value: 1, label: 'Compact', testId: 'tool-compactness-compact' },
-                        { value: 2, label: 'Minimal', testId: 'tool-compactness-minimal' },
-                        { value: 3, label: 'Whisper', testId: 'tool-compactness-whisper' },
-                    ]}
-                />
-            </AdminRow>
         </SettingsCard>
     );
 }
 
 // ── Appearance & Navigation ─────────────────────────────────────────────────
+
+/**
+ * Sections of the Appearance tab, in page order: the preference card's groups
+ * followed by the registry "Interface features" groups. Each `id` is the DOM
+ * id of the section's group so the jump bar can scroll to it.
+ */
+export const APPEARANCE_SECTIONS = [
+    { id: 'appearance-group-theme-layout', label: 'Theme & Layout' },
+    { id: 'appearance-group-chat-display', label: 'Chat Display' },
+    { id: 'appearance-group-prompt-input', label: 'Prompt Input' },
+    { id: 'appearance-group-uiGeneral', label: 'Layout & Navigation' },
+    { id: 'appearance-group-uiChat', label: 'Chat Interface' },
+    { id: 'appearance-group-editorFiles', label: 'Editors & Files' },
+] as const;
+
+type AppearanceSectionId = typeof APPEARANCE_SECTIONS[number]['id'];
+
+function AppearanceGroup({ id, children }: { id: AppearanceSectionId; children: React.ReactNode }) {
+    const heading = APPEARANCE_SECTIONS.find(section => section.id === id)!.label;
+    return (
+        <div className="ar-feature-group" id={id} data-testid={id}>
+            <div className="ar-feature-group-head">{heading}</div>
+            {children}
+        </div>
+    );
+}
+
+/** Compact in-page navigation for the Appearance tab's grouped sections. */
+export function AppearanceSectionNav() {
+    return (
+        <nav className="ar-section-jump" aria-label="Appearance sections" data-testid="appearance-section-nav">
+            {APPEARANCE_SECTIONS.map(section => (
+                <button
+                    key={section.id}
+                    type="button"
+                    className="ar-btn ar-btn-ghost ar-btn-sm"
+                    onClick={() => document.getElementById(section.id)?.scrollIntoView({ block: 'start', behavior: 'smooth' })}
+                    data-testid={`appearance-jump-${section.id}`}
+                >
+                    {section.label}
+                </button>
+            ))}
+        </nav>
+    );
+}
+
 export interface AppearanceCardProps extends SourceProps {
     theme: Theme;
     setTheme: (v: Theme) => void;
@@ -238,6 +251,10 @@ export interface AppearanceCardProps extends SourceProps {
     setTaskCardDensity: (v: TaskCardDensity) => void;
     historyGrouping: boolean;
     setHistoryGrouping: (v: boolean) => void;
+    showReportIntent: boolean;
+    setShowReportIntent: (v: boolean) => void;
+    toolCompactness: ToolCompactness;
+    setToolCompactness: (v: ToolCompactness) => void;
     dirty: boolean;
     saving: boolean;
     onSave: () => void;
@@ -253,98 +270,134 @@ export function AppearanceCard({
     promptAutocompleteAiEnabled, setPromptAutocompleteAiEnabled,
     taskCardDensity, setTaskCardDensity,
     historyGrouping, setHistoryGrouping,
+    showReportIntent, setShowReportIntent,
+    toolCompactness, setToolCompactness,
     dirty, saving, onSave, onCancel, sources, isDefaultValue,
 }: AppearanceCardProps) {
     return (
         <SettingsCard
             title="Appearance & Navigation"
             badge="Global"
-            description="Theme, layout density, and navigation preferences."
+            description="Theme, layout density, chat transcript display, and prompt input preferences."
             dirty={dirty}
             saving={saving}
             onSave={onSave}
             onCancel={onCancel}
             data-testid="settings-appearance"
         >
-            <AdminRow name="Theme" hint="Color scheme for this device. Auto follows the OS preference.">
-                <select
-                    className="ar-select ar-med"
-                    value={theme}
-                    onChange={e => setTheme(e.target.value as Theme)}
-                    data-testid="pref-theme"
+            <AppearanceGroup id="appearance-group-theme-layout">
+                <AdminRow name="Theme" hint="Color scheme for this device. Auto follows the OS preference.">
+                    <select
+                        className="ar-select ar-med"
+                        value={theme}
+                        onChange={e => setTheme(e.target.value as Theme)}
+                        data-testid="pref-theme"
+                    >
+                        <option value="auto">auto</option>
+                        <option value="light">light</option>
+                        <option value="dark">dark</option>
+                    </select>
+                </AdminRow>
+                <AdminRow
+                    name="Repos sidebar collapsed"
+                    hint="Whether the repos sidebar starts collapsed on load."
                 >
-                    <option value="auto">auto</option>
-                    <option value="light">light</option>
-                    <option value="dark">dark</option>
-                </select>
-            </AdminRow>
-            <AdminRow
-                name="Repos sidebar collapsed"
-                hint="Whether the repos sidebar starts collapsed on load."
-            >
-                <AdminToggle
-                    checked={reposSidebarCollapsed}
-                    onChange={setReposSidebarCollapsed}
-                    data-testid="pref-repos-sidebar-collapsed"
-                />
-            </AdminRow>
-            <AdminRow
-                name="Inline HTML previews"
-                hint={<>Render local <span className="ar-mono">.html</span> links titled <span className="ar-mono">embed</span> as sandboxed chat previews.</>}
-            >
-                <AdminToggle
-                    checked={htmlEmbedEnabled}
-                    onChange={setHtmlEmbedEnabled}
-                    data-testid="pref-html-embed-enabled"
-                />
-            </AdminRow>
-            <AdminRow
-                name="Prompt ghost text"
-                hint="Show inline autocomplete in Queue Task and follow-up inputs."
-            >
-                <AdminToggle
-                    checked={promptAutocompleteEnabled}
-                    onChange={setPromptAutocompleteEnabled}
-                    data-testid="pref-prompt-autocomplete-enabled"
-                />
-            </AdminRow>
-            <AdminRow
-                name="AI prompt ghost text"
-                hint="Generate ghost text with AI using workspace-scoped user history. Disabled by default."
-            >
-                <AdminToggle
-                    checked={promptAutocompleteAiEnabled}
-                    disabled={!promptAutocompleteEnabled}
-                    onChange={setPromptAutocompleteAiEnabled}
-                    data-testid="pref-prompt-autocomplete-ai-enabled"
-                />
-            </AdminRow>
-            <AdminRow
-                name="Task card density"
-                hint="Density of task cards in the activity tab."
-            >
-                <SourceBadge source={sources['taskCardDensity']} isDefault={isDefaultValue('taskCardDensity')} />
-                <AdminSeg<TaskCardDensity>
-                    value={taskCardDensity}
-                    onChange={setTaskCardDensity}
-                    aria-label="Task card density"
-                    options={[
-                        { value: 'compact', label: 'Compact', testId: 'task-card-density-compact' },
-                        { value: 'dense', label: 'Dense', testId: 'task-card-density-dense' },
-                    ]}
-                />
-            </AdminRow>
-            <AdminRow
-                name="History grouping"
-                hint="Group related plan and autopilot tasks together in the history list."
-            >
-                <SourceBadge source={sources['historyGrouping']} isDefault={isDefaultValue('historyGrouping')} />
-                <AdminToggle
-                    checked={historyGrouping}
-                    onChange={setHistoryGrouping}
-                    data-testid="toggle-history-grouping"
-                />
-            </AdminRow>
+                    <AdminToggle
+                        checked={reposSidebarCollapsed}
+                        onChange={setReposSidebarCollapsed}
+                        data-testid="pref-repos-sidebar-collapsed"
+                    />
+                </AdminRow>
+                <AdminRow
+                    name="Task card density"
+                    hint="Density of task cards in the activity tab."
+                >
+                    <SourceBadge source={sources['taskCardDensity']} isDefault={isDefaultValue('taskCardDensity')} />
+                    <AdminSeg<TaskCardDensity>
+                        value={taskCardDensity}
+                        onChange={setTaskCardDensity}
+                        aria-label="Task card density"
+                        options={[
+                            { value: 'compact', label: 'Compact', testId: 'task-card-density-compact' },
+                            { value: 'dense', label: 'Dense', testId: 'task-card-density-dense' },
+                        ]}
+                    />
+                </AdminRow>
+                <AdminRow
+                    name="History grouping"
+                    hint="Group related plan and autopilot tasks together in the history list."
+                >
+                    <SourceBadge source={sources['historyGrouping']} isDefault={isDefaultValue('historyGrouping')} />
+                    <AdminToggle
+                        checked={historyGrouping}
+                        onChange={setHistoryGrouping}
+                        data-testid="toggle-history-grouping"
+                    />
+                </AdminRow>
+            </AppearanceGroup>
+            <AppearanceGroup id="appearance-group-chat-display">
+                <AdminRow
+                    name="Intent announcements"
+                    hint="Show the report_intent badge above each tool call (“I'm about to read X…”)."
+                >
+                    <SourceBadge source={sources['showReportIntent']} isDefault={isDefaultValue('showReportIntent')} />
+                    <AdminToggle
+                        checked={showReportIntent}
+                        onChange={setShowReportIntent}
+                        data-testid="toggle-show-report-intent"
+                    />
+                </AdminRow>
+                <AdminRow
+                    name="Tool call verbosity"
+                    hint="How much detail to show for each tool invocation in the transcript."
+                >
+                    <SourceBadge source={sources['toolCompactness']} isDefault={isDefaultValue('toolCompactness')} />
+                    <AdminSeg<ToolCompactness>
+                        value={toolCompactness}
+                        onChange={setToolCompactness}
+                        aria-label="Tool call verbosity"
+                        options={[
+                            { value: 0, label: 'Full', testId: 'tool-compactness-full' },
+                            { value: 1, label: 'Compact', testId: 'tool-compactness-compact' },
+                            { value: 2, label: 'Minimal', testId: 'tool-compactness-minimal' },
+                            { value: 3, label: 'Whisper', testId: 'tool-compactness-whisper' },
+                        ]}
+                    />
+                </AdminRow>
+                <AdminRow
+                    name="Inline HTML previews"
+                    hint={<>Render local <span className="ar-mono">.html</span> links titled <span className="ar-mono">embed</span> as sandboxed chat previews.</>}
+                >
+                    <AdminToggle
+                        checked={htmlEmbedEnabled}
+                        onChange={setHtmlEmbedEnabled}
+                        data-testid="pref-html-embed-enabled"
+                    />
+                </AdminRow>
+            </AppearanceGroup>
+            <AppearanceGroup id="appearance-group-prompt-input">
+                <AdminRow
+                    name="Prompt ghost text"
+                    hint="Show inline autocomplete in Queue Task and follow-up inputs."
+                >
+                    <AdminToggle
+                        checked={promptAutocompleteEnabled}
+                        onChange={setPromptAutocompleteEnabled}
+                        data-testid="pref-prompt-autocomplete-enabled"
+                    />
+                </AdminRow>
+                <AdminRow
+                    name="AI prompt ghost text"
+                    hint="Generate ghost text with AI using workspace-scoped user history. Disabled by default."
+                >
+                    <AdminToggle
+                        checked={promptAutocompleteAiEnabled}
+                        disabled={!promptAutocompleteEnabled}
+                        onChange={setPromptAutocompleteAiEnabled}
+                        data-testid="pref-prompt-autocomplete-ai-enabled"
+                    />
+                </AdminRow>
+            </AppearanceGroup>
         </SettingsCard>
     );
 }

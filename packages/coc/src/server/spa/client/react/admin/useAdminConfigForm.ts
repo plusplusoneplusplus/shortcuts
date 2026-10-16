@@ -3,7 +3,7 @@
  * Experience" config cards.
  *
  * Owns the model/parallel/timeout/output form, the chat behaviour toggles
- * (follow-up suggestions, ask-user, report-intent, tool verbosity), per-card
+ * (follow-up suggestions, ask-user), per-card
  * dirty/saving state, validation, and the `admin.updateConfig` payloads. Both
  * cards read the same resolved config object, so they hydrate together.
  */
@@ -12,8 +12,6 @@ import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { invalidateDisplaySettings } from '../hooks/preferences/useDisplaySettings';
 
 export const VALID_OUTPUT_OPTIONS = ['table', 'json', 'csv', 'markdown'] as const;
-
-export type ToolCompactness = 0 | 1 | 2 | 3;
 
 interface AiExecSnapshot {
     model: string;
@@ -27,8 +25,6 @@ interface ChatSnapshot {
     followUpEnabled: boolean;
     followUpCount: string;
     askUserEnabled: boolean;
-    showReportIntent: boolean;
-    toolCompactness: ToolCompactness;
 }
 
 export interface UseAdminConfigFormOptions {
@@ -42,12 +38,10 @@ export function useAdminConfigForm({ addToast }: UseAdminConfigFormOptions) {
     const [aiExecSaving, setAiExecSaving] = useState(false);
 
     // Chat Experience
-    const [showReportIntent, setShowReportIntent] = useState(false);
-    const [toolCompactness, setToolCompactness] = useState<ToolCompactness>(3);
     const [chatFollowUpEnabled, setChatFollowUpEnabled] = useState(true);
     const [chatFollowUpCount, setChatFollowUpCount] = useState('3');
     const [chatAskUserEnabled, setChatAskUserEnabled] = useState(false);
-    const [chatSnapshot, setChatSnapshot] = useState<ChatSnapshot>({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 });
+    const [chatSnapshot, setChatSnapshot] = useState<ChatSnapshot>({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false });
     const [chatSaving, setChatSaving] = useState(false);
 
     /** Loads both cards from a freshly-fetched resolved config. */
@@ -62,17 +56,13 @@ export function useAdminConfigForm({ addToast }: UseAdminConfigFormOptions) {
         setConfigForm(form);
         setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, idleTimeout: form.idleTimeout, output: form.output });
 
-        const sri = resolved.showReportIntent ?? false;
-        const tc = (resolved.toolCompactness ?? 1) as ToolCompactness;
         const fue = resolved.chat?.followUpSuggestions?.enabled ?? true;
         const fuc = String(resolved.chat?.followUpSuggestions?.count ?? 3);
         const aue = resolved.chat?.askUser?.enabled ?? false;
-        setShowReportIntent(sri);
-        setToolCompactness(tc);
         setChatFollowUpEnabled(fue);
         setChatFollowUpCount(fuc);
         setChatAskUserEnabled(aue);
-        setChatSnapshot({ followUpEnabled: fue, followUpCount: fuc, askUserEnabled: aue, showReportIntent: sri, toolCompactness: tc });
+        setChatSnapshot({ followUpEnabled: fue, followUpCount: fuc, askUserEnabled: aue });
     }, []);
 
     const aiExecDirty = configForm.model !== aiExecSnapshot.model ||
@@ -83,9 +73,7 @@ export function useAdminConfigForm({ addToast }: UseAdminConfigFormOptions) {
 
     const chatDirty = chatFollowUpEnabled !== chatSnapshot.followUpEnabled ||
         chatFollowUpCount !== chatSnapshot.followUpCount ||
-        chatAskUserEnabled !== chatSnapshot.askUserEnabled ||
-        showReportIntent !== chatSnapshot.showReportIntent ||
-        toolCompactness !== chatSnapshot.toolCompactness;
+        chatAskUserEnabled !== chatSnapshot.askUserEnabled;
 
     const handleSaveAiExec = useCallback(async () => {
         const errors: string[] = [];
@@ -148,26 +136,22 @@ export function useAdminConfigForm({ addToast }: UseAdminConfigFormOptions) {
                 'chat.followUpSuggestions.enabled': chatFollowUpEnabled,
                 'chat.followUpSuggestions.count': count,
                 'chat.askUser.enabled': chatAskUserEnabled,
-                showReportIntent,
-                toolCompactness,
             };
             await getSpaCocClient().admin.updateConfig(payload);
             addToast('Settings saved', 'success');
             invalidateDisplaySettings();
-            setChatSnapshot({ followUpEnabled: chatFollowUpEnabled, followUpCount: chatFollowUpCount, askUserEnabled: chatAskUserEnabled, showReportIntent, toolCompactness });
+            setChatSnapshot({ followUpEnabled: chatFollowUpEnabled, followUpCount: chatFollowUpCount, askUserEnabled: chatAskUserEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setChatSaving(false);
         }
-    }, [chatFollowUpEnabled, chatFollowUpCount, chatAskUserEnabled, showReportIntent, toolCompactness, addToast]);
+    }, [chatFollowUpEnabled, chatFollowUpCount, chatAskUserEnabled, addToast]);
 
     const handleCancelChat = useCallback(() => {
         setChatFollowUpEnabled(chatSnapshot.followUpEnabled);
         setChatFollowUpCount(chatSnapshot.followUpCount);
         setChatAskUserEnabled(chatSnapshot.askUserEnabled);
-        setShowReportIntent(chatSnapshot.showReportIntent);
-        setToolCompactness(chatSnapshot.toolCompactness);
     }, [chatSnapshot]);
 
     return {
@@ -176,8 +160,6 @@ export function useAdminConfigForm({ addToast }: UseAdminConfigFormOptions) {
         aiExecDirty, aiExecSaving,
         handleSaveAiExec, handleCancelAiExec,
         // Chat Experience
-        showReportIntent, setShowReportIntent,
-        toolCompactness, setToolCompactness,
         chatFollowUpEnabled, setChatFollowUpEnabled,
         chatFollowUpCount, setChatFollowUpCount,
         chatAskUserEnabled, setChatAskUserEnabled,

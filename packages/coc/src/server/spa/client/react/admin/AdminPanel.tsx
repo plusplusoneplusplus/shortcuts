@@ -47,7 +47,7 @@ import type { FeatureSettingTab } from '../../../../../config/admin-setting-defi
 import { ChatStyleSettingsCard } from './ChatStyleSettingsCard';
 import { useAdminConfigForm } from './useAdminConfigForm';
 import { useAdminPreferencesForm } from './useAdminPreferencesForm';
-import { AiExecutionCard, AppearanceCard, ChatExperienceCard } from './configSettingsCards';
+import { AiExecutionCard, AppearanceCard, AppearanceSectionNav, ChatExperienceCard } from './configSettingsCards';
 import { useAdminProviderSettings } from './useAdminProviderSettings';
 import { useDreamsAdminConfig } from './useDreamsAdminConfig';
 import { useServerRuntime } from './useServerRuntime';
@@ -611,10 +611,6 @@ export function AdminPanel() {
                                                         setChatFollowUpCount={configFormCtl.setChatFollowUpCount}
                                                         chatAskUserEnabled={configFormCtl.chatAskUserEnabled}
                                                         setChatAskUserEnabled={configFormCtl.setChatAskUserEnabled}
-                                                        showReportIntent={configFormCtl.showReportIntent}
-                                                        setShowReportIntent={configFormCtl.setShowReportIntent}
-                                                        toolCompactness={configFormCtl.toolCompactness}
-                                                        setToolCompactness={configFormCtl.setToolCompactness}
                                                         dirty={configFormCtl.chatDirty}
                                                         saving={configFormCtl.chatSaving}
                                                         onSave={configFormCtl.handleSaveChat}
@@ -645,9 +641,12 @@ export function AdminPanel() {
 
                                             {settingsSubTab === 'sentinel' && renderTabFeatures('sentinel')}
 
-                                            {/* ── Appearance & Navigation ── */}
+                                            {/* ── Appearance & Navigation ── every UI preference and
+                                                UI-only feature toggle, grouped; the two cards keep their
+                                                own Save/Cancel and Ctrl+S saves both. */}
                                             {settingsSubTab === 'appearance' && (
                                                 <>
+                                                    <AppearanceSectionNav />
                                                     <AppearanceCard
                                                         theme={prefsCtl.theme}
                                                         setTheme={prefsCtl.setTheme}
@@ -664,6 +663,10 @@ export function AdminPanel() {
                                                         setTaskCardDensity={prefsCtl.setTaskCardDensity}
                                                         historyGrouping={prefsCtl.historyGrouping}
                                                         setHistoryGrouping={prefsCtl.setHistoryGrouping}
+                                                        showReportIntent={prefsCtl.showReportIntent}
+                                                        setShowReportIntent={prefsCtl.setShowReportIntent}
+                                                        toolCompactness={prefsCtl.toolCompactness}
+                                                        setToolCompactness={prefsCtl.setToolCompactness}
                                                         dirty={prefsCtl.appearanceDirty}
                                                         saving={prefsCtl.appearanceSaving}
                                                         onSave={prefsCtl.handleSaveAppearance}
@@ -671,7 +674,11 @@ export function AdminPanel() {
                                                         sources={sources}
                                                         isDefaultValue={isDefaultValue}
                                                     />
-                                                    {renderTabFeatures('appearance')}
+                                                    {renderTabFeatures(
+                                                        'appearance',
+                                                        'Interface features',
+                                                        'Optional layout, chat, and editor interface behavior.',
+                                                    )}
                                                 </>
                                             )}
 

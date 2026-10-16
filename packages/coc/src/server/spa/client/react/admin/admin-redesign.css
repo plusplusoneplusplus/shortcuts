@@ -625,6 +625,15 @@
   border-top: 1px solid var(--ar-border);
   margin-top: 4px;
 }
+.admin-redesign .ar-feature-group[id] {
+  scroll-margin-top: 56px;
+}
+/* Appearance tab: jump bar to its grouped sections. */
+.admin-redesign .ar-section-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
 .admin-redesign .ar-feature-group-head {
   font-size: 11px;
   font-weight: 600;

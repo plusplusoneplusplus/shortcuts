@@ -214,8 +214,9 @@ export interface TabFeatureSettingsCardProps {
 /**
  * Registry-driven "Features" section for a non-Features settings tab. Lists
  * only toggles placed on `tab`, with group headings shown when the tab spans
- * more than one `FEATURE_CARD_GROUPS` group. Renders nothing when no visible
- * toggle is placed on the tab.
+ * more than one `FEATURE_CARD_GROUPS` group. Each group carries the DOM id
+ * `<tab>-group-<groupId>` for in-page navigation. Renders nothing when no
+ * visible toggle is placed on the tab.
  */
 export function TabFeatureSettingsCard({
     tab,
@@ -253,7 +254,7 @@ export function TabFeatureSettingsCard({
             data-testid={`settings-tab-features-${tab}`}
         >
             {groups.map(({ group, defs }) => (
-                <div className="ar-feature-group" key={group.id}>
+                <div className="ar-feature-group" key={group.id} id={`${tab}-group-${group.id}`} data-testid={`${tab}-group-${group.id}`}>
                     {showHeadings && <div className="ar-feature-group-head">{group.heading}</div>}
                     {defs.map(def => (
                         <FeatureSettingRow

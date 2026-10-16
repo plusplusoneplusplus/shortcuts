@@ -149,34 +149,56 @@ describe('TabFeatureSettingsCard', () => {
         }
     });
 
-    it('groups the Editors tab under concise headings with experimental badges', () => {
-        render(<Harness tabs={['editors']} />);
-        const section = withinSection('editors');
+    it('groups Appearance into interface sections with navigable ids and experimental badges', () => {
+        render(<Harness tabs={['appearance']} />);
+        const section = withinSection('appearance');
         const heads = Array.from(section.querySelectorAll('.ar-feature-group-head')).map(h => h.textContent);
-        expect(heads).toEqual(['File Tabs & Previews', 'Notes Editor']);
-        for (const testId of ['toggle-explorer-editor-tabs-enabled', 'toggle-markdown-panel-preview-enabled', 'toggle-arxiv-paper-ingest-enabled']) {
+        expect(heads).toEqual(['Layout & Navigation', 'Chat Interface', 'Editors & Files']);
+        for (const group of ['uiGeneral', 'uiChat', 'editorFiles']) {
+            expect(section.querySelector(`#appearance-group-${group}`), group).not.toBeNull();
+        }
+        const editorGroup = section.querySelector('#appearance-group-editorFiles')!;
+        const chatGroup = section.querySelector('#appearance-group-uiChat')!;
+        for (const testId of ['toggle-explorer-editor-tabs-enabled', 'toggle-markdown-panel-preview-enabled', 'toggle-diff-file-picker-enabled']) {
+            expect(editorGroup.querySelector(`[data-testid="${testId}"]`), testId).not.toBeNull();
+        }
+        for (const testId of ['toggle-composer-word-hint-enabled', 'toggle-chat-folders-enabled', 'toggle-sentinel-result-cards-enabled']) {
+            expect(chatGroup.querySelector(`[data-testid="${testId}"]`), testId).not.toBeNull();
+        }
+        for (const testId of ['toggle-explorer-editor-tabs-enabled', 'toggle-markdown-panel-preview-enabled']) {
             const toggle = section.querySelector(`[data-testid="${testId}"]`) as HTMLInputElement;
             expect(toggle.checked, testId).toBe(false);
             expect(toggle.closest('.ar-row')?.textContent, testId).toContain('Experimental');
         }
     });
 
-    it('saves Editors opt-ins with their existing keys and runtime flags', async () => {
+    it('keeps only the functional Notes editor toggle on Editors', () => {
         render(<Harness tabs={['editors']} />);
+        const section = withinSection('editors');
+        expect(section.querySelectorAll('.ar-feature-group-head')).toHaveLength(0);
+        expect(Array.from(section.querySelectorAll('input')).map(i => i.getAttribute('data-testid'))).toEqual(['toggle-arxiv-paper-ingest-enabled']);
+    });
+
+    it('saves moved editor UI opt-ins from Appearance with their existing keys and runtime flags', async () => {
+        render(<Harness tabs={['appearance', 'editors']} />);
         fireEvent.click(screen.getByTestId('toggle-explorer-editor-tabs-enabled'));
         fireEvent.click(screen.getByTestId('toggle-arxiv-paper-ingest-enabled'));
-        await act(async () => { await controller.handleSaveTab('editors'); });
-        expect(updateConfig.mock.calls[0][0]).toEqual({
+        await act(async () => { await controller.handleSaveTab('appearance'); });
+        const payload = updateConfig.mock.calls[0][0] as Record<string, unknown>;
+        expect(payload).toMatchObject({
             'features.explorerEditorTabs': true,
             'features.markdownPanelPreview': false,
-            'features.arxivPaperIngest': true,
         });
+        expect(payload).not.toHaveProperty('features.arxivPaperIngest');
         expect(applyRuntimeConfigPatch.mock.calls[0][0]).toMatchObject({
             explorerEditorTabsEnabled: true,
             markdownPanelPreviewEnabled: false,
-            arxivPaperIngestEnabled: true,
         });
-        expect(controller.isTabDirty('editors')).toBe(false);
+        expect(controller.isTabDirty('appearance')).toBe(false);
+        expect(controller.isTabDirty('editors')).toBe(true);
+        await act(async () => { await controller.handleSaveTab('editors'); });
+        expect(updateConfig.mock.calls[1][0]).toEqual({ 'features.arxivPaperIngest': true });
+        expect(applyRuntimeConfigPatch.mock.calls[1][0]).toEqual({ arxivPaperIngestEnabled: true });
     });
 
     it('shows group headings only when the tab spans more than one group', () => {

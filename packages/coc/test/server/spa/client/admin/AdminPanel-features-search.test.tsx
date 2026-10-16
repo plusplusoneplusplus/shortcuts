@@ -360,7 +360,9 @@ describe('AdminPanel — Workspace Features search', () => {
         render(<AdminPanel />);
         await gotoFeaturesSubTab();
         const defs = ADMIN_SETTING_DEFINITIONS.filter(def => getFeatureSettingTab(def) === 'sentinel');
-        expect(defs).toHaveLength(8);
+        // Presentation-only result cards live on Appearance, not Sentinel.
+        expect(defs).toHaveLength(7);
+        expect(defs.some(def => def.key === 'features.sentinelResultCards')).toBe(false);
         for (const def of defs) {
             expect(screen.queryByText(def.ui!.label)).toBeNull();
         }
@@ -411,7 +413,7 @@ describe('AdminPanel — Workspace Features search', () => {
             const sentinelCard = await screen.findByTestId('settings-tab-features-sentinel');
             const mode = screen.getByTestId('toggle-sentinel-enabled') as HTMLInputElement;
             expect(mode.checked).toBe(false);
-            expect((screen.getByTestId('toggle-sentinel-result-cards-enabled') as HTMLInputElement).checked).toBe(true);
+            expect(screen.queryByTestId('toggle-sentinel-result-cards-enabled')).toBeNull();
             expect(mockFetch.mock.calls.some(([url]) => url === `${apiBase}/admin/config`)).toBe(true);
             expect(mockFetch.mock.calls.some(([, opts]) => opts?.method === 'PUT')).toBe(false);
             expect(within(sentinelCard).getByRole('button', { name: 'Save' })).toHaveProperty('disabled', true);
@@ -422,7 +424,7 @@ describe('AdminPanel — Workspace Features search', () => {
             const aiBefore = aiToggle.checked;
             fireEvent.click(aiToggle);
             fireEvent.click(screen.getByTestId('settings-subtab-chat'));
-            fireEvent.click(screen.getByTestId('toggle-chat-folders-enabled'));
+            fireEvent.click(screen.getByTestId('toggle-quick-ask-sidenotes-enabled'));
             fireEvent.click(screen.getByTestId('settings-subtab-integrations'));
             fireEvent.click(screen.getByTestId('toggle-kusto-enabled'));
             fireEvent.click(screen.getByTestId('settings-subtab-features'));
@@ -445,11 +447,11 @@ describe('AdminPanel — Workspace Features search', () => {
             expect(Object.keys(payload).sort()).toEqual(defs.map(def => def.key).sort());
             expect(payload['features.sentinelTodoExternalReferences']).toBe(true);
             expect(payload['sentinel.enabled']).toBe(false);
-            expect(payload['features.sentinelResultCards']).toBe(true);
+            expect(payload).not.toHaveProperty('features.sentinelResultCards');
 
             for (const [tab, testId, expected] of [
                 ['ai', 'toggle-ralph-enabled', !aiBefore],
-                ['chat', 'toggle-chat-folders-enabled', true],
+                ['chat', 'toggle-quick-ask-sidenotes-enabled', true],
                 ['integrations', 'toggle-kusto-enabled', true],
                 ['features', 'toggle-terminal-enabled', false],
             ] as const) {

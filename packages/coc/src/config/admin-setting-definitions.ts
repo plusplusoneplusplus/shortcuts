@@ -73,7 +73,7 @@ export type AdminSettingValueSpec =
 
 // ── UI specs (admin Features card) ────────────────────────────────────────────
 
-export type FeatureGroupId = 'dashboard' | 'editorFiles' | 'editorNotes' | 'devTools' | 'workItems' | 'aiModes' | 'review' | 'infrastructure' | 'sentinelMode' | 'sentinelTodos' | 'sentinelMessaging';
+export type FeatureGroupId = 'dashboard' | 'uiGeneral' | 'uiChat' | 'editorFiles' | 'editorNotes' | 'devTools' | 'workItems' | 'aiModes' | 'review' | 'infrastructure' | 'sentinelMode' | 'sentinelTodos' | 'sentinelMessaging';
 
 export interface FeatureGroupSpec {
     id: FeatureGroupId;
@@ -84,7 +84,9 @@ export interface FeatureGroupSpec {
 /** Ordered groups rendered in the admin Features card. */
 export const FEATURE_CARD_GROUPS: readonly FeatureGroupSpec[] = [
     { id: 'dashboard', heading: 'Dashboard Modules', testId: 'feature-group-dashboard' },
-    { id: 'editorFiles', heading: 'File Tabs & Previews', testId: 'feature-group-editor-files' },
+    { id: 'uiGeneral', heading: 'Layout & Navigation', testId: 'feature-group-ui-general' },
+    { id: 'uiChat', heading: 'Chat Interface', testId: 'feature-group-ui-chat' },
+    { id: 'editorFiles', heading: 'Editors & Files', testId: 'feature-group-editor-files' },
     { id: 'editorNotes', heading: 'Notes Editor', testId: 'feature-group-editor-notes' },
     { id: 'devTools', heading: 'Development Tools', testId: 'feature-group-dev-tools' },
     { id: 'workItems', heading: 'Work Items', testId: 'feature-group-work-items' },
@@ -541,7 +543,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         runtime: 'live',
         runtimeFlag: 'scratchpadLayout',
         ui: {
-            tab: 'appearance', group: 'dashboard', order: 50, label: 'Layout', dependsOn: 'scratchpad.enabled',
+            tab: 'appearance', group: 'uiGeneral', order: 50, label: 'Layout', dependsOn: 'scratchpad.enabled',
             hint: 'Split direction for conversation and scratchpad.',
             control: {
                 type: 'select',
@@ -702,7 +704,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'vimNavigation.enabled', default: false, runtime: 'live', runtimeFlag: 'vimNavigationEnabled',
         ui: {
-            tab: 'appearance', group: 'infrastructure', order: 40, label: 'Vim-style navigation',
+            tab: 'appearance', group: 'uiGeneral', order: 40, label: 'Vim-style navigation',
             hint: 'Enable hjkl pane navigation, j/k to step through chats and messages, gg/G to jump, i to focus the input, Esc to blur. Disabled by default.',
             testId: 'toggle-vim-navigation-enabled',
         },
@@ -865,7 +867,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.diffFilePicker', default: true, runtime: 'live', runtimeFlag: 'diffFilePickerEnabled',
         ui: {
-            group: 'review', order: 25, label: 'Diff header file picker',
+            tab: 'appearance', group: 'editorFiles', order: 50, label: 'Diff header file picker',
             hint: 'Click the file path in a multi-file diff header to search and jump to another changed file. Enabled by default.',
             testId: 'toggle-diff-file-picker-enabled',
         },
@@ -881,7 +883,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.commitChatLens', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'commitChatLensEnabled',
         ui: {
-            group: 'review', order: 40, label: 'Review chat lens', badge: 'experimental',
+            tab: 'appearance', group: 'uiChat', order: 50, label: 'Review chat lens', badge: 'experimental',
             hint: 'Open unpinned commit and pull-request review chat as a desktop bottom-right lens instead of the side panel or drawer. Enabled by default.',
             testId: 'toggle-commit-chat-lens-enabled',
         },
@@ -893,7 +895,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         runtime: 'live',
         runtimeFlag: 'commitChatLensDormantMode',
         ui: {
-            group: 'review', order: 50, label: 'Lens dormant mode', dependsOn: 'features.commitChatLens',
+            tab: 'appearance', group: 'uiChat', order: 51, label: 'Lens dormant mode', dependsOn: 'features.commitChatLens',
             hint: 'How the lens recedes when your cursor leaves it. Ghost fades to near-transparent; Pill collapses to a compact status pill; Ghost fade, then pill fades first and auto-collapses to the pill after 15s of inactivity.',
             control: {
                 type: 'select',
@@ -974,7 +976,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.scopeSwitcher', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'scopeSwitcherEnabled',
         ui: {
-            tab: 'appearance', group: 'dashboard', order: 66, label: 'Scope slide switcher', badge: 'experimental',
+            tab: 'appearance', group: 'uiGeneral', order: 66, label: 'Scope slide switcher', badge: 'experimental',
             hint: 'Replace the My Work / My Life toggles and the workspace identity chip with one sliding segmented switcher in the remote-first desktop header. Enabled by default.',
             testId: 'toggle-scope-switcher-enabled',
         },
@@ -982,7 +984,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.pinnedScopes', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'pinnedScopesEnabled',
         ui: {
-            tab: 'appearance', group: 'dashboard', order: 66.5, label: 'Pinned scope segments', badge: 'experimental',
+            tab: 'appearance', group: 'uiGeneral', order: 66.5, label: 'Pinned scope segments', badge: 'experimental',
             hint: 'Pin repos and repo groups from the workspace picker so they get their own persistent segments in the scope slide switcher, between My Work / My Life and the workspace chip. Requires the scope slide switcher. Enabled by default.',
             testId: 'toggle-pinned-scopes-enabled',
         },
@@ -998,7 +1000,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.repoGroupAggregatedChats', default: false, runtime: 'live', runtimeFlag: 'repoGroupAggregatedChatsEnabled',
         ui: {
-            group: 'dashboard', order: 67.5, label: 'Repo-group aggregated chats', badge: 'experimental',
+            tab: 'appearance', group: 'uiChat', order: 30, label: 'Repo-group aggregated chats', badge: 'experimental',
             hint: "A repo group's Workspace chat list also shows every chat in its member repos, with a muted repo prefix. Chats keep their own repo, queue and server; nothing is moved. Disabled by default.",
             testId: 'toggle-repo-group-aggregated-chats-enabled',
         },
@@ -1006,7 +1008,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.schedulesInScheduledSlide', default: true, runtime: 'live', runtimeFlag: 'schedulesInScheduledSlideEnabled',
         ui: {
-            group: 'dashboard', order: 68, label: 'Schedules in Scheduled slide', badge: 'experimental',
+            tab: 'appearance', group: 'uiGeneral', order: 68, label: 'Schedules in Scheduled slide', badge: 'experimental',
             hint: 'Moves schedule management (create/edit/run/pause/delete + run history) into the chat-list "Scheduled" slide, opening create and detail in the main pane and hiding the old Schedules tab. Enabled by default.',
             testId: 'toggle-schedules-in-scheduled-slide-enabled',
         },
@@ -1014,7 +1016,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.chatFolders', default: false, runtime: 'live', runtimeFlag: 'chatFoldersEnabled',
         ui: {
-            tab: 'chat', group: 'dashboard', order: 69, label: 'Chat folders', badge: 'experimental',
+            tab: 'appearance', group: 'uiChat', order: 20, label: 'Chat folders', badge: 'experimental',
             hint: 'Adds user-created folders to the chat list: name and color a folder, file chats and task rows into it by drag or context menu, and collapse it away. Filing is manual and reversible; nothing is auto-filed. Disabled by default.',
             testId: 'toggle-chat-folders-enabled',
         },
@@ -1022,7 +1024,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.railManualRefresh', default: true, runtime: 'live', runtimeFlag: 'railManualRefreshEnabled',
         ui: {
-            tab: 'appearance', group: 'dashboard', order: 76, label: 'Refresh on collapsed sidebar', badge: 'experimental',
+            tab: 'appearance', group: 'uiGeneral', order: 76, label: 'Refresh on collapsed sidebar', badge: 'experimental',
             hint: 'Adds a manual refresh button for sidebar chats and running, queued and pinned jobs. Enabled by default.',
             testId: 'toggle-rail-manual-refresh-enabled',
         },
@@ -1030,7 +1032,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.railGitSummary', default: false, runtime: 'live', runtimeFlag: 'railGitSummaryEnabled',
         ui: {
-            tab: 'appearance', group: 'dashboard', order: 73, label: 'Git on collapsed sidebar', badge: 'experimental',
+            tab: 'appearance', group: 'uiGeneral', order: 73, label: 'Git on collapsed sidebar', badge: 'experimental',
             hint: 'Shows working-tree changes, upstream sync and the current branch on the collapsed workspace sidebar, with hover/focus previews. Repo groups list each member repository. Disabled by default.',
             testId: 'toggle-rail-git-summary-enabled',
         },
@@ -1038,7 +1040,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.schedulerDelayHint', default: false, runtime: 'live', runtimeFlag: 'schedulerDelayHintEnabled',
         ui: {
-            tab: 'appearance', group: 'dashboard', order: 75, label: 'Scheduler delay hint', badge: 'experimental',
+            tab: 'appearance', group: 'uiGeneral', order: 75, label: 'Scheduler delay hint', badge: 'experimental',
             hint: 'Shows the configured delay between tasks on the ALL and AP scheduler buttons for each scope. Disabled by default.',
             testId: 'toggle-scheduler-delay-hint-enabled',
         },
@@ -1046,7 +1048,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.railStatusActions', default: true, runtime: 'live', runtimeFlag: 'railStatusActionsEnabled',
         ui: {
-            tab: 'appearance', group: 'dashboard', order: 74, label: 'Admin and quota on collapsed sidebar', badge: 'experimental',
+            tab: 'appearance', group: 'uiGeneral', order: 74, label: 'Admin and quota on collapsed sidebar', badge: 'experimental',
             hint: 'Also shows the Admin gear and the provider quota ring at the bottom of the collapsed workspace sidebar, reusing the status bar\'s actions and quota data. Enabled by default.',
             testId: 'toggle-rail-status-actions-enabled',
         },
@@ -1113,7 +1115,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.composerWordHint', default: true, runtime: 'live', runtimeFlag: 'composerWordHintEnabled',
         ui: {
-            tab: 'chat', group: 'aiModes', order: 45.5, label: 'Composer word hint',
+            tab: 'appearance', group: 'uiChat', order: 10, label: 'Composer word hint',
             hint: 'Shows a gray inline hint that finishes the English word you are typing in chat composers when only one or two common words match. Runs in the browser; Tab accepts, Esc dismisses. Enabled by default.',
             testId: 'toggle-composer-word-hint-enabled',
         },
@@ -1137,14 +1139,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.sentinelResultCards', default: true, runtime: 'live', runtimeFlag: 'sentinelResultCardsEnabled',
         ui: {
-            tab: 'sentinel', group: 'sentinelMode', order: 48, label: 'Sentinel result cards', badge: 'experimental',
+            tab: 'appearance', group: 'uiChat', order: 40, label: 'Sentinel result cards', badge: 'experimental',
             hint: 'Show delegated job results as collapsed cards. Presentation only; results still require assessment and grant no new authorization. Enabled by default.',
             testId: 'toggle-sentinel-result-cards-enabled',
         },
     }),
 
-    // Deliberately has no `ui` block: the control lives on the dedicated Chat
-    // Style settings section (`#admin/settings/chat-style`), not on the
+    // Deliberately has no `ui` block: the control lives on the Chat Style card
+    // in the Chat settings tab (`#admin/settings/chat`), not on the
     // Features card. Validation, the default, and the `defaultChatStyle`
     // runtime flag are still driven from here.
     {
@@ -1183,7 +1185,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.explorerEditorTabs', default: false, runtime: 'live', runtimeFlag: 'explorerEditorTabsEnabled',
         ui: {
-            tab: 'editors', group: 'editorFiles', order: 10, label: 'Explorer editor tabs', badge: 'experimental',
+            tab: 'appearance', group: 'editorFiles', order: 10, label: 'Explorer editor tabs', badge: 'experimental',
             hint: 'VS Code-style multiple editor tabs in the File Explorer: a preview tab that single-clicks replace, pinned tabs from double-click or editing, drag reorder, MRU cycling, and per-workspace restore. Disabled by default — with the flag off the Explorer keeps its single preview pane.',
             testId: 'toggle-explorer-editor-tabs-enabled',
         },
@@ -1191,7 +1193,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.explorerDelete', default: true, runtime: 'live', runtimeFlag: 'explorerDeleteEnabled',
         ui: {
-            tab: 'appearance', group: 'dashboard', order: 70.5, label: 'Explorer deletion', badge: 'experimental',
+            tab: 'appearance', group: 'editorFiles', order: 60, label: 'Explorer deletion', badge: 'experimental',
             hint: 'Allow confirmed permanent file and folder deletion in the owning workspace. Enabled by default.',
             testId: 'toggle-explorer-delete-enabled',
         },
@@ -1199,7 +1201,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.markdownPanelPreview', default: false, runtime: 'live', runtimeFlag: 'markdownPanelPreviewEnabled',
         ui: {
-            tab: 'editors', group: 'editorFiles', order: 20, label: 'Markdown panel preview', badge: 'experimental',
+            tab: 'appearance', group: 'editorFiles', order: 20, label: 'Markdown panel preview', badge: 'experimental',
             hint: 'Open Markdown file tabs in the unified right panel as rendered Markdown, with a switch to the raw editor. Disabled by default.',
             testId: 'toggle-markdown-panel-preview-enabled',
         },
@@ -1207,7 +1209,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.panelTabReordering', default: true, runtime: 'live', runtimeFlag: 'panelTabReorderingEnabled',
         ui: {
-            tab: 'appearance', group: 'dashboard', order: 71.5, label: 'Panel tab reordering', badge: 'experimental',
+            tab: 'appearance', group: 'editorFiles', order: 40, label: 'Panel tab reordering', badge: 'experimental',
             hint: 'Reorder mixed resource tabs by dragging, Alt+Left/Right, or the tab menu. Saves order per workspace and chat without moving content between owners. Enabled by default.',
             testId: 'toggle-panel-tab-reordering-enabled',
         },
@@ -1215,7 +1217,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.htmlPageTab', default: true, runtime: 'live', runtimeFlag: 'htmlPageTabEnabled',
         ui: {
-            tab: 'appearance', group: 'dashboard', order: 72, label: 'HTML page tabs',
+            tab: 'appearance', group: 'editorFiles', order: 30, label: 'HTML page tabs',
             hint: 'Desktop app only: clicking a local .html/.htm link in a chat response opens the rendered page in a right-panel tab. When off, the link opens in the source viewer.',
             testId: 'toggle-html-page-tab-enabled',
         },

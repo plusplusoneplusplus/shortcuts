@@ -37,7 +37,7 @@ function renderWithProviders() {
  * integrations / advanced), so tests interacting with controls outside of
  * the default 'ai' sub-tab must call this first.
  */
-async function gotoSettingsSubTab(sub: 'ai' | 'chat' | 'appearance' | 'editors' | 'features' | 'integrations' | 'providers' | 'advanced'): Promise<void> {
+async function gotoSettingsSubTab(sub: 'ai' | 'chat' | 'sentinel' | 'appearance' | 'editors' | 'features' | 'integrations' | 'providers' | 'advanced'): Promise<void> {
     await waitFor(() => expect(screen.getByTestId(`settings-subtab-${sub}`)).toBeDefined());
     await act(async () => {
         fireEvent.click(screen.getByTestId(`settings-subtab-${sub}`));
@@ -224,7 +224,7 @@ describe('AdminPanel', () => {
         expect(deleteCalls[0][0]).toContain('confirm=abc');
     });
 
-    it('renders Display section with show intent announcements toggle in Chat Experience card', async () => {
+    it('renders the intent announcements toggle in the Appearance Chat Display group', async () => {
         mockFetch.mockImplementation((url: string) => {
             if (url.includes('/admin/config')) {
                 return Promise.resolve({
@@ -242,7 +242,7 @@ describe('AdminPanel', () => {
             renderWithProviders();
         });
 
-        await gotoSettingsSubTab('chat');
+        await gotoSettingsSubTab('appearance');
 
         await waitFor(() => {
             expect(screen.getByText('Intent announcements')).toBeDefined();
@@ -250,6 +250,7 @@ describe('AdminPanel', () => {
 
         const toggle = screen.getByTestId('toggle-show-report-intent') as HTMLInputElement;
         expect(toggle.checked).toBe(false);
+        expect(toggle.closest('[data-testid="appearance-group-chat-display"]')).not.toBeNull();
     });
 
     it('save config with blank model omits model from payload', async () => {
@@ -364,11 +365,11 @@ describe('AdminPanel', () => {
         expect(capturedBody.model).toBe('gpt-4');
     });
 
-    it('Intent toggle marks Chat Experience card dirty, Save sends PUT with showReportIntent', async () => {
+    it('Intent toggle marks the Appearance card dirty, Save sends PUT with showReportIntent only from Appearance', async () => {
         mockFetch.mockImplementation((url: string, options?: any) => {
             if (url.includes('/admin/config') && options?.method === 'PUT') {
                 const body = JSON.parse(options.body);
-                expect(body.showReportIntent).toBe(true);
+                expect(body).toEqual({ taskCardDensity: 'compact', historyGrouping: true, showReportIntent: true, toolCompactness: 1 });
                 return Promise.resolve({
                     ok: true,
                     json: () => Promise.resolve({
@@ -393,20 +394,20 @@ describe('AdminPanel', () => {
             renderWithProviders();
         });
 
-        await gotoSettingsSubTab('chat');
+        await gotoSettingsSubTab('appearance');
 
         await waitFor(() => {
             expect(screen.getByTestId('toggle-show-report-intent')).toBeDefined();
         });
 
-        // Toggle intent announcements — makes Chat card dirty
+        // Toggle intent announcements — makes the Appearance card dirty
         await act(async () => {
             fireEvent.click(screen.getByTestId('toggle-show-report-intent'));
         });
 
-        // Click Chat Experience card Save
+        // Click Appearance card Save
         await act(async () => {
-            fireEvent.click(screen.getByTestId('settings-chat-save'));
+            fireEvent.click(screen.getByTestId('settings-appearance-save'));
         });
 
         const putCalls = mockFetch.mock.calls.filter(
@@ -447,7 +448,7 @@ describe('AdminPanel', () => {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             });
             await act(async () => { renderWithProviders(); });
-            await gotoSettingsSubTab('chat');
+            await gotoSettingsSubTab('appearance');
             await waitFor(() => {
                 expect(screen.getByTestId('tool-compactness-compact')).toBeDefined();
             });
@@ -460,7 +461,7 @@ describe('AdminPanel', () => {
         it('renders segmented control with correct aria-pressed for initial value', async () => {
             mockConfig(1);
             await act(async () => { renderWithProviders(); });
-            await gotoSettingsSubTab('chat');
+            await gotoSettingsSubTab('appearance');
             await waitFor(() => {
                 expect(screen.getByTestId('tool-compactness-full')).toBeDefined();
             });
@@ -477,7 +478,7 @@ describe('AdminPanel', () => {
         it('renders Whisper button with correct aria-pressed when toolCompactness is 3', async () => {
             mockConfig(3);
             await act(async () => { renderWithProviders(); });
-            await gotoSettingsSubTab('chat');
+            await gotoSettingsSubTab('appearance');
             await waitFor(() => {
                 expect(screen.getByTestId('tool-compactness-whisper')).toBeDefined();
             });
@@ -485,7 +486,7 @@ describe('AdminPanel', () => {
             expect(whisper.getAttribute('aria-pressed')).toBe('true');
         });
 
-        it('clicking a segment marks Chat card dirty, Save fires PUT with the new value', async () => {
+        it('clicking a segment marks the Appearance card dirty, Save fires PUT with the new value', async () => {
             let capturedBody: any = null;
             mockFetch.mockImplementation((url: string, options?: any) => {
                 if (url.includes('/admin/config') && options?.method === 'PUT') {
@@ -502,19 +503,19 @@ describe('AdminPanel', () => {
             });
 
             await act(async () => { renderWithProviders(); });
-            await gotoSettingsSubTab('chat');
+            await gotoSettingsSubTab('appearance');
             await waitFor(() => expect(screen.getByTestId('tool-compactness-minimal')).toBeDefined());
 
-            // Click Minimal segment — marks Chat card dirty
+            // Click Minimal segment — marks the Appearance card dirty
             await act(async () => {
                 fireEvent.click(screen.getByTestId('tool-compactness-minimal'));
             });
 
             expect((screen.getByTestId('tool-compactness-minimal') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
 
-            // Click Chat Experience card Save
+            // Click Appearance card Save
             await act(async () => {
-                fireEvent.click(screen.getByTestId('settings-chat-save'));
+                fireEvent.click(screen.getByTestId('settings-appearance-save'));
             });
 
             await waitFor(() => expect(capturedBody).not.toBeNull());
@@ -533,7 +534,7 @@ describe('AdminPanel', () => {
             });
 
             await act(async () => { renderWithProviders(); });
-            await gotoSettingsSubTab('chat');
+            await gotoSettingsSubTab('appearance');
             await waitFor(() => expect(screen.getByTestId('tool-compactness-compact')).toBeDefined());
 
             // Click Full segment
@@ -543,9 +544,9 @@ describe('AdminPanel', () => {
 
             expect((screen.getByTestId('tool-compactness-full') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
 
-            // Click Cancel on Chat card
+            // Click Cancel on the Appearance card
             await act(async () => {
-                fireEvent.click(screen.getByTestId('settings-chat-cancel'));
+                fireEvent.click(screen.getByTestId('settings-appearance-cancel'));
             });
 
             // Should revert back to compact (value 1)
@@ -556,7 +557,7 @@ describe('AdminPanel', () => {
         it('renders SourceBadge for toolCompactness source', async () => {
             mockConfig(0, { toolCompactness: 'file' });
             await act(async () => { renderWithProviders(); });
-            await gotoSettingsSubTab('chat');
+            await gotoSettingsSubTab('appearance');
             await waitFor(() => expect(screen.getByTestId('tool-compactness-full')).toBeDefined());
             expect(screen.getByText('file')).toBeDefined();
         });
@@ -1225,77 +1226,147 @@ describe('AdminPanel', () => {
             await waitFor(() => expect((screen.getByTestId('settings-tab-features-integrations-save') as HTMLButtonElement).disabled).toBe(true));
         });
 
-        // Editor settings live only on the Editors tab: selecting it is a
-        // deep-linkable tab, and its controls are not duplicated elsewhere.
-        const EDITOR_TOGGLES = ['toggle-explorer-editor-tabs-enabled', 'toggle-markdown-panel-preview-enabled', 'toggle-arxiv-paper-ingest-enabled'];
+        // Every UI-only control lives on Appearance, exactly once; functional
+        // settings stay on their domain tabs.
+        const APPEARANCE_ONLY = [
+            'toggle-show-report-intent', 'tool-compactness-full', 'pref-theme', 'pref-html-embed-enabled',
+            'toggle-explorer-editor-tabs-enabled', 'toggle-markdown-panel-preview-enabled', 'toggle-diff-file-picker-enabled',
+            'toggle-composer-word-hint-enabled', 'toggle-chat-folders-enabled', 'toggle-sentinel-result-cards-enabled',
+            'toggle-commit-chat-lens-enabled', 'toggle-repo-group-aggregated-chats-enabled',
+            'toggle-schedules-in-scheduled-slide-enabled', 'toggle-vim-navigation-enabled', 'toggle-explorer-delete-enabled',
+        ];
+        const FUNCTIONAL_BY_TAB = {
+            chat: ['toggle-chat-followup-enabled', 'toggle-chat-askuser-enabled', 'toggle-quick-ask-sidenotes-enabled', 'toggle-chat-style-selector-enabled'],
+            sentinel: ['toggle-sentinel-enabled', 'toggle-sentinel-todo-tags-enabled'],
+            editors: ['toggle-arxiv-paper-ingest-enabled'],
+            integrations: ['toggle-kusto-enabled'],
+            features: ['toggle-focused-diff-enabled', 'toggle-native-cli-sessions-enabled'],
+        } as const;
 
-        it('selects the Editors tab and renders each editor control exactly once', async () => {
+        it('renders every UI-only control exactly once, on Appearance, and keeps functional settings on their tabs', async () => {
             mockFullConfig();
             await act(async () => { renderWithProviders(); });
-            await gotoSettingsSubTab('editors');
-            const tab = screen.getByTestId('settings-subtab-editors');
-            expect(tab.getAttribute('role')).toBe('tab');
-            expect(tab.getAttribute('aria-selected')).toBe('true');
-            expect(tab.textContent).toContain('Editors');
-            expect(window.location.hash).toBe('#admin/settings/editors');
-            await waitFor(() => expect(screen.getByTestId('settings-tab-features-editors')).toBeDefined());
-            for (const testId of EDITOR_TOGGLES) expect(screen.getAllByTestId(testId)).toHaveLength(1);
+            await gotoSettingsSubTab('appearance');
+            expect(window.location.hash).toBe('#admin/settings/appearance');
+            await waitFor(() => expect(screen.getByTestId('settings-tab-features-appearance')).toBeDefined());
+            for (const testId of APPEARANCE_ONLY) expect(screen.getAllByTestId(testId), testId).toHaveLength(1);
+            for (const testIds of Object.values(FUNCTIONAL_BY_TAB)) {
+                for (const testId of testIds) expect(screen.queryByTestId(testId), testId).toBeNull();
+            }
 
-            for (const sub of ['appearance', 'integrations'] as const) {
+            for (const sub of ['ai', 'chat', 'sentinel', 'editors', 'features', 'integrations'] as const) {
                 await gotoSettingsSubTab(sub);
                 await waitFor(() => expect(screen.getByTestId(`settings-subtab-${sub}`).getAttribute('aria-selected')).toBe('true'));
-                for (const testId of EDITOR_TOGGLES) expect(screen.queryByTestId(testId)).toBeNull();
+                for (const testId of APPEARANCE_ONLY) expect(screen.queryByTestId(testId), `${testId} on ${sub}`).toBeNull();
+                for (const testId of FUNCTIONAL_BY_TAB[sub as keyof typeof FUNCTIONAL_BY_TAB] ?? []) {
+                    expect(screen.getAllByTestId(testId), `${testId} on ${sub}`).toHaveLength(1);
+                }
             }
-            // Non-editor Appearance/Integrations rows stay where they were.
-            expect(screen.getByTestId('toggle-kusto-enabled')).toBeDefined();
-            await gotoSettingsSubTab('appearance');
-            await waitFor(() => expect(screen.getByTestId('toggle-explorer-delete-enabled')).toBeDefined());
-            expect(screen.getByTestId('toggle-panel-tab-reordering-enabled')).toBeDefined();
-            expect(screen.getByTestId('toggle-vim-navigation-enabled')).toBeDefined();
         });
 
-        it('lands on Editors from the #admin/settings/editors deep link', async () => {
+        it('groups Appearance into jump-navigable sections', async () => {
+            window.location.hash = '#admin/settings/appearance';
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('settings-tab-features-appearance')).toBeDefined());
+            const jumps = Array.from(screen.getByTestId('appearance-section-nav').querySelectorAll('button'));
+            expect(jumps.map(b => b.textContent)).toEqual([
+                'Theme & Layout', 'Chat Display', 'Prompt Input', 'Layout & Navigation', 'Chat Interface', 'Editors & Files',
+            ]);
+            const scrollIntoView = vi.fn();
+            Element.prototype.scrollIntoView = scrollIntoView;
+            for (const jump of jumps) {
+                const targetId = jump.getAttribute('data-testid')!.replace('appearance-jump-', '');
+                expect(document.getElementById(targetId), targetId).not.toBeNull();
+                fireEvent.click(jump);
+            }
+            expect(scrollIntoView).toHaveBeenCalledTimes(jumps.length);
+            expect(screen.getByTestId('toggle-show-report-intent').closest('#appearance-group-chat-display')).not.toBeNull();
+            expect(screen.getByTestId('toggle-explorer-editor-tabs-enabled').closest('#appearance-group-editorFiles')).not.toBeNull();
+            expect(screen.getByTestId('toggle-chat-folders-enabled').closest('#appearance-group-uiChat')).not.toBeNull();
+            expect(screen.getByTestId('toggle-scope-switcher-enabled').closest('#appearance-group-uiGeneral')).not.toBeNull();
+        });
+
+        it('lands on Editors from the #admin/settings/editors deep link with only the Notes editor toggle', async () => {
             window.location.hash = '#admin/settings/editors';
             mockFullConfig();
             await act(async () => { renderWithProviders(); });
             await waitFor(() => expect(screen.getByTestId('settings-subtab-editors').getAttribute('aria-selected')).toBe('true'));
-            await waitFor(() => expect(screen.getByTestId('toggle-explorer-editor-tabs-enabled')).toBeDefined());
+            await waitFor(() => expect(screen.getByTestId('toggle-arxiv-paper-ingest-enabled')).toBeDefined());
+            expect(screen.queryByTestId('toggle-explorer-editor-tabs-enabled')).toBeNull();
         });
 
-        it('Ctrl+S saves dirty Editors settings with their existing config keys', async () => {
+        it('Ctrl+S on Appearance saves both cards with their own payloads', async () => {
             mockFullConfig();
             const writes = recordWrites();
             await act(async () => { renderWithProviders(); });
-            await gotoSettingsSubTab('editors');
+            await gotoSettingsSubTab('appearance');
             await waitFor(() => expect(screen.getByTestId('toggle-markdown-panel-preview-enabled')).toBeDefined());
-            await act(async () => { fireEvent.click(screen.getByTestId('toggle-markdown-panel-preview-enabled')); });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('toggle-show-report-intent'));
+                fireEvent.click(screen.getByTestId('toggle-markdown-panel-preview-enabled'));
+            });
 
             let event!: KeyboardEvent;
             await act(async () => { event = pressSave(); });
 
             expect(event.defaultPrevented).toBe(true);
-            await waitFor(() => expect(writes).toHaveLength(1));
-            expect(writes[0].body).toEqual({
-                'features.explorerEditorTabs': false,
-                'features.markdownPanelPreview': true,
-                'features.arxivPaperIngest': false,
-            });
-            await waitFor(() => expect((screen.getByTestId('settings-tab-features-editors-save') as HTMLButtonElement).disabled).toBe(true));
+            await waitFor(() => expect(writes).toHaveLength(2));
+            const display = writes.find(w => 'showReportIntent' in w.body)!;
+            expect(display.body).toEqual({ taskCardDensity: 'compact', historyGrouping: true, showReportIntent: true, toolCompactness: 1 });
+            const registry = writes.find(w => 'features.markdownPanelPreview' in w.body)!;
+            expect(registry.body['features.markdownPanelPreview']).toBe(true);
+            expect(registry.body['features.explorerEditorTabs']).toBe(false);
+            expect(registry.body).not.toHaveProperty('features.arxivPaperIngest');
+            expect(registry.body).not.toHaveProperty('chat.followUpSuggestions.enabled');
+            await waitFor(() => expect((screen.getByTestId('settings-tab-features-appearance-save') as HTMLButtonElement).disabled).toBe(true));
+            await waitFor(() => expect((screen.getByTestId('settings-appearance-save') as HTMLButtonElement).disabled).toBe(true));
         });
 
-        it('Features search links editor settings to the Editors tab', async () => {
+        // Regression: chat display controls left the Chat card; saving Chat must
+        // send only chat behavior and keep a pending Appearance display edit.
+        it('saving Chat sends only chat behavior and keeps a pending Appearance display edit', async () => {
+            mockFullConfig();
+            const writes = recordWrites();
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('appearance');
+            await waitFor(() => expect(screen.getByTestId('tool-compactness-minimal')).toBeDefined());
+            await act(async () => { fireEvent.click(screen.getByTestId('tool-compactness-minimal')); });
+            await gotoSettingsSubTab('chat');
+            await waitFor(() => expect(screen.getByTestId('toggle-chat-askuser-enabled')).toBeDefined());
+            await act(async () => { fireEvent.click(screen.getByTestId('toggle-chat-askuser-enabled')); });
+            await act(async () => { pressSave(); });
+
+            await waitFor(() => expect(writes).toHaveLength(1));
+            expect(writes[0].body).toEqual({
+                'chat.followUpSuggestions.enabled': true,
+                'chat.followUpSuggestions.count': 3,
+                'chat.askUser.enabled': false,
+            });
+            await gotoSettingsSubTab('appearance');
+            await waitFor(() => expect(screen.getByTestId('tool-compactness-minimal').getAttribute('aria-pressed')).toBe('true'));
+            expect((screen.getByTestId('settings-appearance-save') as HTMLButtonElement).disabled).toBe(false);
+        });
+
+        it.each([
+            ['explorer editor', 'toggle-explorer-editor-tabs-enabled'],
+            ['composer word hint', 'toggle-composer-word-hint-enabled'],
+            ['sentinel result cards', 'toggle-sentinel-result-cards-enabled'],
+        ])('Features search for "%s" links to the Appearance tab', async (query, testId) => {
             mockFullConfig();
             await act(async () => { renderWithProviders(); });
             await gotoSettingsSubTab('features');
             await waitFor(() => expect(screen.getByTestId('feature-search-input')).toBeDefined());
             await act(async () => {
-                fireEvent.change(screen.getByTestId('feature-search-input'), { target: { value: 'explorer editor' } });
+                fireEvent.change(screen.getByTestId('feature-search-input'), { target: { value: query } });
             });
-            const link = screen.getByTestId('feature-search-link-toggle-explorer-editor-tabs-enabled');
-            expect(link.textContent).toBe('in Editors');
-            expect(link.getAttribute('href')).toBe('#admin/settings/editors');
+            const link = screen.getByTestId(`feature-search-link-${testId}`);
+            expect(link.textContent).toBe('in Appearance');
+            expect(link.getAttribute('href')).toBe('#admin/settings/appearance');
+            expect(screen.queryByTestId(testId)).toBeNull();
             await act(async () => { fireEvent.click(link); });
-            await waitFor(() => expect(screen.getByTestId('settings-subtab-editors').getAttribute('aria-selected')).toBe('true'));
+            await waitFor(() => expect(screen.getByTestId('settings-subtab-appearance').getAttribute('aria-selected')).toBe('true'));
+            await waitFor(() => expect(screen.getAllByTestId(testId)).toHaveLength(1));
         });
 
         // Regression: multi-card sections must save the feature card too.
@@ -1771,7 +1842,7 @@ describe('AdminPanel', () => {
             });
 
             await act(async () => { renderWithProviders(); });
-            await gotoSettingsSubTab('features');
+            await gotoSettingsSubTab('appearance');
             await waitFor(() => expect(screen.getByTestId('toggle-commit-chat-lens-enabled')).toBeDefined());
 
             const toggle = screen.getByTestId('toggle-commit-chat-lens-enabled') as HTMLInputElement;
@@ -1780,10 +1851,10 @@ describe('AdminPanel', () => {
             await act(async () => {
                 fireEvent.click(toggle);
             });
-            expect((screen.getByTestId('settings-features-save') as HTMLButtonElement).disabled).toBe(false);
+            expect((screen.getByTestId('settings-tab-features-appearance-save') as HTMLButtonElement).disabled).toBe(false);
 
             await act(async () => {
-                fireEvent.click(screen.getByTestId('settings-features-save'));
+                fireEvent.click(screen.getByTestId('settings-tab-features-appearance-save'));
             });
             await waitFor(() => expect(capturedBody).not.toBeNull());
             expect(capturedBody!['features.commitChatLens']).toBe(true);
