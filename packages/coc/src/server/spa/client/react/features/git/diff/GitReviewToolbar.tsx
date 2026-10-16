@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 
 /** A secondary review action: an icon button in wide panes, an overflow menu item in narrower ones. */
@@ -38,6 +39,35 @@ export function GitReviewToolbar({ header, progress, children }: {
     const menuId = useId();
     const moreRef = useRef<HTMLButtonElement>(null);
     const menuRef = useRef<HTMLDivElement>(null);
+    const [menuPosition, setMenuPosition] = useState({ width: 0, left: 0, top: 0 });
+    useLayoutEffect(() => {
+        if (!menuOpen) return;
+        const button = moreRef.current;
+        const review = button?.closest('.git-file-review');
+        if (!button || !review) return;
+        const update = () => {
+            const anchor = button.getBoundingClientRect();
+            const menu = menuRef.current?.getBoundingClientRect();
+            if (!menu) return;
+            setMenuPosition({
+                // Retain the source pane's container-query tiers outside its clipping ancestors.
+                width: review.getBoundingClientRect().width,
+                left: Math.max(8, Math.min(anchor.right - menu.width, window.innerWidth - menu.width - 8)),
+                top: Math.max(8, Math.min(anchor.bottom + 4, window.innerHeight - menu.height - 8)),
+            });
+        };
+        update();
+        const observer = new ResizeObserver(update);
+        observer.observe(review);
+        if (menuRef.current) observer.observe(menuRef.current);
+        window.addEventListener('resize', update);
+        window.addEventListener('scroll', update, true);
+        return () => {
+            observer.disconnect();
+            window.removeEventListener('resize', update);
+            window.removeEventListener('scroll', update, true);
+        };
+    }, [menuOpen]);
     // Wide panes hide collapsible items with CSS; keyboard focus skips them.
     const menuItems = () => Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role^=menuitem]:not(:disabled)') ?? [])
         .filter(item => getComputedStyle(item).display !== 'none');
@@ -76,10 +106,17 @@ export function GitReviewToolbar({ header, progress, children }: {
             </button>)}
             {hasMenu && <button type="button" ref={moreRef} className={`git-review-icon git-review-more${menuActions.length ? '' : ' git-review-collapsible'}`}
                 aria-label="More review actions" title="More review actions" aria-haspopup="menu" aria-expanded={menuOpen}
-                aria-controls={menuOpen ? menuId : undefined} onClick={() => setMenuOpen(open => !open)} data-testid="git-review-more">
+                aria-controls={menuOpen ? menuId : undefined} onClick={() => {
+                    const width = moreRef.current?.closest('.git-file-review')?.getBoundingClientRect().width ?? 0;
+                    setMenuPosition(position => ({ ...position, width }));
+                    setMenuOpen(open => !open);
+                }} data-testid="git-review-more">
                 <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><circle cx="3.5" cy="8" r="1.3" /><circle cx="8" cy="8" r="1.3" /><circle cx="12.5" cy="8" r="1.3" /></svg>
             </button>}
-            {menuOpen && <div ref={menuRef} id={menuId} role="menu" aria-label="More review actions" className="git-review-menu" data-testid="git-review-menu"
+            {menuOpen && createPortal(<div className="git-file-review git-review-menu-layer" style={{ width: menuPosition.width }}>
+                <div ref={menuRef} id={menuId} role="menu" aria-label="More review actions" className="git-review-menu" data-testid="git-review-menu"
+                style={{ left: menuPosition.left, top: menuPosition.top }}
+                onMouseDown={event => event.stopPropagation()}
                 onKeyDown={event => {
                     if (event.key === 'Escape') { event.preventDefault(); closeMenu(); return; }
                     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
@@ -90,7 +127,8 @@ export function GitReviewToolbar({ header, progress, children }: {
                 }}>
                 {actions.map(action => menuItem(action, true))}
                 {menuActions.map(action => menuItem(action, false))}
-            </div>}
+                </div>
+            </div>, document.body)}
             {/* Decorative: the reviewed count and the navigator's progress element carry the value. */}
             {progress && progress.total > 0 && <div className="git-review-progress-line" aria-hidden="true" data-testid="git-review-progress-line">
                 <span style={{ width: `${pct}%` }} />

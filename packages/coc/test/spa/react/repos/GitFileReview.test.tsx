@@ -179,6 +179,45 @@ describe('single-row review toolbar', () => {
         expect(screen.queryByTestId('git-review-reviewed-count')).toBeNull();
         expect(screen.queryByTestId('git-review-more')).toBeNull();
     });
+    it('portals overflow outside a narrow clipped review and keeps it inside the viewport', () => {
+        const action = vi.fn();
+        const outside = vi.fn();
+        let anchor = { right: window.innerWidth - 2, bottom: window.innerHeight - 2 };
+        const bounds = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+            if (this.classList.contains('git-review-menu')) return { width: 200, height: 180 } as DOMRect;
+            if (this.classList.contains('git-file-review')) return { width: 60, left: anchor.right - 60 } as DOMRect;
+            return anchor as DOMRect;
+        });
+        document.addEventListener('mousedown', outside);
+        try {
+            const view = render(<GitFileReview {...props} header={{ actions: [
+                { id: 'chat', label: 'Toggle AI chat', icon: null, onClick: action, pressed: true, testId: 'chat' },
+            ] }} />);
+            const more = screen.getByTestId('git-review-more');
+            fireEvent.click(more);
+            const menu = screen.getByRole('menu', { name: 'More review actions' });
+            expect(view.container.contains(menu)).toBe(false);
+            expect(menu.parentElement!.parentElement).toBe(document.body);
+            expect(menu.parentElement!.style.width).toBe('60px');
+            expect(menu.parentElement!.classList.contains('git-file-review')).toBe(true);
+            expect(menu.style.left).toBe(`${window.innerWidth - 208}px`);
+            expect(menu.style.top).toBe(`${window.innerHeight - 188}px`);
+            anchor = { right: 750, bottom: 100 };
+            fireEvent.scroll(window);
+            expect(menu.style.left).toBe('550px');
+            expect(menu.style.top).toBe('104px');
+            const item = within(menu).getByRole('menuitemcheckbox', { name: 'Toggle AI chat' });
+            fireEvent.mouseDown(item);
+            expect(outside).not.toHaveBeenCalled();
+            fireEvent.click(item);
+            expect(action).toHaveBeenCalledOnce();
+            expect(screen.queryByRole('menu')).toBeNull();
+            expect(document.activeElement).toBe(more);
+        } finally {
+            document.removeEventListener('mousedown', outside);
+            bounds.mockRestore();
+        }
+    });
     it('defines a 34px nonwrapping row with container-driven compaction tiers', () => {
         const css = readFileSync(join(__dirname, '../../../../src/server/spa/client/react/features/git/diff/git-file-review.css'), 'utf8');
         expect(css).toMatch(/\.git-review-tools\{[^}]*flex-wrap:nowrap[^}]*height:34px/);
