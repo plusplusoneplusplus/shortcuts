@@ -272,6 +272,13 @@ CoC macOS arm64 and Windows x64. It requires the selected installer's exact
 callbacks, and verifies SHA-256 before returning an installer path. Fetch and
 filesystem seams support plain Node tests. Failure or abort removes the attempt's
 directory; successful downloads expose caller-owned cleanup for deferred installs.
+`update-install-mac.ts` rejects translocated, disk-image and unwritable bundle
+locations. It mounts the DMG readonly, stages beside the destination, and detaches
+before returning a detached helper launch plan. The helper waits for the old PID,
+swaps bundles with rollback, clears quarantine when present, and relaunches.
+Successful installation removes staging/downloads; helper failures retain an
+`install-error.txt` diagnostic and reopen the restored app. Failed detach preserves
+the mount directory for safety. Electron owns restart confirmation and quitting.
 
 URL hosts expose optional `BrowserHostedView.cdp(method, params)`. Electron's
 `ElectronBrowserCdp` lazily attaches to the adopted guest debugger and detaches
