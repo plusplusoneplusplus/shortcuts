@@ -77,12 +77,17 @@ references before editing. Paths are package-relative.
 - Exited-terminal Enter uses `TerminalView`'s manual restart lifecycle and synchronous
   per-tab admission guard. Only a plain keydown focused inside the active viewport
   triggers restart; pasted input and transport disconnection are not process exit.
-- `list_workspaces`, `send_to_conversation` remote targets and messaging `list remotes` share one route-layer
+- `list_workspaces` defaults to registered dispatch targets; these, `send_to_conversation`
+  remote targets and messaging `list remotes` share one route-layer
   `src/server/servers/workspace-directory.ts` (clone keys, per-server timeouts, last-known
   offline entries). Remote create mode posts to the remote's own queue/Ralph API with no
   local fallback; output never carries paths, URLs, or credentials. Successful remote
   launches expose unavailable automatic parent result return through `resultDelivery`
-  and retain the clone chat link for inspecting the outcome.
+  and retain the clone chat link for inspecting the outcome. Explicit `source: dashboard`
+  reads the invoking workspace's dashboard relay through a late-bound runtime getter,
+  including unregistered/offline destinations. Its stable server/workspace `target`
+  is read-only, not a dispatch ID or ownership proof; unknown identities have no target.
+  Relay failures never fall back to the registered directory.
 - `search_conversations` title lookup scans workspace-scoped chat summaries before
   result pagination, uses displayed titles, and reports ambiguity with server/workspace
   labels. Remote clone keys use the shared workspace directory's index-only summary

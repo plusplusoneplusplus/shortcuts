@@ -505,7 +505,9 @@ export function buildSendToConversationAddon(
         store, workspaceId, enqueueChat, sendMessage, launchRalph, parentProcessId, runtime: toolRuntime,
         ...(sentinelTodos ? { todoTracking: createSentinelTodoTracking(sentinelTodos) } : {}),
     });
-    const { tool: listTool } = createListWorkspacesTool({ directory });
+    const { tool: listTool } = createListWorkspacesTool({
+        directory, workspaceId, getDashboardDiscovery: runtime?.getDashboardDiscovery,
+    });
 
     // No prose suffix — the tool descriptions carry their own guidance.
     return { tools: [tool, listTool], suffix: '' };

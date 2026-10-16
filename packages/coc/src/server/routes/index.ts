@@ -877,6 +877,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         validateProvider: validateSendToConversationProvider,
         getEffortTiersForProvider,
         workspaceDirectory,
+        getDashboardDiscovery: () => getWsServer()?.dashboardDiscovery,
         trackMessagingJob: job => jobNotices.track(job),
     });
     registerProviderRoutes(routes, dataDir);

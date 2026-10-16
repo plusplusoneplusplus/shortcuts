@@ -34,6 +34,7 @@ import {
     type ExecutorRuntimeCapabilities,
 } from '../../../src/server/executors/executor-runtime-contracts';
 import type { SendToConversationRuntimeOptions } from '../../../src/server/llm-tools/send-to-conversation-tool';
+import type { DashboardDiscoveryRuntime } from '@plusplusoneplusplus/coc-client';
 
 // ============================================================================
 // Sentinels — one distinguishable value per capability
@@ -310,6 +311,25 @@ describe('Executor runtime capability wiring', () => {
             const workspaceDirectory = { list: vi.fn(), startRemoteChat: vi.fn() };
             sendRuntime = { workspaceDirectory };
             expect(chatExecutor.runtime.getSendToConversationRuntime?.()?.workspaceDirectory).toBe(workspaceDirectory);
+        });
+
+        it('retains the dashboard discovery getter until WebSocket infrastructure is available', () => {
+            let discovery: DashboardDiscoveryRuntime | undefined;
+            const getDashboardDiscovery = () => discovery;
+            const runtime: ExecutorRuntimeCapabilities = {
+                getSendToConversationRuntime: () => ({ getDashboardDiscovery }),
+            };
+            const { executor } = makeBridge(runtime);
+            const parts = internals(executor);
+            for (const name of CHAT_EXECUTOR_NAMES) {
+                const received = parts[name].runtime.getSendToConversationRuntime().getDashboardDiscovery;
+                expect(received).toBe(getDashboardDiscovery);
+                expect(received()).toBeUndefined();
+            }
+            discovery = { listWorkspaces: vi.fn() };
+            for (const name of CHAT_EXECUTOR_NAMES) {
+                expect(parts[name].runtime.getSendToConversationRuntime().getDashboardDiscovery()).toBe(discovery);
+            }
         });
     });
 

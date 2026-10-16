@@ -417,20 +417,27 @@ delivery. Reused receipts produce no new realtime events.
 ### list_workspaces
 
 Built in the same addon as `send_to_conversation` (same `enqueueChat` gate, own registry toggle,
-enabled by default), registered for every chat mode, and backed by the same
-`WorkspaceDirectory` (`src/server/servers/workspace-directory.ts`) so its ids always resolve in
-`send_to_conversation`. The route layer builds the directory over the store, `dataDir`, and the
-`RemoteServerRuntimeService` returned by `registerRemoteServerRoutes`, and publishes it as
-`SendToConversationRuntimeOptions.workspaceDirectory` through the late-bound
-`getSendToConversationRuntime` capability; without it the addon falls back to a local-only
-directory. Each remote's `/api/workspaces` (plus `/api/repo-groups/:id` for group members) is
-fetched at its effective URL with a 4s per-request timeout; a failure never fails the call —
-the server reports its last-known entries (module-level `createCache` namespace) with
-`online: false`, or zero entries when none are cached. Entries carry only `id`, `name`,
-`type` (`repo` | `group` with `members: [{ id, name }]`), `server` (`local` for this server),
-`serverKind`, and `online`; a `servers` array lists every consulted server. Optional `query` is a
-case-insensitive substring over repo and server names; results cap at 50 with `total` and
-`truncated`. The repo list never enters the system prompt.
+enabled by default), and registered for every chat mode. Default `source: registered`
+uses `WorkspaceDirectory` (`src/server/servers/workspace-directory.ts`); its IDs resolve
+in `send_to_conversation`. The route layer publishes the store/runtime-backed directory
+as `SendToConversationRuntimeOptions.workspaceDirectory`; standalone executors use a
+local-only directory. Remote workspace/group reads use current endpoints and 4s deadlines.
+Failed reads return last-known entries with `online: false`, or zero cached entries.
+
+Registered entries carry `id`, `name`, repo/group `type`, optional group `members`,
+`server`, `serverKind`, `online` and observed `serverIdentity`; `servers` lists consulted
+servers. Explicit `source: dashboard` uses `getDashboardDiscovery` from the same runtime
+bundle, resolving WebSocket infrastructure at call time. Owner scope comes from the
+invoking chat, never tool arguments. Dashboard observations include unregistered
+destinations and offline rows, with labels, raw workspace ID, optional identity and
+stable `target: { serverIdentity, workspaceId }` only for known identities.
+
+Dashboard targets are read-only selectors, not dispatch IDs or chat ownership proof.
+Unknown identity stays unknown. Missing/disconnected/stale dashboard reads return a
+generic error without registered/local fallback. Both sources filter case-insensitive
+workspace/server labels before the 50-row cap and return `total`/`truncated`.
+Dashboard replies carry `source: dashboard`; they omit registry `servers` and aliases.
+Ambiguous labels require clarification. Workspace listings never enter system prompts.
 
 Post mode supplies `processId`, ignores any `provider` argument so native session continuity
 stays on the existing conversation's provider, expands `effortTier` against that provider, and

@@ -103,6 +103,7 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
         type: 'object',
         properties: {
             query: { type: 'string' },
+            source: { type: 'string', enum: ['registered', 'dashboard'] },
         },
     },
     ask_user: {

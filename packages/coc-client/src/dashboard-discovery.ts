@@ -1,3 +1,13 @@
+/** Stable read-only selector, never a connection alias or a chat dispatch target. */
+export interface DashboardWorkspaceTarget {
+  serverIdentity: string;
+  workspaceId: string;
+}
+
+export interface DashboardDiscoveryRuntime {
+  listWorkspaces(workspaceId: string, signal?: AbortSignal): Promise<DashboardVisibleWorkspace[]>;
+}
+
 /** Read-only dashboard topology; connection aliases and endpoint URLs stay in the dashboard. */
 export interface DashboardVisibleWorkspace {
   serverIdentity?: string;
