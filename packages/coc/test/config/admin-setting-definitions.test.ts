@@ -709,11 +709,11 @@ describe('Features card UI metadata', () => {
         expect(def!.runtime).toBe('live');
         expect(def!.runtimeFlag).toBe('explorerEditorTabsEnabled');
         expect(def!.ui, 'explorer editor tabs must appear on the Features card').toBeDefined();
-        expect(def!.ui!.group).toBe('dashboard');
+        expect(def!.ui!.group).toBe('editorFiles');
         expect(def!.ui!.label).toBe('Explorer editor tabs');
         expect(def!.ui!.badge).toBe('experimental');
         expect(def!.ui!.hint).toMatch(/disabled by default/i);
-        expect(getFeatureCardSettings('dashboard').some(d => d.key === 'features.explorerEditorTabs')).toBe(true);
+        expect(getFeatureCardSettings('editorFiles').some(d => d.key === 'features.explorerEditorTabs')).toBe(true);
         // Off in the resolved default config, off when absent from a partial
         // config, and on only when the config file opts in.
         expect(DEFAULT_CONFIG.features.explorerEditorTabs).toBe(false);
@@ -815,12 +815,14 @@ describe('feature toggle settings-tab placement', () => {
         'features.railGitSummary': 'appearance',
         'features.railStatusActions': 'appearance',
         'features.schedulerDelayHint': 'appearance',
-        'features.explorerEditorTabs': 'appearance',
         'features.explorerDelete': 'appearance',
-        'features.markdownPanelPreview': 'appearance',
         'features.panelTabReordering': 'appearance',
         'features.htmlPageTab': 'appearance',
         'scratchpad.layout': 'appearance',
+        // Editors
+        'features.explorerEditorTabs': 'editors',
+        'features.markdownPanelPreview': 'editors',
+        'features.arxivPaperIngest': 'editors',
         // Integrations
         'features.teamsBridgeObservability': 'integrations',
         'features.teamsAiAnswerRelay': 'integrations',
@@ -829,7 +831,6 @@ describe('feature toggle settings-tab placement', () => {
         'mcpOauth.enabled': 'integrations',
         'mcpOauth.autoRefresh.enabled': 'integrations',
         'kusto.enabled': 'integrations',
-        'features.arxivPaperIngest': 'integrations',
         'workItems.sync.enabled': 'integrations',
         // Features (module/tool-level toggles stay)
         'notes.enabled': 'features',
@@ -887,6 +888,25 @@ describe('feature toggle settings-tab placement', () => {
             expect(def.ui?.dependsOn, def.key).toBeUndefined();
             expect(def.ui?.badge, def.key).toBe('experimental');
         }
+    });
+
+    // The Editors tab owns exactly the editor-specific settings; moving them
+    // must not change their keys, defaults, live runtime or opt-in badges.
+    it('keeps exactly the editor settings on the Editors tab with unchanged contracts', () => {
+        const editorDefs = uiDefs.filter(d => getFeatureSettingTab(d) === 'editors');
+        expect(editorDefs.map(d => [d.key, d.ui!.group])).toEqual([
+            ['features.arxivPaperIngest', 'editorNotes'],
+            ['features.explorerEditorTabs', 'editorFiles'],
+            ['features.markdownPanelPreview', 'editorFiles'],
+        ]);
+        for (const def of editorDefs) {
+            expect(def.default, def.key).toBe(false);
+            expect(def.runtime, def.key).toBe('live');
+            expect(def.ui!.badge, def.key).toBe('experimental');
+            expect(buildRuntimeFeatureFlags({})[def.runtimeFlag!], def.key).toBe(false);
+        }
+        expect(FEATURE_CARD_GROUPS.find(g => g.id === 'editorFiles')?.heading).toBe('File Tabs & Previews');
+        expect(FEATURE_CARD_GROUPS.find(g => g.id === 'editorNotes')?.heading).toBe('Notes Editor');
     });
 
     it('places every ui setting on a valid settings tab', () => {

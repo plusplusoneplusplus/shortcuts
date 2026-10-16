@@ -37,7 +37,7 @@ function renderWithProviders() {
  * integrations / advanced), so tests interacting with controls outside of
  * the default 'ai' sub-tab must call this first.
  */
-async function gotoSettingsSubTab(sub: 'ai' | 'chat' | 'chat-style' | 'appearance' | 'features' | 'integrations' | 'providers' | 'advanced'): Promise<void> {
+async function gotoSettingsSubTab(sub: 'ai' | 'chat' | 'chat-style' | 'appearance' | 'editors' | 'features' | 'integrations' | 'providers' | 'advanced'): Promise<void> {
     await waitFor(() => expect(screen.getByTestId(`settings-subtab-${sub}`)).toBeDefined());
     await act(async () => {
         fireEvent.click(screen.getByTestId(`settings-subtab-${sub}`));
@@ -1223,6 +1223,79 @@ describe('AdminPanel', () => {
             expect(writes[0].url).toContain('/admin/config');
             expect(writes[0].body['kusto.enabled']).toBe(true);
             await waitFor(() => expect((screen.getByTestId('settings-tab-features-integrations-save') as HTMLButtonElement).disabled).toBe(true));
+        });
+
+        // Editor settings live only on the Editors tab: selecting it is a
+        // deep-linkable tab, and its controls are not duplicated elsewhere.
+        const EDITOR_TOGGLES = ['toggle-explorer-editor-tabs-enabled', 'toggle-markdown-panel-preview-enabled', 'toggle-arxiv-paper-ingest-enabled'];
+
+        it('selects the Editors tab and renders each editor control exactly once', async () => {
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('editors');
+            const tab = screen.getByTestId('settings-subtab-editors');
+            expect(tab.getAttribute('role')).toBe('tab');
+            expect(tab.getAttribute('aria-selected')).toBe('true');
+            expect(tab.textContent).toContain('Editors');
+            expect(window.location.hash).toBe('#admin/settings/editors');
+            await waitFor(() => expect(screen.getByTestId('settings-tab-features-editors')).toBeDefined());
+            for (const testId of EDITOR_TOGGLES) expect(screen.getAllByTestId(testId)).toHaveLength(1);
+
+            for (const sub of ['appearance', 'integrations'] as const) {
+                await gotoSettingsSubTab(sub);
+                await waitFor(() => expect(screen.getByTestId(`settings-subtab-${sub}`).getAttribute('aria-selected')).toBe('true'));
+                for (const testId of EDITOR_TOGGLES) expect(screen.queryByTestId(testId)).toBeNull();
+            }
+            // Non-editor Appearance/Integrations rows stay where they were.
+            expect(screen.getByTestId('toggle-kusto-enabled')).toBeDefined();
+            await gotoSettingsSubTab('appearance');
+            await waitFor(() => expect(screen.getByTestId('toggle-explorer-delete-enabled')).toBeDefined());
+            expect(screen.getByTestId('toggle-panel-tab-reordering-enabled')).toBeDefined();
+            expect(screen.getByTestId('toggle-vim-navigation-enabled')).toBeDefined();
+        });
+
+        it('lands on Editors from the #admin/settings/editors deep link', async () => {
+            window.location.hash = '#admin/settings/editors';
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('settings-subtab-editors').getAttribute('aria-selected')).toBe('true'));
+            await waitFor(() => expect(screen.getByTestId('toggle-explorer-editor-tabs-enabled')).toBeDefined());
+        });
+
+        it('Ctrl+S saves dirty Editors settings with their existing config keys', async () => {
+            mockFullConfig();
+            const writes = recordWrites();
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('editors');
+            await waitFor(() => expect(screen.getByTestId('toggle-markdown-panel-preview-enabled')).toBeDefined());
+            await act(async () => { fireEvent.click(screen.getByTestId('toggle-markdown-panel-preview-enabled')); });
+
+            let event!: KeyboardEvent;
+            await act(async () => { event = pressSave(); });
+
+            expect(event.defaultPrevented).toBe(true);
+            await waitFor(() => expect(writes).toHaveLength(1));
+            expect(writes[0].body).toEqual({
+                'features.explorerEditorTabs': false,
+                'features.markdownPanelPreview': true,
+                'features.arxivPaperIngest': false,
+            });
+            await waitFor(() => expect((screen.getByTestId('settings-tab-features-editors-save') as HTMLButtonElement).disabled).toBe(true));
+        });
+
+        it('Features search links editor settings to the Editors tab', async () => {
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('features');
+            await waitFor(() => expect(screen.getByTestId('feature-search-input')).toBeDefined());
+            await act(async () => {
+                fireEvent.change(screen.getByTestId('feature-search-input'), { target: { value: 'explorer editor' } });
+            });
+            const link = screen.getByTestId('feature-search-link-toggle-explorer-editor-tabs-enabled');
+            expect(link.textContent).toBe('in Editors');
+            expect(link.getAttribute('href')).toBe('#admin/settings/editors');
+            await act(async () => { fireEvent.click(link); });
+            await waitFor(() => expect(screen.getByTestId('settings-subtab-editors').getAttribute('aria-selected')).toBe('true'));
         });
 
         // Regression: multi-card sections must save the feature card too.

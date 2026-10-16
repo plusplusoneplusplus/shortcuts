@@ -216,6 +216,7 @@ export function AdminPanel() {
         'chat-style': [{ dirty: chatStyle.dirty, saving: chatStyle.saving, onSave: chatStyle.handleSave }],
         sentinel: [featureTarget('sentinel')],
         appearance: [{ dirty: prefsCtl.appearanceDirty, saving: prefsCtl.appearanceSaving, onSave: prefsCtl.handleSaveAppearance }, featureTarget('appearance')],
+        editors: [featureTarget('editors')],
         features: [featureTarget('features')],
         integrations: [featureTarget('integrations')],
         providers: [],
@@ -681,6 +682,9 @@ export function AdminPanel() {
                                                     {renderTabFeatures('appearance')}
                                                 </>
                                             )}
+
+                                            {/* ── Editors ── */}
+                                            {settingsSubTab === 'editors' && renderTabFeatures('editors')}
 
                                             {/* ── Workspace Features ── */}
                                             {settingsSubTab === 'features' && (

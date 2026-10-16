@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * Per-tab registry "Features" sections (AI & Execution, Chat, Sentinel, Appearance,
- * Integrations). Each tab lists only the toggles placed on it; Save sends
+ * Editors, Integrations). Each tab lists only the toggles placed on it; Save sends
  * only that tab's keys; Cancel reverts only that tab's edits.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -34,7 +34,7 @@ import type { AdminFeatureSettings } from '../../../src/server/spa/client/react/
 import type { FeatureSettingTab } from '../../../src/config/admin-setting-definitions';
 
 type SectionTab = Exclude<FeatureSettingTab, 'features'>;
-const SECTION_TABS: SectionTab[] = ['ai', 'chat', 'sentinel', 'appearance', 'integrations'];
+const SECTION_TABS: SectionTab[] = ['ai', 'chat', 'sentinel', 'appearance', 'editors', 'integrations'];
 
 let controller: AdminFeatureSettings;
 
@@ -149,6 +149,36 @@ describe('TabFeatureSettingsCard', () => {
         }
     });
 
+    it('groups the Editors tab under concise headings with experimental badges', () => {
+        render(<Harness tabs={['editors']} />);
+        const section = withinSection('editors');
+        const heads = Array.from(section.querySelectorAll('.ar-feature-group-head')).map(h => h.textContent);
+        expect(heads).toEqual(['File Tabs & Previews', 'Notes Editor']);
+        for (const testId of ['toggle-explorer-editor-tabs-enabled', 'toggle-markdown-panel-preview-enabled', 'toggle-arxiv-paper-ingest-enabled']) {
+            const toggle = section.querySelector(`[data-testid="${testId}"]`) as HTMLInputElement;
+            expect(toggle.checked, testId).toBe(false);
+            expect(toggle.closest('.ar-row')?.textContent, testId).toContain('Experimental');
+        }
+    });
+
+    it('saves Editors opt-ins with their existing keys and runtime flags', async () => {
+        render(<Harness tabs={['editors']} />);
+        fireEvent.click(screen.getByTestId('toggle-explorer-editor-tabs-enabled'));
+        fireEvent.click(screen.getByTestId('toggle-arxiv-paper-ingest-enabled'));
+        await act(async () => { await controller.handleSaveTab('editors'); });
+        expect(updateConfig.mock.calls[0][0]).toEqual({
+            'features.explorerEditorTabs': true,
+            'features.markdownPanelPreview': false,
+            'features.arxivPaperIngest': true,
+        });
+        expect(applyRuntimeConfigPatch.mock.calls[0][0]).toMatchObject({
+            explorerEditorTabsEnabled: true,
+            markdownPanelPreviewEnabled: false,
+            arxivPaperIngestEnabled: true,
+        });
+        expect(controller.isTabDirty('editors')).toBe(false);
+    });
+
     it('shows group headings only when the tab spans more than one group', () => {
         render(<Harness tabs={['ai']} />);
         const groups = new Set(getTabFeatureSettings('ai').map(d => d.ui!.group));
@@ -238,7 +268,7 @@ describe('TabFeatureSettingsCard', () => {
         expect(controller.isTabDirty('chat')).toBe(true);
     });
 
-    it.each<FeatureSettingTab>(['ai', 'chat', 'appearance', 'integrations', 'features'])(
+    it.each<FeatureSettingTab>(['ai', 'chat', 'appearance', 'editors', 'integrations', 'features'])(
         'saving or canceling %s cannot consume pending Sentinel edits',
         async tab => {
             render(<Harness tabs={['sentinel']} />);

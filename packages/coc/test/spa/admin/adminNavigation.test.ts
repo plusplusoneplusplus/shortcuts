@@ -72,6 +72,21 @@ describe('Sentinel sub-tab registration', () => {
     });
 });
 
+describe('Editors sub-tab registration', () => {
+    it('is listed right after Appearance and deep-links through #admin/settings/editors', () => {
+        const ids = SETTINGS_SUBTABS.map(t => t.id);
+        expect(ids.filter(id => id === 'editors')).toHaveLength(1);
+        expect(ids.indexOf('editors')).toBe(ids.indexOf('appearance') + 1);
+        expect(getSettingsSubTabMeta('editors')).toMatchObject({ label: 'Editors' });
+        expect(SETTINGS_SUBTAB_DESCRIPTIONS.editors).toBeTruthy();
+        expect(parseSettingsSubTabFromHash('#admin/settings/editors')).toBe('editors');
+        expect(deriveActiveNav({
+            isContainer: false, isToolEmbedded: false,
+            activeDashboardTab: 'admin', activeTab: 'settings', settingsSubTab: 'editors',
+        })).toMatchObject({ activeNavKey: 'settings:configure', activeTabLabel: 'Editors', activeBreadcrumbGroup: 'Configure' });
+    });
+});
+
 describe('getAdminTabLabel / getAdminTabIcon — container-aware agents entry', () => {
     it('labels agents "AI Provider" on the web and "Agents" in a container', () => {
         expect(getAdminTabLabel('agents', false)).toBe('AI Provider');

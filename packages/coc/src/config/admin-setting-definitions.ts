@@ -73,7 +73,7 @@ export type AdminSettingValueSpec =
 
 // ── UI specs (admin Features card) ────────────────────────────────────────────
 
-export type FeatureGroupId = 'dashboard' | 'devTools' | 'workItems' | 'aiModes' | 'review' | 'infrastructure' | 'sentinelMode' | 'sentinelTodos' | 'sentinelMessaging';
+export type FeatureGroupId = 'dashboard' | 'editorFiles' | 'editorNotes' | 'devTools' | 'workItems' | 'aiModes' | 'review' | 'infrastructure' | 'sentinelMode' | 'sentinelTodos' | 'sentinelMessaging';
 
 export interface FeatureGroupSpec {
     id: FeatureGroupId;
@@ -84,6 +84,8 @@ export interface FeatureGroupSpec {
 /** Ordered groups rendered in the admin Features card. */
 export const FEATURE_CARD_GROUPS: readonly FeatureGroupSpec[] = [
     { id: 'dashboard', heading: 'Dashboard Modules', testId: 'feature-group-dashboard' },
+    { id: 'editorFiles', heading: 'File Tabs & Previews', testId: 'feature-group-editor-files' },
+    { id: 'editorNotes', heading: 'Notes Editor', testId: 'feature-group-editor-notes' },
     { id: 'devTools', heading: 'Development Tools', testId: 'feature-group-dev-tools' },
     { id: 'workItems', heading: 'Work Items', testId: 'feature-group-work-items' },
     { id: 'aiModes', heading: 'AI Execution Modes', testId: 'feature-group-ai-modes' },
@@ -101,9 +103,9 @@ export type AdminSettingBadge = 'restart' | 'experimental' | 'preview';
  * matching SPA `SettingsSubTab` ids; kept local so this module stays free of
  * SPA imports.
  */
-export type FeatureSettingTab = 'ai' | 'chat' | 'sentinel' | 'appearance' | 'features' | 'integrations';
+export type FeatureSettingTab = 'ai' | 'chat' | 'sentinel' | 'appearance' | 'editors' | 'features' | 'integrations';
 
-export const FEATURE_SETTING_TABS: readonly FeatureSettingTab[] = ['ai', 'chat', 'sentinel', 'appearance', 'features', 'integrations'];
+export const FEATURE_SETTING_TABS: readonly FeatureSettingTab[] = ['ai', 'chat', 'sentinel', 'appearance', 'editors', 'features', 'integrations'];
 
 export interface AdminSettingUiSpec {
     /** Settings tab the row renders on. Defaults to `'features'` when omitted. */
@@ -963,7 +965,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.arxivPaperIngest', default: false, runtime: 'live', runtimeFlag: 'arxivPaperIngestEnabled',
         ui: {
-            tab: 'integrations', group: 'dashboard', order: 63, label: 'Automatic arXiv PDF ingest', badge: 'experimental',
+            tab: 'editors', group: 'editorNotes', order: 10, label: 'Automatic arXiv PDF ingest', badge: 'experimental',
             hint: 'Pasting a lone arXiv link in the Notes editor downloads a local PDF copy and embeds it in the note. Disabled by default.',
             testId: 'toggle-arxiv-paper-ingest-enabled',
         },
@@ -1180,7 +1182,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.explorerEditorTabs', default: false, runtime: 'live', runtimeFlag: 'explorerEditorTabsEnabled',
         ui: {
-            tab: 'appearance', group: 'dashboard', order: 70, label: 'Explorer editor tabs', badge: 'experimental',
+            tab: 'editors', group: 'editorFiles', order: 10, label: 'Explorer editor tabs', badge: 'experimental',
             hint: 'VS Code-style multiple editor tabs in the File Explorer: a preview tab that single-clicks replace, pinned tabs from double-click or editing, drag reorder, MRU cycling, and per-workspace restore. Disabled by default — with the flag off the Explorer keeps its single preview pane.',
             testId: 'toggle-explorer-editor-tabs-enabled',
         },
@@ -1196,7 +1198,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.markdownPanelPreview', default: false, runtime: 'live', runtimeFlag: 'markdownPanelPreviewEnabled',
         ui: {
-            tab: 'appearance', group: 'dashboard', order: 71, label: 'Markdown panel preview', badge: 'experimental',
+            tab: 'editors', group: 'editorFiles', order: 20, label: 'Markdown panel preview', badge: 'experimental',
             hint: 'Open Markdown file tabs in the unified right panel as rendered Markdown, with a switch to the raw editor. Disabled by default.',
             testId: 'toggle-markdown-panel-preview-enabled',
         },
