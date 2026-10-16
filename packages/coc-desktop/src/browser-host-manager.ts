@@ -221,7 +221,11 @@ export class BrowserHostManager {
                     return { tab: this.controlId(selected), ...await page.readPage(command.ref, command.offset ?? 0) };
                 }
                 case 'eval': return { tab: this.controlId(selected), ...await page.evaluateForTool(command.js!) };
-                case 'screenshot': return { tab: this.controlId(selected), image: await page.screenshot(command.ref) };
+                case 'screenshot': {
+                    const image = await page.screenshot(command.ref, command.format);
+                    const { title, url } = view.snapshot();
+                    return { tab: this.controlId(selected), title, url, image };
+                }
                 case 'click': await page.click(command.ref!); break;
                 case 'type': await page.type(command.ref!, command.text!, command.submit); break;
                 case 'select_option': await page.selectOption(command.ref!, command.value!); break;

@@ -58,6 +58,7 @@ const COMPLETE_ADDON =
     "gitCommitDiff: async () => '', " +
     'gitFileContentAtCommit: async () => null, ' +
     'gitFileBytesAtCommit: async () => null, ' +
+    'gitReadBlob: async () => Buffer.alloc(0), ' +
     'gitFileExistsAtCommit: async () => false, ' +
     'gitValidateRef: async () => null, ' +
     'gitRangeDefaultBranch: async () => null, ' +
@@ -458,7 +459,7 @@ it('rejects an otherwise complete binary without patch parsing', () => {
     expect(nativeGitStatus().loaded).toBe(false);
 });
 
-it.each(['prepareGitHistory', 'gitHistory', 'processGitHistory', 'prepareGitRevisionPatch', 'buildRemoteGitPatch', 'prepareGitWorkingTreePatch', 'composeGitWorkingTreePatch', 'prepareGitCommitFiles', 'processGitCommitMetadata', 'processGitPatch', 'openGitPatchStore', 'openRemoteGitPatchStore'])('rejects stale read capability missing %s', (name) => {
+it.each(['gitReadBlob', 'prepareGitHistory', 'gitHistory', 'processGitHistory', 'prepareGitRevisionPatch', 'buildRemoteGitPatch', 'prepareGitWorkingTreePatch', 'composeGitWorkingTreePatch', 'prepareGitCommitFiles', 'processGitCommitMetadata', 'processGitPatch', 'openGitPatchStore', 'openRemoteGitPatchStore'])('rejects stale read capability missing %s', (name) => {
     useAddon(COMPLETE_ADDON.replace(`${name}:`, 'omittedCapability:'));
     expect(() => loadNativeGit()).toThrow('npm run build:native');
 });

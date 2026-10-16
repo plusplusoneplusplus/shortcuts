@@ -89,7 +89,7 @@ async function expectBottomRightLens(page: import('@playwright/test').Page): Pro
         return {
             rightInset: containerRect.right - lensRect.right,
             bottomInset: containerRect.bottom - lensRect.bottom,
-            containsReviewSurface: !!container.querySelector('[data-testid="diff-section"], [data-testid="file-diff-section"]'),
+            containsReviewSurface: !!container.querySelector('[data-testid="file-diff-section"]'),
         };
     });
     expect(geometry.containsReviewSurface).toBe(true);
@@ -208,15 +208,16 @@ async function gotoFresh(page: import('@playwright/test').Page, url: string): Pr
 
 test.describe('feature-flagged commit chat lens', () => {
     test('keeps the chat and Monaco mounted while clicking commit files', async ({ page, serverUrl, dataDir }) => {
+        const workspaceId = `${WORKSPACE_ID}-persistence`;
         const repoDir = createMultiCommitRepo(dataDir);
         writeFileSync(join(repoDir, 'src', 'index.ts'), 'export default { version: 3 };\n');
         writeFileSync(join(repoDir, 'src', 'utils.ts'), 'export function helper() { return 2; }\n');
         execFileSync('git', ['add', 'src/index.ts', 'src/utils.ts'], { cwd: repoDir });
         execFileSync('git', ['commit', '-m', 'Update two files for review'], { cwd: repoDir });
         const commit = latestCommit(repoDir);
-        await seedWorkspace(serverUrl, WORKSPACE_ID, 'Commit Chat Persistence', repoDir);
+        await seedWorkspace(serverUrl, workspaceId, 'Commit Chat Persistence', repoDir);
         await enableCommitChatLensFeature(serverUrl);
-        await page.goto(`${serverUrl}/?workspace=${WORKSPACE_ID}#repos/${WORKSPACE_ID}/git/${commit.hash}/${encodeURIComponent('src/index.ts')}`);
+        await page.goto(`${serverUrl}/?workspace=${workspaceId}#repos/${workspaceId}/git/${commit.hash}/${encodeURIComponent('src/index.ts')}`);
         const editor = page.getByTestId('file-diff-editor');
         await expect(editor).toBeVisible();
         await page.getByTestId('toggle-chat-btn').click();
@@ -236,7 +237,8 @@ test.describe('feature-flagged commit chat lens', () => {
         await expect(input).toHaveText('Keep my review draft');
 
         await page.getByTestId(`commit-row-${commit.shortHash}`).click();
-        await expect(page.getByTestId('diff-section')).toBeVisible();
+        await expect(page.getByTestId('file-diff-section')).toBeVisible();
+        await expect(editor).toHaveAttribute('data-persistence-probe', 'editor');
         await expect(lens).toHaveAttribute('data-persistence-probe', 'chat');
         await lens.hover();
         await expect(input).toHaveText('Keep my review draft');
@@ -251,7 +253,7 @@ test.describe('feature-flagged commit chat lens', () => {
         await enableCommitChatLensFeature(serverUrl, 'pill');
 
         await page.goto(`${serverUrl}/?workspace=${encodeURIComponent(workspaceId)}#repos/${encodeURIComponent(workspaceId)}/git/${encodeURIComponent(commit.hash)}`);
-        await expect(page.getByTestId('diff-section')).toBeVisible();
+        await expect(page.getByTestId('file-diff-section')).toBeVisible();
         await page.getByTestId('toggle-chat-btn').click();
 
         const lens = page.getByTestId('commit-chat-lens');
@@ -322,7 +324,7 @@ test.describe('feature-flagged commit chat lens', () => {
 
         const url = `${serverUrl}/?workspace=${encodeURIComponent(workspaceId)}#repos/${encodeURIComponent(workspaceId)}/git/${encodeURIComponent(commit.hash)}`;
         await page.goto(url);
-        await expect(page.getByTestId('diff-section')).toBeVisible();
+        await expect(page.getByTestId('file-diff-section')).toBeVisible();
         await page.getByTestId('toggle-chat-btn').click();
 
         const lens = page.getByTestId('commit-chat-lens');
@@ -338,7 +340,7 @@ test.describe('feature-flagged commit chat lens', () => {
         await expect.poll(async () => JSON.parse((await request(bindingUrl)).body).taskId).toBe(droppedTaskId);
 
         await gotoFresh(page, url);
-        await expect(page.getByTestId('diff-section')).toBeVisible();
+        await expect(page.getByTestId('file-diff-section')).toBeVisible();
         if (await page.getByTestId('commit-chat-lens').count() === 0) {
             await page.getByTestId('toggle-chat-btn').click();
         }
@@ -364,7 +366,7 @@ test.describe('feature-flagged commit chat lens', () => {
 
         await page.goto(`${serverUrl}/?workspace=${encodeURIComponent(WORKSPACE_ID)}#repos/${encodeURIComponent(WORKSPACE_ID)}/git/${encodeURIComponent(commit.hash)}`);
         await expect(page.getByTestId(`commit-row-${commit.shortHash}`)).toBeVisible();
-        await expect(page.getByTestId('diff-section')).toBeVisible();
+        await expect(page.getByTestId('file-diff-section')).toBeVisible();
 
         await page.getByTestId('toggle-chat-btn').click();
         await expectBottomRightLens(page);
@@ -391,7 +393,7 @@ test.describe('feature-flagged commit chat lens', () => {
         await expect.poll(() => page.evaluate(key => localStorage.getItem(key), storageKey)).toBe('side-panel');
 
         await page.getByTestId('commit-review-back-btn').click();
-        await expect(page.getByTestId('diff-section')).toBeVisible();
+        await expect(page.getByTestId('file-diff-section')).toBeVisible();
         await expect(page.getByTestId('commit-chat-side-panel')).toBeVisible();
 
         await page.getByTestId('commit-chat-unpin-btn').click();

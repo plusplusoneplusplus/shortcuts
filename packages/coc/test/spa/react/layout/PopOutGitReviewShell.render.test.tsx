@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 
 const mocks = vi.hoisted(() => ({
     getCommit: vi.fn(),
+    listCommitFiles: vi.fn(),
     copyToClipboard: vi.fn().mockResolvedValue(undefined),
     commitDiffPath: vi.fn(),
     getPr: vi.fn(),
@@ -39,7 +40,8 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ToastContext', () => (
     useToast: () => ({ toasts: [], addToast: vi.fn(), removeToast: vi.fn() }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/ui', () => ({
+vi.mock('../../../../src/server/spa/client/react/ui', async importOriginal => ({
+    ...await importOriginal<typeof import('../../../../src/server/spa/client/react/ui')>(),
     Spinner: () => <span data-testid="spinner" />,
     ToastContainer: () => null,
     useToast: () => ({ toasts: [], addToast: vi.fn(), removeToast: vi.fn() }),
@@ -62,6 +64,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => {
     const createClient = () => ({
         git: {
             getCommit: (...args: unknown[]) => mocks.getCommit(...args),
+            listCommitFiles: (...args: unknown[]) => mocks.listCommitFiles(...args),
             commitDiffPath: (...args: unknown[]) => mocks.commitDiffPath(...args),
             getBranchRange: (...args: unknown[]) => mocks.getBranchRange(...args),
             listBranchRangeFiles: (...args: unknown[]) => mocks.listBranchRangeFiles(...args),
@@ -117,6 +120,7 @@ vi.mock('../../../../src/server/spa/client/comments/diff-comment-utils', () => (
 }));
 
 vi.mock('../../../../src/server/spa/client/react/contexts/GitReviewPopOutContext', () => ({
+    useGitReviewPopOut: () => ({ markPoppedOut: vi.fn() }),
     useGitReviewPopOutChannel: () => ({ postMessage: mocks.postMessage }),
     gitReviewPopOutKey: (workspaceId: string, commitHash: string) => `${workspaceId}:commit:${commitHash}`,
     gitReviewBranchPopOutKey: (workspaceId: string) => `${workspaceId}:branch`,
@@ -249,11 +253,23 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/useClassifica
     }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/features/git/branches/BranchRangeOverview', () => ({
-    BranchRangeOverview: ({ isPopOut }: { isPopOut?: boolean }) => (
-        <div data-testid="branch-range-overview" data-popout={String(!!isPopOut)} />
-    ),
-}));
+
+
+vi.mock('../../../../src/server/spa/client/react/utils/diffCommentApi', () => ({ listDiffCommentsForRange: () => Promise.resolve([]) }));
+
+async function findFileNavigator() {
+    return waitFor(() => {
+        const element = screen.queryByTestId('git-file-review') ?? screen.getByTestId('popout-file-panel');
+        expect(element).toBeTruthy(); return element;
+    });
+}
+function fileButton(path: string) {
+    return document.querySelector<HTMLButtonElement>(`[data-file-path="${path}"]`) ?? screen.getByText(path);
+}
+function backToFiles() {
+    const back = screen.queryByTestId('file-diff-back-btn');
+    fireEvent.click(back ?? screen.getByRole('button', { name: 'Overview', exact: true }));
+}
 
 import { PopOutGitReviewShell } from '../../../../src/server/spa/client/react/layout/PopOutGitReviewShell';
 import { getReviewChatPlacementStorageKey } from '../../../../src/server/spa/client/react/features/git/commits/commitChatPlacement';
@@ -311,6 +327,7 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
         });
         mocks.listBranchRangeFiles.mockResolvedValue({ files: [] });
         mocks.useCachedDiff.mockReturnValue({ diff: COMMIT_DIFF });
+        mocks.listCommitFiles.mockResolvedValue({ files: [{ path: 'src/app.ts', status: 'M', additions: 1, deletions: 1 }] });
         mocks.getPr.mockResolvedValue({ title: 'Fix PR risk', headSha: 'head-sha-42' });
         mocks.getPrDiff.mockResolvedValue(PR_DIFF);
     });
@@ -333,8 +350,8 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
             };
             window.history.pushState({}, '', urlFor('ws1'));
             const view = render(<PopOutGitReviewShell />);
-            await screen.findByTestId('popout-file-panel');
-            fireEvent.click(screen.getByText(filePath));
+            await findFileNavigator();
+            fireEvent.click(fileButton(filePath));
             const panel = await screen.findByTestId('file-diff-panel');
             expect(panel.getAttribute('data-workspace')).toBe('ws1');
             expect(panel.getAttribute('data-destination')).toBe('ws1');
@@ -345,17 +362,17 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
             ]) {
                 window.history.pushState({}, '', urlFor(owner, endpoint));
                 view.rerender(<PopOutGitReviewShell />);
-                expect(screen.getByTestId('file-diff-panel').getAttribute('data-destination')).toBe(owner);
+                expect((await screen.findByTestId('file-diff-panel')).getAttribute('data-destination')).toBe(owner);
                 expect(screen.getByTestId('file-diff-panel').getAttribute('data-workspace')).toBe('ws1');
                 expect(lookupCloneBaseUrl(owner)).toBe(endpoint);
             }
             if (reviewType === 'branch-range') {
-                fireEvent.click(screen.getByText('src/other.ts'));
+                fireEvent.click(fileButton('src/other.ts'));
                 expect(screen.getByTestId('file-diff-panel').getAttribute('data-destination')).toBe('remote:server-b:ws1');
             }
             window.history.pushState({}, '', urlFor());
             view.rerender(<PopOutGitReviewShell />);
-            expect(screen.getByTestId('file-diff-panel').getAttribute('data-destination')).toBe('');
+            expect((await screen.findByTestId('file-diff-panel')).getAttribute('data-destination')).toBe('');
         },
     );
 
@@ -368,6 +385,7 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
         });
         render(<PopOutGitReviewShell />);
         await screen.findByTestId('commit-info-header');
+        fireEvent.click(screen.getByTestId('commit-info-summary'));
         expect(screen.getByTestId('popout-git-review-title')).toHaveTextContent('Explain the real commit');
         expect(screen.getByTestId('popout-git-review-identifier')).toHaveTextContent('Commit abc123');
         expect(document.title).toContain('Explain the real commit');
@@ -375,7 +393,7 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
         expect(screen.getByTestId('commit-info-email')).toHaveTextContent('author@example.test');
         expect(screen.getByTestId('commit-info-parents')).toHaveTextContent('parent1');
         expect(screen.getByTestId('commit-info-body').textContent).toBe('First paragraph\n\nSecond paragraph with details.');
-        fireEvent.click(screen.getByText('src/app.ts'));
+        fireEvent.click(fileButton('src/app.ts'));
         expect(await screen.findByTestId('file-diff-panel')).toHaveAttribute('data-file', 'src/app.ts');
         expect(screen.getByTestId('commit-info-body')).toBeVisible();
         fireEvent.click(screen.getByTestId('commit-info-copy-hash'));
@@ -413,7 +431,7 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
                 expect(body).toHaveTextContent('No PR description provided.');
             }
             expect(screen.getByTestId('popout-pr-details')).toHaveTextContent('feature → main');
-            fireEvent.click(screen.getByText('src/pr.ts'));
+            fireEvent.click(fileButton('src/pr.ts'));
             const panel = await screen.findByTestId('file-diff-panel');
             expect(panel).toHaveAttribute('data-destination', 'remote:server:ws1');
             fireEvent.click(screen.getByTestId('popout-pr-title-toggle'));
@@ -458,10 +476,10 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
 
         render(<PopOutGitReviewShell />);
 
-        await screen.findByTestId('popout-file-panel');
+        await findFileNavigator();
         expect(mocks.getCommit).toHaveBeenCalledWith('ws1', 'abc123');
-        expect(mocks.commitDiffPath).toHaveBeenCalledWith('ws1', 'abc123');
-        fireEvent.click(screen.getByText('src/app.ts'));
+        expect(mocks.listCommitFiles).toHaveBeenCalledWith('ws1', 'abc123');
+        fireEvent.click(fileButton('src/app.ts'));
 
         const panel = await screen.findByTestId('file-diff-panel');
         expect(panel.getAttribute('data-file')).toBe('src/app.ts');
@@ -470,8 +488,8 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
         expect(panel.getAttribute('data-new-ref')).toBe('abc123');
         expect(screen.queryByTestId('commit-detail')).toBeNull();
 
-        fireEvent.click(screen.getByTestId('file-diff-back-btn'));
-        await waitFor(() => expect(screen.getByTestId('popout-file-panel')).toBeTruthy());
+        backToFiles();
+        await findFileNavigator();
     });
 
     it('switches branch-range popout selected files to comment-enabled FileDiffPanel', async () => {
@@ -492,21 +510,21 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
 
         render(<PopOutGitReviewShell />);
 
-        await screen.findByTestId('branch-range-overview');
+        await screen.findByTestId('branch-range-review');
         // The popout defaults to comparing against the default branch, so both
         // branch-range reads carry the base mode.
         expect(mocks.getBranchRange).toHaveBeenCalledWith('ws1', { base: 'default-branch' });
         expect(mocks.listBranchRangeFiles).toHaveBeenCalledWith('ws1', { base: 'default-branch' });
-        fireEvent.click(screen.getByText('src/branch.ts'));
+        fireEvent.click(fileButton('src/branch.ts'));
 
         const panel = await screen.findByTestId('file-diff-panel');
         expect(panel.getAttribute('data-file')).toBe('src/branch.ts');
         // Cache key carries the base mode so an upstream comparison can't reuse
         // the default-branch diff.
-        expect(panel.getAttribute('data-cache-key')).toBe('branch-range:default-branch');
+        expect(panel.getAttribute('data-cache-key')).toMatch(/^branch-range:default-branch:/);
         expect(panel.getAttribute('data-old-ref')).toBe('branch-base');
         expect(panel.getAttribute('data-new-ref')).toBe('branch-head');
-        expect(screen.queryByTestId('branch-range-overview')).toBeNull();
+        expect(screen.getByTestId('branch-range-review')).toBeTruthy();
     });
 
     it('opens commit popout chat as a desktop lens and pins back to the right column', async () => {
@@ -523,7 +541,7 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
 
         render(<PopOutGitReviewShell />);
 
-        await screen.findByTestId('popout-file-panel');
+        await findFileNavigator();
         fireEvent.click(screen.getByTestId('commit-popout-chat-toggle'));
 
         await waitFor(() => expect(screen.getByTestId('commit-chat-lens')).toBeTruthy());
@@ -566,7 +584,7 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
 
         render(<PopOutGitReviewShell />);
 
-        await screen.findByTestId('popout-file-panel');
+        await findFileNavigator();
         fireEvent.click(screen.getByTestId('commit-popout-chat-toggle'));
 
         expect(screen.getByTestId('commit-popout-chat-container')).toBeTruthy();
@@ -595,7 +613,7 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
 
         render(<PopOutGitReviewShell />);
 
-        await screen.findByTestId('popout-file-panel');
+        await findFileNavigator();
         fireEvent.click(screen.getByTestId('commit-popout-chat-toggle'));
 
         expect(screen.getByTestId('commit-popout-chat-container')).toBeTruthy();
@@ -611,10 +629,10 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
 
         render(<PopOutGitReviewShell />);
 
-        await screen.findByTestId('popout-file-panel');
+        await findFileNavigator();
         expect(mocks.getPr).toHaveBeenCalledWith('local_ws1', '42', { workspaceId: 'ws1', repoId: 'repo1' });
         expect(mocks.getPrDiff).toHaveBeenCalledWith('local_ws1', '42', { workspaceId: 'ws1', repoId: 'repo1' });
-        fireEvent.click(screen.getByText('src/pr.ts'));
+        fireEvent.click(fileButton('src/pr.ts'));
 
         await screen.findByTestId('file-diff-panel');
         fireEvent.click(screen.getByTestId('pr-popout-chat-toggle'));
@@ -661,7 +679,7 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
 
         render(<PopOutGitReviewShell />);
 
-        await screen.findByTestId('popout-file-panel');
+        await findFileNavigator();
         fireEvent.click(screen.getByTestId('pr-popout-chat-toggle'));
 
         expect(screen.getByTestId('pr-popout-chat-container')).toBeTruthy();
@@ -682,7 +700,7 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
 
         render(<PopOutGitReviewShell />);
 
-        await screen.findByTestId('popout-file-panel');
+        await findFileNavigator();
         fireEvent.click(screen.getByTestId('pr-popout-chat-toggle'));
 
         expect(screen.getByTestId('pr-popout-chat-container')).toBeTruthy();

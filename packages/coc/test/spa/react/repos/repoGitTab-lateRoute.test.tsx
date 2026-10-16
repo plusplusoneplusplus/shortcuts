@@ -85,11 +85,12 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitList
     ),
     isTouchOnly: () => false,
 }));
+// Commit and branch file views focus a file inside their review surfaces.
 vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitDetail', () => ({
-    CommitDetail: () => <div data-testid="stub-commit-detail" />,
+    CommitDetail: (props: any) => <div data-testid="stub-commit-detail" data-workspace={props.workspaceId} data-destination={props.attachmentDestinationId} data-file={props.scrollToFilePath} />,
 }));
-vi.mock('../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel', () => ({
-    FileDiffPanel: (props: any) => <div data-testid="stub-file-diff" data-workspace={props.workspaceId} data-destination={props.attachmentDestinationId} />,
+vi.mock('../../../../src/server/spa/client/react/features/git/branches/BranchRangeOverview', () => ({
+    BranchRangeOverview: (props: any) => <div data-testid="stub-branch-overview" data-workspace={props.workspaceId} data-destination={props.attachmentDestinationId} data-file={props.scrollToFilePath} />,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff', () => ({
     WorkingTreeFileDiff: (props: any) => <div data-testid="stub-working-diff" data-workspace={props.workspaceId} data-destination={props.attachmentDestinationId} />,
@@ -153,10 +154,11 @@ it.each(['ws-remote-1', 'remote:one:ws-remote-1', 'remote:two:ws-remote-1'])('th
     const props = { workspaceId: WS, sourceSelectionId, detailContainer: host, detailActive: true,
         restoreView: { type: 'commit-file' as const, hash: 'abc123', filePath: 'src/a.ts' } };
     const view = render(<RepoGitTab {...props} />);
-    await waitFor(() => expect(screen.getByTestId('stub-file-diff').getAttribute('data-destination')).toBe(sourceSelectionId));
-    expect(screen.getByTestId('stub-file-diff').getAttribute('data-workspace')).toBe(WS);
+    await waitFor(() => expect(screen.getByTestId('stub-commit-detail').getAttribute('data-destination')).toBe(sourceSelectionId));
+    expect(screen.getByTestId('stub-commit-detail').getAttribute('data-workspace')).toBe(WS);
+    expect(screen.getByTestId('stub-commit-detail').getAttribute('data-file')).toBe('src/a.ts');
     view.rerender(<RepoGitTab {...props} sourceSelectionId="remote:next:ws-remote-1" />);
-    expect(screen.getByTestId('stub-file-diff').getAttribute('data-destination')).toBe('remote:next:ws-remote-1');
+    expect(screen.getByTestId('stub-commit-detail').getAttribute('data-destination')).toBe('remote:next:ws-remote-1');
     view.unmount();
     host.remove();
 });
@@ -166,12 +168,18 @@ it.each([
     { type: 'branch-file', filePath: 'src/a.ts' },
     { type: 'working-tree-file', filePath: 'src/a.ts', stage: 'unstaged' },
 ] as const)('preserves the concrete selection destination in $type detail views', selectedView => {
+    const branchRange = { baseRef: 'origin/main', headRef: 'HEAD', commitCount: 1, additions: 1, deletions: 0, fileCount: 1 } as any;
     render(<RepoGitDetailPane workspaceId={WS} attachmentDestinationId="remote:one:ws-remote-1"
-        view={selectedView} commits={[]} unpushedCount={0} branchRangeData={null} branchRangeFiles={[]}
+        view={selectedView} commits={[]} unpushedCount={0} branchRangeData={branchRange} branchRangeFiles={[]}
         baseMode="default-branch" onBaseModeChange={vi.fn()} repoRoot="/repo" hunkTarget={undefined}
         onBranchFileSelect={vi.fn()} onNavigateToBranchFile={vi.fn()} onNavigateToCommitFile={vi.fn()}
         onNavigateToWorkingTreeFile={vi.fn()} onAllBranchCommentsClick={vi.fn()} onBranchAskAI={vi.fn()} onCommitClassified={vi.fn()} />);
-    const target = screen.getByTestId(selectedView.type === 'working-tree-file' ? 'stub-working-diff' : 'stub-file-diff');
+    const target = screen.getByTestId({
+        'commit-file': 'stub-commit-detail',
+        'branch-file': 'stub-branch-overview',
+        'working-tree-file': 'stub-working-diff',
+    }[selectedView.type]);
     expect(target.getAttribute('data-destination')).toBe('remote:one:ws-remote-1');
     expect(target.getAttribute('data-workspace')).toBe(WS);
+    if (selectedView.type !== 'working-tree-file') expect(target.getAttribute('data-file')).toBe('src/a.ts');
 });

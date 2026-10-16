@@ -23,6 +23,10 @@ import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
 import type { GitRangeBaseMode } from '@plusplusoneplusplus/coc-client';
 
 export interface BranchRangeInfo {
+    baseSha?: string;
+    headSha?: string;
+    /** Exact commits returned by this comparison, independent of history pagination. */
+    commits?: import('../commits/commitListTypes').GitCommitItem[];
     baseRef: string;
     headRef: string;
     commitCount: number;

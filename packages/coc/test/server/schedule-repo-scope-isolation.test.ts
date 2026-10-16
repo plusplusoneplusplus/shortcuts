@@ -17,6 +17,7 @@ import { ScheduleYamlPersistence } from '../../src/server/schedule/schedule-yaml
 import { RepoScheduleOverrideStore } from '../../src/server/schedule/repo-schedule-overrides';
 import { SqliteScheduleRunPersistence } from '../../src/server/schedule/sqlite-schedule-run-persistence';
 import type { ScheduleRunRecord } from '../../src/server/schedule/schedule-manager-types';
+import { FakeNativeWatchService } from '../helpers/fake-native-watch-service';
 
 const REPO_A = 'ws-clone-a';
 const REPO_B = 'ws-clone-b';
@@ -47,6 +48,8 @@ describe('repo schedule runtime scope isolation', () => {
             new ScheduleYamlPersistence(dataDir),
             null,
             new RepoScheduleOverrideStore(dataDir),
+            undefined,
+            new FakeNativeWatchService(),
         );
     });
 

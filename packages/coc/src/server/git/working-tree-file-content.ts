@@ -13,16 +13,9 @@
  * the resolution rules are testable without a repository.
  */
 
-import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import {
-    buildWslCommandArgs,
-    execGitAsync,
-    getWslExecutablePath,
-    resolveWorkspaceExecutionContext,
-    translatePathForExecution,
-} from '@plusplusoneplusplus/forge';
+import { execGitAsync, readGitBlob } from '@plusplusoneplusplus/forge';
 import type { GitCacheService } from './git-cache';
 
 export type WorkingTreeContentStage = 'staged' | 'unstaged' | 'untracked';
@@ -298,41 +291,6 @@ function parseLsFilesStageLine(line: string): GitBlobEntry | null {
     return m && m[3] === '0' ? { mode: m[1], sha: m[2] } : null;
 }
 
-/**
- * `git cat-file blob <sha>` with stdout kept as bytes.
- *
- * `execGitAsync` trims its output and the native addon can only read blobs
- * reachable from a commit, so an index blob with meaningful leading or
- * trailing whitespace needs its own untrimmed runner. WSL repositories run
- * the same command through `wsl.exe`.
- */
-function execFileBytes(file: string, args: string[]): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-        execFile(
-            file,
-            args,
-            { encoding: 'buffer', maxBuffer: MAX_WORKING_TREE_CONTENT_BYTES + 1024, timeout: GIT_TIMEOUT_MS, windowsHide: true },
-            (error, stdout, stderr) => {
-                if (error) {
-                    const detail = stderr?.toString().trim();
-                    reject(new Error(`git cat-file failed${detail ? `: ${detail}` : ''}`));
-                } else {
-                    resolve(stdout);
-                }
-            },
-        );
-    });
-}
-
-async function readBlobBytes(repoRoot: string, sha: string): Promise<Buffer> {
-    const ctx = resolveWorkspaceExecutionContext(repoRoot);
-    if (ctx.kind === 'wsl') {
-        const execRoot = translatePathForExecution(repoRoot, ctx);
-        return execFileBytes(getWslExecutablePath(), buildWslCommandArgs(ctx, ['git', '-C', execRoot, 'cat-file', 'blob', sha]));
-    }
-    return execFileBytes('git', ['-C', repoRoot, 'cat-file', 'blob', sha]);
-}
-
 export function createWorkingTreeContentIO(repoRoot: string): WorkingTreeContentIO {
     const git = (args: string[]) => execGitAsync(args, repoRoot, { timeout: GIT_TIMEOUT_MS });
     return {
@@ -360,7 +318,7 @@ export function createWorkingTreeContentIO(repoRoot: string): WorkingTreeContent
             return parseInt((await git(['cat-file', '-s', sha])).trim(), 10);
         },
         readBlob(sha) {
-            return readBlobBytes(repoRoot, sha);
+            return readGitBlob(repoRoot, sha, { maxBytes: MAX_WORKING_TREE_CONTENT_BYTES, timeout: GIT_TIMEOUT_MS });
         },
         async statDisk(absPath) {
             try {

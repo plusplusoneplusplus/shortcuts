@@ -48,7 +48,7 @@ describe('useFileDiff', () => {
         expect(result.current.truncated).toBe(false);
         expect(result.current.totalLines).toBe(0);
         // No workspaceId passed → routes to the default origin ('' workspace id).
-        expect(mockFetchDiffFromSource).toHaveBeenCalledWith('', '/api/diff');
+        expect(mockFetchDiffFromSource).toHaveBeenCalledWith('', '/api/diff', expect.any(AbortSignal));
     });
 
     it('forwards the workspaceId so the fetch routes to that clone (AC-07)', async () => {
@@ -63,7 +63,7 @@ describe('useFileDiff', () => {
         await waitFor(() => expect(result.current.loading).toBe(false));
 
         expect(result.current.diff).toBe('remote diff');
-        expect(mockFetchDiffFromSource).toHaveBeenCalledWith('remote-ws', '/api/diff');
+        expect(mockFetchDiffFromSource).toHaveBeenCalledWith('remote-ws', '/api/diff', expect.any(AbortSignal));
     });
 
     it('handles truncated response', async () => {
@@ -109,7 +109,7 @@ describe('useFileDiff', () => {
         });
 
         await waitFor(() => expect(result.current.diff).toBe('full content'));
-        expect(mockFetchDiffFromSource).toHaveBeenCalledWith('', '/api/diff?full=true');
+        expect(mockFetchDiffFromSource).toHaveBeenCalledWith('', '/api/diff?full=true', expect.any(AbortSignal));
         expect(result.current.truncated).toBe(false);
     });
 
@@ -316,7 +316,7 @@ describe('useFileDiff', () => {
         rerender({ url: '/api/B' });
         await waitFor(() => expect(result.current.diff).toBe('diff B'));
         expect(mockFetchDiffFromSource).toHaveBeenCalledTimes(1);
-        expect(mockFetchDiffFromSource).toHaveBeenCalledWith('', '/api/B');
+        expect(mockFetchDiffFromSource).toHaveBeenCalledWith('', '/api/B', expect.any(AbortSignal));
 
         // Back to A: cache hit again, still only the single B fetch total.
         rerender({ url: '/api/A' });
@@ -351,4 +351,33 @@ describe('useFileDiff', () => {
         await waitFor(() => expect(result.current.diff).toBe('normal diff'));
         expect(result.current.fullContextUnavailable).toBeUndefined();
     });
+    it('aborts superseded and unmounted reads and rejects A→B→A late results', async () => {
+        const pending: Array<{ resolve: (result: any) => void; signal: AbortSignal }> = [];
+        mockFetchDiffFromSource.mockImplementation((_owner, _url, signal) => new Promise(resolve => pending.push({ resolve, signal })));
+        const view = renderHook(({ url, owner }) => useFileDiff(url, null, owner), { initialProps: { url: '/a', owner: 'one' } });
+        view.rerender({ url: '/b', owner: 'two' });
+        expect(pending[0].signal.aborted).toBe(true);
+        view.rerender({ url: '/a', owner: 'one' });
+        expect(pending[1].signal.aborted).toBe(true);
+        await act(async () => pending[2].resolve({ diff: 'current', truncated: false, totalLines: 1 }));
+        await act(async () => { pending[0].resolve({ diff: 'old', truncated: false, totalLines: 1 }); pending[1].resolve({ diff: 'foreign', truncated: false, totalLines: 1 }); });
+        expect(view.result.current.diff).toBe('current');
+        view.unmount(); expect(pending[2].signal.aborted).toBe(true);
+    });
+    it('cancels a prior retry before applying the latest response', async () => {
+        const pending: Array<(result: any) => void> = [];
+        mockFetchDiffFromSource.mockImplementation(() => new Promise(resolve => pending.push(resolve)));
+        const view = renderHook(() => useFileDiff('/same'));
+        act(() => view.result.current.retry());
+        await act(async () => pending[1]({ diff: 'retry', truncated: false, totalLines: 1 }));
+        await act(async () => pending[0]({ diff: 'obsolete', truncated: false, totalLines: 1 }));
+        expect(view.result.current.diff).toBe('retry');
+    });
+
+    it('never fetches a full URL while the primary URL is disabled', () => {
+        const view = renderHook(() => useFileDiff(null, '/full'));
+        expect(view.result.current.loading).toBe(false);
+        expect(mockFetchDiffFromSource).not.toHaveBeenCalled();
+    });
+
 });

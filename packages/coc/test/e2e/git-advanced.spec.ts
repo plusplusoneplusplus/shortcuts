@@ -1,10 +1,10 @@
 /**
  * Tests advanced git sub-tab interactions:
  *   Unpushed commits separator   — visual separator when unpushedCount > 0
- *   Branch inline diff           — expand/collapse inline diff in BranchChanges (mock-based)
+ *   Branch file review           — open a focused file diff from BranchChanges (mock-based)
  *   CommitList keyboard nav      — ArrowUp/ArrowDown navigation
  *   Commit hover tooltip         — tooltip after 1000ms hover delay
- *   Branch large diff Show All   — truncation + Show All button for diffs > 500 lines
+ *   Branch large diff            — focused file review for diffs > 500 lines
  */
 
 import * as fs from 'fs';
@@ -17,7 +17,7 @@ import {
     createRepoWithUnpushedCommits,
     navigateToGitTab,
 } from './fixtures/git-fixtures';
-import { seedWorkspace } from './fixtures/seed';
+import { request, seedWorkspace } from './fixtures/seed';
 import { gotoWorkspace } from './fixtures/remote-shell';
 
 // ================================================================
@@ -42,11 +42,11 @@ test.describe('Git advanced — Unpushed commits separator', () => {
 });
 
 // ================================================================
-// Branch inline diff expand/collapse (mock-based, no onFileSelect)
+// Branch focused file review (mock-based)
 // ================================================================
 
-test.describe('Git advanced — Branch inline diff', () => {
-    test('branch changes inline diff expands and collapses', async ({ page, serverUrl }) => {
+test.describe('Git advanced — Branch file review', () => {
+    test('branch changes opens the focused file diff', async ({ page, serverUrl }) => {
         const wsId = 'ws-bid-1';
         await seedWorkspace(serverUrl, wsId, 'bid-repo');
 
@@ -103,30 +103,13 @@ test.describe('Git advanced — Branch inline diff', () => {
                     additions: 10,
                     deletions: 2,
                     fileCount: 1,
+                    files: [{ path: 'src/app.ts', status: 'M', additions: 10, deletions: 2 }],
                     behindCount: 0,
                 }),
             }),
         );
 
-        // Mock branch-range files
-        await page.route(
-            (url: string) => {
-                const p = new URL(url).pathname;
-                return p.includes(`/workspaces/${wsId}/git/branch-range/files`) &&
-                    !p.includes('/diff');
-            },
-            (route) => route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({
-                    files: [
-                        { path: 'src/app.ts', status: 'modified', additions: 10, deletions: 2 },
-                    ],
-                }),
-            }),
-        );
-
-        // Mock per-file diff for inline expansion
+        // Mock the focused file's patch.
         await page.route(
             (url: string) => {
                 const p = new URL(url).pathname;
@@ -188,12 +171,12 @@ test.describe('Git advanced — Branch inline diff', () => {
         await page.getByTestId('branch-changes-header').click();
         await expect(page.getByTestId('branch-changes-files')).toBeVisible({ timeout: 5_000 });
 
-        // In full RepoGitTab, BranchChanges has onFileSelect, so clicking opens right panel
-        // (not inline diff). This tests the file row click → right panel flow.
         await page.getByTestId('branch-file-row-src/app.ts').click();
 
-        // Should show FileDiffPanel in right panel
+        await expect(page.getByTestId('branch-range-review')).toBeVisible();
+        await expect(page.getByTestId('git-file-review')).toBeVisible();
         await expect(page.getByTestId('file-diff-panel')).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByTestId('file-diff-header')).toContainText('app.ts');
     });
 });
 
@@ -219,16 +202,13 @@ test.describe('Git advanced — Keyboard navigation', () => {
 
             // Focus the listbox and press ArrowDown
             const listbox = page.locator('[role="listbox"]');
-            await listbox.focus();
-            await page.keyboard.press('ArrowDown');
-            await page.waitForTimeout(200);
+            await listbox.press('ArrowDown');
 
             // Second row should now be selected
             await expect(rows.nth(1)).toHaveAttribute('aria-selected', 'true');
 
             // Press ArrowUp to go back
-            await page.keyboard.press('ArrowUp');
-            await page.waitForTimeout(200);
+            await listbox.press('ArrowUp');
 
             // First row should be selected again
             await expect(rows.first()).toHaveAttribute('aria-selected', 'true');
@@ -270,13 +250,20 @@ test.describe('Git advanced — Commit hover tooltip', () => {
 });
 
 // ================================================================
-// Branch large diff — Show All button
+// Branch large diff — focused file review
 // ================================================================
 
-test.describe('Git advanced — Branch large diff Show All', () => {
-    test('large diff shows truncated content and Show All button', async ({ page, serverUrl }) => {
+test.describe('Git advanced — Branch large diff', () => {
+    test('large diff loads in the focused file review', async ({ page, serverUrl }) => {
         const wsId = 'ws-showall-1';
         await seedWorkspace(serverUrl, wsId, 'showall-repo');
+        // This patch-only fixture exercises the Classic renderer.
+        const preferences = await request(`${serverUrl}/api/preferences`, {
+            method: 'PATCH',
+            body: JSON.stringify({ diffEngine: 'legacy' }),
+        });
+        expect(preferences.status).toBe(200);
+        await page.addInitScript(() => localStorage.setItem('coc-diff-engine', 'legacy'));
 
         // The Git sub-tab is filtered out unless `gitInfo.isGitRepo` is true.
         // Mock the per-workspace and batch git-info endpoints so the SPA
@@ -306,7 +293,7 @@ test.describe('Git advanced — Branch large diff Show All', () => {
             'diff --git a/src/big.ts b/src/big.ts',
             '--- a/src/big.ts',
             '+++ b/src/big.ts',
-            '@@ -1,600 +1,600 @@',
+            '@@ -1,551 +1,551 @@',
         ];
         for (let i = 0; i < 550; i++) {
             diffLines.push(` const line${i} = ${i};`);
@@ -344,24 +331,8 @@ test.describe('Git advanced — Branch large diff Show All', () => {
                     additions: 550,
                     deletions: 1,
                     fileCount: 1,
+                    files: [{ path: 'src/big.ts', status: 'M', additions: 550, deletions: 1 }],
                     behindCount: 0,
-                }),
-            }),
-        );
-
-        await page.route(
-            (url: string) => {
-                const p = new URL(url).pathname;
-                return p.includes(`/workspaces/${wsId}/git/branch-range/files`) &&
-                    !p.includes('/diff');
-            },
-            (route) => route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({
-                    files: [
-                        { path: 'src/big.ts', status: 'modified', additions: 550, deletions: 1 },
-                    ],
                 }),
             }),
         );
@@ -419,18 +390,6 @@ test.describe('Git advanced — Branch large diff Show All', () => {
         // BranchChanges should be visible
         await expect(page.getByTestId('branch-changes')).toBeVisible({ timeout: 10_000 });
 
-        // In the full RepoGitTab, clicking a file opens the right panel (FileDiffPanel),
-        // not the inline diff. The inline diff (with Show All) is only available when
-        // BranchChanges has no onFileSelect. Since FileDiffPanel shows in right panel,
-        // we test the Show All via the right-panel FileDiffPanel — but FileDiffPanel
-        // uses UnifiedDiffViewer (no truncation there). The truncation only happens in
-        // BranchChanges inline mode. So we must mock the scenario without onFileSelect.
-        //
-        // We test this by directly navigating and checking the inline path. Since we
-        // can't easily remove onFileSelect in the full app, we use a mock approach
-        // where we verify the file-diff-panel right-panel loads correctly with a large diff.
-        // The right-panel FileDiffPanel renders the full diff via UnifiedDiffViewer.
-
         // Expand branch changes
         await page.getByTestId('branch-changes-header').click();
         await expect(page.getByTestId('branch-changes-files')).toBeVisible({ timeout: 5_000 });
@@ -438,11 +397,10 @@ test.describe('Git advanced — Branch large diff Show All', () => {
         // Click the file — opens in right panel
         await page.getByTestId('branch-file-row-src/big.ts').click();
 
-        // FileDiffPanel should load in right panel
+        await expect(page.getByTestId('branch-range-review')).toBeVisible();
         await expect(page.getByTestId('file-diff-panel')).toBeVisible({ timeout: 10_000 });
         await expect(page.getByTestId('file-diff-loading')).toBeHidden({ timeout: 10_000 });
 
-        // FileDiffPanel uses UnifiedDiffViewer, so the diff content should be present
         await expect(page.getByTestId('file-diff-content')).toBeVisible({ timeout: 5_000 });
     });
 });

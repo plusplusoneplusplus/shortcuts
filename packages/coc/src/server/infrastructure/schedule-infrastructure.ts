@@ -12,6 +12,7 @@ import { ScheduleYamlPersistence } from '../schedule/schedule-yaml-persistence';
 import { SqliteScheduleRunPersistence } from '../schedule/sqlite-schedule-run-persistence';
 import { ScheduleManager } from '../schedule/schedule-manager';
 import { RepoScheduleOverrideStore } from '../schedule/repo-schedule-overrides';
+import type { NativeWatchServiceLike } from '../shared/native-watch-service';
 
 // ============================================================================
 // Types
@@ -41,6 +42,7 @@ export async function createScheduleInfrastructure(
     dataDir: string,
     queueFacade: TaskQueueManager,
     store: ProcessStore,
+    watchService?: NativeWatchServiceLike,
 ): Promise<ScheduleInfrastructure> {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or open processes.db in dataDir.
     let db: NativeDatabase;
@@ -65,6 +67,7 @@ export async function createScheduleInfrastructure(
         queueFacade,
         scheduleOverrideStore,
         dataDir,
+        watchService,
     );
     await scheduleManager.restore();
     scheduleManager.restoreRunHistory(scheduleRunPersistence);

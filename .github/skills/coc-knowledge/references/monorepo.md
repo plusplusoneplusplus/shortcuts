@@ -89,6 +89,13 @@ manifest.
 
 ### Native build boundary
 
+Core `watch` owns shared canonical-root watchers, workspace subscriptions,
+filtering, native recovery and bounded, deduplicated `WatchBatch` events with a
+`rescan` flag. The N-API wrapper delivers batches through a bounded, unreferenced
+wakeup; TypeScript owns folder layout. Core watch tests receive batches on
+channels, while consumer tests inject delivery without filesystem timing.
+See the [native batching contract](../../../../packages/coc-native/AGENTS.md#filesystem-watch-batching).
+
 Core `git::patch_store` provides scoped bounded snapshots and shared in-flight processing. Host revisions key resolved object IDs; working-tree snapshots fingerprint fresh Git batches. Host admission binds execution options to ticket cancellation; host and supplied reads share snapshot finalization with per-read truncation and final generation checks. Single-use requests capture generations before I/O/dispatch. Individual cancellation and refresh/disposal stop direct host Git children; live waiters retry cancelled owners' failed computation. Forge `LocalPatchOptions.signal` cancels one request and its WSL transport, preserving the caller's abort reason. Unsent WSL validity polling observes revocation; tickets, listeners and timers retire on every outcome.
 
 `coc-native`'s `build` is TypeScript-only; `build:native` requires Rust and generates
@@ -157,6 +164,18 @@ per-file routes pass display limits into Rust and share `git/git-response.ts` wi
 conversion; untruncated responses omit truncation metadata. Host commit/range/comparison patches
 come from a per-root Rust `GitPatchStore` keyed by resolved object IDs; the benchmark
 shares its range files and summaries.
+
+CoC PR submission injects Forge `pullRequestGit` separately from `gh`/`az`.
+Host operations use Rust; WSL uses `runGitViaWsl` with argv `env` overrides.
+Default branch: symbolic origin HEAD, remote HEAD (15s, no prompt), then `main`.
+Fetch/push: 600s, no prompt. Worktree paths retain WSL identity; provider CLIs
+use the caller's checkout. Forge `discoverGitRepoRoot` handles host/WSL discovery
+from files or directories.
+
+Full-text working-tree snapshots read object IDs through Forge `readGitBlob`, with
+raw bytes, an inclusive size cap and `GitBlobTooLargeError`. Host execution uses
+native `gitReadBlob`; WSL uses the streaming byte transport in Forge. Both stop
+on overflow and preserve index-only blobs. Binary detection stays in CoC.
 Native range capabilities resolve refs and ahead counts. Rust plans/executes host Git and processes
 patches, while TypeScript executes the shared plan for WSL. Working-tree all scope combines HEAD-to-index and index-to-disk patches with unstaged metadata overriding shared paths; provider operations read fresh state and batch failures propagate. WorkingTreeService per-file patches and CoC working-tree patch routes also use
 this backend with full context; routes apply native truncation and expose native-load

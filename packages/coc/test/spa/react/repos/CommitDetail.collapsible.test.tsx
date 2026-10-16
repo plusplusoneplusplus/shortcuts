@@ -103,6 +103,9 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     formatRelativeTime: (d: string) => d,
 }));
 
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/GitFileReview', () => ({ GitFileReview: () => <div /> }));
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useCommitReviewFiles', () => ({ useCommitReviewFiles: () => ({ files: [], loading: false }) }));
+
 import { CommitDetail } from '../../../../src/server/spa/client/react/features/git/commits/CommitDetail';
 import type { GitCommitItem } from '../../../../src/server/spa/client/react/features/git/commits/CommitList';
 
@@ -131,97 +134,28 @@ describe('CommitDetail — collapsible header', () => {
         return utils!;
     }
 
-    it('header is expanded by default', async () => {
+    it('starts with a compact summary and hidden metadata', async () => {
         await renderDetail({ commit: makeCommit() });
-        expect(screen.getByTestId('commit-info-header')).toBeTruthy();
-        expect(screen.queryByTestId('commit-info-summary')).toBeNull();
+        expect(screen.getByTestId('commit-info-summary')).toBeTruthy();
+        expect(screen.getByTestId('commit-info-header').parentElement!.hidden).toBe(true);
     });
-
-    it('collapse button collapses the header', async () => {
+    it('expands explicitly and collapses with an accessible control', async () => {
         await renderDetail({ commit: makeCommit() });
-        const collapseBtn = screen.getByTestId('commit-info-collapse-btn');
-        await act(async () => { fireEvent.click(collapseBtn); });
-        expect(screen.getByTestId('commit-info-summary')).toBeTruthy();
-    });
-
-    it('summary bar shows subject and short hash when collapsed', async () => {
-        const commit = makeCommit({ subject: 'fix: a bug', hash: 'deadbeef1234567890abcdef1234567890abcdef' });
-        await renderDetail({ commit });
-        await act(async () => { fireEvent.click(screen.getByTestId('commit-info-collapse-btn')); });
-        const summary = screen.getByTestId('commit-info-summary');
-        expect(summary.textContent).toContain('fix: a bug');
-        expect(summary.textContent).toContain('deadbee');
-    });
-
-    it('clicking summary bar re-expands the header', async () => {
-        await renderDetail({ commit: makeCommit() });
-        await act(async () => { fireEvent.click(screen.getByTestId('commit-info-collapse-btn')); });
-        expect(screen.getByTestId('commit-info-summary')).toBeTruthy();
-        await act(async () => { fireEvent.click(screen.getByTestId('commit-info-summary')); });
-        expect(screen.queryByTestId('commit-info-summary')).toBeNull();
-        expect(screen.getByTestId('commit-info-header')).toBeTruthy();
-    });
-
-    it('auto-collapses when diff container is scrolled past threshold', async () => {
-        await renderDetail({ commit: makeCommit() });
-        const diffSection = screen.getByTestId('diff-section');
-        // simulate scroll past threshold
-        Object.defineProperty(diffSection, 'scrollTop', { value: 30, configurable: true });
-        await act(async () => { fireEvent.scroll(diffSection); });
-        expect(screen.getByTestId('commit-info-summary')).toBeTruthy();
-    });
-
-    it('does not auto-expand when scrolled back to top', async () => {
-        await renderDetail({ commit: makeCommit() });
-        const diffSection = screen.getByTestId('diff-section');
-
-        // First collapse via scroll
-        Object.defineProperty(diffSection, 'scrollTop', { value: 30, configurable: true });
-        await act(async () => { fireEvent.scroll(diffSection); });
-        expect(screen.getByTestId('commit-info-summary')).toBeTruthy();
-
-        // Scroll back to top
-        Object.defineProperty(diffSection, 'scrollTop', { value: 0, configurable: true });
-        await act(async () => { fireEvent.scroll(diffSection); });
-        expect(screen.getByTestId('commit-info-summary')).toBeTruthy();
-    });
-
-    it('allows explicit re-expand after auto-collapse', async () => {
-        await renderDetail({ commit: makeCommit() });
-        const diffSection = screen.getByTestId('diff-section');
-
-        Object.defineProperty(diffSection, 'scrollTop', { value: 30, configurable: true });
-        await act(async () => { fireEvent.scroll(diffSection); });
-        expect(screen.getByTestId('commit-info-summary')).toBeTruthy();
-
-        await act(async () => { fireEvent.click(screen.getByTestId('commit-info-summary')); });
-        expect(screen.queryByTestId('commit-info-summary')).toBeNull();
-        expect(screen.getByTestId('commit-info-header')).toBeTruthy();
-    });
-
-    it('selecting a new commit resets collapsed state to expanded', async () => {
-        const commit1 = makeCommit({ hash: 'aaa111bbbccc', subject: 'first commit' });
-        const { rerender } = await renderDetail({ commit: commit1 });
-
-        // Collapse manually
-        await act(async () => { fireEvent.click(screen.getByTestId('commit-info-collapse-btn')); });
-        expect(screen.getByTestId('commit-info-summary')).toBeTruthy();
-
-        // Change to a new commit
-        const commit2 = makeCommit({ hash: 'ddd444eeefff', subject: 'second commit' });
-        await act(async () => {
-            rerender(<CommitDetail workspaceId="ws1" hash="ddd444eeefff" commit={commit2 as any} />);
-        });
-        expect(screen.queryByTestId('commit-info-summary')).toBeNull();
-        expect(screen.getByTestId('commit-info-header')).toBeTruthy();
-    });
-    it('changing workspace with the same hash restores the expanded header', async () => {
-        const commit = makeCommit();
-        const { rerender } = await renderDetail({ commit });
-        await act(async () => { fireEvent.click(screen.getByTestId('commit-info-collapse-btn')); });
-        await act(async () => { rerender(<CommitDetail workspaceId="ws2" hash="abc123" commit={commit} />); });
-        expect(screen.queryByTestId('commit-info-summary')).toBeNull();
+        fireEvent.click(screen.getByTestId('commit-info-summary'));
         expect(screen.getByTestId('commit-info-header').parentElement!.hidden).toBe(false);
+        fireEvent.click(screen.getByTestId('commit-info-collapse-btn'));
+        expect(screen.getByTestId('commit-info-header').parentElement!.hidden).toBe(true);
     });
-
+    it('keeps subject and short hash available while collapsed', async () => {
+        await renderDetail({ commit: makeCommit({ subject: 'fix: a bug', hash: 'deadbeef123456' }) });
+        expect(screen.getByTestId('commit-info-summary').textContent).toContain('fix: a bug');
+        expect(screen.getByTestId('commit-info-summary').textContent).toContain('deadbeef');
+    });
+    it.each(['commit', 'workspace'])('resets expanded disclosure on %s change', async change => {
+        const { rerender } = await renderDetail({ commit: makeCommit() });
+        fireEvent.click(screen.getByTestId('commit-info-summary'));
+        rerender(<CommitDetail workspaceId={change === 'workspace' ? 'ws2' : 'ws1'} hash={change === 'commit' ? 'def456' : 'abc123'} commit={makeCommit()} />);
+        expect(screen.getByTestId('commit-info-summary')).toBeTruthy();
+        expect(screen.getByTestId('commit-info-header').parentElement!.hidden).toBe(true);
+    });
 });

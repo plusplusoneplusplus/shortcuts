@@ -5,7 +5,7 @@
  * descriptor is the source of truth: its type decides which viewer mounts.
  */
 
-import React from 'react';
+import React, { createRef } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
@@ -38,6 +38,7 @@ import { CanvasEmbed } from '../../../src/server/spa/client/react/shared/CanvasE
 import { ChatRenderContextProvider } from '../../../src/server/spa/client/react/features/chat/conversation/ChatRenderContext';
 import { KustoEmbedGroupProvider } from '../../../src/server/spa/client/react/shared/KustoEmbedGroup';
 import { chatMarkdownToHtml } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
+import { ConversationArea } from '../../../src/server/spa/client/react/features/chat/ConversationArea';
 import { CANVAS_HOST_VERSION } from '../../../src/server/spa/client/react/features/canvas/canvas-host-contract';
 
 mocks.client = {
@@ -74,6 +75,7 @@ describe('inline canvas:// embed', () => {
     afterEach(() => {
         cleanup();
         vi.clearAllMocks();
+        vi.unstubAllGlobals();
     });
 
     it('preserves the Excalidraw preview for an Excalidraw canvas', async () => {
@@ -263,6 +265,138 @@ describe('inline canvas:// embed', () => {
         };
     }
 
+    const canvasKinds = [
+        { type: 'markdown', content: '# Brief' },
+        { type: 'code', language: 'typescript', content: 'const x = 1;' },
+        { type: 'code', language: 'svg', content: '<svg xmlns="http://www.w3.org/2000/svg" />' },
+        { type: 'excalidraw', content: SCENE },
+        { type: 'extension', content: '{}' },
+        { type: 'kusto', content: kustoCanvas('sample').content },
+    ];
+
+    it.each(canvasKinds)('defaults $type/$language closed only in Sentinel and retains choices through HTML updates', async kind => {
+        mocks.get.mockResolvedValue({ ...kustoCanvas('artifact'), ...kind });
+        mocks.getExtension.mockResolvedValue(EXTENSION);
+        const fixture = (mode: string, suffix = '') => (
+            <ChatRenderContextProvider value={{ wsId: 'ws-1', chatId: 'chat-1', conversationMode: mode }}>
+                <KustoEmbedGroupProvider>
+                    <MarkdownView html={chatMarkdownToHtml(`canvas://artifact${suffix}`, 'ws-1', { canvasEmbedEnabled: true })} />
+                </KustoEmbedGroupProvider>
+            </ChatRenderContextProvider>
+        );
+        const view = render(fixture('sentinel'));
+        const toggleId = kind.type === 'kusto' ? 'canvas-embed-kusto-toggle' : 'canvas-embed-toggle';
+        await screen.findByRole('button', { name: 'Query artifact' });
+        expect(screen.getByTestId(toggleId)).toHaveAttribute('aria-expanded', 'false');
+        expect(screen.getByTestId('canvas-embed-body')).not.toBeVisible();
+        expect(screen.getByTestId('canvas-embed-body')).toHaveAttribute('inert');
+        expect(screen.getByTestId('canvas-embed-body')).toHaveStyle({ display: 'none' });
+        fireEvent.click(screen.getByTestId(toggleId));
+        expect(screen.getByTestId('canvas-embed-body')).toBeVisible();
+        view.rerender(fixture('sentinel', '\n\nMore response text'));
+        await screen.findByRole('button', { name: 'Query artifact' });
+        expect(screen.getByTestId(toggleId)).toHaveAttribute('aria-expanded', 'true');
+        fireEvent.click(screen.getByTestId(toggleId));
+        view.rerender(fixture('sentinel', '\n\nUpdated again'));
+        await screen.findByRole('button', { name: 'Query artifact' });
+        expect(screen.getByTestId(toggleId)).toHaveAttribute('aria-expanded', 'false');
+        view.unmount();
+        render(fixture('ask'));
+        await screen.findByRole('button', { name: 'Query artifact' });
+        await waitFor(() => expect(screen.getByTestId(toggleId)).toHaveAttribute('aria-expanded', 'true'));
+    });
+
+    it('keeps every Sentinel Kusto closed as group members arrive, honoring manual expansion', async () => {
+        mocks.get.mockImplementation((_ws: string, id: string) => Promise.resolve(kustoCanvas(id)));
+        const fixture = (ids: string[]) => (
+            <ChatRenderContextProvider value={{ conversationMode: 'sentinel', chatId: 'chat-1' }}>
+                <KustoEmbedGroupProvider>
+                    {ids.map(id => <CanvasEmbed key={id} workspaceId="ws-1" canvasId={id} />)}
+                </KustoEmbedGroupProvider>
+            </ChatRenderContextProvider>
+        );
+        const view = render(fixture(['k1', 'k2']));
+        await screen.findByRole('button', { name: 'Query k2' });
+        expect(screen.getAllByTestId('canvas-embed-kusto-toggle').map(el => el.getAttribute('aria-expanded'))).toEqual(['false', 'false']);
+        fireEvent.click(screen.getByRole('button', { name: 'Query k1' }));
+        view.rerender(fixture(['k1', 'k2', 'k3']));
+        await screen.findByRole('button', { name: 'Query k3' });
+        expect(screen.getAllByTestId('canvas-embed-kusto-toggle').map(el => el.getAttribute('aria-expanded'))).toEqual(['true', 'false', 'false']);
+    });
+
+    it.each(['workspace', 'chat', 'canvas', 'owner'] as const)('isolates Sentinel choices across %s routing and portal remounts', async scope => {
+        mocks.get.mockResolvedValue({ ...kustoCanvas('artifact'), type: 'markdown' });
+        const fixture = (next: boolean) => {
+            const workspaceId = scope === 'workspace' && next ? 'remote:owner:ws-1' : 'ws-1';
+            return <ChatRenderContextProvider value={{ wsId: workspaceId, chatId: scope === 'chat' && next ? 'chat-2' : 'chat-1', conversationMode: 'sentinel', conversationOwnerKey: scope === 'owner' && next ? 'https://remote.example/ws-1' : 'local/ws-1' }}>
+                <MarkdownView html={chatMarkdownToHtml(`canvas://${scope === 'canvas' && next ? 'other' : 'artifact'}`, workspaceId, { canvasEmbedEnabled: true })} />
+            </ChatRenderContextProvider>;
+        };
+        const view = render(fixture(false));
+        await screen.findByRole('button', { name: 'Query artifact' });
+        fireEvent.click(screen.getByTestId('canvas-embed-toggle'));
+        view.rerender(fixture(true));
+        await waitFor(() => expect(screen.getByTestId('canvas-embed-toggle')).toHaveAttribute('aria-expanded', 'false'));
+        expect(mocks.get).toHaveBeenLastCalledWith(scope === 'workspace' ? 'remote:owner:ws-1' : 'ws-1', scope === 'canvas' ? 'other' : 'artifact');
+    });
+
+    it('retains separate Sentinel choices for repeated references after HTML replacement', async () => {
+        mocks.get.mockResolvedValue({ ...kustoCanvas('same'), type: 'markdown' });
+        const fixture = (tail = '') => <ChatRenderContextProvider value={{ wsId: 'ws-1', chatId: 'chat-1', conversationMode: 'sentinel' }}>
+            <MarkdownView html={chatMarkdownToHtml(`canvas://same\n\ncanvas://same${tail}`, 'ws-1', { canvasEmbedEnabled: true })} />
+        </ChatRenderContextProvider>;
+        const view = render(fixture());
+        await waitFor(() => expect(screen.getAllByRole('button', { name: 'Query same' })).toHaveLength(2));
+        fireEvent.click(screen.getAllByTestId('canvas-embed-toggle')[0]);
+        view.rerender(fixture('\n\nMore text'));
+        await waitFor(() => expect(screen.getAllByRole('button', { name: 'Query same' })).toHaveLength(2));
+        expect(screen.getAllByTestId('canvas-embed-toggle').map(el => el.getAttribute('aria-expanded'))).toEqual(['true', 'false']);
+    });
+
+    it('starts collapsed during loading and retains a manual expand through completion and mode updates', async () => {
+        let resolveLoad!: (canvas: Canvas) => void;
+        mocks.get.mockReturnValue(new Promise(resolve => { resolveLoad = resolve; }));
+        const fixture = (conversationMode: string) => <ChatRenderContextProvider value={{ conversationMode }}>
+            <CanvasEmbed workspaceId="ws-1" canvasId="loading" />
+        </ChatRenderContextProvider>;
+        const view = render(fixture('sentinel'));
+        expect(screen.getByTestId('canvas-embed-loading')).not.toBeVisible();
+        fireEvent.click(screen.getByTestId('canvas-embed-toggle'));
+        await act(async () => { resolveLoad({ ...kustoCanvas('loading'), type: 'markdown' } as Canvas); });
+        expect(screen.getByTestId('canvas-embed-toggle')).toHaveAttribute('aria-expanded', 'true');
+        fireEvent.click(screen.getByTestId('canvas-embed-toggle'));
+        view.rerender(fixture('ask'));
+        expect(screen.getByTestId('canvas-embed-toggle')).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('gives historical Excalidraw placeholders the Sentinel disclosure', async () => {
+        mocks.get.mockResolvedValue({ ...kustoCanvas('legacy'), type: 'excalidraw', content: SCENE });
+        render(<ChatRenderContextProvider value={{ conversationMode: 'sentinel' }}>
+            <MarkdownView html='<div class="md-excalidraw-embed" data-ws-id="ws-1" data-canvas-id="legacy"></div>' />
+        </ChatRenderContextProvider>);
+        await screen.findByRole('button', { name: 'Query legacy' });
+        expect(screen.getByTestId('canvas-embed-toggle')).toHaveAttribute('aria-expanded', 'false');
+        fireEvent.click(screen.getByTestId('canvas-embed-toggle'));
+        expect(await screen.findByTestId('mock-excalidraw')).toBeVisible();
+    });
+
+    it.each(['sentinel', 'ask'])('passes actual %s conversation mode through normal and pinned turn bodies', async conversationMode => {
+        mocks.get.mockResolvedValue({ ...kustoCanvas('artifact'), type: 'markdown' });
+        vi.stubGlobal('__DASHBOARD_CONFIG__', { canvasEnabled: true });
+        render(<ConversationArea
+            loading={false} error={null} pendingQueue={[]} isScrolledUp={false}
+            scrollRef={createRef<HTMLDivElement>()} onScrollToBottom={() => {}}
+            isPending={false} task={{ status: 'completed', displayName: 'Sentinel' }} fullTask={null}
+            onCancel={() => {}} onMoveToTop={() => {}} variant="inline" taskId="chat-1" wsId="ws-1"
+            conversationMode={conversationMode} onPinTurn={() => {}}
+            turns={[{ role: 'assistant', content: 'canvas://artifact', timestamp: '2026-01-01T00:00:00Z', turnIndex: 0, mode: 'ask', pinnedAt: '2026-01-01T00:00:00Z' }]}
+        />);
+        await waitFor(() => expect(screen.getAllByRole('button', { name: 'Query artifact', hidden: true })).toHaveLength(2));
+        for (const toggle of screen.getAllByTestId('canvas-embed-toggle')) {
+            expect(toggle).toHaveAttribute('aria-expanded', String(conversationMode !== 'sentinel'));
+        }
+    });
+
     function renderGroupedKustoEmbeds() {
         mocks.get.mockImplementation((_ws: string, id: string) => Promise.resolve(kustoCanvas(id)));
         const html = chatMarkdownToHtml('canvas://k1\n\ncanvas://k2', 'ws-1', { canvasEmbedEnabled: true });
@@ -377,18 +511,18 @@ describe('inline canvas:// embed', () => {
         expect(toggles[0]).toHaveAttribute('aria-expanded', 'true');
     });
 
-    it('preserves the extension frame and accepts saved state updates while collapsed', async () => {
+    it.each(['sentinel', 'ask'])('preserves the %s extension frame and saved updates while collapsed', async conversationMode => {
         const canvas = { ...kustoCanvas('extension'), type: 'extension', content: '{"pinned":false}' };
         mocks.get.mockResolvedValue(canvas);
         mocks.getExtension.mockResolvedValue(EXTENSION);
         mocks.invokeCapability.mockResolvedValue({ ...canvas, title: 'Updated title', content: '{"pinned":true}', revision: 4 });
-        render(<CanvasEmbed workspaceId="ws-1" canvasId="extension" />);
+        render(<ChatRenderContextProvider value={{ conversationMode }}><CanvasEmbed workspaceId="ws-1" canvasId="extension" /></ChatRenderContextProvider>);
         const iframe = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
         const frameWindow = iframe.contentWindow;
         const srcDoc = iframe.srcdoc;
         const postMessage = vi.fn();
         Object.defineProperty(frameWindow, 'postMessage', { value: postMessage, configurable: true });
-        fireEvent.click(screen.getByRole('button', { name: 'Query extension' }));
+        if (conversationMode !== 'sentinel') fireEvent.click(screen.getByRole('button', { name: 'Query extension' }));
         const event = new MessageEvent('message', {
             data: { __canvasHost: true, id: 8, type: 'invoke-capability', name: 'set_scope', params: {} },
         });
@@ -434,24 +568,24 @@ describe('inline canvas:// embed', () => {
         expect(mocks.get).not.toHaveBeenCalled();
     });
 
-    it.each(['workspace', 'chat', 'canvas'] as const)('resets disclosure and rejects stale loads on a %s switch', async scope => {
+    it.each(['workspace', 'chat', 'canvas', 'owner'] as const)('resets disclosure and rejects stale loads on a %s switch', async scope => {
         let resolveOld!: (canvas: Canvas) => void;
         mocks.get.mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve; }));
         mocks.get.mockResolvedValue({ ...kustoCanvas('new'), type: 'markdown' });
-        const fixture = (workspaceId: string, chatId: string, canvasId: string) => (
-            <ChatRenderContextProvider value={{ wsId: workspaceId, chatId }}>
+        const fixture = (workspaceId: string, chatId: string, canvasId: string, conversationOwnerKey = 'local') => (
+            <ChatRenderContextProvider value={{ wsId: workspaceId, chatId, conversationOwnerKey }}>
                 <CanvasEmbed workspaceId={workspaceId} canvasId={canvasId} />
             </ChatRenderContextProvider>
         );
         const view = render(fixture('ws-1', 'chat-1', 'old'));
         fireEvent.click(screen.getByTestId('canvas-embed-toggle'));
-        view.rerender(fixture(scope === 'workspace' ? 'ws-2' : 'ws-1', scope === 'chat' ? 'chat-2' : 'chat-1', scope === 'canvas' ? 'new' : 'old'));
+        view.rerender(fixture(scope === 'workspace' ? 'ws-2' : 'ws-1', scope === 'chat' ? 'chat-2' : 'chat-1', scope === 'canvas' ? 'new' : 'old', scope === 'owner' ? 'remote' : 'local'));
         const toggle = await screen.findByRole('button', { name: 'Query new' });
         expect(toggle).toHaveAttribute('aria-expanded', 'true');
         await act(async () => { resolveOld({ ...kustoCanvas('old'), type: 'markdown' }); });
         expect(screen.queryByRole('button', { name: 'Query old' })).toBeNull();
         fireEvent.click(toggle);
-        view.rerender(fixture(scope === 'workspace' ? 'ws-2' : 'ws-1', scope === 'chat' ? 'chat-2' : 'chat-1', scope === 'canvas' ? 'new' : 'old'));
+        view.rerender(fixture(scope === 'workspace' ? 'ws-2' : 'ws-1', scope === 'chat' ? 'chat-2' : 'chat-1', scope === 'canvas' ? 'new' : 'old', scope === 'owner' ? 'remote' : 'local'));
         expect(toggle).toHaveAttribute('aria-expanded', 'false');
     });
 

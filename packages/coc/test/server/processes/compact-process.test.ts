@@ -7,15 +7,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AIProcess } from '@plusplusoneplusplus/forge';
 import { CompactUnsupportedError } from '@plusplusoneplusplus/forge';
 import { APIError } from '../../../src/server/errors';
-import { compactGuardError, compactProcess } from '../../../src/server/processes/compact-process';
+import { compactGuardError, compactProcess, SENTINEL_COMPACTION_INSTRUCTIONS } from '../../../src/server/processes/compact-process';
 
 const compactSession = vi.fn();
+const requestedProviders: string[] = [];
 
 vi.mock('@plusplusoneplusplus/forge', async () => {
     const actual = await vi.importActual('@plusplusoneplusplus/forge');
     return {
         ...actual as object,
-        sdkServiceRegistry: { getOrThrow: () => ({ compactSession }) },
+        sdkServiceRegistry: { getOrThrow: (provider: string) => {
+            requestedProviders.push(provider);
+            return { compactSession };
+        } },
     };
 });
 
@@ -46,6 +50,7 @@ describe('compactProcess', () => {
 
     beforeEach(() => {
         compactSession.mockReset();
+        requestedProviders.length = 0;
         store = makeStore();
     });
 
@@ -101,5 +106,52 @@ describe('compactProcess', () => {
         expect(compactSession).toHaveBeenCalledWith('sess-1', undefined);
         expect(outcome.tokensBefore).toBeUndefined();
         expect(outcome.tokensAfter).toBeUndefined();
+    });
+
+    it('preserves the exact Sentinel instruction including its Unicode apostrophe', () => {
+        expect(SENTINEL_COMPACTION_INSTRUCTIONS).toBe('Preserve Sentinel’s active goals, unresolved asks, decisions, blockers and next actions. Retain explicit authorizations, their scope, cancellations and superseding instructions. Keep exact owner/workspace/conversation IDs and to-do/job IDs, links and status. Distinguish proposed, authorized, attempted, completed, failed and cancelled work. Never infer permission or success; remove stale details and duplication.');
+        expect(SENTINEL_COMPACTION_INSTRUCTIONS.charCodeAt('Preserve Sentinel'.length)).toBe(0x2019);
+    });
+
+    it.each(['copilot', 'claude'] as const)('defaults unfocused Sentinel compaction for %s without enabling automation', async provider => {
+        compactSession.mockResolvedValue({ success: true });
+        for (const customInstructions of [undefined, '', ' \n\t ']) {
+            await compactProcess(store, makeProcess({
+                metadata: { type: 'chat', workspaceId: 'ws-1', provider, mode: 'sentinel' },
+            }), customInstructions);
+            expect(compactSession).toHaveBeenLastCalledWith('sess-1', SENTINEL_COMPACTION_INSTRUCTIONS);
+        }
+        for (const [, update] of store.updateProcess.mock.calls) {
+            expect(update.metadata.autoCompact).toBeUndefined();
+            expect(update.metadata).toMatchObject({
+                workspaceId: 'ws-1', provider, mode: 'sentinel',
+                compaction: { customInstructions: SENTINEL_COMPACTION_INSTRUCTIONS },
+            });
+        }
+        expect(requestedProviders).toEqual([provider, provider, provider]);
+    });
+
+    it.each([undefined, 'ask', 'autopilot', 'ralph', 'unknown'])('does not infer Sentinel from autoCompact.enabled (mode=%s)', async mode => {
+        compactSession.mockResolvedValue({ success: true });
+        await compactProcess(store, makeProcess({
+            metadata: { type: 'chat', mode, autoCompact: { enabled: true, thresholdTokens: 800 } },
+        }));
+        expect(compactSession).toHaveBeenCalledWith('sess-1', undefined);
+    });
+
+    it('keeps explicit manual Sentinel instructions as the verbatim override', async () => {
+        compactSession.mockResolvedValue({ success: true });
+        const customInstructions = '  Keep only this focus.  ';
+        await compactProcess(store, makeProcess({
+            metadata: { type: 'chat', workspaceId: 'ws-1', mode: 'sentinel',
+                autoCompact: { enabled: false, thresholdTokens: 800 } },
+        }), customInstructions);
+        expect(compactSession).toHaveBeenCalledWith('sess-1', customInstructions);
+        expect(store.updateProcess).toHaveBeenLastCalledWith('proc-1', expect.objectContaining({
+            metadata: expect.objectContaining({
+                autoCompact: { enabled: false, thresholdTokens: 800 },
+                compaction: expect.objectContaining({ customInstructions }),
+            }),
+        }));
     });
 });

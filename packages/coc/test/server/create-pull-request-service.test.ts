@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
@@ -20,54 +20,10 @@ import {
     type PrCliRunner,
 } from '../../src/server/git/create-pull-request-service';
 
+import { type PullRequestGit } from '@plusplusoneplusplus/forge';
+
 const GH_URL = 'https://github.com/example/repo.git';
 const ADO_URL = 'https://dev.azure.com/org/proj/_git/repo';
-
-type Call = { command: string; args: string[]; cwd: string };
-type Handler = (call: Call) => { stdout?: string; stderr?: string } | Error | undefined;
-
-function fail(message: string, extra: Record<string, unknown> = {}): Error {
-    return Object.assign(new Error(message), extra);
-}
-
-/** Fake runner: `handler` answers first; unhandled calls succeed with empty output. */
-function fakeRunner(handler: Handler): PrCliRunner & { calls: Call[] } {
-    const calls: Call[] = [];
-    const runner = (async (command: string, args: string[], options: { cwd: string }) => {
-        const call = { command, args, cwd: options.cwd };
-        calls.push(call);
-        const res = handler(call);
-        if (res instanceof Error) throw res;
-        return { stdout: res?.stdout ?? '', stderr: res?.stderr ?? '' };
-    }) as PrCliRunner & { calls: Call[] };
-    runner.calls = calls;
-    return runner;
-}
-
-function line(call: Call): string {
-    return `${call.command} ${call.args.join(' ')}`;
-}
-
-/** Happy-path answers for a current-branch run against `remoteUrl`. */
-function currentBranchHandler(remoteUrl: string, overrides: Handler = () => undefined): Handler {
-    return call => {
-        const o = overrides(call);
-        if (o) return o;
-        const l = line(call);
-        if (l === 'git config --get remote.origin.url') return { stdout: `${remoteUrl}\n` };
-        if (l === 'git symbolic-ref --quiet --short refs/remotes/origin/HEAD') return { stdout: 'origin/main\n' };
-        if (l === 'git rev-parse --abbrev-ref HEAD') return { stdout: 'feature/x\n' };
-        if (l === 'git rev-parse HEAD') return { stdout: 'aaa111\n' };
-        if (l.startsWith('git ls-remote --heads')) return { stdout: '' };
-        if (l.startsWith('gh pr list')) return { stdout: '[]' };
-        if (l.startsWith('gh pr create')) return { stdout: 'https://github.com/example/repo/pull/42\n' };
-        if (l.startsWith('az repos pr list')) return { stdout: '[]' };
-        if (l.startsWith('az repos pr create')) {
-            return { stdout: JSON.stringify({ pullRequestId: 7, repository: { webUrl: ADO_URL } }) };
-        }
-        return undefined;
-    };
-}
 
 describe('detectPullRequestProvider', () => {
     it('maps GitHub remotes (https and ssh) to github', () => {
@@ -137,171 +93,180 @@ describe('argument building and parsing', () => {
     });
 });
 
-describe('createPullRequest (fake runner)', () => {
+describe('createPullRequest (typed git operations)', () => {
     let tempDir: string;
+    let git: { [K in keyof PullRequestGit]: ReturnType<typeof vi.fn<PullRequestGit[K]>> };
+    let run: ReturnType<typeof vi.fn<PrCliRunner>>;
+    const submit = (input: Partial<Parameters<typeof createPullRequest>[0]> = {}) =>
+        createPullRequest({ repoRoot: '/repo', title: 'T', ...input }, { git, runCommand: run, tempDir });
+
     beforeEach(async () => {
         tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'coc-pr-test-'));
-    });
-    afterEach(async () => {
-        await fsp.rm(tempDir, { recursive: true, force: true });
-    });
-
-    it('current-branch mode on GitHub pushes and creates the PR', async () => {
-        const run = fakeRunner(currentBranchHandler(GH_URL));
-        const result = await createPullRequest({ repoRoot: '/repo', title: 'My PR', body: 'Body' }, { runCommand: run, tempDir });
-        expect(result).toEqual({
-            url: 'https://github.com/example/repo/pull/42',
-            id: 42,
-            provider: 'github',
-            branch: 'feature/x',
-            base: 'main',
-            existing: false,
-            autoMerge: { requested: false, enabled: false },
+        git = {
+            remoteUrl: vi.fn().mockResolvedValue(GH_URL), defaultBranch: vi.fn().mockResolvedValue('main'),
+            commitsInRange: vi.fn().mockResolvedValue(['abcdef0']), resolveCommit: vi.fn().mockResolvedValue('abcdef0'),
+            orderCommits: vi.fn().mockResolvedValue(['abcdef0']), refExists: vi.fn().mockResolvedValue(false),
+            fetchBranch: vi.fn().mockResolvedValue(''), shortSha: vi.fn().mockResolvedValue('abcdef0'),
+            commitSubject: vi.fn().mockResolvedValue('Add thing'), addWorktree: vi.fn().mockImplementation(async (_repo, _branch, filePath) => filePath),
+            removeWorktree: vi.fn().mockResolvedValue(''), deleteBranch: vi.fn().mockResolvedValue(''),
+            cherryPick: vi.fn().mockResolvedValue(''), skipCherryPick: vi.fn().mockResolvedValue(''),
+            abortCherryPick: vi.fn().mockResolvedValue(''), status: vi.fn().mockResolvedValue(''),
+            rebase: vi.fn().mockResolvedValue(''), abortRebase: vi.fn().mockResolvedValue(''),
+            pushBranch: vi.fn().mockResolvedValue(''), currentBranch: vi.fn().mockResolvedValue('feature/x'),
+            headSha: vi.fn().mockResolvedValue('aaa111'), remoteBranchSha: vi.fn().mockResolvedValue(''),
+        };
+        run = vi.fn(async (command, args) => {
+            if (command === 'gh' && args[0] === 'pr' && args[1] === 'list') return { stdout: '[]', stderr: '' };
+            if (command === 'gh' && args[0] === 'pr' && args[1] === 'create') return { stdout: 'https://github.com/example/repo/pull/42', stderr: '' };
+            if (command === 'az' && args[2] === 'list') return { stdout: '[]', stderr: '' };
+            if (command === 'az' && args[2] === 'create') return { stdout: JSON.stringify({ pullRequestId: 7, repository: { webUrl: ADO_URL } }), stderr: '' };
+            return { stdout: '', stderr: '' };
         });
-        const lines = run.calls.map(line);
-        expect(lines).toContain('gh auth status');
-        expect(lines).toContain('git push -u origin feature/x');
-        expect(lines.some(l => l.startsWith('gh pr merge'))).toBe(false);
     });
+    afterEach(async () => { await fsp.rm(tempDir, { recursive: true, force: true }); });
 
-    it('skips the push when the remote branch is already up to date', async () => {
-        const run = fakeRunner(currentBranchHandler(GH_URL, c => line(c).startsWith('git ls-remote --heads') ? { stdout: 'aaa111\trefs/heads/feature/x\n' } : undefined));
-        await createPullRequest({ repoRoot: '/repo', title: 'T' }, { runCommand: run, tempDir });
-        expect(run.calls.map(line).some(l => l.startsWith('git push'))).toBe(false);
+    it('pushes and creates through separate git and provider seams', async () => {
+        expect(await submit({ title: 'My PR', body: 'Body' })).toEqual({
+            url: 'https://github.com/example/repo/pull/42', id: 42, provider: 'github', branch: 'feature/x',
+            base: 'main', existing: false, autoMerge: { requested: false, enabled: false },
+        });
+        expect(git.pushBranch).toHaveBeenCalledWith('/repo', 'feature/x');
+        expect(run).toHaveBeenCalledWith('gh', ['auth', 'status'], { cwd: '/repo' });
+        expect(run.mock.calls.every(([command]) => command === 'gh' || command === 'az')).toBe(true);
     });
-
-    it('returns the existing open PR instead of creating another', async () => {
-        const run = fakeRunner(currentBranchHandler(GH_URL, c => line(c).startsWith('gh pr list')
-            ? { stdout: '[{"number":9,"url":"https://github.com/example/repo/pull/9"}]' }
-            : undefined));
-        const result = await createPullRequest({ repoRoot: '/repo', title: 'T' }, { runCommand: run, tempDir });
-        expect(result).toMatchObject({ id: 9, existing: true });
-        expect(run.calls.map(line).some(l => l.startsWith('gh pr create'))).toBe(false);
+    it('skips push when the remote SHA matches', async () => {
+        git.remoteBranchSha.mockResolvedValue('aaa111');
+        await submit();
+        expect(git.pushBranch).not.toHaveBeenCalled();
     });
-
-    it('refuses when the current branch is the base branch', async () => {
-        const run = fakeRunner(currentBranchHandler(GH_URL, c => line(c) === 'git rev-parse --abbrev-ref HEAD' ? { stdout: 'main\n' } : undefined));
-        await expect(createPullRequest({ repoRoot: '/repo', title: 'T' }, { runCommand: run, tempDir }))
-            .rejects.toMatchObject({ code: 'on-base-branch' });
+    it('returns an existing PR without creating another', async () => {
+        run.mockImplementation(async (_command, args) => ({ stdout: args[1] === 'list'
+            ? '[{"number":9,"url":"https://github.com/example/repo/pull/9"}]' : '', stderr: '' }));
+        expect(await submit()).toMatchObject({ id: 9, existing: true });
+        expect(run.mock.calls.some(([, args]) => args[1] === 'create')).toBe(false);
     });
-
-    it('creates an ADO PR through az with @file text and enables auto-complete', async () => {
-        let titleText = '';
-        const run = fakeRunner(currentBranchHandler(ADO_URL, c => {
-            if (line(c).startsWith('az repos pr create')) {
-                const titleArg = c.args[c.args.indexOf('--title') + 1];
-                titleText = fs.readFileSync(titleArg.slice(1), 'utf8');
-            }
-            return undefined;
-        }));
-        const result = await createPullRequest(
-            { repoRoot: '/repo', title: 'A & B "quoted"', body: 'x', autoMerge: true, mergeMethod: 'squash' },
-            { runCommand: run, tempDir },
-        );
-        expect(titleText).toBe('A & B "quoted"');
-        expect(result).toMatchObject({ provider: 'ado', id: 7, url: `${ADO_URL}/pullrequest/7`, autoMerge: { requested: true, enabled: true } });
-        const lines = run.calls.map(line);
-        expect(lines).toContain('az account show --output none');
-        expect(lines.some(l => l.startsWith('az repos pr update --id 7 --auto-complete true --squash true'))).toBe(true);
+    it.each([['main', 'on-base-branch'], ['HEAD', 'detached-head'], ['', 'detached-head']])('rejects branch %s with %s', async (branch, code) => {
+        git.currentBranch.mockResolvedValue(branch);
+        await expect(submit()).rejects.toMatchObject({ code });
+        expect(git.pushBranch).not.toHaveBeenCalled();
     });
-
-    it('keeps the PR and returns a warning when auto-merge fails', async () => {
-        const run = fakeRunner(currentBranchHandler(GH_URL, c => line(c).startsWith('gh pr merge') ? fail('auto-merge not allowed') : undefined));
-        const result = await createPullRequest({ repoRoot: '/repo', title: 'T', autoMerge: true }, { runCommand: run, tempDir });
-        expect(result.id).toBe(42);
-        expect(result.autoMerge.requested).toBe(true);
-        expect(result.autoMerge.enabled).toBe(false);
-        expect(result.autoMerge.warning).toMatch(/auto-merge/);
+    it('honors an explicit base without querying defaults', async () => {
+        expect(await submit({ base: 'release' })).toMatchObject({ base: 'release' });
+        expect(git.defaultBranch).not.toHaveBeenCalled();
     });
-
-    it('names the CLI and install/login steps when gh is missing', async () => {
-        const run = fakeRunner(currentBranchHandler(GH_URL, c => c.command === 'gh' ? fail('spawn gh ENOENT', { code: 'ENOENT' }) : undefined));
-        await expect(createPullRequest({ repoRoot: '/repo', title: 'T' }, { runCommand: run, tempDir }))
-            .rejects.toMatchObject({ code: 'cli-missing', message: expect.stringContaining('gh auth login') });
+    it('creates an ADO PR using argument files and enables auto-complete', async () => {
+        git.remoteUrl.mockResolvedValue(ADO_URL);
+        const handler = run.getMockImplementation()!;
+        let title = '';
+        run.mockImplementation(async (command, args, options) => {
+            if (command === 'az' && args[2] === 'create') title = fs.readFileSync(args[args.indexOf('--title') + 1].slice(1), 'utf8');
+            return handler(command, args, options);
+        });
+        expect(await submit({ title: 'A & B "quoted"', autoMerge: true, mergeMethod: 'squash' }))
+            .toMatchObject({ provider: 'ado', id: 7, autoMerge: { enabled: true } });
+        expect(title).toBe('A & B "quoted"');
+        expect(run.mock.calls.some(([cmd, args]) => cmd === 'az' && args[2] === 'update')).toBe(true);
     });
-
-    it('reports a not-logged-in az with the login command', async () => {
-        const run = fakeRunner(currentBranchHandler(ADO_URL, c => line(c).startsWith('az account show') ? fail('Please run az login') : undefined));
-        await expect(createPullRequest({ repoRoot: '/repo', title: 'T' }, { runCommand: run, tempDir }))
-            .rejects.toMatchObject({ code: 'not-logged-in', message: expect.stringContaining('az login') });
+    it('keeps a created PR when auto-merge fails', async () => {
+        const handler = run.getMockImplementation()!;
+        run.mockImplementation(async (cmd, args, options) => {
+            if (args[1] === 'merge') throw new Error('auto-merge not allowed');
+            return handler(cmd, args, options);
+        });
+        expect(await submit({ autoMerge: true })).toMatchObject({ id: 42, autoMerge: {
+            requested: true, enabled: false, warning: expect.stringContaining('auto-merge not allowed'),
+        } });
     });
-
-    it('fails with unknown-remote before touching any CLI', async () => {
-        const run = fakeRunner(currentBranchHandler('/srv/git/repo.git'));
-        await expect(createPullRequest({ repoRoot: '/repo', title: 'T' }, { runCommand: run, tempDir }))
-            .rejects.toMatchObject({ code: 'unknown-remote' });
-        expect(run.calls.every(c => c.command === 'git')).toBe(true);
+    it('preserves CLI install/login errors', async () => {
+        run.mockRejectedValue(Object.assign(new Error('spawn gh ENOENT'), { code: 'ENOENT' }));
+        await expect(submit()).rejects.toMatchObject({ code: 'cli-missing', message: 'The `gh` CLI was not found. Install it (https://cli.github.com) and run `gh auth login`.' });
+        git.remoteUrl.mockResolvedValue(ADO_URL);
+        run.mockRejectedValue(new Error('Please run az login'));
+        await expect(submit()).rejects.toMatchObject({ code: 'not-logged-in', message: 'The `az` CLI is not logged in. Run `az login`.' });
     });
-
-    it('requires a title', async () => {
-        const run = fakeRunner(currentBranchHandler(GH_URL));
-        await expect(createPullRequest({ repoRoot: '/repo', title: '  ' }, { runCommand: run, tempDir }))
-            .rejects.toMatchObject({ code: 'invalid-input' });
+    it('preserves missing-origin and invalid-remote errors before any provider CLI', async () => {
+        git.remoteUrl.mockRejectedValueOnce(new Error('missing'));
+        await expect(submit()).rejects.toMatchObject({ code: 'unknown-remote', message: 'The repository at /repo has no `origin` remote.' });
+        git.remoteUrl.mockResolvedValue('/srv/git/repo.git');
+        await expect(submit()).rejects.toMatchObject({ code: 'unknown-remote' });
+        expect(run).not.toHaveBeenCalled();
     });
-
-    it('commits mode aborts on conflict, removes the worktree, deletes the branch, and never touches the caller HEAD', async () => {
-        const run = fakeRunner(currentBranchHandler(GH_URL, c => {
-            const l = line(c);
-            if (l === 'git rev-parse --verify abc^{commit}') return { stdout: 'abcdef0\n' };
-            if (l === 'git rev-parse --short abcdef0') return { stdout: 'abcdef0\n' };
-            if (l === 'git log -1 --pretty=%s abcdef0') return { stdout: 'Add thing\n' };
-            if (l.startsWith('git rev-parse --verify --quiet refs/')) return fail('missing');
-            if (l === 'git cherry-pick abcdef0') return fail('conflict');
-            if (l === 'git rev-parse --verify --quiet CHERRY_PICK_HEAD') return { stdout: 'abcdef0\n' };
-            if (l === 'git status --porcelain') return { stdout: 'UU file.txt\n' };
-            return undefined;
-        }));
-        const err = await createPullRequest({ repoRoot: '/repo', title: 'T', commits: 'abc' }, { runCommand: run, tempDir })
-            .catch(e => e);
-        expect(err).toBeInstanceOf(CreatePullRequestError);
-        expect(err.code).toBe('conflict');
-        expect(err.commit).toBe('abcdef0');
-        const lines = run.calls.map(line);
-        expect(lines).toContain('git cherry-pick --abort');
-        expect(lines.some(l => l.startsWith('git worktree remove --force'))).toBe(true);
-        expect(lines).toContain('git branch -D pr/abcdef0-add-thing');
-        expect(lines.some(l => /^git (checkout|switch|reset)/.test(l))).toBe(false);
-        expect(lines.some(l => l.startsWith('git push') || l.startsWith('gh pr create'))).toBe(false);
-        // Only the worktree commands run outside the caller's repo.
-        const outside = run.calls.filter(c => c.cwd !== '/repo').map(line);
-        expect(outside.every(l => !l.startsWith('git worktree') && !l.startsWith('git branch'))).toBe(true);
+    it('preserves Git command diagnostics on failure', async () => {
+        git.pushBranch.mockRejectedValue(new Error('git push -u origin feature/x failed: denied'));
+        await expect(submit()).rejects.toMatchObject({ code: 'command-failed', message: 'git push -u origin feature/x failed: denied' });
+    });
+    it('requires a title before any IO', async () => {
+        await expect(submit({ title: ' ' })).rejects.toMatchObject({ code: 'invalid-input' });
+        expect(git.remoteUrl).not.toHaveBeenCalled();
+    });
+    it('aborts a conflicting pick and cleans the linked worktree and branch', async () => {
+        git.cherryPick.mockRejectedValue(new Error('conflict'));
+        git.refExists.mockImplementation(async (_cwd, ref) => ref === 'CHERRY_PICK_HEAD');
+        git.status.mockResolvedValue('UU file.txt');
+        await expect(submit({ commits: 'abc' })).rejects.toMatchObject({ code: 'conflict', commit: 'abcdef0' });
+        const worktree = git.addWorktree.mock.calls[0][2];
+        expect(git.cherryPick).toHaveBeenCalledWith(worktree, 'abcdef0');
+        expect(git.abortCherryPick).toHaveBeenCalledWith(worktree);
+        expect(git.removeWorktree).toHaveBeenCalledWith('/repo', worktree);
+        expect(git.deleteBranch).toHaveBeenCalledWith('/repo', 'pr/abcdef0-add-thing');
+        expect(git.pushBranch).not.toHaveBeenCalled();
         expect(fs.readdirSync(tempDir)).toEqual([]);
     });
-
-    it('commits mode adds a numeric suffix on branch collision', async () => {
-        const run = fakeRunner(currentBranchHandler(GH_URL, c => {
-            const l = line(c);
-            if (l === 'git rev-parse --verify abc^{commit}') return { stdout: 'abcdef0\n' };
-            if (l === 'git rev-parse --short abcdef0') return { stdout: 'abcdef0\n' };
-            if (l === 'git log -1 --pretty=%s abcdef0') return { stdout: 'Add thing\n' };
-            if (l === 'git rev-parse --verify --quiet refs/heads/pr/abcdef0-add-thing') return { stdout: 'x' };
-            if (l.startsWith('git rev-parse --verify --quiet refs/')) return fail('missing');
-            return undefined;
-        }));
-        const result = await createPullRequest({ repoRoot: '/repo', title: 'T', commits: ['abc'] }, { runCommand: run, tempDir });
-        expect(result.branch).toBe('pr/abcdef0-add-thing-2');
-        const lines = run.calls.map(line);
-        expect(lines).toContain('git push -u origin pr/abcdef0-add-thing-2');
-        expect(lines.some(l => l.startsWith('git branch -D'))).toBe(false);
-        expect(lines.some(l => l.startsWith('git worktree remove --force'))).toBe(true);
+    it('skips an empty pick, fetches again, rebases and retains the pushed branch', async () => {
+        git.cherryPick.mockRejectedValue(new Error('empty'));
+        git.refExists.mockImplementation(async (_cwd, ref) => ref === 'CHERRY_PICK_HEAD');
+        await submit({ commits: 'abc' });
+        const worktree = git.addWorktree.mock.calls[0][2];
+        expect(git.skipCherryPick).toHaveBeenCalledWith(worktree);
+        expect(git.fetchBranch.mock.calls).toEqual([['/repo', 'main'], [worktree, 'main']]);
+        expect(git.rebase).toHaveBeenCalledWith(worktree, 'main');
+        expect(git.pushBranch).toHaveBeenCalledWith(worktree, 'pr/abcdef0-add-thing');
+        expect(git.deleteBranch).not.toHaveBeenCalled();
     });
-
-    it('commits mode uses a caller-chosen branch name, still suffixed on collision', async () => {
-        const run = fakeRunner(currentBranchHandler(GH_URL, c => {
-            const l = line(c);
-            if (l === 'git rev-parse --verify abc^{commit}') return { stdout: 'abcdef0\n' };
-            if (l === 'git rev-parse --verify --quiet refs/remotes/origin/coc/work-items/x') return { stdout: 'x' };
-            if (l.startsWith('git rev-parse --verify --quiet refs/')) return fail('missing');
-            return undefined;
-        }));
-        const result = await createPullRequest(
-            { repoRoot: '/repo', title: 'T', commits: 'abc', branch: 'coc/work-items/x' },
-            { runCommand: run, tempDir },
-        );
-        expect(result.branch).toBe('coc/work-items/x-2');
-        const lines = run.calls.map(line);
-        expect(lines).toContain('git push -u origin coc/work-items/x-2');
-        expect(lines.some(l => l.startsWith('git rev-parse --short') || l.startsWith('git log -1'))).toBe(false);
+    it('aborts a rebase conflict and removes the branch', async () => {
+        git.rebase.mockRejectedValue(new Error('conflict'));
+        await expect(submit({ commits: 'abc' })).rejects.toMatchObject({ code: 'conflict', message: expect.stringContaining('Rebasing onto origin/main conflicted') });
+        expect(git.abortRebase).toHaveBeenCalled();
+        expect(git.deleteBranch).toHaveBeenCalled();
+    });
+    it('suffixes generated branches on local collision', async () => {
+        git.refExists.mockImplementation(async (_cwd, ref) => ref === 'refs/heads/pr/abcdef0-add-thing');
+        expect(await submit({ commits: ['abc'] })).toMatchObject({ branch: 'pr/abcdef0-add-thing-2' });
+    });
+    it('suffixes explicit branches on remote collision without reading a label', async () => {
+        git.refExists.mockImplementation(async (_cwd, ref) => ref === 'refs/remotes/origin/coc/work-items/x');
+        expect(await submit({ commits: 'abc', branch: 'coc/work-items/x' })).toMatchObject({ branch: 'coc/work-items/x-2' });
+        expect(git.shortSha).not.toHaveBeenCalled();
+        expect(git.commitSubject).not.toHaveBeenCalled();
+    });
+    it('resolves lists and delegates topological ordering', async () => {
+        git.resolveCommit.mockImplementation(async (_cwd, ref) => ref + '-sha');
+        git.orderCommits.mockResolvedValue(['a-sha', 'b-sha']);
+        await submit({ commits: ['b', 'a'] });
+        expect(git.orderCommits).toHaveBeenCalledWith('/repo', ['b-sha', 'a-sha']);
+        expect(git.cherryPick.mock.calls.map(call => call[1])).toEqual(['a-sha', 'b-sha']);
+    });
+    it('reports empty ranges without mutation', async () => {
+        git.commitsInRange.mockResolvedValue([]);
+        await expect(submit({ commits: 'a..b' })).rejects.toMatchObject({ code: 'no-commits' });
+        expect(git.fetchBranch).not.toHaveBeenCalled();
+    });
+    it('uses the returned WSL worktree alias for picks, fetch, rebase and push', async () => {
+        const alias = String.raw`\\wsl.localhost\Ubuntu\mnt\c\Temp\worktree`;
+        git.addWorktree.mockResolvedValue(alias);
+        await submit({ commits: 'abc' });
+        expect(git.cherryPick).toHaveBeenCalledWith(alias, 'abcdef0');
+        expect(git.fetchBranch).toHaveBeenLastCalledWith(alias, 'main');
+        expect(git.rebase).toHaveBeenCalledWith(alias, 'main');
+        expect(git.pushBranch).toHaveBeenCalledWith(alias, 'pr/abcdef0-add-thing');
+        expect(git.removeWorktree).toHaveBeenCalledWith('/repo', alias);
+        expect(run.mock.calls.every(([, , options]) => options.cwd === '/repo')).toBe(true);
+    });
+    it('passes the selected repository on every run', async () => {
+        await submit({ repoRoot: '/other/repo' });
+        for (const op of ['remoteUrl', 'defaultBranch', 'currentBranch', 'headSha', 'remoteBranchSha', 'pushBranch'] as const) {
+            expect(git[op].mock.calls[0][0]).toBe('/other/repo');
+        }
     });
 });
 
@@ -335,12 +300,9 @@ describe('createPullRequest commits mode (real git)', () => {
         await fsp.rm(root, { recursive: true, force: true });
     });
 
-    /** Real git; fake gh. */
+    /** Forge/Rust git; fake provider CLI. */
     function hybridRunner(): PrCliRunner {
         return async (command, args, { cwd }) => {
-            if (command === 'git') {
-                return { stdout: execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }), stderr: '' };
-            }
             if (args[0] === 'pr' && args[1] === 'list') return { stdout: '[]', stderr: '' };
             if (args[0] === 'pr' && args[1] === 'create') return { stdout: 'https://github.com/example/repo/pull/1\n', stderr: '' };
             return { stdout: '', stderr: '' };

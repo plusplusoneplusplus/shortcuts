@@ -1,247 +1,98 @@
-/**
- * Regression coverage for the extracted watcher infrastructure builder.
- * Verifies that createWatcherInfrastructure returns correctly wired instances
- * equivalent to the inline setup it replaced in index.ts.
- */
-
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import * as os from 'os';
+import { describe, expect, it, vi } from 'vitest';
 import * as path from 'path';
-import * as fs from 'fs';
-
 import { createMockProcessStore } from '../../helpers/mock-process-store';
-import { TaskWatcher } from '../../../src/server/tasks/task-watcher';
-import { WorkflowWatcher } from '../../../src/server/workflows/workflow-watcher';
-import { TemplateWatcher } from '../../../src/server/templates/template-watcher';
-import { NotesWatcher } from '../../../src/server/notes/notes-watcher';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function makeTempDir(): string {
-    return fs.mkdtempSync(path.join(os.tmpdir(), 'watcher-infra-test-'));
-}
-
-function makeMockWsServer() {
-    return { broadcastProcessEvent: vi.fn() } as any;
-}
-
-function makeMockBridge() {
-    return { registerRepoId: vi.fn() } as any;
-}
-
-// ---------------------------------------------------------------------------
-// Module under test
-// ---------------------------------------------------------------------------
-
+import { FakeNativeWatchService } from '../../helpers/fake-native-watch-service';
 import { createWatcherInfrastructure } from '../../../src/server/infrastructure/watcher-infrastructure';
+import { getRepoDataPath } from '../../../src/server/paths';
 
-// ---------------------------------------------------------------------------
-// Suite
-// ---------------------------------------------------------------------------
+vi.mock('../../../src/server/tasks/task-migration', () => ({
+    isMigrationNeeded: () => false,
+    migrateTasksToRepoScoped: vi.fn(),
+}));
+vi.mock('../../../src/server/tasks/task-root-resolver', () => ({
+    resolveTaskRoot: ({ dataDir, workspaceId }: { dataDir: string; workspaceId: string }) => ({
+        absolutePath: path.join(dataDir, workspaceId, 'resolved-tasks'),
+    }),
+}));
+
+const dataDir = path.resolve('data');
+const workspace = { id: 'one', rootPath: path.resolve('repo'), name: 'Repo' };
+
+async function setup(existing = true) {
+    const store = createMockProcessStore();
+    vi.mocked(store.getWorkspaces).mockResolvedValue(existing ? [workspace] : []);
+    const wsServer = { broadcastProcessEvent: vi.fn() };
+    const bridge = { registerRepoId: vi.fn() };
+    const notesSearch = { activateWorkspace: vi.fn(), evictWorkspace: vi.fn() };
+    const service = new FakeNativeWatchService();
+    const watchers = await createWatcherInfrastructure(store, dataDir, wsServer, bridge, notesSearch, service);
+    return { store, wsServer, bridge, notesSearch, service, watchers };
+}
 
 describe('createWatcherInfrastructure', () => {
-    let dataDir: string;
-    let tmpDirs: string[] = [];
-
-    beforeEach(() => {
-        dataDir = makeTempDir();
-        tmpDirs = [dataDir];
+    it('uses resolved notes/tasks roots and shares the repo root for workflows/templates', async () => {
+        const { service, bridge } = await setup();
+        expect([...service.subscriptions.values()].map(entry => entry.options.root)).toEqual([
+            path.join(dataDir, 'one', 'resolved-tasks'),
+            workspace.rootPath,
+            workspace.rootPath,
+            getRepoDataPath(dataDir, 'one', 'notes'),
+        ]);
+        expect(bridge.registerRepoId).toHaveBeenCalledExactlyOnceWith('one', workspace.rootPath);
     });
 
-    afterEach(() => {
-        for (const d of tmpDirs) {
-            try { fs.rmSync(d, { recursive: true, force: true }); } catch { /* ignore */ }
-        }
+    it('broadcasts all consumer events from injected native batches', async () => {
+        const { service, wsServer } = await setup();
+        service.emit(1, ['a.md']);
+        service.emit(2, ['.vscode/workflows/a.yaml']);
+        service.emit(3, ['.vscode/templates/a.yaml']);
+        service.emit(4, ['a.md', 'nested/b.md']);
+        expect(wsServer.broadcastProcessEvent.mock.calls.map(([event]) => event.type)).toEqual([
+            'tasks-changed', 'workflows-changed', 'templates-changed', 'notes-changed',
+        ]);
+        expect(wsServer.broadcastProcessEvent).toHaveBeenLastCalledWith(expect.objectContaining({
+            workspaceId: 'one', changedPaths: ['a.md', 'nested/b.md'],
+        }));
     });
 
-    it('returns TaskWatcher, WorkflowWatcher, TemplateWatcher and NotesWatcher instances', async () => {
-        const store = createMockProcessStore();
-        const wsServer = makeMockWsServer();
-        const bridge = makeMockBridge();
-
-        const result = await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
-
-        expect(result.taskWatcher).toBeInstanceOf(TaskWatcher);
-        expect(result.pipelineWatcher).toBeInstanceOf(WorkflowWatcher);
-        expect(result.templateWatcher).toBeInstanceOf(TemplateWatcher);
-        expect(result.notesWatcher).toBeInstanceOf(NotesWatcher);
+    it('registers workspaces and reactivates notes search after the store registration', async () => {
+        const { store, notesSearch, watchers, service } = await setup(false);
+        await store.registerWorkspace!(workspace);
+        expect(notesSearch.activateWorkspace).toHaveBeenCalledExactlyOnceWith('one');
+        expect(watchers.taskWatcher.isWatching('one')).toBe(true);
+        expect(service.subscriptions.size).toBe(4);
     });
 
-    it('bootstraps watchers for pre-existing workspaces', async () => {
-        const rootPath = makeTempDir();
-        tmpDirs.push(rootPath);
-
-        const store = createMockProcessStore({
-            initialWorkspaces: [{ id: 'ws-1', rootPath, name: 'test' } as any],
-        });
-        // Override getWorkspaces to return the pre-populated workspace
-        (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([{ id: 'ws-1', rootPath, name: 'test' }]);
-
-        const wsServer = makeMockWsServer();
-        const bridge = makeMockBridge();
-
-        await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
-
-        expect(bridge.registerRepoId).toHaveBeenCalledWith('ws-1', rootPath);
+    it('removes all workspace subscriptions, including other consumers, without touching another workspace', async () => {
+        const { store, notesSearch, watchers, service } = await setup();
+        const options = service.subscriptions.get(2)!.options;
+        service.subscribe(options, vi.fn());
+        const other = service.subscribe({ ...options, workspaceId: 'two' }, vi.fn());
+        await store.removeWorkspace!('one');
+        expect([...service.subscriptions.keys()]).toEqual([other]);
+        expect(notesSearch.evictWorkspace).toHaveBeenCalledExactlyOnceWith('one');
+        expect(watchers.taskWatcher.isWatching('one')).toBe(false);
+        expect(watchers.pipelineWatcher.isWatching('one')).toBe(false);
+        expect(watchers.templateWatcher.isWatching('one')).toBe(false);
+        expect(watchers.notesWatcher.isWatching('one')).toBe(false);
     });
 
-    it('monkey-patches store.registerWorkspace to start watchers', async () => {
-        const store = createMockProcessStore();
-        const wsServer = makeMockWsServer();
-        const bridge = makeMockBridge();
-
-        const { taskWatcher } = await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
-        const watchSpy = vi.spyOn(taskWatcher, 'watchWorkspace');
-
-        const rootPath = makeTempDir();
-        tmpDirs.push(rootPath);
-        await store.registerWorkspace!({ id: 'ws-new', rootPath, name: 'new' } as any);
-
-        expect(watchSpy).toHaveBeenCalledWith('ws-new', expect.any(String));
-        expect(bridge.registerRepoId).toHaveBeenCalledWith('ws-new', rootPath);
+    it('broadcasts full invalidation for rescan batches', async () => {
+        const { service, wsServer } = await setup();
+        for (const id of service.subscriptions.keys()) service.emit(id, [], true);
+        expect(wsServer.broadcastProcessEvent).toHaveBeenCalledTimes(4);
+        expect(wsServer.broadcastProcessEvent).toHaveBeenLastCalledWith(expect.objectContaining({
+            type: 'notes-changed', workspaceId: 'one', changedPaths: [],
+        }));
     });
 
-    it('monkey-patches store.removeWorkspace to stop watchers', async () => {
-        const store = createMockProcessStore();
-        const wsServer = makeMockWsServer();
-        const bridge = makeMockBridge();
-
-        const { taskWatcher, pipelineWatcher, templateWatcher, notesWatcher } =
-            await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
-
-        const unwatchTask = vi.spyOn(taskWatcher, 'unwatchWorkspace');
-        const unwatchPipeline = vi.spyOn(pipelineWatcher, 'unwatchWorkspace');
-        const unwatchTemplate = vi.spyOn(templateWatcher, 'unwatchWorkspace');
-        const unwatchNotes = vi.spyOn(notesWatcher, 'unwatchWorkspace');
-
-        await store.removeWorkspace!('ws-gone');
-
-        expect(unwatchTask).toHaveBeenCalledWith('ws-gone');
-        expect(unwatchPipeline).toHaveBeenCalledWith('ws-gone');
-        expect(unwatchTemplate).toHaveBeenCalledWith('ws-gone');
-        expect(unwatchNotes).toHaveBeenCalledWith('ws-gone');
-    });
-
-    it('evicts native Notes search state when a workspace is removed', async () => {
-        const store = createMockProcessStore();
-        const wsServer = makeMockWsServer();
-        const bridge = makeMockBridge();
-        const notesSearchService = { activateWorkspace: vi.fn(), evictWorkspace: vi.fn() };
-
-        await createWatcherInfrastructure(store, dataDir, wsServer, bridge, notesSearchService);
-        await store.removeWorkspace!('ws-gone');
-
-        expect(notesSearchService.evictWorkspace).toHaveBeenCalledWith('ws-gone');
-    });
-
-    it('reactivates native Notes search state when a workspace is registered', async () => {
-        const store = createMockProcessStore();
-        const wsServer = makeMockWsServer();
-        const bridge = makeMockBridge();
-        const notesSearchService = { activateWorkspace: vi.fn(), evictWorkspace: vi.fn() };
-        const rootPath = makeTempDir();
-        tmpDirs.push(rootPath);
-
-        await createWatcherInfrastructure(store, dataDir, wsServer, bridge, notesSearchService);
-        await store.registerWorkspace!({ id: 'ws-returned', rootPath, name: 'returned' } as any);
-
-        expect(notesSearchService.activateWorkspace).toHaveBeenCalledWith('ws-returned');
-    });
-
-    it('delegates to original store.registerWorkspace before wiring watchers', async () => {
-        const store = createMockProcessStore();
-        const originalRegister = store.registerWorkspace as ReturnType<typeof vi.fn>;
-        const wsServer = makeMockWsServer();
-        const bridge = makeMockBridge();
-
-        await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
-
-        const rootPath = makeTempDir();
-        tmpDirs.push(rootPath);
-        await store.registerWorkspace!({ id: 'ws-delegate', rootPath, name: 'delegate' } as any);
-
-        expect(originalRegister).toHaveBeenCalledWith(
-            expect.objectContaining({ id: 'ws-delegate' }),
-        );
-    });
-
-    it('delegates to original store.removeWorkspace', async () => {
-        const store = createMockProcessStore();
-        const originalRemove = store.removeWorkspace as ReturnType<typeof vi.fn>;
-        const wsServer = makeMockWsServer();
-        const bridge = makeMockBridge();
-
-        await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
-        await store.removeWorkspace!('ws-remove-me');
-
-        expect(originalRemove).toHaveBeenCalledWith('ws-remove-me');
-    });
-
-    it('broadcasts tasks-changed event via wsServer callback', async () => {
-        const store = createMockProcessStore();
-        const wsServer = makeMockWsServer();
-        const bridge = makeMockBridge();
-
-        const { taskWatcher } = await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
-
-        // Directly invoke the internal callback by triggering a watched directory change.
-        // We can't easily simulate fs.watch, so we call the watcher's callback indirectly
-        // by invoking watchWorkspace with a real directory and verifying the broadcast
-        // function signature is wired correctly.
-        // Instead, reach into the watcher's onTasksChanged via a cast.
-        const watcher = taskWatcher as any;
-        watcher.onTasksChanged('test-ws');
-
-        expect(wsServer.broadcastProcessEvent).toHaveBeenCalledWith(
-            expect.objectContaining({ type: 'tasks-changed', workspaceId: 'test-ws' }),
-        );
-    });
-
-    it('broadcasts workflows-changed event via wsServer callback', async () => {
-        const store = createMockProcessStore();
-        const wsServer = makeMockWsServer();
-        const bridge = makeMockBridge();
-
-        const { pipelineWatcher } = await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
-
-        (pipelineWatcher as any).onWorkflowsChanged('test-ws');
-
-        expect(wsServer.broadcastProcessEvent).toHaveBeenCalledWith(
-            expect.objectContaining({ type: 'workflows-changed', workspaceId: 'test-ws' }),
-        );
-    });
-
-    it('broadcasts templates-changed event via wsServer callback', async () => {
-        const store = createMockProcessStore();
-        const wsServer = makeMockWsServer();
-        const bridge = makeMockBridge();
-
-        const { templateWatcher } = await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
-
-        (templateWatcher as any).onTemplatesChanged('test-ws');
-
-        expect(wsServer.broadcastProcessEvent).toHaveBeenCalledWith(
-            expect.objectContaining({ type: 'templates-changed', workspaceId: 'test-ws' }),
-        );
-    });
-
-    it('broadcasts notes-changed event via wsServer callback', async () => {
-        const store = createMockProcessStore();
-        const wsServer = makeMockWsServer();
-        const bridge = makeMockBridge();
-
-        const { notesWatcher } = await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
-
-        (notesWatcher as any).onNotesChanged('test-ws', ['note.md']);
-
-        expect(wsServer.broadcastProcessEvent).toHaveBeenCalledWith(
-            expect.objectContaining({
-                type: 'notes-changed',
-                workspaceId: 'test-ws',
-                changedPaths: ['note.md'],
-            }),
-        );
+    it('keeps managed data watches for migrated workspaces without a repository root', async () => {
+        const { store, service, watchers } = await setup(false);
+        await store.registerWorkspace!({ ...workspace, rootPath: '' });
+        expect(service.subscriptions.size).toBe(2);
+        expect(watchers.taskWatcher.isWatching('one')).toBe(true);
+        expect(watchers.notesWatcher.isWatching('one')).toBe(true);
+        expect(watchers.pipelineWatcher.isWatching('one')).toBe(false);
+        expect(watchers.templateWatcher.isWatching('one')).toBe(false);
     });
 });

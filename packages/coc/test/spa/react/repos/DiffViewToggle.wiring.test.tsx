@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 // --- Module mocks (hoisted by Vitest) ---
 
@@ -50,6 +50,8 @@ const cocStub = {
         branchRangeFileDiffPath: (workspaceId: string, filePath: string) =>
             `/workspaces/${encodeURIComponent(workspaceId)}/git/branch-range/files/${encodeURIComponent(filePath)}/diff`,
         getWorkingTreeFileDiff: () => Promise.resolve(DIFF_BODY),
+        // Commit review navigates per file from metadata, never a combined patch.
+        listCommitFiles: () => Promise.resolve({ files: [{ path: 'src/app.ts', status: 'modified' }] }),
     },
     explorer: {
         readBlob: () => Promise.resolve({ content: '', encoding: 'base64', mimeType: 'application/octet-stream' }),
@@ -178,34 +180,30 @@ const branchSource = {
 // ─── CommitDetail ────────────────────────────────────────────────────────────
 
 describe('CommitDetail — diff view toggle wiring', () => {
-    it('shows DiffViewToggle in commit toolbar', async () => {
-        await act(async () => {
-            render(<CommitDetail workspaceId="ws1" hash="abc123" />);
-        });
-        expect(screen.getByTestId('diff-view-toggle')).toBeTruthy();
+    // Commit review focuses one file at a time; the toggle lives in that file's panel.
+    it('shows DiffViewToggle for the focused commit file', async () => {
+        render(<CommitDetail workspaceId="ws1" hash="abc123" />);
+        await waitFor(() => expect(screen.getByTestId('diff-view-toggle')).toBeTruthy());
     });
 
     it('clicking Split renders SideBySideDiffViewer', async () => {
-        await act(async () => {
-            render(<CommitDetail workspaceId="ws1" hash="abc123" />);
-        });
-        await waitFor(() => expect(screen.getByTestId('diff-content')).toBeTruthy());
+        render(<CommitDetail workspaceId="ws1" hash="abc123" />);
+        await waitFor(() => expect(screen.getByTestId('file-diff-content')).toBeTruthy());
+        expect(screen.getByTestId('file-diff-content').getAttribute('data-viewer')).toBe('unified');
 
         fireEvent.click(screen.getByTestId('diff-view-toggle'));
-        expect(screen.getByTestId('diff-content').getAttribute('data-viewer')).toBe('split');
+        expect(screen.getByTestId('file-diff-content').getAttribute('data-viewer')).toBe('split');
     });
 
     it('switching back to Unified re-renders UnifiedDiffViewer', async () => {
-        await act(async () => {
-            render(<CommitDetail workspaceId="ws1" hash="abc123" />);
-        });
-        await waitFor(() => expect(screen.getByTestId('diff-content')).toBeTruthy());
+        render(<CommitDetail workspaceId="ws1" hash="abc123" />);
+        await waitFor(() => expect(screen.getByTestId('file-diff-content')).toBeTruthy());
 
         fireEvent.click(screen.getByTestId('diff-view-toggle'));
-        expect(screen.getByTestId('diff-content').getAttribute('data-viewer')).toBe('split');
+        expect(screen.getByTestId('file-diff-content').getAttribute('data-viewer')).toBe('split');
 
         fireEvent.click(screen.getByTestId('diff-view-toggle'));
-        expect(screen.getByTestId('diff-content').getAttribute('data-viewer')).toBe('unified');
+        expect(screen.getByTestId('file-diff-content').getAttribute('data-viewer')).toBe('unified');
     });
 });
 

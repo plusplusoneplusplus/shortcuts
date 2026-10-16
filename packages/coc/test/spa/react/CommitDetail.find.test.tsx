@@ -27,13 +27,22 @@ const COMMIT_DIFF = [
     '@@ -1,2 +1,2 @@',
     ' const needle = needle;',
     '+const other = 1;',
-    'diff --git a/two.ts b/two.ts',
-    'index 3333333..4444444 100644',
-    '--- a/two.ts',
-    '+++ b/two.ts',
     '@@ -1,1 +1,1 @@',
     '+const two = Needle;',
 ].join('\n');
+
+vi.mock('../../../src/server/spa/client/react/features/git/hooks/useDiffEngine', () => ({ useDiffEngine: () => ['legacy', vi.fn()] }));
+vi.mock('../../../src/server/spa/client/react/features/git/hooks/useFileDiff', async () => {
+    const { useState, useEffect } = await import('react');
+    return { useFileDiff: () => {
+        const [diff, setDiff] = useState<string | null>(null);
+        useEffect(() => { setDiff(COMMIT_DIFF); }, []);
+        return { diff, loading: !diff, error: null, retry: vi.fn() };
+    } };
+});
+vi.mock('../../../src/server/spa/client/react/features/git/hooks/useDiffComments', () => ({
+    useDiffComments: () => ({ comments: [], loading: false, runRelocation: vi.fn(), aiLoadingIds: new Set(), aiErrors: new Map() }),
+}));
 
 vi.mock('../../../src/server/spa/client/react/features/git/hooks/useCommitDiffCache', () => ({
     useCachedDiff: () => ({ diff: COMMIT_DIFF, loading: false, error: null, retry: vi.fn() }),
@@ -97,7 +106,8 @@ vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', async (impor
     };
 });
 
-import { CommitDetail } from '../../../src/server/spa/client/react/features/git/commits/CommitDetail';
+import { FileDiffPanel } from '../../../src/server/spa/client/react/features/git/diff/FileDiffPanel';
+import type { DiffSource } from '../../../src/server/spa/client/react/features/git/diff/diffSource';
 import {
     MATCH_HIGHLIGHT_CLASS,
     ACTIVE_MATCH_HIGHLIGHT_CLASS,
@@ -118,7 +128,10 @@ function findMarks(container: HTMLElement) {
 async function renderDetail() {
     let utils: ReturnType<typeof render>;
     await act(async () => {
-        utils = render(<CommitDetail workspaceId="ws1" hash="abc123" />);
+        utils = render(<div><div data-testid="commit-classify-bar" /><FileDiffPanel workspaceId="ws1" filePath="one.ts" source={{
+            label: 'Commit abc123', cacheKey: 'commit:abc123', files: ['one.ts'], chat: null,
+            fileDiffUrl: () => '/diff', commentContext: () => ({ repositoryId: 'ws1', filePath: 'one.ts', oldRef: 'abc^', newRef: 'abc' }),
+        } as DiffSource} /></div>);
     });
     return utils!;
 }
@@ -133,7 +146,7 @@ function pressCtrlF(el: HTMLElement): boolean {
 }
 
 async function openFind() {
-    const section = screen.getByTestId('diff-section');
+    const section = screen.getByTestId('file-diff-section');
     makeVisible(section);
     expect(pressCtrlF(section)).toBe(true);
     return section;
@@ -160,7 +173,7 @@ describe('CommitDetail — Ctrl+F find widget', () => {
 
     it('stays inert when Ctrl+F fires outside the diff container', async () => {
         await renderDetail();
-        const section = screen.getByTestId('diff-section');
+        const section = screen.getByTestId('file-diff-section');
         makeVisible(section);
 
         // The classification toolbar lives outside the diff scroll container.

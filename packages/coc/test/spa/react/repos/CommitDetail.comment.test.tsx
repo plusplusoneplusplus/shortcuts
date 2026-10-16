@@ -186,7 +186,7 @@ describe('CommitDetail — comment integration', () => {
     // Regression: commit-level comment fetch must not produce double /api prefix.
     it('commit-level comment fetch passes correct args to useAllCommitComments', async () => {
         await renderDetail({});
-        expect(mockUseAllCommitComments).toHaveBeenCalledWith('ws1', 'abc123');
+        expect(mockUseAllCommitComments).toHaveBeenCalledWith('ws1', 'abc123', undefined);
     });
 
     // Regression: onCopyPrompt wired to commit-level CommentSidebar

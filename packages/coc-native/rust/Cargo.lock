@@ -404,6 +404,7 @@ dependencies = [
  "ignore",
  "napi",
  "napi-derive",
+ "notify",
  "parking_lot",
  "rayon",
  "regex",
@@ -423,8 +424,6 @@ name = "coc-symbols-lsp"
 version = "0.1.0"
 dependencies = [
  "coc-native-core",
- "ignore",
- "notify",
  "serde_json",
  "tempfile",
 ]

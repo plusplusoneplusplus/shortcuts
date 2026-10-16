@@ -1,5 +1,5 @@
 import type { DiffCommentContext } from '../../../../comments/diff-comment-types';
-import { getCocClientForWorkspace, requestForWorkspace } from '../../../repos/cloneRegistry';
+import { getCocClientForWorkspace, requestForWorkspace, resolveCloneRoute, lookupCloneBaseUrl } from '../../../repos/cloneRegistry';
 import type { GitFileDiffContentResponse, GitRangeBaseMode } from '@plusplusoneplusplus/coc-client';
 import type { DiffSelectionRef } from '../../chat/sessionContextDrag';
 
@@ -59,7 +59,15 @@ export interface ClassificationKey {
     identifier: string;
 }
 
+/** Payload workspace stays raw; this optional target pins the concrete transport. */
+export function getGitReviewClient(workspaceId: string, routingTarget?: string | null) {
+    const target = routingTarget === undefined ? workspaceId : routingTarget;
+    if (routingTarget !== undefined && resolveCloneRoute(target).kind === 'unresolved-remote') throw new Error('Git review owner is unavailable');
+    return getCocClientForWorkspace(target);
+}
+
 export interface DiffSource {
+    readonly routingTarget?: string | null;
     /** Human-readable label, e.g. "Commit abc1234" or "Branch diff". */
     readonly label: string;
 
@@ -146,10 +154,13 @@ export function createCommitDiffSource(
     options?: {
         commit?: { subject?: string };
         files?: string[];
+        routingTarget?: string | null;
     },
 ): DiffSource {
     const shortHash = hash.slice(0, 7);
+    const client = () => getGitReviewClient(workspaceId, options?.routingTarget);
     return {
+        routingTarget: options?.routingTarget,
         label: `Commit ${shortHash}`,
 
         fileDiffUrl(filePath: string, full?: boolean): string {
@@ -158,7 +169,7 @@ export function createCommitDiffSource(
         },
 
         fetchFileContent(filePath: string): Promise<GitFileDiffContentResponse> {
-            return getCocClientForWorkspace(workspaceId).git.getCommitFileDiffContent(workspaceId, hash, filePath);
+            return client().git.getCommitFileDiffContent(workspaceId, hash, filePath);
         },
 
         fullDiffUrl(): string {
@@ -187,7 +198,7 @@ export function createCommitDiffSource(
         cacheKey: `commit:${hash}`,
 
         async fetchFileList(): Promise<string[]> {
-            const data = await getCocClientForWorkspace(workspaceId).git.listCommitFiles(workspaceId, hash);
+            const data = await client().git.listCommitFiles(workspaceId, hash);
             return (data.files ?? []).map(f => f.path).sort();
         },
 
@@ -203,13 +214,18 @@ export function createBranchRangeDiffSource(
         files?: string[];
         /** Comparison base; 'upstream' diffs against @{upstream} (unpushed only). */
         baseMode?: GitRangeBaseMode;
+        routingTarget?: string | null;
+        /** Resolved revision identity prevents mutable range cache reuse. */
+        revision?: string;
         /** Resolved range refs; enables dragging diff selections into chat. */
         range?: { baseRef: string; headRef: string };
     },
 ): DiffSource {
     const baseMode = options?.baseMode ?? 'default-branch';
     const range = options?.range;
+    const client = () => getGitReviewClient(workspaceId, options?.routingTarget);
     return {
+        routingTarget: options?.routingTarget,
         supportsWorkingCopyLanguage: true,
         ...(range ? { diffSelectionRef: { type: 'range' as const, baseRef: range.baseRef, headRef: range.headRef } } : {}),
 
@@ -220,12 +236,13 @@ export function createBranchRangeDiffSource(
             const params = new URLSearchParams();
             if (full) params.set('full', 'true');
             if (baseMode === 'upstream') params.set('base', 'upstream');
+            if (options?.revision) params.set('reviewRevision', options.revision);
             const qs = params.toString();
             return qs ? `${path}?${qs}` : path;
         },
 
         fetchFileContent(filePath: string): Promise<GitFileDiffContentResponse> {
-            return getCocClientForWorkspace(workspaceId).git.getBranchRangeFileDiffContent(
+            return client().git.getBranchRangeFileDiffContent(
                 workspaceId,
                 filePath,
                 { base: baseMode },
@@ -251,7 +268,7 @@ export function createBranchRangeDiffSource(
 
         supportsTruncation: true,
 
-        cacheKey: `branch-range:${baseMode}`,
+        cacheKey: `branch-range:${baseMode}${options?.revision ? `:${options.revision}` : ''}`,
     };
 }
 
@@ -266,8 +283,7 @@ const DIFF_FETCH_CACHE_MAX = 100;
 const diffFetchCache = new Map<string, DiffFetchResult>();
 
 function diffFetchCacheKey(workspaceId: string, url: string): string {
-    // A NUL byte can't appear in a workspace id or URL, so it's a safe separator.
-    return `${workspaceId} ${url}`;
+    return JSON.stringify([workspaceId, lookupCloneBaseUrl(workspaceId) ?? null, url]);
 }
 
 /**
@@ -295,7 +311,9 @@ export function clearDiffFetchCache(): void {
  * `workspaceId` selects the clone: a remote clone's diff fetch lands on its own
  * server; a local/unknown id resolves to the default origin (unchanged).
  */
-export async function fetchDiffFromSource(workspaceId: string, url: string): Promise<DiffFetchResult> {
+export async function fetchDiffFromSource(workspaceId: string, url: string, signal?: AbortSignal): Promise<DiffFetchResult> {
+    signal?.throwIfAborted();
+    if (workspaceId && resolveCloneRoute(workspaceId).kind === 'unresolved-remote') throw new Error('Git review owner is unavailable');
     const cacheKey = diffFetchCacheKey(workspaceId, url);
     const cached = diffFetchCache.get(cacheKey);
     if (cached) return cached;
@@ -305,7 +323,8 @@ export async function fetchDiffFromSource(workspaceId: string, url: string): Pro
         truncated?: boolean;
         totalLines?: number;
         fullContextUnavailable?: boolean;
-    }>(workspaceId, url);
+    }>(workspaceId, url, signal ? { signal } : undefined);
+    signal?.throwIfAborted();
     const result: DiffFetchResult = {
         diff: data.diff ?? '',
         truncated: !!data.truncated,

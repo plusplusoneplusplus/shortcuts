@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     createCommitDiffSource,
     createBranchRangeDiffSource,
@@ -26,7 +26,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', async (im
     };
 });
 
-import { getCocClientForWorkspace, requestForWorkspace } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
+import { getCocClientForWorkspace, requestForWorkspace, registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 const mockedRequestForWorkspace = vi.mocked(requestForWorkspace);
 const mockedGetCocClientForWorkspace = vi.mocked(getCocClientForWorkspace);
@@ -294,7 +294,7 @@ describe('fetchDiffFromSource', () => {
         const u = uniqueUrl();
         const result = await fetchDiffFromSource(ws, u);
         // The relative url is routed to the workspace's clone (workspaceId, url).
-        expect(mockedRequestForWorkspace).toHaveBeenCalledWith(ws, u);
+        expect(mockedRequestForWorkspace).toHaveBeenCalledWith(ws, u, undefined);
         expect(result).toEqual({
             diff: '--- a/file\n+++ b/file',
             truncated: true,
@@ -681,4 +681,54 @@ describe('extractFileDiffFromCombined', () => {
     it('returns null for empty diff', () => {
         expect(extractFileDiffFromCombined('', 'src/foo.ts')).toBeNull();
     });
+});
+
+
+describe('focused review source lifetimes', () => {
+    beforeEach(() => { clearDiffFetchCache(); vi.clearAllMocks(); resetCloneRegistryForTests(); });
+    afterEach(() => resetCloneRegistryForTests());
+    it('includes resolved comparison identity in mutable range URLs and editor keys', () => {
+        const first = createBranchRangeDiffSource('ws1', { revision: 'base:head-one', baseMode: 'upstream' });
+        const second = createBranchRangeDiffSource('ws1', { revision: 'base:head-two', baseMode: 'upstream' });
+        expect(first.fileDiffUrl('a.ts')).not.toBe(second.fileDiffUrl('a.ts'));
+        expect(first.cacheKey).not.toBe(second.cacheKey);
+        expect(first.fileDiffUrl('a.ts', true)).toContain('full=true');
+        expect(first.fileDiffUrl('a.ts')).toContain('base=upstream');
+    });
+    it('forwards request cancellation and never caches an abandoned patch', async () => {
+        let complete!: (value: any) => void;
+        mockedRequestForWorkspace.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+        const controller = new AbortController();
+        const pending = fetchDiffFromSource('ws1', '/cancelled', controller.signal);
+        controller.abort(new Error('Review closed'));
+        complete({ diff: 'obsolete' });
+        await expect(pending).rejects.toThrow('Review closed');
+        expect(peekDiffCache('ws1', '/cancelled')).toBeUndefined();
+        expect(mockedRequestForWorkspace).toHaveBeenLastCalledWith('ws1', '/cancelled', { signal: controller.signal });
+    });
+    it('keeps an owner endpoint change out of the previous endpoint cache', async () => {
+        const owner = 'remote:one:ws1';
+        registerCloneBaseUrls([{ workspaceId: 'ws1', cloneKey: owner, baseUrl: 'https://one.example' }]);
+        mockedRequestForWorkspace.mockResolvedValueOnce({ diff: 'first host' });
+        await fetchDiffFromSource(owner, '/same');
+        registerCloneBaseUrls([{ workspaceId: 'ws1', cloneKey: owner, baseUrl: 'https://replacement.example' }]);
+        expect(peekDiffCache(owner, '/same')).toBeUndefined();
+        mockedRequestForWorkspace.mockResolvedValueOnce({ diff: 'new host' });
+        expect((await fetchDiffFromSource(owner, '/same')).diff).toBe('new host');
+    });
+    it('pins paired content to the concrete owner while keeping raw workspace payloads', async () => {
+        const owner = 'remote:one:ws1';
+        registerCloneBaseUrls([{ workspaceId: 'ws1', cloneKey: owner, baseUrl: 'https://one.example' }]);
+        const content = vi.fn().mockResolvedValue(fileContent);
+        mockedGetCocClientForWorkspace.mockReturnValueOnce({ git: { getCommitFileDiffContent: content } } as any);
+        const source = createCommitDiffSource('ws1', 'abc123', { routingTarget: owner });
+        await source.fetchFileContent!('src/foo.ts');
+        expect(mockedGetCocClientForWorkspace).toHaveBeenLastCalledWith(owner);
+        expect(content).toHaveBeenCalledWith('ws1', 'abc123', 'src/foo.ts');
+    });
+    it('rejects an unresolved concrete owner before sending a local request', async () => {
+        await expect(fetchDiffFromSource('remote:missing:ws1', '/diff')).rejects.toThrow('owner is unavailable');
+        expect(mockedRequestForWorkspace).not.toHaveBeenCalled();
+    });
+
 });

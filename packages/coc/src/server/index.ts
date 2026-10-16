@@ -48,6 +48,7 @@ import type { TriggerInfrastructure } from './infrastructure/trigger-infrastruct
 import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastructure';
 import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
 import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
+import { acquireNativeWatchService, type NativeWatchServiceLike } from './shared/native-watch-service';
 import { createTerminalInfrastructure } from './infrastructure/terminal-infrastructure';
 import { createLanguageServerInfrastructure } from './infrastructure/language-server-infrastructure';
 import { HeapMonitor } from './admin/heap-monitor';
@@ -102,6 +103,7 @@ interface CloseHandlerDeps {
     templateWatcher: { closeAll(): void };
     notesWatcher: { closeAll(): void };
     notesSearchService: { dispose(): void };
+    watchService: NativeWatchServiceLike;
     notesSearchPreferencesDispose: () => void;
     wikiManager: { disposeAll(): void } | undefined;
     scheduleManager: { dispose(): void };
@@ -153,6 +155,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.notesSearchService.dispose();
         wikiManager?.disposeAll();
         scheduleManager.dispose();
+        deps.watchService.dispose();
         deps.scheduleInfraDispose();
         deps.cronExecutor?.shutdownAll();
         deps.cronInfraDispose?.();
@@ -240,7 +243,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Notes content search is native-only. Validate the complete capability at
     // composition time, while each root's filesystem build remains lazy until
     // the service receives its first search for that scope.
-    const notesSearchService = new NotesSearchService({ nativeAddon: loadNativeNotesIndex() });
+    const notesAddon = loadNativeNotesIndex();
+    const watchService = acquireNativeWatchService();
+    const notesSearchService = new NotesSearchService({ nativeAddon: notesAddon, watchService });
     const notesSearchPreferencesDispose = onRepoPreferencesChanged(({ workspaceId, preferences }) => {
         notesSearchService.reconcileConfiguredRoots(
             workspaceId,
@@ -555,7 +560,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         // Non-fatal — startup must not be blocked by resume re-enqueue failures.
     }
 
-    const { scheduleManager, dispose: scheduleInfraDispose } = await createScheduleInfrastructure(dataDir, queueFacade, store);
+    const { scheduleManager, dispose: scheduleInfraDispose } = await createScheduleInfrastructure(dataDir, queueFacade, store, watchService);
 
     // Turn-performance metric store (TTFT/TPS rows in the shared processes.db).
     // Non-fatal: metrics must never block server startup.
@@ -841,7 +846,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         globalWorkspaceRootPath: globalWorkspace.rootPath,
         resolvedAiService, getWsServer: () => wsServer,
         decisionService,
-        queuePersistence, wikiOptions: options.wiki,
+        queuePersistence, wikiOptions: options.wiki, watchService,
         aiInvoker,
         getTerminalSessionManager: () => terminalInfra?.terminalSessionManager,
         resolvedConfig,
@@ -997,7 +1002,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     );
     wsServer.browserControl.setEnabledGetter(() => runtimeConfigService.config.browserControl.enabled);
     const { taskWatcher, pipelineWatcher, templateWatcher, notesWatcher } =
-        await createWatcherInfrastructure(store, dataDir, wsServer, bridge, notesSearchService);
+        await createWatcherInfrastructure(store, dataDir, wsServer, bridge, notesSearchService, watchService);
 
     try {
         await modelMetadataStore.initialize(resolvedAiService as unknown as { listModels(): Promise<ModelInfo[]> });
@@ -1116,7 +1121,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             kustoDispose: () => { unsubscribeKustoConfig(); kustoRuntime.dispose(); },
             adoDispose: () => disposeAdoTokenResolver(dataDir),
             staleDetector, outputPruner, heapMonitor, taskWatcher, pipelineWatcher, templateWatcher, notesWatcher,
-            notesSearchService,
+            notesSearchService, watchService,
             notesSearchPreferencesDispose,
             wikiManager, scheduleManager, scheduleInfraDispose, notesGitTimerManager, autoPullManager, bridge, queuePersistence, wsServer,
             terminalWsServer: terminalInfra?.terminalWsServer,

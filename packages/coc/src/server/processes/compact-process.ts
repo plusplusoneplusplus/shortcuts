@@ -22,8 +22,15 @@ import type { QueueExecutorBridge } from '../core/api-handler';
 import { processOperationAdmission } from './process-operation-admission';
 import { pendingMessageTask } from './queued-pending-message';
 import { APIError, badRequest, internalError } from '../errors';
-import type { ChatProvider } from '../tasks/task-types';
+import { normalizeChatMode, type ChatProvider } from '../tasks/task-types';
 import { readActiveProviderSession, turnProviderAttribution } from './active-provider-session';
+
+export const SENTINEL_COMPACTION_INSTRUCTIONS = 'Preserve Sentinel’s active goals, unresolved asks, decisions, blockers and next actions. Retain explicit authorizations, their scope, cancellations and superseding instructions. Keep exact owner/workspace/conversation IDs and to-do/job IDs, links and status. Distinguish proposed, authorized, attempted, completed, failed and cancelled work. Never infer permission or success; remove stale details and duplication.';
+
+function resolveCompactionInstructions(proc: AIProcess, customInstructions?: string): string | undefined {
+    if (customInstructions?.trim()) return customInstructions;
+    return normalizeChatMode(proc.metadata?.mode) === 'sentinel' ? SENTINEL_COMPACTION_INSTRUCTIONS : undefined;
+}
 
 /** Terminal statuses: the only ones idle enough to compact. */
 const IDLE_STATUSES: Set<string> = new Set(['completed', 'failed', 'cancelled']);
@@ -146,19 +153,20 @@ export async function compactProcess(
                 if (!bridge.getTask?.(input.id!)) await (bridge.enqueueAdmitted ?? bridge.enqueue).call(bridge, input);
             }
             const taskId = randomUUID();
+            const instructions = resolveCompactionInstructions(current, customInstructions) ?? customInstructions;
             try {
                 await (bridge.enqueueAdmitted ?? bridge.enqueue).call(bridge, {
                     id: taskId, processId: current.id, type: 'chat', priority: 'normal',
                     payload: { kind: 'compact', processId: current.id,
                         workspaceId: current.metadata?.workspaceId, workingDirectory: current.workingDirectory,
-                        customInstructions, ...(auto ? { trigger: 'auto' } : {}) },
+                        customInstructions: instructions, ...(auto ? { trigger: 'auto' } : {}) },
                     config: { retryOnFailure: false, retryAttempts: 0, pauseOnFailure: false, timeoutMs: 0, cancelRunning: false },
                     displayName: 'Compact conversation',
                 });
                 await fullStore.updateProcess(current.id, { metadata: {
                     ...current.metadata, type: current.metadata?.type ?? 'chat',
                     compaction: { state: 'queued', taskId, priorStatus: current.status,
-                        startedAt: new Date().toISOString(), ...(customInstructions ? { customInstructions } : {}) },
+                        startedAt: new Date().toISOString(), ...(instructions ? { customInstructions: instructions } : {}) },
                     ...(auto && current.metadata?.autoCompact
                         ? { autoCompact: { ...(current.metadata.autoCompact as object), taskId } } : {}),
                 } });
@@ -177,7 +185,7 @@ export async function compactProcess(
     const guard = compactGuardError(proc);
     if (guard) throw guard;
     const id = proc.id;
-    const instructions = customInstructions?.trim() ? customInstructions : undefined;
+    const instructions = resolveCompactionInstructions(proc, customInstructions);
     const activeBinding = readActiveProviderSession(proc);
     const provider = activeBinding.provider as ChatProvider;
 

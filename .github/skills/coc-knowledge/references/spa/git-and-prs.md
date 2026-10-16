@@ -127,16 +127,23 @@ also keeps its `pulling` flag and exposes the active job id to the WebSocket
 ### Branch range
 
 `getBranchRange`, `listBranchRangeFiles`, `getBranchRangeDiff`, and
-`getBranchRangeFileDiff` all accept `base=default-branch` (default) or `base=upstream`;
-`BranchCommitStrip` toggles it, labeled with the server-resolved `baseRef`. `upstream`
-diffs against `@{upstream}`, so only unpushed commits show.
+`getBranchRangeFileDiff` accept `base=default-branch` (default) or `base=upstream`.
+`BranchRangeOverview` exposes a compact base selector and commit-scope selector.
+The summary includes up to 500 real range commits via Forge's shared history
+loader; metadata failure keeps files available and reports unavailable scope.
+The commit menu never derives its membership from paginated sidebar history.
 
-`useBranchRangeBaseMode` persists the choice per workspace in `localStorage`.
-`useBranchRangeCache` keys entries by `workspaceId:baseMode`; an explicit Refresh drops
-every mode for the workspace. `createBranchRangeDiffSource` carries the mode into
-file-diff URLs and its cache key. With no upstream the server falls back to the default
-branch and sets `baseModeFallback`. Pop-out URLs serialize `&base=upstream`; the
-default mode is omitted.
+`useBranchRangeBaseMode` persists the choice per workspace. `useBranchRangeCache`
+keys by workspace/base mode, and Refresh drops every mode for the workspace.
+No-upstream fallback reports `baseModeFallback`; pop-out URLs serialize the mode.
+
+Commit and branch review share `GitFileReview`: searchable directory groups,
+kind/status/viewed filters, overview, file navigation and a narrow drawer around
+one `FileDiffPanel`. `useCommitReviewFiles` loads metadata rather than a combined
+patch. Owner/workspace/comparison keys isolate transient state. Range sources
+include resolved base/head SHAs in patch URLs and editor keys, preventing
+mutable-range cache reuse. Commit metadata starts collapsed. Commit/file and
+branch/file routes retain their review host and navigator.
 
 ### Shared file diff sources
 
@@ -145,7 +152,11 @@ patch URLs plus an optional paired-content loader. Each loader resolves
 `getCocClientForWorkspace(workspaceId)` when called, so a remote clone route that
 becomes available after source construction is honored. Branch-range loaders carry
 the selected base mode. PR loaders use the origin-scoped content API with workspace
-and repo clone-selection metadata, and the source cache identity includes the head SHA.
+and repo clone-selection metadata, and the source cache identity includes the head SHA. Commit and branch factories
+accept an optional concrete `routingTarget` separately from the raw workspace
+payload; explicit null selects page origin and unresolved remote owners fail.
+`useFileDiff` aborts superseded reads and rejects delayed generations; patch cache
+keys include owner endpoint, and abandoned requests cannot populate the cache.
 
 `FileDiffPanel` and `WorkingTreeFileDiff` share the global `useDiffEngine` preference
 and the same Classic/Editor toggle; the preference defaults to Monaco and updates all

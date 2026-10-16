@@ -40,6 +40,10 @@ export {
 export {
     ExecGitOptions,
     execGitAsync,
+    readGitBlob,
+    GitBlobTooLargeError,
+    ReadGitBlobOptions,
+    runGitViaWslBytes,
     runGitViaWsl,
 } from './exec';
 
@@ -82,3 +86,6 @@ export {
     GitOpMetadata,
     GitOpsStoreOptions,
 } from './git-ops-store';
+
+export { createPullRequestGit, pullRequestGit, type PullRequestGit, type PullRequestGitRunner } from './pull-request-git';
+export { discoverGitRepoRoot } from './discover-repo-root';

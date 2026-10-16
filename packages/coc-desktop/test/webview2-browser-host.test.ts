@@ -3,6 +3,7 @@ import { WebView2BrowserHost } from '../src/webview2-browser-host';
 import { BrowserHostError, type BrowserEventSink, type BrowserHostedView } from '../src/browser-host-contract';
 import { BrowserHostManager } from '../src/browser-host-manager';
 import { BrowserHistoryStore } from '../src/browser-history';
+import { BrowserControlPage } from '../src/browser-control-page';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -76,6 +77,26 @@ describe('WebView2 owner-scoped native popups', () => {
         const [id, popup] = [...popups][0];
         return { host, root, sink, popups, id, popup, event };
     }
+
+    it.each(['jpeg', 'png'] as const)('forwards shared %s screenshot CDP options unchanged for roots and popups', async format => {
+        const h = await opened();
+        for (const [view, viewId] of [[h.root, '7:tab:1'], [h.popup, '7:tab:1:popup:1']] as const) {
+            mocks.request.mockResolvedValueOnce({ cssVisualViewport: { clientWidth: 800, clientHeight: 600, pageX: 0, pageY: 0 } })
+                .mockResolvedValueOnce({ result: { value: { valueJson: '1', valueTruncated: false } } })
+                .mockResolvedValueOnce({ data: 'fixture==' });
+            const page = new BrowserControlPage((method, params) => view.cdp!(method, params));
+            expect(await page.screenshot(undefined, format)).toEqual({
+                data: 'fixture==', mimeType: format === 'png' ? 'image/png' : 'image/jpeg',
+            });
+            expect(mocks.request).toHaveBeenLastCalledWith('cdp', {
+                viewId, method: 'Page.captureScreenshot', params: {
+                    format, ...(format === 'jpeg' ? { quality: 75 } : {}), captureBeyondViewport: true,
+                    clip: { x: 0, y: 0, width: 800, height: 600, scale: 1 },
+                },
+            });
+        }
+        await h.host.dispose();
+    });
 
     it('uses an explicit native-only activity command and forwards Stop with its public owner-bound popup id', async () => {
         const h = await opened();

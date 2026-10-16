@@ -49,7 +49,7 @@ function Diff({ reviewChat, filePath }: { reviewChat: UseCommitChatPresentationR
     return <><button onClick={reviewChat.toggleChat}>Toggle chat</button>
         <input aria-label="Diff instance" defaultValue="" /><span>{filePath ?? 'Overview'}</span></>;
 }
-vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitDetail', () => ({ CommitDetail: Diff }));
+vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitDetail', () => ({ CommitDetail: (props: any) => <Diff {...props} filePath={props.scrollToFilePath} /> }));
 vi.mock('../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel', () => ({ FileDiffPanel: Diff }));
 vi.mock('../../../../src/server/spa/client/react/features/git/branches/BranchRangeOverview', () => ({ BranchRangeOverview: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/git/branches/BranchRangeAllComments', () => ({ BranchRangeAllComments: () => null }));

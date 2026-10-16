@@ -102,6 +102,14 @@ export declare class NativeStatementHandle {
   iterate(values?: Array<number | string | Buffer | null>, names?: string[]): Array<Record<string, number | string | Buffer | null>>
 }
 
+export declare class NativeWatchService {
+  constructor(onBatch: (arg: WatchBatch) => void)
+  subscribe(options: NativeWatchSubscriptionOptions): number
+  unsubscribe(id: number): void
+  unwatchWorkspace(workspaceId: string): void
+  dispose(): void
+}
+
 /** An in-memory content index for one already-authorized Notes root. */
 export declare class NotesIndex {
   /**
@@ -648,6 +656,15 @@ export declare function gitRangeResolveBaseRef(repoRoot: string, baseMode: strin
  */
 export declare function gitRangeUpstreamBranch(repoRoot: string): Promise<string | null>
 
+/** Read raw blob bytes by object ID, including blobs reachable only from the index. */
+export declare function gitReadBlob(repoRoot: string, sha: string, options: GitReadBlobOptions): Promise<Buffer>
+
+/** Options for a byte-exact, bounded blob read. Zero timeout disables the deadline. */
+export interface GitReadBlobOptions {
+  maxBytes: number
+  timeout?: number
+}
+
 /**
  * Read `git remote get-url <remote>` from configuration, with no child
  * process at all.
@@ -919,6 +936,16 @@ export interface NativeSqliteReadStats {
   rows: Array<Record<string, number | string | Buffer | null>>
   vmSteps: number
   fullScanSteps: number
+}
+
+export interface NativeWatchSubscriptionOptions {
+  workspaceId: string
+  root: string
+  recursive: boolean
+  ignoreDirs: Array<string>
+  extensions: Array<string>
+  respectGitignore: boolean
+  debounceMs: number
 }
 
 /** Which regime a content read or write runs under. */
@@ -1429,4 +1456,10 @@ export interface RepoTreeEntry {
 export interface RepoTreeListing {
   entries: Array<RepoTreeEntry>
   truncated: boolean
+}
+
+export interface WatchBatch {
+  subscriptionId: number
+  paths: Array<string>
+  rescan: boolean
 }

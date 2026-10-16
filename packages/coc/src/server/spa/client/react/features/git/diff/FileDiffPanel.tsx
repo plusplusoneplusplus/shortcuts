@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo, type RefObject } from 'react';
 import type { GitFileDiffContentResponse } from '@plusplusoneplusplus/coc-client';
-import { Spinner, Button, TruncatedPath } from '../../../ui';
+import { Spinner, Button } from '../../../ui';
 import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
 import { SideBySideDiffViewer } from './SideBySideDiffViewer';
@@ -48,6 +48,7 @@ import { useCurrentChatInsertDraft } from '../../repo-detail/unified-right-panel
 import { openUnifiedPanelTab } from '../../repo-detail/unified-right-panel/unifiedPanelOpen';
 import { explorerFileTabInput } from '../../repo-detail/unified-right-panel/unifiedExplorerFiles';
 import { DiffFilePicker } from './DiffFilePicker';
+import { reviewFileParts } from './gitReviewFiles';
 
 export interface FileDiffPanelProps {
     workspaceId: string;
@@ -67,6 +68,8 @@ export interface FileDiffPanelProps {
     backTestId?: string;
     /** Whether to display source.label in the toolbar. Defaults to true. */
     showSourceLabel?: boolean;
+    /** Hosts with their own chat toolbar can keep the file toolbar compact. */
+    showChatToggle?: boolean;
     /** When provided, render a Mark reviewed toggle in the toolbar. */
     isReviewed?: boolean;
     onToggleReviewed?: () => void;
@@ -85,6 +88,7 @@ export interface FileDiffPanelProps {
     headerActions?: React.ReactNode;
     /** Monaco diff editor factory; wiring tests pass an owned adapter. */
     createDiffEditor?: DiffEditorFactory;
+    focusComment?: DiffComment | null;
     onDiffEngineChange?: (engine: DiffEngineResolution['engine']) => void;
 }
 
@@ -111,6 +115,7 @@ export function FileDiffPanel({
     backLabel = 'All files',
     backTestId = 'file-diff-back-btn',
     showSourceLabel = true,
+    showChatToggle = true,
     isReviewed,
     onToggleReviewed,
     getHunkClassification,
@@ -119,6 +124,7 @@ export function FileDiffPanel({
     createDiffEditor,
     onDiffEngineChange,
     reviewChat,
+    focusComment,
 }: FileDiffPanelProps) {
     const { dispatch: queueDispatch } = useQueue();
 
@@ -141,7 +147,7 @@ export function FileDiffPanel({
         : source.fileDiffUrl(filePath);
     const fullDiffUrl = source.supportsTruncation ? source.fileDiffUrl(filePath, true) : null;
     const { diff, loading, error, retry, truncated, totalLines, requestFullDiff, fullContextUnavailable } =
-        useFileDiff(diffUrl, fullDiffUrl, workspaceId);
+        useFileDiff(diffUrl, fullDiffUrl, source.routingTarget === undefined ? workspaceId : source.routingTarget);
 
     // ── View mode ──
     const [viewMode, setViewMode] = useDiffViewMode();
@@ -236,7 +242,7 @@ export function FileDiffPanel({
         resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
         clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt,
         resolveWithAI, fixWithAI,
-    } = useDiffComments(workspaceId, diffContext);
+    } = useDiffComments(workspaceId, diffContext, source.routingTarget);
 
     // ── Cross-file navigation ──
     const [fetchedFiles, setFetchedFiles] = useState<{ key: string; files: string[] } | null>(null);
@@ -409,6 +415,10 @@ export function FileDiffPanel({
         setTimeout(() => el.classList.remove('ring-2', 'ring-yellow-400'), 1500);
     }, [showEditor]);
 
+    useEffect(() => {
+        if (focusComment?.context.filePath === filePath && !loading && !editorLoading) handleSidebarCommentClick(focusComment);
+    }, [focusComment, filePath, loading, editorLoading, diffLines, handleSidebarCommentClick]);
+
     const insertDraftIntoCurrentChat = useCurrentChatInsertDraft();
     const renderCommentThread = useCallback((comment: DiffComment) => (
         <CommentCard
@@ -436,13 +446,15 @@ export function FileDiffPanel({
         if (!panelHost || !(e.ctrlKey || e.metaKey)) return;
         const input = explorerFileTabInput({ path: filePath }, {
             ownerWorkspaceId: workspaceId,
+            ownerRoutingRef: source.routingTarget === undefined
+                ? (attachmentDestinationId === workspaceId ? null : attachmentDestinationId) : source.routingTarget,
             scopeWorkspaceId: panelHost.workspaceId,
             chatId: panelHost.chatId,
         });
         if (!input) return;
         e.preventDefault();
         openUnifiedPanelTab(panelHost.workspaceId, input);
-    }, [panelHost, filePath, workspaceId]);
+    }, [panelHost, filePath, workspaceId, attachmentDestinationId, source.routingTarget]);
 
     // ── Render ──
 
@@ -466,11 +478,10 @@ export function FileDiffPanel({
                     <DiffFilePicker key={`${fileListKey}\u0000${filePath}`} filePath={filePath} files={allFiles}
                         onSelect={onNavigateToFile ? path => onNavigateToFile(path, 'first') : undefined}
                         className="flex min-w-0" onClick={handlePathClick} data-testid="file-diff-path">
-                        <TruncatedPath
-                            path={filePath}
-                            title={panelHost ? `${filePath}\nCtrl+click to open file` : undefined}
-                            className="text-xs font-mono text-[#1e1e1e] dark:text-[#ccc] truncate"
-                        />
+                        <span className="flex min-w-0 items-baseline gap-2 text-xs font-mono" title={panelHost ? `${filePath}\nCtrl+click to open file` : filePath}>
+                            <strong className="truncate font-medium">{reviewFileParts(filePath).name}</strong>
+                            <span className="truncate text-[10px] text-[#848484]">{reviewFileParts(filePath).directory}</span>
+                        </span>
                     </DiffFilePicker>
                     {allFiles.length > 1 && (
                         <span
@@ -529,7 +540,7 @@ export function FileDiffPanel({
                     >
                         💬 {comments.length > 0 ? comments.length : ''}
                     </button>
-                    {showChat && (
+                    {showChat && showChatToggle && (
                         <button
                             onClick={toggleChat}
                             title="Toggle AI chat"

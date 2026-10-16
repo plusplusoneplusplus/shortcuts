@@ -20,7 +20,7 @@ file-watching behavior, and registration sources are in
 | `wiki-data.ts` | Disk I/O — component graph, markdown, analyses, themes |
 | `context-builder.ts` | TF-IDF index + top-K context retrieval |
 | `conversation-session-manager.ts` | Multi-turn AI session pool |
-| `file-watcher.ts` | `fs.watch` wrapper with debounce + component mapping |
+| `file-watcher.ts` | Workspace-owned native watch subscription + component mapping |
 | `wiki-routes.ts` | Route table registration; restores persisted wikis from `ProcessStore` |
 | `ask-handler.ts` | `POST /ask` + SSE utilities (`sendSSE`, `readBody`, `buildAskPrompt`) |
 | `explore-handler.ts` | `POST /explore/:id` + `buildExplorePrompt` |
@@ -42,7 +42,7 @@ register(WikiRegistration)
   ├─ Validate wikiDir + component-graph.json
   ├─ WikiData.load() [eager]
   ├─ ConversationSessionManager.create() [if aiEnabled]
-  ├─ FileWatcher.start() [if watch + repoPath]
+  ├─ FileWatcher.start() [if watch + repoPath + workspaceId]
   └─ wikis.set(wikiId, WikiRuntime)
 
 ensureContextBuilder(wikiId)
@@ -73,8 +73,9 @@ unregister(wikiId)
 - **Events, not response writes** — runners emit `GenerationEvent`s; `createSseEventSink(res)`
   maps them onto the wire (undefined fields omitted) and non-HTTP callers use
   `createRecordingEventSink`. `ask`, `explore`, and `generate` stream via `sendSSE(res, data)`.
-- **Graceful degradation** — startup `FileWatcher` failures and `store.getWikis()` errors are
-  swallowed; generation SSE always ends with `done` or `error`.
+- **Failure boundaries** — ordinary watch subscription failures are logged and reported
+  through `onWikiError`; missing/stale addons abort registration. Store restoration is
+  best-effort; generation SSE always ends with `done` or `error`.
 
 ## Public API Reference
 
@@ -193,7 +194,8 @@ Mounts all wiki routes onto the CoC server's `Route[]` table and returns the `Wi
 | `@plusplusoneplusplus/forge` | `ProcessStore`, `WikiInfo` — persistence interface |
 | `@plusplusoneplusplus/coc-server` | `Route`, `WikiServerOptions`, `sendJson`, `send400`, `send404`, `send500`, `readJsonBody` |
 | `@plusplusoneplusplus/deep-wiki` | Dynamically imported for phase execution |
-| `fs`, `path`, `os` | Directory reads, `fs.watch`, `os.homedir()` defaults |
+| `fs`, `path`, `os` | Directory reads, path mapping and `os.homedir()` defaults |
+| Shared native watch service | Debounced repository changes and full-rescan invalidations |
 | `js-yaml` | YAML parsing in `admin-handlers` (dynamic import) |
 
 ## Related

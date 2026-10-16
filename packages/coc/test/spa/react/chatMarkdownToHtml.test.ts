@@ -557,6 +557,16 @@ describe('chatMarkdownToHtml — image rendering', () => {
         expect(html).not.toContain('data-local-path=');
     });
 
+    it.each([
+        '/data/browser screenshots/chart.png',
+        'C:/data/browser screenshots/chart.jpg',
+    ])('renders angle-bracket screenshot paths with spaces: %s', imagePath => {
+        const html = chatMarkdownToHtml(`![screenshot](<${imagePath}>)`, 'ws1');
+        expect(html).toContain(`src="/api/workspaces/ws1/files/image?path=${encodeURIComponent(imagePath)}"`);
+        expect(html).toContain('alt="screenshot"');
+        expect(html).not.toContain('data-local-path=');
+    });
+
     it('URL-encodes path in proxy URL', () => {
         const html = chatMarkdownToHtml('![img](/tmp/my-file.png)', 'ws1');
         expect(html).toContain(encodeURIComponent('/tmp/my-file.png'));

@@ -332,6 +332,8 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/Conv
         return React.createElement('div', {
             'data-testid': `turn-${props.turn?.role}`,
             'data-turn-index': turnIndex,
+            'data-conversation-mode': props.conversationMode,
+            'data-conversation-owner': props.conversationOwnerKey,
             'data-pinned': props.turn?.pinnedAt ? 'true' : 'false',
             'data-archived': props.turn?.archived ? 'true' : 'false',
         }, ...children);
@@ -721,6 +723,31 @@ describe('ChatDetail shared paged hydration', () => {
         await waitFor(() => expect(screen.getByText('full-0')).toBeTruthy());
         expect(JSON.parse(screen.getByTestId('paged-cache').textContent ?? '[]')).toHaveLength(200);
         expect(screen.getByTestId('paged-cache').dataset.paged).toBe('false');
+    });
+});
+
+describe('ChatDetail inline canvas defaults', () => {
+    it.each([
+        { mode: 'sentinel', remote: false }, { mode: 'ask', remote: false },
+        { mode: 'sentinel', remote: true }, { mode: 'ask', remote: true },
+    ])('uses hydrated $mode identity for embeds (remote=$remote)', async ({ mode, remote }) => {
+        const baseUrl = 'https://canvas-owner.example.test';
+        if (remote) registerCloneBaseUrls([{ workspaceId: 'ws-1', baseUrl }]);
+        setupFetch({
+            '/queue/': { body: { task: makeTask({ displayName: 'Sentinel', payload: { kind: 'chat', mode: 'ask' } }) } },
+            '/processes/': { body: { process: makeProcess({ metadata: { mode, sessionId: 'session' }, conversationTurns: [
+                { role: 'assistant', content: 'canvas://artifact', turnIndex: 0, timeline: [] },
+            ] }) } },
+        });
+        render(<Wrap><ChatDetail taskId="queue_task-1" workspaceId="ws-1"
+            {...(remote ? { sourceSelectionId: 'remote:owner:ws-1', sourceBaseUrl: baseUrl } : {})} />
+        </Wrap>);
+        const turn = await screen.findByText('canvas://artifact');
+        expect(turn).toHaveAttribute('data-conversation-mode', mode);
+        expect(JSON.parse(turn.getAttribute('data-conversation-owner')!)).toEqual([remote ? 'remote:owner:ws-1' : 'ws-1', remote ? baseUrl : null]);
+        const reads = fetchMock.mock.calls.filter(([url]) => String(url).includes('/processes/'));
+        expect(reads.length).toBeGreaterThan(0);
+        expect(reads.every(([url]) => String(url).startsWith(remote ? baseUrl : '/api'))).toBe(true);
     });
 });
 

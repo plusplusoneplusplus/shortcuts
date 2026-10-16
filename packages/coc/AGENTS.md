@@ -104,6 +104,10 @@ references before editing. Paths are package-relative.
   Promote buffered turns before the boundary; later arrivals cannot steer across it.
   Cancel removes queued compaction only. Running compaction never retries after restart.
   Already-admitted messaging callbacks use `enqueueAdmitted` to avoid nested admission locks.
+  `compact-process.ts` resolves one shared Sentinel instruction from `metadata.mode` for
+  automatic and unfocused manual compaction; explicit manual focus overrides it verbatim.
+  Ordinary chats retain provider defaults. Copilot and Claude accept the instruction;
+  Codex ignores custom instructions and warns.
   Sentinel auto-compact (`processes/auto-compact.ts`) is opt-in per chat and server-side only:
   checks `currentTokens > thresholdTokens` after a persisted response, one attempt per
   response, always queued; model limits never rescale the absolute threshold. The default
@@ -148,8 +152,13 @@ references before editing. Paths are package-relative.
   gaps and use `Dialog`'s focus trap with the surviving metadata trigger for focus return.
 - Whole-repo search/listing requires Rust; directory listings and subtree walks use native `RepoFiles`. Notes
   search validates capability at composition and authorizes roots before search.
-  Indexes/watchers key by `(workspaceId, rootId)`, not paths; failed refreshes retain
-  complete snapshots and shutdown disposes watchers. One `RepoFiles` handle per
+  Notes indexes key by `(workspaceId, rootId)`; failed refreshes retain complete
+  snapshots. Filesystem consumers use the shared `NativeWatchService`: workspace-owned
+  subscriptions share one native OS watch per real root. Rust owns debounce, filtering
+  and recovery; full-rescan batches invalidate consumers. Tests inject batches, not
+  filesystem events. Server scopes isolate workspace removal/shutdown, including
+  equal workspace IDs in different local servers; the final scope releases an idle
+  native owner. One `RepoFiles` handle per
   workspace owns its file indexes/refresh; dispose it on root change, removal, or shutdown.
   Health `nativeFileIndex`/`nativeContentSearch` both report the full `RepoFiles` capability.
   `src/server/repos/types.ts` aliases native tree/search result types and coc-client
@@ -224,7 +233,11 @@ references before editing. Paths are package-relative.
   `getBrowserControlRuntime` and the composition-owned `getBrowserToolState`
   through the shared executor runtime. Route registration precedes WebSocket
   creation: resolve the broker lazily and bind its guard after infrastructure
-  initialization. Process removal deletes owner-qualified tool state.
+  initialization. Construct `BrowserToolStateStore` with `dataDir`; it owns
+  workspace/process screenshot storage under `getRepoDataPath(..., 'browser-screenshots')`.
+  Process removal marks owner-qualified state deleted to prevent late writes and
+  removes screenshots best effort with logged failures. Keep screenshots machine-local:
+  wipe through the snapshot registry and exclude from export/import.
   Never load browser config per turn.
   `/browser` persists prompt-only `metadata.browserMode`; tool execution does
   not require activation. Ask, Autopilot and follow-ups share registration,
@@ -576,8 +589,11 @@ references before editing. Paths are package-relative.
   containment, and realpaths. Data stays canvas-scoped/read-only to consumers; no
   file-write endpoint/repo escape. Diagnostics omit content/absolute paths.
   Inline `CanvasEmbed` disclosures keep hidden bodies and Kusto connection portals
-  mounted/inert to preserve drafts. State is per occurrence and resets by workspace,
-  chat and canvas identity; panel opening stays separate and owner-routed.
+  mounted/inert to preserve drafts. Sentinel mode defaults every inline kind to
+  collapsed; ordinary defaults and dedicated panels retain their behavior. Pass the
+  resolved conversation mode through pinned/normal bubbles and `ChatRenderContext`.
+  Manual choices survive HTML portal remounts per owner-qualified occurrence;
+  workspace/chat/canvas changes isolate state. Panel opening stays owner-routed.
 - Kusto and markdown tables share `InteractiveTable`. Wide unwrapped results own
   horizontal scrolling; column hiding, resizing and wrapping are display-only.
   Cover actual column widths and overflow with the Kusto browser regression suite.
@@ -619,7 +635,12 @@ references before editing. Paths are package-relative.
   Explicit override, quota/runtime, and dispatch failures never trigger substitution.
   Omitted provider keeps ordinary inheritance. No workspace ownership or scan cron; any number may coexist.
   Startup cancels retired Sentinel scan crons (`src/server/cron/legacy-sentinel-crons.ts`).
-- Create PRs via `src/server/git/create-pull-request-service.ts` and injected runners.
+- Create PRs via `src/server/git/create-pull-request-service.ts`, with typed Forge
+  `pullRequestGit` operations and a `gh`/`az`-only CLI runner. Forge owns host Rust
+  and WSL dispatch, including repository discovery (`discoverGitRepoRoot`), raw
+  blob reads and linked-worktree path translation. PR default resolution uses
+  symbolic origin HEAD, a 15s noninteractive remote probe, then `main`; fetch/push
+  use 600s with `GIT_TERMINAL_PROMPT=0`.
   The `submit-commits-as-pr` skill uses only `create_pull_request` with nonempty exact
   commits and explicit auto-merge (on unless disabled); general tool defaults stay unchanged.
   Successful structured `create_pull_request` results use forge’s shared detector for

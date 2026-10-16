@@ -1,25 +1,11 @@
-/**
- * Branch-range adapter for the pop-out review kernel.
- *
- * Loads the range summary and its file list, then reuses the same review model,
- * comment-count mapping, and layout as commit/PR review. It has not opted into
- * classification, review progress, or chat, so those capabilities are simply
- * omitted rather than reimplemented.
- */
+/** Loads the range through its owner and reuses the inline focused review surface. */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Spinner } from '../../ui';
-import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
+import { getGitReviewClient } from '../../features/git/diff/diffSource';
 import { BranchRangeOverview } from '../../features/git/branches/BranchRangeOverview';
-import { FileDiffPanel } from '../../features/git/diff/FileDiffPanel';
-import { createBranchRangeDiffSource } from '../../features/git/diff/diffSource';
-import { PopOutReviewLayout } from './PopOutReviewLayout';
-import { useFileCommentMap } from './useFileCommentMap';
-import { popOutDiffPanelProps, usePopOutReviewModel } from './usePopOutReviewModel';
-import type { GitCommitItem } from '../../features/git/commits/CommitList';
 import type { BranchRangeInfo } from '../../features/git/branches/BranchChanges';
 import type { BranchRangeFile } from '../../features/git/branches/BranchAllFilesDiff';
-import type { FileChange } from '../../features/git/diff/FileTree';
 import type { GitBranchRangeResponse, GitRangeBaseMode } from '@plusplusoneplusplus/coc-client';
 
 export interface BranchRangeReviewContentProps {
@@ -30,23 +16,27 @@ export interface BranchRangeReviewContentProps {
 
 export function BranchRangeReviewContent({ workspaceId, baseMode = 'default-branch', attachmentDestinationId }: BranchRangeReviewContentProps) {
     const [range, setRange] = useState<BranchRangeInfo | null>(null);
-    const [commits, setCommits] = useState<GitCommitItem[]>([]);
     const [files, setFiles] = useState<BranchRangeFile[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        let cancelled = false;
         setLoading(true);
         setError(null);
+        setRange(null);
+        setFiles([]);
 
-        const client = getCocClientForWorkspace(workspaceId);
-        Promise.all([
-            client.git.getBranchRange(workspaceId, { base: baseMode }),
-            client.git.listBranchRangeFiles(workspaceId, { base: baseMode }),
-        ])
+        Promise.resolve().then(() => {
+            const client = getGitReviewClient(workspaceId, attachmentDestinationId === workspaceId ? null : attachmentDestinationId);
+            return Promise.all([
+                client.git.getBranchRange(workspaceId, { base: baseMode }),
+                client.git.listBranchRangeFiles(workspaceId, { base: baseMode }),
+            ]);
+        })
             .then(([rangeData, filesData]) => {
+                if (cancelled) return;
                 if (isBranchRangeInfo(rangeData)) setRange(rangeData);
-                if (isBranchRangeInfo(rangeData) && rangeData.commits) setCommits(rangeData.commits);
                 // Counts are optional on the wire; the rail renders them as numbers.
                 if (filesData.files) {
                     setFiles(filesData.files.map(file => ({
@@ -56,22 +46,10 @@ export function BranchRangeReviewContent({ workspaceId, baseMode = 'default-bran
                     })));
                 }
             })
-            .catch((err: Error) => setError(err.message))
-            .finally(() => setLoading(false));
-    }, [workspaceId, baseMode]);
-
-    // Convert BranchRangeFile[] to FileChange[] for the file panel
-    const fileChanges: FileChange[] = useMemo(() => files.map(f => ({
-        status: f.status,
-        path: f.path,
-        additions: f.additions,
-        deletions: f.deletions,
-        oldPath: f.oldPath,
-    })), [files]);
-
-    const model = usePopOutReviewModel({ files: fileChanges });
-    // Comment counts for the branch range (uses literal refs like BranchChanges)
-    const fileCommentMap = useFileCommentMap(workspaceId, 'branch-base', 'branch-head', fileChanges);
+            .catch((err: Error) => { if (!cancelled) setError(err.message); })
+            .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
+    }, [workspaceId, baseMode, attachmentDestinationId]);
 
     if (loading) {
         return (
@@ -90,35 +68,8 @@ export function BranchRangeReviewContent({ workspaceId, baseMode = 'default-bran
     }
 
     return (
-        <PopOutReviewLayout
-            workspaceId={workspaceId}
-            files={fileChanges}
-            model={model}
-            fileCommentMap={fileCommentMap}
-            renderDiff={filePath => (
-                <FileDiffPanel
-                    key={filePath}
-                    workspaceId={workspaceId}
-                    attachmentDestinationId={attachmentDestinationId}
-                    filePath={filePath}
-                    source={createBranchRangeDiffSource(workspaceId, {
-                        files: files.map(file => file.path).sort(),
-                        baseMode,
-                    })}
-                    {...popOutDiffPanelProps(model, filePath)}
-                />
-            )}
-            overview={(
-                <BranchRangeOverview
-                    workspaceId={workspaceId}
-                    range={range}
-                    commits={commits}
-                    files={files}
-                    isPopOut
-                    baseMode={baseMode}
-                />
-            )}
-        />
+        <BranchRangeOverview workspaceId={workspaceId} attachmentDestinationId={attachmentDestinationId}
+            range={range} files={files} isPopOut baseMode={baseMode} />
     );
 }
 

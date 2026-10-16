@@ -1,551 +1,458 @@
 /**
- * Tests the right-panel BranchRangeOverview component that renders when the
- * user clicks the Branch Changes header in the Git sub-tab:
- *   - File list rendered in lower panel (BranchAllFilesDiff)
- *   - Inline diff expand / collapse per file
- *   - "Open →" button navigates to FileDiffPanel
- *   - Empty state when no files changed
- *   - "All Comments" button reveals BranchRangeAllComments panel
- *   - Large diff truncation + Show full diff → FileDiffPanel
- *
- * All tests are mock-e2e: API routes are intercepted so no real git repo is
- * required and tests run deterministically across platforms.
+ * Mock-e2e coverage of BranchRangeOverview's focused GitFileReview:
+ * grouped file selection, overview/read-diff transitions, deep-link restoration,
+ * empty ranges, comments, full patches, server truncation, base and commit scope.
+ * API interception keeps the tests independent of a real Git repository.
  */
-
-import { test, expect } from './fixtures/server-fixture';
+import { test, expect, type Page } from './fixtures/server-fixture';
 import { request, seedWorkspace } from './fixtures/seed';
 import { gotoWorkspace } from './fixtures/remote-shell';
 
-// ── Shared mock data ────────────────────────────────────────────────────────
-
 const DEFAULT_FILES = [
-    { path: 'src/feature.ts',       status: 'A', additions: 5, deletions: 0 },
+    { path: 'src/feature.ts', status: 'A', additions: 5, deletions: 0 },
     { path: 'src/feature-utils.ts', status: 'A', additions: 3, deletions: 0 },
 ];
 
-const DEFAULT_BRANCH_RANGE = {
-    onDefaultBranch: false,
-    branchName:      'feature/test-branch',
-    baseRef:         'origin/main',
-    headRef:         'HEAD',
-    commitCount:     2,
-    additions:       8,
-    deletions:       0,
-    fileCount:       2,
-    behindCount:     0,
-    mergeBase:       'abc1234',
-    files:           DEFAULT_FILES,
+const RANGE_COMMIT = {
+    hash: 'a'.repeat(40),
+    shortHash: 'aaaaaaa',
+    subject: 'Add feature',
+    author: 'Test Author',
+    date: '2026-10-01T12:00:00.000Z',
+    parentHashes: ['b'.repeat(40)],
 };
 
-const SAMPLE_DIFF = [
-    'diff --git a/src/feature.ts b/src/feature.ts',
-    '--- /dev/null',
-    '+++ b/src/feature.ts',
-    '@@ -0,0 +1,5 @@',
-    '+export const feature = true;',
-    '+',
-    '+export function run() {',
-    '+  return feature;',
-    '+}',
-].join('\n');
+const DEFAULT_BRANCH_RANGE = {
+    onDefaultBranch: false,
+    branchName: 'feature/test-branch',
+    baseRef: 'origin/main',
+    headRef: 'HEAD',
+    commitCount: 2,
+    additions: 8,
+    deletions: 0,
+    fileCount: 2,
+    behindCount: 0,
+    mergeBase: 'b'.repeat(40),
+    baseSha: 'b'.repeat(40),
+    headSha: RANGE_COMMIT.hash,
+    commits: [
+        RANGE_COMMIT,
+        { ...RANGE_COMMIT, hash: 'c'.repeat(40), shortHash: 'ccccccc', subject: 'Add utilities' },
+    ],
+    files: DEFAULT_FILES,
+};
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Pre-seed hasSeenWelcome so the onboarding modal does not block pointer events.
- * Must be called before page.goto().
- */
-async function dismissOnboarding(serverUrl: string): Promise<void> {
-    await request(`${serverUrl}/api/preferences`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-            hasSeenWelcome:      true,
-            onboardingProgress:  { dismissed: true, hasCompletedTour: true },
-        }),
-    });
+function addedFileDiff(path: string, lines: string[]): string {
+    return [
+        `diff --git a/${path} b/${path}`,
+        '--- /dev/null',
+        `+++ b/${path}`,
+        `@@ -0,0 +1,${lines.length} @@`,
+        ...lines.map(line => `+${line}`),
+    ].join('\n');
 }
 
-/**
- * Register all Playwright route intercepts needed for the git sub-tab to render
- * on a mocked feature branch.
- *
- * Pass overrides to replace the defaults for a specific test scenario.
- */
-async function mockGitRoutes(
-    page:   any,
-    wsId:   string,
-    opts:   {
-        branchRange?: object;
-        files?:       object[];
-        fileDiff?:    string;
-        comments?:    object[];
-    } = {},
-): Promise<void> {
-    const branchRange = opts.branchRange ?? DEFAULT_BRANCH_RANGE;
-    const files       = opts.files       ?? DEFAULT_FILES;
-    const fileDiff    = opts.fileDiff    ?? SAMPLE_DIFF;
-    const comments    = opts.comments    ?? [];
-
-    // Git commit history
-    await page.route(
-        (url: string) =>
-            new URL(url).pathname.includes(`/workspaces/${wsId}/git/commits`) &&
-            !new URL(url).pathname.includes('/files'),
-        (route: any) => route.fulfill({
-            status:      200,
-            contentType: 'application/json',
-            body:        JSON.stringify({ commits: [], unpushedCount: 0 }),
-        }),
-    );
-
-    // Branch-range summary (the response includes files[] so RepoGitTab can
-    // populate branchRangeFiles without a second round-trip)
-    await page.route(
-        (url: string) => {
-            const p = new URL(url).pathname;
-            return p.includes(`/workspaces/${wsId}/git/branch-range`) && !p.includes('/files');
-        },
-        (route: any) => route.fulfill({
-            status:      200,
-            contentType: 'application/json',
-            body:        JSON.stringify(branchRange),
-        }),
-    );
-
-    // Branch-range file list (used by BranchChanges when it fetches separately)
-    await page.route(
-        (url: string) => {
-            const p = new URL(url).pathname;
-            return p.includes(`/workspaces/${wsId}/git/branch-range/files`) && !p.includes('/diff');
-        },
-        (route: any) => route.fulfill({
-            status:      200,
-            contentType: 'application/json',
-            body:        JSON.stringify({ files }),
-        }),
-    );
-
-    // Per-file inline diff (lazy-loaded when a file row is expanded)
-    await page.route(
-        (url: string) => {
-            const p = new URL(url).pathname;
-            return p.includes(`/workspaces/${wsId}/git/branch-range/files/`) && p.endsWith('/diff');
-        },
-        (route: any) => route.fulfill({
-            status:      200,
-            contentType: 'application/json',
-            body:        JSON.stringify({ diff: fileDiff }),
-        }),
-    );
-
-    // Working-tree changes (needed by WorkingTree component in the left panel)
-    await page.route(
-        (url: string) => new URL(url).pathname.includes(`/workspaces/${wsId}/git/changes`),
-        (route: any) => route.fulfill({
-            status:      200,
-            contentType: 'application/json',
-            body:        JSON.stringify({ changes: [] }),
-        }),
-    );
-
-    // Skills list
-    await page.route(
-        (url: string) => new URL(url).pathname.includes(`/workspaces/${wsId}/skills`),
-        (route: any) => route.fulfill({
-            status:      200,
-            contentType: 'application/json',
-            body:        JSON.stringify({ skills: [] }),
-        }),
-    );
-
-    // Latest git background operation
-    await page.route(
-        (url: string) => new URL(url).pathname.includes('/git/ops/latest'),
-        (route: any) => route.fulfill({
-            status:      200,
-            contentType: 'application/json',
-            body:        JSON.stringify(null),
-        }),
-    );
-
-    // Diff-comments: used by BranchRangeOverview (comment count badge) and
-    // BranchRangeAllComments (full list)
-    await page.route(
-        (url: string) => new URL(url).pathname.includes(`/diff-comments/${wsId}`),
-        (route: any) => route.fulfill({
-            status:      200,
-            contentType: 'application/json',
-            body:        JSON.stringify({ comments }),
-        }),
-    );
-
-    // Git-info batch: ReposContext fetches this to determine isGitRepo flag.
-    // Without this mock the git sub-tab would be hidden (non-git temp directory).
-    await page.route(
-        (url: string) => new URL(url).pathname.includes('/git-info/batch'),
-        (route: any) => route.fulfill({
-            status:      200,
-            contentType: 'application/json',
-            body:        JSON.stringify({
-                results: {
-                    [wsId]: {
-                        isGitRepo:  true,
-                        branch:     'feature/test-branch',
-                        dirty:      false,
-                        ahead:      2,
-                        behind:     0,
-                        remoteUrl:  null,
-                    },
-                },
-            }),
-        }),
-    );
-}
-
-/**
- * Seed a workspace, dismiss onboarding, register mocked git routes, navigate to
- * the git sub-tab, and open BranchRangeOverview by clicking the branch-changes
- * header.
- *
- * Returns after `branch-commit-strip` is visible (BranchRangeOverview is rendered).
- */
-async function openBranchRangeOverview(
-    page:      any,
-    serverUrl: string,
-    wsId:      string,
-    mockOpts:  Parameters<typeof mockGitRoutes>[2] = {},
-): Promise<void> {
-    await seedWorkspace(serverUrl, wsId, `${wsId}-repo`);
-    await dismissOnboarding(serverUrl);
-    await mockGitRoutes(page, wsId, mockOpts);
-
-    await gotoWorkspace(page, serverUrl, wsId, 'git');
-    await expect(page.locator('button[data-subtab="activity"]')).toHaveAttribute('data-active', 'true');
-    await expect(page.getByTestId('git-split-workspace-list')).toBeVisible();
-
-    // Wait for the branch-changes summary to appear, then click to select overview
-    await expect(page.getByTestId('branch-changes')).toBeVisible({ timeout: 10_000 });
-    await page.getByTestId('branch-changes-header').click();
-
-    // BranchRangeOverview is now in the right panel
-    await expect(page.getByTestId('branch-commit-strip')).toBeVisible({ timeout: 10_000 });
-}
-
-// ================================================================
-// File list rendered
-// ================================================================
-
-test.describe('BranchRangeOverview — file list', () => {
-    test('shows commit strip and both file rows after clicking branch-changes header', async ({ page, serverUrl }) => {
-        await openBranchRangeOverview(page, serverUrl, 'ws-bro-fl-1');
-
-        // Upper panel: commit strip with branch label
-        await expect(page.getByTestId('branch-commit-strip-header')).toBeVisible();
-        await expect(page.getByTestId('branch-commit-strip-header')).toContainText('feature/test-branch');
-
-        // Draggable divider must exist
-        await expect(page.getByTestId('branch-range-overview-divider')).toBeVisible();
-
-        // Lower panel: file list
-        await expect(page.getByTestId('branch-range-overview-lower')).toBeVisible();
-        await expect(page.getByTestId('branch-all-files-diff')).toBeVisible({ timeout: 5_000 });
-        await expect(page.getByTestId('branch-all-file-row-src/feature.ts')).toBeVisible();
-        await expect(page.getByTestId('branch-all-file-row-src/feature-utils.ts')).toBeVisible();
-    });
-});
-
-// ================================================================
-// Inline diff expand / collapse
-// ================================================================
-
-test.describe('BranchRangeOverview — inline diff expand/collapse', () => {
-    test('clicking file toggle expands its inline diff', async ({ page, serverUrl }) => {
-        const singleFile = [{ path: 'src/feature.ts', status: 'A', additions: 5, deletions: 0 }];
-        await openBranchRangeOverview(page, serverUrl, 'ws-bro-id-1', {
-            branchRange: { ...DEFAULT_BRANCH_RANGE, files: singleFile, fileCount: 1 },
-            files:       singleFile,
-        });
-
-        await expect(page.getByTestId('branch-all-file-row-src/feature.ts')).toBeVisible({ timeout: 5_000 });
-
-        // Expand
-        await page.getByTestId('branch-all-file-toggle-src/feature.ts').click();
-
-        // Diff container and rendered diff content appear
-        await expect(page.getByTestId('branch-all-file-diff-src/feature.ts')).toBeVisible({ timeout: 5_000 });
-        await expect(page.getByTestId('branch-all-file-diff-content-src/feature.ts')).toBeVisible({ timeout: 5_000 });
-    });
-
-    test('clicking file toggle again collapses the inline diff', async ({ page, serverUrl }) => {
-        const singleFile = [{ path: 'src/feature.ts', status: 'A', additions: 5, deletions: 0 }];
-        await openBranchRangeOverview(page, serverUrl, 'ws-bro-id-2', {
-            branchRange: { ...DEFAULT_BRANCH_RANGE, files: singleFile, fileCount: 1 },
-            files:       singleFile,
-        });
-
-        await expect(page.getByTestId('branch-all-file-row-src/feature.ts')).toBeVisible({ timeout: 5_000 });
-
-        // Expand then collapse
-        await page.getByTestId('branch-all-file-toggle-src/feature.ts').click();
-        await expect(page.getByTestId('branch-all-file-diff-src/feature.ts')).toBeVisible({ timeout: 5_000 });
-
-        await page.getByTestId('branch-all-file-toggle-src/feature.ts').click();
-        await expect(page.getByTestId('branch-all-file-diff-src/feature.ts')).toBeHidden();
-    });
-});
-
-// ================================================================
-// "Open →" navigates to FileDiffPanel
-// ================================================================
-
-test.describe('BranchRangeOverview — Open file in diff panel', () => {
-    test('clicking Open → switches right panel to FileDiffPanel', async ({ page, serverUrl }) => {
-        const singleFile = [{ path: 'src/feature.ts', status: 'A', additions: 5, deletions: 0 }];
-        await openBranchRangeOverview(page, serverUrl, 'ws-bro-op-1', {
-            branchRange: { ...DEFAULT_BRANCH_RANGE, files: singleFile, fileCount: 1 },
-            files:       singleFile,
-        });
-
-        await expect(page.getByTestId('branch-all-file-row-src/feature.ts')).toBeVisible({ timeout: 5_000 });
-
-        // Click the "Open →" link for the file
-        await page.getByTestId('branch-all-file-open-src/feature.ts').click();
-
-        // Right panel now shows FileDiffPanel
-        await expect(page.getByTestId('file-diff-panel')).toBeVisible({ timeout: 10_000 });
-        await expect(page.getByTestId('file-diff-header')).toBeVisible();
-        await expect(page.getByTestId('file-diff-loading')).toBeHidden({ timeout: 10_000 });
-    });
-});
-
-// ================================================================
-// Empty state — no changed files
-// ================================================================
-
-test.describe('BranchRangeOverview — empty state', () => {
-    test('shows "No file changes" message when branch has no changed files', async ({ page, serverUrl }) => {
-        await openBranchRangeOverview(page, serverUrl, 'ws-bro-em-1', {
-            branchRange: { ...DEFAULT_BRANCH_RANGE, files: [], fileCount: 0 },
-            files:       [],
-        });
-
-        // BranchAllFilesDiff renders empty state instead of a file list
-        await expect(page.getByTestId('branch-all-files-empty')).toBeVisible({ timeout: 5_000 });
-        await expect(page.getByTestId('branch-all-files-empty')).toContainText('No file changes in range');
-        await expect(page.getByTestId('branch-all-files-diff')).toHaveCount(0);
-    });
-});
-
-// ================================================================
-// All-comments panel (BranchRangeAllComments)
-// ================================================================
-
-test.describe('BranchRangeOverview — all comments panel', () => {
-    test('clicking all-comments button switches right panel to BranchRangeAllComments', async ({ page, serverUrl }) => {
-        await openBranchRangeOverview(page, serverUrl, 'ws-bro-ac-1', { comments: [] });
-
-        // Click the "Show all branch comments" button inside BranchCommitStrip
-        await page.getByTestId('branch-range-all-comments-btn').click();
-
-        // Right panel switches from BranchRangeOverview to BranchRangeAllComments
-        await expect(page.getByTestId('branch-range-all-comments-loading')).toBeHidden({ timeout: 10_000 });
-        await expect(page.getByTestId('branch-range-all-comments')).toBeVisible({ timeout: 10_000 });
-    });
-
-    test('BranchRangeAllComments header shows branch label', async ({ page, serverUrl }) => {
-        await openBranchRangeOverview(page, serverUrl, 'ws-bro-ac-2', { comments: [] });
-
-        await page.getByTestId('branch-range-all-comments-btn').click();
-
-        await expect(page.getByTestId('branch-range-all-comments')).toBeVisible({ timeout: 10_000 });
-        // The panel header identifies the branch
-        await expect(page.getByTestId('branch-range-all-comments'))
-            .toContainText('feature/test-branch');
-    });
-
-    test('BranchRangeAllComments renders a fetched open comment', async ({ page, serverUrl }) => {
-        const mockComment = {
-            id:           'c-001',
-            status:       'open',
-            comment:      'Needs review.',
-            selectedText: 'export const feature = true;',
-            context: {
-                filePath:    'src/feature.ts',
-                workspaceId: 'ws-bro-ac-3',
-                oldRef:      'origin/main',
-                newRef:      'HEAD',
-            },
-            selection: { diffLineStart: 1, diffLineEnd: 1, side: 'right' },
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-        };
-
-        await openBranchRangeOverview(page, serverUrl, 'ws-bro-ac-3', {
-            comments: [mockComment],
-        });
-
-        await page.getByTestId('branch-range-all-comments-btn').click();
-        await expect(page.getByTestId('branch-range-all-comments')).toBeVisible({ timeout: 10_000 });
-
-        // CommentSidebar shows the file's basename (path may be truncated in the UI)
-        await expect(page.getByTestId('branch-range-all-comments')).toContainText('feature.ts');
-    });
-});
-
-// ================================================================
-// Large diff truncation
-// ================================================================
-
-test.describe('BranchRangeOverview — large diff truncation', () => {
-    /** Build a unified diff that exceeds the 200-line display limit. */
-    function buildLargeDiff(lineCount: number): string {
-        const header = [
-            'diff --git a/src/big.ts b/src/big.ts',
-            '--- /dev/null',
-            '+++ b/src/big.ts',
-            `@@ -0,0 +1,${lineCount} @@`,
-        ];
-        const body = Array.from({ length: lineCount }, (_, i) => `+const x${i} = ${i};`);
-        return [...header, ...body].join('\n');
-    }
-
-    test('diff with more than 200 lines shows "Show full diff" link', async ({ page, serverUrl }) => {
-        const bigFile = [{ path: 'src/big.ts', status: 'A', additions: 250, deletions: 0 }];
-        await openBranchRangeOverview(page, serverUrl, 'ws-bro-ld-1', {
-            branchRange: { ...DEFAULT_BRANCH_RANGE, files: bigFile, fileCount: 1 },
-            files:       bigFile,
-            fileDiff:    buildLargeDiff(250),
-        });
-
-        await expect(page.getByTestId('branch-all-file-row-src/big.ts')).toBeVisible({ timeout: 5_000 });
-
-        // Expand the file to trigger lazy diff load
-        await page.getByTestId('branch-all-file-toggle-src/big.ts').click();
-        await expect(page.getByTestId('branch-all-file-diff-src/big.ts')).toBeVisible({ timeout: 5_000 });
-
-        // Truncation link should appear (diff > 200 lines)
-        await expect(page.getByTestId('branch-all-file-show-full-src/big.ts')).toBeVisible({ timeout: 5_000 });
-        await expect(page.getByTestId('branch-all-file-show-full-src/big.ts'))
-            .toContainText('Show full diff');
-    });
-
-    test('clicking "Show full diff" opens FileDiffPanel', async ({ page, serverUrl }) => {
-        const bigFile = [{ path: 'src/big.ts', status: 'A', additions: 250, deletions: 0 }];
-        await openBranchRangeOverview(page, serverUrl, 'ws-bro-ld-2', {
-            branchRange: { ...DEFAULT_BRANCH_RANGE, files: bigFile, fileCount: 1 },
-            files:       bigFile,
-            fileDiff:    buildLargeDiff(250),
-        });
-
-        await expect(page.getByTestId('branch-all-file-row-src/big.ts')).toBeVisible({ timeout: 5_000 });
-
-        await page.getByTestId('branch-all-file-toggle-src/big.ts').click();
-        await expect(page.getByTestId('branch-all-file-show-full-src/big.ts')).toBeVisible({ timeout: 5_000 });
-
-        // "Show full diff" routes via onFileSelect → FileDiffPanel
-        await page.getByTestId('branch-all-file-show-full-src/big.ts').click();
-        await expect(page.getByTestId('file-diff-panel')).toBeVisible({ timeout: 10_000 });
-        await expect(page.getByTestId('file-diff-loading')).toBeHidden({ timeout: 10_000 });
-    });
-});
-
-// ================================================================
-// Comparison base toggle (vs main | unpushed)
-// ================================================================
-
-const UNPUSHED_FILES = [
-    { path: 'src/unpushed.ts', status: 'A', additions: 4, deletions: 0 },
-];
+const SAMPLE_DIFF = addedFileDiff('src/feature.ts', [
+    'export const feature = true;',
+    '',
+    'export function run() {',
+    '  return feature;',
+    '}',
+]);
+const UTILS_DIFF = addedFileDiff('src/feature-utils.ts', [
+    'export function helper() {',
+    '  return "utility";',
+    '}',
+]);
+const UNPUSHED_DIFF = addedFileDiff('src/unpushed.ts', [
+    'export function unpushed() {',
+    '  return "not pushed yet";',
+    '}',
+    '',
+]);
 
 const UNPUSHED_BRANCH_RANGE = {
     ...DEFAULT_BRANCH_RANGE,
-    baseRef:     'origin/feature/test-branch',
-    baseMode:    'upstream',
+    baseRef: 'origin/feature/test-branch',
+    baseMode: 'upstream',
     commitCount: 1,
-    additions:   4,
-    fileCount:   1,
-    files:       UNPUSHED_FILES,
+    additions: 4,
+    fileCount: 1,
+    commits: [RANGE_COMMIT],
+    files: [{ path: 'src/unpushed.ts', status: 'A', additions: 4, deletions: 0 }],
 };
 
-test.describe('BranchRangeOverview — base mode toggle', () => {
-    test('switching to "unpushed" refetches with base=upstream and shows the upstream diff', async ({ page, serverUrl }) => {
-        const wsId = 'ws-bro-bm-1';
-        const requestedBases: string[] = [];
+type MockOptions = {
+    branchRange?: Partial<typeof DEFAULT_BRANCH_RANGE>;
+    files?: typeof DEFAULT_FILES;
+    fileDiff?: string;
+    comments?: object[];
+    truncated?: boolean;
+    totalLines?: number;
+    fullFileDiff?: string;
+    upstreamRange?: typeof UNPUSHED_BRANCH_RANGE;
+};
 
-        await seedWorkspace(serverUrl, wsId, `${wsId}-repo`);
-        await dismissOnboarding(serverUrl);
-        await mockGitRoutes(page, wsId);
+async function mockGitRoutes(page: Page, wsId: string, opts: MockOptions = {}): Promise<void> {
+    const branchRange = { ...DEFAULT_BRANCH_RANGE, ...opts.branchRange };
+    // The summary, not a separate file-list response, populates the review.
+    const files = opts.files ?? branchRange.files;
+    await page.addInitScript(() => localStorage.setItem('coc-diff-engine', 'legacy'));
 
-        // Registered after mockGitRoutes so it takes precedence for branch-range.
-        await page.route(
-            (url: string) => {
-                const p = new URL(url).pathname;
-                return p.includes(`/workspaces/${wsId}/git/branch-range`) && !p.includes('/files');
+    // Empty sidebar history deliberately differs from the range's commit scope.
+    await page.route(
+        url => url.pathname.endsWith(`/workspaces/${wsId}/git/commits`),
+        route => route.fulfill({ json: { commits: [], unpushedCount: 0 } }),
+    );
+    await page.route(
+        url => url.pathname.endsWith(`/workspaces/${wsId}/git/branch-range`),
+        route => {
+            const base = new URL(route.request().url()).searchParams.get('base');
+            return route.fulfill({
+                json: base === 'upstream' && opts.upstreamRange
+                    ? opts.upstreamRange : { ...branchRange, files },
+            });
+        },
+    );
+    await page.route(
+        url => url.pathname.endsWith(`/workspaces/${wsId}/git/branch-range/files`),
+        route => route.fulfill({ json: { files } }),
+    );
+    await page.route(
+        url => url.pathname.includes(`/workspaces/${wsId}/git/branch-range/files/`)
+            && url.pathname.endsWith('/diff'),
+        route => {
+            const url = new URL(route.request().url());
+            const full = url.searchParams.get('full') === 'true';
+            const path = decodeURIComponent(url.pathname.split('/branch-range/files/')[1].replace(/\/diff$/, ''));
+            const diff = opts.fileDiff ?? (path === 'src/feature-utils.ts' ? UTILS_DIFF
+                : path === 'src/unpushed.ts' ? UNPUSHED_DIFF : SAMPLE_DIFF);
+            return route.fulfill({
+                json: {
+                    diff: full ? opts.fullFileDiff ?? diff : diff,
+                    truncated: !full && (opts.truncated ?? false),
+                    totalLines: opts.totalLines,
+                },
+            });
+        },
+    );
+    await page.route(
+        url => url.pathname.includes(`/workspaces/${wsId}/git/changes`),
+        route => route.fulfill({ json: { changes: [] } }),
+    );
+    await page.route(
+        url => url.pathname.includes(`/workspaces/${wsId}/skills`),
+        route => route.fulfill({ json: { skills: [] } }),
+    );
+    await page.route(
+        url => url.pathname.includes('/git/ops/latest'),
+        route => route.fulfill({ status: 200, contentType: 'application/json', body: 'null' }),
+    );
+    await page.route(
+        url => url.pathname.includes(`/diff-comments/${wsId}`),
+        route => route.fulfill({ json: { comments: opts.comments ?? [] } }),
+    );
+    // Make the Git tab available for the fixture's non-Git temporary workspace.
+    await page.route(
+        url => url.pathname.includes('/git-info/batch'),
+        route => route.fulfill({
+            json: {
+                results: {
+                    [wsId]: {
+                        isGitRepo: true, branch: 'feature/test-branch', dirty: false,
+                        ahead: 2, behind: 0, remoteUrl: null,
+                    },
+                },
             },
-            (route: any) => {
-                const base = new URL(route.request().url()).searchParams.get('base') ?? 'default-branch';
-                requestedBases.push(base);
-                route.fulfill({
-                    status:      200,
-                    contentType: 'application/json',
-                    body:        JSON.stringify(base === 'upstream' ? UNPUSHED_BRANCH_RANGE : DEFAULT_BRANCH_RANGE),
-                });
-            },
-        );
+        }),
+    );
+}
 
-        await gotoWorkspace(page, serverUrl, wsId, 'git');
-        await expect(page.getByTestId('git-split-workspace-list')).toBeVisible();
-        await expect(page.getByTestId('branch-changes')).toBeVisible({ timeout: 10_000 });
-        await page.getByTestId('branch-changes-header').click();
-        await expect(page.getByTestId('branch-commit-strip')).toBeVisible({ timeout: 10_000 });
+async function openBranchRangeOverview(
+    page: Page, serverUrl: string, wsId: string, opts: MockOptions = {},
+): Promise<void> {
+    await seedWorkspace(serverUrl, wsId, `${wsId}-repo`);
+    await request(`${serverUrl}/api/preferences`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+            hasSeenWelcome: true,
+            onboardingProgress: { dismissed: true, hasCompletedTour: true },
+            // Patch assertions intentionally exercise the Classic renderer.
+            diffEngine: 'legacy',
+        }),
+    });
+    await mockGitRoutes(page, wsId, opts);
+    await gotoWorkspace(page, serverUrl, wsId, 'git');
+    await expect(page.locator('button[data-subtab="activity"]')).toHaveAttribute('data-active', 'true');
+    await expect(page.getByTestId('git-split-workspace-list')).toBeVisible();
+    await expect(page.getByTestId('branch-changes')).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId('branch-changes-header').click();
+    await expect(page.getByTestId('branch-range-review')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('combobox', { name: 'Commit scope', exact: true })).toBeVisible();
+}
 
-        // Starts on the default branch base.
-        await expect(page.getByTestId('branch-range-base-ref')).toHaveText('origin/main');
-        expect(requestedBases[0]).toBe('default-branch');
+/** Narrow review containers expose the same file navigator in a drawer. */
+async function openFileNavigator(page: Page): Promise<void> {
+    const navigator = page.getByRole('complementary', { name: 'Changed files', exact: true });
+    if (!await navigator.isVisible()) {
+        await page.getByTestId('git-file-review').getByRole('button', { name: /^Files ·/ }).click();
+    }
+    await expect(navigator).toBeVisible();
+}
 
-        // Flip to unpushed.
-        await page.getByTestId('branch-range-base-upstream').click();
-        await expect(page.getByTestId('branch-range-base-ref')).toHaveText('origin/feature/test-branch', { timeout: 10_000 });
-        expect(requestedBases).toContain('upstream');
+async function expectFocusedPatch(page: Page, filePath: string, content: string): Promise<void> {
+    await expect(page.getByTestId('file-diff-panel')).toHaveCount(1);
+    await expect(page.getByTestId('file-diff-path')).toContainText(filePath.split('/').pop()!);
+    await expect(page.getByTestId('file-diff-content')).toContainText(content, { timeout: 10_000 });
+    await expect(page.getByTestId('file-diff-error')).toBeHidden();
+}
 
-        // The file list now reflects the upstream range.
-        await expect(page.getByTestId('branch-all-file-row-src/unpushed.ts')).toBeVisible({ timeout: 10_000 });
-        await expect(page.getByTestId('branch-all-file-row-src/feature.ts')).toHaveCount(0);
+test.describe('BranchRangeOverview — file list', () => {
+    test('shows range scope and grouped files with one focused patch', async ({ page, serverUrl }) => {
+        await openBranchRangeOverview(page, serverUrl, 'ws-bro-fl-1');
+        await expect(page.getByTestId('branch-commit-strip-header')).toContainText('feature/test-branch');
+        const scope = page.getByRole('combobox', { name: 'Commit scope', exact: true });
+        await expect(scope).toHaveValue('');
+        await expect(scope).toContainText('All 2 commits');
+        await expectFocusedPatch(page, 'src/feature-utils.ts', 'return "utility";');
+        await openFileNavigator(page);
+        const navigator = page.getByRole('complementary', { name: 'Changed files', exact: true });
+        await expect(navigator.getByRole('button', { name: 'src 2 files', exact: true })).toBeVisible();
+        await expect(navigator.locator('[data-file-path]')).toHaveCount(2);
+        await expect(navigator.locator('[data-file-path="src/feature.ts"]')).toContainText('+5');
+        await expect(navigator.locator('[data-file-path="src/feature-utils.ts"]')).toHaveAttribute('aria-current', 'true');
     });
 
-    test('flipping back to "vs main" restores the default-branch range', async ({ page, serverUrl }) => {
-        const wsId = 'ws-bro-bm-2';
-
-        await seedWorkspace(serverUrl, wsId, `${wsId}-repo`);
-        await dismissOnboarding(serverUrl);
-        await mockGitRoutes(page, wsId);
-
+    test('commit scope uses range commits and returning to all commits restores the range', async ({ page, serverUrl }) => {
+        const wsId = 'ws-bro-scope';
+        await openBranchRangeOverview(page, serverUrl, wsId);
+        const commitFile = { path: 'src/commit-only.ts', status: 'A', additions: 1, deletions: 0 };
         await page.route(
-            (url: string) => {
-                const p = new URL(url).pathname;
-                return p.includes(`/workspaces/${wsId}/git/branch-range`) && !p.includes('/files');
-            },
-            (route: any) => {
-                const base = new URL(route.request().url()).searchParams.get('base') ?? 'default-branch';
-                route.fulfill({
-                    status:      200,
-                    contentType: 'application/json',
-                    body:        JSON.stringify(base === 'upstream' ? UNPUSHED_BRANCH_RANGE : DEFAULT_BRANCH_RANGE),
-                });
-            },
+            url => url.pathname.endsWith(`/workspaces/${wsId}/git/commits/${RANGE_COMMIT.hash}/files`),
+            route => route.fulfill({ json: { files: [commitFile] } }),
         );
+        await page.route(
+            url => url.pathname.includes(`/workspaces/${wsId}/git/commits/${RANGE_COMMIT.hash}/files/`)
+                && url.pathname.endsWith('/diff'),
+            route => route.fulfill({
+                json: { diff: addedFileDiff(commitFile.path, ['export const commitOnly = true;']) },
+            }),
+        );
+        // Sidebar history is empty: choices must come from embedded range commits.
+        const scope = page.getByRole('combobox', { name: 'Commit scope', exact: true });
+        await expect(scope.locator(`option[value="${RANGE_COMMIT.hash}"]`)).toHaveText('aaaaaaa Add feature');
+        await scope.selectOption(RANGE_COMMIT.hash);
+        await expectFocusedPatch(page, commitFile.path, 'export const commitOnly = true;');
+        await expect(page.getByTestId('file-diff-content')).not.toContainText('return "utility";');
+        await scope.selectOption('');
+        await expectFocusedPatch(page, 'src/feature-utils.ts', 'return "utility";');
+        await openFileNavigator(page);
+        await expect(page.locator('.git-review-nav [data-file-path]')).toHaveCount(2);
+        await expect(page.locator('.git-review-nav [data-file-path="src/commit-only.ts"]')).toHaveCount(0);
+    });
+});
 
-        await gotoWorkspace(page, serverUrl, wsId, 'git');
-        await expect(page.getByTestId('git-split-workspace-list')).toBeVisible();
-        await expect(page.getByTestId('branch-changes')).toBeVisible({ timeout: 10_000 });
-        await page.getByTestId('branch-changes-header').click();
-        await expect(page.getByTestId('branch-commit-strip')).toBeVisible({ timeout: 10_000 });
+test.describe('BranchRangeOverview — focused file review', () => {
+    test('selecting files replaces the focused patch and updates navigation boundaries', async ({ page, serverUrl }) => {
+        await openBranchRangeOverview(page, serverUrl, 'ws-bro-id-1');
+        const review = page.getByTestId('git-file-review');
+        await expectFocusedPatch(page, 'src/feature-utils.ts', 'return "utility";');
+        await expect(review.getByRole('button', { name: 'Previous file', exact: true })).toBeDisabled();
+        await openFileNavigator(page);
+        await review.locator('.git-review-nav [data-file-path="src/feature.ts"]').click();
+        await expectFocusedPatch(page, 'src/feature.ts', 'export const feature = true;');
+        await expect(page.getByTestId('file-diff-content')).not.toContainText('return "utility";');
+        await expect(review.getByRole('button', { name: 'Next file', exact: true })).toBeDisabled();
+        await expect(page).toHaveURL(/\/git\/branch-range\/src%2Ffeature\.ts$/);
+        await review.getByRole('button', { name: 'Previous file', exact: true }).click();
+        await expectFocusedPatch(page, 'src/feature-utils.ts', 'return "utility";');
+        await expect(review.getByRole('button', { name: 'Next file', exact: true })).toBeEnabled();
+    });
 
-        await page.getByTestId('branch-range-base-upstream').click();
-        await expect(page.getByTestId('branch-range-base-ref')).toHaveText('origin/feature/test-branch', { timeout: 10_000 });
+    test('Overview hides the patch and Read diff restores the selected file', async ({ page, serverUrl }) => {
+        await openBranchRangeOverview(page, serverUrl, 'ws-bro-id-2', {
+            branchRange: { fileCount: 1, additions: 5 },
+            files: [DEFAULT_FILES[0]],
+        });
+        await expectFocusedPatch(page, 'src/feature.ts', 'export const feature = true;');
+        const review = page.getByTestId('git-file-review');
+        await review.getByRole('button', { name: 'Overview', exact: true }).click();
+        await expect(review.getByRole('button', { name: 'Read diff', exact: true })).toHaveAttribute('aria-pressed', 'true');
+        await expect(review.locator('.git-review-overview-summary')).toContainText('1 files · 1 directories');
+        await expect(review.locator('.git-review-overview [data-file-path="src/feature.ts"]')).toContainText('+5');
+        await expect(page.getByTestId('file-diff-panel')).toHaveCount(0);
+        await review.getByRole('button', { name: 'Read diff', exact: true }).click();
+        await expectFocusedPatch(page, 'src/feature.ts', 'export const feature = true;');
+        await expect(review.locator('.git-review-overview')).toHaveCount(0);
+    });
+});
 
-        await page.getByTestId('branch-range-base-default-branch').click();
-        await expect(page.getByTestId('branch-range-base-ref')).toHaveText('origin/main', { timeout: 10_000 });
-        await expect(page.getByTestId('branch-all-file-row-src/feature.ts')).toBeVisible({ timeout: 10_000 });
+test.describe('BranchRangeOverview — open file in diff panel', () => {
+    test('selecting an overview file opens its patch and survives a deep-link reload', async ({ page, serverUrl }) => {
+        await openBranchRangeOverview(page, serverUrl, 'ws-bro-op-1');
+        const review = page.getByTestId('git-file-review');
+        await review.getByRole('button', { name: 'Overview', exact: true }).click();
+        await review.locator('.git-review-overview [data-file-path="src/feature.ts"]').click();
+        await expectFocusedPatch(page, 'src/feature.ts', 'export const feature = true;');
+        await expect(page).toHaveURL(/\/git\/branch-range\/src%2Ffeature\.ts$/);
+        await page.reload();
+        await expectFocusedPatch(page, 'src/feature.ts', 'export const feature = true;');
+        await openFileNavigator(page);
+        await expect(review.locator('.git-review-nav [data-file-path="src/feature.ts"]'))
+            .toHaveAttribute('aria-current', 'true');
+        await expect(review.locator('.git-review-nav [data-file-path]')).toHaveCount(2);
+    });
+});
+
+test.describe('BranchRangeOverview — empty state', () => {
+    test('shows "No file changes" when the embedded summary has no files', async ({ page, serverUrl }) => {
+        await openBranchRangeOverview(page, serverUrl, 'ws-bro-em-1', {
+            branchRange: { fileCount: 0, additions: 0, deletions: 0 },
+            files: [],
+        });
+        await expect(page.getByRole('main', { name: 'Focused file diff', exact: true }))
+            .toHaveText('No file changes.', { timeout: 5_000 });
+        await expect(page.getByTestId('file-diff-panel')).toHaveCount(0);
+        await expect(page.getByTestId('git-file-review').getByRole('button', { name: 'Next file', exact: true }))
+            .toBeDisabled();
+        await openFileNavigator(page);
+        await expect(page.locator('.git-review-nav [data-file-path]')).toHaveCount(0);
+    });
+});
+
+test.describe('BranchRangeOverview — all comments panel', () => {
+    test('the comments action replaces file review with the empty all-comments panel', async ({ page, serverUrl }) => {
+        await openBranchRangeOverview(page, serverUrl, 'ws-bro-ac-1');
+        await page.getByRole('button', { name: 'Show all branch comments', exact: true }).click();
+        await expect(page.getByTestId('branch-range-all-comments')).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByTestId('branch-range-all-comments').getByTestId('empty-comments'))
+            .toHaveText('No comments match the current filter.');
+        await expect(page.getByTestId('branch-range-review')).toHaveCount(0);
+    });
+
+    test('the all-comments header identifies the branch', async ({ page, serverUrl }) => {
+        await openBranchRangeOverview(page, serverUrl, 'ws-bro-ac-2');
+        await page.getByRole('button', { name: 'Show all branch comments', exact: true }).click();
+        await expect(page.getByTestId('branch-range-all-comments'))
+            .toContainText('Branch Changes: feature/test-branch — All Comments', { timeout: 10_000 });
+    });
+
+    test('the comments count and all-comments panel include a fetched open comment', async ({ page, serverUrl }) => {
+        const mockComment = {
+            id: 'c-001',
+            status: 'open',
+            comment: 'Needs review.',
+            selectedText: 'export const feature = true;',
+            context: {
+                filePath: 'src/feature.ts',
+                repositoryId: 'ws-bro-ac-3',
+                oldRef: 'origin/main',
+                newRef: 'HEAD',
+            },
+            selection: { diffLineStart: 1, diffLineEnd: 1, side: 'right' },
+            createdAt: '2026-10-01T12:00:00.000Z',
+            updatedAt: '2026-10-01T12:00:00.000Z',
+        };
+        await openBranchRangeOverview(page, serverUrl, 'ws-bro-ac-3', { comments: [mockComment] });
+        const commentsButton = page.getByRole('button', { name: 'Show all branch comments', exact: true });
+        await expect(commentsButton).toContainText('Comments · 1', { timeout: 5_000 });
+        await commentsButton.click();
+        const panel = page.getByTestId('branch-range-all-comments');
+        await expect(panel).toContainText('feature.ts', { timeout: 10_000 });
+        await expect(panel).toContainText('Needs review.');
+    });
+});
+
+test.describe('BranchRangeOverview — large patches', () => {
+    function buildLargeDiff(lineCount: number): string {
+        return addedFileDiff('src/big.ts', Array.from({ length: lineCount }, (_, i) => `const x${i} = ${i};`));
+    }
+
+    test('a patch beyond 200 lines is rendered in full without a preview step', async ({ page, serverUrl }) => {
+        await openBranchRangeOverview(page, serverUrl, 'ws-bro-ld-1', {
+            branchRange: { fileCount: 1, additions: 250 },
+            files: [{ path: 'src/big.ts', status: 'A', additions: 250, deletions: 0 }],
+            fileDiff: buildLargeDiff(250),
+        });
+        await expectFocusedPatch(page, 'src/big.ts', 'const x249 = 249;');
+        await expect(page.getByTestId('file-diff-content')).toContainText('const x0 = 0;');
+        await expect(page.getByTestId('diff-truncation-banner')).toHaveCount(0);
+    });
+
+    test('Load full diff requests full=true and replaces a server-truncated patch', async ({ page, serverUrl }) => {
+        const fullPatch = buildLargeDiff(6000);
+        await openBranchRangeOverview(page, serverUrl, 'ws-bro-ld-2', {
+            branchRange: { fileCount: 1, additions: 6000 },
+            files: [{ path: 'src/big.ts', status: 'A', additions: 6000, deletions: 0 }],
+            fileDiff: fullPatch.split('\n').slice(0, 5000).join('\n'),
+            truncated: true,
+            totalLines: 6004,
+            fullFileDiff: fullPatch,
+        });
+        await expectFocusedPatch(page, 'src/big.ts', 'const x0 = 0;');
+        await expect(page.getByTestId('diff-truncation-banner')).toContainText('6,004 lines');
+        await page.getByTestId('file-diff-section').focus();
+        await page.keyboard.press('ControlOrMeta+f');
+        await page.getByTestId('diff-find-input').fill('const x5999 = 5999;');
+        await expect(page.getByTestId('diff-find-count')).toHaveText('No results');
+
+        const fullRequest = page.waitForRequest(request => {
+            const url = new URL(request.url());
+            return url.pathname.includes('/branch-range/files/') && url.pathname.endsWith('/diff')
+                && url.searchParams.get('full') === 'true';
+        });
+        await page.getByTestId('load-full-diff-btn').click();
+        await fullRequest;
+        await expect(page.getByTestId('diff-find-count')).toHaveText('1 of 1', { timeout: 10_000 });
+        await expectFocusedPatch(page, 'src/big.ts', 'const x5999 = 5999;');
+        await expect(page.getByTestId('diff-truncation-banner')).toHaveCount(0);
+    });
+});
+
+test.describe('BranchRangeOverview — base mode toggle', () => {
+    test('switching to unpushed refetches summary and patch with base=upstream', async ({ page, serverUrl }) => {
+        const requestedBases: string[] = [];
+        page.on('request', request => {
+            const url = new URL(request.url());
+            if (url.pathname.endsWith('/git/branch-range')) {
+                requestedBases.push(url.searchParams.get('base') ?? 'default-branch');
+            }
+        });
+        await openBranchRangeOverview(page, serverUrl, 'ws-bro-bm-1', { upstreamRange: UNPUSHED_BRANCH_RANGE });
+        const baseSelect = page.getByRole('combobox', { name: 'Comparison base', exact: true });
+        await expect(baseSelect).toHaveValue('default-branch');
+        await expect(baseSelect.locator('option:checked')).toHaveText('vs origin/main');
+        await expectFocusedPatch(page, 'src/feature-utils.ts', 'return "utility";');
+        expect(requestedBases[0]).toBe('default-branch');
+
+        const upstreamPatch = page.waitForRequest(request => {
+            const url = new URL(request.url());
+            return url.pathname.includes('/branch-range/files/') && url.pathname.endsWith('/diff')
+                && url.searchParams.get('base') === 'upstream';
+        });
+        await baseSelect.selectOption('upstream');
+        await upstreamPatch;
+        await expect(baseSelect.locator('option:checked')).toHaveText('Unpushed · origin/feature/test-branch', { timeout: 10_000 });
+        expect(requestedBases).toContain('upstream');
+        await expectFocusedPatch(page, 'src/unpushed.ts', 'return "not pushed yet";');
+        await expect(page).toHaveURL(/\/git\/branch-range\/src%2Funpushed\.ts$/);
+        await openFileNavigator(page);
+        await expect(page.locator('.git-review-nav [data-file-path="src/unpushed.ts"]')).toBeVisible();
+        await expect(page.locator('.git-review-nav [data-file-path]')).toHaveCount(1);
+        await expect(page.locator('.git-review-nav [data-file-path="src/feature.ts"]')).toHaveCount(0);
+    });
+
+    test('switching back to vs main restores the default-branch files and patch', async ({ page, serverUrl }) => {
+        await openBranchRangeOverview(page, serverUrl, 'ws-bro-bm-2', { upstreamRange: UNPUSHED_BRANCH_RANGE });
+        const baseSelect = page.getByRole('combobox', { name: 'Comparison base', exact: true });
+        await baseSelect.selectOption('upstream');
+        await expectFocusedPatch(page, 'src/unpushed.ts', 'return "not pushed yet";');
+        await baseSelect.selectOption('default-branch');
+        await expect(baseSelect.locator('option:checked')).toHaveText('vs origin/main', { timeout: 10_000 });
+        await expectFocusedPatch(page, 'src/feature-utils.ts', 'return "utility";');
+        await openFileNavigator(page);
+        await expect(page.locator('.git-review-nav [data-file-path="src/feature.ts"]')).toBeVisible();
+        await expect(page.locator('.git-review-nav [data-file-path]')).toHaveCount(2);
+        await expect(page.locator('.git-review-nav [data-file-path="src/unpushed.ts"]')).toHaveCount(0);
     });
 });

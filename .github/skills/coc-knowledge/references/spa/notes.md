@@ -67,6 +67,11 @@ load completes before Tiptap is ready, the latest loaded Markdown remains pendin
 until `onEditorReady`; starting another load clears that pending value so a prior
 note cannot hydrate the shared editor.
 
+Workspace-owned `notes-changed` events reload matching open notes. An empty
+`changedPaths` list means a full native-watch rescan and reloads any open note
+in that workspace. Recent-save echoes and unsaved local edits retain their
+existing reload guards; tree readers also refresh on workspace invalidation.
+
 `RichEditorCore` accepts `readOnly` (default false), setting Tiptap editability
 and suppressing change callbacks and paste/drop overrides. Code-block language
 controls and image resize controls respect editor editability. Standalone paste

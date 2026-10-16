@@ -1,15 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('child_process', async () => {
-    const actual = await vi.importActual<typeof import('child_process')>('child_process');
-    return {
-        ...actual,
-        execFileSync: vi.fn(),
-    };
-});
+vi.mock('@plusplusoneplusplus/forge', async original => ({
+    ...await original<typeof import('@plusplusoneplusplus/forge')>(),
+    discoverGitRepoRoot: vi.fn(),
+}));
 
-import * as childProcess from 'child_process';
-import { getWslExecutablePath } from '@plusplusoneplusplus/forge';
+import { discoverGitRepoRoot } from '@plusplusoneplusplus/forge';
 import { findGitRoot, normalizeRepoPath } from '../../src/server/git/repo-utils';
 
 describe('repo-utils (WSL)', () => {
@@ -17,18 +13,11 @@ describe('repo-utils (WSL)', () => {
         vi.restoreAllMocks();
     });
 
-    it.runIf(process.platform === 'win32')('routes git root discovery through wsl.exe for WSL paths', async () => {
-        const spy = vi.spyOn(childProcess, 'execFileSync').mockReturnValue('/home/tester/repo\n' as never);
+    it('delegates repository discovery to Forge with the exact workspace path', async () => {
+        vi.mocked(discoverGitRepoRoot).mockResolvedValueOnce('/home/tester/repo');
         const repoPath = String.raw`\\wsl$\Ubuntu\home\tester\repo`;
-
-        const gitRoot = await findGitRoot(repoPath);
-
-        expect(gitRoot).toBe('/home/tester/repo');
-        expect(spy).toHaveBeenCalledWith(
-            getWslExecutablePath(),
-            expect.arrayContaining(['-d', 'Ubuntu', '--', 'sh', '-lc']),
-            expect.objectContaining({ encoding: 'utf8' }),
-        );
+        expect(await findGitRoot(repoPath)).toBe('/home/tester/repo');
+        expect(discoverGitRepoRoot).toHaveBeenCalledWith(repoPath);
     });
 
     it.runIf(process.platform === 'win32')('normalizes WSL paths to a stable repo identity', () => {

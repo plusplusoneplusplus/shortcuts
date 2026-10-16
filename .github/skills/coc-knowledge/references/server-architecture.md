@@ -65,6 +65,12 @@ transport contracts belong in [streaming-architecture.md](streaming-architecture
 ### Composition and readiness
 
 `createExecutionServer` wires stores, runtime configuration, queues, services, routes and transports.
+Filesystem consumers share `shared/native-watch-service.ts`; watcher infrastructure
+binds workspace subscriptions and removes them together. Server scopes isolate
+equal workspace IDs and shutdown while sharing one process-wide native owner.
+Rust shares canonical-root watches, debounces paths and signals full rescans.
+Consumer tests inject batches.
+See the [native watch contract](../../../../packages/coc-native/AGENTS.md#filesystem-watch-batching).
 Startup migrations reconcile workspace registration,
 process history and workspace IDs. Model metadata warm-up runs before listening;
 a failed catalog warm-up is logged without blocking the listener.
