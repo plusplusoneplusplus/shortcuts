@@ -42,7 +42,7 @@ import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
 import type { CronToolDeps } from '../llm-tools/cron-tools';
 import { createCronTool, createScheduleWakeupTool } from '../llm-tools/cron-tools';
 import { createSearchConversationsTool } from '../llm-tools/search-conversations-tool';
-import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
+import { createSuggestFollowUpsTool, SENTINEL_NEXT_STEPS_GUIDANCE } from '../llm-tools/suggest-follow-ups-tool';
 import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
 import { createCreatePullRequestTool, type CreatePullRequestToolDeps } from '../llm-tools/create-pull-request-tool';
 import { tagBlock, tagGuidanceSuffix } from './prompt-tags';
@@ -402,22 +402,23 @@ export function prependSelectedSkillsDirective(
 // ============================================================================
 
 /**
- * Builds the tools array for follow-up suggestions. The suffix is always empty
- * (guidance lives in the `suggest_follow_ups` tool description); returns empty
- * tools when disabled.
+ * Builds follow-up suggestion tools with mode-specific schemas. Opted-in Sentinel
+ * turns receive compact optional-action guidance; ordinary turns use the tool
+ * description alone. Disabled tools carry no guidance.
  *
  * @param _count   Unused; retained to keep the positional signature stable.
  */
 export function buildFollowUpSuggestionsAddon(
     enabled: boolean,
     _count: number,
+    sentinelNextSteps = false,
 ): { tools: Tool<any>[]; suffix: string } {
     if (!enabled) {
         return { tools: [], suffix: '' };
     }
     return {
-        tools: [createSuggestFollowUpsTool()],
-        suffix: '',
+        tools: [createSuggestFollowUpsTool(sentinelNextSteps)],
+        suffix: sentinelNextSteps ? tagGuidanceSuffix('sentinel_next_steps', SENTINEL_NEXT_STEPS_GUIDANCE) : '',
     };
 }
 

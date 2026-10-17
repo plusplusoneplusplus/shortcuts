@@ -587,6 +587,11 @@ references before editing. Paths are package-relative.
 
 ## Chat and Provider Safety
 
+- Default-off `features.sentinelNextSteps` gates optional 1–3 Sentinel actions and
+  click-to-send. Resolve the UI gate from the conversation owner. Keep clicks on
+  the normal guarded follow-up path; suggestion display grants no authority and
+  clicks request only the named scope. Ordinary modes retain their suggestion behavior.
+
 - Pause and delay menus use body portals and `useAnchoredPanelPosition` with
   constrained height, viewport-bounded width, and contained vertical scrolling.
   Outside-click checks include the portal; Escape returns focus to the owning trigger.

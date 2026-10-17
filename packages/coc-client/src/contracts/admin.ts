@@ -304,6 +304,7 @@ export interface RuntimeDashboardConfig {
     teamsBridgeObservabilityEnabled: boolean;
     teamsAiAnswerRelayEnabled: boolean;
     teamsMessageReactionEnabled: boolean;
+    sentinelNextStepsEnabled: boolean;
     sentinelTodoDependenciesEnabled: boolean;
     sentinelTodoTagsEnabled: boolean;
     sentinelTodoExternalReferencesEnabled: boolean;

@@ -90,6 +90,17 @@ accent. Server normalization recognizes it as a chat mode and maps its base inst
 profile to Ask so dispatcher turns stay read-only. Any number of Sentinel chats may exist
 per workspace; New Chat submits them like any other mode.
 
+### Follow-up suggestions
+
+`FollowUpInputArea` reuses `SuggestionChips`; ordinary clicks fill the composer and
+Ctrl/Meta clicks send. With default-off `features.sentinelNextSteps`, Sentinel clicks
+send the named action through the same `onSend` / `useSendMessage` owner-qualified
+flow, including draft, attachment and pending-context guards. A synchronous guard
+prevents duplicate activation while submitting. Native buttons share mouse and keyboard
+activation; rendering suggestions sends nothing and grants no execution authority.
+`ChatDetail` resolves the flag from the owning server; unresolved or unavailable remote
+owners stay off. Server guidance and schemas live in [llm-tools.md](../llm-tools.md).
+
 ### Follow-up toolbar
 
 `FollowUpInputArea` lays out provider chip → `ModePillSelector` → model picker →

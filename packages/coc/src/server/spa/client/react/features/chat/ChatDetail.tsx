@@ -13,6 +13,7 @@ import type { AIProcess } from '@plusplusoneplusplus/coc-client';
 import { useCloneBaseUrl, useCocClient } from '../../repos/cloneRouting';
 import { patchSeenState } from '../../hooks/preferences/seenStateApi';
 import { useWorkspaceOwner } from '../../repos/workspaceOwnerContext';
+import { useSentinelNextStepsEnabled } from '../../hooks/feature-flags/useSentinelNextStepsEnabled';
 import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatStyleSelectorEnabled';
 import { useChatProviderSwitchingEnabled } from '../../hooks/feature-flags/useChatProviderSwitchingEnabled';
 import { useBotControlUpdates } from './hooks/useBotControlUpdates';
@@ -618,6 +619,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // Resolve the Style flag from the server that owns this process, so a remote
     // conversation follows its own server's setting, not the local one's.
     const chatStyleSelectorEnabled = useChatStyleSelectorEnabled(sourceRemoteInfo.baseUrl);
+    const sentinelNextStepsEnabled = useSentinelNextStepsEnabled(sourceRemoteInfo.baseUrl)
+        && (!sourceRemoteInfo.isRemote || !!sourceRemoteInfo.baseUrl);
     const chatProviderSwitchingEnabled = useChatProviderSwitchingEnabled(owningServerBaseUrl);
     useEffect(() => {
         if (!chatProviderSwitchingEnabled) setPendingProvider(null);
@@ -3235,6 +3238,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                             resumeFeedback={resumeFeedback}
                             onDismissResumeFeedback={() => setResumeFeedback(null)}
                             suggestions={suggestions}
+                            sentinelNextStepsEnabled={sentinelNextStepsEnabled}
                             followUpInput={followUpInput}
                             setFollowUpInput={setFollowUpInput}
                             selectedMode={selectedMode}
@@ -3392,6 +3396,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     resumeFeedback={resumeFeedback}
                     onDismissResumeFeedback={() => setResumeFeedback(null)}
                     suggestions={suggestions}
+                    sentinelNextStepsEnabled={sentinelNextStepsEnabled}
                     followUpInput={followUpInput}
                     setFollowUpInput={setFollowUpInput}
                     selectedMode={selectedMode}

@@ -59,6 +59,7 @@ export interface ChatToolBundleOptions {
     sendToConversationRuntime?: SendToConversationRuntimeOptions;
     processId?: string;
     followUpSuggestions?: { enabled: boolean; count: number };
+    sentinelNextSteps?: boolean;
     askUser?: {
         enabled: boolean;
         deps: AskUserToolDeps;
@@ -157,6 +158,7 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         addons.push(buildFollowUpSuggestionsAddon(
             options.followUpSuggestions.enabled,
             options.followUpSuggestions.count,
+            options.sentinelNextSteps,
         ));
     }
 

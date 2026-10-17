@@ -812,6 +812,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.chatStyleSelector': 'chat',
         // Sentinel
         'sentinel.enabled': 'sentinel',
+        'features.sentinelNextSteps': 'sentinel',
         'features.sentinelTodoDependencies': 'sentinel',
         'features.sentinelTodoTags': 'sentinel',
         'features.sentinelTodoExternalReferences': 'sentinel',

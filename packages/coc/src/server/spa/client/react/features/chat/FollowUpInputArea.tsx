@@ -107,6 +107,7 @@ export interface FollowUpInputAreaProps {
     /** Called when the user clicks the dismiss (✕) button on the resume feedback banner. */
     onDismissResumeFeedback?: () => void;
     suggestions: string[];
+    sentinelNextStepsEnabled?: boolean;
     followUpInput: string;
     setFollowUpInput: (v: string) => void;
     selectedMode: ChatMode;
@@ -284,6 +285,7 @@ export function FollowUpInputArea({
     resumeFeedback,
     onDismissResumeFeedback,
     suggestions,
+    sentinelNextStepsEnabled = false,
     followUpInput,
     setFollowUpInput,
     selectedMode,
@@ -352,6 +354,8 @@ export function FollowUpInputArea({
     browserOwner,
     onBrowserModeChange,
 }: FollowUpInputAreaProps) {
+    const sendSuggestionsOnClick = selectedMode === 'sentinel' && sentinelNextStepsEnabled;
+    const suggestionSendPending = useRef(false);
     const [pendingContextReads, setPendingContextReads] = useState(0);
     const contextOwnerKey = sentinelTodoOwner ? sentinelTodoOwnerKey(sentinelTodoOwner) : '';
     const contextOwnerRef = useRef(contextOwnerKey);
@@ -1127,7 +1131,11 @@ export function FollowUpInputArea({
                     <SuggestionChips
                         suggestions={suggestions}
                         onSelect={(text, e) => {
-                            if (e.ctrlKey || e.metaKey) {
+                            if (sendSuggestionsOnClick) {
+                                if (inputDisabled || sending || isActiveGeneration || suggestionSendPending.current) return;
+                                suggestionSendPending.current = true;
+                                void onSend(text).finally(() => { suggestionSendPending.current = false; });
+                            } else if (e.ctrlKey || e.metaKey) {
                                 void onSend(text);
                             } else {
                                 setFollowUpInput(text);
@@ -1136,7 +1144,7 @@ export function FollowUpInputArea({
                             }
                         }}
                         disabled={inputDisabled}
-                        ctrlHeld={chipsCtrlHeld}
+                        ctrlHeld={sendSuggestionsOnClick || chipsCtrlHeld}
                     />
                     <button
                         type="button"

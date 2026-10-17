@@ -42,6 +42,7 @@ export function SuggestionChips({ suggestions, onSelect, disabled, ctrlHeld }: S
                                 ? 'border-[#0078d4] bg-[#e8f3ff] hover:bg-[#daeeff] text-[#0078d4] dark:bg-[#002d4e] dark:border-[#1177bb] dark:hover:bg-[#003a64] dark:text-[#4fc3f7]'
                                 : 'border-[#e0e0e0] bg-white hover:bg-[#f3f3f3] text-[#1e1e1e] dark:border-[#3c3c3c] dark:bg-[#1e1e1e] dark:hover:bg-[#2a2d2e] dark:text-[#cccccc]',
                         )}
+                        disabled={disabled}
                         onClick={(e) => onSelect(text, e)}
                         title={ctrlHeld ? 'Click to send' : 'Click to edit · Ctrl+Click to send'}
                         data-testid="suggestion-chip"

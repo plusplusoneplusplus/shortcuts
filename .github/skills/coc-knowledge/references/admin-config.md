@@ -47,6 +47,7 @@ Queue execution never loads a config file itself. `packages/coc/src/server/queue
 | `getDefaultTimeoutMs()` | `timeout` (seconds → ms) | execution start, when a task has no `config.timeoutMs` |
 | `getDefaultIdleTimeoutMs()` | `idleTimeout` (seconds → ms) | execution start; unset falls back to `DEFAULT_AI_IDLE_TIMEOUT_MS` (1 h) |
 | `getFollowUpSuggestions()` | `chat.followUpSuggestions` | chat-turn context build |
+| `getSentinelNextStepsEnabled()` | `features.sentinelNextSteps` (default off) | Sentinel chat-turn context build |
 | `getAskUser()` | `chat.askUser` | chat-turn context build |
 | `getSkillFolders()` | `skills.globalExtraFolders`, `skills.autoDetectDefaultFolders` | each `resolveSkillConfig` call |
 | `getRalphFinalCheckPolicy()` | `ralph.finalCheck.maxGapFixLoops` | when a final check is scheduled |
@@ -194,8 +195,8 @@ Editors keeps only `features.arxivPaperIngest` (Notes Editor). The Chat tab host
 
 ### Sentinel settings
 
-`#admin/settings/sentinel` owns seven registry controls: `sentinel.enabled` and
-`features.sentinelTodoDependencies`, `sentinelTodoTags`, `sentinelTodoExternalReferences`,
+`#admin/settings/sentinel` owns the Sentinel behavior controls: `sentinel.enabled`,
+`features.sentinelNextSteps`, `sentinelTodoDependencies`, `sentinelTodoTags`, `sentinelTodoExternalReferences`,
 `sentinelTodoScrubber`, `sentinelPrOutcomeWake`, and `sentinelDesktopMirror`. The
 presentation-only `sentinelResultCards` lives on Appearance → Chat Interface. Registry groups organize mode, To-do/PR outcomes and
 messaging. Features search renders links to Sentinel, not duplicate controls.

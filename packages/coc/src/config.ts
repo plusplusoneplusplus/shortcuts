@@ -321,6 +321,8 @@ export interface CLIConfig {
         teamsBridgeObservability?: boolean;
         teamsAiAnswerRelay?: boolean;
         teamsMessageReaction?: boolean;
+        /** Optional Sentinel next actions and click-to-send. Disabled by default. */
+        sentinelNextSteps?: boolean;
         /** Native prerequisite authoring and admission. Disabled by default. */
         sentinelTodoDependencies?: boolean;
         sentinelTodoTags?: boolean;
@@ -743,6 +745,7 @@ export interface ResolvedCLIConfig {
         teamsBridgeObservability: boolean;
         teamsAiAnswerRelay: boolean;
         teamsMessageReaction: boolean;
+        sentinelNextSteps: boolean;
         sentinelTodoDependencies: boolean;
         sentinelTodoTags: boolean;
         sentinelTodoExternalReferences: boolean;
@@ -1081,6 +1084,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         teamsBridgeObservability: false,
         teamsAiAnswerRelay: true,
         teamsMessageReaction: false,
+        sentinelNextSteps: false,
         sentinelTodoDependencies: false,
         sentinelTodoTags: false,
         sentinelTodoExternalReferences: false,

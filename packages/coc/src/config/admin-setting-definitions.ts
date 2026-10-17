@@ -638,6 +638,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.sentinelNextSteps', default: false, runtime: 'live', runtimeFlag: 'sentinelNextStepsEnabled',
+        ui: {
+            tab: 'sentinel', group: 'sentinelMode', order: 32.1, label: 'Sentinel next steps', badge: 'experimental',
+            hint: 'Optional next actions with click-to-send in Sentinel chats. Disabled by default.',
+            testId: 'toggle-sentinel-next-steps',
+        },
+    }),
+    bool({
         key: 'features.sentinelTodoDependencies', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoDependenciesEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.55, label: 'Sentinel To-do dependencies', badge: 'experimental',

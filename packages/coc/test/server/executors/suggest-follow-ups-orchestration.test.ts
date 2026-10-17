@@ -12,6 +12,8 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { QueuedTask, ToolEvent } from '@plusplusoneplusplus/forge';
+import { createFixedQueueRuntimeConfig } from '../../../src/server/queue/queue-runtime-config';
+import { SENTINEL_NEXT_STEPS_GUIDANCE } from '../../../src/server/llm-tools/suggest-follow-ups-tool';
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
 import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
@@ -75,7 +77,7 @@ function makeOptions(
     };
 }
 
-function makeChatTask(mode: 'ask' | 'plan' | 'autopilot', id = 'task-1'): QueuedTask {
+function makeChatTask(mode: 'ask' | 'plan' | 'autopilot' | 'sentinel', id = 'task-1'): QueuedTask {
     return {
         id,
         type: 'chat',
@@ -320,5 +322,48 @@ describe('suggest_follow_ups onToolEvent orchestration', () => {
         const result = await executor.execute(task, 'Hello') as any;
 
         expect(result.pendingSuggestions).toBeUndefined();
+    });
+});
+
+
+describe('Sentinel next-step gating', () => {
+    it.each([
+        ['sentinel', true, true], ['sentinel', false, false],
+        ['ask', true, false], ['autopilot', true, false],
+    ] as const)('%s with flag %s uses optional guidance: %s', async (mode, enabled, optional) => {
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'Answer', sessionId: 's', toolCalls: [] });
+        const store = createMockProcessStore();
+        const Executor = mode === 'autopilot' ? AutopilotExecutor : ChatExecutor;
+        const executor = new Executor(store, makeOptions(store, {
+            queueConfig: createFixedQueueRuntimeConfig({ config: { features: { sentinelNextSteps: enabled } } }),
+        }));
+        const result = await executor.execute(makeChatTask(mode), 'Hello') as any;
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        const tool = call.tools.find((t: any) => t.name === 'suggest_follow_ups');
+        expect(tool.parameters.properties.suggestions.minItems).toBe(optional ? 1 : 3);
+        expect(tool.description.includes('exactly 3')).toBe(!optional);
+        expect(JSON.stringify(call.systemMessage).includes(SENTINEL_NEXT_STEPS_GUIDANCE)).toBe(optional);
+        expect(result.pendingSuggestions).toBeUndefined();
+    });
+
+    it.each([1, 2, 3])('retains %i Sentinel actions in pending output and SSE', async count => {
+        const suggestions = ['Finish safeguards', 'Run checks', 'Commit changes'].slice(0, count);
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
+            const tool = opts.tools.find((t: any) => t.name === 'suggest_follow_ups');
+            const result = await tool.handler({ suggestions });
+            opts.onToolEvent({ type: 'tool-complete', toolName: tool.name, toolCallId: 's', result: JSON.stringify(result) });
+            return { success: true, response: 'Answer', sessionId: 's', toolCalls: [] };
+        });
+        const store = createMockProcessStore();
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            queueConfig: createFixedQueueRuntimeConfig({ config: { features: { sentinelNextSteps: true } } }),
+        }));
+        const task = makeChatTask('sentinel');
+        expect((await executor.execute(task, 'Hello') as any).pendingSuggestions).toEqual(suggestions);
+        expect(store.emitProcessEvent).toHaveBeenCalledWith(`queue_${task.id}`, { type: 'suggestions', suggestions, turnIndex: 1 });
     });
 });

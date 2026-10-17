@@ -7,7 +7,8 @@
  */
 /* @vitest-environment jsdom */
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render, screen, act, fireEvent } from '@testing-library/react';
+import { render, screen, act, fireEvent, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React, { createRef } from 'react';
 
 // Hoist a call tracker so the mock factory can reference it before imports
@@ -572,10 +573,12 @@ describe('FollowUpInputArea — session context drops', () => {
         let resolve!: (value: unknown) => void;
         mockGetSentinelTodos.mockReturnValue(new Promise(r => { resolve = r; }));
         const onSend = vi.fn();
-        const { rerender } = render(<TodoComposer onSend={onSend} />);
+        const { rerender } = render(<TodoComposer onSend={onSend} selectedMode="sentinel" sentinelNextStepsEnabled suggestions={['Finish safeguards']} />);
         const transfer = makeSessionDataTransfer(todoPayload, POINTER_CONTEXT_DRAG_MIME);
         fireEvent.drop(screen.getByTestId('chat-input-bar'), { dataTransfer: transfer });
         expect(screen.getByTestId('activity-chat-send-btn').hasAttribute('disabled')).toBe(true);
+        fireEvent.click(screen.getByTestId('suggestion-chip'));
+        expect(onSend).not.toHaveBeenCalled();
         fireEvent.drop(screen.getByTestId('chat-input-bar'), { dataTransfer: transfer });
         expect(mockGetSentinelTodos).toHaveBeenCalledTimes(1);
         rerender(<TodoComposer owner={{ ...todoOwner, processId: 'next-sentinel' }} onSend={onSend} />);
@@ -976,5 +979,83 @@ describe('FollowUpInputArea paste panel snapshots', () => {
         expect(screen.queryByTestId('paste-preview-open')).toBeNull();
         fireEvent.click(screen.getByTestId('paste-preview-toggle'));
         expect(screen.getByTestId('paste-preview-content').textContent).toContain('truncated preview');
+    });
+});
+
+
+describe('Sentinel suggestion activation', () => {
+    it.each([1, 2, 3])('renders %i actions without sending on arrival', count => {
+        const onSend = vi.fn().mockResolvedValue(undefined);
+        render(<FollowUpInputArea {...makeProps({ selectedMode: 'sentinel', sentinelNextStepsEnabled: true, suggestions: ['Finish safeguards', 'Run checks', 'Commit changes'].slice(0, count), onSend })} />);
+        expect(screen.getAllByTestId('suggestion-chip')).toHaveLength(count);
+        expect(onSend).not.toHaveBeenCalled();
+        expect(screen.getAllByTestId('suggestion-chip')[0].title).toBe('Click to send');
+    });
+
+    it.each([0, 1])('sends only the named action once on activation (detail %i)', async detail => {
+        let finish!: () => void;
+        const onSend = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+        const setFollowUpInput = vi.fn();
+        render(<FollowUpInputArea {...makeProps({ selectedMode: 'sentinel', sentinelNextStepsEnabled: true, suggestions: ['Finish safeguards'], followUpInput: 'Keep draft', onSend, setFollowUpInput })} />);
+        const button = screen.getByTestId('suggestion-chip');
+        // Native buttons emit a detail-0 click for Enter/Space activation.
+        fireEvent.click(button, { detail });
+        fireEvent.click(button, { detail });
+        expect(onSend).toHaveBeenCalledExactlyOnceWith('Finish safeguards');
+        expect(setFollowUpInput).not.toHaveBeenCalled();
+        await act(async () => finish());
+    });
+
+    it.each(['{Enter}', ' '])('sends once on native button keyboard activation %s', async key => {
+        const onSend = vi.fn().mockResolvedValue(undefined);
+        const setFollowUpInput = vi.fn();
+        render(<FollowUpInputArea {...makeProps({ selectedMode: 'sentinel', sentinelNextStepsEnabled: true,
+            suggestions: ['Finish safeguards'], onSend, setFollowUpInput })} />);
+        screen.getByTestId('suggestion-chip').focus();
+        await userEvent.setup().keyboard(key);
+        expect(onSend).toHaveBeenCalledExactlyOnceWith('Finish safeguards');
+        expect(setFollowUpInput).not.toHaveBeenCalled();
+    });
+
+    it('activates only the owning composer when two workspaces show actions', async () => {
+        const sendA = vi.fn().mockResolvedValue(undefined);
+        const sendB = vi.fn().mockResolvedValue(undefined);
+        render(<>
+            <div data-testid="owner-a"><FollowUpInputArea {...makeProps({ workspaceId: 'ws-a', currentProcessId: 'chat-a',
+                selectedMode: 'sentinel', sentinelNextStepsEnabled: true, suggestions: ['Finish safeguards'], onSend: sendA })} /></div>
+            <div data-testid="owner-b"><FollowUpInputArea {...makeProps({ workspaceId: 'ws-b', currentProcessId: 'chat-b',
+                selectedMode: 'sentinel', sentinelNextStepsEnabled: true, suggestions: ['Run checks'], onSend: sendB })} /></div>
+        </>);
+        await act(async () => { fireEvent.click(within(screen.getByTestId('owner-b')).getByTestId('suggestion-chip')); });
+        expect(sendA).not.toHaveBeenCalled();
+        expect(sendB).toHaveBeenCalledExactlyOnceWith('Run checks');
+    });
+
+    it('retains composer-fill behavior with the flag off', () => {
+        const onSend = vi.fn();
+        const setFollowUpInput = vi.fn();
+        render(<FollowUpInputArea {...makeProps({ selectedMode: 'sentinel', suggestions: ['Finish safeguards'], onSend, setFollowUpInput })} />);
+        fireEvent.click(screen.getByTestId('suggestion-chip'));
+        expect(setFollowUpInput).toHaveBeenCalledWith('Finish safeguards');
+        expect(onSend).not.toHaveBeenCalled();
+    });
+
+    it.each(['ask', 'autopilot'] as const)('retains %s composer-fill with the flag on', selectedMode => {
+        const onSend = vi.fn();
+        const setFollowUpInput = vi.fn();
+        render(<FollowUpInputArea {...makeProps({ selectedMode, sentinelNextStepsEnabled: true, suggestions: ['Run checks'], onSend, setFollowUpInput })} />);
+        fireEvent.click(screen.getByTestId('suggestion-chip'));
+        expect(setFollowUpInput).toHaveBeenCalledWith('Run checks');
+        expect(onSend).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        { inputDisabled: true }, { sending: true }, { isActiveGeneration: true },
+    ])('respects submission guards %j', guards => {
+        const onSend = vi.fn();
+        render(<FollowUpInputArea {...makeProps({ selectedMode: 'sentinel', sentinelNextStepsEnabled: true, suggestions: ['Finish safeguards'], onSend, ...guards })} />);
+        const chip = screen.queryByTestId('suggestion-chip');
+        if (chip) fireEvent.click(chip);
+        expect(onSend).not.toHaveBeenCalled();
     });
 });
