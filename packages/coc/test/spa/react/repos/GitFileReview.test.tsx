@@ -44,7 +44,7 @@ describe('compact focused Git review', () => {
     });
     it('applies kind/status filters to the diff and cross-file navigation', () => {
         render(<GitFileReview {...props} />);
-        fireEvent.click(within(nav()).getByRole('button', { name: 'Source', exact: true }));
+        fireEvent.click(within(nav()).getByRole('button', { name: 'Source 2', exact: true }));
         expect(panel.mock.calls.at(-1)![0].source.files).toEqual(['src/a.ts', 'src/z.ts']);
         fireEvent.change(screen.getByLabelText('Change status filter'), { target: { value: 'R' } });
         expect(panel.mock.calls.at(-1)![0].source.files).toEqual(['src/a.ts']);
@@ -100,7 +100,7 @@ describe('compact focused Git review', () => {
     });
     it('reveals a routed or priority-selected file outside the current filters', () => {
         const view = render(<GitFileReview {...props} selectedPath="src/a.ts" />);
-        fireEvent.click(within(nav()).getByRole('button', { name: 'Docs', exact: true }));
+        fireEvent.click(within(nav()).getByRole('button', { name: 'Docs 1', exact: true }));
         view.rerender(<GitFileReview {...props} selectedPath="test/a.test.ts" />);
         expect(screen.getByTestId('focused-diff').textContent).toContain('test/a.test.ts');
         expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('');
@@ -113,6 +113,64 @@ describe('compact focused Git review', () => {
         expect(screen.getByRole('alert').textContent).toContain('Offline');
         fireEvent.click(screen.getByRole('button', { name: 'Retry' })); expect(retry).toHaveBeenCalledOnce();
         expect(panel).not.toHaveBeenCalled();
+    });
+});
+
+describe('changed-file category counts', () => {
+    function expectCounts(counts: number[], selected = 'All') {
+        ['All', 'Source', 'Tests', 'Docs'].forEach((label, index) => {
+            const button = within(nav()).getByRole('button', { name: `${label} ${counts[index]}`, exact: true });
+            expect(button.getAttribute('aria-pressed')).toBe(String(label === selected));
+        });
+    }
+    it('shows a plain heading and all four totals using existing category precedence', () => {
+        const changed = [files[0], files[2], { path: 'tests/README.md', status: 'M' }, files[3], { path: 'AGENTS.md', status: 'A' }];
+        render(<GitFileReview {...props} files={changed} />);
+        expect(nav().querySelector('.git-review-filter-title strong')?.textContent).toBe('Changed files');
+        expectCounts([5, 1, 2, 2]);
+    });
+    it('keeps all totals when switching categories and preserves a still-visible selection', () => {
+        render(<GitFileReview {...props} />);
+        open('src/z.ts');
+        fireEvent.click(within(nav()).getByRole('button', { name: 'Source 2' }));
+        expectCounts([4, 2, 1, 1], 'Source');
+        expect(screen.getByTestId('focused-diff').textContent).toContain('src/z.ts');
+        for (const [label, paths] of [
+            ['Tests', ['test/a.test.ts']], ['Docs', ['docs/README.md']],
+            ['All', ['docs/README.md', 'src/a.ts', 'src/z.ts', 'test/a.test.ts']],
+        ] as const) {
+            fireEvent.click(within(nav()).getByRole('button', { name: new RegExp(`^${label} `) }));
+            expectCounts([4, 2, 1, 1], label);
+            expect(panel.mock.calls.at(-1)![0].source.files).toEqual(paths);
+        }
+    });
+    it('keeps full-comparison totals through search, status and hide-viewed filters', () => {
+        render(<GitFileReview {...props} reviewedFiles={new Set(['src/a.ts'])} />);
+        fireEvent.click(within(nav()).getByRole('button', { name: 'Source 2' }));
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'OLD/NAME' } });
+        fireEvent.change(screen.getByLabelText('Change status filter'), { target: { value: 'R' } });
+        expect(panel.mock.calls.at(-1)![0].source.files).toEqual(['src/a.ts']);
+        fireEvent.click(screen.getByLabelText('Hide viewed'));
+        expect(nav().querySelectorAll('[data-file-path]')).toHaveLength(0);
+        expectCounts([4, 2, 1, 1], 'Source');
+        fireEvent.click(within(nav()).getByRole('button', { name: 'Clear filters' }));
+        expectCounts([4, 2, 1, 1]);
+        expect(nav().querySelectorAll('[data-file-path]')).toHaveLength(4);
+    });
+    it('refreshes totals with changed data without resetting category or selection and includes zeros', () => {
+        const view = render(<GitFileReview {...props} />);
+        open('src/z.ts');
+        fireEvent.click(within(nav()).getByRole('button', { name: 'Source 2' }));
+        view.rerender(<GitFileReview {...props} files={[files[0], { path: 'notes/new.md', status: 'A' }]} />);
+        expectCounts([2, 1, 0, 1], 'Source');
+        expect(screen.getByTestId('focused-diff').textContent).toContain('src/z.ts');
+        view.rerender(<GitFileReview {...props} files={[]} />);
+        expectCounts([0, 0, 0, 0], 'Source');
+        expect(screen.queryByTestId('focused-diff')).toBeNull();
+    });
+    it('allows filter controls to wrap within narrow drawers and resized sidebars', () => {
+        const css = readFileSync(join(__dirname, '../../../../src/server/spa/client/react/features/git/diff/git-file-review.css'), 'utf8');
+        expect(css).toMatch(/\.git-review-filter-row\{[^}]*flex-wrap:wrap/);
     });
 });
 

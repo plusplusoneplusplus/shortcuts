@@ -3,7 +3,7 @@ import type { GitFileChange } from '@plusplusoneplusplus/coc-client';
 import { FileDiffPanel } from './FileDiffPanel';
 import type { FileDiffPanelProps } from './FileDiffPanel';
 import { STATUS_LABELS } from './FileTree';
-import { filterReviewFiles, groupReviewFiles, reviewFileParts, reviewFileStatus, type ReviewFileKind } from './gitReviewFiles';
+import { filterReviewFiles, groupReviewFiles, reviewFileKind, reviewFileParts, reviewFileStatus, type ReviewFileKind } from './gitReviewFiles';
 import { GitReviewToolbar, type GitReviewHeader } from './GitReviewToolbar';
 import './git-file-review.css';
 import { useCloneBaseUrl } from '../../../repos/cloneRouting';
@@ -74,6 +74,12 @@ function ReviewBody({ files, selectedPath, onSelect, loading, error, onRetry, re
         if (next === null) return;
         event.preventDefault(); navSize.setSize(next);
     }
+    // Category totals describe the whole comparison, independently of every navigator filter.
+    const kindCounts = useMemo(() => {
+        const counts = { all: files.length, source: 0, tests: 0, docs: 0 };
+        for (const file of files) counts[reviewFileKind(file.path)]++;
+        return counts;
+    }, [files]);
     const visible = useMemo(() => filterReviewFiles(files, query, kind, status, hideViewed, viewed), [files, query, kind, status, hideViewed, viewed]);
     const groups = useMemo(() => groupReviewFiles(visible), [visible]);
     const ordered = useMemo(() => groups.flatMap(group => group.files), [groups]);
@@ -170,9 +176,9 @@ function ReviewBody({ files, selectedPath, onSelect, loading, error, onRetry, re
                     }
                 }}>
                 <div className="git-review-filters">
-                    <div className="git-review-filter-title"><strong>Changed files · {files.length}</strong><button type="button" className="git-review-drawer-trigger" aria-label="Close file navigator" onClick={() => setDrawer(false)}>×</button></div>
+                    <div className="git-review-filter-title"><strong>Changed files</strong><button type="button" className="git-review-drawer-trigger" aria-label="Close file navigator" onClick={() => setDrawer(false)}>×</button></div>
                     <input ref={searchRef} aria-label="Search changed files by name or path" placeholder="Search files or path…" value={query} onChange={event => setQuery(event.target.value)} />
-                    <div className="git-review-filter-row">{(['all', 'source', 'tests', 'docs'] as const).map(value => <button type="button" key={value} aria-pressed={kind === value} onClick={() => setKind(value)}>{value === 'all' ? 'All' : value === 'source' ? 'Source' : value === 'tests' ? 'Tests' : 'Docs'}</button>)}</div>
+                    <div className="git-review-filter-row">{(['all', 'source', 'tests', 'docs'] as const).map(value => <button type="button" key={value} aria-pressed={kind === value} onClick={() => setKind(value)}>{value === 'all' ? 'All' : value === 'source' ? 'Source' : value === 'tests' ? 'Tests' : 'Docs'} <span className="git-review-muted">{kindCounts[value]}</span></button>)}</div>
                     <div className="git-review-filter-row"><label><input type="checkbox" checked={hideViewed} onChange={event => setHideViewed(event.target.checked)} /> Hide viewed</label>
                         <select aria-label="Change status filter" value={status} onChange={event => setStatus(event.target.value)}><option value="all">All statuses</option>{['A', 'M', 'D', 'R', 'C', 'T'].map(code => <option key={code} value={code}>{STATUS_LABELS[code] ?? code}</option>)}</select></div>
                 </div>
