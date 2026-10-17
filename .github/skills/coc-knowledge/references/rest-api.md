@@ -251,19 +251,20 @@ policies. See [LLM tools](llm-tools.md#create_pull_request) for polling invarian
 | GET | `/api/workspaces/:workspaceId/triggers` | List monitor scope, persisted repair status and in-flight writer state |
 | PATCH/DELETE | `/api/workspaces/:workspaceId/triggers/:triggerId` | Pause/resume/disarm; preserves admitted repair ownership until completion |
 
-### PR-merge trigger rules
+### Sentinel To-do trigger rules
 
-Owner-scoped rules use `SentinelTodoTriggerService`, gated by existing `triggers.enabled` (default on, restart required; `403` off). Rules never expire and share the server's 50-active cap. Every operation validates the owning Sentinel workspace/process; foreign rules/items return `404`. Manual items reject, and terminal rules cannot edit/resume/refire. Legacy `/triggers` APIs exclude bound rules and reject their mutation. Fires wake the Sentinel without changing item status or launching jobs.
+Owner-scoped rules use `SentinelTodoTriggerService` under `triggers.enabled`. Date authoring/actions/arming additionally require default-off live `features.sentinelTodoDateTimeTriggers` (`403` off). Rules never expire and share the server's 50-active cap. Every operation validates the owning Sentinel workspace/process; foreign rules/items return `404`. Manual/Done/archived items are ineligible; terminal rules cannot edit/resume/refire. Generic `/triggers` APIs exclude bound rules and reject their mutation. Wakes never change item status, launch jobs or grant authorization.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET/POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers` | List/create rules; create `{ itemId, prUrl, instruction?, workspaceId?, originId?, idempotencyKey? }` arms immediately; same owner/key replays without rearming; already merged → `409` unless `{ runNow: true, confirmed: true }`; closed-unmerged → `409`; provider read failure → `502`; cap → `409` |
+| GET/POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers` | List/create; PR input `{ itemId, prUrl, instruction?, workspaceId?, originId?, idempotencyKey? }`; date input replaces PR fields with `event: { type: 'date-time', firesAt, timeZone, localTime }` (future UTC ISO with milliseconds, IANA zone, matching `YYYY-MM-DDTHH:mm`); invalid/gap/mismatched instant → `400`; same owner/key replays; merged PR → `409` unless confirmed Run now; closed → `409`; provider failure → `502`; cap → `409` |
+| GET | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/capabilities` | Owner-validated `{ dateTime: boolean }` from this server's live gate; typed client `sentinelTodoCapabilities` |
 | POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/preview` | `{ prUrl }` → canonical provider identity and untrusted PR snapshot; no persisted state |
 | PATCH | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId` | Replace authoring fields with required `expectedRevision`; preserves armed-by attribution; stale/terminal → `409` |
 | POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId/pause` | `{ expectedRevision }` pauses a non-terminal rule |
-| POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId/resume` | `{ expectedRevision }` rechecks item eligibility and cap, then resumes polling |
+| POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId/resume` | `{ expectedRevision, confirmed? }` rechecks eligibility/cap; overdue date resume requires `confirmed: true` and catches up immediately |
 | POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId/run-now` | `{ expectedRevision, confirmed: true }` posts the same one-shot wake, consuming the rule |
-| DELETE | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId` | `{ expectedRevision }` removes/clears presentation; delivery and keyed authoring receipts remain durable, preventing stale create retries from reviving removed rules |
+| DELETE | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId` | `{ expectedRevision }` removes/clears presentation; dedupe receipts remain durable; pending removed date rules suppress delivery; committed PR wakes retain recovery |
 
 `coc-client` exposes these as `client.triggers.listSentinelTodo`, `previewSentinelTodo`,
 `createSentinelTodo`, `editSentinelTodo`, `pauseSentinelTodo`, `resumeSentinelTodo`,

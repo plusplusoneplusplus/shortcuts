@@ -662,6 +662,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.sentinelTodoDateTimeTriggers', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoDateTimeTriggersEnabled',
+        ui: {
+            tab: 'sentinel', group: 'sentinelTodos', order: 32.57, label: 'To-do date/time triggers', badge: 'experimental',
+            hint: 'Allow one-time dated rules to wake their owning Sentinel. Does not authorize jobs.',
+            testId: 'toggle-sentinel-todo-date-time-triggers',
+        },
+    }),
+    bool({
         key: 'features.sentinelPrOutcomeWake', default: false, runtime: 'live', runtimeFlag: 'sentinelPrOutcomeWakeEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.58, label: 'Sentinel PR outcome wake', badge: 'experimental',

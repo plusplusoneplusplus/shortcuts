@@ -7,13 +7,14 @@ import type { PrTriggerPreview, SentinelTodoItem, Trigger } from '@plusplusonepl
 const mocks = vi.hoisted(() => ({
     list: vi.fn(), preview: vi.fn(), create: vi.fn(), edit: vi.fn(), pause: vi.fn(), resume: vi.fn(),
     remove: vi.fn(), runNow: vi.fn(), connect: vi.fn(), workspaceList: vi.fn(), prList: vi.fn(),
-    get: vi.fn(), processGet: vi.fn(), groupGet: vi.fn(), route: vi.fn(), refs: [] as unknown[],
+    get: vi.fn(), processGet: vi.fn(), groupGet: vi.fn(), route: vi.fn(), capabilities: vi.fn(), refs: [] as unknown[],
 }));
 const client = {
     triggers: {
         listSentinelTodo: mocks.list, previewSentinelTodo: mocks.preview, createSentinelTodo: mocks.create,
         editSentinelTodo: mocks.edit, pauseSentinelTodo: mocks.pause, resumeSentinelTodo: mocks.resume,
         removeSentinelTodo: mocks.remove, runSentinelTodoNow: mocks.runNow,
+        sentinelTodoCapabilities: mocks.capabilities,
     },
     sentinelTodos: { get: mocks.get },
     processes: { get: mocks.processGet },
@@ -83,6 +84,7 @@ beforeEach(() => {
     vi.clearAllMocks();
     mocks.refs.length = 0;
     mocks.list.mockReset().mockResolvedValue([]);
+    mocks.capabilities.mockReset().mockResolvedValue({ dateTime: false });
     mocks.preview.mockReset().mockResolvedValue(preview());
     mocks.create.mockReset().mockResolvedValue(rule());
     mocks.edit.mockReset().mockResolvedValue(rule());
@@ -100,6 +102,182 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); applyRuntimeConfigPatch({ triggersEnabled: false }); });
 
 describe('Sentinel To-do Triggers', () => {
+    const dated = (overrides: Partial<Trigger> = {}) => rule({
+        event: { type: 'date-time', firesAt: '2027-11-07T06:30:00.000Z', timeZone: 'America/New_York' },
+        ...overrides,
+    });
+    async function dateEditor(date = '2027-01-15', time = '09:30', zone = 'Asia/Kathmandu') {
+        mocks.capabilities.mockResolvedValue({ dateTime: true });
+        mount();
+        await waitFor(() => expect(mocks.capabilities).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId));
+        fireEvent.click(screen.getByRole('button', { name: '+ Add trigger' }));
+        fireEvent.change(await screen.findByLabelText('Trigger type'), { target: { value: 'date-time' } });
+        fireEvent.change(screen.getByLabelText('Date'), { target: { value: date } });
+        fireEvent.change(screen.getByLabelText('Time'), { target: { value: time } });
+        fireEvent.change(screen.getByLabelText('IANA timezone'), { target: { value: zone } });
+    }
+    it('takes the date gate from the owning typed client, renders labeled UTC preview and serializes the selected instant', async () => {
+        await dateEditor();
+        expect(screen.queryByLabelText('PR URL')).toBeNull();
+        expect(screen.getByText(/UTC: 2027-01-15T03:45:00.000Z/)).toBeTruthy();
+        fireEvent.change(screen.getByLabelText('When it fires (optional)'), { target: { value: 'Read approved scope' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save and arm' }));
+        await waitFor(() => expect(mocks.create).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId, expect.objectContaining({
+            itemId: 'item-1', instruction: 'Read approved scope',
+            event: { type: 'date-time', firesAt: '2027-01-15T03:45:00.000Z', localTime: '2027-01-15T09:30', timeZone: 'Asia/Kathmandu' },
+        })));
+        expect(mocks.preview).not.toHaveBeenCalled();
+    });
+    it('hides only date mode and rows when the owner gate is off, leaving PR rules available', async () => {
+        mocks.list.mockResolvedValue([dated({ id: 'dated' }), rule()]);
+        mount();
+        await screen.findByText('PR example/repo#7');
+        expect(screen.queryByTestId('sentinel-trigger-dated')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: '+ Add trigger' }));
+        expect(screen.queryByLabelText('Trigger type')).toBeNull();
+        expect(screen.getByLabelText('PR URL')).toBeTruthy();
+    });
+    it('surfaces unavailable date capability while retaining existing PR rules', async () => {
+        mocks.capabilities.mockRejectedValueOnce(new Error('Owner capability unavailable'));
+        mocks.list.mockResolvedValue([rule(), dated({ id: 'dated' })]);
+        mount();
+        await screen.findByText('PR example/repo#7');
+        expect(screen.getByRole('alert').textContent).toContain('Owner capability unavailable');
+        expect(screen.queryByTestId('sentinel-trigger-dated')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Retry date/time availability' }));
+        await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    });
+    it('closes date authoring when the owner capability turns off', async () => {
+        await dateEditor();
+        mocks.capabilities.mockResolvedValue({ dateTime: false });
+        act(() => mocks.connect.mock.calls[0][0].onMessage({ type: 'trigger-updated' }));
+        await waitFor(() => expect(screen.queryByLabelText('IANA timezone')).toBeNull());
+        fireEvent.click(screen.getByRole('button', { name: '+ Add trigger' }));
+        expect(screen.queryByLabelText('Trigger type')).toBeNull();
+        expect(screen.getByLabelText('PR URL')).toBeTruthy();
+        expect(mocks.create).not.toHaveBeenCalled();
+    });
+    it('discards stale date capability and save results after an owner change', async () => {
+        const pendingCapabilities = deferred<{ dateTime: boolean }>();
+        mocks.capabilities.mockReturnValueOnce(pendingCapabilities.promise);
+        const rendered = mount();
+        await waitFor(() => expect(mocks.capabilities).toHaveBeenCalledOnce());
+        rendered.rerender(<SentinelTodoTriggers owner={{ ...owner, processId: 'second-owner' }} items={[item()]} onItemLink={vi.fn()} />);
+        await waitFor(() => expect(mocks.capabilities).toHaveBeenCalledTimes(2));
+        await act(async () => pendingCapabilities.resolve({ dateTime: true }));
+        fireEvent.click(screen.getByRole('button', { name: '+ Add trigger' }));
+        expect(screen.queryByLabelText('Trigger type')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+        rendered.unmount();
+        const pendingSave = deferred<Trigger>();
+        mocks.create.mockReturnValueOnce(pendingSave.promise);
+        await dateEditor();
+        fireEvent.click(screen.getByRole('button', { name: 'Save and arm' }));
+        cleanup();
+        const calls = mocks.list.mock.calls.length;
+        await act(async () => pendingSave.resolve(dated()));
+        expect(mocks.list).toHaveBeenCalledTimes(calls);
+    });
+    it('rejects DST gaps and requires an explicit offset for overlaps', async () => {
+        await dateEditor('2027-03-14', '02:30', 'America/New_York');
+        expect(screen.getByRole('alert').textContent).toContain('DST gap');
+        expect(screen.getByRole('button', { name: 'Save and arm' }).hasAttribute('disabled')).toBe(true);
+        fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2027-11-07' } });
+        fireEvent.change(screen.getByLabelText('Time'), { target: { value: '01:30' } });
+        const offset = screen.getByLabelText('DST offset');
+        expect(screen.getByRole('alert').textContent).toContain('occurs twice');
+        expect(within(offset).getAllByRole('option').map(option => option.textContent).join(' ')).toMatch(/GMT-04:00.*GMT-05:00/);
+        fireEvent.change(offset, { target: { value: '2027-11-07T06:30:00.000Z' } });
+        expect(screen.queryByRole('alert')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Save and arm' }));
+        await waitFor(() => expect(mocks.create).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId, expect.objectContaining({
+            event: expect.objectContaining({ firesAt: '2027-11-07T06:30:00.000Z' }),
+        })));
+    });
+    it('rejects unknown zones and past instants inline without submitting', async () => {
+        await dateEditor('2027-01-15', '09:30', 'Invalid/Zone');
+        expect(screen.getByRole('alert')).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Save and arm' }).hasAttribute('disabled')).toBe(true);
+        fireEvent.change(screen.getByLabelText('IANA timezone'), { target: { value: 'UTC' } });
+        fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2020-01-01' } });
+        expect(screen.getByRole('alert').textContent).toContain('future');
+        expect(mocks.create).not.toHaveBeenCalled();
+    });
+    it('keeps date save errors visible with the draft intact and guards duplicate submits', async () => {
+        const pending = deferred<Trigger>();
+        mocks.create.mockReturnValueOnce(pending.promise);
+        await dateEditor();
+        const save = screen.getByRole('button', { name: 'Save and arm' });
+        fireEvent.click(save); fireEvent.click(save);
+        expect(mocks.create).toHaveBeenCalledOnce();
+        await act(async () => pending.resolve(dated()));
+        await waitFor(() => expect(screen.queryByLabelText('IANA timezone')).toBeNull());
+        mocks.create.mockRejectedValueOnce(new Error('Date save unavailable'));
+        fireEvent.click(screen.getByRole('button', { name: '+ Add trigger' }));
+        fireEvent.change(screen.getByLabelText('Trigger type'), { target: { value: 'date-time' } });
+        fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2027-01-15' } });
+        fireEvent.change(screen.getByLabelText('Time'), { target: { value: '09:30' } });
+        fireEvent.change(screen.getByLabelText('IANA timezone'), { target: { value: 'UTC' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save and arm' }));
+        await screen.findByText(/Date save unavailable/);
+        expect((screen.getByLabelText('Time') as HTMLInputElement).value).toBe('09:30');
+    });
+    it('retains a conflicted date edit and requires refresh rather than retrying a stale revision', async () => {
+        mocks.capabilities.mockResolvedValue({ dateTime: true });
+        mocks.list.mockResolvedValue([dated()]);
+        mocks.edit.mockRejectedValueOnce(Object.assign(new Error('Rule revision conflict'), { status: 409 }));
+        mount();
+        fireEvent.click(await screen.findByLabelText('Actions for date/time trigger'));
+        fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+        fireEvent.change(screen.getByLabelText('When it fires (optional)'), { target: { value: 'Changed guidance' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save and arm' }));
+        await screen.findByText('Rule revision conflict');
+        expect((screen.getByLabelText('When it fires (optional)') as HTMLTextAreaElement).value).toBe('Changed guidance');
+        expect(screen.getByRole('button', { name: 'Save and arm' }).hasAttribute('disabled')).toBe(true);
+        expect(mocks.edit).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId, 'rule-1', expect.objectContaining({
+            expectedRevision: 4, event: { type: 'date-time', firesAt: '2027-11-07T06:30:00.000Z',
+                timeZone: 'America/New_York', localTime: '2027-11-07T01:30' },
+        }));
+        expect(mocks.edit).toHaveBeenCalledOnce();
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh rules' }));
+        await waitFor(() => expect(screen.queryByLabelText('IANA timezone')).toBeNull());
+    });
+    it('renders wrapping dated rows with separate item/delivery state and confirms overdue resume', async () => {
+        mocks.capabilities.mockResolvedValue({ dateTime: true });
+        mocks.list.mockResolvedValue([dated({ status: 'paused', event: {
+            type: 'date-time', firesAt: '2020-01-01T00:00:00.000Z', timeZone: 'UTC',
+        } })]);
+        const { onItemLink } = mount();
+        const row = await screen.findByTestId('sentinel-trigger-rule-1');
+        expect(row.className).toContain('sentinel-trigger-row');
+        const instant = row.querySelector('time[datetime="2020-01-01T00:00:00.000Z"]')!;
+        expect(instant.getAttribute('title')).toBe('UTC: 2020-01-01T00:00:00.000Z');
+        expect(instant.textContent).toContain('(UTC)');
+        fireEvent.click(within(row).getByRole('link', { name: /Follow-up work/ }));
+        expect(onItemLink).toHaveBeenCalledWith('item-1');
+        fireEvent.click(screen.getByLabelText('Actions for date/time trigger'));
+        fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+        expect(screen.getByText(/overdue rule will wake Sentinel immediately/)).toBeTruthy();
+        expect(mocks.resume).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm resume' }));
+        await waitFor(() => expect(mocks.resume).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId, 'rule-1', 4, true));
+    });
+    it('uses date row pause, edit and confirmed Run now through the owner', async () => {
+        mocks.capabilities.mockResolvedValue({ dateTime: true });
+        mocks.list.mockResolvedValue([dated()]);
+        mount();
+        fireEvent.click(await screen.findByLabelText('Actions for date/time trigger'));
+        fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+        await waitFor(() => expect(mocks.pause).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId, 'rule-1', 4));
+        fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+        expect((screen.getByLabelText('Date') as HTMLInputElement).value).toBe('2027-11-07');
+        expect((screen.getByLabelText('DST offset') as HTMLSelectElement).value).toBe('2027-11-07T06:30:00.000Z');
+        fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
+        expect(mocks.runNow).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm run now' }));
+        await waitFor(() => expect(mocks.runNow).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId, 'rule-1', 4));
+    });
     it('never offers delegation-rule controls for automatic delegated PR outcome bindings', async () => {
         const automatic = rule({ id: 'automatic' });
         mocks.list.mockResolvedValue([{

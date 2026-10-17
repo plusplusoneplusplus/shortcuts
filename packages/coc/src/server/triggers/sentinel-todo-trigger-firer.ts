@@ -15,6 +15,7 @@ export interface SentinelTodoTriggerFirerDeps {
     executor: ActionExecutor;
     emit: TriggerEventEmit;
     now?: () => number;
+    dateTimeEnabled?: () => boolean;
     /** Reuses the trigger manager's scheduler for pending delivery retries. */
     onPendingDelivery?: (trigger: Trigger) => void;
     outcomeCanDeliver?: (trigger: Trigger) => boolean;
@@ -31,10 +32,12 @@ export class SentinelTodoTriggerFirer implements OneShotFirer {
 
     async fire(triggerId: string, reason: TriggerDelivery['reason'], expectedRevision?: number): Promise<void> {
         const initial = this.deps.triggers.getById(triggerId);
-        if (expectedRevision !== undefined && (!initial || initial.revision !== expectedRevision || !canFire(initial, reason))) {
+        const eligible = (trigger: Trigger) => canFire(trigger, reason, (this.deps.now ?? Date.now)())
+            && (trigger.event.type !== 'date-time' || this.deps.dateTimeEnabled?.() === true);
+        if (expectedRevision !== undefined && (!initial || initial.revision !== expectedRevision || !eligible(initial))) {
             throw new OneShotFireConflictError('Rule changed before Run now');
         }
-        if (!initial || !canFire(initial, reason)) return;
+        if (!initial || !eligible(initial)) return;
 
         // No database writer is held across asynchronous process lookup.
         const process = await this.deps.processes.getProcess(initial.processId);
@@ -43,7 +46,7 @@ export class SentinelTodoTriggerFirer implements OneShotFirer {
             && process.metadata?.mode === 'sentinel';
         const committed = this.deps.triggers.transaction(() => {
             const current = this.deps.triggers.getById(triggerId);
-            if (!current || current.revision !== initial.revision || !canFire(current, reason)) {
+            if (!current || current.revision !== initial.revision || !eligible(current)) {
                 if (expectedRevision !== undefined) throw new OneShotFireConflictError('Rule changed before Run now');
                 return;
             }
@@ -58,7 +61,7 @@ export class SentinelTodoTriggerFirer implements OneShotFirer {
                 outcome: skipped ? 'skipped' : ownerExists ? 'fired' : 'error',
                 outcomeReason: skipped ?? (ownerExists ? undefined : 'Sentinel chat not found'),
             };
-            if (!skipped && item && (ownerExists || !current.binding?.delegatedPr)) {
+            if (!skipped && item && (ownerExists || !current.binding?.delegatedPr && current.event.type !== 'date-time')) {
                 terminal.delivery = {
                     deliveryId: randomUUID(),
                     firedAt: new Date((this.deps.now ?? Date.now)()).toISOString(),
@@ -95,6 +98,19 @@ export class SentinelTodoTriggerFirer implements OneShotFirer {
         const committed = this.deps.triggers.getById(triggerId);
         if (!committed?.binding || committed.delivery?.state !== 'pending') return;
         if (!this.canRetryDelivery(committed)) return;
+        if (committed.event.type === 'date-time') {
+            const process = await this.deps.processes.getProcess(committed.processId);
+            const current = this.deps.triggers.getById(triggerId);
+            if (!current || current.delivery?.state !== 'pending' || !this.canRetryDelivery(current)) return;
+            const item = this.deps.todos.get({ workspaceId: current.workspaceId, processId: current.processId })
+                .items.find(item => item.id === current.binding?.itemId);
+            const skipped = skipReason(item) ?? (current.binding?.removedAt ? 'Rule removed' : undefined);
+            if (skipped || process?.id !== current.processId || process.metadata?.mode !== 'sentinel'
+                || process.metadata.workspaceId !== current.workspaceId) {
+                this.failOutcome(current, skipped ?? 'Sentinel chat not found', !!skipped);
+                return;
+            }
+        }
         if (committed.binding.delegatedPr) {
             const process = await this.deps.processes.getProcess(committed.processId);
             const current = this.deps.triggers.getById(triggerId);
@@ -127,6 +143,7 @@ export class SentinelTodoTriggerFirer implements OneShotFirer {
     }
 
     canRetryDelivery(trigger: Trigger): boolean {
+        if (trigger.event.type === 'date-time') return this.deps.dateTimeEnabled?.() === true;
         return !trigger.binding?.delegatedPr || this.deps.outcomeCanDeliver?.(trigger) === true;
     }
 
@@ -172,12 +189,14 @@ export class SentinelTodoTriggerFirer implements OneShotFirer {
     }
 }
 
-function canFire(trigger: Trigger, reason: TriggerDelivery['reason']): boolean {
+function canFire(trigger: Trigger, reason: TriggerDelivery['reason'], now: number): boolean {
     return trigger.binding?.kind === 'sentinel-todo'
-        && trigger.event.monitor === 'pr-merged' && !trigger.outcome && !trigger.delivery
+        && !trigger.binding.removedAt && !trigger.outcome && !trigger.delivery
         && (trigger.status === 'active' || (reason === 'run-now' && trigger.status === 'paused'))
-        && (reason === 'run-now' || trigger.event.lastSeenStatus === 'merged'
-            || (!!trigger.binding.delegatedPr && trigger.event.lastSeenStatus === 'closed' && reason === 'closed'));
+        && (trigger.event.type === 'date-time'
+            ? reason === 'run-now' || reason === 'due' && Date.parse(trigger.event.firesAt) <= now
+            : trigger.event.monitor === 'pr-merged' && (reason === 'run-now' || trigger.event.lastSeenStatus === 'merged'
+                || (!!trigger.binding.delegatedPr && trigger.event.lastSeenStatus === 'closed' && reason === 'closed')));
 }
 
 function skipReason(item: SentinelTodoItem | undefined): string | undefined {
@@ -189,17 +208,17 @@ function skipReason(item: SentinelTodoItem | undefined): string | undefined {
 }
 
 export function buildSentinelTodoWakePrompt(trigger: Trigger, item: SentinelTodoItem): string {
-    if (trigger.event.monitor !== 'pr-merged' || !trigger.binding || !trigger.delivery) {
-        throw new Error('A Sentinel wake requires a PR binding and committed delivery identity');
+    if ((trigger.event.monitor !== 'pr-merged' && trigger.event.type !== 'date-time') || !trigger.binding || !trigger.delivery) {
+        throw new Error('A Sentinel wake requires a one-shot binding and committed delivery identity');
     }
 
     const data = {
         ruleId: trigger.id, deliveryId: trigger.delivery.deliveryId,
         reason: trigger.delivery.reason,
-        pr: {
+        ...(trigger.event.type === 'date-time' ? { dateTime: trigger.event } : { pr: {
             ...trigger.event.pr, title: trigger.event.lastSeenTitle ?? null,
             mergeCommit: trigger.event.mergeCommit ?? null,
-        },
+        } }),
         item: {
             id: item.id, revision: item.revision, title: item.title,
             completionCondition: item.completionCondition, notes: item.notes,
@@ -211,6 +230,8 @@ export function buildSentinelTodoWakePrompt(trigger: Trigger, item: SentinelTodo
         `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`);
     return [
         'A one-shot Sentinel To-do trigger has fired. Firing does not change the item status.',
+        ...(trigger.event.type === 'date-time'
+            ? ['This wake grants no new authorization. Act only within the latest user-approved scope; ask if approval is absent.'] : []),
         'Read the current owner-scoped item before acting. Skip missing, manual, Done or archived items.',
         'Skip if a job has already been linked from this rule/delivery; do not launch twice.',
         'If appropriate, choose the target (item targetRepo by default), mode and provider, then delegate',

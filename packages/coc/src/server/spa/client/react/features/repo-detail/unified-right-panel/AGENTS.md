@@ -926,21 +926,27 @@ Shared `ScrubRunChatLink` preserves the owning route and excursion behavior.
 Tests use isolated mock clients in
 `test/server/sentinel-scrubber/panel.test.tsx` and `test/server/sentinel-todos/panel.test.tsx`.
 
-### PR-merge triggers
+### To-do triggers
 
 `SentinelTodoTriggers` is a separate section below the cards, gated by existing
 `triggers.enabled`. Its owner-qualified `client.triggers` calls use the ledger's
 workspace/process on the owning server. `sentinelTodoTriggerModel` keeps rule
 Waiting/Paused/terminal/error and delivery state separate from item/job/review
-states; owner-verified rule rows link the canonical PR. Item navigation expands
+states; rows link the canonical PR or display the saved zoned date and UTC tooltip.
+Item navigation expands
 and focuses only the target and its containing Normal/Manual Done/Archived
 sections, preserving other expansion state. Missing targets retain unavailable
 feedback; owner changes isolate row state and cancel pending highlights.
-`SentinelTodoTriggerEditor` selects eligible normal items and accepts a PR URL,
-local picker and optional instruction with server preview. Lifecycle writes carry
-the rule revision; Run now requires confirmation. Clearing terminal presentation
-does not cancel a committed wake receipt. Rules never expire or launch jobs
-directly. `triggers-panel.test.tsx` covers states, controls and ownership.
+`SentinelTodoTriggerEditor` selects eligible normal items, PR URL/local picker or
+one-time date/time, and optional guidance. Date mode and rows require the owning
+client's `sentinelTodoCapabilities` result, never the page-origin flag. Default-off
+`features.sentinelTodoDateTimeTriggers` gates date authoring and arming on that server.
+Shared coc-client helpers validate local date/time and IANA zone, expose both DST
+overlap offsets and preview the exact UTC instant. Dialogs trap keyboard focus.
+Lifecycle writes carry revisions; Run now and overdue resume require confirmation.
+Clearing retains dedupe receipts; removed pending date rules suppress delivery.
+Rules never expire, mark items Done, launch jobs directly or grant authorization.
+`triggers-panel.test.tsx` covers states, controls and ownership.
 
 ### To-do excursions
 

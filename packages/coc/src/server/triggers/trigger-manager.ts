@@ -146,6 +146,7 @@ export interface TriggerManagerDeps {
     emit?: TriggerEventEmit;
     /** Clock injection for deterministic tests. Defaults to `Date.now`. */
     now?: () => number;
+    dateTimeEnabled?: () => boolean;
 }
 
 // ============================================================================
@@ -168,13 +169,17 @@ export class TriggerManager {
         this.now = deps.now ?? Date.now;
         this.scheduler = new PeriodicEntryScheduler<Trigger | DependencyPollEntry | PrOutcomeRegistrationEntry>({
             timerRegistry: deps.timerRegistry,
-            getFallbackIntervalMs: trigger => 'registrationPoll' in trigger ? DEFAULT_PR_MERGE_POLL_INTERVAL_MS
+            getFallbackIntervalMs: trigger => !('registrationPoll' in trigger) && !('dependencyPoll' in trigger) && trigger.event.type === 'date-time'
+                ? trigger.delivery?.state === 'pending'
+                    ? Math.min(30 * 60_000, 60_000 * 2 ** Math.min(trigger.delivery.consecutiveErrors ?? 0, 5))
+                    : Math.max(0, Date.parse(trigger.event.firesAt) - this.now())
+                : 'registrationPoll' in trigger ? DEFAULT_PR_MERGE_POLL_INTERVAL_MS
                 : 'dependencyPoll' in trigger ? DEFAULT_CI_POLL_INTERVAL_MS : trigger.delivery?.state === 'pending' && trigger.event.monitor === 'pr-merged'
                 ? getPrMergedPollDelay({ ...trigger.event, consecutiveErrors: trigger.delivery.consecutiveErrors ?? 0 })
                 : getPollInterval(trigger.event),
             isActive: trigger => 'registrationPoll' in trigger ? !!this.registrationPolling && trigger.status === 'active'
                 : 'dependencyPoll' in trigger ? !!this.dependencyPolling && trigger.status === 'active'
-                : trigger.status === 'active' || this.canRetryDelivery(trigger) || hasPendingRepair(trigger),
+                : this.dateTimeAllowed(trigger) && (trigger.status === 'active' || this.canRetryDelivery(trigger) || hasPendingRepair(trigger)),
             persist: trigger => 'registrationPoll' in trigger ? this.registrationPolling?.persist(trigger)
                 : 'dependencyPoll' in trigger ? this.dependencyPolling?.persist(trigger) : this.deps.store.update(trigger),
             onTick: id => { void this.onTick(id); },
@@ -196,6 +201,20 @@ export class TriggerManager {
             trigger.status === 'active' || this.canRetryDelivery(trigger) || hasPendingRepair(trigger)));
         this.refreshDependencyPolling();
         this.refreshPrOutcomeRegistrationPolling();
+    }
+
+    /** Apply owner-server live gating without altering persisted rules or receipts. */
+    refreshDateTime(): void {
+        for (const trigger of this.deps.store.getAll()) {
+            if (trigger.event.type !== 'date-time') continue;
+            this.disarm(trigger.id);
+            this.arm(trigger.delivery?.state === 'pending' && !trigger.nextTickAt
+                ? { ...trigger, nextTickAt: trigger.delivery.firedAt } : trigger);
+        }
+    }
+
+    private dateTimeAllowed(trigger: Trigger): boolean {
+        return trigger.event.type !== 'date-time' || this.deps.dateTimeEnabled?.() === true;
     }
 
     /** Dependency evidence/transport shares this manager's one existing scheduler. */
@@ -341,11 +360,37 @@ export class TriggerManager {
             logger.warn(LogCategory.AI, `[TriggerManager] Tick for unknown trigger ${triggerId}`);
             return;
         }
+        if (!this.dateTimeAllowed(trigger)) return;
         if (trigger.delivery?.state === 'pending') {
             await this.retryDelivery(triggerId);
             return;
         }
         if (trigger.status !== 'active' && !(manualCi && trigger.status === 'paused') && !hasPendingRepair(trigger)) return;
+        if (trigger.event.type === 'date-time') {
+            if (Date.parse(trigger.event.firesAt) > this.now()) {
+                // Capped timers and backward clock changes must not fire early.
+                this.reschedule(trigger);
+                return;
+            }
+            if (!this.deps.oneShotFirer) throw new Error('One-shot delivery admission is unavailable');
+            try { await this.deps.oneShotFirer.fire(trigger.id, 'due'); }
+            catch (error) {
+                logger.error(LogCategory.AI, `[TriggerManager] Date/time wake failed for ${trigger.id}: ${String(error)}`);
+                const failed = this.deps.store.getById(trigger.id);
+                if (failed?.status === 'active' && failed.revision === trigger.revision && !failed.delivery) {
+                    // Lookup failures precede the durable fire decision; avoid a zero-delay retry loop.
+                    failed.outcomeReason = (error instanceof Error ? error.message : String(error)).slice(0, 1_000);
+                    failed.nextTickAt = new Date(this.now() + DEFAULT_CI_POLL_INTERVAL_MS).toISOString();
+                    this.deps.store.update(failed);
+                    this.emit({ type: 'trigger-updated', trigger: failed });
+                    this.arm(failed);
+                    return;
+                }
+            }
+            const current = this.deps.store.getById(trigger.id);
+            if (current?.status === 'active' || current && this.canRetryDelivery(current)) this.reschedule(current);
+            return;
+        }
 
         // TTL expiry → terminal auto-disarm.
         if (isTriggerExpired(trigger, this.now())) {
@@ -602,7 +647,7 @@ export class TriggerManager {
     }
 
     private canRetryDelivery(trigger: Trigger): boolean {
-        return trigger.delivery?.state === 'pending'
+        return this.dateTimeAllowed(trigger) && trigger.delivery?.state === 'pending'
             && (this.deps.oneShotFirer?.canRetryDelivery?.(trigger) ?? true);
     }
 

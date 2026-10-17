@@ -147,26 +147,31 @@ the identity of the entire delegated session.
 ### Sentinel To-do trigger firing
 
 `triggers/sentinel-todo-trigger-service.ts` owns authoring for normal eligible items,
-using owner-workspace/process checks and optimistic revisions. Rules never expire,
-share the existing active cap and gate only on `triggers.enabled`. Creation/edit
-preflight reads canonical GitHub/ADO PR URLs with server credentials; already-merged
-creation requires confirmed Run now, while closed-unmerged creation rejects.
-Owner-scoped creation receipts replay a draft without rearming or duplicating it.
-Clearing a rule hides it while preserving delivery and keyed authoring receipts.
+using exact owner checks, optimistic revisions and owner-scoped creation receipts.
+PR rules use `triggers.enabled`; date rules additionally require default-off live
+`features.sentinelTodoDateTimeTriggers`. Both share the active cap and never expire.
+PR authoring preflights canonical provider URLs. Date authoring validates future
+UTC `firesAt`, IANA `timeZone` and matching `localTime` through coc-client's
+`dateTimeCandidates`; gaps reject and overlaps require an explicit instant.
+Only the absolute instant and display zone persist in the existing JSON event.
 
-`triggers/sentinel-todo-trigger-firer.ts` commits one-shot PR-merge decisions using
+`triggers/sentinel-todo-trigger-firer.ts` commits one-shot PR/date decisions using
 the trigger and to-do stores' shared database writer. It checks the rule revision
 and current owner-scoped item after asynchronous Sentinel lookup. Missing, manual,
 Done or archived items stop as Skipped. Eligible fires persist the terminal outcome,
 fixed delivery identity and immutable wake prompt before queue work; delivery errors
-remain pending and visible. The prompt treats PR metadata as untrusted data and asks
-the Sentinel to delegate through `send_to_conversation` with `todoItemId`.
+remain pending and visible. Date recovery rechecks item/owner eligibility and
+removal before admission; missing owners fail without retargeting. Clearing retains
+dedupe receipts. A date wake grants no new authorization.
 
 `QueueActionExecutor` sends bound wakes through `ProcessMessageDeliveryService.deliverOnce`,
 which serializes owner checks and dedupe with human follow-ups and buffer draining.
 The fixed delivery ID survives queue tasks, pending messages and durable turn attribution.
 Trigger infrastructure reconciles pending deliveries after `armAll()`; retry/backoff
 uses the same trigger manager and timer registry, independently of PR watching.
+Date ticks recheck the absolute instant after bounded timers or clock changes.
+Live gating disarms date timers without deleting rules; enabling restores overdue
+catch-up once. Resuming an overdue paused rule requires `confirmed: true`.
 Accepted busy-parent buffers recover through the existing owner-routed drain.
 Trigger firing never writes item status, calls delegation admission or selects a remote target.
 

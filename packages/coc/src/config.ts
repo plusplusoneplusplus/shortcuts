@@ -333,6 +333,7 @@ export interface CLIConfig {
         /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Disabled by default. */
         toolScripting?: boolean;
         sentinelPrOutcomeWake?: boolean;
+        sentinelTodoDateTimeTriggers?: boolean;
         sentinelDesktopMirror?: boolean;
         botManagedConversations?: boolean;
         /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Disabled by default. */
@@ -754,6 +755,7 @@ export interface ResolvedCLIConfig {
         /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Disabled by default. */
         toolScripting: boolean;
         sentinelPrOutcomeWake: boolean;
+        sentinelTodoDateTimeTriggers: boolean;
         sentinelDesktopMirror: boolean;
         botManagedConversations: boolean;
         /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Enabled by default. */
@@ -1091,6 +1093,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         sentinelTodoScrubber: false,
         toolScripting: false,
         sentinelPrOutcomeWake: false,
+        sentinelTodoDateTimeTriggers: false,
         sentinelDesktopMirror: false,
         botManagedConversations: false,
         quickAskSidenotes: true,
