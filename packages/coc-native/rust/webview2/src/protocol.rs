@@ -4,25 +4,35 @@ use std::io::{self, Write};
 
 const MAX_TRANSPORT_BYTES: usize = 1_048_576;
 
-pub fn read_command(input: &mut impl io::BufRead) -> io::Result<Option<std::result::Result<Command, &'static str>>> {
+pub fn read_command(
+    input: &mut impl io::BufRead,
+) -> io::Result<Option<std::result::Result<Command, &'static str>>> {
     let mut line = Vec::new();
     let mut bytes = 0usize;
     let mut oversized = false;
     loop {
         let buffer = input.fill_buf()?;
         if buffer.is_empty() {
-            if bytes == 0 { return Ok(None); }
+            if bytes == 0 {
+                return Ok(None);
+            }
             break;
         }
         let end = buffer.iter().position(|&byte| byte == b'\n');
         let length = end.map_or(buffer.len(), |end| end + 1);
         bytes = bytes.saturating_add(length);
         oversized |= bytes > MAX_TRANSPORT_BYTES;
-        if !oversized { line.extend_from_slice(&buffer[..length]); }
+        if !oversized {
+            line.extend_from_slice(&buffer[..length]);
+        }
         input.consume(length);
-        if end.is_some() { break; }
+        if end.is_some() {
+            break;
+        }
     }
-    if oversized { return Ok(Some(Err("Browser command exceeds the transport limit."))); }
+    if oversized {
+        return Ok(Some(Err("Browser command exceeds the transport limit.")));
+    }
     Ok(Some(serde_json::from_slice(&line).map_err(|_| "Invalid browser command.")))
 }
 
@@ -62,15 +72,28 @@ pub struct Command {
 }
 
 pub const CDP_EVENTS: &[&str] = &[
-    "Page.frameAttached", "Page.frameNavigated", "Page.frameDetached",
-    "Page.navigatedWithinDocument", "Page.lifecycleEvent", "Page.frameStartedLoading", "Page.frameStoppedLoading",
-    "Runtime.executionContextCreated", "Runtime.executionContextDestroyed", "Runtime.executionContextsCleared",
-    "Target.attachedToTarget", "Target.detachedFromTarget", "Target.targetCrashed", "Inspector.detached",
+    "Page.frameAttached",
+    "Page.frameNavigated",
+    "Page.frameDetached",
+    "Page.navigatedWithinDocument",
+    "Page.lifecycleEvent",
+    "Page.frameStartedLoading",
+    "Page.frameStoppedLoading",
+    "Runtime.executionContextCreated",
+    "Runtime.executionContextDestroyed",
+    "Runtime.executionContextsCleared",
+    "Target.attachedToTarget",
+    "Target.detachedFromTarget",
+    "Target.targetCrashed",
+    "Inspector.detached",
 ];
 
 pub fn allowed_cdp_session(session: &str) -> bool {
-    !session.is_empty() && session.len() <= 256
-        && session.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-' | b'.' | b':'))
+    !session.is_empty()
+        && session.len() <= 256
+        && session
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-' | b'.' | b':'))
 }
 
 #[derive(Default)]
@@ -81,24 +104,47 @@ impl CdpSessions {
         allowed_cdp_session(session) && self.0.contains_key(session)
     }
 
-    pub fn clear(&mut self) { self.0.clear(); }
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
 
-    pub fn event(&mut self, view: &str, method: &str, json: &str, session: Option<&str>) -> std::result::Result<Option<Value>, &'static str> {
+    pub fn event(
+        &mut self,
+        view: &str,
+        method: &str,
+        json: &str,
+        session: Option<&str>,
+    ) -> std::result::Result<Option<Value>, &'static str> {
         if !CDP_EVENTS.contains(&method) || session.is_some_and(|id| !self.contains(id)) {
             return Ok(None);
         }
-        if json.len() > 900_000 { return Err("WebView2 CDP event exceeds the transport limit."); }
+        if json.len() > 900_000 {
+            return Err("WebView2 CDP event exceeds the transport limit.");
+        }
         let params: serde_json::Map<String, Value> = serde_json::from_str(json)
             .map_err(|_| "WebView2 CDP event params must be a JSON object.")?;
         if method == "Target.attachedToTarget" {
-            let Some(id) = params.get("sessionId").and_then(Value::as_str).filter(|id| allowed_cdp_session(id)) else {
+            let Some(id) = params
+                .get("sessionId")
+                .and_then(Value::as_str)
+                .filter(|id| allowed_cdp_session(id))
+            else {
                 return Err("WebView2 returned an invalid CDP session.");
             };
-            if params.get("targetInfo").and_then(|target| target.get("type")).and_then(Value::as_str) != Some("iframe") {
+            if params
+                .get("targetInfo")
+                .and_then(|target| target.get("type"))
+                .and_then(Value::as_str)
+                != Some("iframe")
+            {
                 return Ok(None);
             }
-            if session == Some(id) || self.0.contains_key(id) { return Ok(None); }
-            if self.0.len() >= 256 && !self.0.contains_key(id) { return Err("WebView2 CDP session limit exceeded."); }
+            if session == Some(id) || self.0.contains_key(id) {
+                return Ok(None);
+            }
+            if self.0.len() >= 256 && !self.0.contains_key(id) {
+                return Err("WebView2 CDP session limit exceeded.");
+            }
             self.0.insert(id.to_string(), session.map(str::to_string));
         } else if method == "Target.detachedFromTarget" {
             if let Some(id) = params.get("sessionId").and_then(Value::as_str) {
@@ -106,15 +152,23 @@ impl CdpSessions {
                 let mut index = 0;
                 while index < removed.len() {
                     let parent = removed[index].clone();
-                    removed.extend(self.0.iter().filter_map(|(id, owner)| (owner.as_deref() == Some(&parent)).then(|| id.clone())));
+                    removed.extend(self.0.iter().filter_map(|(id, owner)| {
+                        (owner.as_deref() == Some(&parent)).then(|| id.clone())
+                    }));
                     index += 1;
                 }
-                for id in removed { self.0.remove(&id); }
+                for id in removed {
+                    self.0.remove(&id);
+                }
             }
         }
         let mut event = serde_json::json!({ "event": "cdp-event", "viewId": view, "method": method, "params": params });
-        if let Some(session) = session { event["sessionId"] = Value::String(session.to_string()); }
-        if event.to_string().len() > 1_048_576 { return Err("WebView2 CDP event exceeds the framing limit."); }
+        if let Some(session) = session {
+            event["sessionId"] = Value::String(session.to_string());
+        }
+        if event.to_string().len() > 1_048_576 {
+            return Err("WebView2 CDP event exceeds the framing limit.");
+        }
         Ok(Some(event))
     }
 }
@@ -293,13 +347,18 @@ mod tests {
         serde_json::json!({
             "id": 7, "op": "cdp", "viewId": "owned", "method": "Runtime.evaluate",
             "params": { "expression": expression }
-        }).to_string() + "\n"
+        })
+        .to_string()
+            + "\n"
     }
 
     #[test]
     fn native_transport_accepts_serializer_commands_above_32k_through_the_exact_1mib_boundary() {
-        for expression in ["x".repeat(65_536), "\u{754c}".repeat(50_000),
-            "x".repeat(MAX_TRANSPORT_BYTES - command_line("").len())] {
+        for expression in [
+            "x".repeat(65_536),
+            "\u{754c}".repeat(50_000),
+            "x".repeat(MAX_TRANSPORT_BYTES - command_line("").len()),
+        ] {
             let line = command_line(&expression);
             assert!(line.len() > 32_768 && line.len() <= MAX_TRANSPORT_BYTES);
             let mut input = io::BufReader::with_capacity(127, io::Cursor::new(line));
@@ -315,8 +374,12 @@ mod tests {
         for expression in ["x".repeat(MAX_TRANSPORT_BYTES), "\u{754c}".repeat(400_000)] {
             let oversized = command_line(&expression);
             assert!(oversized.len() > MAX_TRANSPORT_BYTES);
-            let mut input = io::BufReader::with_capacity(113, io::Cursor::new(oversized + &command_line("42")));
-            assert_eq!(read_command(&mut input).unwrap().unwrap().unwrap_err(), "Browser command exceeds the transport limit.");
+            let mut input =
+                io::BufReader::with_capacity(113, io::Cursor::new(oversized + &command_line("42")));
+            assert_eq!(
+                read_command(&mut input).unwrap().unwrap().unwrap_err(),
+                "Browser command exceeds the transport limit."
+            );
             let command = read_command(&mut input).unwrap().unwrap().unwrap();
             assert_eq!(command.params.unwrap()["expression"], "42");
             assert!(read_command(&mut input).unwrap().is_none());
@@ -324,9 +387,13 @@ mod tests {
     }
 
     #[test]
-    fn native_transport_rejects_malformed_frames_without_echoing_data_and_accepts_final_eof_frame() {
+    fn native_transport_rejects_malformed_frames_without_echoing_data_and_accepts_final_eof_frame()
+    {
         let mut input = io::Cursor::new(format!("invalid\n{}", command_line("42").trim_end()));
-        assert_eq!(read_command(&mut input).unwrap().unwrap().unwrap_err(), "Invalid browser command.");
+        assert_eq!(
+            read_command(&mut input).unwrap().unwrap().unwrap_err(),
+            "Invalid browser command."
+        );
         assert_eq!(read_command(&mut input).unwrap().unwrap().unwrap().id, 7);
         assert!(read_command(&mut input).unwrap().is_none());
         let mut input = io::Cursor::new(vec![0xff, b'\n']);
@@ -349,35 +416,63 @@ mod tests {
         for session in ["", "line\nbreak", "space invalid"] {
             let command: Command = serde_json::from_value(serde_json::json!({
                 "id":3, "op":"cdp", "method":"Runtime.enable", "sessionId":session
-            })).unwrap();
+            }))
+            .unwrap();
             assert!(cdp_arguments(&command).is_none());
         }
         assert!(!allowed_cdp_session(&"x".repeat(257)));
-        assert!(serde_json::from_str::<Command>(r#"{"id":1,"op":"cdp-subscribe","enabled":"true"}"#).is_err());
+        assert!(serde_json::from_str::<Command>(
+            r#"{"id":1,"op":"cdp-subscribe","enabled":"true"}"#
+        )
+        .is_err());
     }
 
     fn attach(sessions: &mut CdpSessions, id: &str, parent: Option<&str>) -> Option<Value> {
-        sessions.event("owned", "Target.attachedToTarget", &serde_json::json!({
-            "sessionId": id, "targetInfo": { "type": "iframe" }
-        }).to_string(), parent).unwrap()
+        sessions
+            .event(
+                "owned",
+                "Target.attachedToTarget",
+                &serde_json::json!({
+                    "sessionId": id, "targetInfo": { "type": "iframe" }
+                })
+                .to_string(),
+                parent,
+            )
+            .unwrap()
     }
 
     #[test]
     fn frame_events_preserve_owned_root_and_nested_sessions_and_expire_descendants() {
         let mut sessions = CdpSessions::default();
-        assert!(sessions.event("owned", "Runtime.executionContextsCleared", "{}", Some("foreign")).unwrap().is_none());
+        assert!(sessions
+            .event("owned", "Runtime.executionContextsCleared", "{}", Some("foreign"))
+            .unwrap()
+            .is_none());
         assert!(attach(&mut sessions, "child", None).is_some());
         assert!(attach(&mut sessions, "nested", Some("child")).is_some());
-        let event = sessions.event("owned", "Runtime.executionContextCreated", r#"{"context":{"id":42}}"#, Some("nested")).unwrap().unwrap();
+        let event = sessions
+            .event(
+                "owned",
+                "Runtime.executionContextCreated",
+                r#"{"context":{"id":42}}"#,
+                Some("nested"),
+            )
+            .unwrap()
+            .unwrap();
         assert_eq!(event["viewId"], "owned");
         assert_eq!(event["sessionId"], "nested");
         assert_eq!(event["params"]["context"]["id"], 42);
         let root = sessions.event("owned", "Page.frameAttached", "{}", None).unwrap().unwrap();
         assert!(root.get("sessionId").is_none());
-        sessions.event("owned", "Target.detachedFromTarget", r#"{"sessionId":"child"}"#, None).unwrap();
+        sessions
+            .event("owned", "Target.detachedFromTarget", r#"{"sessionId":"child"}"#, None)
+            .unwrap();
         assert!(!sessions.contains("child"));
         assert!(!sessions.contains("nested"));
-        assert!(sessions.event("owned", "Runtime.executionContextsCleared", "{}", Some("nested")).unwrap().is_none());
+        assert!(sessions
+            .event("owned", "Runtime.executionContextsCleared", "{}", Some("nested"))
+            .unwrap()
+            .is_none());
         assert!(attach(&mut sessions, "replacement", None).is_some());
         sessions.clear();
         assert!(!sessions.contains("replacement"));
@@ -386,27 +481,53 @@ mod tests {
     #[test]
     fn frame_sessions_cannot_be_worker_targets_duplicate_reparented_or_cyclic() {
         let mut sessions = CdpSessions::default();
-        assert!(sessions.event("owned", "Target.attachedToTarget", r#"{"sessionId":"worker","targetInfo":{"type":"worker"}}"#, None).unwrap().is_none());
+        assert!(sessions
+            .event(
+                "owned",
+                "Target.attachedToTarget",
+                r#"{"sessionId":"worker","targetInfo":{"type":"worker"}}"#,
+                None
+            )
+            .unwrap()
+            .is_none());
         assert!(!sessions.contains("worker"));
         assert!(attach(&mut sessions, "child", None).is_some());
         assert!(attach(&mut sessions, "nested", Some("child")).is_some());
         assert!(attach(&mut sessions, "child", Some("nested")).is_none());
         assert!(attach(&mut sessions, "child", Some("child")).is_none());
         assert!(attach(&mut sessions, "foreign", Some("unknown")).is_none());
-        sessions.event("owned", "Target.detachedFromTarget", r#"{"sessionId":"child"}"#, None).unwrap();
+        sessions
+            .event("owned", "Target.detachedFromTarget", r#"{"sessionId":"child"}"#, None)
+            .unwrap();
         assert!(!sessions.contains("nested"));
     }
 
     #[test]
     fn frame_event_and_session_limits_fail_without_publishing_partial_payloads() {
         let mut sessions = CdpSessions::default();
-        for i in 0..256 { attach(&mut sessions, &format!("s{i}"), None); }
-        assert!(sessions.event("owned", "Target.attachedToTarget", r#"{"sessionId":"overflow","targetInfo":{"type":"iframe"}}"#, None).is_err());
+        for i in 0..256 {
+            attach(&mut sessions, &format!("s{i}"), None);
+        }
+        assert!(sessions
+            .event(
+                "owned",
+                "Target.attachedToTarget",
+                r#"{"sessionId":"overflow","targetInfo":{"type":"iframe"}}"#,
+                None
+            )
+            .is_err());
         assert!(!sessions.contains("overflow"));
-        for params in ["[]".to_string(), "invalid".to_string(), serde_json::json!({"value":"\u{754c}".repeat(300_001)}).to_string()] {
+        for params in [
+            "[]".to_string(),
+            "invalid".to_string(),
+            serde_json::json!({"value":"\u{754c}".repeat(300_001)}).to_string(),
+        ] {
             assert!(sessions.event("owned", "Page.frameNavigated", &params, None).is_err());
         }
-        assert!(sessions.event("owned", "Network.requestWillBeSent", "{}", None).unwrap().is_none());
+        assert!(sessions
+            .event("owned", "Network.requestWillBeSent", "{}", None)
+            .unwrap()
+            .is_none());
     }
 
     #[test]
