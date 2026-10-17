@@ -28,6 +28,22 @@ export function mergeHistoryTurns(older: ClientConversationTurn[], newer: Client
     return [...indexed.values()].sort((a, b) => a.turnIndex! - b.turnIndex!);
 }
 
+const turnElementSelector = (index: number) => `[data-turn-index="${index}"]:not([data-pinned-section] *)`;
+
+/** Scrolls `sc` to the timeline (non-pinned) turn element and starts its highlight pulse. */
+export function scrollToTurnElement(sc: HTMLElement, index: number): boolean {
+    const el = sc.querySelector<HTMLElement>(turnElementSelector(index));
+    if (!el) return false;
+    const top = Math.max(0, sc.scrollTop + el.getBoundingClientRect().top - sc.getBoundingClientRect().top - 14);
+    if (typeof sc.scrollTo === 'function') sc.scrollTo({ top, behavior: 'smooth' });
+    else sc.scrollTop = top;
+    el.classList.remove('minimap-highlight-pulse');
+    void el.offsetWidth;
+    el.classList.add('minimap-highlight-pulse');
+    setTimeout(() => el.classList.remove('minimap-highlight-pulse'), 1100);
+    return true;
+}
+
 export function useChatHistoryPaging({
     enabled, scopeKey, client, workspaceId, processId, turns, turnsRef, setTurns,
     scrollRef, onReset,
@@ -60,7 +76,6 @@ export function useChatHistoryPaging({
     const failures = useRef(0);
     const intersecting = useRef(false);
     const navigation = useRef<number | null>(null);
-    const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const anchor = useRef<{ index: string; offset: number; bottom: boolean } | null>(null);
     const callbacks = useRef({ setTurns, onReset });
     callbacks.current = { setTurns, onReset };
@@ -91,7 +106,6 @@ export function useChatHistoryPaging({
             for (const request of requests.current) request.abort();
             requests.current.clear();
             if (retry.current) clearTimeout(retry.current);
-            if (highlightTimer.current) clearTimeout(highlightTimer.current);
         };
     }, [identity, client]);
 
@@ -227,32 +241,40 @@ export function useChatHistoryPaging({
     }, [enabled, processId, client, workspaceId, publish, captureAnchor, readProcess]);
     loadOlderRef.current = loadOlder;
 
-    const navigateRef = useRef<(index: number) => Promise<void>>(async () => {});
-    const navigateToTurn = useCallback(async (index: number) => {
-        if (!Number.isInteger(index) || index < 0) return;
+    const navigateRef = useRef<(index: number) => Promise<boolean>>(async () => false);
+    /**
+     * Loads older pages until turn `index` (canonical turnIndex) is present,
+     * then scrolls to and highlights it. With `accept`, a loaded turn that
+     * fails the check (or a failed load) resolves false without moving, and
+     * no background retry later jumps to an unverified turn.
+     */
+    const navigateToTurn = useCallback(async (index: number, accept?: (turn: ClientConversationTurn) => boolean): Promise<boolean> => {
+        if (!Number.isInteger(index) || index < 0) return false;
         const epoch = generation.current;
         navigation.current = index;
         if (!turnsRef.current.some(t => t.turnIndex === index)) setTarget(index);
         while (epoch === generation.current && navigation.current === index && !turnsRef.current.some(t => t.turnIndex === index) && historyRef.current?.hasMore) {
             if (!await loadOlder()) {
                 if (!historyRef.current?.hasMore) break;
-                return;
+                if (accept && navigation.current === index) {
+                    navigation.current = null;
+                    setTarget(null);
+                }
+                return false;
             }
         }
-        if (epoch !== generation.current || navigation.current !== index) return;
+        if (epoch !== generation.current || navigation.current !== index) return false;
         navigation.current = null;
         setTarget(null);
-        requestAnimationFrame(() => {
-            if (epoch !== generation.current) return;
+        if (accept) {
+            const turn = turnsRef.current.find(t => t.turnIndex === index);
+            if (!turn || !accept(turn)) return false;
+        }
+        return new Promise<boolean>(resolve => requestAnimationFrame(() => {
+            if (epoch !== generation.current) return resolve(false);
             const sc = scrollRef.current;
-            const el = sc?.querySelector<HTMLElement>(`[data-turn-index="${index}"]:not([data-pinned-section] *)`);
-            if (!sc || !el) return;
-            const top = Math.max(0, sc.scrollTop + el.getBoundingClientRect().top - sc.getBoundingClientRect().top - 14);
-            if (typeof sc.scrollTo === 'function') sc.scrollTo({ top, behavior: 'smooth' });
-            else sc.scrollTop = top;
-            el.classList.add('minimap-highlight-pulse');
-            highlightTimer.current = setTimeout(() => el.classList.remove('minimap-highlight-pulse'), 1100);
-        });
+            resolve(!!sc && scrollToTurnElement(sc, index));
+        }));
     }, [loadOlder, scrollRef, turnsRef]);
     navigateRef.current = navigateToTurn;
 

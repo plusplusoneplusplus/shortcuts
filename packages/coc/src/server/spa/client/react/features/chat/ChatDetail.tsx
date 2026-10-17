@@ -401,7 +401,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const attachedContext = useAttachedContext();
     useEffect(() => {
         for (const item of attachedContext.getItems()) {
-            if (item.kind === 'sentinel-todo') attachedContext.remove(item.id);
+            // Turn snippets reference this conversation's turnIndex; never carry them to another chat.
+            if (item.kind === 'sentinel-todo' || item.kind === 'turn') attachedContext.remove(item.id);
         }
     }, [taskId, workspaceId, sourceSelectionId, attachedContext.getItems, attachedContext.remove]);
     // Attaching a snippet (Quick Ask "Attach" pill, turn context menu) is a

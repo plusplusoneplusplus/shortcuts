@@ -25,7 +25,9 @@ reuse it as full history.
 An IntersectionObserver loads shared `PAGE_TURNS` pages through the owner client, with
 one in-flight read, layout anchoring and automatic capped backoff. Hash `turn`/`turnIndex`,
 `coc-jump-to-turn`, minimap and pinned navigation load contiguous pages before highlighting.
-Pins have an independent owner-scoped read; find searches loaded turns. `ChatDetail` mounts
+Pins have an independent owner-scoped read; find searches loaded turns. `navigateToTurn`
+resolves whether it highlighted the turn; an optional `accept` check rejects a loaded turn
+and cancels background retries so a failed verification never jumps later. `ChatDetail` mounts
 the conversation minimap only after hydration for non-Sentinel displayed modes, resolved
 from owner-scoped process state independently of pinned Sentinel origins. Owner/chat changes
 abort requests and discard delayed results. Flag-off hydration and rendering remain full-history.
@@ -593,7 +595,17 @@ receives `onAttachContext` — offers **Attach**, sending the selection to
 in `handleAttachContext`, which also focuses the composer (`richTextRef.current?.focus()`);
 the same wrapper serves the right-click menu path. Because the layer mounts only under
 `features.quickAskSidenotes`, the right-click **Attach as context** menu item is the
-flag-independent path.
+flag-independent path. `ChatDetail` drops attached `turn` items when its owner changes.
+
+A sent turn snippet is stored and sent as a leading
+`<context from="user|assistant" turn="N">` block (N is the canonical `turnIndex` in the
+same chat). `parseTurnReferenceBlocks` (`conversation/turnReference.ts`) reads only those
+leading blocks, so later or fenced `<context>` text stays message content; the user bubble
+shows a quote card (role label, Markdown-stripped excerpt, **Go to message**) and the raw
+view and copy keep the stored content. `ConversationArea.goToTurnReference` accepts only
+an earlier turn whose role and text match the quote (`turnMatchesReference`), loading
+older pages through `navigateToTurn` or scrolling loaded turns when paging is off;
+otherwise the card shows an inline unavailable notice.
 
 ### Notes editor mirror
 
