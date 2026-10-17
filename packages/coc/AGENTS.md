@@ -235,8 +235,10 @@ references before editing. Paths are package-relative.
   Notes indexes key by `(workspaceId, rootId)`; failed refreshes retain complete
   snapshots. Filesystem consumers use the shared `NativeWatchService`: workspace-owned
   subscriptions share one native OS watch per real root. Rust owns debounce, filtering
-  and recovery; full-rescan batches invalidate consumers. Tests inject batches, not
-  filesystem events. Server scopes isolate workspace removal/shutdown, including
+  and recovery; full-rescan batches invalidate consumers. Workflow/template watchers
+  share the workspace's `.vscode` root, never a recursive repository-root watch.
+  Tests inject batches, not filesystem events. Server scopes isolate workspace
+  removal/shutdown, including
   equal workspace IDs in different local servers; the final scope releases an idle
   native owner. One `RepoFiles` handle per
   workspace owns its file indexes/refresh; dispose it on root change, removal, or shutdown.
