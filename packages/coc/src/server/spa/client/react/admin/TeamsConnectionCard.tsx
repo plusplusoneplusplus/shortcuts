@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../ui';
-import { getRawApiBase } from '../utils/config';
 import { McpOAuthFlowController } from '../features/skills/mcpOAuthFlowController';
 import { SettingsCard } from './SettingsCard';
+import { useAdminDirtyGuard, useAdminServer, type AdminServerAccess } from './adminTarget';
 
 interface TeamsStatus {
     channelReadBackend?: 'graph';
@@ -101,10 +101,8 @@ const guidance: Record<string, string> = {
     unknown: 'Check bridge health and try reconnecting.',
 };
 
-const base = () => getRawApiBase();
-
-async function request<T>(path: string, body?: object): Promise<T> {
-    const response = await fetch(`${base()}${path}`, body
+async function request<T>(admin: AdminServerAccess, path: string, body?: object): Promise<T> {
+    const response = await admin.fetch(`${admin.rawApiBase}${path}`, body
         ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
         : undefined);
     if (!response.ok) {
@@ -115,6 +113,7 @@ async function request<T>(path: string, body?: object): Promise<T> {
 }
 
 export function TeamsConnectionCard() {
+    const adminServer = useAdminServer();
     const [status, setStatus] = useState<TeamsStatus | null>(null);
     const [serverUrl, setServerUrl] = useState('');
     const [teamName, setTeamName] = useState('');
@@ -150,14 +149,14 @@ export function TeamsConnectionCard() {
     );
     const load = useCallback(async (syncForm = false, offset = historyOffset) => {
         try {
-            const next = await request<TeamsStatus>('/messaging/teams/status');
+            const next = await request<TeamsStatus>(adminServer, '/messaging/teams/status');
             if (!mounted.current) return;
             setStatus(next);
             if (next.teamsBridgeObservabilityEnabled) {
                 const generation = ++historyRequest.current;
                 setHistoryLoading(true);
                 try {
-                    const page = await request<AttemptPage>(`/messaging/teams/attempts?offset=${offset}&limit=20`);
+                    const page = await request<AttemptPage>(adminServer, `/messaging/teams/attempts?offset=${offset}&limit=20`);
                     if (mounted.current && generation === historyRequest.current) {
                         setHistory(page);
                         setDisplayOffset(offset);
@@ -187,14 +186,14 @@ export function TeamsConnectionCard() {
         } catch (err) {
             if (mounted.current) setError(err instanceof Error ? err.message : String(err));
         }
-    }, [historyOffset]);
+    }, [adminServer, historyOffset]);
 
     useEffect(() => {
         if (!expandedId || !status?.teamsBridgeObservabilityEnabled) return;
         const generation = ++detailRequest.current;
         setDetail(null);
         setDetailError(null);
-        void request<{ attempt: AttemptDetail }>(`/messaging/teams/attempts/${encodeURIComponent(expandedId)}`)
+        void request<{ attempt: AttemptDetail }>(adminServer, `/messaging/teams/attempts/${encodeURIComponent(expandedId)}`)
             .then(response => {
                 if (mounted.current && generation === detailRequest.current) setDetail(response.attempt);
             })
@@ -203,7 +202,7 @@ export function TeamsConnectionCard() {
                     setDetailError(err instanceof Error ? err.message : String(err));
             });
         return () => { detailRequest.current++; };
-    }, [expandedId, history, status?.teamsBridgeObservabilityEnabled]);
+    }, [adminServer, expandedId, history, status?.teamsBridgeObservabilityEnabled]);
 
     useEffect(() => {
         mounted.current = true;
@@ -233,6 +232,28 @@ export function TeamsConnectionCard() {
         }
     };
 
+    // Machine switch guard: saves whichever of the endpoint/channel drafts changed.
+    useAdminDirtyGuard('teams-connection', {
+        label: 'Teams connection',
+        dirty,
+        saving: busy,
+        save: () => run(async () => {
+            if (status && serverUrl !== (status.serverUrl ?? '') && serverUrl.trim()) {
+                await request(adminServer, '/messaging/teams/server', { url: serverUrl.trim() });
+            }
+            if (status && (teamName !== status.teamName || channelName !== status.channelName || botName !== status.botName
+                || ic3Region !== (status.ic3Region ?? '') || enableTrouter !== (status.enableTrouter === true)
+                || outboundBackend !== (status.outboundBackend ?? 'graph'))) {
+                await request(adminServer, '/messaging/teams/config', {
+                    teamName: teamName.trim(), channelName: channelName.trim(), botName: botName.trim(),
+                    ic3Region: ic3Region || null,
+                    enableTrouter,
+                    outboundBackend,
+                });
+            }
+        }),
+    });
+
     const authenticate = async () => {
         setAuthorizing(true);
         setError(null);
@@ -240,12 +261,12 @@ export function TeamsConnectionCard() {
         try {
             const response = await request<{
                 requestId: string; authorizationUrl: string;
-            }>('/messaging/teams/auth/start', {});
+            }>(adminServer, '/messaging/teams/auth/start', {});
             if (!response.requestId) throw new Error('OAuth did not return a request ID');
             if (!response.authorizationUrl) throw new Error('OAuth did not return a sign-in link');
             setAuthorizationUrl(response.authorizationUrl);
             oauth.current.startPolling({
-                key: 'Microsoft Teams', requestId: response.requestId, apiBase: base(),
+                key: 'Microsoft Teams', requestId: response.requestId, apiBase: adminServer.rawApiBase,
                 isStale: () => !mounted.current,
             }, {
                 onCompleted: () => { setAuthorizationUrl(null); setAuthorizing(false); void load(); },
@@ -289,7 +310,7 @@ export function TeamsConnectionCard() {
                             placeholder="https://…/servers/mcp_TeamsServer" />
                         <Button size="sm" variant="secondary" className="ar-btn ar-btn-secondary ar-btn-sm"
                             disabled={busy || !serverUrl.trim()} onClick={() => void run(async () => {
-                                await request('/messaging/teams/server', { url: serverUrl.trim() });
+                                await request(adminServer, '/messaging/teams/server', { url: serverUrl.trim() });
                             })}>Save MCP endpoint</Button>
                     </div>
                     <div className="ar-teams-actions">
@@ -376,7 +397,7 @@ export function TeamsConnectionCard() {
                         <Button size="sm" variant="secondary" className="ar-btn ar-btn-secondary ar-btn-sm"
                             disabled={busy || !teamName.trim() || !channelName.trim() || !botName.trim()}
                             onClick={() => void run(async () => {
-                                await request('/messaging/teams/config', {
+                                await request(adminServer, '/messaging/teams/config', {
                                     teamName: teamName.trim(), channelName: channelName.trim(), botName: botName.trim(),
                                     ic3Region: ic3Region || null,
                                     enableTrouter,
@@ -395,12 +416,12 @@ export function TeamsConnectionCard() {
                         <Button size="sm" className="ar-btn ar-btn-primary ar-btn-sm"
                             disabled={busy || dirty || !status?.serverUrl || !['authenticated', 'expired'].includes(status.authStatus ?? '')}
                             onClick={() => void run(async () => {
-                                if (!status?.enabled) await request('/messaging/teams/config', { enabled: true });
-                                await request('/messaging/teams/reconnect', {});
+                                if (!status?.enabled) await request(adminServer, '/messaging/teams/config', { enabled: true });
+                                await request(adminServer, '/messaging/teams/reconnect', {});
                             })}>{status?.enabled ? 'Reconnect' : 'Enable & connect'}</Button>
                         {status?.enabled && <Button size="sm" variant="ghost" className="ar-btn ar-btn-ghost ar-btn-sm"
                             disabled={busy} onClick={() => void run(async () => {
-                                await request('/messaging/teams/config', { enabled: false });
+                                await request(adminServer, '/messaging/teams/config', { enabled: false });
                             })}>Disable</Button>}
                     </div>
                 </div>

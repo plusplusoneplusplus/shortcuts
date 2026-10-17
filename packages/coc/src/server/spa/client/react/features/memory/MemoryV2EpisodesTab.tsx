@@ -7,7 +7,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Spinner } from '../../ui';
-import { memoryV2Api, type MemoryEpisode, type MemoryEpisodeEventType } from './memoryV2Api';
+import { useAdminServer } from '../../admin/adminTarget';
+import { useMemoryV2Api, type MemoryEpisode, type MemoryEpisodeEventType } from './memoryV2Api';
 import { useApp } from '../../contexts/AppContext';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -110,6 +111,8 @@ interface MemoryV2EpisodesTabProps {
 }
 
 export function MemoryV2EpisodesTab({ wsId }: MemoryV2EpisodesTabProps) {
+    const memoryApi = useMemoryV2Api();
+    const adminServer = useAdminServer();
     const [episodes, setEpisodes] = useState<MemoryEpisode[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -119,13 +122,13 @@ export function MemoryV2EpisodesTab({ wsId }: MemoryV2EpisodesTabProps) {
         setLoading(true);
         setError(null);
         try {
-            setEpisodes(await memoryV2Api.listEpisodes(wsId, 100));
+            setEpisodes(await memoryApi.listEpisodes(wsId, 100));
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
         } finally {
             setLoading(false);
         }
-    }, [wsId]);
+    }, [memoryApi, wsId]);
 
     useEffect(() => { loadEpisodes(); }, [loadEpisodes]);
 
@@ -173,7 +176,7 @@ export function MemoryV2EpisodesTab({ wsId }: MemoryV2EpisodesTabProps) {
                     <EpisodeRow
                         key={ep.id}
                         episode={ep}
-                        onOpenProcess={handleOpenProcess}
+                        onOpenProcess={adminServer.isRemote ? undefined : handleOpenProcess}
                     />
                 ))}
             </div>

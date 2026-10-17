@@ -4,11 +4,12 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getSpaCocClient } from '../../api/cocClient';
 import { Button } from '../../ui';
 import type { DiscoveredSkill, ScanSkillsResponse } from '@plusplusoneplusplus/coc-client';
+import { useAdminServer } from '../../admin/adminTarget';
 
 export function SkillsBundledPanel() {
+    const adminServer = useAdminServer();
     const [bundledSkills, setBundledSkills] = useState<DiscoveredSkill[]>([]);
     const [loading, setLoading] = useState(true);
     const [installing, setInstalling] = useState(false);
@@ -20,11 +21,11 @@ export function SkillsBundledPanel() {
 
     const loadBundled = useCallback(() => {
         setLoading(true);
-        getSpaCocClient().skills.listBundledGlobal()
+        adminServer.client.skills.listBundledGlobal()
             .then(setBundledSkills)
             .catch(() => {})
             .finally(() => setLoading(false));
-    }, []);
+    }, [adminServer]);
 
     useEffect(() => { loadBundled(); }, [loadBundled]);
 
@@ -42,7 +43,7 @@ export function SkillsBundledPanel() {
         if (names.length === 0) return;
         setInstalling(true);
         try {
-            await getSpaCocClient().skills.installGlobal({ source: 'bundled', skills: names, replace: true });
+            await adminServer.client.skills.installGlobal({ source: 'bundled', skills: names, replace: true });
             setSelectedBundled(new Set());
             loadBundled();
         } catch {
@@ -50,39 +51,39 @@ export function SkillsBundledPanel() {
         } finally {
             setInstalling(false);
         }
-    }, [selectedBundled, loadBundled]);
+    }, [adminServer, selectedBundled, loadBundled]);
 
     const handleInstallAllBundled = useCallback(async () => {
         setInstalling(true);
         try {
-            await getSpaCocClient().skills.installGlobal({ source: 'bundled', replace: true });
+            await adminServer.client.skills.installGlobal({ source: 'bundled', replace: true });
             loadBundled();
         } catch {
             // ignore
         } finally {
             setInstalling(false);
         }
-    }, [loadBundled]);
+    }, [adminServer, loadBundled]);
 
     const handleScanUrl = useCallback(async () => {
         if (!sourceInput.trim()) return;
         setScanning(true);
         setScanResult(null);
         try {
-            const result = await getSpaCocClient().skills.scanGlobal({ url: sourceInput });
+            const result = await adminServer.client.skills.scanGlobal({ url: sourceInput });
             setScanResult(result);
         } catch {
             setScanResult({ success: false, error: 'Scan failed', skills: [] });
         } finally {
             setScanning(false);
         }
-    }, [sourceInput]);
+    }, [adminServer, sourceInput]);
 
     const handleInstallFromUrl = useCallback(async () => {
         if (!scanResult?.skills?.length) return;
         setInstalling(true);
         try {
-            await getSpaCocClient().skills.installGlobal({ url: sourceInput, skillsToInstall: scanResult.skills, replace: true });
+            await adminServer.client.skills.installGlobal({ url: sourceInput, skillsToInstall: scanResult.skills, replace: true });
             setScanResult(null);
             setSourceInput('');
             loadBundled();
@@ -91,7 +92,7 @@ export function SkillsBundledPanel() {
         } finally {
             setInstalling(false);
         }
-    }, [scanResult, sourceInput, loadBundled]);
+    }, [adminServer, scanResult, sourceInput, loadBundled]);
 
     if (loading) {
         return <div className="p-4 text-sm text-[#848484]">Loading gallery…</div>;

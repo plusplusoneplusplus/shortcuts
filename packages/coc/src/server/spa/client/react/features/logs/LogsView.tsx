@@ -15,7 +15,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react';
-import { getApiBase } from '../../utils/config';
+import { useAdminServer } from '../../admin/adminTarget';
 import { cn } from '../../ui/cn';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -236,6 +236,7 @@ function LogRow({ entry, search }: { entry: LogEntry; search: string }) {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export function LogsView() {
+    const adminServer = useAdminServer();
     const [entries, setEntries] = useState<LogEntry[]>([]);
     const [filterLevel, setFilterLevel] = useState<LogLevel | 'all'>('all');
     const [search, setSearch] = useState('');
@@ -282,7 +283,9 @@ export function LogsView() {
 
     // SSE connection — reconnects when sessionFilter changes
     useEffect(() => {
-        const apiBase = getApiBase();
+        const apiBase = adminServer.apiBase;
+        let disposed = false;
+        let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
         const params = sessionFilter ? `?sessionId=${encodeURIComponent(sessionFilter)}` : '';
         const streamUrl = `${apiBase}/logs/stream${params}`;
 
@@ -291,6 +294,7 @@ export function LogsView() {
         entriesRef.current = [];
 
         const connect = () => {
+            if (disposed) return;
             const es = new EventSource(streamUrl);
             sseRef.current = es;
             setSseStatus('connecting');
@@ -318,7 +322,7 @@ export function LogsView() {
                 setSseStatus('closed');
                 es.close();
                 // Reconnect after 3 s
-                setTimeout(connect, 3000);
+                if (!disposed) reconnectTimer = setTimeout(connect, 3000);
             };
 
             es.onopen = () => {
@@ -329,10 +333,14 @@ export function LogsView() {
         connect();
 
         return () => {
+            // A pending reconnect must not reopen a stream after unmount or a
+            // target change.
+            disposed = true;
+            if (reconnectTimer) clearTimeout(reconnectTimer);
             sseRef.current?.close();
             sseRef.current = null;
         };
-    }, [appendEntries, sessionFilter]);
+    }, [adminServer, appendEntries, sessionFilter]);
 
     // Auto-scroll when paused state changes from true→false
     useEffect(() => {

@@ -10,7 +10,8 @@ import { readSseStream } from '../utils/readSseStream';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button, Spinner } from '../ui';
 import { Dialog } from '../ui/Dialog';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../api/cocClient';
+import { useAdminServer } from './adminTarget';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -112,6 +113,7 @@ interface DirImportSummary {
 // ---------------------------------------------------------------------------
 
 function DirectoryImportSection() {
+    const adminServer = useAdminServer();
     const [phase, setPhase] = useState<DirImportPhase>('idle');
     const [dirPath, setDirPath] = useState('');
     const [scanning, setScanning] = useState(false);
@@ -130,7 +132,7 @@ function DirectoryImportSection() {
         setScanning(true);
         setError(null);
         try {
-            const data = await getSpaCocClient().admin.scanStorageDirectory({ path: dirPath.trim() });
+            const data = await adminServer.client.admin.scanStorageDirectory({ path: dirPath.trim() });
             setMatchResult(data);
             setPhase('preview');
         } catch (err: unknown) {
@@ -147,8 +149,8 @@ function DirectoryImportSection() {
         setError(null);
 
         try {
-            const tokenData = await getSpaCocClient().admin.getStorageImportDirectoryToken();
-            const res = await getSpaCocClient().admin.importStorageDirectoryStream({
+            const tokenData = await adminServer.client.admin.getStorageImportDirectoryToken();
+            const res = await adminServer.client.admin.importStorageDirectoryStream({
                 token: tokenData.token,
                 path: dirPath.trim(),
             });
@@ -348,6 +350,7 @@ function DirectoryImportSection() {
 // ---------------------------------------------------------------------------
 
 export default function StorageSection() {
+    const adminServer = useAdminServer();
     const [phase, setPhase] = useState<Phase>('status');
     const [status, setStatus] = useState<StorageStatus | null>(null);
     const [loading, setLoading] = useState(true);
@@ -370,14 +373,14 @@ export default function StorageSection() {
     const loadStatus = useCallback(async () => {
         setLoading(true);
         try {
-            const data = await getSpaCocClient().admin.getStorageStatus();
+            const data = await adminServer.client.admin.getStorageStatus();
             setStatus(data);
         } catch {
             // silently ignore — status section will show a loading state
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [adminServer]);
 
     useEffect(() => { loadStatus(); }, [loadStatus]);
 
@@ -402,7 +405,7 @@ export default function StorageSection() {
         setPhase('confirm');
         setAcquiringToken(true);
         try {
-            const data = await getSpaCocClient().admin.getStorageMigrateToken();
+            const data = await adminServer.client.admin.getStorageMigrateToken();
             setToken(data.token);
         } catch {
             setToken(null);
@@ -424,7 +427,7 @@ export default function StorageSection() {
         abortRef.current = controller;
 
         try {
-            const res = await getSpaCocClient().admin.migrateStorageStream({
+            const res = await adminServer.client.admin.migrateStorageStream({
                 token,
                 skipValidation,
                 signal: controller.signal,
@@ -530,7 +533,7 @@ export default function StorageSection() {
     const handleCancel = async () => {
         abortRef.current?.abort();
         try {
-            await getSpaCocClient().admin.cancelStorageMigration();
+            await adminServer.client.admin.cancelStorageMigration();
         } catch { /* ignore */ }
         setLogs(prev => [...prev, 'Migration cancelled. Rolling back…']);
         setResult({ success: false, error: 'Migration cancelled by user' });
@@ -546,7 +549,7 @@ export default function StorageSection() {
         setPolling(true);
         const poll = setInterval(async () => {
             try {
-                await getSpaCocClient().admin.getStorageStatus();
+                await adminServer.client.admin.getStorageStatus();
                 clearInterval(poll);
                 pollRef.current = null;
                 window.location.reload();

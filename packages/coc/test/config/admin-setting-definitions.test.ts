@@ -683,6 +683,20 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { railGitSummary: true } }).railGitSummaryEnabled).toBe(true);
     });
 
+    it('exposes the Desktop Admin machine selector as a default-off experimental feature', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.adminMachineSwitch');
+        expect(def, 'features.adminMachineSwitch must be an admin setting').toBeDefined();
+        expect(def!.value).toEqual({ kind: 'boolean' });
+        expect(def!.default).toBe(false);
+        expect(def!.runtime).toBe('live');
+        expect(def!.runtimeFlag).toBe('adminMachineSwitchEnabled');
+        expect(def!.ui!.badge).toBe('experimental');
+        expect(def!.ui!.hint).toMatch(/disabled by default/i);
+        expect(DEFAULT_CONFIG.features.adminMachineSwitch).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).adminMachineSwitchEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({ features: { adminMachineSwitch: true } }).adminMachineSwitchEnabled).toBe(true);
+    });
+
     it('exposes the collapsed-rail Admin and quota shortcuts as a default-on Appearance setting', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.railStatusActions');
         expect(def, 'features.railStatusActions must be an admin setting').toBeDefined();
@@ -870,6 +884,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.focusedDiff': 'features',
         'features.gitCrossCloneCherryPick': 'features',
         'features.nativeCliSessions': 'features',
+        'features.adminMachineSwitch': 'features',
         'features.repoGroupExclusiveWriter': 'features',
     };
 

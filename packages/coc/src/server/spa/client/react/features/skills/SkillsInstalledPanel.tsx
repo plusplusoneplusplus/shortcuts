@@ -4,13 +4,14 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getSpaCocClient } from '../../api/cocClient';
 import { Button } from '../../ui';
 import { SkillListItem } from '../../shared';
 import type { SkillInfo } from '../../shared';
+import { useAdminServer } from '../../admin/adminTarget';
 
 
 export function SkillsInstalledPanel() {
+    const adminServer = useAdminServer();
     const [skills, setSkills] = useState<SkillInfo[]>([]);
     const [loading, setLoading] = useState(true);
     const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
@@ -21,17 +22,17 @@ export function SkillsInstalledPanel() {
 
     const loadSkills = useCallback(() => {
         setLoading(true);
-        getSpaCocClient().skills.listGlobal()
+        adminServer.client.skills.listGlobal()
             .then(setSkills)
             .catch(() => {})
             .finally(() => setLoading(false));
-    }, []);
+    }, [adminServer]);
 
     const loadConfig = useCallback(() => {
-        getSpaCocClient().skills.getGlobalConfig()
+        adminServer.client.skills.getGlobalConfig()
             .then(data => setDisabledSkills(Array.isArray(data.globalDisabledSkills) ? data.globalDisabledSkills : []))
             .catch(() => {});
-    }, []);
+    }, [adminServer]);
 
     useEffect(() => {
         loadSkills();
@@ -46,22 +47,22 @@ export function SkillsInstalledPanel() {
         }
         setExpandedSkill(name);
         setDetailLoading(true);
-        getSpaCocClient().skills.detailGlobal(name)
+        adminServer.client.skills.detailGlobal(name)
             .then(data => setSkillDetail(data.skill ?? null))
             .catch(() => setSkillDetail(null))
             .finally(() => setDetailLoading(false));
-    }, [expandedSkill]);
+    }, [adminServer, expandedSkill]);
 
     const handleToggleSkill = useCallback((name: string, enabled: boolean) => {
         const updated = enabled
             ? disabledSkills.filter(s => s !== name)
             : [...disabledSkills, name];
         setDisabledSkills(updated);
-        getSpaCocClient().skills.updateGlobalConfig({ globalDisabledSkills: updated }).catch(() => {});
-    }, [disabledSkills]);
+        adminServer.client.skills.updateGlobalConfig({ globalDisabledSkills: updated }).catch(() => {});
+    }, [adminServer, disabledSkills]);
 
     const handleDeleteSkill = useCallback((name: string) => {
-        getSpaCocClient().skills.deleteGlobal(name)
+        adminServer.client.skills.deleteGlobal(name)
             .then(() => {
                 setSkills(prev => prev.filter(s => s.name !== name));
                 setDeleteConfirmName(null);
@@ -71,7 +72,7 @@ export function SkillsInstalledPanel() {
                 }
             })
             .catch(() => {});
-    }, [expandedSkill]);
+    }, [adminServer, expandedSkill]);
 
     if (loading) {
         return <div className="p-4 text-sm text-[#848484]">Loading global skills…</div>;

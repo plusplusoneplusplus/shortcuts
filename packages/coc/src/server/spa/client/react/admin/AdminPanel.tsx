@@ -7,7 +7,7 @@
  */
 
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../api/cocClient';
 import { useApp } from '../contexts/AppContext';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
 import { isDesktopShell } from '../hooks/ui/useDesktopShell';
@@ -26,7 +26,8 @@ import { SettingsCard } from './SettingsCard';
 import { BrowserSectionNav, DesktopBrowserPreferences } from './DesktopBrowserPreferences';
 import { AdminRow, AdminToggle, SourceBadge } from './adminControls';
 
-import { isContainerMode, isServersEnabled } from '../utils/config';
+import { isContainerMode } from '../utils/config';
+import { AdminMachineSelector, useAdminDirtyGuard, useAdminLocalBadge, useAdminServer } from './adminTarget';
 import { AIProviderPage } from './AIProviderPage';
 import {
     ALL_TOOL_NAV_ITEMS,
@@ -44,6 +45,18 @@ import { useAdminFeatureSettings } from './useAdminFeatureSettings';
 import { useAdminChatStyleSettings } from './useAdminChatStyleSettings';
 import { FeatureSettingsCard, TabFeatureSettingsCard } from './FeatureSettingsCard';
 import type { FeatureSettingTab } from '../../../../../config/admin-setting-definitions';
+
+const GUARDED_FEATURE_TABS: { tab: FeatureSettingTab; label: string }[] = [
+    { tab: 'ai', label: 'AI & Execution features' },
+    { tab: 'chat', label: 'Chat features' },
+    { tab: 'sentinel', label: 'Sentinel features' },
+    { tab: 'appearance', label: 'Interface features' },
+    { tab: 'editors', label: 'Editor features' },
+    { tab: 'features', label: 'Workspace features' },
+    { tab: 'integrations', label: 'Integration features' },
+    { tab: 'teams', label: 'Teams features' },
+    { tab: 'browser', label: 'Browser features' },
+];
 import { ChatStyleSettingsCard } from './ChatStyleSettingsCard';
 import { useAdminConfigForm } from './useAdminConfigForm';
 import { useAdminPreferencesForm } from './useAdminPreferencesForm';
@@ -87,6 +100,9 @@ export function AdminPanel() {
     const { toasts, addToast, removeToast } = useToast();
     const { state, dispatch } = useApp();
     const { updateOnboarding } = useOnboardingPreferences();
+    // Server-owned reads/writes go to the Admin target; see adminTarget.tsx.
+    const adminServer = useAdminServer();
+    const localBadge = useAdminLocalBadge('Global');
     const activeTab = state.activeAdminSubTab;
     // Settings sub-tab (only meaningful when activeTab === 'settings'). The
     // initial value is derived from the URL so refreshing on
@@ -130,7 +146,8 @@ export function AdminPanel() {
     }, []);
 
     useEffect(() => {
-        if (!state.onboardingProgress?.settingsVisited) {
+        // Onboarding progress belongs to this desktop's dashboard, not the target.
+        if (!adminServer.isRemote && !state.onboardingProgress?.settingsVisited) {
             void updateOnboarding({ settingsVisited: true }).catch(() => { });
         }
     }, []);
@@ -182,6 +199,25 @@ export function AdminPanel() {
         activityActive: activeDashboardTab === 'dreams-admin' && !isContainerMode(),
     });
     const serverRuntime = useServerRuntime({ addToast, onSaved: setConfig });
+
+    // Every unsaved server-owned draft in the shell, whichever page is
+    // visible, guards a machine switch (Save / Discard / Cancel).
+    useAdminDirtyGuard('ai-exec', { label: 'AI & Execution', dirty: configFormCtl.aiExecDirty, saving: configFormCtl.aiExecSaving, save: configFormCtl.handleSaveAiExec });
+    useAdminDirtyGuard('chat', { label: 'Chat', dirty: configFormCtl.chatDirty, saving: configFormCtl.chatSaving, save: configFormCtl.handleSaveChat });
+    useAdminDirtyGuard('chat-style', { label: 'Chat style', dirty: chatStyle.dirty, saving: chatStyle.saving, save: chatStyle.handleSave });
+    useAdminDirtyGuard('appearance', { label: 'Appearance', dirty: prefsCtl.appearanceDirty, saving: prefsCtl.appearanceSaving, save: prefsCtl.handleSaveAppearance });
+    useAdminDirtyGuard('default-provider', { label: 'AI Provider', dirty: providers.defaultProviderDirty, saving: providers.defaultProviderSaving, save: providers.handleSaveDefaultProvider });
+    useAdminDirtyGuard('dreams', { label: 'Dreams', dirty: dreams.dreamsDirty, saving: dreams.dreamsSaving, save: dreams.handleSaveDreams });
+    useAdminDirtyGuard('server-name', { label: 'Server name', dirty: serverRuntime.serverNameDirty, saving: serverRuntime.serverNameSaving, save: serverRuntime.handleSaveServerName });
+    const dirtyFeatureTabs = GUARDED_FEATURE_TABS.filter(({ tab }) => features.isTabDirty(tab));
+    useAdminDirtyGuard('features', {
+        label: dirtyFeatureTabs.map(t => t.label).join(', ') || 'Feature settings',
+        dirty: dirtyFeatureTabs.length > 0,
+        saving: features.savingTab !== null,
+        save: async () => {
+            for (const { tab } of dirtyFeatureTabs) await features.handleSaveTab(tab);
+        },
+    });
 
     // Ctrl/Cmd+S saves every dirty draft card on the visible admin page: a
     // Settings section card plus its registry feature card, Server display
@@ -250,7 +286,7 @@ export function AdminPanel() {
     const loadStats = useCallback(async () => {
         setStatsLoading(true);
         try {
-            const data = await getSpaCocClient().admin.getDataStats({ includeWikis: true });
+            const data = await adminServer.client.admin.getDataStats({ includeWikis: true });
             setStats({
                 processCount: data.processCount ?? data.processes ?? null,
                 wikiCount: data.wikiCount ?? data.wikis ?? null,
@@ -261,13 +297,13 @@ export function AdminPanel() {
         } finally {
             setStatsLoading(false);
         }
-    }, []);
+    }, [adminServer]);
 
     const loadConfig = useCallback(async () => {
         setConfigLoading(true);
         setConfigError(null);
         try {
-            const data = await getSpaCocClient().admin.getConfig();
+            const data = await adminServer.client.admin.getConfig();
             setConfig(data);
             const resolved = data.resolved ?? {};
             configFormCtl.hydrate(resolved);
@@ -287,23 +323,23 @@ export function AdminPanel() {
         } finally {
             setConfigLoading(false);
         }
-    }, [configFormCtl.hydrate, prefsCtl.hydrateFromConfig, features.hydrate, chatStyle.hydrate, dreams.hydrate, providers.hydrate]);
+    }, [adminServer, configFormCtl.hydrate, prefsCtl.hydrateFromConfig, features.hydrate, chatStyle.hydrate, dreams.hydrate, providers.hydrate]);
 
     const loadPreferences = useCallback(async () => {
         try {
-            const data = await getSpaCocClient().preferences.getGlobal();
+            const data = await adminServer.client.preferences.getGlobal();
             prefsCtl.hydrateFromPreferences(data);
         } catch { /* ignore */ }
-    }, [prefsCtl.hydrateFromPreferences]);
+    }, [adminServer, prefsCtl.hydrateFromPreferences]);
 
     useEffect(() => {
         loadStats();
         loadConfig();
         loadPreferences();
-        getSpaCocClient().admin.getVersion()
+        adminServer.client.admin.getVersion()
             .then(data => { if (data) setVersionInfo(data); })
             .catch(() => { });
-    }, [loadStats, loadConfig, loadPreferences]);
+    }, [adminServer, loadStats, loadConfig, loadPreferences]);
 
     // Hydrate the server display-name field whenever the config (re)loads.
     useEffect(() => {
@@ -371,7 +407,7 @@ export function AdminPanel() {
 
     // Sidebar nav groups are pure policy — container mode and the runtime
     // `serversEnabled` gate are passed as explicit inputs (see adminNavigation).
-    const navGroups = buildAdminNavGroups({ isContainer: isContainerMode(), serversEnabled: isServersEnabled() });
+    const navGroups = buildAdminNavGroups({ isContainer: isContainerMode(), serversEnabled: adminServer.serversEnabled });
 
     const handleNavItemClick = useCallback((item: AdminNavItem) => {
         switch (item.action.kind) {
@@ -414,7 +450,7 @@ export function AdminPanel() {
                             <div className="ar-brand-logo" aria-hidden="true" />
                             <div className="ar-brand-text">
                                 <span className="ar-brand-name">CoC Admin</span>
-                                <span className="ar-brand-sub">{versionInfo?.version ? `v${versionInfo.version}` : 'Local server'}</span>
+                                <span className="ar-brand-sub">{adminServer.isRemote ? `${adminServer.label}${versionInfo?.version ? ` · v${versionInfo.version}` : ''}` : versionInfo?.version ? `v${versionInfo.version}` : 'Local server'}</span>
                             </div>
                         </div>
                     </div>
@@ -503,6 +539,7 @@ export function AdminPanel() {
                                 </optgroup>
                             ))}
                         </select>
+                        <AdminMachineSelector />
                     </header>
 
                     {isToolEmbedded && activeToolItem ? (
@@ -703,7 +740,7 @@ export function AdminPanel() {
                                                 <>
                                                     <SettingsCard
                                                         title="Link handlers"
-                                                        badge="Global"
+                                                        badge={localBadge}
                                                         description="Open specific URLs in desktop apps instead of a browser tab. Requires the desktop app to be installed."
                                                         data-testid="settings-link-handlers"
                                                     >
@@ -755,7 +792,7 @@ export function AdminPanel() {
                                                     </AdminRow>
                                                     {SHOW_WELCOME_TUTORIAL && (
                                                         <AdminRow
-                                                            name="Welcome Tour"
+                                                            name={localBadge === 'This desktop' ? 'Welcome Tour (this desktop)' : 'Welcome Tour'}
                                                             hint="Re-show the welcome modal and reset onboarding progress."
                                                         >
                                                             <button

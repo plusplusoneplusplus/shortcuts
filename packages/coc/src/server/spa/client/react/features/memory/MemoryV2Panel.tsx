@@ -11,7 +11,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Spinner } from '../../ui';
-import { memoryV2Api, type MemoryScopeInfo } from './memoryV2Api';
+import { useAdminServer } from '../../admin/adminTarget';
+import { useMemoryV2Api, type MemoryScopeInfo } from './memoryV2Api';
 import { MemoryV2FactsTab } from './MemoryV2FactsTab';
 import { MemoryV2ReviewTab } from './MemoryV2ReviewTab';
 import { MemoryV2EpisodesTab } from './MemoryV2EpisodesTab';
@@ -30,6 +31,8 @@ interface WipeConfirmDialogProps {
 }
 
 function WipeConfirmDialog({ scopeLabel, wsId, onClose, onWiped }: WipeConfirmDialogProps) {
+    const memoryApi = useMemoryV2Api();
+    const adminServer = useAdminServer();
     const [wiping, setWiping] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -37,7 +40,7 @@ function WipeConfirmDialog({ scopeLabel, wsId, onClose, onWiped }: WipeConfirmDi
         setWiping(true);
         setError(null);
         try {
-            await memoryV2Api.wipe(wsId);
+            await memoryApi.wipe(wsId);
             onWiped();
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
@@ -56,7 +59,7 @@ function WipeConfirmDialog({ scopeLabel, wsId, onClose, onWiped }: WipeConfirmDi
                 <h3 className="text-sm font-semibold text-red-600 dark:text-red-400">Wipe memory</h3>
                 <p className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">
                     This will permanently delete <strong>all facts and episodes</strong> from{' '}
-                    <strong>{scopeLabel}</strong>.
+                    <strong>{scopeLabel}</strong>{adminServer.label ? <> on <strong>{adminServer.label}</strong></> : null}.
                 </p>
                 <p className="text-xs text-[#888]">This action cannot be undone.</p>
                 {error && <p className="text-xs text-red-500">{error}</p>}
@@ -85,6 +88,7 @@ interface MemoryV2SettingsTabProps {
 }
 
 function MemoryV2SettingsTab({ scope, onToggleEnabled, onWiped }: MemoryV2SettingsTabProps) {
+    const memoryApi = useMemoryV2Api();
     const [showWipe, setShowWipe] = useState(false);
     const [exportLoading, setExportLoading] = useState(false);
     const [exportError, setExportError] = useState<string | null>(null);
@@ -109,7 +113,7 @@ function MemoryV2SettingsTab({ scope, onToggleEnabled, onWiped }: MemoryV2Settin
         setExportLoading(true);
         setExportError(null);
         try {
-            const data = await memoryV2Api.exportData(wsId);
+            const data = await memoryApi.exportData(wsId);
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -249,6 +253,7 @@ interface MemoryV2PanelProps {
 }
 
 export function MemoryV2Panel({ initialTab = 'facts', initialScopeId, onInitialScopeConsumed }: MemoryV2PanelProps) {
+    const memoryApi = useMemoryV2Api();
     const [scopes, setScopes] = useState<MemoryScopeInfo[]>([]);
     const [scopesLoading, setScopesLoading] = useState(true);
     const [scopesError, setScopesError] = useState<string | null>(null);
@@ -261,7 +266,7 @@ export function MemoryV2Panel({ initialTab = 'facts', initialScopeId, onInitialS
         setScopesLoading(true);
         setScopesError(null);
         try {
-            const result = await memoryV2Api.listScopes();
+            const result = await memoryApi.listScopes();
             setScopes(result);
             setSelectedScopeId(prev => {
                 const target = requestedScopeId ?? prev;
@@ -273,7 +278,7 @@ export function MemoryV2Panel({ initialTab = 'facts', initialScopeId, onInitialS
         } finally {
             setScopesLoading(false);
         }
-    }, []);
+    }, [memoryApi]);
 
     useEffect(() => { loadScopes(initialScopeId); }, [loadScopes, initialScopeId]);
 
@@ -297,21 +302,21 @@ export function MemoryV2Panel({ initialTab = 'facts', initialScopeId, onInitialS
         if (!selectedScope) return;
         if (selectedScope.type === 'global') {
             if (enabled) {
-                await memoryV2Api.enableGlobalScope();
+                await memoryApi.enableGlobalScope();
             } else {
-                await memoryV2Api.disableGlobalScope();
+                await memoryApi.disableGlobalScope();
             }
         } else {
             const wid = selectedScope.workspaceId!;
             if (enabled) {
-                await memoryV2Api.enableWorkspaceScope(wid);
+                await memoryApi.enableWorkspaceScope(wid);
             } else {
-                await memoryV2Api.disableWorkspaceScope(wid);
+                await memoryApi.disableWorkspaceScope(wid);
             }
         }
-        const result = await memoryV2Api.listScopes();
+        const result = await memoryApi.listScopes();
         setScopes(result);
-    }, [selectedScope]);
+    }, [memoryApi, selectedScope]);
 
     const handleWiped = useCallback(() => {
         setContentVersion(v => v + 1);

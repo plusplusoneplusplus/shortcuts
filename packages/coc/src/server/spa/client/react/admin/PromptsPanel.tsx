@@ -7,9 +7,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Spinner } from '../ui';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../api/cocClient';
 import { PromptCard } from './PromptCard';
 import { GlobalSystemPromptEditor } from './GlobalSystemPromptEditor';
+import { useAdminServer } from './adminTarget';
 
 interface BuiltInPrompt {
     id: string;
@@ -31,38 +32,39 @@ interface PromptsPanelProps {
 const GROUP_ORDER = ['Pipeline', 'Memory', 'UI'];
 
 export function PromptsPanel({ onError }: PromptsPanelProps) {
+    const adminServer = useAdminServer();
     const [prompts, setPrompts] = useState<BuiltInPrompt[]>([]);
     const [loading, setLoading] = useState(true);
 
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const data = await getSpaCocClient().admin.getPrompts();
+            const data = await adminServer.client.admin.getPrompts();
             setPrompts(Object.values(data));
         } catch (err: unknown) {
             onError(getSpaCocClientErrorMessage(err, 'Failed to load prompts'));
         } finally {
             setLoading(false);
         }
-    }, [onError]);
+    }, [adminServer, onError]);
 
     useEffect(() => {
         load();
     }, [load]);
 
     const handleSave = useCallback(async (id: string, text: string) => {
-        await getSpaCocClient().admin.updatePrompt(id, { text });
+        await adminServer.client.admin.updatePrompt(id, { text });
         setPrompts(prev => prev.map(p =>
             p.id === id ? { ...p, overrideText: text, hasOverride: true } : p
         ));
-    }, []);
+    }, [adminServer]);
 
     const handleReset = useCallback(async (id: string) => {
-        await getSpaCocClient().admin.resetPromptOverride(id);
+        await adminServer.client.admin.resetPromptOverride(id);
         setPrompts(prev => prev.map(p =>
             p.id === id ? { ...p, overrideText: undefined, hasOverride: false } : p
         ));
-    }, []);
+    }, [adminServer]);
 
     const grouped = new Map<string, BuiltInPrompt[]>();
     for (const p of prompts) {

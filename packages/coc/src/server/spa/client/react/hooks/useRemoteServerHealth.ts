@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { RemoteServer, RemoteServerHealth } from '../utils/serverRegistry';
+import type { CocClient } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient } from '../api/cocClient';
 
 const POLL_INTERVAL_MS = 30_000;
@@ -21,9 +22,9 @@ export interface UseRemoteServerHealthResult {
     refetch: () => void;
 }
 
-async function checkServer(server: RemoteServer): Promise<ServerHealthState> {
+async function checkServer(server: RemoteServer, owner: CocClient): Promise<ServerHealthState> {
     try {
-        const body = await getSpaCocClient().servers.getHealth(server.id);
+        const body = await owner.servers.getHealth(server.id);
         return {
             server,
             kind: server.kind,
@@ -51,7 +52,8 @@ async function checkServer(server: RemoteServer): Promise<ServerHealthState> {
     }
 }
 
-export function useRemoteServerHealth(servers: RemoteServer[]): UseRemoteServerHealthResult {
+/** `owner` is the server whose registry lists `servers`; defaults to the page origin. */
+export function useRemoteServerHealth(servers: RemoteServer[], owner?: CocClient): UseRemoteServerHealthResult {
     const [healthStates, setHealthStates] = useState<ServerHealthState[]>(
         () => servers.map(s => ({ server: s, kind: s.kind, status: 'checking' as const })),
     );
@@ -71,7 +73,8 @@ export function useRemoteServerHealth(servers: RemoteServer[]): UseRemoteServerH
         }
 
         const poll = async () => {
-            const results = await Promise.all(servers.map(checkServer));
+            const client = owner ?? getSpaCocClient();
+            const results = await Promise.all(servers.map(server => checkServer(server, client)));
             if (cancelledRef.current) { return; }
             setHealthStates(results);
         };
@@ -84,7 +87,7 @@ export function useRemoteServerHealth(servers: RemoteServer[]): UseRemoteServerH
             clearInterval(id);
             pollRef.current = undefined;
         };
-    }, [servers]);
+    }, [servers, owner]);
 
     const refetch = useCallback(() => { pollRef.current?.(); }, []);
 

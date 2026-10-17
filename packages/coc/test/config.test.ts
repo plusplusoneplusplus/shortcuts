@@ -1207,6 +1207,7 @@ timeout: 300
                 '  schedulesInScheduledSlide: true',
                 '  chatFolders: true',
                 '  railGitSummary: true',
+                '  adminMachineSwitch: true',
                 '  railManualRefresh: true',
                 '  chatHistoryPaging: true',
                 '  railStatusActions: true',
@@ -1525,6 +1526,7 @@ timeout: 300
                     "enabled": false,
                   },
                   "features": {
+                    "adminMachineSwitch": false,
                     "arxivPaperIngest": false,
                     "autoAgentProviderRouting": false,
                     "autoMemoryPromotion": true,
@@ -1762,6 +1764,7 @@ timeout: 300
                   "dreams.timeoutMs": "default",
                   "effortLevels.enabled": "default",
                   "excalidraw.enabled": "default",
+                  "features.adminMachineSwitch": "default",
                   "features.arxivPaperIngest": "default",
                   "features.autoAgentProviderRouting": "default",
                   "features.autoMemoryPromotion": "file",

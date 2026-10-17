@@ -45,7 +45,9 @@ references before editing. Paths are package-relative.
   not files/duplicated route logic. Invalidate/broadcast both scopes.
 - Workspace/process REST, SSE, and WebSockets target their owner:
   use `getCocClientForWorkspace`, `useCocClient(ref)`, or the clone-routed helpers.
-  Unresolved remote selections never fall through locally; admin stays page-origin.
+  Unresolved remote selections never fall through locally. Server-owned Admin code
+  uses `useAdminServer()` (`admin/adminTarget.tsx`), never `getSpaCocClient()`, so
+  the default-off Desktop machine switch can target a registered remote.
   ChatDetail owner WebSocket refreshes coalesce matching notifications per microtask
   batch; preserve later refreshes and discard scheduled work on effect cleanup.
   Dashboard discovery uses `ProcessWebSocketServer.dashboardDiscovery` for targeted,

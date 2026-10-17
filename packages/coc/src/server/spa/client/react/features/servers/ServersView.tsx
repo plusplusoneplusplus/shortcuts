@@ -12,7 +12,7 @@ import {
 } from '../../utils/serverRegistry';
 import { useRemoteServerHealth } from '../../hooks/useRemoteServerHealth';
 import { getHostname } from '../../utils/config';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useAdminServer } from '../../admin/adminTarget';
 import { Button, Dialog } from '../../ui';
 import { ServerCard, formatUptime, timeAgo, type ServerCardHealth } from './ServerCard';
 import { AddServerDialog, EditServerDialog } from './AddServerDialog';
@@ -654,6 +654,11 @@ function DetailPanel({
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export function ServersView() {
+    // In Admin this manages the registry of the machine being configured.
+    const adminServer = useAdminServer();
+    const owner = adminServer.isRemote ? adminServer.client : undefined;
+    // Spread so page-origin calls keep their exact original arity.
+    const ownerArg: [] | [typeof adminServer.client] = owner ? [owner] : [];
     const [servers, setServers] = useState<RemoteServer[]>([]);
     const [addOpen, setAddOpen] = useState(false);
     const [editServerId, setEditServerId] = useState<string | undefined>();
@@ -677,19 +682,19 @@ export function ServersView() {
 
     useEffect(() => {
         let cancelled = false;
-        listRemoteServers()
+        listRemoteServers(...ownerArg)
             .then(result => { if (!cancelled) { setServers(result); setLoadError(undefined); } })
             .catch(error => { if (!cancelled) { setLoadError(error instanceof Error ? error.message : String(error)); } });
         return () => { cancelled = true; };
-    }, []);
+    }, [owner]);
 
-    const { healthStates: remoteHealthStates, refetch: refetchHealth } = useRemoteServerHealth(servers);
+    const { healthStates: remoteHealthStates, refetch: refetchHealth } = useRemoteServerHealth(servers, owner);
     const editServer = editServerId ? servers.find(s => s.id === editServerId) : undefined;
 
     const [localHealth, setLocalHealth] = useState<ServerCardHealth>(() => ({
         server: { id: 'local', label: 'This Server', url: '' },
         status: 'checking',
-        serverName: getHostname(),
+        serverName: adminServer.isRemote ? adminServer.label : getHostname(),
     }));
 
     useEffect(() => {
@@ -699,7 +704,7 @@ export function ServersView() {
             const controller = new AbortController();
             const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
             try {
-                const client = getSpaCocClient();
+                const client = adminServer.client;
                 const [health, ver] = await Promise.all([
                     client.health.get({ signal: controller.signal }),
                     client.admin.getVersion({ signal: controller.signal }),
@@ -728,7 +733,7 @@ export function ServersView() {
         void poll();
         const id = setInterval(() => { void poll(); }, LOCAL_POLL_INTERVAL_MS);
         return () => { cancelled = true; clearInterval(id); };
-    }, []);
+    }, [adminServer]);
 
     const localUnified: UnifiedHealth = useMemo(() => ({
         ...localHealth,
@@ -779,20 +784,20 @@ export function ServersView() {
         : undefined;
 
     const handleAdd = async (fields: RemoteServerInput) => {
-        await addRemoteServer(fields);
-        setServers(await listRemoteServers());
+        await addRemoteServer(fields, ...ownerArg);
+        setServers(await listRemoteServers(...ownerArg));
     };
 
     const handleRemove = async (id: string) => {
-        await removeRemoteServer(id);
-        setServers(await listRemoteServers());
+        await removeRemoteServer(id, ...ownerArg);
+        setServers(await listRemoteServers(...ownerArg));
     };
 
     const handleReconnect = async (id: string) => {
         setReconnectingId(id);
         try {
-            await reconnectServer(id);
-            setServers(await listRemoteServers());
+            await reconnectServer(id, ...ownerArg);
+            setServers(await listRemoteServers(...ownerArg));
         } finally {
             setReconnectingId(undefined);
         }
@@ -841,7 +846,7 @@ export function ServersView() {
         setRestartPending(true);
         setRestartError(undefined);
         try {
-            await restartServer(id);
+            await restartServer(id, ...ownerArg);
             setRestartConfirmId(undefined);
             // Optimistic transient that outlives the request, plus an immediate
             // re-poll so the offline→online cycle surfaces without the 30s wait.
@@ -883,8 +888,8 @@ export function ServersView() {
 
     const handleEdit = async (fields: RemoteServerInput) => {
         if (!editServer) { throw new Error('Remote server is no longer available'); }
-        await updateRemoteServer(editServer.id, inputToPatch(fields));
-        setServers(await listRemoteServers());
+        await updateRemoteServer(editServer.id, inputToPatch(fields), ...ownerArg);
+        setServers(await listRemoteServers(...ownerArg));
     };
 
     const handleCopy = (h: UnifiedHealth) => {

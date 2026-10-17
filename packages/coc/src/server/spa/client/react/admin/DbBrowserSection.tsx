@@ -6,10 +6,11 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Button, Dialog, Spinner, useToast, ToastContainer } from '../ui';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../api/cocClient';
 import { useApp } from '../contexts/AppContext';
 import { buildDbBrowserHash } from '../layout/Router';
 import type { DbBrowserColumn, DbBrowserTableDataResponse } from '@plusplusoneplusplus/coc-client';
+import { useAdminDirtyGuard, useAdminServer } from './adminTarget';
 
 interface TableInfo {
     name: string;
@@ -155,6 +156,7 @@ function serializeRowKey(row: Record<string, unknown>, columns: ColumnInfo[]): s
 }
 
 export function DbBrowserSection() {
+    const adminServer = useAdminServer();
     const { state, dispatch } = useApp();
     const [tables, setTables] = useState<TableInfo[]>([]);
     const [selectedTable, setSelectedTable] = useState<string | null>(state.adminDbTable);
@@ -190,7 +192,7 @@ export function DbBrowserSection() {
         setLoading(true);
         setError(null);
         try {
-            const data = await getSpaCocClient().dbBrowser.listTables('process-db');
+            const data = await adminServer.client.dbBrowser.listTables('process-db');
             setTables(data.tables);
             if (!deepLinkConsumed.current && state.adminDbTable) {
                 deepLinkConsumed.current = true;
@@ -208,13 +210,13 @@ export function DbBrowserSection() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [adminServer]);
 
     const fetchTableData = useCallback(async (tableName: string, p: number, sort: string | null, order: 'asc' | 'desc' | null) => {
         setDataLoading(true);
         setError(null);
         try {
-            const data = await getSpaCocClient().dbBrowser.getTable('process-db', tableName, {
+            const data = await adminServer.client.dbBrowser.getTable('process-db', tableName, {
                 page: p,
                 pageSize,
                 sort: sort ?? undefined,
@@ -226,7 +228,7 @@ export function DbBrowserSection() {
         } finally {
             setDataLoading(false);
         }
-    }, [pageSize]);
+    }, [adminServer, pageSize]);
 
     useEffect(() => { fetchTables(); }, [fetchTables]);
 
@@ -314,7 +316,7 @@ export function DbBrowserSection() {
         setSaving(true);
         setEditError(null);
         try {
-            await getSpaCocClient().dbBrowser.updateRow('process-db', tableData.table, { pkColumns, updates });
+            await adminServer.client.dbBrowser.updateRow('process-db', tableData.table, { pkColumns, updates });
             setEditingRow(null);
             setEditValues({});
             setEditError(null);
@@ -326,6 +328,8 @@ export function DbBrowserSection() {
             setSaving(false);
         }
     };
+    useAdminDirtyGuard('db-browser-row', { label: 'Database row edit', dirty: editingRow !== null && Object.keys(editValues).length > 0, saving, save: handleEditSave });
+
 
     const isEditingThisRow = (row: Record<string, unknown>) => {
         if (!editingRow || !tableData) return false;
@@ -373,11 +377,11 @@ export function DbBrowserSection() {
         try {
             if (deleteTarget === 'single' && singleDeleteRow) {
                 const pkColumns = getRowPkValues(singleDeleteRow, tableData.columns);
-                await getSpaCocClient().dbBrowser.deleteRow('process-db', tableData.table, { pkColumns });
+                await adminServer.client.dbBrowser.deleteRow('process-db', tableData.table, { pkColumns });
                 addToast('1 row deleted', 'success');
             } else {
                 const rows = Array.from(selectedRows).map(key => JSON.parse(key) as Record<string, unknown>);
-                const result = await getSpaCocClient().dbBrowser.deleteBulk('process-db', tableData.table, { rows });
+                const result = await adminServer.client.dbBrowser.deleteBulk('process-db', tableData.table, { rows });
                 addToast(`${result.deleted} row(s) deleted`, 'success');
             }
             clearSelection();
@@ -759,7 +763,7 @@ export function DbBrowserSection() {
                 }
             >
                 <p data-testid="db-delete-message">
-                    Are you sure you want to delete {deleteCount} row{deleteCount !== 1 ? 's' : ''}? This action cannot be undone.
+                    Are you sure you want to delete {deleteCount} row{deleteCount !== 1 ? 's' : ''}{adminServer.label ? ` from ${adminServer.label}` : ''}? This action cannot be undone.
                 </p>
             </Dialog>
 

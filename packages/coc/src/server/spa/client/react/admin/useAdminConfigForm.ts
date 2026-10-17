@@ -8,8 +8,9 @@
  * cards read the same resolved config object, so they hydrate together.
  */
 import { useCallback, useState } from 'react';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../api/cocClient';
 import { invalidateDisplaySettings } from '../hooks/preferences/useDisplaySettings';
+import { useAdminServer } from './adminTarget';
 
 export const VALID_OUTPUT_OPTIONS = ['table', 'json', 'csv', 'markdown'] as const;
 
@@ -32,6 +33,7 @@ export interface UseAdminConfigFormOptions {
 }
 
 export function useAdminConfigForm({ addToast }: UseAdminConfigFormOptions) {
+    const adminServer = useAdminServer();
     // AI & Execution
     const [configForm, setConfigForm] = useState<Record<string, string>>({});
     const [aiExecSnapshot, setAiExecSnapshot] = useState<AiExecSnapshot>({ model: '', parallel: '1', timeout: '', idleTimeout: '', output: 'table' });
@@ -109,7 +111,7 @@ export function useAdminConfigForm({ addToast }: UseAdminConfigFormOptions) {
             if (configForm.model?.trim()) payload.model = configForm.model.trim();
             payload.timeout = timeoutValue;
             payload.idleTimeout = idleTimeoutValue;
-            await getSpaCocClient().admin.updateConfig(payload);
+            await adminServer.client.admin.updateConfig(payload);
             addToast('Settings saved', 'success');
             setAiExecSnapshot({ model: configForm.model, parallel: configForm.parallel, timeout: configForm.timeout, idleTimeout: configForm.idleTimeout, output: configForm.output });
         } catch (err: unknown) {
@@ -117,7 +119,7 @@ export function useAdminConfigForm({ addToast }: UseAdminConfigFormOptions) {
         } finally {
             setAiExecSaving(false);
         }
-    }, [configForm, addToast]);
+    }, [adminServer, configForm, addToast]);
 
     const handleCancelAiExec = useCallback(() => {
         setConfigForm({ ...aiExecSnapshot });
@@ -137,16 +139,16 @@ export function useAdminConfigForm({ addToast }: UseAdminConfigFormOptions) {
                 'chat.followUpSuggestions.count': count,
                 'chat.askUser.enabled': chatAskUserEnabled,
             };
-            await getSpaCocClient().admin.updateConfig(payload);
+            await adminServer.client.admin.updateConfig(payload);
             addToast('Settings saved', 'success');
-            invalidateDisplaySettings();
+            if (!adminServer.isRemote) invalidateDisplaySettings();
             setChatSnapshot({ followUpEnabled: chatFollowUpEnabled, followUpCount: chatFollowUpCount, askUserEnabled: chatAskUserEnabled });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setChatSaving(false);
         }
-    }, [chatFollowUpEnabled, chatFollowUpCount, chatAskUserEnabled, addToast]);
+    }, [adminServer, chatFollowUpEnabled, chatFollowUpCount, chatAskUserEnabled, addToast]);
 
     const handleCancelChat = useCallback(() => {
         setChatFollowUpEnabled(chatSnapshot.followUpEnabled);

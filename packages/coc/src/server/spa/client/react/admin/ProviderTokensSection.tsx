@@ -5,7 +5,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../api/cocClient';
+import { useAdminDirtyGuard, useAdminServer } from './adminTarget';
 
 interface ProviderTokensSectionProps {
     onError: (msg: string) => void;
@@ -15,6 +16,7 @@ interface ProviderTokensSectionProps {
 type SaveStatus = 'idle' | 'saving' | 'success' | 'error';
 
 export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSectionProps) {
+    const adminServer = useAdminServer();
     const [hasGithubToken, setHasGithubToken] = useState(false);
     const [adoOrgUrlSaved, setAdoOrgUrlSaved] = useState('');
     const [hasTavilyApiKey, setHasTavilyApiKey] = useState(false);
@@ -37,7 +39,7 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
     useEffect(() => {
         async function load() {
             try {
-                const data = await getSpaCocClient().request<{ providers?: { github?: { hasToken?: boolean }; ado?: { orgUrl?: string }; tavily?: { hasApiKey?: boolean } } }>('/providers/config');
+                const data = await adminServer.client.request<{ providers?: { github?: { hasToken?: boolean }; ado?: { orgUrl?: string }; tavily?: { hasApiKey?: boolean } } }>('/providers/config');
                 const providers = data?.providers ?? {};
                 setHasGithubToken(!!providers?.github?.hasToken);
                 if (providers?.ado?.orgUrl) {
@@ -51,14 +53,14 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
         }
         load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [adminServer]);
 
     const handleSaveGithub = async () => {
         if (!githubToken.trim()) return;
         setGithubStatus('saving');
         setGithubError('');
         try {
-            await getSpaCocClient().request('/providers/config', {
+            await adminServer.client.request('/providers/config', {
                 method: 'PUT',
                 body: { github: { token: githubToken } },
             });
@@ -78,7 +80,7 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
         setTavilyStatus('saving');
         setTavilyError('');
         try {
-            await getSpaCocClient().request('/providers/config', {
+            await adminServer.client.request('/providers/config', {
                 method: 'PUT',
                 body: { tavily: { apiKey: tavilyApiKey } },
             });
@@ -98,7 +100,7 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
         setAdoStatus('saving');
         setAdoError('');
         try {
-            await getSpaCocClient().request('/providers/config', {
+            await adminServer.client.request('/providers/config', {
                 method: 'PUT',
                 body: { ado: { orgUrl: adoOrgUrl } },
             });
@@ -111,6 +113,22 @@ export function ProviderTokensSection({ onError, onSuccess }: ProviderTokensSect
             setAdoStatus('error');
         }
     };
+
+    const tokenDrafts = [
+        githubToken.trim() ? 'GitHub token' : null,
+        tavilyApiKey.trim() ? 'Tavily API key' : null,
+        adoOrgUrl.trim() && adoOrgUrl !== adoOrgUrlSaved ? 'Azure DevOps organization' : null,
+    ].filter((label): label is string => label !== null);
+    useAdminDirtyGuard('provider-credentials', {
+        label: tokenDrafts.join(', ') || 'Provider credentials',
+        dirty: tokenDrafts.length > 0,
+        saving: [githubStatus, tavilyStatus, adoStatus].includes('saving'),
+        save: async () => {
+            if (githubToken.trim()) await handleSaveGithub();
+            if (tavilyApiKey.trim()) await handleSaveTavily();
+            if (adoOrgUrl.trim() && adoOrgUrl !== adoOrgUrlSaved) await handleSaveAdo();
+        },
+    });
 
     const inputClass = 'flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]';
     const labelClass = 'text-xs w-28 shrink-0 text-[#616161] dark:text-[#999]';

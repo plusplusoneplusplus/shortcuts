@@ -353,6 +353,8 @@ export interface CLIConfig {
         railManualRefresh?: boolean;
         /** Git changes/sync/branch summary on the collapsed workspace rail. Disabled by default. */
         railGitSummary?: boolean;
+        /** Desktop Admin selector for configuring a registered remote CoC server. Disabled by default. */
+        adminMachineSwitch?: boolean;
         /** Admin and provider-quota shortcuts on the collapsed workspace rail. Enabled by default. */
         railStatusActions?: boolean;
         schedulerDelayHint?: boolean;
@@ -772,6 +774,8 @@ export interface ResolvedCLIConfig {
         railManualRefresh: boolean;
         /** Git changes/sync/branch summary on the collapsed workspace rail. Disabled by default. */
         railGitSummary: boolean;
+        /** Desktop Admin selector for configuring a registered remote CoC server. Disabled by default. */
+        adminMachineSwitch: boolean;
         /** Admin and provider-quota shortcuts on the collapsed workspace rail. Disabled by default. */
         railStatusActions: boolean;
         schedulerDelayHint: boolean;
@@ -1099,6 +1103,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         chatFolders: false,
         railManualRefresh: true,
         railGitSummary: false,
+        adminMachineSwitch: false,
         railStatusActions: true,
         schedulerDelayHint: false,
         composerWordHint: true,

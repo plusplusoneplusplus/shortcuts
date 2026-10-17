@@ -12,6 +12,7 @@ import { useProviderModels, type AgentProvider, type ProviderModelInfo } from '.
 import { Spinner } from '../../ui';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useAdminSaveShortcut } from '../../admin/useAdminSaveShortcut';
+import { useAdminDirtyGuard, useAdminServer } from '../../admin/adminTarget';
 
 const TIER_LABELS: Record<EffortTierKey, string> = {
     'very-low': 'Very Low',
@@ -30,11 +31,14 @@ function getReasoningEffortOptions(model: ProviderModelInfo | undefined): string
 }
 
 export function ProviderEffortTiersSection({ provider }: ProviderEffortTiersSectionProps) {
-    const { models, loading: modelsLoading } = useProviderModels(provider);
+    const adminServer = useAdminServer();
+    const owner = useMemo(() => adminServer.isRemote ? { baseUrl: adminServer.cacheScope, client: adminServer.client } : undefined, [adminServer]);
+    const { models, loading: modelsLoading } = useProviderModels(provider, owner);
     const {
         tiers, loading, error, saveError, saving, dirty,
         setTier, clearTier, save, cancel, reload,
-    } = useProviderEffortTiers(provider);
+    } = useProviderEffortTiers(provider, owner?.baseUrl, owner?.client);
+    useAdminDirtyGuard(`effort-tiers:${provider}`, { label: `${provider} effort tiers`, dirty, saving, save });
     useAdminSaveShortcut(true, [{ dirty, saving: saving || loading || modelsLoading || error !== null, onSave: save }]);
 
     const modelMap = useMemo(() => {

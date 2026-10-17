@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button, Spinner } from '../../ui';
-import { memoryV2Api, type MemoryFact } from './memoryV2Api';
+import { useMemoryV2Api, type MemoryFact } from './memoryV2Api';
 
 // ── ReviewItem ────────────────────────────────────────────────────────────────
 
@@ -19,6 +19,7 @@ interface ReviewItemProps {
 }
 
 function ReviewItem({ wsId, fact, onApproved, onRejected }: ReviewItemProps) {
+    const memoryApi = useMemoryV2Api();
     const [editing, setEditing] = useState(false);
     const [editContent, setEditContent] = useState(fact.content);
     const [busy, setBusy] = useState(false);
@@ -28,7 +29,7 @@ function ReviewItem({ wsId, fact, onApproved, onRejected }: ReviewItemProps) {
         setBusy(true);
         setError(null);
         try {
-            const updated = await memoryV2Api.approveReview(wsId, fact.id, editedContent);
+            const updated = await memoryApi.approveReview(wsId, fact.id, editedContent);
             onApproved(updated);
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
@@ -42,7 +43,7 @@ function ReviewItem({ wsId, fact, onApproved, onRejected }: ReviewItemProps) {
         setBusy(true);
         setError(null);
         try {
-            await memoryV2Api.rejectReview(wsId, fact.id);
+            await memoryApi.rejectReview(wsId, fact.id);
             onRejected(fact.id);
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
@@ -157,6 +158,7 @@ interface MemoryV2ReviewTabProps {
 }
 
 export function MemoryV2ReviewTab({ wsId }: MemoryV2ReviewTabProps) {
+    const memoryApi = useMemoryV2Api();
     const [items, setItems] = useState<MemoryFact[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -165,13 +167,13 @@ export function MemoryV2ReviewTab({ wsId }: MemoryV2ReviewTabProps) {
         setLoading(true);
         setError(null);
         try {
-            setItems(await memoryV2Api.listReview(wsId));
+            setItems(await memoryApi.listReview(wsId));
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
         } finally {
             setLoading(false);
         }
-    }, [wsId]);
+    }, [memoryApi, wsId]);
 
     useEffect(() => { loadReview(); }, [loadReview]);
 

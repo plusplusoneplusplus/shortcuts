@@ -14,8 +14,9 @@ import type {
     AgentProvidersQuotaResponse,
     ProviderInstallStatus,
 } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../api/cocClient';
 import { normalizeAutoProviderRoutingConfig, type NormalizedAutoProviderRoutingConfig } from './AIProviderPage';
+import { useAdminServer } from './adminTarget';
 
 export type DefaultProviderSnapshot = {
     provider: AdminDefaultProvider;
@@ -40,6 +41,7 @@ export interface UseAdminProviderSettingsOptions {
 }
 
 export function useAdminProviderSettings({ addToast, quotaActive }: UseAdminProviderSettingsOptions) {
+    const adminServer = useAdminServer();
     const [autoAgentProviderRoutingEnabled, setAutoAgentProviderRoutingEnabled] = useState(false);
     const [codexEnabled, setCodexEnabled] = useState(false);
     const [claudeEnabled, setClaudeEnabled] = useState(false);
@@ -83,7 +85,7 @@ export function useAdminProviderSettings({ addToast, quotaActive }: UseAdminProv
 
     /** Refreshes install status for both optional SDK providers from the providers list. */
     const loadSdkInstallStatuses = useCallback(() => {
-        getSpaCocClient().agentProviders.list()
+        adminServer.client.agentProviders.list()
             .then(data => {
                 if (!data?.providers) return;
                 const statuses: Record<string, ProviderInstallStatus> = {};
@@ -95,11 +97,11 @@ export function useAdminProviderSettings({ addToast, quotaActive }: UseAdminProv
                 setSdkInstallStatuses(statuses);
             })
             .catch(() => { /* non-fatal */ });
-    }, []);
+    }, [adminServer]);
 
     // Provider availability + SDK install status load once on mount.
     useEffect(() => {
-        fetch('/api/admin/providers/availability')
+        adminServer.fetch(adminServer.resolveUrl('/api/admin/providers/availability'))
             .then(r => r.json())
             .then((data: Record<string, { available: boolean; error?: string }>) => setProviderAvailability(data))
             .catch(() => { });
@@ -127,7 +129,7 @@ export function useAdminProviderSettings({ addToast, quotaActive }: UseAdminProv
             if (autoAgentProviderRoutingEnabled) {
                 payload['agentProviderRouting.auto'] = normalizedAutoRouting;
             }
-            await getSpaCocClient().admin.updateConfig(payload);
+            await adminServer.client.admin.updateConfig(payload);
             addToast('AI provider settings saved — restart required to apply changes', 'success');
             setAutoRoutingConfig(normalizedAutoRouting);
             setDefaultProviderSnapshot({ provider: defaultProvider, codexEnabled, claudeEnabled, opencodeEnabled, autoAgentProviderRouting: autoAgentProviderRoutingEnabled, autoRoutingConfig: normalizedAutoRouting });
@@ -136,7 +138,7 @@ export function useAdminProviderSettings({ addToast, quotaActive }: UseAdminProv
         } finally {
             setDefaultProviderSaving(false);
         }
-    }, [defaultProvider, autoAgentProviderRoutingEnabled, codexEnabled, claudeEnabled, opencodeEnabled, autoRoutingConfig, addToast]);
+    }, [adminServer, defaultProvider, autoAgentProviderRoutingEnabled, codexEnabled, claudeEnabled, opencodeEnabled, autoRoutingConfig, addToast]);
 
     const handleCancelDefaultProvider = useCallback(() => {
         setDefaultProvider(defaultProviderSnapshot.provider);
@@ -152,7 +154,7 @@ export function useAdminProviderSettings({ addToast, quotaActive }: UseAdminProv
         setSdkInstallStatuses(prev => ({ ...prev, [provider]: 'installing' }));
         setSdkInstallErrors(prev => ({ ...prev, [provider]: undefined }));
         try {
-            await getSpaCocClient().agentProviders.installProvider(provider);
+            await adminServer.client.agentProviders.installProvider(provider);
         } catch (err: unknown) {
             const msg = getSpaCocClientErrorMessage(err, 'Install request failed');
             setSdkInstallStatuses(prev => ({ ...prev, [provider]: 'install-failed' }));
@@ -163,7 +165,7 @@ export function useAdminProviderSettings({ addToast, quotaActive }: UseAdminProv
         if (sdkPollRef.current) clearInterval(sdkPollRef.current);
         sdkPollRef.current = setInterval(async () => {
             try {
-                const res = await getSpaCocClient().agentProviders.getProviderInstallStatus(provider);
+                const res = await adminServer.client.agentProviders.getProviderInstallStatus(provider);
                 setSdkInstallStatuses(prev => ({ ...prev, [provider]: res.status }));
                 if (res.status === 'install-failed') {
                     setSdkInstallErrors(prev => ({ ...prev, [provider]: res.error }));
@@ -175,7 +177,7 @@ export function useAdminProviderSettings({ addToast, quotaActive }: UseAdminProv
                 }
             } catch { /* ignore transient poll errors */ }
         }, 2000);
-    }, [loadSdkInstallStatuses]);
+    }, [adminServer, loadSdkInstallStatuses]);
 
     // Stop polling when the component unmounts.
     useEffect(() => () => { if (sdkPollRef.current) clearInterval(sdkPollRef.current); }, []);
@@ -184,7 +186,7 @@ export function useAdminProviderSettings({ addToast, quotaActive }: UseAdminProv
         setQuotaLoading(true);
         setQuotaError(null);
         try {
-            const data = await getSpaCocClient().admin.getAgentProvidersQuota({ force: options.force });
+            const data = await adminServer.client.admin.getAgentProvidersQuota({ force: options.force });
             if (!Array.isArray(data.providers)) {
                 throw new Error('Quota response missing providers');
             }
@@ -194,7 +196,7 @@ export function useAdminProviderSettings({ addToast, quotaActive }: UseAdminProv
         } finally {
             setQuotaLoading(false);
         }
-    }, []);
+    }, [adminServer]);
 
     useEffect(() => {
         if (!quotaActive) return;
