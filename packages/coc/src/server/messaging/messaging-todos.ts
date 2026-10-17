@@ -8,7 +8,6 @@
 
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
-import { SENTINEL_TODO_RECENT_LIMIT } from '@plusplusoneplusplus/coc-client';
 import {
     SENTINEL_TODO_STATUS_LABELS,
     sentinelTodoDisplayStatus,
@@ -19,8 +18,8 @@ import {
 import { SentinelTodoError, type SentinelTodoOwner } from '../sentinel-todos/sentinel-todo-store';
 import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 
-/** Recent-list budget; active items are never capped. */
-export const MAX_LISTED_TODOS = SENTINEL_TODO_RECENT_LIMIT;
+/** Most recent Done items listed; active items are never capped. */
+export const MAX_LISTED_DONE_TODOS = 5;
 
 export const TODOS_NO_TARGET_REPLY = '❌ No topic selected. Reply to a Sentinel chat message, or use `list topics`, then `select topic <n>`.';
 export const TODOS_UNAVAILABLE_REPLY = 'To-do lists are unavailable on this server.';
@@ -37,9 +36,10 @@ function itemLine(n: number, item: SentinelTodoItem): string {
     return `${n}. [${status}${job}${priority}] ${item.title}${reason}`;
 }
 
-/** Active normal and manual items first, then recent Done; archived items stay omitted. */
-export function formatTodosReply(title: string, items: readonly SentinelTodoItem[], limit = MAX_LISTED_TODOS): string {
-    const page = sentinelTodoRecentPage(items.filter(item => !item.archived), limit);
+/** All active normal and manual items, then the most recent Done; archived items stay omitted. */
+export function formatTodosReply(title: string, items: readonly SentinelTodoItem[], doneLimit = MAX_LISTED_DONE_TODOS): string {
+    const listed = items.filter(item => !item.archived);
+    const page = sentinelTodoRecentPage(listed, listed.filter(item => item.status !== 'done').length + doneLimit);
     const normal = sentinelTodoSections(page.items, 'normal');
     const manual = sentinelTodoSections(page.items, 'manual');
     const total = normal.active.length + manual.active.length;

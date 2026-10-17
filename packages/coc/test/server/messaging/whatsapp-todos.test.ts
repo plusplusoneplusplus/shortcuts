@@ -180,18 +180,74 @@ describe('WhatsApp list todos', () => {
         for (let i = 1; i <= parts.length; i++) expect(bindings.isKnownMessage(`out-long-${i}`)).toBe(true);
     });
 
-    it('fills the remaining budget with recent Done and counts only omitted Done history', async () => {
+    it('lists only the five most recent Done items across normal and manual tracking', async () => {
         const owner = { workspaceId: 'ws-a', processId: 'sent-a' };
         todos.create(owner, { title: 'Older ongoing work', status: 'in_progress' }, { actor: 'user' });
-        for (let i = 0; i < 60; i++) todos.create(owner, { title: `Finished ${i}`, status: 'done' }, { actor: 'user' });
+        for (let i = 0; i < 60; i++) {
+            todos.create(owner, { title: `Finished ${i}`, status: 'done', ...(i === 58 ? { type: 'manual' as const } : {}) }, { actor: 'user' });
+        }
+        const archived = todos.create(owner, { title: 'Archived done', status: 'done' }, { actor: 'user' }).item;
+        todos.update(owner, archived.id, archived.revision, { archived: true }, 'user');
+        bindings.selectRepo('ws-a');
+        bindings.selectTopic('ws-a', 'sent-a');
         const before = todos.get(owner);
-        const text = formatTodosReply('S', before.items);
-        expect(text).toContain('1. [In progress] Older ongoing work');
-        expect(text).toContain('[Done] Finished 59');
-        expect(text).not.toContain('[Done] Finished 0\n');
-        expect(text).toContain('11 older Done items not shown');
-        expect((text.match(/^\d+\. \[/gm) ?? [])).toHaveLength(50);
+        await router.handle(inbound('list todos', 'done-cap'));
+        expect(send).toHaveBeenCalledTimes(1);
+        expect(send).toHaveBeenCalledWith([
+            '📋 To-do · "Plan A" — 1 not done',
+            '1. [In progress] Older ongoing work',
+            '',
+            'Done:',
+            '2. [Done] Finished 59',
+            '3. [Done] Finished 57',
+            '4. [Done] Finished 56',
+            '5. [Done] Finished 55',
+            '',
+            'Done · Manual tracking (tracked only, never run):',
+            '6. [Done] Finished 58',
+            '',
+            '…55 older Done items not shown. Open the chat\'s To-do tab in CoC for the full list.',
+        ].join('\n'), 'done-cap');
         expect(todos.get(owner)).toEqual(before);
+    });
+
+    it('lists every Done item when there are five or fewer, and none when there are zero', () => {
+        const base = {
+            type: 'normal' as const, completionCondition: '', notes: '', priority: 'regular' as const, archived: false,
+            revision: 1, createdBy: 'user' as const, updatedBy: 'user' as const, jobs: [],
+        };
+        const item = (id: string, status: 'todo' | 'done', minute: number) => ({ ...base, id, title: id, status,
+            createdAt: '2026-01-01T00:00:00.000Z', updatedAt: `2026-01-01T00:${String(minute).padStart(2, '0')}:00.000Z` });
+        const five = formatTodosReply('S', [item('Open', 'todo', 0), ...[1, 2, 3, 4, 5].map(m => item(`D${m}`, 'done', m))]);
+        expect(five).toBe([
+            '📋 To-do · "S" — 1 not done', '1. [To do] Open', '', 'Done:',
+            '2. [Done] D5', '3. [Done] D4', '4. [Done] D3', '5. [Done] D2', '6. [Done] D1',
+        ].join('\n'));
+        expect(formatTodosReply('S', [item('Open', 'todo', 0), item('D1', 'done', 1)])).toBe(
+            ['📋 To-do · "S" — 1 not done', '1. [To do] Open', '', 'Done:', '2. [Done] D1'].join('\n'));
+        expect(formatTodosReply('S', [item('Open', 'todo', 0)])).toBe('📋 To-do · "S" — 1 not done\n1. [To do] Open');
+        expect(formatTodosReply('S', [])).toBe('📋 To-do · "S"\nNo unfinished items.');
+        // Only Done history still lists the five most recent.
+        const onlyDone = formatTodosReply('S', [1, 2, 3, 4, 5, 6, 7].map(m => item(`D${m}`, 'done', m)));
+        expect(onlyDone).toContain('— 0 not done');
+        expect((onlyDone.match(/^\d+\. \[Done\]/gm) ?? [])).toHaveLength(5);
+        expect(onlyDone).toContain('…2 older Done items not shown.');
+    });
+
+    it('keeps every active item above the old 50-item budget and still lists five Done', async () => {
+        const owner = { workspaceId: 'ws-a', processId: 'sent-a' };
+        for (let i = 0; i < 70; i++) todos.create(owner, { title: `Active ${i}` }, { actor: 'user' });
+        todos.create(owner, { title: 'Manual open', type: 'manual' }, { actor: 'user' });
+        for (let i = 0; i < 8; i++) todos.create(owner, { title: `Closed ${i}`, status: 'done' }, { actor: 'user' });
+        const text = formatTodosReply('S', todos.get(owner).items);
+        expect(text).toContain('— 71 not done');
+        expect(text).toContain('70. [To do] Active 69');
+        expect(text).toContain('71. [To do] Manual open');
+        expect(text).toContain('72. [Done] Closed 7');
+        expect(text).toContain('76. [Done] Closed 3');
+        expect(text).not.toContain('Closed 2');
+        expect((text.match(/^\d+\. \[/gm) ?? [])).toHaveLength(76);
+        expect(text).toContain('…3 older Done items not shown.');
     });
 
     it('formats derived In review and running job state from the shared read model', () => {

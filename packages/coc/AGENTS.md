@@ -882,12 +882,12 @@ references before editing. Paths are package-relative.
   Remote and other virtual workspaces are excluded. Preserve sender/thread admission;
   this command bypasses pending question answers and never changes selection or invokes AI.
   WhatsApp-only `list todos` (alias `todo[s]`, `messaging/messaging-todos.ts`) lists the
-  not-Done, non-archived items of the quoted binding's chat, else the selected topic, via
+  non-archived items of the quoted binding's chat, else the selected topic, via
   `SentinelTodoService.list` (non-Sentinel → explicit reply; missing server infrastructure → unavailable reply;
   non-local workspace → unsupported reply). Status labels come from the client's
   dependency-free `sentinelTodoStatusModel.ts`; all active items are grouped by
-  Normal/Manual tracking, followed by recent Done within the shared 50-item budget.
-  Only omitted Done history is counted. Replies chunk via
+  Normal/Manual tracking, followed by at most the 5 most recent Done (shared
+  `sentinelTodoRecentPage` ordering). Only omitted Done history is counted. Replies chunk via
   `chunkWhatsAppText`. Read-only: no ledger
   write, enqueue, selection change or result acknowledgement.
   Git reads reuse native parsers and forge's WSL runner with optional locks disabled,
