@@ -277,12 +277,13 @@ describe.skipIf(skip)('desktop startup smoke (real Electron app + forked server,
                 href: location.href,
                 readyState: document.readyState,
                 rootChildren: document.getElementById('app-root')?.childElementCount ?? -1,
-                bundle: !!document.querySelector('script[src*="bundle.js"]'),
-            })`))) as { href: string; readyState: string; rootChildren: number; bundle: boolean };
+                // The bundle is inlined, so prove the page is the CoC dashboard via its injected config.
+                dashboard: typeof window.__DASHBOARD_CONFIG__?.apiBasePath === 'string',
+            })`))) as { href: string; readyState: string; rootChildren: number; dashboard: boolean };
             return state.readyState === 'complete' && state.rootChildren > 0 ? state : undefined;
         });
         note(r, `SPA rendered ${JSON.stringify(page)}`);
-        expect(page.bundle).toBe(true);
+        expect(page.dashboard).toBe(true);
 
         // Electron honoured the isolated profile rather than the real one.
         expect(readdirSync(userData).length, diagnostics(r, 'user-data-dir unused')).toBeGreaterThan(0);

@@ -172,7 +172,8 @@ describe('RepoGroupView', () => {
         expect(chat.getAttribute('data-workspace')).toBe(GROUP_ID);
         expect((chat.parentElement as HTMLElement).style.display).not.toBe('none');
         expect((notes.parentElement as HTMLElement).style.display).toBe('none');
-        expect((screen.getByTestId('stub-group-settings').parentElement as HTMLElement).style.display).toBe('none');
+        // Settings mounts on first visit, so the default tab never renders it.
+        expect(screen.queryByTestId('stub-group-settings')).toBeNull();
     });
 
     it('shows the notes tab targeting the group workspace when Notes is active', () => {

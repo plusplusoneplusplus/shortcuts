@@ -709,7 +709,9 @@ describe('language-server WebSocket bridge', () => {
         const first = await harness.connect();
         const second = await harness.connect();
         const a = await first.attach('src/shared.txt');
-        const b = await second.attach('SRC./SHARED.TXT. ');
+        // Spelling is preserved, so only a directory-case alias still matches
+        // the case-sensitive `**/*.txt` definition pattern.
+        const b = await second.attach('SRC/shared.txt');
         expect(b.sessionKey).toBe(a.sessionKey);
         await first.next('lsp-status', (msg) => msg.sessionKey === a.sessionKey && msg.state.status === 'ready');
 

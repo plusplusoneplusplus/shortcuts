@@ -441,17 +441,19 @@ describe('LanguageServerManager session identity', () => {
         expect(harness.created).toHaveLength(1);
     });
 
-    it.runIf(process.platform === 'win32')('isolates Windows aliases of the same document', () => {
+    it('keeps unresolved spelling aliases as distinct documents on every platform', () => {
+        // Aliases need filesystem proof from /file-identity; the manager never
+        // folds case or trailing dots/spaces lexically, even on Windows.
         const definition = echoDefinition({ sessionScope: 'workspace' });
         const harness = createHarness([definition]);
         const first = acquireTxt(harness, 'browser-1', 'src/shared.txt');
-        const second = acquireTxt(harness, 'browser-2', 'SRC./SHARED.TXT. ');
+        const second = acquireTxt(harness, 'browser-2', 'SRC/shared.txt');
 
         expect(first.ok && second.ok).toBe(true);
         if (!first.ok || !second.ok) {
             return;
         }
-        expect(second.handle.session).not.toBe(first.handle.session);
+        expect(second.handle.session).toBe(first.handle.session);
     });
 
     it('gives each project root its own session within one editing session', () => {

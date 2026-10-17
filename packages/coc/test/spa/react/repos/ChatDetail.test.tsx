@@ -79,6 +79,7 @@ const { mockState } = vi.hoisted(() => ({
 // Config
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isFeatureEnabled: (name: string) => name === 'chatHistoryPagingEnabled' && mockState.chatHistoryPagingEnabled,
+    getFeatureValue: () => undefined,
     isComposerWordHintEnabled: () => false,
     isContainerMode: () => false,
     getApiBase: () => '/api',

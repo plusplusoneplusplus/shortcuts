@@ -22,6 +22,11 @@ const REPO_DETAIL_SOURCE = fs.readFileSync(
     'utf-8',
 );
 
+const WORKSPACE_SETTINGS_HOST_SOURCE = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-settings', 'WorkspaceSettingsHost.tsx'),
+    'utf-8',
+);
+
 const REPOS_GRID_SOURCE = fs.readFileSync(
     path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'repos', 'ReposGrid.tsx'),
     'utf-8',
@@ -91,8 +96,9 @@ describe('Fix 1: repo-scoped keys on workspace-dependent tab components', () => 
         expect(REPO_DETAIL_SOURCE).toContain('<RepoSchedulesTab key={ws.id}');
     });
 
-    it('RepoSettingsTab has key={ws.id}', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoSettingsTab key={ws.id}');
+    it('RepoSettingsTab remounts with its clone-qualified settings owner', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('<WorkspaceSettingsProvider ownerKey={sourceSelectionId}');
+        expect(WORKSPACE_SETTINGS_HOST_SOURCE).toContain('<SettingsOwner key={props.ownerKey}');
     });
 
     it('ExplorerPanel is keyed by the clone-qualified repo selection', () => {
