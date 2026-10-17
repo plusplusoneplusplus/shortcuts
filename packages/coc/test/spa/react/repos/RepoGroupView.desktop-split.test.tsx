@@ -1,5 +1,5 @@
 /**
- * Repo group on desktop with the `splitWorkspacePanel` flag: the Chats tab uses
+ * Repo group on desktop with the split Workspace panel: the Chats tab uses
  * the same `SplitWorkspacePanel` a single repo does — chat list on top, the
  * group git list below, the chat detail in the middle, and the Git detail in
  * the far-right panel. The leaf tabs are stubbed; the real Git-panel hook
@@ -7,7 +7,7 @@
  *
  * @vitest-environment jsdom
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, act, fireEvent, waitFor } from '@testing-library/react';
 import { createPortal } from 'react-dom';
 import { useSplitGitPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useSplitGitPanel';
@@ -87,6 +87,9 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoGroupSettingsTab', ()
     RepoGroupSettingsTab: () => <div data-testid="stub-group-settings" />,
 }));
 
+import { _resetRuntimeConfig, applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
+import { splitWorkspaceLeftCollapsedStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceLeftCollapse';
+
 import { RepoGroupView } from '../../../../src/server/spa/client/react/repos/RepoGroupView';
 
 const GROUP_ID = 'group-ai-repos';
@@ -128,6 +131,7 @@ function StubGroupGitTab({
 beforeEach(() => {
     cleanup();
     localStorage.clear();
+    _resetRuntimeConfig();
     location.hash = '';
     mockDispatch.mockReset();
     mockQueueDispatch.mockReset();
@@ -149,16 +153,32 @@ function click(testId: string): void {
     act(() => { fireEvent.click(screen.getByTestId(testId)); });
 }
 
+afterEach(() => { cleanup(); _resetRuntimeConfig(); });
+
 describe('RepoGroupView — desktop split Workspace panel', () => {
+    it.each([undefined, false, true])('shows live-member Git tiles with obsolete runtime flag %s', async saved => {
+        localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey(GROUP_ID), '1');
+        if (saved !== undefined) applyRuntimeConfigPatch({ railGitSummaryEnabled: saved });
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        await waitFor(() => expect(screen.getByTestId('split-workspace-left-git-branch')).toHaveTextContent('1 repo'));
+        expect(screen.getByTestId('split-workspace-left-git-changes')).toBeTruthy();
+        expect(screen.getByTestId('split-workspace-left-git-sync')).toBeTruthy();
+        expect(screen.getByTestId('split-workspace-left-git-branch')).toBeTruthy();
+        act(() => applyRuntimeConfigPatch({ railGitSummaryEnabled: false }));
+        expect(screen.getByTestId('split-workspace-left-git-sync')).toBeTruthy();
+    });
+
     it.each([
         ['empty', []],
         ['all-stale', [{ workspaceId: 'r1', stale: true, name: 'shortcuts', rootPath: '/r/r1' }]],
     ])('hides the Git half for an %s group and lets chats fill the left column', async (_label, members) => {
+        localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey(GROUP_ID), '1');
         mockGetRepoGroup.mockResolvedValue({ id: GROUP_ID, name: 'AI Repos', members });
         render(<RepoGroupView workspaceId={GROUP_ID} />);
 
         await waitFor(() => expect(screen.queryByTestId('split-workspace-git')).toBeNull());
         expect(screen.queryByTestId('stub-group-git-tab')).toBeNull();
+        expect(screen.queryByTestId('split-workspace-left-git-sync')).toBeNull();
         expect(screen.queryByTestId('split-workspace-divider')).toBeNull();
         expect(screen.getByTestId('split-workspace-chat').className).toContain('flex-1');
         expect(screen.getByTestId('split-workspace-chat').style.height).toBe('');

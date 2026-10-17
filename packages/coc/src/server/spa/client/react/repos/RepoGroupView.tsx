@@ -29,7 +29,6 @@ import { RefreshSidebarButton } from '../features/chat/RefreshSidebarButton';
 import { SplitWorkspacePanel } from '../features/repo-detail/SplitWorkspacePanel';
 import { GroupRailGitView } from '../features/repo-detail/RailGitSummary';
 import { useGroupRailGit } from '../features/repo-detail/useRailGitSummary';
-import { useRailGitSummaryEnabled } from '../hooks/feature-flags/useRailGitSummaryEnabled';
 import { UnifiedRightPanel } from '../features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { ContentSearchOverlayHost } from '../features/repo-detail/content-search/ContentSearchOverlayHost';
 import type { ContentSearchOverlayMatch } from '../features/repo-detail/content-search/ContentSearchOverlay';
@@ -232,8 +231,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     const members = useRepoGroupMembers(workspaceId, groupBaseUrl,
         !aggregatedChats || !parseRemoteCloneKey(selectionId) || !!groupBaseUrl);
     const splitGitAvailable = isMobile || members === undefined || members.some(member => !member.stale);
-    const railGitEnabled = useRailGitSummaryEnabled();
-    const railGitStatus = useGroupRailGit({ client: queueClient, routingRef: selectionId, members, enabled: railGitEnabled });
+    const railGitStatus = useGroupRailGit({ client: queueClient, routingRef: selectionId, members, enabled: splitGitAvailable });
     const refreshSidebarGit = useCallback(() => railGitStatus.refresh(true), [railGitStatus.refresh]);
     const toast = useContext(ToastContext);
     const refreshUnavailableGroup = useCallback(async () => {
@@ -369,7 +367,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                     routeId: selectionId,
                                     scopeKey: `${selectionId}:${workspaceReadSource(queueClient)}:${activeTab}`,
                                 }}
-                                railGit={railGitEnabled && splitGitAvailable ? (
+                                railGit={splitGitAvailable ? (
                                     <GroupRailGitView
                                         key={`${selectionId}:${workspaceReadSource(queueClient)}`}
                                         selectionId={selectionId}

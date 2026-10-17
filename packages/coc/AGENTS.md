@@ -83,7 +83,7 @@ references before editing. Paths are package-relative.
   keeps status/type separate from execution-mode pills. Queue and pinned snapshots
   project owner-verified current process modes in a transcript-free batch; Ralph
   identity wins, unknown modes stay omitted, and mode changes refresh queue snapshots.
-  Rail Git tiles (`features.railGitSummary`) use the same previews, read only the
+  Collapsed-rail Git tiles use the same previews, read only the
   owner's git-info/working tree (groups: per-member git-info, never a group branch).
   Sync previews lazily page the expanded Git outgoing prefix on that owner;
   commit routes retain page/member/clone ownership and already-read metadata.

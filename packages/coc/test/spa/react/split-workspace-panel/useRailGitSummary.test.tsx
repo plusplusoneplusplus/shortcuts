@@ -22,12 +22,33 @@ function owner(baseUrl?: string) {
     return { client: new CocClient({ baseUrl, fetch }), fetch };
 }
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe.each([undefined, 'https://owner.example'])('manual Git status on owner %s', baseUrl => {
     const routingRef = baseUrl ? 'remote:owner:ws-one' : 'ws-one';
 
-    it('reads fresh branch/sync and working tree even when rail tiles are disabled', async () => {
+    it('reads eligible status once without polling and stops all work on unmount', async () => {
+        vi.useFakeTimers();
+        const { client, fetch } = owner(baseUrl);
+        const { result, unmount } = renderHook(() => useRepoRailGit({ client, routingRef, workspaceId: 'ws-one', enabled: true }));
+        await act(async () => {});
+        expect(result.current.input.info.data).toEqual(info);
+        expect(fetch).toHaveBeenCalledTimes(2);
+        await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60_000); });
+        expect(fetch).toHaveBeenCalledTimes(2);
+        unmount();
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([undefined, [], members.filter(member => member.stale)])('skips group reads without live members (%j)', async rows => {
+        const { client, fetch } = owner(baseUrl);
+        renderHook(() => useGroupRailGit({ client, routingRef, members: rows, enabled: true }));
+        await act(async () => {});
+        expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('reads fresh branch/sync and working tree even when passive reads are disabled', async () => {
         const { client, fetch } = owner(baseUrl);
         const { result } = renderHook(() => useRepoRailGit({ client, routingRef, workspaceId: 'ws-one', enabled: false }));
         expect(fetch).not.toHaveBeenCalled();

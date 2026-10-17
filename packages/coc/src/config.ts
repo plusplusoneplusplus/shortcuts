@@ -351,8 +351,6 @@ export interface CLIConfig {
         chatFolders?: boolean;
         /** Manual sidebar data refresh on the collapsed workspace rail. Enabled by default. */
         railManualRefresh?: boolean;
-        /** Git changes/sync/branch summary on the collapsed workspace rail. Disabled by default. */
-        railGitSummary?: boolean;
         /** Desktop Admin selector for configuring a registered remote CoC server. Disabled by default. */
         adminMachineSwitch?: boolean;
         /** Admin and provider-quota shortcuts on the collapsed workspace rail. Enabled by default. */
@@ -772,8 +770,6 @@ export interface ResolvedCLIConfig {
         chatFolders: boolean;
         /** Manual sidebar data refresh on the collapsed workspace rail. Disabled by default. */
         railManualRefresh: boolean;
-        /** Git changes/sync/branch summary on the collapsed workspace rail. Disabled by default. */
-        railGitSummary: boolean;
         /** Desktop Admin selector for configuring a registered remote CoC server. Disabled by default. */
         adminMachineSwitch: boolean;
         /** Admin and provider-quota shortcuts on the collapsed workspace rail. Disabled by default. */
@@ -1102,7 +1098,6 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         schedulesInScheduledSlide: true,
         chatFolders: false,
         railManualRefresh: true,
-        railGitSummary: false,
         adminMachineSwitch: false,
         railStatusActions: true,
         schedulerDelayHint: false,

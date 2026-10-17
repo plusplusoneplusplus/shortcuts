@@ -1048,14 +1048,6 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.railGitSummary', default: false, runtime: 'live', runtimeFlag: 'railGitSummaryEnabled',
-        ui: {
-            tab: 'appearance', group: 'uiGeneral', order: 73, label: 'Git on collapsed sidebar', badge: 'experimental',
-            hint: 'Shows working-tree changes, upstream sync and the current branch on the collapsed workspace sidebar, with hover/focus previews. Repo groups list each member repository. Disabled by default.',
-            testId: 'toggle-rail-git-summary-enabled',
-        },
-    }),
-    bool({
         key: 'features.adminMachineSwitch', default: false, runtime: 'live', runtimeFlag: 'adminMachineSwitchEnabled',
         ui: {
             group: 'dashboard', order: 68, label: 'Configure another machine from Admin', badge: 'experimental',

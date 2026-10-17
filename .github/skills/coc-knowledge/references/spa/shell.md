@@ -445,15 +445,16 @@ the sidebar; row actions stay collapsed, and `queueJobHash` preserves owner rout
 
 ### Collapsed-rail Git tiles
 
-`features.railGitSummary` (default off) adds changes, sync and branch-spine tiles
-through `SplitWorkspacePanel`'s `railGit` slot, reusing `RailHoverPreview`.
+`RailGitSummary` supplies changes, sync and branch-spine tiles for Git repos and
+groups with live members through `SplitWorkspacePanel`'s collapsed-only `railGit`
+slot, reusing `RailHoverPreview`.
 Hosts own `useRailGitSummary`'s status readers and pass their state to the rail
 views. Repos read git-info plus working-tree changes from their owner; groups
 batch member git-info on the group's server and list each member's own branch.
 `RepoChatTab.handleRefresh` shares expanded and collapsed refresh duties,
 awaiting chats, full pins, aggregate feeds and the host's Git reader independently.
-Manual Git reads work with tiles disabled, bypass server freshness/backoff,
-and reject failures rather than returning cached or empty success.
+Manual Git reads work with the sidebar expanded or collapsed, bypass server
+freshness/backoff, and reject failures rather than returning cached or empty success.
 `git/changes?refresh=true` selects Forge's strict working-tree status read;
 ordinary working-tree callers retain their existing error policy.
 Busy covers every domain; partial errors retain successful reads and report

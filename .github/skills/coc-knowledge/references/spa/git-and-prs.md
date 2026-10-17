@@ -15,7 +15,7 @@ conflicts, active Git operations and unreadable repository status. It calls the
 existing branch service with `force: false`, then invalidates mutable caches and
 broadcasts only on success. It never stashes, discards edits or cancels jobs.
 
-The collapsed rail's Sync preview (`features.railGitSummary`, default off) lazily
+The collapsed rail's Sync preview lazily
 pages `git.listCommits` on its supplied owner client. Shared `outgoingCommits`
 selects the server's unpushed prefix in history order; `CommitIdentity` shares
 SHA/subject formatting with expanded Git. Status changes revoke prior reads,

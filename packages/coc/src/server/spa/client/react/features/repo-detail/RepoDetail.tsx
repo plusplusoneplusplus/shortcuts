@@ -44,7 +44,6 @@ import { getRepoGroupServerName } from '../../repos/repoGroupName';
 import { useGitInfo } from '../git/hooks/useGitInfo';
 import { RepoRailGitView } from './RailGitSummary';
 import { useRepoRailGit } from './useRailGitSummary';
-import { useRailGitSummaryEnabled } from '../../hooks/feature-flags/useRailGitSummaryEnabled';
 import { useTerminalEnabled } from '../../hooks/feature-flags/useTerminalEnabled';
 import { useNotesEnabled } from '../notes/hooks/useNotesEnabled';
 import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabled';
@@ -148,8 +147,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const railScopeLabel = `${getRepoGroupServerName(ws)} / ${ws.name}`;
     const { ahead: gitAhead, behind: gitBehind } = useGitInfo(ws.id);
     const isGitRepo = !!repo.gitInfo?.isGitRepo;
-    const railGitEnabled = useRailGitSummaryEnabled();
-    const railGitStatus = useRepoRailGit({ client: queueClient, routingRef: sourceSelectionId, workspaceId: ws.id, enabled: railGitEnabled && isGitRepo });
+    const railGitStatus = useRepoRailGit({ client: queueClient, routingRef: sourceSelectionId, workspaceId: ws.id, enabled: isGitRepo });
     const refreshSidebarGit = useCallback(() => railGitStatus.refresh(true), [railGitStatus.refresh]);
     const terminalEnabled = useTerminalEnabled();
     const notesEnabled = useNotesEnabled();
@@ -780,7 +778,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                         routeId: sourceSelectionId,
                                         scopeKey: `${sourceSelectionId}:${workspaceReadSource(queueClient)}:${activeSubTab}`,
                                     }}
-                                    railGit={railGitEnabled && isGitRepo ? (
+                                    railGit={isGitRepo ? (
                                         <RepoRailGitView
                                             key={`${sourceSelectionId}:${workspaceReadSource(queueClient)}`}
                                             workspaceId={ws.id}
