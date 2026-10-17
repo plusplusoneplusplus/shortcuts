@@ -70,6 +70,13 @@ queue store's `selectedTaskIdByRepo[workspaceId]` — never the global
 `selectedTaskId`, which can name another workspace's chat. `unifiedTabId` uses
 the concrete route as the owner identity when one exists, so equal relative paths
 from same-id clones never merge into one tab.
+Editable file opens from the tree, definitions, file picker and closed-file history
+resolve owning-filesystem spelling before publication. Resolution queues retain
+the concrete owner and chat; failures offer Retry without opening another buffer.
+Pre-existing duplicate buffers remain untouched and block ambiguous reuse.
+`UnifiedTabView` scopes language documents and transport sessions by panel and
+chat; Peek reuses only that scope's live model, and split mirrors share the tab's
+model. A dock target change keeps explicit member opens valid within that panel.
 
 ## Layers
 

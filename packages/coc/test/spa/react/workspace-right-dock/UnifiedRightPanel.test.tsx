@@ -140,9 +140,9 @@ function renderPanel(props: Partial<React.ComponentProps<typeof UnifiedRightPane
 }
 
 /** Open a workspace resource through the "+" menu, as a user would. */
-function openViaMenu(testId: string) {
-    fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
-    fireEvent.click(screen.getByTestId(testId));
+async function openViaMenu(testId: string) {
+    await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
+    await act(async () => { fireEvent.click(screen.getByTestId(testId)); });
 }
 
 describe('UnifiedRightPanel', () => {
@@ -261,9 +261,9 @@ describe('UnifiedRightPanel', () => {
             const collect = (event: Event) => sourceEvents.push(event as CustomEvent);
             window.addEventListener('coc-open-source-canvas', collect);
             try {
-                fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
-                fireEvent.click(screen.getByRole('button', { name: 'Open in system browser' }));
-                fireEvent.click(screen.getByRole('button', { name: 'View source' }));
+                await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Reload' })); });
+                await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Open in system browser' })); });
+                await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'View source' })); });
                 expect(bridge.reload).toHaveBeenCalledWith('page-1');
                 expect(bridge.openExternal).toHaveBeenCalledWith('page-1');
                 expect(sourceEvents[0].detail).toEqual({ filePath, wsId: WS, chatId: 'chat-1', forceSourceViewer: true });
@@ -272,7 +272,7 @@ describe('UnifiedRightPanel', () => {
                 expect(screen.getByRole('alert').textContent).toContain('File not found');
                 expect(screen.getByTestId(`unified-panel-tab-error-${tabId}`)).toBeTruthy();
                 expect(bridge.hide).toHaveBeenCalledWith('page-1');
-                fireEvent.click(screen.getByRole('alert').querySelector('button')!);
+                await act(async () => { fireEvent.click(screen.getByRole('alert').querySelector('button')!); });
                 expect(sourceEvents).toHaveLength(2);
             } finally {
                 window.removeEventListener('coc-open-source-canvas', collect);
@@ -292,10 +292,10 @@ describe('UnifiedRightPanel', () => {
                 await waitFor(() => expect(bridge.setBounds).toHaveBeenCalledWith(
                     'page-1', { x: 80, y: 90, width: 250, height: 220 },
                 ));
-                openViaMenu('unified-panel-open-terminal');
+                await openViaMenu('unified-panel-open-terminal');
                 expect(bridge.hide).toHaveBeenCalledWith('page-1');
-                fireEvent.click(screen.getByTestId(`unified-panel-tab-${tabId}`));
-                fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+                await act(async () => { fireEvent.click(screen.getByTestId(`unified-panel-tab-${tabId}`)); });
+                await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
                 expect(bridge.hide).toHaveBeenCalledWith('page-1');
                 fireEvent.keyDown(document, { key: 'Escape' });
                 bridge.hide.mockClear();
@@ -305,7 +305,7 @@ describe('UnifiedRightPanel', () => {
                 rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-1" dock={dockStub({ isOpen: false })} />);
                 expect(bridge.hide).toHaveBeenCalledWith('page-1');
                 rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-1" dock={dockStub()} />);
-                fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${tabId}`));
+                await act(async () => { fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${tabId}`)); });
                 expect(bridge.close).toHaveBeenCalledWith('page-1');
                 expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull();
             } finally {
@@ -350,15 +350,15 @@ describe('UnifiedRightPanel', () => {
 
         it('opens blank and pasted-URL tabs, keeps them across chats, and never persists them', async () => {
             const { rerender } = renderPanel({ chatId: 'chat-1' });
-            openViaMenu('unified-panel-open-browser');
+            await openViaMenu('unified-panel-open-browser');
             expect(browserTabs()).toHaveLength(1);
             expect(browserTabs()[0].textContent).toContain('New Tab');
             expect((screen.getByTestId('browser-address') as HTMLInputElement).value).toBe('');
 
-            fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+            await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
             fireEvent.change(screen.getByTestId('unified-panel-open-menu-search'), { target: { value: 'example.com/docs' } });
             await waitFor(() => expect(screen.getByTestId('unified-panel-open-menu-url')).toBeTruthy());
-            fireEvent.click(screen.getByTestId('unified-panel-open-menu-url'));
+            await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu-url')); });
             expect(browserTabs()).toHaveLength(2);
             expect(browserTabs()[1].textContent).toContain('example.com');
             expect(browserTabs()[1].getAttribute('aria-selected')).toBe('true');
@@ -369,7 +369,7 @@ describe('UnifiedRightPanel', () => {
             expect(browserTabs()).toHaveLength(2);
 
             const closeId = browserTabs()[0].getAttribute('data-testid')!.replace('unified-panel-tab-', '');
-            fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${closeId}`));
+            await act(async () => { fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${closeId}`)); });
             expect(browserTabs()).toHaveLength(1);
 
             const raw = localStorage.getItem(`unified-right-panel:${WS}:tabs`) ?? '';
@@ -377,9 +377,9 @@ describe('UnifiedRightPanel', () => {
             expect(raw).not.toContain('example.com');
         });
 
-        it('rejects a malformed or unsupported address inline and follows a valid one', () => {
+        it('rejects a malformed or unsupported address inline and follows a valid one', async () => {
             renderPanel({ chatId: 'chat-1' });
-            openViaMenu('unified-panel-open-browser');
+            await openViaMenu('unified-panel-open-browser');
             const address = screen.getByTestId('browser-address') as HTMLInputElement;
 
             fireEvent.change(address, { target: { value: 'what is a monad' } });
@@ -399,10 +399,10 @@ describe('UnifiedRightPanel', () => {
             expect(readUnifiedPanelState(WS).workspaceTabs[0].browserUrl).toBe('http://localhost:3000/');
         });
 
-        it.each([{ ctrlKey: true }, { metaKey: true }])('closes a web-hosted browser tab from its controls (%o)', modifiers => {
+        it.each([{ ctrlKey: true }, { metaKey: true }])('closes a web-hosted browser tab from its controls (%o)', async modifiers => {
             renderPanel();
             Object.defineProperty(screen.getByTestId('unified-right-panel'), 'offsetParent', { get: () => document.body });
-            openViaMenu('unified-panel-open-browser');
+            await openViaMenu('unified-panel-open-browser');
             const address = screen.getByTestId('browser-address');
             address.focus();
             const event = new KeyboardEvent('keydown', { key: 'w', ...modifiers, bubbles: true, cancelable: true });
@@ -411,19 +411,19 @@ describe('UnifiedRightPanel', () => {
             expect(browserTabs()).toHaveLength(0);
         });
 
-        it('offers the system browser when there is no desktop bridge', () => {
+        it('offers the system browser when there is no desktop bridge', async () => {
             const open = vi.spyOn(window, 'open').mockReturnValue(null);
             try {
                 renderPanel({ chatId: 'chat-1' });
-                openViaMenu('unified-panel-open-browser');
-                fireEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+                await openViaMenu('unified-panel-open-browser');
+                await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Browser options' })); });
                 expect((screen.getByTestId('browser-open-external') as HTMLButtonElement).disabled).toBe(true);
-                fireEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+                await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Browser options' })); });
                 const address = screen.getByTestId('browser-address') as HTMLInputElement;
                 fireEvent.change(address, { target: { value: 'https://example.com' } });
                 fireEvent.submit(address.form!);
-                fireEvent.click(screen.getByRole('button', { name: 'Browser options' }));
-                fireEvent.click(screen.getByTestId('browser-open-external'));
+                await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Browser options' })); });
+                await act(async () => { fireEvent.click(screen.getByTestId('browser-open-external')); });
                 expect(open).toHaveBeenCalledWith('https://example.com/', '_blank', 'noopener,noreferrer');
                 expect(screen.getByTestId('browser-web-fallback').textContent).toContain('desktop app');
             } finally {
@@ -459,10 +459,10 @@ describe('UnifiedRightPanel', () => {
             viewId, url: 'https://example.com/', title: '', canGoBack: false, canGoForward: false, loading: false, ...patch,
         });
         const openUrlTab = async (url: string) => {
-            fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+            await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
             fireEvent.change(screen.getByTestId('unified-panel-open-menu-search'), { target: { value: url } });
             await waitFor(() => expect(screen.getByTestId('unified-panel-open-menu-url')).toBeTruthy());
-            fireEvent.click(screen.getByTestId('unified-panel-open-menu-url'));
+            await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu-url')); });
             await waitFor(() => expect(bridge.open).toHaveBeenCalled());
         };
 
@@ -489,9 +489,9 @@ describe('UnifiedRightPanel', () => {
                 chatId: null, resourceId: 'original', label: 'Original', browserUrl: 'https://original.test/', browserEngine: 'webview2' as const };
             writeUnifiedPanelState(WS, openTab(EMPTY_UNIFIED_PANEL, source));
             renderPanel({ routingRef, dock: dockStub({ target: 'current-owner', targets: [{ workspaceId: 'current-owner', label: 'Current repo' }] }) });
-            fireEvent.click(screen.getByRole('button', { name: 'Browser options' }));
-            fireEvent.click(screen.getByRole('menuitem', { name: 'History' }));
-            fireEvent.click(await screen.findByText('Saved history'));
+            await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Browser options' })); });
+            await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: 'History' })); });
+            await act(async () => { fireEvent.click(await screen.findByText('Saved history')); });
             await waitFor(() => expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(2));
             const saved = readUnifiedPanelState(WS).workspaceTabs[1];
             expect(saved).toMatchObject({ ownerWorkspaceId: 'current-owner', ownerRoutingRef: routingRef === null ? null : 'remote:server-a:current-owner',
@@ -577,7 +577,7 @@ describe('UnifiedRightPanel', () => {
             Object.defineProperty(screen.getByTestId('unified-right-panel'), 'offsetParent', { get: () => document.body });
             await openUrlTab('https://example.com/');
             const browserId = viewIdOf();
-            openViaMenu('unified-panel-open-terminal');
+            await openViaMenu('unified-panel-open-terminal');
             act(() => onCloseRequested?.({ viewId: browserId }));
             expect(browserTabs()).toHaveLength(1);
             expect(bridge.close).not.toHaveBeenCalled();
@@ -618,7 +618,7 @@ describe('UnifiedRightPanel', () => {
 
         it('opens a view only once a blank tab has a URL, then navigates the live view', async () => {
             renderPanel({ chatId: 'chat-1' });
-            openViaMenu('unified-panel-open-browser');
+            await openViaMenu('unified-panel-open-browser');
             expect(bridge.open).not.toHaveBeenCalled();
             expect((screen.getByTestId('browser-back') as HTMLButtonElement).disabled).toBe(true);
 
@@ -643,7 +643,7 @@ describe('UnifiedRightPanel', () => {
             expect((screen.getByTestId('browser-address') as HTMLInputElement).value).toBe('https://example.com/login');
             expect((screen.getByTestId('browser-back') as HTMLButtonElement).disabled).toBe(false);
             expect((screen.getByTestId('browser-forward') as HTMLButtonElement).disabled).toBe(true);
-            fireEvent.click(screen.getByTestId('browser-stop'));
+            await act(async () => { fireEvent.click(screen.getByTestId('browser-stop')); });
             expect(bridge.nav).toHaveBeenCalledWith(viewId, 'stop');
 
             act(() => onState?.(page(viewId, {
@@ -652,9 +652,9 @@ describe('UnifiedRightPanel', () => {
             expect(browserTabs()[0].textContent).toContain('Sign in');
             expect(screen.queryByTestId('browser-title')).toBeNull();
             expect(readUnifiedPanelState(WS).workspaceTabs[0].browserUrl).toBe('https://example.com/login');
-            fireEvent.click(screen.getByTestId('browser-back'));
-            fireEvent.click(screen.getByTestId('browser-forward'));
-            fireEvent.click(screen.getByTestId('browser-reload'));
+            await act(async () => { fireEvent.click(screen.getByTestId('browser-back')); });
+            await act(async () => { fireEvent.click(screen.getByTestId('browser-forward')); });
+            await act(async () => { fireEvent.click(screen.getByTestId('browser-reload')); });
             expect(bridge.nav.mock.calls.map(call => call[1])).toEqual(['stop', 'back', 'forward', 'reload']);
         });
 
@@ -666,7 +666,7 @@ describe('UnifiedRightPanel', () => {
             act(() => onState?.(page(viewId, { error: 'ERR_CONNECTION_REFUSED' })));
             expect(screen.getByTestId('browser-load-error').textContent).toContain('ERR_CONNECTION_REFUSED');
             expect(bridge.hide).toHaveBeenCalledWith(viewId);
-            fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+            await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Retry' })); });
             expect(bridge.nav).toHaveBeenCalledWith(viewId, 'reload');
             act(() => onState?.(page(viewId, { title: 'Back up' })));
             expect(screen.queryByTestId('browser-load-error')).toBeNull();
@@ -682,7 +682,7 @@ describe('UnifiedRightPanel', () => {
                 const viewId = viewIdOf();
                 await waitFor(() => expect(bridge.setBounds).toHaveBeenCalledWith(viewId, { x: 40, y: 80, width: 320, height: 240 }));
                 bridge.hide.mockClear();
-                fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+                await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
                 expect(bridge.hide).toHaveBeenCalledWith(viewId);
                 fireEvent.keyDown(document, { key: 'Escape' });
 
@@ -697,7 +697,7 @@ describe('UnifiedRightPanel', () => {
                 );
 
                 const id = browserTabs()[0].getAttribute('data-testid')!.replace('unified-panel-tab-', '');
-                fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${id}`));
+                await act(async () => { fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${id}`)); });
                 expect(bridge.close).toHaveBeenCalledWith(viewId);
             } finally {
                 rect.mockRestore();
@@ -736,13 +736,13 @@ describe('UnifiedRightPanel', () => {
                 expect(screen.getByTestId('browser-notice').textContent).toContain('no handler');
 
                 act(() => onState?.(page(viewId, { url: 'https://example.com/after' })));
-                fireEvent.click(screen.getByRole('button', { name: 'Browser options' }));
-                fireEvent.click(screen.getByTestId('browser-open-external'));
+                await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Browser options' })); });
+                await act(async () => { fireEvent.click(screen.getByTestId('browser-open-external')); });
                 await waitFor(() => expect(bridge.openExternal).toHaveBeenCalledWith('https://example.com/after'));
                 expect(open).not.toHaveBeenCalled();
                 bridge.openExternal.mockResolvedValueOnce(false);
-                fireEvent.click(screen.getByRole('button', { name: 'Browser options' }));
-                fireEvent.click(screen.getByTestId('browser-open-external'));
+                await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Browser options' })); });
+                await act(async () => { fireEvent.click(screen.getByTestId('browser-open-external')); });
                 await waitFor(() => expect(screen.getByTestId('browser-notice').textContent).toContain('Could not open your system browser'));
             } finally {
                 open.mockRestore();
@@ -750,7 +750,7 @@ describe('UnifiedRightPanel', () => {
         });
     });
 
-    it('starts empty, and its empty state creates nothing on its own', () => {
+    it('starts empty, and its empty state creates nothing on its own', async () => {
         localStorage.setItem(workspaceDockOpenStorageKey(WS), '1');
         renderPanel();
         expect(localStorage.getItem(workspaceDockOpenStorageKey(WS))).toBe('0');
@@ -760,7 +760,7 @@ describe('UnifiedRightPanel', () => {
         expect(screen.getByTestId('mock-explorer')).toBeTruthy();
         expect(screen.queryByTestId('mock-notes')).toBeNull();
         // The way out of the empty state is an explicit action.
-        fireEvent.click(screen.getByTestId('unified-panel-empty-open'));
+        await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-empty-open')); });
         expect(screen.getByTestId('unified-panel-open-menu-popover')).toBeTruthy();
         expect(screen.queryByTestId('mock-terminal')).toBeNull();
     });
@@ -833,10 +833,10 @@ describe('UnifiedRightPanel', () => {
         expect(screen.getByTestId('unified-panel-empty')).toBeTruthy();
     });
 
-    it('shows exactly one panel with one visible view per selected tab', () => {
+    it('shows exactly one panel with one visible view per selected tab', async () => {
         renderPanel();
-        openViaMenu('unified-panel-open-terminal');
-        openViaMenu('unified-panel-open-notes');
+        await openViaMenu('unified-panel-open-terminal');
+        await openViaMenu('unified-panel-open-notes');
 
         expect(screen.getAllByTestId('unified-right-panel')).toHaveLength(1);
         const terminalId = unifiedTabId({ kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'terminal' });
@@ -847,12 +847,12 @@ describe('UnifiedRightPanel', () => {
         expect(screen.getByTestId('mock-terminal')).toBeTruthy();
     });
 
-    it('keeps a mounted view alive across tab switches and a collapse', () => {
+    it('keeps a mounted view alive across tab switches and a collapse', async () => {
         const { rerender } = renderPanel();
-        openViaMenu('unified-panel-open-terminal');
+        await openViaMenu('unified-panel-open-terminal');
         const terminal = screen.getByTestId('mock-terminal');
 
-        openViaMenu('unified-panel-open-notes');
+        await openViaMenu('unified-panel-open-notes');
         // Same DOM node — switching hid it, it did not unmount and respawn.
         expect(screen.getByTestId('mock-terminal')).toBe(terminal);
 
@@ -896,16 +896,16 @@ describe('UnifiedRightPanel', () => {
         expect(screen.queryByTestId('mock-terminal')).toBeNull();
     });
 
-    it('hides the panel when the last tab is closed, without touching the others', () => {
+    it('hides the panel when the last tab is closed, without touching the others', async () => {
         renderPanel();
-        openViaMenu('unified-panel-open-terminal');
+        await openViaMenu('unified-panel-open-terminal');
         const terminalId = unifiedTabId({ kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'terminal' });
 
-        fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${terminalId}`));
+        await act(async () => { fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${terminalId}`)); });
         expect(screen.getByTestId('unified-panel-empty')).toBeTruthy();
         expect(screen.queryByTestId('mock-terminal')).toBeNull();
         // Reopening starts a fresh mount rather than resurrecting a stale one.
-        openViaMenu('unified-panel-open-terminal');
+        await openViaMenu('unified-panel-open-terminal');
         expect(screen.getByTestId('mock-terminal')).toBeTruthy();
     });
 
@@ -942,14 +942,14 @@ describe('UnifiedRightPanel', () => {
         expect(screen.getByTestId('unified-panel-search-mode')).toBe(search);
     });
 
-    it('routes Search to the dock target and opens a result in the existing file tabs', () => {
+    it('routes Search to the dock target and opens a result in the existing file tabs', async () => {
         renderPanel({
             chatId: 'chat-1',
             dock: dockStub({ mode: 'search', target: 'ws-member' }),
         });
         expect(screen.getByTestId('mock-content-search').textContent).toContain('search:ws-member');
 
-        fireEvent.click(screen.getByTestId('mock-search-result'));
+        await act(async () => { fireEvent.click(screen.getByTestId('mock-search-result')); });
 
         const fileId = unifiedTabId({
             kind: 'file',
@@ -957,11 +957,11 @@ describe('UnifiedRightPanel', () => {
             chatId: 'chat-1',
             resourceId: 'src/match.ts',
         });
-        expect(screen.getByTestId(`unified-panel-tab-${fileId}`)).toBeTruthy();
+        expect(await screen.findByTestId(`unified-panel-tab-${fileId}`)).toBeTruthy();
         expect(screen.getByTestId('unified-panel-search-mode')).toBeTruthy();
     });
 
-    it('opens workspace resources against the dock target, with repo attribution', () => {
+    it('opens workspace resources against the dock target, with repo attribution', async () => {
         const member = 'ws-member';
         renderPanel({
             dock: dockStub({
@@ -972,7 +972,7 @@ describe('UnifiedRightPanel', () => {
         // The menu's Explorer entry selects and opens the navigator rather than
         // opening a tab; the tree browses the dock target, with deep-linking off
         // for a member repo.
-        openViaMenu('unified-panel-open-explorer');
+        await openViaMenu('unified-panel-open-explorer');
         expect(screen.getByTestId('unified-panel-tree').style.display).not.toBe('none');
         expect(screen.getByTestId('mock-explorer').textContent).toBe(`explorer:${member}:false`);
         expect(screen.getByTestId('unified-panel-tab-list').querySelectorAll('[role="tab"]')).toHaveLength(0);
@@ -980,26 +980,26 @@ describe('UnifiedRightPanel', () => {
         // A tab opened against the member carries the repo attribution. Read it
         // off the tab, not the document: the strip's repo picker shows the same
         // label for the dock target.
-        openViaMenu('unified-panel-open-terminal');
+        await openViaMenu('unified-panel-open-terminal');
         const terminalId = unifiedTabId({
             kind: 'terminal', ownerWorkspaceId: member, chatId: null, resourceId: 'terminal',
         });
         expect(screen.getByTestId(`unified-panel-tab-repo-${terminalId}`).textContent).toBe('api');
         // Notes stays with the panel's own workspace scope.
-        openViaMenu('unified-panel-open-notes');
+        await openViaMenu('unified-panel-open-notes');
         expect(screen.getByTestId('mock-notes').textContent).toBe(`notes:${WS}`);
     });
 
-    it('offers no Explorer when the target has no single repository root', () => {
+    it('offers no Explorer when the target has no single repository root', async () => {
         renderPanel({ dock: dockStub({ target: 'group-acme' }) });
-        fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+        await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
         expect(screen.getByTestId('unified-panel-open-terminal')).toBeTruthy();
         expect(screen.queryByTestId('unified-panel-open-explorer')).toBeNull();
     });
 
-    it('persists its tabs per workspace across a remount', () => {
+    it('persists its tabs per workspace across a remount', async () => {
         const { unmount } = renderPanel();
-        openViaMenu('unified-panel-open-terminal');
+        await openViaMenu('unified-panel-open-terminal');
         unmount();
 
         renderPanel();
@@ -1012,9 +1012,9 @@ describe('UnifiedRightPanel', () => {
         expect(screen.getByTestId('unified-panel-empty')).toBeTruthy();
     });
 
-    it('files chat-owned tabs under the selected chat and keeps workspace tabs visible', () => {
+    it('files chat-owned tabs under the selected chat and keeps workspace tabs visible', async () => {
         const { rerender } = renderPanel({ chatId: 'chat-1' });
-        openViaMenu('unified-panel-open-terminal');
+        await openViaMenu('unified-panel-open-terminal');
         writeUnifiedPanelState(WS, openTab(
             // A chat-owned file, as AC-04's entry points will open it.
             openTab(EMPTY_UNIFIED_PANEL, { kind: 'terminal', ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 'terminal', label: 'Terminal' }),
@@ -1051,9 +1051,10 @@ describe('UnifiedRightPanel', () => {
     it('opens a searched file as a tab of the selected chat', async () => {
         searchFiles.mockResolvedValue({ results: [{ path: 'src/app.ts' }] });
         renderPanel({ chatId: 'chat-1' });
-        fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+        await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
         fireEvent.change(screen.getByTestId('unified-panel-open-menu-search'), { target: { value: 'app' } });
-        fireEvent.click(await screen.findByTestId('unified-panel-open-menu-file-0'));
+        const result = await screen.findByTestId('unified-panel-open-menu-file-0');
+        await act(async () => { fireEvent.click(result); });
 
         // The menu closes and the file is a chat-scoped tab on the panel.
         expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
@@ -1061,11 +1062,11 @@ describe('UnifiedRightPanel', () => {
         expect(screen.getByTestId(`unified-panel-tab-${fileId}`)).toBeTruthy();
     });
 
-    it('hands focus back to the "+" trigger when the menu is dismissed', () => {
+    it('hands focus back to the "+" trigger when the menu is dismissed', async () => {
         renderPanel();
         const trigger = screen.getByTestId('unified-panel-open-menu') as HTMLButtonElement;
         trigger.focus();
-        fireEvent.click(trigger);
+        await act(async () => { fireEvent.click(trigger); });
         expect(screen.getByTestId('unified-panel-open-menu-popover')).toBeTruthy();
 
         fireEvent.keyDown(document, { key: 'Escape' });
@@ -1084,3 +1085,8 @@ describe('UnifiedRightPanel', () => {
         expect(screen.queryByTestId('unified-panel-empty')).toBeNull();
     });
 });
+
+vi.mock('../../../../src/server/spa/client/react/features/language-servers/fileIdentity', async importOriginal => ({
+    ...await importOriginal<object>(),
+    resolveOwnedFile: async (_owner: unknown, path: string) => path,
+}));

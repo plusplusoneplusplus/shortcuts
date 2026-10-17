@@ -1,3 +1,4 @@
+import '../../language-servers/fileIdentityMock';
 // @vitest-environment jsdom
 /**
  * AC-05 / AC-06: what the tab strip shows about a buffer the user is NOT looking

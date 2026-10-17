@@ -47,12 +47,12 @@ export function explorerFileTabInput(
     context: ExplorerFileOpenContext,
 ): OpenUnifiedTabInput | null {
     const trusted = file.path.startsWith(TRUSTED_PATH_PREFIX);
-    const resourceId = trusted ? file.path : normalizeResourcePath(file.path.trim());
-    if (resourceId === '' || resourceId === TRUSTED_PATH_PREFIX) return null;
+    const resourceId = trusted ? file.path : normalizeResourcePath(file.path);
+    if (resourceId.trim() === '' || resourceId === TRUSTED_PATH_PREFIX) return null;
 
     const label = trusted
         ? trustedFileName(resourceId.slice(TRUSTED_PATH_PREFIX.length))
-        : (file.name?.trim() || resourcePathName(resourceId));
+        : (file.name || resourcePathName(resourceId));
 
     return {
         kind: 'file',

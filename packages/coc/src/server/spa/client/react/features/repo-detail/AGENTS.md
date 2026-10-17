@@ -478,6 +478,13 @@ this workspace, read whole, not a trusted absolute path — and only then opens 
 language document and registers Monaco providers over its model
 (`features/language-servers/`).
 
+Editable Explorer and definition opens resolve directory spelling through the
+owning repo's `file-identity` endpoint before creating state. `FileOpenQueue`
+serializes resolution and publication; existing aliases reuse their buffer key,
+while ambiguous duplicates remain untouched with a retryable error. Filesystem
+proof keeps distinct case-sensitive names separate. Unified chats use separate
+document stores and transport editing sessions; a split retains its tab's model.
+
 The selected repo passes its clone-qualified routing ref separately from the
 workspace id. File reads/writes and the language socket resolve through that ref,
 while browser document URIs and WebSocket query parameters keep the workspace id
@@ -535,10 +542,10 @@ the API-only Monaco entry point does not register the Ctrl/Cmd-click gesture.
 Each pane claims its own model with `registerEditorNavigator`
 (`features/language-servers/editorNavigation.ts`), and the opener dispatches on
 the model the jump started in — that is how the target lands in the Explorer's
-strip or the right panel's, whichever the user was in. The pane refuses a
-`coc-file://` target outside its own workspace, so a dependency under
-`node_modules` cannot be routed through the repo's own file endpoint. Surfaces
-open the target pinned and pass the position back down as `revealLine` /
+strip or the right panel's, whichever the user was in. The pane accepts its own
+workspace and explicitly supplied live group members; each member retains its
+concrete clone route. Other workspace targets are refused before any file read.
+Surfaces open the target pinned and pass the position back down as `revealLine` /
 `revealColumn`; the column travels with its line through the tab descriptors and
 is dropped whenever the line changes without one.
 
@@ -561,12 +568,13 @@ its own workspace; a repo-group pane accepts each live member and loads through
 the target member's workspace and concrete clone route. It prepares accepted
 language-server or symbol-index targets before returning the location because
 standalone Monaco can resolve only models that already exist. Accepted targets
-start with a visible loading model that is updated in place after the routed
-read. Failed reads or rejected outside-group targets get a readable unavailable
-model without reading the rejected target, and cancellation drops stale
-content. Temporary models are disposed after Peek
-detaches or with the initiating pane; a prepared model that never attaches has a
-bounded orphan timeout. Selecting a row does not open an Explorer tab.
+reuse a live model through `editingModels.ts` only within the same concrete owner
+and editing scope, preserving unsaved text. Other accepted targets receive a
+scoped loading model updated in place after the routed read. Identity failures
+stop navigation with a retryable error and create no model. Read failures show
+an unavailable model, and cancellation drops stale content. Temporary models are
+disposed after Peek detaches or with the initiating pane; a prepared model that
+never attaches has a bounded orphan timeout. Selecting a row does not open an Explorer tab.
 
 An external `coc-lsp-external://` target is loaded through the language
 attachment that received the definition — the routed connection of the owning

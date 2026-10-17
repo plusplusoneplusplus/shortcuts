@@ -1,3 +1,4 @@
+import '../../language-servers/fileIdentityMock';
 // @vitest-environment jsdom
 /**
  * AC-06 (mobile): with tabs on, a narrow layout still shows the tab strip above

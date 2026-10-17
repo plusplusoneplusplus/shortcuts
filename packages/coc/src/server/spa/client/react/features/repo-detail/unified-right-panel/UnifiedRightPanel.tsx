@@ -1,3 +1,4 @@
+import { useFileIdentityOpen } from '../../language-servers/useFileIdentityOpen';
 /**
  * UnifiedRightPanel — the workspace's one and only right-side surface.
  *
@@ -73,6 +74,7 @@ import { ExplorerPanel } from '../explorer/ExplorerPanel';
 import { QuickOpen, type QuickOpenResult } from '../explorer/QuickOpen';
 import type { PaletteMode } from '../explorer/paletteQuery';
 import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as trustedFileName } from '../explorer/ExactOpen';
+import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
 import {
     explorerQuickOpenHasFocus,
     isExplorerQuickOpenMounted,
@@ -570,6 +572,7 @@ export function UnifiedRightPanel({
     }
     const activeIdRef = useRef(activeId);
     activeIdRef.current = activeId;
+    const fileIdentity = useFileIdentityOpen(JSON.stringify([workspaceId, routingRef, chatId]));
     const tabsRef = useRef(tabs);
     tabsRef.current = tabs;
     for (const tab of tabs) {
@@ -1118,11 +1121,26 @@ export function UnifiedRightPanel({
             return true;
         }
         const reopen = navigationReopenInput(destination, chatId);
-        openPreviewGuarded(reopen, () => replay(unifiedTabId({ kind: 'file', ...reopen }), reopen));
+        const commit = (path: string, signal?: AbortSignal) => {
+            const input = { ...reopen, resourceId: path,
+                label: path === reopen.resourceId ? reopen.label : path.split('/').pop()! };
+            openPreviewGuarded(input, () => {
+                if (!signal?.aborted) replay(unifiedTabId({ kind: 'file', ...input }), input);
+            });
+        };
+        if (reopen.resourceId.startsWith(TRUSTED_PATH_PREFIX) || reopen.resourceId.startsWith(WORKSPACE_PREVIEW_PREFIX)) {
+            commit(reopen.resourceId);
+        } else {
+            fileIdentity.open({ workspaceId: reopen.ownerWorkspaceId, routingRef: reopen.ownerRoutingRef }, reopen.resourceId,
+                () => tabsRef.current.filter(tab => tab.kind === 'file'
+                    && tab.ownerWorkspaceId === reopen.ownerWorkspaceId
+                    && (tab.ownerRoutingRef ?? null) === (reopen.ownerRoutingRef ?? null)
+                    && tab.chatId === reopen.chatId).map(tab => tab.resourceId), commit);
+        }
         return true;
     }, [
         activate, chatId, openPreview, openPreviewGuarded, restoreNavigationLocation,
-        setNavigationHistory, workspaceId,
+        setNavigationHistory, workspaceId, fileIdentity.open,
     ]);
 
     // A replayed file that fails to read is gone: drop its entries and keep
@@ -1142,39 +1160,49 @@ export function UnifiedRightPanel({
     // tree column and the `+` menu file the same kind of tab.
     const openFileForOwner = useCallback(
         (
-            file: { path: string; name: string; line?: number },
+            file: { path: string; name: string; line?: number; column?: number },
             options: { preview: boolean },
             ownerWorkspaceId: string,
             ownerRoutingRef?: string | null,
             ownerLabel?: string,
+            reason: 'navigation' | 'jump' = 'navigation',
         ) => {
-            const input = explorerFileTabInput(file, {
-                ownerWorkspaceId,
-                ownerRoutingRef,
-                scopeWorkspaceId: workspaceId,
-                ownerLabel,
-                chatId,
-            });
-            if (input === null) return;
-            // A double click (or any other permanent entry point) opens a normal
-            // tab; only the tree's single click takes the preview slot (AC-03).
-            if (!options.preview) {
-                prepareFileNavigation(unifiedTabId(input), 'navigation');
-                open(input);
-                return;
-            }
-            const { kind: _kind, ...previewInput } = input;
-            // Reusing the slot destroys the outgoing buffer, so it goes through
-            // the same unsaved-edits guard a close does. In practice an edit has
-            // already promoted the tab (AC-04), so this is a safety net: cancel
-            // or a failed save leaves the old buffer, and the queued open is
-            // dropped with the prompt.
-            openPreviewGuarded(previewInput, () => {
-                prepareFileNavigation(unifiedTabId({ kind: 'file', ...previewInput }), 'navigation');
-                openPreview(previewInput);
-            });
+            const commit = (resolvedPath: string, signal?: AbortSignal) => {
+                const input = explorerFileTabInput({ ...file, path: resolvedPath, name: resolvedPath === file.path ? file.name : resolvedPath.split('/').pop()! }, {
+                    ownerWorkspaceId,
+                    ownerRoutingRef,
+                    scopeWorkspaceId: workspaceId,
+                    ownerLabel,
+                    chatId,
+                });
+                if (input === null) return;
+                // A double click (or any other permanent entry point) opens a normal
+                // tab; only the tree's single click takes the preview slot (AC-03).
+                if (!options.preview) {
+                    prepareFileNavigation(unifiedTabId(input), reason);
+                    open(input);
+                    return;
+                }
+                const { kind: _kind, ...previewInput } = input;
+                // Reusing the slot destroys the outgoing buffer, so it goes through
+                // the same unsaved-edits guard a close does. In practice an edit has
+                // already promoted the tab (AC-04), so this is a safety net: cancel
+                // or a failed save leaves the old buffer, and the queued open is
+                // dropped with the prompt.
+                openPreviewGuarded(previewInput, () => {
+                    if (signal?.aborted) return;
+                    prepareFileNavigation(unifiedTabId({ kind: 'file', ...previewInput }), reason);
+                    openPreview(previewInput);
+                });
+            };
+            if (file.path.startsWith(TRUSTED_PATH_PREFIX)) { commit(file.path); return; }
+            fileIdentity.open({ workspaceId: ownerWorkspaceId, routingRef: ownerRoutingRef }, file.path,
+                () => tabsRef.current.filter(tab => tab.kind === 'file'
+                    && tab.ownerWorkspaceId === ownerWorkspaceId
+                    && (tab.ownerRoutingRef ?? null) === (ownerRoutingRef ?? null)
+                    && tab.chatId === chatId).map(tab => tab.resourceId), commit);
         },
-        [workspaceId, chatId, open, openPreview, openPreviewGuarded, prepareFileNavigation],
+        [workspaceId, chatId, open, openPreview, openPreviewGuarded, prepareFileNavigation, fileIdentity.open],
     );
     const openTreeFile = useCallback(
         (
@@ -1226,19 +1254,10 @@ export function UnifiedRightPanel({
             file: { path: string; name: string; line: number; column: number; symbolCandidate?: true },
             origin: { ownerWorkspaceId: string; ownerRoutingRef?: string | null; repoLabel?: string },
         ) => {
-            const input = explorerFileTabInput(file, {
-                ownerWorkspaceId: origin.ownerWorkspaceId,
-                ownerRoutingRef: origin.ownerRoutingRef,
-                scopeWorkspaceId: workspaceId,
-                ownerLabel: origin.repoLabel ?? (origin.ownerWorkspaceId === target ? targetLabel : undefined),
-                chatId,
-            });
-            if (input !== null) {
-                prepareFileNavigation(unifiedTabId(input), 'jump');
-                open(input);
-            }
+            openFileForOwner(file, { preview: false }, origin.ownerWorkspaceId,
+                origin.ownerRoutingRef, origin.repoLabel ?? (origin.ownerWorkspaceId === target ? targetLabel : undefined), 'jump');
         },
-        [open, workspaceId, target, targetLabel, chatId, prepareFileNavigation],
+        [openFileForOwner, target, targetLabel],
     );
 
     /**
@@ -1791,8 +1810,11 @@ export function UnifiedRightPanel({
     // identity — so the panel only has to file it.
     const openResource = useCallback((input: OpenUnifiedTabInput) => {
         setMenuOpen(false);
-        open(input);
-    }, [open]);
+        if (input.kind === 'file' && !input.resourceId.startsWith(WORKSPACE_PREVIEW_PREFIX)) {
+            openFileForOwner({ path: input.resourceId, name: input.label, line: input.line, column: input.column },
+                { preview: false }, input.ownerWorkspaceId, input.ownerRoutingRef, input.repoLabel);
+        } else open(input);
+    }, [open, openFileForOwner]);
 
     // A hosted Sentinel chat's To-do tab. The owner is the chat's parent
     // workspace on the panel's server, including repo-group members.
@@ -1875,6 +1897,7 @@ export function UnifiedRightPanel({
                 style={expanded ? undefined : { width }}
                 data-testid="unified-panel-body"
             >
+                {fileIdentity.error}
                 <UnifiedPanelTabStrip
                     tabs={tabs}
                     activeId={activeId}

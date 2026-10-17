@@ -1,3 +1,4 @@
+import '../language-servers/fileIdentityMock';
 /**
  * The Explorer entry point inside the unified panel: the tree COLUMN.
  *

@@ -1,3 +1,4 @@
+import { editingModelTarget } from './editingModels';
 /**
  * Surface-aware navigation — where "go to definition" lands (AC-03).
  *
@@ -157,7 +158,7 @@ export function installLanguageEditorOpener(monaco: NavigationMonaco): Navigatio
             if (external) {
                 return handler({ external: true, ...external, line, column }) !== false;
             }
-            const document = parseBrowserDocumentUri(resourceUri);
+            const document = editingModelTarget(model, resourceUri) ?? parseBrowserDocumentUri(resourceUri);
             if (!document) return false;
             const sourceDocument = model.uri
                 ? parseBrowserDocumentUri(model.uri.toString())

@@ -1,3 +1,4 @@
+import '../language-servers/fileIdentityMock';
 /**
  * Two-pane source split in the unified right panel.
  *

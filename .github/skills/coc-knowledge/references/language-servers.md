@@ -19,9 +19,14 @@ saved master/per-definition enable fields, including false values, without
 rewriting the file. Missing or corrupt files use built-in defaults; corrupt files
 retain warnings. Acquisition and settings GET never seed configuration.
 
-Windows document paths are case-folded and have trailing dots/spaces removed at
-the path boundary, matching Win32 file identity before definition selection,
-URI mapping, and shared-session ownership checks.
+File paths preserve spelling through normalization and URI mapping.
+`file-identity.ts` resolves directory-entry spelling on the owning filesystem;
+`GET /api/repos/:id/file-identity?path=...` exposes that relative path. Alias
+resolution requires filesystem proof, including within Windows case-sensitive
+directories, and checks canonical containment without merging symlink or hard-link
+names. Explorer and definition opens resolve before creating state, serialize
+concurrent requests and reject stale owners. Ambiguous existing buffers remain
+untouched and identity failures offer Retry without an owner fallback.
 The WebSocket bridge listens for client messages before its async workspace
 lookup and queues them until the socket is validated, so an attach sent on
 `open` is never dropped. A session `start()` issued while `stop()` is still
@@ -107,11 +112,13 @@ Cross-file locations inside an accepted workspace are prepared by the initiating
 editor's temporary `coc-file` preview source. A repository editor accepts only
 its own workspace; a repo-group editor also accepts every live member and reads
 through the target member's workspace and concrete clone route. Standalone
-Monaco resolves only existing models, so each accepted target first receives a
-temporary loading model that Peek can display immediately; the routed read
-updates that model in place. A target outside the accepted ownership set is
-never read and receives an unavailable model so Peek explains the rejection.
-Read failures produce the same unavailable state. Cancellation removes stale
+Monaco resolves existing models through `editingModels.ts`, scoped by concrete
+owner and editing session. Peek reuses an open dirty model; other accepted targets
+receive a temporary model with a scoped URI after identity resolution. The routed
+read updates that model in place. Unified-panel chats isolate document records and
+transport editing sessions; a split mirror retains its tab's model. Unconfirmed
+or ambiguous owners stop navigation before model creation with a retryable error.
+Accepted targets whose reads fail receive an unavailable model. Cancellation removes stale
 loading models, and temporary models are disposed when Peek detaches or the
 editor closes. Prepared models remain available while a slow Peek widget
 attaches and have a bounded orphan timeout when no widget claims them.

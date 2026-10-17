@@ -1,3 +1,4 @@
+import '../language-servers/fileIdentityMock';
 /**
  * The unified panel's file-tree column (AC-01c) — the tree rendered as a
  * panel-level column on the right edge rather than as a tab.
@@ -109,9 +110,9 @@ function renderPanel(props: Partial<React.ComponentProps<typeof UnifiedRightPane
 }
 
 /** Open a workspace resource through the "+" menu, as a user would. */
-function openViaMenu(testId: string) {
-    fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
-    fireEvent.click(screen.getByTestId(testId));
+async function openViaMenu(testId: string) {
+    await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
+    await act(async () => { fireEvent.click(screen.getByTestId(testId)); });
 }
 
 /** The column's rendered width in px, or null when it is not mounted. */
@@ -140,17 +141,17 @@ describe('unified panel file-tree column', () => {
         expect(screen.getByTestId('mock-explorer')).toBeTruthy();
     });
 
-    it('collapses and reopens the navigator without closing the panel or remounting Explorer', () => {
+    it('collapses and reopens the navigator without closing the panel or remounting Explorer', async () => {
         writeUnifiedTreeState(WS, { open: true, width: 220 });
         renderPanel();
         const explorer = screen.getByTestId('mock-explorer');
 
-        fireEvent.click(screen.getByRole('button', { name: 'Hide Explorer' }));
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Hide Explorer' })); });
         expect(readUnifiedTreeState(WS).open).toBe(false);
         expect(screen.getByTestId('unified-panel-mode-column').style.display).toBe('none');
         expect(screen.getByTestId('unified-panel-empty')).toBeTruthy();
 
-        fireEvent.click(screen.getByRole('button', { name: 'Show Explorer' }));
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Show Explorer' })); });
         expect(readUnifiedTreeState(WS).open).toBe(true);
         expect(screen.getByTestId('unified-panel-tree').style.display).toBe('');
         expect(screen.getByTestId('mock-explorer')).toBe(explorer);
@@ -168,15 +169,15 @@ describe('unified panel file-tree column', () => {
         expect(treeWidth()).toBe(220);
     });
 
-    it('renders for every tab kind and survives a tab switch without remounting', () => {
+    it('renders for every tab kind and survives a tab switch without remounting', async () => {
         writeUnifiedTreeState(WS, { open: true, width: 220 });
         renderPanel();
-        openViaMenu('unified-panel-open-terminal');
+        await openViaMenu('unified-panel-open-terminal');
 
         const tree = screen.getByTestId('mock-explorer');
         expect(screen.getByTestId('mock-terminal')).toBeTruthy();
 
-        openViaMenu('unified-panel-open-notes');
+        await openViaMenu('unified-panel-open-notes');
         // Same DOM node — the column is outside the per-tab view area.
         expect(screen.getByTestId('mock-explorer')).toBe(tree);
         expect(screen.getByTestId('mock-notes')).toBeTruthy();
@@ -211,7 +212,7 @@ describe('unified panel file-tree column', () => {
         expect(screen.getByTestId('mock-explorer').textContent).toContain(`explorer:${WS}:true`);
     });
 
-    it('opens a file picked in the tree as a tab owned by the target repo', () => {
+    it('opens a file picked in the tree as a tab owned by the target repo', async () => {
         writeUnifiedTreeState(WS, { open: true, width: 220 });
         const member = 'ws-member';
         renderPanel({
@@ -221,7 +222,7 @@ describe('unified panel file-tree column', () => {
             }),
         });
 
-        fireEvent.click(screen.getByTestId('mock-explorer-open'));
+        await act(async () => { fireEvent.click(screen.getByTestId('mock-explorer-open')); });
         const [tab] = screen.getAllByRole('tab');
         expect(screen.getAllByRole('tab')).toHaveLength(1);
         // Scoped to the tab: the panel's toolbar row now names the same file, so

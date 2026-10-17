@@ -161,9 +161,9 @@ export function UnifiedTabView({
         [onRegisterSave, tab.id],
     );
     const handleNavigate = useCallback(
-        (file: { path: string; name: string; line: number; column: number; symbolCandidate?: true }) => onOpenFile?.(file, {
-            ownerWorkspaceId: tab.ownerWorkspaceId,
-            ...(tab.ownerRoutingRef === undefined ? {} : { ownerRoutingRef: tab.ownerRoutingRef }),
+        (file: { workspaceId?: string; routingRef?: string | null; path: string; name: string; line: number; column: number; symbolCandidate?: true }) => onOpenFile?.(file, {
+            ownerWorkspaceId: file.workspaceId ?? tab.ownerWorkspaceId,
+            ownerRoutingRef: file.workspaceId ? file.routingRef : tab.ownerRoutingRef,
             ...(tab.repoLabel === undefined ? {} : { repoLabel: tab.repoLabel }),
         }),
         [onOpenFile, tab.ownerWorkspaceId, tab.ownerRoutingRef, tab.repoLabel],
@@ -218,6 +218,7 @@ export function UnifiedTabView({
         case 'file':
             return (
                 <PreviewPane
+                    editingScope={JSON.stringify([scopeWorkspaceId, tab.chatId])}
                     repoId={tab.ownerWorkspaceId}
                     routingRef={tab.ownerRoutingRef}
                     definitionPreviewOwners={definitionPreviewOwners}

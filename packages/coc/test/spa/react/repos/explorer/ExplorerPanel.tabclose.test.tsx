@@ -1,3 +1,4 @@
+import '../../language-servers/fileIdentityMock';
 // @vitest-environment jsdom
 /**
  * AC-04: closing tabs and dirty-buffer safety, plus the AC-02 `beforeunload`

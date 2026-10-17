@@ -1,3 +1,4 @@
+import { getEditingSessionId } from './editingSession';
 /**
  * Authoritative browser-side document buffers for language support (AC-02).
  *
@@ -7,10 +8,10 @@
  * LSP requires. Monaco sits above it and never talks to the transport directly.
  *
  * The rules that shape the design:
- *   - One buffer and one version sequence per open document in a concrete
- *     clone, no matter how many views show it. Two views of the same clone's
- *     file in the Explorer and the right panel share this record; same-id
- *     clones on different hosts do not.
+ *   - One buffer and one version sequence per document, concrete clone and
+ *     editing scope. Unified-panel chats use independent scopes; standalone
+ *     Explorer and working-copy diffs share the default scope. Split views
+ *     retain the owning document and model.
  *   - Every matching server receives its own open/change/save/close stream and
  *     tracks its own handshake generation and synchronization mode.
  *   - Versions only ever increase, including across a reconnect. A server that
@@ -231,6 +232,7 @@ export interface OpenDocumentOptions {
 }
 
 export interface LanguageDocumentStoreOptions {
+    editingScope?: string;
     workspaceId: string;
     /** Concrete clone identity for transport routing; `null` pins page origin. */
     routingRef?: string | null;
@@ -285,7 +287,8 @@ export class LanguageDocumentStore {
         this.workspaceId = options.workspaceId;
         this.routingRef = options.routingRef === undefined ? options.workspaceId : options.routingRef;
         this.client = options.client
-            ?? getLanguageServerClient(options.workspaceId, undefined, this.routingRef);
+            ?? getLanguageServerClient(options.workspaceId, options.editingScope === undefined ? undefined
+                : `${getEditingSessionId()}:${options.editingScope}`, this.routingRef);
     }
 
     /** Number of open documents; a view count would be higher. */
@@ -811,12 +814,13 @@ const stores = new Map<string, LanguageDocumentStore>();
 export function getLanguageDocumentStore(
     workspaceId: string,
     routingRef?: string | null,
+    editingScope?: string,
 ): LanguageDocumentStore {
     const resolvedRoutingRef = routingRef === undefined ? workspaceId : routingRef;
-    const key = `${workspaceId}\u0000${resolvedRoutingRef ?? '<local>'}`;
+    const key = JSON.stringify([workspaceId, resolvedRoutingRef, editingScope ?? '']);
     let store = stores.get(key);
     if (!store) {
-        store = new LanguageDocumentStore({ workspaceId, routingRef: resolvedRoutingRef });
+        store = new LanguageDocumentStore({ workspaceId, routingRef: resolvedRoutingRef, editingScope });
         stores.set(key, store);
     }
     return store;

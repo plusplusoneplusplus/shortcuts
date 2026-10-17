@@ -1,3 +1,4 @@
+import '../language-servers/fileIdentityMock';
 /**
  * The dirty-preview close guard (AC-03 DoD 6) — the safety net for replacing a
  * preview tab that holds unsaved edits.
@@ -153,19 +154,19 @@ afterEach(() => {
 describe('unified panel preview slot — dirty close guard (AC-03)', () => {
     it('runs the unsaved-edits prompt before replacing a dirty preview, and cancel keeps it', async () => {
         renderPanel();
-        fireEvent.click(screen.getByTestId('tree-click-a'));
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-a')); });
         const editor = await screen.findByTestId('mock-monaco-textarea');
         fireEvent.change(editor, { target: { value: 'edited' } });
         await waitFor(() => expect(screen.getByTestId(`unified-panel-tab-dirty-${fileTabs()[0].id}`)).toBeTruthy());
 
-        fireEvent.click(screen.getByTestId('tree-click-b'));
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-b')); });
 
         // Nothing has been replaced yet: the prompt is up and a.ts is still the
         // buffer on screen.
         expect(screen.getByTestId('explorer-close-tabs-prompt')).toBeTruthy();
         expect(labels()).toEqual(['a.ts']);
 
-        fireEvent.click(screen.getByTestId('explorer-close-cancel-btn'));
+        await act(async () => { fireEvent.click(screen.getByTestId('explorer-close-cancel-btn')); });
         expect(screen.queryByTestId('explorer-close-tabs-prompt')).toBeNull();
         expect(labels()).toEqual(['a.ts']);
         expect((screen.getByTestId('mock-monaco-textarea') as HTMLTextAreaElement).value).toBe('edited');
@@ -173,13 +174,13 @@ describe('unified panel preview slot — dirty close guard (AC-03)', () => {
 
     it("opens the queued file once Don't Save resolves the dirty preview", async () => {
         renderPanel();
-        fireEvent.click(screen.getByTestId('tree-click-a'));
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-a')); });
         const editor = await screen.findByTestId('mock-monaco-textarea');
         fireEvent.change(editor, { target: { value: 'edited' } });
         await waitFor(() => expect(screen.getByTestId(`unified-panel-tab-dirty-${fileTabs()[0].id}`)).toBeTruthy());
 
-        fireEvent.click(screen.getByTestId('tree-click-b'));
-        fireEvent.click(screen.getByTestId('explorer-close-dont-save-btn'));
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-b')); });
+        await act(async () => { fireEvent.click(screen.getByTestId('explorer-close-dont-save-btn')); });
 
         await waitFor(() => expect(labels()).toEqual(['b.ts']));
         expect(fileTabs()[0].preview).toBe(true);

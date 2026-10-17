@@ -10,9 +10,12 @@ and transport code stays generic.
 - `definition-schema.ts` — zod validation returning field-level errors, plus
   list validation that reports duplicate ids by index.
 - `file-match.ts` — POSIX path normalization and glob matching (`**`, `*`, `?`,
-  `{a,b}`). Patterns match the workspace-relative path. Windows paths also use
-  case-insensitive identity and trim trailing dots/spaces before selection, URI
-  mapping, and shared-session ownership checks.
+  `{a,b}`). Normalization preserves case and trailing characters.
+- `file-identity.ts` — owning-filesystem directory spelling for
+  `/api/repos/:id/file-identity`. Case aliases require filesystem proof and
+  canonical containment; distinct case-sensitive, hard-link and symlink names
+  retain separate identities. Browser opens resolve before creating tabs or
+  models and reject ambiguous existing buffers without changing their edits.
 - `selection.ts` — deterministic server ordering (priority, then pattern
   specificity, then id), preferred-server selection for single-server callers,
   LSP language-id resolution, and nearest-marker project-root discovery.

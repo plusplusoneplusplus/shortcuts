@@ -1,3 +1,4 @@
+import '../language-servers/fileIdentityMock';
 /**
  * The unified panel's toolbar row (AC-02) — breadcrumbs for the active file tab
  * and the one file-tree toggle.
@@ -11,7 +12,7 @@
  * @vitest-environment jsdom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const explorerTree = vi.hoisted(() => vi.fn());
 
@@ -129,9 +130,9 @@ function renderPanel(props: Partial<React.ComponentProps<typeof UnifiedRightPane
 }
 
 /** Open a workspace resource through the "+" menu, as a user would. */
-function openViaMenu(testId: string) {
-    fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
-    fireEvent.click(screen.getByTestId(testId));
+async function openViaMenu(testId: string) {
+    await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
+    await act(async () => { fireEvent.click(screen.getByTestId(testId)); });
 }
 
 /** The tree's persisted expansion for a workspace, straight from the store. */
@@ -212,15 +213,15 @@ describe('unified panel toolbar row', () => {
      * seeded *before* the render: writing it afterwards notifies
      * `useSyncExternalStore` outside React's batch.
      */
-    function renderWithTreeFile(key: string, props: Partial<React.ComponentProps<typeof UnifiedRightPanel>> = {}) {
+    async function renderWithTreeFile(key: string, props: Partial<React.ComponentProps<typeof UnifiedRightPanel>> = {}) {
         writeUnifiedTreeState(WS, { open: true, width: 220 });
         const result = renderPanel(props);
-        fireEvent.click(screen.getByTestId(`mock-explorer-open-${key}`));
+        await act(async () => { fireEvent.click(screen.getByTestId(`mock-explorer-open-${key}`)); });
         return result;
     }
 
-    it('shows breadcrumbs with Search and Explorer controls in the toolbar', () => {
-        renderWithTreeFile('app');
+    it('shows breadcrumbs with Search and Explorer controls in the toolbar', async () => {
+        await renderWithTreeFile('app');
 
         expect(screen.getByTestId('unified-panel-toolbar')).toBeTruthy();
         expect(screen.getByTestId('breadcrumb-segment-root')).toBeTruthy();
@@ -236,13 +237,13 @@ describe('unified panel toolbar row', () => {
         expect(screen.getByTestId('unified-panel-toolbar').contains(search)).toBe(true);
     });
 
-    it('moves Search and Explorer controls into the strip when the toolbar is absent', () => {
+    it('moves Search and Explorer controls into the strip when the toolbar is absent', async () => {
         renderPanel();
         expect(screen.queryByTestId('unified-panel-toolbar')).toBeNull();
         expect(screen.getByTestId('unified-panel-tree-toggle').getAttribute('data-placement')).toBe('strip');
         expect(screen.getByTestId('unified-panel-search-toggle').getAttribute('data-placement')).toBe('strip');
 
-        openViaMenu('unified-panel-open-terminal');
+        await openViaMenu('unified-panel-open-terminal');
         expect(screen.queryByTestId('unified-panel-toolbar')).toBeNull();
         const toggle = screen.getByTestId('unified-panel-tree-toggle');
         expect(toggle.getAttribute('data-placement')).toBe('strip');
@@ -250,23 +251,23 @@ describe('unified panel toolbar row', () => {
         expect(screen.getByTestId('unified-panel-tab-strip').contains(screen.getByTestId('unified-panel-search-toggle'))).toBe(true);
     });
 
-    it('opens Search from inside the right panel without closing the panel', () => {
+    it('opens Search from inside the right panel without closing the panel', async () => {
         const selectMode = vi.fn();
         renderPanel({ dock: dockStub({ selectMode }) });
 
-        fireEvent.click(screen.getByRole('button', { name: 'Show Search' }));
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Show Search' })); });
 
         expect(selectMode).toHaveBeenCalledWith('search');
         expect(localStorage.getItem('split-workspace:ws-1:dock-open')).toBeNull();
         expect(screen.getByTestId('unified-panel-navigator-controls')).toBeTruthy();
     });
 
-    it('collapses Search from its panel-local active control', () => {
+    it('collapses Search from its panel-local active control', async () => {
         writeUnifiedTreeState(WS, { open: true, width: 220 });
         const selectMode = vi.fn();
         renderPanel({ dock: dockStub({ mode: 'search', selectMode }) });
 
-        fireEvent.click(screen.getByRole('button', { name: 'Hide Search' }));
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Hide Search' })); });
 
         expect(selectMode).not.toHaveBeenCalled();
         expect(screen.getByRole('button', { name: 'Show Search' }).getAttribute('aria-pressed')).toBe('false');
@@ -280,11 +281,11 @@ describe('unified panel toolbar row', () => {
             ],
             truncated: false,
         });
-        renderWithTreeFile('deep');
+        await renderWithTreeFile('deep');
         const activeBefore = screen.getByRole('tab', { selected: true }).getAttribute('data-tab-id');
 
         // "src" is index 2 of packages/coc/src/server/spa/client/react/features/deep.ts
-        fireEvent.click(screen.getByTestId('breadcrumb-segment-2'));
+        await act(async () => { fireEvent.click(screen.getByTestId('breadcrumb-segment-2')); });
 
         await waitFor(() => expect(explorerTree).toHaveBeenCalledWith(
             WS,
@@ -300,8 +301,8 @@ describe('unified panel toolbar row', () => {
     });
 
     it('lists the repo root when the root crumb is clicked', async () => {
-        renderWithTreeFile('deep');
-        fireEvent.click(screen.getByTestId('breadcrumb-segment-root'));
+        await renderWithTreeFile('deep');
+        await act(async () => { fireEvent.click(screen.getByTestId('breadcrumb-segment-root')); });
         await waitFor(() => expect(explorerTree).toHaveBeenCalledWith(WS, { path: '.', depth: 1 }, undefined));
         expect(screen.getByRole('dialog', { name: 'Files in root' })).toBeTruthy();
     });
@@ -316,20 +317,20 @@ describe('unified panel toolbar row', () => {
                 entries: [{ name: 'Button.tsx', path: 'src/components/Button.tsx', type: 'file' }],
                 truncated: false,
             });
-        renderWithTreeFile('app');
+        await renderWithTreeFile('app');
 
-        fireEvent.click(screen.getByTestId('breadcrumb-segment-0'));
-        fireEvent.click(await screen.findByTestId('breadcrumb-directory-entry-src/components'));
+        await act(async () => { fireEvent.click(screen.getByTestId('breadcrumb-segment-0')); });
+        await act(async () => { fireEvent.click(await screen.findByTestId('breadcrumb-directory-entry-src/components')); });
         const file = await screen.findByTestId('breadcrumb-directory-entry-src/components/Button.tsx');
-        fireEvent.click(file);
+        await act(async () => { fireEvent.click(file); });
 
         expect(screen.queryByTestId('breadcrumb-directory-picker')).toBeNull();
         expect(screen.getByRole('tab', { selected: true }).textContent).toContain('Button.tsx');
         expect(screen.getAllByRole('tab')).toHaveLength(1);
     });
 
-    it('degrades to a plain path label for a trusted absolute path', () => {
-        renderWithTreeFile('trusted');
+    it('degrades to a plain path label for a trusted absolute path', async () => {
+        await renderWithTreeFile('trusted');
 
         expect(screen.getByTestId('unified-panel-toolbar')).toBeTruthy();
         expect(screen.queryByTestId('breadcrumb-segment-root')).toBeNull();
@@ -342,7 +343,7 @@ describe('unified panel toolbar row', () => {
             target: MEMBER,
             targets: [{ workspaceId: WS, label: 'group' }, { workspaceId: MEMBER, label: 'api' }],
         });
-        const { rerender } = renderWithTreeFile('app', { dock: groupDock });
+        const { rerender } = await renderWithTreeFile('app', { dock: groupDock });
 
         expect(screen.getByTestId('unified-panel-toolbar-repo').textContent).toBe('api');
         expect(screen.getByTestId('breadcrumb-segment-0').textContent).toBe('src');
@@ -350,7 +351,7 @@ describe('unified panel toolbar row', () => {
         // The open tab keeps its owner, so browsing remains on MEMBER even though
         // the Explorer column now points at WS.
         rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub({ ...groupDock, target: WS })} />);
-        fireEvent.click(screen.getByTestId('breadcrumb-segment-0'));
+        await act(async () => { fireEvent.click(screen.getByTestId('breadcrumb-segment-0')); });
         await waitFor(() => expect(explorerTree).toHaveBeenCalledWith(
             MEMBER,
             { path: 'src', depth: 1 },
@@ -359,8 +360,8 @@ describe('unified panel toolbar row', () => {
         expect(screen.getByTestId('unified-panel-toolbar-repo').textContent).toBe('api');
     });
 
-    it('keeps the whole path in a tooltip when it truncates', () => {
-        renderWithTreeFile('deep');
+    it('keeps the whole path in a tooltip when it truncates', async () => {
+        await renderWithTreeFile('deep');
         const row = screen.getByTestId('unified-panel-toolbar');
         const scroller = row.querySelector('[title]');
         expect(scroller?.getAttribute('title')).toBe('packages/coc/src/server/spa/client/react/features/deep.ts');

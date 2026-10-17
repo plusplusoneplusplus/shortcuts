@@ -7,27 +7,18 @@
 
 /**
  * Convert a workspace-relative path to the POSIX form used for matching.
- * Windows aliases are folded to the same identity the filesystem uses.
+ * File identity is resolved separately on the owning filesystem.
  */
 export function normalizeRelativePath(
     filePath: string,
-    platform: NodeJS.Platform = process.platform,
+    _platform: NodeJS.Platform = process.platform,
 ): string {
     const normalized = filePath
         .replace(/\\/g, '/')
         .replace(/\/+/g, '/')
         .replace(/^\.\//, '')
         .replace(/^\//, '');
-    if (platform !== 'win32') {
-        return normalized;
-    }
-    return normalized
-        .split('/')
-        .map(component => component === '.' || component === '..'
-            ? component
-            : component.replace(/[ .]+$/g, ''))
-        .join('/')
-        .toLowerCase();
+    return normalized;
 }
 
 /** Lowercase extension including the dot, or `''` when the file has none. */

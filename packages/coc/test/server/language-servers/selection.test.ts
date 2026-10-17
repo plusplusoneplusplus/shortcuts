@@ -53,8 +53,8 @@ describe('normalizeRelativePath', () => {
         expect(normalizeRelativePath(input)).toBe(expected);
     });
 
-    it('folds Windows case and trailing dot or space aliases', () => {
-        expect(normalizeRelativePath('SRC.\\SHARED.TXT. ', 'win32')).toBe('src/shared.txt');
+    it('preserves Windows spelling until the owning filesystem confirms identity', () => {
+        expect(normalizeRelativePath('SRC.\\SHARED.TXT. ', 'win32')).toBe('SRC./SHARED.TXT. ');
     });
 
     it('preserves Windows traversal segments for containment checks', () => {

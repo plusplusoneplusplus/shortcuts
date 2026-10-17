@@ -34,6 +34,7 @@ import {
 import { toMarkers } from './monacoBridge';
 
 export interface UseLanguageDocumentOptions {
+    editingScope?: string;
     /** Owning workspace. Empty or missing disables the hook. */
     workspaceId?: string | null;
     /** Concrete clone identity used to reach the workspace's owning host. */
@@ -78,6 +79,7 @@ export function useLanguageDocument(options: UseLanguageDocumentOptions): UseLan
     const {
         workspaceId,
         routingRef,
+        editingScope,
         path,
         enabled = true,
         text,
@@ -105,7 +107,7 @@ export function useLanguageDocument(options: UseLanguageDocumentOptions): UseLan
             setDiagnostics(NO_DIAGNOSTICS);
             return;
         }
-        const store = injectedStore ?? getLanguageDocumentStore(workspaceId as string, routingRef);
+        const store = injectedStore ?? getLanguageDocumentStore(workspaceId as string, routingRef, editingScope);
         const opened = store.open({
             path: path as string,
             text: textRef.current,
@@ -126,7 +128,7 @@ export function useLanguageDocument(options: UseLanguageDocumentOptions): UseLan
             setSnapshot(null);
             setDiagnostics(NO_DIAGNOSTICS);
         };
-    }, [active, workspaceId, routingRef, path, injectedStore]);
+    }, [active, workspaceId, routingRef, editingScope, path, injectedStore]);
 
     // A later read from disk — a refresh, or a watcher — is offered to the
     // store, which refuses it while the buffer is dirty. Skipping the offer
