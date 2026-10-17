@@ -9,11 +9,13 @@ const valid: BrowserCommand[] = [
     { action: 'press', key: 'Enter' }, { action: 'scroll', ref: 'e1' },
     { action: 'navigate', direction: 'back' }, { action: 'wait', ms: 30_000 },
     { action: 'screenshot', ref: 'e1' }, { action: 'eval', js: 'document.title' },
+    { action: 'frames' },
+    { action: 'paste_html', ref: 'e1', html: '<b>Fixture</b>', text: 'Fixture' },
 ];
 
 describe('single browser command contract', () => {
-    it('declares exactly the 14 accepted actions in a closed single-tool schema', () => {
-        expect(BROWSER_ACTIONS).toHaveLength(14);
+    it('declares exactly the accepted actions in a closed single-tool schema', () => {
+        expect(BROWSER_ACTIONS).toHaveLength(16);
         expect(valid.map(command => command.action)).toEqual([...BROWSER_ACTIONS]);
         expect(BROWSER_TOOL_PARAMETERS.additionalProperties).toBe(false);
         expect(BROWSER_TOOL_PARAMETERS.required).toEqual(['action']);
@@ -64,8 +66,30 @@ describe('single browser command contract', () => {
         { action: 'screenshot', format: 'gif' }, { action: 'screenshot', format: 1 },
         { action: 'screenshot', view: 'true' }, { action: 'screenshot', view: null },
         { action: 'snapshot', format: 'png' }, { action: 'read', view: true },
+        { action: 'frames', frame: 'f-one' }, { action: 'snapshot', frame: 'f-one' },
+        { action: 'click', ref: 'e1', frame: 'f-one' }, { action: 'read', ref: 'e1', frame: 'f-one' },
+        { action: 'scroll', ref: 'e1', frame: 'f-one' }, { action: 'wait', ms: 1, frame: 'f-one' },
+        { action: 'navigate', direction: 'reload', frame: 'f-one' }, { action: 'eval', js: '1', frame: '' },
+        { action: 'eval', js: '1', frame: 1 }, { action: 'eval', js: '1', frame: 'f'.repeat(257) },
+        { action: 'read', frame: 'f\none' }, { action: 'eval', js: '1', frame: 'f|one' },
+        { action: 'frames', framesEnabled: true },
+        { action: 'paste_html', ref: 'e1', html: '', text: '' },
+        { action: 'paste_html', ref: 'e1', html: '<p>x</p>' },
+        { action: 'paste_html', ref: 'e1', html: 'x'.repeat(128001), text: '' },
+        { action: 'paste_html', ref: 'e1', html: '<b>x</b>', text: 'x', replaceClipboard: 'true' },
     ])('rejects missing/contradictory/wrongly typed parameters %j', input => {
         expect(() => parseBrowserCommand(input)).toThrow();
+    });
+
+    it.each([
+        { action: 'read', frame: 'f-one', offset: 0 },
+        { action: 'frames', offset: 32 },
+        { action: 'eval', frame: 'f-one', js: 'document.title' },
+        { action: 'wait', frame: 'f-one', text: 'ready' },
+        { action: 'press', frame: 'f-one', key: 'Enter' },
+        { action: 'scroll', frame: 'f-one', direction: 'down' },
+    ])('accepts deliberate frame targeting %j', command => {
+        expect(parseBrowserCommand(command)).toEqual(command);
     });
 
     it('accepts zero waits, text waits and direction-plus-target scrolling', () => {

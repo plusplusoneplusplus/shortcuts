@@ -563,6 +563,23 @@ Each tool factory owns a stable controlling-turn ID, independent of remembered
 conversation selection. Targeted relay/main activity carries it through follow-ups
 and terminal cleanup. Relay errors and malformed results remain visible failures.
 
+Default-off `browserControl.framesEnabled` adds `frames(offset?)` and explicit
+`frame` targeting for read/eval/text-wait/press/scroll. Ordinary snapshots include
+bounded frame boundaries and committed origins; refs route input to their owning
+frame/document. Snapshot baselines include document/frame scope. The server sends
+frame policy separately from model arguments through the owning local/clone relay;
+missing capabilities fail explicitly. Frame inventories and contexts are transient,
+never browser preferences or process metadata. See desktop control in `spa/shell.md`.
+
+`paste_html(ref, html, text, replaceClipboard?)` is gated by owning-server
+`browserControl.richPasteEnabled` plus frame control, both default off. HTML and
+plain text together are limited to 128000 characters. The desktop requires the
+focused editable ref and its existing selection, writes both OS clipboard formats,
+and sends trusted paste without DOM insertion. Nonempty clipboard replacement
+requires explicit `replaceClipboard: true`; supplied content remains on the
+clipboard, and old contents are never read or returned. Delivery acknowledgement
+does not establish editor persistence. Unknown outcomes must not auto-retry.
+
 ### kusto_query
 
 Runs a KQL query server-side against Azure Data Explorer using the official

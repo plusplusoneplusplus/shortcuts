@@ -822,6 +822,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     opts.setBrowserControl?.(() => {
         const browserControl = getWsServer()?.browserControl;
         browserControl?.setEnabledGetter(isBrowserControlEnabled);
+        browserControl?.setFramesEnabledGetter(() => (
+            opts.runtimeConfigService?.config ?? opts.resolvedConfig
+        )?.browserControl?.framesEnabled === true);
+        browserControl?.setRichPasteEnabledGetter(() => (
+            opts.runtimeConfigService?.config ?? opts.resolvedConfig
+        )?.browserControl?.richPasteEnabled === true);
         return browserControl;
     }, new BrowserToolStateStore(dataDir));
     // Async extension-canvas capabilities + host.complete. Live (admin toggle

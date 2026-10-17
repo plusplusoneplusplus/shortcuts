@@ -31,6 +31,11 @@ references before editing. Paths are package-relative.
 - Embedded web-page zoom uses desktop browser preference IPC and broadcasts, not
   workspace/server state or app zoom. Browser toolbar controls affect every URL guest;
   HTML previews, editors, terminals and external browser windows keep their own behavior.
+- Browser rich paste requires owning-server `browserControl.richPasteEnabled`
+  and frame control. Relay the policy separately from model arguments and require
+  desktop `richPasteSupported`; reject unsupported clients without fallback.
+  Native clipboard contents stay desktop-local; results acknowledge delivery,
+  not editor persistence, and never echo the payload.
 - Separate **storage origin** from **execution workspace**. Work items, plans/versions,
   changes, bindings, PR provider state, classification, and review progress use
   `/api/origins/:originId/...` and `*ForOrigin` methods. Concrete `workspaceId` selects
@@ -331,6 +336,12 @@ references before editing. Paths are package-relative.
   removes screenshots best effort with logged failures. Keep screenshots machine-local:
   wipe through the snapshot registry and exclude from export/import.
   Never load browser config per turn.
+  `browserControl.framesEnabled` is independently default-off and live. Carry
+  its owning-server policy outside model arguments through the scoped relay;
+  older/missing desktop frame capability fails explicitly. Frame boundaries and
+  committed origins label bounded snapshots/reads; delta baselines include
+  document/frame identity. Frame refs and contexts remain transient, never
+  process metadata, profile settings or new storage.
   `/browser` persists prompt-only `metadata.browserMode`; tool execution does
   not require activation. Ask, Autopilot and follow-ups share registration,
   preferences and turn cancellation; create the turn AbortController before

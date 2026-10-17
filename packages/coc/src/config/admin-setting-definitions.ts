@@ -782,6 +782,22 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'browserControl.framesEnabled', default: false, runtime: 'live', runtimeFlag: 'browserFrameControlEnabled',
+        ui: {
+            tab: 'browser', group: 'browserAutomation', order: 11, label: 'Browser frame control',
+            hint: 'Include and target nested browser frames when browser control is enabled.',
+            dependsOn: 'browserControl.enabled', badge: 'experimental', testId: 'toggle-browser-frame-control-enabled',
+        },
+    }),
+    bool({
+        key: 'browserControl.richPasteEnabled', default: false, runtime: 'live', runtimeFlag: 'browserRichPasteEnabled',
+        ui: {
+            tab: 'browser', group: 'browserAutomation', order: 12, label: 'Browser rich paste',
+            hint: 'Allow bounded HTML and plain-text clipboard paste into an already focused editable selection. Requires frame control. Clipboard contents are not restored.',
+            dependsOn: 'browserControl.framesEnabled', badge: 'experimental', testId: 'toggle-browser-rich-paste-enabled',
+        },
+    }),
+    bool({
         key: 'kusto.enabled', default: false, runtime: 'live', runtimeFlag: 'kustoEnabled',
         ui: {
             tab: 'integrations', group: 'review', order: 62, label: 'Kusto query canvas', badge: 'experimental',

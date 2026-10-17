@@ -16,6 +16,7 @@ process.on('uncaughtException', error => {
 
 const data = process.env.COC_BROWSER_WORKFLOW_DATA;
 const engine = process.env.COC_BROWSER_E2E_ENGINE;
+const frameWorkflow = process.env.COC_BROWSER_E2E_FRAMES === '1';
 const nativeBinary = engine === 'webview2' ? require('@plusplusoneplusplus/coc-native').loadWebView2Binary() : undefined;
 let nativeHelperPid;
 const spawn = childProcess.spawn;
@@ -25,12 +26,16 @@ childProcess.spawn = function (binary, ...args) {
     return child;
 };
 app.setPath('userData', data);
+if (frameWorkflow) {
+    app.commandLine.appendSwitch('site-per-process');
+    app.commandLine.appendSwitch('host-resolver-rules', 'MAP localhost 127.0.0.1');
+}
 const { registerBrowserViewIpc, registerBrowserEmbedder, disposeBrowserViews } = require('../../dist/browser-view-host');
 const { ProcessWebSocketServer } = require('../../../coc/dist/server/streaming/websocket');
 const { buildChatTurnContext } = require('../../../coc/dist/server/executors/chat-turn-context-builder');
 const { BrowserToolStateStore } = require('../../../coc/dist/server/llm-tools/browser-tools');
 const { CocToolRuntime } = require('@plusplusoneplusplus/coc-agent-sdk');
-const fixtureConfig = { browserControl: { enabled: true } };
+const fixtureConfig = { browserControl: { enabled: true, framesEnabled: frameWorkflow } };
 const renderer = buildSync({
     entryPoints: [path.join(__dirname, 'browser-control-workflow-renderer.tsx')],
     bundle: true, write: false, format: 'iife', platform: 'browser', jsx: 'automatic',
@@ -82,11 +87,14 @@ const server = createServer((req, res) => {
     res.setHeader('content-type', req.url === '/renderer.js' ? 'application/javascript' : req.url === '/style.css' ? 'text/css' : 'text/html');
     res.end(req.url === '/renderer.js' ? renderer : req.url === '/style.css'
         ? readFileSync(path.join(__dirname, '../../../coc/src/server/spa/client/dist/bundle.css'))
+        : frameWorkflow && req.url.startsWith('/route-frame')
+            ? '<!doctype html><title>Synthetic route frame</title><p>Route frame sentinel</p><input aria-label="Route frame input"><button onclick="document.querySelector(\'p\').textContent=document.querySelector(\'input\').value">Route frame save</button>'
         : req.url.startsWith('/large') ? largePage : req.url.startsWith('/page') ? page
-            : '<!doctype html><link rel="stylesheet" href="/style.css"><script>window.__DASHBOARD_CONFIG__={features:{browserControlEnabled:true},apiBasePath:"/api"}</script><div id="root"></div><script src="/renderer.js"></script>');
+            : `<!doctype html><link rel="stylesheet" href="/style.css"><script>window.__DASHBOARD_CONFIG__={features:{browserControlEnabled:true,browserFrameControlEnabled:${frameWorkflow}},apiBasePath:"/api"}</script><div id="root"></div><script src="/renderer.js"></script>`);
 });
 const ws = new ProcessWebSocketServer();
 ws.browserControl.setEnabledGetter(() => fixtureConfig.browserControl.enabled);
+if (frameWorkflow) ws.browserControl.setFramesEnabledGetter(() => fixtureConfig.browserControl.framesEnabled);
 ws.attach(server);
 const browserState = new BrowserToolStateStore(path.join(data, 'coc-data'));
 let lastBrowserResult;
@@ -185,10 +193,83 @@ app.whenReady().then(async () => {
     await call({ action: 'type', ref: input, text: 'isolated relay works' });
     await call({ action: 'click', ref: button });
     const read = await call({ action: 'read' });
-    const report = JSON.parse(await call({ action: 'eval', js: '({events:window.events, bridge:typeof window.cocDesktop, require:typeof require})' }));
+    const parseEvaluation = text => JSON.parse(frameWorkflow ? text.slice(text.indexOf('\n') + 1) : text);
+    const report = parseEvaluation(await call({ action: 'eval', js: '({events:window.events, bridge:typeof window.cocDesktop, require:typeof require})' }));
     assert(read.includes('Published: isolated relay works'), `Live page read failed: ${read}; ${JSON.stringify(report)}`);
     assert(report.events.length >= 2 && report.events.every(event => event.trusted), 'Input was not trusted CDP input');
     assert(report.bridge === 'undefined' && report.require === 'undefined', 'Guest exposed privileged bridge');
+    if (frameWorkflow) {
+        await call({ action: 'eval', js: `document.body.insertAdjacentHTML('beforeend',${JSON.stringify(
+            `<iframe src="${origin.replace('127.0.0.1', 'localhost')}/route-frame" name="route-child" style="width:500px;height:200px;border:5px solid teal"></iframe>`)})` });
+        const frameSnapshot = await until(async () => {
+            const value = await call({ action: 'snapshot' });
+            return value.includes('Route frame input') && value;
+        }, 'frame-enabled cross-site relay snapshot');
+        const frameInput = frameSnapshot.match(/^\s*(e\d+) textbox "Route frame input"/m)?.[1];
+        const frameSave = frameSnapshot.match(/^\s*(e\d+) button "Route frame save"/m)?.[1];
+        const frames = await call({ action: 'frames' });
+        const frame = frames.match(/\[frame ([^\s|]+) \| name "route-child" \|/)?.[1];
+        assert(frame && frameInput && frameSave, `Frame metadata/refs lost in relay: ${frameSnapshot}\n${frames}`);
+        await call({ action: 'type', ref: frameInput, text: 'frame relay value' });
+        await call({ action: 'click', ref: frameSave });
+        const frameRead = await call({ action: 'read', frame });
+        assert(frameRead.includes('frame relay value') && frameRead.includes('[frame '), 'Frame read lost scoped output');
+        assert(parseEvaluation(await call({ action: 'eval', frame, js: 'document.querySelector("p").textContent' })) === 'frame relay value',
+            'Explicit frame eval did not cross the production route');
+        assert(parseEvaluation(await call({ action: 'eval', js: 'document.title' })) === 'Workflow fixture', 'Explicit frame eval changed the default context');
+        const foreign = await windowFor('workspace-b');
+        const foreignContext = await turn('workspace-b', 'frame-foreign', '/browser synthetic isolation', true);
+        const foreignCall = driver(foreignContext);
+        await foreignCall({ action: 'open', url: origin + '/page?owner=foreign-frame' });
+        const foreignTool = foreignContext.tools.find(tool => tool.name === 'browser');
+        const foreignHandle = await foreignTool.handler({ action: 'read', frame });
+        assert(foreignHandle.resultType === 'failure' && /stale frame/.test(foreignHandle.textResultForLlm),
+            'Foreign workspace reused a frame handle');
+        const foreignRef = await foreignTool.handler({ action: 'click', ref: frameInput });
+        assert(foreignRef.resultType === 'failure' && /stale ref/.test(foreignRef.textResultForLlm),
+            'Another view reused a returned frame ref');
+        const ownerTabId = `t${owner.win.webContents.id}:${tab.resourceId}`;
+        await foreign.js(`window.cocDesktop.browser.control.bindScope('workspace-a','remote:synthetic:workspace-a')`);
+        const cloneIsolation = await foreign.js(`window.cocDesktop.browser.control.execute({
+            id:'frame-clone-isolation',workspaceId:'workspace-a',processId:'frame-foreign',framesEnabled:true,
+            selectedTab:${JSON.stringify(ownerTabId)},command:{action:'read',frame:${JSON.stringify(frame)}}
+        }).then(() => '',error => error.message)`);
+        assert(cloneIsolation.includes('not found in this workspace'), 'Clone with the same raw workspace controlled the local frame');
+        const wrongScope = await owner.js(`window.cocDesktop.browser.control.execute({
+            id:'frame-workspace-isolation',workspaceId:'workspace-b',processId:'conversation-a',framesEnabled:true,
+            selectedTab:${JSON.stringify(ownerTabId)},command:{action:'read',frame:${JSON.stringify(frame)}}
+        }).then(() => '',error => error.message)`);
+        assert(wrongScope.includes('workspace scope changed'), 'Frame command crossed the bound workspace');
+        const file = path.join(data, 'frame-excluded.html');
+        writeFileSync(file, '<!doctype html><title>Frame excluded preview</title><p>Synthetic preview</p>');
+        await owner.js(`window.workflow.setFile(${JSON.stringify(file)})`);
+        await until(() => owner.js(`window.workflow.states.some(state=>state.title==='Frame excluded preview'&&!state.loading)`), 'frame-mode excluded file preview');
+        assert(!(await call({ action: 'tabs' })).includes('Frame excluded preview'), 'Frame mode exposed a file preview');
+        const fileRejected = await context.tools.find(tool => tool.name === 'browser').handler({
+            action: 'select', tab: `t${owner.win.webContents.id}:html-page:excluded-file`,
+        });
+        assert(fileRejected.resultType === 'failure', 'Frame mode selected a file preview');
+        foreignContext.dispose();
+        await owner.js(`window.cocDesktop.browser.control.releaseFrames('workspace-a')`);
+        const releasedFrame = await context.tools.find(tool => tool.name === 'browser').handler({ action: 'read', frame });
+        assert(releasedFrame.resultType === 'failure' && releasedFrame.textResultForLlm.includes('stale frame'),
+            'Idle frame release retained a usable context handle');
+        fixtureConfig.browserControl.framesEnabled = false;
+        const disabledFrame = await context.tools.find(tool => tool.name === 'browser').handler({ action: 'read', frame });
+        assert(disabledFrame.resultType === 'failure' && disabledFrame.textResultForLlm.includes('disabled'), 'Live frame policy disable did not reject the old handle');
+        const disabledRead = await call({ action: 'read' });
+        assert(disabledRead.includes('Published: isolated relay works') && !disabledRead.includes('[frame '), 'Frame disable did not preserve legacy root reading');
+        console.log('E2E::' + JSON.stringify({ engine, frameRoute: true, automaticSnapshot: true,
+            frameReadEval: true, frameOwnedInput: true, defaultContext: true, liveFrameDisabled: true,
+            frameOwnerIsolation: true, frameCloneIsolation: true, frameFileExcluded: true }));
+        context.dispose();
+        await disposeBrowserViews();
+        for (const win of windows) win.destroy();
+        ws.closeAll();
+        server.close();
+        app.exit(0);
+        return;
+    }
     owner.win.setSize(1800, 1000);
     await owner.js('window.workflow.resizePanel(1600, 800)');
     await until(() => owner.js(`document.getElementById('panel').getBoundingClientRect().width === 1600`), 'expanded browser panel');

@@ -2,6 +2,20 @@ import type { BrowserAvailability, BrowserDownloadEvent, BrowserEngine, BrowserF
 import type { BrowserImportCookie } from './browser-cookie-import';
 import type { HtmlPageBounds } from './html-page-policy';
 
+/** Main-process-only events required by the bounded frame registry. */
+export const BROWSER_FRAME_CDP_EVENTS = [
+    'Page.frameAttached', 'Page.frameNavigated', 'Page.frameDetached',
+    'Page.navigatedWithinDocument', 'Page.lifecycleEvent', 'Page.frameStartedLoading', 'Page.frameStoppedLoading',
+    'Runtime.executionContextCreated', 'Runtime.executionContextDestroyed', 'Runtime.executionContextsCleared',
+    'Target.attachedToTarget', 'Target.detachedFromTarget', 'Target.targetCrashed', 'Inspector.detached',
+] as const;
+
+export type BrowserCdpEventListener = (method: string, params: Record<string, unknown>, sessionId?: string) => void;
+
+export function validBrowserCdpSession(sessionId: unknown): sessionId is string {
+    return typeof sessionId === 'string' && /^[a-zA-Z0-9_.:-]{1,256}$/.test(sessionId);
+}
+
 export interface BrowserViewRequest {
     ownerId: number;
     viewId: string;
@@ -51,7 +65,9 @@ export interface BrowserHostedView {
     navigate(url: string): void | Promise<void>;
     nav(action: BrowserNavAction): void | Promise<void>;
     /** URL views only. Shared browser-control logic sends engine-neutral CDP commands. */
-    cdp?(method: string, params?: Record<string, unknown>): Promise<unknown>;
+    cdp?(method: string, params?: Record<string, unknown>, sessionId?: string): Promise<unknown>;
+    onCdpEvent?(listener: BrowserCdpEventListener): () => void;
+    waitForCdpEvents?(): Promise<void>;
     waitForControlReady?(signal: AbortSignal): Promise<void>;
     /** Trusted native popup chrome only; never injected into the page. */
     setControlActivity?(turnId: string | null): void | Promise<void>;

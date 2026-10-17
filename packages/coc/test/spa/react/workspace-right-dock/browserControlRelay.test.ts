@@ -39,12 +39,14 @@ function harness(baseUrl?: string, modern = false) {
     let activity!: (event: any) => void;
     let stop!: (event: any) => void;
     const control = {
+        framesSupported: modern,
+        richPasteSupported: modern,
         bindScope: vi.fn(async (): Promise<{ ownerId: number } | void> => {}),
         execute: vi.fn(async (): Promise<BrowserCommandResult> => ({ tabs: [] })),
         cancel: vi.fn(),
         onReveal: vi.fn((handler: (event: any) => void) => { reveal = handler; return vi.fn(); }),
         ...(modern ? {
-            finish: vi.fn(), setVisible: vi.fn(),
+            finish: vi.fn(), setVisible: vi.fn(), releaseFrames: vi.fn(async () => {}),
             onActivity: vi.fn((handler: (event: any) => void) => { activity = handler; return vi.fn(); }),
             onStop: vi.fn((handler: (event: any) => void) => { stop = handler; return vi.fn(); }),
         } : {}),
@@ -57,6 +59,92 @@ const request = { id: 'r', workspaceId: 'w', processId: 'p', command: { action: 
 const tick = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
 
 describe('SPA browser socket relay', () => {
+    it.each([false, true])('requires a rich-paste-capable desktop: %s', async modern => {
+        const h = harness(undefined, modern);
+        await h.relay.update('w');
+        h.relay.onOpen();
+        const input = { ...request, framesEnabled: true, richPasteEnabled: true,
+            command: { action: 'paste_html', ref: 'e1', html: '<b>Synthetic</b>', text: 'Synthetic' } };
+        h.relay.onMessage({ type: 'browser-command', request: input });
+        await tick();
+        if (modern) expect(h.control.execute).toHaveBeenCalledWith(input);
+        else expect(h.control.execute).not.toHaveBeenCalled();
+        h.relay.dispose();
+    });
+    it('cancels enabled pending frame work on its source config change and suppresses late success', async () => {
+        const h = harness(undefined, true);
+        await h.relay.update('w'); h.relay.onOpen();
+        let resolve!: (result: BrowserCommandResult) => void;
+        h.control.execute.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+        h.relay.onMessage({ type: 'browser-command', request: { ...request, framesEnabled: true } });
+        h.relay.onMessage({ type: 'config-changed' });
+        expect(h.control.cancel).toHaveBeenCalledWith('r');
+        expect(h.control.releaseFrames).toHaveBeenCalledWith('w');
+        expect(h.send).toHaveBeenCalledWith({ type: 'browser-command-result', reply: {
+            id: 'r', ok: false, error: 'Browser frame policy changed during command',
+        } });
+        h.send.mockClear();
+        resolve({ tabs: [] }); await tick();
+        expect(h.send).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'browser-command-result' }));
+        h.relay.dispose();
+    });
+    it('does not cancel legacy pending work on config changes or apply page-origin frame flags to clones', async () => {
+        const baseUrl = 'http://127.0.0.1:4500';
+        registerCloneBaseUrls([{ workspaceId: 'w', serverId: 'server', baseUrl }]);
+        const h = harness(baseUrl, true);
+        await h.relay.update('remote:server:w'); h.relay.onOpen();
+        let resolve!: (result: BrowserCommandResult) => void;
+        h.control.execute.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+        h.relay.onMessage({ type: 'browser-command', request });
+        h.relay.onMessage({ type: 'config-changed' });
+        applyRuntimeConfigPatch({ browserFrameControlEnabled: false });
+        expect(h.control.cancel).not.toHaveBeenCalled();
+        expect(h.control.releaseFrames).not.toHaveBeenCalled();
+        resolve({ tabs: [] }); await tick();
+        expect(h.send).toHaveBeenCalledWith({ type: 'browser-command-result', reply: { id: 'r', ok: true, result: { tabs: [] } } });
+        h.relay.dispose();
+    });
+    it('releases idle frame tracking on a source config change without waiting for another command', async () => {
+        const h = harness(undefined, true);
+        await h.relay.update('w'); h.relay.onOpen();
+        h.relay.onMessage({ type: 'browser-command', request: { ...request, framesEnabled: true } });
+        await tick();
+        h.relay.onMessage({ type: 'config-changed' });
+        expect(h.control.releaseFrames).toHaveBeenCalledExactlyOnceWith('w');
+        expect(h.control.cancel).not.toHaveBeenCalled();
+        h.relay.dispose();
+    });
+    it('forwards source-server frame policy unchanged, independent of page-origin config', async () => {
+        const baseUrl = 'http://127.0.0.1:4500';
+        registerCloneBaseUrls([{ workspaceId: 'w', serverId: 'server', baseUrl }]);
+        applyRuntimeConfigPatch({ browserControlEnabled: false, browserFrameControlEnabled: false });
+        const h = harness(baseUrl, true);
+        await h.relay.update('remote:server:w'); h.relay.onOpen();
+        const frames = [{ id: 'f-one', origin: 'opaque', name: '', document: 'd-one', status: 'ready' as const, depth: 0 }];
+        const result = { frames, frame: 'f-one', document: 'd-one' };
+        h.control.execute.mockResolvedValueOnce(result);
+        const frameRequest = { ...request, command: { action: 'frames' }, framesEnabled: true };
+        h.relay.onMessage({ type: 'browser-command', request: frameRequest });
+        await tick();
+        expect(h.control.execute).toHaveBeenCalledWith(frameRequest);
+        expect(h.send).toHaveBeenCalledWith({ type: 'browser-command-result', reply: { id: 'r', ok: true, result } });
+        h.relay.dispose();
+    });
+    it('fails closed for older desktop capability, malformed policy and disabled frame parameters', async () => {
+        const h = harness();
+        await h.relay.update('w'); h.relay.onOpen();
+        for (const [extra, error] of [
+            [{ framesEnabled: true }, 'Unsupported desktop capability: browser frame control'],
+            [{ framesEnabled: 'true' }, 'Invalid browser frame policy'],
+            [{ command: { action: 'frames' } }, 'Browser frame control is disabled'],
+            [{ framesEnabled: false, command: { action: 'read', frame: 'f-one' } }, 'Browser frame control is disabled'],
+        ] as const) {
+            h.relay.onMessage({ type: 'browser-command', request: { ...request, ...extra } });
+            expect(h.send).toHaveBeenLastCalledWith({ type: 'browser-command-result', reply: { id: 'r', ok: false, error } });
+        }
+        expect(h.control.execute).not.toHaveBeenCalled();
+        h.relay.dispose();
+    });
     it('isolates simultaneous local/clone visibility and disconnect clears on one trusted bridge', async () => {
         const baseUrl = 'http://127.0.0.1:4500', cloneRef = 'remote:server:w';
         registerCloneBaseUrls([{ workspaceId: 'w', serverId: 'server', baseUrl }]);

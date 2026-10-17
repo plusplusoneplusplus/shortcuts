@@ -14,12 +14,17 @@ interface Capability {
 
 interface Pending {
     client: BrowserRelayClient;
+    framesEnabled: boolean;
+    richPasteEnabled: boolean;
+    cancel(): void;
     finish(error?: unknown, result?: BrowserCommandResult): void;
 }
 
 /** Targeted messages never enter the global broadcast/container event channel. */
 export class BrowserControlRelay implements BrowserControlRuntime {
     private enabled = () => false;
+    private framesEnabled = () => false;
+    private richPasteEnabled = () => false;
     private sequence = 0;
     private readonly clients = new Map<string, Capability>();
     private readonly pending = new Map<string, Pending>();
@@ -39,6 +44,27 @@ export class BrowserControlRelay implements BrowserControlRuntime {
 
     setEnabledGetter(getEnabled: () => boolean): void { this.enabled = getEnabled; }
     getEnabled(): boolean { return this.enabled(); }
+    getFramesEnabled(): boolean { return this.getEnabled() && this.framesEnabled() === true; }
+    getRichPasteEnabled(): boolean { return this.getFramesEnabled() && this.richPasteEnabled() === true; }
+    setRichPasteEnabledGetter(getEnabled: () => boolean): void {
+        this.richPasteEnabled = getEnabled;
+        this.syncFramesPolicy();
+    }
+    setFramesEnabledGetter(getEnabled: () => boolean): void {
+        this.framesEnabled = getEnabled;
+        this.syncFramesPolicy();
+    }
+    syncFramesPolicy(): void {
+        const enabled = this.getFramesEnabled();
+        for (const pending of [...this.pending.values()]) if (pending.framesEnabled !== enabled) {
+            pending.cancel();
+            pending.finish(new Error('Browser frame policy changed during command'));
+        }
+        for (const pending of [...this.pending.values()]) if (pending.richPasteEnabled && !this.getRichPasteEnabled()) {
+            pending.cancel();
+            pending.finish(new Error('Browser rich paste disabled during command'));
+        }
+    }
 
     advertise(client: BrowserRelayClient, workspaceId: unknown, focused: unknown): void {
         if (typeof workspaceId !== 'string' || !workspaceId || typeof focused !== 'boolean') return;
@@ -62,6 +88,7 @@ export class BrowserControlRelay implements BrowserControlRuntime {
     }
 
     reply(client: BrowserRelayClient, reply: unknown): void {
+        this.syncFramesPolicy();
         if (!reply || typeof reply !== 'object') return;
         const value = reply as { id?: unknown; ok?: unknown; result?: unknown; error?: unknown };
         if (typeof value.id !== 'string') return;
@@ -71,11 +98,20 @@ export class BrowserControlRelay implements BrowserControlRuntime {
             pending.finish(new Error(value.error));
         } else if (value.ok === true && isResult(value.result)) {
             pending.finish(undefined, value.result);
+        } else if (value.ok === true && pending.framesEnabled) {
+            pending.finish(new Error('Browser returned an invalid frame result'));
         }
     }
 
     execute(workspaceId: string, processId: string, command: BrowserCommand, selectedTab?: string, signal?: AbortSignal, controllingTurnId?: string): Promise<BrowserCommandResult> {
         if (!this.getEnabled()) return Promise.reject(new Error('Browser control is disabled'));
+        this.syncFramesPolicy();
+        const framesEnabled = this.getFramesEnabled();
+        const richPasteEnabled = command.action === 'paste_html' && this.getRichPasteEnabled();
+        if (command.action === 'paste_html' && !richPasteEnabled) return Promise.reject(new Error('Browser rich paste is disabled'));
+        if (!framesEnabled && (command.action === 'frames' || command.frame !== undefined)) {
+            return Promise.reject(new Error('Browser frame control is disabled'));
+        }
         if (signal?.aborted) return Promise.reject(signal.reason);
         const selected = [...this.clients.values()].filter(client => client.workspaceId === workspaceId)
             .sort((a, b) => b.focused - a.focused)[0];
@@ -111,11 +147,15 @@ export class BrowserControlRelay implements BrowserControlRuntime {
                 if (!this.pending.delete(id)) return;
                 clearTimeout(timer);
                 signal?.removeEventListener('abort', abort);
-                if (error !== undefined) reject(error); else resolve(result!);
+                if (error !== undefined) reject(error);
+                else if (framesEnabled && command.action !== 'tabs' && (!result?.frame || !result.document
+                    || (command.action === 'frames' && !result.frames))) {
+                    reject(new Error('Unsupported desktop capability: browser frame control requires frame-aware results'));
+                } else resolve(result!);
             };
-            this.pending.set(id, { client, finish });
+            this.pending.set(id, { client, framesEnabled, richPasteEnabled, cancel, finish });
             signal?.addEventListener('abort', abort, { once: true });
-            try { client.send(JSON.stringify({ type: 'browser-command', request: { id, turnId, workspaceId, processId, command, selectedTab } })); }
+            try { client.send(JSON.stringify({ type: 'browser-command', request: { id, turnId, workspaceId, processId, command, selectedTab, framesEnabled, ...(richPasteEnabled ? { richPasteEnabled: true } : {}) } })); }
             catch (error) { finish(error); }
         });
     }
@@ -124,17 +164,60 @@ export class BrowserControlRelay implements BrowserControlRuntime {
 function isResult(value: unknown): value is BrowserCommandResult {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
     const result = value as Record<string, unknown>;
-    if (Object.keys(result).some(key => !['tab', 'title', 'url', 'tabs', 'elements', 'interactiveElements', 'text', 'textTotal', 'value', 'valueJson', 'valueTruncated', 'image'].includes(key))) return false;
+    if (Object.keys(result).some(key => !['tab', 'title', 'url', 'tabs', 'elements', 'interactiveElements', 'frames', 'frame', 'document', 'truncated', 'text', 'textTotal', 'value', 'valueJson', 'valueTruncated', 'image'].includes(key))) return false;
     if ('valueJson' in result && typeof result.valueJson !== 'string') return false;
     if ('valueTruncated' in result && typeof result.valueTruncated !== 'boolean') return false;
     for (const key of ['tab', 'title', 'url', 'text']) if (key in result && typeof result[key] !== 'string') return false;
-    if ('tabs' in result && (!Array.isArray(result.tabs) || result.tabs.some(tab => !tab || typeof tab.id !== 'string'
+    for (const key of ['frame', 'document']) if (key in result && !handle(result[key])) return false;
+    if ('truncated' in result && (typeof result.truncated !== 'string' || !result.truncated.trim() || result.truncated.length > 1024)) return false;
+    if ('frames' in result) {
+        if (!Array.isArray(result.frames) || result.frames.length > 32) return false;
+        const ids = new Set<string>();
+        for (const frame of result.frames) {
+            if (!frame || typeof frame !== 'object' || Array.isArray(frame)
+                || Object.keys(frame).some(key => !['id', 'parent', 'origin', 'name', 'document', 'status', 'depth'].includes(key))
+                || !handle(frame.id) || ids.has(frame.id) || !handle(frame.document)
+                || ('parent' in frame && (!handle(frame.parent) || frame.parent === frame.id))
+                || typeof frame.name !== 'string' || frame.name.length > 160
+                || typeof frame.origin !== 'string' || frame.origin.length > 256
+                || !['ready', 'loading', 'unavailable'].includes(frame.status)
+                || !Number.isSafeInteger(frame.depth) || frame.depth < 0 || frame.depth > 8) return false;
+            ids.add(frame.id);
+        }
+    }
+    if ('tabs' in result && (!Array.isArray(result.tabs) || result.tabs.some(tab => !tab || typeof tab !== 'object' || Array.isArray(tab) || typeof tab.id !== 'string'
         || typeof tab.title !== 'string' || typeof tab.url !== 'string' || !['electron', 'webview2'].includes(tab.engine)))) return false;
     for (const key of ['elements', 'interactiveElements']) {
         if (key in result && (!Array.isArray(result[key]) || result[key].some(element => !element
+            || typeof element !== 'object' || Array.isArray(element)
+            || Object.keys(element).some(key => !['ref', 'role', 'name', 'depth', 'checked', 'frame'].includes(key))
             || typeof element.ref !== 'string' || typeof element.role !== 'string' || typeof element.name !== 'string'
             || !Number.isSafeInteger(element.depth) || element.depth < 0
-            || ('checked' in element && typeof element.checked !== 'boolean')))) return false;
+            || ('checked' in element && typeof element.checked !== 'boolean')
+            || ('frame' in element && !handle(element.frame))))) return false;
+        if (Array.isArray(result[key]) && new Set(result[key].map(element => element.ref)).size !== result[key].length) return false;
+    }
+    if (Array.isArray(result.frames)) {
+        const frames = new Map(result.frames.map(frame => [frame.id, frame]));
+        if ('frame' in result && frames.has(result.frame) && frames.get(result.frame).document !== result.document) return false;
+        for (const frame of result.frames) {
+            const ancestors = new Set<string>([frame.id]);
+            let parent = frame.parent;
+            while (parent && frames.has(parent)) {
+                if (ancestors.has(parent)) return false;
+                ancestors.add(parent);
+                const ancestor = frames.get(parent);
+                if (ancestor.depth >= frame.depth) return false;
+                parent = ancestor.parent;
+            }
+        }
+        const refs = new Map<string, string>();
+        for (const element of [...(result.elements as BrowserCommandResult['elements'] ?? []),
+            ...(result.interactiveElements as BrowserCommandResult['interactiveElements'] ?? [])]) {
+            if (!/^e[1-9]\d*$/.test(element.ref) || !element.frame || !frames.has(element.frame)
+                || (refs.has(element.ref) && refs.get(element.ref) !== element.frame)) return false;
+            refs.set(element.ref, element.frame);
+        }
     }
     if ('textTotal' in result && (!Number.isSafeInteger(result.textTotal) || Number(result.textTotal) < 0)) return false;
     if ('image' in result) {
@@ -143,4 +226,8 @@ function isResult(value: unknown): value is BrowserCommandResult {
             || !/^[A-Za-z0-9+/]+={0,2}$/.test(image.data)) return false;
     }
     return true;
+}
+
+function handle(value: unknown): value is string {
+    return typeof value === 'string' && value.length > 0 && value.length <= 256 && !/[\s|[\]]/.test(value);
 }

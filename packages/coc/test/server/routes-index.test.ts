@@ -8,13 +8,13 @@
  */
 
 import { Readable } from 'stream';
+import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { ScrubberStore } from '../../src/server/sentinel-scrubber/scrubber-store';
 import { ScrubberScheduler } from '../../src/server/sentinel-scrubber/scrubber-scheduler';
 import type { ScrubberRunService } from '../../src/server/sentinel-scrubber/scrubber-runs';
 import { SentinelTodoStore } from '../../src/server/sentinel-todos/sentinel-todo-store';
 import * as fs from 'fs/promises';
-import * as os from 'os';
 import * as path from 'path';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import type { Route } from '../../src/server/types';
@@ -207,13 +207,18 @@ describe('registerAllRoutes', () => {
             expect(state).toBeDefined();
             expect(getRuntime()).toBeUndefined();
             let enabled = () => false;
+            let framesEnabled = () => false;
             const broker = { setEnabledGetter: (get: () => boolean) => { enabled = get; },
+                setFramesEnabledGetter: (get: () => boolean) => { framesEnabled = get; },
                 getEnabled: () => enabled(), execute: vi.fn() };
             socket = { ...makeWsServer(), browserControl: broker };
             expect(getRuntime()).toBe(broker);
             expect(broker.getEnabled()).toBe(false);
+            expect(framesEnabled()).toBe(false);
             (opts.runtimeConfigService!.config as any).browserControl.enabled = true;
             expect(broker.getEnabled()).toBe(true);
+            (opts.runtimeConfigService!.config as any).browserControl.framesEnabled = true;
+            expect(framesEnabled()).toBe(true);
             expect(getRuntime()).toBe(broker);
         } finally {
             composition.whatsappMessagingManager.dispose();
@@ -231,7 +236,8 @@ describe('registerAllRoutes', () => {
     let tmpDir: string;
 
     beforeEach(async () => {
-        tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'routes-index-test-'));
+        tmpDir = path.resolve(`.routes-index-test-${randomUUID()}`);
+        await fs.mkdir(tmpDir);
     });
 
     afterEach(async () => {

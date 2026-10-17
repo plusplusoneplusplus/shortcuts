@@ -45,6 +45,8 @@ interface DashboardConfig {
     canvasEnabled?: boolean;
     kustoEnabled?: boolean;
     browserControlEnabled?: boolean;
+    browserFrameControlEnabled?: boolean;
+    browserRichPasteEnabled?: boolean;
     mcpOauthEnabled?: boolean;
     focusedDiffEnabled?: boolean;
     sessionContextAttachmentsEnabled?: boolean;

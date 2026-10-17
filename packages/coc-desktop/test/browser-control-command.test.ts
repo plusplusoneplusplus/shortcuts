@@ -3,6 +3,13 @@ import { validateBrowserCommandRequest } from '../src/browser-control-command';
 
 const request = (command: unknown) => ({ id: 'r', workspaceId: 'w', processId: 'p', command });
 describe('desktop browser command validation', () => {
+    it('requires separate rich paste and frame policies at the IPC boundary', () => {
+        const input = request({ action: 'paste_html', ref: 'e1', html: '<b>Synthetic</b>', text: 'Synthetic' });
+        expect(() => validateBrowserCommandRequest(input)).toThrow('must be enabled');
+        expect(() => validateBrowserCommandRequest({ ...input, framesEnabled: true })).toThrow('must be enabled');
+        expect(() => validateBrowserCommandRequest({ ...input, richPasteEnabled: true })).toThrow('must be enabled');
+        expect(validateBrowserCommandRequest({ ...input, framesEnabled: true, richPasteEnabled: true }).command).toEqual(input.command);
+    });
     it.each([
         { action: 'tabs' }, { action: 'open', url: 'https://fixture.test/', newTab: true },
         { action: 'select', tab: 't1:view' }, { action: 'snapshot', all: true, ref: 'e1' },

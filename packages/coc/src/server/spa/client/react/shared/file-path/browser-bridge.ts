@@ -70,9 +70,12 @@ export interface BrowserDownloadEvent {
 export interface DesktopBrowserBridge {
     showAddressMenu?(hasSelection: boolean): Promise<BrowserOperationResult>;
     control?: {
+        framesSupported?: boolean;
+        richPasteSupported?: boolean;
         bindScope(workspaceId: string | null, sessionKey: string | null): Promise<{ ownerId: number } | void>;
         execute(request: BrowserCommandRequest): Promise<BrowserCommandResult>;
         cancel(id: string): void;
+        releaseFrames?(routingRef: string): Promise<void>;
         finish?(turnId?: string, routingRef?: string): void;
         setVisible?(visible: boolean, routingRef: string): void;
         onActivity?(callback: (event: BrowserControlActivityEvent) => void): () => void;

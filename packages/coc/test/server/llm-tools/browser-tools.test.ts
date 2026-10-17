@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
-import * as os from 'node:os';
+import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import type { BrowserCommand, BrowserControlElement, BrowserControlRuntime } from '@plusplusoneplusplus/coc-client';
 import { BROWSER_TOOL_PARAMETERS } from '@plusplusoneplusplus/coc-client';
 import type { ToolResultObject } from '@plusplusoneplusplus/coc-agent-sdk';
 import {
     BROWSER_DELTA_LINES, BROWSER_EVAL_CAP, BROWSER_READ_CAP, BROWSER_SCHEMA_CHAR_BUDGET, BROWSER_SNAPSHOT_CAP,
-    BROWSER_TOOL_DESCRIPTION, BrowserToolStateStore, createBrowserTool, formatBrowserDelta, formatBrowserSnapshot,
+    BROWSER_TOOL_DESCRIPTION, BrowserToolStateStore, createBrowserTool, formatBrowserDelta, formatBrowserSnapshot, formatBrowserFrameSnapshot,
 } from '../../../src/server/llm-tools/browser-tools';
 
 vi.mock('node:fs', async importOriginal => ({ ...await importOriginal<typeof import('node:fs')>() }));
@@ -15,7 +15,7 @@ vi.mock('node:fs', async importOriginal => ({ ...await importOriginal<typeof imp
 const invocation = { toolName: 'browser', toolCallId: 'call', sessionId: 'session', arguments: {} };
 const element = (ref = 'e1', name = 'Save'): BrowserControlElement => ({ ref, name, role: 'button', depth: 0 });
 let dataDir: string;
-beforeEach(() => { dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-tool-')); });
+beforeEach(() => { dataDir = path.resolve(`.browser-tool-test-${randomUUID()}`); fs.mkdirSync(dataDir); });
 afterEach(() => {
     vi.restoreAllMocks();
     fs.rmSync(dataDir, { recursive: true, force: true });
@@ -31,6 +31,109 @@ function harness(stateStore = new BrowserToolStateStore(dataDir), workspaceId = 
 }
 
 describe('compact browser tool', () => {
+    it('forwards bounded rich paste without reflecting clipboard content in the result', async () => {
+        const h = harness();
+        const command = { action: 'paste_html', ref: 'e1', html: '<b>Synthetic payload</b>', text: 'Synthetic payload', replaceClipboard: true } as const;
+        const result = await h.call(command);
+        expect(h.execute.mock.calls[0][2]).toEqual(command);
+        expect(result.textResultForLlm).not.toContain('Synthetic payload');
+    });
+    const frames = [
+        { id: 'f-main', origin: 'https://fixture.test', name: '', document: 'd-main', status: 'ready' as const, depth: 0 },
+        { id: 'f-child', parent: 'f-main', origin: 'opaque', name: 'editor\nlabel', document: 'd-child', status: 'ready' as const, depth: 1 },
+    ];
+    const frameResult = () => ({
+        tab: '1:view', frame: 'f-main', document: 'd-main', frames,
+        elements: [{ ...element('e1', 'Host'), frame: 'f-main' }, { ...element('e2', 'Child'), frame: 'f-child' }],
+    });
+    it('automatically renders committed frame boundaries with unchanged globally unique refs', async () => {
+        const h = harness();
+        h.execute.mockResolvedValue(frameResult());
+        const result = await h.call({ action: 'snapshot' });
+        expect(result.textResultForLlm).toContain('[frame f-main | main | origin "https://fixture.test" | ready | document d-main]');
+        expect(result.textResultForLlm).toContain('[frame f-child | name "editor label" | origin "opaque" | ready | document d-child]');
+        expect(result.textResultForLlm).toContain('e1 button "Host"');
+        expect(result.textResultForLlm).toContain('e2 button "Child"');
+        expect(result.textResultForLlm).toMatch(/\[\/frame f-child\]\n\[\/frame f-main\]$/);
+        h.execute.mockResolvedValue({ ...frameResult(), elements: [] });
+        const inventory = await h.call({ action: 'frames' });
+        expect(inventory.textResultForLlm).toContain('origin "opaque"');
+        expect(inventory.textResultForLlm).not.toContain('e2 button');
+    });
+    it('rechecks frame policy before publishing or updating the snapshot baseline', async () => {
+        let enabled = true;
+        const execute = vi.fn<BrowserControlRuntime['execute']>(async () => {
+            enabled = false;
+            return frameResult();
+        });
+        const runtime = { getEnabled: () => true, getFramesEnabled: () => enabled, execute };
+        const tool = createBrowserTool({ workspaceId: 'w', processId: 'p', runtime, stateStore: new BrowserToolStateStore(dataDir) });
+        expect((await tool.handler({ action: 'snapshot' }) as ToolResultObject).error).toBe('Browser frame policy changed during command');
+    });
+    it('reserves closing markers and explicit incompleteness within the snapshot cap', () => {
+        const result = frameResult();
+        result.elements = Array.from({ length: 100 }, (_, index) => ({ ...element(`e${index + 1}`, 'x'.repeat(300)), frame: 'f-child' }));
+        const output = formatBrowserFrameSnapshot({ ...result, truncated: 'frame-limit; inspected 32 frames' });
+        expect(output.length).toBeLessThanOrEqual(BROWSER_SNAPSHOT_CAP);
+        expect(output).toContain('[truncated: output-limit;');
+        expect(output).toContain('[truncated: frame-limit; inspected 32 frames]');
+        expect(output).toContain('[/frame f-child]\n[/frame f-main]');
+    });
+    it('paginates frame inventories by rendered handles without skipping entries at the output cap', async () => {
+        const h = harness();
+        const inventory = Array.from({ length: 32 }, (_, i) => ({ ...frames[0], id: `f-${i}`, name: 'n'.repeat(160),
+            origin: 'https://' + 'o'.repeat(240), document: 'd'.repeat(240), parent: 'f-parent', depth: 1 }));
+        h.execute.mockResolvedValue({ frames: inventory, frame: 'f-main', document: 'd-main', truncated: 'frame-limit' });
+        const result = await h.call({ action: 'frames', offset: 32 });
+        expect(result.textResultForLlm.length).toBeLessThanOrEqual(BROWSER_SNAPSHOT_CAP);
+        const shown = (result.textResultForLlm.match(/\[frame f-/g) ?? []).length;
+        expect(shown).toBeGreaterThan(0);
+        expect(shown).toBeLessThan(inventory.length);
+        expect(result.textResultForLlm).toContain(`frames offset=${32 + shown} to continue`);
+        h.execute.mockResolvedValue({ frames: [frames[1]], frame: 'f-main', document: 'd-main' });
+        expect((await h.call({ action: 'frames', offset: 255 })).textResultForLlm).not.toContain('offset=');
+    });
+    it('isolates baselines by document, selected frame and included child generations', async () => {
+        const h = harness();
+        h.execute.mockResolvedValue(frameResult());
+        await h.call({ action: 'snapshot' });
+        h.execute.mockResolvedValue({ ...frameResult(), elements: [frameResult().elements[0]] });
+        expect((await h.call({ action: 'press', key: 'Enter' })).textResultForLlm).toContain('- [frame f-child] e2');
+        h.execute.mockResolvedValue({ ...frameResult(), document: 'd-next' });
+        const newDocument = await h.call({ action: 'press', key: 'Enter' });
+        expect(newDocument.textResultForLlm).not.toContain('- [frame');
+        expect(newDocument.textResultForLlm).toContain('+ [frame f-main] e1');
+        h.execute.mockResolvedValue({ ...frameResult(), frame: 'f-child', document: 'd-child' });
+        expect((await h.call({ action: 'press', frame: 'f-child', key: 'Enter' })).textResultForLlm).toContain('+ [frame f-child] e2');
+        h.execute.mockResolvedValue({ ...frameResult(), frames: [frames[0], { ...frames[1], document: 'd-new-child' }] });
+        expect((await h.call({ action: 'press', key: 'Enter' })).textResultForLlm).toContain('+ [frame f-main] e1');
+    });
+    it('bounds frame reads, preserves nested closing boundaries and advances exactly the consumed text', async () => {
+        const h = harness();
+        const text = '[frame f-child | origin opaque]\n' + 'x'.repeat(7900) + '\n[/frame f-child]';
+        h.execute.mockResolvedValue({ ...frameResult(), text, textTotal: 20_000 });
+        const first = await h.call({ action: 'read', frame: 'f-main' });
+        expect(first.textResultForLlm.length).toBeLessThanOrEqual(BROWSER_READ_CAP);
+        expect(first.textResultForLlm).toContain('[/frame f-child]\n[/frame f-main]');
+        const offset = Number(first.textResultForLlm.match(/offset=(\d+)/)![1]);
+        const shown = first.textResultForLlm.split('\n').slice(1, 3).join('\n');
+        expect(shown).toBe(text.slice(0, offset));
+        expect(first.textResultForLlm).toContain('read frame=f-main');
+        h.execute.mockResolvedValue({ ...frameResult(), text: 'partial', textTotal: 20_000, truncated: 'node-limit; inspected 20000 nodes' });
+        const partial = await h.call({ action: 'read' });
+        expect(partial.textResultForLlm).toContain('[truncated: node-limit; inspected 20000 nodes]');
+        expect(partial.textResultForLlm).not.toContain('offset=');
+    });
+    it('includes execution document scope in bounded eval output', async () => {
+        const h = harness();
+        h.execute.mockResolvedValue({ frame: 'f-child', document: 'd-child', valueJson: 'x'.repeat(4000), valueTruncated: true });
+        const result = await h.call({ action: 'eval', frame: 'f-child', js: 'document.title' });
+        expect(result.textResultForLlm).toHaveLength(BROWSER_EVAL_CAP);
+        expect(result.textResultForLlm).toMatch(/^\[frame f-child \| document d-child\]/);
+        expect(result.textResultForLlm).toContain('truncated - return a smaller result');
+        h.execute.mockResolvedValue({ frame: 'f-child', document: 'd-child', valueJson: 'x'.repeat(4000), valueTruncated: false });
+        expect((await h.call({ action: 'eval', frame: 'f-child', js: '1' })).textResultForLlm).toContain('truncated - return a smaller result');
+    });
     it('uses one controlling-turn token across command signals and a fresh token for follow-up factories', async () => {
         const execute = vi.fn<BrowserControlRuntime['execute']>(async () => ({ text: 'fixture', textTotal: 7 }));
         const deps = { workspaceId: 'w', processId: 'p', runtime: { getEnabled: () => true, execute }, stateStore: new BrowserToolStateStore(dataDir) };
@@ -57,6 +160,12 @@ describe('compact browser tool', () => {
         const result = await h.call({ action: 'snapshot' });
         expect(result).toEqual({ resultType: 'success', textResultForLlm: 'e1 button "Save"' });
         expect(h.execute).toHaveBeenCalledWith('workspace-a', 'process-a', { action: 'snapshot' }, undefined, undefined, expect.any(String));
+    });
+    it('formats a snapshot without a selected tab without creating a baseline', async () => {
+        const h = harness();
+        h.execute.mockResolvedValue({ elements: [element()] });
+        expect((await h.call({ action: 'snapshot' })).textResultForLlm).toBe('e1 button "Save"');
+        expect((await h.call({ action: 'press', key: 'Enter' })).textResultForLlm).toContain('+ e1 button "Save"');
     });
 
     it('executes without a browser-mode guard inside the enabled feature', async () => {

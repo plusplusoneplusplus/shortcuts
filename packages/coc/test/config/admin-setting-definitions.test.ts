@@ -859,6 +859,8 @@ describe('feature toggle settings-tab placement', () => {
         'triggers.enabled': 'features',
         'canvas.enabled': 'features',
         'browserControl.enabled': 'browser',
+        'browserControl.framesEnabled': 'browser',
+        'browserControl.richPasteEnabled': 'browser',
         'excalidraw.enabled': 'features',
         'LLMToolSystemOne.enabled': 'features',
         'features.toolScripting': 'features',
@@ -953,10 +955,13 @@ describe('feature toggle settings-tab placement', () => {
         const browserDefs = uiDefs.filter(d => getFeatureSettingTab(d) === 'browser');
         expect(browserDefs.map(d => [d.key, d.ui!.group, d.default, d.absentFallback, d.runtime, d.runtimeFlag, d.ui!.badge, d.ui!.testId])).toEqual([
             ['browserControl.enabled', 'browserAutomation', false, undefined, 'live', 'browserControlEnabled', 'experimental', 'toggle-browser-control-enabled'],
+            ['browserControl.framesEnabled', 'browserAutomation', false, undefined, 'live', 'browserFrameControlEnabled', 'experimental', 'toggle-browser-frame-control-enabled'],
+            ['browserControl.richPasteEnabled', 'browserAutomation', false, undefined, 'live', 'browserRichPasteEnabled', 'experimental', 'toggle-browser-rich-paste-enabled'],
             ['features.htmlPageTab', 'browserPages', true, undefined, 'live', 'htmlPageTabEnabled', undefined, 'toggle-html-page-tab-enabled'],
             ['features.sensitiveInput', 'browserAutomation', false, undefined, 'live', undefined, 'experimental', 'toggle-sensitive-input-enabled'],
         ]);
-        expect(getFeatureCardSettings('browserAutomation').map(d => d.key)).toEqual(['browserControl.enabled', 'features.sensitiveInput']);
+        expect(getFeatureCardSettings('browserAutomation').map(d => d.key)).toEqual(['browserControl.enabled', 'browserControl.framesEnabled', 'browserControl.richPasteEnabled', 'features.sensitiveInput']);
+        expect(getAdminSettingDefinition('browserControl.framesEnabled')?.ui?.dependsOn).toBe('browserControl.enabled');
         expect(getFeatureCardSettings('browserPages').map(d => d.key)).toEqual(['features.htmlPageTab']);
         expect(FEATURE_CARD_GROUPS.filter(g => g.id.startsWith('browser')).map(g => g.heading)).toEqual(['AI Browser Control', 'Pages & Previews']);
         expect(uiDefs.filter(d => getFeatureSettingTab(d) !== 'browser' && /browser/i.test(`${d.key} ${d.ui!.label}`)).map(d => d.key)).toEqual([]);

@@ -8,7 +8,7 @@ use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
     fs::{File, OpenOptions},
-    io::{self, BufRead},
+    io,
     os::windows::fs::OpenOptionsExt,
     path::Path,
     rc::{Rc, Weak},
@@ -73,9 +73,84 @@ struct View {
     page_zoom_percent: Cell<f64>,
     control_turn: RefCell<Option<String>>,
     control_chrome: Cell<Option<(HWND, HWND)>>,
+    cdp_subscriptions: RefCell<HashMap<String, (ICoreWebView2DevToolsProtocolEventReceiver, i64)>>,
+    cdp_sessions: RefCell<protocol::CdpSessions>,
+    cdp_error: RefCell<Option<String>>,
 }
 
 impl View {
+    fn clear_cdp_subscriptions(&self) -> Result<()> {
+        let subscriptions = std::mem::take(&mut *self.cdp_subscriptions.borrow_mut());
+        self.cdp_sessions.borrow_mut().clear();
+        *self.cdp_error.borrow_mut() = None;
+        complete_cleanup(subscriptions.values().map(|(receiver, token)| unsafe {
+            receiver.remove_DevToolsProtocolEventReceived(*token)
+        }))
+    }
+
+    fn cdp_failure(&self, reason: &str, message: &str) {
+        if self.closed.get() || self.cdp_error.borrow().is_some() { return; }
+        *self.cdp_error.borrow_mut() = Some(message.to_string());
+        self.cdp_sessions.borrow_mut().clear();
+        protocol::emit(json!({ "event": "cdp-error", "viewId": self.id, "reason": reason, "message": message }));
+    }
+
+    fn cdp_subscribe(self: &Rc<Self>, method: &str, enabled: bool) -> Result<()> {
+        if !protocol::CDP_EVENTS.contains(&method) || self.closed.get() {
+            return Err(windows::core::Error::from(E_INVALIDARG));
+        }
+        if !enabled {
+            let removed = self.cdp_subscriptions.borrow_mut().remove(method);
+            if self.cdp_subscriptions.borrow().is_empty() {
+                self.cdp_sessions.borrow_mut().clear();
+                *self.cdp_error.borrow_mut() = None;
+            }
+            return removed.map_or(Ok(()), |(receiver, token)| unsafe {
+                receiver.remove_DevToolsProtocolEventReceived(token)
+            });
+        }
+        if self.cdp_subscriptions.borrow().contains_key(method) { return Ok(()); }
+        // Session dispatch and event SessionId arrived together in supported runtimes.
+        self.webview.cast::<ICoreWebView2_11>()?;
+        let receiver = unsafe { self.webview.GetDevToolsProtocolEventReceiver(&HSTRING::from(method))? };
+        let weak = Rc::downgrade(self);
+        let method_name = method.to_string();
+        let handler = DevToolsProtocolEventReceivedEventHandler::create(Box::new(move |_, args| {
+            let (Some(view), Some(args)) = (weak.upgrade(), args) else { return Ok(()); };
+            if view.closed.get() || view.cdp_error.borrow().is_some()
+                || !view.cdp_subscriptions.borrow().contains_key(&method_name) { return Ok(()); }
+            let Ok(session_args) = args.cast::<ICoreWebView2DevToolsProtocolEventReceivedEventArgs2>() else {
+                view.cdp_failure("native-unavailable", "unsupported-runtime: frame control requires WebView2 session-qualified CDP events; selected engine unchanged.");
+                return Ok(());
+            };
+            let read = || unsafe {
+                let mut session = PWSTR::null();
+                session_args.SessionId(&mut session)?;
+                let session = CoTaskMemPWSTR::from(session).to_string();
+                let mut params = PWSTR::null();
+                args.ParameterObjectAsJson(&mut params)?;
+                let params = CoTaskMemPWSTR::from(params).to_string();
+                Ok::<_, windows::core::Error>((session, params))
+            };
+            match read() {
+                Ok((session, params)) => {
+                    let event = view.cdp_sessions.borrow_mut().event(&view.id, &method_name, &params, (!session.is_empty()).then_some(session.as_str()));
+                    match event {
+                        Ok(Some(event)) => protocol::emit(event),
+                        Ok(None) => {},
+                        Err(message) => view.cdp_failure("invalid", message),
+                    }
+                },
+                Err(_) => view.cdp_failure("invalid", "WebView2 could not read a CDP event."),
+            }
+            Ok(())
+        }));
+        let mut token = 0;
+        unsafe { receiver.add_DevToolsProtocolEventReceived(&handler, &mut token)?; }
+        self.cdp_subscriptions.borrow_mut().insert(method.to_string(), (receiver, token));
+        Ok(())
+    }
+
     fn control_activity(&self, turn: Option<String>) -> Result<()> {
         if !self.popup || self.closed.get() || !protocol::allowed_control_turn(turn.as_deref()) {
             return Err(windows::core::Error::from(E_INVALIDARG));
@@ -301,6 +376,9 @@ impl View {
             return;
         }
         self.history.borrow_mut().invalidate();
+        if code == "runtime-crashed" {
+            if let Err(error) = self.clear_cdp_subscriptions() { eprintln!("WebView2 CDP cleanup failed: {error}"); }
+        }
         *self.error.borrow_mut() = Some((code.to_string(), message.clone()));
         protocol::emit(json!({ "event": "state", "viewId": self.id, "state": {
             "viewId": self.id, "engine": "webview2", "url": self.requested.borrow().clone(), "title": "",
@@ -377,6 +455,7 @@ impl View {
             );
         }
         WINDOWS.with(|windows| windows.borrow_mut().remove(&(self.window.0 as usize)));
+        let subscriptions = self.clear_cdp_subscriptions();
         unsafe {
             let controller = self.controller.Close();
             let window = if IsWindow(Some(self.window)).as_bool() {
@@ -384,7 +463,7 @@ impl View {
             } else {
                 Ok(())
             };
-            complete_cleanup([popups, controller, window])
+            complete_cleanup([popups, subscriptions, controller, window])
         }
     }
 }
@@ -599,25 +678,17 @@ pub fn run() -> HostResult<()> {
     }
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        for line in io::stdin().lock().lines() {
-            match line {
-                Ok(line) if line.len() <= 32768 => match serde_json::from_str::<Command>(&line) {
-                    Ok(command) => {
-                        if tx.send(command).is_err() {
-                            break;
-                        }
-                        unsafe {
-                            if PostThreadMessageW(thread_id, WM_APP, WPARAM(0), LPARAM(0)).is_err()
-                            {
-                                break;
-                            }
-                        }
-                    }
-                    Err(error) => {
-                        protocol::failure(0, "invalid", format!("Invalid browser command: {error}"))
+        let mut input = io::stdin().lock();
+        loop {
+            match protocol::read_command(&mut input) {
+                Ok(Some(Ok(command))) => {
+                    if tx.send(command).is_err() { break; }
+                    unsafe {
+                        if PostThreadMessageW(thread_id, WM_APP, WPARAM(0), LPARAM(0)).is_err() { break; }
                     }
                 },
-                Ok(_) => protocol::failure(0, "invalid", "Browser command is too large."),
+                Ok(Some(Err(message))) => protocol::failure(0, "invalid", message),
+                Ok(None) => break,
                 Err(error) => {
                     eprintln!("Browser command input failed: {error}");
                     break;
@@ -750,6 +821,34 @@ fn dispatch(state: &State, command: Command) {
         protocol::failure(command.id, "not-found", "Browser view not found.");
         return;
     };
+    if view.closed.get() {
+        protocol::failure(command.id, "not-found", "Browser view is closed.");
+        return;
+    }
+    if (command.op == "cdp" || command.op == "cdp-subscribe" && command.enabled == Some(true))
+        && view.error.borrow().as_ref().is_some_and(|(code, _)| code == "runtime-crashed") {
+        protocol::failure(command.id, "runtime-crashed", "Browser page crashed.");
+        return;
+    }
+    if command.op == "cdp-subscribe" {
+        let (Some(method), Some(enabled)) = (command.method.as_deref(), command.enabled) else {
+            protocol::failure(command.id, "invalid", "CDP subscription requires an allowlisted event and enabled flag.");
+            return;
+        };
+        if !protocol::CDP_EVENTS.contains(&method) || command.session_id.is_some() {
+            protocol::failure(command.id, "invalid", "CDP subscription requires an allowlisted root event.");
+            return;
+        }
+        if enabled && view.webview.cast::<ICoreWebView2_11>().is_err() {
+            protocol::failure(command.id, "native-unavailable", "unsupported-runtime: frame control requires WebView2 session-qualified CDP; selected engine unchanged.");
+            return;
+        }
+        match view.cdp_subscribe(method, enabled) {
+            Ok(()) => protocol::success(command.id),
+            Err(error) => protocol::failure(command.id, "native-unavailable", format!("unsupported-runtime: frame control requires WebView2 CDP events; selected engine unchanged ({error}).")),
+        }
+        return;
+    }
     if command.op == "cdp" {
         let Some((method, params)) = protocol::cdp_arguments(&command) else {
             protocol::failure(
@@ -759,19 +858,25 @@ fn dispatch(state: &State, command: Command) {
             );
             return;
         };
+        if let Some(message) = view.cdp_error.borrow().as_ref() {
+            protocol::failure(command.id, "invalid", message);
+            return;
+        }
+        if command.session_id.as_deref().is_some_and(|id| !view.cdp_sessions.borrow().contains(id)) {
+            protocol::failure(command.id, "invalid", "Browser frame session does not belong to this view.");
+            return;
+        }
         let id = command.id;
         let weak = Rc::downgrade(&view);
-        let result = unsafe {
-            view.webview.CallDevToolsProtocolMethod(
-                &HSTRING::from(method),
-                &HSTRING::from(params),
-                &CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
+        let session_id = command.session_id.clone();
+        let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
                     move |result, json| {
-                        if weak.upgrade().is_none_or(|view| view.closed.get()) {
+                        if weak.upgrade().is_none_or(|view| view.closed.get()
+                            || session_id.as_deref().is_some_and(|id| !view.cdp_sessions.borrow().contains(id))) {
                             protocol::failure(
                                 id,
                                 "not-found",
-                                "Browser tab closed during CDP command.",
+                                "Browser tab or frame session closed during CDP command.",
                             );
                         } else if let Err(error) = result {
                             protocol::failure(id, "invalid", error);
@@ -783,8 +888,19 @@ fn dispatch(state: &State, command: Command) {
                         }
                         Ok(())
                     },
-                )),
-            )
+                ));
+        let result = unsafe {
+            if let Some(session) = command.session_id.as_deref() {
+                match view.webview.cast::<ICoreWebView2_11>() {
+                    Ok(webview) => webview.CallDevToolsProtocolMethodForSession(&HSTRING::from(session), &HSTRING::from(method), &HSTRING::from(params), &handler),
+                    Err(_) => {
+                        protocol::failure(id, "native-unavailable", "unsupported-runtime: frame control requires WebView2 session-qualified CDP; selected engine unchanged.");
+                        return;
+                    },
+                }
+            } else {
+                view.webview.CallDevToolsProtocolMethod(&HSTRING::from(method), &HSTRING::from(params), &handler)
+            }
         };
         if let Err(error) = result {
             protocol::failure(id, "invalid", error);
@@ -1108,6 +1224,9 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                             ),
                             control_turn: RefCell::new(None),
                             control_chrome: Cell::new(None),
+                            cdp_subscriptions: RefCell::new(HashMap::new()),
+                            cdp_sessions: RefCell::new(protocol::CdpSessions::default()),
+                            cdp_error: RefCell::new(None),
                         });
                         view.controller.SetIsVisible(false)?;
                         view.webview.Settings()?.SetIsWebMessageEnabled(false)?;
@@ -1599,6 +1718,8 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                     method: None,
                     params: None,
                     turn_id: None,
+                    session_id: None,
+                    enabled: None,
                 };
                 start_controller(&callback_state, command, Some((args, deferral, view.clone())));
                 Ok(())

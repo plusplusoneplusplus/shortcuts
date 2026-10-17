@@ -8,12 +8,14 @@ export function browserMessage(value: unknown): Record<string, unknown> | undefi
 
 interface Admission {
     viewId: string;
+    sessionId?: string;
     error?: Error;
 }
 
 interface Pending {
     resolve(result: unknown): void;
     viewId?: string;
+    sessionId?: string;
     reject(error: Error): void;
     timer: ReturnType<typeof setTimeout>;
 }
@@ -148,7 +150,7 @@ export class WebView2Process {
     }
 
     private error(message: Record<string, unknown>): BrowserHostError {
-        const reasons: BrowserFailureReason[] = ['missing-runtime', 'profile-locked', 'startup-failed', 'runtime-crashed', 'cleanup-failed', 'not-found', 'no-window', 'invalid'];
+        const reasons: BrowserFailureReason[] = ['missing-runtime', 'native-unavailable', 'profile-locked', 'startup-failed', 'runtime-crashed', 'cleanup-failed', 'not-found', 'no-window', 'invalid'];
         const reason = reasons.find(reason => reason === message.reason) ?? 'runtime-crashed';
         return new BrowserHostError(reason, typeof message.message === 'string' ? message.message : 'WebView2 request failed.');
     }
@@ -170,12 +172,25 @@ export class WebView2Process {
         if (child) { child.kill(); }
     }
 
-    rejectView(viewId: string, error = new BrowserHostError('not-found', 'Browser tab closed during CDP command.')): void {
+    rejectView(viewId: string, error: Error = new BrowserHostError('not-found', 'Browser tab closed during CDP command.')): void {
         for (const admission of this.admissions) {
             if (admission.viewId === viewId) { admission.error = error; }
         }
         for (const [id, pending] of this.pending) {
             if (pending.viewId !== viewId) { continue; }
+            clearTimeout(pending.timer);
+            this.pending.delete(id);
+            pending.reject(error);
+        }
+    }
+
+    rejectSession(viewId: string, sessionId: string): void {
+        const error = new BrowserHostError('not-found', 'Browser frame session detached during CDP command.');
+        for (const admission of this.admissions) {
+            if (admission.viewId === viewId && admission.sessionId === sessionId) { admission.error = error; }
+        }
+        for (const [id, pending] of this.pending) {
+            if (pending.viewId !== viewId || pending.sessionId !== sessionId) { continue; }
             clearTimeout(pending.timer);
             this.pending.delete(id);
             pending.reject(error);
@@ -188,7 +203,9 @@ export class WebView2Process {
         if (!this.child && op !== 'open' && op !== 'clear' && op !== 'import-profile-cookies') {
             throw new BrowserHostError('runtime-crashed', 'WebView2 host is not running. Retry explicitly.');
         }
-        const admission: Admission | undefined = op === 'cdp' && typeof payload.viewId === 'string' ? { viewId: payload.viewId } : undefined;
+        const viewRequest = op === 'cdp' || op === 'cdp-subscribe';
+        const admission: Admission | undefined = viewRequest && typeof payload.viewId === 'string'
+            ? { viewId: payload.viewId, ...(typeof payload.sessionId === 'string' ? { sessionId: payload.sessionId } : {}) } : undefined;
         if (admission) { this.admissions.add(admission); }
         try { await this.start(); }
         finally { if (admission) { this.admissions.delete(admission); } }
@@ -204,11 +221,14 @@ export class WebView2Process {
         return new Promise<unknown>((resolve, reject) => {
             const timer = setTimeout(() => {
                 const error = new BrowserHostError('runtime-crashed', `WebView2 ${op} timed out after 30s. Retry explicitly.`);
-                if (op !== 'cdp') { this.fail(error); return; }
+                if (!viewRequest) { this.fail(error); return; }
                 this.pending.delete(id);
                 reject(error);
             }, 30_000);
-            this.pending.set(id, { resolve, reject, timer, ...(op === 'cdp' && typeof payload.viewId === 'string' ? { viewId: payload.viewId } : {}) });
+            this.pending.set(id, {
+                resolve, reject, timer, ...(viewRequest && typeof payload.viewId === 'string' ? { viewId: payload.viewId } : {}),
+                ...(typeof payload.sessionId === 'string' ? { sessionId: payload.sessionId } : {}),
+            });
             child.stdin.write(line, error => { if (error) { this.fail(new BrowserHostError('runtime-crashed', error.message)); } });
         });
     }

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BrowserControlPage } from '../src/browser-control-page';
+import type { BrowserCdpListener } from '../src/browser-frame-registry';
 
 function fixture() {
     const send = vi.fn(async (method: string, _params?: Record<string, unknown>): Promise<unknown> => method === 'Runtime.evaluate'
@@ -18,6 +19,97 @@ const key = (name: string, code: string, vk: number, modifiers = 0, text?: strin
 ];
 
 describe('engine-neutral trusted CDP actions', () => {
+    it.each(['success', 'cancel', 'navigate-before', 'navigate-after', 'missing-event'] as const)('rich paste fails closed across %s', async outcome => {
+        let listener!: BrowserCdpListener;
+        const send = vi.fn(async (method: string, params?: Record<string, unknown>): Promise<unknown> => {
+            if (method === 'Page.getFrameTree') return { frameTree: { frame: { id: 'root', loaderId: 'document' } } };
+            if (method === 'Runtime.enable') listener('Runtime.executionContextCreated', {
+                context: { id: 1, auxData: { frameId: 'root', isDefault: true } },
+            });
+            if (method === 'Input.dispatchKeyEvent' && params?.type === 'keyDown' && outcome === 'navigate-after') {
+                listener('Page.navigatedWithinDocument', { frameId: 'root' });
+            }
+            if (method === 'Runtime.evaluate') {
+                const expression = String(params?.expression);
+                if (expression.includes('"action":"snapshot"')) return {
+                    result: { value: { title: 'Synthetic', url: 'https://fixture.test/', elements: [
+                        { ref: 'e1', role: 'textbox', name: 'Editor', depth: 0 },
+                    ], nextRef: 2 } },
+                };
+                if (expression.endsWith(',"result")')) return { result: { value: outcome !== 'missing-event' } };
+                return { result: { value: true } };
+            }
+            return {};
+        });
+        const page = new BrowserControlPage(send, 'win32');
+        await page.configureFrames(true, callback => { listener = callback; return () => {}; });
+        await page.snapshot();
+        send.mockClear();
+        const controller = new AbortController();
+        const write = vi.fn(() => {
+            if (outcome === 'cancel') controller.abort(new Error('Synthetic cancellation'));
+            if (outcome === 'navigate-before') listener('Page.navigatedWithinDocument', { frameId: 'root' });
+        });
+        const result = page.pasteHtml('e1', write, controller.signal);
+        if (outcome === 'success') await result;
+        else await expect(result).rejects.toThrow(outcome === 'cancel' ? 'Synthetic cancellation' : outcome === 'navigate-before' ? 'stale' : 'outcome unknown');
+        expect(write).toHaveBeenCalledOnce();
+        const input = send.mock.calls.filter(([method]) => method.startsWith('Input.'));
+        expect(input).toHaveLength(['cancel', 'navigate-before'].includes(outcome) ? 0 : 2);
+        expect(send.mock.calls.some(([, params]) => String(params?.expression).includes('"action":"target"'))).toBe(false);
+        page.dispose();
+    });
+
+    it.each([[true, true], [false, true], [true, false]])('preserves child editor focus and rejects unfocused or clipped input: %s %s', async (focused, visible) => {
+        let listener!: BrowserCdpListener;
+        const send = vi.fn(async (method: string, params?: Record<string, unknown>): Promise<unknown> => {
+            if (method === 'Page.getFrameTree') return {
+                frameTree: {
+                    frame: { id: 'root', loaderId: 'root-document' },
+                    childFrames: [{ frame: { id: 'child', parentId: 'root', loaderId: 'child-document' } }],
+                },
+            };
+            if (method === 'Runtime.enable') {
+                for (const [id, frameId] of [[1, 'root'], [2, 'child']] as const) {
+                    listener('Runtime.executionContextCreated', {
+                        context: { id, auxData: { frameId, isDefault: true } },
+                    });
+                }
+            }
+            if (method === 'Runtime.evaluate') return {
+                result: { value: String(params?.expression).includes('document.hasFocus()') ? focused : true },
+            };
+            if (method === 'DOM.getFrameOwner') return { backendNodeId: 1 };
+            if (method === 'DOM.resolveNode') return { object: { objectId: 'owner' } };
+            if (method === 'Runtime.callFunctionOn') return visible
+                ? { result: { value: { x: 0, y: 0, width: 100, height: 100 } } }
+                : { exceptionDetails: { exception: { description: 'Browser frame has no visible bounds' } } };
+            return {};
+        });
+        const page = new BrowserControlPage(send, 'win32');
+        await page.configureFrames(true, callback => {
+            listener = callback;
+            return () => {};
+        });
+        const child = page.frameMetadata().frames!.find(frame => frame.depth === 1)!;
+        send.mockClear();
+        if (focused && visible) {
+            await page.press('Control+v', child.id);
+            expect(send.mock.calls.map(([method]) => method)).toEqual([
+                'Runtime.evaluate', 'DOM.getFrameOwner', 'DOM.resolveNode', 'Runtime.callFunctionOn', 'Runtime.releaseObject',
+                'Input.dispatchKeyEvent', 'Input.dispatchKeyEvent',
+            ]);
+        } else {
+            await expect(page.press('Control+v', child.id)).rejects.toThrow('Browser frame focus unavailable');
+            expect(send.mock.calls.some(([method]) => method.startsWith('Input.'))).toBe(false);
+        }
+        expect(send.mock.calls[0][1]).toMatchObject({
+            expression: expect.stringContaining("!active.matches('iframe,frame')"), contextId: 2,
+        });
+        expect(send.mock.calls[0][1]?.expression).not.toContain('.focus(');
+        page.dispose();
+    });
+
     it('reads page/subtree markdown and evaluates by value with visible exceptions', async () => {
         const { send, page } = fixture();
         send.mockResolvedValueOnce({ result: { value: { text: '# Page\n\n[link](https://fixture.test/)', textTotal: 41 } } });

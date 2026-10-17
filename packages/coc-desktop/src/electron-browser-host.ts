@@ -185,7 +185,9 @@ function wireNavigation(entry: BrowserEntry, wc: WebContents): void {
                 canGoForward: !contents.isDestroyed() && contents.navigationHistory.canGoForward(),
                 loading: !contents.isDestroyed() && contents.isLoading(),
             }),
-            cdp: (method, params) => cdp!.send(method, params),
+            cdp: (method, params, sessionId) => cdp!.send(method, params, sessionId),
+            onCdpEvent: listener => cdp!.onEvent(listener),
+            waitForCdpEvents: async () => {},
             setControlActivity,
             waitForControlReady: signal => waitForControlContents(() => contents, () => popup.isDestroyed(), signal),
             navigate: async url => { await contents.loadURL(url); },
@@ -448,11 +450,17 @@ export class ElectronBrowserHost implements BrowserEngineHost {
             snapshot: () => snapshot(entry),
             navigate: url => load(entry, url),
             nav: action => runNav(entry, action),
-            cdp: (method, params) => {
+            cdp: (method, params, sessionId) => {
                 if (entry.closed) { return Promise.reject(new BrowserHostError('not-found', 'Browser tab is closed.')); }
                 if (!entry.cdp) { return Promise.reject(new BrowserHostError('busy', 'Browser guest is not attached yet.')); }
-                return entry.cdp.send(method, params);
+                return entry.cdp.send(method, params, sessionId);
             },
+            onCdpEvent: listener => {
+                if (entry.closed) { throw new BrowserHostError('not-found', 'Browser tab is closed.'); }
+                if (!entry.cdp) { throw new BrowserHostError('busy', 'Browser guest is not attached yet.'); }
+                return entry.cdp.onEvent(listener);
+            },
+            waitForCdpEvents: async () => {},
             waitForControlReady: async signal => {
                 await waitForControlContents(() => entry.contents, () => entry.closed, signal);
                 if (entry.error) throw new Error(entry.error);
@@ -462,7 +470,26 @@ export class ElectronBrowserHost implements BrowserEngineHost {
                 if (entry.contents && !entry.contents.isDestroyed()) { entry.contents.setZoomFactor(percent / 100); }
             },
             setBounds: bounds => setBounds(entry, bounds),
-            focus: () => entry.contents?.focus(),
+            focus: async () => {
+                if (entry.closed || entry.win.isDestroyed() || !entry.contents || entry.contents.isDestroyed()) {
+                    throw new BrowserHostError('not-found', 'Browser tab is closed.');
+                }
+                entry.win.show();
+                entry.win.focus();
+                entry.win.webContents.focus();
+                if (!isBrowserEmbedder(entry.win.webContents)) throw new BrowserHostError('invalid', 'Browser embedder is unavailable.');
+                const focused = await entry.win.webContents.executeJavaScript(`(() => {
+                    for (const guest of document.querySelectorAll('webview')) {
+                        if (guest.getWebContentsId() === ${entry.contents.id}) {
+                            guest.focus();
+                            return document.activeElement === guest;
+                        }
+                    }
+                    return false;
+                })()`);
+                if (entry.closed || !isBrowserEmbedder(entry.win.webContents) || !focused) throw new BrowserHostError('invalid', 'Browser guest focus unavailable.');
+                entry.contents.focus();
+            },
             close: () => destroyEntry(entry),
         };
     }

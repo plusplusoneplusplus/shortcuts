@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BrowserHostManager } from '../src/browser-host-manager';
+import { BrowserControlPage } from '../src/browser-control-page';
+import type { RichClipboard } from '../src/browser-rich-clipboard';
 import type { BrowserCommand } from '@plusplusoneplusplus/coc-client';
 import type { BrowserEngineHost, BrowserHostedView, BrowserEventSink } from '../src/browser-host-contract';
 import { BROWSER_CONTROL_REVEAL_CHANNEL } from '../src/browser-control-command';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
-function harness(redirectTo?: string) {
+function harness(redirectTo?: string, richClipboard?: RichClipboard) {
     const views: BrowserHostedView[] = [];
     const sinks: BrowserEventSink[] = [];
     const host: BrowserEngineHost = {
@@ -37,6 +39,7 @@ function harness(redirectTo?: string) {
     };
     const send = vi.fn();
     const manager = new BrowserHostManager({
+        richClipboard,
         history: { recordVisit: async () => true, updateTitle: async () => true, flush: async () => {}, clearEngine: async () => true },
         hosts: { electron: host, webview2: { ...host, engine: 'webview2' } },
         fileHost: { create: async request => ({
@@ -54,6 +57,69 @@ function harness(redirectTo?: string) {
 }
 
 describe('main browser control scope and selection', () => {
+    it('routes rich paste through native focus and the clipboard without clicking or selecting all', async () => {
+        const clipboard = { availableFormats: () => [], write: vi.fn() };
+        const h = harness(undefined, clipboard);
+        const configure = vi.spyOn(BrowserControlPage.prototype, 'configureFrames').mockResolvedValue();
+        const paste = vi.spyOn(BrowserControlPage.prototype, 'pasteHtml').mockImplementation(async (_ref, write) => {
+            expect(h.views[0].focus).toHaveBeenCalledOnce();
+            write();
+        });
+        try {
+            const opened = await h.run({ action: 'open', url: 'https://fixture.test/' });
+            await h.manager.executeControl(1, { id: 'paste', workspaceId: 'w', processId: 'p',
+                framesEnabled: true, richPasteEnabled: true, selectedTab: opened.tab,
+                command: { action: 'paste_html', ref: 'e1', html: '<b>Synthetic</b>', text: 'Synthetic' } });
+            expect(paste).toHaveBeenCalledOnce();
+            expect(clipboard.write).toHaveBeenCalledExactlyOnceWith({ html: '<b>Synthetic</b>', text: 'Synthetic' });
+            expect(vi.mocked(h.views[0].cdp!).mock.calls.some(([method]) => method.startsWith('Input.'))).toBe(false);
+        } finally {
+            configure.mockRestore();
+            paste.mockRestore();
+            await h.manager.dispose();
+        }
+    });
+    it('focuses an embedded view before keyboard input but not for reads', async () => {
+        const h = harness();
+        try {
+            const opened = await h.run({ action: 'open', url: 'https://fixture.test/' });
+            const view = h.views[0];
+            const order: string[] = [];
+            vi.mocked(view.focus).mockImplementation(() => { order.push('focus'); });
+            const cdp = vi.mocked(view.cdp!);
+            const original = cdp.getMockImplementation()!;
+            cdp.mockImplementation(async (method, params, session) => {
+                if (method === 'Input.dispatchKeyEvent') order.push(String(params?.type));
+                return original(method, params, session);
+            });
+            await h.run({ action: 'read' }, opened.tab);
+            expect(order).toEqual([]);
+            await h.run({ action: 'press', key: 'Control+v' }, opened.tab);
+            expect(order).toEqual(['focus', 'keyDown', 'keyUp']);
+        } finally {
+            await h.manager.dispose();
+        }
+    });
+
+    it.each(['failure', 'abort'] as const)('does not dispatch input after focus %s', async outcome => {
+        const h = harness();
+        try {
+            const opened = await h.run({ action: 'open', url: 'https://fixture.test/' });
+            const controller = new AbortController();
+            const error = new Error('Synthetic focus unavailable');
+            vi.mocked(h.views[0].focus).mockImplementation(() => {
+                if (outcome === 'failure') throw error;
+                controller.abort(error);
+            });
+            const cdp = vi.mocked(h.views[0].cdp!);
+            cdp.mockClear();
+            await expect(h.run({ action: 'press', key: 'x' }, opened.tab, 'p', controller.signal)).rejects.toThrow(error.message);
+            expect(cdp.mock.calls.some(([method]) => method.startsWith('Input.'))).toBe(false);
+        } finally {
+            await h.manager.dispose();
+        }
+    });
+
     it('lets concurrent conversations alternate a shared tab without marking the displaced conversation finished', async () => {
         const h = harness();
         const opened = await h.run({ action: 'open', url: 'https://fixture.test/' }, undefined, 'conversation-a');

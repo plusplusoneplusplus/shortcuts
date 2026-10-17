@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as policy from '../src/browser-view-policy';
 import { BROWSER_HISTORY_RETENTION_MS } from '../src/browser-history';
-import { BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL } from '../src/browser-control-command';
+import { BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL } from '../src/browser-control-command';
 
 const mocks = vi.hoisted(() => ({
     handlers: new Map<string, (...args: any[]) => any>(), events: new Map<string, (...args: any[]) => any>(), windows: new Map<any, any>(),
@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
     menu: vi.fn((_template: any[]) => ({ popup: vi.fn() })),
 }));
 vi.mock('electron', () => ({
+    clipboard: { availableFormats: () => [], write: vi.fn() },
     Menu: { buildFromTemplate: (...args: any[]) => mocks.menu(...args) },
     app: { on: vi.fn() }, webContents: { getAllWebContents: () => [] },
     BrowserWindow: { fromWebContents: (sender: unknown) => mocks.windows.get(sender) },
@@ -110,9 +111,12 @@ describe('desktop history IPC', () => {
         const spa = owner(1), arbitrary = owner(2, 'http://localhost:4000/other');
         for (const event of [arbitrary.event, { ...spa.event, senderFrame: {} }]) {
             expect(() => invoke(BROWSER_CONTROL_SCOPE_CHANNEL, event, 'w', 'w')).toThrow('registered SPA main frame');
+            expect(() => invoke(BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, event, 'w')).toThrow('registered SPA main frame');
             await expect(invoke(BROWSER_CONTROL_COMMAND_CHANNEL, event, { id: 'r', workspaceId: 'w', processId: 'p', command: { action: 'tabs' } })).rejects.toThrow('registered SPA main frame');
         }
         expect(invoke(BROWSER_CONTROL_SCOPE_CHANNEL, spa.event, 'w', 'w')).toEqual({ ownerId: 1 });
+        await expect(invoke(BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, spa.event, 'other')).rejects.toThrow('scope changed');
+        await expect(invoke(BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, spa.event, 'w')).resolves.toBeUndefined();
         expect(await invoke(BROWSER_CONTROL_COMMAND_CHANNEL, spa.event, { id: 'r', workspaceId: 'w', processId: 'p', command: { action: 'tabs' } })).toEqual({ tabs: [] });
         await expect(invoke(BROWSER_CONTROL_COMMAND_CHANNEL, spa.event, { id: 'r', workspaceId: 'other', processId: 'p', command: { action: 'tabs' } })).rejects.toThrow('scope changed');
     });
