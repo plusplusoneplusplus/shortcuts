@@ -280,7 +280,13 @@ pub fn open_menu_shortcut(key: u32, key_down: bool, control: bool, alt: bool, sh
     key == u32::from(b'T') && key_down && control && !alt && !shift
 }
 
-pub fn reopen_closed_shortcut(key: u32, key_down: bool, control: bool, alt: bool, shift: bool) -> bool {
+pub fn reopen_closed_shortcut(
+    key: u32,
+    key_down: bool,
+    control: bool,
+    alt: bool,
+    shift: bool,
+) -> bool {
     key == u32::from(b'T') && key_down && control && !alt && shift
 }
 
