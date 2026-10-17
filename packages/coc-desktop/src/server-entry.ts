@@ -21,6 +21,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { resolveDesktopLogDir } from './desktop-logging';
+import { applyServerStartDelay } from './startup-delay';
 
 // Minimal structural types for the prebuilt CoC server surface. We require the
 // compiled JS lazily (below) rather than importing the full type graph, keeping
@@ -64,6 +65,9 @@ async function main(): Promise<void> {
     const host = process.env.COC_DESKTOP_HOST || '127.0.0.1';
     const port = Number(process.env.COC_DESKTOP_PORT) || 0;
     const dataDir = process.env.COC_DESKTOP_DATA_DIR || path.join(os.homedir(), '.coc');
+
+    // Test seam: no-op unless the startup smoke test asks for late readiness.
+    await applyServerStartDelay();
 
     // The SQLite store opens `<dataDir>/processes.db` on construction, so the
     // data dir must exist first — mirror what the CLI `serve` command does.

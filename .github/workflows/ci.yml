@@ -914,6 +914,27 @@ jobs:
           COC_DESKTOP_E2E: '1'
           COC_DESKTOP_E2E_NO_SANDBOX: '1'
 
+      # Launches the real source-built desktop app; its forked server holds
+      # readiness back 45s (past 30s, inside the 120s allowance) and Desktop must
+      # still wait for it and load the served SPA.
+      - name: Run desktop startup smoke (delayed server readiness)
+        if: matrix.os == 'windows-latest'
+        timeout-minutes: 8
+        run: npm run test:run -- test/e2e/desktop-startup.e2e.test.ts
+        working-directory: packages/coc-desktop
+        env:
+          COC_DESKTOP_STARTUP_SMOKE: '1'
+          COC_DESKTOP_STARTUP_SMOKE_DIR: ${{ runner.temp }}/coc-desktop-startup-smoke
+
+      - name: Upload desktop startup smoke diagnostics
+        if: failure() && matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coc-desktop-startup-smoke-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/coc-desktop-startup-smoke/
+          if-no-files-found: ignore
+          retention-days: 7
+
   workflow-policy-test:
     runs-on: ubuntu-latest
 
