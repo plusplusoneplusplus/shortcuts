@@ -42,6 +42,7 @@ import { getHorizontalDropPosition } from '../repoTabModel';
 import { FileNameIcon } from '../explorer/FileTypeIcon';
 import { displayGroupForKind, scopeForKind, type UnifiedPanelTab, type UnifiedTabKind } from './unifiedPanelTabsModel';
 import { UnifiedPanelTabContextMenu } from './UnifiedPanelTabContextMenu';
+import { dirtyCloseLabel } from './unifiedDirtyClose';
 import { compressedCanvasTabs, UnifiedPanelCanvasStack } from './UnifiedPanelCanvasStack';
 import {
     unifiedPanelTabMenuItems,
@@ -53,11 +54,23 @@ import {
  * The tooltip a tab shows on hover: the full label, its repo if any, and — for
  * the preview slot — what the italics mean. Italics alone say "temporary" only
  * to someone who already knows the convention, so the words are always there
- * too, in the tooltip and in the tab's screen-reader text (AC-03).
+ * too, in the tooltip and in the tab's screen-reader text (AC-03). A source file
+ * shows only its name on the strip, so its tooltip carries the repo-qualified
+ * path that tells same-name files apart.
  */
 export function unifiedTabTooltip(tab: UnifiedPanelTab): string {
-    const withRepo = tab.repoLabel ? `${tab.label} — ${tab.repoLabel}` : tab.label;
-    return tab.preview ? `${withRepo} (preview — double-click to keep open)` : withRepo;
+    const base = tab.kind === 'file'
+        ? `${tab.label} — ${dirtyCloseLabel(tab)}`
+        : tab.repoLabel ? `${tab.label} — ${tab.repoLabel}` : tab.label;
+    return tab.preview ? `${base} (preview — double-click to keep open)` : base;
+}
+
+/**
+ * Whether the strip draws a repo badge beside the label. Source files show the
+ * bare filename; their repo lives in the tooltip and screen-reader text.
+ */
+function showsUnifiedTabRepoBadge(tab: Pick<UnifiedPanelTab, 'kind' | 'repoLabel'>): boolean {
+    return !!tab.repoLabel && tab.kind !== 'file';
 }
 
 /** Checklist glyph shared by the To-do tab and the "+" menu's To-do entry. */
@@ -538,7 +551,7 @@ export function UnifiedPanelTabStrip({
                             >
                                 {tab.label}
                             </span>
-                            {tab.repoLabel && (
+                            {showsUnifiedTabRepoBadge(tab) && (
                                 <span
                                     className="max-w-[64px] flex-shrink truncate text-[10px] opacity-70"
                                     data-testid={`unified-panel-tab-repo-${tab.id}`}
@@ -547,6 +560,7 @@ export function UnifiedPanelTabStrip({
                                 </span>
                             )}
                             <span className="sr-only">
+                                {tab.repoLabel && !showsUnifiedTabRepoBadge(tab) ? ` — ${tab.repoLabel}` : ''}
                                 {tab.preview ? ' (preview — double-click to keep open)' : ''}
                                 {isDirty ? ' (unsaved changes)' : ''}
                                 {hasError ? ' (unavailable)' : ''}

@@ -1915,12 +1915,12 @@ export function UnifiedRightPanel({
                                             type="button"
                                             className="min-w-0 flex-1 truncate border-none bg-transparent p-0 text-left text-[#3b3b3b] dark:text-[#cccccc]"
                                             aria-pressed={focused}
-                                            title={paneTab?.resourceId}
+                                            title={paneTab ? dirtyCloseLabel(paneTab) : undefined}
                                             onClick={() => focusSourcePane(pane)}
                                             data-testid={`unified-panel-split-pane-label-${pane}`}
                                         >
                                             {paneTab?.label}
-                                            {paneTab?.repoLabel ? <span className="opacity-70"> · {paneTab.repoLabel}</span> : null}
+                                            {paneTab?.repoLabel ? <span className="sr-only"> — {paneTab.repoLabel}</span> : null}
                                             {paneTab && dirtyIds.has(paneTab.id) ? <span aria-label="Unsaved changes"> ●</span> : null}
                                         </button>
                                         <button

@@ -125,7 +125,7 @@ function dockStub(overrides: Partial<WorkspaceDockController> = {}): WorkspaceDo
     } as WorkspaceDockController;
 }
 
-function openFile(path: string, opts: { owner?: string; routingRef?: string | null; chatId?: string | null } = {}) {
+function openFile(path: string, opts: { owner?: string; routingRef?: string | null; chatId?: string | null; repoLabel?: string } = {}) {
     return openUnifiedPanelTab(WS, {
         kind: 'file',
         ownerWorkspaceId: opts.owner ?? WS,
@@ -133,6 +133,7 @@ function openFile(path: string, opts: { owner?: string; routingRef?: string | nu
         chatId: opts.chatId === undefined ? CHAT : opts.chatId,
         resourceId: path,
         label: path.split('/').pop() ?? path,
+        ...(opts.repoLabel === undefined ? {} : { repoLabel: opts.repoLabel }),
     });
 }
 
@@ -331,6 +332,28 @@ describe('editing in two panes (AC-02)', () => {
         fireEvent.change(view(remote).querySelector('textarea')!, { target: { value: 'remote edit' } });
         await waitFor(() => expect(screen.getByTestId(`unified-panel-tab-dirty-${remote}`)).toBeTruthy());
         expect(screen.queryByTestId(`unified-panel-tab-dirty-${local}`)).toBeNull();
+    });
+
+    it('labels same-name panes by filename and puts each repo-qualified path on hover', async () => {
+        const api = openFile('src/same.ts', { owner: 'member-api', repoLabel: 'api' });
+        const web = openFile('src/same.ts', { owner: 'member-web', repoLabel: 'web' });
+        renderPanel();
+        openToRightFromMenu(api);
+        await waitFor(() => expect(view(api).dataset.splitPane).toBe('right'));
+        expect(view(web).dataset.splitPane).toBe('left');
+
+        const left = screen.getByTestId('unified-panel-split-pane-label-left');
+        const right = screen.getByTestId('unified-panel-split-pane-label-right');
+        expect(left.getAttribute('title')).toBe('web: src/same.ts');
+        expect(right.getAttribute('title')).toBe('api: src/same.ts');
+        for (const [label, repo] of [[left, 'web'], [right, 'api']] as const) {
+            // Visible text is the bare name; the repo stays for screen readers only.
+            const visible = [...label.childNodes]
+                .filter(node => !(node instanceof HTMLElement && node.classList.contains('sr-only')))
+                .map(node => node.textContent).join('');
+            expect(visible).toBe('same.ts');
+            expect(label.querySelector('.sr-only')?.textContent).toContain(repo);
+        }
     });
 
     it('surfaces a failed save from either pane and keeps the edit', async () => {

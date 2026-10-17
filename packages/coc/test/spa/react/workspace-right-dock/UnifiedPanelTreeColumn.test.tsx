@@ -228,8 +228,9 @@ describe('unified panel file-tree column', () => {
         // a document-wide text query would match twice.
         expect(tab.querySelector('[data-testid^="unified-panel-tab-label-"]')?.textContent).toBe('app.ts');
         // The owning clone is not the panel's own workspace, so the tab is
-        // attributed to it rather than reading as a local file.
-        expect(tab.querySelector('[data-testid^="unified-panel-tab-repo-"]')?.textContent).toBe('api');
+        // attributed to it on hover rather than by a badge.
+        expect(tab.querySelector('[data-testid^="unified-panel-tab-repo-"]')).toBeNull();
+        expect(tab.getAttribute('title')).toContain('api: ');
     });
 
     it('clamps its width so the active view keeps its minimum', () => {
