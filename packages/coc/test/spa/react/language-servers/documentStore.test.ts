@@ -51,6 +51,21 @@ describe('language document store registry', () => {
         resetLanguageServerClientsForTests();
     });
 
+    it('isolates independent chats while retaining one document and attachment within a scope', () => {
+        const a = getLanguageDocumentStore('ws', 'remote:server:ws', 'chat-a');
+        const b = getLanguageDocumentStore('ws', 'remote:server:ws', 'chat-b');
+        const one = a.open({ path: 'src/Mixed.ts', text: 'disk' });
+        one.update('edit A');
+        const mirror = a.open({ path: 'src/Mixed.ts', text: 'stale disk' });
+        const other = b.open({ path: 'src/Mixed.ts', text: 'disk B' });
+        expect(mirror.getText()).toBe('edit A');
+        expect(other.getText()).toBe('disk B');
+        other.update('edit B');
+        expect(one.getText()).toBe('edit A');
+        expect(getLanguageDocumentStore('ws', 'remote:server:ws', 'chat-a')).toBe(a);
+        one.close(); mirror.close(); other.close();
+    });
+
     it('isolates same-workspace buffers by concrete clone owner', () => {
         const first = getLanguageDocumentStore('ws-shared', 'remote:server-a:ws-shared');
         const second = getLanguageDocumentStore('ws-shared', 'remote:server-b:ws-shared');

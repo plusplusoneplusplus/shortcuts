@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import type { CocClient, SentinelTodoItem, Trigger } from '@plusplusoneplusplus/coc-client';
+import { zonedTriggerTime } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { Button } from '../../../ui/Button';
@@ -33,10 +34,14 @@ function TriggerSection({ owner, items, client, onItemLink }: {
     const [rules, setRules] = useState<Trigger[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
+    const [capabilityError, setCapabilityError] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
     const [conflict, setConflict] = useState(false);
     const [open, setOpen] = useState(true);
     const [editor, setEditor] = useState<Trigger | 'new' | null>(null);
     const [runNow, setRunNow] = useState<Trigger | null>(null);
+    const [resume, setResume] = useState<Trigger | null>(null);
+    const [dateTimeEnabled, setDateTimeEnabled] = useState(false);
     const [busy, setBusy] = useState(false);
     const busyRef = useRef(false);
     const sequence = useRef(0);
@@ -45,15 +50,33 @@ function TriggerSection({ owner, items, client, onItemLink }: {
     const load = useCallback(async () => {
         const seq = ++sequence.current;
         try {
-            const result = await client.triggers.listSentinelTodo(owner.ownerWorkspaceId, owner.processId);
-            if (mounted.current && seq === sequence.current) { setRules(result); setLoadError(null); }
+            const [result, capabilities] = await Promise.all([
+                client.triggers.listSentinelTodo(owner.ownerWorkspaceId, owner.processId),
+                client.triggers.sentinelTodoCapabilities(owner.ownerWorkspaceId, owner.processId).then(
+                    result => ({ dateTime: result.dateTime, error: null }),
+                    failure => ({ dateTime: false, error: triggerError(failure).message })),
+            ]);
+            if (mounted.current && seq === sequence.current) {
+                setRules(result); setDateTimeEnabled(capabilities.dateTime === true);
+                setCapabilityError(capabilities.error); setLoadError(null);
+                if (!capabilities.dateTime) {
+                    setRunNow(current => current?.event.type === 'date-time' ? null : current);
+                    setResume(null);
+                }
+            }
         } catch (failure) {
-            if (mounted.current && seq === sequence.current) setLoadError(triggerError(failure).message);
+            if (mounted.current && seq === sequence.current) {
+                setLoadError(triggerError(failure).message); setDateTimeEnabled(false);
+            }
+        } finally {
+            if (mounted.current && seq === sequence.current) setLoading(false);
         }
     }, [client, owner.ownerWorkspaceId, owner.processId]);
     useEffect(() => {
         mounted.current = true;
         setRules([]);
+        setDateTimeEnabled(false);
+        setLoading(true);
         setEditor(null);
         setError(null);
         setLoadError(null);
@@ -80,6 +103,7 @@ function TriggerSection({ owner, items, client, onItemLink }: {
             if (!mounted.current) return;
             retry.current = null;
             setRunNow(null);
+            setResume(null);
             await load();
         } catch (failure) {
             if (!mounted.current) return;
@@ -93,10 +117,13 @@ function TriggerSection({ owner, items, client, onItemLink }: {
         }
     };
     const sorted = rules.filter(rule => rule.workspaceId === owner.ownerWorkspaceId && rule.processId === owner.processId
-        && !rule.binding?.delegatedPr)
+        && !rule.binding?.delegatedPr && (rule.event.type !== 'date-time' || dateTimeEnabled))
         .sort((a, b) => Number(isTerminalTrigger(a)) - Number(isTerminalTrigger(b)) || b.createdAt.localeCompare(a.createdAt));
     const add = <Button size="sm" variant="secondary" disabled={busy || eligibleTriggerItems(items).length === 0} onClick={() => setEditor('new')}>+ Add trigger</Button>;
     return <div className="sentinel-trigger-root">
+        {loading && <p role="status" className="sentinel-trigger-muted">Loading triggers...</p>}
+        {capabilityError && <p role="alert">Date/time triggers unavailable: {capabilityError}{' '}
+            <Button size="sm" variant="secondary" onClick={refresh}>Retry date/time availability</Button></p>}
         {(loadError || error) && <div role="alert" className="sentinel-trigger-error">{loadError || error}{' '}
             <Button size="sm" variant="secondary" disabled={busy} onClick={conflict ? refresh : () => { if (retry.current) void retry.current(); else refresh(); }}>{conflict ? 'Refresh rules' : 'Retry'}</Button>
         </div>}
@@ -108,7 +135,7 @@ function TriggerSection({ owner, items, client, onItemLink }: {
             </div>
             {open && <ul id={`${id}-body`} className="sentinel-trigger-list">
                 {sorted.map(rule => {
-                    if (rule.event.monitor !== 'pr-merged' || !rule.binding) return null;
+                    if ((rule.event.monitor !== 'pr-merged' && rule.event.type !== 'date-time') || !rule.binding) return null;
                     const terminal = isTerminalTrigger(rule);
                     const item = items.find(candidate => candidate.id === rule.binding!.itemId);
                     const label = rule.outcome === 'fired' ? 'Fired' : rule.outcome === 'closed-unmerged' ? 'Closed, not merged'
@@ -118,16 +145,22 @@ function TriggerSection({ owner, items, client, onItemLink }: {
                     return <li key={rule.id} className="sentinel-trigger-row" data-testid={`sentinel-trigger-${rule.id}`}>
                         <div className="sentinel-trigger-summary">
                             <span className={`sentinel-trigger-badge sentinel-trigger-${label === 'Closed, not merged' ? 'closed' : label.toLowerCase()}`}
-                                title={rule.delivery ? `Message ${rule.delivery.state === 'pending' ? 'delivery pending' : 'delivered'}` : rule.outcomeReason}>
+                                title={rule.delivery ? `Message ${rule.delivery.state === 'pending' ? 'delivery pending' : rule.delivery.state}` : rule.outcomeReason}>
                                 <span aria-hidden="true">{icon}</span> {label}
                             </span>
-                            {rule.event.lastError && <span className="sentinel-trigger-badge sentinel-trigger-error" title={`${rule.event.lastError.message} · Last retry ${rule.lastTickAt ?? rule.event.lastError.at} · Next retry ${rule.nextTickAt ?? 'scheduled with backoff'}`}>⚠ Error · retrying</span>}
+                            {rule.event.monitor === 'pr-merged' && rule.event.lastError && <span className="sentinel-trigger-badge sentinel-trigger-error" title={`${rule.event.lastError.message} · Last retry ${rule.lastTickAt ?? rule.event.lastError.at} · Next retry ${rule.nextTickAt ?? 'scheduled with backoff'}`}>⚠ Error · retrying</span>}
                             {deliveryError && <span className="sentinel-trigger-badge sentinel-trigger-error"
                                 title={`${deliveryError} · Last retry ${rule.lastTickAt ?? rule.delivery!.firedAt} · Next retry ${rule.nextTickAt ?? 'startup reconciliation or retry with backoff'}`}>⚠ Error · delivery retrying</span>}
-                            <a href={rule.event.pr.url} target="_blank" rel="noopener noreferrer" title={rule.event.lastSeenTitle}>PR {rule.event.pr.repoPath}#{rule.event.pr.number}</a>
+                            {rule.event.type === 'date-time'
+                                ? <time dateTime={rule.event.firesAt} title={`UTC: ${rule.event.firesAt}`}>{zonedTriggerTime(rule.event.firesAt, rule.event.timeZone)} ({rule.event.timeZone})</time>
+                                : <a href={rule.event.pr.url} target="_blank" rel="noopener noreferrer" title={rule.event.lastSeenTitle}>PR {rule.event.pr.repoPath}#{rule.event.pr.number}</a>}
                             <a href={`#sentinel-todo-item-${encodeURIComponent(rule.binding.itemId)}`} onClick={event => { event.preventDefault(); onItemLink(rule.binding!.itemId); }}>→ {item?.title ?? 'Item unavailable'}</a>
-                            {!terminal ? <details className="sentinel-trigger-menu"><summary aria-label={`Actions for PR #${rule.event.pr.number}`}>⋯</summary>
-                                <Button size="sm" variant="secondary" disabled={busy} onClick={() => { void mutate(() => rule.status === 'paused'
+                            {!terminal ? <details className="sentinel-trigger-menu"><summary aria-label={rule.event.type === 'date-time' ? 'Actions for date/time trigger' : `Actions for PR #${rule.event.pr.number}`}>⋯</summary>
+                                <Button size="sm" variant="secondary" disabled={busy} onClick={() => {
+                                    if (rule.status === 'paused' && rule.event.type === 'date-time' && Date.parse(rule.event.firesAt) <= Date.now()) {
+                                        setResume(rule); return;
+                                    }
+                                    void mutate(() => rule.status === 'paused'
                                     ? client.triggers.resumeSentinelTodo(owner.ownerWorkspaceId, owner.processId, rule.id, rule.revision)
                                     : client.triggers.pauseSentinelTodo(owner.ownerWorkspaceId, owner.processId, rule.id, rule.revision)); }}>{rule.status === 'paused' ? 'Resume' : 'Pause'}</Button>
                                 <Button size="sm" variant="secondary" disabled={busy} onClick={() => setRunNow(rule)}>Run now</Button>
@@ -137,16 +170,16 @@ function TriggerSection({ owner, items, client, onItemLink }: {
                         </div>
                         {rule.binding.instruction && <p className="sentinel-trigger-instruction" title={rule.binding.instruction}>{rule.binding.instruction}</p>}
                         <div className="sentinel-trigger-muted">Armed by {rule.binding.armedBy === 'sentinel' ? 'Sentinel' : 'You'} · <time dateTime={rule.binding.armedAt} title={new Date(rule.binding.armedAt).toLocaleString()}>{formatRelativeTime(rule.binding.armedAt)}</time>
-                            {rule.delivery && <> · <time dateTime={rule.delivery.firedAt}>{formatRelativeTime(rule.delivery.firedAt)}</time> · {rule.delivery.state === 'pending' ? 'Delivery pending' : 'Message delivered'}</>}
+                            {rule.delivery && <> · <time dateTime={rule.delivery.firedAt}>{formatRelativeTime(rule.delivery.firedAt)}</time> · {rule.delivery.state === 'pending' ? 'Delivery pending' : rule.delivery.state === 'failed' ? 'Delivery failed' : 'Message delivered'}</>}
                         </div>
                         {rule.outcomeReason && <p className={rule.outcome === 'error' || deliveryError ? 'sentinel-trigger-error' : 'sentinel-trigger-muted'}>{rule.outcomeReason}</p>}
                     </li>;
                 })}
             </ul>}
         </section> : <div className="sentinel-trigger-entry">{add}</div>}
-        {editor && <SentinelTodoTriggerEditor client={client} owner={owner} items={items} trigger={editor === 'new' ? undefined : editor} onClose={() => setEditor(null)}
+        {editor && <SentinelTodoTriggerEditor client={client} owner={owner} items={items} dateTimeEnabled={dateTimeEnabled} trigger={editor === 'new' ? undefined : editor} onClose={() => setEditor(null)}
             onSaved={() => { setEditor(null); void load(); }} onConflict={() => { void load(); }} />}
-        {runNow && <Dialog open title="Run trigger now" onClose={() => { if (!busy) setRunNow(null); }}>
+        {runNow && <Dialog open trapFocus disableClose={busy} title="Run trigger now" onClose={() => { if (!busy) setRunNow(null); }}>
             <p>Post the start message to the Sentinel now? This uses up the rule.</p>
             <div className="sentinel-trigger-actions">
                 <Button size="sm" variant="secondary" disabled={busy} onClick={() => setRunNow(null)}>Cancel</Button>
@@ -155,6 +188,15 @@ function TriggerSection({ owner, items, client, onItemLink }: {
             {error && <p role="alert">{error} <Button size="sm" variant="secondary" disabled={busy} onClick={() => {
                 if (conflict) { refresh(); setRunNow(null); } else if (retry.current) void retry.current();
             }}>{conflict ? 'Refresh rules' : 'Retry run now'}</Button></p>}
+        </Dialog>}
+        {resume && <Dialog open trapFocus disableClose={busy} title="Resume overdue trigger" onClose={() => { if (!busy) setResume(null); }}>
+            <p>This overdue rule will wake Sentinel immediately. It grants no new authorization.</p>
+            <div className="sentinel-trigger-actions">
+                <Button size="sm" variant="secondary" disabled={busy} onClick={() => setResume(null)}>Cancel</Button>
+                <Button size="sm" disabled={busy || conflict} onClick={() => { void mutate(() =>
+                    client.triggers.resumeSentinelTodo(owner.ownerWorkspaceId, owner.processId, resume.id, resume.revision, true)); }}>Confirm resume</Button>
+            </div>
+            {error && <p role="alert">{error}</p>}
         </Dialog>}
     </div>;
 }

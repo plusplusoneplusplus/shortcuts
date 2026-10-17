@@ -46,6 +46,7 @@ export interface ChatTurnContextInput {
      */
     query?: string;
     followUpSuggestions?: { enabled: boolean; count: number };
+    sentinelNextSteps?: boolean;
     /**
      * Bound in-process enqueue capability. When present (and the opt-in
      * `send_to_conversation` tool is enabled by preferences), an agent can spawn a
@@ -196,6 +197,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         workspaceId: input.workspaceId,
         processId: input.processId,
         followUpSuggestions: input.followUpSuggestions,
+        sentinelNextSteps: input.sentinelNextSteps,
         enqueueChat: input.enqueueChat,
         sendMessage: input.sendMessage,
         launchRalph: input.launchRalph,

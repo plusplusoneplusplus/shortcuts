@@ -10,15 +10,17 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Spinner } from '../ui';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../api/cocClient';
 import { SettingsCard } from './SettingsCard';
 import { useAdminSaveShortcut } from './useAdminSaveShortcut';
+import { useAdminDirtyGuard, useAdminServer } from './adminTarget';
 
 interface GlobalSystemPromptEditorProps {
     onError: (msg: string) => void;
 }
 
 export function GlobalSystemPromptEditor({ onError }: GlobalSystemPromptEditorProps) {
+    const adminServer = useAdminServer();
     const [value, setValue] = useState('');
     const [saved, setSaved] = useState('');
     const [loading, setLoading] = useState(true);
@@ -30,7 +32,7 @@ export function GlobalSystemPromptEditor({ onError }: GlobalSystemPromptEditorPr
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const data = await getSpaCocClient().admin.getConfig();
+            const data = await adminServer.client.admin.getConfig();
             const current = data.resolved?.chat?.globalSystemPrompt ?? '';
             setValue(current);
             setSaved(current);
@@ -40,7 +42,7 @@ export function GlobalSystemPromptEditor({ onError }: GlobalSystemPromptEditorPr
         } finally {
             setLoading(false);
         }
-    }, [onError]);
+    }, [adminServer, onError]);
 
     useEffect(() => {
         void load();
@@ -56,7 +58,7 @@ export function GlobalSystemPromptEditor({ onError }: GlobalSystemPromptEditorPr
         try {
             // Empty/whitespace-only input clears the stored value.
             const next = value.trim() ? value : null;
-            await getSpaCocClient().admin.updateConfig({ 'chat.globalSystemPrompt': next });
+            await adminServer.client.admin.updateConfig({ 'chat.globalSystemPrompt': next });
             const applied = next ?? '';
             setValue(applied);
             setSaved(applied);
@@ -67,7 +69,7 @@ export function GlobalSystemPromptEditor({ onError }: GlobalSystemPromptEditorPr
             inFlight.current = false;
             setSaving(false);
         }
-    }, [value]);
+    }, [adminServer, value]);
 
     const handleCancel = useCallback(() => {
         setValue(saved);
@@ -80,7 +82,7 @@ export function GlobalSystemPromptEditor({ onError }: GlobalSystemPromptEditorPr
         setSaving(true);
         setError(null);
         try {
-            await getSpaCocClient().admin.updateConfig({ 'chat.globalSystemPrompt': null });
+            await adminServer.client.admin.updateConfig({ 'chat.globalSystemPrompt': null });
             setValue('');
             setSaved('');
             savedRef.current = '';
@@ -90,9 +92,10 @@ export function GlobalSystemPromptEditor({ onError }: GlobalSystemPromptEditorPr
             inFlight.current = false;
             setSaving(false);
         }
-    }, []);
+    }, [adminServer]);
 
     useAdminSaveShortcut(true, [{ dirty, saving: loading || saving, onSave: handleSave }]);
+    useAdminDirtyGuard('global-system-prompt', { label: 'Global system prompt', dirty, saving, save: handleSave });
 
     if (loading) {
         return (

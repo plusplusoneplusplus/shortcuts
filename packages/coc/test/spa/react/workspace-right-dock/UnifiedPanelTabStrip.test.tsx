@@ -515,6 +515,23 @@ describe('UnifiedPanelTabStrip', () => {
         expect(props.onMove).toHaveBeenCalledWith(tabs[2].id, tabs[1].id);
     });
 
+    it('reports the dragged tab until the drag ends or is cancelled', () => {
+        const tabs = sampleTabs();
+        const onTabDragChange = vi.fn();
+        renderStrip({ tabs, activeId: tabs[1].id, reorderEnabled: true, onTabDragChange });
+        const dataTransfer = { setData: () => undefined, effectAllowed: '', dropEffect: '' };
+        fireEvent.dragStart(tabNode(tabs[2]), { dataTransfer });
+        expect(onTabDragChange).toHaveBeenLastCalledWith(tabs[2].id);
+        fireEvent.dragEnd(tabNode(tabs[2]));
+        expect(onTabDragChange).toHaveBeenLastCalledWith(null);
+
+        fireEvent.dragStart(tabNode(tabs[1]), { dataTransfer });
+        expect(onTabDragChange).toHaveBeenLastCalledWith(tabs[1].id);
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(onTabDragChange).toHaveBeenLastCalledWith(null);
+        expect(onTabDragChange).toHaveBeenCalledTimes(4);
+    });
+
     describe('mixed-type reordering', () => {
         function drag(node: HTMLElement, type: string, clientX = 0) {
             fireEvent(node, new MouseEvent(type, { bubbles: true, cancelable: true, clientX }));
@@ -711,15 +728,51 @@ describe('UnifiedPanelTabStrip', () => {
         expect(tabNode(tabs[1]).textContent).toContain('(unsaved changes)');
     });
 
-    it('shows repo attribution and the full title on an ambiguous label', () => {
-        const state = openTab(EMPTY_UNIFIED_PANEL, {
+    it('shows a source file by bare name and puts its repo-qualified path in the tooltip', () => {
+        let state = openTab(EMPTY_UNIFIED_PANEL, {
             kind: 'file', ownerWorkspaceId: 'member-2', chatId: CHAT, resourceId: 'src/index.ts',
             label: 'index.ts', repoLabel: 'api',
+        });
+        state = openTab(state, {
+            kind: 'file', ownerWorkspaceId: 'member-3', chatId: CHAT, resourceId: 'src/index.ts',
+            label: 'index.ts', repoLabel: 'web', preview: false,
+        });
+        const tabs = visibleTabs(state, CHAT);
+        expect(tabs).toHaveLength(2);
+        renderStrip({ tabs, activeId: tabs[0].id, dirtyIds: new Set([tabs[1].id]), errorIds: new Set([tabs[1].id]) });
+
+        for (const [tab, repo] of [[tabs[0], 'api'], [tabs[1], 'web']] as const) {
+            expect(screen.queryByTestId(`unified-panel-tab-repo-${tab.id}`)).toBeNull();
+            expect(screen.getByTestId(`unified-panel-tab-label-${tab.id}`).textContent).toBe('index.ts');
+            expect(tabNode(tab).getAttribute('title')).toContain(`index.ts — ${repo}: src/index.ts`);
+            // The repo still disambiguates for a screen reader.
+            expect(tabNode(tab).querySelector('.sr-only')?.textContent).toContain(`— ${repo}`);
+        }
+        expect(tabNode(tabs[1]).textContent).toContain('(unsaved changes)');
+        expect(tabNode(tabs[1]).textContent).toContain('(unavailable)');
+        expect(screen.getByTestId(`unified-panel-tab-dirty-${tabs[1].id}`)).toBeTruthy();
+        expect(screen.getByTestId(`unified-panel-tab-error-${tabs[1].id}`)).toBeTruthy();
+    });
+
+    it('shows a file path in the tooltip even without a repo', () => {
+        const state = openTab(EMPTY_UNIFIED_PANEL, {
+            kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/lib/util.ts', label: 'util.ts',
+        });
+        const tabs = visibleTabs(state, CHAT);
+        renderStrip({ tabs, activeId: tabs[0].id });
+        expect(tabNode(tabs[0]).getAttribute('title')).toBe('util.ts — src/lib/util.ts');
+    });
+
+    it('keeps the repo badge on non-source tabs', () => {
+        const state = openTab(EMPTY_UNIFIED_PANEL, {
+            kind: 'canvas', ownerWorkspaceId: 'member-2', chatId: CHAT, resourceId: 'cv-1',
+            label: 'Plan', repoLabel: 'api',
         });
         const tabs = visibleTabs(state, CHAT);
         renderStrip({ tabs, activeId: tabs[0].id });
         expect(screen.getByTestId(`unified-panel-tab-repo-${tabs[0].id}`).textContent).toBe('api');
-        expect(tabNode(tabs[0]).getAttribute('title')).toBe('index.ts — api');
+        expect(tabNode(tabs[0]).getAttribute('title')).toBe('Plan — api');
+        expect(tabNode(tabs[0]).querySelector('.sr-only')?.textContent).not.toContain('api');
     });
 
     it('keeps the "+" outside the scrolling tab row', () => {

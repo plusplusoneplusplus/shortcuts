@@ -19,7 +19,7 @@ import type {
     EffectiveSkillPathSource,
     EffectiveSkillPathStatus,
 } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useAdminServer } from '../../admin/adminTarget';
 
 const SOURCE_BADGES: Record<EffectiveSkillPathSource, { label: string; className: string }> = {
     'managed-global': { label: 'Managed', className: 'bg-[#0078d4]/15 text-[#0078d4]' },
@@ -57,6 +57,7 @@ function StatusBadge({ status }: { status: EffectiveSkillPathStatus }) {
 }
 
 export function SkillsConfigPanel() {
+    const adminServer = useAdminServer();
     const [disabledSkills, setDisabledSkills] = useState<string[]>([]);
     const [globalDir, setGlobalDir] = useState<string>('');
     const [globalExtraFolders, setGlobalExtraFolders] = useState<string[]>([]);
@@ -68,15 +69,15 @@ export function SkillsConfigPanel() {
 
     const loadEffectivePaths = useCallback(() => {
         // Global-only view: no workspace id, so the API returns global-scoped paths.
-        return getSpaCocClient().skills.getEffectivePaths()
+        return adminServer.client.skills.getEffectivePaths()
             .then(res => setEffectivePaths(Array.isArray(res?.paths) ? res.paths : []))
             .catch(() => {});
-    }, []);
+    }, [adminServer]);
 
     const loadConfig = useCallback(() => {
         setLoading(true);
         Promise.all([
-            getSpaCocClient().skills.getGlobalConfig()
+            adminServer.client.skills.getGlobalConfig()
                 .then(data => {
                     setDisabledSkills(Array.isArray(data.globalDisabledSkills) ? data.globalDisabledSkills : []);
                     setGlobalDir(data.globalSkillsDir ?? '');
@@ -86,15 +87,15 @@ export function SkillsConfigPanel() {
                 .catch(() => {}),
             loadEffectivePaths(),
         ]).finally(() => setLoading(false));
-    }, [loadEffectivePaths]);
+    }, [adminServer, loadEffectivePaths]);
 
     useEffect(() => { loadConfig(); }, [loadConfig]);
 
     // ── Globally disabled skills ───────────────────────────────────────────
     const updateDisabledSkills = useCallback((updated: string[]) => {
         setDisabledSkills(updated);
-        getSpaCocClient().skills.updateGlobalConfig({ globalDisabledSkills: updated }).catch(() => {});
-    }, []);
+        adminServer.client.skills.updateGlobalConfig({ globalDisabledSkills: updated }).catch(() => {});
+    }, [adminServer]);
 
     const handleAddDisabled = useCallback(() => {
         const name = newDisabledSkill.trim();
@@ -112,11 +113,11 @@ export function SkillsConfigPanel() {
         setGlobalExtraFolders(updated);
         // Send disabled list alongside so the required field stays intact; the
         // server merges only the provided fields into the config file.
-        getSpaCocClient().skills
+        adminServer.client.skills
             .updateGlobalConfig({ globalDisabledSkills: disabledSkills, globalExtraFolders: updated })
             .then(() => loadEffectivePaths())
             .catch(() => {});
-    }, [disabledSkills, loadEffectivePaths]);
+    }, [adminServer, disabledSkills, loadEffectivePaths]);
 
     const handleAddExtraFolder = useCallback(() => {
         const folder = newExtraFolder.trim();
@@ -133,11 +134,11 @@ export function SkillsConfigPanel() {
     const handleToggleAutoDetect = useCallback(() => {
         const next = !autoDetect;
         setAutoDetect(next);
-        getSpaCocClient().skills
+        adminServer.client.skills
             .updateGlobalConfig({ globalDisabledSkills: disabledSkills, autoDetectDefaultFolders: next })
             .then(() => loadEffectivePaths())
             .catch(() => {});
-    }, [autoDetect, disabledSkills, loadEffectivePaths]);
+    }, [adminServer, autoDetect, disabledSkills, loadEffectivePaths]);
 
     if (loading) {
         return <div className="p-4 text-sm text-[#848484]">Loading config…</div>;

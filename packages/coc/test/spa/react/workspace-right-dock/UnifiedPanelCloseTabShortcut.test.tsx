@@ -461,9 +461,12 @@ describe('unified panel new-browser shortcut', () => {
         expect(pressAddTab().defaultPrevented).toBe(false);
         outside.remove();
         focusIn('unified-panel-open-menu');
-        for (const init of [{ altKey: true }, { shiftKey: true }, { ctrlKey: false }, { isComposing: true }, { key: 'w', altKey: true }]) {
+        for (const init of [{ altKey: true }, { ctrlKey: false }, { isComposing: true }, { key: 'w', altKey: true }]) {
             expect(pressAddTab(init).defaultPrevented).toBe(false);
         }
+        // Shift+T belongs to the always-on reopen shortcut and never adds a tab.
+        expect(pressAddTab({ shiftKey: true }).defaultPrevented).toBe(true);
+        expect(tabKinds()).toEqual([]);
         const consumed = new KeyboardEvent('keydown', { key: 't', ctrlKey: true, bubbles: true, cancelable: true });
         consumed.preventDefault();
         act(() => { document.activeElement!.dispatchEvent(consumed); });

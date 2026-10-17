@@ -21,9 +21,11 @@ describe('Sentinel PR-merge rule tool actions', () => {
     const execute = vi.fn();
     const fetchPr = vi.fn();
     const arm = vi.fn();
+    let dateTimeEnabled = false;
 
     beforeEach(() => {
         vi.resetAllMocks();
+        dateTimeEnabled = false;
         db = new NativeDatabase(':memory:');
         initializeDatabase(db);
         todos = new SentinelTodoStore(db);
@@ -34,10 +36,12 @@ describe('Sentinel PR-merge rule tool actions', () => {
         };
         const processes = { getProcess: vi.fn(async () => process) };
         service = new SentinelTodoService({ todos, store: processes });
-        const firer = new SentinelTodoTriggerFirer({ triggers: store, todos, processes, executor: { execute }, emit: vi.fn() });
+        const firer = new SentinelTodoTriggerFirer({ triggers: store, todos, processes, executor: { execute }, emit: vi.fn(),
+            dateTimeEnabled: () => dateTimeEnabled });
         triggers = new SentinelTodoTriggerService({
             triggers: store, todos, owners: service, firer, fetchPr,
             enabled: true, manager: { arm, disarm: vi.fn() },
+            dateTimeEnabled: () => dateTimeEnabled,
         });
         itemId = todos.create(owner, { title: 'Item', completionCondition: 'Complete' }, { actor: 'user' }).item.id;
         fetchPr.mockResolvedValue({ status: 'open', title: 'PR', url: prUrl });
@@ -49,6 +53,28 @@ describe('Sentinel PR-merge rule tool actions', () => {
         const { tool } = createSentinelTodosTool({ service, owner, ...(enabled ? { triggers } : {}) });
         return (tool as any).handler(args, {}) as Promise<any>;
     }
+
+    it('gates date schema and forged date requests on the owning server, preserving PR actions', async () => {
+        const event = { type: 'date-time', firesAt: '2090-11-05T06:30:00.000Z', timeZone: 'UTC', localTime: '2090-11-05T06:30' };
+        const disabled = createSentinelTodosTool({ service, owner, triggers });
+        expect(JSON.stringify(disabled.tool)).not.toContain('localTime');
+        expect(await call({ action: 'create_trigger', itemId, event })).toMatchObject({ error: expect.stringContaining('disabled') });
+        dateTimeEnabled = true;
+        const enabled = createSentinelTodosTool({ service, owner, triggers });
+        expect(JSON.stringify(enabled.tool)).toContain('localTime');
+        const before = todos.get(owner);
+        const created = await call({ action: 'create_trigger', itemId, event, instruction: 'Review only', idempotencyKey: 'date-draft' });
+        expect(created.trigger).toMatchObject({
+            ...owner, event: { type: 'date-time', firesAt: event.firesAt, timeZone: 'UTC' },
+            binding: { itemId, instruction: 'Review only' },
+        });
+        expect((await call({ action: 'create_trigger', itemId, event, idempotencyKey: 'date-draft' })).trigger.id).toBe(created.trigger.id);
+        expect(fetchPr).not.toHaveBeenCalled();
+        expect(todos.get(owner)).toEqual(before);
+        dateTimeEnabled = false;
+        expect(await call({ action: 'pause_trigger', triggerId: created.trigger.id, expectedRevision: 1 }))
+            .toMatchObject({ error: expect.stringContaining('disabled') });
+    });
 
     it('self-arms a normal item rule immediately with Sentinel author/time and no job or item-state write', async () => {
         const before = todos.get(owner);

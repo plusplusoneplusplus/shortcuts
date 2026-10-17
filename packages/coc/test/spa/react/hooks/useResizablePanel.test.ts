@@ -548,4 +548,24 @@ describe('useResizablePanel', () => {
             expect(overlays().length).toBe(0);
         });
     });
+
+    describe('setSize', () => {
+        it('clamps and persists the size even right after a storage sync', () => {
+            const { result, rerender } = renderHook(({ max }) => useResizablePanel({ initialWidth: 300, maxWidth: max, storageKey: 'set-size' }), { initialProps: { max: 600 } });
+            rerender({ max: 500 });
+            act(() => { result.current.setSize(420); });
+            expect(result.current.width).toBe(420);
+            expect(localStorage.getItem('set-size')).toBe('420');
+            act(() => { result.current.setSize(9999); });
+            expect(result.current.width).toBe(500);
+            expect(localStorage.getItem('set-size')).toBe('500');
+        });
+
+        it('re-enables persistence after applySize', () => {
+            const { result } = renderHook(() => useResizablePanel({ storageKey: 'set-size-applied' }));
+            act(() => { result.current.applySize(400); });
+            act(() => { result.current.setSize(350); });
+            expect(localStorage.getItem('set-size-applied')).toBe('350');
+        });
+    });
 });

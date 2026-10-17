@@ -120,7 +120,7 @@ describe('Electron browser profile cleanup', () => {
 async function view() {
     const sink: BrowserEventSink = {
         state: vi.fn(), newTab: vi.fn(), download: vi.fn(),
-        closeRequested: vi.fn(), openMenuRequested: vi.fn(), focusAddressRequested: vi.fn(),
+        closeRequested: vi.fn(), openMenuRequested: vi.fn(), focusAddressRequested: vi.fn(), reopenClosedRequested: vi.fn(),
         visited: vi.fn(), titleUpdated: vi.fn(), navigationStarted: vi.fn(),
         documentCommitted: vi.fn(), documentTitleUpdated: vi.fn(),
     };
@@ -271,10 +271,37 @@ describe('Electron browser add-menu forwarding', () => {
         expect(press().preventDefault).not.toHaveBeenCalled();
     });
 
+    it('forwards Shift+T once as a reopen request after returning owner focus', async () => {
+        const { hosted, sink, press } = await view();
+        expect(press({ key: 'T', shift: true }).preventDefault).not.toHaveBeenCalled();
+        await hosted.setBounds({ x: 0, y: 0, width: 300, height: 200 });
+        expect(press({ key: 'T', shift: true }).preventDefault).toHaveBeenCalledOnce();
+        expect(sink.reopenClosedRequested).toHaveBeenCalledOnce();
+        expect(mocks.owner.focus.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(sink.reopenClosedRequested!).mock.invocationCallOrder[0]);
+        expect(press({ key: 'T', shift: true, isAutoRepeat: true }).preventDefault).toHaveBeenCalledOnce();
+        for (const input of [{ alt: true }, { control: false, meta: false }, { type: 'keyUp' }]) {
+            expect(press({ key: 'T', shift: true, ...input }).preventDefault).not.toHaveBeenCalled();
+        }
+        expect(sink.reopenClosedRequested).toHaveBeenCalledOnce();
+        expect(sink.openMenuRequested).not.toHaveBeenCalled();
+        expect(sink.closeRequested).not.toHaveBeenCalled();
+        await hosted.close();
+        expect(press({ key: 'T', shift: true }).preventDefault).not.toHaveBeenCalled();
+    });
+
+    it('leaves Shift+T to the page when the sink cannot reopen tabs', async () => {
+        const { hosted, sink, press } = await view();
+        delete sink.reopenClosedRequested;
+        await hosted.setBounds({ x: 0, y: 0, width: 300, height: 200 });
+        expect(press({ shift: true }).preventDefault).not.toHaveBeenCalled();
+        expect(sink.openMenuRequested).not.toHaveBeenCalled();
+        await hosted.close();
+    });
+
     it('preserves modified chords, keyup and existing close behavior', async () => {
         const { hosted, sink, press } = await view();
         await hosted.setBounds({ x: 0, y: 0, width: 300, height: 200 });
-        for (const input of [{ shift: true }, { alt: true }, { control: false, meta: false }, { type: 'keyUp' }, { key: 'f' }]) {
+        for (const input of [{ alt: true }, { control: false, meta: false }, { type: 'keyUp' }, { key: 'f' }]) {
             expect(press(input).preventDefault).not.toHaveBeenCalled();
         }
         expect(sink.openMenuRequested).not.toHaveBeenCalled();

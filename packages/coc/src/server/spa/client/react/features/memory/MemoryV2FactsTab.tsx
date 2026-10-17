@@ -10,7 +10,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Spinner } from '../../ui';
 import { useApp } from '../../contexts/AppContext';
-import { memoryV2Api, type MemoryFact, type MemoryFactStatus } from './memoryV2Api';
+import { useAdminServer } from '../../admin/adminTarget';
+import { useMemoryV2Api, type MemoryFact, type MemoryFactStatus } from './memoryV2Api';
 
 // ── Local types ───────────────────────────────────────────────────────────────
 
@@ -19,7 +20,8 @@ interface FactCardProps {
     onEdit: (fact: MemoryFact) => void;
     onDelete: (id: string) => void;
     onArchive: (id: string) => void;
-    onOpenProcess: (processId: string) => void;
+    /** Omitted when the fact belongs to another machine's chats. */
+    onOpenProcess?: (processId: string) => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -98,14 +100,18 @@ function FactCard({ fact, onEdit, onDelete, onArchive, onOpenProcess }: FactCard
                 {sourceProcessId && (
                     <>
                         <span className="text-[#aaa]">·</span>
-                        <button
-                            className="font-mono truncate max-w-[120px] text-[#0078d4] hover:underline"
-                            title={sourceProcessId}
-                            onClick={() => onOpenProcess(sourceProcessId)}
-                            data-testid="fact-process-link"
-                        >
-                            proc:{sourceProcessId.slice(0, 8)}
-                        </button>
+                        {onOpenProcess ? (
+                            <button
+                                className="font-mono truncate max-w-[120px] text-[#0078d4] hover:underline"
+                                title={sourceProcessId}
+                                onClick={() => onOpenProcess(sourceProcessId)}
+                                data-testid="fact-process-link"
+                            >
+                                proc:{sourceProcessId.slice(0, 8)}
+                            </button>
+                        ) : (
+                            <span className="font-mono truncate max-w-[120px]" title={sourceProcessId}>proc:{sourceProcessId.slice(0, 8)}</span>
+                        )}
                     </>
                 )}
                 <span className="text-[#aaa]">·</span>
@@ -160,6 +166,7 @@ interface EditModalProps {
 }
 
 function EditModal({ wsId, fact, onClose, onSaved }: EditModalProps) {
+    const memoryApi = useMemoryV2Api();
     const [content, setContent] = useState(fact.content);
     const [tags, setTags] = useState(fact.tags.join(', '));
     const [importance, setImportance] = useState(fact.importance);
@@ -170,7 +177,7 @@ function EditModal({ wsId, fact, onClose, onSaved }: EditModalProps) {
         setSaving(true);
         setError(null);
         try {
-            const updated = await memoryV2Api.updateFact(wsId, fact.id, {
+            const updated = await memoryApi.updateFact(wsId, fact.id, {
                 content,
                 tags: tags.split(',').map(t => t.trim()).filter(Boolean),
                 importance,
@@ -246,6 +253,7 @@ interface AddFactFormProps {
 }
 
 function AddFactForm({ wsId, onAdded, onCancel }: AddFactFormProps) {
+    const memoryApi = useMemoryV2Api();
     const [content, setContent] = useState('');
     const [tags, setTags] = useState('');
     const [saving, setSaving] = useState(false);
@@ -258,7 +266,7 @@ function AddFactForm({ wsId, onAdded, onCancel }: AddFactFormProps) {
         setSaving(true);
         setError(null);
         try {
-            const fact = await memoryV2Api.createFact(wsId, content, {
+            const fact = await memoryApi.createFact(wsId, content, {
                 tags: tags.split(',').map(t => t.trim()).filter(Boolean),
             });
             onAdded(fact);
@@ -305,6 +313,8 @@ interface MemoryV2FactsTabProps {
 }
 
 export function MemoryV2FactsTab({ wsId }: MemoryV2FactsTabProps) {
+    const adminServer = useAdminServer();
+    const memoryApi = useMemoryV2Api();
     const { dispatch } = useApp();
     const [facts, setFacts] = useState<MemoryFact[]>([]);
     const [loading, setLoading] = useState(true);
@@ -320,7 +330,7 @@ export function MemoryV2FactsTab({ wsId }: MemoryV2FactsTabProps) {
         setLoading(true);
         setError(null);
         try {
-            const loaded = await memoryV2Api.listFacts(wsId, {
+            const loaded = await memoryApi.listFacts(wsId, {
                 q: q?.trim() || undefined,
                 status: status || undefined,
                 limit: 100,
@@ -331,7 +341,7 @@ export function MemoryV2FactsTab({ wsId }: MemoryV2FactsTabProps) {
         } finally {
             setLoading(false);
         }
-    }, [wsId]);
+    }, [memoryApi, wsId]);
 
     useEffect(() => { loadFacts(searchQ, statusFilter); }, [wsId]);
 
@@ -359,7 +369,7 @@ export function MemoryV2FactsTab({ wsId }: MemoryV2FactsTabProps) {
 
     const handleDelete = async (id: string) => {
         try {
-            await memoryV2Api.deleteFact(wsId, id);
+            await memoryApi.deleteFact(wsId, id);
             setFacts(prev => prev.filter(f => f.id !== id));
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
@@ -370,7 +380,7 @@ export function MemoryV2FactsTab({ wsId }: MemoryV2FactsTabProps) {
 
     const handleArchive = async (id: string) => {
         try {
-            const updated = await memoryV2Api.updateFact(wsId, id, { status: 'archived' });
+            const updated = await memoryApi.updateFact(wsId, id, { status: 'archived' });
             setFacts(prev => prev.map(f => f.id === id ? updated : f));
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
@@ -490,7 +500,8 @@ export function MemoryV2FactsTab({ wsId }: MemoryV2FactsTabProps) {
                             onEdit={setEditingFact}
                             onDelete={(id) => setConfirmDeleteId(id)}
                             onArchive={handleArchive}
-                            onOpenProcess={handleOpenProcess}
+                            // Process links open this desktop's chats; a remote target's ids are not ours.
+                            onOpenProcess={adminServer.isRemote ? undefined : handleOpenProcess}
                         />
                     )
                 ))}

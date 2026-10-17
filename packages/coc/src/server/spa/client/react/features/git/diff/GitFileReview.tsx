@@ -1,13 +1,18 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import type { GitFileChange } from '@plusplusoneplusplus/coc-client';
 import { FileDiffPanel } from './FileDiffPanel';
 import type { FileDiffPanelProps } from './FileDiffPanel';
 import { STATUS_LABELS } from './FileTree';
-import { filterReviewFiles, groupReviewFiles, reviewFileParts, reviewFileStatus, type ReviewFileKind } from './gitReviewFiles';
+import { filterReviewFiles, groupReviewFiles, reviewFileKind, reviewFileParts, reviewFileStatus, type ReviewFileKind } from './gitReviewFiles';
 import { GitReviewToolbar, type GitReviewHeader } from './GitReviewToolbar';
 import './git-file-review.css';
 import { useCloneBaseUrl } from '../../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
+import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
+
+/** Changed-files navigator width bounds; the diff always keeps at least NAV_CONTENT_MIN px. */
+export const NAV_DEFAULT_WIDTH = 262, NAV_MIN_WIDTH = 180, NAV_MAX_WIDTH = 560, NAV_CONTENT_MIN = 320, NAV_KEY_STEP = 16;
+export const NAV_WIDTH_STORAGE_KEY = 'git-review-nav-width';
 
 type Props = Pick<FileDiffPanelProps, 'workspaceId' | 'attachmentDestinationId' | 'source' | 'reviewChat' | 'getHunkClassification' | 'hunkActiveFilters' | 'onDiffEngineChange' | 'focusComment'> & {
     comparisonKey: string;
@@ -49,6 +54,32 @@ function ReviewBody({ files, selectedPath, onSelect, loading, error, onRetry, re
     const searchRef = useRef<HTMLInputElement>(null);
     const navRef = useRef<HTMLElement>(null);
     const navId = useId();
+    const bodyRef = useRef<HTMLDivElement>(null);
+    const [bodyWidth, setBodyWidth] = useState(0);
+    useEffect(() => {
+        const body = bodyRef.current;
+        if (!body || typeof ResizeObserver === 'undefined') return;
+        const observer = new ResizeObserver(([entry]) => setBodyWidth(entry.contentRect.width));
+        observer.observe(body);
+        return () => observer.disconnect();
+    }, []);
+    // The container bounds the persisted preference without overwriting it, so it returns when the pane widens.
+    const navMax = bodyWidth > 0 ? Math.max(NAV_MIN_WIDTH, Math.min(NAV_MAX_WIDTH, bodyWidth - NAV_CONTENT_MIN)) : NAV_MAX_WIDTH;
+    const navSize = useResizablePanel({ initialWidth: NAV_DEFAULT_WIDTH, minWidth: NAV_MIN_WIDTH, maxWidth: navMax, storageKey: NAV_WIDTH_STORAGE_KEY });
+    const navWidth = Math.min(navSize.width, navMax);
+    function resizeNav(event: KeyboardEvent) {
+        const step = event.shiftKey ? NAV_KEY_STEP * 4 : NAV_KEY_STEP;
+        const next = event.key === 'ArrowLeft' ? navWidth - step : event.key === 'ArrowRight' ? navWidth + step
+            : event.key === 'Home' ? NAV_MIN_WIDTH : event.key === 'End' ? navMax : null;
+        if (next === null) return;
+        event.preventDefault(); navSize.setSize(next);
+    }
+    // Category totals describe the whole comparison, independently of every navigator filter.
+    const kindCounts = useMemo(() => {
+        const counts = { all: files.length, source: 0, tests: 0, docs: 0 };
+        for (const file of files) counts[reviewFileKind(file.path)]++;
+        return counts;
+    }, [files]);
     const visible = useMemo(() => filterReviewFiles(files, query, kind, status, hideViewed, viewed), [files, query, kind, status, hideViewed, viewed]);
     const groups = useMemo(() => groupReviewFiles(visible), [visible]);
     const ordered = useMemo(() => groups.flatMap(group => group.files), [groups]);
@@ -123,7 +154,7 @@ function ReviewBody({ files, selectedPath, onSelect, loading, error, onRetry, re
                 <span aria-hidden="true">{viewed.has(selected.path) ? '✓' : '○'}</span><span className="git-review-label-sm">{viewed.has(selected.path) ? 'Viewed' : 'Mark viewed'}</span>
             </button>}
         </GitReviewToolbar>
-        <div className="git-review-body">
+        <div className="git-review-body" ref={bodyRef} style={{ '--git-review-nav-width': `${navWidth}px` } as CSSProperties}>
             {drawer && <button type="button" className="git-review-scrim" aria-label="Close file navigator" onClick={() => setDrawer(false)} />}
             <aside id={navId} ref={navRef} className={`git-review-nav${drawer ? ' open' : ''}`} aria-label="Changed files"
                 onKeyDown={event => {
@@ -145,9 +176,9 @@ function ReviewBody({ files, selectedPath, onSelect, loading, error, onRetry, re
                     }
                 }}>
                 <div className="git-review-filters">
-                    <div className="git-review-filter-title"><strong>Changed files · {files.length}</strong><button type="button" className="git-review-drawer-trigger" aria-label="Close file navigator" onClick={() => setDrawer(false)}>×</button></div>
+                    <div className="git-review-filter-title"><strong>Changed files</strong><button type="button" className="git-review-drawer-trigger" aria-label="Close file navigator" onClick={() => setDrawer(false)}>×</button></div>
                     <input ref={searchRef} aria-label="Search changed files by name or path" placeholder="Search files or path…" value={query} onChange={event => setQuery(event.target.value)} />
-                    <div className="git-review-filter-row">{(['all', 'source', 'tests', 'docs'] as const).map(value => <button type="button" key={value} aria-pressed={kind === value} onClick={() => setKind(value)}>{value === 'all' ? 'All' : value === 'source' ? 'Source' : value === 'tests' ? 'Tests' : 'Docs'}</button>)}</div>
+                    <div className="git-review-filter-row">{(['all', 'source', 'tests', 'docs'] as const).map(value => <button type="button" key={value} aria-pressed={kind === value} onClick={() => setKind(value)}>{value === 'all' ? 'All' : value === 'source' ? 'Source' : value === 'tests' ? 'Tests' : 'Docs'} <span className="git-review-muted">{kindCounts[value]}</span></button>)}</div>
                     <div className="git-review-filter-row"><label><input type="checkbox" checked={hideViewed} onChange={event => setHideViewed(event.target.checked)} /> Hide viewed</label>
                         <select aria-label="Change status filter" value={status} onChange={event => setStatus(event.target.value)}><option value="all">All statuses</option>{['A', 'M', 'D', 'R', 'C', 'T'].map(code => <option key={code} value={code}>{STATUS_LABELS[code] ?? code}</option>)}</select></div>
                 </div>
@@ -158,6 +189,10 @@ function ReviewBody({ files, selectedPath, onSelect, loading, error, onRetry, re
                 </section>)}{!loading && !visible.length && <div className="git-review-empty">{files.length ? 'No matching files.' : 'No file changes.'}<button type="button" onClick={clear}>Clear filters</button></div>}</div>
                 <div className="git-review-progress">{viewedCount} / {files.length} viewed · {visible.length} shown<progress aria-label="Files viewed" value={viewedCount} max={files.length || 1} /></div>
             </aside>
+            <div className={`git-review-resizer${navSize.isDragging ? ' dragging' : ''}`} role="separator" aria-orientation="vertical" tabIndex={0}
+                aria-label="Resize changed files list" aria-controls={navId} aria-valuemin={NAV_MIN_WIDTH} aria-valuemax={navMax} aria-valuenow={navWidth}
+                title="Drag to resize · double-click to reset" data-testid="git-review-resizer"
+                onMouseDown={navSize.handleMouseDown} onTouchStart={navSize.handleTouchStart} onDoubleClick={navSize.resetWidth} onKeyDown={resizeNav} />
             <main className="git-review-content" aria-label="Focused file diff">
                 {loading ? <div role="status" className="git-review-empty">Loading files…</div> : error ? <div role="alert" className="git-review-empty">{error}<button type="button" onClick={onRetry}>Retry</button></div> : overview ? <div className="git-review-overview">
                     <div className="git-review-overview-summary">{visible.length} files · {groups.length} directories · {viewedCount} viewed <span className="git-review-add">+{visible.reduce((sum, file) => sum + (file.additions ?? 0), 0)}</span> <span className="git-review-del">−{visible.reduce((sum, file) => sum + (file.deletions ?? 0), 0)}</span></div>

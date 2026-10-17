@@ -109,9 +109,10 @@ export function useResolveCloneBaseUrl(): (ref: CloneRef | undefined) => string 
  */
 export function useCocClient(ref?: CloneRef): CocClient {
     const baseUrl = useCloneBaseUrl(ref);
+    const owner = useWorkspaceOwner(typeof ref === 'string' ? ref : refId(ref));
     // Local clone resolves to the default singleton via getSpaCocClient() directly
     // (not getCocClientFor(undefined)), so local-clone behavior is unchanged.
-    return useMemo(() => (baseUrl ? getCocClientFor(baseUrl) : getSpaCocClient()), [baseUrl]);
+    return useMemo(() => owner?.client ?? (baseUrl ? getCocClientFor(baseUrl) : getSpaCocClient()), [baseUrl, owner?.client]);
 }
 
 /**

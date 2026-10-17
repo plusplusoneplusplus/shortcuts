@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react';
+import type { CocClient } from '@plusplusoneplusplus/coc-client';
 
 export interface WorkspaceOwner {
     /** Raw id used in owner API paths and request bodies. */
@@ -7,6 +8,7 @@ export interface WorkspaceOwner {
     selectionId: string;
     /** Undefined means explicitly local, not an unresolved remote owner. */
     baseUrl?: string;
+    client?: CocClient;
     rootPath?: string;
 }
 

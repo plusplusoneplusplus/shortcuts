@@ -1,3 +1,4 @@
+import '../language-servers/fileIdentityMock';
 /**
  * Ctrl/Cmd+P and Ctrl/Cmd+O in the unified right panel.
  *
@@ -498,10 +499,10 @@ describe('unified panel quick open', () => {
         expect(event.defaultPrevented).toBe(true);
     });
 
-    it('opens a picked file as a preview tab and reveals it in the tree column', () => {
+    it('opens a picked file as a preview tab and reveals it in the tree column', async () => {
         renderPanel();
         press('p');
-        fireEvent.click(screen.getByTestId('quick-open-pick'));
+        await act(async () => { fireEvent.click(screen.getByTestId('quick-open-pick')); });
 
         expect(fileTabs()).toEqual([{ label: 'app.ts', preview: true }]);
         // The column is opened for the user, and persisted like a manual open.
@@ -512,10 +513,10 @@ describe('unified panel quick open', () => {
         expect(screen.queryByTestId('quick-open-dialog')).toBeNull();
     });
 
-    it('opens an Exact Open pick pinned without storing file permissions', () => {
+    it('opens an Exact Open pick pinned without storing file permissions', async () => {
         renderPanel();
         press('o');
-        fireEvent.click(screen.getByTestId('exact-open-pick'));
+        await act(async () => { fireEvent.click(screen.getByTestId('exact-open-pick')); });
 
         // Pinned, not preview — the distinction between the two entry points.
         expect(fileTabs()).toEqual([{ label: 'config.json', preview: false }]);
@@ -524,12 +525,12 @@ describe('unified panel quick open', () => {
         expect(tab?.resourceId).toBe('__trusted__:/home/me/.copilot/config.json');
     });
 
-    it('keeps the tree open bit even when the panel is too narrow to show the column', () => {
+    it('keeps the tree open bit even when the panel is too narrow to show the column', async () => {
         // The open bit is what the user asked for; a narrow panel hides the
         // column without discarding it, and the panel is never force-widened.
         renderPanel({ dock: dockStub({ width: 260 }) });
         press('p');
-        fireEvent.click(screen.getByTestId('quick-open-pick'));
+        await act(async () => { fireEvent.click(screen.getByTestId('quick-open-pick')); });
 
         expect(readUnifiedTreeState(WS).open).toBe(true);
         expect(screen.getByTestId('unified-panel-tree').getAttribute('style')).toContain('display: none');
@@ -617,7 +618,7 @@ describe('unified panel quick open', () => {
         expect(screen.getByTestId('unified-right-panel').dataset.open).toBe('false');
     });
 
-    it('leaves a collapsed group panel closed when Quick Open is cancelled', () => {
+    it('leaves a collapsed group panel closed when Quick Open is cancelled', async () => {
         const selectMode = vi.fn();
         renderPanel({
             workspaceId: 'group-1',
@@ -625,7 +626,7 @@ describe('unified panel quick open', () => {
             repoGroup: { id: 'group-1', name: 'Group', liveRepoCount: 2 },
         });
         press('p');
-        fireEvent.click(screen.getByTestId('quick-open-cancel'));
+        await act(async () => { fireEvent.click(screen.getByTestId('quick-open-cancel')); });
 
         expect(selectMode).not.toHaveBeenCalled();
         expect(screen.getByTestId('unified-right-panel').dataset.open).toBe('false');

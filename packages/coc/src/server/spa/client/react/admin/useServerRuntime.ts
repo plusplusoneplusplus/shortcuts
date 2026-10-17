@@ -10,7 +10,8 @@
  */
 import { useCallback, useRef, useState } from 'react';
 import type { AdminConfigResponse } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../api/cocClient';
+import { useAdminServer } from './adminTarget';
 
 export interface UseServerRuntimeOptions {
     addToast: (message: string, type: 'success' | 'error') => void;
@@ -19,6 +20,7 @@ export interface UseServerRuntimeOptions {
 }
 
 export function useServerRuntime({ addToast, onSaved }: UseServerRuntimeOptions) {
+    const adminServer = useAdminServer();
     const [serverName, setServerNameState] = useState('');
     const [serverNameSnapshot, setServerNameSnapshot] = useState<string | null>(null);
     const [serverNameSaving, setServerNameSaving] = useState(false);
@@ -48,7 +50,7 @@ export function useServerRuntime({ addToast, onSaved }: UseServerRuntimeOptions)
         state.saving = true;
         setServerNameSaving(true);
         try {
-            const config = await getSpaCocClient().admin.updateConfig({ 'serve.serverName': trimmed || null });
+            const config = await adminServer.client.admin.updateConfig({ 'serve.serverName': trimmed || null });
             state.saved = trimmed;
             setServerNameSnapshot(trimmed);
             if (state.draft === draft) setServerName(trimmed);
@@ -60,22 +62,24 @@ export function useServerRuntime({ addToast, onSaved }: UseServerRuntimeOptions)
             state.saving = false;
             setServerNameSaving(false);
         }
-    }, [setServerName, addToast, onSaved]);
+    }, [adminServer, setServerName, addToast, onSaved]);
 
     const handleRestart = useCallback(async () => {
         setRestarting(true);
         setRestartStatus('Sending restart request…');
         try {
-            await getSpaCocClient().admin.restart();
+            await adminServer.client.admin.restart();
             setRestartStatus('Server is restarting. Waiting for it to come back…');
             addToast('Restart initiated — rebuilding…', 'success');
             // Poll until the server comes back, then reload the page
             const poll = () => {
                 setTimeout(async () => {
                     try {
-                        await getSpaCocClient().admin.getDataStats(undefined, { signal: AbortSignal.timeout(2000) });
+                        await adminServer.client.admin.getDataStats(undefined, { signal: AbortSignal.timeout(2000) });
                         setRestartStatus('Server is back!');
-                        window.location.reload();
+                        // Only the connected server's restart invalidates this page.
+                        if (adminServer.isRemote) setRestarting(false);
+                        else window.location.reload();
                         return;
                     } catch { /* server still down */ }
                     poll();
@@ -86,7 +90,7 @@ export function useServerRuntime({ addToast, onSaved }: UseServerRuntimeOptions)
             setRestartStatus('Restart failed: ' + getSpaCocClientErrorMessage(err, 'Network error'));
             setRestarting(false);
         }
-    }, [addToast]);
+    }, [adminServer, addToast]);
 
     return {
         serverName, setServerName, hydrateServerName,

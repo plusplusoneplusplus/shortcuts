@@ -11,7 +11,9 @@
  * Functions throw on HTTP error (4xx/5xx). Callers catch with try/catch.
  */
 
+import { useMemo } from 'react';
 import type {
+    CocClient,
     ListFactsOptions,
     MemoryEpisode,
     MemoryEpisodeEventType,
@@ -22,6 +24,7 @@ import type {
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
 import { patchRepoPreferences } from '../../api/repoPreferences';
+import { useAdminServer } from '../../admin/adminTarget';
 
 export type {
     ListFactsOptions,
@@ -45,96 +48,123 @@ async function runMemoryV2Request<T>(request: () => Promise<T>): Promise<T> {
 
 // ── API surface ───────────────────────────────────────────────────────────────
 
-export const memoryV2Api = {
-    /** List all memory scopes (Global + registered workspaces). */
-    async listScopes(): Promise<MemoryScopeInfo[]> {
-        return runMemoryV2Request(() => getSpaCocClient().memoryV2.listMemoryScopes());
-    },
+/**
+ * Builds the API against one server. `client` answers scope-global calls;
+ * `clientForWorkspace` answers per-workspace preference writes.
+ */
+export function createMemoryV2Api(
+    getClient: () => CocClient,
+    clientForWorkspace: (wsId: string) => CocClient,
+) {
+    return {
+        /** List all memory scopes (Global + registered workspaces). */
+        async listScopes(): Promise<MemoryScopeInfo[]> {
+            return runMemoryV2Request(() => getClient().memoryV2.listMemoryScopes());
+        },
 
-    async enableGlobalScope(): Promise<void> {
-        await runMemoryV2Request(() =>
-            getSpaCocClient().preferences.patchGlobal({ memoryV2: { enabled: true } } as any)
-        );
-    },
+        async enableGlobalScope(): Promise<void> {
+            await runMemoryV2Request(() =>
+                getClient().preferences.patchGlobal({ memoryV2: { enabled: true } } as any)
+            );
+        },
 
-    async disableGlobalScope(): Promise<void> {
-        await runMemoryV2Request(() =>
-            getSpaCocClient().preferences.patchGlobal({ memoryV2: { enabled: false } } as any)
-        );
-    },
+        async disableGlobalScope(): Promise<void> {
+            await runMemoryV2Request(() =>
+                getClient().preferences.patchGlobal({ memoryV2: { enabled: false } } as any)
+            );
+        },
 
-    async enableWorkspaceScope(wsId: string): Promise<void> {
-        await runMemoryV2Request(() =>
-            patchRepoPreferences(getCocClientForWorkspace(wsId), wsId, { memoryV2: { enabled: true } } as any)
-        );
-    },
+        async enableWorkspaceScope(wsId: string): Promise<void> {
+            await runMemoryV2Request(() =>
+                patchRepoPreferences(clientForWorkspace(wsId), wsId, { memoryV2: { enabled: true } } as any)
+            );
+        },
 
-    async disableWorkspaceScope(wsId: string): Promise<void> {
-        await runMemoryV2Request(() =>
-            patchRepoPreferences(getCocClientForWorkspace(wsId), wsId, { memoryV2: { enabled: false } } as any)
-        );
-    },
+        async disableWorkspaceScope(wsId: string): Promise<void> {
+            await runMemoryV2Request(() =>
+                patchRepoPreferences(clientForWorkspace(wsId), wsId, { memoryV2: { enabled: false } } as any)
+            );
+        },
 
-    /** List or search facts. Pass `q` for text search, `status` to filter by status. */
-    async listFacts(wsId: string, opts: ListFactsOptions = {}): Promise<MemoryFact[]> {
-        return runMemoryV2Request(() => getSpaCocClient().memoryV2.listFacts(wsId, opts));
-    },
+        /** List or search facts. Pass `q` for text search, `status` to filter by status. */
+        async listFacts(wsId: string, opts: ListFactsOptions = {}): Promise<MemoryFact[]> {
+            return runMemoryV2Request(() => getClient().memoryV2.listFacts(wsId, opts));
+        },
 
-    /** Create an explicit fact. */
-    async createFact(
-        wsId: string,
-        content: string,
-        opts: { importance?: number; tags?: string[]; sourceProcessId?: string } = {},
-    ): Promise<MemoryFact> {
-        return runMemoryV2Request(() => getSpaCocClient().memoryV2.createFact(wsId, content, opts));
-    },
+        /** Create an explicit fact. */
+        async createFact(
+            wsId: string,
+            content: string,
+            opts: { importance?: number; tags?: string[]; sourceProcessId?: string } = {},
+        ): Promise<MemoryFact> {
+            return runMemoryV2Request(() => getClient().memoryV2.createFact(wsId, content, opts));
+        },
 
-    /** Partial-update a fact (content, importance, tags, status). */
-    async updateFact(
-        wsId: string,
-        factId: string,
-        updates: Partial<Pick<MemoryFact, 'content' | 'importance' | 'tags' | 'status'>>,
-    ): Promise<MemoryFact> {
-        return runMemoryV2Request(() => getSpaCocClient().memoryV2.updateFact(wsId, factId, updates));
-    },
+        /** Partial-update a fact (content, importance, tags, status). */
+        async updateFact(
+            wsId: string,
+            factId: string,
+            updates: Partial<Pick<MemoryFact, 'content' | 'importance' | 'tags' | 'status'>>,
+        ): Promise<MemoryFact> {
+            return runMemoryV2Request(() => getClient().memoryV2.updateFact(wsId, factId, updates));
+        },
 
-    /** Permanently delete a fact. */
-    async deleteFact(wsId: string, factId: string): Promise<void> {
-        await runMemoryV2Request(() => getSpaCocClient().memoryV2.deleteFact(wsId, factId));
-    },
+        /** Permanently delete a fact. */
+        async deleteFact(wsId: string, factId: string): Promise<void> {
+            await runMemoryV2Request(() => getClient().memoryV2.deleteFact(wsId, factId));
+        },
 
-    /** Fetch all facts in the review queue. */
-    async listReview(wsId: string): Promise<MemoryFact[]> {
-        return runMemoryV2Request(() => getSpaCocClient().memoryV2.listReview(wsId));
-    },
+        /** Fetch all facts in the review queue. */
+        async listReview(wsId: string): Promise<MemoryFact[]> {
+            return runMemoryV2Request(() => getClient().memoryV2.listReview(wsId));
+        },
 
-    /**
-     * Approve a review fact, promoting it to 'active'.
-     * Optionally pass `editedContent` for edit-and-approve.
-     */
-    async approveReview(wsId: string, factId: string, editedContent?: string): Promise<MemoryFact> {
-        return runMemoryV2Request(() => getSpaCocClient().memoryV2.approveReview(wsId, factId, editedContent));
-    },
+        /**
+         * Approve a review fact, promoting it to 'active'.
+         * Optionally pass `editedContent` for edit-and-approve.
+         */
+        async approveReview(wsId: string, factId: string, editedContent?: string): Promise<MemoryFact> {
+            return runMemoryV2Request(() => getClient().memoryV2.approveReview(wsId, factId, editedContent));
+        },
 
-    /** Reject a review fact, moving it to 'rejected'. */
-    async rejectReview(wsId: string, factId: string): Promise<MemoryFact> {
-        return runMemoryV2Request(() => getSpaCocClient().memoryV2.rejectReview(wsId, factId));
-    },
+        /** Reject a review fact, moving it to 'rejected'. */
+        async rejectReview(wsId: string, factId: string): Promise<MemoryFact> {
+            return runMemoryV2Request(() => getClient().memoryV2.rejectReview(wsId, factId));
+        },
 
-    async listEpisodes(wsId: string, limit = 50): Promise<MemoryEpisode[]> {
-        return runMemoryV2Request(() => getSpaCocClient().memoryV2.listEpisodes(wsId, limit));
-    },
+        async listEpisodes(wsId: string, limit = 50): Promise<MemoryEpisode[]> {
+            return runMemoryV2Request(() => getClient().memoryV2.listEpisodes(wsId, limit));
+        },
 
-    /** Export all facts and episodes for this scope. */
-    async exportData(wsId: string): Promise<MemoryV2ExportData> {
-        return runMemoryV2Request(() => getSpaCocClient().memoryV2.exportData(wsId));
-    },
+        /** Export all facts and episodes for this scope. */
+        async exportData(wsId: string): Promise<MemoryV2ExportData> {
+            return runMemoryV2Request(() => getClient().memoryV2.exportData(wsId));
+        },
 
-    /**
-     * Wipe all facts and episodes for this scope.
-     * Requires explicit confirmation.
-     */
-    async wipe(wsId: string): Promise<void> {
-        await runMemoryV2Request(() => getSpaCocClient().memoryV2.wipe(wsId));
-    },
-};
+        /**
+         * Wipe all facts and episodes for this scope.
+         * Requires explicit confirmation.
+         */
+        async wipe(wsId: string): Promise<void> {
+            await runMemoryV2Request(() => getClient().memoryV2.wipe(wsId));
+        },
+    };
+}
+
+/** Page-origin API, routing workspace writes through the clone registry. */
+export const memoryV2Api = createMemoryV2Api(getSpaCocClient, getCocClientForWorkspace);
+
+export type MemoryV2Api = typeof memoryV2Api;
+
+/**
+ * Memory API for the Admin target. A remote target answers every call,
+ * including workspace preferences: its workspace ids belong to it, never to
+ * this desktop's clone registry.
+ */
+export function useMemoryV2Api(): MemoryV2Api {
+    const adminServer = useAdminServer();
+    return useMemo(() => adminServer.isRemote
+        ? createMemoryV2Api(() => adminServer.client, () => adminServer.client)
+        : adminServer.client === getSpaCocClient() ? memoryV2Api : createMemoryV2Api(() => adminServer.client, getCocClientForWorkspace),
+    [adminServer]);
+}

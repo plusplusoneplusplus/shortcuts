@@ -232,6 +232,20 @@ describe('FollowUpExecutor', () => {
         });
     });
 
+    it.each([1, 2, 3])('persists %i Sentinel suggestions on the ordinary follow-up path', async count => {
+        const suggestions = ['Finish safeguards', 'Run checks', 'Commit changes'].slice(0, count);
+        await store.addProcess(makeProcess({ metadata: { type: 'chat', mode: 'sentinel' } }));
+        sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
+            opts.onToolEvent({ type: 'tool-complete', toolName: 'suggest_follow_ups', toolCallId: 's', result: JSON.stringify({ suggestions }) });
+            return { success: true, response: 'Answer', sessionId: 's', toolCalls: [] };
+        });
+        await makeExecutor(store, {
+            queueConfig: createFixedQueueRuntimeConfig({ config: { features: { sentinelNextSteps: true } } }),
+        }).executeFollowUp('proc-1', 'Finish safeguards', undefined, 'sentinel');
+        expect(mockBuildChatToolBundle).toHaveBeenCalledWith(expect.objectContaining({ sentinelNextSteps: true }));
+        expect(store.processes.get('proc-1')?.conversationTurns?.at(-1)?.suggestions).toEqual(suggestions);
+    });
+
     // -------------------------------------------------------------------------
     // Error: process not found
     // -------------------------------------------------------------------------

@@ -18,20 +18,20 @@ function definition(overrides: Partial<LanguageServerDefinition> = {}): Language
 
 describe('LanguageServersClient', () => {
   it('addresses every call by workspace id with an encoded path segment', async () => {
-    const adapter = createMockAdapter({ enabled: false, definitions: [] });
+    const adapter = createMockAdapter({ definitions: [] });
     const client = new LanguageServersClient(adapter);
     const definitions = [definition()];
 
     await client.get('repo/a space/雪%done');
-    await client.replace('repo/a space/雪%done', { enabled: true, definitions });
-    await client.update('repo/a space/雪%done', { enabled: false });
+    await client.replace('repo/a space/雪%done', { definitions });
+    await client.update('repo/a space/雪%done', { definitions: [] });
     await client.retry('repo/a space/雪%done', 'session-key');
 
     const encoded = '/workspaces/repo%2Fa%20space%2F%E9%9B%AA%25done/language-servers';
     expect(adapter.calls).toMatchObject([
       { path: encoded, options: undefined },
-      { path: encoded, options: { method: 'PUT', body: { enabled: true, definitions } } },
-      { path: encoded, options: { method: 'PATCH', body: { enabled: false } } },
+      { path: encoded, options: { method: 'PUT', body: { definitions } } },
+      { path: encoded, options: { method: 'PATCH', body: { definitions: [] } } },
       { path: `${encoded}/retry`, options: { method: 'POST', body: { sessionId: 'session-key' } } },
     ]);
   });
@@ -39,19 +39,19 @@ describe('LanguageServersClient', () => {
   it('copies the update body so later caller mutations do not reach the request', async () => {
     const adapter = createMockAdapter({});
     const client = new LanguageServersClient(adapter);
-    const update = { enabled: true };
+    const update = { definitions: [] as LanguageServerDefinition[] };
 
     await client.update('repo-a', update);
-    update.enabled = false;
+    update.definitions = [definition()];
 
-    expect(adapter.calls[0].options?.body).toEqual({ enabled: true });
+    expect(adapter.calls[0].options?.body).toEqual({ definitions: [] });
   });
 
-  it('sends a patch without definitions when only the enable flag changes', async () => {
+  it('sends an empty patch without replacing definitions', async () => {
     const adapter = createMockAdapter({});
     const client = new LanguageServersClient(adapter);
 
-    await client.update('repo-a', { enabled: true });
+    await client.update('repo-a', {});
 
     expect(adapter.calls[0].options?.body).not.toHaveProperty('definitions');
   });
@@ -63,7 +63,7 @@ describe('parseLanguageServerRejection', () => {
   }
 
   it('returns field errors and the stored config from a rejected write', () => {
-    const stored = { enabled: true, definitions: [definition({ id: 'kept' })] };
+    const stored = { definitions: [definition({ id: 'kept' })] };
     const result = parseLanguageServerRejection(rejection({
       error: 'Invalid language-server configuration',
       errors: [{ field: 'definitions.0.command', message: 'command is required' }],
@@ -78,10 +78,10 @@ describe('parseLanguageServerRejection', () => {
 
   it('returns errors alone when the response carries no stored config', () => {
     const result = parseLanguageServerRejection(rejection({
-      errors: [{ field: 'enabled', message: 'enabled must be a boolean' }],
+      errors: [{ field: 'definitions', message: 'definitions must be an array' }],
     }));
 
-    expect(result).toEqual({ errors: [{ field: 'enabled', message: 'enabled must be a boolean' }] });
+    expect(result).toEqual({ errors: [{ field: 'definitions', message: 'definitions must be an array' }] });
   });
 
   it('drops malformed error entries instead of handing them to the form', () => {
@@ -98,7 +98,7 @@ describe('parseLanguageServerRejection', () => {
       config: { enabled: 'yes', definitions: [] },
     }));
 
-    expect(result?.config).toEqual({ enabled: false, definitions: [] });
+    expect(result?.config).toEqual({ definitions: [] });
   });
 
   it('returns null for statuses, bodies, and errors it cannot interpret', () => {

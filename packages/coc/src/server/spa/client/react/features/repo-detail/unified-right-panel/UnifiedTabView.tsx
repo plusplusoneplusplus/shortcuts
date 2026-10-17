@@ -7,6 +7,8 @@
  *  - `terminal` / `notes` — `TerminalView` and the full editable `NotesView`. There is no Explorer
  *    tab: the file tree is the panel's own right-edge column, which the panel
  *    shell renders beside whichever view is active.
+ *  - `settings` — the workspace's existing full Settings page, shared with
+ *    top-level Settings through `WorkspaceSettingsSlot`, without a second form.
  *  - `file` — the Explorer's `PreviewPane`, the same buffer controller the
  *    Explorer sub-tab uses, so load/retry/dirty/save/status behave
  *    identically wherever a file was opened from. Trusted absolute paths are
@@ -45,6 +47,7 @@ import { NotesView } from '../../notes/NotesView';
 import { PreviewPane, type PreviewStatus } from '../explorer/PreviewPane';
 import { ExternalSourcePane } from '../explorer/ExternalSourcePane';
 import type {
+    EditorModelMountContext,
     EditorNavigationController,
     EditorNavigationReason,
     EditorNavigationSnapshot,
@@ -55,6 +58,7 @@ import { UnifiedGitTab } from './UnifiedGitTab';
 import { UnifiedNoteTab } from './UnifiedNoteTab';
 import { UnifiedPasteTab } from './UnifiedPasteTab';
 import { UnifiedTodoTab } from './UnifiedTodoTab';
+import { WorkspaceSettingsSlot } from '../../repo-settings/WorkspaceSettingsHost';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled } from '../../../utils/config';
 
@@ -111,6 +115,8 @@ export interface UnifiedTabViewProps {
         snapshot: EditorNavigationSnapshot,
         reason: EditorNavigationReason,
     ) => void;
+    /** File tabs only: the live text model a split pane's second view attaches to. */
+    onSourceModelChange?: (tabId: string, context: EditorModelMountContext | null) => void;
     /** Persist the panel-local Notes selection without activating its tab. */
     onNotesSelectionChange?: (tabId: string, notePath: string | null) => void;
     /** Canvas tabs only: the collapsed-canvas switcher shown beside the title. */
@@ -126,7 +132,7 @@ function fileNameOf(tab: UnifiedPanelTab): string {
 export function UnifiedTabView({
     tab, scopeWorkspaceId, onClose, onDirtyChange, onErrorChange,
     onRegisterSave, onTerminalSessionsChange, terminalOpenRequest, isActive, onOpenFile, onOpenExternal, definitionPreviewOwners,
-    onFileNavigationMount, onFileNavigationLocation,
+    onFileNavigationMount, onFileNavigationLocation, onSourceModelChange,
     onNotesSelectionChange, canvasSwitcher,
 }: UnifiedTabViewProps) {
     const [markdownPreviewEnabled, setMarkdownPreviewEnabled] = useState(
@@ -158,9 +164,9 @@ export function UnifiedTabView({
         [onRegisterSave, tab.id],
     );
     const handleNavigate = useCallback(
-        (file: { path: string; name: string; line: number; column: number; symbolCandidate?: true }) => onOpenFile?.(file, {
-            ownerWorkspaceId: tab.ownerWorkspaceId,
-            ...(tab.ownerRoutingRef === undefined ? {} : { ownerRoutingRef: tab.ownerRoutingRef }),
+        (file: { workspaceId?: string; routingRef?: string | null; path: string; name: string; line: number; column: number; symbolCandidate?: true }) => onOpenFile?.(file, {
+            ownerWorkspaceId: file.workspaceId ?? tab.ownerWorkspaceId,
+            ownerRoutingRef: file.workspaceId ? file.routingRef : tab.ownerRoutingRef,
             ...(tab.repoLabel === undefined ? {} : { repoLabel: tab.repoLabel }),
         }),
         [onOpenFile, tab.ownerWorkspaceId, tab.ownerRoutingRef, tab.repoLabel],
@@ -187,11 +193,17 @@ export function UnifiedTabView({
         },
         [onFileNavigationLocation, tab.id],
     );
+    const handleModelShare = useCallback(
+        (context: EditorModelMountContext | null) => onSourceModelChange?.(tab.id, context),
+        [onSourceModelChange, tab.id],
+    );
     const handleNotesSelection = useCallback(
         (notePath: string | null) => onNotesSelectionChange?.(tab.id, notePath),
         [onNotesSelectionChange, tab.id],
     );
     switch (tab.kind) {
+        case 'settings':
+            return <WorkspaceSettingsSlot panel active={isActive} ownerKey={tab.ownerRoutingRef ?? tab.ownerWorkspaceId} />;
         case 'paste':
             return <UnifiedPasteTab scopeWorkspaceId={scopeWorkspaceId} resourceId={tab.resourceId} />;
         case 'terminal':
@@ -211,6 +223,7 @@ export function UnifiedTabView({
         case 'file':
             return (
                 <PreviewPane
+                    editingScope={JSON.stringify([scopeWorkspaceId, tab.chatId])}
                     repoId={tab.ownerWorkspaceId}
                     routingRef={tab.ownerRoutingRef}
                     definitionPreviewOwners={definitionPreviewOwners}
@@ -229,6 +242,7 @@ export function UnifiedTabView({
                     onStatusChange={handleStatus}
                     onNavigationMount={handleNavigationMount}
                     onNavigationLocation={handleNavigationLocation}
+                    onModelShare={onSourceModelChange ? handleModelShare : undefined}
                 />
             );
         case 'external':

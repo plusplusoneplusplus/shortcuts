@@ -291,12 +291,14 @@ function wireView(entry: BrowserEntry): void {
         }
         if (entry.closed || !entry.shown || input.type !== 'keyDown'
             || !['w', 't', 'l'].includes(key) || !modifier || input.alt
-            || (key !== 'w' && input.shift) || (key === 'l' && !entry.sink.focusAddressRequested)) { return; }
+            || (key === 'l' && (input.shift || !entry.sink.focusAddressRequested))
+            || (key === 't' && input.shift && !entry.sink.reopenClosedRequested)) { return; }
         event.preventDefault();
         if (!input.isAutoRepeat) {
             if (key === 't' || key === 'l') {
                 entry.win.webContents.focus();
                 if (key === 'l') { entry.sink.focusAddressRequested!(); }
+                else if (input.shift) { entry.sink.reopenClosedRequested!(); }
                 else { entry.sink.openMenuRequested(); }
             } else { entry.sink.closeRequested(); }
         }

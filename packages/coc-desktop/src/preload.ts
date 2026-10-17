@@ -82,6 +82,7 @@ const BROWSER_CLEAR_DATA_CHANNEL = 'coc-desktop:browser-clear-data';
 const BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL = 'coc-desktop:browser-view-close-requested';
 const BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL = 'coc-desktop:browser-view-focus-address-requested';
 const BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL = 'coc-desktop:browser-view-open-menu-requested';
+const BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL = 'coc-desktop:browser-view-reopen-closed-requested';
 const BROWSER_VIEW_CLOSED_CHANNEL = 'coc-desktop:browser-view-closed';
 const BROWSER_VIEW_FOCUS_CHANNEL = 'coc-desktop:browser-view-focus';
 const BROWSER_HOST_FOCUS_CHANNEL = 'coc-desktop:browser-host-focus';
@@ -308,6 +309,7 @@ const browser = {
     onFocusAddressRequested: (callback: (event: { viewId: string }) => void) => subscribe(BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, callback),
     onOpenMenuRequested: (callback: (event: { viewId: string }) => void) => subscribe(BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, callback),
     onCloseRequested: (callback: (event: { viewId: string }) => void) => subscribe(BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, callback),
+    onReopenClosedRequested: (callback: (event: { viewId: string }) => void) => subscribe(BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL, callback),
     onClosed: (callback: (event: { viewId: string; engine: BrowserEngine }) => void) => subscribe(BROWSER_VIEW_CLOSED_CHANNEL, callback),
 };
 

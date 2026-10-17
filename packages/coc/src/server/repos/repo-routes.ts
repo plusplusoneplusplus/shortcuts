@@ -15,6 +15,7 @@
  */
 
 import * as url from 'url';
+import { resolveFileIdentity } from '../language-servers/file-identity';
 import * as path from 'path';
 import * as child_process from 'child_process';
 import type { ServerResponse } from 'http';
@@ -424,6 +425,23 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                 } else {
                     send500(res, message);
                 }
+            }
+        },
+    });
+
+    // Resolve spelling on this workspace's filesystem; never infer it from OS.
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/file-identity$/,
+        handler: async (req, res, match) => {
+            try {
+                const parsed = parseRepoRequest(res, match, url.parse(req.url ?? '', true).query, { pathRequired: true });
+                if (!parsed) return;
+                const root = await knownRepoRoot(svc, res, parsed.repoId);
+                if (!root) return;
+                sendJson(res, { path: resolveFileIdentity(root, parsed.path) });
+            } catch {
+                send400(res, 'Cannot confirm file identity. Retry opening the file.');
             }
         },
     });

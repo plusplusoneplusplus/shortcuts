@@ -1,3 +1,4 @@
+import '../language-servers/fileIdentityMock';
 /**
  * Promotion to a permanent tab (AC-04) — the four gestures that mean "I am
  * keeping this file": a double click in the tree, a double click on the tab, an
@@ -161,11 +162,11 @@ afterEach(() => {
 
 
 /** Replay a browser double click on a tree row: click, click, dblclick. */
-function doubleClickRow(name: string) {
+async function doubleClickRow(name: string) {
     const row = screen.getByTestId(`tree-row-${name}`);
-    fireEvent.click(row);
-    fireEvent.click(row);
-    fireEvent.doubleClick(row);
+    await act(async () => { fireEvent.click(row); });
+    await act(async () => { fireEvent.click(row); });
+    await act(async () => { fireEvent.doubleClick(row); });
 }
 
 /** A dataTransfer stand-in; jsdom does not provide one. */
@@ -186,12 +187,12 @@ function tabNode(id: string): HTMLElement {
 describe('unified panel tab promotion (AC-04)', () => {
     it('promotes in place when the tree row is double-clicked, without reloading', async () => {
         renderPanel();
-        fireEvent.click(screen.getByTestId('tree-row-a'));
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-row-a')); });
         await screen.findByTestId('mock-monaco-textarea');
         const slotId = fileTabs()[0].id;
         const readsAfterPreview = mockExplorerApi.readBlob.mock.calls.length;
 
-        doubleClickRow('a');
+        await doubleClickRow('a');
 
         expect(fileTabs()).toEqual([expect.objectContaining({ label: 'a.ts', preview: false, id: slotId })]);
         // Same tab id means the same mounted view: no remount, so no second read
@@ -199,15 +200,15 @@ describe('unified panel tab promotion (AC-04)', () => {
         expect(mockExplorerApi.readBlob.mock.calls.length).toBe(readsAfterPreview);
     });
 
-    it('opens one permanent tab when a file is double-clicked from a fresh state', () => {
+    it('opens one permanent tab when a file is double-clicked from a fresh state', async () => {
         renderPanel();
-        doubleClickRow('b');
+        await doubleClickRow('b');
         expect(fileTabs()).toEqual([expect.objectContaining({ label: 'b.ts', preview: false })]);
     });
 
     it('promotes on the first edit, and the next single click opens beside it', async () => {
         renderPanel();
-        fireEvent.click(screen.getByTestId('tree-click-c'));
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-c')); });
         const editor = await screen.findByTestId('mock-monaco-textarea');
         expect(fileTabs()[0].preview).toBe(true);
 
@@ -218,7 +219,7 @@ describe('unified panel tab promotion (AC-04)', () => {
         await waitFor(() => expect(screen.getByTestId(`unified-panel-tab-dirty-${kept.id}`)).toBeTruthy());
 
         // The slot is free, so c.ts is not the thing the next click evicts.
-        fireEvent.click(screen.getByTestId('tree-click-a'));
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-a')); });
         expect(fileTabs()).toEqual([
             expect.objectContaining({ label: 'c.ts', preview: false, id: kept.id }),
             expect.objectContaining({ label: 'a.ts', preview: true }),
@@ -226,22 +227,22 @@ describe('unified panel tab promotion (AC-04)', () => {
         expect((screen.getAllByTestId('mock-monaco-textarea')[0] as HTMLTextAreaElement).value).toBe('edited');
     });
 
-    it('promotes when the tab itself is double-clicked', () => {
+    it('promotes when the tab itself is double-clicked', async () => {
         renderPanel();
-        fireEvent.click(screen.getByTestId('tree-click-a'));
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-a')); });
         const id = fileTabs()[0].id;
 
-        fireEvent.doubleClick(tabNode(id));
+        await act(async () => { fireEvent.doubleClick(tabNode(id)); });
 
         expect(fileTabs()).toEqual([expect.objectContaining({ label: 'a.ts', preview: false, id })]);
     });
 
-    it('promotes when the tab is dragged to a new position with tab reordering opted out', () => {
+    it('promotes when the tab is dragged to a new position with tab reordering opted out', async () => {
         applyRuntimeConfigPatch({ panelTabReorderingEnabled: false });
         renderPanel();
-        fireEvent.click(screen.getByTestId('tree-open-a'));
-        fireEvent.click(screen.getByTestId('tree-open-b'));
-        fireEvent.click(screen.getByTestId('tree-click-c'));
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-open-a')); });
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-open-b')); });
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-c')); });
         expect(labels()).toEqual(['a.ts', 'b.ts', 'c.ts']);
         const previewId = fileTabs()[2].id;
 
@@ -253,9 +254,9 @@ describe('unified panel tab promotion (AC-04)', () => {
         expect(fileTabs().every(tab => !tab.preview)).toBe(true);
     });
 
-    it('promotes from the keyboard: Enter on the focused preview tab', () => {
+    it('promotes from the keyboard: Enter on the focused preview tab', async () => {
         renderPanel();
-        fireEvent.click(screen.getByTestId('tree-click-a'));
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-a')); });
         const id = fileTabs()[0].id;
 
         fireEvent.keyDown(tabNode(id), { key: 'Enter' });
@@ -263,13 +264,13 @@ describe('unified panel tab promotion (AC-04)', () => {
         expect(fileTabs()).toEqual([expect.objectContaining({ label: 'a.ts', preview: false, id })]);
     });
 
-    it('is one-way: nothing turns a promoted tab back into the preview slot', () => {
+    it('is one-way: nothing turns a promoted tab back into the preview slot', async () => {
         renderPanel();
-        fireEvent.click(screen.getByTestId('tree-click-a'));
-        doubleClickRow('a');
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-a')); });
+        await doubleClickRow('a');
         // Every gesture again, on a tab that is already permanent.
-        fireEvent.doubleClick(tabNode(fileTabs()[0].id));
-        fireEvent.click(screen.getByTestId('tree-click-a'));
+        await act(async () => { fireEvent.doubleClick(tabNode(fileTabs()[0].id)); });
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-a')); });
 
         expect(fileTabs()).toEqual([expect.objectContaining({ label: 'a.ts', preview: false })]);
     });

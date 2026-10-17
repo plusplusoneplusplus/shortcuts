@@ -1,3 +1,4 @@
+import '../../language-servers/fileIdentityMock';
 // @vitest-environment jsdom
 /**
  * AC-05: image and binary buffers inside the tab strip.

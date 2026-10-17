@@ -1,18 +1,23 @@
 import { randomUUID } from 'node:crypto';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { z } from 'zod';
+import { dateTimeCandidates } from '@plusplusoneplusplus/coc-client';
 import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import type { SentinelTodoOwner, SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
 import type { TriggerManager, TriggerEventEmit, OneShotFirer } from './trigger-manager';
 import { OneShotFireConflictError } from './trigger-manager';
 import type { TriggerStore } from './trigger-store';
 import { parsePullRequestUrl, type PrStatusFetcher, type PrStatusSnapshot } from './pr-status-fetcher';
-import { DEFAULT_PR_MERGE_POLL_INTERVAL_MS, MAX_ACTIVE_TRIGGERS, type Trigger, type PrIdentity } from './trigger-types';
+import { DEFAULT_PR_MERGE_POLL_INTERVAL_MS, MAX_ACTIVE_TRIGGERS, type Trigger, type PrIdentity, type TriggerEvent } from './trigger-types';
 
 const id = z.string().trim().min(1).max(200);
 const ruleInput = z.object({
     itemId: id,
-    prUrl: z.string().trim().min(1).max(2_000),
+    prUrl: z.string().trim().min(1).max(2_000).optional(),
+    event: z.object({
+        type: z.literal('date-time'), firesAt: z.string().max(40),
+        timeZone: z.string().min(1).max(100), localTime: z.string().max(30),
+    }).strict().optional(),
     instruction: z.string().trim().max(8_000).optional(),
     /** Optional picker provenance; the URL remains the authority for provider identity. */
     workspaceId: id.optional(),
@@ -20,9 +25,10 @@ const ruleInput = z.object({
 }).strict();
 const createInput = ruleInput.extend({
     runNow: z.boolean().optional(), confirmed: z.literal(true).optional(), idempotencyKey: id.optional(),
-}).strict();
-const editInput = ruleInput.extend({ expectedRevision: z.number().int().min(1) }).strict();
-const revisionInput = z.object({ expectedRevision: z.number().int().min(1) }).strict();
+}).strict().refine(validRuleInput, 'Use either a PR URL or a date/time event; date/time rules cannot include PR fields');
+const editInput = ruleInput.extend({ expectedRevision: z.number().int().min(1) }).strict()
+    .refine(validRuleInput, 'Use either a PR URL or a date/time event; date/time rules cannot include PR fields');
+const revisionInput = z.object({ expectedRevision: z.number().int().min(1), confirmed: z.literal(true).optional() }).strict();
 const runInput = revisionInput.extend({ confirmed: z.literal(true) }).strict();
 
 export class SentinelTodoTriggerError extends Error {
@@ -37,6 +43,7 @@ export interface SentinelTodoTriggerServiceDeps {
     firer: OneShotFirer;
     fetchPr: PrStatusFetcher;
     enabled: boolean;
+    dateTimeEnabled?: () => boolean;
     emit?: TriggerEventEmit;
     now?: () => number;
 }
@@ -44,6 +51,13 @@ export interface SentinelTodoTriggerServiceDeps {
 /** One owner-scoped command surface for REST, Sentinel tools and the To-do editor. */
 export class SentinelTodoTriggerService {
     constructor(private readonly deps: SentinelTodoTriggerServiceDeps) {}
+
+    isDateTimeEnabled(): boolean { return this.deps.dateTimeEnabled?.() === true; }
+
+    async capabilities(owner: SentinelTodoOwner): Promise<{ dateTime: boolean }> {
+        await this.assertOwner(owner);
+        return { dateTime: this.isDateTimeEnabled() };
+    }
 
     async list(owner: SentinelTodoOwner): Promise<Trigger[]> {
         await this.assertOwner(owner);
@@ -53,7 +67,7 @@ export class SentinelTodoTriggerService {
 
     async preview(owner: SentinelTodoOwner, input: unknown): Promise<{ pr: PrIdentity; snapshot: PrStatusSnapshot }> {
         await this.assertOwner(owner);
-        const body = parse(z.object({ prUrl: ruleInput.shape.prUrl }).strict(), input);
+        const body = parse(z.object({ prUrl: z.string().trim().min(1).max(2_000) }).strict(), input);
         const pr = parsePr(body.prUrl);
         try { return { pr, snapshot: await this.deps.fetchPr(pr) }; }
         catch (error) { throw new SentinelTodoTriggerError(502, message(error)); }
@@ -62,33 +76,25 @@ export class SentinelTodoTriggerService {
     async create(owner: SentinelTodoOwner, input: unknown, actor: 'user' | 'sentinel'): Promise<Trigger> {
         await this.assertOwner(owner);
         const body = parse(createInput, input);
+        if (body.event) this.assertDateTimeEnabled();
         if (body.runNow && !body.confirmed) throw new SentinelTodoTriggerError(400, 'Run now requires confirmation');
         const replay = this.findCreation(owner, body.idempotencyKey);
         if (replay) return replay;
-        const pr = parsePr(body.prUrl, body);
         this.assertEligible(owner, body.itemId);
-        const snapshot = await this.readPr(pr);
-        if (snapshot.status === 'closed') throw new SentinelTodoTriggerError(409, 'PR closed without merging');
-        if (snapshot.status === 'merged' && !body.runNow) {
-            throw new SentinelTodoTriggerError(409, 'PR already merged; use Run now');
-        }
+        const event = await this.prepareEvent(body, body.runNow);
         await this.assertOwner(owner);
         const result = this.deps.triggers.transaction(() => {
             const replay = this.findCreation(owner, body.idempotencyKey);
             if (replay) return { trigger: replay, created: false };
             this.assertEligible(owner, body.itemId);
+            this.assertAuthoringTime(event);
             this.assertCap();
             const at = this.timestamp();
             const candidate: Trigger = {
                 id: `trigger_${randomUUID()}`, ...owner, status: 'active', revision: 1, inFlight: false,
                 createdAt: at, expiresAt: null, lastTickAt: null,
-                nextTickAt: new Date(this.now() + DEFAULT_PR_MERGE_POLL_INTERVAL_MS).toISOString(),
-                event: {
-                    type: 'condition-monitor', monitor: 'pr-merged', pr,
-                    pollIntervalMs: DEFAULT_PR_MERGE_POLL_INTERVAL_MS, consecutiveErrors: 0,
-                    lastSeenStatus: snapshot.status, lastSeenTitle: snapshot.title,
-                    ...(snapshot.mergeCommit ? { mergeCommit: snapshot.mergeCommit } : {}),
-                },
+                nextTickAt: this.nextTick(event),
+                event,
                 binding: {
                     kind: 'sentinel-todo', itemId: body.itemId, instruction: body.instruction,
                     armedBy: actor, armedAt: at,
@@ -116,26 +122,17 @@ export class SentinelTodoTriggerService {
         const body = parse(editInput, input);
         this.requireMutable(owner, triggerId, body.expectedRevision);
         this.assertEligible(owner, body.itemId);
-        const pr = parsePr(body.prUrl, body);
-        const snapshot = await this.readPr(pr);
-        if (snapshot.status === 'merged' || snapshot.status === 'closed') {
-            throw new SentinelTodoTriggerError(409, snapshot.status === 'merged'
-                ? 'PR already merged; use Run now' : 'PR closed without merging');
-        }
+        const event = await this.prepareEvent(body);
         await this.assertOwner(owner);
         const updated = this.deps.triggers.transaction(() => {
             const current = this.requireMutable(owner, triggerId, body.expectedRevision);
             this.assertEligible(owner, body.itemId);
+            this.assertAuthoringTime(event);
             const next: Trigger = {
                 ...current, revision: current.revision + 1,
                 binding: { ...current.binding!, itemId: body.itemId, instruction: body.instruction },
-                event: {
-                    type: 'condition-monitor', monitor: 'pr-merged', pr,
-                    pollIntervalMs: DEFAULT_PR_MERGE_POLL_INTERVAL_MS, consecutiveErrors: 0,
-                    lastSeenStatus: snapshot.status, lastSeenTitle: snapshot.title,
-                },
-                nextTickAt: current.status === 'active'
-                    ? new Date(this.now() + DEFAULT_PR_MERGE_POLL_INTERVAL_MS).toISOString() : null,
+                event,
+                nextTickAt: current.status === 'active' ? this.nextTick(event) : null,
             };
             this.deps.triggers.update(next);
             return next;
@@ -152,12 +149,15 @@ export class SentinelTodoTriggerService {
         const updated = this.deps.triggers.transaction(() => {
             const current = this.requireMutable(owner, triggerId, body.expectedRevision);
             if (!paused) {
+                if (current.event.type === 'date-time' && Date.parse(current.event.firesAt) <= this.now() && !body.confirmed) {
+                    throw new SentinelTodoTriggerError(409, 'Overdue rule will wake Sentinel immediately; confirm resume', current);
+                }
                 this.assertEligible(owner, current.binding!.itemId);
                 if (current.status !== 'active') this.assertCap();
             }
             const next: Trigger = {
                 ...current, revision: current.revision + 1, status: paused ? 'paused' : 'active',
-                nextTickAt: paused ? null : this.timestamp(),
+                nextTickAt: paused ? null : current.event.type === 'date-time' ? current.event.firesAt : this.timestamp(),
             };
             this.deps.triggers.update(next);
             return next;
@@ -258,6 +258,7 @@ export class SentinelTodoTriggerService {
             throw new SentinelTodoTriggerError(404, 'Trigger not found');
         }
         if (current.revision !== revision) throw new SentinelTodoTriggerError(409, 'Rule revision conflict', current);
+        if (current.event.type === 'date-time') this.assertDateTimeEnabled();
         return current;
     }
 
@@ -273,6 +274,44 @@ export class SentinelTodoTriggerService {
         try { return await this.deps.fetchPr(pr); }
         catch (error) { throw new SentinelTodoTriggerError(502, message(error)); }
     }
+    private assertDateTimeEnabled(): void {
+        if (!this.deps.dateTimeEnabled?.()) throw new SentinelTodoTriggerError(403, 'Date/time triggers are disabled');
+    }
+    private assertAuthoringTime(event: TriggerEvent): void {
+        if (event.type !== 'date-time') return;
+        this.assertDateTimeEnabled();
+        if (Date.parse(event.firesAt) <= this.now()) {
+            throw new SentinelTodoTriggerError(400, 'Date/time must be in the future; use confirmed Run now on a saved rule');
+        }
+    }
+    private async prepareEvent(body: z.infer<typeof ruleInput>, runNow = false): Promise<TriggerEvent> {
+        if (body.event) {
+            this.assertDateTimeEnabled();
+            const { firesAt, timeZone, localTime } = body.event;
+            let candidates: string[];
+            try { candidates = dateTimeCandidates(localTime, timeZone); }
+            catch (error) { throw new SentinelTodoTriggerError(400, message(error)); }
+            if (!candidates.length) throw new SentinelTodoTriggerError(400, 'Local time does not exist in this timezone (DST gap)');
+            if (!candidates.includes(firesAt)) throw new SentinelTodoTriggerError(400, 'Choose an explicit UTC instant matching the local time and timezone');
+            const event: TriggerEvent = { type: 'date-time', firesAt, timeZone };
+            this.assertAuthoringTime(event);
+            return event;
+        }
+        if (!body.prUrl) throw new SentinelTodoTriggerError(400, 'A PR URL or date/time event is required');
+        const pr = parsePr(body.prUrl, body);
+        const snapshot = await this.readPr(pr);
+        if (snapshot.status === 'closed') throw new SentinelTodoTriggerError(409, 'PR closed without merging');
+        if (snapshot.status === 'merged' && !runNow) throw new SentinelTodoTriggerError(409, 'PR already merged; use Run now');
+        return {
+            type: 'condition-monitor', monitor: 'pr-merged', pr,
+            pollIntervalMs: DEFAULT_PR_MERGE_POLL_INTERVAL_MS, consecutiveErrors: 0,
+            lastSeenStatus: snapshot.status, lastSeenTitle: snapshot.title,
+            ...(snapshot.mergeCommit ? { mergeCommit: snapshot.mergeCommit } : {}),
+        };
+    }
+    private nextTick(event: TriggerEvent): string {
+        return event.type === 'date-time' ? event.firesAt : new Date(this.now() + DEFAULT_PR_MERGE_POLL_INTERVAL_MS).toISOString();
+    }
     private now(): number { return (this.deps.now ?? Date.now)(); }
     private timestamp(): string { return new Date(this.now()).toISOString(); }
     private emit(type: Parameters<TriggerEventEmit>[0]['type'], trigger: Trigger): void {
@@ -285,6 +324,9 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
     const result = schema.safeParse(value);
     if (!result.success) throw new SentinelTodoTriggerError(400, result.error.issues.map(issue => issue.message).join('; '));
     return result.data;
+}
+function validRuleInput(body: z.infer<typeof ruleInput>): boolean {
+    return body.event ? !body.prUrl && !body.workspaceId && !body.originId : !!body.prUrl;
 }
 function parsePr(url: string, provenance?: { workspaceId?: string; originId?: string }): PrIdentity {
     const pr = parsePullRequestUrl(url);

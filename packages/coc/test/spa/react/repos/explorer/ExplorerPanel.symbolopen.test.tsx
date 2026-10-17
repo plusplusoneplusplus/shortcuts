@@ -1,3 +1,4 @@
+import '../../language-servers/fileIdentityMock';
 // @vitest-environment jsdom
 /**
  * Go To All (Ctrl+,) from the Explorer sub-tab — `mode="editor"`, the surface

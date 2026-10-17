@@ -22,7 +22,7 @@ import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useAppOptional } from '../contexts/AppContext';
 import { useReposOptional } from '../contexts/ReposContext';
 import { ToastContext } from '../contexts/ToastContext';
-import { getCocClientForWorkspace } from './cloneRegistry';
+import { useWorkspaceSettingsClientResolver, useWorkspaceSettingsRepos } from '../features/repo-settings/workspaceSettingsClient';
 import { AgentSkillsPanel } from '../features/skills/AgentSkillsPanel';
 import { McpServersPanel } from '../features/skills/McpServersPanel';
 import { useWorkspaceMcpConfigController } from '../features/skills/useWorkspaceMcpConfigController';
@@ -50,27 +50,28 @@ export interface RepoGroupSettingsTabProps {
     /** Base URL of the server owning the group; omit for a local group. */
     baseUrl?: string;
     /**
-     * Whether the tab is the visible one. The pane stays mounted while hidden
-     * (like Notes), so gate the reads on it rather than fetching MCP servers,
-     * skills and members for a tab nobody is looking at.
+     * Starts the lazy mount on first activation. The page and member snapshot
+     * remain mounted afterwards so hidden Settings keeps pending edits.
      */
     active: boolean;
+    navigation?: 'route' | 'local';
 }
 
-export function RepoGroupSettingsTab({ workspaceId, selectionId = workspaceId, baseUrl, active }: RepoGroupSettingsTabProps) {
+export function RepoGroupSettingsTab({ workspaceId, selectionId = workspaceId, baseUrl, active, navigation }: RepoGroupSettingsTabProps) {
     // Everything below fetches on mount, so stay empty until the tab is first
     // opened — and stay mounted afterwards so switching tabs keeps the state.
     const [visited, setVisited] = useState(active);
     useEffect(() => { if (active) setVisited(true); }, [active]);
 
     if (!visited) return <div data-testid="repo-group-settings-tab" data-workspace={workspaceId} />;
-    return <RepoGroupSettingsPane workspaceId={workspaceId} selectionId={selectionId} baseUrl={baseUrl} active={active} />;
+    return <RepoGroupSettingsPane workspaceId={workspaceId} selectionId={selectionId} baseUrl={baseUrl} active navigation={navigation} />;
 }
 
-function RepoGroupSettingsPane({ workspaceId, selectionId = workspaceId, baseUrl, active }: RepoGroupSettingsTabProps) {
+function RepoGroupSettingsPane({ workspaceId, selectionId = workspaceId, baseUrl, active, navigation = 'route' }: RepoGroupSettingsTabProps) {
     const app = useAppOptional();
     const addToast = useContext(ToastContext)?.addToast;
-    const allRepos = useReposOptional()?.repos;
+    const allRepos = useWorkspaceSettingsRepos(workspaceId, useReposOptional()?.repos);
+    const resolveClient = useWorkspaceSettingsClientResolver(workspaceId);
     const members = useRepoGroupMembers(workspaceId, baseUrl, active);
 
     // The app reducer owns the section when the tab runs inside the dashboard;
@@ -81,18 +82,18 @@ function RepoGroupSettingsPane({ workspaceId, selectionId = workspaceId, baseUrl
     const setActiveSection = useCallback((section: SettingsSection) => {
         setLocalSection(section);
         app?.dispatch({ type: 'SET_SETTINGS_SECTION', section });
-        location.hash = '#repos/' + encodeURIComponent(selectionId) + '/settings/' + section;
-    }, [app, selectionId]);
+        if (navigation === 'route') location.hash = '#repos/' + encodeURIComponent(selectionId) + '/settings/' + section;
+    }, [app, selectionId, navigation]);
 
     const skillsController = useWorkspaceSkillsController({
         workspaceId,
-        resolveClient: getCocClientForWorkspace,
+        resolveClient,
         repos: allRepos,
         notify: addToast,
     });
     const mcp = useWorkspaceMcpConfigController({
         workspaceId,
-        resolveClient: getCocClientForWorkspace,
+        resolveClient,
     });
 
     const enabledMcpCount = mcp.availableServers.filter(s => mcp.isEnabled(s.name)).length;
@@ -157,7 +158,7 @@ function RepoGroupSettingsPane({ workspaceId, selectionId = workspaceId, baseUrl
                         <AgentSkillsPanel
                             workspaceId={workspaceId}
                             controller={skillsController}
-                            resolveClient={getCocClientForWorkspace}
+                            resolveClient={resolveClient}
                             allRepos={allRepos}
                             groupMode
                         />

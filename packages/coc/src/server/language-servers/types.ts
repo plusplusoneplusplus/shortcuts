@@ -40,8 +40,6 @@ export interface LanguageServerDefinition {
     requestTimeoutMs?: number;
     /** Stop an unreferenced process after this idle interval. */
     idleTimeoutMs?: number;
-    /** Definitions are opt-in; a disabled definition never starts. Defaults to false. */
-    enabled?: boolean;
     /** True for definitions shipped with CoC. Built-ins can be overridden, not deleted. */
     builtIn?: boolean;
 }

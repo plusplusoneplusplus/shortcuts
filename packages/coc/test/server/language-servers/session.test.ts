@@ -126,7 +126,6 @@ describe('LanguageServerSession startup', () => {
         const fallbackFlags = ['--driver-mode=cl', '/std:c++20', '/I<Windows SDK include>', '/DUNICODE'];
         const { session } = createSession({
             ...CLANGD_PRESET,
-            enabled: true,
             command: process.execPath,
             args: [FIXTURE_SERVER],
             initializationOptions: { fallbackFlags },
@@ -147,11 +146,10 @@ describe('LanguageServerSession startup', () => {
         expect(states.filter((state) => state.status === 'starting')).toHaveLength(1);
     });
 
-    it('refuses to start a disabled definition and reports the disabled status', async () => {
-        const { session } = createSession(fixtureDefinition({ enabled: false }));
-        await expect(session.start()).rejects.toThrow(/disabled/);
-        expect(session.status).toBe('disabled');
-        expect(session.getState().detail).toMatch(/settings/);
+    it('starts a configured definition without an enable setting', async () => {
+        const { session } = createSession(fixtureDefinition());
+        await session.start();
+        expect(session.status).toBe('ready');
     });
 
     it('reports unavailable, not failed, when the executable is missing', async () => {

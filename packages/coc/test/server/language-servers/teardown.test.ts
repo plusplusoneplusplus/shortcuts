@@ -78,7 +78,6 @@ function echoDefinition(
         command: process.execPath,
         args: [FIXTURE_SERVER, '--pid-file', pidFile, ...extraArgs],
         rootMarkers: ['package.json'],
-        enabled: true,
         ...overrides,
     };
 }
@@ -217,7 +216,7 @@ describe('LanguageServerManager teardown', () => {
     function createHarness(definitionFor: (workspaceId: string) => LanguageServerDefinition): ManagerHarness {
         const dataDir = tempDir('coc-lsp-teardown-data-');
         const setConfig = (workspaceId: string, definitions: LanguageServerDefinition[]): void => {
-            const write = writeLanguageServerConfig(dataDir, workspaceId, { enabled: true, definitions });
+            const write = writeLanguageServerConfig(dataDir, workspaceId, { definitions });
             expect(write.ok).toBe(true);
         };
         const manager = new LanguageServerManager({ dataDir, startTimeoutMs: 10_000, requestTimeoutMs: 30_000 });
@@ -316,7 +315,6 @@ describe('LanguageServerWebSocketServer teardown', () => {
         const dataDir = tempDir('coc-lsp-teardown-bridge-data-');
         const workspaceRoot = tempDir('coc-lsp-teardown-bridge-repo-');
         const write = writeLanguageServerConfig(dataDir, 'ws-a', {
-            enabled: true,
             definitions: [echoDefinition(pidFile)],
         });
         expect(write.ok).toBe(true);
@@ -455,7 +453,6 @@ describe('language-server teardown on a composed execution server', () => {
         const dataDir = tempDir('coc-lsp-teardown-server-data-');
         const pidFile = pidPath();
         const write = writeLanguageServerConfig(dataDir, workspaceId, {
-            enabled: true,
             definitions: [echoDefinition(pidFile)],
         });
         expect(write.ok).toBe(true);

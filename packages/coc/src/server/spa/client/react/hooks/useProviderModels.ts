@@ -4,7 +4,8 @@
  * operations from GET /api/agent-providers/:provider/models*.
  */
 import { useState, useEffect, useCallback } from 'react';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import type { CocClient } from '@plusplusoneplusplus/coc-client';
+import { getCocClientFor, getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { getOrFetchConfig, peekConfig, invalidateConfig, configCacheKey } from '../api/staticConfigCache';
 
 /** Billing metadata preserved from the model catalog (e.g. tokenPrices.longContext.contextMax). */
@@ -106,13 +107,28 @@ function mapModelsResponse(data: unknown): ProviderModelInfo[] {
 
 export type AgentProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 
-export function useProviderModels(provider: AgentProvider): {
+/**
+ * Owning server for provider-model reads/writes: `baseUrl` scopes the shared
+ * caches, `client` (when given) carries the requests — Desktop Admin passes
+ * its target-scoped client. Both omitted means the page origin.
+ */
+export interface ProviderModelsOwner {
+    baseUrl?: string;
+    client?: CocClient;
+}
+
+function ownerClient(owner?: ProviderModelsOwner): CocClient {
+    return owner?.client ?? (owner?.baseUrl ? getCocClientFor(owner.baseUrl) : getSpaCocClient());
+}
+
+export function useProviderModels(provider: AgentProvider, owner?: ProviderModelsOwner): {
     models: ProviderModelInfo[];
     loading: boolean;
     error: string | null;
     reload: () => void;
 } {
-    const modelsKey = configCacheKey.models(provider);
+    const baseUrl = owner?.baseUrl;
+    const modelsKey = configCacheKey.models(provider, baseUrl);
     // Seed from the session cache so a warm reopen paints with no loading flash.
     const [models, setModels] = useState<ProviderModelInfo[]>(() => {
         const cached = peekConfig(modelsKey);
@@ -122,7 +138,7 @@ export function useProviderModels(provider: AgentProvider): {
     const [error, setError] = useState<string | null>(null);
 
     const load = useCallback(() => {
-        const key = configCacheKey.models(provider);
+        const key = configCacheKey.models(provider, baseUrl);
         const cached = peekConfig(key);
         if (cached !== undefined) {
             setModels(mapModelsResponse(cached));
@@ -132,26 +148,26 @@ export function useProviderModels(provider: AgentProvider): {
         }
         setLoading(true);
         setError(null);
-        getOrFetchConfig(key, () => getSpaCocClient().agentProviders.listModels(provider))
+        getOrFetchConfig(key, () => ownerClient(owner).agentProviders.listModels(provider))
             .then((data: unknown) => {
                 setModels(mapModelsResponse(data));
             })
             .catch((e: unknown) => { setError(getSpaCocClientErrorMessage(e, `Failed to load ${provider} models`)); })
             .finally(() => setLoading(false));
-    }, [provider]);
+    }, [provider, baseUrl, owner?.client]);
 
     useEffect(() => { load(); }, [load]);
 
     /** Explicit reload: drop the cached catalog first so the fetch is fresh. */
     const reload = useCallback(() => {
-        invalidateConfig(configCacheKey.models(provider));
+        invalidateConfig(configCacheKey.models(provider, baseUrl));
         load();
-    }, [provider, load]);
+    }, [provider, baseUrl, load]);
 
     return { models, loading, error, reload };
 }
 
-export function useProviderModelConfig(provider: AgentProvider): {
+export function useProviderModelConfig(provider: AgentProvider, owner?: ProviderModelsOwner): {
     models: ProviderModelInfo[];
     loading: boolean;
     error: string | null;
@@ -161,7 +177,8 @@ export function useProviderModelConfig(provider: AgentProvider): {
     reasoningEfforts: Record<string, string>;
     setReasoningEffort: (modelId: string, effort: string) => Promise<void>;
 } {
-    const { models, loading, error, reload } = useProviderModels(provider);
+    const { models, loading, error, reload } = useProviderModels(provider, owner);
+    const baseUrl = owner?.baseUrl;
     const [localModels, setLocalModels] = useState<ProviderModelInfo[]>([]);
     const [saving, setSaving] = useState(false);
     const [reasoningEfforts, setReasoningEfforts] = useState<Record<string, string>>({});
@@ -173,8 +190,8 @@ export function useProviderModelConfig(provider: AgentProvider): {
     useEffect(() => {
         let cancelled = false;
         getOrFetchConfig(
-            configCacheKey.reasoningEfforts(provider),
-            () => getSpaCocClient().agentProviders.getReasoningEfforts(provider),
+            configCacheKey.reasoningEfforts(provider, baseUrl),
+            () => ownerClient(owner).agentProviders.getReasoningEfforts(provider),
         )
             .then((data) => {
                 if (cancelled) return;
@@ -184,7 +201,7 @@ export function useProviderModelConfig(provider: AgentProvider): {
             })
             .catch(() => { /* reasoning efforts are optional */ });
         return () => { cancelled = true; };
-    }, [provider]);
+    }, [provider, baseUrl, owner?.client]);
 
     const toggleModel = useCallback(async (modelId: string, enabled: boolean) => {
         setLocalModels(prev => prev.map(m => m.id === modelId ? { ...m, enabled } : m));
@@ -192,16 +209,16 @@ export function useProviderModelConfig(provider: AgentProvider): {
         try {
             const updated = localModels.map(m => m.id === modelId ? { ...m, enabled } : m);
             const enabledModels = updated.filter(m => m.id === modelId ? enabled : m.enabled).map(m => m.id);
-            await getSpaCocClient().agentProviders.setEnabledModels(provider, enabledModels);
+            await ownerClient(owner).agentProviders.setEnabledModels(provider, enabledModels);
             // Enabled-model set changed — drop the cached catalog so other
             // consumers (e.g. the chat model picker) refetch (AC-05).
-            invalidateConfig(configCacheKey.models(provider));
+            invalidateConfig(configCacheKey.models(provider, baseUrl));
         } catch {
             setLocalModels(models);
         } finally {
             setSaving(false);
         }
-    }, [localModels, models, provider]);
+    }, [localModels, models, provider, baseUrl, owner?.client]);
 
     const setReasoningEffortFn = useCallback(async (modelId: string, effort: string) => {
         const prev = { ...reasoningEfforts };
@@ -213,14 +230,14 @@ export function useProviderModelConfig(provider: AgentProvider): {
             setReasoningEfforts({ ...reasoningEfforts, [modelId]: effort });
         }
         try {
-            await getSpaCocClient().agentProviders.setReasoningEffort(provider, modelId, effort);
+            await ownerClient(owner).agentProviders.setReasoningEffort(provider, modelId, effort);
             // Reasoning-effort map changed — drop the cached map so the next
             // read refetches (AC-05).
-            invalidateConfig(configCacheKey.reasoningEfforts(provider));
+            invalidateConfig(configCacheKey.reasoningEfforts(provider, baseUrl));
         } catch {
             setReasoningEfforts(prev);
         }
-    }, [reasoningEfforts, provider]);
+    }, [reasoningEfforts, provider, baseUrl, owner?.client]);
 
     return { models: localModels, loading, error, saving, reload, toggleModel, reasoningEfforts, setReasoningEffort: setReasoningEffortFn };
 }

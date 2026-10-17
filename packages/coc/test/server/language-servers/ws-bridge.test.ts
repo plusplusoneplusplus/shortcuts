@@ -17,7 +17,7 @@ import { WebSocket } from 'ws';
 import { LanguageServerManager } from '../../../src/server/language-servers/manager';
 import { LanguageServerWebSocketServer } from '../../../src/server/language-servers/ws-bridge';
 import type { LanguageServerServerMessage } from '../../../src/server/language-servers/ws-bridge';
-import { writeLanguageServerConfig } from '../../../src/server/language-servers/repository';
+import { getLanguageServerConfigPath, writeLanguageServerConfig } from '../../../src/server/language-servers/repository';
 import { browserDocumentUri, parseExternalResourceUri } from '../../../src/server/language-servers/uri-mapping';
 import { attachWebSocketUpgradeHandler, ProcessWebSocketServer } from '../../../src/server/streaming/websocket';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
@@ -63,7 +63,6 @@ function echoDefinition(overrides: Partial<LanguageServerDefinition> = {}): Lang
         command: process.execPath,
         args: [FIXTURE_SERVER],
         rootMarkers: ['package.json'],
-        enabled: true,
         ...overrides,
     };
 }
@@ -160,7 +159,7 @@ class Client {
 async function createHarness(
     options: {
         definitions?: LanguageServerDefinition[];
-        enabled?: boolean;
+        staleDisabledConfig?: boolean;
         maxSessions?: number;
         requestTimeoutMs?: number;
         workspaces?: { id: string; rootPath: string }[];
@@ -171,10 +170,16 @@ async function createHarness(
     const dataDir = tempDir('coc-lsp-bridge-data-');
     const workspaceRoot = tempDir('coc-lsp-bridge-repo-');
     const write = writeLanguageServerConfig(dataDir, WORKSPACE_ID, {
-        enabled: options.enabled ?? true,
         definitions: options.definitions ?? [echoDefinition()],
     });
     expect(write.ok).toBe(true);
+    fs.writeFileSync(path.join(workspaceRoot, 'notes.txt'), '');
+    if (options.staleDisabledConfig) {
+        fs.writeFileSync(getLanguageServerConfigPath(dataDir, WORKSPACE_ID), JSON.stringify({
+            enabled: false,
+            definitions: (options.definitions ?? [echoDefinition()]).map(definition => ({ ...definition, enabled: false })),
+        }));
+    }
 
     const manager = new LanguageServerManager({
         dataDir,
@@ -299,7 +304,7 @@ describe('language-server WebSocket bridge', () => {
         expect(harness.manager.size).toBe(2);
     });
 
-    it('attaches a workspace with no document open, by definition not by pattern', async () => {
+    it('attaches detected workspace definitions with no document open', async () => {
         // README.md matches no file pattern, so a document attach would be
         // refused — the palette has no file to name and must not invent one.
         const harness = await createHarness({
@@ -351,12 +356,12 @@ describe('language-server WebSocket bridge', () => {
         await client.next('lsp-detached', (msg) => msg.attachmentId === attached.attachmentId);
     });
 
-    it('reports disabled for a workspace attach when language support is off', async () => {
-        const harness = await createHarness({ enabled: false });
+    it('attaches workspace support despite stale disabled settings', async () => {
+        const harness = await createHarness({ staleDisabledConfig: true });
         const client = await harness.connect();
         client.send({ type: 'lsp-attach-workspace', requestId: 'w1' });
-        const unavailable = await client.next('lsp-unavailable', (msg) => msg.requestId === 'w1');
-        expect(unavailable.reason).toBe('disabled');
+        const attached = await client.next('lsp-attached', (msg) => msg.requestId === 'w1' && msg.complete);
+        expect(attached.definitionId).toBe('echo');
     });
 
     it('starts the server when a document attaches and reports the ready generation', async () => {
@@ -406,12 +411,12 @@ describe('language-server WebSocket bridge', () => {
         expect(unavailable.reason).toBe('no-definition');
     });
 
-    it('reports disabled when language support is off for the workspace', async () => {
-        const harness = await createHarness({ enabled: false });
+    it('attaches document support despite stale disabled settings', async () => {
+        const harness = await createHarness({ staleDisabledConfig: true });
         const client = await harness.connect();
         client.send({ type: 'lsp-attach', requestId: 'r1', path: 'src/notes.txt' });
-        const unavailable = await client.next('lsp-unavailable', (msg) => msg.requestId === 'r1');
-        expect(unavailable.reason).toBe('disabled');
+        const attached = await client.next('lsp-attached', (msg) => msg.requestId === 'r1' && msg.complete);
+        expect(attached.definitionId).toBe('echo');
     });
 
     it('relays a request and maps document URIs in both directions', async () => {
@@ -704,7 +709,9 @@ describe('language-server WebSocket bridge', () => {
         const first = await harness.connect();
         const second = await harness.connect();
         const a = await first.attach('src/shared.txt');
-        const b = await second.attach('SRC./SHARED.TXT. ');
+        // Spelling is preserved, so only a directory-case alias still matches
+        // the case-sensitive `**/*.txt` definition pattern.
+        const b = await second.attach('SRC/shared.txt');
         expect(b.sessionKey).toBe(a.sessionKey);
         await first.next('lsp-status', (msg) => msg.sessionKey === a.sessionKey && msg.state.status === 'ready');
 

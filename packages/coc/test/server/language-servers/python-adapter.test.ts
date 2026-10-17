@@ -11,7 +11,7 @@ import { PYTHON_PRESET } from '../../../src/server/language-servers/presets';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
 
 function preset(overrides: Partial<LanguageServerDefinition> = {}): LanguageServerDefinition {
-    return { ...PYTHON_PRESET, enabled: true, ...overrides };
+    return { ...PYTHON_PRESET, ...overrides };
 }
 
 describe('resolvePythonRuntime', () => {

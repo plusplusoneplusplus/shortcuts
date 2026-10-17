@@ -886,6 +886,9 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
 }) {
     const { canAttach, attach, attachError, drag } = useTodoAttachment(owner, item);
     const high = sentinelTodoPriority(item) === 'high';
+    const reasonPreview = sentinelTodoDisplayStatus(item) === 'needs_attention' && item.statusReason ? <span
+        className="min-w-0 max-w-full flex-[1_1_8rem] truncate text-[11px] text-[#b5650f] dark:text-[#cca700]" title={item.statusReason}
+        data-testid={`sentinel-todo-reason-preview-${item.id}`}>{item.statusReason}</span> : null;
     return <li data-testid={`sentinel-todo-row-${item.id}`} data-priority={sentinelTodoPriority(item)}
         draggable={canAttach} onDragStart={drag}
         className={cn('relative rounded border pl-1', selected
@@ -908,12 +911,11 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
             {item.targetRepo && <span className="min-w-0 max-w-full break-words" title={item.targetRepo.workspaceId}
                 data-testid={`sentinel-todo-repo-${item.id}`}>{item.targetRepo.label ?? item.targetRepo.workspaceId}</span>}
             <TodoTime label="Updated" iso={item.updatedAt} testId={`sentinel-todo-updated-${item.id}`} />
-            <TodoJobs item={item} owner={owner} currentWorkspaceId={currentWorkspaceId} onFollowLink={onFollowLink} />
         </div>
+        {(item.jobs.length > 0 || reasonPreview) && <div className="min-w-0 px-1.5 pb-1">
+            <TodoJobs item={item} owner={owner} currentWorkspaceId={currentWorkspaceId} onFollowLink={onFollowLink} reasonPreview={reasonPreview} />
+        </div>}
         {attachError && <Notice tone="error" testId={`sentinel-todo-attach-error-${item.id}`}>{attachError}</Notice>}
-        {sentinelTodoDisplayStatus(item) === 'needs_attention' && item.statusReason && <div
-            className="truncate px-1.5 pb-1 text-[11px] text-[#b5650f] dark:text-[#cca700]" title={item.statusReason}
-            data-testid={`sentinel-todo-reason-preview-${item.id}`}>{item.statusReason}</div>}
         <SentinelTodoScrubFinding item={item} />
         <SentinelTodoExternalReferences item={item} />
     </li>;
@@ -1143,25 +1145,27 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
     );
 }
 
-function TodoJobs({ item, owner, currentWorkspaceId, expanded = false, onFollowLink }: Pick<TodoDetailProps, 'item' | 'owner' | 'currentWorkspaceId' | 'onFollowLink'> & { expanded?: boolean }) {
+function TodoJobs({ item, owner, currentWorkspaceId, expanded = false, onFollowLink, reasonPreview }: Pick<TodoDetailProps, 'item' | 'owner' | 'currentWorkspaceId' | 'onFollowLink'> & { expanded?: boolean; reasonPreview?: ReactNode }) {
     const shownJobs = expanded ? item.jobs : item.jobs.slice(-1);
     const hiddenJobs = item.jobs.length - shownJobs.length;
-    if (!shownJobs.length) return null;
-    return <ul className={cn('flex flex-wrap gap-x-1.5 gap-y-0.5 text-[11px]',
+    if (!shownJobs.length) return reasonPreview ? <div className="flex min-w-0">{reasonPreview}</div> : null;
+    return <ul className={cn('flex min-w-0 w-full flex-wrap gap-x-1.5 gap-y-0.5 text-[11px]',
         expanded ? 'flex-col items-stretch px-2 pb-1.5' : 'items-center')} aria-label={`Jobs for ${item.title}`}>
         {shownJobs.map(job => {
             const review = sentinelTodoReviewLabel(job);
             const executionLabel = sentinelTodoJobStateLabel(job);
             const jobLink = `${item.id}|job:${job.serverId ?? ''}:${job.processId}`;
-            return <li key={`${job.serverId ?? ''}:${job.processId}`} className={cn('flex flex-wrap items-center gap-1',
-                expanded && 'min-w-0 max-w-full text-left [overflow-wrap:anywhere]')}>
+            return <li key={`${job.serverId ?? ''}:${job.processId}`} className={cn('flex w-full min-w-0 max-w-full flex-wrap items-center gap-1',
+                expanded && 'text-left [overflow-wrap:anywhere]')}>
                 <SentinelTodoJobPreview key={`${sentinelTodoOwnerKey(owner)}:${job.workspaceId}:${job.serverId ?? ''}:${job.processId}:${job.sessionId ?? ''}`}
                     job={job} owner={owner} itemTitle={expanded ? undefined : item.title} linkKey={jobLink} onFollowLink={onFollowLink}
-                    targetRepo={item.targetRepo} currentWorkspaceId={currentWorkspaceId} />
-                <ChatStatusPill status={job.execution.state} label={executionLabel} showDuration={false}
-                    aria-label={`Job execution: ${executionLabel}`} data-testid="sentinel-todo-job-execution"
-                    className="shrink-0 !h-[18px] !px-1.5" />
-                {review && <span className={MUTED}>· {review}</span>}
+                    targetRepo={item.targetRepo} currentWorkspaceId={currentWorkspaceId}>
+                    <ChatStatusPill status={job.execution.state} label={executionLabel} showDuration={false}
+                        aria-label={`Job execution: ${executionLabel}`} data-testid="sentinel-todo-job-execution"
+                        className="shrink-0 !h-[18px] !px-1.5" />
+                    {review && <span className={cn(MUTED, 'max-w-full break-words [overflow-wrap:anywhere]')} aria-label={`Job review: ${review}`}>· {review}</span>}
+                    {reasonPreview}
+                </SentinelTodoJobPreview>
             </li>;
         })}
         {hiddenJobs > 0 && <li className={MUTED} data-testid={`sentinel-todo-earlier-jobs-${item.id}`}>

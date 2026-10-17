@@ -9,9 +9,10 @@
  * two hydrate helpers that each patch the shared dirty snapshot.
  */
 import { useCallback, useState } from 'react';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../api/cocClient';
 import { invalidateDisplaySettings } from '../hooks/preferences/useDisplaySettings';
 import { invalidateHtmlEmbedPreference } from '../hooks/preferences/useHtmlEmbedPreference';
+import { useAdminServer } from './adminTarget';
 
 export type Theme = 'light' | 'dark' | 'auto';
 export type TaskCardDensity = 'compact' | 'dense';
@@ -34,6 +35,7 @@ export interface UseAdminPreferencesFormOptions {
 }
 
 export function useAdminPreferencesForm({ addToast }: UseAdminPreferencesFormOptions) {
+    const adminServer = useAdminServer();
     const [theme, setTheme] = useState<Theme>('auto');
     const [reposSidebarCollapsed, setReposSidebarCollapsed] = useState(false);
     const [htmlEmbedEnabled, setHtmlEmbedEnabled] = useState(true);
@@ -111,7 +113,7 @@ export function useAdminPreferencesForm({ addToast }: UseAdminPreferencesFormOpt
                 promptAutocompleteEnabled !== appearanceSnapshot.promptAutocompleteEnabled ||
                 promptAutocompleteAiEnabled !== appearanceSnapshot.promptAutocompleteAiEnabled;
             if (prefsChanged) {
-                await getSpaCocClient().preferences.patchGlobal({
+                await adminServer.client.preferences.patchGlobal({
                     theme,
                     reposSidebarCollapsed,
                     htmlEmbed: { enabled: htmlEmbedEnabled },
@@ -127,11 +129,11 @@ export function useAdminPreferencesForm({ addToast }: UseAdminPreferencesFormOpt
                 showReportIntent !== appearanceSnapshot.showReportIntent ||
                 toolCompactness !== appearanceSnapshot.toolCompactness;
             if (configChanged) {
-                await getSpaCocClient().admin.updateConfig({ taskCardDensity, historyGrouping, showReportIntent, toolCompactness });
+                await adminServer.client.admin.updateConfig({ taskCardDensity, historyGrouping, showReportIntent, toolCompactness });
             }
             addToast('Settings saved', 'success');
-            invalidateDisplaySettings();
-            invalidateHtmlEmbedPreference();
+            if (!adminServer.isRemote) invalidateDisplaySettings();
+            if (!adminServer.isRemote) invalidateHtmlEmbedPreference();
             setAppearanceSnapshot({
                 theme,
                 reposSidebarCollapsed,
@@ -148,7 +150,7 @@ export function useAdminPreferencesForm({ addToast }: UseAdminPreferencesFormOpt
         } finally {
             setAppearanceSaving(false);
         }
-    }, [theme, reposSidebarCollapsed, htmlEmbedEnabled, promptAutocompleteEnabled, promptAutocompleteAiEnabled, taskCardDensity, historyGrouping, showReportIntent, toolCompactness, appearanceSnapshot, addToast]);
+    }, [adminServer, theme, reposSidebarCollapsed, htmlEmbedEnabled, promptAutocompleteEnabled, promptAutocompleteAiEnabled, taskCardDensity, historyGrouping, showReportIntent, toolCompactness, appearanceSnapshot, addToast]);
     const handleCancelAppearance = useCallback(() => {
         setTheme(appearanceSnapshot.theme as Theme);
         setReposSidebarCollapsed(appearanceSnapshot.reposSidebarCollapsed);

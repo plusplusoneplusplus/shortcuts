@@ -14,8 +14,9 @@
  */
 import { useCallback, useMemo, useState } from 'react';
 import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../api/cocClient';
 import { applyRuntimeConfigPatch } from '../utils/config';
+import { useAdminServer } from './adminTarget';
 import {
     ADMIN_SETTING_DEFINITIONS,
     readAdminSettingValue,
@@ -84,6 +85,7 @@ export function useAdminChatStyleSettings(options: {
     addToast: (message: string, type: 'success' | 'error') => void;
 }): AdminChatStyleSettings {
     const { addToast } = options;
+    const adminServer = useAdminServer();
     const [defaultChatStyle, setDefaultChatStyle] = useState<ChatStyle>(() => readDefaultChatStyle(undefined));
     const [snapshot, setSnapshot] = useState<ChatStyle>(() => readDefaultChatStyle(undefined));
     const [prompts, setPrompts] = useState<ChatStylePromptDraft>(() => readPromptDraft(undefined));
@@ -124,14 +126,14 @@ export function useAdminChatStyleSettings(options: {
     const handleSave = useCallback(async () => {
         setSaving(true);
         try {
-            await getSpaCocClient().admin.updateConfig({
+            await adminServer.client.admin.updateConfig({
                 [DEFAULT_CHAT_STYLE_KEY]: defaultChatStyle,
                 [CHAT_STYLE_PROMPTS_KEY]: overrides,
             });
             addToast('Settings saved', 'success');
             // The Features card no longer carries this key, so its runtime flag
             // has to be patched from here to keep the SPA in sync without a reload.
-            applyRuntimeConfigPatch({ defaultChatStyle });
+            if (!adminServer.isRemote) applyRuntimeConfigPatch({ defaultChatStyle });
             setSnapshot(defaultChatStyle);
             setPromptSnapshot(prompts);
         } catch (err: unknown) {
@@ -139,7 +141,7 @@ export function useAdminChatStyleSettings(options: {
         } finally {
             setSaving(false);
         }
-    }, [defaultChatStyle, overrides, prompts, addToast]);
+    }, [adminServer, defaultChatStyle, overrides, prompts, addToast]);
 
     const handleCancel = useCallback(() => {
         setDefaultChatStyle(snapshot);

@@ -669,18 +669,31 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { railManualRefresh: true } }).railManualRefreshEnabled).toBe(true);
     });
 
-    it('exposes the collapsed-rail Git summary as a default-off experimental feature', () => {
-        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.railGitSummary');
-        expect(def, 'features.railGitSummary must be an admin setting').toBeDefined();
+    it.each([false, true])('ignores saved rail Git flag %s across config and runtime surfaces', saved => {
+        const input = { features: { railGitSummary: saved } };
+        const parsed = CLIConfigSchema.parse(input);
+        const resolved = mergeConfig(DEFAULT_CONFIG, parsed as CLIConfig);
+        expect(resolved.features).not.toHaveProperty('railGitSummary');
+        expect(DEFAULT_CONFIG.features).not.toHaveProperty('railGitSummary');
+        expect(CONFIG_SOURCE_KEYS).not.toContain('features.railGitSummary');
+        expect(ADMIN_EDITABLE_KEYS).not.toContain('features.railGitSummary');
+        expect(getAdminSettingDefinition('features.railGitSummary')).toBeUndefined();
+        expect(buildRuntimeFeatureFlags(input)).not.toHaveProperty('railGitSummaryEnabled');
+        expect(buildRuntimeFeatures(resolved)).not.toHaveProperty('railGitSummaryEnabled');
+    });
+
+    it('exposes the Desktop Admin machine selector as a default-off experimental feature', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.adminMachineSwitch');
+        expect(def, 'features.adminMachineSwitch must be an admin setting').toBeDefined();
         expect(def!.value).toEqual({ kind: 'boolean' });
         expect(def!.default).toBe(false);
         expect(def!.runtime).toBe('live');
-        expect(def!.runtimeFlag).toBe('railGitSummaryEnabled');
+        expect(def!.runtimeFlag).toBe('adminMachineSwitchEnabled');
         expect(def!.ui!.badge).toBe('experimental');
         expect(def!.ui!.hint).toMatch(/disabled by default/i);
-        expect(DEFAULT_CONFIG.features.railGitSummary).toBe(false);
-        expect(buildRuntimeFeatureFlags({}).railGitSummaryEnabled).toBe(false);
-        expect(buildRuntimeFeatureFlags({ features: { railGitSummary: true } }).railGitSummaryEnabled).toBe(true);
+        expect(DEFAULT_CONFIG.features.adminMachineSwitch).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).adminMachineSwitchEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({ features: { adminMachineSwitch: true } }).adminMachineSwitchEnabled).toBe(true);
     });
 
     it('exposes the collapsed-rail Admin and quota shortcuts as a default-on Appearance setting', () => {
@@ -799,11 +812,13 @@ describe('feature toggle settings-tab placement', () => {
         'features.chatStyleSelector': 'chat',
         // Sentinel
         'sentinel.enabled': 'sentinel',
+        'features.sentinelNextSteps': 'sentinel',
         'features.sentinelTodoDependencies': 'sentinel',
         'features.sentinelTodoTags': 'sentinel',
         'features.sentinelTodoExternalReferences': 'sentinel',
         'features.sentinelTodoScrubber': 'sentinel',
         'features.sentinelPrOutcomeWake': 'sentinel',
+        'features.sentinelTodoDateTimeTriggers': 'sentinel',
         'features.sentinelDesktopMirror': 'sentinel',
         // Appearance — every UI-only preference and feature toggle
         'features.composerWordHint': 'appearance',
@@ -815,12 +830,13 @@ describe('feature toggle settings-tab placement', () => {
         'features.schedulesInScheduledSlide': 'appearance',
         'features.explorerEditorTabs': 'appearance',
         'features.markdownPanelPreview': 'appearance',
+        'features.panelSourceSplit': 'appearance',
+        'features.panelSettings': 'appearance',
         'features.diffFilePicker': 'appearance',
         'vimNavigation.enabled': 'appearance',
         'features.scopeSwitcher': 'appearance',
         'features.pinnedScopes': 'appearance',
         'features.railManualRefresh': 'appearance',
-        'features.railGitSummary': 'appearance',
         'features.railStatusActions': 'appearance',
         'features.schedulerDelayHint': 'appearance',
         'features.explorerDelete': 'appearance',
@@ -869,6 +885,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.focusedDiff': 'features',
         'features.gitCrossCloneCherryPick': 'features',
         'features.nativeCliSessions': 'features',
+        'features.adminMachineSwitch': 'features',
         'features.repoGroupExclusiveWriter': 'features',
     };
 
@@ -900,7 +917,7 @@ describe('feature toggle settings-tab placement', () => {
     it('keeps only functional editor settings on the Editors tab', () => {
         const editorDefs = uiDefs.filter(d => getFeatureSettingTab(d) === 'editors');
         expect(editorDefs.map(d => [d.key, d.ui!.group])).toEqual([['features.arxivPaperIngest', 'editorNotes']]);
-        for (const key of ['features.explorerEditorTabs', 'features.markdownPanelPreview']) {
+        for (const key of ['features.explorerEditorTabs', 'features.markdownPanelPreview', 'features.panelSourceSplit']) {
             const def = getAdminSettingDefinition(key)!;
             expect(def.ui).toMatchObject({ tab: 'appearance', group: 'editorFiles', badge: 'experimental' });
             expect(def.default, key).toBe(false);
@@ -963,6 +980,7 @@ describe('feature toggle settings-tab placement', () => {
         expect(getFeatureCardSettings('browserAutomation').map(d => d.key)).toEqual(['browserControl.enabled', 'browserControl.framesEnabled', 'browserControl.richPasteEnabled', 'features.sensitiveInput']);
         expect(getAdminSettingDefinition('browserControl.framesEnabled')?.ui?.dependsOn).toBe('browserControl.enabled');
         expect(getFeatureCardSettings('browserPages').map(d => d.key)).toEqual(['features.htmlPageTab']);
+        expect(buildRuntimeFeatureFlags({ features: { panelReopenClosedTab: false } } as never)).not.toHaveProperty('panelReopenClosedTabEnabled');
         expect(FEATURE_CARD_GROUPS.filter(g => g.id.startsWith('browser')).map(g => g.heading)).toEqual(['AI Browser Control', 'Pages & Previews']);
         expect(uiDefs.filter(d => getFeatureSettingTab(d) !== 'browser' && /browser/i.test(`${d.key} ${d.ui!.label}`)).map(d => d.key)).toEqual([]);
     });

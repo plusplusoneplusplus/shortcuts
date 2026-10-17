@@ -264,6 +264,7 @@ describe('QueueRuntimeConfig — restart boundary', () => {
             'getFollowUpSuggestions',
             'getRalphFinalCheckPolicy',
             'getSensitiveInput',
+            'getSentinelNextStepsEnabled',
             'getSkillFolders',
         ]);
     });
@@ -333,5 +334,18 @@ describe('createFixedQueueRuntimeConfig', () => {
         expect(resolveDefaultIdleTimeoutMs(undefined)).toBe(DEFAULT_AI_IDLE_TIMEOUT_MS);
         expect(resolveDefaultIdleTimeoutMs(0)).toBe(DEFAULT_AI_IDLE_TIMEOUT_MS);
         expect(resolveDefaultIdleTimeoutMs(900)).toBe(900_000);
+    });
+});
+
+
+describe('Sentinel next steps queue gate', () => {
+    it('defaults off and reads only the supplied live snapshot', () => {
+        expect(DEFAULT_QUEUE_RUNTIME_CONFIG.getSentinelNextStepsEnabled()).toBe(false);
+        const source = { config: { ...DEFAULT_CONFIG, features: { ...DEFAULT_CONFIG.features } } };
+        const port = createQueueRuntimeConfig(source);
+        expect(port.getSentinelNextStepsEnabled()).toBe(false);
+        source.config.features.sentinelNextSteps = true;
+        expect(port.getSentinelNextStepsEnabled()).toBe(true);
+        expect(createFixedQueueRuntimeConfig({ config: source.config }).getSentinelNextStepsEnabled()).toBe(true);
     });
 });

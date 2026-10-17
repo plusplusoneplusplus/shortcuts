@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
 import type {
     TurnPerformanceGroupBy,
     TurnPerformanceStatsQuery,
     TurnPerformanceStatsResponse,
 } from '@plusplusoneplusplus/coc-client';
+import { useAdminServer } from '../../../admin/adminTarget';
 
 // Params are primitives (not an options object) so callers can pass inline
 // values without retriggering the effect on every render.
@@ -18,6 +18,7 @@ export function useTurnPerformanceStats(
     error: string | null;
     reload: () => void;
 } {
+    const adminServer = useAdminServer();
     const [data, setData] = useState<TurnPerformanceStatsResponse | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -29,14 +30,14 @@ export function useTurnPerformanceStats(
             const query: TurnPerformanceStatsQuery = { groupBy };
             if (days) query.days = days;
             if (firstTurnOnly) query.firstTurnOnly = true;
-            const result = await getSpaCocClient().stats.turnPerformance(query);
+            const result = await adminServer.client.stats.turnPerformance(query);
             setData(result);
         } catch (e) {
             setError(String(e));
         } finally {
             setLoading(false);
         }
-    }, [days, groupBy, firstTurnOnly]);
+    }, [adminServer, days, groupBy, firstTurnOnly]);
 
     useEffect(() => { load(); }, [load]);
 

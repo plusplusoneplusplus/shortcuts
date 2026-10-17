@@ -57,17 +57,17 @@ describe('reading missing and corrupt configuration', () => {
         const result = readLanguageServerConfigWithStatus(dataDir, 'ws-1');
         expect(result.status).toBe('missing');
         expect(result.warnings).toEqual([]);
-        expect(result.value).toEqual({ enabled: false, definitions: [] });
+        expect(result.value).toEqual({ definitions: [] });
     });
 
-    it('reports invalid JSON and falls back to disabled', () => {
+    it('reports invalid JSON and uses built-in defaults', () => {
         const filePath = getLanguageServerConfigPath(dataDir, 'ws-1');
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         fs.writeFileSync(filePath, '{ not json', 'utf-8');
 
         const result = readLanguageServerConfigWithStatus(dataDir, 'ws-1');
         expect(result.status).toBe('invalid');
-        expect(result.value.enabled).toBe(false);
+        expect(result.value).not.toHaveProperty('enabled');
         expect(result.warnings[0].kind).toBe('invalid-json');
         expect(result.warnings[0].filePath).toBe(filePath);
     });
@@ -88,7 +88,6 @@ describe('reading missing and corrupt configuration', () => {
         fs.writeFileSync(
             filePath,
             JSON.stringify({
-                enabled: true,
                 definitions: [definition({ id: 'good' }), definition({ id: 'bad', command: 'sh -c "rm -rf /"' })],
             }),
             'utf-8',
@@ -106,20 +105,19 @@ describe('reading missing and corrupt configuration', () => {
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         fs.writeFileSync(filePath, JSON.stringify({ enabled: 'yes' }), 'utf-8');
 
-        expect(readLanguageServerConfig(dataDir, 'ws-1').enabled).toBe(false);
+        expect(readLanguageServerConfig(dataDir, 'ws-1')).not.toHaveProperty('enabled');
     });
 });
 
 describe('writing configuration', () => {
     it('round-trips a custom definition for the intended workspace only', () => {
         const write = writeLanguageServerConfig(dataDir, 'ws-1', {
-            enabled: true,
             definitions: [definition({ id: 'custom' })],
         });
         expect(write.ok).toBe(true);
 
         const reopened = readLanguageServerConfig(dataDir, 'ws-1');
-        expect(reopened.enabled).toBe(true);
+        expect(reopened).not.toHaveProperty('enabled');
         expect(reopened.definitions.map((d) => d.id)).toEqual(['custom']);
 
         const other = readLanguageServerConfigWithStatus(dataDir, 'ws-2');
@@ -128,10 +126,9 @@ describe('writing configuration', () => {
     });
 
     it('rejects an invalid definition and preserves the last valid configuration', () => {
-        writeLanguageServerConfig(dataDir, 'ws-1', { enabled: true, definitions: [definition({ id: 'custom' })] });
+        writeLanguageServerConfig(dataDir, 'ws-1', { definitions: [definition({ id: 'custom' })] });
 
         const write = writeLanguageServerConfig(dataDir, 'ws-1', {
-            enabled: true,
             definitions: [definition({ id: 'Invalid Id' })],
         });
         expect(write.ok).toBe(false);
@@ -145,7 +142,6 @@ describe('writing configuration', () => {
 
     it('rejects duplicate ids without writing', () => {
         const write = writeLanguageServerConfig(dataDir, 'ws-1', {
-            enabled: true,
             definitions: [definition({ id: 'dup' }), definition({ id: 'dup' })],
         });
         expect(write.ok).toBe(false);
@@ -153,7 +149,7 @@ describe('writing configuration', () => {
     });
 
     it('leaves no temporary file behind', () => {
-        writeLanguageServerConfig(dataDir, 'ws-1', { enabled: false, definitions: [] });
+        writeLanguageServerConfig(dataDir, 'ws-1', { definitions: [] });
         const dir = path.dirname(getLanguageServerConfigPath(dataDir, 'ws-1'));
         expect(fs.readdirSync(dir).filter((name) => name.endsWith('.tmp'))).toEqual([]);
     });
@@ -162,16 +158,16 @@ describe('writing configuration', () => {
         const events: LanguageServerConfigChangedEvent[] = [];
         const unsubscribe = onLanguageServerConfigChanged((event) => events.push(event));
 
-        writeLanguageServerConfig(dataDir, 'ws-1', { enabled: true, definitions: [definition()] });
+        writeLanguageServerConfig(dataDir, 'ws-1', { definitions: [definition()] });
         expect(events).toHaveLength(1);
         expect(events[0].workspaceId).toBe('ws-1');
         expect(events[0].config.definitions[0].id).toBe('fixture');
 
-        writeLanguageServerConfig(dataDir, 'ws-1', { enabled: true, definitions: [definition({ id: 'Invalid Id' })] });
+        writeLanguageServerConfig(dataDir, 'ws-1', { definitions: [definition({ id: 'Invalid Id' })] });
         expect(events).toHaveLength(1);
 
         unsubscribe();
-        writeLanguageServerConfig(dataDir, 'ws-1', { enabled: false, definitions: [] });
+        writeLanguageServerConfig(dataDir, 'ws-1', { definitions: [] });
         expect(events).toHaveLength(1);
     });
 
@@ -180,59 +176,38 @@ describe('writing configuration', () => {
             throw new Error('listener boom');
         });
         try {
-            expect(writeLanguageServerConfig(dataDir, 'ws-1', { enabled: true, definitions: [] }).ok).toBe(true);
+            expect(writeLanguageServerConfig(dataDir, 'ws-1', { definitions: [] }).ok).toBe(true);
         } finally {
             unsubscribe();
         }
     });
 });
 
-describe('resolving the definitions a workspace may start', () => {
-    it('resolves nothing while language support is off', () => {
-        writeLanguageServerConfig(dataDir, 'ws-1', {
-            enabled: false,
-            definitions: [definition({ id: 'typescript', enabled: true })],
-        });
-        expect(resolveLanguageServerDefinitions(dataDir, 'ws-1')).toEqual([]);
+describe('resolving available definitions', () => {
+    const builtIns = ['typescript', 'rust', 'python', 'clangd', 'coc-symbols'];
+    it('offers all built-ins for an unconfigured workspace without creating a config', () => {
+        expect(resolveLanguageServerDefinitions(dataDir, 'new').map(d => d.id)).toEqual(builtIns);
+        expect(fs.existsSync(getLanguageServerConfigPath(dataDir, 'new'))).toBe(false);
     });
 
-    it('resolves nothing for an unconfigured workspace', () => {
-        expect(resolveLanguageServerDefinitions(dataDir, 'ws-nope')).toEqual([]);
-    });
-
-    it('omits presets that were never enabled, keeping the one that ships enabled', () => {
-        writeLanguageServerConfig(dataDir, 'ws-1', { enabled: true, definitions: [] });
-        expect(resolveLanguageServerDefinitions(dataDir, 'ws-1').map((d) => d.id)).toEqual(['coc-symbols']);
-    });
-
-    it('lets a workspace turn the bundled symbol index off', () => {
-        writeLanguageServerConfig(dataDir, 'ws-1', {
-            enabled: true,
-            definitions: [definition({ id: 'coc-symbols', displayName: 'Symbols', enabled: false })],
-        });
-        expect(resolveLanguageServerDefinitions(dataDir, 'ws-1')).toEqual([]);
-    });
-
-    it('enables a preset through a workspace override that keeps builtIn', () => {
-        writeLanguageServerConfig(dataDir, 'ws-1', {
-            enabled: true,
-            definitions: [definition({ id: 'typescript', displayName: 'TypeScript', enabled: true })],
-        });
-
-        const resolved = resolveLanguageServerDefinitions(dataDir, 'ws-1');
-        expect(resolved.map((d) => d.id)).toEqual(['typescript', 'coc-symbols']);
-        expect(resolved[0].builtIn).toBe(true);
-        expect(resolved[0].command).toBe('fixture-language-server');
-    });
-
-    it('resolves an enabled custom definition alongside a disabled preset', () => {
-        writeLanguageServerConfig(dataDir, 'ws-1', {
-            enabled: true,
-            definitions: [definition({ id: 'custom', enabled: true })],
-        });
-        expect(resolveLanguageServerDefinitions(dataDir, 'ws-1').map((d) => d.id)).toEqual([
-            'coc-symbols',
-            'custom',
-        ]);
+    it('ignores stale flags while preserving custom settings and preset executable overrides', () => {
+        const filePath = getLanguageServerConfigPath(dataDir, 'existing');
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        const custom = definition({ settings: { fixture: { mode: 'strict' } }, initializationOptions: { project: 'sample' } });
+        const config = { enabled: false, definitions: [
+            { ...definition({ id: 'typescript', command: 'my-tsserver' }), enabled: false },
+            { ...custom, enabled: false },
+        ] };
+        fs.writeFileSync(filePath, JSON.stringify(config));
+        const resolved = resolveLanguageServerDefinitions(dataDir, 'existing');
+        expect(resolved.map(d => d.id)).toEqual([...builtIns, 'fixture']);
+        expect(resolved[0]).toMatchObject({ command: 'my-tsserver', builtIn: true });
+        expect(resolved.at(-1)).toEqual(custom);
+        expect(resolved.every(d => !('enabled' in d))).toBe(true);
+        expect(JSON.parse(fs.readFileSync(filePath, 'utf8'))).toEqual(config);
+        expect(writeLanguageServerConfig(dataDir, 'existing', readLanguageServerConfig(dataDir, 'existing')).ok).toBe(true);
+        expect(JSON.parse(fs.readFileSync(filePath, 'utf8'))).toEqual({ definitions: [
+            definition({ id: 'typescript', command: 'my-tsserver' }), custom,
+        ] });
     });
 });

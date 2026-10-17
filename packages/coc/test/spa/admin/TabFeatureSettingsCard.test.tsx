@@ -79,6 +79,17 @@ beforeEach(() => {
 });
 
 describe('TabFeatureSettingsCard', () => {
+    it('ignores saved rail Git opt-outs in Appearance and runtime updates', () => {
+        render(<Harness tabs={['appearance']} />);
+        act(() => controller.hydrate({ features: { railGitSummary: false } }));
+        expect(screen.queryByText('Git on collapsed sidebar')).toBeNull();
+        expect(screen.queryByTestId('toggle-rail-git-summary-enabled')).toBeNull();
+        expect(controller.featureValues).not.toHaveProperty('features.railGitSummary');
+        expect(readRuntimeFeatureValues(controller.featureValues)).not.toHaveProperty('railGitSummaryEnabled');
+        expect(controller.isTabDirty('appearance')).toBe(false);
+        expect(updateConfig).not.toHaveBeenCalled();
+    });
+
     it.each([undefined, false, true])('keeps collapsed-sidebar controls and runtime values consistent (%s)', enabled => {
         render(<Harness tabs={['appearance']} />);
         const features = enabled === undefined

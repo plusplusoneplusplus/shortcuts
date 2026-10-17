@@ -217,7 +217,7 @@ export async function createTrigger(
                 const paused = { ...existing };
                 if (watch) existing.status = 'active';
                 if (upgrade && existing.event.monitor === 'ci-failure') {
-                    existing.event = { ...existing.event, repairScope: 'ci-and-conflicts' };
+                    existing.event = { ...existing.event, repairScope: 'ci-and-conflicts' as const };
                 }
                 existing.revision += 1;
                 existing.nextTickAt = candidate.nextTickAt;

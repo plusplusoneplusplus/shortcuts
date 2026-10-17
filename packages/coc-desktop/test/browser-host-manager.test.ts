@@ -5,7 +5,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { BrowserHostManager } from '../src/browser-host-manager';
 import { BrowserHistoryStore } from '../src/browser-history';
 import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserViewRequest, type FilePreviewHost, type FileViewRequest } from '../src/browser-host-contract';
-import { BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL, type BrowserEngine } from '../src/browser-view-policy';
+import { BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL, type BrowserEngine } from '../src/browser-view-policy';
 import { htmlPageFileUrl, toHtmlPageLoadState, toHtmlPageOpenResult } from '../src/html-page-policy';
 import { BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_STOP_CHANNEL } from '../src/browser-control-command';
 
@@ -629,6 +629,21 @@ describe.each<BrowserEngine>(['electron', 'webview2'])('%s shared browser manage
         expect(h.send).not.toHaveBeenCalled();
         h.created[1].sink.openMenuRequested();
         expect(h.send).toHaveBeenCalledExactlyOnceWith(2, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, { viewId: 'same-id' });
+    });
+
+    it('routes reopen-closed requests by source window and never after the view closes', async () => {
+        const h = harness(engine);
+        await h.manager.open(1, 'same-id', 'https://example.test/', 'remote:workspace');
+        await h.manager.open(2, 'same-id', 'https://example.test/', 'local-workspace');
+        h.send.mockClear();
+        h.created[0].sink.reopenClosedRequested!();
+        expect(h.send).toHaveBeenCalledExactlyOnceWith(1, BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL, { viewId: 'same-id' });
+        await h.manager.close(1, 'same-id');
+        h.send.mockClear();
+        h.created[0].sink.reopenClosedRequested!();
+        expect(h.send).not.toHaveBeenCalled();
+        h.created[1].sink.reopenClosedRequested!();
+        expect(h.send).toHaveBeenCalledExactlyOnceWith(2, BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL, { viewId: 'same-id' });
     });
 
     it('reports partial cleanup failure, unblocks the engine and permits explicit retry', async () => {

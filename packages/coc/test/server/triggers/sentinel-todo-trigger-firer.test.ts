@@ -67,6 +67,67 @@ describe('SentinelTodoTriggerFirer', () => {
         });
     }
 
+    function datedFirer(enabled = () => true) {
+        rule.event = { type: 'date-time', firesAt: timestamp, timeZone: 'UTC' };
+        triggers.update(rule);
+        return new SentinelTodoTriggerFirer({
+            triggers, todos, processes: { getProcess }, executor: { execute }, emit,
+            now: () => Date.parse(timestamp), dateTimeEnabled: enabled,
+        });
+    }
+
+    it.each(['pause', 'edit', 'remove', 'done', 'gate'] as const)(
+        'rechecks date firing after async owner lookup races with %s', async race => {
+            let enabled = true;
+            const dated = datedFirer(() => enabled);
+            getProcess.mockImplementationOnce(async () => {
+                if (race === 'pause') triggers.update({ ...rule, status: 'paused', revision: 2 });
+                if (race === 'edit') triggers.update({ ...rule, revision: 2, event: {
+                    type: 'date-time', firesAt: '2027-01-01T00:00:00.000Z', timeZone: 'UTC',
+                } });
+                if (race === 'remove') triggers.delete(rule.id);
+                if (race === 'done') todos.update(owner, rule.binding!.itemId, 1, { status: 'done' }, 'user');
+                if (race === 'gate') enabled = false;
+                return process;
+            });
+            await dated.fire(rule.id, 'due');
+            expect(execute).not.toHaveBeenCalled();
+            expect(triggers.getById(rule.id)?.delivery).toBeUndefined();
+            if (race === 'done') expect(triggers.getById(rule.id)?.outcome).toBe('skipped');
+        });
+
+    it('requires a due instant but permits confirmed saved-rule Run now once', async () => {
+        const dated = datedFirer();
+        triggers.update({ ...rule, event: { type: 'date-time', firesAt: '2027-01-01T00:00:00.000Z', timeZone: 'UTC' } });
+        await dated.fire(rule.id, 'due');
+        expect(execute).not.toHaveBeenCalled();
+        await dated.fire(rule.id, 'run-now', 1);
+        expect(triggers.getById(rule.id)?.delivery).toMatchObject({ reason: 'run-now', state: 'delivered' });
+        await expect(dated.fire(rule.id, 'run-now', 1)).rejects.toThrow('changed');
+        expect(execute).toHaveBeenCalledOnce();
+    });
+
+    it.each(['done', 'archived', 'manual', 'missing', 'removed', 'owner'] as const)(
+        'suppresses a pending date delivery made ineligible by %s', async kind => {
+            const dated = datedFirer();
+            execute.mockRejectedValueOnce(new Error('Temporary queue failure'));
+            await expect(dated.fire(rule.id, 'due')).rejects.toThrow('Temporary');
+            const pending = triggers.getById(rule.id)!;
+            const itemId = rule.binding!.itemId;
+            if (kind === 'done') todos.update(owner, itemId, 1, { status: 'done' }, 'user');
+            if (kind === 'archived') todos.update(owner, itemId, 1, { archived: true }, 'user');
+            if (kind === 'manual') {
+                const manual = todos.create(owner, { title: 'Manual', type: 'manual' }, { actor: 'user' }).item;
+                triggers.update({ ...pending, binding: { ...pending.binding!, itemId: manual.id } });
+            }
+            if (kind === 'missing') triggers.update({ ...pending, binding: { ...pending.binding!, itemId: 'missing' } });
+            if (kind === 'removed') triggers.update({ ...pending, binding: { ...pending.binding!, removedAt: timestamp } });
+            if (kind === 'owner') getProcess.mockResolvedValue(undefined);
+            await dated.deliverPending(rule.id);
+            expect(execute).toHaveBeenCalledOnce();
+            expect(triggers.getById(rule.id)?.delivery?.state).toBe('failed');
+        });
+
     it.each(['merged', 'closed'] as const)('reviews delegated %s only once with no implementation authority', async status => {
         const reviewer = outcomeFirer();
         if (rule.event.monitor !== 'pr-merged') throw new Error('fixture');

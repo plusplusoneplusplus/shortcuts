@@ -7,9 +7,10 @@
  * change to one high-risk operation can't perturb the other tabs.
  */
 import { Suspense, lazy, useCallback, useState } from 'react';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../api/cocClient';
 import { Spinner } from '../ui';
 import { AdminRow, AdminSeg } from './adminControls';
+import { useAdminServer } from './adminTarget';
 
 const StorageSection = lazy(() => import('./StorageSection'));
 
@@ -28,6 +29,7 @@ export interface DataOperationsPanelProps {
 }
 
 export function DataOperationsPanel({ addToast, onDataChanged }: DataOperationsPanelProps) {
+    const adminServer = useAdminServer();
     // Export
     const [exportStatus, setExportStatus] = useState<string>('');
     // Import
@@ -44,7 +46,7 @@ export function DataOperationsPanel({ addToast, onDataChanged }: DataOperationsP
     const handleExport = useCallback(async () => {
         setExportStatus('Exporting…');
         try {
-            const res = await getSpaCocClient().admin.exportData();
+            const res = await adminServer.client.admin.exportData();
             if (!res.ok) {
                 const body = await res.json().catch(() => ({}));
                 const message = typeof body === 'object' && body !== null && 'error' in body ? String(body.error) : res.statusText;
@@ -66,7 +68,7 @@ export function DataOperationsPanel({ addToast, onDataChanged }: DataOperationsP
         } catch (err: unknown) {
             setExportStatus('Export failed: ' + getSpaCocClientErrorMessage(err, 'Network error'));
         }
-    }, []);
+    }, [adminServer]);
 
     const handlePreviewImport = useCallback(async () => {
         if (!importFile) { setImportStatus('Please select a JSON file first.'); return; }
@@ -74,7 +76,7 @@ export function DataOperationsPanel({ addToast, onDataChanged }: DataOperationsP
         try {
             const text = await importFile.text();
             const payload = JSON.parse(text);
-            const data = await getSpaCocClient().admin.previewImport(payload);
+            const data = await adminServer.client.admin.previewImport(payload);
             if (!data.valid) {
                 setImportPreview('Preview failed: ' + (data?.error || 'Invalid file'));
                 setImportStatus('Preview failed.');
@@ -96,7 +98,7 @@ export function DataOperationsPanel({ addToast, onDataChanged }: DataOperationsP
                 setImportStatus('Preview failed.');
             }
         }
-    }, [importFile]);
+    }, [adminServer, importFile]);
 
     const handleImport = useCallback(async () => {
         if (!importFile) { setImportStatus('Please select a JSON file first.'); return; }
@@ -111,7 +113,7 @@ export function DataOperationsPanel({ addToast, onDataChanged }: DataOperationsP
         }
         let tokenRes: { token?: string } | null = null;
         try {
-            tokenRes = await getSpaCocClient().admin.getImportToken();
+            tokenRes = await adminServer.client.admin.getImportToken();
         } catch {
             setImportStatus('Failed to get import token.');
             return;
@@ -119,18 +121,18 @@ export function DataOperationsPanel({ addToast, onDataChanged }: DataOperationsP
         if (!tokenRes?.token) { setImportStatus('Failed to get import token.'); return; }
         setImportStatus('Importing…');
         try {
-            await getSpaCocClient().admin.importData(payload, { token: tokenRes.token, mode: importMode });
+            await adminServer.client.admin.importData(payload, { token: tokenRes.token, mode: importMode });
             setImportStatus('Import complete.');
             addToast('Import complete', 'success');
             onDataChanged();
         } catch (err: unknown) {
             setImportStatus('Import failed: ' + getSpaCocClientErrorMessage(err, 'Network error'));
         }
-    }, [importFile, importMode, addToast, onDataChanged]);
+    }, [adminServer, importFile, importMode, addToast, onDataChanged]);
 
     const handlePreviewWipe = useCallback(async () => {
         try {
-            const data = await getSpaCocClient().admin.getDataStats({ includeWikis });
+            const data = await adminServer.client.admin.getDataStats({ includeWikis });
             const lines: string[] = [];
             if (data.processCount != null) lines.push('Processes: ' + data.processCount);
             if (data.wikiCount != null) lines.push('Wikis: ' + data.wikiCount);
@@ -139,12 +141,12 @@ export function DataOperationsPanel({ addToast, onDataChanged }: DataOperationsP
         } catch {
             setWipePreview('Failed to load preview.');
         }
-    }, [includeWikis]);
+    }, [adminServer, includeWikis]);
 
     const handleWipeStep1 = useCallback(async () => {
         setWipeStatus('Requesting confirmation token…');
         try {
-            const data = await getSpaCocClient().admin.getWipeToken();
+            const data = await adminServer.client.admin.getWipeToken();
             if (!data.token) throw new Error('No token received');
             setWipeToken(data.token);
             setWipeStatus('');
@@ -152,13 +154,13 @@ export function DataOperationsPanel({ addToast, onDataChanged }: DataOperationsP
             const detail = getSpaCocClientErrorMessage(err, '');
             setWipeStatus(detail ? `Failed to get wipe token: ${detail}` : 'Failed to get wipe token');
         }
-    }, []);
+    }, [adminServer]);
 
     const handleWipeConfirm = useCallback(async () => {
         if (!wipeToken) return;
         setWipeStatus('Wiping data…');
         try {
-            await getSpaCocClient().admin.wipeData({ token: wipeToken, includeWikis });
+            await adminServer.client.admin.wipeData({ token: wipeToken, includeWikis });
             setWipeStatus('Data wiped successfully.');
             addToast('Data wiped', 'success');
             setWipeToken(null);
@@ -166,7 +168,7 @@ export function DataOperationsPanel({ addToast, onDataChanged }: DataOperationsP
         } catch (err: unknown) {
             setWipeStatus('Wipe failed: ' + getSpaCocClientErrorMessage(err, 'Network error'));
         }
-    }, [wipeToken, includeWikis, addToast, onDataChanged]);
+    }, [adminServer, wipeToken, includeWikis, addToast, onDataChanged]);
 
     const handleWipeCancel = useCallback(() => {
         setWipeToken(null);
@@ -265,7 +267,7 @@ export function DataOperationsPanel({ addToast, onDataChanged }: DataOperationsP
                             <button id="admin-wipe-btn" type="button" className="ar-btn ar-btn-danger-outline ar-btn-sm" onClick={handleWipeStep1}>Wipe Data</button>
                         ) : (
                             <>
-                                <button id="admin-wipe-confirm" type="button" className="ar-btn ar-btn-danger ar-btn-sm" onClick={handleWipeConfirm}>Confirm Wipe</button>
+                                <button id="admin-wipe-confirm" type="button" className="ar-btn ar-btn-danger ar-btn-sm" onClick={handleWipeConfirm}>{adminServer.label ? `Confirm Wipe on ${adminServer.label}` : 'Confirm Wipe'}</button>
                                 <button id="admin-wipe-cancel" type="button" className="ar-btn ar-btn-ghost ar-btn-sm" onClick={handleWipeCancel}>Cancel</button>
                             </>
                         )}

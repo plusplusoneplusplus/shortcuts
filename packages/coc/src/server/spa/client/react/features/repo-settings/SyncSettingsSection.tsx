@@ -5,8 +5,8 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
-import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { useWorkspaceSettingsClient } from './workspaceSettingsClient';
 import { getRepoPreferences, patchRepoPreferences } from '../../api/repoPreferences';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import type { ReconcileReport, ResolutionStrategy, SyncResolutionReport, SyncStatus } from '@plusplusoneplusplus/coc-client';
@@ -24,6 +24,7 @@ interface SyncSettingsSectionProps {
 
 export function SyncSettingsSection({ workspaceId }: SyncSettingsSectionProps) {
     const { addToast } = useGlobalToast();
+    const client = useWorkspaceSettingsClient(workspaceId);
     const [gitRemote, setGitRemote] = useState('');
     const [intervalMinutes, setIntervalMinutes] = useState('5');
     const [saving, setSaving] = useState(false);
@@ -35,18 +36,18 @@ export function SyncSettingsSection({ workspaceId }: SyncSettingsSectionProps) {
 
     const fetchStatus = useCallback(async () => {
         try {
-            const data = await getSpaCocClient().sync.getStatus(workspaceId);
+            const data = await client.sync.getStatus(workspaceId);
             if (mountedRef.current) setStatus(data);
         } catch {
             // Sync may not be configured yet
         }
-    }, [workspaceId]);
+    }, [workspaceId, client]);
 
     // Load current preferences and start status polling
     useEffect(() => {
         mountedRef.current = true;
         // Load per-workspace sync preferences
-        getRepoPreferences(getCocClientForWorkspace(workspaceId), workspaceId)
+        getRepoPreferences(client, workspaceId)
             .then(prefs => {
                 if (!mountedRef.current) return;
                 const sync = (prefs as Record<string, unknown>)?.sync as { gitRemote?: string; intervalMinutes?: number } | undefined;
@@ -63,7 +64,7 @@ export function SyncSettingsSection({ workspaceId }: SyncSettingsSectionProps) {
             mountedRef.current = false;
             if (timerRef.current) clearInterval(timerRef.current);
         };
-    }, [workspaceId, fetchStatus]);
+    }, [workspaceId, fetchStatus, client]);
 
     const dirty = gitRemote !== snapshot.gitRemote || intervalMinutes !== snapshot.intervalMinutes;
 
@@ -75,7 +76,7 @@ export function SyncSettingsSection({ workspaceId }: SyncSettingsSectionProps) {
         }
         setSaving(true);
         try {
-            await patchRepoPreferences(getCocClientForWorkspace(workspaceId), workspaceId, {
+            await patchRepoPreferences(client, workspaceId, {
                 sync: {
                     gitRemote,
                     intervalMinutes: interval || 5,
@@ -89,7 +90,7 @@ export function SyncSettingsSection({ workspaceId }: SyncSettingsSectionProps) {
         } finally {
             setSaving(false);
         }
-    }, [workspaceId, gitRemote, intervalMinutes, addToast, fetchStatus]);
+    }, [workspaceId, gitRemote, intervalMinutes, addToast, fetchStatus, client]);
 
     const handleCancel = useCallback(() => {
         setGitRemote(snapshot.gitRemote);
@@ -99,7 +100,7 @@ export function SyncSettingsSection({ workspaceId }: SyncSettingsSectionProps) {
     const handleTriggerSync = useCallback(async () => {
         setTriggering(true);
         try {
-            const result = await getSpaCocClient().sync.trigger(workspaceId);
+            const result = await client.sync.trigger(workspaceId);
             setStatus(result);
             if (result.lastError) {
                 addToast(`Sync error: ${result.lastError}`, 'error');
@@ -111,7 +112,7 @@ export function SyncSettingsSection({ workspaceId }: SyncSettingsSectionProps) {
         } finally {
             setTriggering(false);
         }
-    }, [workspaceId, addToast]);
+    }, [workspaceId, addToast, client]);
 
     return (
         <div className="flex flex-col gap-4" data-testid="sync-settings-section">

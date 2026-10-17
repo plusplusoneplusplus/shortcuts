@@ -17,7 +17,8 @@
  */
 
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { mockFileIdentity } from '../../language-servers/fileIdentityMock';
 import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react';
 
 const treeSpy = vi.fn();
@@ -46,6 +47,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
         onClose?: () => void;
         onNavigate?: (target: { path: string; name: string; line: number; column: number }) => void;
     }) => {
+        const [text, setText] = useState('disk');
         useEffect(() => {
             if (!onRegisterSave) return;
             const save = async () => { onDirtyChange?.(false); return true; };
@@ -58,6 +60,8 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
                 data-reveal-line={revealLine}
                 data-reveal-column={revealColumn}
             >
+                <textarea data-testid={`buffer-${filePath}`} value={text} onChange={event => { setText(event.target.value); onDirtyChange?.(true); }} />
+                <button data-testid={`navigate-alias-${filePath}`} onClick={() => onNavigate?.({ path: filePath.toUpperCase(), name: filePath.toUpperCase(), line: 12, column: 17 })}>alias</button>
                 <button data-testid={`make-dirty-${filePath}`} onClick={() => onDirtyChange?.(true)}>dirty</button>
                 <button data-testid={`make-clean-${filePath}`} onClick={() => onDirtyChange?.(false)}>clean</button>
                 <button data-testid={`preview-close-${filePath}`} onClick={() => onClose?.()}>close</button>
@@ -402,5 +406,21 @@ describe('ExplorerPanel — editor tabs (flag off)', () => {
         await waitFor(() => expect(screen.getByTestId('mock-preview-b.ts')).toBeInTheDocument());
         expect(screen.queryByTestId('mock-preview-a.ts')).toBeNull();
         expect(localStorage.getItem(explorerTabsStorageKey('ws-1'))).toBeNull();
+    });
+});
+
+
+describe('standalone Explorer identity regression', () => {
+    it('reuses the dirty standalone buffer for a differently cased definition target', async () => {
+        mockFileIdentity.mockImplementation(async (_owner, path) => path.toLowerCase());
+        await renderPanel();
+        fireEvent.doubleClick(screen.getByTestId('tree-node-a.ts'));
+        const buffer = await screen.findByTestId('buffer-a.ts');
+        fireEvent.change(buffer, { target: { value: 'unsaved standalone edit' } });
+        fireEvent.click(screen.getByTestId('navigate-alias-a.ts'));
+        await waitFor(() => expect(screen.getByTestId('mock-preview-a.ts')).toHaveAttribute('data-reveal-column', '17'));
+        expect(openTabIds()).toEqual(['file:a.ts']);
+        expect(screen.getByTestId('buffer-a.ts')).toBe(buffer);
+        expect(buffer).toHaveValue('unsaved standalone edit');
     });
 });

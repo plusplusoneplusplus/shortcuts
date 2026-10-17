@@ -28,9 +28,10 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/e
 }));
 // Monaco never loads in jsdom; the textarea stands in for the edit buffer.
 vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEditor', () => ({
-    MonacoFileEditor: ({ value, onChange }: any) => (
+    MonacoFileEditor: ({ value, onChange, revealLine, revealColumn }: any) => (
         <textarea
             data-testid="mock-monaco-textarea"
+            data-reveal={`${revealLine}:${revealColumn}`}
             value={value}
             onChange={e => onChange?.(e.target.value)}
         />
@@ -54,9 +55,10 @@ vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView'
     ),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({
-    ExplorerPanel: () => (
+    ExplorerPanel: ({ onOpenFile }: any) => (
         <div data-testid="mock-explorer">
             <input data-testid="explorer-search-input" />
+            <button data-testid="open-mixed" onClick={() => onOpenFile({ path: 'src/Mixed.ts', name: 'Mixed.ts' }, { preview: false })}>Open Mixed</button>
         </div>
     ),
 }));
@@ -545,5 +547,55 @@ describe('UnifiedRightPanel — note tabs (AC-04)', () => {
 
         fireEvent.click(screen.getByTestId('unified-panel-note-invalid-close'));
         expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull();
+    });
+});
+
+const resolveIdentity = vi.hoisted(() => vi.fn(async (_owner: unknown, path: string) =>
+    path.toLowerCase() === 'src/mixed.ts' ? 'src/Mixed.ts' : path));
+vi.mock('../../../../src/server/spa/client/react/features/language-servers/fileIdentity', async importOriginal => ({
+    ...await importOriginal<object>(), resolveOwnedFile: resolveIdentity,
+}));
+// Drive the definition-confirmation boundary while retaining the real buffer controller.
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane', async importOriginal => {
+    const { PreviewPane } = await importOriginal<any>();
+    return { PreviewPane: (props: any) => <><PreviewPane {...props} />
+        <button data-testid={`definition-${props.filePath}`} onClick={() => props.onNavigate?.({
+            path: 'src/mixed.ts', name: 'mixed.ts', line: 12, column: 17,
+        })}>Definition</button></> };
+});
+
+describe('file identity regression in unified panel', () => {
+    it('Explorer then definition retains one dirty editing buffer and reveals the selection', async () => {
+        renderPanel();
+        fireEvent.click(await screen.findByTestId('open-mixed'));
+        const editor = await screen.findByTestId('mock-monaco-textarea');
+        fireEvent.change(editor, { target: { value: 'unsaved change' } });
+        const dirty = await screen.findByTestId(`unified-panel-tab-dirty-${unifiedTabId({ kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/Mixed.ts' })}`);
+        fireEvent.click(screen.getByTestId('definition-src/Mixed.ts'));
+        await waitFor(() => expect(editor).toHaveAttribute('data-reveal', '12:17'));
+        expect(screen.getAllByTestId('mock-monaco-textarea')).toEqual([editor]);
+        expect(editor).toHaveValue('unsaved change');
+        expect(dirty).toBeInTheDocument();
+        expect(mockExplorerApi.readBlob).toHaveBeenCalledTimes(1);
+    });
+
+    it('ambiguous pre-existing dirty duplicates remain untouched and show a retryable error', async () => {
+        const a = openFile({ path: 'src/Mixed.ts' });
+        const b = openFile({ path: 'src/mixed.ts' });
+        renderPanel();
+        await screen.findByTestId('mock-monaco-textarea');
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-${a}`));
+        await waitFor(() => expect(screen.getAllByTestId('mock-monaco-textarea')).toHaveLength(2));
+        const editors = screen.getAllByTestId('mock-monaco-textarea');
+        fireEvent.change(editors[0], { target: { value: 'edit A' } });
+        fireEvent.change(editors[1], { target: { value: 'edit B' } });
+        fireEvent.click(screen.getByTestId('definition-src/mixed.ts'));
+        expect(await screen.findByRole('alert')).toHaveTextContent('Multiple open buffers');
+        expect(screen.getAllByTestId('mock-monaco-textarea')).toEqual(editors);
+        expect(editors[0]).toHaveValue('edit A');
+        expect(editors[1]).toHaveValue('edit B');
+        expect(screen.getByTestId(`unified-panel-tab-dirty-${a}`)).toBeInTheDocument();
+        expect(screen.getByTestId(`unified-panel-tab-dirty-${b}`)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Retry', exact: true })).toBeInTheDocument();
     });
 });

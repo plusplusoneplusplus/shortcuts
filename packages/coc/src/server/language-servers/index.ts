@@ -78,9 +78,6 @@ export {
     resolveSymbolsRuntime,
     symbolIndexDatabasePath,
 } from './symbols-adapter';
-export type { SeedLanguageServerConfigOptions } from './seed';
-export { ensureLanguageServerConfigSeeded } from './seed';
-export type { WorkspaceRootResolver } from './routes';
 export { registerLanguageServerRoutes } from './routes';
 export type {
     JsonRpcErrorBody,

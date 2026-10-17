@@ -1,3 +1,4 @@
+import '../../language-servers/fileIdentityMock';
 // @vitest-environment jsdom
 /**
  * explorer-refresh-preserves-expansion — Refresh re-fetches the root listing plus

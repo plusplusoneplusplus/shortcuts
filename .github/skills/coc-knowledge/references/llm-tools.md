@@ -71,6 +71,16 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `submit-scrub-findings-tool.ts` | `submit_scrub_findings` | One structured findings batch from an owner-bound scrubber child chat. |
 | `sentinel-todos-tool.ts` | `sentinel_todos` | Sentinel chat to-do ledger bookkeeping — see below. |
 
+### suggest_follow_ups
+
+Default-off live `features.sentinelNextSteps` selects optional 1–3 distinct actions,
+best first, for Sentinel first turns and follow-ups. `getSentinelNextStepsEnabled()`
+reads the queue's authoritative config; tool preferences still gate availability.
+`buildFollowUpSuggestionsAddon` adds the compact `<sentinel_next_steps>` guidance only
+when the tool survives filtering. Its mode-specific schema and handler preserve one
+to three actions; ordinary modes retain exact-three guidance/schema. Suggestions grant
+no execution authority. Click handling is covered in [chat-composer.md](spa/chat-composer.md).
+
 ### search_conversations
 
 `title` selects literal case-insensitive displayed-title matching, scoped by explicit
@@ -663,10 +673,9 @@ callable list excludes mode-specific tools such as `create_pull_request`, keepin
 identical across ask, autopilot and follow-ups.
 
 Some addons emit a prompt `suffix` wrapped in a named XML-style tag via `tagGuidanceSuffix()`
-from `prompt-tags.ts` (currently `<web_search_tool>` and the Memory V2 `<memory_tool>` block),
-so the aggregated `toolGuidance` is self-delimiting. Most addons emit an empty suffix — the
-follow-up, `ask_user`, and canvas guidance lives entirely in each tool's own `description` and
-JSON schema rather than being duplicated as injected prose, keeping the system prompt smaller.
+from `prompt-tags.ts`, so aggregated `toolGuidance` is self-delimiting. Most addons emit
+an empty suffix: ordinary follow-up, `ask_user`, and canvas guidance lives in the tool's
+`description` and JSON schema. Opted-in Sentinel suggestions add compact behavioral guidance.
 `tagGuidanceSuffix` includes the leading blank-line separator `applyLlmToolPreferences` relies
 on; the standalone `tagBlock()` helper wraps non-suffix blocks such as the `<citing_rule>`
 source-location directive. Disabling a tool drops its whole tagged block with it.

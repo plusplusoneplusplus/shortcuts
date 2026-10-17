@@ -7,12 +7,16 @@ import { PAGE_TURNS } from '@plusplusoneplusplus/forge/history-paging';
 import { useChatHistoryPaging } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatHistoryPaging';
 import { ConversationArea } from '../../../../src/server/spa/client/react/features/chat/ConversationArea';
 import type { ClientConversationTurn } from '../../../../src/server/spa/client/react/types/dashboard';
+import type { TurnReference } from '../../../../src/server/spa/client/react/features/chat/conversation/turnReference';
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useMessageNavigation', () => ({
     useMessageNavigation: () => ({ currentTurnIndex: null, navHintVisible: false }),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble', () => ({
-    ConversationTurnBubble: ({ turn, turnIndex }: any) => <div data-turn-index={turnIndex}>{turn.content}</div>,
+    ConversationTurnBubble: ({ turn, turnIndex, onGoToTurnReference }: any) => {
+        goToReference = onGoToTurnReference;
+        return <div data-turn-index={turnIndex}>{turn.content}</div>;
+    },
 }));
 vi.mock('../../../../src/server/spa/client/react/queue/PendingTaskInfoPanel', () => ({ PendingTaskInfoPanel: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/chat/QueuedBubble', () => ({ QueuedFollowUps: () => null }));
@@ -50,6 +54,7 @@ function deferred<T>() {
     return { promise, resolve, reject };
 }
 let current: ReturnType<typeof useChatHistoryPaging>;
+let goToReference: ((reference: TurnReference, fromTurnIndex?: number) => Promise<boolean>) | undefined;
 let cache: ClientConversationTurn[];
 let reset: ReturnType<typeof vi.fn>;
 let mockClient: CocClient;
@@ -291,5 +296,57 @@ describe('owner-scoped conversation history paging', () => {
         expect(list).toHaveBeenCalledTimes(1);
         expect(screen.getByText('Start of conversation')).toBeTruthy();
         expect(screen.queryByTestId('history-jump-placeholder')).toBeNull();
+    });
+});
+
+describe('quoted turn reference navigation', () => {
+    const highlighted = () => Array.from(document.querySelectorAll('.minimap-highlight-pulse')).map(el => el.getAttribute('data-turn-index'));
+    async function goTo(reference: TurnReference, fromTurnIndex?: number) {
+        let result!: Promise<boolean>;
+        await act(async () => { result = goToReference!(reference, fromTurnIndex); });
+        await act(async () => vi.advanceTimersByTime(20));
+        return result;
+    }
+
+    it('loads older pages through to the canonical turnIndex and highlights only a verified match', async () => {
+        await mount();
+        vi.useFakeTimers();
+        list.mockImplementation((_id, options) => Promise.resolve(page(Math.max(0, options.beforeTurnIndex - PAGE_TURNS), options.beforeTurnIndex)));
+        expect(await goTo({ role: 'assistant', turnIndex: 5, snippet: '**message**-5' }, 199)).toBe(true);
+        expect(highlighted()).toEqual(['5']);
+    });
+
+    it('reports a role or text mismatch as unavailable instead of jumping to the wrong turn', async () => {
+        await mount();
+        vi.useFakeTimers();
+        expect(await goTo({ role: 'user', turnIndex: 181, snippet: 'message-181' }, 199)).toBe(false);
+        expect(await goTo({ role: 'assistant', turnIndex: 181, snippet: 'something else entirely' }, 199)).toBe(false);
+        expect(await goTo({ role: 'assistant', turnIndex: 999, snippet: 'message-999' })).toBe(false);
+        expect(highlighted()).toEqual([]);
+    });
+
+    it('never resolves a reference to the quoting turn itself or a later turn', async () => {
+        await mount();
+        vi.useFakeTimers();
+        expect(await goTo({ role: 'assistant', turnIndex: 199, snippet: 'message-199' }, 199)).toBe(false);
+        expect(highlighted()).toEqual([]);
+    });
+
+    it('a failed page load resolves unavailable and the retry never jumps to the unverified turn', async () => {
+        await mount();
+        vi.useFakeTimers();
+        list.mockRejectedValueOnce(new Error('offline')).mockImplementation((_id, options) => Promise.resolve(page(Math.max(0, options.beforeTurnIndex - PAGE_TURNS), options.beforeTurnIndex)));
+        expect(await goTo({ role: 'assistant', turnIndex: 5, snippet: 'message-5' }, 199)).toBe(false);
+        await act(async () => { vi.advanceTimersByTime(60000); });
+        expect(list).toHaveBeenCalledTimes(1);
+        expect(highlighted()).toEqual([]);
+    });
+
+    it('without paging, scrolls to a loaded verified turn', async () => {
+        await mount({ enabled: false });
+        vi.useFakeTimers();
+        expect(await goTo({ role: 'user', turnIndex: 180, snippet: 'message-180' }, 199)).toBe(true);
+        expect(highlighted()).toEqual(['180']);
+        expect(await goTo({ role: 'assistant', turnIndex: 180, snippet: 'message-180' }, 199)).toBe(false);
     });
 });

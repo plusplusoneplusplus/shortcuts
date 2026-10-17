@@ -29,6 +29,12 @@ describe('explorerFileTabInput', () => {
         expect(input?.chatId).toBeNull();
     });
 
+    it('preserves owner-confirmed case and trailing filename characters', () => {
+        expect(explorerFileTabInput({ path: 'Src/Mixed.ts. ', name: 'Mixed.ts. ' }, CTX)).toMatchObject({
+            resourceId: 'Src/Mixed.ts. ', label: 'Mixed.ts. ',
+        });
+    });
+
     it('normalizes a path and derives the label when the Explorer gives no name', () => {
         const input = explorerFileTabInput({ path: './src//deep\\b.ts' }, CTX);
         expect(input?.resourceId).toBe('src/deep/b.ts');

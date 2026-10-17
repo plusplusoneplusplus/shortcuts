@@ -263,6 +263,13 @@ augment the server child's `PATH`. Capability details belong in the
 forks one on the preferred port, using an ephemeral port when occupied.
 A forked server has 120s (`DEFAULT_START_TIMEOUT_MS`) to report `listening`;
 child errors/exits fail earlier, and failures kill the child.
+`test/server-controller.test.ts` covers that window with fake timers. Windows CI
+also runs `test/e2e/desktop-startup.e2e.test.ts` (opt-in via
+`COC_DESKTOP_STARTUP_SMOKE=1`): the source-built app launches in a sandboxed
+home/log/user-data dir, `COC_DESKTOP_TEST_SERVER_START_DELAY_MS` (read only by
+`server-entry` via `startup-delay.ts`; unset → no delay) holds the real server
+back 45s, and the test requires the seeded server identity, the rendered SPA
+and a clean process-tree kill. Failed runs upload the sandbox.
 CoC defaults to 4000; CoCContainer defaults to 5000 and shares `~/.coccontainer`
 with its CLI. Enabled Windows DevTunnel hosting prefers a configured tunnel's
 single HTTP binding. The hosts use separate tunnel identities.

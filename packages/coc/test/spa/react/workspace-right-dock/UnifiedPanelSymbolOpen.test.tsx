@@ -1,3 +1,4 @@
+import '../language-servers/fileIdentityMock';
 /**
  * Go To All (Ctrl+,) in the unified right panel: picking a symbol row.
  *

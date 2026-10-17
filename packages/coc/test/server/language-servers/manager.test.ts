@@ -20,7 +20,6 @@ import { LanguageServerSession } from '../../../src/server/language-servers/sess
 import type { LanguageServerSessionOptions } from '../../../src/server/language-servers/session';
 import {
     getLanguageServerConfigPath,
-    readLanguageServerConfigWithStatus,
     writeLanguageServerConfig,
 } from '../../../src/server/language-servers/repository';
 import type { PrepareDefinitionDeps } from '../../../src/server/language-servers/adapters';
@@ -62,7 +61,6 @@ function echoDefinition(overrides: Partial<LanguageServerDefinition> = {}): Lang
         command: process.execPath,
         args: [FIXTURE_SERVER],
         rootMarkers: ['package.json'],
-        enabled: true,
         ...overrides,
     };
 }
@@ -74,7 +72,7 @@ interface Harness {
     created: LanguageServerSessionOptions[];
     disposed: string[];
     closed: SessionClosedEvent[];
-    setConfig: (definitions: LanguageServerDefinition[], enabled?: boolean) => void;
+    setConfig: (definitions: LanguageServerDefinition[]) => void;
 }
 
 function createHarness(
@@ -82,7 +80,6 @@ function createHarness(
     options: {
         maxSessions?: number | (() => number);
         maxSessionsPerWorkspace?: number | (() => number);
-        enabled?: boolean;
         exists?: (candidate: string) => boolean;
         prepareDeps?: PrepareDefinitionDeps;
         /** Holds a session's teardown open, by the order dispose was called. */
@@ -91,16 +88,17 @@ function createHarness(
 ): Harness {
     const dataDir = tempDir('coc-lsp-manager-data-');
     const workspaceRoot = tempDir('coc-lsp-manager-repo-');
+    fs.writeFileSync(path.join(workspaceRoot, 'notes.txt'), '');
     const created: LanguageServerSessionOptions[] = [];
     const disposed: string[] = [];
     const closed: SessionClosedEvent[] = [];
     const workspaceId = 'ws-a';
 
-    const write = (defs: LanguageServerDefinition[], enabled = true): void => {
-        const result = writeLanguageServerConfig(dataDir, workspaceId, { enabled, definitions: defs });
+    const write = (defs: LanguageServerDefinition[]): void => {
+        const result = writeLanguageServerConfig(dataDir, workspaceId, { definitions: defs });
         expect(result.ok).toBe(true);
     };
-    write(definitions, options.enabled ?? true);
+    write(definitions);
 
     let disposeCalls = 0;
     const manager = new LanguageServerManager({
@@ -142,50 +140,45 @@ function acquireTxt(
 }
 
 describe('LanguageServerManager selection', () => {
-    it('seeds a fresh workspace before the settings route reads its config', () => {
-        const dataDir = tempDir('coc-lsp-manager-seed-data-');
-        const workspaceRoot = tempDir('coc-lsp-manager-seed-repo-');
-        fs.writeFileSync(path.join(workspaceRoot, 'package.json'), '{"name":"demo"}');
-        fs.mkdirSync(path.join(workspaceRoot, 'src'));
-        fs.writeFileSync(path.join(workspaceRoot, 'src', 'main.ts'), 'export {};\n');
+    it('offers built-ins lazily for new and stale disabled workspaces without rewriting config', () => {
+        const dataDir = tempDir('coc-lsp-default-data-');
+        const workspaceRoot = tempDir('coc-lsp-default-repo-');
         const manager = new LanguageServerManager({ dataDir });
         managers.push(manager);
-
-        expect(fs.existsSync(getLanguageServerConfigPath(dataDir, 'ws-fresh'))).toBe(false);
-        const first = manager.acquireAll({
-            workspaceId: 'ws-fresh',
-            workspaceRoot,
-            editingSessionId: 'browser-1',
-            relativePath: 'src/main.ts',
-        });
-
-        expect(first.ok).toBe(true);
-        const seeded = readLanguageServerConfigWithStatus(dataDir, 'ws-fresh');
-        expect(seeded.status).toBe('ok');
-        expect(seeded.value.enabled).toBe(true);
-        expect(seeded.value.definitions.map(({ id }) => id)).toEqual(['typescript']);
-
-        if (first.ok) {
-            first.handles.forEach(({ release }) => release());
+        expect(manager.size).toBe(0);
+        for (const workspaceId of ['new', 'existing']) {
+            const configPath = getLanguageServerConfigPath(dataDir, workspaceId);
+            if (workspaceId === 'existing') {
+                fs.mkdirSync(path.dirname(configPath), { recursive: true });
+                fs.writeFileSync(configPath, JSON.stringify({ enabled: false, definitions: [
+                    { ...PYTHON_PRESET, enabled: false, settings: { python: { pythonPath: 'my-python' } } },
+                ] }));
+            }
+            const before = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : undefined;
+            for (const [relativePath, ids] of [
+                ['src/main.ts', ['typescript']], ['src/main.py', ['python']],
+                ['src/main.rs', ['rust']], ['src/main.cpp', ['clangd', 'coc-symbols']],
+            ] as const) {
+                const result = manager.acquireAll({ workspaceId, workspaceRoot, editingSessionId: 'browser', relativePath });
+                expect(result.ok).toBe(true);
+                if (result.ok) {
+                    expect(result.handles.map(handle => handle.definition.id)).toEqual(ids);
+                    result.handles.forEach(handle => handle.release());
+                }
+            }
+            expect(fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : undefined).toBe(before);
         }
-        expect(writeLanguageServerConfig(dataDir, 'ws-fresh', {
-            enabled: false,
-            definitions: seeded.value.definitions.map(definition => ({ ...definition, enabled: false })),
-        }).ok).toBe(true);
-        fs.writeFileSync(path.join(workspaceRoot, 'Cargo.toml'), '[package]\nname = "demo"\n');
+    });
 
-        const second = manager.acquireAll({
-            workspaceId: 'ws-fresh',
-            workspaceRoot,
-            editingSessionId: 'browser-2',
-            relativePath: 'src/main.rs',
-        });
-
-        expect(second.ok).toBe(false);
-        expect(readLanguageServerConfigWithStatus(dataDir, 'ws-fresh').value).toEqual({
-            enabled: false,
-            definitions: seeded.value.definitions.map(definition => ({ ...definition, enabled: false })),
-        });
+    it('reports an explicit missing-runtime error for a configured built-in without opt-in', async () => {
+        const harness = createHarness([{ ...RUST_PRESET, command: path.join(tempDir('coc-missing-runtime-'), 'rust-analyzer') }]);
+        const result = acquireTxt(harness, 'browser', 'src/main.rs');
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        await expect(result.handle.session.start()).rejects.toThrow();
+        expect(result.handle.session.getState()).toMatchObject({ status: 'unavailable' });
+        expect(result.handle.session.getState().detail).toContain('Executable not found');
+        result.handle.release();
     });
 
     it('starts one session for a document and reports the resolved definition', () => {
@@ -201,20 +194,9 @@ describe('LanguageServerManager selection', () => {
         expect(harness.manager.size).toBe(1);
     });
 
-    it('reports language support off when the workspace has it disabled', () => {
-        const harness = createHarness([echoDefinition()], { enabled: false });
-        const result = acquireTxt(harness, 'browser-1');
-        expect(result.ok).toBe(false);
-        if (result.ok) {
-            return;
-        }
-        expect(result.reason).toBe('disabled');
-        expect(harness.manager.size).toBe(0);
-    });
-
     it('reports no definition when nothing claims the file', () => {
         const harness = createHarness();
-        const result = acquireTxt(harness, 'browser-1', 'src/main.rs');
+        const result = acquireTxt(harness, 'browser-1', 'src/main.unknown');
         expect(result.ok).toBe(false);
         if (result.ok) {
             return;
@@ -262,14 +244,15 @@ describe('LanguageServerManager selection', () => {
 });
 
 describe('LanguageServerManager workspace acquire', () => {
-    it('acquires every enabled definition without naming a document', () => {
-        // Neither definition claims a file the caller could have named: the
-        // palette asks about the repository, not about a buffer.
+    it('acquires detected definitions without naming a document', () => {
+        // The palette detects languages from files without an open buffer.
         const harness = createHarness([
-            echoDefinition({ id: 'fallback', priority: 10, filePatterns: ['**/*.md'] }),
-            echoDefinition({ id: 'semantic', priority: 100, filePatterns: ['**/*.rs'] }),
+            echoDefinition({ id: 'fallback', priority: 10, filePatterns: ['**/*.fallback'] }),
+            echoDefinition({ id: 'semantic', priority: 100, filePatterns: ['**/*.semantic'] }),
         ]);
 
+        fs.writeFileSync(path.join(harness.workspaceRoot, 'a.fallback'), '');
+        fs.writeFileSync(path.join(harness.workspaceRoot, 'a.semantic'), '');
         const result = harness.manager.acquireWorkspace({
             workspaceId: 'ws-a',
             workspaceRoot: harness.workspaceRoot,
@@ -280,15 +263,22 @@ describe('LanguageServerManager workspace acquire', () => {
         if (!result.ok) {
             return;
         }
-        // The built-in symbol index is seeded alongside, so assert on the two
-        // definitions this test configured and on their relative order.
+        // Custom file patterns participate in workspace discovery.
         const ids = result.handles.map(({ definition }) => definition.id);
         expect(ids).toContain('semantic');
         expect(ids.indexOf('semantic')).toBeLessThan(ids.indexOf('fallback'));
         // Rooted at the workspace, not at some file's directory.
         expect(result.handles[0].rootPath).toBe(path.resolve(harness.workspaceRoot));
         result.handles.forEach(({ release }) => release());
+        expect(ids).toEqual(['semantic', 'fallback']);
         expect(harness.manager.size).toBe(ids.length);
+        fs.writeFileSync(path.join(harness.workspaceRoot, 'new.py'), '');
+        const later = harness.manager.acquireWorkspace({ workspaceId: 'ws-a', workspaceRoot: harness.workspaceRoot, editingSessionId: 'browser-1' });
+        expect(later.ok).toBe(true);
+        if (later.ok) {
+            expect(later.handles.map(handle => handle.definition.id)).toEqual(['python', 'semantic', 'fallback']);
+            later.handles.forEach(handle => handle.release());
+        }
     });
 
     it('shares a session with an open document rather than starting a second', () => {
@@ -309,17 +299,11 @@ describe('LanguageServerManager workspace acquire', () => {
         workspace.handles.forEach(({ release }) => release());
     });
 
-    it('reports disabled when language support is off for the workspace', () => {
-        const harness = createHarness([echoDefinition()], { enabled: false });
-        const result = harness.manager.acquireWorkspace({
-            workspaceId: 'ws-a',
-            workspaceRoot: harness.workspaceRoot,
-            editingSessionId: 'browser-1',
-        });
-        expect(result.ok).toBe(false);
-        if (!result.ok) {
-            expect(result.reason).toBe('disabled');
-        }
+    it('reports no definition for an empty workspace symbol query', () => {
+        const harness = createHarness();
+        fs.unlinkSync(path.join(harness.workspaceRoot, 'notes.txt'));
+        const result = harness.manager.acquireWorkspace({ workspaceId: 'ws-a', workspaceRoot: harness.workspaceRoot, editingSessionId: 'browser' });
+        expect(result).toMatchObject({ ok: false, reason: 'no-definition' });
     });
 
     it('releases everything it did acquire when one definition hits the cap', () => {
@@ -372,7 +356,7 @@ describe('LanguageServerManager session identity', () => {
 
     it('hands the symbol index the database for the workspace being acquired', () => {
         const binary = path.join(path.sep, 'opt', 'coc', 'coc-symbols-lsp');
-        const harness = createHarness([{ ...COC_SYMBOLS_PRESET }], {
+        const harness = createHarness([{ ...COC_SYMBOLS_PRESET, priority: 200 }], {
             prepareDeps: { resolveSymbolsLspBinary: () => binary },
         });
         const result = harness.manager.acquire({
@@ -394,7 +378,7 @@ describe('LanguageServerManager session identity', () => {
     });
 
     it('shares a workspace-scoped definition across browser editing sessions', () => {
-        const harness = createHarness([{ ...CLANGD_PRESET, enabled: true }], {
+        const harness = createHarness([{ ...CLANGD_PRESET }], {
             prepareDeps: {
                 resolveOnPath: () => undefined,
                 isExecutable: () => false,
@@ -457,17 +441,19 @@ describe('LanguageServerManager session identity', () => {
         expect(harness.created).toHaveLength(1);
     });
 
-    it.runIf(process.platform === 'win32')('isolates Windows aliases of the same document', () => {
+    it('keeps unresolved spelling aliases as distinct documents on every platform', () => {
+        // Aliases need filesystem proof from /file-identity; the manager never
+        // folds case or trailing dots/spaces lexically, even on Windows.
         const definition = echoDefinition({ sessionScope: 'workspace' });
         const harness = createHarness([definition]);
         const first = acquireTxt(harness, 'browser-1', 'src/shared.txt');
-        const second = acquireTxt(harness, 'browser-2', 'SRC./SHARED.TXT. ');
+        const second = acquireTxt(harness, 'browser-2', 'SRC/shared.txt');
 
         expect(first.ok && second.ok).toBe(true);
         if (!first.ok || !second.ok) {
             return;
         }
-        expect(second.handle.session).not.toBe(first.handle.session);
+        expect(second.handle.session).toBe(first.handle.session);
     });
 
     it('gives each project root its own session within one editing session', () => {
@@ -486,7 +472,7 @@ describe('LanguageServerManager session identity', () => {
     });
 
     it('reuses one Rust session across Cargo workspace crates and isolates a standalone crate', () => {
-        const harness = createHarness([{ ...RUST_PRESET, enabled: true }], {
+        const harness = createHarness([{ ...RUST_PRESET }], {
             prepareDeps: {
                 runRustupWhich: () => undefined,
                 resolveOnPath: () => undefined,
@@ -539,7 +525,7 @@ describe('LanguageServerManager session identity', () => {
     });
 
     it('shares Python sessions within a project and isolates nested projects', () => {
-        const harness = createHarness([{ ...PYTHON_PRESET, enabled: true }], {
+        const harness = createHarness([{ ...PYTHON_PRESET }], {
             prepareDeps: {
                 resolveBundled: () => '/coc/pyright/langserver.index.js',
                 nodePath: '/node',
@@ -583,53 +569,10 @@ describe('LanguageServerManager session identity', () => {
         expect(separate.handle.session).not.toBe(first.handle.session);
     });
 
-    it.each([
-        { enabled: false, definition: { ...PYTHON_PRESET, enabled: true } },
-        { enabled: true, definition: { ...PYTHON_PRESET, enabled: false } },
-    ])('does not discover Python tooling when an opt-in switch is disabled', ({ enabled, definition }) => {
-        let discoveries = 0;
-        const discover = (): false => {
-            discoveries++;
-            return false;
-        };
-        const harness = createHarness([definition], {
-            enabled,
-            exists: discover,
-            prepareDeps: {
-                exists: discover,
-                isExecutable: discover,
-                realpath: (candidate) => {
-                    discoveries++;
-                    return candidate;
-                },
-                resolveBundled: () => {
-                    discoveries++;
-                    return undefined;
-                },
-                resolveOnPath: () => {
-                    discoveries++;
-                    return undefined;
-                },
-            },
-        });
-
-        const result = harness.manager.acquire({
-            workspaceId: 'ws-a',
-            workspaceRoot: harness.workspaceRoot,
-            editingSessionId: 'browser-1',
-            relativePath: 'src/main.py',
-        });
-
-        expect(result.ok).toBe(false);
-        expect(discoveries).toBe(0);
-        expect(harness.created).toHaveLength(0);
-    });
-
     it('keeps workspaces apart even when the relative path matches', () => {
         const harness = createHarness();
         const other = tempDir('coc-lsp-manager-repo-b-');
         writeLanguageServerConfig(harness.dataDir, 'ws-b', {
-            enabled: true,
             definitions: [echoDefinition()],
         });
         const first = acquireTxt(harness, 'browser-1', 'src/notes.txt', 'ws-a');
@@ -650,6 +593,19 @@ describe('LanguageServerManager session identity', () => {
 });
 
 describe('LanguageServerManager capacity', () => {
+    it('keeps the default 8-workspace and 24-host budgets with default-on built-ins', () => {
+        const harness = createHarness([]);
+        for (const workspaceId of ['one', 'two', 'three']) {
+            for (let index = 0; index < 8; index++) {
+                expect(harness.manager.acquire({ workspaceId, workspaceRoot: harness.workspaceRoot, editingSessionId: `browser-${index}`, relativePath: 'main.ts' }).ok).toBe(true);
+            }
+            expect(harness.manager.acquire({ workspaceId, workspaceRoot: harness.workspaceRoot, editingSessionId: 'ninth', relativePath: 'main.py' })).toMatchObject({ ok: false, reason: 'capacity' });
+        }
+        expect(harness.manager.size).toBe(24);
+        expect(harness.manager.acquire({ workspaceId: 'four', workspaceRoot: harness.workspaceRoot, editingSessionId: 'browser', relativePath: 'main.rs' })).toMatchObject({ ok: false, reason: 'capacity' });
+        expect(harness.closed).toEqual([]);
+    });
+
     it('enforces the global cap and evicts only after a held session is released', () => {
         const harness = createHarness([echoDefinition()], { maxSessions: 3 });
         const first = acquireTxt(harness, 'browser-1');
@@ -702,7 +658,6 @@ describe('LanguageServerManager capacity', () => {
         });
         const otherRoot = tempDir('coc-lsp-manager-capacity-repo-b-');
         writeLanguageServerConfig(harness.dataDir, 'ws-b', {
-            enabled: true,
             definitions: [echoDefinition()],
         });
 
@@ -730,7 +685,6 @@ describe('LanguageServerManager capacity', () => {
         });
         const otherRoot = tempDir('coc-lsp-manager-victim-repo-b-');
         writeLanguageServerConfig(harness.dataDir, 'ws-b', {
-            enabled: true,
             definitions: [echoDefinition()],
         });
         const firstA = acquireTxt(harness, 'browser-a1');
@@ -787,7 +741,6 @@ describe('LanguageServerManager capacity', () => {
         const harness = createHarness([echoDefinition({ maxSessions: 1 })], { maxSessions: 24 });
         const otherRoot = tempDir('coc-lsp-manager-limit-repo-');
         writeLanguageServerConfig(harness.dataDir, 'ws-b', {
-            enabled: true,
             definitions: [echoDefinition({ maxSessions: 1 })],
         });
 
@@ -926,10 +879,10 @@ describe('LanguageServerManager configuration changes', () => {
         expect(harness.manager.size).toBe(1);
     });
 
-    it('closes a session when language support is turned off', async () => {
+    it('closes a session when its custom definition is removed', async () => {
         const harness = createHarness();
         expect(acquireTxt(harness, 'browser-1').ok).toBe(true);
-        harness.setConfig([echoDefinition()], false);
+        harness.setConfig([]);
         await Promise.resolve();
         await Promise.resolve();
         expect(harness.manager.size).toBe(0);
@@ -940,7 +893,6 @@ describe('LanguageServerManager configuration changes', () => {
         const harness = createHarness();
         const other = tempDir('coc-lsp-manager-repo-c-');
         writeLanguageServerConfig(harness.dataDir, 'ws-b', {
-            enabled: true,
             definitions: [echoDefinition()],
         });
         expect(acquireTxt(harness, 'browser-1').ok).toBe(true);
@@ -964,7 +916,6 @@ describe('LanguageServerManager teardown', () => {
         const harness = createHarness();
         const other = tempDir('coc-lsp-manager-repo-d-');
         writeLanguageServerConfig(harness.dataDir, 'ws-b', {
-            enabled: true,
             definitions: [echoDefinition()],
         });
         acquireTxt(harness, 'browser-1');
@@ -1065,7 +1016,7 @@ describe('LanguageServerManager runtime preparation', () => {
 
     it('hands the session the resolved TypeScript runtime instead of the bare command', () => {
         const workspaceRoot = tempDir('coc-lsp-ts-repo-');
-        const harness = createHarness([{ ...TYPESCRIPT_PRESET, enabled: true }], {
+        const harness = createHarness([{ ...TYPESCRIPT_PRESET }], {
             prepareDeps: typescriptDeps(workspaceRoot),
         });
         const result = harness.manager.acquire({
@@ -1091,7 +1042,7 @@ describe('LanguageServerManager runtime preparation', () => {
     });
 
     it('forwards Rust install guidance without exposing a host path', () => {
-        const harness = createHarness([{ ...RUST_PRESET, enabled: true }], {
+        const harness = createHarness([{ ...RUST_PRESET }], {
             prepareDeps: {
                 runRustupWhich: () => undefined,
                 resolveOnPath: () => undefined,
@@ -1114,7 +1065,7 @@ describe('LanguageServerManager runtime preparation', () => {
     });
 
     it('applies definition request and idle timeouts to the session', () => {
-        const harness = createHarness([{ ...CLANGD_PRESET, enabled: true }], {
+        const harness = createHarness([{ ...CLANGD_PRESET }], {
             prepareDeps: {
                 resolveOnPath: () => undefined,
                 isExecutable: () => false,

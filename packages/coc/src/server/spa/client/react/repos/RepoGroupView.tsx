@@ -29,7 +29,6 @@ import { RefreshSidebarButton } from '../features/chat/RefreshSidebarButton';
 import { SplitWorkspacePanel } from '../features/repo-detail/SplitWorkspacePanel';
 import { GroupRailGitView } from '../features/repo-detail/RailGitSummary';
 import { useGroupRailGit } from '../features/repo-detail/useRailGitSummary';
-import { useRailGitSummaryEnabled } from '../hooks/feature-flags/useRailGitSummaryEnabled';
 import { UnifiedRightPanel } from '../features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { ContentSearchOverlayHost } from '../features/repo-detail/content-search/ContentSearchOverlayHost';
 import type { ContentSearchOverlayMatch } from '../features/repo-detail/content-search/ContentSearchOverlay';
@@ -48,6 +47,8 @@ import { resolveRepoGroupName, resolveRepoGroupDisplayName } from './repoGroupNa
 import type { RepoGroupMember } from './repoGroupService';
 import { RepoGroupGitTab } from './RepoGroupGitTab';
 import { RepoGroupSettingsTab } from './RepoGroupSettingsTab';
+import { WorkspaceSettingsProvider, WorkspaceSettingsSlot } from '../features/repo-settings/WorkspaceSettingsHost';
+import { WorkspaceSettingsApiProvider } from '../features/repo-settings/workspaceSettingsClient';
 import { useRepoGroupMembers } from './useRepoGroupMembers';
 import { useWorkspaceDock, type DockTarget } from '../features/repo-detail/useWorkspaceDock';
 import { setWorkspaceDockExpanded, useWorkspaceDockExpanded } from '../features/repo-detail/WorkspaceDockToggle';
@@ -232,8 +233,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     const members = useRepoGroupMembers(workspaceId, groupBaseUrl,
         !aggregatedChats || !parseRemoteCloneKey(selectionId) || !!groupBaseUrl);
     const splitGitAvailable = isMobile || members === undefined || members.some(member => !member.stale);
-    const railGitEnabled = useRailGitSummaryEnabled();
-    const railGitStatus = useGroupRailGit({ client: queueClient, routingRef: selectionId, members, enabled: railGitEnabled });
+    const railGitStatus = useGroupRailGit({ client: queueClient, routingRef: selectionId, members, enabled: splitGitAvailable });
     const refreshSidebarGit = useCallback(() => railGitStatus.refresh(true), [railGitStatus.refresh]);
     const toast = useContext(ToastContext);
     const refreshUnavailableGroup = useCallback(async () => {
@@ -337,6 +337,11 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     );
 
     return (
+        <WorkspaceSettingsProvider ownerKey={selectionId} topLevelActive={activeTab === 'settings'}
+            renderPage={inPanel => <WorkspaceSettingsApiProvider workspaceId={workspaceId} selectionId={selectionId}>
+                <RepoGroupSettingsTab workspaceId={workspaceId} selectionId={selectionId}
+                    baseUrl={groupBaseUrl} active={activeTab === 'settings' || inPanel} navigation={inPanel ? 'local' : 'route'} />
+            </WorkspaceSettingsApiProvider>}>
         <UnifiedPanelHostProvider host={unifiedPanelHost}>
         <div className="flex flex-col h-full" data-testid="repo-group-view" data-workspace={workspaceId}>
             {isMobile
@@ -369,7 +374,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                     routeId: selectionId,
                                     scopeKey: `${selectionId}:${workspaceReadSource(queueClient)}:${activeTab}`,
                                 }}
-                                railGit={railGitEnabled && splitGitAvailable ? (
+                                railGit={splitGitAvailable ? (
                                     <GroupRailGitView
                                         key={`${selectionId}:${workspaceReadSource(queueClient)}`}
                                         selectionId={selectionId}
@@ -469,12 +474,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                         />
                     </div>
                     <div style={{ display: activeTab === 'settings' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                        <RepoGroupSettingsTab
-                            workspaceId={workspaceId}
-                            selectionId={selectionId}
-                            baseUrl={groupBaseUrl}
-                            active={activeTab === 'settings'}
-                        />
+                        <WorkspaceSettingsSlot />
                     </div>
                 </div>
                 {dockAvailable && (
@@ -503,5 +503,6 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
             />
         </div>
         </UnifiedPanelHostProvider>
+        </WorkspaceSettingsProvider>
     );
 }

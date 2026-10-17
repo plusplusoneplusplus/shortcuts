@@ -1,3 +1,4 @@
+import '../../language-servers/fileIdentityMock';
 // @vitest-environment jsdom
 /**
  * AC-03 (keyboard): Ctrl+Tab / Ctrl+Shift+Tab MRU cycling and scoped Ctrl/Cmd+W

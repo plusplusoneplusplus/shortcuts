@@ -39,6 +39,34 @@ const WS = 'repo-a';
 const CHAT_1 = 'chat-1';
 const CHAT_2 = 'chat-2';
 
+describe('Settings tabs', () => {
+    const settings: OpenUnifiedTabInput = {
+        kind: 'settings', ownerWorkspaceId: WS, ownerRoutingRef: null,
+        chatId: CHAT_1, resourceId: 'settings', label: 'Settings',
+    };
+
+    it('focuses one workspace-owned Settings tab across chats and preserves concrete owner identity', () => {
+        let state = openTab(EMPTY_UNIFIED_PANEL, settings);
+        const id = activeTabId(state, CHAT_1);
+        state = openTab(state, { ...settings, chatId: CHAT_2 });
+        expect(state.workspaceTabs).toHaveLength(1);
+        expect(activeTabId(state, CHAT_2)).toBe(id);
+        expect(scopeForKind('settings')).toBe('workspace');
+        expect(displayGroupForKind('settings')).toBe('tools');
+        state = openTab(state, { ...settings, ownerRoutingRef: 'remote:server-a:repo-a' });
+        state = openTab(state, { ...settings, ownerRoutingRef: 'remote:server-b:repo-a' });
+        expect(state.workspaceTabs).toHaveLength(3);
+        expect(new Set(state.workspaceTabs.map(tab => tab.id)).size).toBe(3);
+    });
+
+    it('persists only the owner descriptor, restores and closes like an ordinary tab', () => {
+        const state = openTab(EMPTY_UNIFIED_PANEL, settings);
+        const restored = parseUnifiedPanelState(serializeUnifiedPanelState(state));
+        expect(restored.workspaceTabs).toEqual(state.workspaceTabs);
+        expect(closeTab(restored, state.workspaceTabs[0].id).workspaceTabs).toEqual([]);
+    });
+});
+
 describe('paste tabs', () => {
     const content = '# Pasted heading\n\nFull content — including Unicode 📝';
     const input = pasteOpenInput(content, { ownerWorkspaceId: WS, chatId: CHAT_1 });

@@ -1,5 +1,6 @@
+import { CocToolRuntime } from '@plusplusoneplusplus/coc-agent-sdk';
 import { describe, it, expect } from 'vitest';
-import { createSuggestFollowUpsTool } from '../../../src/server/llm-tools/suggest-follow-ups-tool';
+import { createSuggestFollowUpsTool, SENTINEL_NEXT_STEPS_GUIDANCE } from '../../../src/server/llm-tools/suggest-follow-ups-tool';
 
 describe('createSuggestFollowUpsTool', () => {
     it('returns a tool with name "suggest_follow_ups"', () => {
@@ -53,6 +54,36 @@ describe('createSuggestFollowUpsTool', () => {
         const input = { suggestions: ['How does auth work?', 'Show me the API routes', 'Generate the fix'] };
         const result = await tool.handler(input);
         expect(result).toEqual(input);
+    });
+
+    it('keeps added Sentinel guidance within 45 words and optional', () => {
+        expect(SENTINEL_NEXT_STEPS_GUIDANCE.split(/\s+/).length).toBeLessThanOrEqual(45);
+        expect(SENTINEL_NEXT_STEPS_GUIDANCE).toMatch(/^When useful/);
+        expect(SENTINEL_NEXT_STEPS_GUIDANCE).toContain('Suggesting grants no execution authority');
+        const tool = createSuggestFollowUpsTool(true);
+        expect(tool.description).not.toMatch(/exactly 3|At the end of your response/);
+        expect(tool.description).toContain('distinct imperative');
+        expect(tool.description).toContain('full answer as normal visible text before calling this tool');
+    });
+
+    it.each([1, 2, 3])('accepts %i Sentinel actions without changing count or order', async count => {
+        const tool = createSuggestFollowUpsTool(true);
+        const suggestions = ['Finish safeguards', 'Run checks', 'Commit changes'].slice(0, count);
+        expect((tool.parameters as any).properties.suggestions).toMatchObject({ minItems: 1, maxItems: 3 });
+        const runtime = new CocToolRuntime([tool]);
+        expect(runtime.listTools()[0].inputSchema).toEqual(tool.parameters);
+        const result = await runtime.callTool(tool.name, { suggestions });
+        expect(result.isError).not.toBe(true);
+        expect(JSON.parse((result.content[0] as any).text)).toEqual({ suggestions });
+        runtime.dispose();
+    });
+
+    it.each([{ suggestions: [] }, { suggestions: ['A', 'B', 'C', 'D'] }, { suggestions: [42] }])('rejects invalid Sentinel actions $suggestions through the handler', async ({ suggestions }) => {
+        const runtime = new CocToolRuntime([createSuggestFollowUpsTool(true)]);
+        const result = await runtime.callTool('suggest_follow_ups', { suggestions });
+        expect(result.isError).toBe(true);
+        expect((result.content[0] as any).text).toContain('Expected 1–3');
+        runtime.dispose();
     });
 
 });

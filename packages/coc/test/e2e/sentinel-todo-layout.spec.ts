@@ -142,7 +142,11 @@ for (const dark of [false, true]) {
                     expect(box.x + box.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 1);
                 }
             }
-            expect(await links.nth(1).evaluate(element => element.getBoundingClientRect().height > parseFloat(getComputedStyle(element).lineHeight))).toBe(true);
+            // The title keeps one bounded line (full text in its tooltip); job facts wrap below it.
+            expect(await links.nth(1).evaluate(element => ({
+                ellipsis: getComputedStyle(element).textOverflow === 'ellipsis',
+                truncated: element.scrollWidth > element.clientWidth,
+            }))).toEqual({ ellipsis: true, truncated: true });
             expect(await jobs.getByText(`· Review failed: ${longReason}`, { exact: true }).evaluate(element =>
                 element.getBoundingClientRect().height > parseFloat(getComputedStyle(element).lineHeight))).toBe(true);
         }

@@ -37,7 +37,7 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
     suggest_follow_ups: {
         type: 'object',
         properties: {
-            suggestions: { type: 'array', items: { type: 'string' } },
+            suggestions: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 3 },
         },
         required: ['suggestions'],
     },

@@ -6,7 +6,8 @@
  * module so the Settings tab does not have to import the view that renders it.
  */
 import { useEffect, useState } from 'react';
-import { getRepoGroup, type RepoGroupMember } from './repoGroupService';
+import { getRepoGroup, type RepoGroupDetails, type RepoGroupMember } from './repoGroupService';
+import { useWorkspaceOwner } from './workspaceOwnerContext';
 
 /**
  * Fetch the group's members. Returns `undefined` while the request is in flight
@@ -21,6 +22,7 @@ export function useRepoGroupMembers(
     baseUrl: string | undefined,
     enabled: boolean,
 ): RepoGroupMember[] | undefined {
+    const client = useWorkspaceOwner(workspaceId)?.client;
     const [members, setMembers] = useState<RepoGroupMember[] | undefined>(undefined);
     useEffect(() => {
         if (!enabled) {
@@ -33,7 +35,7 @@ export function useRepoGroupMembers(
         // no client for this base URL yet), which would otherwise escape the
         // effect and tear down whichever view mounted us.
         try {
-            getRepoGroup(workspaceId, baseUrl)
+            (client ? client.request<RepoGroupDetails>(`/repo-groups/${encodeURIComponent(workspaceId)}`) : getRepoGroup(workspaceId, baseUrl))
                 .then(group => {
                     if (!cancelled) setMembers(group.members ?? []);
                 })
@@ -44,6 +46,6 @@ export function useRepoGroupMembers(
             setMembers(undefined);
         }
         return () => { cancelled = true; };
-    }, [workspaceId, baseUrl, enabled]);
+    }, [workspaceId, baseUrl, enabled, client]);
     return members;
 }

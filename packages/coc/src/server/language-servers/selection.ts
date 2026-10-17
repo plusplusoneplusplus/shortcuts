@@ -10,7 +10,7 @@ import {
 import type { LanguageServerDefinition } from './types';
 
 /**
- * Return every enabled server that claims a document, in deterministic
+ * Return every server that claims a document, in deterministic
  * preference order: highest priority, then the most specific matching pattern,
  * then the lexicographically smallest id.
  */
@@ -19,7 +19,6 @@ export function selectDefinitionsForFile(
     relativePath: string,
 ): LanguageServerDefinition[] {
     return definitions
-        .filter((definition) => definition.enabled !== false)
         .map((definition) => ({
             definition,
             pattern: bestMatchingPattern(definition.filePatterns, relativePath),
@@ -31,7 +30,7 @@ export function selectDefinitionsForFile(
 }
 
 /**
- * Every enabled server, in the same preference order, for a query that names no
+ * Every server, in the same preference order, for a query that names no
  * document at all — the Go To All palette asking a workspace-wide question.
  *
  * Selection is by definition rather than by file pattern deliberately: a
@@ -42,7 +41,6 @@ export function selectDefinitionsForWorkspace(
     definitions: LanguageServerDefinition[],
 ): LanguageServerDefinition[] {
     return definitions
-        .filter((definition) => definition.enabled !== false)
         .map((definition) => ({ definition, pattern: '' }))
         .sort(comparePreference)
         .map((entry) => entry.definition);
@@ -80,7 +78,7 @@ export function resolveLanguageId(definition: LanguageServerDefinition, relative
     return definition.extensionLanguageIds?.[fileExtension(relativePath)] ?? definition.languageIds[0];
 }
 
-/** True when the definition claims the file, ignoring the enabled flag. */
+/** True when the definition claims the file. */
 export function definitionMatchesFile(definition: LanguageServerDefinition, relativePath: string): boolean {
     return definition.filePatterns.some((pattern) => matchesPattern(pattern, relativePath));
 }

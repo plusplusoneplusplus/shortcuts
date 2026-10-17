@@ -5,13 +5,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { TaskSettings } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useWorkspaceSettingsClient } from './workspaceSettingsClient';
 
 interface TasksSettingsSectionProps {
     workspaceId: string;
 }
 
 export function TasksSettingsSection({ workspaceId }: TasksSettingsSectionProps) {
+    const client = useWorkspaceSettingsClient(workspaceId);
     const [primaryPath, setPrimaryPath] = useState('');
     const [folderPaths, setFolderPaths] = useState<string[]>([]);
     const [defaultPaths, setDefaultPaths] = useState<string[]>([]);
@@ -22,7 +23,7 @@ export function TasksSettingsSection({ workspaceId }: TasksSettingsSectionProps)
 
     const loadSettings = useCallback(async () => {
         try {
-            const data: TaskSettings = await getSpaCocClient().preferences.getTaskSettings(workspaceId);
+            const data: TaskSettings = await client.preferences.getTaskSettings(workspaceId);
             setPrimaryPath(data.taskRootPath || '');
             setFolderPaths(data.folderPaths || []);
             setDefaultPaths(data.hasDefaultFolderPaths ? (data.folderPaths || []) : []);
@@ -32,7 +33,7 @@ export function TasksSettingsSection({ workspaceId }: TasksSettingsSectionProps)
         } finally {
             setLoading(false);
         }
-    }, [workspaceId]);
+    }, [workspaceId, client]);
 
     useEffect(() => { loadSettings(); }, [loadSettings]);
 
@@ -41,7 +42,7 @@ export function TasksSettingsSection({ workspaceId }: TasksSettingsSectionProps)
         setError(null);
         setDefaultPaths([]);
         try {
-            const data = await getSpaCocClient().preferences.updateTaskSettings(
+            const data = await client.preferences.updateTaskSettings(
                 workspaceId,
                 { folderPaths: paths },
             );
@@ -51,7 +52,7 @@ export function TasksSettingsSection({ workspaceId }: TasksSettingsSectionProps)
         } finally {
             setSaving(false);
         }
-    }, [workspaceId]);
+    }, [workspaceId, client]);
 
     const handleAdd = useCallback(() => {
         const trimmed = newInput.trim();

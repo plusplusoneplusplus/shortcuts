@@ -20,6 +20,8 @@ import { useWorkspaceDock } from './useWorkspaceDock';
 import { WorkspaceDockToggle, setWorkspaceDockExpanded, useWorkspaceDockExpanded } from './WorkspaceDockToggle';
 import { StatusActions } from '../../layout/StatusActions';
 import { RepoSettingsTab } from '../repo-settings/RepoSettingsTab';
+import { WorkspaceSettingsProvider, WorkspaceSettingsSlot } from '../repo-settings/WorkspaceSettingsHost';
+import { WorkspaceSettingsApiProvider } from '../repo-settings/workspaceSettingsClient';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
 import { PullRequestsTab } from '../pull-requests/PullRequestsTab';
 import { WorkItemsTab } from '../work-items/WorkItemsTab';
@@ -44,7 +46,6 @@ import { getRepoGroupServerName } from '../../repos/repoGroupName';
 import { useGitInfo } from '../git/hooks/useGitInfo';
 import { RepoRailGitView } from './RailGitSummary';
 import { useRepoRailGit } from './useRailGitSummary';
-import { useRailGitSummaryEnabled } from '../../hooks/feature-flags/useRailGitSummaryEnabled';
 import { useTerminalEnabled } from '../../hooks/feature-flags/useTerminalEnabled';
 import { useNotesEnabled } from '../notes/hooks/useNotesEnabled';
 import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabled';
@@ -148,8 +149,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const railScopeLabel = `${getRepoGroupServerName(ws)} / ${ws.name}`;
     const { ahead: gitAhead, behind: gitBehind } = useGitInfo(ws.id);
     const isGitRepo = !!repo.gitInfo?.isGitRepo;
-    const railGitEnabled = useRailGitSummaryEnabled();
-    const railGitStatus = useRepoRailGit({ client: queueClient, routingRef: sourceSelectionId, workspaceId: ws.id, enabled: railGitEnabled && isGitRepo });
+    const railGitStatus = useRepoRailGit({ client: queueClient, routingRef: sourceSelectionId, workspaceId: ws.id, enabled: isGitRepo });
     const refreshSidebarGit = useCallback(() => railGitStatus.refresh(true), [railGitStatus.refresh]);
     const terminalEnabled = useTerminalEnabled();
     const notesEnabled = useNotesEnabled();
@@ -487,6 +487,11 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     ) : undefined;
 
     return (
+        <WorkspaceSettingsProvider ownerKey={sourceSelectionId} topLevelActive={activeSubTab === 'settings'}
+            renderPage={inPanel => <WorkspaceSettingsApiProvider workspaceId={ws.id} selectionId={sourceSelectionId}>
+                <RepoSettingsTab workspaceId={ws.id} repo={repo} selectionId={sourceSelectionId}
+                    navigation={inPanel ? 'local' : 'route'} dockStatusFooter={!inPanel} />
+            </WorkspaceSettingsApiProvider>}>
         <UnifiedPanelHostProvider host={unifiedPanelHost}>
         <div id="repo-detail-content" className="flex flex-col h-full min-h-0 min-w-0">
             {/* Header — desktop only; on mobile the repo name lives in MobileTabBar leadingSlot.
@@ -764,7 +769,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                     </div>
                 ) : (
                     <div className={cn("flex flex-col flex-1 min-h-0 min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' || activeSubTab === 'dreams' || activeSubTab === 'cli-sessions' || activeSubTab === 'copilot-sessions' ? "overflow-hidden" : "overflow-y-auto")}>
-                        {activeSubTab === 'settings' && <RepoSettingsTab key={ws.id} workspaceId={ws.id} repo={repo} dockStatusFooter />}
+                        {activeSubTab === 'settings' && <WorkspaceSettingsSlot />}
                         {activeSubTab === 'workflows' && <TemplatesTab key={ws.id} repo={repo} />}
                             <div style={{ display: (activeSubTab === 'activity' || activeSubTab === 'chats') ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 <SplitWorkspacePanel
@@ -780,7 +785,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                         routeId: sourceSelectionId,
                                         scopeKey: `${sourceSelectionId}:${workspaceReadSource(queueClient)}:${activeSubTab}`,
                                     }}
-                                    railGit={railGitEnabled && isGitRepo ? (
+                                    railGit={isGitRepo ? (
                                         <RepoRailGitView
                                             key={`${sourceSelectionId}:${workspaceReadSource(queueClient)}`}
                                             workspaceId={ws.id}
@@ -935,5 +940,6 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
             />
         </div>
         </UnifiedPanelHostProvider>
+        </WorkspaceSettingsProvider>
     );
 }

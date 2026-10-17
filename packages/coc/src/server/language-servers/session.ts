@@ -25,8 +25,7 @@ import type { JsonValue, LanguageServerDefinition, LanguageServerPrimeDocument }
 /**
  * Concise state shown next to the editor.
  *
- * `disabled` covers both "turned off in settings" and "not running because
- * nothing needs it"; either way the session is idle and starts on demand.
+ * `disabled` means the session is idle and starts on demand.
  */
 export type LanguageServerStatus =
     | 'disabled'
@@ -256,10 +255,6 @@ export class LanguageServerSession {
     start(): Promise<void> {
         if (this.disposed) {
             return Promise.reject(new Error(`Language server ${this.definition.id} is disposed`));
-        }
-        if (this.definition.enabled === false) {
-            this.setState({ status: 'disabled', detail: 'Disabled in workspace settings' });
-            return Promise.reject(new Error(`Language server ${this.definition.id} is disabled`));
         }
         if (this.isReady) {
             return Promise.resolve();

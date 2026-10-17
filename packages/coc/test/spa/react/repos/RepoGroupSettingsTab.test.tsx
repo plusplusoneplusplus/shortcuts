@@ -74,6 +74,17 @@ describe('RepoGroupSettingsTab', () => {
         expect(screen.queryByTestId('repo-group-member-list')).toBeNull();
     });
 
+    it('retains a pending member description when the shared page is hidden and shown', async () => {
+        const view = render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
+        const input = await screen.findByTestId('repo-group-member-description-r2');
+        fireEvent.change(input, { target: { value: 'Pending description' } });
+        view.rerender(<RepoGroupSettingsTab workspaceId={GROUP_ID} active={false} />);
+        view.rerender(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
+        expect(screen.getByTestId('repo-group-member-description-r2')).toBe(input);
+        expect(input).toHaveValue('Pending description');
+        expect(mockGetRepoGroup).toHaveBeenCalledOnce();
+        expect(mockUpdateRepoGroup).not.toHaveBeenCalled();
+    });
     it('lists every member in the Member repos section with its name, path, stale badge and description', async () => {
         render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
         await waitFor(() => expect(mockGetRepoGroup).toHaveBeenCalledWith(GROUP_ID, undefined));

@@ -638,6 +638,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.sentinelNextSteps', default: false, runtime: 'live', runtimeFlag: 'sentinelNextStepsEnabled',
+        ui: {
+            tab: 'sentinel', group: 'sentinelMode', order: 32.1, label: 'Sentinel next steps', badge: 'experimental',
+            hint: 'Optional next actions with click-to-send in Sentinel chats. Disabled by default.',
+            testId: 'toggle-sentinel-next-steps',
+        },
+    }),
+    bool({
         key: 'features.sentinelTodoDependencies', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoDependenciesEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.55, label: 'Sentinel To-do dependencies', badge: 'experimental',
@@ -651,6 +659,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             tab: 'sentinel', group: 'sentinelTodos', order: 32.56, label: 'Sentinel To-do tags', badge: 'experimental',
             hint: 'Parent-scoped user-defined tracking tags with best-effort matching. Tags never grant execution authority. Disabled by default.',
             testId: 'toggle-sentinel-todo-tags-enabled',
+        },
+    }),
+    bool({
+        key: 'features.sentinelTodoDateTimeTriggers', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoDateTimeTriggersEnabled',
+        ui: {
+            tab: 'sentinel', group: 'sentinelTodos', order: 32.57, label: 'To-do date/time triggers', badge: 'experimental',
+            hint: 'Allow one-time dated rules to wake their owning Sentinel. Does not authorize jobs.',
+            testId: 'toggle-sentinel-todo-date-time-triggers',
         },
     }),
     bool({
@@ -1048,11 +1064,11 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.railGitSummary', default: false, runtime: 'live', runtimeFlag: 'railGitSummaryEnabled',
+        key: 'features.adminMachineSwitch', default: false, runtime: 'live', runtimeFlag: 'adminMachineSwitchEnabled',
         ui: {
-            tab: 'appearance', group: 'uiGeneral', order: 73, label: 'Git on collapsed sidebar', badge: 'experimental',
-            hint: 'Shows working-tree changes, upstream sync and the current branch on the collapsed workspace sidebar, with hover/focus previews. Repo groups list each member repository. Disabled by default.',
-            testId: 'toggle-rail-git-summary-enabled',
+            group: 'dashboard', order: 68, label: 'Configure another machine from Admin', badge: 'experimental',
+            hint: 'Adds a "Configure machine" selector to the CoC Desktop Admin dialog, so server-owned Admin pages can target a registered remote server. Workspaces, chats and the desktop connection are unchanged. Disabled by default.',
+            testId: 'toggle-admin-machine-switch-enabled',
         },
     }),
     bool({
@@ -1222,6 +1238,22 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             tab: 'appearance', group: 'editorFiles', order: 20, label: 'Markdown panel preview', badge: 'experimental',
             hint: 'Open Markdown file tabs in the unified right panel as rendered Markdown, with a switch to the raw editor. Disabled by default.',
             testId: 'toggle-markdown-panel-preview-enabled',
+        },
+    }),
+    bool({
+        key: 'features.panelSourceSplit', default: false, runtime: 'live', runtimeFlag: 'panelSourceSplitEnabled',
+        ui: {
+            tab: 'appearance', group: 'editorFiles', order: 30, label: 'Side-by-side source files', badge: 'experimental',
+            hint: 'Drag a file tab to the right edge of the unified right panel, or use its tab menu, to view and edit two source files side by side. The split lasts for the current session. Disabled by default.',
+            testId: 'toggle-panel-source-split-enabled',
+        },
+    }),
+    bool({
+        key: 'features.panelSettings', default: false, runtime: 'live', runtimeFlag: 'panelSettingsEnabled',
+        ui: {
+            tab: 'appearance', group: 'editorFiles', order: 35, label: 'Settings panel tab', badge: 'experimental',
+            hint: 'Add Settings to the right-panel add-tab menu, sharing the workspace Settings page and its pending edits. Disabled by default.',
+            testId: 'toggle-panel-settings-enabled',
         },
     }),
     bool({

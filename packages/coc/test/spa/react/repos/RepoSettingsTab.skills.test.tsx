@@ -8,6 +8,7 @@ import { useEffect } from 'react';
 import type { SettingsSection } from '../../../../src/server/spa/client/react/types/dashboard';
 
 const mockFetchApi = vi.hoisted(() => vi.fn());
+const mockToast = vi.hoisted(() => vi.fn());
 const mockClient = vi.hoisted(() => ({
     skills: {
         listWorkspace: vi.fn(),
@@ -28,6 +29,8 @@ const mockClient = vi.hoisted(() => ({
     workspaces: {
         getMcpConfig: vi.fn(),
         updateMcpConfig: vi.fn(),
+        getInstructions: vi.fn(),
+        updateInstruction: vi.fn(),
     },
 }));
 
@@ -50,7 +53,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/contexts/ToastContext', () => ({
-    useGlobalToast: () => ({ addToast: vi.fn() }),
+    useGlobalToast: () => ({ addToast: mockToast }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
@@ -111,16 +114,21 @@ async function renderSettingsTab({
     workspaceId = 'ws-1',
     initialSection,
     dockStatusFooter,
+    panel = false,
 }: {
     workspaceId?: string;
     initialSection?: SettingsSection;
     dockStatusFooter?: boolean;
+    panel?: boolean;
 } = {}) {
     const { RepoSettingsTab } = await import(
         '../../../../src/server/spa/client/react/features/repo-settings/RepoSettingsTab'
     );
     const { AppProvider, useApp } = await import(
         '../../../../src/server/spa/client/react/contexts/AppContext'
+    );
+    const { WorkspaceSettingsProvider, WorkspaceSettingsSlot } = await import(
+        '../../../../src/server/spa/client/react/features/repo-settings/WorkspaceSettingsHost'
     );
 
     function InitialSectionSetter() {
@@ -136,7 +144,11 @@ async function renderSettingsTab({
     return render(
         <AppProvider>
             <InitialSectionSetter />
-            <RepoSettingsTab workspaceId={workspaceId} repo={makeRepo(workspaceId) as any} dockStatusFooter={dockStatusFooter} />
+            {panel ? <WorkspaceSettingsProvider ownerKey={workspaceId} topLevelActive={false}
+                renderPage={inPanel => <RepoSettingsTab workspaceId={workspaceId} repo={makeRepo(workspaceId) as any}
+                    navigation={inPanel ? 'local' : 'route'} />}>
+                <WorkspaceSettingsSlot panel active ownerKey={workspaceId} />
+            </WorkspaceSettingsProvider> : <RepoSettingsTab workspaceId={workspaceId} repo={makeRepo(workspaceId) as any} dockStatusFooter={dockStatusFooter} />}
         </AppProvider>
     );
 }
@@ -164,6 +176,7 @@ describe('RepoSettingsTab skill expansion', () => {
         mockClient.preferences.patchRepo.mockResolvedValue({});
         mockClient.preferences.getTaskSettings.mockResolvedValue({});
         mockClient.workspaces.getMcpConfig.mockResolvedValue({ availableServers: [], enabledMcpServers: null });
+        mockClient.workspaces.getInstructions.mockResolvedValue({ base: null, ask: null, autopilot: null });
         mockClient.workspaces.updateMcpConfig.mockResolvedValue({});
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: true,
@@ -242,11 +255,37 @@ describe('RepoSettingsTab redesigned sidebar', () => {
         mockClient.preferences.patchRepo.mockResolvedValue({});
         mockClient.preferences.getTaskSettings.mockResolvedValue({});
         mockClient.workspaces.getMcpConfig.mockResolvedValue({ availableServers: [], enabledMcpServers: null });
+        mockClient.workspaces.getInstructions.mockResolvedValue({ base: null, ask: null, autopilot: null });
         mockClient.workspaces.updateMcpConfig.mockResolvedValue({});
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({ base: null, ask: null, plan: null, autopilot: null }),
         }));
+    });
+
+    it.each([false, true])('keeps full page navigation, instruction draft and failed/successful save behavior (panel=%s)', async panel => {
+        mockClient.workspaces.getInstructions.mockResolvedValue({ base: 'Saved instructions', ask: null, autopilot: null });
+        mockClient.workspaces.updateInstruction.mockRejectedValueOnce(new Error('Save rejected')).mockResolvedValueOnce({});
+        location.hash = '#repos/ws-1/chats';
+        await act(async () => { await renderSettingsTab({ panel, initialSection: 'instructions' }); });
+        for (const section of ['info', 'preferences', 'tasks', 'notes', 'language-servers', 'mcp', 'skills', 'llm-tools', 'instructions', 'memory']) {
+            expect(screen.getByTestId(`nav-item-${section}`)).toBeTruthy();
+        }
+        const input = await screen.findByTestId('instr-textarea-base');
+        expect(input).toHaveValue('Saved instructions');
+        fireEvent.change(input, { target: { value: 'x'.repeat(50 * 1024 + 1) } });
+        expect(screen.getByText(/exceeds limit/)).toBeTruthy();
+        fireEvent.change(input, { target: { value: 'Pending instructions' } });
+        await act(async () => { fireEvent.click(screen.getByTestId('instr-save-base')); });
+        expect(mockToast).toHaveBeenCalledWith('Save rejected', 'error');
+        expect(input).toHaveValue('Pending instructions');
+        expect(screen.getByTestId('instr-save-base')).not.toBeDisabled();
+        await act(async () => { fireEvent.click(screen.getByTestId('instr-save-base')); });
+        expect(mockToast).toHaveBeenCalledWith('Instructions saved', 'success');
+        expect(mockClient.workspaces.updateInstruction).toHaveBeenLastCalledWith('ws-1', 'base', { content: 'Pending instructions' });
+        await act(async () => { fireEvent.click(screen.getByTestId('nav-item-notes')); });
+        expect(screen.getByTestId('notes-settings-section')).toBeTruthy();
+        expect(location.hash).toBe(panel ? '#repos/ws-1/chats' : '#repos/ws-1/settings/notes');
     });
 
     it('renders Repository and Agent group labels in the sidebar', async () => {

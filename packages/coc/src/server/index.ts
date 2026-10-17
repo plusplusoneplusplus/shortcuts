@@ -619,6 +619,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         triggerInfra = await createTriggerInfrastructure({
             dataDir,
             getPrOutcomeEnabled: () => runtimeConfigService.config.features.sentinelPrOutcomeWake === true,
+            getDateTimeEnabled: () => runtimeConfigService.config.features.sentinelTodoDateTimeTriggers === true,
             queueFacade,
             deliveryBridge: bridge,
             recoverPendingMessages: (workspaceId, processId) => bridge.recoverPendingMessages(workspaceId, processId),
@@ -761,8 +762,12 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     let prevMyWorkEnabled = runtimeConfigService.config.myWork?.enabled ?? false;
     let prevMyLifeEnabled = runtimeConfigService.config.myLife?.enabled ?? false;
     let prevPrOutcomeEnabled = runtimeConfigService.config.features.sentinelPrOutcomeWake;
+    let prevDateTimeEnabled = runtimeConfigService.config.features.sentinelTodoDateTimeTriggers;
     runtimeConfigService.onChange((snapshot) => {
         const nextPrOutcomeEnabled = snapshot.config.features.sentinelPrOutcomeWake;
+        const nextDateTimeEnabled = snapshot.config.features.sentinelTodoDateTimeTriggers;
+        if (nextDateTimeEnabled !== prevDateTimeEnabled) triggerInfra?.triggerManager.refreshDateTime();
+        prevDateTimeEnabled = nextDateTimeEnabled;
         if (nextPrOutcomeEnabled !== prevPrOutcomeEnabled) {
             if (nextPrOutcomeEnabled) void triggerInfra?.sentinelPrOutcomes.restore()
                 .then(() => triggerInfra?.triggerManager.armAll())

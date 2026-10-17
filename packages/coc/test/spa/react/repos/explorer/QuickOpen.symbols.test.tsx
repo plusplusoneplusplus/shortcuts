@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 
 const symbolsState = {
     results: [] as unknown[],
@@ -33,7 +33,11 @@ vi.mock('../../../../../src/server/spa/client/react/features/language-servers/us
     useWorkspaceSymbols: (...args: unknown[]) => useWorkspaceSymbolsSpy(...(args as [])),
 }));
 
-import { QuickOpen } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/QuickOpen';
+import {
+    GO_TO_ALL_DEBOUNCE_MS,
+    QuickOpen,
+} from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/QuickOpen';
+import { explorerApi } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi';
 
 function symbol(over: Record<string, unknown> = {}) {
     return {
@@ -206,5 +210,72 @@ describe('QuickOpen in symbols mode', () => {
         expect(screen.getByTestId('quick-open-partial')).toBeTruthy();
         expect(screen.getByTestId('quick-open-indexing-note').textContent).toContain('still indexing');
         expect(screen.getByTestId('quick-open-repo-0').textContent).toBe('core');
+    });
+});
+
+describe('QuickOpen search debounce', () => {
+    const searchFiles = vi.mocked(explorerApi.searchFiles);
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        searchFiles.mockClear();
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    async function advance(ms: number) {
+        await act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+    }
+
+    it('gives Go To All a 500 ms debounce for symbol queries', () => {
+        expect(GO_TO_ALL_DEBOUNCE_MS).toBe(500);
+        renderPalette();
+        typeQuery('fwc');
+        expect(useWorkspaceSymbolsSpy.mock.calls.at(-1)?.[0]).toMatchObject({
+            query: 'fwc', open: true, debounceMs: 500,
+        });
+    });
+
+    it('keeps the Ctrl+P debounce short, even for a typed symbol prefix', () => {
+        renderPalette({ mode: 'files' });
+        typeQuery('t Loader');
+        expect(useWorkspaceSymbolsSpy.mock.calls.at(-1)?.[0]).toMatchObject({
+            query: 'Loader', open: true, debounceMs: 40,
+        });
+    });
+
+    it('waits 500 ms before a file search from Go To All, restarting on each keystroke', async () => {
+        renderPalette();
+        typeQuery('f tr');
+        await advance(499);
+        expect(searchFiles).not.toHaveBeenCalled();
+
+        // Typing again restarts the full delay.
+        typeQuery('f tree');
+        await advance(499);
+        expect(searchFiles).not.toHaveBeenCalled();
+
+        await advance(1);
+        expect(searchFiles).toHaveBeenCalledTimes(1);
+        expect(searchFiles.mock.calls[0][0]).toBe('ws-1');
+        expect(searchFiles.mock.calls[0][1]).toBe('tree');
+    });
+
+    it('routes the delayed Go To All file search through the owner clone', async () => {
+        renderPalette({ scope: { kind: 'repo', workspaceId: 'ws-1', routingRef: 'remote:clone-1' } });
+        typeQuery('f tree');
+        await advance(500);
+        expect(searchFiles).toHaveBeenCalledTimes(1);
+        expect(searchFiles.mock.calls[0][3]).toBe('remote:clone-1');
+    });
+
+    it('still searches files 40 ms after Ctrl+P typing', async () => {
+        renderPalette({ mode: 'files' });
+        typeQuery('tree');
+        await advance(39);
+        expect(searchFiles).not.toHaveBeenCalled();
+        await advance(1);
+        expect(searchFiles).toHaveBeenCalledTimes(1);
     });
 });

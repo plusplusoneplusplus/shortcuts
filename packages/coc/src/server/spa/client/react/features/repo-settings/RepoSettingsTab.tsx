@@ -9,7 +9,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
-import { getCocClientForWorkspace, requestForWorkspace } from '../../repos/cloneRegistry';
+import { useWorkspaceSettingsClient, useWorkspaceSettingsClientResolver, useWorkspaceSettingsRequest, useWorkspaceSettingsRepos } from './workspaceSettingsClient';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { useApp } from '../../contexts/AppContext';
@@ -47,6 +47,8 @@ interface RepoSettingsTabProps {
      * footer. Hosts with their own shared body-level footer leave this off.
      */
     dockStatusFooter?: boolean;
+    navigation?: 'route' | 'local';
+    selectionId?: string;
 }
 
 type ActiveSection = SettingsSection;
@@ -156,14 +158,18 @@ function StatCard({
     );
 }
 
-export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }: RepoSettingsTabProps) {
+export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false, navigation = 'route', selectionId = workspaceId }: RepoSettingsTabProps) {
     const { addToast } = useGlobalToast();
     const { state, dispatch } = useApp();
-    const { repos: allRepos } = useRepos();
+    const { repos } = useRepos();
+    const allRepos = useWorkspaceSettingsRepos(workspaceId, repos);
     const ws = repo.workspace;
+    const client = useWorkspaceSettingsClient(workspaceId);
+    const request = useWorkspaceSettingsRequest(workspaceId);
+    const resolveClient = useWorkspaceSettingsClientResolver(workspaceId);
     const skillsController = useWorkspaceSkillsController({
         workspaceId,
-        resolveClient: getCocClientForWorkspace,
+        resolveClient,
         repos: allRepos,
         loadLinkedRepoPreferences: true,
         notify: addToast,
@@ -175,7 +181,7 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
     // owns the workspace so a remote clone writes on its own machine.
     const mcp = useWorkspaceMcpConfigController({
         workspaceId,
-        resolveClient: getCocClientForWorkspace,
+        resolveClient,
     });
     const refreshMcp = mcp.refresh;
     const fetchMcpConfig = useCallback((forceReload = false) => { refreshMcp(forceReload); }, [refreshMcp]);
@@ -193,7 +199,7 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
     const fetchInstructions = useCallback(async () => {
         setInstrLoading(true);
         try {
-            const data = await getCocClientForWorkspace(workspaceId).workspaces.getInstructions(workspaceId) as Record<InstructionMode, string | null>;
+            const data = await client.workspaces.getInstructions(workspaceId) as Record<InstructionMode, string | null>;
             setInstrContents(data);
             setInstrDraft({
                 base: data.base ?? '',
@@ -205,7 +211,7 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
         } finally {
             setInstrLoading(false);
         }
-    }, [workspaceId]);
+    }, [workspaceId, client]);
 
     useEffect(() => { fetchInstructions(); }, [fetchInstructions]);
 
@@ -213,7 +219,7 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
         setInstrSaving(true);
         try {
             const content = instrDraft[mode];
-            await getCocClientForWorkspace(workspaceId).workspaces.updateInstruction(workspaceId, mode, { content });
+            await client.workspaces.updateInstruction(workspaceId, mode, { content });
             setInstrContents(prev => ({ ...prev, [mode]: content || null }));
             addToast('Instructions saved', 'success');
         } catch (e: any) {
@@ -227,7 +233,7 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
         setInstrSaving(true);
         try {
             try {
-                await getCocClientForWorkspace(workspaceId).workspaces.deleteInstruction(workspaceId, mode);
+                await client.workspaces.deleteInstruction(workspaceId, mode);
             } catch (e) {
                 if (!(e instanceof CocApiError && e.status === 404)) throw e;
             }
@@ -260,19 +266,19 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
 
     const fetchProcesses = useCallback(() => {
         setLoadingProcesses(true);
-        return requestForWorkspace<any>(ws.id, `/processes?workspace=${encodeURIComponent(ws.id)}&limit=10`)
+        return request<{ processes?: any[] }>(`/processes?workspace=${encodeURIComponent(ws.id)}&limit=10`)
             .then(res => setProcesses(res?.processes || []))
             .catch(() => setProcesses([]))
             .finally(() => setLoadingProcesses(false));
-    }, [ws.id]);
+    }, [ws.id, request]);
 
     useEffect(() => { void fetchProcesses(); }, [fetchProcesses]);
 
     useEffect(() => {
-        getCocClientForWorkspace(workspaceId).preferences.getTaskSettings(ws.id)
+        client.preferences.getTaskSettings(ws.id)
             .then(res => setTasksFolder(res?.taskRootPath || res?.folderPath || null))
             .catch(() => setTasksFolder(null));
-    }, [ws.id]);
+    }, [ws.id, client]);
 
     useEffect(() => {
         if (descSavedAt == null) return;
@@ -295,7 +301,7 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
         if (desc === (ws.description ?? '')) return;
         setSavingDesc(true);
         try {
-            await requestForWorkspace(ws.id, `/workspaces/${encodeURIComponent(ws.id)}`, {
+            await request(`/workspaces/${encodeURIComponent(ws.id)}`, {
                 method: 'PATCH',
                 body: JSON.stringify({ description: desc }),
             });
@@ -303,7 +309,7 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
         } finally {
             setSavingDesc(false);
         }
-    }, [desc, ws.description, ws.id]);
+    }, [desc, ws.description, ws.id, request]);
 
     const handleCopyPath = useCallback(async () => {
         try {
@@ -320,8 +326,8 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
 
     const setActiveSection = useCallback((section: ActiveSection) => {
         dispatch({ type: 'SET_SETTINGS_SECTION', section });
-        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/settings/' + section;
-    }, [dispatch, workspaceId]);
+        if (navigation === 'route') location.hash = '#repos/' + encodeURIComponent(selectionId) + '/settings/' + section;
+    }, [dispatch, selectionId, navigation]);
 
     const enabledMcpCount = mcp.availableServers.filter(s => mcp.isEnabled(s.name)).length;
     const installedSkillsCount = skillsController.skills.length;
@@ -520,7 +526,7 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
                             workspaceId={workspaceId}
                             workspaceName={ws.name}
                             controller={skillsController}
-                            resolveClient={getCocClientForWorkspace}
+                            resolveClient={resolveClient}
                             allRepos={allRepos}
                         />
                     )}

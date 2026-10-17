@@ -10,8 +10,8 @@ import { useFilesViewMode } from '../git/hooks/useFilesViewMode';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { useRepos } from '../../contexts/ReposContext';
 import { SkillPicker, type SkillOption } from '../../queue/SkillPicker';
-import { getSpaCocClient } from '../../api/cocClient';
-import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
+import { useWorkspaceSettingsClient, useWorkspaceSettingsRepos } from './workspaceSettingsClient';
+import { useWorkspaceOwner } from '../../repos/workspaceOwnerContext';
 import { getRepoPreferences, patchRepoPreferences } from '../../api/repoPreferences';
 
 interface RepoPreferencesSectionProps {
@@ -34,10 +34,13 @@ const MODE_LABELS: Record<string, string> = {
 
 export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionProps) {
     const { addToast } = useGlobalToast();
+    const client = useWorkspaceSettingsClient(workspaceId);
+    const owner = useWorkspaceOwner(workspaceId);
     const prefs = usePreferences(workspaceId);
-    const { models: availableModels, loading: modelsLoading } = useModels();
+    const { models: availableModels, loading: modelsLoading } = useModels(undefined, owner?.baseUrl);
     const { mode: filesViewMode, setMode: setFilesViewMode } = useFilesViewMode(workspaceId);
     const { repos } = useRepos();
+    const ownerRepos = useWorkspaceSettingsRepos(workspaceId, repos) ?? repos;
 
     // Available skills
     const [availableSkills, setAvailableSkills] = useState<SkillOption[]>([]);
@@ -51,14 +54,14 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
     const fetchAvailableSkills = useCallback(async () => {
         setSkillsLoading(true);
         try {
-            const data = await getSpaCocClient().skills.listAllWorkspace(workspaceId);
+            const data = await client.skills.listAllWorkspace(workspaceId);
             setAvailableSkills(data.merged ?? []);
         } catch {
             setAvailableSkills([]);
         } finally {
             setSkillsLoading(false);
         }
-    }, [workspaceId]);
+    }, [workspaceId, client]);
 
     // Fetch available skills
     useEffect(() => {
@@ -73,7 +76,7 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
     // Fetch linked repo IDs from preferences
     useEffect(() => {
         setLinkedRepoLoading(true);
-        getRepoPreferences(getCocClientForWorkspace(workspaceId), workspaceId)
+        getRepoPreferences(client, workspaceId)
             .then(data => {
                 setLinkedRepoIds(data?.linkedRepoIds ?? []);
                 setDefaultModelState(typeof data?.defaultModel === 'string' ? data.defaultModel : '');
@@ -88,7 +91,7 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
             })
             .catch(() => setLinkedRepoIds([]))
             .finally(() => setLinkedRepoLoading(false));
-    }, [workspaceId]);
+    }, [workspaceId, client]);
 
     // Enabled models for dropdowns
     const enabledModels = availableModels.filter(m => m.enabled);
@@ -122,12 +125,12 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
         const prevIds = linkedRepoIds;
         setLinkedRepoIds(nextIds);
         try {
-            await patchRepoPreferences(getCocClientForWorkspace(workspaceId), workspaceId, { linkedRepoIds: nextIds });
+            await patchRepoPreferences(client, workspaceId, { linkedRepoIds: nextIds });
         } catch (e: any) {
             setLinkedRepoIds(prevIds);
             addToast(e?.message ?? 'Failed to save linked repos', 'error');
         }
-    }, [workspaceId, linkedRepoIds, addToast]);
+    }, [workspaceId, linkedRepoIds, addToast, client]);
 
     const handleAddLinkedRepo = useCallback(async (repoId: string) => {
         const nextIds = [...linkedRepoIds, repoId];
@@ -135,19 +138,19 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
         setLinkedRepoIds(nextIds);
         setShowAddRepo(false);
         try {
-            await patchRepoPreferences(getCocClientForWorkspace(workspaceId), workspaceId, { linkedRepoIds: nextIds });
+            await patchRepoPreferences(client, workspaceId, { linkedRepoIds: nextIds });
         } catch (e: any) {
             setLinkedRepoIds(prevIds);
             addToast(e?.message ?? 'Failed to save linked repos', 'error');
         }
-    }, [workspaceId, linkedRepoIds, addToast]);
+    }, [workspaceId, linkedRepoIds, addToast, client]);
 
     // Default model handlers
     const handleDefaultModelChange = useCallback((value: string) => {
         const v = value === 'default' ? '' : value;
         setDefaultModelState(v);
-        patchRepoPreferences(getCocClientForWorkspace(workspaceId), workspaceId, { defaultModel: v }).catch(() => {});
-    }, [workspaceId]);
+        patchRepoPreferences(client, workspaceId, { defaultModel: v }).catch(() => {});
+    }, [workspaceId, client]);
 
     const handleDefaultModelModeChange = useCallback((mode: string, value: string) => {
         const v = value === 'repo-default' ? '' : value;
@@ -160,11 +163,11 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
             }
             return next;
         });
-        patchRepoPreferences(getCocClientForWorkspace(workspaceId), workspaceId, { defaultModels: { [mode]: v } }).catch(() => {});
-    }, [workspaceId]);
+        patchRepoPreferences(client, workspaceId, { defaultModels: { [mode]: v } }).catch(() => {});
+    }, [workspaceId, client]);
 
     // Available repos for linked repo picker (exclude self and already-linked)
-    const linkableRepos = repos
+    const linkableRepos = ownerRepos
         .map(r => r.workspace)
         .filter(w => w.id !== workspaceId && !linkedRepoIds.includes(w.id));
 

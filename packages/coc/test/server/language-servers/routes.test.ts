@@ -71,7 +71,6 @@ function customDefinition(overrides: Partial<LanguageServerDefinition> = {}): La
         command: 'node',
         args: ['fixture-server.js', '--stdio'],
         rootMarkers: ['fixture.json'],
-        enabled: true,
         ...overrides,
     };
 }
@@ -104,7 +103,7 @@ describe('registerLanguageServerRoutes', () => {
         const { status, json } = await call('GET', WORKSPACE);
 
         expect(status).toBe(200);
-        expect(json.enabled).toBe(false);
+        expect(json).not.toHaveProperty('enabled');
         expect(json.definitions).toEqual([]);
         expect(json.status).toBe('missing');
         expect(json.effective.map((d: LanguageServerDefinition) => d.id)).toEqual([
@@ -115,7 +114,7 @@ describe('registerLanguageServerRoutes', () => {
             'coc-symbols',
         ]);
         // Nothing may start while support is off, preset included.
-        expect(json.startable).toEqual([]);
+        expect(json.startable).toEqual(json.effective);
         expect(json.runtimes).toEqual([]);
     });
 
@@ -164,12 +163,11 @@ describe('registerLanguageServerRoutes', () => {
     });
 
     it('PUT persists a custom definition for the target workspace only', async () => {
-        const put = await call('PUT', WORKSPACE, { enabled: true, definitions: [customDefinition()] });
+        const put = await call('PUT', WORKSPACE, { definitions: [customDefinition()] });
         expect(put.status).toBe(200);
-        expect(put.json.enabled).toBe(true);
+        expect(put.json).not.toHaveProperty('enabled');
         expect(put.json.startable.map((d: LanguageServerDefinition) => d.id)).toEqual([
-            'coc-symbols',
-            'fixture',
+            'typescript', 'rust', 'python', 'clangd', 'coc-symbols', 'fixture',
         ]);
 
         // Reopening settings shows the saved definition.
@@ -180,81 +178,63 @@ describe('registerLanguageServerRoutes', () => {
 
         // A different workspace is untouched.
         const other = await call('GET', 'ws-other');
-        expect(other.json.enabled).toBe(false);
+        expect(other.json).not.toHaveProperty('enabled');
         expect(other.json.definitions).toEqual([]);
     });
 
     it('PUT replaces omitted fields with their defaults', async () => {
-        await call('PUT', WORKSPACE, { enabled: true, definitions: [customDefinition()] });
+        await call('PUT', WORKSPACE, { definitions: [customDefinition()] });
 
         const replaced = await call('PUT', WORKSPACE, {});
 
         expect(replaced.status).toBe(200);
-        expect(replaced.json.enabled).toBe(false);
+        expect(replaced.json).not.toHaveProperty('enabled');
         expect(replaced.json.definitions).toEqual([]);
     });
 
-    it('PATCH toggles enabled without disturbing stored definitions', async () => {
-        await call('PUT', WORKSPACE, { enabled: true, definitions: [customDefinition()] });
+    it('PATCH ignores removed enable fields without disturbing stored definitions', async () => {
+        await call('PUT', WORKSPACE, { definitions: [customDefinition()] });
 
         const patched = await call('PATCH', WORKSPACE, { enabled: false });
 
         expect(patched.status).toBe(200);
-        expect(patched.json.enabled).toBe(false);
+        expect(patched.json).not.toHaveProperty('enabled');
         expect(patched.json.definitions).toHaveLength(1);
-        expect(patched.json.startable).toEqual([]);
+        expect(patched.json.startable).toEqual(patched.json.effective);
     });
 
-    it('PATCH can enable the TypeScript preset by overriding it', async () => {
+    it('PATCH can repoint the TypeScript preset', async () => {
         const patched = await call('PATCH', WORKSPACE, {
-            enabled: true,
             definitions: [{ ...customDefinition(), id: 'typescript' }],
         });
 
         expect(patched.status).toBe(200);
         const startable = patched.json.startable as LanguageServerDefinition[];
-        expect(startable.map((d) => d.id)).toEqual(['typescript', 'coc-symbols']);
+        expect(startable.map((d) => d.id)).toEqual(['typescript', 'rust', 'python', 'clangd', 'coc-symbols']);
         // Overriding a preset keeps it marked as built-in and repoints the command.
         expect(startable[0].builtIn).toBe(true);
         expect(startable[0].command).toBe('node');
     });
 
-    it('starts Python only when both workspace support and its preset are enabled', async () => {
-        const python = customDefinition({
-            id: 'python',
-            displayName: 'Python',
-            languageIds: ['python'],
-            filePatterns: ['**/*.{py,pyi,pyw}'],
-            command: 'pyright-langserver',
-            args: ['--stdio'],
-            rootMarkers: ['pyproject.toml'],
-            enabled: true,
-        });
-
-        const presetOnly = await call('PUT', WORKSPACE, { enabled: false, definitions: [python] });
-        expect(presetOnly.json.startable).toEqual([]);
-
-        const enabled = await call('PATCH', WORKSPACE, { enabled: true });
-        expect(enabled.json.startable.map((d: LanguageServerDefinition) => d.id)).toEqual([
-            'python',
-            'coc-symbols',
+    it('ignores stale disabled flags and preserves custom runtime configuration on read', async () => {
+        const configPath = getLanguageServerConfigPath(dataDir, WORKSPACE);
+        fs.mkdirSync(path.dirname(configPath), { recursive: true });
+        const definitions = [{ ...customDefinition(), enabled: false, settings: { custom: { mode: 'strict' } } }];
+        const saved = JSON.stringify({ enabled: false, definitions });
+        fs.writeFileSync(configPath, saved);
+        const { json } = await call('GET', WORKSPACE);
+        expect(json.startable.map((d: LanguageServerDefinition) => d.id)).toEqual([
+            'typescript', 'rust', 'python', 'clangd', 'coc-symbols', 'fixture',
         ]);
-        expect(enabled.json.startable[0].builtIn).toBe(true);
-
-        const disabledPreset = await call('PATCH', WORKSPACE, {
-            definitions: [{ ...python, enabled: false }],
-        });
-        expect(disabledPreset.json.startable.map((d: LanguageServerDefinition) => d.id)).toEqual([
-            'coc-symbols',
-        ]);
-        expect(readLanguageServerConfig(dataDir, WORKSPACE).definitions[0].enabled).toBe(false);
+        expect(json.definitions[0].settings).toEqual(definitions[0].settings);
+        expect(json.definitions[0]).not.toHaveProperty('enabled');
+        expect(fs.readFileSync(configPath, 'utf8')).toBe(saved);
     });
 
     it('rejects an invalid definition with field-level errors and keeps the last valid config', async () => {
-        await call('PUT', WORKSPACE, { enabled: true, definitions: [customDefinition()] });
+        await call('PUT', WORKSPACE, { definitions: [customDefinition()] });
 
         const rejected = await call('PUT', WORKSPACE, {
-            enabled: true,
             definitions: [customDefinition({ command: 'node --inspect && rm -rf /' })],
         });
 
@@ -266,11 +246,7 @@ describe('registerLanguageServerRoutes', () => {
         expect(readLanguageServerConfig(dataDir, WORKSPACE).definitions[0].command).toBe('node');
     });
 
-    it('rejects a non-boolean enabled and a non-array definitions list', async () => {
-        const badEnabled = await call('PUT', WORKSPACE, { enabled: 'yes' });
-        expect(badEnabled.status).toBe(400);
-        expect(badEnabled.json.errors[0].field).toBe('enabled');
-
+    it('rejects a non-array definitions list', async () => {
         const badDefinitions = await call('PUT', WORKSPACE, { definitions: { id: 'fixture' } });
         expect(badDefinitions.status).toBe(400);
         expect(badDefinitions.json.errors[0].field).toBe('definitions');
@@ -307,7 +283,7 @@ describe('registerLanguageServerRoutes', () => {
 
         expect(status).toBe(200);
         expect(json.status).toBe('invalid');
-        expect(json.enabled).toBe(false);
+        expect(json).not.toHaveProperty('enabled');
         expect(json.warnings).toHaveLength(1);
         expect(json.warnings[0]).not.toHaveProperty('filePath');
     });
@@ -315,119 +291,10 @@ describe('registerLanguageServerRoutes', () => {
     it('routes a workspace id that needs URL encoding to that workspace', async () => {
         const encodedWorkspace = 'ws with space';
 
-        const put = await call('PUT', encodedWorkspace, { enabled: true, definitions: [customDefinition()] });
+        const put = await call('PUT', encodedWorkspace, { definitions: [customDefinition()] });
         expect(put.status).toBe(200);
 
         expect(readLanguageServerConfig(dataDir, encodedWorkspace).definitions).toHaveLength(1);
         expect(readLanguageServerConfig(dataDir, WORKSPACE).definitions).toHaveLength(0);
-    });
-});
-
-/**
- * The settings page's read is what seeds a never-configured workspace, so these
- * cover the route with a workspace-root resolver wired in the way the server does.
- */
-describe('registerLanguageServerRoutes with workspace-root detection', () => {
-    let dataDir: string;
-    let workspaceRoot: string;
-    let routes: Route[];
-    let resolveRoot: (workspaceId: string) => Promise<string | undefined>;
-
-    beforeEach(() => {
-        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-lsp-seed-routes-'));
-        workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-lsp-seed-repo-'));
-        fs.writeFileSync(path.join(workspaceRoot, 'Cargo.toml'), '[package]\nname = "demo"\n');
-        fs.mkdirSync(path.join(workspaceRoot, 'src'));
-        fs.writeFileSync(path.join(workspaceRoot, 'src', 'main.rs'), 'fn main() {}\n');
-        routes = [];
-        resolveRoot = async (workspaceId: string) => (workspaceId === WORKSPACE ? workspaceRoot : undefined);
-        registerLanguageServerRoutes(routes, dataDir, () => undefined, (id) => resolveRoot(id));
-    });
-
-    afterEach(() => {
-        fs.rmSync(dataDir, { recursive: true, force: true });
-        fs.rmSync(workspaceRoot, { recursive: true, force: true });
-    });
-
-    async function get(workspaceId: string) {
-        const url = `/api/workspaces/${encodeURIComponent(workspaceId)}/language-servers`;
-        const found = findRoute(routes, 'GET', url);
-        const res = fakeRes();
-        await found.route.handler(fakeReq('GET', {}), res, found.match);
-        return { status: res.statusCode, json: JSON.parse(res.body) };
-    }
-
-    async function put(workspaceId: string, body: unknown) {
-        const url = `/api/workspaces/${encodeURIComponent(workspaceId)}/language-servers`;
-        const found = findRoute(routes, 'PUT', url);
-        const res = fakeRes();
-        await found.route.handler(fakeReq('PUT', body), res, found.match);
-        return { status: res.statusCode, json: JSON.parse(res.body) };
-    }
-
-    it('first GET of a rust repo answers with support on and rust enabled', async () => {
-        const { status, json } = await get(WORKSPACE);
-
-        expect(status).toBe(200);
-        expect(json.status).toBe('ok');
-        expect(json.enabled).toBe(true);
-        expect(json.definitions.map((d: LanguageServerDefinition) => d.id)).toEqual(['rust']);
-        const effective = json.effective as LanguageServerDefinition[];
-        expect(effective.find(d => d.id === 'rust')?.enabled).toBe(true);
-        expect(effective.find(d => d.id === 'python')?.enabled).toBe(false);
-        expect(effective.find(d => d.id === 'typescript')?.enabled).toBe(false);
-        expect(effective.find(d => d.id === 'clangd')?.enabled).toBe(false);
-        expect(json.startable.map((d: LanguageServerDefinition) => d.id)).toEqual(['rust', 'coc-symbols']);
-    });
-
-    it('a second GET returns the stored config unchanged', async () => {
-        const first = await get(WORKSPACE);
-        const second = await get(WORKSPACE);
-
-        expect(second.json.enabled).toBe(first.json.enabled);
-        expect(second.json.definitions).toEqual(first.json.definitions);
-        expect(second.json.status).toBe('ok');
-    });
-
-    it('keeps rust disabled after the user unchecks it', async () => {
-        const seeded = await get(WORKSPACE);
-        const disabled = (seeded.json.definitions as LanguageServerDefinition[]).map(d => ({ ...d, enabled: false }));
-
-        const saved = await put(WORKSPACE, { enabled: true, definitions: disabled });
-        expect(saved.status).toBe(200);
-
-        const reread = await get(WORKSPACE);
-        const effective = reread.json.effective as LanguageServerDefinition[];
-        expect(effective.find(d => d.id === 'rust')?.enabled).toBe(false);
-        expect(reread.json.startable.map((d: LanguageServerDefinition) => d.id)).toEqual(['coc-symbols']);
-    });
-
-    it('does not seed a workspace whose root cannot be resolved', async () => {
-        const { json } = await get('ws-unknown');
-
-        expect(json.status).toBe('missing');
-        expect(json.enabled).toBe(false);
-        expect(fs.existsSync(getLanguageServerConfigPath(dataDir, 'ws-unknown'))).toBe(false);
-    });
-
-    it('does not seed over a corrupt config file', async () => {
-        const filePath = getLanguageServerConfigPath(dataDir, WORKSPACE);
-        fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        fs.writeFileSync(filePath, '{ broken', 'utf-8');
-
-        const { json } = await get(WORKSPACE);
-
-        expect(json.status).toBe('invalid');
-        expect(json.enabled).toBe(false);
-        expect(fs.readFileSync(filePath, 'utf-8')).toBe('{ broken');
-    });
-
-    it('survives a workspace lookup failure by skipping detection', async () => {
-        resolveRoot = async () => { throw new Error('store offline'); };
-
-        const { status, json } = await get(WORKSPACE);
-
-        expect(status).toBe(200);
-        expect(json.status).toBe('missing');
     });
 });

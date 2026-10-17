@@ -270,7 +270,7 @@ beforeAll(async () => {
     if (runtime.origin === 'unavailable') {
         throw new Error('rust-analyzer is required; install it with `rustup component add rust-analyzer`');
     }
-    const enabled: LanguageServerDefinition = { ...RUST_PRESET, enabled: true };
+    const enabled: LanguageServerDefinition = { ...RUST_PRESET };
     const prepared = prepareDefinitionForRoot(enabled, root);
     session = new LanguageServerSession({
         definition: prepared.definition,
@@ -499,7 +499,6 @@ describeWithRustTooling('workspace check settings', () => {
         fs.writeFileSync(script, `require('fs').appendFileSync(process.argv[2], 'ran\\n');\n`);
         const definition: LanguageServerDefinition = {
             ...RUST_PRESET,
-            enabled: true,
             settings: {
                 'rust-analyzer': {
                     checkOnSave: true,

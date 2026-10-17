@@ -40,6 +40,7 @@ export function registerSentinelTodoTriggerRoutes(
         },
     });
     register('GET', '', async owner => ({ triggers: await service.list(owner) }));
+    register('GET', '/capabilities', owner => service.capabilities(owner));
     register('POST', '', async (owner, _id, body) => ({ trigger: await service.create(owner, body, 'user') }), 201);
     register('POST', '/preview', (owner, _id, body) => service.preview(owner, body));
     register('PATCH', '/([^/]+)', async (owner, id, body) => ({ trigger: await service.edit(owner, id, body) }));

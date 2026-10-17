@@ -1,7 +1,7 @@
 # unified-right-panel
 
 The workspace's one and only right panel: a Cursor-style resource-tabbed column
-holding Terminal, Notes, files, notes, canvases, chat diffs, local HTML pages, and web browser tabs, with a
+holding Terminal, Notes, Settings, files, notes, canvases, chat diffs, local HTML pages, and web browser tabs, with a
 Search/Explorer navigator at its right edge. The panel is unconditional within
 the desktop dock gate.
 
@@ -28,7 +28,7 @@ Three different workspace ids, kept apart on purpose:
   the tab strip; a switch also closes the `+` menu, whose search results are
   scoped to the repo they were fetched from.
 
-Tabs are scoped by kind: `terminal | notes | note | html-page | browser` are workspace-owned,
+Tabs are scoped by kind: `terminal | notes | settings | note | html-page | browser` are workspace-owned,
 `file | canvas | diff | git | external | paste | todo` belong to the selected chat (`scopeForKind`).
 A restored workspace list drops chat-owned kinds (legacy workspace Git tabs).
 Chat-owned tabs opened while no chat is selected belong to the draft
@@ -70,6 +70,13 @@ queue store's `selectedTaskIdByRepo[workspaceId]` — never the global
 `selectedTaskId`, which can name another workspace's chat. `unifiedTabId` uses
 the concrete route as the owner identity when one exists, so equal relative paths
 from same-id clones never merge into one tab.
+Editable file opens from the tree, definitions, file picker and closed-file history
+resolve owning-filesystem spelling before publication. Resolution queues retain
+the concrete owner and chat; failures offer Retry without opening another buffer.
+Pre-existing duplicate buffers remain untouched and block ambiguous reuse.
+`UnifiedTabView` scopes language documents and transport sessions by panel and
+chat; Peek reuses only that scope's live model, and split mirrors share the tab's
+model. A dock target change keeps explicit member opens valid within that panel.
 
 ## Layers
 
@@ -85,7 +92,8 @@ from same-id clones never merge into one tab.
 | `unifiedPanelNavigationHistory.ts` | Pure file-location history: panel-scope/tab identity, VS Code-style ten-line coalescing, branching, the 50-entry bound, replay suppression, missing-file drop, and the versioned codec. Each entry carries its file's reopen descriptor, so closing a tab keeps its entries; Back/Forward onto a closed file reopens it as a preview (through the preview slot's unsaved-edits guard) in the current chat's view, and never steps onto another scope's entries. |
 | `unifiedPanelNavigationStore.ts` + `fileNavigationRouting.ts` | History per panel scope, cached in memory and persisted to `unified-right-panel:<scope>:navigation` (unreadable or entry-less-reopen-data is dropped on load), plus pure Go Back/Forward key (Alt+Arrow, or Ctrl+-/Ctrl+Shift+- on macOS) and auxiliary mouse-button classification. |
 | `quickOpenRouting.ts`, `closeTabRouting.ts`, `findRouting.ts` | Pure ownership rules for the panel's document-level keyboard shortcuts. Find ownership is scoped to focus inside the Explorer navigator column. |
-| `UnifiedPanelTabStrip.tsx` + `UnifiedPanelCanvasStack.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip, native drag insertion markers and accessible tab menu. Four or more canvases compress into the active canvas plus a searchable count chip; switching and guarded closing preserve stored order. Grouped ordering draws a tools/resources divider. File tabs share Explorer's `FileNameIcon`; other kinds use fixed icons. The menu model owns per-kind availability, move boundaries, local-only absolute paths and visible-order bulk targets. |
+| `UnifiedPanelTabStrip.tsx` + `UnifiedPanelCanvasStack.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip, native drag insertion markers and accessible tab menu. Four or more canvases compress into the active canvas plus a searchable count chip; switching and guarded closing preserve stored order. Grouped ordering draws a tools/resources divider. File tabs share Explorer's `FileNameIcon` and show the bare filename: no repo badge, with `unifiedTabTooltip` giving the `dirtyCloseLabel` repo-qualified path and the repo kept in screen-reader text; other kinds use fixed icons and keep their `repoLabel` badge. The menu model owns per-kind availability, move boundaries, local-only absolute paths and visible-order bulk targets. |
+| `unifiedPanelSourceSplit.ts` + `UnifiedSourceMirror.tsx` | The two-pane source split (see "Source split"): pure drop/reconcile/width rules and the session-only split store, plus the second Monaco view used when one file fills both panes. |
 | `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab, an in-place directory picker, and the Search/Explorer navigator controls. The model decides whether the path can use repo browsing. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
 | `UnifiedPanelRepoPicker.tsx` | The dock target, as a button + listbox on the tab strip left of the `+` (the strip's `leadingControls`). Renders nothing below two targets. The label comes from the `target` prop, so a refused switch (`onSelectTarget` returning `false`) keeps reporting the real scope; below 340px of strip width the label drops to a chevron via a container query. |
 | `UnifiedPanelTreeToggle.tsx` | The Explorer half of the panel's navigator controls. It renders with Search in the file toolbar or, when that toolbar is absent, in the tab strip. |
@@ -103,6 +111,15 @@ from same-id clones never merge into one tab.
 | `unifiedTerminalClose.ts`, `unifiedDirtyClose.ts` | The two close guards. |
 
 ## Views are reused, never re-implemented
+
+Settings uses `repo-settings/WorkspaceSettingsHost.tsx`: one live `RepoSettingsTab`
+or `RepoGroupSettingsTab` instance moves between top-level and panel slots through
+a stable portal container. Default-off `features.panelSettings` admits the menu
+entry; its workspace-owned descriptor carries the panel's concrete owner, never
+the dock target. Panel navigation stays local. Closing parks the form without
+discarding drafts; the top-level entry remains available. `workspaceSettingsClient.tsx`
+pins all settings calls to that owner and rejects missing or changed remote routes
+without falling through locally.
 
 There is no second editor, search backend, terminal manager, or canvas store.
 `git` is filled by `RepoGitTab`'s own `RepoGitDetailPane` through a portal.
@@ -145,6 +162,42 @@ Rendered mode keeps a lightweight file-navigation controller that can
 reopen Raw and restore a history destination's selection and scroll.
 The standalone Explorer and the read-only source canvas retain their own
 file-viewer behavior.
+
+## Source split
+
+Live, default-off `features.panelSourceSplit` lets two `file` tabs show side by
+side; no other kind can enter a pane, and there are never more than two. A
+file-tab drag from the strip (`onTabDragChange`) shows a drop target over the
+right half of the editor area; dropping, or the file tab menu's **Open to the
+Right**, puts that file in the right pane and keeps the active file on the
+left (the same file on both sides when there is no other active file). A drop
+on an existing split replaces only the right pane. Other drags, Escape and drag
+end leave the layout unchanged; strip reordering keeps its own targets.
+
+`unifiedPanelSourceSplit.ts` stores `{ left, right, focus, ratio }` tab ids in
+memory, keyed by `unifiedPanelStorageKey(scope)` plus chat, so workspace and
+chat switches restore only their own split and a reload shows ordinary tabs.
+The focused pane is always the active tab: strip selection, Explorer, links,
+Quick Open and language navigation all open there. A non-file active tab takes
+the full panel without forgetting the split. The unfocused pane's preview tab
+is promoted so a tree click never replaces it. Clicking or focusing a pane
+focuses it; its header shows the bare file label (repo-qualified path on hover, repo in screen-reader text), dirty dot and close control.
+Closing a pane ends the split and keeps both tabs; closing a pane's tab through
+the usual guards shows the other pane's file.
+
+Views stay keyed by tab in one row and are positioned with CSS `order` and
+flex basis, so entering, resizing or leaving the split never remounts a
+buffer. Panes keep at least 280px; below two panes plus the 4px divider
+(measured on the editor area, excluding the navigator column) only the focused
+pane shows, and widening restores both. The divider drags or uses
+Arrow/Home/End within those bounds.
+
+Each pane's `PreviewPane` keeps its own selection, scroll and owner routing.
+The same file in both panes is one tab and one `PreviewPane` buffer: it
+publishes its Monaco model (`onModelShare`), and `UnifiedSourceMirror` creates
+a second editor on that model, following its read-only state and saving
+through the tab's registered save. Equal paths from different owners or clones
+are different tabs and buffers.
 
 ## File navigation history
 
@@ -222,8 +275,18 @@ panel's own scope); Search uses `ContentSearchPanel`.
 
 The navigator is panel-level chrome, not a tab: it renders for every tab kind
 and for none at all. Its panel-scoped open bit lets the user collapse it without
-closing resource tabs or the right panel. Search and Explorer are lazy-mounted
-on first selection and then hidden with `display:none`, preserving requests,
+closing resource tabs or the right panel.
+
+Activating a `todo` tab hides Explorer through this open bit; Search keeps its
+state. Explicit Explorer reopen survives
+item interactions, portaled menus, ledger refreshes and rerenders. Selecting To-do
+again or returning focus/pointer interaction from another content view hides
+Explorer again; panel chrome does not change the focused content view. Activation
+is scoped to the panel workspace, selected chat and active tab, including pinned
+To-do tabs. Source buffers, tabs, navigator width and dock target stay intact.
+
+Search and Explorer are lazy-mounted on first selection and then hidden with
+`display:none`, preserving requests,
 results, tree expansion, resource tabs, terminal sessions, and unsaved buffers
 across mode switches and navigator collapse. A panel too narrow for both columns
 hides the navigator until it widens without changing the user's open bit.
@@ -537,6 +600,27 @@ without creating tabs. Native browser pages forward `onOpenMenuRequested` with
 the source view id after returning host focus; only the matching active,
 visible browser tab creates a new tab. The `+` and empty-state Open buttons
 open `UnifiedPanelOpenMenu`.
+
+## Reopen-closed-tab shortcut
+
+Ctrl/Cmd+Shift+T always restores web tabs newest-first; there is no feature flag
+or setting, and a stale saved `features.panelReopenClosedTab` is ignored. `unifiedClosedBrowserTabs.ts` keeps a module-memory
+stack of 20 per `closedBrowserTabScopeKey(workspaceId, chatId)` (owner-qualified
+panel storage key plus chat): it survives remounts and scope switches, never
+reaches storage, and resets on reload. `closeTabByUser` is the only recorder, so
+strip, menu, Ctrl+W and bulk closes record in close order while `closeTab`
+cleanup, `closeBrowserPanelView` and other kinds (HTML previews included) never
+do. Entries snapshot owner, route, repo label, last URL and title — never view
+ids. A restore drops an entry whose owner is no longer this panel's workspace or
+an enabled target on the same route, otherwise opens it through
+`browserOpenInput` (fresh view id, stored title as provisional label) and
+focuses the restored strip tab; a blank restore keeps its address autofocus.
+Any focus inside the open, visible panel owns the chord, including editors,
+terminals and an empty stack; repeats restore nothing. Native pages forward
+`onReopenClosedRequested` with the source view id; only the matching active,
+visible browser tab restores, and a subscription ignores further requests once it
+has restored (the source view is no longer active), so a duplicate delivered
+before the re-render cannot drain a second entry.
 
 ## Entry points
 
@@ -879,21 +963,27 @@ Shared `ScrubRunChatLink` preserves the owning route and excursion behavior.
 Tests use isolated mock clients in
 `test/server/sentinel-scrubber/panel.test.tsx` and `test/server/sentinel-todos/panel.test.tsx`.
 
-### PR-merge triggers
+### To-do triggers
 
 `SentinelTodoTriggers` is a separate section below the cards, gated by existing
 `triggers.enabled`. Its owner-qualified `client.triggers` calls use the ledger's
 workspace/process on the owning server. `sentinelTodoTriggerModel` keeps rule
 Waiting/Paused/terminal/error and delivery state separate from item/job/review
-states; owner-verified rule rows link the canonical PR. Item navigation expands
+states; rows link the canonical PR or display the saved zoned date and UTC tooltip.
+Item navigation expands
 and focuses only the target and its containing Normal/Manual Done/Archived
 sections, preserving other expansion state. Missing targets retain unavailable
 feedback; owner changes isolate row state and cancel pending highlights.
-`SentinelTodoTriggerEditor` selects eligible normal items and accepts a PR URL,
-local picker and optional instruction with server preview. Lifecycle writes carry
-the rule revision; Run now requires confirmation. Clearing terminal presentation
-does not cancel a committed wake receipt. Rules never expire or launch jobs
-directly. `triggers-panel.test.tsx` covers states, controls and ownership.
+`SentinelTodoTriggerEditor` selects eligible normal items, PR URL/local picker or
+one-time date/time, and optional guidance. Date mode and rows require the owning
+client's `sentinelTodoCapabilities` result, never the page-origin flag. Default-off
+`features.sentinelTodoDateTimeTriggers` gates date authoring and arming on that server.
+Shared coc-client helpers validate local date/time and IANA zone, expose both DST
+overlap offsets and preview the exact UTC instant. Dialogs trap keyboard focus.
+Lifecycle writes carry revisions; Run now and overdue resume require confirmation.
+Clearing retains dedupe receipts; removed pending date rules suppress delivery.
+Rules never expire, mark items Done, launch jobs directly or grant authorization.
+`triggers-panel.test.tsx` covers states, controls and ownership.
 
 ### To-do excursions
 
@@ -1041,6 +1131,8 @@ the diff, source-link, note-link, and canvas cases, plus the guard that the chat
 grows no canvas column of its own. `UnifiedCanvasTab.test.tsx` and
 `unifiedChatCanvasActions.test.tsx` cover the tab's chat actions, pop-out, and
 created-query routing.
+`WorkspaceSettingsHost.test.tsx` and `WorkspaceSettingsOwner.test.tsx` cover shared
+form identity, draft/error retention, concrete-owner routing and unavailable owners.
 `test/spa/react/repos/RepoGroupView.dock.test.tsx` and
 `test/spa/react/repos/RepoDetail-workspace-dock.test.ts` pin that both hosts
 render this panel whenever the panel slot is available, and nothing else in it.

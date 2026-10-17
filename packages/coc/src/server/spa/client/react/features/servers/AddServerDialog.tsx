@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Dialog, Button } from '../../ui';
 import { testRemoteServer, type RemoteServer, type RemoteServerInput } from '../../utils/serverRegistry';
+import { useAdminServer } from '../../admin/adminTarget';
 
 export interface AddServerDialogProps {
     open: boolean;
@@ -74,6 +75,8 @@ interface ServerFormDialogProps {
 }
 
 function ServerFormDialog({ open, mode, initialInput, onClose, onSubmit }: ServerFormDialogProps) {
+    // Tests run from the machine whose registry this dialog edits.
+    const adminServer = useAdminServer();
     const initialKind = initialInput?.kind ?? 'url';
     const initialLabel = initialInput?.label ?? '';
     const initialUrl = initialInput?.kind === 'url' ? initialInput.url : '';
@@ -136,7 +139,7 @@ function ServerFormDialog({ open, mode, initialInput, onClose, onSubmit }: Serve
 
         debounceRef.current = setTimeout(async () => {
             try {
-                const health = await testRemoteServer(input);
+                const health = adminServer.isRemote ? await testRemoteServer(input, adminServer.client) : await testRemoteServer(input);
                 if (health.status !== 'online') {
                     setTestState('fail');
                     setTestLabel(health.error ?? 'Cannot reach server');
@@ -162,7 +165,7 @@ function ServerFormDialog({ open, mode, initialInput, onClose, onSubmit }: Serve
                 debounceRef.current = null;
             }
         };
-    }, [open, kind, label, url, tunnelId, sshHost, sshPort]);
+    }, [adminServer, open, kind, label, url, tunnelId, sshHost, sshPort]);
 
     const input = buildInput(kind, label, url, tunnelId, sshHost, sshPort);
     const submitDisabled = !input || submitting;

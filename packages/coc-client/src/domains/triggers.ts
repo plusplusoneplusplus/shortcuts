@@ -84,6 +84,10 @@ export class TriggersClient {
     return result.triggers;
   }
 
+  sentinelTodoCapabilities(workspaceId: string, processId: string): Promise<{ dateTime: boolean }> {
+    return this.transport.request(sentinelPath(workspaceId, processId, '/capabilities'));
+  }
+
   previewSentinelTodo(workspaceId: string, processId: string, input: { prUrl: string }): Promise<PrTriggerPreview> {
     return this.transport.request<PrTriggerPreview>(sentinelPath(workspaceId, processId, '/preview'), {
       method: 'POST', body: { ...input },
@@ -109,8 +113,8 @@ export class TriggersClient {
     return this.sentinelAction(workspaceId, processId, triggerId, '/pause', { expectedRevision });
   }
 
-  resumeSentinelTodo(workspaceId: string, processId: string, triggerId: string, expectedRevision: number): Promise<Trigger> {
-    return this.sentinelAction(workspaceId, processId, triggerId, '/resume', { expectedRevision });
+  resumeSentinelTodo(workspaceId: string, processId: string, triggerId: string, expectedRevision: number, confirmed?: true): Promise<Trigger> {
+    return this.sentinelAction(workspaceId, processId, triggerId, '/resume', { expectedRevision, ...(confirmed ? { confirmed } : {}) });
   }
 
   removeSentinelTodo(workspaceId: string, processId: string, triggerId: string, expectedRevision: number): Promise<TriggerDeleteResponse> {
