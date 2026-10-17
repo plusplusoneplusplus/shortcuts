@@ -1,7 +1,7 @@
 # unified-right-panel
 
 The workspace's one and only right panel: a Cursor-style resource-tabbed column
-holding Terminal, Notes, files, notes, canvases, chat diffs, local HTML pages, and web browser tabs, with a
+holding Terminal, Notes, Settings, files, notes, canvases, chat diffs, local HTML pages, and web browser tabs, with a
 Search/Explorer navigator at its right edge. The panel is unconditional within
 the desktop dock gate.
 
@@ -28,7 +28,7 @@ Three different workspace ids, kept apart on purpose:
   the tab strip; a switch also closes the `+` menu, whose search results are
   scoped to the repo they were fetched from.
 
-Tabs are scoped by kind: `terminal | notes | note | html-page | browser` are workspace-owned,
+Tabs are scoped by kind: `terminal | notes | settings | note | html-page | browser` are workspace-owned,
 `file | canvas | diff | git | external | paste | todo` belong to the selected chat (`scopeForKind`).
 A restored workspace list drops chat-owned kinds (legacy workspace Git tabs).
 Chat-owned tabs opened while no chat is selected belong to the draft
@@ -111,6 +111,15 @@ model. A dock target change keeps explicit member opens valid within that panel.
 | `unifiedTerminalClose.ts`, `unifiedDirtyClose.ts` | The two close guards. |
 
 ## Views are reused, never re-implemented
+
+Settings uses `repo-settings/WorkspaceSettingsHost.tsx`: one live `RepoSettingsTab`
+or `RepoGroupSettingsTab` instance moves between top-level and panel slots through
+a stable portal container. Default-off `features.panelSettings` admits the menu
+entry; its workspace-owned descriptor carries the panel's concrete owner, never
+the dock target. Panel navigation stays local. Closing parks the form without
+discarding drafts; the top-level entry remains available. `workspaceSettingsClient.tsx`
+pins all settings calls to that owner and rejects missing or changed remote routes
+without falling through locally.
 
 There is no second editor, search backend, terminal manager, or canvas store.
 `git` is filled by `RepoGitTab`'s own `RepoGitDetailPane` through a portal.
@@ -1122,6 +1131,8 @@ the diff, source-link, note-link, and canvas cases, plus the guard that the chat
 grows no canvas column of its own. `UnifiedCanvasTab.test.tsx` and
 `unifiedChatCanvasActions.test.tsx` cover the tab's chat actions, pop-out, and
 created-query routing.
+`WorkspaceSettingsHost.test.tsx` and `WorkspaceSettingsOwner.test.tsx` cover shared
+form identity, draft/error retention, concrete-owner routing and unavailable owners.
 `test/spa/react/repos/RepoGroupView.dock.test.tsx` and
 `test/spa/react/repos/RepoDetail-workspace-dock.test.ts` pin that both hosts
 render this panel whenever the panel slot is available, and nothing else in it.

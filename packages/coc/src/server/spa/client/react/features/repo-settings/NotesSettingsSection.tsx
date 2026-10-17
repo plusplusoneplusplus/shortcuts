@@ -11,10 +11,11 @@
  *     - Danger zone with "Disable Git Tracking" (with confirmation) when initialized.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNotesAutoCommit } from '../notes/hooks/useNotesAutoCommit';
-import { notesApi, type NotesRootEntry } from '../notes/notesApi';
+import { createNotesApi, notesApi as defaultNotesApi, type NotesRootEntry } from '../notes/notesApi';
 import { getWorkspacePreferences, patchWorkspacePreferences } from '../../hooks/preferences/preferencesApi';
+import { useWorkspaceOwner } from '../../repos/workspaceOwnerContext';
 import type { NotesGitConfig } from '../../../../../notes/git/notes-git-types';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { formatRelativeTime } from '../../utils/format';
@@ -42,6 +43,8 @@ interface NotesSettingsSectionProps {
 
 export function NotesSettingsSection({ workspaceId }: NotesSettingsSectionProps) {
     const { addToast } = useGlobalToast();
+    const client = useWorkspaceOwner(workspaceId)?.client;
+    const notesApi = useMemo(() => client ? createNotesApi(() => client.notes) : defaultNotesApi, [client]);
 
     const {
         autoCommitEnabled,
@@ -53,7 +56,7 @@ export function NotesSettingsSection({ workspaceId }: NotesSettingsSectionProps)
         enable,
         disable,
         updateInterval,
-    } = useNotesAutoCommit(workspaceId);
+    } = useNotesAutoCommit(workspaceId, true, notesApi);
 
     const [gitInitialized, setGitInitialized] = useState<boolean | null>(null);
     const [gitStatusLoading, setGitStatusLoading] = useState(true);
@@ -90,12 +93,12 @@ export function NotesSettingsSection({ workspaceId }: NotesSettingsSectionProps)
         } finally {
             setRootsLoading(false);
         }
-    }, [workspaceId]);
+    }, [workspaceId, notesApi]);
 
     // Load the persisted notesGit origin config (best-effort).
     useEffect(() => {
         let cancelled = false;
-        getWorkspacePreferences(workspaceId)
+        (client ? getWorkspacePreferences(workspaceId, client) : getWorkspacePreferences(workspaceId))
             .then(prefs => {
                 if (cancelled) return;
                 const cfg = prefs?.notesGit ?? null;
@@ -105,7 +108,7 @@ export function NotesSettingsSection({ workspaceId }: NotesSettingsSectionProps)
             })
             .catch(() => { /* leave origin fields empty on failure */ });
         return () => { cancelled = true; };
-    }, [workspaceId]);
+    }, [workspaceId, client]);
 
     // Persist remoteUrl + branch as a full notesGit block so autoCommit/enabled survive.
     const saveOrigin = useCallback(async (nextUrl: string, nextBranch: string) => {
@@ -124,7 +127,8 @@ export function NotesSettingsSection({ workspaceId }: NotesSettingsSectionProps)
         };
         setSavingOrigin(true);
         try {
-            await patchWorkspacePreferences(workspaceId, { notesGit: config });
+            if (client) await patchWorkspacePreferences(workspaceId, { notesGit: config }, client);
+            else await patchWorkspacePreferences(workspaceId, { notesGit: config });
             setNotesGitConfig(config);
             addToast('Origin settings saved', 'success');
         } catch (e: any) {
@@ -132,7 +136,7 @@ export function NotesSettingsSection({ workspaceId }: NotesSettingsSectionProps)
         } finally {
             setSavingOrigin(false);
         }
-    }, [workspaceId, notesGitConfig, addToast]);
+    }, [workspaceId, notesGitConfig, addToast, client]);
 
     const handleAddRoot = async () => {
         const trimmed = newRootPath.trim();

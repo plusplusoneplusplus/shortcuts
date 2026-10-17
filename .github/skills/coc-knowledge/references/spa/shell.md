@@ -98,6 +98,23 @@ capability loading, and falls back to the chat surface only when the active sub-
 absent from the resolved `visibleSubTabs` — that fallback does not erase the stored deep
 route suffix.
 
+### Shared workspace Settings
+
+`features/repo-settings/WorkspaceSettingsHost.tsx` keeps one lazily mounted
+`RepoSettingsTab` or `RepoGroupSettingsTab` behind the top-level Settings entry
+and the default-off `features.panelSettings` add-tab entry. A stable portal
+container moves between hosts without remounting forms. The panel tab belongs
+to the panel workspace and concrete server, independently of its dock target
+or selected chat. Panel section navigation stays local; closing parks the form
+and preserves drafts for reopening or top-level access.
+
+`workspaceSettingsClient.tsx` supplies one pinned client through
+`WorkspaceOwnerContext`. Settings sections, shared preference hooks, Notes and
+group mutations retain raw workspace ids on that server. Linked-repo choices
+stay server-local. Unresolved remote owners wait for their route; changed
+endpoints retain mounted drafts, show an error and reject requests until the
+workspace is reopened. A new endpoint never silently replaces a draft's client.
+
 ## Pop-out windows
 
 **Every `#popout/*` opener must test its `window.open` result with `popOutOpened(handle)`

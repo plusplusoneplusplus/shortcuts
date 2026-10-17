@@ -33,6 +33,7 @@ import { useRepoGroupAccess } from './useRepoGroupAccess';
 import { getRepoGroupWriterConflicts } from './repoGroupAccess';
 import { RepoGroupAccessStatus } from './RepoGroupAccessStatus';
 import { parseRemoteCloneKey } from './cloneIdentity';
+import { useWorkspaceOwner } from './workspaceOwnerContext';
 
 /** Muted prompt shown in an empty description field. */
 export const REPO_GROUP_DESCRIPTION_PLACEHOLDER = 'Add description';
@@ -56,6 +57,10 @@ export interface RepoGroupMemberListProps {
 }
 
 export function RepoGroupMemberList({ workspaceId, selectionId = workspaceId, baseUrl, members }: RepoGroupMemberListProps) {
+    const client = useWorkspaceOwner(workspaceId)?.client;
+    const saveGroup = useCallback((updates: Parameters<typeof updateRepoGroup>[1]) => client
+        ? updateRepoGroup(workspaceId, updates, baseUrl, client)
+        : updateRepoGroup(workspaceId, updates, baseUrl), [workspaceId, baseUrl, client]);
     const sharing = useRepoGroupAccess(workspaceId, baseUrl);
     const [conflicts, setConflicts] = useState<RepoGroupWriterConflict[]>([]);
     // Text being typed, per member — absent means "not editing, show the saved
@@ -110,7 +115,7 @@ export function RepoGroupMemberList({ workspaceId, selectionId = workspaceId, ba
         setSaved(prev => ({ ...prev, [memberId]: next }));
         clearError(memberId);
         try {
-            await updateRepoGroup(workspaceId, { descriptions: { [memberId]: next } }, baseUrl);
+            await saveGroup({ descriptions: { [memberId]: next } });
         } catch (err: unknown) {
             setSaved(prev => ({ ...prev, [memberId]: previous }));
             setErrors(prev => ({
@@ -118,7 +123,7 @@ export function RepoGroupMemberList({ workspaceId, selectionId = workspaceId, ba
                 [memberId]: getRepositoryApiErrorMessage(err, 'Failed to save description'),
             }));
         }
-    }, [drafts, dropDraft, committed, clearError, workspaceId, baseUrl]);
+    }, [drafts, dropDraft, committed, clearError, saveGroup]);
 
     const toggleReadOnly = useCallback(async (member: RepoGroupMember) => {
         const memberId = member.workspaceId;
@@ -134,7 +139,7 @@ export function RepoGroupMemberList({ workspaceId, selectionId = workspaceId, ba
             return rest;
         });
         try {
-            await updateRepoGroup(workspaceId, { readOnly: { [memberId]: next } }, baseUrl);
+            await saveGroup({ readOnly: { [memberId]: next } });
             sharing.refresh();
         } catch (err: unknown) {
             setConflicts(current => [...current.filter(conflict => conflict.workspaceId !== memberId), ...getRepoGroupWriterConflicts(err)]);
@@ -151,7 +156,7 @@ export function RepoGroupMemberList({ workspaceId, selectionId = workspaceId, ba
                 return nextSaving;
             });
         }
-    }, [baseUrl, isReadOnly, workspaceId, sharing.refresh]);
+    }, [isReadOnly, sharing.refresh, saveGroup]);
 
     if (members.length === 0) {
         return (

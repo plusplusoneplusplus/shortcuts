@@ -21,7 +21,7 @@ export interface UseNotesAutoCommitReturn {
     updateInterval: (intervalMs: number) => Promise<void>;
 }
 
-export function useNotesAutoCommit(workspaceId: string, isDefaultRoot = true): UseNotesAutoCommitReturn {
+export function useNotesAutoCommit(workspaceId: string, isDefaultRoot = true, api = notesApi): UseNotesAutoCommitReturn {
     const [autoCommitEnabled, setAutoCommitEnabled] = useState(false);
     const [intervalMs, setIntervalMs] = useState<number | null>(null);
     const [lastCommittedAt, setLastCommittedAt] = useState<string | null>(null);
@@ -33,7 +33,7 @@ export function useNotesAutoCommit(workspaceId: string, isDefaultRoot = true): U
 
     const fetchStatus = useCallback(async () => {
         try {
-            const data = await notesApi.getAutoCommitStatus(workspaceId);
+            const data = await api.getAutoCommitStatus(workspaceId);
             if (cancelledRef.current) return;
 
             if (data.enabled) {
@@ -54,7 +54,7 @@ export function useNotesAutoCommit(workspaceId: string, isDefaultRoot = true): U
             setLastCommittedAt(null);
             setLastError(null);
         }
-    }, [workspaceId]);
+    }, [workspaceId, api]);
 
     // Initial load
     useEffect(() => {
@@ -80,32 +80,32 @@ export function useNotesAutoCommit(workspaceId: string, isDefaultRoot = true): U
     const enable = useCallback(async (ms?: number) => {
         setEnabling(true);
         try {
-            await notesApi.enableAutoCommit(workspaceId, ms);
+            await api.enableAutoCommit(workspaceId, ms);
             await fetchStatus();
         } catch {
             // Error handled silently — state remains unchanged
         } finally {
             if (!cancelledRef.current) setEnabling(false);
         }
-    }, [workspaceId, fetchStatus]);
+    }, [workspaceId, fetchStatus, api]);
 
     const disable = useCallback(async () => {
         try {
-            await notesApi.disableAutoCommit(workspaceId);
+            await api.disableAutoCommit(workspaceId);
             await fetchStatus();
         } catch {
             // Error handled silently
         }
-    }, [workspaceId, fetchStatus]);
+    }, [workspaceId, fetchStatus, api]);
 
     const updateInterval = useCallback(async (ms: number) => {
         try {
-            await notesApi.updateAutoCommitInterval(workspaceId, ms);
+            await api.updateAutoCommitInterval(workspaceId, ms);
             await fetchStatus();
         } catch {
             // Error handled silently
         }
-    }, [workspaceId, fetchStatus]);
+    }, [workspaceId, fetchStatus, api]);
 
     return {
         autoCommitEnabled,

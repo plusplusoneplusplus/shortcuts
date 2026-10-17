@@ -129,6 +129,7 @@ interface DashboardConfig {
     markdownPanelPreviewEnabled?: boolean;
     /** Whether unified right-panel source files can be split into two panes. Default false. */
     panelSourceSplitEnabled?: boolean;
+    panelSettingsEnabled?: boolean;
     /** Whether unified right-panel resource tabs can be reordered. Default true. */
     panelTabReorderingEnabled?: boolean;
     /** Whether the owning server allows confirmed permanent Explorer deletion. Default true. */

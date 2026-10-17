@@ -85,6 +85,8 @@ vi.mock('../../../../src/server/spa/client/react/features/language-servers/langu
 
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
+import { WorkspaceSettingsProvider, WorkspaceSettingsSlot } from '../../../../src/server/spa/client/react/features/repo-settings/WorkspaceSettingsHost';
+import { applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
 import {
     inheritDraftPanelTabs,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
@@ -187,6 +189,7 @@ describe('UnifiedRightPanel', () => {
         expect(dock.setTarget).not.toHaveBeenCalled();
     });
     beforeEach(() => {
+        applyRuntimeConfigPatch({ panelSettingsEnabled: false });
         localStorage.clear();
         clearUnifiedPanelState();
         clearUnifiedTreeState();
@@ -196,6 +199,69 @@ describe('UnifiedRightPanel', () => {
         clearUnifiedPanelState();
         clearUnifiedTreeState();
         delete (window as { cocDesktop?: unknown }).cocDesktop;
+    });
+
+    it.each([null, 'remote:server-a:ws-1'])('opens, focuses and closes Settings on its panel owner, not the dock target (%s)', async routingRef => {
+        applyRuntimeConfigPatch({ panelSettingsEnabled: true });
+        const ownerKey = routingRef ?? WS;
+        const view = (target: string, chatId: string) => (
+            <WorkspaceSettingsProvider ownerKey={ownerKey} topLevelActive={false}
+                renderPage={() => <input aria-label="Settings draft" defaultValue="" />}>
+                <UnifiedRightPanel workspaceId={WS} routingRef={routingRef} chatId={chatId}
+                    dock={dockStub({ target })} />
+            </WorkspaceSettingsProvider>
+        );
+        const rendered = render(view('member-a', 'chat-1'));
+        await openViaMenu('unified-panel-open-settings');
+        const input = screen.getByRole('textbox', { name: 'Settings draft' });
+        fireEvent.change(input, { target: { value: 'pending' } });
+        const first = readUnifiedPanelState(WS).workspaceTabs[0];
+        expect(first).toMatchObject({ kind: 'settings', ownerWorkspaceId: WS, ownerRoutingRef: routingRef, chatId: null });
+        rendered.rerender(view('member-b', 'chat-2'));
+        await openViaMenu('unified-panel-open-settings');
+        expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(1);
+        expect(readUnifiedPanelState(WS).activeByScope['chat-2']).toBe(first.id);
+        expect(screen.getByRole('textbox', { name: 'Settings draft' })).toBe(input);
+        expect(input).toHaveValue('pending');
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${first.id}`));
+        expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(0);
+        await openViaMenu('unified-panel-open-settings');
+        expect(screen.getByRole('textbox', { name: 'Settings draft' })).toBe(input);
+        expect(input).toHaveValue('pending');
+    });
+
+    it('keeps Settings absent until the default-off flag is enabled', async () => {
+        render(<WorkspaceSettingsProvider ownerKey={WS} topLevelActive={false} renderPage={() => null}>
+            <UnifiedRightPanel workspaceId={WS} dock={dockStub()} />
+        </WorkspaceSettingsProvider>);
+        await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
+        expect(screen.queryByTestId('unified-panel-open-settings')).toBeNull();
+        act(() => { applyRuntimeConfigPatch({ panelSettingsEnabled: true }); });
+        expect(screen.getByTestId('unified-panel-open-settings')).toBeTruthy();
+        act(() => { applyRuntimeConfigPatch({ panelSettingsEnabled: false }); });
+        expect(screen.queryByTestId('unified-panel-open-settings')).toBeNull();
+    });
+
+    it('refocuses the shared form from top-level Settings even when its panel tab is already active', async () => {
+        applyRuntimeConfigPatch({ panelSettingsEnabled: true });
+        const page = (top: boolean) => <WorkspaceSettingsProvider ownerKey={WS} topLevelActive={top}
+            renderPage={() => <input aria-label="Shared settings" />}>
+            <WorkspaceSettingsSlot />
+            <UnifiedRightPanel workspaceId={WS} routingRef={null} dock={dockStub()} />
+        </WorkspaceSettingsProvider>;
+        const view = render(page(false));
+        await openViaMenu('unified-panel-open-settings');
+        const input = screen.getByRole('textbox', { name: 'Shared settings' });
+        view.rerender(page(true));
+        expect(screen.getByTestId('top-settings-host')).toContainElement(input);
+        await openViaMenu('unified-panel-open-settings');
+        expect(screen.getByTestId('panel-settings-host')).toContainElement(input);
+        fireEvent.click(screen.getByText('Show Settings here'));
+        expect(screen.getByTestId('top-settings-host')).toContainElement(input);
+        const id = readUnifiedPanelState(WS).workspaceTabs[0].id;
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-${id}`));
+        expect(screen.getByTestId('panel-settings-host')).toContainElement(input);
+        expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(1);
     });
 
     describe('desktop HTML page tabs', () => {

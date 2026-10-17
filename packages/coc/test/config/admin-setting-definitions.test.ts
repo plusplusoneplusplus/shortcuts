@@ -831,6 +831,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.explorerEditorTabs': 'appearance',
         'features.markdownPanelPreview': 'appearance',
         'features.panelSourceSplit': 'appearance',
+        'features.panelSettings': 'appearance',
         'features.diffFilePicker': 'appearance',
         'vimNavigation.enabled': 'appearance',
         'features.scopeSwitcher': 'appearance',

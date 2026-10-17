@@ -47,6 +47,8 @@ import { resolveRepoGroupName, resolveRepoGroupDisplayName } from './repoGroupNa
 import type { RepoGroupMember } from './repoGroupService';
 import { RepoGroupGitTab } from './RepoGroupGitTab';
 import { RepoGroupSettingsTab } from './RepoGroupSettingsTab';
+import { WorkspaceSettingsProvider, WorkspaceSettingsSlot } from '../features/repo-settings/WorkspaceSettingsHost';
+import { WorkspaceSettingsApiProvider } from '../features/repo-settings/workspaceSettingsClient';
 import { useRepoGroupMembers } from './useRepoGroupMembers';
 import { useWorkspaceDock, type DockTarget } from '../features/repo-detail/useWorkspaceDock';
 import { setWorkspaceDockExpanded, useWorkspaceDockExpanded } from '../features/repo-detail/WorkspaceDockToggle';
@@ -335,6 +337,11 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     );
 
     return (
+        <WorkspaceSettingsProvider ownerKey={selectionId} topLevelActive={activeTab === 'settings'}
+            renderPage={inPanel => <WorkspaceSettingsApiProvider workspaceId={workspaceId} selectionId={selectionId}>
+                <RepoGroupSettingsTab workspaceId={workspaceId} selectionId={selectionId}
+                    baseUrl={groupBaseUrl} active={activeTab === 'settings' || inPanel} navigation={inPanel ? 'local' : 'route'} />
+            </WorkspaceSettingsApiProvider>}>
         <UnifiedPanelHostProvider host={unifiedPanelHost}>
         <div className="flex flex-col h-full" data-testid="repo-group-view" data-workspace={workspaceId}>
             {isMobile
@@ -467,12 +474,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                         />
                     </div>
                     <div style={{ display: activeTab === 'settings' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                        <RepoGroupSettingsTab
-                            workspaceId={workspaceId}
-                            selectionId={selectionId}
-                            baseUrl={groupBaseUrl}
-                            active={activeTab === 'settings'}
-                        />
+                        <WorkspaceSettingsSlot />
                     </div>
                 </div>
                 {dockAvailable && (
@@ -501,5 +503,6 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
             />
         </div>
         </UnifiedPanelHostProvider>
+        </WorkspaceSettingsProvider>
     );
 }

@@ -31,7 +31,7 @@ import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 import { hasExplicitUrlScheme, normalizeBrowserUrl } from './unifiedBrowserTabs';
 
 /** The non-search entries the menu offers. */
-export type OpenMenuActionId = 'terminal' | 'explorer' | 'notes' | 'browser' | 'canvas' | 'changes' | 'todo';
+export type OpenMenuActionId = 'terminal' | 'explorer' | 'notes' | 'settings' | 'browser' | 'canvas' | 'changes' | 'todo';
 
 export interface OpenMenuAction {
     id: OpenMenuActionId;
@@ -65,6 +65,8 @@ export interface OpenMenuActionsInput {
      * rather than disabled for every other chat.
      */
     todoAvailable?: boolean;
+    /** The panel has a shared Settings page and its default-off flag is enabled. */
+    settingsAvailable?: boolean;
 }
 
 /**
@@ -97,6 +99,7 @@ export function openMenuActions(input: OpenMenuActionsInput): OpenMenuAction[] {
         actions.push({ id: 'explorer', label: 'Explorer', ...repoGate });
     }
     actions.push({ id: 'notes', label: 'Notes' });
+    if (input.settingsAvailable) actions.push({ id: 'settings', label: 'Settings' });
     // A blank browser tab. It belongs to the target's concrete workspace (its
     // site-session identity) but loads nothing from the repo, so availability
     // does not gate it.

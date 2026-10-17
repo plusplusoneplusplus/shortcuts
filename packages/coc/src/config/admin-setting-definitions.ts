@@ -1249,6 +1249,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.panelSettings', default: false, runtime: 'live', runtimeFlag: 'panelSettingsEnabled',
+        ui: {
+            tab: 'appearance', group: 'editorFiles', order: 35, label: 'Settings panel tab', badge: 'experimental',
+            hint: 'Add Settings to the right-panel add-tab menu, sharing the workspace Settings page and its pending edits. Disabled by default.',
+            testId: 'toggle-panel-settings-enabled',
+        },
+    }),
+    bool({
         key: 'features.panelTabReordering', default: true, runtime: 'live', runtimeFlag: 'panelTabReorderingEnabled',
         ui: {
             tab: 'appearance', group: 'editorFiles', order: 40, label: 'Panel tab reordering', badge: 'experimental',

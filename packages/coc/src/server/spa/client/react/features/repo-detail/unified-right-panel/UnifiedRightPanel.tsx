@@ -107,6 +107,7 @@ import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
 import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
 import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
+import { useWorkspaceSettingsPanel } from '../../repo-settings/WorkspaceSettingsHost';
 import { UnifiedHtmlPageTab } from './UnifiedHtmlPageTab';
 import { UnifiedBrowserTab } from './UnifiedBrowserTab';
 import { removeBrowserWebview } from './browserWebviewLayerStore';
@@ -247,10 +248,13 @@ export function UnifiedRightPanel({
     const { isOpen, mode, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
     const [reorderEnabled, setReorderEnabled] = useState(() => isPanelTabReorderingEnabled());
     const [splitEnabled, setSplitEnabled] = useState(() => isFeatureEnabled('panelSourceSplitEnabled'));
+    const { ownerKey: settingsOwner, focusPanel: focusPanelSettings } = useWorkspaceSettingsPanel();
+    const [settingsEnabled, setSettingsEnabled] = useState(() => isFeatureEnabled('panelSettingsEnabled'));
     useEffect(() => {
         const update = () => {
             setReorderEnabled(isPanelTabReorderingEnabled());
             setSplitEnabled(isFeatureEnabled('panelSourceSplitEnabled'));
+            setSettingsEnabled(isFeatureEnabled('panelSettingsEnabled'));
         };
         window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
         return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
@@ -405,23 +409,25 @@ export function UnifiedRightPanel({
             return Object.keys(retained).length === Object.keys(prev).length ? prev : retained;
         });
     }, [state.tabs]);
-    const openWorkspaceResource = useCallback((kind: 'terminal' | 'notes') => {
-        const owner = kind === 'notes' ? workspaceId : target;
+    const openWorkspaceResource = useCallback((kind: 'terminal' | 'notes' | 'settings') => {
+        const owner = kind === 'terminal' ? target : workspaceId;
         const input: OpenUnifiedTabInput = {
             kind,
             ownerWorkspaceId: owner,
             ...(kind === 'terminal' ? { ownerRoutingRef: targetRoutingRef } : {}),
+            ...(kind === 'settings' ? { ownerRoutingRef: routingRef ?? null } : {}),
             chatId,
             resourceId: kind,
-            label: kind === 'terminal' ? 'Terminal' : 'Notes',
+            label: kind === 'terminal' ? 'Terminal' : kind === 'settings' ? 'Settings' : 'Notes',
             ...(owner === workspaceId || !targetLabel ? {} : { repoLabel: targetLabel }),
         };
         open(input);
+        if (kind === 'settings') focusPanelSettings?.();
         if (kind === 'terminal') {
             const id = unifiedTabId(input);
             setTerminalOpenRequests(prev => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
         }
-    }, [open, workspaceId, target, targetLabel, chatId, targetRoutingRef]);
+    }, [open, workspaceId, target, targetLabel, chatId, targetRoutingRef, routingRef, focusPanelSettings]);
 
     // ------------------------------------------------------------------
     // The Search/Explorer navigator (AC-01)
@@ -652,12 +658,13 @@ export function UnifiedRightPanel({
 
     const activateWithNavigation = useCallback((tabId: string) => {
         const target = tabsRef.current.find(tab => tab.id === tabId);
+        if (target?.kind === 'settings') focusPanelSettings?.();
         if (target?.kind === 'todo' && mode === 'explorer') tree.setOpen(false);
         if (tabId === activeIdRef.current) return;
         if (target?.kind === 'file') prepareFileNavigation(tabId, 'navigation');
         else captureActiveFileLocation('navigation');
         activate(tabId);
-    }, [activate, captureActiveFileLocation, prepareFileNavigation, mode, tree.setOpen]);
+    }, [activate, captureActiveFileLocation, prepareFileNavigation, mode, tree.setOpen, focusPanelSettings]);
 
     const openToSide = useCallback((tabId: string) => {
         const tab = tabsRef.current.find(candidate => candidate.id === tabId);
@@ -1996,6 +2003,7 @@ export function UnifiedRightPanel({
                 {menuOpen && (
                     <div ref={menuRef} className="contents">
                         <UnifiedPanelOpenMenu
+                            settingsAvailable={settingsEnabled && settingsOwner === (routingRef ?? workspaceId)}
                             workspaceId={workspaceId}
                             chatId={chatId}
                             target={target}

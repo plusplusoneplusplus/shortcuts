@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { LanguageServerDefinition, LanguageServerRuntimeState } from '@plusplusoneplusplus/coc-client';
 import { languageServersApi, parseLanguageServerRejection } from './languageServersApi';
+import { useWorkspaceOwner } from '../../repos/workspaceOwnerContext';
 
 interface LanguageServersPanelProps {
     workspaceId: string;
@@ -136,6 +137,7 @@ function runtimeSummary(runtimes: LanguageServerRuntimeState[]): string {
 }
 
 export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps) {
+    const api = useWorkspaceOwner(workspaceId)?.client?.languageServers ?? languageServersApi;
     const [stored, setStored] = useState<LanguageServerDefinition[]>([]);
     const [effective, setEffective] = useState<LanguageServerDefinition[]>([]);
     const [warnings, setWarnings] = useState<string[]>([]);
@@ -158,7 +160,7 @@ export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps)
     useEffect(() => {
         let cancelled = false;
         setLoading(true);
-        languageServersApi.get(workspaceId)
+        api.get(workspaceId)
             .then(res => {
                 if (cancelled) return;
                 applyResponse(res);
@@ -172,7 +174,7 @@ export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps)
                 if (!cancelled) setLoading(false);
             });
         return () => { cancelled = true; };
-    }, [workspaceId, applyResponse]);
+    }, [workspaceId, applyResponse, api]);
 
     /**
      * Write `definitions`, reporting field errors against `draftIndex` when the
@@ -186,7 +188,7 @@ export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps)
         setError(null);
         setFieldErrors({});
         try {
-            applyResponse(await languageServersApi.update(workspaceId, next));
+            applyResponse(await api.update(workspaceId, next));
             return true;
         } catch (err: unknown) {
             const rejection = parseLanguageServerRejection(err);
@@ -206,7 +208,7 @@ export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps)
         } finally {
             setSaving(false);
         }
-    }, [workspaceId, applyResponse]);
+    }, [workspaceId, applyResponse, api]);
 
     const removeDefinition = useCallback((def: LanguageServerDefinition) => {
         save({ definitions: stored.filter(d => d.id !== def.id) });
@@ -251,7 +253,7 @@ export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps)
         setRetrying(current => new Set(current).add(runtime.sessionId));
         setError(null);
         try {
-            applyResponse(await languageServersApi.retry(workspaceId, runtime.sessionId));
+            applyResponse(await api.retry(workspaceId, runtime.sessionId));
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to retry language server');
         } finally {
@@ -261,7 +263,7 @@ export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps)
                 return next;
             });
         }
-    }, [applyResponse, workspaceId]);
+    }, [applyResponse, workspaceId, api]);
 
     if (loading) {
         return <div className="text-xs text-[#848484]" data-testid="language-servers-loading">Loading…</div>;

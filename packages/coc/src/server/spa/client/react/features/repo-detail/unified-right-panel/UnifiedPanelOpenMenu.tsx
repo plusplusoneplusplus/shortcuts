@@ -56,7 +56,7 @@ import {
 } from './unifiedPanelOpenMenuModel';
 import { chatChangesTabInput, useUnifiedChatChanges } from './unifiedChatChanges';
 import { browserOpenInput } from './unifiedBrowserTabs';
-import { TODO_ICON } from './UnifiedPanelTabStrip';
+import { SETTINGS_ICON, TODO_ICON } from './UnifiedPanelTabStrip';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 
 /** Results requested and rendered per query, matching QuickOpen. */
@@ -79,8 +79,9 @@ export interface UnifiedPanelOpenMenuProps {
     onOpenResource: (input: OpenUnifiedTabInput) => void;
     /** The selected Sentinel chat's To-do tab; null hides the entry. */
     todoInput?: OpenUnifiedTabInput | null;
+    settingsAvailable?: boolean;
     /** Open one of the workspace-owned views against the current target. */
-    onOpenWorkspaceResource: (action: 'terminal' | 'explorer' | 'notes') => void;
+    onOpenWorkspaceResource: (action: 'terminal' | 'explorer' | 'notes' | 'settings') => void;
     /** Dismiss the menu and hand focus back to the "+" trigger. */
     onClose: () => void;
 }
@@ -93,6 +94,7 @@ export function UnifiedPanelOpenMenu({
     targets,
     onOpenResource,
     todoInput = null,
+    settingsAvailable = false,
     onOpenWorkspaceResource,
     onClose,
 }: UnifiedPanelOpenMenuProps) {
@@ -123,10 +125,11 @@ export function UnifiedPanelOpenMenu({
         chatId,
         chatHasChanges: chatChanges !== null,
         todoAvailable: todoInput !== null,
+        settingsAvailable,
         ...(targetUnavailable
             ? { targetUnavailable, targetUnavailableReason: `${targetOption?.label ?? 'This repository'} is unavailable.` }
             : {}),
-    }), [target, chatId, chatChanges, todoInput, targetUnavailable, targetOption?.label]);
+    }), [target, chatId, chatChanges, todoInput, settingsAvailable, targetUnavailable, targetOption?.label]);
 
     const items = useMemo(
         () => buildOpenMenuItems({ actions, files, canvases, query }),
@@ -500,6 +503,7 @@ export function UnifiedPanelOpenMenu({
 
 /** Keyed by action id so a new action cannot ship without a leading icon. */
 const ACTION_ICONS: Readonly<Record<OpenMenuActionId, ReactNode>> = {
+    settings: SETTINGS_ICON,
     terminal: '▶',
     explorer: '🗂',
     notes: '🗒',

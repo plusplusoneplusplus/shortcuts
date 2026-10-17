@@ -4,6 +4,7 @@
 
 import {
     CocApiError,
+    type CocClient,
     type Comment,
     type CommentThread,
     type CommentThreadStatus,
@@ -85,9 +86,7 @@ async function withConflictError<T>(request: Promise<T>): Promise<T> {
  * Notes domain client for a workspace, routed to the workspace's clone (AC-07):
  * remote clones hit their server, local clones the default origin.
  */
-const notesClient = (wsId: string) => getCocClientForWorkspace(wsId).notes;
-
-export const notesApi = {
+export const createNotesApi = (notesClient: (wsId: string) => CocClient['notes']) => ({
     getTree(wsId: string, root?: string): Promise<NoteTreeResponse> {
         return withSpaErrors(notesClient(wsId).getTree(wsId, root));
     },
@@ -248,4 +247,6 @@ export const notesApi = {
     restoreVersion(wsId: string, notePath: string, hash: string): Promise<RestoreNoteVersionResponse> {
         return withSpaErrors(notesClient(wsId).restoreVersion(wsId, notePath, hash));
     },
-};
+});
+
+export const notesApi = createNotesApi(wsId => getCocClientForWorkspace(wsId).notes);

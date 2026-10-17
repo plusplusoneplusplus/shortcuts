@@ -83,7 +83,15 @@ export const TODO_ICON = (
     </svg>
 );
 
+export const SETTINGS_ICON = (
+    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true">
+        <path d="m9 3-1 3-3 1-2 3 2 2-1 3 3 2 3-1 2 2 3-1 1-3 3-1 1-3-2-2 1-3-3-2-3 1-2-2z" />
+        <circle cx="11" cy="10" r="3" />
+    </svg>
+);
+
 const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
+    settings: SETTINGS_ICON,
     todo: TODO_ICON,
     terminal: (
         <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

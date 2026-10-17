@@ -170,8 +170,8 @@ export function updateRepoGroup(groupId: string, updates: {
     members?: string[];
     descriptions?: Record<string, string>;
     readOnly?: Record<string, boolean>;
-}, baseUrl?: string): Promise<RepoGroupDetails> {
-    return getCocClientFor(baseUrl).request(`/repo-groups/${encodeURIComponent(groupId)}`, { method: 'PATCH', body: updates });
+}, baseUrl?: string, client = getCocClientFor(baseUrl)): Promise<RepoGroupDetails> {
+    return client.request(`/repo-groups/${encodeURIComponent(groupId)}`, { method: 'PATCH', body: updates });
 }
 
 export function deleteRepoGroup(groupId: string, baseUrl?: string): Promise<void> {

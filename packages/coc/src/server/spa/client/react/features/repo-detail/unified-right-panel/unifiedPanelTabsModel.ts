@@ -73,14 +73,14 @@ export interface PersistedNotesView {
  * chat, whose `resourceId` is the ledger's parent process id. Only the
  * descriptor persists; the ledger itself lives on the owning server.
  */
-export type UnifiedTabKind = 'terminal' | 'notes' | 'file' | 'note' | 'canvas' | 'diff' | 'git' | 'external' | 'html-page' | 'browser' | 'paste' | 'todo';
+export type UnifiedTabKind = 'terminal' | 'notes' | 'settings' | 'file' | 'note' | 'canvas' | 'diff' | 'git' | 'external' | 'html-page' | 'browser' | 'paste' | 'todo';
 
 /** Which set a tab belongs to: the workspace's, or one chat's. */
 export type UnifiedTabScope = 'workspace' | 'chat';
 
 /** Kinds recognized by the descriptor codec; the "+" menu has its own action list. */
 export const ALL_UNIFIED_TAB_KINDS: readonly UnifiedTabKind[] = [
-    'terminal', 'notes', 'file', 'note', 'canvas', 'diff', 'git', 'html-page', 'browser', 'paste', 'todo',
+    'terminal', 'notes', 'settings', 'file', 'note', 'canvas', 'diff', 'git', 'html-page', 'browser', 'paste', 'todo',
 ];
 
 /** The fixed resource id of a workspace's one Git tab. */
@@ -96,7 +96,7 @@ export const GIT_TAB_RESOURCE_ID = 'git';
 const EPHEMERAL_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['external', 'browser', 'paste']);
 
 /** Kinds that belong to the workspace and survive a chat switch. */
-const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['terminal', 'notes', 'note', 'html-page', 'browser']);
+const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['terminal', 'notes', 'settings', 'note', 'html-page', 'browser']);
 
 /**
  * The scope key used for the workspace's own selection — the active tab when no
