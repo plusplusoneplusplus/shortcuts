@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { CocClient, GitCommit, GitCommitListResponse, GitInfoResponse } from '@plusplusoneplusplus/coc-client';
 import { RailOutgoingCommits } from '../../../../src/server/spa/client/react/features/repo-detail/RailOutgoingCommits';
@@ -27,6 +27,7 @@ function deferred<T>() {
     const promise = new Promise<T>(done => { resolve = done; });
     return { promise, resolve };
 }
+beforeEach(() => { window.matchMedia = vi.fn().mockReturnValue({ matches: false }); });
 afterEach(cleanup);
 
 describe('rail outgoing history', () => {

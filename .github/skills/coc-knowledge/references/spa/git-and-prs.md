@@ -88,12 +88,14 @@ commit row leads with its short hash before the subject.
 
 ### Commit tooltips
 
-`CommitTooltip` renders through a portal to `document.body` with fixed,
-viewport-relative positioning. The tooltip stays outside the hover-peek
-sidebar's transformed, overflow-clipping container. React hover events retain
-sidebar ownership, and tooltip mousedown stops propagation to keep its controls
-from triggering the peek's document-level outside-click dismissal. Outside
-mousedown, Escape and touch-start cancel tooltip timers and dismiss the portal.
+`CommitTooltip` and `useCommitListGestures` serve expanded Git rows and
+collapsed-rail outgoing rows from their existing history metadata, without extra
+detail reads. The tooltip portals to `document.body` with viewport-clamped fixed
+positioning outside clipping containers. Outgoing rows share fixup metadata and
+hover timing, expose the panel on focus, and retain React pointer/focus ownership
+across the portal. Pointer and mouse presses inside the tooltip preserve its host;
+Copy never activates a row. Outside presses, Escape, touch-start, row activation
+and owner/comparison disposal cancel pending tooltip work.
 
 ### Stale working-tree recovery
 

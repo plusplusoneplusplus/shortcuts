@@ -1,5 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CocClient, GitCommit, GitInfoResponse } from '@plusplusoneplusplus/coc-client';
+import { CommitTooltip } from '../git/commits/CommitTooltip';
+import { useCommitListGestures } from '../git/commits/useCommitListGestures';
+import { isTouchOnly } from '../git/commits/commitListTypes';
+import { buildFixupGroups, FIXUP_GROUP_COLORS_DARK, FIXUP_GROUP_COLORS_LIGHT } from '../git/fixup-utils';
 import { CommitIdentity } from '../git/commits/CommitIdentity';
 import { COMMIT_PAGE_SIZE, outgoingCommits } from '../git/commits/outgoingCommits';
 import { workspaceReadSource } from '../../api/workspaceReads';
@@ -48,6 +52,8 @@ function OutgoingHistory({ client, workspaceId, ahead, onOpen, onRetry }: {
     onOpen: (commit: GitCommit) => void;
     onRetry: () => void;
 }) {
+    const gestures = useCommitListGestures({ touchOnly: isTouchOnly() });
+    const focusWithin = useRef<HTMLElement | null>(null);
     const [commits, setCommits] = useState<GitCommit[]>([]);
     const [total, setTotal] = useState<number>();
     const [skip, setSkip] = useState(0);
@@ -80,13 +86,31 @@ function OutgoingHistory({ client, workspaceId, ahead, onOpen, onRetry }: {
         return () => { cancelled = true; };
     }, [client, workspaceId, ahead, skip]);
 
-    return <>
-        <ul aria-label="Outgoing commit history" aria-busy={loading}
+    const fixups = useMemo(() => buildFixupGroups(commits), [commits]);
+    const hovered = gestures.hoveredCommit;
+    const fixupEntry = hovered ? fixups.fixupEntries.get(hovered.hash) : undefined;
+    const targetGroup = hovered ? fixups.targetGroups.get(hovered.hash) : undefined;
+    const colors = window.matchMedia('(prefers-color-scheme: dark)').matches ? FIXUP_GROUP_COLORS_DARK : FIXUP_GROUP_COLORS_LIGHT;
+    const colorSlot = fixupEntry?.colorSlot ?? targetGroup?.colorSlot;
+
+    // React focus/pointer ownership includes the tooltip's body portal. Keeping
+    // it beside (not inside) the row button also isolates its Copy action.
+    return <div onFocusCapture={event => {
+        focusWithin.current = event.target;
+        gestures.handleTooltipMouseEnter();
+    }} onBlurCapture={() => {
+        focusWithin.current = null;
+        gestures.handleRowMouseLeave();
+    }}>
+        <ul aria-label="Outgoing commit history" aria-busy={loading} onScroll={gestures.dismissTooltip}
             className="max-h-48 overflow-y-auto overscroll-contain min-w-0" data-testid="rail-outgoing-list">
             {commits.map(commit => <li key={commit.hash}>
                 <button type="button" className="flex w-full min-w-0 items-center gap-1.5 rounded px-1 py-1 text-left hover:bg-[#f0f0f0] focus-visible:outline focus-visible:outline-[#007acc] dark:hover:bg-[#2a2d2e]"
-                    aria-label={`Open commit ${commit.shortHash}: ${commit.subject}`} title={commit.subject}
-                    onClick={() => onOpen(commit)}>
+                    aria-label={`Open commit ${commit.shortHash}: ${commit.subject}`}
+                    onMouseEnter={isTouchOnly() ? undefined : event => gestures.handleRowMouseEnter(commit, event)}
+                    onMouseLeave={() => { if (focusWithin.current !== document.activeElement) gestures.handleRowMouseLeave(); }}
+                    onFocus={event => gestures.handleRowMouseEnter(commit, event)}
+                    onClick={() => { gestures.dismissTooltip(); onOpen(commit); }}>
                     <CommitIdentity commit={commit} unpushed />
                 </button>
             </li>)}
@@ -99,5 +123,9 @@ function OutgoingHistory({ client, workspaceId, ahead, onOpen, onRetry }: {
         {!error && total !== undefined && commits.length < total && <button type="button" disabled={loading}
             className="mt-1 text-[11px] text-[#1878c8] focus-visible:outline dark:text-[#3794ff]"
             onClick={() => setSkip(commits.length)}>Load more outgoing commits ({commits.length} of {total})</button>}
-    </>;
+        {hovered && gestures.tooltipAnchorRect && <CommitTooltip commit={hovered} anchorRect={gestures.tooltipAnchorRect}
+            fixupEntry={fixupEntry} targetGroup={targetGroup} groupColor={colorSlot === undefined ? undefined : colors[colorSlot]}
+            onMouseEnter={gestures.handleTooltipMouseEnter}
+            onMouseLeave={() => { if (focusWithin.current !== document.activeElement) gestures.handleTooltipMouseLeave(); }} />}
+    </div>;
 }
