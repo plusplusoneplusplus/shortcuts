@@ -20,6 +20,7 @@ import { TeamsMessagingManager } from './teams-messaging-manager';
 import { TeamsCommandRouter } from './teams-command-router';
 import { ImageDownloadError, parseMessagingCommand, type MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import type { MessagingCompactor, MessagingQuotaSource } from './messaging-commands';
+import type { MessagingTodoReader } from './messaging-todos';
 import type { MessagingRemoteDirectory } from './remote-browse';
 import { TeamsOAuthFlow } from './teams-oauth-flow';
 import { getTeamsOAuthCredential } from './teams-native-auth';
@@ -80,6 +81,8 @@ export interface TeamsMessagingRoutesOptions {
     getQuota?: MessagingQuotaSource;
     /** Compacts a chat's provider context for the `compact` command. */
     compact?: MessagingCompactor;
+    /** Read-only Sentinel to-do ledgers for `list todos`. */
+    getTodos?: () => MessagingTodoReader | undefined;
     /** Local + remote repo directory for read-only `list remotes` / `list topics <ref>`. */
     remotes?: MessagingRemoteDirectory;
     /** Existing manager, shared with the server lifecycle. */
@@ -311,6 +314,7 @@ export function registerTeamsMessagingRoutes(
             } : {}),
             executeFollowUp: opts.executeFollowUp,
             getQuota: opts.getQuota,
+            getTodos: opts.getTodos,
             compact: opts.compact,
             remotes: opts.remotes,
             handOff: opts.handOff,

@@ -1,6 +1,6 @@
 /**
  * Read-only `list todos` reply: active items and recent Done items of one Sentinel chat's
- * ledger, as plain phone-readable lines. Reads through `SentinelTodoService.list`
+ * ledger, as phone-readable lines shared by WhatsApp and Teams. Reads through `SentinelTodoService.list`
  * (which proves the owner is a Sentinel chat of the workspace) and never
  * writes the ledger, enqueues a turn, changes the selection, or acknowledges
  * job results.
@@ -26,38 +26,43 @@ export const TODOS_UNAVAILABLE_REPLY = 'To-do lists are unavailable on this serv
 
 export type MessagingTodoReader = Pick<SentinelTodoService, 'list'>;
 
-function itemLine(n: number, item: SentinelTodoItem): string {
+const plain = (text: string) => text;
+
+function itemLine(n: number, item: SentinelTodoItem, escape: (text: string) => string): string {
     const status = SENTINEL_TODO_STATUS_LABELS[sentinelTodoDisplayStatus(item)];
     const jobs = item.jobs.map(job => job.execution.state);
     const job = jobs.includes('running') ? ' · job running' : jobs.includes('queued') ? ' · job queued' : '';
     const priority = sentinelTodoPriority(item) === 'high' ? ' · High' : '';
     const reason = item.status === 'needs_attention' && item.statusReason
-        ? `\n   ↳ ${item.statusReason.length > 160 ? `${item.statusReason.slice(0, 159)}…` : item.statusReason}` : '';
-    return `${n}. [${status}${job}${priority}] ${item.title}${reason}`;
+        ? `\n   ↳ ${escape(item.statusReason.length > 160 ? `${item.statusReason.slice(0, 159)}…` : item.statusReason)}` : '';
+    return `${n}. [${status}${job}${priority}] ${escape(item.title)}${reason}`;
 }
 
-/** All active normal and manual items, then the most recent Done; archived items stay omitted. */
-export function formatTodosReply(title: string, items: readonly SentinelTodoItem[], doneLimit = MAX_LISTED_DONE_TODOS): string {
+/**
+ * All active normal and manual items, then the most recent Done; archived items stay omitted.
+ * `escape` protects chat-supplied text, e.g. for Teams Markdown.
+ */
+export function formatTodosReply(title: string, items: readonly SentinelTodoItem[], escape = plain): string {
     const listed = items.filter(item => !item.archived);
-    const page = sentinelTodoRecentPage(listed, listed.filter(item => item.status !== 'done').length + doneLimit);
+    const page = sentinelTodoRecentPage(listed, listed.filter(item => item.status !== 'done').length + MAX_LISTED_DONE_TODOS);
     const normal = sentinelTodoSections(page.items, 'normal');
     const manual = sentinelTodoSections(page.items, 'manual');
     const total = normal.active.length + manual.active.length;
-    if (!page.total) return `📋 To-do · "${title}"\nNo unfinished items.`;
-    const lines = [`📋 To-do · "${title}" — ${total} not done`];
+    if (!page.total) return `📋 To-do · "${escape(title)}"\nNo unfinished items.`;
+    const lines = [`📋 To-do · "${escape(title)}" — ${total} not done`];
     let n = 0;
-    for (const item of normal.active) lines.push(itemLine(++n, item));
+    for (const item of normal.active) lines.push(itemLine(++n, item, escape));
     if (manual.active.length) {
         lines.push('', 'Manual tracking (tracked only, never run):');
-        for (const item of manual.active) lines.push(itemLine(++n, item));
+        for (const item of manual.active) lines.push(itemLine(++n, item, escape));
     }
     if (normal.done.length) {
         lines.push('', 'Done:');
-        for (const item of normal.done) lines.push(itemLine(++n, item));
+        for (const item of normal.done) lines.push(itemLine(++n, item, escape));
     }
     if (manual.done.length) {
         lines.push('', 'Done · Manual tracking (tracked only, never run):');
-        for (const item of manual.done) lines.push(itemLine(++n, item));
+        for (const item of manual.done) lines.push(itemLine(++n, item, escape));
     }
     if (page.hasMore) lines.push('', `…${page.total - n} older Done items not shown. Open the chat's To-do tab in CoC for the full list.`);
     return lines.join('\n');
@@ -68,12 +73,13 @@ export async function listTodosReply(
     todos: MessagingTodoReader | undefined,
     store: Pick<ProcessStore, 'getProcess'>,
     owner: SentinelTodoOwner,
+    escape = plain,
 ): Promise<string> {
     if (!todos) return TODOS_UNAVAILABLE_REPLY;
     try {
         const ledger = await todos.list(owner);
         const process = await store.getProcess(owner.processId, owner.workspaceId).catch(() => undefined);
-        return formatTodosReply(process?.title ?? process?.customTitle ?? owner.processId, ledger.items);
+        return formatTodosReply(process?.title ?? process?.customTitle ?? owner.processId, ledger.items, escape);
     } catch (error) {
         if (error instanceof SentinelTodoError && error.code === 'not_found') {
             return '❌ This chat is not a Sentinel chat, so it has no to-do list. Reply to a Sentinel chat message or select a Sentinel topic.';

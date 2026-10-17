@@ -1290,6 +1290,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         executeFollowUp: async (processId, message, mode) =>
             bridge.executeFollowUp(processId, message, undefined, await resolveMessagingChatMode(processId, mode)),
         getQuota: getMessagingQuota,
+        getTodos: () => sentinelTodos,
         compact: (proc, instructions, origin) => compactProcess(store, proc, instructions, bridge,
             origin ? taskId => jobNotices.track({ processId: proc.id, workspaceId: proc.metadata!.workspaceId!, origin, taskId }) : undefined),
         remotes: workspaceDirectory,

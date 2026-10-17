@@ -150,29 +150,31 @@ describe('parseMessagingCommand', () => {
         expect(MESSAGING_HELP_TEXT).toContain('Unknown /commands');
     });
 
-    describe('list todos (WhatsApp only)', () => {
-        it.each(['list todos', 'list todo', '/list todos', 'LIST TODOS', 'todos', '/todo', ' todo '])(
-            'parses %j as a read-only control command on WhatsApp', text => {
-                const command = parseMessagingCommand(text, 'whatsapp');
+    describe('list todos (CoC WhatsApp and Teams)', () => {
+        it.each(['list todos', 'list todo', '/list todos', 'LIST TODOS', 'todos', '/todo', ' todo '].flatMap(text =>
+            (['whatsapp', 'teams'] as const).map(platform => [text, platform] as const)))(
+            'parses %j as a read-only control command on %s', (text, platform) => {
+                const command = parseMessagingCommand(text, platform);
                 expect(command).toEqual({ type: 'list-todos', args: '' });
                 expect(isMessagingControlCommand(command)).toBe(true);
             });
 
-        it('rejects malformed todo commands on WhatsApp instead of chatting them', () => {
-            expect(parseMessagingCommand('list todos now', 'whatsapp').type).toBe('invalid');
-            expect(parseMessagingCommand('/todo add milk', 'whatsapp').type).toBe('invalid');
-            expect(parseMessagingCommand('todo: buy milk', 'whatsapp')).toEqual({ type: 'chat', args: 'todo: buy milk' });
+        it('rejects malformed todo commands instead of chatting them', () => {
+            for (const platform of ['whatsapp', 'teams'] as const) {
+                expect(parseMessagingCommand('list todos now', platform).type).toBe('invalid');
+                expect(parseMessagingCommand('/todo add milk', platform).type).toBe('invalid');
+                expect(parseMessagingCommand('todo: buy milk', platform)).toEqual({ type: 'chat', args: 'todo: buy milk' });
+            }
         });
 
-        it('keeps the old meaning and help for other connectors', () => {
-            for (const platform of [undefined, 'teams'] as const) {
-                expect(parseMessagingCommand('list todos', platform)).toEqual({ type: 'chat', args: 'list todos' });
-                expect(parseMessagingCommand('todo', platform)).toEqual({ type: 'chat', args: 'todo' });
-                expect(parseMessagingCommand('/todo', platform).type).toBe('invalid');
-                expect(formatMessagingHelp({ platform })).not.toMatch(/todo/i);
-            }
+        it('keeps the old meaning and help for unscoped connectors', () => {
+            expect(parseMessagingCommand('list todos')).toEqual({ type: 'chat', args: 'list todos' });
+            expect(parseMessagingCommand('todo')).toEqual({ type: 'chat', args: 'todo' });
+            expect(parseMessagingCommand('/todo').type).toBe('invalid');
+            expect(formatMessagingHelp()).not.toMatch(/todo/i);
             expect(MESSAGING_HELP_TEXT).not.toMatch(/todo/i);
             expect(formatMessagingHelp({ platform: 'whatsapp' })).toContain('list todos\n');
+            expect(formatMessagingHelp({ platform: 'teams' })).toContain('list todos\n');
             // Ordinary commands still parse on WhatsApp.
             expect(parseMessagingCommand('list topics', 'whatsapp')).toEqual({ type: 'list-topics', args: '', verbose: false });
             expect(parseMessagingCommand('help', 'whatsapp').type).toBe('help');
