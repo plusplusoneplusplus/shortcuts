@@ -815,6 +815,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.schedulesInScheduledSlide': 'appearance',
         'features.explorerEditorTabs': 'appearance',
         'features.markdownPanelPreview': 'appearance',
+        'features.panelSourceSplit': 'appearance',
         'features.diffFilePicker': 'appearance',
         'vimNavigation.enabled': 'appearance',
         'features.scopeSwitcher': 'appearance',
@@ -900,7 +901,7 @@ describe('feature toggle settings-tab placement', () => {
     it('keeps only functional editor settings on the Editors tab', () => {
         const editorDefs = uiDefs.filter(d => getFeatureSettingTab(d) === 'editors');
         expect(editorDefs.map(d => [d.key, d.ui!.group])).toEqual([['features.arxivPaperIngest', 'editorNotes']]);
-        for (const key of ['features.explorerEditorTabs', 'features.markdownPanelPreview']) {
+        for (const key of ['features.explorerEditorTabs', 'features.markdownPanelPreview', 'features.panelSourceSplit']) {
             const def = getAdminSettingDefinition(key)!;
             expect(def.ui).toMatchObject({ tab: 'appearance', group: 'editorFiles', badge: 'experimental' });
             expect(def.default, key).toBe(false);

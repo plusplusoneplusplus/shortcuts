@@ -45,6 +45,7 @@ import { NotesView } from '../../notes/NotesView';
 import { PreviewPane, type PreviewStatus } from '../explorer/PreviewPane';
 import { ExternalSourcePane } from '../explorer/ExternalSourcePane';
 import type {
+    EditorModelMountContext,
     EditorNavigationController,
     EditorNavigationReason,
     EditorNavigationSnapshot,
@@ -111,6 +112,8 @@ export interface UnifiedTabViewProps {
         snapshot: EditorNavigationSnapshot,
         reason: EditorNavigationReason,
     ) => void;
+    /** File tabs only: the live text model a split pane's second view attaches to. */
+    onSourceModelChange?: (tabId: string, context: EditorModelMountContext | null) => void;
     /** Persist the panel-local Notes selection without activating its tab. */
     onNotesSelectionChange?: (tabId: string, notePath: string | null) => void;
     /** Canvas tabs only: the collapsed-canvas switcher shown beside the title. */
@@ -126,7 +129,7 @@ function fileNameOf(tab: UnifiedPanelTab): string {
 export function UnifiedTabView({
     tab, scopeWorkspaceId, onClose, onDirtyChange, onErrorChange,
     onRegisterSave, onTerminalSessionsChange, terminalOpenRequest, isActive, onOpenFile, onOpenExternal, definitionPreviewOwners,
-    onFileNavigationMount, onFileNavigationLocation,
+    onFileNavigationMount, onFileNavigationLocation, onSourceModelChange,
     onNotesSelectionChange, canvasSwitcher,
 }: UnifiedTabViewProps) {
     const [markdownPreviewEnabled, setMarkdownPreviewEnabled] = useState(
@@ -187,6 +190,10 @@ export function UnifiedTabView({
         },
         [onFileNavigationLocation, tab.id],
     );
+    const handleModelShare = useCallback(
+        (context: EditorModelMountContext | null) => onSourceModelChange?.(tab.id, context),
+        [onSourceModelChange, tab.id],
+    );
     const handleNotesSelection = useCallback(
         (notePath: string | null) => onNotesSelectionChange?.(tab.id, notePath),
         [onNotesSelectionChange, tab.id],
@@ -229,6 +236,7 @@ export function UnifiedTabView({
                     onStatusChange={handleStatus}
                     onNavigationMount={handleNavigationMount}
                     onNavigationLocation={handleNavigationLocation}
+                    onModelShare={onSourceModelChange ? handleModelShare : undefined}
                 />
             );
         case 'external':

@@ -53,9 +53,10 @@
  * have to be visible in the strip rather than only in the view itself.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { cn } from '../../../ui/cn';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isPanelTabReorderingEnabled } from '../../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled, isPanelTabReorderingEnabled } from '../../../utils/config';
+import { useContainerWidth } from '../../chat/hooks/useContainerWidth';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import {
     DOCK_MIN_WIDTH,
@@ -119,10 +120,26 @@ import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
 import { useSentinelTodoChat, useSentinelTodoEvents } from './sentinelTodoChats';
 import { sentinelTodoTabInput, shouldAutoOpenSentinelTodoTab, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 import type {
+    EditorModelMountContext,
     EditorNavigationController,
     EditorNavigationReason,
     EditorNavigationSnapshot,
 } from '../../../shared/file-viewer/MonacoFileEditor';
+import {
+    SOURCE_SPLIT_DIVIDER_WIDTH,
+    SOURCE_SPLIT_RATIO_STEP,
+    canSplitTab,
+    clampSourceSplitRatio,
+    isSourceSplitWide,
+    otherSourceSplitPane,
+    reconcileSourceSplit,
+    sourceSplitForDrop,
+    sourceSplitScopeKey,
+    useSourceSplit,
+    writeSourceSplit,
+    type SourceSplitPane,
+} from './unifiedPanelSourceSplit';
+import { UnifiedSourceMirror } from './UnifiedSourceMirror';
 import {
     dropReplayedNavigationEntry,
     finishNavigationReplay,
@@ -220,8 +237,12 @@ export function UnifiedRightPanel({
 }: UnifiedRightPanelProps) {
     const { isOpen, mode, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
     const [reorderEnabled, setReorderEnabled] = useState(() => isPanelTabReorderingEnabled());
+    const [splitEnabled, setSplitEnabled] = useState(() => isFeatureEnabled('panelSourceSplitEnabled'));
     useEffect(() => {
-        const update = () => setReorderEnabled(isPanelTabReorderingEnabled());
+        const update = () => {
+            setReorderEnabled(isPanelTabReorderingEnabled());
+            setSplitEnabled(isFeatureEnabled('panelSourceSplitEnabled'));
+        };
         window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
         return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
     }, []);
@@ -263,6 +284,67 @@ export function UnifiedRightPanel({
         if (activeId === null || !isOpen) return;
         setMountedIds(prev => (prev.has(activeId) ? prev : new Set(prev).add(activeId)));
     }, [activeId, isOpen]);
+
+    // The two-pane source split. It names tab ids only; the views below stay
+    // keyed by tab, so entering, resizing or leaving the split never remounts a
+    // buffer. Session-only and scoped by panel storage scope plus chat.
+    const splitKey = sourceSplitScopeKey(workspaceId, chatId);
+    const splitKeyRef = useRef(splitKey);
+    splitKeyRef.current = splitKey;
+    const storedSplit = useSourceSplit(splitKey);
+    const split = splitEnabled ? reconcileSourceSplit(storedSplit, tabs, active) : null;
+    const splitRef = useRef(split);
+    splitRef.current = split;
+    useEffect(() => {
+        if (split !== storedSplit) writeSourceSplit(splitKey, split);
+    }, [split, storedSplit, splitKey]);
+    const viewsRef = useRef<HTMLDivElement | null>(null);
+    const { width: viewsWidth } = useContainerWidth(viewsRef, { throttleMs: 0 });
+    // Narrower than two minimum panes: only the focused pane (the active tab)
+    // shows, and the remembered split returns once there is room again.
+    const splitShown = split !== null && active?.id === split[split.focus] && isSourceSplitWide(viewsWidth);
+    const splitRatio = split === null ? 0.5 : clampSourceSplitRatio(split.ratio, viewsWidth);
+    const splitPaneOf = (tabId: string): SourceSplitPane | null => {
+        if (!splitShown || split === null) return null;
+        if (tabId === split.left) return 'left';
+        return tabId === split.right ? 'right' : null;
+    };
+    const splitLeftBasis = `calc((100% - ${SOURCE_SPLIT_DIVIDER_WIDTH}px) * ${splitRatio})`;
+    const splitLeftId = split?.left;
+    const splitRightId = split?.right;
+    useEffect(() => {
+        if (!splitShown || !isOpen || !splitLeftId || !splitRightId) return;
+        setMountedIds(prev => (prev.has(splitLeftId) && prev.has(splitRightId)
+            ? prev
+            : new Set(prev).add(splitLeftId).add(splitRightId)));
+    }, [splitShown, isOpen, splitLeftId, splitRightId]);
+    // A tree click replaces the preview slot; the pane the user is not working
+    // in must never be the tab that disappears under it.
+    const unfocusedSplitId = split === null ? null : split[otherSourceSplitPane(split.focus)];
+    useEffect(() => {
+        if (unfocusedSplitId !== null && tabs.some(tab => tab.id === unfocusedSplitId && tab.preview)) {
+            promote(unfocusedSplitId);
+        }
+    }, [unfocusedSplitId, tabs, promote]);
+    // Each file tab's live text model, so the second pane of a file shown on
+    // both sides attaches to the same buffer.
+    const [sourceModels, setSourceModels] = useState<ReadonlyMap<string, EditorModelMountContext>>(() => new Map());
+    const handleSourceModelChange = useCallback((tabId: string, context: EditorModelMountContext | null) => {
+        setSourceModels(prev => {
+            if ((prev.get(tabId) ?? null) === context) return prev;
+            const next = new Map(prev);
+            if (context) next.set(tabId, context);
+            else next.delete(tabId);
+            return next;
+        });
+    }, []);
+    const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
+    const [splitDropHover, setSplitDropHover] = useState(false);
+    const splitDropAvailable = splitEnabled && canSplitTab(tabs.find(tab => tab.id === draggedTabId));
+    const handleTabDragChange = useCallback((tabId: string | null) => {
+        setDraggedTabId(tabId);
+        setSplitDropHover(false);
+    }, []);
 
     // Tabs whose views are live right now: mounted, and still visible from this
     // chat. Dropping the invisible ones is what makes a chat switch swap the
@@ -566,6 +648,57 @@ export function UnifiedRightPanel({
         activate(tabId);
     }, [activate, captureActiveFileLocation, prepareFileNavigation]);
 
+    const openToSide = useCallback((tabId: string) => {
+        const tab = tabsRef.current.find(candidate => candidate.id === tabId);
+        if (!splitEnabled || !canSplitTab(tab)) return;
+        const current = tabsRef.current.find(candidate => candidate.id === activeIdRef.current) ?? null;
+        writeSourceSplit(splitKeyRef.current, sourceSplitForDrop(splitRef.current, current, tab));
+        activateWithNavigation(tabId);
+    }, [activateWithNavigation, splitEnabled]);
+
+    const focusSourcePane = useCallback((pane: SourceSplitPane) => {
+        const current = splitRef.current;
+        if (current === null || current.focus === pane) return;
+        writeSourceSplit(splitKeyRef.current, { ...current, focus: pane });
+        activateWithNavigation(current[pane]);
+    }, [activateWithNavigation]);
+
+    // Closing a pane ends the split only; both files stay ordinary tabs.
+    const closeSourcePane = useCallback((pane: SourceSplitPane) => {
+        const current = splitRef.current;
+        if (current === null) return;
+        writeSourceSplit(splitKeyRef.current, null);
+        activateWithNavigation(current[otherSourceSplitPane(pane)]);
+    }, [activateWithNavigation]);
+
+    const setSourceSplitRatio = useCallback((ratio: number) => {
+        const current = splitRef.current;
+        if (current === null) return;
+        const next = clampSourceSplitRatio(ratio, viewsRef.current?.clientWidth ?? 0);
+        if (next !== current.ratio) writeSourceSplit(splitKeyRef.current, { ...current, ratio: next });
+    }, []);
+    const splitResizeCleanup = useRef<(() => void) | null>(null);
+    useEffect(() => () => splitResizeCleanup.current?.(), []);
+    const startSourceSplitResize = useCallback((event: ReactMouseEvent) => {
+        const container = viewsRef.current;
+        if (event.button !== 0 || !container) return;
+        event.preventDefault();
+        splitResizeCleanup.current?.();
+        const onMove = (move: MouseEvent) => {
+            const rect = container.getBoundingClientRect();
+            const paneArea = rect.width - SOURCE_SPLIT_DIVIDER_WIDTH;
+            if (paneArea > 0) setSourceSplitRatio((move.clientX - rect.left - SOURCE_SPLIT_DIVIDER_WIDTH / 2) / paneArea);
+        };
+        const stop = () => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', stop);
+            splitResizeCleanup.current = null;
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', stop);
+        splitResizeCleanup.current = stop;
+    }, [setSourceSplitRatio]);
+
     const previousActiveId = useRef(activeId);
     useEffect(() => {
         const previous = previousActiveId.current;
@@ -738,7 +871,16 @@ export function UnifiedRightPanel({
             removeBrowserWebview(tab.resourceId);
             desktopBrowserBridge()?.close(tab.resourceId);
         }
+        // Closing a pane's file ends the split and shows the other pane's file.
+        const currentSplit = splitRef.current;
+        const remainingPaneId = currentSplit === null || (currentSplit.left !== id && currentSplit.right !== id)
+            ? null
+            : currentSplit.left === id ? currentSplit.right : currentSplit.left;
         close(id);
+        if (remainingPaneId !== null && remainingPaneId !== id) {
+            writeSourceSplit(splitKeyRef.current, null);
+            activate(remainingPaneId);
+        }
         navigationControllers.current.delete(id);
         setMountedIds(prev => {
             if (!prev.has(id)) return prev;
@@ -765,7 +907,7 @@ export function UnifiedRightPanel({
         // views report clean/ready from their own unmount cleanup, so a second
         // reset would be dead code. Verified by removing the cleanup's effect in
         // the close/reopen case rather than assumed.
-    }, [close]);
+    }, [activate, close]);
 
     const [pendingClose, setPendingClose] = useState<
         { tabId: string; workspaceId: string; sessionIds: readonly string[] } | null
@@ -908,6 +1050,10 @@ export function UnifiedRightPanel({
             return;
         }
         if (tab.kind !== 'file') return;
+        if (action === 'open-to-side') {
+            openToSide(tabId);
+            return;
+        }
         if (action === 'copy-path') {
             const path = unifiedPanelAbsoluteFilePath(tab, rootPathForTab(tab));
             if (path) void copyToClipboard(path).catch(err => console.error('Failed to copy file path:', err));
@@ -929,7 +1075,7 @@ export function UnifiedRightPanel({
                 nonce: (prev?.nonce ?? 0) + 1,
             }));
         }
-    }, [dirtyIds, dock, mode, promote, requestBulkClose, requestClose, rootPathForTab, tabs, tree]);
+    }, [dirtyIds, dock, mode, openToSide, promote, requestBulkClose, requestClose, rootPathForTab, tabs, tree]);
 
     // Reusing the preview slot destroys the outgoing buffer, so it goes through
     // the same unsaved-edits guard a close does. Cancel or a failed save leaves
@@ -1689,8 +1835,12 @@ export function UnifiedRightPanel({
                     reorderScope={JSON.stringify([workspaceId, routingRef, chatId])}
                     pinnedId={pinnedId}
                     onPromote={promote}
-                    fileActionAvailability={tab => unifiedPanelFileActionAvailability(tab, rootPathForTab(tab))}
+                    fileActionAvailability={tab => ({
+                        ...unifiedPanelFileActionAvailability(tab, rootPathForTab(tab)),
+                        openToSide: splitEnabled,
+                    })}
                     onMenuAction={handleTabMenuAction}
+                    onTabDragChange={handleTabDragChange}
                     onOpenMenu={toggleMenu}
                     leadingControls={(
                         <UnifiedPanelRepoPicker
@@ -1740,6 +1890,60 @@ export function UnifiedRightPanel({
                             trailing={navigatorControls('toolbar')}
                         />
                     )}
+                    {splitShown && split !== null && (
+                        <div
+                            className="flex h-[24px] flex-shrink-0 border-b border-[#e5e5e5] bg-[#f8f8f8] text-[11px] dark:border-[#333] dark:bg-[#252526]"
+                            data-testid="unified-panel-split-header"
+                        >
+                            {(['left', 'right'] as const).map(pane => {
+                                const paneTab = tabs.find(tab => tab.id === split[pane]);
+                                const focused = split.focus === pane;
+                                return (
+                                    <div
+                                        key={pane}
+                                        className={cn(
+                                            'flex min-w-0 items-center gap-1 border-t-2 px-2',
+                                            focused ? 'border-[#0078d4] dark:border-[#3794ff]' : 'border-transparent',
+                                        )}
+                                        style={pane === 'left'
+                                            ? { flex: `0 0 ${splitLeftBasis}`, marginRight: SOURCE_SPLIT_DIVIDER_WIDTH }
+                                            : { flex: '1 1 0' }}
+                                        data-testid={`unified-panel-split-pane-header-${pane}`}
+                                        data-focused={focused ? 'true' : 'false'}
+                                    >
+                                        <button
+                                            type="button"
+                                            className="min-w-0 flex-1 truncate border-none bg-transparent p-0 text-left text-[#3b3b3b] dark:text-[#cccccc]"
+                                            aria-pressed={focused}
+                                            title={paneTab?.resourceId}
+                                            onClick={() => focusSourcePane(pane)}
+                                            data-testid={`unified-panel-split-pane-label-${pane}`}
+                                        >
+                                            {paneTab?.label}
+                                            {paneTab?.repoLabel ? <span className="opacity-70"> · {paneTab.repoLabel}</span> : null}
+                                            {paneTab && dirtyIds.has(paneTab.id) ? <span aria-label="Unsaved changes"> ●</span> : null}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            aria-label={`Close ${pane} pane`}
+                                            title={`Close ${pane} pane`}
+                                            className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border-none bg-transparent p-0 text-[#616161] hover:bg-black/10 dark:text-[#9d9d9d] dark:hover:bg-white/10"
+                                            onClick={() => closeSourcePane(pane)}
+                                            data-testid={`unified-panel-split-close-${pane}`}
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                    <div
+                        ref={viewsRef}
+                        className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
+                        data-testid="unified-panel-views"
+                        data-split={splitShown ? 'true' : split !== null ? 'collapsed' : undefined}
+                    >
                     {tabs.length === 0 ? (
                         <div
                             className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 text-center"
@@ -1760,13 +1964,26 @@ export function UnifiedRightPanel({
                             </button>
                         </div>
                     ) : (
-                        mountedTabs.map(tab => (
+                        mountedTabs.map(tab => {
+                            const pane = splitPaneOf(tab.id);
+                            const visible = splitShown ? pane !== null : tab.id === activeId;
+                            return (
                             <div
                                 key={tab.id}
-                                className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-                                style={{ display: tab.id === activeId ? undefined : 'none' }}
+                                className={cn(
+                                    'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
+                                    pane !== null && pane === split?.focus && 'ring-1 ring-inset ring-[#0078d4]/50 dark:ring-[#3794ff]/50',
+                                )}
+                                style={{
+                                    display: visible ? undefined : 'none',
+                                    ...(pane === 'left' ? { order: 0, flex: `0 0 ${splitLeftBasis}` } : {}),
+                                    ...(pane === 'right' ? { order: 2 } : {}),
+                                }}
                                 data-testid={`unified-panel-view-${tab.id}`}
                                 data-active={tab.id === activeId ? 'true' : 'false'}
+                                data-split-pane={pane ?? undefined}
+                                onMouseDownCapture={pane === null ? undefined : () => focusSourcePane(pane)}
+                                onFocusCapture={pane === null ? undefined : () => focusSourcePane(pane)}
                             >
                                 {tab.kind === 'html-page' && tab.htmlPageId ? (
                                     <UnifiedHtmlPageTab
@@ -1812,6 +2029,7 @@ export function UnifiedRightPanel({
                                     onOpenExternal={openNavigationExternal}
                                     onFileNavigationMount={handleFileNavigationMount}
                                     onFileNavigationLocation={handleFileNavigationLocation}
+                                    onSourceModelChange={splitEnabled ? handleSourceModelChange : undefined}
                                     onNotesSelectionChange={updateNotesSelection}
                                     canvasSwitcher={tab.id === activeId && stackedCanvasTabs.some(t => t.id === tab.id) ? (
                                         <UnifiedPanelCanvasStack
@@ -1827,7 +2045,52 @@ export function UnifiedRightPanel({
                                     ) : undefined}
                                 />}
                             </div>
-                        ))
+                            );
+                        })
+                    )}
+
+                    {splitShown && split !== null && (
+                        <div
+                            role="separator"
+                            aria-orientation="vertical"
+                            aria-label="Resize source panes"
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={Math.round(splitRatio * 100)}
+                            tabIndex={0}
+                            className="flex-shrink-0 cursor-col-resize bg-[#e5e5e5] hover:bg-[#007acc]/40 focus-visible:bg-[#007acc]/60 focus-visible:outline-none dark:bg-[#333]"
+                            style={{ order: 1, width: SOURCE_SPLIT_DIVIDER_WIDTH }}
+                            data-testid="unified-panel-split-divider"
+                            onMouseDown={startSourceSplitResize}
+                            onKeyDown={event => {
+                                const next = event.key === 'ArrowLeft' ? splitRatio - SOURCE_SPLIT_RATIO_STEP
+                                    : event.key === 'ArrowRight' ? splitRatio + SOURCE_SPLIT_RATIO_STEP
+                                        : event.key === 'Home' ? 0
+                                            : event.key === 'End' ? 1 : null;
+                                if (next === null) return;
+                                event.preventDefault();
+                                setSourceSplitRatio(next);
+                            }}
+                        />
+                    )}
+                    {/* One file in both panes: the right pane is a second editor
+                        on the left pane's model, never a second buffer. */}
+                    {splitShown && split !== null && split.left === split.right && (
+                        <div
+                            className={cn(
+                                'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
+                                split.focus === 'right' && 'ring-1 ring-inset ring-[#0078d4]/50 dark:ring-[#3794ff]/50',
+                            )}
+                            style={{ order: 2 }}
+                            data-split-pane="right"
+                            onMouseDownCapture={() => focusSourcePane('right')}
+                            onFocusCapture={() => focusSourcePane('right')}
+                        >
+                            <UnifiedSourceMirror
+                                shared={sourceModels.get(split.left) ?? null}
+                                onSave={() => saveHandlers.current.get(split.left)?.()}
+                            />
+                        </div>
                     )}
 
                     {/* A tab is selected but its view has not mounted yet (restored
@@ -1836,6 +2099,41 @@ export function UnifiedRightPanel({
                     {tabs.length > 0 && active !== null && !mountedIds.has(active.id) && (
                         <div className="min-h-0 flex-1" data-testid="unified-panel-pending" />
                     )}
+
+                    {/* A source-file tab dragged from the strip can land on the
+                        right half; other kinds never get a target. */}
+                    {splitDropAvailable && (
+                        <div
+                            className={cn(
+                                'absolute inset-y-0 right-0 z-20 flex w-1/2 items-center justify-center border-2 border-dashed text-xs',
+                                splitDropHover
+                                    ? 'border-[#0078d4] bg-[#0078d4]/15 text-[#0078d4] dark:border-[#3794ff] dark:text-[#3794ff]'
+                                    : 'border-transparent bg-[#0078d4]/5 text-transparent',
+                            )}
+                            data-testid="unified-panel-split-drop-target"
+                            data-hover={splitDropHover ? 'true' : 'false'}
+                            onDragEnter={event => {
+                                event.preventDefault();
+                                setSplitDropHover(true);
+                            }}
+                            onDragOver={event => {
+                                event.preventDefault();
+                                if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+                                setSplitDropHover(true);
+                            }}
+                            onDragLeave={() => setSplitDropHover(false)}
+                            onDrop={event => {
+                                event.preventDefault();
+                                const tabId = draggedTabId;
+                                setDraggedTabId(null);
+                                setSplitDropHover(false);
+                                if (tabId !== null) openToSide(tabId);
+                            }}
+                        >
+                            Open to the right
+                        </div>
+                    )}
+                    </div>
                     </div>
 
                     {/* Search and Explorer share this one navigator slot and its

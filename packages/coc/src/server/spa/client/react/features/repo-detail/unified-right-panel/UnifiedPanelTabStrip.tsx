@@ -182,6 +182,8 @@ export interface UnifiedPanelTabStripProps {
     fileActionAvailability?: (tab: UnifiedPanelTab) => UnifiedPanelFileActionAvailability;
     /** Context-menu command selected for a tab. */
     onMenuAction?: (action: UnifiedPanelTabMenuAction, tabId: string) => void;
+    /** The tab a native drag carries, and `null` once it drops, ends or is cancelled. */
+    onTabDragChange?: (tabId: string | null) => void;
     /** The trailing "+" — opens the searchable resource menu (AC-03). */
     onOpenMenu?: () => void;
     /**
@@ -216,6 +218,7 @@ export function UnifiedPanelTabStrip({
     onPromote,
     fileActionAvailability,
     onMenuAction,
+    onTabDragChange,
     onOpenMenu,
     trailing,
     leadingControls,
@@ -228,8 +231,13 @@ export function UnifiedPanelTabStrip({
     const [liveMessage, setLiveMessage] = useState('');
     const previousActiveId = useRef(activeId);
     const suppressClickUntil = useRef(0);
+    const tabDragChangeRef = useRef(onTabDragChange);
+    tabDragChangeRef.current = onTabDragChange;
     const cancelDrag = useCallback(() => {
-        if (draggingId.current) suppressClickUntil.current = Date.now() + 250;
+        if (draggingId.current) {
+            suppressClickUntil.current = Date.now() + 250;
+            tabDragChangeRef.current?.(null);
+        }
         draggingId.current = null;
         setDraggedId(null);
         setDropIndicator(null);
@@ -454,6 +462,7 @@ export function UnifiedPanelTabStrip({
                                     return;
                                 }
                                 draggingId.current = tab.id;
+                                onTabDragChange?.(tab.id);
                                 if (reorderEnabled) {
                                     setDraggedId(tab.id);
                                     setContextMenu(null);

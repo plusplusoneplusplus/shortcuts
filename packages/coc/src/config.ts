@@ -370,6 +370,8 @@ export interface CLIConfig {
         explorerDelete?: boolean;
         /** Rendered Markdown preview in unified right-panel file tabs. Disabled by default. */
         markdownPanelPreview?: boolean;
+        /** Two-pane source file split in the unified right panel. Disabled by default. */
+        panelSourceSplit?: boolean;
         panelTabReordering?: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab?: boolean;
@@ -787,6 +789,8 @@ export interface ResolvedCLIConfig {
         explorerDelete: boolean;
         /** Rendered Markdown preview in unified right-panel file tabs. Disabled by default. */
         markdownPanelPreview: boolean;
+        /** Two-pane source file split in the unified right panel. Disabled by default. */
+        panelSourceSplit: boolean;
         panelTabReordering: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab: boolean;
@@ -1104,6 +1108,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         explorerEditorTabs: false,
         explorerDelete: true,
         markdownPanelPreview: false,
+        panelSourceSplit: false,
         panelTabReordering: true,
         htmlPageTab: true,
         chatStyleSelector: true,

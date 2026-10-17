@@ -154,6 +154,11 @@ export interface PreviewPaneProps {
     onNavigationMount?: (controller: EditorNavigationController | null) => void;
     /** Reports cursor, scroll, search, diagnostic, and language-jump locations. */
     onNavigationLocation?: (snapshot: EditorNavigationSnapshot, reason: EditorNavigationReason) => void;
+    /**
+     * Publishes the live text model (and `null` when it goes away), so a second
+     * view of this file can attach to the same buffer instead of reading its own.
+     */
+    onModelShare?: (context: EditorModelMountContext | null) => void;
 }
 
 /** What a buffer is doing, as reported to its owner through `onStatusChange`. */
@@ -174,7 +179,7 @@ function RenderedMarkdown({ content }: { content: string }) {
     );
 }
 
-export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, filePath, fileName, markdownPreview = false, revealLine, endLine, revealColumn, revealNonce, symbolCandidate, onClose, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate, onNavigateExternal, onNavigationMount, onNavigationLocation }: PreviewPaneProps) {
+export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, filePath, fileName, markdownPreview = false, revealLine, endLine, revealColumn, revealNonce, symbolCandidate, onClose, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate, onNavigateExternal, onNavigationMount, onNavigationLocation, onModelShare }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const isWorkspacePreview = filePath.startsWith(WORKSPACE_PREVIEW_PREFIX);
     const readOnly = isTrusted || isWorkspacePreview;
@@ -469,6 +474,24 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
         definitionPreviewOwners,
     ]);
 
+    const modelShareRef = useRef(onModelShare);
+    modelShareRef.current = onModelShare;
+    const sharesModel = onModelShare !== undefined;
+    const mountModel = displayBlob?.encoding === 'utf-8'
+        ? (viewOnly ? mountNonEditableModel : handleModelMount)
+        : undefined;
+    const mountSharedModel = useMemo(() => (mountModel && sharesModel
+        ? (context: EditorModelMountContext) => {
+            const cleanup = mountModel(context);
+            modelShareRef.current?.(context);
+            return () => {
+                modelShareRef.current?.(null);
+                cleanup?.();
+            };
+        }
+        : mountModel
+    ), [mountModel, sharesModel]);
+
     // One editor change feeds two consumers: the render buffer, and the
     // document that the language server sees. Monaco's change list is converted
     // here rather than in the viewer, so the shared viewer stays free of LSP.
@@ -663,9 +686,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                     revealColumn={revealColumn}
                     revealNonce={revealNonce}
                     markers={languageEnabled ? languageDocument.markers : undefined}
-                    onModelMount={displayBlob.encoding === 'utf-8'
-                        ? (viewOnly ? mountNonEditableModel : handleModelMount)
-                        : undefined}
+                    onModelMount={mountSharedModel}
                     codeTestId="monaco-container"
                 />
             ) : null}

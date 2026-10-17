@@ -1225,6 +1225,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.panelSourceSplit', default: false, runtime: 'live', runtimeFlag: 'panelSourceSplitEnabled',
+        ui: {
+            tab: 'appearance', group: 'editorFiles', order: 30, label: 'Side-by-side source files', badge: 'experimental',
+            hint: 'Drag a file tab to the right edge of the unified right panel, or use its tab menu, to view and edit two source files side by side. The split lasts for the current session. Disabled by default.',
+            testId: 'toggle-panel-source-split-enabled',
+        },
+    }),
+    bool({
         key: 'features.panelTabReordering', default: true, runtime: 'live', runtimeFlag: 'panelTabReorderingEnabled',
         ui: {
             tab: 'appearance', group: 'editorFiles', order: 40, label: 'Panel tab reordering', badge: 'experimental',

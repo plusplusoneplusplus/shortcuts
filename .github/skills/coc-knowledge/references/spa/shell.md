@@ -531,6 +531,7 @@ features default off.
 | `features.gitWorktreeExecution` | `isGitWorktreeExecutionEnabled()` | off |
 | `features.sessionContextAttachments` | `sessionContextAttachmentsEnabled` | off |
 | `features.markdownPanelPreview` | `markdownPanelPreviewEnabled` | off |
+| `features.panelSourceSplit` | `panelSourceSplitEnabled` | off |
 | `features.htmlPageTab` | `htmlPageTabEnabled` | on |
 | `features.quickAskSidenotes` | live server flag | — |
 ### Unified right panel
@@ -773,6 +774,14 @@ same in-memory edit buffer; line-targeted navigation opens Raw. The tab's
 workspace and concrete clone route continue to own file reads and saves.
 Rendered tabs keep a navigation handle for history replay into Raw.
 The standalone Explorer and the read-only source canvas are unaffected.
+
+With `features.panelSourceSplit` enabled, dragging a file tab onto the right
+half of the panel's editor area, or the tab menu's **Open to the Right**, shows
+two file tabs side by side (at most two panes). Opens go to the focused pane;
+narrow content (below two 280px panes plus the divider) shows only the focused
+pane. The split is in-memory per panel scope and chat and never persisted. A
+file in both panes uses one `PreviewPane` buffer; the second pane is a Monaco
+editor on the same model. See `unified-right-panel/AGENTS.md`.
 
 The panel's file editors share one navigation history per panel scope,
 persisted to localStorage (`unified-right-panel:<scope>:navigation`, versioned;

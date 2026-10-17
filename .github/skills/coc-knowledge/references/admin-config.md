@@ -89,6 +89,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `scopeSwitcher` | on | One segmented scope switcher replacing the My Work / My Life toggles and workspace chip |
 | `pinnedScopes` | on | Needs `scopeSwitcher`; pinned repo / repo-group segments in the scope switcher, persisted as the global `pinnedScopes` preference |
 | `markdownPanelPreview` | off | Rendered Markdown preview in unified right-panel file tabs; other file viewers stay unchanged |
+| `panelSourceSplit` | off | Experimental live two-pane source-file split in the unified right panel (drag a file tab to the right edge or tab menu **Open to the Right**); session-only; runtime `panelSourceSplitEnabled` |
 | `explorerDelete` | on | Experimental live owning-server gate for confirmed permanent single-entry Explorer deletion; Appearance setting, runtime `explorerDeleteEnabled`; absent partial-config keys are on, explicit `false` disables; remote owners that omit the runtime flag stay off |
 | `panelTabReordering` | on | Experimental live mixed-resource tab reordering (drag, Alt+Left/Right, tab menu) in the unified right panel, saved per workspace and chat; runtime `panelTabReorderingEnabled`; explicit `false` restores sectioned ordering |
 | `htmlPageTab` | on | Desktop only: local `.html`/`.htm` chat links open as a rendered page tab (Electron `WebContentsView`) in the right panel; off, web SPA, remote workspaces, or missing files use the source viewer |

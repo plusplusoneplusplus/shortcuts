@@ -515,6 +515,23 @@ describe('UnifiedPanelTabStrip', () => {
         expect(props.onMove).toHaveBeenCalledWith(tabs[2].id, tabs[1].id);
     });
 
+    it('reports the dragged tab until the drag ends or is cancelled', () => {
+        const tabs = sampleTabs();
+        const onTabDragChange = vi.fn();
+        renderStrip({ tabs, activeId: tabs[1].id, reorderEnabled: true, onTabDragChange });
+        const dataTransfer = { setData: () => undefined, effectAllowed: '', dropEffect: '' };
+        fireEvent.dragStart(tabNode(tabs[2]), { dataTransfer });
+        expect(onTabDragChange).toHaveBeenLastCalledWith(tabs[2].id);
+        fireEvent.dragEnd(tabNode(tabs[2]));
+        expect(onTabDragChange).toHaveBeenLastCalledWith(null);
+
+        fireEvent.dragStart(tabNode(tabs[1]), { dataTransfer });
+        expect(onTabDragChange).toHaveBeenLastCalledWith(tabs[1].id);
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(onTabDragChange).toHaveBeenLastCalledWith(null);
+        expect(onTabDragChange).toHaveBeenCalledTimes(4);
+    });
+
     describe('mixed-type reordering', () => {
         function drag(node: HTMLElement, type: string, clientX = 0) {
             fireEvent(node, new MouseEvent(type, { bubbles: true, cancelable: true, clientX }));

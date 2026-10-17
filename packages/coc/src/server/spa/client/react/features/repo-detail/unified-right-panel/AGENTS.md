@@ -86,6 +86,7 @@ from same-id clones never merge into one tab.
 | `unifiedPanelNavigationStore.ts` + `fileNavigationRouting.ts` | History per panel scope, cached in memory and persisted to `unified-right-panel:<scope>:navigation` (unreadable or entry-less-reopen-data is dropped on load), plus pure Go Back/Forward key (Alt+Arrow, or Ctrl+-/Ctrl+Shift+- on macOS) and auxiliary mouse-button classification. |
 | `quickOpenRouting.ts`, `closeTabRouting.ts`, `findRouting.ts` | Pure ownership rules for the panel's document-level keyboard shortcuts. Find ownership is scoped to focus inside the Explorer navigator column. |
 | `UnifiedPanelTabStrip.tsx` + `UnifiedPanelCanvasStack.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip, native drag insertion markers and accessible tab menu. Four or more canvases compress into the active canvas plus a searchable count chip; switching and guarded closing preserve stored order. Grouped ordering draws a tools/resources divider. File tabs share Explorer's `FileNameIcon`; other kinds use fixed icons. The menu model owns per-kind availability, move boundaries, local-only absolute paths and visible-order bulk targets. |
+| `unifiedPanelSourceSplit.ts` + `UnifiedSourceMirror.tsx` | The two-pane source split (see "Source split"): pure drop/reconcile/width rules and the session-only split store, plus the second Monaco view used when one file fills both panes. |
 | `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab, an in-place directory picker, and the Search/Explorer navigator controls. The model decides whether the path can use repo browsing. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
 | `UnifiedPanelRepoPicker.tsx` | The dock target, as a button + listbox on the tab strip left of the `+` (the strip's `leadingControls`). Renders nothing below two targets. The label comes from the `target` prop, so a refused switch (`onSelectTarget` returning `false`) keeps reporting the real scope; below 340px of strip width the label drops to a chevron via a container query. |
 | `UnifiedPanelTreeToggle.tsx` | The Explorer half of the panel's navigator controls. It renders with Search in the file toolbar or, when that toolbar is absent, in the tab strip. |
@@ -145,6 +146,42 @@ Rendered mode keeps a lightweight file-navigation controller that can
 reopen Raw and restore a history destination's selection and scroll.
 The standalone Explorer and the read-only source canvas retain their own
 file-viewer behavior.
+
+## Source split
+
+Live, default-off `features.panelSourceSplit` lets two `file` tabs show side by
+side; no other kind can enter a pane, and there are never more than two. A
+file-tab drag from the strip (`onTabDragChange`) shows a drop target over the
+right half of the editor area; dropping, or the file tab menu's **Open to the
+Right**, puts that file in the right pane and keeps the active file on the
+left (the same file on both sides when there is no other active file). A drop
+on an existing split replaces only the right pane. Other drags, Escape and drag
+end leave the layout unchanged; strip reordering keeps its own targets.
+
+`unifiedPanelSourceSplit.ts` stores `{ left, right, focus, ratio }` tab ids in
+memory, keyed by `unifiedPanelStorageKey(scope)` plus chat, so workspace and
+chat switches restore only their own split and a reload shows ordinary tabs.
+The focused pane is always the active tab: strip selection, Explorer, links,
+Quick Open and language navigation all open there. A non-file active tab takes
+the full panel without forgetting the split. The unfocused pane's preview tab
+is promoted so a tree click never replaces it. Clicking or focusing a pane
+focuses it; its header shows the file label, dirty dot and close control.
+Closing a pane ends the split and keeps both tabs; closing a pane's tab through
+the usual guards shows the other pane's file.
+
+Views stay keyed by tab in one row and are positioned with CSS `order` and
+flex basis, so entering, resizing or leaving the split never remounts a
+buffer. Panes keep at least 280px; below two panes plus the 4px divider
+(measured on the editor area, excluding the navigator column) only the focused
+pane shows, and widening restores both. The divider drags or uses
+Arrow/Home/End within those bounds.
+
+Each pane's `PreviewPane` keeps its own selection, scroll and owner routing.
+The same file in both panes is one tab and one `PreviewPane` buffer: it
+publishes its Monaco model (`onModelShare`), and `UnifiedSourceMirror` creates
+a second editor on that model, following its read-only state and saving
+through the tab's registered save. Equal paths from different owners or clones
+are different tabs and buffers.
 
 ## File navigation history
 
