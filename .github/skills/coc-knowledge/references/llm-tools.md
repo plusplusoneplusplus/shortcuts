@@ -623,7 +623,7 @@ in `server/index.ts` and shares it with the decision route and executors via
 `runtime.getDecisionService`; `ChatBaseExecutor.buildSystemOneDeps` binds the ledger to the
 process. Offered to all chat providers (ask, autopilot, Ralph, follow-ups) by
 `buildSystemOneToolsAddon`, gated live by the `LLMToolSystemOne.enabled` admin flag
-(default off); on by default per repo once the flag is on.
+(default on; explicit `false` hides it) and per-repo `disabledLlmTools`.
 
 ### run_tool_script
 

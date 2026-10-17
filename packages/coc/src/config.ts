@@ -267,7 +267,7 @@ export interface CLIConfig {
             subscription?: string;
         };
     };
-    /** `system_one` LLM tool (quick Copilot-backed decisions over chat context). Disabled by default. */
+    /** `system_one` LLM tool (quick Copilot-backed decisions over chat context). Enabled by default. */
     LLMToolSystemOne?: {
         enabled?: boolean;
     };
@@ -1023,7 +1023,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     browserControl: { enabled: false, framesEnabled: false, richPasteEnabled: false },
     LLMToolSystemOne: {
-        enabled: false,
+        enabled: true,
     },
     containerDefaultAgent: {
         enabled: false,

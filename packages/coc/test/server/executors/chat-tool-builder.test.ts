@@ -329,8 +329,20 @@ describe('buildChatToolBundle', () => {
             expect(build({ systemOneToolEnabled: true, ...missing })).not.toContain('system_one');
         });
 
+        it('is offered when the config omits the admin flag', () => {
+            expect(build()).toContain('system_one');
+            fs.writeFileSync(path.join(tmpDir, CONFIG_FILE_NAME), 'LLMToolSystemOne: {}\n');
+            expect(build()).toContain('system_one');
+        });
+
+        it('stays hidden by repo preferences when the admin flag is defaulted', () => {
+            writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: ['system_one'] });
+            expect(build()).not.toContain('system_one');
+        });
+
         it('reads the admin flag from config on every build (no restart needed)', () => {
             const configPath = path.join(tmpDir, CONFIG_FILE_NAME);
+            fs.writeFileSync(configPath, 'LLMToolSystemOne:\n  enabled: false\n');
             expect(build()).not.toContain('system_one');
             fs.writeFileSync(configPath, 'LLMToolSystemOne:\n  enabled: true\n');
             expect(build()).toContain('system_one');

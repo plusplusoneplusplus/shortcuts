@@ -337,14 +337,16 @@ describe('runtime feature flags', () => {
         expect(buildRuntimeFeatureFlags({}).kustoEnabled).toBe(false);
     });
 
-    it('registers LLMToolSystemOne.enabled as a live, default-off feature flag', () => {
+    it('registers LLMToolSystemOne.enabled as a live, default-on feature flag', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'LLMToolSystemOne.enabled');
         expect(def, 'LLMToolSystemOne.enabled must be an admin setting').toBeDefined();
-        expect(def!.default).toBe(false);
+        expect(def!.default).toBe(true);
         expect(def!.runtime).toBe('live');
         expect(def!.runtimeFlag).toBe('llmToolSystemOneEnabled');
-        expect(def!.ui?.hint).toContain('Copilot');
-        expect(buildRuntimeFeatureFlags({}).llmToolSystemOneEnabled).toBe(false);
+        expect(def!.ui?.hint).toContain('referenced content is also sent to Copilot');
+        expect(def!.ui?.hint).toContain('Enabled by default');
+        expect(buildRuntimeFeatureFlags({}).llmToolSystemOneEnabled).toBe(true);
+        expect(buildRuntimeFeatureFlags({ LLMToolSystemOne: { enabled: false } } as any).llmToolSystemOneEnabled).toBe(false);
         expect(buildRuntimeFeatureFlags({ LLMToolSystemOne: { enabled: true } } as any).llmToolSystemOneEnabled).toBe(true);
     });
 

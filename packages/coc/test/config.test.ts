@@ -744,14 +744,14 @@ timeout: 300
             expect(result.kusto.enabled).toBe(true);
         });
 
-        it('should default LLMToolSystemOne.enabled to false', () => {
-            const result = mergeConfig(DEFAULT_CONFIG, {});
-            expect(result.LLMToolSystemOne.enabled).toBe(false);
+        it('should default LLMToolSystemOne.enabled to true', () => {
+            expect(mergeConfig(DEFAULT_CONFIG, {}).LLMToolSystemOne.enabled).toBe(true);
+            expect(mergeConfig(DEFAULT_CONFIG, { LLMToolSystemOne: {} }).LLMToolSystemOne.enabled).toBe(true);
         });
 
-        it('should override LLMToolSystemOne.enabled from file', () => {
-            const result = mergeConfig(DEFAULT_CONFIG, { LLMToolSystemOne: { enabled: true } });
-            expect(result.LLMToolSystemOne.enabled).toBe(true);
+        it('should honor explicit LLMToolSystemOne.enabled from file', () => {
+            expect(mergeConfig(DEFAULT_CONFIG, { LLMToolSystemOne: { enabled: false } }).LLMToolSystemOne.enabled).toBe(false);
+            expect(mergeConfig(DEFAULT_CONFIG, { LLMToolSystemOne: { enabled: true } }).LLMToolSystemOne.enabled).toBe(true);
         });
 
         it('should preserve auto provider routing defaults when not overridden', () => {
@@ -1451,7 +1451,7 @@ timeout: 300
               {
                 "resolved": {
                   "LLMToolSystemOne": {
-                    "enabled": false,
+                    "enabled": true,
                   },
                   "agentProviderRouting": {
                     "auto": {
