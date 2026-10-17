@@ -27,6 +27,7 @@ import type {
     WorkingTreeContentStage,
 } from '../../src/server/git/working-tree-file-content';
 import { GitCacheService } from '../../src/server/git/git-cache';
+import { safeRmSync } from '../helpers/safe-rm';
 
 let repo: string;
 
@@ -69,7 +70,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-    fs.rmSync(repo, { recursive: true, force: true });
+    safeRmSync(repo);
 });
 
 describe('stage resolution', () => {
