@@ -282,8 +282,11 @@ It uses `webview2-com` with a statically linked loader; the installed Evergreen
 runtime remains required. Its main thread initializes COM as STA and owns all
 windows/controllers. A stdin reader only queues typed JSON commands and wakes
 the UI message pump. COM callbacks and controller operations stay on that
-thread. Typed `cdp` commands target an existing view and call
-`CallDevToolsProtocolMethod`; completion callbacks return JSON results with the
+thread. Typed `cdp` commands target an existing view; private session-qualified
+dispatch uses the runtime's session method and rejects unsupported capabilities.
+Lazy allowlisted native CDP event receivers provide frame/context/target lifecycle
+events, with subscriptions and child sessions owned by that view. These methods
+are desktop-main transports, never renderer APIs. Completion callbacks retain the
 original request id. Method names use `Domain.command` and params are objects.
 Results above 900000 UTF-8 bytes produce a small correlated error before stdout;
 desktop read/eval and staged snapshot chunks bound page-owned serialization before

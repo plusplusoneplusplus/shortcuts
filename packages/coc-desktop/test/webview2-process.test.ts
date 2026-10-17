@@ -180,6 +180,36 @@ describe('WebView2 CDP transport', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
+    it.each([false, true])('rejects only the owned detached session and preserves root/other-view work (dispatched: %s)', async dispatched => {
+        const { native, transport } = await started();
+        const detached = transport.request('cdp', { viewId: 'owner:a', sessionId: 'child', method: 'Runtime.evaluate' });
+        const rejected = expect(detached).rejects.toThrow('session detached');
+        const root = transport.request('cdp', { viewId: 'owner:a', method: 'Runtime.evaluate' });
+        const other = transport.request('cdp', { viewId: 'owner:b', sessionId: 'child', method: 'Runtime.evaluate' });
+        if (dispatched) await Promise.resolve();
+        transport.rejectSession('owner:a', 'child');
+        await Promise.resolve();
+        await rejected;
+        for (const [line] of native.stdin.write.mock.calls) {
+            const message = JSON.parse(line);
+            native.stdout.emit('data', JSON.stringify({ id: message.id, ok: true, result: message.viewId }) + '\n');
+        }
+        await expect(root).resolves.toBe('owner:a');
+        await expect(other).resolves.toBe('owner:b');
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('preserves explicit unsupported-runtime errors from subscription requests without killing the helper', async () => {
+        const { native, transport, failure } = await started();
+        const subscription = transport.request('cdp-subscribe', { viewId: 'owner:a', method: 'Page.frameAttached', enabled: true });
+        await Promise.resolve();
+        native.stdout.emit('data', '{"id":2,"ok":false,"reason":"native-unavailable","message":"unsupported-runtime: session events unavailable; selected engine unchanged."}\n');
+        await expect(subscription).rejects.toMatchObject({ reason: 'native-unavailable', message: expect.stringContaining('unsupported-runtime') });
+        expect(native.kill).not.toHaveBeenCalled();
+        expect(failure).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
     it.each([false, true])('rejects an oversized result only and drains its frame (fragmented: %s)', async fragmented => {
         const { native, transport, failure } = await started();
         const large = transport.request('cdp', { viewId: 'owner:a', method: 'Runtime.evaluate' });

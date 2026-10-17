@@ -5,18 +5,23 @@ import { validateBrowserUrl } from './browser-view-policy';
 export function validateBrowserCommandRequest(input: unknown): BrowserCommandRequest {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('Invalid browser request');
     const request = input as BrowserCommandRequest;
-    if (Object.keys(request).some(key => !['id', 'turnId', 'workspaceId', 'processId', 'command', 'selectedTab'].includes(key))) throw new TypeError('Invalid browser request field');
+    if (Object.keys(request).some(key => !['id', 'turnId', 'workspaceId', 'processId', 'command', 'selectedTab', 'framesEnabled', 'richPasteEnabled'].includes(key))) throw new TypeError('Invalid browser request field');
+    if (request.richPasteEnabled !== undefined && typeof request.richPasteEnabled !== 'boolean') throw new TypeError('Invalid browser rich paste policy');
+    if (request.framesEnabled !== undefined && typeof request.framesEnabled !== 'boolean') throw new TypeError('Invalid browser frame policy');
     if (request.turnId !== undefined && (typeof request.turnId !== 'string' || !request.turnId || request.turnId.length > 512)) throw new TypeError('Invalid browser turn');
     for (const key of ['id', 'workspaceId', 'processId'] as const) {
         if (typeof request[key] !== 'string' || !request[key] || request[key].length > 512) throw new TypeError(`Invalid browser ${key}`);
     }
     if (request.selectedTab !== undefined && (typeof request.selectedTab !== 'string' || !request.selectedTab || request.selectedTab.length > 1024)) throw new TypeError('Invalid selected tab');
     const command = parseBrowserCommand(request.command);
+    if (command.action === 'paste_html' && (!request.richPasteEnabled || !request.framesEnabled)) throw new Error('Browser rich paste and frame control must be enabled');
+    if (!request.framesEnabled && (command.action === 'frames' || command.frame !== undefined)) throw new Error('Browser frame control is disabled');
     for (const key of ['tab', 'ref', 'url', 'text', 'value', 'key', 'direction', 'js'] as const) {
         if (command[key] !== undefined && command[key]!.length > 1_000_000) throw new TypeError(`Invalid browser ${key}`);
     }
     if (command.tab !== undefined && (!command.tab || command.tab.length > 1024)) throw new TypeError('Invalid browser tab');
     if (command.ref !== undefined && !/^e[1-9]\d*$/.test(command.ref)) throw new TypeError('Invalid browser ref');
+    if (command.frame !== undefined && !/^f[a-zA-Z0-9-]{1,100}$/.test(command.frame)) throw new TypeError('Invalid browser frame');
     if (command.url !== undefined && !validateBrowserUrl(command.url).ok) throw new TypeError('Browser URL must be http or https');
     return request;
 }
@@ -24,6 +29,7 @@ export function validateBrowserCommandRequest(input: unknown): BrowserCommandReq
 export const BROWSER_CONTROL_SCOPE_CHANNEL = 'coc-desktop:browser-control-scope';
 export const BROWSER_CONTROL_COMMAND_CHANNEL = 'coc-desktop:browser-control-command';
 export const BROWSER_CONTROL_CANCEL_CHANNEL = 'coc-desktop:browser-control-cancel';
+export const BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL = 'coc-desktop:browser-control-release-frames';
 export const BROWSER_CONTROL_REVEAL_CHANNEL = 'coc-desktop:browser-control-reveal';
 export const BROWSER_CONTROL_FOCUSED_CHANNEL = 'coc-desktop:browser-control-focused';
 export const BROWSER_CONTROL_ACTIVITY_CHANNEL = 'coc-desktop:browser-control-activity';

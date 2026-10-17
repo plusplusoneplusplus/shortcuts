@@ -22,6 +22,8 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
     let ownerId: number | undefined;
     const controlled = new Map<string, { workspaceId: string; processId: string; routingRef: string; turnId?: string; routed?: boolean }>();
     const pending = new Set<string>();
+    const framePending = new Set<string>();
+    let framesActive = false;
     const track = (targetWorkspace: string, processId: string, ownerRef: string, tabId?: string, turnId?: string, routed?: boolean) => {
         const key = JSON.stringify([targetWorkspace, processId]);
         const previous = controlled.get(key);
@@ -126,9 +128,17 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
     };
     syncVisibility();
     window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, syncVisibility);
+    const releaseFrames = () => {
+        if (framesActive && routingRef && control?.releaseFrames) {
+            framesActive = false;
+            void control.releaseFrames(routingRef).catch(error => console.warn('Could not release desktop browser frame control:', error));
+        }
+    };
     const cancelPending = () => {
         for (const id of pending) control?.cancel(id);
         pending.clear();
+        framePending.clear();
+        releaseFrames();
     };
     const clearActivities = () => {
         ++visibilityRevision;
@@ -176,7 +186,16 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
         onOpen() { connected = true; syncVisibility(); advertise(); },
         onClose() { connected = false; cancelPending(); clearActivities(); },
         onMessage(message: { type: string; [key: string]: unknown }): boolean {
-            if (message.type === 'config-changed') syncVisibility();
+            if (message.type === 'config-changed') {
+                for (const id of framePending) {
+                    control?.cancel(id);
+                    pending.delete(id);
+                    connection.send({ type: 'browser-command-result', reply: { id, ok: false, error: 'Browser frame policy changed during command' } });
+                }
+                framePending.clear();
+                releaseFrames();
+                syncVisibility();
+            }
             if (message.type === 'browser-turn-finished' && typeof message.turnId === 'string'
                 && typeof message.workspaceId === 'string' && typeof message.processId === 'string') {
                 control?.finish?.(message.turnId);
@@ -210,6 +229,22 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
                 connection.send({ type: 'browser-command-result', reply: { id: request.id, ok: false, error: 'Browser workspace scope changed' } });
                 return true;
             }
+            if (request.framesEnabled !== undefined && typeof request.framesEnabled !== 'boolean') {
+                connection.send({ type: 'browser-command-result', reply: { id: request.id, ok: false, error: 'Invalid browser frame policy' } });
+                return true;
+            }
+            if (request.framesEnabled === true && control.framesSupported !== true) {
+                connection.send({ type: 'browser-command-result', reply: { id: request.id, ok: false, error: 'Unsupported desktop capability: browser frame control' } });
+                return true;
+            }
+            if (request.command?.action === 'paste_html' && (control.richPasteSupported !== true || request.richPasteEnabled !== true)) {
+                connection.send({ type: 'browser-command-result', reply: { id: request.id, ok: false, error: 'Unsupported or disabled desktop rich paste capability' } });
+                return true;
+            }
+            if (request.framesEnabled !== true && (request.command?.action === 'frames' || request.command?.frame !== undefined)) {
+                connection.send({ type: 'browser-command-result', reply: { id: request.id, ok: false, error: 'Browser frame control is disabled' } });
+                return true;
+            }
             if (pending.has(request.id)) return true;
             const targetedTab = request.command?.action === 'select' ? request.command.tab : request.selectedTab;
             if (!control.onActivity && !track(request.workspaceId, request.processId, routingRef!, panelTabId(targetedTab) ?? targetedTab, request.turnId)) {
@@ -220,6 +255,7 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
                 workspaceId: request.workspaceId, processId: request.processId, routingRef: routingRef!, turnId: request.turnId, routed: true,
             });
             pending.add(request.id);
+            if (request.framesEnabled === true) { framePending.add(request.id); framesActive = true; }
             syncVisibility();
             const version = revision;
             void control.execute(request).then(
@@ -233,7 +269,7 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
                 error => {
                     if (pending.has(request.id) && version === revision && connected) connection.send({ type: 'browser-command-result', reply: { id: request.id, ok: false, error: error instanceof Error ? error.message : String(error) } });
                 },
-            ).finally(() => pending.delete(request.id));
+            ).finally(() => { pending.delete(request.id); framePending.delete(request.id); });
             return true;
         },
         dispose() {

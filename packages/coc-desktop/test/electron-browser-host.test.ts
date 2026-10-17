@@ -9,7 +9,9 @@ const mocks = vi.hoisted(() => ({
     expire: undefined as undefined | (() => void),
     revoke: vi.fn(),
     handlers: new Map<string, ((...args: any[]) => void)[]>(),
-    owner: { id: 7, focus: vi.fn() },
+    owner: { id: 7, focus: vi.fn(), executeJavaScript: vi.fn().mockResolvedValue(true) },
+    windowShow: vi.fn(),
+    windowFocus: vi.fn(),
     profile: {
         getUserAgent: () => 'Electron/42', setUserAgent: vi.fn(),
         setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn(), on: vi.fn(),
@@ -20,6 +22,7 @@ const mocks = vi.hoisted(() => ({
         flushStorageData: vi.fn(),
     },
     contents: {
+        focus: vi.fn(),
         id: 8, on: vi.fn(), once: vi.fn(), setWindowOpenHandler: vi.fn(),
         isDestroyed: () => false, loadURL: vi.fn().mockResolvedValue(undefined),
         close: vi.fn(),
@@ -48,6 +51,7 @@ vi.mock('../src/browser-webview-guard', () => ({
 }));
 vi.mock('electron', () => ({
     BrowserWindow: { fromWebContents: () => ({
+        show: mocks.windowShow, focus: mocks.windowFocus,
         webContents: mocks.owner, isDestroyed: () => false,
         contentView: { addChildView: vi.fn(), removeChildView: vi.fn() },
     }) },
@@ -78,6 +82,18 @@ function emit(name: string, ...args: any[]) {
 }
 
 describe('Electron browser profile cleanup', () => {
+    it('activates the owner before focusing the exact guest', async () => {
+        const host = new ElectronBrowserHost('profile');
+        const sink: BrowserEventSink = { state() {}, newTab() {}, download() {}, closeRequested() {}, openMenuRequested() {} };
+        const view = await host.create({ ownerId: 7, viewId: 'focus', sessionKey: 'w', url: 'https://fixture.test/' }, sink);
+        try {
+            await view.focus();
+            expect(mocks.windowShow).toHaveBeenCalledOnce();
+            expect(mocks.windowFocus.mock.invocationCallOrder[0]).toBeLessThan(mocks.contents.focus.mock.invocationCallOrder[0]);
+        } finally {
+            await view.close();
+        }
+    });
     it('waits for all browsing data to clear before flushing the persistent profile', async () => {
         let finish!: () => void;
         mocks.profile.clearData.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));

@@ -275,6 +275,8 @@ export interface RuntimeDashboardConfig {
     excalidrawEnabled: boolean;
     kustoEnabled: boolean;
     browserControlEnabled?: boolean;
+    browserFrameControlEnabled?: boolean;
+    browserRichPasteEnabled?: boolean;
     mcpOauthEnabled: boolean;
     focusedDiffEnabled: boolean;
     containerDefaultAgentEnabled: boolean;

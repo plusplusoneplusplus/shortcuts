@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WebView2BrowserHost } from '../src/webview2-browser-host';
-import { BrowserHostError, type BrowserEventSink, type BrowserHostedView } from '../src/browser-host-contract';
+import { BROWSER_FRAME_CDP_EVENTS, BrowserHostError, type BrowserEventSink, type BrowserHostedView } from '../src/browser-host-contract';
 import { BrowserHostManager } from '../src/browser-host-manager';
 import { BrowserHistoryStore } from '../src/browser-history';
 import { BrowserControlPage } from '../src/browser-control-page';
@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     request: vi.fn().mockResolvedValue(undefined),
     running: true,
     rejectView: vi.fn(),
+    rejectSession: vi.fn(),
     dispose: vi.fn().mockResolvedValue(undefined),
     onFailure: vi.fn<(error: BrowserHostError) => void>(),
     window: {
@@ -20,6 +21,8 @@ const mocks = vi.hoisted(() => ({
         getNativeWindowHandle: () => Buffer.alloc(8),
         getContentBounds: () => mocks.contentBounds,
         setFullScreen: vi.fn(),
+        show: vi.fn(),
+        focus: vi.fn(),
         on: vi.fn(),
         removeListener: vi.fn(),
     },
@@ -46,12 +49,199 @@ vi.mock('../src/webview2-process', async importOriginal => ({
         get running() { return mocks.running; }
         request = mocks.request;
         rejectView = mocks.rejectView;
+        rejectSession = mocks.rejectSession;
         dispose = mocks.dispose;
     },
 }));
 
 const sink: BrowserEventSink = { state: vi.fn(), newTab: vi.fn(), download: vi.fn(), closeRequested: vi.fn(), openMenuRequested: vi.fn(), focusAddressRequested: vi.fn() };
 const bounds = { x: 10, y: 20, width: 300, height: 200 };
+
+describe('WebView2 private frame event transport', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mocks.request.mockReset().mockResolvedValue(undefined);
+        mocks.dispose.mockReset().mockResolvedValue(undefined);
+        mocks.running = true;
+    });
+
+    async function opened() {
+        const host = new WebView2BrowserHost('profile');
+        const root = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: 'https://fixture.test/' }, sink);
+        const event = (method: string, params: Record<string, unknown>, sessionId?: string, viewId = '7:tab:1') =>
+            mocks.onEvent({ event: 'cdp-event', viewId, method, params, ...(sessionId ? { sessionId } : {}) });
+        return { host, root, event };
+    }
+
+    it('leaves the disabled path unsubscribed and sends only legacy root commands', async () => {
+        const h = await opened();
+        await h.root.cdp!('Runtime.evaluate', { expression: '42' });
+        expect(mocks.request.mock.calls.map(([op]) => op)).toEqual(['open', 'cdp']);
+        expect(mocks.request).toHaveBeenLastCalledWith('cdp', { viewId: '7:tab:1', method: 'Runtime.evaluate', params: { expression: '42' } });
+        await h.host.dispose();
+    });
+
+    it('activates the owner before transferring focus to the embedded WebView', async () => {
+        const h = await opened();
+        const order: string[] = [];
+        mocks.window.show.mockImplementationOnce(() => { order.push('show'); });
+        mocks.window.focus.mockImplementationOnce(() => { order.push('window-focus'); });
+        mocks.request.mockImplementationOnce(async () => { order.push('webview-focus'); });
+        try {
+            await h.root.focus();
+            expect(order).toEqual(['show', 'window-focus', 'webview-focus']);
+            expect(mocks.request).toHaveBeenLastCalledWith('focus', { viewId: '7:tab:1' });
+        } finally {
+            await h.host.dispose();
+        }
+    });
+
+    it('rejects focus on a closed view without activating its owner', async () => {
+        const h = await opened();
+        try {
+            await h.root.close();
+            mocks.request.mockClear();
+            await expect(h.root.focus()).rejects.toThrow('Browser tab is closed');
+            expect(mocks.window.show).not.toHaveBeenCalled();
+            expect(mocks.window.focus).not.toHaveBeenCalled();
+            expect(mocks.request).not.toHaveBeenCalled();
+        } finally {
+            await h.host.dispose();
+        }
+    });
+
+    it('awaits allowlisted native subscriptions before enabling domains and disposes only at the last subscriber', async () => {
+        const h = await opened();
+        let release!: () => void;
+        mocks.request.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+        const first = vi.fn();
+        const second = vi.fn();
+        const off = h.root.onCdpEvent!(first);
+        const offSecond = h.root.onCdpEvent!(second);
+        const enable = h.root.cdp!('Runtime.enable');
+        await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+        expect(mocks.request.mock.calls.filter(([op]) => op === 'cdp')).toHaveLength(0);
+        release();
+        await h.root.waitForCdpEvents!();
+        await enable;
+        expect(mocks.request.mock.calls.filter(([op, payload]) => op === 'cdp-subscribe' && payload.enabled)
+            .map(([, payload]) => payload.method)).toEqual(BROWSER_FRAME_CDP_EVENTS);
+        expect(mocks.request).toHaveBeenLastCalledWith('cdp', { viewId: '7:tab:1', method: 'Runtime.enable', params: {} });
+        h.event('Page.frameAttached', { frameId: 'child' });
+        expect(first).toHaveBeenCalledWith('Page.frameAttached', { frameId: 'child' }, undefined);
+        expect(second).toHaveBeenCalledOnce();
+        off();
+        off();
+        await h.root.waitForCdpEvents!();
+        expect(mocks.request.mock.calls.filter(([op, payload]) => op === 'cdp-subscribe' && !payload.enabled)).toHaveLength(0);
+        offSecond();
+        await h.root.waitForCdpEvents!();
+        expect(mocks.request.mock.calls.filter(([op, payload]) => op === 'cdp-subscribe' && !payload.enabled)).toHaveLength(BROWSER_FRAME_CDP_EVENTS.length);
+        h.event('Page.frameAttached', {});
+        expect(second).toHaveBeenCalledOnce();
+        await h.host.dispose();
+    });
+
+    it('binds nested iframe sessions to their exact native view and invalidates detached descendants', async () => {
+        const h = await opened();
+        const other = await h.host.create({ ownerId: 8, viewId: 'other', sessionKey: 'other', url: 'https://fixture.test/' }, sink);
+        const listener = vi.fn();
+        h.root.onCdpEvent!(listener);
+        other.onCdpEvent!(vi.fn());
+        await Promise.all([h.root.waitForCdpEvents!(), other.waitForCdpEvents!()]);
+        h.event('Target.attachedToTarget', { sessionId: 'child', targetInfo: { type: 'iframe' } });
+        h.event('Target.attachedToTarget', { sessionId: 'nested', targetInfo: { type: 'iframe' } }, 'child');
+        h.event('Runtime.executionContextCreated', { context: { id: 42 } }, 'nested');
+        expect(listener).toHaveBeenLastCalledWith('Runtime.executionContextCreated', { context: { id: 42 } }, 'nested');
+        await h.root.cdp!('Runtime.evaluate', { expression: '42' }, 'nested');
+        expect(mocks.request).toHaveBeenLastCalledWith('cdp', { viewId: '7:tab:1', method: 'Runtime.evaluate', params: { expression: '42' }, sessionId: 'nested' });
+        await expect(other.cdp!('Runtime.enable', {}, 'nested')).rejects.toThrow('does not belong');
+        h.event('Target.detachedFromTarget', { sessionId: 'child' });
+        expect(mocks.rejectSession.mock.calls).toEqual([['7:tab:1', 'child'], ['7:tab:1', 'nested']]);
+        await expect(h.root.cdp!('Runtime.enable', {}, 'nested')).rejects.toThrow('does not belong');
+        h.event('Runtime.executionContextsCleared', {}, 'nested');
+        expect(listener).toHaveBeenCalledTimes(4);
+        await h.host.dispose();
+    });
+
+    it('rejects unsupported installed runtime explicitly and rolls back partial subscriptions', async () => {
+        const h = await opened();
+        const error = new BrowserHostError('native-unavailable', 'unsupported-runtime: frame control requires session-qualified CDP; selected engine unchanged.');
+        mocks.request.mockImplementation(async (op, payload) => {
+            if (op === 'cdp-subscribe' && payload.enabled && payload.method === BROWSER_FRAME_CDP_EVENTS[2]) throw error;
+        });
+        const off = h.root.onCdpEvent!(vi.fn());
+        await expect(h.root.waitForCdpEvents!()).rejects.toBe(error);
+        await expect(h.root.cdp!('Runtime.enable')).rejects.toBe(error);
+        expect(mocks.request.mock.calls.filter(([op, payload]) => op === 'cdp-subscribe' && !payload.enabled)).toHaveLength(BROWSER_FRAME_CDP_EVENTS.length);
+        expect(h.root.snapshot().engine).toBe('webview2');
+        off();
+        await h.root.waitForCdpEvents!();
+        await h.root.cdp!('Runtime.enable');
+        await h.host.dispose();
+    });
+
+    it('completes native unsubscription before a rapid replacement subscriber becomes ready', async () => {
+        const h = await opened();
+        const listener = vi.fn();
+        const off = h.root.onCdpEvent!(listener);
+        await h.root.waitForCdpEvents!();
+        mocks.request.mockClear();
+        off();
+        const replacementOff = h.root.onCdpEvent!(listener);
+        await h.root.waitForCdpEvents!();
+        const subscriptions = mocks.request.mock.calls.filter(([op]) => op === 'cdp-subscribe');
+        expect(subscriptions.map(([, payload]) => payload.enabled)).toEqual([
+            ...BROWSER_FRAME_CDP_EVENTS.map(() => false), ...BROWSER_FRAME_CDP_EVENTS.map(() => true),
+        ]);
+        off();
+        h.event('Page.frameAttached', {});
+        expect(listener).toHaveBeenCalledOnce();
+        replacementOff();
+        await h.root.waitForCdpEvents!();
+        await h.host.dispose();
+    });
+
+    it('fails closed on oversized or invalid event data and preserves the native failure reason', async () => {
+        const h = await opened();
+        const listener = vi.fn();
+        h.root.onCdpEvent!(listener);
+        await h.root.waitForCdpEvents!();
+        h.event('Page.frameNavigated', { value: '\u754c'.repeat(300_001) });
+        expect(listener).toHaveBeenCalledExactlyOnceWith('Inspector.detached', { reason: expect.stringContaining('transport limit') });
+        await expect(h.root.cdp!('Page.enable')).rejects.toThrow('transport limit');
+        expect(mocks.rejectView).toHaveBeenCalledWith('7:tab:1', expect.objectContaining({ reason: 'invalid' }));
+        await h.host.dispose();
+    });
+
+    it.each(['close', 'crash', 'helper-crash'])('cleans event listeners and refuses late session messages after %s', async outcome => {
+        const h = await opened();
+        const listener = vi.fn();
+        h.root.onCdpEvent!(listener);
+        await h.root.waitForCdpEvents!();
+        if (outcome === 'close') await h.root.close();
+        else if (outcome === 'helper-crash') mocks.onFailure(new BrowserHostError('runtime-crashed', 'Synthetic helper crash'));
+        else mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { url: 'https://fixture.test/', title: '', loading: false, canGoBack: false, canGoForward: false, errorCode: 'runtime-crashed' } });
+        h.event('Target.attachedToTarget', { sessionId: 'late', targetInfo: { type: 'iframe' } });
+        expect(listener).not.toHaveBeenCalled();
+        await expect(h.root.cdp!('Runtime.enable', {}, 'late')).rejects.toThrow(/closed|crashed|crash/i);
+        await h.host.dispose();
+    });
+
+    it('does not install remaining subscriptions when closure races native admission', async () => {
+        const h = await opened();
+        let release!: () => void;
+        mocks.request.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+        h.root.onCdpEvent!(vi.fn());
+        await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+        await h.root.close();
+        release();
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(mocks.request.mock.calls.filter(([op]) => op === 'cdp-subscribe')).toHaveLength(1);
+        await h.host.dispose();
+    });
+});
 
 describe('WebView2 owner-scoped native popups', () => {
     beforeEach(() => {

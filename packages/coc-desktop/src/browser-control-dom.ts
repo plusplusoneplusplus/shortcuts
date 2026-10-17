@@ -1,3 +1,5 @@
+import { browserClipRect } from './browser-control-clip';
+
 /** Serialized into the URL guest by browser-control-page. No host dependencies. */
 export interface BrowserDomElement {
     ref: string;
@@ -5,6 +7,7 @@ export interface BrowserDomElement {
     name: string;
     depth: number;
     checked?: boolean;
+    frame?: string;
 }
 
 export interface BrowserDomSnapshot {
@@ -12,6 +15,9 @@ export interface BrowserDomSnapshot {
     url: string;
     elements: BrowserDomElement[];
     nextRef: number;
+    visited?: number;
+    consumed?: number;
+    truncated?: string;
 }
 
 export interface BrowserDomSnapshotChunk {
@@ -25,6 +31,16 @@ export interface BrowserDomSnapshotChunk {
 export interface BrowserDomReadPage {
     text: string;
     textTotal: number;
+    visited?: number;
+    consumed?: number;
+    truncated?: string;
+}
+
+export interface BrowserDomTextMatch {
+    found: boolean;
+    visited: number;
+    consumed: number;
+    truncated?: string;
 }
 
 export interface BrowserDomTarget {
@@ -36,21 +52,33 @@ export interface BrowserDomTarget {
     optionSearch?: { text: string; selected: boolean; count: number };
 }
 
-export type BrowserDomCommand =
+export interface BrowserDomScope {
+    nodes: number;
+    chars: number;
+    refs: number;
+    generation: string;
+}
+
+export type BrowserDomCommand = (
     | { action: 'snapshot'; ref?: string; all?: boolean; nextRef: number }
     | { action: 'snapshot-chunk'; token: number; offset: number }
     | { action: 'text'; text: string }
-    | { action: 'read'; ref?: string; paged?: true; offset?: number }
-    | { action: 'target'; ref: string; editable?: boolean; option?: string; resetTypeAhead?: true };
+    | { action: 'read'; ref?: string; paged?: true; offset?: number; limit?: number }
+    | { action: 'target'; ref: string; editable?: boolean; option?: string; resetTypeAhead?: true }
+    | { action: 'hit'; ref: string; x: number; y: number }
+    | { action: 'viewport' }
+    | { action: 'focus' }
+) & { scope?: BrowserDomScope };
 
 /** Keep this function self-contained: its compiled source runs in either engine. */
-function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDomSnapshotChunk | BrowserDomReadPage | BrowserDomTarget | boolean | string {
+function browserDom(command: BrowserDomCommand, clipRect: typeof browserClipRect): BrowserDomSnapshot | BrowserDomSnapshotChunk | BrowserDomReadPage | BrowserDomTextMatch | BrowserDomTarget | boolean | string {
     interface Registry {
         document: Document;
         url: string;
         refs: Map<string, Element>;
         ids: WeakMap<Element, string>;
         nextRef: number;
+        generation?: string;
         snapshotSequence: number;
         snapshot?: { token: number; json: string; nextRef: number };
     }
@@ -64,8 +92,9 @@ function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDom
         page.addEventListener('pagehide', () => { owned.refs.clear(); owned.ids = new WeakMap(); owned.snapshot = undefined; });
     }
     const registry = state;
-    if (registry.url !== location.href) {
+    if (registry.url !== location.href || registry.generation !== command.scope?.generation) {
         registry.refs.clear(); registry.ids = new WeakMap(); registry.url = location.href; registry.snapshot = undefined;
+        registry.generation = command.scope?.generation;
     }
     if (command.action === 'snapshot') registry.nextRef = Math.max(registry.nextRef, command.nextRef);
     // JSON escaping can expand each character sixfold; stay below native's 900000-byte cap.
@@ -85,7 +114,7 @@ function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDom
         if (element.parentElement) return element.parentElement;
         const root = element.getRootNode() as ShadowRoot;
         if (root.host) return root.host;
-        return element.ownerDocument.defaultView?.frameElement ?? null;
+        return command.scope ? null : element.ownerDocument.defaultView?.frameElement ?? null;
     };
     const current = (element: Element): boolean => {
         if (!element.isConnected) return false;
@@ -97,7 +126,9 @@ function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDom
         }
     };
     const hidden = (element: Element): boolean => {
+        let ancestors = 0;
         for (let node: Element | null = element; node; node = parent(node)) {
+            if (command.scope && ++ancestors > 20000) return true;
             const style = node.ownerDocument.defaultView!.getComputedStyle(node);
             if (node.hasAttribute('hidden') || node.hasAttribute('inert') || node.getAttribute('aria-hidden') === 'true'
                 || style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse'
@@ -107,7 +138,9 @@ function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDom
     };
     const disabled = (element: Element) => {
         if (element.matches(':disabled')) return true;
+        let ancestors = 0;
         for (let node: Element | null = element; node; node = parent(node)) {
+            if (command.scope && ++ancestors > 20000) return true;
             if (node.getAttribute('aria-disabled') === 'true') return true;
         }
         return false;
@@ -118,7 +151,8 @@ function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDom
         return element;
     };
     const role = (element: Element): string => {
-        const explicit = clean(element.getAttribute('role')).split(' ')[0];
+        const attribute = element.getAttribute('role');
+        const explicit = clean(command.scope ? attribute?.slice(0, 160) : attribute).split(' ')[0];
         if (explicit) return explicit;
         const tag = element.localName;
         if (/^h[1-6]$/.test(tag)) return 'heading';
@@ -133,6 +167,280 @@ function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDom
         }
         return ({ img: 'img', nav: 'navigation', main: 'main', ul: 'list', ol: 'list', li: 'listitem', table: 'table', tr: 'row', th: 'columnheader', td: 'cell', iframe: 'iframe' } as Record<string, string>)[tag] ?? 'generic';
     };
+    const viewport = (): BrowserDomTarget => ({
+        x: 0, y: 0,
+        width: document.documentElement.clientWidth || window.innerWidth,
+        height: document.documentElement.clientHeight || window.innerHeight,
+    });
+    const hitElement = (element: Element, x: number, y: number): boolean => {
+        const bounds = viewport();
+        if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x >= bounds.width || y >= bounds.height) return false;
+        let candidate = document.elementFromPoint?.(x, y);
+        if (!candidate) return false;
+        let visited = 0;
+        while (candidate.shadowRoot?.elementFromPoint) {
+            if (++visited > 20000) return false;
+            const inner = candidate.shadowRoot.elementFromPoint(x, y);
+            if (!inner || inner === candidate) break;
+            candidate = inner;
+        }
+        for (let node: Element | null = candidate; node; node = parent(node)) {
+            if (++visited > 20000) return false;
+            if (node === element) return true;
+        }
+        return false;
+    };
+    if (command.action === 'hit') {
+        if (!command.scope) throw new Error('Frame-scoped hit testing is disabled');
+        const element = resolve(command.ref);
+        return !hidden(element) && !disabled(element) && hitElement(element, command.x, command.y);
+    }
+    if (command.action === 'viewport') return viewport();
+    if (command.action === 'focus') {
+        const body = document.body ?? document.documentElement;
+        const tabindex = body.getAttribute('tabindex');
+        body.setAttribute('tabindex', '-1');
+        try { body.focus({ preventScroll: true }); }
+        finally {
+            if (tabindex === null) body.removeAttribute('tabindex');
+            else body.setAttribute('tabindex', tabindex);
+        }
+        return document.activeElement === body;
+    }
+    if (command.scope && (command.action === 'snapshot' || command.action === 'read' || command.action === 'text')) {
+        const scope = command.scope;
+        const bound = (value: number, maximum: number) => Number.isFinite(value) ? Math.max(0, Math.min(maximum, Math.floor(value))) : 0;
+        const nodeLimit = bound(scope.nodes, 20000);
+        const charLimit = bound(scope.chars, 1000000);
+        const refLimit = bound(scope.refs, 10000);
+        let visited = 0;
+        let consumed = 0;
+        let truncated: string | undefined;
+        const stop = (reason: string) => { truncated ??= reason; };
+        const visit = () => {
+            if (visited >= nodeLimit) { stop('node-limit'); return false; }
+            visited++;
+            return true;
+        };
+        const visibility = new Map<Element, boolean>();
+        const disability = new Map<Element, boolean>();
+        const isDisabled = (element: Element) => {
+            if (element.matches(':disabled')) return true;
+            const pending: Element[] = [];
+            let result = false;
+            for (let node: Element | null = element; node; node = parent(node)) {
+                const cached = disability.get(node);
+                if (cached !== undefined) { result = cached; break; }
+                if (!visit()) { result = true; break; }
+                pending.push(node);
+                if (node.getAttribute('aria-disabled') === 'true') { result = true; break; }
+            }
+            for (const node of pending) disability.set(node, result);
+            return result;
+        };
+        const visible = (element: Element) => {
+            const pending: Element[] = [];
+            let result = true;
+            for (let node: Element | null = element; node; node = parent(node)) {
+                const cached = visibility.get(node);
+                if (cached !== undefined) { result = cached; break; }
+                if (!visit()) { result = false; break; }
+                pending.push(node);
+                const style = node.ownerDocument.defaultView!.getComputedStyle(node);
+                if (node.hasAttribute('hidden') || node.hasAttribute('inert') || node.getAttribute('aria-hidden') === 'true'
+                    || style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse'
+                    || style.contentVisibility === 'hidden') { result = false; break; }
+            }
+            for (const node of pending) visibility.set(node, result);
+            return result;
+        };
+        function* children(node: Node): Generator<Node> {
+            if (node.nodeType !== Node.ELEMENT_NODE) return;
+            const element = node as Element;
+            if (element.localName === 'iframe') return;
+            if (element.localName === 'slot') {
+                const host = (element.getRootNode() as ShadowRoot).host;
+                let assigned = false;
+                for (let child = host?.firstChild; child; child = child.nextSibling) {
+                    if (!visit()) return;
+                    if ((child as Element | Text).assignedSlot === element) { assigned = true; yield child; }
+                }
+                if (assigned) return;
+            }
+            for (let child = (element.shadowRoot ?? element).firstChild; child; child = child.nextSibling) yield child;
+        }
+        function* walk(root: Node, excludeControls = false, requireVisible = true): Generator<{ node: Node; depth: number; entering: boolean }> {
+            const seen = new Set<Node>();
+            const stack = [{ node: root, depth: 0, children: undefined as Generator<Node> | undefined }];
+            while (stack.length) {
+                const frame = stack[stack.length - 1];
+                if (!frame.children) {
+                    if (seen.has(frame.node) || !visit()) { stack.pop(); if (truncated) return; continue; }
+                    seen.add(frame.node);
+                    if (frame.node.nodeType === Node.ELEMENT_NODE) {
+                        const element = frame.node as Element;
+                        if (['script', 'style', 'noscript'].includes(element.localName)
+                            || excludeControls && frame.node !== root && ['input', 'select', 'textarea', 'button'].includes(element.localName)
+                            || requireVisible && !visible(element)) { stack.pop(); if (truncated) return; continue; }
+                    }
+                    frame.children = children(frame.node);
+                    yield { node: frame.node, depth: frame.depth, entering: true };
+                }
+                const child = frame.children.next();
+                if (truncated) return;
+                if (!child.done) stack.push({ node: child.value, depth: frame.depth + 1, children: undefined });
+                else { stack.pop(); yield { node: frame.node, depth: frame.depth, entering: false }; }
+            }
+        }
+        const boundedText = (root: Node, maximum: number, excludeControls = false): string => {
+            if (maximum <= 0) return '';
+            let text = '';
+            for (const item of walk(root, excludeControls, false)) {
+                if (item.entering && item.node.nodeType === Node.TEXT_NODE) {
+                    text += (item.node as Text).data.slice(0, maximum - text.length);
+                    if (text.length >= maximum) break;
+                }
+            }
+            return clean(text);
+        };
+        const boundedName = (element: Element): string => {
+            const maximum = Math.min(160, charLimit - consumed);
+            const label = (value: string | null | undefined) => clean(value?.slice(0, maximum));
+            const root = element.getRootNode() as Document | ShadowRoot;
+            const labelledBy = element.getAttribute('aria-labelledby')?.slice(0, 160);
+            if (labelledBy) {
+                let text = '';
+                for (const id of labelledBy.split(/\s+/)) {
+                    const target = root.getElementById(id);
+                    if (target) text += `${text ? ' ' : ''}${boundedText(target, maximum - text.length)}`;
+                    if (text.length >= maximum || truncated) break;
+                }
+                if (clean(text)) return label(text);
+            }
+            const aria = label(element.getAttribute('aria-label'));
+            if (aria) return aria;
+            const labels = (element as HTMLInputElement).labels;
+            if (labels?.length) {
+                let text = '';
+                for (let index = 0; index < labels.length && text.length < maximum && !truncated; index++) {
+                    text += `${text ? ' ' : ''}${boundedText(labels[index], maximum - text.length, true)}`;
+                }
+                return label(text);
+            }
+            if (element.localName === 'input') {
+                const input = element as HTMLInputElement;
+                return label(['button', 'submit', 'reset'].includes(input.type) ? input.value : input.alt || input.placeholder || input.title);
+            }
+            if (element.localName === 'img') return label(element.getAttribute('alt'));
+            if (element.localName === 'select' || element.localName === 'textarea') return label(element.getAttribute('title') || element.getAttribute('placeholder'));
+            return label(element.getAttribute('title')) || boundedText(element, maximum);
+        };
+        const root = 'ref' in command && command.ref ? resolve(command.ref) : document.body;
+        if (command.action === 'snapshot') {
+            const titleElement = document.head?.querySelector('title');
+            const title = titleElement ? boundedText(titleElement, Math.min(160, Math.floor(charLimit / 4))) : '';
+            const url = location.href.slice(0, Math.min(2048, Math.floor(charLimit / 4)));
+            // Reserve transport metadata, metrics and a truncation reason before entries.
+            const metadata = JSON.stringify({ title, url, elements: [], nextRef: registry.nextRef }).length + 128;
+            consumed = metadata;
+            if (metadata > charLimit) stop('char-limit');
+            for (const [ref, element] of registry.refs) if (!current(element)) {
+                registry.refs.delete(ref);
+                registry.ids.delete(element);
+            }
+            while (registry.refs.size > refLimit) {
+                const [ref, element] = registry.refs.entries().next().value!;
+                registry.refs.delete(ref); registry.ids.delete(element);
+            }
+            const elements: BrowserDomElement[] = [];
+            const interactive = new Set(['link', 'button', 'textbox', 'searchbox', 'checkbox', 'radio', 'combobox', 'listbox', 'slider', 'spinbutton', 'switch', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'tab', 'treeitem', 'option', 'heading']);
+            const depths: number[] = [];
+            if (root && !truncated) for (const item of walk(root)) {
+                if (!item.entering || item.node.nodeType !== Node.ELEMENT_NODE) continue;
+                const element = item.node as Element;
+                const depth = item.depth ? depths[item.depth - 1] ?? 0 : 0;
+                depths[item.depth] = depth;
+                const elementRole = role(element);
+                if (!element.getClientRects().length || !command.all && !interactive.has(elementRole) || isDisabled(element)) continue;
+                let ref = registry.ids.get(element);
+                if (!ref && registry.refs.size >= refLimit) { stop('ref-limit'); break; }
+                ref ??= `e${registry.nextRef}`;
+                const entry: BrowserDomElement = { ref, role: elementRole.slice(0, 160), name: boundedName(element), depth };
+                if (elementRole === 'checkbox' || elementRole === 'radio' || elementRole === 'switch') {
+                    entry.checked = element.getAttribute('aria-checked') === 'true' || (element as HTMLInputElement).checked === true;
+                }
+                const size = JSON.stringify(entry).length + (elements.length ? 1 : 0);
+                if (size > charLimit - consumed) { stop('char-limit'); break; }
+                if (!registry.ids.has(element)) registry.nextRef++;
+                registry.ids.set(element, ref); registry.refs.set(ref, element);
+                elements.push(entry); consumed += size;
+                depths[item.depth] = depth + 1;
+                if (truncated) break;
+            }
+            const result: BrowserDomSnapshot = {
+                title, url,
+                elements, nextRef: registry.nextRef, visited, consumed, ...(truncated ? { truncated } : {}),
+            };
+            const json = JSON.stringify(result);
+            registry.snapshot = undefined;
+            if (json.length <= snapshotChunkSize) return result;
+            registry.snapshot = { token: ++registry.snapshotSequence, json, nextRef: registry.nextRef };
+            return snapshotChunk(0);
+        }
+        const parts: string[] = [];
+        const append = (value: string) => {
+            const remaining = charLimit - consumed;
+            if (value.length > remaining) stop('char-limit');
+            const text = value.slice(0, remaining);
+            if (text) { parts.push(text); consumed += text.length; }
+        };
+        let preDepth = 0;
+        if (root) for (const item of walk(root)) {
+            if (item.node.nodeType === Node.TEXT_NODE && item.entering) {
+                const data = (item.node as Text).data;
+                const remaining = charLimit - consumed;
+                const piece = data.slice(0, remaining);
+                append(command.action === 'text' || !preDepth ? piece.replace(/\s+/g, ' ') : piece);
+                if (data.length > remaining) stop('char-limit');
+                if (command.action === 'text') append(' ');
+            } else if (item.node.nodeType === Node.ELEMENT_NODE && command.action === 'read') {
+                const element = item.node as Element;
+                const tag = element.localName;
+                const entering = item.entering;
+                if (tag === 'pre') { append(entering ? '\n\n```\n' : '\n```\n\n'); preDepth += entering ? 1 : -1; }
+                else if (/^h[1-6]$/.test(tag)) append(entering ? `\n\n${'#'.repeat(Number(tag[1]))} ` : '\n\n');
+                else if (tag === 'br' && entering) append('\n');
+                else if (tag === 'li') append(entering ? '\n- ' : '\n');
+                else if (['p', 'div', 'section', 'article', 'main', 'ul', 'ol', 'table', 'tr'].includes(tag)) append('\n\n');
+                else if (tag === 'strong' || tag === 'b') append('**');
+                else if (tag === 'em' || tag === 'i') append('*');
+                else if (tag === 'a') {
+                    const attribute = element.getAttribute('href') ?? '';
+                    if (attribute.length > charLimit - consumed) { stop('char-limit'); break; }
+                    const href = (element as HTMLAnchorElement).href;
+                    if (/^https?:/.test(href)) {
+                        if (entering) append('[');
+                        else { append(']('); append(href); append(')'); }
+                    }
+                }
+            }
+            if (truncated) break;
+        }
+        const text = parts.join('').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+        if (command.action === 'text') {
+            if (command.text.length > charLimit) stop('char-limit');
+            return {
+                found: command.text.length <= charLimit && clean(text).includes(clean(command.text)), visited, consumed,
+                ...(truncated ? { truncated } : {}),
+            };
+        }
+        const offset = bound(command.offset ?? 0, 1000000);
+        const limit = bound(command.limit ?? 8000, 8000);
+        return command.paged ? {
+            text: text.slice(offset, offset + limit), textTotal: text.length, visited, consumed,
+            ...(truncated ? { truncated } : {}),
+        } : text;
+    }
     const name = (element: Element): string => {
         const root = element.getRootNode() as Document | ShadowRoot;
         const labelledBy = element.getAttribute('aria-labelledby');
@@ -280,24 +588,72 @@ function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDom
     let optionSearch: BrowserDomTarget['optionSearch'];
     if (command.option !== undefined) {
         if (element.localName !== 'select') throw new Error('Element is not a select');
-        const options = Array.from((element as HTMLSelectElement).options).filter(option => !option.disabled && !option.parentElement?.matches('optgroup[disabled]'));
+        const select = element as HTMLSelectElement;
+        const optionLimit = command.scope ? Math.max(0, Math.min(20000, Math.floor(command.scope.nodes))) : Infinity;
+        if (select.options.length > optionLimit) throw new Error('Option work limit exceeded');
+        const options = Array.from(select.options).filter(option => !option.disabled && !option.parentElement?.matches('optgroup[disabled]'));
         const index = options.findIndex(option => option.value === command.option);
         if (index < 0) throw new Error('Option value is missing or disabled');
         optionSteps = index;
-        const select = element as HTMLSelectElement;
         if (!select.multiple && select.size <= 1) {
-            optionSearch = { text: options[index].label.trimStart(), selected: options[index].selected, count: options.length };
+            let text: string;
+            if (command.scope) {
+                const option = options[index];
+                const attribute = option.getAttribute('label');
+                if (attribute !== null) text = attribute.slice(0, 160).trimStart();
+                else {
+                    text = '';
+                    let visited = 0;
+                    for (let node = option.firstChild; node && text.length < 160;) {
+                        if (++visited > optionLimit) throw new Error('Option work limit exceeded');
+                        if (node.nodeType === Node.TEXT_NODE) text += (node as Text).data.slice(0, 160 - text.length);
+                        if (node.firstChild) node = node.firstChild;
+                        else {
+                            while (node && !node.nextSibling && node.parentNode !== option) node = node.parentNode as ChildNode | null;
+                            node = node?.nextSibling ?? null;
+                        }
+                    }
+                    text = clean(text);
+                }
+            } else text = options[index].label.trimStart();
+            optionSearch = { text, selected: options[index].selected, count: options.length };
         }
     }
     element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
     const frames: Element[] = [];
-    for (let frame = element.ownerDocument.defaultView?.frameElement; frame; frame = frame.ownerDocument.defaultView?.frameElement) {
+    for (let frame = command.scope ? null : element.ownerDocument.defaultView?.frameElement; frame; frame = frame.ownerDocument.defaultView?.frameElement) {
         frame.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
         frames.push(frame);
+    }
+    if (command.scope && (command.editable || command.option !== undefined)) {
+        if (command.resetTypeAhead) (element as HTMLElement).blur();
+        (element as HTMLElement).focus({ preventScroll: true });
+        if (hidden(element) || disabled(element)) throw new Error('Element is hidden or disabled');
     }
     const rect = element.getBoundingClientRect();
     if (!rect.width || !rect.height) throw new Error('Element has no visible bounds');
     let { x, y, width, height } = rect;
+    if (command.scope) {
+        const clip = clipRect(element);
+        const left = Math.max(clip.left, rect.left), top = Math.max(clip.top, rect.top);
+        const right = Math.min(clip.right, rect.right), bottom = Math.min(clip.bottom, rect.bottom);
+        if (!(right > left && bottom > top)) throw new Error('Element has no visible bounds');
+        x = left; y = top; width = right - left; height = bottom - top;
+        if (!hitElement(element, x + width / 2, y + height / 2)) {
+            let found = false;
+            for (let row = 0; row < 3 && !found; row++) for (let column = 0; column < 3; column++) {
+                const cellX = left + column * (right - left) / 3;
+                const cellY = top + row * (bottom - top) / 3;
+                const cellWidth = (right - left) / 3;
+                const cellHeight = (bottom - top) / 3;
+                if (hitElement(element, cellX + cellWidth / 2, cellY + cellHeight / 2)) {
+                    x = cellX; y = cellY; width = cellWidth; height = cellHeight;
+                    found = true; break;
+                }
+            }
+            if (!found) throw new Error('Element is obscured by another element');
+        }
+    }
     for (const frame of frames) {
         const bounds = frame.getBoundingClientRect();
         const host = frame as HTMLElement;
@@ -308,7 +664,7 @@ function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDom
         width *= scaleX;
         height *= scaleY;
     }
-    if (command.editable || command.option !== undefined) {
+    if (!command.scope && (command.editable || command.option !== undefined)) {
         if (command.resetTypeAhead) (element as HTMLElement).blur();
         // The first native click may activate a guest without focusing its field.
         (element as HTMLElement).focus();
@@ -317,5 +673,5 @@ function browserDom(command: BrowserDomCommand): BrowserDomSnapshot | BrowserDom
 }
 
 export function buildBrowserDomExpression(command: BrowserDomCommand): string {
-    return `(${browserDom.toString()})(${JSON.stringify(command)})`;
+    return `(${browserDom.toString()})(${JSON.stringify(command)},(${browserClipRect.toString()}))`;
 }

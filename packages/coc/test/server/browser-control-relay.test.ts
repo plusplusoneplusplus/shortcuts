@@ -7,9 +7,91 @@ import { WebSocket } from 'ws';
 const client = (id: string) => ({ id, send: vi.fn<(data: string) => void>() });
 const request = (client: ReturnType<typeof client>) => JSON.parse(client.send.mock.calls.at(-1)![0]).request;
 const enabled = () => { const relay = new BrowserControlRelay(); relay.setEnabledGetter(() => true); return relay; };
+const frame = { id: 'f-one', origin: 'https://fixture.test', name: '', document: 'd-one', status: 'ready', depth: 0 };
 afterEach(() => vi.useRealTimers());
 
 describe('browser control relay', () => {
+    it('gates rich paste by owning-server policy and cancels it when disabled', async () => {
+        const relay = enabled(), a = client('a');
+        relay.advertise(a, 'w', true);
+        relay.setFramesEnabledGetter(() => true);
+        const command = { action: 'paste_html', ref: 'e1', html: '<b>Synthetic</b>', text: 'Synthetic' } as const;
+        await expect(relay.execute('w', 'p', command)).rejects.toThrow('rich paste is disabled');
+        let allowed = true;
+        relay.setRichPasteEnabledGetter(() => allowed);
+        const result = relay.execute('w', 'p', command);
+        const sent = request(a);
+        expect(sent.richPasteEnabled).toBe(true);
+        expect(sent.command).toEqual(command);
+        allowed = false;
+        relay.syncFramesPolicy();
+        await expect(result).rejects.toThrow('rich paste disabled');
+        expect(JSON.parse(a.send.mock.calls.at(-1)![0])).toEqual({ type: 'browser-command-cancel', id: sent.id });
+    });
+    it('resolves default-off private frame policy on the owning relay for every request', async () => {
+        const local = enabled(), remote = enabled(), a = client('a'), b = client('b');
+        local.advertise(a, 'w', true); remote.advertise(b, 'w', true);
+        remote.setFramesEnabledGetter(() => true);
+        await expect(local.execute('w', 'p', { action: 'frames' })).rejects.toThrow('frame control is disabled');
+        await expect(local.execute('w', 'p', { action: 'read', frame: 'f-one' })).rejects.toThrow('frame control is disabled');
+        const one = local.execute('w', 'p', { action: 'snapshot' });
+        const two = remote.execute('w', 'p', { action: 'frames' });
+        expect(request(a).framesEnabled).toBe(false);
+        expect(request(b).framesEnabled).toBe(true);
+        expect(request(b).command).toEqual({ action: 'frames' });
+        local.reply(a, { id: request(a).id, ok: true, result: { elements: [] } });
+        const frames = [{ id: 'f-one', origin: 'https://fixture.test', name: '', document: 'd-one', status: 'ready', depth: 0 }];
+        remote.reply(b, { id: request(b).id, ok: true, result: { frame: 'f-one', document: 'd-one', frames } });
+        await expect(one).resolves.toEqual({ elements: [] });
+        await expect(two).resolves.toMatchObject({ frames });
+    });
+    it('cancels changed frame policy and rejects late replies, but preserves disabled-path outer-gate admission', async () => {
+        const relay = enabled(), a = client('a');
+        relay.advertise(a, 'w', true);
+        let framesEnabled = true;
+        relay.setFramesEnabledGetter(() => framesEnabled);
+        const result = relay.execute('w', 'p', { action: 'read', frame: 'f-one' });
+        const id = request(a).id;
+        framesEnabled = false;
+        relay.syncFramesPolicy();
+        await expect(result).rejects.toThrow('frame policy changed');
+        expect(JSON.parse(a.send.mock.calls.at(-1)![0])).toEqual({ type: 'browser-command-cancel', id });
+        relay.reply(a, { id, ok: true, result: { text: 'late' } });
+    });
+    it.each([
+        { frames: [{ id: 'f', origin: '', name: '', document: 'd', status: 'unknown', depth: 0 }] },
+        { frames: [{ id: 'f', origin: '', name: '', document: 'd', status: 'ready', depth: 9 }] },
+        { frames: [{ id: 'f', parent: 'f', origin: '', name: '', document: 'd', status: 'ready', depth: 0 }] },
+        { frames: [{ id: 'f', origin: '', name: '', document: 'd', status: 'ready', depth: 0, sessionId: 'private' }] },
+        { frame: 1 }, { document: null }, { truncated: true },
+        { elements: [{ ref: 'e1', role: 'button', name: '', depth: 0, frame: 1 }] },
+        { frames: Array.from({ length: 33 }, (_, i) => ({ ...frame, id: `f-${i}` })) },
+        { frames: [frame, frame] },
+        { frame: 'f-one', document: 'other', frames: [frame] },
+        { frames: [{ ...frame, name: 'x'.repeat(161) }] },
+        { frames: [{ ...frame, origin: 'x'.repeat(257) }] },
+        { frames: [{ ...frame, document: '' }] },
+        { frames: [{ ...frame, parent: 'f-two', depth: 1 }, { ...frame, id: 'f-two', parent: 'f-one', depth: 2 }] },
+        { frames: [frame], elements: [{ ref: 'e1', role: 'button', name: '', depth: 0 }] },
+        { frames: [frame], elements: [{ ref: 'e1', role: 'button', name: '', depth: 0, frame: 'foreign' }] },
+        { frames: [frame], elements: [true] },
+        { frames: [frame], elements: [{ ref: 'e1', role: 'button', name: '', depth: 0, frame: 'f-one', sessionId: 'private' }] },
+    ])('rejects invalid enabled frame replies explicitly %j', async bad => {
+        const relay = enabled(), a = client('a');
+        relay.setFramesEnabledGetter(() => true);
+        relay.advertise(a, 'w', true);
+        const result = relay.execute('w', 'p', { action: 'snapshot' });
+        relay.reply(a, { id: request(a).id, ok: true, result: bad });
+        await expect(result).rejects.toThrow('invalid frame result');
+    });
+    it('rejects legacy desktop success when frame policy requires frame-aware results', async () => {
+        const relay = enabled(), a = client('a');
+        relay.setFramesEnabledGetter(() => true);
+        relay.advertise(a, 'w', true);
+        const result = relay.execute('w', 'p', { action: 'snapshot' });
+        relay.reply(a, { id: request(a).id, ok: true, result: { elements: [] } });
+        await expect(result).rejects.toThrow('Unsupported desktop capability');
+    });
     it('retains one turn identity across routing windows and sends terminal clears even after the gate switches off', async () => {
         const relay = enabled(), a = client('a'), b = client('b');
         for (const target of [a, b]) {

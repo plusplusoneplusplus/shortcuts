@@ -2,7 +2,7 @@ import type { BrowserImportCookie } from './browser-cookie-import';
 import { BrowserWindow, screen, shell, webContents } from 'electron';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserViewRequest } from './browser-host-contract';
+import { BROWSER_FRAME_CDP_EVENTS, BrowserHostError, validBrowserCdpSession, type BrowserCdpEventListener, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserViewRequest } from './browser-host-contract';
 import { validateBrowserUrl, type BrowserAvailability, type BrowserViewState } from './browser-view-policy';
 import { browserMessage, WebView2Process } from './webview2-process';
 import type { HtmlPageBounds } from './html-page-policy';
@@ -23,6 +23,11 @@ interface NativeEntry {
     wasFullscreen: boolean;
     pageZoom: number;
     reposition(): void;
+    cdpListeners: Set<BrowserCdpEventListener>;
+    cdpSessions: Map<string, string | undefined>;
+    cdpReady: Promise<void>;
+    cdpGeneration: number;
+    cdpError?: Error;
 }
 
 export class WebView2BrowserHost implements BrowserEngineHost {
@@ -36,6 +41,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             for (const entry of [...this.views.values()]) {
                 if (entry.root) { this.remove(entry.nativeId, entry); continue; }
                 entry.state = { ...entry.state, loading: false, errorCode: error.reason, error: error.message };
+                this.clearCdp(entry);
                 entry.sink.state(entry.state);
             }
         });
@@ -82,6 +88,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         const id = `${request.ownerId}:${request.viewId}:${++this.sequence}`;
         const entry: NativeEntry = {
             nativeId: id, request, sink, parent, window, bounds: null, fullscreen: false, wasFullscreen: window.isFullScreen(), pageZoom: request.pageZoomPercent ?? 100,
+            cdpListeners: new Set(), cdpSessions: new Map(), cdpReady: Promise.resolve(), cdpGeneration: 0,
             state: { viewId: request.viewId, engine: 'webview2', url: request.url, title: '', canGoBack: false, canGoForward: false, loading: true },
             reposition: () => {
                 if (entry.bounds && !window.isDestroyed()) { void this.process.request('bounds', { viewId: id, bounds: this.bounds(entry) }).catch(error => this.viewFailure(entry, error)); }
@@ -101,10 +108,36 @@ export class WebView2BrowserHost implements BrowserEngineHost {
     private hosted(entry: NativeEntry): BrowserHostedView {
         const id = entry.nativeId;
         return {
-            cdp: async (method, params = {}) => {
+            cdp: async (method, params = {}, sessionId) => {
+                await entry.cdpReady;
                 if (this.views.get(id) !== entry) { throw new BrowserHostError('not-found', 'Browser tab is closed.'); }
                 if (entry.state.errorCode === 'runtime-crashed') { throw new BrowserHostError('runtime-crashed', entry.state.error ?? 'Browser page crashed.'); }
-                return this.process.request('cdp', { viewId: id, method, params });
+                if (entry.cdpError) { throw entry.cdpError; }
+                if (sessionId !== undefined && (!validBrowserCdpSession(sessionId) || !entry.cdpSessions.has(sessionId))) {
+                    throw new BrowserHostError('invalid', 'Browser frame session does not belong to this view.');
+                }
+                return this.process.request('cdp', { viewId: id, method, params, ...(sessionId !== undefined ? { sessionId } : {}) });
+            },
+            onCdpEvent: listener => {
+                if (this.views.get(id) !== entry) { throw new BrowserHostError('not-found', 'Browser tab is closed.'); }
+                if (!entry.cdpListeners.size) { this.subscribeCdp(entry, true); }
+                const registration: BrowserCdpEventListener = (...args) => listener(...args);
+                entry.cdpListeners.add(registration);
+                let disposed = false;
+                return () => {
+                    if (disposed) { return; }
+                    disposed = true;
+                    entry.cdpListeners.delete(registration);
+                    if (!entry.cdpListeners.size && this.views.get(id) === entry) {
+                        entry.cdpSessions.clear();
+                        this.subscribeCdp(entry, false);
+                    }
+                };
+            },
+            waitForCdpEvents: async () => {
+                await entry.cdpReady;
+                if (this.views.get(id) !== entry) { throw new BrowserHostError('not-found', 'Browser tab is closed.'); }
+                if (entry.cdpError) { throw entry.cdpError; }
             },
             setControlActivity: turnId => entry.root && this.views.get(id) === entry
                 ? this.process.request('control-activity', { viewId: id, turnId })
@@ -132,7 +165,16 @@ export class WebView2BrowserHost implements BrowserEngineHost {
                 entry.bounds = bounds;
                 await this.process.request('bounds', { viewId: id, bounds: this.bounds(entry) });
             },
-            focus: () => this.process.request('focus', { viewId: id }),
+            focus: async () => {
+                if (this.views.get(id) !== entry || entry.window.isDestroyed()) {
+                    throw new BrowserHostError('not-found', 'Browser tab is closed.');
+                }
+                if (!entry.root) {
+                    entry.window.show();
+                    entry.window.focus();
+                }
+                await this.process.request('focus', { viewId: id });
+            },
             close: async () => {
                 this.remove(id, entry);
                 if (this.process.running) { await this.process.request('close', { viewId: id }); }
@@ -140,9 +182,39 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         };
     }
 
+    private clearCdp(entry: NativeEntry): void {
+        entry.cdpGeneration++;
+        entry.cdpListeners.clear();
+        entry.cdpSessions.clear();
+        entry.cdpError = undefined;
+        entry.cdpReady = Promise.resolve();
+    }
+
+    private subscribeCdp(entry: NativeEntry, enabled: boolean): void {
+        const generation = ++entry.cdpGeneration;
+        entry.cdpError = undefined;
+        entry.cdpReady = entry.cdpReady.catch(() => {}).then(async () => {
+            try {
+                for (const method of BROWSER_FRAME_CDP_EVENTS) {
+                    if (enabled && entry.cdpGeneration !== generation
+                        || this.views.get(entry.nativeId) !== entry || entry.state.errorCode === 'runtime-crashed') { return; }
+                    await this.process.request('cdp-subscribe', { viewId: entry.nativeId, method, enabled });
+                }
+            } catch (error) {
+                if (enabled && entry.cdpGeneration === generation && this.process.running && this.views.get(entry.nativeId) === entry) {
+                    await Promise.all(BROWSER_FRAME_CDP_EVENTS.map(method => this.process.request('cdp-subscribe', { viewId: entry.nativeId, method, enabled: false }).catch(() => {})));
+                }
+                if (entry.cdpGeneration === generation) { entry.cdpError = error instanceof Error ? error : new Error(String(error)); }
+                throw error;
+            }
+        });
+        void entry.cdpReady.catch(() => {});
+    }
+
     private remove(id: string, entry: NativeEntry): void {
         if (this.views.get(id) !== entry) { return; }
         this.views.delete(id);
+        this.clearCdp(entry);
         this.process.rejectView(id);
         if (entry.root) {
             entry.root.sink.controlPopoutClosed?.(entry.request.viewId);
@@ -170,6 +242,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
     private viewFailure(entry: NativeEntry, error: unknown): void {
         if (this.views.get(entry.nativeId) !== entry) { return; }
         entry.state = { ...entry.state, loading: false, errorCode: 'runtime-crashed', error: error instanceof Error ? error.message : String(error) };
+        this.clearCdp(entry);
         if (entry.root) { this.remove(entry.nativeId, entry); }
         else {
             this.removePopups(entry);
@@ -191,6 +264,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
                 request: { ...root.request, viewId, url: message.url },
                 state: { ...root.state, viewId, url: message.url, title: '', loading: true, canGoBack: false, canGoForward: false, error: undefined, errorCode: undefined },
                 bounds: null, fullscreen: false,
+                cdpListeners: new Set(), cdpSessions: new Map(), cdpReady: Promise.resolve(), cdpGeneration: 0, cdpError: undefined,
             };
             this.views.set(message.viewId, popup);
             root.sink.controlPopoutOpened?.(viewId, this.hosted(popup));
@@ -198,6 +272,44 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         }
         const entry = this.views.get(message.viewId);
         if (!entry) { return; }
+        if (message.event === 'cdp-error') {
+            if (!entry.cdpListeners.size) { return; }
+            entry.cdpError = new BrowserHostError(message.reason === 'native-unavailable' ? 'native-unavailable' : 'invalid',
+                typeof message.message === 'string' ? message.message.slice(0, 1024) : 'WebView2 CDP event stream failed.');
+            entry.cdpSessions.clear();
+            this.process.rejectView(entry.nativeId, entry.cdpError);
+            for (const listener of [...entry.cdpListeners]) { listener('Inspector.detached', { reason: entry.cdpError.message }); }
+            return;
+        }
+        if (message.event === 'cdp-event') {
+            if (!entry.cdpListeners.size || entry.cdpError || typeof message.method !== 'string'
+                || !(BROWSER_FRAME_CDP_EVENTS as readonly string[]).includes(message.method)) { return; }
+            const params = browserMessage(message.params);
+            const sessionId = message.sessionId;
+            if (sessionId !== undefined && (!validBrowserCdpSession(sessionId) || !entry.cdpSessions.has(sessionId))) { return; }
+            if (!params || Buffer.byteLength(JSON.stringify(params), 'utf8') > 900_000) {
+                this.event({ event: 'cdp-error', viewId: entry.nativeId, message: 'WebView2 CDP event exceeds the transport limit or is invalid.' });
+                return;
+            }
+            if (message.method === 'Target.attachedToTarget') {
+                if (!validBrowserCdpSession(params.sessionId) || browserMessage(params.targetInfo)?.type !== 'iframe') { return; }
+                if (params.sessionId === sessionId || entry.cdpSessions.has(params.sessionId)) { return; }
+                if (entry.cdpSessions.size >= 256 && !entry.cdpSessions.has(params.sessionId)) {
+                    this.event({ event: 'cdp-error', viewId: entry.nativeId, message: 'WebView2 CDP session limit exceeded.' });
+                    return;
+                }
+                entry.cdpSessions.set(params.sessionId, sessionId as string | undefined);
+            } else if (message.method === 'Target.detachedFromTarget' && typeof params.sessionId === 'string') {
+                const removed = new Set([params.sessionId]);
+                for (const [id, parent] of entry.cdpSessions) { if (parent && removed.has(parent)) { removed.add(id); } }
+                for (const id of removed) {
+                    entry.cdpSessions.delete(id);
+                    this.process.rejectSession(entry.nativeId, id);
+                }
+            }
+            for (const listener of [...entry.cdpListeners]) { listener(message.method, params, sessionId as string | undefined); }
+            return;
+        }
         if (message.event === 'popup-closed') {
             if (entry.root) { this.remove(message.viewId, entry); }
             return;
@@ -224,6 +336,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
                 ...(typeof state.error === 'string' ? { error: state.error } : {}),
                 ...(state.errorCode === 'runtime-crashed' || state.errorCode === 'navigation-failed' || state.errorCode === 'startup-failed' ? { errorCode: state.errorCode } : {}),
             };
+            if (entry.state.errorCode === 'runtime-crashed') { this.clearCdp(entry); }
             if (!entry.state.error && validateBrowserUrl(entry.state.url).ok) { entry.request.url = entry.state.url; }
             if (entry.root) {
                 if (entry.state.errorCode === 'runtime-crashed') { this.remove(entry.nativeId, entry); }

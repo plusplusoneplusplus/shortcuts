@@ -257,7 +257,7 @@ export interface CLIConfig {
         enabled?: boolean;
     };
     /** Desktop browser control. Disabled by default. */
-    browserControl?: { enabled?: boolean };
+    browserControl?: { enabled?: boolean; framesEnabled?: boolean; richPasteEnabled?: boolean };
     /** Kusto query canvas (interactive KQL query + charts). Disabled by default. */
     kusto?: {
         enabled?: boolean;
@@ -665,7 +665,7 @@ export interface ResolvedCLIConfig {
         enabled: boolean;
     };
     /** Desktop browser control. */
-    browserControl: { enabled: boolean };
+    browserControl: { enabled: boolean; framesEnabled: boolean; richPasteEnabled: boolean };
     /** Kusto query canvas (interactive KQL query + charts). */
     kusto: {
         enabled: boolean;
@@ -1010,7 +1010,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
         azureCli: { account: '', tenant: '', subscription: '' },
     },
-    browserControl: { enabled: false },
+    browserControl: { enabled: false, framesEnabled: false, richPasteEnabled: false },
     LLMToolSystemOne: {
         enabled: false,
     },

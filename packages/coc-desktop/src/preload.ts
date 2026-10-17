@@ -24,6 +24,7 @@ const BROWSER_ADDRESS_MENU_CHANNEL = 'coc-desktop:browser-address-menu';
 const BROWSER_CONTROL_SCOPE_CHANNEL = 'coc-desktop:browser-control-scope';
 const BROWSER_CONTROL_COMMAND_CHANNEL = 'coc-desktop:browser-control-command';
 const BROWSER_CONTROL_CANCEL_CHANNEL = 'coc-desktop:browser-control-cancel';
+const BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL = 'coc-desktop:browser-control-release-frames';
 const BROWSER_CONTROL_REVEAL_CHANNEL = 'coc-desktop:browser-control-reveal';
 const BROWSER_CONTROL_FOCUSED_CHANNEL = 'coc-desktop:browser-control-focused';
 const BROWSER_CONTROL_ACTIVITY_CHANNEL = 'coc-desktop:browser-control-activity';
@@ -241,11 +242,14 @@ const browser = {
     showAddressMenu: (hasSelection: boolean): Promise<BrowserOperationResult> =>
         ipcRenderer.invoke(BROWSER_ADDRESS_MENU_CHANNEL, hasSelection),
     control: {
+        framesSupported: true,
+        richPasteSupported: true,
         bindScope: (workspaceId: string | null, sessionKey: string | null): Promise<{ ownerId: number }> =>
             ipcRenderer.invoke(BROWSER_CONTROL_SCOPE_CHANNEL, workspaceId, sessionKey),
         execute: (request: BrowserCommandRequest): Promise<BrowserCommandResult> =>
             ipcRenderer.invoke(BROWSER_CONTROL_COMMAND_CHANNEL, request),
         cancel: (id: string): void => ipcRenderer.send(BROWSER_CONTROL_CANCEL_CHANNEL, id),
+        releaseFrames: (routingRef: string): Promise<void> => ipcRenderer.invoke(BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, routingRef),
         finish: (turnId?: string, routingRef?: string): void => ipcRenderer.send(BROWSER_CONTROL_FINISH_CHANNEL, turnId, routingRef),
         setVisible: (visible: boolean, routingRef: string): void => ipcRenderer.send(BROWSER_CONTROL_VISIBLE_CHANNEL, visible, routingRef),
         onActivity: (callback: (event: BrowserControlActivityEvent) => void) => subscribe(BROWSER_CONTROL_ACTIVITY_CHANNEL, callback),

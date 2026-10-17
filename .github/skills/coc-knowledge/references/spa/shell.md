@@ -240,7 +240,10 @@ retain their original panel scope. `BrowserHostManager.executeControl` returns
 raw contract results; conversation selection, output hints and deltas belong on
 the server. Subtree/all snapshots include a separate full interactive baseline.
 Each view retains one `BrowserControlPage` and serial command queue across
-navigation. Shared DOM reads transport-page markdown at `command.offset` in
+navigation. Input commands activate the owner window and selected hosted view;
+Electron focuses the exact guest element and WebView2 transfers native focus. Explicit frame key presses
+require visible ancestors and focus in that document, excluding descendant frames, and preserve the
+active element and selection. Shared DOM reads transport-page markdown at `command.offset` in
 8000-character slices with `textTotal`; evaluation returns values or visible
 exceptions. CDP screenshots return inline JPEG base64 with a 1280px
 width limit and optional ref crop. No debugger API reaches the renderer.
@@ -250,6 +253,38 @@ cancel queued actions. Outstanding CDP calls retain the serialization barrier
 until they settle; release events complete dispatched key/mouse presses. The
 local-only Electron relay fixture exercises WebSocket, SPA tab creation, preload,
 main, trusted input, markdown, evaluation, JPEG crops and popup discovery.
+
+With default-off `browserControl.framesEnabled`, a main-owned per-view registry
+maps opaque frame handles to default-world contexts and private OOPIF sessions.
+Electron debugger events and WebView2 native event receivers supply lifecycle
+invalidation; candidate OOPIFs require an authenticated embedding in the selected
+view before initialization. Both engines retain their selected runtime and fail
+explicitly when frame capabilities are unsupported. No debugger API reaches SPA.
+
+Frame-aware DOM extraction stays document-local and budgeted; host composition
+labels frames/origins without duplicate same-origin traversal. Refs share one
+view-lifetime counter and bind document generations. Input translates through
+ancestor frame geometry, clipping, scroll and focus. `browser-control-clip.ts`
+shares document-local root/body overflow propagation and containing-block-aware
+content-box clipping between DOM targets and frame owners. Absolute/fixed
+descendants escape overflow boxes below their containing block; positioned,
+transformed and paint-contained clipping ancestors retain their clips.
+Verified OOPIF clicks use private frame
+sessions with local coordinates after ancestor and target hit tests. Discovery, staged text,
+nodes, refs and protocol events are bounded; detach/navigation/close revoke
+pending results. Frame state is memory-only. With the flag off, existing control
+semantics remain unchanged and frame subscriptions/sessions are absent.
+
+`paste_html(ref, html, text, replaceClipboard?)` requires both frame control and
+default-off `browserControl.richPasteEnabled` on the owning server. The main-process
+clipboard barrier serializes writes across owners/workspaces/engines. It refuses
+nonempty clipboards unless replacement is explicit, never reads old contents,
+and leaves supplied HTML/plain formats in place. The ref must identify the focused
+contenteditable containing the selection; paste neither clicks nor selects all.
+Document/selection checks surround clipboard writes and trusted Ctrl/Cmd+V.
+Trusted paste delivery is acknowledged, not persistence; errors after dispatch
+report unknown outcomes without automatic retry. Synthetic real-engine rich-paste
+tests require `COC_DESKTOP_RICH_CLIPBOARD_E2E=1` because they replace the OS clipboard.
 
 ### Shared web-page zoom
 

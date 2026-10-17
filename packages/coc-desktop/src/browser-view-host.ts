@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, dialog, ipcMain, shell, type WebContents } from 'electron';
+import { BrowserWindow, Menu, clipboard, dialog, ipcMain, shell, type WebContents } from 'electron';
 import { defaultDataDir } from './server-controller';
 import { browserProfilePath, readBrowserEngine, writeBrowserEngine, readBrowserPageZoom, writeBrowserPageZoom } from './browser-preferences';
 import { BrowserHostManager } from './browser-host-manager';
@@ -8,7 +8,7 @@ import { ElectronFilePreviewHost } from './file-preview-host';
 import { installBrowserWebviewGuard, isBrowserEmbedder, registerBrowserEmbedder as registerEmbedder } from './browser-webview-guard';
 import { WebView2BrowserHost } from './webview2-browser-host';
 import { toHtmlPageViewBounds } from './html-page-policy';
-import { BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL, validateBrowserCommandRequest } from './browser-control-command';
+import { BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL, validateBrowserCommandRequest } from './browser-control-command';
 import {
     BROWSER_ADDRESS_MENU_CHANNEL,
     BROWSER_HISTORY_QUERY_CHANNEL, BROWSER_HISTORY_SUGGEST_CHANNEL, BROWSER_HISTORY_DELETE_CHANNEL, BROWSER_HISTORY_CLEAR_CHANNEL,
@@ -79,6 +79,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     }, 60 * 60 * 1000);
     historyMaintenance.unref();
     manager = new BrowserHostManager({
+        richClipboard: clipboard,
         history,
         hosts: {
             electron: new ElectronBrowserHost(browserProfilePath(dataDir, 'electron')),
@@ -133,6 +134,10 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         cancelControl(event.sender.id, false);
         manager!.bindControlScope(event.sender.id, workspaceId, sessionKey);
         return { ownerId: event.sender.id };
+    });
+    ipcMain.handle(BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, (event, sessionKey: unknown) => {
+        if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');
+        return manager!.releaseFrames(event.sender.id, sessionKey);
     });
     ipcMain.handle(BROWSER_CONTROL_COMMAND_CHANNEL, async (event, input: unknown) => {
         if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');

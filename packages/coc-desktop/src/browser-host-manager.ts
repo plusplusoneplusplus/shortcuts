@@ -9,6 +9,7 @@ import { parseBrowserCookies } from './browser-cookie-import';
 import { validateHtmlPagePath, type HtmlPageBounds } from './html-page-policy';
 import type { BrowserHistoryStore } from './browser-history';
 import { BrowserControlQueue } from './browser-control-queue';
+import { withRichClipboard, type RichClipboard } from './browser-rich-clipboard';
 import type { BrowserControlPage } from './browser-control-page';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -40,6 +41,7 @@ function throwRejected(results: PromiseSettledResult<unknown>[]): void {
 }
 
 export interface BrowserManagerOptions {
+    richClipboard?: RichClipboard;
     history: Pick<BrowserHistoryStore, 'recordVisit' | 'updateTitle' | 'flush' | 'clearEngine'>;
     hosts: Record<BrowserEngine, BrowserEngineHost>;
     /** Local HTML previews: always Electron, isolated from every engine profile and never cleared with them. */
@@ -147,6 +149,14 @@ export class BrowserHostManager {
         this.controlScopes.set(ownerId, { workspaceId, sessionKey });
     }
 
+    async releaseFrames(ownerId: number, sessionKey: unknown): Promise<void> {
+        const scope = this.controlScopes.get(ownerId);
+        if (!scope || scope.sessionKey !== sessionKey) throw new Error('Browser workspace scope changed');
+        const results = await Promise.allSettled(this.scopedEntries(ownerId, scope.workspaceId).map(entry =>
+            entry.control!.run(page => page.configureFrames(false))));
+        throwRejected(results);
+    }
+
     private controlId(entry: Entry): string { return `t${entry.ownerId}:${entry.viewId}`; }
 
     private scopedEntries(ownerId: number, workspaceId: string): Entry[] {
@@ -201,38 +211,61 @@ export class BrowserHostManager {
         });
         return this.withControlPage(selected.ownerId, selected.viewId, selected.sessionKey, async (page, activeSignal, view) => {
             this.scopedEntries(ownerId, request.workspaceId);
-            if (selected.popout) await view.focus();
             activeSignal.throwIfAborted();
             this.activateControl(selected, ownerId, request);
+            await page.configureFrames(request.framesEnabled === true,
+                view.onCdpEvent ? listener => view.onCdpEvent!(listener) : undefined,
+                view.waitForCdpEvents ? () => view.waitForCdpEvents!() : undefined);
+            if (selected.popout || command.action === 'click' || command.action === 'type'
+                || command.action === 'select_option' || command.action === 'press'
+                || command.action === 'scroll') {
+                await view.focus();
+                activeSignal.throwIfAborted();
+            }
             switch (command.action) {
+                case 'paste_html': {
+                    const clipboard = this.options.richClipboard;
+                    if (!clipboard) throw new Error('unsupported-runtime: native rich clipboard unavailable');
+                    await withRichClipboard(clipboard, command.html!, command.text!, command.replaceClipboard === true, activeSignal, async write => {
+                        activeSignal.throwIfAborted();
+                        await view.focus();
+                        activeSignal.throwIfAborted();
+                        await page.pasteHtml(command.ref!, write, activeSignal);
+                    });
+                    break;
+                }
                 case 'open':
                     if (!created && view.snapshot().url !== command.url) await view.navigate(command.url!);
                     break;
                 case 'select': break;
+                case 'frames': return { tab: this.controlId(selected), ...page.frameMetadata(command.offset) };
                 case 'snapshot': {
                     const snapshot = await page.snapshot({ ref: command.ref, all: command.all });
                     const interactive = command.ref || command.all ? await page.snapshot() : snapshot;
                     return {
                         tab: this.controlId(selected), title: snapshot.title, url: snapshot.url,
                         elements: snapshot.elements, interactiveElements: interactive.elements,
+                        ...page.frameMetadata(0, undefined, command.ref),
                     };
                 }
                 case 'read': {
-                    return { tab: this.controlId(selected), ...await page.readPage(command.ref, command.offset ?? 0) };
+                    return { tab: this.controlId(selected), ...await page.readPage(command.ref, command.offset ?? 0, command.frame),
+                        ...page.frameMetadata(0, command.frame, command.ref) };
                 }
-                case 'eval': return { tab: this.controlId(selected), ...await page.evaluateForTool(command.js!) };
+                case 'eval': return { tab: this.controlId(selected), ...await page.evaluateForTool(command.js!, command.frame),
+                    ...page.frameMetadata(0, command.frame) };
                 case 'screenshot': {
                     const image = await page.screenshot(command.ref, command.format);
                     const { title, url } = view.snapshot();
-                    return { tab: this.controlId(selected), title, url, image };
+                    return { tab: this.controlId(selected), title, url, image, ...page.frameMetadata(0, undefined, command.ref) };
                 }
                 case 'click': await page.click(command.ref!); break;
                 case 'type': await page.type(command.ref!, command.text!, command.submit); break;
                 case 'select_option': await page.selectOption(command.ref!, command.value!); break;
-                case 'press': await page.press(command.key!); break;
-                case 'scroll': await page.scroll((command.direction ?? 'down') as 'up' | 'down' | 'left' | 'right', command.ref); break;
+                case 'press': await page.press(command.key!, command.frame); break;
+                case 'scroll': await page.scroll((command.direction ?? 'down') as 'up' | 'down' | 'left' | 'right', command.ref, command.frame); break;
                 case 'navigate': await view.nav(command.direction as 'back' | 'forward' | 'reload'); break;
-                case 'wait': await page.wait(command.text ?? command.ms!, activeSignal); break;
+                case 'wait': await page.wait(command.text ?? command.ms!, activeSignal, command.frame); break;
             }
             activeSignal.throwIfAborted();
             await view.waitForControlReady?.(activeSignal);
@@ -241,7 +274,7 @@ export class BrowserHostManager {
                 activeSignal.throwIfAborted();
             }
             const snapshot = await page.snapshot();
-            return { tab: this.controlId(selected), title: snapshot.title, url: snapshot.url, elements: snapshot.elements };
+            return { tab: this.controlId(selected), title: snapshot.title, url: snapshot.url, elements: snapshot.elements, ...page.frameMetadata() };
         }, signal);
     }
 
@@ -348,10 +381,10 @@ export class BrowserHostManager {
         const entry = { ...init, closed: false } as Entry;
         entry.ready = Promise.resolve().then(() => create(entry));
         if (entry.sourceKind === 'url') {
-            entry.control = new BrowserControlQueue((method, params) => {
+            entry.control = new BrowserControlQueue((method, params, sessionId) => {
                 if (entry.closed || this.disposed) throw new BrowserHostError('not-found', 'Browser tab closed');
                 if (!entry.view?.cdp) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
-                return entry.view.cdp(method, params);
+                return sessionId === undefined ? entry.view.cdp(method, params) : entry.view.cdp(method, params, sessionId);
             });
         }
         entries.set(init.viewId, entry);

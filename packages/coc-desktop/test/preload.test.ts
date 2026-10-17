@@ -140,6 +140,7 @@ describe('preload bridge', () => {
 
     it('exposes structured browser-control IPC and reveal/cancellation, never a raw debugger sender', async () => {
         const { control } = exposedApi().browser;
+        expect(control.framesSupported).toBe(true);
         const request = { id: 'r', workspaceId: 'w', processId: 'p', command: { action: 'tabs' }, selectedTab: 't1:view' };
         invoke.mockResolvedValueOnce(undefined).mockResolvedValueOnce({ tabs: [] });
         await control.bindScope('w', 'w');
@@ -148,6 +149,8 @@ describe('preload bridge', () => {
         expect(invoke).toHaveBeenLastCalledWith('coc-desktop:browser-control-command', request);
         control.cancel('r');
         expect(send).toHaveBeenLastCalledWith('coc-desktop:browser-control-cancel', 'r');
+        await control.releaseFrames('remote:server:w');
+        expect(invoke).toHaveBeenLastCalledWith('coc-desktop:browser-control-release-frames', 'remote:server:w');
         control.setVisible(true, 'remote:server:w');
         expect(send).toHaveBeenLastCalledWith('coc-desktop:browser-control-visible', true, 'remote:server:w');
         control.finish(undefined, 'remote:server:w');

@@ -8,14 +8,14 @@ export class BrowserControlQueue {
     private readonly pending = new Set<AbortController>();
 
     constructor(send: BrowserCdpSender) {
-        this.page = new BrowserControlPage(async (method, params) => {
+        this.page = new BrowserControlPage(async (method, params, sessionId) => {
             const signal = this.active;
             if (!signal) throw new Error('Browser control requires an active command');
             const release = (method === 'Input.dispatchMouseEvent' && params?.type === 'mouseReleased')
                 || (method === 'Input.dispatchKeyEvent' && params?.type === 'keyUp');
             // Complete a dispatched press so Stop never leaves a mouse button or key held.
             if (!release) signal.throwIfAborted();
-            const result = await send(method, params);
+            const result = await (sessionId === undefined ? send(method, params) : send(method, params, sessionId));
             // Let snapshots retain their ref counter; the next CDP call and final result still check cancellation.
             return result;
         });
@@ -56,5 +56,6 @@ export class BrowserControlQueue {
 
     cancel(reason: Error): void {
         for (const controller of this.pending) controller.abort(reason);
+        this.page.dispose();
     }
 }
