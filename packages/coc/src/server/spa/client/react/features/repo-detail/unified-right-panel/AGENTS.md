@@ -259,8 +259,18 @@ panel's own scope); Search uses `ContentSearchPanel`.
 
 The navigator is panel-level chrome, not a tab: it renders for every tab kind
 and for none at all. Its panel-scoped open bit lets the user collapse it without
-closing resource tabs or the right panel. Search and Explorer are lazy-mounted
-on first selection and then hidden with `display:none`, preserving requests,
+closing resource tabs or the right panel.
+
+Activating a `todo` tab hides Explorer through this open bit; Search keeps its
+state. Explicit Explorer reopen survives
+item interactions, portaled menus, ledger refreshes and rerenders. Selecting To-do
+again or returning focus/pointer interaction from another content view hides
+Explorer again; panel chrome does not change the focused content view. Activation
+is scoped to the panel workspace, selected chat and active tab, including pinned
+To-do tabs. Source buffers, tabs, navigator width and dock target stay intact.
+
+Search and Explorer are lazy-mounted on first selection and then hidden with
+`display:none`, preserving requests,
 results, tree expansion, resource tabs, terminal sessions, and unsaved buffers
 across mode switches and navigator collapse. A panel too narrow for both columns
 hides the navigator until it widens without changing the user's open bit.

@@ -652,7 +652,14 @@ copy action and no save or dirty-state registration. Every
 hosted Sentinel chat gets one chat-owned `todo`
 tab (`UnifiedTodoTab`, `resourceId` = the ledger's parent process id) reading its
 ledger from the owning server through `client.sentinelTodos.get` with `full: true`;
-only the descriptor persists. The panel always uses list/detail presentation:
+only the descriptor persists. To-do activation hides Explorer through the existing
+panel-scope navigator open bit, preserving Search mode, resource buffers and routing. Explicit reopen survives
+item interactions and ledger refreshes; tab reactivation or returning from another
+focused content view hides Explorer again. Panel chrome and To-do portals retain
+the current view. This boundary follows the selected workspace/chat/tab, including
+excursion tabs.
+
+The panel always uses list/detail presentation:
 at 660px the panes scroll independently; narrower panels use selection and Back.
 Visited detail editors stay mounted across selection and resizing to retain drafts.
 Detail Close remembers owner-scoped deselection and restores list focus; pending

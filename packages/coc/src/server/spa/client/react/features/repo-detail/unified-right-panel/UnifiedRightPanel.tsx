@@ -641,12 +641,13 @@ export function UnifiedRightPanel({
     }, [recordFileLocation]);
 
     const activateWithNavigation = useCallback((tabId: string) => {
-        if (tabId === activeIdRef.current) return;
         const target = tabsRef.current.find(tab => tab.id === tabId);
+        if (target?.kind === 'todo' && mode === 'explorer') tree.setOpen(false);
+        if (tabId === activeIdRef.current) return;
         if (target?.kind === 'file') prepareFileNavigation(tabId, 'navigation');
         else captureActiveFileLocation('navigation');
         activate(tabId);
-    }, [activate, captureActiveFileLocation, prepareFileNavigation]);
+    }, [activate, captureActiveFileLocation, prepareFileNavigation, mode, tree.setOpen]);
 
     const openToSide = useCallback((tabId: string) => {
         const tab = tabsRef.current.find(candidate => candidate.id === tabId);
@@ -1379,6 +1380,58 @@ export function UnifiedRightPanel({
     ]);
 
     const panelRootRef = useRef<HTMLDivElement | null>(null);
+    const navigatorRef = useRef<HTMLDivElement | null>(null);
+    const todoViewKey = active?.kind === 'todo' ? JSON.stringify([workspaceId, chatId, activeId]) : null;
+    const focusedTodo = useRef<string | null>(null);
+    const todoInteractions = useRef(new WeakSet<Event>());
+    const navigatorMode = useRef(mode);
+    navigatorMode.current = mode;
+    const setNavigatorOpen = tree.setOpen;
+
+    // Activation is a boundary, not a standing visibility rule: explicit
+    // Explorer opens must survive renders, ledger refreshes and item selection.
+    useEffect(() => {
+        focusedTodo.current = todoViewKey;
+        if (todoViewKey !== null && navigatorMode.current === 'explorer') {
+            setNavigatorOpen(false);
+        }
+    }, [todoViewKey, setNavigatorOpen]);
+    // External folder controls can also select Explorer from an open Search
+    // navigator. Both that mode change and a reopen retain explicit user intent.
+    useEffect(() => {
+        if (tree.state.open) focusedTodo.current = todoViewKey;
+    }, [tree.state.open, todoViewKey, mode]);
+
+    const focusTodoView = (event: { nativeEvent: Event }) => {
+        if (!isOpen || todoViewKey === null) return;
+        // React capture includes this view's portaled menus and dialogs.
+        todoInteractions.current.add(event.nativeEvent);
+        if (focusedTodo.current !== todoViewKey && navigatorMode.current === 'explorer') {
+            setNavigatorOpen(false);
+        }
+        focusedTodo.current = todoViewKey;
+    };
+
+    // Panel chrome (including the Explorer toggle) does not leave the current
+    // content view. Track deliberate pointer/focus moves to another surface;
+    // To-do's capture handlers admit both non-focusable content and keyboard use.
+    useEffect(() => {
+        if (!isOpen || todoViewKey === null) return;
+        const onInteraction = (event: Event) => {
+            const target = event.target;
+            if (!(target instanceof Node)) return;
+            if (todoInteractions.current.has(event)) return;
+            if (!panelRootRef.current?.contains(target) || navigatorRef.current?.contains(target)) {
+                focusedTodo.current = null;
+            }
+        };
+        document.addEventListener('pointerdown', onInteraction);
+        document.addEventListener('focusin', onInteraction);
+        return () => {
+            document.removeEventListener('pointerdown', onInteraction);
+            document.removeEventListener('focusin', onInteraction);
+        };
+    }, [isOpen, todoViewKey]);
 
     // Claimed in the CAPTURE phase, and stopped when this panel wins. That is
     // what keeps a single keypress to a single dialog: the Explorer sub-tab's
@@ -1982,8 +2035,10 @@ export function UnifiedRightPanel({
                                 data-testid={`unified-panel-view-${tab.id}`}
                                 data-active={tab.id === activeId ? 'true' : 'false'}
                                 data-split-pane={pane ?? undefined}
+                                onPointerDownCapture={visible && tab.kind === 'todo' ? focusTodoView : undefined}
                                 onMouseDownCapture={pane === null ? undefined : () => focusSourcePane(pane)}
-                                onFocusCapture={pane === null ? undefined : () => focusSourcePane(pane)}
+                                onFocusCapture={visible && tab.kind === 'todo' ? focusTodoView
+                                    : pane === null ? undefined : () => focusSourcePane(pane)}
                             >
                                 {tab.kind === 'html-page' && tab.htmlPageId ? (
                                     <UnifiedHtmlPageTab
@@ -2141,6 +2196,7 @@ export function UnifiedRightPanel({
                         mounted so switching never loses Search or tree state. */}
                     {mountedModes.size > 0 && (
                         <div
+                            ref={navigatorRef}
                             className="flex min-h-0 flex-shrink-0"
                             style={{ display: modeColumnVisible ? undefined : 'none' }}
                             data-testid={tree.state.open ? 'unified-panel-tree' : 'unified-panel-mode-column'}
