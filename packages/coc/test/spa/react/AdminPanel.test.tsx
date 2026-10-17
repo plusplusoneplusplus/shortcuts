@@ -1651,6 +1651,8 @@ describe('AdminPanel', () => {
             expect(writes[0].url).toContain('/admin/config');
             expect(writes[0].body).toEqual({
                 'browserControl.enabled': true,
+                'browserControl.framesEnabled': false,
+                'browserControl.richPasteEnabled': false,
                 'features.htmlPageTab': false,
                 'features.sensitiveInput': false,
             });

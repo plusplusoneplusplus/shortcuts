@@ -11,6 +11,10 @@ const skip = (!!process.env.CI && process.env.COC_DESKTOP_E2E !== '1')
     || (process.platform === 'linux' && !process.env.DISPLAY);
 // Windows x64 runs the identical relay workflow through the live native CDP helper.
 const engines = process.platform === 'win32' && process.arch === 'x64' ? ['electron', 'webview2'] : ['electron'];
+// A local cargo build, else the platform binary `build:native` stages (and CI ships as an artifact).
+const webview2Helpers = ['../../../coc-native/rust/target/release/coc-webview2.exe',
+    '../../../coc-native/coc-webview2.win32-x64-msvc.exe'].map(file => path.join(here, file));
+const findWebview2Helper = () => webview2Helpers.find(file => existsSync(file));
 
 describe.skipIf(skip).each(engines)('%s browser-mode end-to-end relay', engine => {
     it('preserves frame policy, refs, read and eval through the feature-enabled production route', async () => {
@@ -20,15 +24,17 @@ describe.skipIf(skip).each(engines)('%s browser-mode end-to-end relay', engine =
                 COC_BROWSER_E2E_FRAMES: '1' };
             delete env.ELECTRON_RUN_AS_NODE;
             if (engine === 'webview2') {
-                const helper = path.join(here, '../../../coc-native/rust/target/release/coc-webview2.exe');
-                expect(existsSync(helper), 'Compile the current Windows helper before frame relay e2e').toBe(true);
+                const helper = findWebview2Helper();
+                expect(helper, 'Compile the current Windows helper before frame relay e2e').toBeDefined();
                 env.COC_WEBVIEW2_PATH = path.join(directory, 'synthetic-webview2.exe');
-                copyFileSync(helper, env.COC_WEBVIEW2_PATH);
+                copyFileSync(helper!, env.COC_WEBVIEW2_PATH);
                 env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--site-per-process --host-resolver-rules="MAP localhost 127.0.0.1"';
             }
             const result = await new Promise<Record<string, any>>((resolve, reject) => {
-                const child = spawn(createRequire(import.meta.url)('electron'),
-                    [path.join(here, 'browser-control-workflow-runner.cjs')], { env });
+                const child = spawn(createRequire(import.meta.url)('electron'), [
+                    ...(process.env.COC_DESKTOP_E2E_NO_SANDBOX === '1' ? ['--no-sandbox'] : []),
+                    path.join(here, 'browser-control-workflow-runner.cjs'),
+                ], { env });
                 let output = '';
                 child.stdout.on('data', data => { output += data; });
                 child.stderr.on('data', data => { output += data; });
@@ -61,10 +67,10 @@ describe.skipIf(skip).each(engines)('%s browser-mode end-to-end relay', engine =
                 const env = { ...process.env, COC_BROWSER_WORKFLOW_DATA: directory, COC_BROWSER_E2E_ENGINE: engine };
                 delete env.ELECTRON_RUN_AS_NODE;
                 if (engine === 'webview2') {
-                    const helper = path.join(here, '../../../coc-native/rust/target/release/coc-webview2.exe');
-                    expect(existsSync(helper), 'Compile the current Windows helper before relay e2e').toBe(true);
+                    const helper = findWebview2Helper();
+                    expect(helper, 'Compile the current Windows helper before relay e2e').toBeDefined();
                     env.COC_WEBVIEW2_PATH = path.join(directory, 'synthetic-webview2.exe');
-                    copyFileSync(helper, env.COC_WEBVIEW2_PATH);
+                    copyFileSync(helper!, env.COC_WEBVIEW2_PATH);
                 }
                 const child = spawn(createRequire(import.meta.url)('electron'), [
                     ...(process.env.COC_DESKTOP_E2E_NO_SANDBOX === '1' ? ['--no-sandbox'] : []),
