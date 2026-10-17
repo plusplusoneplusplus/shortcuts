@@ -347,7 +347,10 @@ test.describe('feature-flagged commit chat lens', () => {
         await expect(page.getByTestId('commit-chat-lens').getByTestId('activity-chat-detail')).toBeVisible();
     });
 
-    test('opens as a bottom-right lens across commit review surfaces and persists pinning by workspace and commit', async ({ page, serverUrl, dataDir }) => {
+});
+
+for (const surface of ['commit', 'file', 'work-item'] as const) {
+    test(`opens as a bottom-right lens in ${surface} review and persists pinning by workspace and commit`, async ({ page, serverUrl, dataDir }) => {
         const runtimeErrors: string[] = [];
         page.on('console', message => {
             if (message.type() === 'error' && !message.text().startsWith('Failed to load resource:')) {
@@ -361,44 +364,46 @@ test.describe('feature-flagged commit chat lens', () => {
         const storageKey = placementStorageKey(WORKSPACE_ID, commit.hash);
 
         await seedWorkspace(serverUrl, WORKSPACE_ID, 'Commit Chat Lens', repoDir);
-        await seedWorkItemCommit(serverUrl, repoDir, commit);
+        if (surface === 'work-item') {
+            await seedWorkItemCommit(serverUrl, repoDir, commit);
+        }
         await enableCommitChatLensFeature(serverUrl);
 
-        await page.goto(`${serverUrl}/?workspace=${encodeURIComponent(WORKSPACE_ID)}#repos/${encodeURIComponent(WORKSPACE_ID)}/git/${encodeURIComponent(commit.hash)}`);
-        await expect(page.getByTestId(`commit-row-${commit.shortHash}`)).toBeVisible();
+        const workspaceRoute = `repos/${encodeURIComponent(WORKSPACE_ID)}`;
+        const commitRoute = `${workspaceRoute}/git/${encodeURIComponent(commit.hash)}`;
+        const route = surface === 'work-item'
+            ? `${workspaceRoute}/work-items/${encodeURIComponent(WORK_ITEM_ID)}/commit/${encodeURIComponent(commit.hash)}/${CHANGED_FILE.split('/').map(encodeURIComponent).join('/')}`
+            : commitRoute;
+        await page.goto(`${serverUrl}/?workspace=${encodeURIComponent(WORKSPACE_ID)}#${route}`);
+        if (surface === 'work-item') {
+            await expect(page.getByTestId('work-item-commit-review')).toBeVisible();
+        } else {
+            await expect(page.getByTestId(`commit-row-${commit.shortHash}`)).toBeVisible();
+        }
         await expect(page.getByTestId('file-diff-section')).toBeVisible();
+        if (surface === 'file') {
+            await page.getByTestId(`commit-file-${CHANGED_FILE}`).click();
+            await expect(page).toHaveURL(/index\.ts$/);
+            await expect(page.getByTestId('file-diff-section')).toBeVisible();
+        }
 
         await toggleCommitChat(page);
         await expectBottomRightLens(page);
         await expectCompactInitialComposer(page);
         await verifyPinCloseUnpinCycle(page, storageKey);
-        await page.getByTestId('commit-chat-frame-close-btn').click();
+        if (surface === 'work-item') {
+            await page.getByTestId('commit-chat-pin-btn').click();
+            await expect(page.getByTestId('commit-chat-side-panel')).toBeVisible();
+            await expect.poll(() => page.evaluate(key => localStorage.getItem(key), storageKey)).toBe('side-panel');
 
-        await gotoFresh(page, `${serverUrl}/?workspace=${encodeURIComponent(WORKSPACE_ID)}&surface=file#repos/${encodeURIComponent(WORKSPACE_ID)}/git/${encodeURIComponent(commit.hash)}/${encodeURIComponent(CHANGED_FILE)}`);
-        await expect(page.getByTestId('file-diff-section')).toBeVisible();
-        await toggleCommitChat(page);
-        await expectBottomRightLens(page);
-        await expectCompactInitialComposer(page);
-        await page.getByTestId('commit-chat-frame-close-btn').click();
+            await page.getByTestId('commit-review-back-btn').click();
+            await expect(page.getByTestId('file-diff-section')).toBeVisible();
+            await expect(page.getByTestId('commit-chat-side-panel')).toBeVisible();
 
-        await gotoFresh(page, `${serverUrl}/?workspace=${encodeURIComponent(WORKSPACE_ID)}&surface=work-item#repos/${encodeURIComponent(WORKSPACE_ID)}/work-items/${encodeURIComponent(WORK_ITEM_ID)}/commit/${encodeURIComponent(commit.hash)}/${CHANGED_FILE.split('/').map(encodeURIComponent).join('/')}`);
-        await expect(page.getByTestId('work-item-commit-review')).toBeVisible();
-        await expect(page.getByTestId('file-diff-section')).toBeVisible();
-        await toggleCommitChat(page);
-        await expectBottomRightLens(page);
-        await expectCompactInitialComposer(page);
-
-        await page.getByTestId('commit-chat-pin-btn').click();
-        await expect(page.getByTestId('commit-chat-side-panel')).toBeVisible();
-        await expect.poll(() => page.evaluate(key => localStorage.getItem(key), storageKey)).toBe('side-panel');
-
-        await page.getByTestId('commit-review-back-btn').click();
-        await expect(page.getByTestId('file-diff-section')).toBeVisible();
-        await expect(page.getByTestId('commit-chat-side-panel')).toBeVisible();
-
-        await page.getByTestId('commit-chat-unpin-btn').click();
-        await expectBottomRightLens(page);
-        await expect.poll(() => page.evaluate(key => localStorage.getItem(key), storageKey)).toBeNull();
+            await page.getByTestId('commit-chat-unpin-btn').click();
+            await expectBottomRightLens(page);
+            await expect.poll(() => page.evaluate(key => localStorage.getItem(key), storageKey)).toBeNull();
+        }
 
         await page.getByTestId('commit-chat-frame-close-btn').click();
         await expect(page.getByTestId('commit-chat-lens')).toHaveCount(0);
@@ -410,4 +415,4 @@ test.describe('feature-flagged commit chat lens', () => {
 
         expect(runtimeErrors).toEqual([]);
     });
-});
+}

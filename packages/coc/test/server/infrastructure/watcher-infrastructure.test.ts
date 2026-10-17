@@ -30,12 +30,12 @@ async function setup(existing = true) {
 }
 
 describe('createWatcherInfrastructure', () => {
-    it('uses resolved notes/tasks roots and shares the repo root for workflows/templates', async () => {
+    it('uses resolved notes/tasks roots and shares only .vscode for workflows/templates', async () => {
         const { service, bridge } = await setup();
         expect([...service.subscriptions.values()].map(entry => entry.options.root)).toEqual([
             path.join(dataDir, 'one', 'resolved-tasks'),
-            workspace.rootPath,
-            workspace.rootPath,
+            path.join(workspace.rootPath, '.vscode'),
+            path.join(workspace.rootPath, '.vscode'),
             getRepoDataPath(dataDir, 'one', 'notes'),
         ]);
         expect(bridge.registerRepoId).toHaveBeenCalledExactlyOnceWith('one', workspace.rootPath);
@@ -44,8 +44,8 @@ describe('createWatcherInfrastructure', () => {
     it('broadcasts all consumer events from injected native batches', async () => {
         const { service, wsServer } = await setup();
         service.emit(1, ['a.md']);
-        service.emit(2, ['.vscode/workflows/a.yaml']);
-        service.emit(3, ['.vscode/templates/a.yaml']);
+        service.emit(2, ['workflows/a.yaml']);
+        service.emit(3, ['templates/a.yaml']);
         service.emit(4, ['a.md', 'nested/b.md']);
         expect(wsServer.broadcastProcessEvent.mock.calls.map(([event]) => event.type)).toEqual([
             'tasks-changed', 'workflows-changed', 'templates-changed', 'notes-changed',

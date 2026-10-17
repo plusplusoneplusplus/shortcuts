@@ -7,32 +7,59 @@ import { FakeNativeWatchService } from '../helpers/fake-native-watch-service';
 describe.each([
     ['templates', TemplateWatcher],
     ['workflows', WorkflowWatcher],
-] as const)('%s repo-root subscription', (folder, Watcher) => {
-    it('subscribes to the repo root and selects only its subtree in TypeScript', () => {
+] as const)('%s configuration-directory subscription', (folder, Watcher) => {
+    it('limits recursive watching to .vscode and selects only its subtree', () => {
         const service = new FakeNativeWatchService();
         const changed = vi.fn();
         const watcher = new Watcher(changed, service);
         const root = path.resolve('repo');
         watcher.watchWorkspace('one', root);
         expect(service.subscriptions.get(1)!.options).toEqual({
-            workspaceId: 'one', root, recursive: true, debounceMs: 300,
+            workspaceId: 'one', root: path.join(root, '.vscode'), recursive: true, debounceMs: 300,
             ignoreDirs: [], extensions: [], respectGitignore: false,
         });
-        service.emit(1, ['src/a.ts', `.vscode/${folder}-other/a.yaml`]);
+        service.emit(1, ['settings.json', `${folder}-other/a.yaml`]);
         expect(changed).not.toHaveBeenCalled();
-        service.emit(1, [`.vscode/${folder}/a.yaml`, `.vscode/${folder}/nested/b.json`]);
+        service.emit(1, [`${folder}/a.yaml`, `${folder}/nested/b.json`]);
         expect(changed).toHaveBeenCalledExactlyOnceWith('one');
     });
 
-    it('reloads for subtree and ancestor directory changes and native rescan', () => {
+    it('reloads for subtree changes and native rescan on .vscode creation or replacement', () => {
         const service = new FakeNativeWatchService();
         const changed = vi.fn();
         const watcher = new Watcher(changed, service);
         watcher.watchWorkspace('one', path.resolve('repo'));
-        service.emit(1, [`.vscode/${folder}`]);
-        service.emit(1, ['.vscode']);
+        service.emit(1, [folder]);
         service.emit(1, [], true);
-        expect(changed.mock.calls).toEqual([['one'], ['one'], ['one']]);
+        expect(changed.mock.calls).toEqual([['one'], ['one']]);
+    });
+
+    it('registers missing configuration directories without probing or watching the repo tree', () => {
+        const service = new FakeNativeWatchService();
+        const changed = vi.fn();
+        const watcher = new Watcher(changed, service);
+        const roots = [path.resolve('missing-one'), path.resolve('missing-two')];
+        roots.forEach((root, index) => watcher.watchWorkspace(String(index), root));
+        expect([...service.subscriptions.values()].map(entry => entry.options.root)).toEqual(
+            roots.map(root => path.join(root, '.vscode')),
+        );
+        service.emit(1, [], true);
+        service.emit(2, [], true);
+        expect(changed.mock.calls).toEqual([['0'], ['1']]);
+    });
+
+    it('does not retain a failed subscription and surfaces the failure for retry', () => {
+        const service = new FakeNativeWatchService();
+        const subscribe = vi.spyOn(service, 'subscribe').mockImplementationOnce(() => {
+            throw new Error('watch failed');
+        });
+        const watcher = new Watcher(vi.fn(), service);
+        const root = path.resolve('repo');
+        expect(() => watcher.watchWorkspace('one', root)).toThrow('watch failed');
+        expect(watcher.isWatching('one')).toBe(false);
+        watcher.watchWorkspace('one', root);
+        expect(watcher.isWatching('one')).toBe(true);
+        expect(subscribe).toHaveBeenCalledTimes(2);
     });
 
     it('keeps workspace lifecycles independent and ignores retired subscriptions', () => {

@@ -69,6 +69,10 @@ Filesystem consumers share `shared/native-watch-service.ts`; watcher infrastruct
 binds workspace subscriptions and removes them together. Server scopes isolate
 equal workspace IDs and shutdown while sharing one process-wide native owner.
 Rust shares canonical-root watches, debounces paths and signals full rescans.
+Workflow/template consumers share a recursive `.vscode` subscription and filter
+its relative paths; missing/replaced configuration roots recover through native
+health checks. Repository-wide recursive subscriptions would force Windows UNC
+polling to scan unrelated source/build trees before startup can complete.
 Consumer tests inject batches.
 See the [native watch contract](../../../../packages/coc-native/AGENTS.md#filesystem-watch-batching).
 Startup migrations reconcile workspace registration,

@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { getNativeWatchService, type NativeWatchServiceLike } from '../shared/native-watch-service';
 import { affectsWatchedDirectory } from '../shared/watch-paths';
 
@@ -14,11 +15,11 @@ export class TemplateWatcher {
     watchWorkspace(workspaceId: string, rootPath: string): void {
         if (this.subscriptions.has(workspaceId)) return;
         const id = this.watchService.subscribe({
-            workspaceId, root: rootPath, recursive: true, debounceMs: 300,
+            workspaceId, root: path.join(rootPath, '.vscode'), recursive: true, debounceMs: 300,
             ignoreDirs: [], extensions: [], respectGitignore: false,
         }, batch => {
             if (this.subscriptions.get(workspaceId) !== batch.subscriptionId) return;
-            if (batch.rescan || batch.paths.some(file => affectsWatchedDirectory(file, '.vscode/templates'))) {
+            if (batch.rescan || batch.paths.some(file => affectsWatchedDirectory(file, 'templates'))) {
                 this.onTemplatesChanged(workspaceId);
             }
         });
