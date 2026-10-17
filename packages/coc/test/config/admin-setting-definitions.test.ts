@@ -407,13 +407,17 @@ describe('Features card UI metadata', () => {
         })).sentinelTodoScrubberEnabled).toBe(true);
     });
 
-    it('exposes tool scripting as a live, default-off toggle', () => {
+    it('exposes tool scripting as a live, default-on toggle', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.toolScripting')!;
-        expect(def.default).toBe(false);
+        expect(def.default).toBe(true);
+        expect(def.ui?.hint).toContain('Enabled by default');
         expect(def.runtime).toBe('live');
         expect(def.ui).toMatchObject({ group: 'review', testId: 'toggle-tool-scripting-enabled' });
-        expect(DEFAULT_CONFIG.features.toolScripting).toBe(false);
-        expect(buildRuntimeFeatures(DEFAULT_CONFIG).toolScriptingEnabled).toBe(false);
+        expect(DEFAULT_CONFIG.features.toolScripting).toBe(true);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).toolScriptingEnabled).toBe(true);
+        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
+            features: { toolScripting: false },
+        })).toolScriptingEnabled).toBe(false);
         expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
             features: { toolScripting: true },
         })).toolScriptingEnabled).toBe(true);

@@ -1093,7 +1093,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         sentinelTodoTags: false,
         sentinelTodoExternalReferences: false,
         sentinelTodoScrubber: false,
-        toolScripting: false,
+        toolScripting: true,
         sentinelPrOutcomeWake: false,
         sentinelTodoDateTimeTriggers: false,
         sentinelDesktopMirror: false,

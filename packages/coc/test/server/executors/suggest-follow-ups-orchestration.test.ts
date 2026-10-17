@@ -128,7 +128,7 @@ describe('suggest_follow_ups tool injection', () => {
         expect(suggestTool.name).toBe('suggest_follow_ups');
     });
 
-    it('passes undefined tools when disabled and no other tools', async () => {
+    it('passes only the default-on run_tool_script when follow-ups and ask_user are disabled', async () => {
         const executor = new ChatExecutor(store, makeOptions(store, {
             followUpSuggestions: { enabled: false, count: 3 },
             askUser: { enabled: false },
@@ -138,7 +138,7 @@ describe('suggest_follow_ups tool injection', () => {
         await executor.execute(task, 'Hello');
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(call.tools).toBeUndefined();
+        expect(call.tools.map((t: any) => t.name)).toEqual(['run_tool_script']);
     });
 
     it('injects tool for legacy plan payloads through ChatExecutor', async () => {

@@ -7713,7 +7713,7 @@ describe('suggest_follow_ups tool wiring', () => {
         expect(mockSendMessage).toHaveBeenCalledTimes(1);
         const callOpts = mockSendMessage.mock.calls[0][0];
         expect(callOpts.tools).toBeDefined();
-        expect(callOpts.tools).toHaveLength(1);
+        expect(callOpts.tools.map((t: any) => t.name)).toEqual(['suggest_follow_ups', 'run_tool_script']);
     });
 
     it('should include suggest_follow_ups tool for ask-mode chat tasks', async () => {
@@ -7735,7 +7735,7 @@ describe('suggest_follow_ups tool wiring', () => {
         const callOpts = mockSendMessage.mock.calls[0][0];
         expect(callOpts.tools).toBeDefined();
         // ask mode gets only suggest_follow_ups (ask_user is intentionally disabled for ChatExecutor)
-        expect(callOpts.tools).toHaveLength(1);
+        expect(callOpts.tools.map((t: any) => t.name)).toEqual(['suggest_follow_ups', 'run_tool_script']);
         expect(callOpts.tools[0].name).toBe('suggest_follow_ups');
     });
 
@@ -7757,7 +7757,7 @@ describe('suggest_follow_ups tool wiring', () => {
         expect(mockSendMessage).toHaveBeenCalledTimes(1);
         const callOpts = mockSendMessage.mock.calls[0][0];
         expect(callOpts.tools).toBeDefined();
-        expect(callOpts.tools).toHaveLength(1);
+        expect(callOpts.tools.map((t: any) => t.name)).toEqual(['suggest_follow_ups', 'run_tool_script']);
     });
 
     it('should include suggest_follow_ups tool for autopilot chat tasks (formerly custom)', async () => {
@@ -7778,7 +7778,7 @@ describe('suggest_follow_ups tool wiring', () => {
         expect(mockSendMessage).toHaveBeenCalledTimes(1);
         const callOpts = mockSendMessage.mock.calls[0][0];
         expect(callOpts.tools).toBeDefined();
-        expect(callOpts.tools).toHaveLength(1);
+        expect(callOpts.tools.map((t: any) => t.name)).toEqual(['suggest_follow_ups', 'run_tool_script']);
     });
 
     it('should include suggest_follow_ups tool for follow-up messages (all turns get it)', async () => {
@@ -7791,7 +7791,7 @@ describe('suggest_follow_ups tool wiring', () => {
         expect(mockSendMessage).toHaveBeenCalledTimes(1);
         const callOpts = mockSendMessage.mock.calls[0][0];
         expect(callOpts.tools).toBeDefined();
-        expect(callOpts.tools).toHaveLength(1);
+        expect(callOpts.tools.map((t: any) => t.name)).toEqual(['suggest_follow_ups', 'run_tool_script']);
     });
 
     it('does not staple follow-up suggestion guidance onto the follow-up prompt or systemMessage', async () => {
@@ -7828,7 +7828,7 @@ describe('suggest_follow_ups tool wiring', () => {
         expect(mockSendMessage).toHaveBeenCalledTimes(1);
         const callOpts = mockSendMessage.mock.calls[0][0];
         expect(callOpts.tools).toBeDefined();
-        expect(callOpts.tools).toHaveLength(1);
+        expect(callOpts.tools.map((t: any) => t.name)).toEqual(['suggest_follow_ups', 'run_tool_script']);
     });
 
     it('should intercept suggest_follow_ups tool-complete and emit suggestions event', async () => {
@@ -8059,7 +8059,7 @@ describe('suggest_follow_ups tool wiring', () => {
 
         expect(mockSendMessage).toHaveBeenCalledTimes(1);
         const callOpts = mockSendMessage.mock.calls[0][0];
-        expect(callOpts.tools).toBeUndefined();
+        expect(callOpts.tools.map((t: any) => t.name)).toEqual(['run_tool_script']);
     });
 
     it('should not append count instruction to prompt when suggestions are disabled', async () => {
@@ -8118,7 +8118,7 @@ describe('suggest_follow_ups tool wiring', () => {
 
         expect(mockSendMessage).toHaveBeenCalledTimes(1);
         const callOpts = mockSendMessage.mock.calls[0][0];
-        expect(callOpts.tools).toBeUndefined();
+        expect(callOpts.tools.map((t: any) => t.name)).toEqual(['run_tool_script']);
         // Should NOT append count instruction when disabled
         const sentMessage = mockSendMessage.mock.calls[0][0].prompt;
         expect(sentMessage).not.toContain('When suggesting follow-ups');

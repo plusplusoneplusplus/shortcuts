@@ -155,6 +155,7 @@ describe('buildChatToolBundle', () => {
             'extension_canvas',
             'get_conversation',
             'read_canvas',
+            'run_tool_script',
             'search_conversations',
             'suggest_follow_ups',
             'tavily_web_search',

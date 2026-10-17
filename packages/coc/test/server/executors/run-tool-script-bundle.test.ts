@@ -46,13 +46,16 @@ describe('run_tool_script in buildChatToolBundle', () => {
     const scriptTool = (bundle: { tools: Tool<any>[] }) => bundle.tools.find(t => t.name === 'run_tool_script');
     const invocation = { sessionId: 's', toolCallId: 'script-call', toolName: 'run_tool_script', arguments: {} };
 
-    it('is offered only when the admin flag is on', () => {
+    it('is offered unless the admin flag is off', () => {
         expect(names(build())).toContain('run_tool_script');
         expect(names(build({ toolScriptingEnabled: false }))).not.toContain('run_tool_script');
     });
 
-    it('reads the admin flag from config on every build', () => {
+    it('reads the admin flag from config on every build, defaulting on', () => {
         const configPath = path.join(tmpDir, CONFIG_FILE_NAME);
+        expect(names(build({ toolScriptingEnabled: undefined }))).toContain('run_tool_script');
+        expect(names(build({ toolScriptingEnabled: undefined, dataDir: undefined }))).toContain('run_tool_script');
+        fs.writeFileSync(configPath, 'features:\n  toolScripting: false\n');
         expect(names(build({ toolScriptingEnabled: undefined }))).not.toContain('run_tool_script');
         fs.writeFileSync(configPath, 'features:\n  toolScripting: true\n');
         expect(names(build({ toolScriptingEnabled: undefined }))).toContain('run_tool_script');

@@ -1,7 +1,7 @@
 import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Tool, ToolEvent } from '@plusplusoneplusplus/coc-agent-sdk';
-import { CONFIG_FILE_NAME, resolveConfig } from '../../config';
+import { CONFIG_FILE_NAME, DEFAULT_CONFIG, resolveConfig } from '../../config';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
@@ -294,8 +294,10 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
 
 function isToolScriptingEnabled(options: ChatToolBundleOptions): boolean {
     if (options.toolScriptingEnabled !== undefined) return options.toolScriptingEnabled;
-    return !!options.dataDir
-        && resolveConfig(path.join(options.dataDir, CONFIG_FILE_NAME)).features.toolScripting === true;
+    const features = options.dataDir
+        ? resolveConfig(path.join(options.dataDir, CONFIG_FILE_NAME)).features
+        : DEFAULT_CONFIG.features;
+    return features.toolScripting !== false;
 }
 
 function mergeDisabledTools(

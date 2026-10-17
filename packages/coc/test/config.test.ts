@@ -1592,7 +1592,7 @@ timeout: 300
                     "teamsAiAnswerRelay": true,
                     "teamsBridgeObservability": false,
                     "teamsMessageReaction": true,
-                    "toolScripting": false,
+                    "toolScripting": true,
                   },
                   "forEach": {
                     "enabled": false,
