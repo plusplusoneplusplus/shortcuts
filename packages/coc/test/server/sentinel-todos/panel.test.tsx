@@ -360,17 +360,77 @@ describe('UnifiedTodoTab', () => {
         expect(link.textContent).toBe(identical ? 'Open job' : jobTitle);
         expect(link.getAttribute('href')).toBe(tracked.jobs[0].openLink);
         const meta = within(row).getByTestId('sentinel-todo-meta-i1');
-        expect(meta.contains(link)).toBe(true);
+        expect(meta.contains(link)).toBe(false);
         expect(meta.className).toContain('flex-wrap');
         expect(meta.textContent).toContain('Updated');
-        expect(meta.textContent).toContain('Autopilot');
-        expect(meta.textContent).toContain('Running');
+        const jobMetadata = within(row).getByTestId('sentinel-todo-job-metadata');
+        expect(link.nextElementSibling).toBe(jobMetadata);
+        expect(jobMetadata.textContent).toContain('Autopilot');
+        expect(jobMetadata.textContent).toContain('Running');
         expect(within(row).queryByRole('button', { name: 'Edit' })).toBeNull();
         fireEvent.click(selection);
         const detail = screen.getByTestId('sentinel-todo-detail-i1');
         expect(within(detail).getByRole('link', { name: jobTitle }).textContent).toBe(jobTitle);
         expect(within(detail).getByText(tracked.completionCondition)).toBeTruthy();
         expect(within(detail).getByRole('button', { name: 'Edit' })).toBeTruthy();
+        expect(create).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it.each(['todo', 'needs_attention'] as const)('aligns job metadata below its title while preserving the %s verdict at narrow widths', async status => {
+        const jobTitle = `Implement ${'long-job-title-'.repeat(30)}`;
+        const reason = `Implementation confirmed, but ${'the feature still needs work. '.repeat(30)}`;
+        const repoName = 'very-long-repository-name-'.repeat(20);
+        ownerWorkspaces.push({ id: 'ws-child', name: repoName, remote: { serverId: 'host', serverLabel: 'ubuntu-arm' } });
+        registerCloneBaseUrls([{ workspaceId: 'ws-child', serverId: 'host', baseUrl: 'https://owner.example' }]);
+        const tracked = item({ status, statusReason: reason, jobs: [{
+            processId: 'child', workspaceId: 'ws-child', serverId: 'host', kind: 'remote',
+            title: jobTitle, mode: 'autopilot', openLink: '#repos/ws-child/chats/child', linkedAt: item().createdAt,
+            execution: { state: 'completed', review: { state: 'delivered', assessment: 'reviewed' } },
+        }] });
+        get.mockResolvedValue(ledger([tracked]));
+        render(<div style={{ width: 220 }}><UnifiedTodoTab owner={OWNER} /></div>);
+        const card = await screen.findByTestId('sentinel-todo-row-i1');
+        const jobs = within(card).getByRole('list', { name: `Jobs for ${tracked.title}` });
+        const metadata = within(jobs).getByTestId('sentinel-todo-job-metadata');
+        const link = within(jobs).getByRole('link', { name: jobTitle });
+        // Title gets its own bounded line; all job facts share the following wrapping row.
+        expect(link.nextElementSibling).toBe(metadata);
+        expect(link.getAttribute('title')).toBe(jobTitle);
+        expect(link.getAttribute('href')).toBe(tracked.jobs[0].openLink);
+        expect(link.className).toContain('truncate');
+        expect(link.parentElement?.className).toContain('min-w-0');
+        expect(link.parentElement?.className).toContain('w-full');
+        expect(metadata.className).toContain('flex-wrap');
+        expect(metadata.className).toContain('min-w-0');
+        expect(metadata.className).not.toContain('overflow-hidden');
+        const ownerBadge = within(metadata).getByTestId('sentinel-todo-job-owner');
+        const mode = within(metadata).getByTestId('sentinel-todo-job-mode');
+        const execution = within(metadata).getByTestId('sentinel-todo-job-execution');
+        const review = within(metadata).getByLabelText('Job review: Reviewed');
+        expect([...metadata.children].slice(0, 4)).toEqual([ownerBadge, mode, execution, review]);
+        expect(ownerBadge.textContent).toBe(`ubuntu-arm / ${repoName}`);
+        expect(ownerBadge.getAttribute('aria-label')).toBe(ownerBadge.getAttribute('title'));
+        expect(ownerBadge.className).toContain('truncate');
+        expect(mode.textContent).toBe('Autopilot');
+        expect(mode.className).toContain('shrink-0');
+        expect(execution.getAttribute('aria-label')).toBe('Job execution: Completed');
+        expect(execution.className).toContain('shrink-0');
+        expect(review.className).toContain('[overflow-wrap:anywhere]');
+        const preview = within(card).queryByTestId('sentinel-todo-reason-preview-i1');
+        if (status === 'needs_attention') {
+            expect(metadata.lastElementChild).toBe(preview);
+            expect(preview?.textContent).toBe(reason);
+            expect(preview?.getAttribute('title')).toBe(reason);
+            expect(preview?.className).toContain('min-w-0');
+            expect(preview?.className).toContain('truncate');
+            expect(preview?.className).toContain('flex-[1_1_8rem]');
+        } else {
+            expect(preview).toBeNull();
+        }
+        expect(within(card).getByTestId(`sentinel-todo-status-${status}`)).toBeTruthy();
+        expect(within(card).queryByTestId('sentinel-todo-status-done')).toBeNull();
+        expect(within(card).queryByTestId('sentinel-todo-status-in_review')).toBeNull();
         expect(create).not.toHaveBeenCalled();
         expect(update).not.toHaveBeenCalled();
     });
@@ -828,7 +888,8 @@ describe('UnifiedTodoTab', () => {
         expect(within(buildRow).getByTestId('sentinel-todo-job-mode').textContent).toBe('Autopilot');
         expect(within(buildRow).getByTestId('sentinel-todo-job-mode').getAttribute('tabindex')).toBeNull();
         expect(buildRow.className).toContain('flex-wrap');
-        expect(within(buildRow).getByRole('link').parentElement?.className).toContain('flex-wrap');
+        expect(within(buildRow).getByRole('link').parentElement?.className).toContain('flex-col');
+        expect(within(buildRow).getByTestId('sentinel-todo-job-metadata').className).toContain('flex-wrap');
         get.mockResolvedValue(ledger([item({ jobs: [{ ...jobs[0], mode: 'autopilot' }, jobs[1]] })]));
         act(() => connect.mock.calls[0][0].onMessage({ type: 'sentinel-todos-changed',
             workspaceId: OWNER.ownerWorkspaceId, processId: OWNER.processId, ledgerRevision: 1, itemId: 'i1' }));

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type FocusEvent, type MouseEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { SentinelTodoJobLink, SentinelTodoTargetRepo } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
@@ -20,7 +20,8 @@ const MUTED = 'text-[#616161] dark:text-[#9d9d9d]';
 const LINK = 'rounded text-[#0078d4] hover:underline focus-visible:outline focus-visible:outline-[#0078d4] dark:text-[#3794ff]';
 
 /** One ledger-validated job reference. Reads only compact owner-scoped metadata, never transcripts. */
-export function SentinelTodoJobPreview({ job, owner, targetRepo, currentWorkspaceId, linkKey, onFollowLink, itemTitle }: {
+export function SentinelTodoJobPreview({ job, owner, targetRepo, currentWorkspaceId, linkKey, onFollowLink, itemTitle, children }: {
+    children?: ReactNode;
     itemTitle?: string;
     job: SentinelTodoJobLink; owner: SentinelTodoOwner; targetRepo?: SentinelTodoTargetRepo; currentWorkspaceId?: string; linkKey: string;
     onFollowLink: (event: MouseEvent<HTMLAnchorElement>, key: string) => void;
@@ -165,7 +166,7 @@ export function SentinelTodoJobPreview({ job, owner, targetRepo, currentWorkspac
     const reason = 'reason' in job.execution ? job.execution.reason : undefined;
     const stale = !!data && (unavailable || loading || !!error || Date.now() - data.fetchedAt >= CACHE_MS);
     return <>
-        <span ref={triggerRef} className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-1" onPointerEnter={event => {
+        <span ref={triggerRef} className="flex w-full min-w-0 max-w-full flex-col gap-0.5" onPointerEnter={event => {
             if (event.pointerType !== 'mouse') return;
             pointerWithin.current = true; suppressed.current = false; clear(); enter.current = setTimeout(() => show(), 200);
         }} onPointerLeave={() => { pointerWithin.current = false; scheduleLeave(); }} onFocus={event => {
@@ -176,19 +177,22 @@ export function SentinelTodoJobPreview({ job, owner, targetRepo, currentWorkspac
                 event.preventDefault(); show(true);
             }
         }}>
-            <a {...anchorProps} role="link" tabIndex={navigable ? undefined : 0} data-todo-link={linkKey} title={title} aria-label={linkTitle === title ? undefined : `Open job: ${title}`} aria-description="Focus to preview; ArrowDown enters preview actions." className={`${LINK} min-w-0 break-words [overflow-wrap:anywhere]`} aria-disabled={!navigable || undefined}>{linkTitle}</a>
-            {jobOwner.showBadge && <span role="note" data-testid="sentinel-todo-job-owner" title={jobOwner.description} aria-label={jobOwner.description}
-                className="inline-block min-w-0 max-w-full truncate rounded-full border border-[#d0d7de] bg-black/[0.04] px-1.5 py-0.5 text-[10px] text-[#616161] dark:border-[#4a4a4a] dark:bg-white/[0.06] dark:text-[#bbbbbb]"
-                style={{ maxWidth: 'min(100%, 15rem)' }}>
-                <span aria-hidden="true">{jobOwner.label}</span>
-            </span>}
-            {badgeMode && <span title={badgeMode === 'ralph' ? 'Ralph session' : `${badgeLabel} mode`}
-                data-testid="sentinel-todo-job-mode"
-                className={badgeMode === 'ralph'
-                    ? 'inline-flex shrink-0 items-center rounded bg-[#8764b8]/15 px-1.5 py-0.5 text-[11px] font-medium text-[#7150a2] dark:text-[#c5a5ed]'
-                    : `${getChatRowModeBadgeClasses(badgeMode === 'autopilot' ? 'auto' : 'ask')} !w-auto !rounded-full !py-0.5 px-1.5 shrink-0 !font-sans !font-medium !normal-case !tracking-normal !text-[11px]`}>
-                {badgeLabel}
-            </span>}
+            <a {...anchorProps} role="link" tabIndex={navigable ? undefined : 0} data-todo-link={linkKey} title={title} aria-label={linkTitle === title ? undefined : `Open job: ${title}`} aria-description="Focus to preview; ArrowDown enters preview actions." className={`${LINK} min-w-0 max-w-full self-start truncate`} aria-disabled={!navigable || undefined}>{linkTitle}</a>
+            <span data-testid="sentinel-todo-job-metadata" className="flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                {jobOwner.showBadge && <span role="note" data-testid="sentinel-todo-job-owner" title={jobOwner.description} aria-label={jobOwner.description}
+                    className="inline-block min-w-0 max-w-full truncate rounded-full border border-[#d0d7de] bg-black/[0.04] px-1.5 py-0.5 text-[10px] text-[#616161] dark:border-[#4a4a4a] dark:bg-white/[0.06] dark:text-[#bbbbbb]"
+                    style={{ maxWidth: 'min(100%, 15rem)' }}>
+                    <span aria-hidden="true">{jobOwner.label}</span>
+                </span>}
+                {badgeMode && <span title={badgeMode === 'ralph' ? 'Ralph session' : `${badgeLabel} mode`}
+                    data-testid="sentinel-todo-job-mode"
+                    className={badgeMode === 'ralph'
+                        ? 'inline-flex shrink-0 items-center rounded bg-[#8764b8]/15 px-1.5 py-0.5 text-[11px] font-medium text-[#7150a2] dark:text-[#c5a5ed]'
+                        : `${getChatRowModeBadgeClasses(badgeMode === 'autopilot' ? 'auto' : 'ask')} !w-auto !rounded-full !py-0.5 px-1.5 shrink-0 !font-sans !font-medium !normal-case !tracking-normal !text-[11px]`}>
+                    {badgeLabel}
+                </span>}
+                {children}
+            </span>
         </span>
         {open && portal && createPortal(<div ref={panelRef} id={id} role="dialog" aria-modal="false" aria-labelledby={`${id}-title`} data-native-view-overlay
             className="fixed z-50 w-[330px] overflow-auto rounded border border-[#d0d7de] bg-white p-3 text-xs text-[#1e1e1e] shadow-lg dark:border-[#3c3c3c] dark:bg-[#252526] dark:text-[#cccccc]"
