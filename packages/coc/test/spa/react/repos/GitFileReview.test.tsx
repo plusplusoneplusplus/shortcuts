@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { GitFileReview } from '../../../../src/server/spa/client/react/features/git/diff/GitFileReview';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { GitFileReview, NAV_WIDTH_STORAGE_KEY } from '../../../../src/server/spa/client/react/features/git/diff/GitFileReview';
 import { filterReviewFiles, groupReviewFiles, reviewFileKind } from '../../../../src/server/spa/client/react/features/git/diff/gitReviewFiles';
 import type { DiffSource } from '../../../../src/server/spa/client/react/features/git/diff/diffSource';
 
@@ -225,6 +225,85 @@ describe('single-row review toolbar', () => {
         expect(css).toContain('@container(max-width:899px){.git-review-wide{display:none!important}}');
         expect(css).toContain('@container(max-width:599px){.git-review-md{display:none!important}}');
         expect(css).toContain('@container(max-width:479px){.git-review-label-sm{display:none!important}}');
+    });
+});
+
+describe('resizable changed-files separator', () => {
+    let resizeObservers: Array<(width: number) => void> = [];
+    beforeEach(() => {
+        localStorage.clear(); resizeObservers = [];
+        vi.stubGlobal('ResizeObserver', class {
+            constructor(private cb: ResizeObserverCallback) {}
+            observe() { resizeObservers.push(width => act(() => this.cb([{ contentRect: { width } } as ResizeObserverEntry], this as unknown as ResizeObserver))); }
+            disconnect() {}
+        });
+    });
+    afterEach(() => vi.unstubAllGlobals());
+    const separator = () => screen.getByRole('separator', { name: 'Resize changed files list' });
+    const navWidth = () => (screen.getByTestId('git-file-review').querySelector('.git-review-body') as HTMLElement).style.getPropertyValue('--git-review-nav-width');
+
+    it('sits between the file list and the diff with an accessible default width', () => {
+        render(<GitFileReview {...props} />);
+        const sep = separator();
+        expect(sep.previousElementSibling).toBe(nav());
+        expect(sep.nextElementSibling?.getAttribute('aria-label')).toBe('Focused file diff');
+        expect(sep.getAttribute('aria-orientation')).toBe('vertical');
+        expect(sep.getAttribute('aria-controls')).toBe(nav().id);
+        expect(sep.tabIndex).toBe(0);
+        expect(sep.getAttribute('aria-valuenow')).toBe('262');
+        expect(navWidth()).toBe('262px');
+    });
+    it('resizes by keyboard within bounds, persists, and keeps the selected diff mounted', () => {
+        render(<GitFileReview {...props} />); open('src/z.ts');
+        const mounts = panel.mock.calls.length;
+        fireEvent.keyDown(separator(), { key: 'ArrowRight' });
+        expect(navWidth()).toBe('278px');
+        fireEvent.keyDown(separator(), { key: 'ArrowLeft', shiftKey: true });
+        expect(navWidth()).toBe('214px');
+        fireEvent.keyDown(separator(), { key: 'Home' });
+        expect(navWidth()).toBe('180px');
+        fireEvent.keyDown(separator(), { key: 'ArrowLeft' });
+        expect(navWidth()).toBe('180px');
+        fireEvent.keyDown(separator(), { key: 'End' });
+        expect(navWidth()).toBe('560px');
+        expect(localStorage.getItem(NAV_WIDTH_STORAGE_KEY)).toBe('560');
+        expect(screen.getByTestId('focused-diff').textContent).toContain('src/z.ts');
+        expect(panel.mock.calls.slice(mounts).every(([p]) => p.filePath === 'src/z.ts')).toBe(true);
+        fireEvent.doubleClick(separator());
+        expect(navWidth()).toBe('262px');
+    });
+    it('resizes by mouse drag', () => {
+        render(<GitFileReview {...props} />);
+        fireEvent.mouseDown(separator(), { clientX: 262 });
+        expect(separator().className).toContain('dragging');
+        fireEvent.mouseMove(document, { clientX: 362 });
+        fireEvent.mouseUp(document);
+        expect(navWidth()).toBe('362px');
+        expect(localStorage.getItem(NAV_WIDTH_STORAGE_KEY)).toBe('362');
+    });
+    it('caps the list so the diff keeps room, and restores the preference when the container widens', () => {
+        localStorage.setItem(NAV_WIDTH_STORAGE_KEY, '500');
+        render(<GitFileReview {...props} />);
+        expect(navWidth()).toBe('500px');
+        resizeObservers.forEach(fire => fire(720));
+        expect(navWidth()).toBe('400px');
+        expect(separator().getAttribute('aria-valuemax')).toBe('400');
+        fireEvent.keyDown(separator(), { key: 'ArrowRight' });
+        expect(navWidth()).toBe('400px');
+        resizeObservers.forEach(fire => fire(300));
+        expect(navWidth()).toBe('180px');
+        expect(localStorage.getItem(NAV_WIDTH_STORAGE_KEY)).toBe('500');
+        resizeObservers.forEach(fire => fire(1400));
+        expect(navWidth()).toBe('500px');
+    });
+    it('ignores a corrupt stored width and hides the separator in the narrow drawer tier', () => {
+        localStorage.setItem(NAV_WIDTH_STORAGE_KEY, 'wide');
+        render(<GitFileReview {...props} />);
+        expect(navWidth()).toBe('262px');
+        const css = readFileSync(join(__dirname, '../../../../src/server/spa/client/react/features/git/diff/git-file-review.css'), 'utf8');
+        expect(css).toContain('.git-review-nav{width:var(--git-review-nav-width,262px)');
+        expect(css).toMatch(/\.git-review-resizer\{[^}]*cursor:col-resize/);
+        expect(css).toContain('@container(max-width:700px){.git-review-nav,.git-review-resizer{display:none}');
     });
 });
 

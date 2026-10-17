@@ -43,6 +43,8 @@ export interface UseResizablePanelReturn {
      * that should display immediately but not be treated as a user intent.
      */
     applySize: (px: number) => void;
+    /** Apply and persist a size in px (e.g. keyboard resizing). Clamps to min/max. */
+    setSize: (px: number) => void;
 }
 
 function loadPersistedWidth(key: string | undefined, fallback: number): number {
@@ -209,5 +211,11 @@ export function useResizablePanel(options: UseResizablePanelOptions = {}): UseRe
         setWidth(clampWidth(px, minWidth, maxWidth));
     }, [minWidth, maxWidth]);
 
-    return { width, isDragging, handleMouseDown, handleTouchStart, resetWidth, applySize };
+    const setSize = useCallback((px: number) => {
+        persistingDisabledRef.current = false;
+        skipNextPersistRef.current = false;
+        setWidth(clampWidth(px, minWidth, maxWidth));
+    }, [minWidth, maxWidth]);
+
+    return { width, isDragging, handleMouseDown, handleTouchStart, resetWidth, applySize, setSize };
 }

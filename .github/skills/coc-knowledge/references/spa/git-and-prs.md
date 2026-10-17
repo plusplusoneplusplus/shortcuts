@@ -139,7 +139,11 @@ No-upstream fallback reports `baseModeFallback`; pop-out URLs serialize the mode
 
 Commit and branch review share `GitFileReview`: searchable directory groups,
 kind/status/viewed filters, overview, file navigation and a narrow drawer around
-one `FileDiffPanel`. Its `GitReviewToolbar` is one nonwrapping 34px row: optional
+one `FileDiffPanel`. A vertical `role="separator"` between navigator and diff
+resizes the navigator via `useResizablePanel` (drag, arrows ±16/Shift ±64,
+Home/End, double-click reset; 180–560px, default 262, global
+`git-review-nav-width`); a `ResizeObserver` caps it to leave the diff 320px
+without overwriting the stored preference, and the drawer tier hides it. Its `GitReviewToolbar` is one nonwrapping 34px row: optional
 context `header` slots (identity, classify, secondary `actions`, overflow-only
 `menuActions`, below-row content), Overview, previous/index/next, change stats,
 reviewed count with a decorative progress line, and Mark viewed (toggle only, no
