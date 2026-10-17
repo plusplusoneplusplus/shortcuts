@@ -592,6 +592,25 @@ the source view id after returning host focus; only the matching active,
 visible browser tab creates a new tab. The `+` and empty-state Open buttons
 open `UnifiedPanelOpenMenu`.
 
+## Reopen-closed-tab shortcut
+
+Behind the live, default-off `panelReopenClosedTabEnabled` flag, Ctrl/Cmd+Shift+T
+restores web tabs newest-first. `unifiedClosedBrowserTabs.ts` keeps a module-memory
+stack of 20 per `closedBrowserTabScopeKey(workspaceId, chatId)` (owner-qualified
+panel storage key plus chat): it survives remounts and scope switches, never
+reaches storage, and resets on reload. `closeTabByUser` is the only recorder, so
+strip, menu, Ctrl+W and bulk closes record in close order while `closeTab`
+cleanup, `closeBrowserPanelView` and other kinds (HTML previews included) never
+do. Entries snapshot owner, route, repo label, last URL and title — never view
+ids. A restore drops an entry whose owner is no longer this panel's workspace or
+an enabled target on the same route, otherwise opens it through
+`browserOpenInput` (fresh view id, stored title as provisional label) and
+focuses the restored strip tab; a blank restore keeps its address autofocus.
+Any focus inside the open, visible panel owns the chord, including editors,
+terminals and an empty stack; repeats restore nothing. Native pages forward
+`onReopenClosedRequested` with the source view id; only the matching active,
+visible browser tab restores.
+
 ## Entry points
 
 Entry points use `openUnifiedPanelTab` with the originating chat and concrete

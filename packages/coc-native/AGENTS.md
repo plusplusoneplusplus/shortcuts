@@ -324,10 +324,12 @@ does not change Electron shell zoom or local HTML previews.
 Renderer pointer/focus events and browser tab-out requests send `focus-host` through the desktop host;
 the helper calls Win32 `SetFocus` on that view's parent HWND. DOM focus alone does
 not transfer keyboard input away from the cross-process WebView2 controller.
-Visible embedded views forward Ctrl+T as `open-menu-requested` and Ctrl+L as
-`focus-address-requested` (excluding Shift, Alt, popups and repeats). The desktop
-host completes `focus-host` before the SPA opens the owning panel's add-tab menu
-or focuses and selects the active owning browser's editable address.
+Visible embedded views forward Ctrl+T as `open-menu-requested`, Ctrl+Shift+T as
+`reopen-closed-requested` and Ctrl+L as `focus-address-requested` (excluding Alt,
+popups and repeats; Shift only selects reopen). The desktop host completes
+`focus-host` before the SPA opens the owning panel's add-tab menu, reopens its
+newest closed web tab, or focuses and selects the active owning browser's
+editable address.
 
 `history.rs` owns per-controller loading and successful-document readiness.
 Open, navigate, reload and available back/forward requests mark loading before native

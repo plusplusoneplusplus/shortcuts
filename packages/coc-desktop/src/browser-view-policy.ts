@@ -186,6 +186,8 @@ export const BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL = 'coc-desktop:browser-view-cl
 export const BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL = 'coc-desktop:browser-view-focus-address-requested';
 /** main → SPA: native add-tab shortcut; the active panel opens its shared menu. */
 export const BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL = 'coc-desktop:browser-view-open-menu-requested';
+/** main → SPA: native reopen-closed-tab shortcut; the active owning panel restores its newest closed web tab. */
+export const BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL = 'coc-desktop:browser-view-reopen-closed-requested';
 export const BROWSER_VIEW_CLOSED_CHANNEL = 'coc-desktop:browser-view-closed';
 export const BROWSER_VIEW_FOCUS_CHANNEL = 'coc-desktop:browser-view-focus';
 export const BROWSER_HOST_FOCUS_CHANNEL = 'coc-desktop:browser-host-focus';

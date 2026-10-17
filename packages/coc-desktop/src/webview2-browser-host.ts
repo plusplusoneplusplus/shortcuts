@@ -361,11 +361,12 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             };
             if (!validateBrowserUrl(url).ok) { report(false, 'Only HTTP(S) downloads are supported.'); }
             else { void shell.openExternal(url).then(() => report(true), error => report(false, error instanceof Error ? error.message : String(error))); }
-        } else if ((message.event === 'open-menu-requested' || message.event === 'focus-address-requested') && entry.bounds && !entry.window.isDestroyed()) {
+        } else if ((message.event === 'open-menu-requested' || message.event === 'focus-address-requested' || message.event === 'reopen-closed-requested') && entry.bounds && !entry.window.isDestroyed()) {
             entry.window.webContents.focus();
             void this.focusOwner(entry.request.ownerId).then(() => {
                 if (this.views.get(message.viewId as string) === entry && entry.bounds) {
                     if (message.event === 'focus-address-requested') { entry.sink.focusAddressRequested?.(); }
+                    else if (message.event === 'reopen-closed-requested') { entry.sink.reopenClosedRequested?.(); }
                     else { entry.sink.openMenuRequested(); }
                 }
             }).catch(error => this.viewFailure(entry, error));

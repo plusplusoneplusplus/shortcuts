@@ -111,6 +111,7 @@ export interface DesktopBrowserBridge {
     onFocusAddressRequested?(callback: (event: { viewId: string }) => void): () => void;
     onOpenMenuRequested?(callback: (event: { viewId: string }) => void): () => void;
     onCloseRequested?(callback: (event: { viewId: string }) => void): () => void;
+    onReopenClosedRequested?(callback: (event: { viewId: string }) => void): () => void;
     onClosed(callback: (event: { viewId: string; engine: BrowserEngine }) => void): () => void;
 }
 

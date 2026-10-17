@@ -554,6 +554,12 @@ Body focus routes to the single visible panel, and repeats create no tabs.
 Native browser hosts forward source-qualified `onOpenMenuRequested` after
 transferring keyboard focus to the SPA; only the matching active browser tab
 creates a tab. The `+` and empty-state Open buttons open the shared resource menu.
+With `panelReopenClosedTabEnabled`, Ctrl/Cmd+Shift+T anywhere in the visible
+panel restores user-closed web tabs newest-first from a session-only, 20-entry
+stack per owner-qualified panel scope and chat (`unifiedClosedBrowserTabs.ts`).
+Restores reopen the last URL and title through `browserOpenInput` with a fresh
+view id and drop entries whose owner is no longer a target; native hosts forward
+source-qualified `onReopenClosedRequested` like the add-tab request.
 Repository-group mode stays scoped to the group while panel requests use the
 selected dock target.
 

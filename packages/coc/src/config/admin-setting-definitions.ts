@@ -1264,6 +1264,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-html-page-tab-enabled',
         },
     }),
+    bool({
+        key: 'features.panelReopenClosedTab', default: false, runtime: 'live', runtimeFlag: 'panelReopenClosedTabEnabled',
+        ui: {
+            tab: 'browser', group: 'browserPages', order: 20, label: 'Reopen closed web tabs', badge: 'experimental',
+            hint: 'Desktop app only: Ctrl+Shift+T (Cmd+Shift+T on macOS) inside the right panel reopens its most recently closed web tabs, newest first, for the current workspace and chat. The list lasts for the current session. Disabled by default.',
+            testId: 'toggle-panel-reopen-closed-tab-enabled',
+        },
+    }),
 
     bool({
         key: 'features.canvasHostApis', default: false, runtime: 'live',
