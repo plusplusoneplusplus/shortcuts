@@ -28,7 +28,7 @@ export class LanguageServersClient {
     return this.transport.request<LanguageServerConfigResponse>(configPath(workspaceId));
   }
 
-  /** Replace the config. Omitted fields fall back to the disabled default. */
+  /** Replace the config. Omitted definitions fall back to built-in defaults. */
   replace(workspaceId: string, config: LanguageServerConfigUpdate): Promise<LanguageServerConfigResponse> {
     return this.transport.request<LanguageServerConfigResponse>(configPath(workspaceId), {
       method: 'PUT',
@@ -75,7 +75,7 @@ export function parseLanguageServerRejection(error: unknown): LanguageServerConf
   const config = record.config;
   if (config && typeof config === 'object' && Array.isArray((config as { definitions?: unknown }).definitions)) {
     const stored = config as LanguageServerConfigRejection['config'];
-    return { errors, config: { enabled: stored!.enabled === true, definitions: stored!.definitions } };
+    return { errors, config: { definitions: stored!.definitions } };
   }
   return { errors };
 }

@@ -254,7 +254,7 @@ function completionLabels(result: unknown): string[] {
 
 beforeAll(async () => {
     root = createProject();
-    const enabled: LanguageServerDefinition = { ...TYPESCRIPT_PRESET, enabled: true };
+    const enabled: LanguageServerDefinition = { ...TYPESCRIPT_PRESET };
     const prepared = prepareDefinitionForRoot(enabled, root);
     session = new LanguageServerSession({
         definition: prepared.definition,
@@ -561,7 +561,7 @@ export const PanelHeader = (props: PanelHeaderProps) => props.title;
         );
         fs.writeFileSync(path.join(symbolRoot, 'src', 'PanelHeader.tsx'), COMPONENT_TSX);
 
-        const enabled: LanguageServerDefinition = { ...TYPESCRIPT_PRESET, enabled: true };
+        const enabled: LanguageServerDefinition = { ...TYPESCRIPT_PRESET };
         const prepared = prepareDefinitionForRoot(enabled, symbolRoot);
         symbolSession = new LanguageServerSession({
             definition: prepared.definition,

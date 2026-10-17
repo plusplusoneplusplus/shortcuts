@@ -56,7 +56,6 @@ function echoDefinition(): LanguageServerDefinition {
         command: process.execPath,
         args: [FIXTURE_SERVER],
         rootMarkers: ['package.json'],
-        enabled: true,
     };
 }
 
@@ -65,7 +64,6 @@ function enabledDataDir(workspaceIds: string[]): string {
     const dataDir = tempDir('coc-lsp-infra-data-');
     for (const id of workspaceIds) {
         const write = writeLanguageServerConfig(dataDir, id, {
-            enabled: true,
             definitions: [echoDefinition()],
         });
         expect(write.ok).toBe(true);

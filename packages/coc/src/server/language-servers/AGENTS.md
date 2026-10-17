@@ -19,10 +19,6 @@ and transport code stays generic.
 - `presets.ts` — built-in definitions and merging with workspace configuration.
 - `detection.ts` — which presets a workspace's files call for, read from each
   preset's own `rootMarkers` first and a bounded file-extension scan second.
-- `seed.ts` — `ensureLanguageServerConfigSeeded`: the production read used by
-  manager acquisition and settings GET. For a workspace with no config file, it
-  writes the detected presets enabled and returns that. A workspace with any
-  config file — valid or corrupt — is read, never seeded.
 - `prime-document.ts` — the bounded, deterministic search for the one file a
   session opens on its own behalf so a project-scoped server has a project
   loaded. Breadth-first and in name order, skipping the same directories
@@ -49,29 +45,23 @@ and transport code stays generic.
   the session to its notification subscribers, so the bridge forwards it to the
   browser like a notification.
 - `routes.ts` — `GET`/`PUT`/`PATCH /api/workspaces/:id/language-servers`,
-  registered from `src/server/routes/index.ts`, which supplies the workspace-root
-  resolver that lets a read seed a never-configured workspace.
+  registered from `src/server/routes/index.ts`. Reads expose defaults without
+  scanning the workspace or writing a configuration file.
 - `repository.ts` — per-workspace persistence of `language-servers.json` under
   `getRepoDataPath`, plus `resolveLanguageServerDefinitions` for the definitions
   a workspace may actually start.
 
 ## Rules
 
-- Language support is seeded once, on the first production read with a workspace
-  root, whether manager acquisition or settings GET reaches it first. After that
-  `language-servers.json` is the user's: detection never re-runs, so a server the
-  user turned off stays off and one added to the repo later is not turned on.
-  Presets keep `enabled: false`; seeding writes workspace overrides, exactly as
-  the settings page does when a user ticks a checkbox.
+- All built-ins and valid custom definitions are available in every workspace.
+  Configuration contains definitions, without workspace or per-definition enable
+  controls. Reads strip saved enable fields and preserve runtime/project settings;
+  file acquisition selects matching definitions without persisting defaults.
 
 - A definition's `command` is an executable and `args` is a vector. Validation
   rejects shell metacharacters and quotes so a command line can never be passed
   as a single executable.
 - Ids must be slug-safe; they appear in log file names and status payloads.
-- Built-in presets that drive an installed toolchain ship disabled. Language
-  support is opt-in per workspace. The one exception is `coc-symbols`, whose
-  server CoC ships itself: it needs no install and no project configuration, so
-  it ships enabled and the per-workspace toggle is its off switch.
 - `coc-symbols` claims the same C-family patterns as `clangd` at a lower
   priority. Both attach to a C-family document; the client merges their answers
   and clangd's win. Priority orders that merge, it does not pick one server.
@@ -85,7 +75,7 @@ and transport code stays generic.
   browser payloads.
 - A write validates everything first; one field-level error aborts the whole
   write so the last valid configuration stays on disk. A corrupt file on read
-  falls back to disabled rather than starting an unconfigured server.
+  falls back to built-in defaults with a warning, preserving the corrupt file.
 
 ## Runtime transport
 
@@ -115,7 +105,7 @@ and transport code stays generic.
   `disabled`, `unavailable`, `starting`, `indexing`, `ready`, `reconnecting`,
   `failed` —
   plus the server name, version, and negotiated capabilities. `disabled` covers
-  both a config-disabled definition and one stopped because nothing needs it.
+  a session stopped because nothing needs it.
   A missing executable is `unavailable`, not `failed`. Runtime adapters may
   provide path-safe install guidance, which the manager forwards and the session
   appends only to that unavailable detail.
@@ -187,11 +177,11 @@ and transport code stays generic.
   and `release` functions. `acquire` remains the preferred-definition form for
   single-server internal callers.
   `acquireWorkspace({ workspaceId, workspaceRoot, editingSessionId })` acquires
-  every enabled definition for a repository with no document in play — what the
-  Go To All palette attaches to. Selection is by definition rather than by file
-  pattern (`selectDefinitionsForWorkspace`), so no sentinel path is resolved to
-  satisfy a matcher, and each session is rooted at the workspace root. A
-  failure carries a
+  the definitions detected from project markers or a bounded file scan with no
+  document in play — what the Go To All palette attaches to. Discovery uses the
+  effective definitions on each request, including custom patterns, so later
+  languages are available without saving configuration. Sessions are rooted at
+  the workspace root. A failure carries a
   reason of `disabled`, `no-definition`, or `capacity` so the editor can show a
   concise status instead of an error.
 - Sessions are keyed on workspace, browser editing session, definition id, and
@@ -412,8 +402,8 @@ and transport code stays generic.
   `createWebSocketInfrastructure`, which passes the bridge as the fourth
   argument of `attachWebSocketUpgradeHandler`, and the close handler awaits
   `dispose()` after the terminal teardown. It is composed unconditionally:
-  nothing spawns until a browser attaches a document in a workspace whose
-  configuration is enabled, and that configuration ships disabled.
+  nothing spawns until a browser requests a matching document or workspace symbol
+  support. Every workspace has the built-in definitions available by default.
 - `dispose()` closes sockets first, then the manager, so a client cannot issue a
   request into a session that is going away.
 - `active.ts` publishes the running manager for the few call sites outside the
@@ -460,12 +450,12 @@ and transport code stays generic.
   `symbol-index-candidate` URI fragment. Navigation persists that provenance on
   the destination tab and shows an amber `Symbol candidate` pill until a plain
   or exact cross-file open replaces it. The symbols attachment remains available
-  when clangd is disabled or unavailable.
+  when clangd is unavailable.
 - `src/server/spa/client/react/features/language-servers/LanguageServersPanel.tsx`
-  — the repo Settings tab's `language-servers` section: master enable toggle,
-  the `effective` list with a per-definition enable checkbox, and an editor for
-  custom definitions. Enabling or editing a preset writes an override keyed on
-  its id; only stored non-preset definitions can be removed. A rejected write
+  — the repo Settings tab's `language-servers` section: the `effective` list,
+  runtime status/retry, and an editor for executable and project configuration.
+  Editing a preset writes an override keyed on its id; only stored non-preset
+  definitions can be removed. Enable controls are absent. A rejected write
   keeps the editor open, attaches `errors[].field` messages to their inputs, and
   restores the echoed last-valid config.
 

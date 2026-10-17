@@ -74,7 +74,6 @@ function fromDraft(draft: DefinitionDraft, base: LanguageServerDefinition | unde
         filePatterns: splitList(draft.filePatterns),
         languageIds: splitList(draft.languageIds),
         rootMarkers: splitList(draft.rootMarkers),
-        enabled: base?.enabled ?? true,
     };
 }
 
@@ -137,7 +136,6 @@ function runtimeSummary(runtimes: LanguageServerRuntimeState[]): string {
 }
 
 export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps) {
-    const [enabled, setEnabled] = useState(false);
     const [stored, setStored] = useState<LanguageServerDefinition[]>([]);
     const [effective, setEffective] = useState<LanguageServerDefinition[]>([]);
     const [warnings, setWarnings] = useState<string[]>([]);
@@ -151,7 +149,6 @@ export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps)
     const [retrying, setRetrying] = useState<Set<string>>(new Set());
 
     const applyResponse = useCallback((res: Awaited<ReturnType<typeof languageServersApi.get>>) => {
-        setEnabled(res.enabled);
         setStored(res.definitions);
         setEffective(res.effective);
         setWarnings(res.warnings.map(w => w.message));
@@ -182,7 +179,7 @@ export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps)
      * server rejects the body. Returns true when the write landed.
      */
     const save = useCallback(async (
-        next: { enabled?: boolean; definitions?: LanguageServerDefinition[] },
+        next: { definitions?: LanguageServerDefinition[] },
         draftIndex = -1,
     ): Promise<boolean> => {
         setSaving(true);
@@ -199,7 +196,6 @@ export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps)
                 // The echoed config is the untouched on-disk state, so the panel
                 // keeps showing the last valid configuration.
                 if (rejection.config) {
-                    setEnabled(rejection.config.enabled);
                     setStored(rejection.config.definitions);
                 }
                 setError(other[0] ?? 'Fix the highlighted fields and save again.');
@@ -211,15 +207,6 @@ export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps)
             setSaving(false);
         }
     }, [workspaceId, applyResponse]);
-
-    const toggleSupport = useCallback(() => {
-        save({ enabled: !enabled });
-    }, [enabled, save]);
-
-    const toggleDefinition = useCallback((def: LanguageServerDefinition) => {
-        const next = { ...def, enabled: !(def.enabled ?? false) };
-        save({ definitions: upsert(stored, def.id, next) });
-    }, [stored, save]);
 
     const removeDefinition = useCallback((def: LanguageServerDefinition) => {
         save({ definitions: stored.filter(d => d.id !== def.id) });
@@ -282,16 +269,6 @@ export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps)
 
     return (
         <div data-testid="language-servers-section">
-            <label className="flex items-center gap-2 mb-3 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
-                <input
-                    type="checkbox"
-                    checked={enabled}
-                    disabled={saving}
-                    onChange={toggleSupport}
-                    data-testid="language-support-toggle"
-                />
-                <span className="font-medium">Enable language support</span>
-            </label>
             <div className="text-[10px] text-[#848484] mb-4">
                 Language servers start on demand after you open a matching file in this workspace.
             </div>
@@ -319,14 +296,6 @@ export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps)
                             data-server-id={def.id}
                         >
                             <div className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    checked={def.enabled ?? false}
-                                    disabled={saving}
-                                    onChange={() => toggleDefinition(def)}
-                                    aria-label={`Enable ${def.displayName}`}
-                                    data-testid="language-server-enabled"
-                                />
                                 <span className="flex-1 min-w-0">
                                     <span className="text-[#1e1e1e] dark:text-[#cccccc]">{def.displayName}</span>
                                     <span className="block truncate font-mono text-[10px] text-[#848484]">

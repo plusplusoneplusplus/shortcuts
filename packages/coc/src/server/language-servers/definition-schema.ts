@@ -39,7 +39,6 @@ const definitionSchema = z.object({
     maxSessions: z.number().int('Session limit must be a whole number').positive('Session limit must be positive').optional(),
     requestTimeoutMs: z.number().int('Request timeout must be a whole number').positive('Request timeout must be positive').optional(),
     idleTimeoutMs: z.number().int('Idle timeout must be a whole number').nonnegative('Idle timeout cannot be negative').optional(),
-    enabled: z.boolean().optional(),
     builtIn: z.boolean().optional(),
 });
 

@@ -26,7 +26,7 @@ const rustupAnalyzer = path.resolve(
 const pathAnalyzer = path.resolve(path.sep, 'tools', 'bin', process.platform === 'win32' ? 'rust-analyzer.exe' : 'rust-analyzer');
 
 function preset(overrides: Partial<LanguageServerDefinition> = {}): LanguageServerDefinition {
-    return { ...RUST_PRESET, enabled: true, ...overrides };
+    return { ...RUST_PRESET, ...overrides };
 }
 
 describe('resolveRustRuntime', () => {

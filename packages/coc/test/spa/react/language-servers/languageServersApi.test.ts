@@ -21,7 +21,6 @@ const REMOTE_BASE = 'http://127.0.0.1:4002';
 const LOCAL_WS = 'ws-local-lsp';
 
 const CONFIG = {
-    enabled: false,
     definitions: [],
     effective: [],
     startable: [],
@@ -72,7 +71,7 @@ describe('languageServersApi', () => {
         registerCloneBaseUrls([{ workspaceId: REMOTE_WS, baseUrl: REMOTE_BASE }]);
 
         await languageServersApi.get(REMOTE_WS);
-        await languageServersApi.update(REMOTE_WS, { enabled: true });
+        await languageServersApi.update(REMOTE_WS, { definitions: [] });
 
         expect(calls).toHaveLength(2);
         for (const call of calls) {
@@ -80,7 +79,7 @@ describe('languageServersApi', () => {
             expect(call.url).toContain(`/workspaces/${REMOTE_WS}/language-servers`);
         }
         expect(calls[1].method).toBe('PATCH');
-        expect(calls[1].body).toEqual({ enabled: true });
+        expect(calls[1].body).toEqual({ definitions: [] });
     });
 
     it('keeps a local (unregistered) workspace on the local origin', async () => {
@@ -111,17 +110,17 @@ describe('languageServersApi', () => {
             rootMarkers: ['.git'],
         }];
 
-        await languageServersApi.replace(LOCAL_WS, { enabled: true, definitions });
+        await languageServersApi.replace(LOCAL_WS, { definitions });
 
         expect(calls[0].method).toBe('PUT');
-        expect(calls[0].body).toEqual({ enabled: true, definitions });
+        expect(calls[0].body).toEqual({ definitions });
     });
 
     it('surfaces a rejected write as field errors plus the last valid config', async () => {
         const rejection = {
             error: 'Invalid language-server configuration',
             errors: [{ field: 'definitions.0.command', message: 'command is required' }],
-            config: { enabled: true, definitions: [] },
+            config: { definitions: [] },
         };
         vi.stubGlobal('fetch', makeFetchSpy(calls, () => ({
             ok: false,
@@ -132,11 +131,11 @@ describe('languageServersApi', () => {
             text: async () => JSON.stringify(rejection),
         })));
 
-        const error = await languageServersApi.replace(LOCAL_WS, { enabled: true }).catch((e: unknown) => e);
+        const error = await languageServersApi.replace(LOCAL_WS, { definitions: [] }).catch((e: unknown) => e);
 
         expect(parseLanguageServerRejection(error)).toEqual({
             errors: [{ field: 'definitions.0.command', message: 'command is required' }],
-            config: { enabled: true, definitions: [] },
+            config: { definitions: [] },
         });
     });
 });

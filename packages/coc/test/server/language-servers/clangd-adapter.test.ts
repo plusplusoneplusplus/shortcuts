@@ -6,7 +6,7 @@ import { CLANGD_PRESET } from '../../../src/server/language-servers/presets';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
 
 function preset(overrides: Partial<LanguageServerDefinition> = {}): LanguageServerDefinition {
-    return { ...CLANGD_PRESET, enabled: true, ...overrides };
+    return { ...CLANGD_PRESET, ...overrides };
 }
 
 describe('resolveClangdRuntime', () => {

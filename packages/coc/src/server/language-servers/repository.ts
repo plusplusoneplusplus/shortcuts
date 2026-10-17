@@ -13,8 +13,6 @@ export const LANGUAGE_SERVERS_FILE_NAME = 'language-servers.json';
  * open buffers, diagnostics, and connections stay in memory.
  */
 export interface LanguageServerConfig {
-    /** Language support is opt-in per workspace and starts off. */
-    enabled: boolean;
     /** Workspace definitions. An entry sharing a preset id overrides that preset. */
     definitions: LanguageServerDefinition[];
 }
@@ -64,7 +62,7 @@ function emitChanged(event: LanguageServerConfigChangedEvent): void {
 }
 
 function emptyConfig(): LanguageServerConfig {
-    return { enabled: false, definitions: [] };
+    return { definitions: [] };
 }
 
 export function getLanguageServerConfigPath(dataDir: string, workspaceId: string): string {
@@ -73,8 +71,7 @@ export function getLanguageServerConfigPath(dataDir: string, workspaceId: string
 
 /**
  * A missing file is not a warning — it means language support was never
- * configured. A corrupt file yields the disabled default plus a warning, so a
- * bad edit can never start a server the user did not configure. Individual
+ * configured. A corrupt file yields the built-in defaults plus a warning. Individual
  * invalid definitions are dropped with a warning while the valid ones survive.
  */
 export function readLanguageServerConfigWithStatus(
@@ -107,7 +104,7 @@ export function readLanguageServerConfigWithStatus(
         }
 
         return {
-            value: { enabled: obj.enabled === true, definitions },
+            value: { definitions },
             status: 'ok',
             warnings,
         };
@@ -116,7 +113,7 @@ export function readLanguageServerConfigWithStatus(
     }
 }
 
-/** Returns the disabled default when the file is missing or unreadable. */
+/** Returns the built-in default configuration when the file is missing or unreadable. */
 export function readLanguageServerConfig(dataDir: string, workspaceId: string): LanguageServerConfig {
     return readLanguageServerConfigWithStatus(dataDir, workspaceId).value;
 }
@@ -134,7 +131,7 @@ export function writeLanguageServerConfig(
     if (errors.length > 0) {
         return { ok: false, errors };
     }
-    const validated: LanguageServerConfig = { enabled: config.enabled === true, definitions };
+    const validated: LanguageServerConfig = { definitions };
     const filePath = getLanguageServerConfigPath(dataDir, workspaceId);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     const tmpPath = `${filePath}.tmp`;
@@ -146,8 +143,7 @@ export function writeLanguageServerConfig(
 
 /**
  * The definitions a workspace may actually start: presets layered with
- * workspace overrides, filtered to enabled entries. A workspace with language
- * support turned off resolves to nothing, so no caller has to re-check the flag.
+ * workspace overrides. Built-ins are available even without a saved config.
  */
 export function resolveLanguageServerDefinitions(
     dataDir: string,
@@ -160,10 +156,7 @@ export function resolveLanguageServerDefinitions(
 export function resolveLanguageServerDefinitionsFromConfig(
     config: LanguageServerConfig,
 ): LanguageServerDefinition[] {
-    if (!config.enabled) {
-        return [];
-    }
-    return mergeWithBuiltIns(config.definitions).filter((definition) => definition.enabled === true);
+    return mergeWithBuiltIns(config.definitions);
 }
 
 function invalidRead(

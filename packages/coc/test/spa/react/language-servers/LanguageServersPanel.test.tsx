@@ -1,7 +1,7 @@
 /**
  * LanguageServersPanel — settings behavior for AC-01.
  *
- * Covers the enable toggle, the effective definition list, custom definition
+ * Covers automatic availability, the effective definition list, custom definition
  * editing, and the field-level rejection path that must preserve the last
  * valid configuration. The panel is exercised through the DOM, not by reading
  * its source.
@@ -41,7 +41,6 @@ function def(overrides: Partial<LanguageServerDefinition> = {}): LanguageServerD
         command: 'typescript-language-server',
         args: ['--stdio'],
         rootMarkers: ['tsconfig.json'],
-        enabled: false,
         builtIn: true,
         ...overrides,
     };
@@ -49,7 +48,6 @@ function def(overrides: Partial<LanguageServerDefinition> = {}): LanguageServerD
 
 function response(overrides: Record<string, unknown> = {}) {
     return {
-        enabled: false,
         definitions: [],
         effective: [def()],
         startable: [],
@@ -119,46 +117,14 @@ describe('LanguageServersPanel', () => {
         expect((await screen.findByTestId('language-servers-error')).textContent).toBe('host offline');
     });
 
-    it('turns language support on through the workspace-scoped update', async () => {
-        await renderPanel();
-        update.mockResolvedValue(response({ enabled: true }));
-        fireEvent.click(screen.getByTestId('language-support-toggle'));
-        await waitFor(() => expect(update).toHaveBeenCalledWith(WS, { enabled: true }));
-        await waitFor(() => {
-            expect((screen.getByTestId('language-support-toggle') as HTMLInputElement).checked).toBe(true);
-        });
-    });
-
-    it('renders detected language presets pre-checked from a seeded response', async () => {
-        await renderPanel(response({
-            enabled: true,
-            definitions: [def({ id: 'rust', displayName: 'Rust', enabled: true })],
-            effective: [
-                def(),
-                def({ id: 'rust', displayName: 'Rust', enabled: true }),
-                def({ id: 'python', displayName: 'Python' }),
-                def({ id: 'clangd', displayName: 'C / C++ (clangd)' }),
-                def({ id: 'coc-symbols', displayName: 'CoC Symbols', enabled: true }),
-            ],
-            status: 'valid',
-        }));
-
-        expect((screen.getByTestId('language-support-toggle') as HTMLInputElement).checked).toBe(true);
-        expect((screen.getByRole('checkbox', { name: 'Enable Rust' }) as HTMLInputElement).checked).toBe(true);
-        expect((screen.getByRole('checkbox', { name: 'Enable TypeScript' }) as HTMLInputElement).checked).toBe(false);
-        expect((screen.getByRole('checkbox', { name: 'Enable Python' }) as HTMLInputElement).checked).toBe(false);
-        expect((screen.getByRole('checkbox', { name: 'Enable C / C++ (clangd)' }) as HTMLInputElement).checked).toBe(false);
-        expect((screen.getByRole('checkbox', { name: 'Enable CoC Symbols' }) as HTMLInputElement).checked).toBe(true);
-    });
-
-    it('enables a preset by writing an override, not by deleting the preset', async () => {
-        await renderPanel();
-        update.mockResolvedValue(response({ definitions: [def({ enabled: true })] }));
-        fireEvent.click(screen.getByTestId('language-server-enabled'));
-        await waitFor(() => expect(update).toHaveBeenCalled());
-        const [, body] = update.mock.calls[0];
-        expect(body.definitions).toHaveLength(1);
-        expect(body.definitions[0]).toMatchObject({ id: 'typescript', enabled: true, builtIn: true });
+    it('offers configuration and diagnostics without enable controls, even for stale responses', async () => {
+        await renderPanel(response({ enabled: false, effective: [{ ...def(), enabled: false }, def({ id: 'python', displayName: 'Python' })] }));
+        expect(screen.queryByRole('checkbox')).toBeNull();
+        expect(screen.queryByTestId('language-support-toggle')).toBeNull();
+        expect(screen.queryByTestId('language-server-enabled')).toBeNull();
+        expect(screen.getAllByTestId('edit-server-btn')).toHaveLength(2);
+        expect(screen.getAllByTestId('language-server-runtime-status')).toHaveLength(2);
+        expect(update).not.toHaveBeenCalled();
     });
 
     it('renders an empty state when no definitions are effective', async () => {
@@ -173,8 +139,7 @@ describe('LanguageServersPanel', () => {
 
     it('aggregates mixed root states without claiming the whole server is healthy', async () => {
         await renderPanel(response({
-            enabled: true,
-            effective: [def({ id: 'rust', displayName: 'Rust', enabled: true })],
+            effective: [def({ id: 'rust', displayName: 'Rust' })],
             runtimes: [
                 {
                     sessionId: 'ready',
@@ -217,10 +182,8 @@ describe('LanguageServersPanel', () => {
             command: 'clangd',
             args: ['--background-index=false'],
             rootMarkers: ['compile_commands.json', '.clangd', 'compile_flags.txt'],
-            enabled: true,
         });
         await renderPanel(response({
-            enabled: true,
             effective: [clangd],
             runtimes: [{
                 sessionId: `missing-${_platform}`,
@@ -252,9 +215,8 @@ describe('LanguageServersPanel', () => {
             status: 'failed' as const,
             detail: 'Initialization rejected',
         };
-        await renderPanel(response({ enabled: true, effective: [def({ enabled: true })], runtimes: [failed] }));
+        await renderPanel(response({ effective: [def({ enabled: true })], runtimes: [failed] }));
         retry.mockResolvedValue(response({
-            enabled: true,
             effective: [def({ enabled: true })],
             runtimes: [{ ...failed, status: 'ready', detail: undefined }],
         }));
@@ -281,6 +243,8 @@ describe('LanguageServersPanel', () => {
         });
         fireEvent.click(screen.getByTestId('save-server-btn'));
         await waitFor(() => expect(update).toHaveBeenCalled());
+        expect(update.mock.calls[0][1]).not.toHaveProperty('enabled');
+        expect(update.mock.calls[0][1].definitions[0]).not.toHaveProperty('enabled');
         expect(update.mock.calls[0][1].definitions[0]).toMatchObject({
             id: 'fixture',
             displayName: 'Fixture Server',
@@ -289,13 +253,22 @@ describe('LanguageServersPanel', () => {
             filePatterns: ['**/*.fixture', '**/*.fx'],
             languageIds: ['fixture'],
             rootMarkers: ['fixture.json'],
-            enabled: true,
         });
         await waitFor(() => expect(screen.queryByTestId('server-editor')).toBeNull());
     });
 
-    it('edits a preset as an override that keeps its id and built-in marking', async () => {
-        await renderPanel();
+    it('edits a preset while preserving runtime, project, and process settings', async () => {
+        const retained = {
+            initializationOptions: { fallbackFlags: ['-std=c++20'] },
+            settings: { language: { mode: 'strict' } },
+            extensionLanguageIds: { '.ts': 'typescript' },
+            sessionScope: 'workspace' as const,
+            maxSessions: 3,
+            requestTimeoutMs: 120_000,
+            idleTimeoutMs: 60_000,
+            priority: 80,
+        };
+        await renderPanel(response({ effective: [def(retained)] }));
         update.mockResolvedValue(response());
         fireEvent.click(screen.getByTestId('edit-server-btn'));
         expect((screen.getByTestId('server-field-command') as HTMLInputElement).value).toBe('typescript-language-server');
@@ -303,15 +276,18 @@ describe('LanguageServersPanel', () => {
         typeDraft({ command: '/opt/ts/bin/server' });
         fireEvent.click(screen.getByTestId('save-server-btn'));
         await waitFor(() => expect(update).toHaveBeenCalled());
+        expect(update.mock.calls[0][1]).not.toHaveProperty('enabled');
+        expect(update.mock.calls[0][1].definitions[0]).not.toHaveProperty('enabled');
         expect(update.mock.calls[0][1].definitions[0]).toMatchObject({
             id: 'typescript',
             command: '/opt/ts/bin/server',
             builtIn: true,
+            ...retained,
         });
     });
 
     it('replaces an existing override rather than appending a duplicate id', async () => {
-        const stored = def({ id: 'fixture', displayName: 'Fixture', builtIn: false, enabled: true });
+        const stored = def({ id: 'fixture', displayName: 'Fixture', builtIn: false });
         await renderPanel(response({ definitions: [stored], effective: [stored] }));
         update.mockResolvedValue(response());
         fireEvent.click(screen.getByTestId('edit-server-btn'));
@@ -336,7 +312,7 @@ describe('LanguageServersPanel', () => {
         await renderPanel();
         parseLanguageServerRejection.mockReturnValue({
             errors: [{ field: 'definitions.0.command', message: 'Command must not contain shell metacharacters' }],
-            config: { enabled: false, definitions: [] },
+            config: { definitions: [] },
         });
         update.mockRejectedValue(new Error('Bad Request'));
         fireEvent.click(screen.getByTestId('add-server-btn'));
@@ -348,25 +324,12 @@ describe('LanguageServersPanel', () => {
         expect((screen.getByTestId('server-field-command') as HTMLInputElement).value).toBe('node && rm -rf /');
     });
 
-    it('restores the last valid configuration echoed with a rejection', async () => {
-        await renderPanel(response({ enabled: true }));
-        parseLanguageServerRejection.mockReturnValue({
-            errors: [{ field: 'definitions.0.id', message: 'id is required' }],
-            config: { enabled: false, definitions: [] },
-        });
-        update.mockRejectedValue(new Error('Bad Request'));
-        fireEvent.click(screen.getByTestId('add-server-btn'));
-        fireEvent.click(screen.getByTestId('save-server-btn'));
-        await waitFor(() => {
-            expect((screen.getByTestId('language-support-toggle') as HTMLInputElement).checked).toBe(false);
-        });
-    });
-
     it('reports a non-validation failure as a plain error', async () => {
         await renderPanel();
         parseLanguageServerRejection.mockReturnValue(null);
         update.mockRejectedValue(new Error('network down'));
-        fireEvent.click(screen.getByTestId('language-support-toggle'));
+        fireEvent.click(screen.getByTestId('add-server-btn'));
+        fireEvent.click(screen.getByTestId('save-server-btn'));
         expect((await screen.findByTestId('language-servers-error')).textContent).toBe('network down');
     });
 

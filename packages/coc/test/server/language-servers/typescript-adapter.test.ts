@@ -31,7 +31,7 @@ function fakeFs(files: Record<string, unknown>) {
 }
 
 function preset(overrides: Partial<LanguageServerDefinition> = {}): LanguageServerDefinition {
-    return { ...TYPESCRIPT_PRESET, enabled: true, ...overrides };
+    return { ...TYPESCRIPT_PRESET, ...overrides };
 }
 
 const workspaceRoot = abs('repos', 'app');
@@ -270,7 +270,6 @@ describe('prepareDefinitionForRoot', () => {
             args: [],
             rootMarkers: ['pyproject.toml'],
             builtIn: true,
-            enabled: true,
         };
         const prepared = prepareDefinitionForRoot(other, workspaceRoot, deps);
 
@@ -329,7 +328,6 @@ describe('prepareDefinitionForRoot priming', () => {
             args: [],
             rootMarkers: ['pyproject.toml'],
             builtIn: true,
-            enabled: true,
         };
 
         expect(prepareDefinitionForRoot(other, root).primeDocument).toBeUndefined();

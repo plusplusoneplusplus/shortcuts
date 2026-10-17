@@ -18,17 +18,15 @@ import {
     resolveLanguageServerDefinitionsFromConfig,
     writeLanguageServerConfig,
 } from './repository';
-import { ensureLanguageServerConfigSeeded } from './seed';
 import type { LanguageServerDefinition } from './types';
 
 /** Body of a read response: stored config plus what the workspace would start. */
 interface LanguageServerConfigResponse {
-    enabled: boolean;
     /** Definitions as stored for this workspace, without preset layering. */
     definitions: LanguageServerDefinition[];
     /** Presets layered with workspace overrides — what settings should render. */
     effective: LanguageServerDefinition[];
-    /** The subset that may actually start; empty while support is disabled. */
+    /** Definitions available for lazy activation. */
     startable: LanguageServerDefinition[];
     status: 'ok' | 'missing' | 'invalid';
     warnings: { kind: string; message: string }[];
@@ -45,27 +43,13 @@ interface LanguageServerConfigResponse {
     }>;
 }
 
-/**
- * Resolves a workspace's filesystem root, used to seed a never-configured
- * workspace from the languages its files call for. Returns undefined when the
- * workspace is unknown, which simply means no seeding.
- */
-export type WorkspaceRootResolver = (workspaceId: string) => Promise<string | undefined>;
-
 async function buildResponse(
     dataDir: string,
     workspaceId: string,
     manager = getActiveLanguageServerManager(),
-    resolveWorkspaceRoot?: WorkspaceRootResolver,
 ): Promise<LanguageServerConfigResponse> {
-    const workspaceRoot = await resolveRootQuietly(resolveWorkspaceRoot, workspaceId);
-    // Seeding only ever fires for a workspace with no config file, so a read
-    // stays a read for every workspace the user has already configured.
-    const { value, status, warnings } = workspaceRoot
-        ? ensureLanguageServerConfigSeeded(dataDir, workspaceId, workspaceRoot)
-        : readLanguageServerConfigWithStatus(dataDir, workspaceId);
+    const { value, status, warnings } = readLanguageServerConfigWithStatus(dataDir, workspaceId);
     return {
-        enabled: value.enabled,
         definitions: value.definitions,
         effective: mergeWithBuiltIns(value.definitions),
         startable: resolveLanguageServerDefinitionsFromConfig(value),
@@ -96,7 +80,6 @@ export function registerLanguageServerRoutes(
     routes: Route[],
     dataDir: string,
     getManager: () => LanguageServerManager | undefined = getActiveLanguageServerManager,
-    resolveWorkspaceRoot?: WorkspaceRootResolver,
 ): void {
     // ------------------------------------------------------------------
     // GET /api/workspaces/:id/language-servers — Read the workspace config
@@ -106,7 +89,7 @@ export function registerLanguageServerRoutes(
         pattern: /^\/api\/workspaces\/([^/]+)\/language-servers$/,
         handler: async (_req, res, match) => {
             const workspaceId = decodeURIComponent(match![1]);
-            sendJSON(res, 200, await buildResponse(dataDir, workspaceId, getManager(), resolveWorkspaceRoot));
+            sendJSON(res, 200, await buildResponse(dataDir, workspaceId, getManager()));
         },
     });
 
@@ -132,7 +115,7 @@ export function registerLanguageServerRoutes(
             if (!await manager.retry(workspaceId, sessionId)) {
                 return sendJSON(res, 404, { error: 'Language-server session was not found' });
             }
-            sendJSON(res, 200, await buildResponse(dataDir, workspaceId, manager, resolveWorkspaceRoot));
+            sendJSON(res, 200, await buildResponse(dataDir, workspaceId, manager));
         },
     });
 
@@ -193,17 +176,13 @@ async function save(
         error: 'Invalid language-server configuration',
         errors: [{ field, message }],
     });
-    if (patch.enabled !== undefined && typeof patch.enabled !== 'boolean') {
-        return fieldError('enabled', 'enabled must be a boolean');
-    }
     if (patch.definitions !== undefined && !Array.isArray(patch.definitions)) {
         return fieldError('definitions', 'definitions must be an array');
     }
 
     const stored = readLanguageServerConfigWithStatus(dataDir, workspaceId).value;
-    const base: LanguageServerConfig = mode === 'patch' ? stored : { enabled: false, definitions: [] };
+    const base: LanguageServerConfig = mode === 'patch' ? stored : { definitions: [] };
     const result = writeLanguageServerConfig(dataDir, workspaceId, {
-        enabled: patch.enabled !== undefined ? patch.enabled === true : base.enabled,
         definitions: (patch.definitions as LanguageServerDefinition[] | undefined) ?? base.definitions,
     });
     if (!result.ok) {
@@ -213,23 +192,8 @@ async function save(
             // the offending input directly.
             errors: result.errors.map((e) => ({ ...e, field: `definitions.${e.field}` })),
             // Echo what remains on disk so the UI can restore the last valid state.
-            config: { enabled: stored.enabled, definitions: stored.definitions },
+            config: { definitions: stored.definitions },
         });
     }
     sendJSON(res, 200, await buildResponse(dataDir, workspaceId, manager));
-}
-
-/** A workspace lookup failure must not fail a settings read — it just skips seeding. */
-async function resolveRootQuietly(
-    resolve: WorkspaceRootResolver | undefined,
-    workspaceId: string,
-): Promise<string | undefined> {
-    if (!resolve) {
-        return undefined;
-    }
-    try {
-        return await resolve(workspaceId);
-    } catch {
-        return undefined;
-    }
 }

@@ -30,9 +30,9 @@ function write(relative: string, contents = ''): void {
 }
 
 describe('detectable presets', () => {
-    it('considers only presets that ship disabled, leaving coc-symbols alone', () => {
+    it('considers every built-in preset', () => {
         const ids = detectableLanguageServerDefinitions().map((definition) => definition.id);
-        expect(ids).toEqual(['typescript', 'rust', 'python', 'clangd']);
+        expect(ids).toEqual(['typescript', 'rust', 'python', 'clangd', 'coc-symbols']);
     });
 });
 
@@ -70,7 +70,7 @@ describe('detection by file extension fallback', () => {
         ['src/main.cpp', 'clangd'],
     ])('%s selects %s', (file, expected) => {
         write(file, '');
-        expect(detectWorkspaceLanguages(root)).toEqual([expected]);
+        expect(detectWorkspaceLanguages(root)).toEqual(expected === 'clangd' ? ['clangd', 'coc-symbols'] : [expected]);
     });
 
     it('finds a file at the depth limit but not below it', () => {
@@ -97,7 +97,7 @@ describe('multi-language and empty repositories', () => {
         write('package.json', '{}');
         write('pyproject.toml', '');
         write('src/main.cpp', '');
-        expect(detectWorkspaceLanguages(root)).toEqual(['typescript', 'rust', 'python', 'clangd']);
+        expect(detectWorkspaceLanguages(root)).toEqual(['typescript', 'rust', 'python', 'clangd', 'coc-symbols']);
     });
 
     it('mixes a marker match with an extension match', () => {

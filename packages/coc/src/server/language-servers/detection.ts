@@ -3,7 +3,7 @@
  *
  * Detection is language-neutral: every signal comes from the preset's own
  * `rootMarkers` and `filePatterns`, so a new preset is detected without
- * touching this file. It is cheap enough to run inline on a config read —
+ * touching this file. It is bounded for workspace symbol acquisition —
  * root markers are a handful of `existsSync` calls, and the extension scan
  * only runs for presets no marker claimed.
  *
@@ -36,18 +36,15 @@ export const DETECTION_MAX_DEPTH = 3;
 export const DETECTION_MAX_ENTRIES = 5000;
 
 export interface DetectLanguagesOptions {
-    /** Presets to consider. Defaults to the built-ins that ship disabled. */
+    /** Presets to consider. Defaults to all built-ins. */
     definitions?: LanguageServerDefinition[];
     maxDepth?: number;
     maxEntries?: number;
 }
 
-/**
- * Presets that ship off and therefore have something to detect. `coc-symbols`
- * is already on by default, so detecting it would be a no-op.
- */
+/** Built-in definitions considered by workspace discovery. */
 export function detectableLanguageServerDefinitions(): LanguageServerDefinition[] {
-    return builtInLanguageServerDefinitions().filter((definition) => definition.enabled !== true);
+    return builtInLanguageServerDefinitions();
 }
 
 /**

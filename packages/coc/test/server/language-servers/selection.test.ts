@@ -132,22 +132,22 @@ describe('selectDefinitionForFile', () => {
             const low = definition({ id: 'low', filePatterns: ['**/*.ts'], priority: 1 });
             const narrow = definition({ id: 'narrow', filePatterns: ['**/*.spec.ts'], priority: 5 });
             const high = definition({ id: 'high', filePatterns: ['**/*.ts'], priority: 5 });
-            const disabled = definition({ id: 'disabled', filePatterns: ['**/*.ts'], priority: 10, enabled: false });
+            const disabled = definition({ id: 'disabled', filePatterns: ['**/*.ts'], priority: 10 });
 
             expect(selectDefinitionsForFile([low, narrow, disabled, high], 'src/a.spec.ts').map(({ id }) => id))
-                .toEqual(['narrow', 'high', 'low']);
+                .toEqual(['disabled', 'narrow', 'high', 'low']);
         });
     });
 
     describe('selectDefinitionsForWorkspace', () => {
-        it('takes every enabled definition, in priority then id order', () => {
+        it('takes every definition, in priority then id order', () => {
             const low = definition({ id: 'low', filePatterns: ['**/*.ts'], priority: 1 });
             const high = definition({ id: 'high', filePatterns: ['**/*.rs'], priority: 5 });
             const alsoHigh = definition({ id: 'a-high', filePatterns: ['**/*.py'], priority: 5 });
-            const disabled = definition({ id: 'off', filePatterns: ['**/*.ts'], priority: 10, enabled: false });
+            const disabled = definition({ id: 'off', filePatterns: ['**/*.ts'], priority: 10 });
 
             expect(selectDefinitionsForWorkspace([low, high, disabled, alsoHigh]).map(({ id }) => id))
-                .toEqual(['a-high', 'high', 'low']);
+                .toEqual(['off', 'a-high', 'high', 'low']);
         });
 
         it('ignores file patterns entirely — a workspace query names no file', () => {
@@ -162,9 +162,9 @@ describe('selectDefinitionForFile', () => {
         expect(selectDefinitionForFile([ts], 'README.md')).toBeUndefined();
     });
 
-    it('skips disabled definitions', () => {
-        const disabled = definition({ id: 'ts', filePatterns: ['**/*.ts'], enabled: false });
-        const enabled = definition({ id: 'other', filePatterns: ['**/*.ts'], enabled: true });
+    it('selects by preference without enable flags', () => {
+        const disabled = definition({ id: 'ts', filePatterns: ['**/*.ts'] });
+        const enabled = definition({ id: 'other', filePatterns: ['**/*.ts'] });
         expect(selectDefinitionForFile([disabled, enabled], 'src/main.ts')?.id).toBe('other');
     });
 
@@ -208,8 +208,8 @@ describe('resolveLanguageId', () => {
 });
 
 describe('definitionMatchesFile', () => {
-    it('ignores the enabled flag', () => {
-        const def = definition({ filePatterns: ['**/*.ts'], enabled: false });
+    it('matches the file pattern', () => {
+        const def = definition({ filePatterns: ['**/*.ts'] });
         expect(definitionMatchesFile(def, 'src/main.ts')).toBe(true);
     });
 });
@@ -252,15 +252,15 @@ describe('mergeWithBuiltIns', () => {
         ]);
     });
 
-    it('ships every preset needing an installed toolchain disabled', () => {
-        expect(TYPESCRIPT_PRESET.enabled).toBe(false);
-        expect(RUST_PRESET.enabled).toBe(false);
-        expect(PYTHON_PRESET.enabled).toBe(false);
-        expect(CLANGD_PRESET.enabled).toBe(false);
+    it('ships toolchain presets without enable fields', () => {
+        expect(TYPESCRIPT_PRESET).not.toHaveProperty('enabled');
+        expect(RUST_PRESET).not.toHaveProperty('enabled');
+        expect(PYTHON_PRESET).not.toHaveProperty('enabled');
+        expect(CLANGD_PRESET).not.toHaveProperty('enabled');
     });
 
-    it('ships the bundled symbol index enabled, since nothing has to be installed', () => {
-        expect(COC_SYMBOLS_PRESET.enabled).toBe(true);
+    it('ships the bundled symbol index without an enable field', () => {
+        expect(COC_SYMBOLS_PRESET).not.toHaveProperty('enabled');
     });
 
     it('defines Rust defaults for fast diagnostics and macro expansion', () => {
@@ -281,9 +281,9 @@ describe('mergeWithBuiltIns', () => {
     });
 
     it('lets a workspace definition override the preset without losing built-in status', () => {
-        const merged = mergeWithBuiltIns([definition({ id: 'typescript', enabled: true, command: 'my-tsserver' })]);
+        const merged = mergeWithBuiltIns([definition({ id: 'typescript', command: 'my-tsserver' })]);
         const ts = merged.find(d => d.id === 'typescript');
-        expect(ts?.enabled).toBe(true);
+        expect(ts).not.toHaveProperty('enabled');
         expect(ts?.command).toBe('my-tsserver');
         expect(ts?.builtIn).toBe(true);
     });
@@ -301,13 +301,13 @@ describe('mergeWithBuiltIns', () => {
         expect(merged.find(d => d.id === 'custom')?.builtIn).toBeUndefined();
     });
 
-    it('routes a TypeScript file to the preset once enabled', () => {
-        const merged = mergeWithBuiltIns([{ ...TYPESCRIPT_PRESET, enabled: true }]);
+    it('routes a TypeScript file to the default preset', () => {
+        const merged = mergeWithBuiltIns([{ ...TYPESCRIPT_PRESET }]);
         expect(selectDefinitionForFile(merged, 'src/App.tsx')?.id).toBe('typescript');
     });
 
-    it('routes only Rust source files to the Rust preset once enabled', () => {
-        const merged = mergeWithBuiltIns([{ ...RUST_PRESET, enabled: true }]);
+    it('routes only Rust source files to the default Rust preset', () => {
+        const merged = mergeWithBuiltIns([{ ...RUST_PRESET }]);
         expect(selectDefinitionForFile(merged, 'crates/app/src/main.rs')?.id).toBe('rust');
         expect(selectDefinitionForFile(merged, 'Cargo.toml')).toBeUndefined();
         expect(resolveLanguageId(RUST_PRESET, 'src/lib.rs')).toBe('rust');
@@ -332,7 +332,7 @@ describe('mergeWithBuiltIns', () => {
             },
             builtIn: true,
         });
-        const merged = mergeWithBuiltIns([{ ...PYTHON_PRESET, enabled: true }]);
+        const merged = mergeWithBuiltIns([{ ...PYTHON_PRESET }]);
         for (const file of ['src/main.py', 'src/types.pyi', 'src/window.pyw']) {
             expect(selectDefinitionForFile(merged, file)?.id).toBe('python');
             expect(resolveLanguageId(PYTHON_PRESET, file)).toBe('python');
@@ -353,14 +353,13 @@ describe('mergeWithBuiltIns', () => {
             maxSessions: 4,
             requestTimeoutMs: 120_000,
             idleTimeoutMs: 30 * 60_000,
-            enabled: false,
             builtIn: true,
         });
         expect(CLANGD_PRESET.rootMarkers).not.toContain('.git');
         expect(CLANGD_PRESET.rootMarkers).not.toContain('CMakeLists.txt');
         expect(CLANGD_PRESET.args).not.toContain('--offset-encoding=utf-8');
 
-        const merged = mergeWithBuiltIns([{ ...CLANGD_PRESET, enabled: true }]);
+        const merged = mergeWithBuiltIns([{ ...CLANGD_PRESET }]);
         for (const [file, languageId] of [
             ['src/main.c', 'c'],
             ['src/main.cpp', 'cpp'],
@@ -384,7 +383,6 @@ describe('mergeWithBuiltIns', () => {
             priority: 50,
             sessionScope: 'workspace',
             maxSessions: 2,
-            enabled: true,
             builtIn: true,
         });
         expect(COC_SYMBOLS_PRESET.filePatterns).toEqual(CLANGD_PRESET.filePatterns);
@@ -392,12 +390,12 @@ describe('mergeWithBuiltIns', () => {
         expect(COC_SYMBOLS_PRESET.priority ?? 0).toBeLessThan(CLANGD_PRESET.priority ?? 0);
     });
 
-    it('lets clangd win selection where both are enabled, and answers alone otherwise', () => {
-        const both = mergeWithBuiltIns([{ ...CLANGD_PRESET, enabled: true }]);
+    it('prefers clangd over the symbol index by default', () => {
+        const both = mergeWithBuiltIns([{ ...CLANGD_PRESET }]);
         expect(selectDefinitionForFile(both, 'src/main.cpp')?.id).toBe('clangd');
 
         const indexOnly = mergeWithBuiltIns([]);
-        expect(selectDefinitionForFile(indexOnly, 'src/main.cpp')?.id).toBe('coc-symbols');
-        expect(selectDefinitionForFile(indexOnly, 'src/main.ts')).toBeUndefined();
+        expect(selectDefinitionForFile(indexOnly, 'src/main.cpp')?.id).toBe('clangd');
+        expect(selectDefinitionForFile(indexOnly, 'src/main.ts')?.id).toBe('typescript');
     });
 });
