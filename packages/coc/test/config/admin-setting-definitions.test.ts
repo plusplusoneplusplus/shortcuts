@@ -841,7 +841,6 @@ describe('feature toggle settings-tab placement', () => {
         'features.explorerDelete': 'appearance',
         'features.panelTabReordering': 'appearance',
         'features.htmlPageTab': 'browser',
-        'features.panelReopenClosedTab': 'browser',
         'scratchpad.layout': 'appearance',
         // Editors (functional editor behavior only)
         'features.arxivPaperIngest': 'editors',
@@ -975,13 +974,12 @@ describe('feature toggle settings-tab placement', () => {
             ['browserControl.framesEnabled', 'browserAutomation', false, undefined, 'live', 'browserFrameControlEnabled', 'experimental', 'toggle-browser-frame-control-enabled'],
             ['browserControl.richPasteEnabled', 'browserAutomation', false, undefined, 'live', 'browserRichPasteEnabled', 'experimental', 'toggle-browser-rich-paste-enabled'],
             ['features.htmlPageTab', 'browserPages', true, undefined, 'live', 'htmlPageTabEnabled', undefined, 'toggle-html-page-tab-enabled'],
-            ['features.panelReopenClosedTab', 'browserPages', false, undefined, 'live', 'panelReopenClosedTabEnabled', 'experimental', 'toggle-panel-reopen-closed-tab-enabled'],
             ['features.sensitiveInput', 'browserAutomation', false, undefined, 'live', undefined, 'experimental', 'toggle-sensitive-input-enabled'],
         ]);
         expect(getFeatureCardSettings('browserAutomation').map(d => d.key)).toEqual(['browserControl.enabled', 'browserControl.framesEnabled', 'browserControl.richPasteEnabled', 'features.sensitiveInput']);
         expect(getAdminSettingDefinition('browserControl.framesEnabled')?.ui?.dependsOn).toBe('browserControl.enabled');
-        expect(getFeatureCardSettings('browserPages').map(d => d.key)).toEqual(['features.htmlPageTab', 'features.panelReopenClosedTab']);
-        expect(buildRuntimeFeatureFlags({}).panelReopenClosedTabEnabled).toBe(false);
+        expect(getFeatureCardSettings('browserPages').map(d => d.key)).toEqual(['features.htmlPageTab']);
+        expect(buildRuntimeFeatureFlags({ features: { panelReopenClosedTab: false } } as never)).not.toHaveProperty('panelReopenClosedTabEnabled');
         expect(FEATURE_CARD_GROUPS.filter(g => g.id.startsWith('browser')).map(g => g.heading)).toEqual(['AI Browser Control', 'Pages & Previews']);
         expect(uiDefs.filter(d => getFeatureSettingTab(d) !== 'browser' && /browser/i.test(`${d.key} ${d.ui!.label}`)).map(d => d.key)).toEqual([]);
     });

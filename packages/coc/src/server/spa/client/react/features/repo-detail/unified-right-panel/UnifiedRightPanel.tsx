@@ -247,12 +247,10 @@ export function UnifiedRightPanel({
     const { isOpen, mode, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
     const [reorderEnabled, setReorderEnabled] = useState(() => isPanelTabReorderingEnabled());
     const [splitEnabled, setSplitEnabled] = useState(() => isFeatureEnabled('panelSourceSplitEnabled'));
-    const [reopenTabEnabled, setReopenTabEnabled] = useState(() => isFeatureEnabled('panelReopenClosedTabEnabled'));
     useEffect(() => {
         const update = () => {
             setReorderEnabled(isPanelTabReorderingEnabled());
             setSplitEnabled(isFeatureEnabled('panelSourceSplitEnabled'));
-            setReopenTabEnabled(isFeatureEnabled('panelReopenClosedTabEnabled'));
         };
         window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
         return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
@@ -950,11 +948,11 @@ export function UnifiedRightPanel({
     // Only this deliberate path feeds Ctrl/Cmd+Shift+T; cleanup closes call
     // `closeTab` directly and never become restorable.
     const closedTabScopeKey = closedBrowserTabScopeKey(workspaceId, chatId);
-    const reopenTabRef = useRef({ enabled: reopenTabEnabled, scopeKey: closedTabScopeKey });
-    reopenTabRef.current = { enabled: reopenTabEnabled, scopeKey: closedTabScopeKey };
+    const closedTabScopeKeyRef = useRef(closedTabScopeKey);
+    closedTabScopeKeyRef.current = closedTabScopeKey;
     const closeTabByUser = useCallback((id: string) => {
         const tab = tabsRef.current.find(candidate => candidate.id === id);
-        if (tab && reopenTabRef.current.enabled) recordClosedBrowserTab(reopenTabRef.current.scopeKey, tab);
+        if (tab) recordClosedBrowserTab(closedTabScopeKeyRef.current, tab);
         closeTab(id);
         if (bulkCloseQueue.current.length === 0) collapseCheckPending.current = true;
     }, [closeTab]);
@@ -1825,17 +1823,18 @@ export function UnifiedRightPanel({
     // through the ordinary open path (fresh view id), then focuses its strip tab.
     // An entry whose owner is no longer a target here is dropped, never retargeted.
     const [reopenFocusId, setReopenFocusId] = useState<string | null>(null);
-    const reopenClosedBrowserTab = useCallback(() => {
+    const reopenClosedBrowserTab = useCallback((): boolean => {
         const entry = popClosedBrowserTab(closedTabScopeKey);
-        if (entry === null) return;
+        if (entry === null) return false;
         const ownerAvailable = entry.ownerWorkspaceId === workspaceId
             || targetOptions.some(option => option.workspaceId === entry.ownerWorkspaceId && !option.disabled);
         if (!ownerAvailable || (entry.ownerRoutingRef ?? null)
-            !== (routingRefForPanelOwner(routingRef, entry.ownerWorkspaceId) ?? null)) { return; }
+            !== (routingRefForPanelOwner(routingRef, entry.ownerWorkspaceId) ?? null)) { return false; }
         setMenuOpen(false);
         const input = reopenBrowserTabInput(entry);
         open(input);
         setReopenFocusId(unifiedTabId(input));
+        return true;
     }, [closedTabScopeKey, workspaceId, targetOptions, routingRef, open]);
     useEffect(() => {
         if (reopenFocusId === null) return;
@@ -1844,7 +1843,6 @@ export function UnifiedRightPanel({
             .find(tab => tab.getAttribute('data-testid') === `unified-panel-tab-${reopenFocusId}`)?.focus();
     }, [reopenFocusId, tabs]);
     useEffect(() => {
-        if (!reopenTabEnabled) return;
         const onKeyDown = (event: KeyboardEvent) => {
             if (event.defaultPrevented || event.isComposing || reopenClosedTabShortcut(event) === null) return;
             const root = panelRootRef.current;
@@ -1858,18 +1856,19 @@ export function UnifiedRightPanel({
         };
         document.addEventListener('keydown', onKeyDown, true);
         return () => document.removeEventListener('keydown', onKeyDown, true);
-    }, [reopenTabEnabled, isOpen, reopenClosedBrowserTab]);
+    }, [isOpen, reopenClosedBrowserTab]);
     // A focused native page cannot bubble keys here; only the event naming this
-    // panel's active browser view is honoured.
+    // panel's active browser view is honoured. A restore makes that view
+    // inactive, so `restored` drops requests that land before the re-render.
     useEffect(() => {
-        if (!reopenTabEnabled) return undefined;
+        let restored = false;
         return desktopBrowserBridge()?.onReopenClosedRequested?.(({ viewId }) => {
             const root = panelRootRef.current;
-            if (!isOpen || !root || root.offsetParent === null
+            if (restored || !isOpen || !root || root.offsetParent === null
                 || active?.kind !== 'browser' || active.resourceId !== viewId) { return; }
-            reopenClosedBrowserTab();
+            restored = reopenClosedBrowserTab();
         });
-    }, [reopenTabEnabled, isOpen, active, reopenClosedBrowserTab]);
+    }, [isOpen, active, reopenClosedBrowserTab]);
 
     // A concrete resource picked in the menu (a searched file, a chat canvas).
     // The menu decides the descriptor — owning clone, chat scope, normalized

@@ -209,6 +209,18 @@ timeout: 300
             expect(Object.keys(resolved.sources)).not.toContain('features.unifiedRightPanel');
         });
 
+        it('loads a config still carrying the removed features.panelReopenClosedTab key', () => {
+            // Right-panel Ctrl/Cmd+Shift+T reopen is always on; a saved `false`
+            // must load without becoming a resolved setting that could gate it.
+            const configPath = path.join(tmpDir, 'stale-panel-reopen-closed-tab.yaml');
+            fs.writeFileSync(configPath, 'features:\n  panelReopenClosedTab: false\n');
+
+            expect(loadConfigFile(configPath)).toBeDefined();
+            const resolved = getResolvedConfigWithSource(configPath);
+            expect(resolved.resolved.features).not.toHaveProperty('panelReopenClosedTab');
+            expect(Object.keys(resolved.sources)).not.toContain('features.panelReopenClosedTab');
+        });
+
         it('should throw for invalid YAML', () => {
             const configPath = path.join(tmpDir, 'invalid.yaml');
             fs.writeFileSync(configPath, '{{invalid yaml content]]');
@@ -1221,7 +1233,6 @@ timeout: 300
                 '  explorerDelete: true',
                 '  markdownPanelPreview: true',
                 '  panelSourceSplit: true',
-                '  panelReopenClosedTab: true',
                 '  panelTabReordering: true',
                 '  htmlPageTab: false',
                 '  chatStyleSelector: true',
@@ -1553,7 +1564,6 @@ timeout: 300
                     "htmlPageTab": true,
                     "markdownPanelPreview": false,
                     "nativeCliSessions": false,
-                    "panelReopenClosedTab": false,
                     "panelSourceSplit": false,
                     "panelTabReordering": true,
                     "pinnedScopes": true,
@@ -1792,7 +1802,6 @@ timeout: 300
                   "features.htmlPageTab": "default",
                   "features.markdownPanelPreview": "default",
                   "features.nativeCliSessions": "default",
-                  "features.panelReopenClosedTab": "default",
                   "features.panelSourceSplit": "default",
                   "features.panelTabReordering": "default",
                   "features.pinnedScopes": "default",

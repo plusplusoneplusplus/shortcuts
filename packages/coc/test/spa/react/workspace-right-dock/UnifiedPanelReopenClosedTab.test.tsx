@@ -39,19 +39,29 @@ vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', async imp
     lookupCloneBaseUrl: () => null,
 }));
 
-const native = vi.hoisted(() => ({
-    enabled: false,
-    reopen: (_event: { viewId: string }) => {},
-    close: vi.fn(),
-}));
+const native = vi.hoisted(() => {
+    // Like preload's `subscribe`, every live subscriber receives each IPC event.
+    const reopenListeners = new Set<(event: { viewId: string }) => void>();
+    return {
+        enabled: false,
+        reopenListeners,
+        reopen: (event: { viewId: string }) => { for (const listener of [...reopenListeners]) listener(event); },
+        close: vi.fn(),
+    };
+});
 vi.mock('../../../../src/server/spa/client/react/shared/file-path/browser-bridge', async importOriginal => ({
     ...await importOriginal<typeof import('../../../../src/server/spa/client/react/shared/file-path/browser-bridge')>(),
     desktopBrowserBridge: () => native.enabled ? {
         onNewTab: () => () => {},
+        onState: () => () => {},
+        onDownload: () => () => {},
+        open: async () => ({ ok: true }),
+        hide: async () => ({ ok: true }),
+        navigate: async () => ({ ok: true }),
         close: native.close,
         onReopenClosedRequested: (callback: (event: { viewId: string }) => void) => {
-            native.reopen = callback;
-            return () => { native.reopen = () => {}; };
+            native.reopenListeners.add(callback);
+            return () => { native.reopenListeners.delete(callback); };
         },
     } : undefined,
 }));
@@ -131,12 +141,12 @@ beforeEach(() => {
     clearUnifiedTreeState();
     clearClosedBrowserTabs();
     _resetRuntimeConfig();
-    applyRuntimeConfigPatch({ panelReopenClosedTabEnabled: true });
     stubOffsetParent();
 });
 afterEach(() => {
     cleanup();
     native.enabled = false;
+    native.reopenListeners.clear();
     native.close.mockClear();
     clearUnifiedPanelState();
     clearUnifiedTreeState();
@@ -145,13 +155,14 @@ afterEach(() => {
 });
 
 describe('unified panel reopen-closed-tab shortcut', () => {
-    it('does nothing and leaves the key alone while the flag is off', () => {
-        _resetRuntimeConfig();
+    it('stays enabled when a stale runtime config still reports the removed flag as off', () => {
+        applyRuntimeConfigPatch({ panelReopenClosedTabEnabled: false } as never);
         render(<UnifiedRightPanel workspaceId={WS} dock={dockStub()} />);
         openBrowser('a.test');
         closeActive();
-        expect(pressReopen().defaultPrevented).toBe(false);
-        expect(browserTabs()).toEqual([]);
+        act(() => { screen.getByTestId('unified-panel-open-menu').focus(); });
+        expect(pressReopen().defaultPrevented).toBe(true);
+        expect(browserTabs()).toEqual([expect.objectContaining({ browserUrl: 'https://a.test/' })]);
     });
 
     it.each([{ ctrlKey: true }, { ctrlKey: false, metaKey: true }])(
@@ -357,5 +368,37 @@ describe('unified panel reopen-closed-tab shortcut', () => {
         // The restored tab is now active; the old view id is not honoured again.
         act(() => { native.reopen({ viewId: first.resourceId }); });
         expect(browserTabs()).toHaveLength(2);
+    });
+    it('restores at most one tab per keypress across native and SPA paths, without draining on repeats', () => {
+        native.enabled = true;
+        render(<UnifiedRightPanel workspaceId={WS} dock={dockStub()} />);
+        const keep = openBrowser('keep.test');
+        for (const url of ['a.test', 'b.test', 'c.test', 'd.test']) {
+            openBrowser(url);
+            closeActive();
+        }
+        expect(browserTabs()).toEqual([keep]);
+        const urls = () => browserTabs().map(tab => tab.browserUrl);
+
+        // A focused native page: one forwarded request restores exactly one tab,
+        // even when a duplicate lands before the re-render, and a later request
+        // naming the now-inactive view restores nothing.
+        act(() => { native.reopen({ viewId: keep.resourceId }); native.reopen({ viewId: keep.resourceId }); });
+        expect(urls()).toEqual(['https://keep.test/', 'https://d.test/']);
+        act(() => { native.reopen({ viewId: keep.resourceId }); });
+        expect(urls()).toEqual(['https://keep.test/', 'https://d.test/']);
+
+        // SPA focus: held-key repeats are swallowed and leave history intact.
+        for (let i = 0; i < 5; i++) expect(pressReopen({ repeat: true }).defaultPrevented).toBe(true);
+        expect(urls()).toHaveLength(2);
+        expect(pressReopen().defaultPrevented).toBe(true);
+        expect(urls()).toEqual(['https://keep.test/', 'https://d.test/', 'https://c.test/']);
+
+        // Back on the restored native page: one request, one restore.
+        act(() => { native.reopen({ viewId: browserTabs().at(-1)!.resourceId }); });
+        expect(urls()).toEqual(['https://keep.test/', 'https://d.test/', 'https://c.test/', 'https://b.test/']);
+        expect(pressReopen().defaultPrevented).toBe(true);
+        expect(urls()).toHaveLength(5);
+        expect(urls().at(-1)).toBe('https://a.test/');
     });
 });

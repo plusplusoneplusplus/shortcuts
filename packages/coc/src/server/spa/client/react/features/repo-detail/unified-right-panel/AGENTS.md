@@ -594,8 +594,8 @@ open `UnifiedPanelOpenMenu`.
 
 ## Reopen-closed-tab shortcut
 
-Behind the live, default-off `panelReopenClosedTabEnabled` flag, Ctrl/Cmd+Shift+T
-restores web tabs newest-first. `unifiedClosedBrowserTabs.ts` keeps a module-memory
+Ctrl/Cmd+Shift+T always restores web tabs newest-first; there is no feature flag
+or setting, and a stale saved `features.panelReopenClosedTab` is ignored. `unifiedClosedBrowserTabs.ts` keeps a module-memory
 stack of 20 per `closedBrowserTabScopeKey(workspaceId, chatId)` (owner-qualified
 panel storage key plus chat): it survives remounts and scope switches, never
 reaches storage, and resets on reload. `closeTabByUser` is the only recorder, so
@@ -609,7 +609,9 @@ focuses the restored strip tab; a blank restore keeps its address autofocus.
 Any focus inside the open, visible panel owns the chord, including editors,
 terminals and an empty stack; repeats restore nothing. Native pages forward
 `onReopenClosedRequested` with the source view id; only the matching active,
-visible browser tab restores.
+visible browser tab restores, and a subscription ignores further requests once it
+has restored (the source view is no longer active), so a duplicate delivered
+before the re-render cannot drain a second entry.
 
 ## Entry points
 

@@ -129,8 +129,6 @@ interface DashboardConfig {
     markdownPanelPreviewEnabled?: boolean;
     /** Whether unified right-panel source files can be split into two panes. Default false. */
     panelSourceSplitEnabled?: boolean;
-    /** Whether Ctrl/Cmd+Shift+T reopens closed right-panel web tabs. Default false. */
-    panelReopenClosedTabEnabled?: boolean;
     /** Whether unified right-panel resource tabs can be reordered. Default true. */
     panelTabReorderingEnabled?: boolean;
     /** Whether the owning server allows confirmed permanent Explorer deletion. Default true. */

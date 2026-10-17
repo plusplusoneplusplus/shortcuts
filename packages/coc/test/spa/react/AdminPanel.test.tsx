@@ -1654,7 +1654,6 @@ describe('AdminPanel', () => {
                 'browserControl.framesEnabled': false,
                 'browserControl.richPasteEnabled': false,
                 'features.htmlPageTab': false,
-                'features.panelReopenClosedTab': false,
                 'features.sensitiveInput': false,
             });
             await waitFor(() => expect((screen.getByTestId('settings-tab-features-browser-save') as HTMLButtonElement).disabled).toBe(true));
