@@ -1,3 +1,4 @@
+import '../language-servers/fileIdentityMock';
 /**
  * Preview tabs in the unified panel (AC-03) — VS Code's italic, replaceable
  * slot, driven by the file tree's single click.
@@ -146,14 +147,14 @@ afterEach(() => {
 });
 
 describe('unified panel preview tabs (AC-03)', () => {
-    it('opens a single click as one italic tab, and reuses it for the next click', () => {
+    it('opens a single click as one italic tab, and reuses it for the next click', async () => {
         renderPanel();
 
-        fireEvent.click(screen.getByTestId('tree-click-a'));
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-a')); });
         expect(fileTabs()).toEqual([expect.objectContaining({ label: 'a.ts', preview: true })]);
         const slotId = fileTabs()[0].id;
 
-        fireEvent.click(screen.getByTestId('tree-click-b'));
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-b')); });
         const tabs = fileTabs();
         expect(tabs.length).toBe(1);
         expect(tabs[0].label).toBe('b.ts');
@@ -162,9 +163,9 @@ describe('unified panel preview tabs (AC-03)', () => {
         expect(tabs[0].id).not.toBe(slotId);
     });
 
-    it('says "preview" in words, not only in italics', () => {
+    it('says "preview" in words, not only in italics', async () => {
         renderPanel();
-        fireEvent.click(screen.getByTestId('tree-click-a'));
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-a')); });
         const tab = document.querySelector('[role="tab"][data-kind="file"]')!;
 
         expect(tab.getAttribute('title')).toContain('preview — double-click to keep open');
@@ -172,23 +173,23 @@ describe('unified panel preview tabs (AC-03)', () => {
         expect(tab.querySelector('[data-testid^="unified-panel-tab-label-"]')!.className).toContain('italic');
     });
 
-    it('keeps the preview slot last and leaves permanent tabs alone', () => {
+    it('keeps the preview slot last and leaves permanent tabs alone', async () => {
         renderPanel();
 
-        fireEvent.click(screen.getByTestId('tree-click-a'));
-        fireEvent.click(screen.getByTestId('tree-open-b'));
-        fireEvent.click(screen.getByTestId('tree-open-c'));
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-a')); });
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-open-b')); });
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-open-c')); });
 
         expect(labels()).toEqual(['b.ts', 'c.ts', 'a.ts']);
         expect(fileTabs().filter(tab => tab.preview).map(tab => tab.label)).toEqual(['a.ts']);
     });
 
-    it('focuses an existing permanent tab instead of previewing the same file twice', () => {
+    it('focuses an existing permanent tab instead of previewing the same file twice', async () => {
         renderPanel();
 
-        fireEvent.click(screen.getByTestId('tree-open-a'));
-        fireEvent.click(screen.getByTestId('tree-click-b'));
-        fireEvent.click(screen.getByTestId('tree-click-a'));
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-open-a')); });
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-b')); });
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-a')); });
 
         // a.ts is selected and still permanent; the preview slot still holds b.
         expect(labels()).toEqual(['a.ts', 'b.ts']);
@@ -197,9 +198,9 @@ describe('unified panel preview tabs (AC-03)', () => {
         expect(fileTabs()[1].preview).toBe(true);
     });
 
-    it('does not touch the preview slot when a source link opens a file', () => {
+    it('does not touch the preview slot when a source link opens a file', async () => {
         renderPanel();
-        fireEvent.click(screen.getByTestId('tree-click-a'));
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-a')); });
 
         act(() => {
             openUnifiedPanelTab(WS, {
@@ -217,15 +218,15 @@ describe('unified panel preview tabs (AC-03)', () => {
         expect(fileTabs().filter(tab => tab.preview).map(tab => tab.label)).toEqual(['a.ts']);
     });
 
-    it('files the preview under the chat when one is selected, and the workspace otherwise', () => {
+    it('files the preview under the chat when one is selected, and the workspace otherwise', async () => {
         const withChat = renderPanel(CHAT);
-        fireEvent.click(screen.getByTestId('tree-click-a'));
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-a')); });
         expect(fileTabs()[0].id).toContain(CHAT);
         withChat.unmount();
 
         clearUnifiedPanelState();
         renderPanel(null);
-        fireEvent.click(screen.getByTestId('tree-click-a'));
+        await act(async () => { fireEvent.click(screen.getByTestId('tree-click-a')); });
         expect(fileTabs()[0].id).toContain('@workspace');
     });
 

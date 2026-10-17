@@ -144,7 +144,7 @@ describe('right panel — language routing by tab owner (AC-04)', () => {
         view.rerender(
             <UnifiedTabView
                 tab={fileTab(MEMBER_B)}
-                scopeWorkspaceId={MEMBER_A}
+                scopeWorkspaceId="group-1"
                 onClose={() => undefined}
             />,
         );

@@ -1,6 +1,6 @@
 import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type FilePreviewHost } from './browser-host-contract';
 import {
-    BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_DOWNLOAD_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL,
+    BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_DOWNLOAD_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL,
     BROWSER_PAGE_ZOOM, isBrowserPageZoom, isBrowserEngine, isValidBrowserSessionKey, isValidBrowserViewId, toBrowserSource, validateBrowserUrl,
     type BrowserEngine, type BrowserFailureReason, type BrowserNavAction, type BrowserCookieImportResult, type BrowserOpenResult, type BrowserOperationResult, type BrowserPreferences,
     type BrowserSourceKind, type BrowserViewState,
@@ -478,6 +478,9 @@ export class BrowserHostManager {
             },
             openMenuRequested: () => {
                 if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, { viewId: entry.viewId }); }
+            },
+            reopenClosedRequested: () => {
+                if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL, { viewId: entry.viewId }); }
             },
             closeRequested: () => {
                 if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, { viewId: entry.viewId }); }

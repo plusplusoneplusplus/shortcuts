@@ -1090,3 +1090,20 @@ describe('unknown repo handling across repo routes', () => {
         });
     }
 });
+
+
+describe('GET file-identity', () => {
+    it('resolves only the exact registered owner, preserving encoded spelling', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'Mixed #%.ts'), 'text');
+        const response = await fetch(`${baseUrl}/api/repos/${REPO_ID}/file-identity?path=${encodeURIComponent('Mixed #%.ts')}`);
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ path: 'Mixed #%.ts' });
+        const foreign = await fetch(`${baseUrl}/api/repos/unknown/file-identity?path=Mixed.ts`);
+        expect(foreign.status).toBe(404);
+        for (const file of ['../secret', 'missing', 'C:\\secret', '//server/share/file']) {
+            const failed = await fetch(`${baseUrl}/api/repos/${REPO_ID}/file-identity?path=${encodeURIComponent(file)}`);
+            expect(failed.status).toBe(400);
+        }
+    });
+});

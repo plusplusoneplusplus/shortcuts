@@ -121,7 +121,8 @@ vi.mock('../../../../../src/server/spa/client/react/repos/cloneRegistry', async 
     }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
+vi.mock('../../../../../src/server/spa/client/react/ui', async importOriginal => ({
+    ...(await importOriginal<object>()),
     cn: (...args: any[]) => args.filter(Boolean).join(' '),
     Button: (props: any) => <button {...props} />,
     // Used by RepoDetail's own sub-tab chrome.
@@ -163,7 +164,6 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', async (import
     isWorkflowsEnabled: () => false,
     isPullRequestsEnabled: () => false,
     isNativeCliSessionsEnabled: () => false,
-    isRailGitSummaryEnabled: () => false,
     isRailStatusActionsEnabled: () => false,
 
     isSchedulesInScheduledSlideEnabled: () => false,
@@ -262,6 +262,7 @@ vi.mock('../../../../../src/server/spa/client/react/tasks/TasksPanel', () => ({
 vi.mock('../../../../../src/server/spa/client/react/repos/repoGrouping', () => ({}));
 
 import { RepoDetail } from '../../../../../src/server/spa/client/react/features/repo-detail/RepoDetail';
+import { splitWorkspaceLeftCollapsedStorageKey } from '../../../../../src/server/spa/client/react/features/repo-detail/WorkspaceLeftCollapse';
 import { openUnifiedPanelTab } from '../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 import { activeTab, findTab } from '../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { clearUnifiedPanelState, readUnifiedPanelState } from '../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
@@ -289,6 +290,47 @@ function gitTabRedirectCalls() {
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
+
+describe('RepoDetail — always-available rail Git summary', () => {
+    beforeEach(() => {
+        localStorage.clear();
+        _resetRuntimeConfig();
+        mockIsMobile = false;
+        mockActiveRepoSubTab = 'chats';
+        localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey('ws-1'), '1');
+    });
+    afterEach(() => {
+        cleanup();
+        _resetRuntimeConfig();
+        mockIsMobile = false;
+        localStorage.clear();
+    });
+
+    it.each([undefined, false, true])('renders Git tiles with obsolete runtime flag %s', saved => {
+        if (saved !== undefined) applyRuntimeConfigPatch({ railGitSummaryEnabled: saved });
+        renderDetail();
+        expect(screen.getByTestId('split-workspace-left-git-changes')).toBeTruthy();
+        expect(screen.getByTestId('split-workspace-left-git-sync')).toBeTruthy();
+        expect(screen.getByTestId('split-workspace-left-git-branch')).toBeTruthy();
+        act(() => applyRuntimeConfigPatch({ railGitSummaryEnabled: false }));
+        expect(screen.getByTestId('split-workspace-left-git-sync')).toBeTruthy();
+    });
+
+    it('keeps the non-Git workspace rail without Git tiles', () => {
+        const repo = makeRepo();
+        repo.gitInfo.isGitRepo = false;
+        renderDetail(repo);
+        expect(screen.getByTestId('split-workspace-left-rail')).toBeTruthy();
+        expect(screen.queryByTestId('split-workspace-left-git-sync')).toBeNull();
+    });
+
+    it('mounts no collapsed desktop rail on mobile', () => {
+        mockIsMobile = true;
+        renderDetail();
+        expect(screen.queryByTestId('split-workspace-left-rail')).toBeNull();
+        expect(screen.queryByTestId('split-workspace-left-git-sync')).toBeNull();
+    });
+});
 
 describe('RepoDetail — panel reordering configuration', () => {
     const workspaceId = 'ws-panel-config';

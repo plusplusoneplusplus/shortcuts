@@ -98,7 +98,6 @@ describeWithClangd('real clangd semantic tokens', () => {
         fs.writeFileSync(path.join(root, 'widget.cpp'), SOURCE);
         const prepared = prepareDefinitionForRoot({
             ...CLANGD_PRESET,
-            enabled: true,
             initializationOptions: { fallbackFlags: ['-std=c++17'] },
         }, root);
         session = new LanguageServerSession({
@@ -200,10 +199,8 @@ describeWithClangd('real clangd semantic tokens for an external header', () => {
         fs.writeFileSync(path.join(workspace, 'main.cpp'), MAIN);
         fs.writeFileSync(path.join(external, 'sprocket.hpp'), HEADER);
         expect(writeLanguageServerConfig(dataDir, WORKSPACE_ID, {
-            enabled: true,
             definitions: [{
                 ...CLANGD_PRESET,
-                enabled: true,
                 initializationOptions: { fallbackFlags: ['-std=c++17', `-I${external}`] },
             }],
         }).ok).toBe(true);
@@ -289,4 +286,3 @@ describeWithClangd('real clangd semantic tokens for an external header', () => {
         expect(JSON.stringify(received)).not.toContain('coc-lsp-clangd-ext-include-');
     }, REQUEST_TIMEOUT_MS * 2);
 });
-

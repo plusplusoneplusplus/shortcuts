@@ -1666,7 +1666,14 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                     GetKeyState(VK_MENU.0 as i32) < 0,
                     GetKeyState(VK_SHIFT.0 as i32) < 0,
                 );
-                if !open_menu && !focus_address && !protocol::close_shortcut(
+                let reopen_closed = protocol::reopen_closed_shortcut(
+                    key,
+                    kind == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN,
+                    GetKeyState(VK_CONTROL.0 as i32) < 0,
+                    GetKeyState(VK_MENU.0 as i32) < 0,
+                    GetKeyState(VK_SHIFT.0 as i32) < 0,
+                );
+                if !open_menu && !focus_address && !reopen_closed && !protocol::close_shortcut(
                     key,
                     kind == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN,
                     GetKeyState(VK_CONTROL.0 as i32) < 0,
@@ -1678,7 +1685,7 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                 let mut status = COREWEBVIEW2_PHYSICAL_KEY_STATUS::default();
                 args.PhysicalKeyStatus(&mut status)?;
                 if !status.WasKeyDown.as_bool() {
-                    protocol::emit(json!({ "event": if focus_address { "focus-address-requested" } else if open_menu { "open-menu-requested" } else { "close-requested" }, "viewId": view.id }));
+                    protocol::emit(json!({ "event": if focus_address { "focus-address-requested" } else if open_menu { "open-menu-requested" } else if reopen_closed { "reopen-closed-requested" } else { "close-requested" }, "viewId": view.id }));
                 }
                 Ok(())
             })),

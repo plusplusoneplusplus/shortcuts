@@ -108,7 +108,7 @@ describe('prepareDefinitionForRoot for the symbol index', () => {
 
     it('does not claim clangd, which keeps its own runtime discovery', () => {
         const prepared = prepareDefinitionForRoot(
-            { ...CLANGD_PRESET, enabled: true },
+            { ...CLANGD_PRESET },
             '/work/repo',
             deps({ resolveOnPath: () => '/usr/bin/clangd' }),
         );

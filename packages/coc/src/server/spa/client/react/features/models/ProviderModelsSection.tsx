@@ -7,8 +7,9 @@
  */
 import React, { useState, useMemo } from 'react';
 import { useProviderModelConfig, type ProviderModelInfo, type AgentProvider } from '../../hooks/useProviderModels';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { Spinner } from '../../ui';
+import { useAdminServer } from '../../admin/adminTarget';
 
 type CapFilter = 'all' | 'vision' | 'reasoning' | 'enabled';
 type ViewMode = 'catalog' | 'query';
@@ -39,7 +40,9 @@ interface ProviderModelsSectionProps {
 const PROVIDER_TAB_LABELS: Record<AgentProvider, string> = { copilot: 'Copilot', codex: 'Codex', claude: 'Claude' };
 
 export function ProviderModelsSection({ provider, available, unavailableMessage, allProviders, onProviderChange }: ProviderModelsSectionProps) {
-    const { models, loading, error, saving, reload, toggleModel, reasoningEfforts, setReasoningEffort } = useProviderModelConfig(provider);
+    const adminServer = useAdminServer();
+    const providerOwner = useMemo(() => adminServer.isRemote ? { baseUrl: adminServer.cacheScope, client: adminServer.client } : undefined, [adminServer]);
+    const { models, loading, error, saving, reload, toggleModel, reasoningEfforts, setReasoningEffort } = useProviderModelConfig(provider, providerOwner);
     const [search, setSearch] = useState('');
     const [capFilter, setCapFilter] = useState<CapFilter>('all');
     const [viewMode, setViewMode] = useState<ViewMode>('catalog');
@@ -73,7 +76,7 @@ export function ProviderModelsSection({ provider, available, unavailableMessage,
         setQueryRunning(true);
         setQueryState({ response: '', error: '' });
         try {
-            const result = await getSpaCocClient().agentProviders.queryModel(provider, {
+            const result = await adminServer.client.agentProviders.queryModel(provider, {
                 prompt,
                 ...(selectedQueryModel ? { model: selectedQueryModel } : {}),
                 timeoutMs: 60_000,

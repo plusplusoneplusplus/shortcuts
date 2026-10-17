@@ -47,6 +47,7 @@ Queue execution never loads a config file itself. `packages/coc/src/server/queue
 | `getDefaultTimeoutMs()` | `timeout` (seconds → ms) | execution start, when a task has no `config.timeoutMs` |
 | `getDefaultIdleTimeoutMs()` | `idleTimeout` (seconds → ms) | execution start; unset falls back to `DEFAULT_AI_IDLE_TIMEOUT_MS` (1 h) |
 | `getFollowUpSuggestions()` | `chat.followUpSuggestions` | chat-turn context build |
+| `getSentinelNextStepsEnabled()` | `features.sentinelNextSteps` (default off) | Sentinel chat-turn context build |
 | `getAskUser()` | `chat.askUser` | chat-turn context build |
 | `getSkillFolders()` | `skills.globalExtraFolders`, `skills.autoDetectDefaultFolders` | each `resolveSkillConfig` call |
 | `getRalphFinalCheckPolicy()` | `ralph.finalCheck.maxGapFixLoops` | when a final check is scheduled |
@@ -89,6 +90,8 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `scopeSwitcher` | on | One segmented scope switcher replacing the My Work / My Life toggles and workspace chip |
 | `pinnedScopes` | on | Needs `scopeSwitcher`; pinned repo / repo-group segments in the scope switcher, persisted as the global `pinnedScopes` preference |
 | `markdownPanelPreview` | off | Rendered Markdown preview in unified right-panel file tabs; other file viewers stay unchanged |
+| `panelSourceSplit` | off | Experimental live two-pane source-file split in the unified right panel (drag a file tab to the right edge or tab menu **Open to the Right**); session-only; runtime `panelSourceSplitEnabled` |
+| `panelSettings` | off | Add-tab Settings entry shares the full workspace Settings page and pending edits with the top-level entry; runtime `panelSettingsEnabled`; see [shared Settings](spa/shell.md#shared-workspace-settings) |
 | `explorerDelete` | on | Experimental live owning-server gate for confirmed permanent single-entry Explorer deletion; Appearance setting, runtime `explorerDeleteEnabled`; absent partial-config keys are on, explicit `false` disables; remote owners that omit the runtime flag stay off |
 | `panelTabReordering` | on | Experimental live mixed-resource tab reordering (drag, Alt+Left/Right, tab menu) in the unified right panel, saved per workspace and chat; runtime `panelTabReorderingEnabled`; explicit `false` restores sectioned ordering |
 | `htmlPageTab` | on | Desktop only: local `.html`/`.htm` chat links open as a rendered page tab (Electron `WebContentsView`) in the right panel; off, web SPA, remote workspaces, or missing files use the source viewer |
@@ -193,8 +196,8 @@ Editors keeps only `features.arxivPaperIngest` (Notes Editor). The Chat tab host
 
 ### Sentinel settings
 
-`#admin/settings/sentinel` owns seven registry controls: `sentinel.enabled` and
-`features.sentinelTodoDependencies`, `sentinelTodoTags`, `sentinelTodoExternalReferences`,
+`#admin/settings/sentinel` owns the Sentinel behavior controls: `sentinel.enabled`,
+`features.sentinelNextSteps`, `sentinelTodoDependencies`, `sentinelTodoTags`, `sentinelTodoExternalReferences`,
 `sentinelTodoScrubber`, `sentinelPrOutcomeWake`, and `sentinelDesktopMirror`. The
 presentation-only `sentinelResultCards` lives on Appearance → Chat Interface. Registry groups organize mode, To-do/PR outcomes and
 messaging. Features search renders links to Sentinel, not duplicate controls.

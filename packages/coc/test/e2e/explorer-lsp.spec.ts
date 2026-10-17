@@ -771,25 +771,22 @@ test.describe('Explorer deterministic LSP completion', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Explorer language support – status', () => {
-    test('LSP.1 a workspace with language support off says so and starts nothing', async ({ page, serverUrl }) => {
+    test('LSP.1 a stale saved "off" no longer stops language support', async ({ page, serverUrl }) => {
         const tmpDir = makeTmpDir();
         try {
             const repoDir = createTypeScriptRepoFixture(tmpDir);
             await seedWorkspace(serverUrl, WORKSPACE_ID, 'lsp-repo', repoDir);
             await enableExplorerEditorTabs(serverUrl);
-            // An unconfigured workspace is seeded from its own files, which for
-            // this fixture means TypeScript on. Turning support off explicitly
-            // is what puts the workspace in the state this case is about.
+            // Language support is always available: reads strip saved enable
+            // fields, so a legacy explicit off still serves the open file.
             await disableLanguageServers(serverUrl, WORKSPACE_ID);
 
             await gotoExplorer(page, serverUrl);
             await openSourceFile(page, 'app.ts');
 
-            // Support is off, so the host refuses the document and the badge
-            // names the reason rather than a failure.
-            await expect(statusBadge(page)).toHaveAttribute('data-tone', 'warning', { timeout: 20_000 });
+            await waitForLanguageServer(page);
             await expect(page.locator(`${APP_PANEL} [data-testid="language-status-label"]`))
-                .toHaveText('Language support off');
+                .toHaveText('TypeScript');
         } finally {
             safeRmSync(tmpDir);
         }

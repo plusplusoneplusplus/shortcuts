@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Spinner } from '../../ui';
 import { ConversationTurnBubble } from './conversation/ConversationTurnBubble';
 import { CompactionBubble } from './CompactionBubble';
@@ -19,7 +19,8 @@ import { MODE_ICONS, MODE_TEXT_COLORS, normalizeChatMode } from '../../repos/mod
 import type { ChatMode } from '../../repos/modeConfig';
 import { getProviderLabel, type ChatProvider } from './ProviderBadge';
 import type { ClientSideNote, QuickAskSelection } from './quick-ask/types';
-import type { useChatHistoryPaging } from './hooks/useChatHistoryPaging';
+import { scrollToTurnElement, type useChatHistoryPaging } from './hooks/useChatHistoryPaging';
+import { turnMatchesReference, type TurnReference } from './conversation/turnReference';
 
 export const INTERRUPTED_TURN_CONTINUE_MESSAGE = 'Please continue from where the last response was interrupted.';
 export const INTERRUPTED_TURN_RETRY_MESSAGE = 'The previous response was interrupted by a temporary authorization/session error. Please retry the prior request and continue.';
@@ -300,6 +301,19 @@ export function ConversationArea({
 }: ConversationAreaProps) {
     const [showArchived, setShowArchived] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const latestTurns = useRef(turns);
+    latestTurns.current = turns;
+    const navigateToTurn = historyPaging?.navigateToTurn;
+    // Quoted references resolve only inside this conversation, by canonical
+    // turnIndex, to an earlier turn whose role and text match the quote.
+    const goToTurnReference = useCallback(async (reference: TurnReference, fromTurnIndex?: number): Promise<boolean> => {
+        if (fromTurnIndex != null && reference.turnIndex >= fromTurnIndex) return false;
+        const accept = (turn: ClientConversationTurn) => !turn.deletedAt && turnMatchesReference(turn, reference);
+        if (navigateToTurn) return navigateToTurn(reference.turnIndex, accept);
+        const turn = latestTurns.current.find(t => t.turnIndex === reference.turnIndex);
+        const sc = scrollRef.current;
+        return !!turn && accept(turn) && !!sc && scrollToTurnElement(sc, reference.turnIndex);
+    }, [navigateToTurn, scrollRef]);
     const { currentTurnIndex, navHintVisible } = useMessageNavigation({
         scrollRef,
         containerRef,
@@ -424,6 +438,7 @@ export function ConversationArea({
                                                 taskId={taskId}
                                                 wsId={wsId}
                                                 turnIndex={turn.turnIndex}
+                                                onGoToTurnReference={goToTurnReference}
                                                 onPinTurn={onPinTurn}
                                                 onArchiveTurn={onArchiveTurn}
                                                 onRewindTurn={turns.some(t => t.turnIndex === turn.turnIndex) ? onRewindTurn : undefined}
@@ -594,6 +609,7 @@ export function ConversationArea({
                                                     taskId={taskId}
                                                     wsId={wsId}
                                                     turnIndex={idx}
+                                                    onGoToTurnReference={goToTurnReference}
                                                     onAttachContext={onAttachContext}
                                                     onPinTurn={onPinTurn}
                                                     onArchiveTurn={onArchiveTurn}

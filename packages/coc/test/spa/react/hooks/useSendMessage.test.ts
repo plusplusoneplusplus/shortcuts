@@ -363,6 +363,34 @@ describe('useSendMessage', () => {
         },
     );
 
+    it.each([undefined, 'group-view', 'remote:server-test:workspace-own'])(
+        'sends a named Sentinel action once through its owner with normal draft/attachments (%s)', async workspaceId => {
+            const baseUrl = 'https://mirror-clone.example';
+            if (workspaceId?.startsWith('remote:')) registerCloneBaseUrls([{ workspaceId, baseUrl }]);
+            try {
+                fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+                const attachment = { name: 'context.txt', mimeType: 'text/plain', size: 1, dataUrl: 'data:text/plain;base64,QQ==' };
+                const opts = makeOptions({
+                    workspaceId, owningWorkspaceId: 'workspace-own', selectedMode: 'sentinel',
+                    toPayload: () => [attachment],
+                });
+                opts.followUpInputRef.current = 'Unsent draft';
+                const { result } = renderHook(() => useSendMessage(opts));
+                expect(fetchMock).not.toHaveBeenCalled();
+                await act(async () => { await result.current.sendFollowUp('Finish the remaining safeguards.'); });
+                expect(fetchMock).toHaveBeenCalledTimes(1);
+                const [rawUrl, request] = fetchMock.mock.calls[0];
+                const url = new URL(String(rawUrl), 'http://localhost');
+                expect(url.pathname).toBe('/api/processes/pid-1/message');
+                expect(url.searchParams.get('workspace')).toBe('workspace-own');
+                if (workspaceId?.startsWith('remote:')) expect(String(rawUrl).startsWith(baseUrl)).toBe(true);
+                expect(JSON.parse(request.body)).toMatchObject({ content: 'Finish the remaining safeguards.', mode: 'sentinel', attachments: [attachment] });
+                expect(opts.setFollowUpInput).toHaveBeenCalledWith('');
+                expect(opts.clearImages).toHaveBeenCalledTimes(1);
+            } finally { registerCloneBaseUrls([]); }
+        },
+    );
+
     it('does not fall through locally when a remote workspace has ambiguous clone routing', async () => {
         registerCloneBaseUrls([
             { workspaceId: 'workspace-a', serverId: 'server-a', baseUrl: 'https://clone-a.example' },

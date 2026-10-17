@@ -1,3 +1,5 @@
+import { mockFileIdentity } from '../../language-servers/fileIdentityMock';
+import { registerEditingModel } from '../../../../../src/server/spa/client/react/features/language-servers/editingModels';
 // @vitest-environment jsdom
 /**
  * AC-03: the Explorer preview pane registering Monaco language providers over
@@ -12,10 +14,10 @@
  */
 
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { render, waitFor, act } from '@testing-library/react';
+import { render, waitFor, act, screen, fireEvent } from '@testing-library/react';
 import { PreviewPane } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane';
 import { TRUSTED_PATH_PREFIX } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/ExactOpen';
-import { resetLanguageDocumentStoresForTests } from '../../../../../src/server/spa/client/react/features/language-servers/documentStore';
+import { getLanguageDocumentStore, resetLanguageDocumentStoresForTests } from '../../../../../src/server/spa/client/react/features/language-servers/documentStore';
 import { MAX_FILE_VIEW_SIZE } from '../../../../../src/server/spa/client/react/shared/file-viewer/useFileContent';
 import {
     registerCloneBaseUrls, resetCloneRegistryForTests,
@@ -130,6 +132,7 @@ const monacoStub = vi.hoisted(() => {
         // providers, and the navigation behaviour itself is pinned in
         // `PreviewPane.navigation.test.tsx`.
         editor: {
+            trigger: vi.fn(),
             updateOptions: vi.fn(),
             getSelection: () => ({
                 selectionStartLineNumber: 1,
@@ -393,7 +396,7 @@ describe('PreviewPane — language providers (AC-03)', () => {
                 position: { line: 0, character: 2 },
             },
         });
-        expect(links[0].uri.toString()).toContain('include/widget.hpp#symbol-index-candidate');
+        expect(links[0].uri.toString()).toMatch(/include\/widget\.hpp\?editing=.*#symbol-index-candidate$/);
     });
 
     it('preserves symbol-server ranges and marks every candidate URI', async () => {
@@ -488,10 +491,6 @@ describe('PreviewPane — language providers (AC-03)', () => {
                 uri: 'coc-file://member-2/src/shared.ts',
                 range: { start: { line: 8, character: 5 }, end: { line: 8, character: 11 } },
             },
-            {
-                uri: 'coc-file://outside/src/private.ts',
-                range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
-            },
         ]);
         await waitFor(() => expect(monacoStub.live().some(entry => entry.kind === 'definition')).toBe(true));
 
@@ -500,15 +499,14 @@ describe('PreviewPane — language providers (AC-03)', () => {
             { lineNumber: 1, column: 3 },
             token,
         );
-        expect(firstLinks.map((link: any) => link.uri.toString()))
+        expect(firstLinks.map((link: any) => link.uri.toString().split('?')[0]))
             .toEqual([
                 'coc-file://member-1/src/target.ts',
                 'coc-file://member-2/src/shared.ts',
-                'coc-file://outside/src/private.ts',
             ]);
-        expect(monacoStub.resolvePreview('coc-file://member-1/src/target.ts'))
+        expect(monacoStub.resolvePreview(firstLinks[0].uri.toString()))
             .toMatchObject({ content: 'const a = 1;' });
-        expect(monacoStub.resolvePreview('coc-file://member-2/src/shared.ts'))
+        expect(monacoStub.resolvePreview(firstLinks[1].uri.toString()))
             .toMatchObject({ content: 'const a = 1;' });
         expect(mockExplorerApi.readBlob).toHaveBeenCalledWith(
             'member-1',
@@ -522,8 +520,7 @@ describe('PreviewPane — language providers (AC-03)', () => {
             { signal: expect.any(AbortSignal) },
             'remote:server-a:member-2',
         );
-        expect(monacoStub.resolvePreview('coc-file://outside/src/private.ts'))
-            .toMatchObject({ content: 'Definition source unavailable.' });
+        expect(monacoStub.resolvePreview('coc-file://outside/src/private.ts')).toBeNull();
         expect(mockExplorerApi.readBlob).not.toHaveBeenCalledWith(
             'outside',
             expect.anything(),
@@ -546,12 +543,12 @@ describe('PreviewPane — language providers (AC-03)', () => {
         }));
         await waitFor(() => expect(monacoStub.live().some(entry => entry.kind === 'definition')).toBe(true));
 
-        await monacoStub.provider('definition').provideDefinition(
+        const secondLinks = await monacoStub.provider('definition').provideDefinition(
             monacoStub.model,
             { lineNumber: 1, column: 3 },
             token,
         );
-        expect(monacoStub.resolvePreview('coc-file://member-2/src/target.ts'))
+        expect(monacoStub.resolvePreview(secondLinks[0].uri.toString()))
             .toMatchObject({ content: 'const a = 1;' });
         expect(mockExplorerApi.readBlob).toHaveBeenCalledWith(
             'member-2',
@@ -732,5 +729,60 @@ describe('PreviewPane — language providers (AC-03)', () => {
         expect(links.map((link: any) => link.uri.toString())).toEqual(['coc-lsp-external://cap-expired/string_view']);
         expect(monacoStub.resolvePreview('coc-lsp-external://cap-expired/string_view'))
             .toMatchObject({ content: 'Definition source unavailable.' });
+    });
+});
+
+
+describe('definition identity admission', () => {
+    it('shows retry without creating a target model or attachment when identity is unconfirmed', async () => {
+        const createModel = vi.spyOn(monacoStub.namespace.editor, 'createModel');
+        mockFileIdentity.mockRejectedValueOnce(new Error('Owner identity unavailable.'));
+        renderPane();
+        const attachment = await attachmentFor('src/a.ts');
+        attachWith(attachment);
+        attachment.respond('textDocument/definition', () => [{ uri: 'coc-file://ws-1/src/mixed.ts', range: {
+            start: { line: 11, character: 16 }, end: { line: 11, character: 20 },
+        } }]);
+        await waitFor(() => expect(monacoStub.live().some(entry => entry.kind === 'definition')).toBe(true));
+        await act(async () => {
+            await expect(monacoStub.provider('definition').provideDefinition(monacoStub.model,
+                { lineNumber: 1, column: 3 }, token)).rejects.toThrow('Owner identity unavailable.');
+        });
+        expect(screen.getByRole('alert')).toHaveTextContent('Owner identity unavailable.');
+        expect(createModel).not.toHaveBeenCalled();
+        expect(mockExplorerApi.readBlob).toHaveBeenCalledTimes(1);
+        expect([...transport.client.attachments.keys()]).toEqual(['src/a.ts']);
+        fireEvent.click(screen.getByText('Retry Go to Definition'));
+        expect(monacoStub.editor.trigger).toHaveBeenCalledWith('file-identity', 'editor.action.revealDefinition', null);
+        createModel.mockRestore();
+    });
+
+    it('Peek resolves an alias to the existing dirty model without reading disk again', async () => {
+        mockFileIdentity.mockImplementation(async (_owner, path) => path.toLowerCase() === 'src/mixed.ts' ? 'src/Mixed.ts' : path);
+        renderPane();
+        const attachment = await attachmentFor('src/a.ts');
+        attachWith(attachment);
+        const document = getLanguageDocumentStore('ws-1').open({ path: 'src/Mixed.ts', text: 'disk' });
+        document.update('unsaved target');
+        const targetModel = {
+            uri: { toString: () => 'inmemory://dirty-target' },
+            getValue: () => document.getText(),
+            setValue: vi.fn(),
+        };
+        const release = registerEditingModel({ scope: JSON.stringify(['ws-1', 'ws-1', '']), workspaceId: 'ws-1', path: 'src/Mixed.ts', model: targetModel });
+        try {
+            attachment.respond('textDocument/definition', () => [{ uri: 'coc-file://ws-1/src/mixed.ts', range: {
+                start: { line: 11, character: 16 }, end: { line: 11, character: 20 },
+            } }]);
+            await waitFor(() => expect(monacoStub.live().some(entry => entry.kind === 'definition')).toBe(true));
+            let links: any;
+            await act(async () => { links = await monacoStub.provider('definition').provideDefinition(monacoStub.model, { lineNumber: 1, column: 3 }, token); });
+            expect(links[0].uri).toBe(targetModel.uri);
+            expect(links[0].range).toMatchObject({ startLineNumber: 12, startColumn: 17 });
+            expect(targetModel.getValue()).toBe('unsaved target');
+            expect(targetModel.setValue).not.toHaveBeenCalled();
+            expect(mockExplorerApi.readBlob).not.toHaveBeenCalledWith('ws-1', 'src/mixed.ts', expect.anything(), expect.anything());
+            expect(transport.client.attachments.has('src/mixed.ts')).toBe(false);
+        } finally { release(); document.close(); }
     });
 });

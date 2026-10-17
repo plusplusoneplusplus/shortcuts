@@ -52,6 +52,19 @@ describe('unified panel tab menu model', () => {
         }
     });
 
+    it('offers Open to the Right only for file tabs when the source split is available', () => {
+        const kinds: UnifiedPanelTab['kind'][] = ['terminal', 'browser', 'file', 'canvas', 'external'];
+        for (const kind of kinds) {
+            const current = tab(kind, kind);
+            const enabled = unifiedPanelTabMenuItems(current, [current], new Set(), {
+                copyPath: false, copyRelativePath: false, revealInExplorer: false, openToSide: true,
+            }).map(item => item.action);
+            expect(enabled.includes('open-to-side'), kind).toBe(kind === 'file');
+            const disabled = unifiedPanelTabMenuItems(current, [current], new Set()).map(item => item.action);
+            expect(disabled).not.toContain('open-to-side');
+        }
+    });
+
     it('omits Copy Path when the file does not resolve to the local filesystem', () => {
         const remote = tab('file', 'src/remote.ts', { ownerRoutingRef: 'remote:server-b:ws-1' });
         const actions = unifiedPanelTabMenuItems(

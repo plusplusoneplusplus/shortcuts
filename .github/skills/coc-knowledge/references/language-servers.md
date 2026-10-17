@@ -5,19 +5,28 @@ dashboard file editor.
 
 ### Session lifecycle
 
-`LanguageServerManager` attaches every enabled definition matching a document in
+`LanguageServerManager` attaches every definition matching a document in
 priority order and keys each session by workspace, browser editing session,
 definition, and resolved project root by default. Definitions may select
 workspace scope to share an expensive process across editing sessions when they
 open different files. A second editing session opening the same path receives
 an isolated process so its unsaved buffer and diagnostics remain independent.
-The first manager acquisition or settings GET for a workspace without
-`language-servers.json` detects its languages and persists the matching presets
-as enabled workspace overrides. The persisted file prevents later reads from
-running detection again, including when the user disables a seeded preset.
-Windows document paths are case-folded and have trailing dots/spaces removed at
-the path boundary, matching Win32 file identity before definition selection,
-URI mapping, and shared-session ownership checks.
+
+All built-ins and valid custom definitions are available by default in every
+workspace. Configuration retains executable, arguments, project matching,
+initialization/settings and process limits, without enable controls. Reads strip
+saved master/per-definition enable fields, including false values, without
+rewriting the file. Missing or corrupt files use built-in defaults; corrupt files
+retain warnings. Acquisition and settings GET never seed configuration.
+
+File paths preserve spelling through normalization and URI mapping.
+`file-identity.ts` resolves directory-entry spelling on the owning filesystem;
+`GET /api/repos/:id/file-identity?path=...` exposes that relative path. Alias
+resolution requires filesystem proof, including within Windows case-sensitive
+directories, and checks canonical containment without merging symlink or hard-link
+names. Explorer and definition opens resolve before creating state, serialize
+concurrent requests and reject stale owners. Ambiguous existing buffers remain
+untouched and identity failures offer Retry without an owner fallback.
 The WebSocket bridge listens for client messages before its async workspace
 lookup and queues them until the socket is validated, so an attach sent on
 `open` is never dropped. A session `start()` issued while `stop()` is still
@@ -58,7 +67,7 @@ PATH, and recognizes a PATH entry backed by the rustup proxy. A missing componen
 returns the recovery command `rustup component add rust-analyzer`; CoC only offers
 the command for copying and never executes it.
 
-The built-in Python preset is disabled by default and serves `.py`, `.pyi`, and
+The built-in Python preset serves `.py`, `.pyi`, and
 `.pyw` through Pyright. Its adapter prefers a project
 `node_modules/pyright/langserver.index.js`, then the `pyright` package shipped
 with CoC, then `pyright-langserver` on the owning host's PATH. Project and
@@ -67,7 +76,7 @@ runtime labels contain only the source category. Python files use the nearest
 configured project marker with canonical-path containment and the owning
 workspace's path spelling.
 
-The built-in clangd preset is disabled by default and serves C, C++, Objective-C,
+The built-in clangd preset serves C, C++, Objective-C,
 Objective-C++, and CUDA files with `--background-index=false`. Its adapter checks
 the owning host's PATH before platform-specific LLVM install locations. Project
 roots use only `compile_commands.json`, `.clangd`, and `compile_flags.txt`, keeping
@@ -92,7 +101,7 @@ symbols response. An exact target the surface cannot load stays in the list as
 an unavailable exact result rather than being replaced by textually similar
 symbols.
 
-The `coc-symbols` response is used when clangd is disabled, unavailable, fails,
+The `coc-symbols` response is used when clangd is unavailable, fails,
 does not advertise definition support, or returns no locations. Candidate ranges
 come directly from its LSP locations, and candidate URIs carry a
 `symbol-index-candidate` fragment. Explorer and unified-panel tabs preserve that
@@ -103,11 +112,13 @@ Cross-file locations inside an accepted workspace are prepared by the initiating
 editor's temporary `coc-file` preview source. A repository editor accepts only
 its own workspace; a repo-group editor also accepts every live member and reads
 through the target member's workspace and concrete clone route. Standalone
-Monaco resolves only existing models, so each accepted target first receives a
-temporary loading model that Peek can display immediately; the routed read
-updates that model in place. A target outside the accepted ownership set is
-never read and receives an unavailable model so Peek explains the rejection.
-Read failures produce the same unavailable state. Cancellation removes stale
+Monaco resolves existing models through `editingModels.ts`, scoped by concrete
+owner and editing session. Peek reuses an open dirty model; other accepted targets
+receive a temporary model with a scoped URI after identity resolution. The routed
+read updates that model in place. Unified-panel chats isolate document records and
+transport editing sessions; a split mirror retains its tab's model. Unconfirmed
+or ambiguous owners stop navigation before model creation with a retryable error.
+Accepted targets whose reads fail receive an unavailable model. Cancellation removes stale
 loading models, and temporary models are disposed when Peek detaches or the
 editor closes. Prepared models remain available while a slow Peek widget
 attaches and have a bounded orphan timeout when no widget claims them.
@@ -160,8 +171,9 @@ unrelated settings.
 ### Workspace symbol search (Go To All)
 
 A symbol palette needs a live session with no file open. `acquireWorkspace`
-takes every enabled definition for a workspace, selected by definition rather
-than by file pattern, and roots each session at the workspace root; the browser
+detects applicable effective definitions from project markers and a bounded
+file scan on each request, including custom file patterns, and roots each session
+at the workspace root; the browser
 reaches it through the `lsp-attach-workspace` client message, which returns the
 same `lsp-attached` stream and uses the same request, cancel, and detach
 framing as a document attach. No sentinel document path is involved.
@@ -169,39 +181,8 @@ framing as a document attach. No sentinel document path is involved.
 The palette holds one workspace attachment per repository for as long as the
 dialog is open — up to six in a repo group — and fans `workspace/symbol` out to
 every attached server advertising `workspaceSymbolProvider`, merging each
-answer as it arrives. A server that times out, dies, or does not support the
-method is "no answer": some failing is `partial`, all failing is `failed`, and
-none of it throws into the dialog. There is no HTTP symbol route; the fan-out
-is browser-side, so a group member on another host is reached directly.
-
-`tsserver` answers `workspace/symbol` from the project holding the first open
-file and answers nothing without one, so a TypeScript session opens a priming
-document of its own before such a request when the editor has nothing open —
-the first file under its project root the preset claims, resolved by
-`prime-document.ts`. The editor's first `didOpen` closes it again, so the
-user's file decides which project answers. Results stay scoped to that one
-project, which is tsserver's own limit, not CoC's.
-
-`coc-symbols-lsp` answers `workspace/symbol` with a camel-case-aware scorer: a
-subsequence match weighted by word starts, with an all-word-starts acronym
-(`fwc` → `findWorkspaceConfig`) ranked above an incidental one, and the prefix
-index kept as the fast path. The cap applies after ranking. Each result carries
-`cocMatchIndices`, the UTF-16 offsets the score used, which the palette
-highlights from so the highlight and the ranking cannot disagree.
-
-### Workspace symbol search (Go To All)
-
-A symbol palette needs a live session with no file open. `acquireWorkspace`
-takes every enabled definition for a workspace, selected by definition rather
-than by file pattern, and roots each session at the workspace root; the browser
-reaches it through the `lsp-attach-workspace` client message, which returns the
-same `lsp-attached` stream and uses the same request, cancel, and detach
-framing as a document attach. No sentinel document path is involved.
-
-The palette holds one workspace attachment per repository for as long as the
-dialog is open — up to six in a repo group — and fans `workspace/symbol` out to
-every attached server advertising `workspaceSymbolProvider`, merging each
-answer as it arrives. A server that times out, dies, or does not support the
+answer as it arrives. A Ctrl/Cmd+, palette waits 500 ms of typing quiet before
+each fan-out, aborting the superseded one. A server that times out, dies, or does not support the
 method is "no answer": some failing is `partial`, all failing is `failed`, and
 none of it throws into the dialog. There is no HTTP symbol route; the fan-out
 is browser-side, so a group member on another host is reached directly.
@@ -239,7 +220,8 @@ current-document words. Fallback matches prefixes case-insensitively, preserves
 word spelling, and caps each list at 200 items with incomplete retriggering.
 Cancelled requests and disposed providers publish neither server nor word items.
 
-Language Servers settings reads live runtime rows from
+Language Servers settings provides definition editing, custom definition removal,
+and status/retry without enable controls. It reads live runtime rows from
 `GET /api/workspaces/:id/language-servers`. Rows are grouped by definition and
 project root, so mixed multi-root outcomes remain visible. Runtime payloads use
 workspace-relative root labels and opaque session IDs; host paths, environment

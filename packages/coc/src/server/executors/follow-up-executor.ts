@@ -524,6 +524,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 processId,
                 query: message,
                 followUpSuggestions: this.followUpSuggestions,
+                sentinelNextSteps: currentMode === 'sentinel' && this.queueConfig.getSentinelNextStepsEnabled(),
                 enqueueChat: this.runtime.getEnqueueChat?.(),
                 launchRalph: this.runtime.getLaunchRalph?.(),
                 sendMessage: this.runtime.getSendMessage?.(),

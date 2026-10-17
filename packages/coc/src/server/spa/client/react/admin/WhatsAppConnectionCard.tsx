@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog } from '../ui/Dialog';
-import { getRawApiBase } from '../utils/config';
 import { SettingsCard } from './SettingsCard';
 import { WhatsAppPairingContent, WhatsAppStatusIndicator, type WhatsAppConnectionState } from './WhatsAppConnectionUI';
+import { useAdminServer, type AdminServerAccess } from './adminTarget';
 
 interface WhatsAppStatus {
     enabled: boolean;
@@ -20,8 +20,8 @@ interface WhatsAppGroup {
     name: string;
 }
 
-async function request<T>(path: string, body?: object): Promise<T> {
-    const response = await fetch(`${getRawApiBase()}/messaging/whatsapp${path}`, body === undefined
+async function request<T>(admin: AdminServerAccess, path: string, body?: object): Promise<T> {
+    const response = await admin.fetch(`${admin.rawApiBase}/messaging/whatsapp${path}`, body === undefined
         ? undefined
         : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!response.ok) {
@@ -32,6 +32,7 @@ async function request<T>(path: string, body?: object): Promise<T> {
 }
 
 export function WhatsAppConnectionCard() {
+    const adminServer = useAdminServer();
     const [status, setStatus] = useState<WhatsAppStatus | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
@@ -51,7 +52,7 @@ export function WhatsAppConnectionCard() {
     const load = useCallback(async (syncForm = false) => {
         const id = ++requestId.current;
         try {
-            const next = await request<WhatsAppStatus>('/status');
+            const next = await request<WhatsAppStatus>(adminServer, '/status');
             if (!mounted.current || id !== requestId.current) return;
             if (syncForm || statusRef.current === null) {
                 setDeviceName(next.deviceName ?? '');
@@ -68,11 +69,11 @@ export function WhatsAppConnectionCard() {
             if (mounted.current && id === requestId.current)
                 setError(err instanceof Error ? err.message : String(err));
         }
-    }, []);
+    }, [adminServer]);
 
     const loadGroups = useCallback(async () => {
         try {
-            const result = await request<{ groups: WhatsAppGroup[] }>('/groups');
+            const result = await request<{ groups: WhatsAppGroup[] }>(adminServer, '/groups');
             if (mounted.current) {
                 setGroups(result.groups);
                 setGroupsError(null);
@@ -80,7 +81,7 @@ export function WhatsAppConnectionCard() {
         } catch (err) {
             if (mounted.current) setGroupsError(err instanceof Error ? err.message : String(err));
         }
-    }, []);
+    }, [adminServer]);
 
     useEffect(() => {
         mounted.current = true;
@@ -135,7 +136,7 @@ export function WhatsAppConnectionCard() {
                         onChange={event => {
                             const enabled = event.currentTarget.checked;
                             void run(async () => {
-                                await request('/config', { enabled });
+                                await request(adminServer, '/config', { enabled });
                                 if (enabled) {
                                     openPairing();
                                 } else {
@@ -161,7 +162,7 @@ export function WhatsAppConnectionCard() {
                                 {groups.map(group => <option key={group.jid} value={group.jid}>{group.name}</option>)}
                             </select>
                             <button type="button" className="ar-btn ar-btn-primary" disabled={busy || !groupDirty || !groupJid}
-                                onClick={() => void run(() => request('/config', {
+                                onClick={() => void run(() => request(adminServer, '/config', {
                                     groupJid, groupName: groups.find(group => group.jid === groupJid)?.name ?? status.groupName ?? null,
                                 }))}>Save group</button>
                         </div>
@@ -173,9 +174,9 @@ export function WhatsAppConnectionCard() {
                                 placeholder="New group name" className="ar-input" />
                             <button type="button" className="ar-btn ar-btn-secondary" disabled={busy || !newGroupName.trim()}
                                 onClick={() => void run(async () => {
-                                    const group = await request<WhatsAppGroup>('/groups', { name: newGroupName.trim() });
+                                    const group = await request<WhatsAppGroup>(adminServer, '/groups', { name: newGroupName.trim() });
                                     if (!group.jid) throw new Error('Group creation did not return a JID');
-                                    await request('/config', { groupJid: group.jid, groupName: group.name });
+                                    await request(adminServer, '/config', { groupJid: group.jid, groupName: group.name });
                                     setNewGroupName('CoC');
                                     await loadGroups();
                                 })}>Create group</button>
@@ -187,12 +188,12 @@ export function WhatsAppConnectionCard() {
                         <div className="ar-whatsapp-actions">
                             {status.status !== 'connected'
                                 ? <button type="button" className="ar-btn ar-btn-secondary" onClick={() => void run(async () => {
-                                    await request('/reconnect', {});
+                                    await request(adminServer, '/reconnect', {});
                                     openPairing();
                                 })} disabled={busy}>Setup / Pair</button>
                                 : <button type="button" className="ar-btn ar-btn-danger-outline" disabled={busy}
                                     onClick={() => void run(async () => {
-                                        await request('/reconnect', { repair: true });
+                                        await request(adminServer, '/reconnect', { repair: true });
                                         openPairing();
                                     })}>Re-pair</button>}
                         </div>
@@ -203,8 +204,8 @@ export function WhatsAppConnectionCard() {
                                 className="ar-input" />
                             <button type="button" className="ar-btn ar-btn-secondary" disabled={busy || !deviceDirty || !deviceName.trim()}
                                 onClick={() => void run(async () => {
-                                    await request('/config', { deviceName: deviceName.trim() });
-                                    await request('/reconnect', { repair: true });
+                                    await request(adminServer, '/config', { deviceName: deviceName.trim() });
+                                    await request(adminServer, '/reconnect', { repair: true });
                                     openPairing();
                                 })}>Save &amp; Re-pair</button>
                         </div>

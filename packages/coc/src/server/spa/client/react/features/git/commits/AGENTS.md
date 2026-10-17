@@ -87,9 +87,11 @@ split so that a change to one interaction mode cannot silently alter another:
   Shift ranges cannot drift between desktop and mobile paths.
 - **Tooltip ownership.** `CommitTooltip` portals to `document.body` with
   viewport coordinates, outside transformed/clipping sidebar containers. React
-  hover events retain panel ownership; tooltip mousedown stops propagation so
-  its controls do not trigger hover-peek outside-click dismissal. Outside
+  hover events retain panel ownership; tooltip pointerdown and mousedown stop
+  propagation so its controls do not trigger hover-peek outside-click dismissal. Outside
   mousedown, Escape and touch-start cancel tooltip timers and dismiss the portal.
+  Rail outgoing rows reuse the tooltip, gestures and history metadata; focus keeps
+  the nested preview alive, and Copy remains separate from row activation.
 
 ## Tests
 

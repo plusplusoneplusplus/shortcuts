@@ -90,6 +90,7 @@ export interface TriggerInfrastructureOptions {
     /** Clock injection for deterministic tests. Defaults to `Date.now`. */
     now?: () => number;
     getPrOutcomeEnabled?: () => boolean;
+    getDateTimeEnabled?: () => boolean;
 }
 
 // ============================================================================
@@ -150,6 +151,7 @@ export async function createTriggerInfrastructure(
     const sentinelTodoFirer: SentinelTodoTriggerFirer = new SentinelTodoTriggerFirer({
         triggers: triggerStore, todos, processes: store,
         executor: actionExecutor, emit, now,
+        dateTimeEnabled: options.getDateTimeEnabled,
         onPendingDelivery: trigger => triggerManager.schedulePendingDelivery(trigger),
         outcomeCanDeliver: trigger => sentinelPrOutcomes.canDeliver(trigger),
         validateOutcome: trigger => sentinelPrOutcomes.validate(trigger),
@@ -165,6 +167,7 @@ export async function createTriggerInfrastructure(
         },
         actionExecutor,
         oneShotFirer: sentinelTodoFirer,
+        dateTimeEnabled: options.getDateTimeEnabled,
         emit,
         ...(now ? { now } : {}),
     });
@@ -173,6 +176,7 @@ export async function createTriggerInfrastructure(
         owners: new SentinelTodoService({ todos, store, getTask: id => queueFacade.getTask(id) }),
         manager: triggerManager, firer: sentinelTodoFirer, enabled: true,
         fetchPr: options.prStatusFetcher ?? createPrStatusFetcher({ dataDir }), emit, now,
+        dateTimeEnabled: options.getDateTimeEnabled,
     });
     const sentinelPrOutcomes: SentinelPrOutcomeService = new SentinelPrOutcomeService({
         jobs: new DelegatedJobStore(dataDir), dataDir, processes: store, owners,
@@ -223,6 +227,7 @@ export async function createTriggerInfrastructure(
     await triggerManager.reconcilePendingDeliveries();
     for (const trigger of triggerStore.getAll()) {
         if (!trigger.binding || trigger.delivery?.state !== 'delivered') continue;
+        if (trigger.event.type === 'date-time' && !options.getDateTimeEnabled?.()) continue;
         try {
             await options.recoverPendingMessages?.(trigger.workspaceId, trigger.processId);
         } catch (error) {

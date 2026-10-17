@@ -210,4 +210,35 @@ describe('useWorkspaceSymbols', () => {
         act(() => { attached[0].setInfos([]); });
         await waitFor(() => expect(result.current.indexing).toBe(false));
     });
+
+    it('waits the full debounce and restarts it when the query changes', async () => {
+        vi.useFakeTimers();
+        try {
+            const signals: AbortSignal[] = [];
+            querySpy.mockImplementation((args: { signal: AbortSignal }) => {
+                signals.push(args.signal);
+                return new Promise(() => {});
+            });
+            const { rerender } = renderHook(
+                ({ query }) => useWorkspaceSymbols({ open: true, members: members(1), query, debounceMs: 500, limit: 50 }),
+                { initialProps: { query: 'fw' } },
+            );
+            await act(async () => { await vi.advanceTimersByTimeAsync(499); });
+            expect(querySpy).not.toHaveBeenCalled();
+
+            rerender({ query: 'fwc' });
+            await act(async () => { await vi.advanceTimersByTimeAsync(499); });
+            expect(querySpy).not.toHaveBeenCalled();
+
+            await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+            expect(querySpy).toHaveBeenCalledTimes(1);
+            expect(querySpy.mock.calls[0][0]).toMatchObject({ query: 'fwc' });
+
+            // A later keystroke aborts the stale fan-out before the next one starts.
+            rerender({ query: 'fwcx' });
+            expect(signals[0].aborted).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
 });

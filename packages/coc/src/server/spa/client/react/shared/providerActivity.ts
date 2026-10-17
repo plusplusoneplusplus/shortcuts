@@ -1,4 +1,5 @@
 import type { AgentProviderId, QueueListResponse, QueueHistoryResponse, QueueTaskSummary } from '@plusplusoneplusplus/coc-client';
+import type { CocClient } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient } from '../api/cocClient';
 
 const PROVIDER_IDS = new Set<AgentProviderId>(['copilot', 'codex', 'claude', 'opencode']);
@@ -111,8 +112,7 @@ export function collectDreamProviderActivity(
         .slice(0, Math.max(0, limit));
 }
 
-export async function loadDreamProviderActivity(limit = 5): Promise<AgentProviderWorkActivity[]> {
-    const client = getSpaCocClient();
+export async function loadDreamProviderActivity(limit = 5, client: CocClient = getSpaCocClient()): Promise<AgentProviderWorkActivity[]> {
     const [queueData, historyData] = await Promise.all([
         client.queue.list({ type: 'dream-run' }),
         client.queue.history({ type: 'dream-run', limit }),

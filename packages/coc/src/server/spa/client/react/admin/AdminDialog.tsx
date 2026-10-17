@@ -12,6 +12,7 @@
 
 import { Dialog } from '../ui/Dialog';
 import { AdminPanel } from './AdminPanel';
+import { AdminTargetGate, AdminTargetProvider } from './adminTarget';
 
 export interface AdminDialogProps {
     open: boolean;
@@ -39,7 +40,12 @@ export function AdminDialog({ open, onClose }: AdminDialogProps) {
                 </button>
             )}
         >
-            <AdminPanel />
+            {/* Mounted only while open, so each genuine open starts on the connected server. */}
+            <AdminTargetProvider>
+                <AdminTargetGate>
+                    <AdminPanel />
+                </AdminTargetGate>
+            </AdminTargetProvider>
         </Dialog>
     );
 }

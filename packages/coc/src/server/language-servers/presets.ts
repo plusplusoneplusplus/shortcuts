@@ -4,7 +4,7 @@ import type { LanguageServerDefinition } from './types';
  * Built-in languages are ordinary definitions: the runtime treats them like
  * user-supplied ones, so language-specific behavior stays in adapters.
  *
- * They are disabled by default and enabled per workspace in settings.
+ * They are available in every workspace and start only on demand.
  */
 export const TYPESCRIPT_PRESET: LanguageServerDefinition = {
     id: 'typescript',
@@ -25,7 +25,6 @@ export const TYPESCRIPT_PRESET: LanguageServerDefinition = {
         '.jsx': 'javascriptreact',
     },
     priority: 100,
-    enabled: false,
     builtIn: true,
 };
 
@@ -52,7 +51,6 @@ export const RUST_PRESET: LanguageServerDefinition = {
         },
     },
     priority: 100,
-    enabled: false,
     builtIn: true,
 };
 
@@ -78,7 +76,6 @@ export const PYTHON_PRESET: LanguageServerDefinition = {
         },
     },
     priority: 100,
-    enabled: false,
     builtIn: true,
 };
 
@@ -113,7 +110,6 @@ export const CLANGD_PRESET: LanguageServerDefinition = {
     maxSessions: 4,
     requestTimeoutMs: 120_000,
     idleTimeoutMs: 30 * 60_000,
-    enabled: false,
     builtIn: true,
 };
 
@@ -125,10 +121,6 @@ export const CLANGD_PRESET: LanguageServerDefinition = {
  * one that still answers across translation units when clangd returns nothing.
  * Both attach to the same document and the client merges them, so the priority
  * only orders the merge — it does not pick a winner.
- *
- * Unlike every other preset this ships enabled. It needs no installed toolchain
- * and no project configuration, so there is nothing for a user to set up first;
- * the per-workspace toggle in settings remains the off switch.
  */
 export const COC_SYMBOLS_PRESET: LanguageServerDefinition = {
     id: 'coc-symbols',
@@ -149,7 +141,6 @@ export const COC_SYMBOLS_PRESET: LanguageServerDefinition = {
     maxSessions: 2,
     requestTimeoutMs: 30_000,
     idleTimeoutMs: 30 * 60_000,
-    enabled: true,
     builtIn: true,
 };
 
@@ -160,8 +151,7 @@ export function builtInLanguageServerDefinitions(): LanguageServerDefinition[] {
 
 /**
  * Merge built-in presets with workspace-configured definitions. A workspace
- * definition sharing a preset's id overrides it, which is how a preset gets
- * enabled or repointed at a different executable.
+ * definition sharing a preset's id overrides its runtime and project configuration.
  */
 export function mergeWithBuiltIns(configured: LanguageServerDefinition[]): LanguageServerDefinition[] {
     const byId = new Map<string, LanguageServerDefinition>();

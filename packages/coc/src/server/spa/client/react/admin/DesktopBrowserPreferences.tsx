@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { desktopBrowserBridge, openUrlInSystemBrowser, WEBVIEW2_INSTALL_URL, type BrowserEngine, type BrowserPreferences, type DesktopBrowserHistory, type BrowserOperationResult } from '../shared/file-path/browser-bridge';
 import { SettingsCard } from './SettingsCard';
+import { useAdminLocalBadge } from './adminTarget';
 import { AdminRow, AdminToggle } from './adminControls';
 
 /** Admin → Browser page sections, each the DOM id of a group the jump bar scrolls to. */
@@ -57,6 +58,8 @@ function BrowserGroup({ id, heading, children }: { id: string; heading: string; 
 const DESKTOP_CARD_DESCRIPTION = 'Browser engines, sign-ins and history belong to this desktop installation, across every workspace and window. Local HTML previews always use Electron.';
 
 export function DesktopBrowserPreferences() {
+    // Desktop installation data: stays local whichever machine Admin configures.
+    const localBadge = useAdminLocalBadge('Global');
     const bridge = desktopBrowserBridge();
     const [preferences, setPreferences] = useState<BrowserPreferences | null>(null);
     const [busy, setBusy] = useState<BrowserEngine | 'select' | null>(null);
@@ -110,7 +113,7 @@ export function DesktopBrowserPreferences() {
     };
 
     return (
-        <SettingsCard title="Desktop Preferences" badge="Global" description={DESKTOP_CARD_DESCRIPTION} data-testid="desktop-browser-preferences">
+        <SettingsCard title="Desktop Preferences" badge={localBadge} description={DESKTOP_CARD_DESCRIPTION} data-testid="desktop-browser-preferences">
             {!preferences ? <p role="status" className="ar-muted">Loading browser engines...</p> : (
                 <>
                     <BrowserGroup id="browser-group-engine" heading="Engine">

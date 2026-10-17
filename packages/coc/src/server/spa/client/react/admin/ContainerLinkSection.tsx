@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Spinner } from '../ui';
+import { useAdminServer } from './adminTarget';
 
 interface ContainerLinkStatus {
     status: 'disconnected' | 'connecting' | 'connected' | 'registered';
@@ -30,6 +31,7 @@ const STATUS_COLORS: Record<ContainerLinkStatus['status'], string> = {
 };
 
 export function ContainerLinkSection({ onError }: { onError?: (msg: string) => void }) {
+    const adminServer = useAdminServer();
     const [status, setStatus] = useState<ContainerLinkStatus | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -46,7 +48,7 @@ export function ContainerLinkSection({ onError }: { onError?: (msg: string) => v
 
     const fetchStatus = useCallback(async (silent = false) => {
         try {
-            const res = await fetch('/api/config/container');
+            const res = await adminServer.fetch(adminServer.resolveUrl('/api/config/container'));
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data: ContainerLinkStatus = await res.json();
             setStatus(data);
@@ -59,7 +61,7 @@ export function ContainerLinkSection({ onError }: { onError?: (msg: string) => v
         } finally {
             setLoading(false);
         }
-    }, []); // stable identity — onError captured via ref above
+    }, [adminServer]); // stable identity — onError captured via ref above
 
     useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
@@ -79,7 +81,7 @@ export function ContainerLinkSection({ onError }: { onError?: (msg: string) => v
         }
         setSaving(true);
         try {
-            const res = await fetch('/api/config/container', {
+            const res = await adminServer.fetch(adminServer.resolveUrl('/api/config/container'), {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -100,7 +102,7 @@ export function ContainerLinkSection({ onError }: { onError?: (msg: string) => v
     const handleDisconnect = async () => {
         setSaving(true);
         try {
-            const res = await fetch('/api/config/container', {
+            const res = await adminServer.fetch(adminServer.resolveUrl('/api/config/container'), {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ containerUrl: null }),

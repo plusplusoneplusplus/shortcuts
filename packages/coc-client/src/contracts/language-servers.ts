@@ -42,7 +42,6 @@ export interface LanguageServerDefinition {
   requestTimeoutMs?: number;
   /** Stop an unreferenced process after this idle interval. */
   idleTimeoutMs?: number;
-  enabled?: boolean;
   /** True for definitions shipped with CoC. Built-ins can be overridden, not deleted. */
   builtIn?: boolean;
 }
@@ -84,12 +83,11 @@ export interface LanguageServerRuntimeState {
 
 /** Read/write response for `/workspaces/:id/language-servers`. */
 export interface LanguageServerConfigResponse {
-  enabled: boolean;
   /** Definitions as stored for this workspace, without preset layering. */
   definitions: LanguageServerDefinition[];
   /** Presets layered with workspace overrides — what settings should render. */
   effective: LanguageServerDefinition[];
-  /** The subset that may actually start; empty while support is disabled. */
+  /** Definitions available for lazy activation. */
   startable: LanguageServerDefinition[];
   status: 'ok' | 'missing' | 'invalid';
   warnings: LanguageServerConfigWarning[];
@@ -98,13 +96,11 @@ export interface LanguageServerConfigResponse {
 }
 
 export interface LanguageServerConfigUpdate {
-  enabled?: boolean;
   definitions?: LanguageServerDefinition[];
 }
 
 /** Stored configuration echoed back with a rejected write. */
 export interface LanguageServerStoredConfig {
-  enabled: boolean;
   definitions: LanguageServerDefinition[];
 }
 

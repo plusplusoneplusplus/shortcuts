@@ -1,3 +1,4 @@
+import { mockFileIdentity } from '../language-servers/fileIdentityMock';
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -634,6 +635,27 @@ describe('unified panel file navigation history', () => {
         await waitFor(() => expect(
             screen.getByTestId(`unified-panel-tab-${fileId('a.ts')}`),
         ).toHaveAttribute('aria-selected', 'true'));
+    });
+
+    it('keeps history and buffers unchanged when a closed destination identity fails, then retries', async () => {
+        seedFile();
+        renderPanel();
+        await screen.findByTestId('mock-file-a.ts');
+        fireEvent.click(screen.getByTestId('jump-to-b'));
+        await screen.findByTestId('mock-file-b.ts');
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${fileId('b.ts')}`));
+        await waitFor(() => expect(screen.queryByTestId(`unified-panel-tab-${fileId('b.ts')}`)).toBeNull());
+        const a = screen.getByTestId('mock-file-a.ts');
+        act(() => a.focus());
+        const history = readUnifiedPanelNavigationHistory(WS);
+        mockFileIdentity.mockRejectedValueOnce(new Error('Owner unavailable.'));
+        pressHistory('back');
+        expect(await screen.findByRole('alert')).toHaveTextContent('Owner unavailable.');
+        expect(screen.queryByTestId(`unified-panel-tab-${fileId('b.ts')}`)).toBeNull();
+        expect(readUnifiedPanelNavigationHistory(WS)).toEqual(history);
+        expect(screen.getByTestId('mock-file-a.ts')).toBe(a);
+        fireEvent.click(screen.getByText('Retry'));
+        expect(await screen.findByTestId(`unified-panel-tab-${fileId('b.ts')}`)).toHaveAttribute('aria-selected', 'true');
     });
 
     it('skips a closed destination whose file is gone and keeps stepping the same way', async () => {

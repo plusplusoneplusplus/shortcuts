@@ -5,7 +5,7 @@
  *
  * This is intentionally shaped as a small, extensible abstraction:
  *  - `event` is a discriminated union of server-side condition monitors for
- *    CI failures and one-shot Sentinel PR-merge wakes.
+ *    CI failures and PR merges, plus absolute one-time Sentinel date events.
  *  - `action` is a discriminated union with one variant: `send-message`.
  *
  * The framework reuses existing plumbing rather than inventing new plumbing:
@@ -28,7 +28,7 @@
 export type TriggerStatus = 'active' | 'paused' | 'disarmed' | 'expired';
 
 // ============================================================================
-// Event (discriminated union — only `condition-monitor` built this iteration)
+// Event
 // ============================================================================
 
 /** The kind of condition a `condition-monitor` event watches. */
@@ -132,7 +132,14 @@ export interface PrMergedMonitorEvent {
 }
 
 /** Discriminated union of all event variants. */
-export type TriggerEvent = ConditionMonitorEvent | PrMergedMonitorEvent;
+export interface DateTimeTriggerEvent {
+    type: 'date-time';
+    monitor?: never;
+    firesAt: string;
+    timeZone: string;
+}
+
+export type TriggerEvent = ConditionMonitorEvent | PrMergedMonitorEvent | DateTimeTriggerEvent;
 
 // ============================================================================
 // Action (discriminated union — only `send-message` built this iteration)
@@ -160,7 +167,7 @@ export interface SendMessageAction {
 export type TriggerAction = SendMessageAction;
 
 // ============================================================================
-// Sentinel To-do binding (one-shot PR-merge wake rules)
+// Sentinel To-do binding (one-shot wake rules)
 // ============================================================================
 
 /**
@@ -174,7 +181,7 @@ export interface SentinelTodoTriggerBinding {
     instruction?: string;
     armedBy: 'user' | 'sentinel';
     armedAt: string;
-    /** Presentation cleared; a committed pending delivery remains recoverable. */
+    /** Presentation cleared; retained delivery receipts preserve dedupe. */
     removedAt?: string;
     /** Owner-scoped authoring receipt for safe create retries. */
     idempotencyKey?: string;
@@ -196,7 +203,7 @@ export type TriggerOutcome = 'fired' | 'closed-unmerged' | 'skipped' | 'error';
 export interface TriggerDelivery {
     deliveryId: string;
     firedAt: string;
-    reason: 'merged' | 'closed' | 'run-now';
+    reason: 'merged' | 'closed' | 'run-now' | 'due';
     state: 'pending' | 'delivered' | 'failed';
     deliveredAt?: string;
     /** Item revision captured when the fire committed. */
@@ -240,7 +247,7 @@ export interface Trigger {
 
     /**
      * ISO timestamp when the trigger auto-expires (createdAt + TTL), or `null`
-     * for rules that never expire (PR-merge wake rules).
+     * for rules that never expire (one-shot wake rules).
      */
     expiresAt: string | null;
 

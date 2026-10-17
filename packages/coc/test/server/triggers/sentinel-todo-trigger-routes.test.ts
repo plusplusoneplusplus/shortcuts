@@ -26,9 +26,11 @@ describe('Sentinel To-do trigger REST ownership and lifecycle', () => {
     let routes: Route[];
     const fetchPr = vi.fn();
     const execute = vi.fn();
+    let dateTimeEnabled = false;
 
     beforeEach(async () => {
         vi.resetAllMocks();
+        dateTimeEnabled = false;
         store = new SqliteProcessStore({ dbPath: ':memory:' });
         await store.addProcess({
             id: owner.processId, type: 'chat', promptPreview: '', status: 'completed', startTime: new Date(),
@@ -43,6 +45,7 @@ describe('Sentinel To-do trigger REST ownership and lifecycle', () => {
         service = new SentinelTodoTriggerService({
             triggers, todos, owners: new SentinelTodoService({ todos, store }), firer,
             manager: { arm: vi.fn(), disarm: vi.fn() }, fetchPr, enabled: true,
+            dateTimeEnabled: () => dateTimeEnabled,
         });
         routes = [];
         registerSentinelTodoTriggerRoutes(routes, service, true);
@@ -69,6 +72,22 @@ describe('Sentinel To-do trigger REST ownership and lifecycle', () => {
     async function create() {
         return request('POST', base, { itemId, prUrl, instruction: 'Owner guidance' });
     }
+
+    it('reports live owner-server date capability, enforces its gate and accepts date input without a PR', async () => {
+        const input = { itemId, event: { type: 'date-time', firesAt: '2090-01-01T12:00:00.000Z',
+            timeZone: 'UTC', localTime: '2090-01-01T12:00' } };
+        expect((await request('GET', `${base}/capabilities`)).body).toEqual({ dateTime: false });
+        expect((await request('POST', base, input)).status).toBe(403);
+        expect((await request('GET', base.replace(owner.workspaceId, 'foreign') + '/capabilities')).status).toBe(404);
+        dateTimeEnabled = true;
+        expect((await request('GET', `${base}/capabilities`)).body).toEqual({ dateTime: true });
+        const created = await request('POST', base, input);
+        expect(created.status).toBe(201);
+        expect(created.body.trigger.event).toEqual({ type: 'date-time', firesAt: input.event.firesAt, timeZone: 'UTC' });
+        dateTimeEnabled = false;
+        expect((await request('PATCH', `${base}/${created.body.trigger.id}`, { ...input, expectedRevision: 1 })).status).toBe(403);
+        expect(fetchPr).not.toHaveBeenCalled();
+    });
 
     it('creates, lists, previews and updates through the shared service without touching item status', async () => {
         const created = await create();

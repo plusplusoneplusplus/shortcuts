@@ -98,6 +98,23 @@ capability loading, and falls back to the chat surface only when the active sub-
 absent from the resolved `visibleSubTabs` — that fallback does not erase the stored deep
 route suffix.
 
+### Shared workspace Settings
+
+`features/repo-settings/WorkspaceSettingsHost.tsx` keeps one lazily mounted
+`RepoSettingsTab` or `RepoGroupSettingsTab` behind the top-level Settings entry
+and the default-off `features.panelSettings` add-tab entry. A stable portal
+container moves between hosts without remounting forms. The panel tab belongs
+to the panel workspace and concrete server, independently of its dock target
+or selected chat. Panel section navigation stays local; closing parks the form
+and preserves drafts for reopening or top-level access.
+
+`workspaceSettingsClient.tsx` supplies one pinned client through
+`WorkspaceOwnerContext`. Settings sections, shared preference hooks, Notes and
+group mutations retain raw workspace ids on that server. Linked-repo choices
+stay server-local. Unresolved remote owners wait for their route; changed
+endpoints retain mounted drafts, show an error and reject requests until the
+workspace is reopened. A new endpoint never silently replaces a draft's client.
+
 ## Pop-out windows
 
 **Every `#popout/*` opener must test its `window.open` result with `popOutOpened(handle)`
@@ -445,15 +462,16 @@ the sidebar; row actions stay collapsed, and `queueJobHash` preserves owner rout
 
 ### Collapsed-rail Git tiles
 
-`features.railGitSummary` (default off) adds changes, sync and branch-spine tiles
-through `SplitWorkspacePanel`'s `railGit` slot, reusing `RailHoverPreview`.
+`RailGitSummary` supplies changes, sync and branch-spine tiles for Git repos and
+groups with live members through `SplitWorkspacePanel`'s collapsed-only `railGit`
+slot, reusing `RailHoverPreview`.
 Hosts own `useRailGitSummary`'s status readers and pass their state to the rail
 views. Repos read git-info plus working-tree changes from their owner; groups
 batch member git-info on the group's server and list each member's own branch.
 `RepoChatTab.handleRefresh` shares expanded and collapsed refresh duties,
 awaiting chats, full pins, aggregate feeds and the host's Git reader independently.
-Manual Git reads work with tiles disabled, bypass server freshness/backoff,
-and reject failures rather than returning cached or empty success.
+Manual Git reads work with the sidebar expanded or collapsed, bypass server
+freshness/backoff, and reject failures rather than returning cached or empty success.
 `git/changes?refresh=true` selects Forge's strict working-tree status read;
 ordinary working-tree callers retain their existing error policy.
 Busy covers every domain; partial errors retain successful reads and report
@@ -531,6 +549,7 @@ features default off.
 | `features.gitWorktreeExecution` | `isGitWorktreeExecutionEnabled()` | off |
 | `features.sessionContextAttachments` | `sessionContextAttachmentsEnabled` | off |
 | `features.markdownPanelPreview` | `markdownPanelPreviewEnabled` | off |
+| `features.panelSourceSplit` | `panelSourceSplitEnabled` | off |
 | `features.htmlPageTab` | `htmlPageTabEnabled` | on |
 | `features.quickAskSidenotes` | live server flag | — |
 ### Unified right panel
@@ -552,6 +571,12 @@ Body focus routes to the single visible panel, and repeats create no tabs.
 Native browser hosts forward source-qualified `onOpenMenuRequested` after
 transferring keyboard focus to the SPA; only the matching active browser tab
 creates a tab. The `+` and empty-state Open buttons open the shared resource menu.
+Ctrl/Cmd+Shift+T (always on, no setting) anywhere in the visible panel restores user-closed web tabs newest-first from a session-only, 20-entry
+stack per owner-qualified panel scope and chat (`unifiedClosedBrowserTabs.ts`).
+Restores reopen the last URL and title through `browserOpenInput` with a fresh
+view id and drop entries whose owner is no longer a target; native hosts forward
+source-qualified `onReopenClosedRequested` like the add-tab request. Each
+keypress restores at most one tab; repeats restore nothing.
 Repository-group mode stays scoped to the group while panel requests use the
 selected dock target.
 
@@ -651,7 +676,14 @@ copy action and no save or dirty-state registration. Every
 hosted Sentinel chat gets one chat-owned `todo`
 tab (`UnifiedTodoTab`, `resourceId` = the ledger's parent process id) reading its
 ledger from the owning server through `client.sentinelTodos.get` with `full: true`;
-only the descriptor persists. The panel always uses list/detail presentation:
+only the descriptor persists. To-do activation hides Explorer through the existing
+panel-scope navigator open bit, preserving Search mode, resource buffers and routing. Explicit reopen survives
+item interactions and ledger refreshes; tab reactivation or returning from another
+focused content view hides Explorer again. Panel chrome and To-do portals retain
+the current view. This boundary follows the selected workspace/chat/tab, including
+excursion tabs.
+
+The panel always uses list/detail presentation:
 at 660px the panes scroll independently; narrower panels use selection and Back.
 Visited detail editors stay mounted across selection and resizing to retain drafts.
 Detail Close remembers owner-scoped deselection and restores list focus; pending
@@ -773,6 +805,14 @@ same in-memory edit buffer; line-targeted navigation opens Raw. The tab's
 workspace and concrete clone route continue to own file reads and saves.
 Rendered tabs keep a navigation handle for history replay into Raw.
 The standalone Explorer and the read-only source canvas are unaffected.
+
+With `features.panelSourceSplit` enabled, dragging a file tab onto the right
+half of the panel's editor area, or the tab menu's **Open to the Right**, shows
+two file tabs side by side (at most two panes). Opens go to the focused pane;
+narrow content (below two 280px panes plus the divider) shows only the focused
+pane. The split is in-memory per panel scope and chat and never persisted. A
+file in both panes uses one `PreviewPane` buffer; the second pane is a Monaco
+editor on the same model. See `unified-right-panel/AGENTS.md`.
 
 The panel's file editors share one navigation history per panel scope,
 persisted to localStorage (`unified-right-panel:<scope>:navigation`, versioned;

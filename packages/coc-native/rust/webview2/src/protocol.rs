@@ -280,6 +280,16 @@ pub fn open_menu_shortcut(key: u32, key_down: bool, control: bool, alt: bool, sh
     key == u32::from(b'T') && key_down && control && !alt && !shift
 }
 
+pub fn reopen_closed_shortcut(
+    key: u32,
+    key_down: bool,
+    control: bool,
+    alt: bool,
+    shift: bool,
+) -> bool {
+    key == u32::from(b'T') && key_down && control && !alt && shift
+}
+
 pub fn focus_address_shortcut(
     key: u32,
     key_down: bool,
@@ -641,6 +651,20 @@ mod tests {
             (b'T', true, true, false, true),
         ] {
             assert!(!open_menu_shortcut(u32::from(key), down, control, alt, shift));
+        }
+    }
+
+    #[test]
+    fn reopen_closed_shortcut_requires_shift_and_preserves_other_keys() {
+        assert!(reopen_closed_shortcut(u32::from(b'T'), true, true, false, true));
+        for (key, down, control, alt, shift) in [
+            (b'T', true, true, false, false),
+            (b'W', true, true, false, true),
+            (b'T', false, true, false, true),
+            (b'T', true, false, false, true),
+            (b'T', true, true, true, true),
+        ] {
+            assert!(!reopen_closed_shortcut(u32::from(key), down, control, alt, shift));
         }
     }
 

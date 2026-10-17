@@ -1,3 +1,4 @@
+import type { CocClient } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient } from '../api/cocClient';
 
 export type {
@@ -105,7 +106,13 @@ async function addRemoteServerWithoutMigration(input: RemoteServerInput): Promis
     return getSpaCocClient().servers.add(input);
 }
 
-export async function listRemoteServers(): Promise<RemoteServer[]> {
+/**
+ * Registry operations default to the page-origin server, which also owns the
+ * one-time localStorage migration. Pass `owner` to manage another server's
+ * registry (Desktop Admin targeting a remote); it is never migrated into.
+ */
+export async function listRemoteServers(owner?: CocClient): Promise<RemoteServer[]> {
+    if (owner) return owner.servers.list();
     await ensureMigrated();
     return fetchRemoteServersWithoutMigration();
 }
@@ -114,31 +121,37 @@ export async function getRemoteServers(): Promise<RemoteServer[]> {
     return listRemoteServers();
 }
 
-export async function addRemoteServer(input: RemoteServerInput): Promise<RemoteServer> {
+export async function addRemoteServer(input: RemoteServerInput, owner?: CocClient): Promise<RemoteServer> {
+    if (owner) return owner.servers.add(input);
     await ensureMigrated();
     return addRemoteServerWithoutMigration(input);
 }
 
-export async function updateRemoteServer(id: string, patch: RemoteServerPatch): Promise<RemoteServer> {
+export async function updateRemoteServer(id: string, patch: RemoteServerPatch, owner?: CocClient): Promise<RemoteServer> {
+    if (owner) return owner.servers.update(id, patch);
     await ensureMigrated();
     return getSpaCocClient().servers.update(id, patch);
 }
 
-export async function removeRemoteServer(id: string): Promise<void> {
+export async function removeRemoteServer(id: string, owner?: CocClient): Promise<void> {
+    if (owner) {
+        await owner.servers.remove(id);
+        return;
+    }
     await ensureMigrated();
     await getSpaCocClient().servers.remove(id);
 }
 
-export async function testRemoteServer(input: RemoteServerInput): Promise<RemoteServerHealth> {
-    return getSpaCocClient().servers.test(input);
+export async function testRemoteServer(input: RemoteServerInput, owner: CocClient = getSpaCocClient()): Promise<RemoteServerHealth> {
+    return owner.servers.test(input);
 }
 
-export async function reconnectServer(id: string): Promise<RemoteServerRuntime> {
-    return getSpaCocClient().servers.reconnect(id);
+export async function reconnectServer(id: string, owner: CocClient = getSpaCocClient()): Promise<RemoteServerRuntime> {
+    return owner.servers.reconnect(id);
 }
 
-export async function restartServer(id: string): Promise<RemoteServerRestartResponse> {
-    return getSpaCocClient().servers.restart(id);
+export async function restartServer(id: string, owner: CocClient = getSpaCocClient()): Promise<RemoteServerRestartResponse> {
+    return owner.servers.restart(id);
 }
 
 export function getServerEndpoint(server: RemoteServer): string | undefined {

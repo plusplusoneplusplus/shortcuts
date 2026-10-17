@@ -8,7 +8,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button, Spinner } from '../ui';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../api/cocClient';
+import { useAdminServer } from './adminTarget';
 
 interface UserPreferences {
     theme?: 'light' | 'dark' | 'auto';
@@ -21,6 +22,7 @@ interface PreferencesSectionProps {
 }
 
 export function PreferencesSection({ onError, onSuccess }: PreferencesSectionProps) {
+    const adminServer = useAdminServer();
     const [prefs, setPrefs] = useState<UserPreferences | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -28,14 +30,14 @@ export function PreferencesSection({ onError, onSuccess }: PreferencesSectionPro
     const loadPreferences = useCallback(async () => {
         setLoading(true);
         try {
-            const data = await getSpaCocClient().preferences.getGlobal() as UserPreferences;
+            const data = await adminServer.client.preferences.getGlobal() as UserPreferences;
             setPrefs(data);
         } catch (err: unknown) {
             onError(getSpaCocClientErrorMessage(err, 'Failed to load preferences'));
         } finally {
             setLoading(false);
         }
-    }, [onError]);
+    }, [adminServer, onError]);
 
     useEffect(() => {
         loadPreferences();
@@ -44,7 +46,7 @@ export function PreferencesSection({ onError, onSuccess }: PreferencesSectionPro
     const patchPreference = useCallback(async (patch: Partial<UserPreferences>) => {
         setSaving(true);
         try {
-            const updated = await getSpaCocClient().preferences.patchGlobal(patch as any) as UserPreferences;
+            const updated = await adminServer.client.preferences.patchGlobal(patch as any) as UserPreferences;
             setPrefs(updated);
             onSuccess('Preference saved');
         } catch (err: unknown) {
@@ -52,7 +54,7 @@ export function PreferencesSection({ onError, onSuccess }: PreferencesSectionPro
         } finally {
             setSaving(false);
         }
-    }, [onError, onSuccess]);
+    }, [adminServer, onError, onSuccess]);
 
     const inputClass = 'flex-1 px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] min-h-[44px] md:min-h-0 w-full';
     const selectClass = inputClass;

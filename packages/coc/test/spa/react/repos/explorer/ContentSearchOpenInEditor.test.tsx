@@ -1,3 +1,4 @@
+import '../../language-servers/fileIdentityMock';
 // @vitest-environment jsdom
 /**
  * §2.7's last item — "Open in Editor": the result set as a read-only text

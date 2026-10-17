@@ -28,6 +28,23 @@ function makeTrigger(overrides: Partial<Trigger> = {}): Trigger {
 }
 
 describe('TriggersClient', () => {
+  it('serializes date authoring, capabilities and confirmed catch-up on the exact owner path', async () => {
+    const adapter = createMockAdapter({ trigger: makeTrigger(), dateTime: true });
+    const client = new TriggersClient(adapter);
+    const input = { itemId: 'item', instruction: 'Review only', event: {
+      type: 'date-time' as const, firesAt: '2027-01-01T12:00:00.000Z', timeZone: 'UTC', localTime: '2027-01-01T12:00',
+    } };
+    await client.sentinelTodoCapabilities('owner/clone', 'sentinel/id');
+    await client.createSentinelTodo('owner/clone', 'sentinel/id', { ...input, idempotencyKey: 'draft' });
+    await client.editSentinelTodo('owner/clone', 'sentinel/id', 'rule/id', { ...input, expectedRevision: 2 });
+    await client.resumeSentinelTodo('owner/clone', 'sentinel/id', 'rule/id', 3, true);
+    expect(adapter.calls).toMatchObject([
+      { path: '/workspaces/owner%2Fclone/sentinel-todos/sentinel%2Fid/triggers/capabilities' },
+      { path: '/workspaces/owner%2Fclone/sentinel-todos/sentinel%2Fid/triggers', options: { body: input } },
+      { path: '/workspaces/owner%2Fclone/sentinel-todos/sentinel%2Fid/triggers/rule%2Fid', options: { body: { ...input, expectedRevision: 2 } } },
+      { path: '/workspaces/owner%2Fclone/sentinel-todos/sentinel%2Fid/triggers/rule%2Fid/resume', options: { body: { expectedRevision: 3, confirmed: true } } },
+    ]);
+  });
   it('carries explicit scope upgrades and serializes manual repairs on the owning server route', async () => {
     const trigger = makeTrigger();
     const adapter = createMockAdapter({ trigger });

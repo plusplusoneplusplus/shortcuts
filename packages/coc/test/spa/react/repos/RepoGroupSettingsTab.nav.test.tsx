@@ -68,7 +68,7 @@ const MEMBERS = [
     { workspaceId: 'r2', stale: false, name: 'docs', rootPath: '/r/r2' },
 ];
 
-async function renderGroupSettings(initialSection?: SettingsSection) {
+async function renderGroupSettings(initialSection?: SettingsSection, navigation: 'route' | 'local' = 'route') {
     const { RepoGroupSettingsTab } = await import(
         '../../../../src/server/spa/client/react/repos/RepoGroupSettingsTab'
     );
@@ -87,7 +87,7 @@ async function renderGroupSettings(initialSection?: SettingsSection) {
     return render(
         <AppProvider>
             <InitialSectionSetter />
-            <RepoGroupSettingsTab workspaceId={GROUP_ID} active />
+            <RepoGroupSettingsTab workspaceId={GROUP_ID} active navigation={navigation} />
         </AppProvider>
     );
 }
@@ -100,6 +100,16 @@ beforeEach(() => {
 });
 
 describe('RepoGroupSettingsTab navigation', () => {
+    it('uses the same sections locally in the panel without replacing the workspace route', async () => {
+        location.hash = `#repos/${GROUP_ID}/chats`;
+        await renderGroupSettings(undefined, 'local');
+        fireEvent.click(screen.getByTestId('nav-item-llm-tools'));
+        await screen.findByTestId('llm-tools-panel');
+        expect(location.hash).toBe(`#repos/${GROUP_ID}/chats`);
+        fireEvent.click(screen.getByTestId('nav-item-mcp'));
+        await screen.findByTestId('mcp-servers-panel');
+        expect(location.hash).toBe(`#repos/${GROUP_ID}/chats`);
+    });
     it('renders the Group and Agent nav groups with the group sections', async () => {
         await renderGroupSettings();
 

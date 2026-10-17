@@ -100,7 +100,7 @@ when selected. `features.railManualRefresh` (default on, Appearance) gates
 queue/history/run/group-pin reads, awaits `RailPinnedJobs`' full pinned read,
 an optional `refreshList` for aggregate groups and the host's `refreshGit`.
 Hosts own `useRepoRailGit`/`useGroupRailGit` and supply their status to rail
-views; manual refresh reads Git even with tiles disabled or the sidebar expanded.
+views; manual refresh reads Git while the sidebar is expanded as well as collapsed.
 Git-info single/batch reads bypass server freshness/backoff and report failures;
 groups read live members on their owner, never their virtual root.
 Independent domains settle before busy clears and report partial errors. Reads
@@ -108,17 +108,18 @@ retain owner/source and reject superseded/live-stale snapshots; unavailable
 owners report errors without local fallback. Refresh preserves drafts, navigation,
 selection and collapse state and never fetches, pulls or mutates Git or scheduling.
 Missing config/bootstrap settings enable refresh; explicit
-saved false disables it. With `features.railGitSummary`
-on (default off), `RailGitSummary.tsx` adds changes, sync and branch-spine tiles
-below them through the panel's `railGit` slot, mounted only while collapsed;
-`railGitModel.ts` holds the pure tile rules and `useRailGitSummary.ts` the
+saved false disables it. `RailGitSummary.tsx` supplies changes, sync and branch-spine
+tiles through the panel's `railGit` slot for Git repos and groups with live members,
+mounted only while collapsed. `railGitModel.ts` holds the pure tile rules and `useRailGitSummary.ts` the
 owner-scoped reads (repo: git-info + working tree; group: one member git-info
 batch on the group's server). The repository preview's branch row embeds the
 shared `BranchPickerModal` with the supplied owner client; requests retain the
 raw workspace id. Unsaved editor buffers block switching, and success refreshes
 the rail while preserving the popup's Git links. Owner changes reset the selector.
 The Sync preview lazily mounts `RailOutgoingCommits`, using expanded Git's
-history paging and outgoing prefix, with shared `CommitIdentity` rows. Group
+history paging and outgoing prefix, with shared `CommitIdentity` rows and
+`CommitTooltip`/`useCommitListGestures` metadata panels. Preview focus ownership
+includes those body portals, so keyboard interaction preserves the host. Group
 cards keep identity, branch and Git navigation together and omit outgoing
 sections only for a successful, resolved upstream comparison with explicit zero
 ahead; pending, failed and unavailable comparisons remain visible. Owner,
@@ -299,7 +300,10 @@ prefixes and invalid suffix text. The selected row receives the current line
 through the same pinned navigation path as symbols. Rows retained from an older
 filename query cannot be selected until the current search answers.
 Backspacing a prefix restores the mode the dialog was opened in. The footer
-names the active filter. Do not add a second palette component.
+names the active filter. Do not add a second palette component. The typing
+debounce follows the mode the dialog was opened in, not the active prefix:
+Ctrl/Cmd+P waits 40 ms; Go To All waits `GO_TO_ALL_DEBOUNCE_MS` (500 ms) for
+every search it issues, including `f ` file searches.
 
 Symbols are answered over the language-server bridge, never HTTP:
 `features/language-servers/useWorkspaceSymbols.ts` holds one workspace
@@ -474,6 +478,13 @@ this workspace, read whole, not a trusted absolute path — and only then opens 
 language document and registers Monaco providers over its model
 (`features/language-servers/`).
 
+Editable Explorer and definition opens resolve directory spelling through the
+owning repo's `file-identity` endpoint before creating state. `FileOpenQueue`
+serializes resolution and publication; existing aliases reuse their buffer key,
+while ambiguous duplicates remain untouched with a retryable error. Filesystem
+proof keeps distinct case-sensitive names separate. Unified chats use separate
+document stores and transport editing sessions; a split retains its tab's model.
+
 The selected repo passes its clone-qualified routing ref separately from the
 workspace id. File reads/writes and the language socket resolve through that ref,
 while browser document URIs and WebSocket query parameters keep the workspace id
@@ -531,10 +542,10 @@ the API-only Monaco entry point does not register the Ctrl/Cmd-click gesture.
 Each pane claims its own model with `registerEditorNavigator`
 (`features/language-servers/editorNavigation.ts`), and the opener dispatches on
 the model the jump started in — that is how the target lands in the Explorer's
-strip or the right panel's, whichever the user was in. The pane refuses a
-`coc-file://` target outside its own workspace, so a dependency under
-`node_modules` cannot be routed through the repo's own file endpoint. Surfaces
-open the target pinned and pass the position back down as `revealLine` /
+strip or the right panel's, whichever the user was in. The pane accepts its own
+workspace and explicitly supplied live group members; each member retains its
+concrete clone route. Other workspace targets are refused before any file read.
+Surfaces open the target pinned and pass the position back down as `revealLine` /
 `revealColumn`; the column travels with its line through the tab descriptors and
 is dropped whenever the line changes without one.
 
@@ -557,12 +568,13 @@ its own workspace; a repo-group pane accepts each live member and loads through
 the target member's workspace and concrete clone route. It prepares accepted
 language-server or symbol-index targets before returning the location because
 standalone Monaco can resolve only models that already exist. Accepted targets
-start with a visible loading model that is updated in place after the routed
-read. Failed reads or rejected outside-group targets get a readable unavailable
-model without reading the rejected target, and cancellation drops stale
-content. Temporary models are disposed after Peek
-detaches or with the initiating pane; a prepared model that never attaches has a
-bounded orphan timeout. Selecting a row does not open an Explorer tab.
+reuse a live model through `editingModels.ts` only within the same concrete owner
+and editing scope, preserving unsaved text. Other accepted targets receive a
+scoped loading model updated in place after the routed read. Identity failures
+stop navigation with a retryable error and create no model. Read failures show
+an unavailable model, and cancellation drops stale content. Temporary models are
+disposed after Peek detaches or with the initiating pane; a prepared model that
+never attaches has a bounded orphan timeout. Selecting a row does not open an Explorer tab.
 
 An external `coc-lsp-external://` target is loaded through the language
 attachment that received the definition — the routed connection of the owning

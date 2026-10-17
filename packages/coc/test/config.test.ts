@@ -209,6 +209,18 @@ timeout: 300
             expect(Object.keys(resolved.sources)).not.toContain('features.unifiedRightPanel');
         });
 
+        it('loads a config still carrying the removed features.panelReopenClosedTab key', () => {
+            // Right-panel Ctrl/Cmd+Shift+T reopen is always on; a saved `false`
+            // must load without becoming a resolved setting that could gate it.
+            const configPath = path.join(tmpDir, 'stale-panel-reopen-closed-tab.yaml');
+            fs.writeFileSync(configPath, 'features:\n  panelReopenClosedTab: false\n');
+
+            expect(loadConfigFile(configPath)).toBeDefined();
+            const resolved = getResolvedConfigWithSource(configPath);
+            expect(resolved.resolved.features).not.toHaveProperty('panelReopenClosedTab');
+            expect(Object.keys(resolved.sources)).not.toContain('features.panelReopenClosedTab');
+        });
+
         it('should throw for invalid YAML', () => {
             const configPath = path.join(tmpDir, 'invalid.yaml');
             fs.writeFileSync(configPath, '{{invalid yaml content]]');
@@ -1187,6 +1199,8 @@ timeout: 300
                 '  teamsMessageReaction: true',
                 '  sentinelDesktopMirror: true',
                 '  sentinelPrOutcomeWake: true',
+                '  sentinelNextSteps: true',
+                '  sentinelTodoDateTimeTriggers: true',
                 '  sentinelResultCards: true',
                 '  sentinelTodoDependencies: true',
                 '  sentinelTodoExternalReferences: true',
@@ -1206,7 +1220,7 @@ timeout: 300
                 '  pinnedScopes: true',
                 '  schedulesInScheduledSlide: true',
                 '  chatFolders: true',
-                '  railGitSummary: true',
+                '  adminMachineSwitch: true',
                 '  railManualRefresh: true',
                 '  chatHistoryPaging: true',
                 '  railStatusActions: true',
@@ -1218,6 +1232,8 @@ timeout: 300
                 '  explorerEditorTabs: true',
                 '  explorerDelete: true',
                 '  markdownPanelPreview: true',
+                '  panelSourceSplit: true',
+                '  panelSettings: true',
                 '  panelTabReordering: true',
                 '  htmlPageTab: false',
                 '  chatStyleSelector: true',
@@ -1524,6 +1540,7 @@ timeout: 300
                     "enabled": false,
                   },
                   "features": {
+                    "adminMachineSwitch": false,
                     "arxivPaperIngest": false,
                     "autoAgentProviderRouting": false,
                     "autoMemoryPromotion": true,
@@ -1548,10 +1565,11 @@ timeout: 300
                     "htmlPageTab": true,
                     "markdownPanelPreview": false,
                     "nativeCliSessions": false,
+                    "panelSettings": false,
+                    "panelSourceSplit": false,
                     "panelTabReordering": true,
                     "pinnedScopes": true,
                     "quickAskSidenotes": true,
-                    "railGitSummary": false,
                     "railManualRefresh": true,
                     "railStatusActions": true,
                     "ralphMultiAgentGrill": false,
@@ -1562,8 +1580,10 @@ timeout: 300
                     "scopeSwitcher": true,
                     "sensitiveInput": false,
                     "sentinelDesktopMirror": false,
+                    "sentinelNextSteps": false,
                     "sentinelPrOutcomeWake": false,
                     "sentinelResultCards": true,
+                    "sentinelTodoDateTimeTriggers": false,
                     "sentinelTodoDependencies": false,
                     "sentinelTodoExternalReferences": false,
                     "sentinelTodoScrubber": false,
@@ -1760,6 +1780,7 @@ timeout: 300
                   "dreams.timeoutMs": "default",
                   "effortLevels.enabled": "default",
                   "excalidraw.enabled": "default",
+                  "features.adminMachineSwitch": "default",
                   "features.arxivPaperIngest": "default",
                   "features.autoAgentProviderRouting": "default",
                   "features.autoMemoryPromotion": "file",
@@ -1783,10 +1804,11 @@ timeout: 300
                   "features.htmlPageTab": "default",
                   "features.markdownPanelPreview": "default",
                   "features.nativeCliSessions": "default",
+                  "features.panelSettings": "default",
+                  "features.panelSourceSplit": "default",
                   "features.panelTabReordering": "default",
                   "features.pinnedScopes": "default",
                   "features.quickAskSidenotes": "default",
-                  "features.railGitSummary": "default",
                   "features.railManualRefresh": "default",
                   "features.railStatusActions": "default",
                   "features.ralphMultiAgentGrill": "default",
@@ -1797,8 +1819,10 @@ timeout: 300
                   "features.scopeSwitcher": "default",
                   "features.sensitiveInput": "default",
                   "features.sentinelDesktopMirror": "default",
+                  "features.sentinelNextSteps": "default",
                   "features.sentinelPrOutcomeWake": "default",
                   "features.sentinelResultCards": "default",
+                  "features.sentinelTodoDateTimeTriggers": "default",
                   "features.sentinelTodoDependencies": "default",
                   "features.sentinelTodoExternalReferences": "default",
                   "features.sentinelTodoScrubber": "default",

@@ -5,7 +5,7 @@ let cachedClient: CocClient | undefined;
 let cachedKey = '';
 let cachedFetch: typeof fetch | undefined;
 
-function toLegacyFetchInit(init?: RequestInit): RequestInit {
+export function toLegacyFetchInit(init?: RequestInit): RequestInit {
     if (!init) return {};
 
     const next: RequestInit = {};

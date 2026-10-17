@@ -47,6 +47,7 @@ export interface BrowserEventSink {
     closeRequested(): void;
     openMenuRequested(): void;
     focusAddressRequested?(): void;
+    reopenClosedRequested?(): void;
     /** The host expired or lost its guest; remove the manager handle as well. */
     closed?(): void;
     controlPopoutOpened?(viewId: string, view: BrowserHostedView): void;

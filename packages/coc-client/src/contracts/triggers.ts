@@ -3,7 +3,7 @@
  *
  * A trigger binds an `event` (watched condition) to an `action` (what fires).
  * Events: the `condition-monitor` `ci-failure` CI auto-fix monitor and the
- * one-shot `pr-merged` watch bound to a Sentinel To-do item. Action:
+ * one-shot `pr-merged` watch or absolute `date-time` bound to a Sentinel To-do. Action:
  * `send-message`.
  */
 
@@ -59,7 +59,15 @@ export interface PrMergedMonitorEvent {
   terminalObservation?: { status: 'merged' | 'closed'; observedAt: string };
 }
 
-export type TriggerEvent = ConditionMonitorEvent | PrMergedMonitorEvent;
+export interface DateTimeTriggerEvent {
+  type: 'date-time';
+  /** Absent on non-polling events; permits monitor-qualified narrowing. */
+  monitor?: never;
+  firesAt: string;
+  timeZone: string;
+}
+
+export type TriggerEvent = ConditionMonitorEvent | PrMergedMonitorEvent | DateTimeTriggerEvent;
 
 export type TriggerActionMode = 'autopilot' | 'inherit';
 
@@ -88,7 +96,7 @@ export type TriggerOutcome = 'fired' | 'closed-unmerged' | 'skipped' | 'error';
 export interface TriggerDelivery {
   deliveryId: string;
   firedAt: string;
-  reason: 'merged' | 'closed' | 'run-now';
+  reason: 'merged' | 'closed' | 'run-now' | 'due';
   state: 'pending' | 'delivered' | 'failed';
   deliveredAt?: string;
   itemRevision?: number;
@@ -104,7 +112,7 @@ export interface Trigger {
   action: TriggerAction;
   inFlight: boolean;
   createdAt: string;
-  /** `null` for rules that never expire (PR-merge wake rules). */
+  /** `null` for rules that never expire (one-shot wake rules). */
   expiresAt: string | null;
   lastTickAt: string | null;
   nextTickAt: string | null;
@@ -149,21 +157,28 @@ export interface TriggerDeleteResponse {
   trigger: Trigger;
 }
 
-export interface SentinelTodoTriggerInput {
+export type SentinelTodoTriggerInput = {
   itemId: string;
-  prUrl: string;
   instruction?: string;
+} & ({
+  prUrl: string;
   workspaceId?: string;
   originId?: string;
-}
+  event?: never;
+} | {
+  event: DateTimeTriggerEvent & { localTime: string };
+  prUrl?: never;
+  workspaceId?: never;
+  originId?: never;
+});
 
-export interface CreateSentinelTodoTriggerRequest extends SentinelTodoTriggerInput {
+export type CreateSentinelTodoTriggerRequest = SentinelTodoTriggerInput & {
   runNow?: boolean;
   confirmed?: true;
   idempotencyKey?: string;
 }
 
-export interface EditSentinelTodoTriggerRequest extends SentinelTodoTriggerInput {
+export type EditSentinelTodoTriggerRequest = SentinelTodoTriggerInput & {
   expectedRevision: number;
 }
 

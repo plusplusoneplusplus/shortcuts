@@ -248,7 +248,7 @@ beforeAll(async () => {
     fs.writeFileSync(path.join(root, 'window.pyw'), WINDOW_TEXT);
     fs.writeFileSync(path.join(root, 'unopened.py'), 'broken: int = "not an int"\n');
 
-    const enabled: LanguageServerDefinition = { ...PYTHON_PRESET, enabled: true };
+    const enabled: LanguageServerDefinition = { ...PYTHON_PRESET };
     const prepared = prepareDefinitionForRoot(enabled, root);
     session = new LanguageServerSession({
         definition: prepared.definition,
@@ -438,7 +438,6 @@ describe('Python workspace settings', () => {
         fs.writeFileSync(path.join(strictRoot, 'strict.py'), strictText);
         const definition: LanguageServerDefinition = {
             ...PYTHON_PRESET,
-            enabled: true,
             settings: {
                 python: {
                     analysis: {
@@ -516,7 +515,7 @@ describe.skipIf(!hostPython)(`project virtual environment${hostPython ? '' : ` (
         fs.writeFileSync(packageStub, 'def greet(name: str) -> str: ...\n');
         fs.writeFileSync(path.join(packageRoot, 'py.typed'), '');
 
-        const enabled: LanguageServerDefinition = { ...PYTHON_PRESET, enabled: true };
+        const enabled: LanguageServerDefinition = { ...PYTHON_PRESET };
         const prepared = prepareDefinitionForRoot(enabled, envRoot);
         expect((prepared.definition.settings as { python?: { pythonPath?: string } }).python?.pythonPath).toBe(envPython);
 

@@ -1,3 +1,4 @@
+import '../../language-servers/fileIdentityMock';
 // @vitest-environment jsdom
 /**
  * explorer-sidebar-preview-tabs AC-06 — the tree column following its host's

@@ -1,3 +1,6 @@
+import { resolveOwnedFile } from '../../language-servers/fileIdentity';
+import { allowEditingModelTarget, resolveEditingTarget, registerEditingModel } from '../../language-servers/editingModels';
+import { browserDocumentUri, parseBrowserDocumentUri } from '../../language-servers/documentStore';
 /**
  * PreviewPane — the Explorer's file preview: a full-bleed viewer plus a
  * floating close/save toolbar.
@@ -50,6 +53,7 @@ import {
 import {
     isExternalNavigationTarget,
     registerEditorNavigator,
+    SYMBOL_CANDIDATE_FRAGMENT,
     type ExternalNavigationTarget,
     type LanguageNavigationTarget,
 } from '../../language-servers/editorNavigation';
@@ -63,6 +67,7 @@ import {
 } from './explorerDirtyStore';
 
 export interface PreviewPaneProps {
+    editingScope?: string;
     repoId: string;
     /** Concrete clone identity for file I/O and language transport routing. */
     routingRef?: string | null;
@@ -132,6 +137,8 @@ export interface PreviewPaneProps {
      * cross-file jump is declined, so nothing silently disappears.
      */
     onNavigate?: (target: {
+        workspaceId?: string;
+        routingRef?: string | null;
         path: string;
         name: string;
         line: number;
@@ -154,6 +161,11 @@ export interface PreviewPaneProps {
     onNavigationMount?: (controller: EditorNavigationController | null) => void;
     /** Reports cursor, scroll, search, diagnostic, and language-jump locations. */
     onNavigationLocation?: (snapshot: EditorNavigationSnapshot, reason: EditorNavigationReason) => void;
+    /**
+     * Publishes the live text model (and `null` when it goes away), so a second
+     * view of this file can attach to the same buffer instead of reading its own.
+     */
+    onModelShare?: (context: EditorModelMountContext | null) => void;
 }
 
 /** What a buffer is doing, as reported to its owner through `onStatusChange`. */
@@ -174,7 +186,16 @@ function RenderedMarkdown({ content }: { content: string }) {
     );
 }
 
-export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, filePath, fileName, markdownPreview = false, revealLine, endLine, revealColumn, revealNonce, symbolCandidate, onClose, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate, onNavigateExternal, onNavigationMount, onNavigationLocation }: PreviewPaneProps) {
+export function PreviewPane({ editingScope, repoId, routingRef, definitionPreviewOwners, filePath, fileName, markdownPreview = false, revealLine, endLine, revealColumn, revealNonce, symbolCandidate, onClose, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate, onNavigateExternal, onNavigationMount, onNavigationLocation, onModelShare }: PreviewPaneProps) {
+    const [identityFailure, setIdentityFailure] = useState<{ message: string; retry(): void } | null>(null);
+    const identityFailureRef = useRef(identityFailure);
+    identityFailureRef.current = identityFailure;
+    const clearIdentityFailure = () => {
+        if (!identityFailureRef.current) return;
+        identityFailureRef.current = null;
+        setIdentityFailure(null);
+    };
+    useEffect(() => { setIdentityFailure(null); }, [repoId, routingRef, editingScope, filePath]);
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const isWorkspacePreview = filePath.startsWith(WORKSPACE_PREVIEW_PREFIX);
     const readOnly = isTrusted || isWorkspacePreview;
@@ -288,6 +309,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
     const languageDocument = useLanguageDocument({
         workspaceId: repoId,
         routingRef,
+        editingScope,
         path: actualPath,
         enabled: languageEnabled,
         text: savedText ?? diskText,
@@ -333,10 +355,13 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
             return true;
         }
         const navigate = navigateRef.current;
-        if (!navigate || target.workspaceId !== repoId) return false;
+        const targetOwners = definitionPreviewOwners?.filter(owner => owner.workspaceId === target.workspaceId) ?? [];
+        const foreignOwner = target.workspaceId !== repoId && targetOwners.length === 1 ? targetOwners[0] : null;
+        if (!navigate || (target.workspaceId !== repoId && !foreignOwner)) return false;
         const source = navigationControllerRef.current?.capture();
         if (source) navigationLocationRef.current?.(source, 'jump');
         navigate({
+            ...(foreignOwner ? { workspaceId: foreignOwner.workspaceId, routingRef: foreignOwner.routingRef } : {}),
             path: target.path,
             name: target.path.split('/').pop() || target.path,
             line: target.line,
@@ -344,7 +369,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
             ...(target.symbolCandidate ? { symbolCandidate: true } : {}),
         });
         return true;
-    }, [repoId]);
+    }, [repoId, definitionPreviewOwners]);
 
     // The moment the feature stops being plumbing: with a model in hand and a
     // document behind it, hover/definition/references/completion/signature help
@@ -378,6 +403,11 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                 navigationMountRef.current?.(null);
             };
         }
+        const definitionOwner = (workspaceId: string) => {
+            if (workspaceId === repoId) return { workspaceId: repoId, routingRef };
+            const owners = definitionPreviewOwners?.filter(candidate => candidate.workspaceId === workspaceId);
+            return owners?.length === 1 ? owners[0] : undefined;
+        };
         const loadDefinitionSource = async (
             ownerWorkspaceId: string,
             ownerRoutingRef: string | null | undefined,
@@ -395,13 +425,18 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
             }
             return response.content;
         };
+        const modelScopeFor = (workspaceId: string, route: string | null | undefined) =>
+            JSON.stringify([workspaceId, route === undefined ? workspaceId : route, editingScope ?? '']);
+        const modelScope = modelScopeFor(repoId, routingRef);
+        const unregisterModel = registerEditingModel({ scope: modelScope, workspaceId: repoId, path: actualPath, model });
+        const identityController = new AbortController();
         const previewSource = registerDefinitionPreviewSource({
             monaco: monaco as unknown as DefinitionPreviewMonaco,
             workspaceId: repoId,
             load: (path, signal) => loadDefinitionSource(repoId, routingRef, path, signal),
             resolveTarget: definitionPreviewOwners
                 ? (workspaceId) => {
-                    const owner = definitionPreviewOwners.find(candidate => candidate.workspaceId === workspaceId);
+                    const owner = definitionOwner(workspaceId);
                     return owner
                         ? (path, signal) => loadDefinitionSource(
                             owner.workspaceId,
@@ -431,11 +466,39 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
             model: model as unknown as ProviderModel,
             view: languageView,
             languageId: shadow?.languageId ?? monacoLanguageId,
-            resolveUri: async (uri, signal, target) => (
-                await previewSource.prepare(uri, signal, target, target.waitForContent)
-                    ? (monaco as unknown as MonacoLike).Uri.parse(uri)
-                    : null
-            ),
+            resolveUri: async (uri, signal, target) => {
+                try {
+                    const document = parseBrowserDocumentUri(uri);
+                    if (document) {
+                        const owner = definitionOwner(document.workspaceId);
+                        if (!owner) throw new Error('Definition owner is unavailable. Retry Go to Definition.');
+                        const activeSignal = AbortSignal.any([signal, identityController.signal]);
+                        const scope = modelScopeFor(owner.workspaceId, owner.routingRef);
+                        const { path, entry } = await resolveEditingTarget(scope, document.path,
+                            value => resolveOwnedFile(owner, value, activeSignal), activeSignal);
+                        if (entry) {
+                            clearIdentityFailure();
+                            return allowEditingModelTarget(model, entry, uri.endsWith(`#${SYMBOL_CANDIDATE_FRAGMENT}`));
+                        }
+                        // Query isolates temporary Peek models by concrete owner/session.
+                        const fragment = uri.includes('#') ? uri.slice(uri.indexOf('#')) : '';
+                        uri = browserDocumentUri(document.workspaceId, path)
+                            + (editingScope !== undefined || owner.routingRef != null
+                                ? `?editing=${encodeURIComponent(scope)}` : '') + fragment;
+                    }
+                    const prepared = await previewSource.prepare(uri, signal, target, target.waitForContent);
+                    if (prepared && !signal.aborted && !identityController.signal.aborted) clearIdentityFailure();
+                    return prepared ? (monaco as unknown as MonacoLike).Uri.parse(uri) : null;
+                } catch (error) {
+                    if (!signal.aborted && !identityController.signal.aborted) {
+                        setIdentityFailure({
+                            message: error instanceof Error ? error.message : 'Cannot confirm file identity.',
+                            retry: () => editor.trigger('file-identity', 'editor.action.revealDefinition', null),
+                        });
+                    }
+                    throw error;
+                }
+            },
         });
         const definitionLinkCue = definitionSupported
             ? installDefinitionLinkCue({
@@ -450,6 +513,8 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
         // opener knows which surface asked and lands the target in its strip.
         const navigation = registerEditorNavigator(model, handleNavigate);
         return () => {
+            identityController.abort();
+            unregisterModel();
             navigationListener.dispose();
             if (navigationControllerRef.current === navigationController) navigationControllerRef.current = null;
             navigationMountRef.current?.(null);
@@ -467,7 +532,27 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
         repoId,
         routingRef,
         definitionPreviewOwners,
+        editingScope,
+        actualPath,
     ]);
+
+    const modelShareRef = useRef(onModelShare);
+    modelShareRef.current = onModelShare;
+    const sharesModel = onModelShare !== undefined;
+    const mountModel = displayBlob?.encoding === 'utf-8'
+        ? (viewOnly ? mountNonEditableModel : handleModelMount)
+        : undefined;
+    const mountSharedModel = useMemo(() => (mountModel && sharesModel
+        ? (context: EditorModelMountContext) => {
+            const cleanup = mountModel(context);
+            modelShareRef.current?.(context);
+            return () => {
+                modelShareRef.current?.(null);
+                cleanup?.();
+            };
+        }
+        : mountModel
+    ), [mountModel, sharesModel]);
 
     // One editor change feeds two consumers: the render buffer, and the
     // document that the language server sees. Monaco's change list is converted
@@ -565,6 +650,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
 
     return (
         <div className="relative w-full h-full overflow-hidden" data-testid="preview-pane">
+            {identityFailure && <div role="alert">{identityFailure.message} <button type="button" onClick={identityFailure.retry}>Retry Go to Definition</button></div>}
             {/* Floating toolbar: close + save controls */}
             {!loading && (
                 <div
@@ -663,9 +749,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                     revealColumn={revealColumn}
                     revealNonce={revealNonce}
                     markers={languageEnabled ? languageDocument.markers : undefined}
-                    onModelMount={displayBlob.encoding === 'utf-8'
-                        ? (viewOnly ? mountNonEditableModel : handleModelMount)
-                        : undefined}
+                    onModelMount={mountSharedModel}
                     codeTestId="monaco-container"
                 />
             ) : null}

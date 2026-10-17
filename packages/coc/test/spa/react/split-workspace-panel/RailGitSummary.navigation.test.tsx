@@ -136,6 +136,13 @@ describe('Sync preview detail-only navigation', () => {
         const row = await screen.findByRole('button', { name: `Open commit ${selected.shortHash}: ${selected.subject}` });
         const tabBefore = JSON.parse(screen.getByTestId('route-state').textContent!).tab;
         if (!remote) vi.useFakeTimers();
+        act(() => row.focus());
+        await act(async () => {
+            if (remote) await new Promise(resolve => setTimeout(resolve, 1050));
+            else await vi.advanceTimersByTimeAsync(1000);
+        });
+        expect(screen.getByTestId('tooltip-body')).toHaveTextContent(selected.body!);
+        expect(getCommit).not.toHaveBeenCalled();
         // Schedule a full-sidebar peek AFTER the popup opened, plus popup timers.
         fireEvent.mouseMove(screen.getByTestId('split-workspace-left-rail'));
         if (peekOpen) {
@@ -166,6 +173,7 @@ describe('Sync preview detail-only navigation', () => {
             expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey(scope))).toBe('1');
             expect(localStorage.getItem(splitWorkspaceGitCollapsedStorageKey(scope))).toBe('1');
             expect(screen.queryByRole('dialog')).toBeNull();
+            expect(screen.queryByTestId('commit-tooltip')).toBeNull();
             expect(getCommit).not.toHaveBeenCalled();
             expect(parseGitRoute(location.hash)).toEqual({
                 routeWorkspaceId: routingRef, workspaceId: group ? member : routingRef,

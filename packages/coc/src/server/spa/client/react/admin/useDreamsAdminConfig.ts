@@ -9,11 +9,12 @@
  * config loader.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../api/cocClient';
 import { invalidateDisplaySettings } from '../hooks/preferences/useDisplaySettings';
 import { applyRuntimeConfigPatch } from '../utils/config';
 import { loadDreamProviderActivity, type AgentProviderWorkActivity } from '../shared/providerActivity';
 import type { DreamsConfigForm } from '../features/dreams/DreamsView';
+import { useAdminServer } from './adminTarget';
 
 const EMPTY_DREAMS: DreamsConfigForm = { enabled: false, provider: '', model: '', timeoutMinutes: '60', intervalMinutes: '5' };
 
@@ -24,6 +25,7 @@ export interface UseDreamsAdminConfigOptions {
 }
 
 export function useDreamsAdminConfig({ addToast, activityActive }: UseDreamsAdminConfigOptions) {
+    const adminServer = useAdminServer();
     const [dreamsForm, setDreamsForm] = useState<DreamsConfigForm>(EMPTY_DREAMS);
     const [dreamsSnapshot, setDreamsSnapshot] = useState<DreamsConfigForm>(EMPTY_DREAMS);
     const [dreamsSaving, setDreamsSaving] = useState(false);
@@ -64,7 +66,7 @@ export function useDreamsAdminConfig({ addToast, activityActive }: UseDreamsAdmi
         }
         setDreamsSaving(true);
         try {
-            await getSpaCocClient().admin.updateConfig({
+            await adminServer.client.admin.updateConfig({
                 'dreams.enabled': dreamsForm.enabled,
                 'dreams.provider': dreamsForm.provider || null,
                 'dreams.model': dreamsForm.model.trim() || null,
@@ -72,15 +74,15 @@ export function useDreamsAdminConfig({ addToast, activityActive }: UseDreamsAdmi
                 'dreams.timeoutMs': timeoutMinutes * 60_000,
             });
             addToast('Settings saved', 'success');
-            invalidateDisplaySettings();
-            applyRuntimeConfigPatch({ dreamsEnabled: dreamsForm.enabled });
+            if (!adminServer.isRemote) invalidateDisplaySettings();
+            if (!adminServer.isRemote) applyRuntimeConfigPatch({ dreamsEnabled: dreamsForm.enabled });
             setDreamsSnapshot({ ...dreamsForm });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setDreamsSaving(false);
         }
-    }, [dreamsForm, addToast]);
+    }, [adminServer, dreamsForm, addToast]);
 
     const handleCancelDreams = useCallback(() => {
         setDreamsForm({ ...dreamsSnapshot });
@@ -89,11 +91,11 @@ export function useDreamsAdminConfig({ addToast, activityActive }: UseDreamsAdmi
     const refreshDreamProviderActivity = useCallback(async () => {
         setDreamProviderActivityError(null);
         try {
-            setDreamProviderActivity(await loadDreamProviderActivity());
+            setDreamProviderActivity(await loadDreamProviderActivity(5, adminServer.client));
         } catch (err: unknown) {
             setDreamProviderActivityError(getSpaCocClientErrorMessage(err, 'Failed to fetch Dreams provider activity'));
         }
-    }, []);
+    }, [adminServer]);
 
     // Dreams provider activity lives in the admin Dreams tab; auto-load it
     // whenever that tab becomes the active dashboard route.

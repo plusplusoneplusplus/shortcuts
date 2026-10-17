@@ -97,7 +97,9 @@ shared id, or when a route is dropped.
 Group and member conversations mount under `WorkspaceOwnerContext` with a raw
 workspace id, concrete selection, resolved endpoint and optional member root.
 Clone hooks prefer the matching subtree owner, including explicit local ownership,
-without changing registry aliases. Unresolved remote groups cannot mount a native
+without changing registry aliases; `useCocClient` also honors an explicitly supplied
+owner client. Shared Settings uses that seam for pinned, guarded requests
+([Settings lifecycle](shell.md#shared-workspace-settings)). Unresolved remote groups cannot mount a native
 chat tab. Member detail remounts transports on owner/endpoint changes.
 
 Main/warm streams, queued polling, follow-ups and preferences share that owner.

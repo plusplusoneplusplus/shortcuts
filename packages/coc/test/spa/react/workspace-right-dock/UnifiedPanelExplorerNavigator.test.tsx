@@ -1,3 +1,4 @@
+import '../language-servers/fileIdentityMock';
 /**
  * The Explorer entry point inside the unified panel: the tree COLUMN.
  *
@@ -179,7 +180,9 @@ describe('unified panel — the tree column as a navigator', () => {
 
         await waitFor(() => expect(screen.getByTestId('mock-preview-a.ts')).toHaveAttribute('data-repo', MEMBER));
         expect(screen.getByTestId(`unified-panel-tab-${fileTabId('a.ts', MEMBER)}`)).toBeInTheDocument();
-        expect(screen.getByTestId(`unified-panel-tab-repo-${fileTabId('a.ts', MEMBER)}`)).toHaveTextContent('member-repo');
+        // Source tabs show the bare filename; the member repo is in the tooltip.
+        expect(screen.queryByTestId(`unified-panel-tab-repo-${fileTabId('a.ts', MEMBER)}`)).toBeNull();
+        expect(screen.getByTestId(`unified-panel-tab-${fileTabId('a.ts', MEMBER)}`).getAttribute('title')).toContain('member-repo: a.ts');
     });
 
     it('opens a content-search hit at its matching line', async () => {

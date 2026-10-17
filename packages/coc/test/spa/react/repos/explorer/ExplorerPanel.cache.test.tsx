@@ -1,3 +1,4 @@
+import '../../language-servers/fileIdentityMock';
 // @vitest-environment jsdom
 /**
  * AC-02 of preserve-explorer-state (fetch-spy end-to-end): the fetched tree-data

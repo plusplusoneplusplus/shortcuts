@@ -977,6 +977,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             processId,
             query: prompt,
             followUpSuggestions: this.followUpSuggestions,
+            sentinelNextSteps: isAsk && normalizeChatMode(payload.mode) === 'sentinel' && this.queueConfig.getSentinelNextStepsEnabled(),
             enqueueChat: this.runtime.getEnqueueChat?.(),
             launchRalph: this.runtime.getLaunchRalph?.(),
             sendMessage: this.runtime.getSendMessage?.(),

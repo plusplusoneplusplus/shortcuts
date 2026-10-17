@@ -23,10 +23,11 @@ export const TOOLTIP_HIDE_DELAY_MS = 150;
 export interface CommitListGestures {
     hoveredCommit: GitCommitItem | null;
     tooltipAnchorRect: DOMRect | null;
-    handleRowMouseEnter: (commit: GitCommitItem, e: React.MouseEvent) => void;
+    handleRowMouseEnter: (commit: GitCommitItem, e: React.MouseEvent | React.FocusEvent) => void;
     handleRowMouseLeave: () => void;
     handleTooltipMouseEnter: () => void;
     handleTooltipMouseLeave: () => void;
+    dismissTooltip: () => void;
 
     swipeActiveRowId: string | null;
     handleSwipeReveal: (rowId: string) => void;
@@ -129,7 +130,9 @@ export function useCommitListGestures(options: {
     }, []);
 
     // Hover tooltip handlers with 1000ms delay
-    const handleRowMouseEnter = useCallback((commit: GitCommitItem, e: React.MouseEvent) => {
+    const handleRowMouseEnter = useCallback((commit: GitCommitItem, e: React.MouseEvent | React.FocusEvent) => {
+        if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+        if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
         hoverTimerRef.current = setTimeout(() => {
             setHoveredCommit(commit);
@@ -143,6 +146,7 @@ export function useCommitListGestures(options: {
             hoverTimerRef.current = null;
         }
         // Delay hiding so mouse can move onto the tooltip without it disappearing
+        if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
         hideTimerRef.current = setTimeout(() => {
             setHoveredCommit(null);
             setTooltipAnchorRect(null);
@@ -161,20 +165,22 @@ export function useCommitListGestures(options: {
         setTooltipAnchorRect(null);
     }, []);
 
+    const dismissTooltip = useCallback(() => {
+        if (hoverTimerRef.current) {
+            clearTimeout(hoverTimerRef.current);
+            hoverTimerRef.current = null;
+        }
+        if (hideTimerRef.current) {
+            clearTimeout(hideTimerRef.current);
+            hideTimerRef.current = null;
+        }
+        setHoveredCommit(null);
+        setTooltipAnchorRect(null);
+    }, []);
+
     // Portaled tooltips must close with their peek panel on outside clicks or Escape.
     useEffect(() => {
-        const dismiss = () => {
-            if (hoverTimerRef.current) {
-                clearTimeout(hoverTimerRef.current);
-                hoverTimerRef.current = null;
-            }
-            if (hideTimerRef.current) {
-                clearTimeout(hideTimerRef.current);
-                hideTimerRef.current = null;
-            }
-            setHoveredCommit(null);
-            setTooltipAnchorRect(null);
-        };
+        const dismiss = dismissTooltip;
         const onKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') dismiss();
         };
@@ -186,7 +192,7 @@ export function useCommitListGestures(options: {
             document.removeEventListener('mousedown', dismiss);
             document.removeEventListener('keydown', onKeyDown);
         };
-    }, []);
+    }, [dismissTooltip]);
 
     // Clean up timers on unmount
     useEffect(() => {
@@ -198,6 +204,7 @@ export function useCommitListGestures(options: {
 
     return {
         hoveredCommit,
+        dismissTooltip,
         tooltipAnchorRect,
         handleRowMouseEnter,
         handleRowMouseLeave,

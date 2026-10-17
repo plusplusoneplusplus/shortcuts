@@ -1,3 +1,4 @@
+import { useFileIdentityOpen } from '../../language-servers/useFileIdentityOpen';
 /**
  * UnifiedRightPanel — the workspace's one and only right-side surface.
  *
@@ -53,9 +54,10 @@
  * have to be visible in the strip rather than only in the view itself.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { cn } from '../../../ui/cn';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isPanelTabReorderingEnabled } from '../../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled, isPanelTabReorderingEnabled } from '../../../utils/config';
+import { useContainerWidth } from '../../chat/hooks/useContainerWidth';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import {
     DOCK_MIN_WIDTH,
@@ -72,6 +74,7 @@ import { ExplorerPanel } from '../explorer/ExplorerPanel';
 import { QuickOpen, type QuickOpenResult } from '../explorer/QuickOpen';
 import type { PaletteMode } from '../explorer/paletteQuery';
 import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as trustedFileName } from '../explorer/ExactOpen';
+import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
 import {
     explorerQuickOpenHasFocus,
     isExplorerQuickOpenMounted,
@@ -104,10 +107,18 @@ import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
 import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
 import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
+import { useWorkspaceSettingsPanel } from '../../repo-settings/WorkspaceSettingsHost';
 import { UnifiedHtmlPageTab } from './UnifiedHtmlPageTab';
 import { UnifiedBrowserTab } from './UnifiedBrowserTab';
 import { removeBrowserWebview } from './browserWebviewLayerStore';
 import { browserLabelForUrl, browserOpenInput, browserSessionKey, normalizeBrowserUrl } from './unifiedBrowserTabs';
+import {
+    closedBrowserTabScopeKey,
+    popClosedBrowserTab,
+    recordClosedBrowserTab,
+    reopenBrowserTabInput,
+    reopenClosedTabShortcut,
+} from './unifiedClosedBrowserTabs';
 import {
     desktopBrowserBridge,
     OPEN_BROWSER_URL_EVENT,
@@ -119,10 +130,26 @@ import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
 import { useSentinelTodoChat, useSentinelTodoEvents } from './sentinelTodoChats';
 import { sentinelTodoTabInput, shouldAutoOpenSentinelTodoTab, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 import type {
+    EditorModelMountContext,
     EditorNavigationController,
     EditorNavigationReason,
     EditorNavigationSnapshot,
 } from '../../../shared/file-viewer/MonacoFileEditor';
+import {
+    SOURCE_SPLIT_DIVIDER_WIDTH,
+    SOURCE_SPLIT_RATIO_STEP,
+    canSplitTab,
+    clampSourceSplitRatio,
+    isSourceSplitWide,
+    otherSourceSplitPane,
+    reconcileSourceSplit,
+    sourceSplitForDrop,
+    sourceSplitScopeKey,
+    useSourceSplit,
+    writeSourceSplit,
+    type SourceSplitPane,
+} from './unifiedPanelSourceSplit';
+import { UnifiedSourceMirror } from './UnifiedSourceMirror';
 import {
     dropReplayedNavigationEntry,
     finishNavigationReplay,
@@ -220,8 +247,15 @@ export function UnifiedRightPanel({
 }: UnifiedRightPanelProps) {
     const { isOpen, mode, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
     const [reorderEnabled, setReorderEnabled] = useState(() => isPanelTabReorderingEnabled());
+    const [splitEnabled, setSplitEnabled] = useState(() => isFeatureEnabled('panelSourceSplitEnabled'));
+    const { ownerKey: settingsOwner, focusPanel: focusPanelSettings } = useWorkspaceSettingsPanel();
+    const [settingsEnabled, setSettingsEnabled] = useState(() => isFeatureEnabled('panelSettingsEnabled'));
     useEffect(() => {
-        const update = () => setReorderEnabled(isPanelTabReorderingEnabled());
+        const update = () => {
+            setReorderEnabled(isPanelTabReorderingEnabled());
+            setSplitEnabled(isFeatureEnabled('panelSourceSplitEnabled'));
+            setSettingsEnabled(isFeatureEnabled('panelSettingsEnabled'));
+        };
         window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
         return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
     }, []);
@@ -263,6 +297,67 @@ export function UnifiedRightPanel({
         if (activeId === null || !isOpen) return;
         setMountedIds(prev => (prev.has(activeId) ? prev : new Set(prev).add(activeId)));
     }, [activeId, isOpen]);
+
+    // The two-pane source split. It names tab ids only; the views below stay
+    // keyed by tab, so entering, resizing or leaving the split never remounts a
+    // buffer. Session-only and scoped by panel storage scope plus chat.
+    const splitKey = sourceSplitScopeKey(workspaceId, chatId);
+    const splitKeyRef = useRef(splitKey);
+    splitKeyRef.current = splitKey;
+    const storedSplit = useSourceSplit(splitKey);
+    const split = splitEnabled ? reconcileSourceSplit(storedSplit, tabs, active) : null;
+    const splitRef = useRef(split);
+    splitRef.current = split;
+    useEffect(() => {
+        if (split !== storedSplit) writeSourceSplit(splitKey, split);
+    }, [split, storedSplit, splitKey]);
+    const viewsRef = useRef<HTMLDivElement | null>(null);
+    const { width: viewsWidth } = useContainerWidth(viewsRef, { throttleMs: 0 });
+    // Narrower than two minimum panes: only the focused pane (the active tab)
+    // shows, and the remembered split returns once there is room again.
+    const splitShown = split !== null && active?.id === split[split.focus] && isSourceSplitWide(viewsWidth);
+    const splitRatio = split === null ? 0.5 : clampSourceSplitRatio(split.ratio, viewsWidth);
+    const splitPaneOf = (tabId: string): SourceSplitPane | null => {
+        if (!splitShown || split === null) return null;
+        if (tabId === split.left) return 'left';
+        return tabId === split.right ? 'right' : null;
+    };
+    const splitLeftBasis = `calc((100% - ${SOURCE_SPLIT_DIVIDER_WIDTH}px) * ${splitRatio})`;
+    const splitLeftId = split?.left;
+    const splitRightId = split?.right;
+    useEffect(() => {
+        if (!splitShown || !isOpen || !splitLeftId || !splitRightId) return;
+        setMountedIds(prev => (prev.has(splitLeftId) && prev.has(splitRightId)
+            ? prev
+            : new Set(prev).add(splitLeftId).add(splitRightId)));
+    }, [splitShown, isOpen, splitLeftId, splitRightId]);
+    // A tree click replaces the preview slot; the pane the user is not working
+    // in must never be the tab that disappears under it.
+    const unfocusedSplitId = split === null ? null : split[otherSourceSplitPane(split.focus)];
+    useEffect(() => {
+        if (unfocusedSplitId !== null && tabs.some(tab => tab.id === unfocusedSplitId && tab.preview)) {
+            promote(unfocusedSplitId);
+        }
+    }, [unfocusedSplitId, tabs, promote]);
+    // Each file tab's live text model, so the second pane of a file shown on
+    // both sides attaches to the same buffer.
+    const [sourceModels, setSourceModels] = useState<ReadonlyMap<string, EditorModelMountContext>>(() => new Map());
+    const handleSourceModelChange = useCallback((tabId: string, context: EditorModelMountContext | null) => {
+        setSourceModels(prev => {
+            if ((prev.get(tabId) ?? null) === context) return prev;
+            const next = new Map(prev);
+            if (context) next.set(tabId, context);
+            else next.delete(tabId);
+            return next;
+        });
+    }, []);
+    const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
+    const [splitDropHover, setSplitDropHover] = useState(false);
+    const splitDropAvailable = splitEnabled && canSplitTab(tabs.find(tab => tab.id === draggedTabId));
+    const handleTabDragChange = useCallback((tabId: string | null) => {
+        setDraggedTabId(tabId);
+        setSplitDropHover(false);
+    }, []);
 
     // Tabs whose views are live right now: mounted, and still visible from this
     // chat. Dropping the invisible ones is what makes a chat switch swap the
@@ -314,23 +409,25 @@ export function UnifiedRightPanel({
             return Object.keys(retained).length === Object.keys(prev).length ? prev : retained;
         });
     }, [state.tabs]);
-    const openWorkspaceResource = useCallback((kind: 'terminal' | 'notes') => {
-        const owner = kind === 'notes' ? workspaceId : target;
+    const openWorkspaceResource = useCallback((kind: 'terminal' | 'notes' | 'settings') => {
+        const owner = kind === 'terminal' ? target : workspaceId;
         const input: OpenUnifiedTabInput = {
             kind,
             ownerWorkspaceId: owner,
             ...(kind === 'terminal' ? { ownerRoutingRef: targetRoutingRef } : {}),
+            ...(kind === 'settings' ? { ownerRoutingRef: routingRef ?? null } : {}),
             chatId,
             resourceId: kind,
-            label: kind === 'terminal' ? 'Terminal' : 'Notes',
+            label: kind === 'terminal' ? 'Terminal' : kind === 'settings' ? 'Settings' : 'Notes',
             ...(owner === workspaceId || !targetLabel ? {} : { repoLabel: targetLabel }),
         };
         open(input);
+        if (kind === 'settings') focusPanelSettings?.();
         if (kind === 'terminal') {
             const id = unifiedTabId(input);
             setTerminalOpenRequests(prev => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
         }
-    }, [open, workspaceId, target, targetLabel, chatId, targetRoutingRef]);
+    }, [open, workspaceId, target, targetLabel, chatId, targetRoutingRef, routingRef, focusPanelSettings]);
 
     // ------------------------------------------------------------------
     // The Search/Explorer navigator (AC-01)
@@ -488,6 +585,7 @@ export function UnifiedRightPanel({
     }
     const activeIdRef = useRef(activeId);
     activeIdRef.current = activeId;
+    const fileIdentity = useFileIdentityOpen(JSON.stringify([workspaceId, routingRef, chatId]));
     const tabsRef = useRef(tabs);
     tabsRef.current = tabs;
     for (const tab of tabs) {
@@ -559,12 +657,65 @@ export function UnifiedRightPanel({
     }, [recordFileLocation]);
 
     const activateWithNavigation = useCallback((tabId: string) => {
-        if (tabId === activeIdRef.current) return;
         const target = tabsRef.current.find(tab => tab.id === tabId);
+        if (target?.kind === 'settings') focusPanelSettings?.();
+        if (target?.kind === 'todo' && mode === 'explorer') tree.setOpen(false);
+        if (tabId === activeIdRef.current) return;
         if (target?.kind === 'file') prepareFileNavigation(tabId, 'navigation');
         else captureActiveFileLocation('navigation');
         activate(tabId);
-    }, [activate, captureActiveFileLocation, prepareFileNavigation]);
+    }, [activate, captureActiveFileLocation, prepareFileNavigation, mode, tree.setOpen, focusPanelSettings]);
+
+    const openToSide = useCallback((tabId: string) => {
+        const tab = tabsRef.current.find(candidate => candidate.id === tabId);
+        if (!splitEnabled || !canSplitTab(tab)) return;
+        const current = tabsRef.current.find(candidate => candidate.id === activeIdRef.current) ?? null;
+        writeSourceSplit(splitKeyRef.current, sourceSplitForDrop(splitRef.current, current, tab));
+        activateWithNavigation(tabId);
+    }, [activateWithNavigation, splitEnabled]);
+
+    const focusSourcePane = useCallback((pane: SourceSplitPane) => {
+        const current = splitRef.current;
+        if (current === null || current.focus === pane) return;
+        writeSourceSplit(splitKeyRef.current, { ...current, focus: pane });
+        activateWithNavigation(current[pane]);
+    }, [activateWithNavigation]);
+
+    // Closing a pane ends the split only; both files stay ordinary tabs.
+    const closeSourcePane = useCallback((pane: SourceSplitPane) => {
+        const current = splitRef.current;
+        if (current === null) return;
+        writeSourceSplit(splitKeyRef.current, null);
+        activateWithNavigation(current[otherSourceSplitPane(pane)]);
+    }, [activateWithNavigation]);
+
+    const setSourceSplitRatio = useCallback((ratio: number) => {
+        const current = splitRef.current;
+        if (current === null) return;
+        const next = clampSourceSplitRatio(ratio, viewsRef.current?.clientWidth ?? 0);
+        if (next !== current.ratio) writeSourceSplit(splitKeyRef.current, { ...current, ratio: next });
+    }, []);
+    const splitResizeCleanup = useRef<(() => void) | null>(null);
+    useEffect(() => () => splitResizeCleanup.current?.(), []);
+    const startSourceSplitResize = useCallback((event: ReactMouseEvent) => {
+        const container = viewsRef.current;
+        if (event.button !== 0 || !container) return;
+        event.preventDefault();
+        splitResizeCleanup.current?.();
+        const onMove = (move: MouseEvent) => {
+            const rect = container.getBoundingClientRect();
+            const paneArea = rect.width - SOURCE_SPLIT_DIVIDER_WIDTH;
+            if (paneArea > 0) setSourceSplitRatio((move.clientX - rect.left - SOURCE_SPLIT_DIVIDER_WIDTH / 2) / paneArea);
+        };
+        const stop = () => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', stop);
+            splitResizeCleanup.current = null;
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', stop);
+        splitResizeCleanup.current = stop;
+    }, [setSourceSplitRatio]);
 
     const previousActiveId = useRef(activeId);
     useEffect(() => {
@@ -738,7 +889,16 @@ export function UnifiedRightPanel({
             removeBrowserWebview(tab.resourceId);
             desktopBrowserBridge()?.close(tab.resourceId);
         }
+        // Closing a pane's file ends the split and shows the other pane's file.
+        const currentSplit = splitRef.current;
+        const remainingPaneId = currentSplit === null || (currentSplit.left !== id && currentSplit.right !== id)
+            ? null
+            : currentSplit.left === id ? currentSplit.right : currentSplit.left;
         close(id);
+        if (remainingPaneId !== null && remainingPaneId !== id) {
+            writeSourceSplit(splitKeyRef.current, null);
+            activate(remainingPaneId);
+        }
         navigationControllers.current.delete(id);
         setMountedIds(prev => {
             if (!prev.has(id)) return prev;
@@ -765,7 +925,7 @@ export function UnifiedRightPanel({
         // views report clean/ready from their own unmount cleanup, so a second
         // reset would be dead code. Verified by removing the cleanup's effect in
         // the close/reopen case rather than assumed.
-    }, [close]);
+    }, [activate, close]);
 
     const [pendingClose, setPendingClose] = useState<
         { tabId: string; workspaceId: string; sessionIds: readonly string[] } | null
@@ -792,7 +952,14 @@ export function UnifiedRightPanel({
     // after the tabs update rather than here because a bulk close only settles
     // once the last queued target is gone, and a cancelled guard never gets here.
     const collapseCheckPending = useRef(false);
+    // Only this deliberate path feeds Ctrl/Cmd+Shift+T; cleanup closes call
+    // `closeTab` directly and never become restorable.
+    const closedTabScopeKey = closedBrowserTabScopeKey(workspaceId, chatId);
+    const closedTabScopeKeyRef = useRef(closedTabScopeKey);
+    closedTabScopeKeyRef.current = closedTabScopeKey;
     const closeTabByUser = useCallback((id: string) => {
+        const tab = tabsRef.current.find(candidate => candidate.id === id);
+        if (tab) recordClosedBrowserTab(closedTabScopeKeyRef.current, tab);
         closeTab(id);
         if (bulkCloseQueue.current.length === 0) collapseCheckPending.current = true;
     }, [closeTab]);
@@ -908,6 +1075,10 @@ export function UnifiedRightPanel({
             return;
         }
         if (tab.kind !== 'file') return;
+        if (action === 'open-to-side') {
+            openToSide(tabId);
+            return;
+        }
         if (action === 'copy-path') {
             const path = unifiedPanelAbsoluteFilePath(tab, rootPathForTab(tab));
             if (path) void copyToClipboard(path).catch(err => console.error('Failed to copy file path:', err));
@@ -929,7 +1100,7 @@ export function UnifiedRightPanel({
                 nonce: (prev?.nonce ?? 0) + 1,
             }));
         }
-    }, [dirtyIds, dock, mode, promote, requestBulkClose, requestClose, rootPathForTab, tabs, tree]);
+    }, [dirtyIds, dock, mode, openToSide, promote, requestBulkClose, requestClose, rootPathForTab, tabs, tree]);
 
     // Reusing the preview slot destroys the outgoing buffer, so it goes through
     // the same unsaved-edits guard a close does. Cancel or a failed save leaves
@@ -971,11 +1142,26 @@ export function UnifiedRightPanel({
             return true;
         }
         const reopen = navigationReopenInput(destination, chatId);
-        openPreviewGuarded(reopen, () => replay(unifiedTabId({ kind: 'file', ...reopen }), reopen));
+        const commit = (path: string, signal?: AbortSignal) => {
+            const input = { ...reopen, resourceId: path,
+                label: path === reopen.resourceId ? reopen.label : path.split('/').pop()! };
+            openPreviewGuarded(input, () => {
+                if (!signal?.aborted) replay(unifiedTabId({ kind: 'file', ...input }), input);
+            });
+        };
+        if (reopen.resourceId.startsWith(TRUSTED_PATH_PREFIX) || reopen.resourceId.startsWith(WORKSPACE_PREVIEW_PREFIX)) {
+            commit(reopen.resourceId);
+        } else {
+            fileIdentity.open({ workspaceId: reopen.ownerWorkspaceId, routingRef: reopen.ownerRoutingRef }, reopen.resourceId,
+                () => tabsRef.current.filter(tab => tab.kind === 'file'
+                    && tab.ownerWorkspaceId === reopen.ownerWorkspaceId
+                    && (tab.ownerRoutingRef ?? null) === (reopen.ownerRoutingRef ?? null)
+                    && tab.chatId === reopen.chatId).map(tab => tab.resourceId), commit);
+        }
         return true;
     }, [
         activate, chatId, openPreview, openPreviewGuarded, restoreNavigationLocation,
-        setNavigationHistory, workspaceId,
+        setNavigationHistory, workspaceId, fileIdentity.open,
     ]);
 
     // A replayed file that fails to read is gone: drop its entries and keep
@@ -995,39 +1181,49 @@ export function UnifiedRightPanel({
     // tree column and the `+` menu file the same kind of tab.
     const openFileForOwner = useCallback(
         (
-            file: { path: string; name: string; line?: number },
+            file: { path: string; name: string; line?: number; column?: number },
             options: { preview: boolean },
             ownerWorkspaceId: string,
             ownerRoutingRef?: string | null,
             ownerLabel?: string,
+            reason: 'navigation' | 'jump' = 'navigation',
         ) => {
-            const input = explorerFileTabInput(file, {
-                ownerWorkspaceId,
-                ownerRoutingRef,
-                scopeWorkspaceId: workspaceId,
-                ownerLabel,
-                chatId,
-            });
-            if (input === null) return;
-            // A double click (or any other permanent entry point) opens a normal
-            // tab; only the tree's single click takes the preview slot (AC-03).
-            if (!options.preview) {
-                prepareFileNavigation(unifiedTabId(input), 'navigation');
-                open(input);
-                return;
-            }
-            const { kind: _kind, ...previewInput } = input;
-            // Reusing the slot destroys the outgoing buffer, so it goes through
-            // the same unsaved-edits guard a close does. In practice an edit has
-            // already promoted the tab (AC-04), so this is a safety net: cancel
-            // or a failed save leaves the old buffer, and the queued open is
-            // dropped with the prompt.
-            openPreviewGuarded(previewInput, () => {
-                prepareFileNavigation(unifiedTabId({ kind: 'file', ...previewInput }), 'navigation');
-                openPreview(previewInput);
-            });
+            const commit = (resolvedPath: string, signal?: AbortSignal) => {
+                const input = explorerFileTabInput({ ...file, path: resolvedPath, name: resolvedPath === file.path ? file.name : resolvedPath.split('/').pop()! }, {
+                    ownerWorkspaceId,
+                    ownerRoutingRef,
+                    scopeWorkspaceId: workspaceId,
+                    ownerLabel,
+                    chatId,
+                });
+                if (input === null) return;
+                // A double click (or any other permanent entry point) opens a normal
+                // tab; only the tree's single click takes the preview slot (AC-03).
+                if (!options.preview) {
+                    prepareFileNavigation(unifiedTabId(input), reason);
+                    open(input);
+                    return;
+                }
+                const { kind: _kind, ...previewInput } = input;
+                // Reusing the slot destroys the outgoing buffer, so it goes through
+                // the same unsaved-edits guard a close does. In practice an edit has
+                // already promoted the tab (AC-04), so this is a safety net: cancel
+                // or a failed save leaves the old buffer, and the queued open is
+                // dropped with the prompt.
+                openPreviewGuarded(previewInput, () => {
+                    if (signal?.aborted) return;
+                    prepareFileNavigation(unifiedTabId({ kind: 'file', ...previewInput }), reason);
+                    openPreview(previewInput);
+                });
+            };
+            if (file.path.startsWith(TRUSTED_PATH_PREFIX)) { commit(file.path); return; }
+            fileIdentity.open({ workspaceId: ownerWorkspaceId, routingRef: ownerRoutingRef }, file.path,
+                () => tabsRef.current.filter(tab => tab.kind === 'file'
+                    && tab.ownerWorkspaceId === ownerWorkspaceId
+                    && (tab.ownerRoutingRef ?? null) === (ownerRoutingRef ?? null)
+                    && tab.chatId === chatId).map(tab => tab.resourceId), commit);
         },
-        [workspaceId, chatId, open, openPreview, openPreviewGuarded, prepareFileNavigation],
+        [workspaceId, chatId, open, openPreview, openPreviewGuarded, prepareFileNavigation, fileIdentity.open],
     );
     const openTreeFile = useCallback(
         (
@@ -1079,19 +1275,10 @@ export function UnifiedRightPanel({
             file: { path: string; name: string; line: number; column: number; symbolCandidate?: true },
             origin: { ownerWorkspaceId: string; ownerRoutingRef?: string | null; repoLabel?: string },
         ) => {
-            const input = explorerFileTabInput(file, {
-                ownerWorkspaceId: origin.ownerWorkspaceId,
-                ownerRoutingRef: origin.ownerRoutingRef,
-                scopeWorkspaceId: workspaceId,
-                ownerLabel: origin.repoLabel ?? (origin.ownerWorkspaceId === target ? targetLabel : undefined),
-                chatId,
-            });
-            if (input !== null) {
-                prepareFileNavigation(unifiedTabId(input), 'jump');
-                open(input);
-            }
+            openFileForOwner(file, { preview: false }, origin.ownerWorkspaceId,
+                origin.ownerRoutingRef, origin.repoLabel ?? (origin.ownerWorkspaceId === target ? targetLabel : undefined), 'jump');
         },
-        [open, workspaceId, target, targetLabel, chatId, prepareFileNavigation],
+        [openFileForOwner, target, targetLabel],
     );
 
     /**
@@ -1233,6 +1420,58 @@ export function UnifiedRightPanel({
     ]);
 
     const panelRootRef = useRef<HTMLDivElement | null>(null);
+    const navigatorRef = useRef<HTMLDivElement | null>(null);
+    const todoViewKey = active?.kind === 'todo' ? JSON.stringify([workspaceId, chatId, activeId]) : null;
+    const focusedTodo = useRef<string | null>(null);
+    const todoInteractions = useRef(new WeakSet<Event>());
+    const navigatorMode = useRef(mode);
+    navigatorMode.current = mode;
+    const setNavigatorOpen = tree.setOpen;
+
+    // Activation is a boundary, not a standing visibility rule: explicit
+    // Explorer opens must survive renders, ledger refreshes and item selection.
+    useEffect(() => {
+        focusedTodo.current = todoViewKey;
+        if (todoViewKey !== null && navigatorMode.current === 'explorer') {
+            setNavigatorOpen(false);
+        }
+    }, [todoViewKey, setNavigatorOpen]);
+    // External folder controls can also select Explorer from an open Search
+    // navigator. Both that mode change and a reopen retain explicit user intent.
+    useEffect(() => {
+        if (tree.state.open) focusedTodo.current = todoViewKey;
+    }, [tree.state.open, todoViewKey, mode]);
+
+    const focusTodoView = (event: { nativeEvent: Event }) => {
+        if (!isOpen || todoViewKey === null) return;
+        // React capture includes this view's portaled menus and dialogs.
+        todoInteractions.current.add(event.nativeEvent);
+        if (focusedTodo.current !== todoViewKey && navigatorMode.current === 'explorer') {
+            setNavigatorOpen(false);
+        }
+        focusedTodo.current = todoViewKey;
+    };
+
+    // Panel chrome (including the Explorer toggle) does not leave the current
+    // content view. Track deliberate pointer/focus moves to another surface;
+    // To-do's capture handlers admit both non-focusable content and keyboard use.
+    useEffect(() => {
+        if (!isOpen || todoViewKey === null) return;
+        const onInteraction = (event: Event) => {
+            const target = event.target;
+            if (!(target instanceof Node)) return;
+            if (todoInteractions.current.has(event)) return;
+            if (!panelRootRef.current?.contains(target) || navigatorRef.current?.contains(target)) {
+                focusedTodo.current = null;
+            }
+        };
+        document.addEventListener('pointerdown', onInteraction);
+        document.addEventListener('focusin', onInteraction);
+        return () => {
+            document.removeEventListener('pointerdown', onInteraction);
+            document.removeEventListener('focusin', onInteraction);
+        };
+    }, [isOpen, todoViewKey]);
 
     // Claimed in the CAPTURE phase, and stopped when this panel wins. That is
     // what keeps a single keypress to a single dialog: the Explorer sub-tab's
@@ -1587,13 +1826,67 @@ export function UnifiedRightPanel({
         openBrowserFromShortcut();
     }), [isOpen, active, openBrowserFromShortcut]);
 
+    // Ctrl/Cmd+Shift+T restores this exact panel scope's newest closed web tab
+    // through the ordinary open path (fresh view id), then focuses its strip tab.
+    // An entry whose owner is no longer a target here is dropped, never retargeted.
+    const [reopenFocusId, setReopenFocusId] = useState<string | null>(null);
+    const reopenClosedBrowserTab = useCallback((): boolean => {
+        const entry = popClosedBrowserTab(closedTabScopeKey);
+        if (entry === null) return false;
+        const ownerAvailable = entry.ownerWorkspaceId === workspaceId
+            || targetOptions.some(option => option.workspaceId === entry.ownerWorkspaceId && !option.disabled);
+        if (!ownerAvailable || (entry.ownerRoutingRef ?? null)
+            !== (routingRefForPanelOwner(routingRef, entry.ownerWorkspaceId) ?? null)) { return false; }
+        setMenuOpen(false);
+        const input = reopenBrowserTabInput(entry);
+        open(input);
+        setReopenFocusId(unifiedTabId(input));
+        return true;
+    }, [closedTabScopeKey, workspaceId, targetOptions, routingRef, open]);
+    useEffect(() => {
+        if (reopenFocusId === null) return;
+        setReopenFocusId(null);
+        Array.from(panelRootRef.current?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [])
+            .find(tab => tab.getAttribute('data-testid') === `unified-panel-tab-${reopenFocusId}`)?.focus();
+    }, [reopenFocusId, tabs]);
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.defaultPrevented || event.isComposing || reopenClosedTabShortcut(event) === null) return;
+            const root = panelRootRef.current;
+            const focused = document.activeElement;
+            if (!isOpen || !root || root.offsetParent === null || !focused
+                || focused === document.body || !root.contains(focused)) { return; }
+            // Focus is ours: an empty stack still keeps the outer browser's reopen.
+            event.preventDefault();
+            event.stopPropagation();
+            if (!event.repeat) reopenClosedBrowserTab();
+        };
+        document.addEventListener('keydown', onKeyDown, true);
+        return () => document.removeEventListener('keydown', onKeyDown, true);
+    }, [isOpen, reopenClosedBrowserTab]);
+    // A focused native page cannot bubble keys here; only the event naming this
+    // panel's active browser view is honoured. A restore makes that view
+    // inactive, so `restored` drops requests that land before the re-render.
+    useEffect(() => {
+        let restored = false;
+        return desktopBrowserBridge()?.onReopenClosedRequested?.(({ viewId }) => {
+            const root = panelRootRef.current;
+            if (restored || !isOpen || !root || root.offsetParent === null
+                || active?.kind !== 'browser' || active.resourceId !== viewId) { return; }
+            restored = reopenClosedBrowserTab();
+        });
+    }, [isOpen, active, reopenClosedBrowserTab]);
+
     // A concrete resource picked in the menu (a searched file, a chat canvas).
     // The menu decides the descriptor — owning clone, chat scope, normalized
     // identity — so the panel only has to file it.
     const openResource = useCallback((input: OpenUnifiedTabInput) => {
         setMenuOpen(false);
-        open(input);
-    }, [open]);
+        if (input.kind === 'file' && !input.resourceId.startsWith(WORKSPACE_PREVIEW_PREFIX)) {
+            openFileForOwner({ path: input.resourceId, name: input.label, line: input.line, column: input.column },
+                { preview: false }, input.ownerWorkspaceId, input.ownerRoutingRef, input.repoLabel);
+        } else open(input);
+    }, [open, openFileForOwner]);
 
     // A hosted Sentinel chat's To-do tab. The owner is the chat's parent
     // workspace on the panel's server, including repo-group members.
@@ -1676,6 +1969,7 @@ export function UnifiedRightPanel({
                 style={expanded ? undefined : { width }}
                 data-testid="unified-panel-body"
             >
+                {fileIdentity.error}
                 <UnifiedPanelTabStrip
                     tabs={tabs}
                     activeId={activeId}
@@ -1689,8 +1983,12 @@ export function UnifiedRightPanel({
                     reorderScope={JSON.stringify([workspaceId, routingRef, chatId])}
                     pinnedId={pinnedId}
                     onPromote={promote}
-                    fileActionAvailability={tab => unifiedPanelFileActionAvailability(tab, rootPathForTab(tab))}
+                    fileActionAvailability={tab => ({
+                        ...unifiedPanelFileActionAvailability(tab, rootPathForTab(tab)),
+                        openToSide: splitEnabled,
+                    })}
                     onMenuAction={handleTabMenuAction}
+                    onTabDragChange={handleTabDragChange}
                     onOpenMenu={toggleMenu}
                     leadingControls={(
                         <UnifiedPanelRepoPicker
@@ -1705,6 +2003,7 @@ export function UnifiedRightPanel({
                 {menuOpen && (
                     <div ref={menuRef} className="contents">
                         <UnifiedPanelOpenMenu
+                            settingsAvailable={settingsEnabled && settingsOwner === (routingRef ?? workspaceId)}
                             workspaceId={workspaceId}
                             chatId={chatId}
                             target={target}
@@ -1740,6 +2039,60 @@ export function UnifiedRightPanel({
                             trailing={navigatorControls('toolbar')}
                         />
                     )}
+                    {splitShown && split !== null && (
+                        <div
+                            className="flex h-[24px] flex-shrink-0 border-b border-[#e5e5e5] bg-[#f8f8f8] text-[11px] dark:border-[#333] dark:bg-[#252526]"
+                            data-testid="unified-panel-split-header"
+                        >
+                            {(['left', 'right'] as const).map(pane => {
+                                const paneTab = tabs.find(tab => tab.id === split[pane]);
+                                const focused = split.focus === pane;
+                                return (
+                                    <div
+                                        key={pane}
+                                        className={cn(
+                                            'flex min-w-0 items-center gap-1 border-t-2 px-2',
+                                            focused ? 'border-[#0078d4] dark:border-[#3794ff]' : 'border-transparent',
+                                        )}
+                                        style={pane === 'left'
+                                            ? { flex: `0 0 ${splitLeftBasis}`, marginRight: SOURCE_SPLIT_DIVIDER_WIDTH }
+                                            : { flex: '1 1 0' }}
+                                        data-testid={`unified-panel-split-pane-header-${pane}`}
+                                        data-focused={focused ? 'true' : 'false'}
+                                    >
+                                        <button
+                                            type="button"
+                                            className="min-w-0 flex-1 truncate border-none bg-transparent p-0 text-left text-[#3b3b3b] dark:text-[#cccccc]"
+                                            aria-pressed={focused}
+                                            title={paneTab ? dirtyCloseLabel(paneTab) : undefined}
+                                            onClick={() => focusSourcePane(pane)}
+                                            data-testid={`unified-panel-split-pane-label-${pane}`}
+                                        >
+                                            {paneTab?.label}
+                                            {paneTab?.repoLabel ? <span className="sr-only"> — {paneTab.repoLabel}</span> : null}
+                                            {paneTab && dirtyIds.has(paneTab.id) ? <span aria-label="Unsaved changes"> ●</span> : null}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            aria-label={`Close ${pane} pane`}
+                                            title={`Close ${pane} pane`}
+                                            className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border-none bg-transparent p-0 text-[#616161] hover:bg-black/10 dark:text-[#9d9d9d] dark:hover:bg-white/10"
+                                            onClick={() => closeSourcePane(pane)}
+                                            data-testid={`unified-panel-split-close-${pane}`}
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                    <div
+                        ref={viewsRef}
+                        className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
+                        data-testid="unified-panel-views"
+                        data-split={splitShown ? 'true' : split !== null ? 'collapsed' : undefined}
+                    >
                     {tabs.length === 0 ? (
                         <div
                             className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 text-center"
@@ -1760,13 +2113,28 @@ export function UnifiedRightPanel({
                             </button>
                         </div>
                     ) : (
-                        mountedTabs.map(tab => (
+                        mountedTabs.map(tab => {
+                            const pane = splitPaneOf(tab.id);
+                            const visible = splitShown ? pane !== null : tab.id === activeId;
+                            return (
                             <div
                                 key={tab.id}
-                                className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-                                style={{ display: tab.id === activeId ? undefined : 'none' }}
+                                className={cn(
+                                    'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
+                                    pane !== null && pane === split?.focus && 'ring-1 ring-inset ring-[#0078d4]/50 dark:ring-[#3794ff]/50',
+                                )}
+                                style={{
+                                    display: visible ? undefined : 'none',
+                                    ...(pane === 'left' ? { order: 0, flex: `0 0 ${splitLeftBasis}` } : {}),
+                                    ...(pane === 'right' ? { order: 2 } : {}),
+                                }}
                                 data-testid={`unified-panel-view-${tab.id}`}
                                 data-active={tab.id === activeId ? 'true' : 'false'}
+                                data-split-pane={pane ?? undefined}
+                                onPointerDownCapture={visible && tab.kind === 'todo' ? focusTodoView : undefined}
+                                onMouseDownCapture={pane === null ? undefined : () => focusSourcePane(pane)}
+                                onFocusCapture={visible && tab.kind === 'todo' ? focusTodoView
+                                    : pane === null ? undefined : () => focusSourcePane(pane)}
                             >
                                 {tab.kind === 'html-page' && tab.htmlPageId ? (
                                     <UnifiedHtmlPageTab
@@ -1812,6 +2180,7 @@ export function UnifiedRightPanel({
                                     onOpenExternal={openNavigationExternal}
                                     onFileNavigationMount={handleFileNavigationMount}
                                     onFileNavigationLocation={handleFileNavigationLocation}
+                                    onSourceModelChange={splitEnabled ? handleSourceModelChange : undefined}
                                     onNotesSelectionChange={updateNotesSelection}
                                     canvasSwitcher={tab.id === activeId && stackedCanvasTabs.some(t => t.id === tab.id) ? (
                                         <UnifiedPanelCanvasStack
@@ -1827,7 +2196,52 @@ export function UnifiedRightPanel({
                                     ) : undefined}
                                 />}
                             </div>
-                        ))
+                            );
+                        })
+                    )}
+
+                    {splitShown && split !== null && (
+                        <div
+                            role="separator"
+                            aria-orientation="vertical"
+                            aria-label="Resize source panes"
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={Math.round(splitRatio * 100)}
+                            tabIndex={0}
+                            className="flex-shrink-0 cursor-col-resize bg-[#e5e5e5] hover:bg-[#007acc]/40 focus-visible:bg-[#007acc]/60 focus-visible:outline-none dark:bg-[#333]"
+                            style={{ order: 1, width: SOURCE_SPLIT_DIVIDER_WIDTH }}
+                            data-testid="unified-panel-split-divider"
+                            onMouseDown={startSourceSplitResize}
+                            onKeyDown={event => {
+                                const next = event.key === 'ArrowLeft' ? splitRatio - SOURCE_SPLIT_RATIO_STEP
+                                    : event.key === 'ArrowRight' ? splitRatio + SOURCE_SPLIT_RATIO_STEP
+                                        : event.key === 'Home' ? 0
+                                            : event.key === 'End' ? 1 : null;
+                                if (next === null) return;
+                                event.preventDefault();
+                                setSourceSplitRatio(next);
+                            }}
+                        />
+                    )}
+                    {/* One file in both panes: the right pane is a second editor
+                        on the left pane's model, never a second buffer. */}
+                    {splitShown && split !== null && split.left === split.right && (
+                        <div
+                            className={cn(
+                                'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
+                                split.focus === 'right' && 'ring-1 ring-inset ring-[#0078d4]/50 dark:ring-[#3794ff]/50',
+                            )}
+                            style={{ order: 2 }}
+                            data-split-pane="right"
+                            onMouseDownCapture={() => focusSourcePane('right')}
+                            onFocusCapture={() => focusSourcePane('right')}
+                        >
+                            <UnifiedSourceMirror
+                                shared={sourceModels.get(split.left) ?? null}
+                                onSave={() => saveHandlers.current.get(split.left)?.()}
+                            />
+                        </div>
                     )}
 
                     {/* A tab is selected but its view has not mounted yet (restored
@@ -1836,6 +2250,41 @@ export function UnifiedRightPanel({
                     {tabs.length > 0 && active !== null && !mountedIds.has(active.id) && (
                         <div className="min-h-0 flex-1" data-testid="unified-panel-pending" />
                     )}
+
+                    {/* A source-file tab dragged from the strip can land on the
+                        right half; other kinds never get a target. */}
+                    {splitDropAvailable && (
+                        <div
+                            className={cn(
+                                'absolute inset-y-0 right-0 z-20 flex w-1/2 items-center justify-center border-2 border-dashed text-xs',
+                                splitDropHover
+                                    ? 'border-[#0078d4] bg-[#0078d4]/15 text-[#0078d4] dark:border-[#3794ff] dark:text-[#3794ff]'
+                                    : 'border-transparent bg-[#0078d4]/5 text-transparent',
+                            )}
+                            data-testid="unified-panel-split-drop-target"
+                            data-hover={splitDropHover ? 'true' : 'false'}
+                            onDragEnter={event => {
+                                event.preventDefault();
+                                setSplitDropHover(true);
+                            }}
+                            onDragOver={event => {
+                                event.preventDefault();
+                                if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+                                setSplitDropHover(true);
+                            }}
+                            onDragLeave={() => setSplitDropHover(false)}
+                            onDrop={event => {
+                                event.preventDefault();
+                                const tabId = draggedTabId;
+                                setDraggedTabId(null);
+                                setSplitDropHover(false);
+                                if (tabId !== null) openToSide(tabId);
+                            }}
+                        >
+                            Open to the right
+                        </div>
+                    )}
+                    </div>
                     </div>
 
                     {/* Search and Explorer share this one navigator slot and its
@@ -1843,6 +2292,7 @@ export function UnifiedRightPanel({
                         mounted so switching never loses Search or tree state. */}
                     {mountedModes.size > 0 && (
                         <div
+                            ref={navigatorRef}
                             className="flex min-h-0 flex-shrink-0"
                             style={{ display: modeColumnVisible ? undefined : 'none' }}
                             data-testid={tree.state.open ? 'unified-panel-tree' : 'unified-panel-mode-column'}

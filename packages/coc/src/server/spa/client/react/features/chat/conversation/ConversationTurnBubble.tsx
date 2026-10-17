@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { cn, ImageGallery, ImageLightbox, Spinner } from '../../../ui';
 import { CONTEXT_TRIGGER_CLASS, formatTokenCount } from '../../../ui/ContextUsagePopover';
 import type { ClientConversationTurn, ClientTokenUsage, ToolCallApprovalOutcome } from '../../../types/dashboard';
@@ -44,6 +44,7 @@ import { SentinelResultCard } from './SentinelResultCard';
 import { parseSentinelResult } from './sentinelResult';
 import { useSentinelResultCardsEnabled } from '../../../hooks/feature-flags/useSentinelResultCardsEnabled';
 import { extractInjectedBlocks, projectChatModeContextForDisplay } from './injectedBlocks';
+import { parseTurnReferenceBlocks, turnReferenceExcerpt, type TurnReference } from './turnReference';
 import { parseScriptOutput, describeScriptExit } from './scriptOutputParser';
 import { getProviderAvatarClasses, getProviderLabel, type ChatProvider } from '../ProviderBadge';
 import { REWIND_EARLIER_SEGMENT_TOOLTIP, REWIND_NO_ANCHOR_TOOLTIP, resolveRewindCapability } from '../hooks/rewindCapability';
@@ -103,6 +104,8 @@ interface ConversationTurnBubbleProps {
     conversationOwnerKey?: string;
     /** Index of this turn in the conversation, emitted as data-turn-index for snapshot selection. */
     turnIndex?: number;
+    /** Jumps to the original message of a quoted turn reference; resolves false when it cannot be verified. */
+    onGoToTurnReference?: (reference: TurnReference, fromTurnIndex?: number) => Promise<boolean>;
     /** Called when user selects "Attach as context" from the right-click menu. */
     onAttachContext?: (turnIndex: number, role: 'user' | 'assistant', snippet: string) => void;
     /** Called when user pins/unpins a turn. */
@@ -595,6 +598,57 @@ function AttachedFileSelectionContextBlockCard({ context }: { context: ParsedFil
                 <pre className="max-h-60 overflow-auto whitespace-pre rounded border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-[#1e1e1e] p-2 font-mono text-[11px]" data-testid="attached-file-selection-context-snippet">{context.snippet}</pre>
             </div>
         </details>
+    );
+}
+
+function TurnReferenceCard({ reference, onGoTo }: { reference: TurnReference; onGoTo?: () => Promise<boolean> }) {
+    const [status, setStatus] = useState<'idle' | 'pending' | 'unavailable'>('idle');
+    const mounted = useRef(true);
+    useEffect(() => () => { mounted.current = false; }, []);
+    const excerpt = useMemo(() => turnReferenceExcerpt(reference.snippet), [reference.snippet]);
+    const source = reference.role === 'assistant' ? 'Assistant message' : 'Your message';
+    const goTo = async () => {
+        if (!onGoTo || status === 'pending') return;
+        setStatus('pending');
+        const found = await onGoTo().catch(() => false);
+        if (mounted.current) setStatus(found ? 'idle' : 'unavailable');
+    };
+    return (
+        <div
+            role="group"
+            aria-label={`Quoted ${source.toLowerCase()}`}
+            className="rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] border-l-[3px] border-l-[#0078d4] dark:border-l-[#3794ff] bg-white/70 dark:bg-[#1e1e1e]/60 px-2.5 py-1.5 text-[12px]"
+            data-testid="turn-reference-card"
+            data-turn-reference-index={reference.turnIndex}
+        >
+            <div className="flex items-center gap-2 min-w-0">
+                <span className="flex-1 min-w-0 truncate text-[11px] font-medium text-[#616161] dark:text-[#a6a6a6]" data-testid="turn-reference-source">
+                    <span aria-hidden="true">❝ </span>{source}
+                </span>
+                {onGoTo && (
+                    <button
+                        type="button"
+                        className="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-[#0078d4] dark:text-[#3794ff] hover:bg-[#0078d4]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0078d4] disabled:opacity-60"
+                        onClick={() => void goTo()}
+                        disabled={status === 'pending'}
+                        aria-label={`Go to quoted ${source.toLowerCase()}`}
+                        data-testid="turn-reference-go"
+                    >
+                        {status === 'pending' ? 'Locating…' : 'Go to message ↑'}
+                    </button>
+                )}
+            </div>
+            {excerpt && (
+                <div className="mt-0.5 line-clamp-3 break-words text-[#3c3c3c] dark:text-[#c8c8c8]" title={excerpt} data-testid="turn-reference-excerpt">
+                    {excerpt}
+                </div>
+            )}
+            {status === 'unavailable' && (
+                <div role="status" className="mt-1 text-[11px] text-[#b45309] dark:text-[#f0b429]" data-testid="turn-reference-unavailable">
+                    Original message isn't available in this conversation (it may have been edited, rewound, archived or deleted).
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -1286,7 +1340,7 @@ function InterruptedTurnBanner({ reason, onContinue, action }: { reason?: string
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, interruptedAction, processType, wsId, sourceSelectionId, sourceBaseUrl, conversationMode, conversationOwnerKey, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, onEditTurn, editTurnDisabledReason, inlineEditor, noteEdits, processId, openNotePath, provider, rewindProvider, activeProviderSegment, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, interruptedAction, processType, wsId, sourceSelectionId, sourceBaseUrl, conversationMode, conversationOwnerKey, turnIndex, onGoToTurnReference, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, onEditTurn, editTurnDisabledReason, inlineEditor, noteEdits, processId, openNotePath, provider, rewindProvider, activeProviderSegment, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
     const unifiedPanelHost = useUnifiedPanelHostForChat(taskId);
     const isUser = turn.role === 'user';
     const assistantProvider = turn.provider ?? provider;
@@ -1332,7 +1386,11 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
         () => isUser ? parseAttachedSessionContextBlocks(injectedBlocks.text) : { attachedContexts: [], sessionContexts: [], ralphSessionContexts: [], pointerContexts: [], diffSelectionContexts: [], fileSelectionContexts: [], remainingContent: '' },
         [isUser, injectedBlocks.text],
     );
-    const userContentText = isUser ? parsedUserContent.remainingContent : '';
+    const turnReferences = useMemo(
+        () => parseTurnReferenceBlocks(isUser ? parsedUserContent.remainingContent : ''),
+        [isUser, parsedUserContent.remainingContent],
+    );
+    const userContentText = turnReferences.remainingContent;
     const sentinelResult = useMemo(
         () => sentinelResultCardsEnabled ? parseSentinelResult(turn, injectedBlocks.text, wsId, processId) : null,
         [sentinelResultCardsEnabled, turn, injectedBlocks.text, wsId, processId],
@@ -1945,6 +2003,13 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             <span>{turn.turnSource.source}</span>
                         </span>
                     )}
+                    {isUser && !showRaw && turnReferences.references.map((reference, index) => (
+                        <TurnReferenceCard
+                            key={`turn-ref:${reference.turnIndex}:${index}`}
+                            reference={reference}
+                            onGoTo={onGoToTurnReference ? () => onGoToTurnReference(reference, turnIndex) : undefined}
+                        />
+                    ))}
                     {isUser && !showRaw && parsedUserContent.attachedContexts.map((context, index) => (
                         <AttachedContextBlockCard
                             key={`${context.kind}:${context.sourceWorkspaceId}:${index}`}

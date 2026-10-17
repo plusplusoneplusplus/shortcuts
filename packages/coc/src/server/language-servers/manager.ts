@@ -17,9 +17,8 @@ import type { LanguageServerSessionOptions, LanguageServerSessionState } from '.
 import {
     onLanguageServerConfigChanged,
     resolveLanguageServerDefinitions,
-    resolveLanguageServerDefinitionsFromConfig,
 } from './repository';
-import { ensureLanguageServerConfigSeeded } from './seed';
+import { detectWorkspaceLanguages } from './detection';
 import { prepareDefinitionForRoot, resolveDefinitionRoot } from './adapters';
 import type { PrepareDefinitionDeps } from './adapters';
 import { normalizeRelativePath } from './file-match';
@@ -157,9 +156,6 @@ export class LanguageServerManager {
             return { ok: false, reason: 'disabled', detail: 'Language support is shut down.' };
         }
         const startable = this.resolveDefinitions(request);
-        if (startable.length === 0) {
-            return { ok: false, reason: 'disabled', detail: 'Language support is off for this workspace.' };
-        }
         const definition = selectDefinitionForFile(startable, relativePath);
         if (!definition) {
             return { ok: false, reason: 'no-definition', detail: 'No language server serves this file.' };
@@ -168,7 +164,7 @@ export class LanguageServerManager {
     }
 
     /**
-     * Acquires every enabled definition that claims a document. Handles are
+     * Acquires every matching definition that claims a document. Handles are
      * returned in deterministic priority order so clients can preserve the
      * preferred server while also querying lower-priority providers.
      */
@@ -178,9 +174,6 @@ export class LanguageServerManager {
             return { ok: false, reason: 'disabled', detail: 'Language support is shut down.' };
         }
         const startable = this.resolveDefinitions(request);
-        if (startable.length === 0) {
-            return { ok: false, reason: 'disabled', detail: 'Language support is off for this workspace.' };
-        }
         const definitions = selectDefinitionsForFile(startable, relativePath);
         if (definitions.length === 0) {
             return { ok: false, reason: 'no-definition', detail: 'No language server serves this file.' };
@@ -200,7 +193,7 @@ export class LanguageServerManager {
     }
 
     /**
-     * Acquires every enabled definition for a workspace, with no document in
+     * Acquires every matching definition for a workspace, with no document in
      * play. This is what a symbol palette attaches to: it has a question about
      * the repository, not about a file, and the server that answers it may be
      * one no open buffer would have started.
@@ -214,10 +207,8 @@ export class LanguageServerManager {
         }
         const withRoot: AcquireRequest = { ...request, relativePath: '' };
         const startable = this.resolveDefinitions(withRoot);
-        if (startable.length === 0) {
-            return { ok: false, reason: 'disabled', detail: 'Language support is off for this workspace.' };
-        }
-        const definitions = selectDefinitionsForWorkspace(startable);
+        const detected = new Set(detectWorkspaceLanguages(request.workspaceRoot, { definitions: startable }));
+        const definitions = selectDefinitionsForWorkspace(startable.filter(definition => detected.has(definition.id)));
         if (definitions.length === 0) {
             return { ok: false, reason: 'no-definition', detail: 'No language server serves this workspace.' };
         }
@@ -236,12 +227,7 @@ export class LanguageServerManager {
     }
 
     private resolveDefinitions(request: AcquireRequest): LanguageServerDefinition[] {
-        const config = ensureLanguageServerConfigSeeded(
-            this.options.dataDir,
-            request.workspaceId,
-            request.workspaceRoot,
-        ).value;
-        return resolveLanguageServerDefinitionsFromConfig(config);
+        return resolveLanguageServerDefinitions(this.options.dataDir, request.workspaceId);
     }
 
     private acquireDefinition(

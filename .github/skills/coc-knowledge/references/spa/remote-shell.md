@@ -372,36 +372,31 @@ standalone.
 ### Group settings
 
 `features/repo-settings/SettingsShell.tsx` supplies the same sidebar
-and content-panel chrome used by `RepoSettingsTab`. A group renders one selected sidebar
-item, **Repos**, with no filter or group heading. `RepoGroupMemberList` sits directly in
-the section body: one row per member (name, `rootPath`, stale badge) with an
-inline-editable description. Editing is type / Enter-or-blur to save, Escape to cancel;
-the save is optimistic and rolls back with a per-row error message when
-`PATCH /api/repo-groups/:id` patches descriptions and the per-member Read-only switch.
-The switch is optimistic with row-local rollback, routes to the group's owning server, and
-explains that Codex and OpenCode cannot run groups containing protected members. Membership
-itself stays in `RepoGroupDialog`, which edits the same descriptions.
+and content-panel chrome used by `RepoSettingsTab`. `RepoGroupSettingsTab` exposes
+Member repos plus the group's MCP Servers, Agent Skills and LLM Tools. Member
+descriptions and Read-only policies save optimistically through
+`PATCH /api/repo-groups/:id`, with row-local errors and rollback. Membership
+itself stays in `RepoGroupDialog`. Group settings never write member-repo agent
+preferences. The [shared Settings host](shell.md#shared-workspace-settings) preserves
+the full page across top-level and panel access.
 
-A group's root has no Git repository, MCP config, per-repo preferences, or `SettingsSection` sub-route.
-`#repos/<groupId>/settings` (no section suffix) is its canonical URL.
-`buildWorkspaceSubTabSuffix(workspaceId, tab, state, taskId)` in
-`layout/dashboardRoutes.ts` returns a bare `/settings` for a `group-*` id and otherwise
-delegates to `buildRepoSubTabSuffix`. Every navigator that knows its target id calls it
-(`Router`'s Alt-shortcut handler, `useVirtualWorkspaceHeader`, `useShellNavigation`,
-`resolveWorkspaceRouteSuffix`). `GlobalStatusDock` exempts groups from its settings
-stand-down because the group shell has no docked sidebar footer.
+`#repos/<groupId>/settings` is the canonical group entry; sidebar section links
+use the concrete selection id with `/settings/<section>`. Panel section
+navigation keeps the current workspace hash. The page mounts lazily and retains
+its member snapshot and drafts while hidden. `GlobalStatusDock` exempts groups
+from its Settings stand-down because the group shell has no docked sidebar footer.
 Members come from `useRepoGroupMembers(workspaceId, baseUrl, enabled)`
 (`repos/useRepoGroupMembers.ts`). The Workspace view loads members immediately
 for its Git list and dock target picker; Settings reads member descriptions separately.
 
 **Right dock.** On desktop, `RepoGroupView` also renders
-`features/repo-detail/WorkspaceRightDock` as the outermost-right column (same gate as
+`features/repo-detail/unified-right-panel/UnifiedRightPanel` as the outermost-right column (same gate as
 `RepoDetail`). The dock's open/view/width/target state scopes to the **group**, while a
-`workspace-dock-target-picker` in its header row chooses which workspace its Terminal and
+`UnifiedPanelRepoPicker` in its tab strip chooses which workspace its Terminal and
 Explorer point at. Options come from `getRepoGroup(groupId, baseUrl)` (baseUrl from
 `remoteGroupWorkspaces` for a remote group): the group root first — offered so a terminal
 can match the chat's cwd, but never the default, since it holds only `group.json` — then
-every member repo, with stale members listed but disabled. Notes stays on the group.
+every member repo, with stale members listed but disabled. Notes and Settings stay on the group.
 Because available views derive from the *target*, picking a member brings Explorer back
 and picking the group root drops it. The open/close toggle is
 `WorkspaceDockToggleButton` in the TopBar next to the virtual header, and Ctrl/Cmd+\

@@ -46,13 +46,104 @@ describe('SentinelTodoTriggerService', () => {
         service = build();
     });
     afterEach(() => db.close());
-    function build(enabled = true) {
+    function build(enabled = true, dateTime = false) {
         return new SentinelTodoTriggerService({
             triggers, todos, owners: new SentinelTodoService({ todos, store: { getProcess } }),
             manager: { arm, disarm }, firer, fetchPr, enabled, emit, now: () => Date.parse(timestamp),
+            dateTimeEnabled: () => dateTime,
         });
     }
     function create(input = {}) { return service.create(owner, { itemId, prUrl, ...input }, 'sentinel'); }
+    const dateEvent = { type: 'date-time', firesAt: '2027-11-07T06:30:00.000Z', timeZone: 'America/New_York', localTime: '2027-11-07T01:30' };
+    function createDate(event = dateEvent, extra = {}) {
+        return service.create(owner, { itemId, event, ...extra }, 'user');
+    }
+
+    it('defaults date authoring off without affecting PR rules; reports owner-qualified capabilities', async () => {
+        expect(await service.capabilities(owner)).toEqual({ dateTime: false });
+        await expect(createDate()).rejects.toThrow('disabled');
+        expect((await create()).event.monitor).toBe('pr-merged');
+        service = build(true, true);
+        expect(await service.capabilities(owner)).toEqual({ dateTime: true });
+        const dated = await createDate();
+        expect((await service.list(owner)).map(rule => rule.event.type).sort()).toEqual(['condition-monitor', 'date-time']);
+        expect(triggers.getById(dated.id)?.event).toEqual(dated.event);
+        await expect(service.capabilities({ ...owner, workspaceId: 'other' })).rejects.toThrow();
+    });
+
+    it('roundtrips the selected overlap instant, edits with revision and replays creation', async () => {
+        service = build(true, true);
+        const input = { idempotencyKey: 'date-draft', instruction: 'Only review approved scope' };
+        const rule = await createDate(dateEvent, input);
+        expect(rule).toMatchObject({
+            ...owner, revision: 1, expiresAt: null, nextTickAt: dateEvent.firesAt,
+            event: { type: 'date-time', firesAt: dateEvent.firesAt, timeZone: dateEvent.timeZone },
+            binding: { itemId, instruction: input.instruction },
+        });
+        expect(triggers.getById(rule.id)?.event).toEqual(rule.event);
+        expect((await createDate(dateEvent, input)).id).toBe(rule.id);
+        expect(arm).toHaveBeenCalledOnce();
+        await expect(service.edit(owner, rule.id, { itemId, event: dateEvent, expectedRevision: 2 })).rejects.toThrow('revision');
+        const edited = await service.edit(owner, rule.id, { itemId, event: dateEvent, instruction: 'Changed', expectedRevision: 1 });
+        expect(edited).toMatchObject({ revision: 2, binding: { instruction: 'Changed' }, event: rule.event });
+        expect(fetchPr).not.toHaveBeenCalled();
+        expect(todos.get(owner).items[0].status).toBe('todo');
+    });
+
+    it.each([
+        { ...dateEvent, firesAt: 'garbage' },
+        { ...dateEvent, timeZone: 'Unknown/Zone' },
+        { ...dateEvent, localTime: '2027-02-30T01:30' },
+        { ...dateEvent, localTime: '2027-03-14T02:30', firesAt: '2027-03-14T07:30:00.000Z' },
+        { ...dateEvent, firesAt: '2027-11-07T07:30:00.000Z' },
+        { ...dateEvent, firesAt: '2027-11-07T01:30:00' },
+        { type: 'date-time', localTime: '2025-01-01T00:00', firesAt: '2025-01-01T00:00:00.000Z', timeZone: 'UTC' },
+    ])('rejects invalid date event %j', async event => {
+        service = build(true, true);
+        await expect(createDate(event)).rejects.toMatchObject({ statusCode: 400 });
+        expect(triggers.getAll()).toEqual([]);
+        expect(fetchPr).not.toHaveBeenCalled();
+    });
+
+    it('enforces date PR-field separation, owner/item eligibility and the shared active cap', async () => {
+        service = build(true, true);
+        await expect(createDate(dateEvent, { prUrl })).rejects.toThrow('PR fields');
+        const manual = todos.create(owner, { title: 'Manual', type: 'manual' }, { actor: 'user' }).item;
+        await expect(createDate(dateEvent, { itemId: manual.id })).rejects.toThrow('Manual');
+        await expect(createDate(dateEvent, { itemId: 'missing' })).rejects.toThrow('not found');
+        const seed = await createDate();
+        fillCap(seed);
+        await expect(createDate()).rejects.toThrow('limit');
+        await expect(service.setPaused({ ...owner, processId: 'other' }, seed.id, { expectedRevision: 1 }, true)).rejects.toThrow();
+    });
+
+    it('requires confirmation for overdue resume and preserves keyed receipts after removal', async () => {
+        service = build(true, true);
+        const rule = await createDate(dateEvent, { idempotencyKey: 'date-draft' });
+        const paused = await service.setPaused(owner, rule.id, { expectedRevision: 1 }, true);
+        const overdue = { ...paused, event: { type: 'date-time' as const, firesAt: '2025-01-01T00:00:00.000Z', timeZone: 'UTC' } };
+        triggers.update(overdue);
+        await expect(service.setPaused(owner, rule.id, { expectedRevision: 2 }, false)).rejects.toThrow('confirm resume');
+        const resumed = await service.setPaused(owner, rule.id, { expectedRevision: 2, confirmed: true }, false);
+        expect(resumed.nextTickAt).toBe(overdue.event.firesAt);
+        await service.remove(owner, rule.id, { expectedRevision: 3 });
+        expect(await service.list(owner)).toEqual([]);
+        await expect(createDate(dateEvent, { idempotencyKey: 'date-draft' })).rejects.toThrow('removed');
+        service = build();
+        await expect(service.runNow(owner, rule.id, { expectedRevision: 4, confirmed: true })).rejects.toThrow();
+    });
+    it('replays an overdue keyed create but rejects a new or edited past date', async () => {
+        service = build(true, true);
+        const rule = await createDate(dateEvent, { idempotencyKey: 'date-draft' });
+        service = new SentinelTodoTriggerService({
+            triggers, todos, owners: new SentinelTodoService({ todos, store: { getProcess } }),
+            manager: { arm, disarm }, firer, fetchPr, enabled: true, dateTimeEnabled: () => true,
+            now: () => Date.parse('2028-01-01T00:00:00.000Z'),
+        });
+        expect((await createDate(dateEvent, { idempotencyKey: 'date-draft' })).id).toBe(rule.id);
+        await expect(createDate()).rejects.toThrow('future');
+        await expect(service.edit(owner, rule.id, { itemId, event: dateEvent, expectedRevision: 1 })).rejects.toThrow('future');
+    });
     function fillCap(seed: Trigger) {
         for (let n = 0; triggers.countActive() < MAX_ACTIVE_TRIGGERS; n++) {
             triggers.insert({ ...seed, id: `ci-${n}`, binding: undefined, delivery: undefined, status: 'active', outcome: undefined });

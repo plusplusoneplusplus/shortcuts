@@ -52,7 +52,8 @@ export interface SentinelTodosToolDeps {
     /** The invoking Sentinel chat; every call is scoped to this ledger. */
     owner: SentinelTodoOwner;
     /** Present only when existing triggers.enabled infrastructure is available. */
-    triggers?: Pick<SentinelTodoTriggerService, 'list' | 'create' | 'edit' | 'setPaused' | 'remove' | 'runNow'>;
+    triggers?: Pick<SentinelTodoTriggerService, 'list' | 'create' | 'edit' | 'setPaused' | 'remove' | 'runNow'>
+        & Partial<Pick<SentinelTodoTriggerService, 'isDateTimeEnabled'>>;
 }
 
 interface TargetRepoArg { workspaceId: string; serverId?: string; label?: string }
@@ -87,6 +88,7 @@ export interface SentinelTodosArgs {
     conversationOffset?: number;
     triggerId?: string;
     prUrl?: string;
+    event?: { type: 'date-time'; firesAt: string; timeZone: string; localTime: string };
     instruction?: string;
     confirmed?: true;
     dependsOn?: SentinelTodoDependency[];
@@ -349,6 +351,16 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                 ...(deps.triggers ? {
                     triggerId: { type: 'string', description: 'Trigger lifecycle actions: rule identity from list_triggers.' },
                     prUrl: { type: 'string', description: 'create_trigger/edit_trigger: supported GitHub/ADO PR URL.' },
+                    ...(deps.triggers.isDateTimeEnabled?.() ? {
+                        event: {
+                            type: 'object', additionalProperties: false, required: ['type', 'firesAt', 'timeZone', 'localTime'],
+                            description: 'One-time date rule instead of prUrl. Future UTC instant (ISO with milliseconds), explicit IANA timezone and local YYYY-MM-DDTHH:mm must match. DST gaps reject; overlaps require an explicit matching UTC choice. Wakes only this Sentinel, grants no authorization. Overdue resume requires confirmed:true.',
+                            properties: {
+                                type: { type: 'string', enum: ['date-time'] }, firesAt: { type: 'string' },
+                                timeZone: { type: 'string' }, localTime: { type: 'string' },
+                            },
+                        },
+                    } : {}),
                     instruction: { type: 'string', description: 'create_trigger/edit_trigger: optional When it fires guidance.' },
                     confirmed: { type: 'boolean', description: 'run_trigger_now/delete_tag: explicit user confirmation of the action and its effects.' },
                 } : {}),
@@ -419,14 +431,14 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                     if (args.action === 'list_triggers') return { triggers: await deps.triggers.list(owner) };
                     if (args.action === 'create_trigger') return {
                         trigger: await deps.triggers.create(owner, {
-                            itemId: args.itemId, prUrl: args.prUrl, instruction: args.instruction, idempotencyKey: args.idempotencyKey,
+                            itemId: args.itemId, prUrl: args.prUrl, event: args.event, instruction: args.instruction, idempotencyKey: args.idempotencyKey,
                         }, 'sentinel'),
                     };
                     if (!args.triggerId) return { error: 'Trigger actions require triggerId.', code: 'invalid' };
                     const revision = { expectedRevision: args.expectedRevision };
                     if (args.action === 'edit_trigger') return {
                         trigger: await deps.triggers.edit(owner, args.triggerId, {
-                            ...revision, itemId: args.itemId, prUrl: args.prUrl, instruction: args.instruction,
+                            ...revision, itemId: args.itemId, prUrl: args.prUrl, event: args.event, instruction: args.instruction,
                         }),
                     };
                     if (args.action === 'remove_trigger') return {
@@ -435,7 +447,8 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                     if (args.action === 'run_trigger_now') return {
                         trigger: await deps.triggers.runNow(owner, args.triggerId, { ...revision, confirmed: args.confirmed }),
                     };
-                    return { trigger: await deps.triggers.setPaused(owner, args.triggerId, revision, args.action === 'pause_trigger') };
+                    return { trigger: await deps.triggers.setPaused(owner, args.triggerId,
+                        { ...revision, ...(args.confirmed ? { confirmed: args.confirmed } : {}) }, args.action === 'pause_trigger') };
                 }
                 switch (args?.action) {
                     case 'bind_pr_output':

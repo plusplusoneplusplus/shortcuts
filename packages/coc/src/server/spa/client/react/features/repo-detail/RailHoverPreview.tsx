@@ -67,6 +67,7 @@ export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand,
     const restoringFocus = useRef(false);
     const touch = useRef(false);
     const enterActions = useRef(false);
+    const focusOwned = useRef<HTMLElement | null>(null);
     const id = useId();
     const previewable = scopeLabel !== undefined;
     const current = controls.find(control => control.key === active);
@@ -84,6 +85,7 @@ export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand,
         clearTimers();
         suppressed.current = true;
         enterActions.current = false;
+        focusOwned.current = null;
         setActive(null);
         if (restoreFocus) {
             restoringFocus.current = true;
@@ -123,7 +125,8 @@ export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand,
     const leave = (focusLeft = false) => {
         clearTimers();
         const focused = document.activeElement;
-        const within = !!panelRef.current?.contains(focused) || !!triggerRef.current?.contains(focused);
+        const within = (focusOwned.current !== null && focusOwned.current === focused)
+            || !!panelRef.current?.contains(focused) || !!triggerRef.current?.contains(focused);
         if (focusLeft || !within) leaveTimer.current = setTimeout(() => setActive(null), 250);
     };
     const blur = (event: FocusEvent<HTMLElement>) => {
@@ -227,8 +230,8 @@ export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand,
                     data-rail-job-preview
                     onPointerEnter={clearTimers}
                     onPointerLeave={() => leave()}
-                    onFocusCapture={clearTimers}
-                    onBlurCapture={blur}
+                    onFocusCapture={event => { focusOwned.current = event.target; clearTimers(); }}
+                    onBlurCapture={event => { focusOwned.current = null; blur(event); }}
                 >
                     <div
                         aria-hidden="true"

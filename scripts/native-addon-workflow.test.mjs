@@ -25,7 +25,7 @@ function jobBlock(workflow, name) {
 // platform addon, and nothing may reintroduce a COC_NATIVE=0 opt-out.
 // coccontainer counts too: its agent and messaging stores open SQLite through
 // the addon, so its server dies at startup without the binary.
-const BOOTS_THE_SERVER = ["coc-test", "e2e", "coc-serve-smoke", "coccontainer-serve-smoke", "docker-build-smoke"];
+const BOOTS_THE_SERVER = ["coc-test", "e2e", "coc-serve-smoke", "coccontainer-serve-smoke", "docker-build-smoke", "coc-desktop-test"];
 
 test("every job that boots the coc server supplies the addon", () => {
     for (const name of BOOTS_THE_SERVER) {
@@ -94,6 +94,35 @@ test("desktop browser control builds its server contracts and runs the live rela
             `${name} must run in both the headless Linux and native macOS/Windows selectors`);
     }
     assert.match(job, /os: \[ubuntu-latest, macos-latest, windows-latest\]/);
+});
+
+// The only CI check that launches the real desktop app against its forked
+// server; the delayed-readiness seam proves Desktop waits past 30s. It needs
+// the addon (the server dies without it), the built server/SPA and desktop
+// dist, an explicit opt-in (plain `test:run` must never launch Electron),
+// a bounded step, and its sandbox uploaded when it fails.
+test("Windows desktop CI launches the real app against a late-ready forked server", () => {
+    const job = jobBlock(ci, "coc-desktop-test");
+    const step = job.slice(job.indexOf("- name: Run desktop startup smoke"));
+    assert.ok(job.includes("- name: Run desktop startup smoke"), "coc-desktop-test must run the startup smoke");
+    const smoke = step.slice(0, step.indexOf("\n      - name:", 1));
+    assert.match(smoke, /if: matrix\.os == 'windows-latest'/);
+    assert.match(smoke, /timeout-minutes: \d+/);
+    assert.match(smoke, /run: npm run test:run -- test\/e2e\/desktop-startup\.e2e\.test\.ts/);
+    assert.match(smoke, /COC_DESKTOP_STARTUP_SMOKE: '1'/);
+    assert.match(smoke, /COC_DESKTOP_STARTUP_SMOKE_DIR: \$\{\{ runner\.temp \}\}\/coc-desktop-startup-smoke/);
+    for (const prerequisite of ["name: coc-native-${{ matrix.os }}", "npm run build -w packages/coc", "- name: Build coc-desktop package"]) {
+        const at = job.indexOf(prerequisite);
+        assert.ok(at >= 0 && at < job.indexOf("- name: Run desktop startup smoke"), `${prerequisite} must precede the startup smoke`);
+    }
+    const upload = step.slice(step.indexOf("- name: Upload desktop startup smoke diagnostics"));
+    assert.match(upload, /if: failure\(\) && matrix\.os == 'windows-latest'/);
+    assert.match(upload, /path: \$\{\{ runner\.temp \}\}\/coc-desktop-startup-smoke\//);
+    const spec = readFileSync(new URL("../packages/coc-desktop/test/e2e/desktop-startup.e2e.test.ts", import.meta.url), "utf8");
+    assert.match(spec, /const skip = process\.env\.COC_DESKTOP_STARTUP_SMOKE !== '1';/);
+    assert.match(spec, /const DELAY_MS = (\d+)_000;/);
+    const delay = Number(spec.match(/const DELAY_MS = (\d+)_000;/)[1]);
+    assert.ok(delay > 30 && delay < 120, "the readiness delay must sit between 30s and the 120s allowance");
 });
 
 // coc-agent-sdk and forge compile against @plusplusoneplusplus/coc-native, and

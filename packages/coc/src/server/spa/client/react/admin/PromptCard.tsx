@@ -4,6 +4,7 @@
  */
 
 import { useState } from 'react';
+import { useAdminDirtyGuard } from './adminTarget';
 
 interface PromptCardProps {
     id: string;
@@ -64,6 +65,8 @@ export function PromptCard({
             setSaving(false);
         }
     }
+
+    useAdminDirtyGuard(`prompt:${id}`, { label: `Prompt "${title}"`, dirty: editing && draftText !== displayText, saving, save: handleSave });
 
     async function handleReset() {
         if (!onReset) return;

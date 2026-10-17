@@ -45,6 +45,14 @@ const RESULT_LIMIT = 50;
 const SEARCH_DEBOUNCE_MS = 40;
 
 /**
+ * The pause Go To All (`Ctrl+,`) waits for instead. Every search issued from a
+ * palette opened on symbols — including an `f ` file search — waits this long,
+ * so a language-server fan-out runs once per pause rather than per keystroke.
+ * `Ctrl+P` keeps `SEARCH_DEBOUNCE_MS`.
+ */
+export const GO_TO_ALL_DEBOUNCE_MS = 500;
+
+/**
  * The prefix grammar, spelled out for the user. The prefixes in
  * `paletteQuery.ts` are worth nothing if nobody knows they exist, so the
  * palette names them wherever it has room: in the empty state before anything
@@ -255,6 +263,7 @@ export function QuickOpen({
         : `group:${scope.groupId}:${scope.baseUrl ?? ''}`;
 
     const parsed = parsePaletteQuery(query, mode);
+    const debounceMs = mode === 'symbols' ? GO_TO_ALL_DEBOUNCE_MS : SEARCH_DEBOUNCE_MS;
     const symbolsMode = parsed.mode === 'symbols';
     // Group membership is only fetched once the palette actually needs it, so
     // Ctrl+P in a group still costs no extra request.
@@ -275,7 +284,7 @@ export function QuickOpen({
         open: open && symbolsMode,
         members: symbolMembers,
         query: parsed.term,
-        debounceMs: SEARCH_DEBOUNCE_MS,
+        debounceMs,
         limit: RESULT_LIMIT,
     });
     const visibleSymbols = useMemo(
@@ -362,13 +371,13 @@ export function QuickOpen({
                 .finally(() => {
                     if (!abort.signal.aborted && requestId === requestIdRef.current) setLoading(false);
                 });
-        }, SEARCH_DEBOUNCE_MS);
+        }, debounceMs);
 
         return () => {
             if (debounceRef.current) clearTimeout(debounceRef.current);
             if (abortRef.current) abortRef.current.abort();
         };
-    }, [parsed.term, symbolsMode, open, retry, scopeKey]);
+    }, [parsed.term, symbolsMode, open, retry, scopeKey, debounceMs]);
 
     // Cleanup on unmount
     useEffect(() => {

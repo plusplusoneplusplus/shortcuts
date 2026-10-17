@@ -77,7 +77,6 @@ describeWithClangd('real clangd runtime', () => {
         fs.writeFileSync(path.join(root, 'main.cpp'), SOURCE);
         const enabled: LanguageServerDefinition = {
             ...CLANGD_PRESET,
-            enabled: true,
             initializationOptions: { fallbackFlags: fallbackFlags() },
         };
         const prepared = prepareDefinitionForRoot(enabled, root);
@@ -162,7 +161,6 @@ int main() { return 0; }
         }]));
         const enabled: LanguageServerDefinition = {
             ...CLANGD_PRESET,
-            enabled: true,
             initializationOptions: { fallbackFlags: ['-DFROM_FALLBACK'] },
         };
         const prepared = prepareDefinitionForRoot(enabled, databaseRoot);

@@ -1,3 +1,4 @@
+import '../language-servers/fileIdentityMock';
 /**
  * The unified panel's tree column following the active file tab (AC-06) — the
  * shell's half of the contract: which path it hands the column, and when it
@@ -17,7 +18,7 @@
  * @vitest-environment jsdom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView', () => ({
     TerminalView: ({ workspaceId }: { workspaceId: string }) => (
@@ -137,15 +138,15 @@ function tracked(): string | null {
     return column.getAttribute('data-active-file');
 }
 
-function openViaMenu(testId: string) {
-    fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
-    fireEvent.click(screen.getByTestId(testId));
+async function openViaMenu(testId: string) {
+    await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
+    await act(async () => { fireEvent.click(screen.getByTestId(testId)); });
 }
 
-function runTabAction(action: string) {
+async function runTabAction(action: string) {
     const activeTab = screen.getAllByRole('tab').find(tab => tab.getAttribute('aria-selected') === 'true')!;
     fireEvent.contextMenu(activeTab, { clientX: 20, clientY: 30 });
-    fireEvent.click(screen.getByTestId(`unified-panel-tab-menu-${action}`));
+    await act(async () => { fireEvent.click(screen.getByTestId(`unified-panel-tab-menu-${action}`)); });
 }
 
 describe('unified panel tree tracking (AC-06)', () => {
@@ -171,25 +172,25 @@ describe('unified panel tree tracking (AC-06)', () => {
         expect(tracked()).toBeNull();
     });
 
-    it('tracks the active file tab and follows a switch between two of them', () => {
+    it('tracks the active file tab and follows a switch between two of them', async () => {
         renderWithTree();
 
-        fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
+        await act(async () => { fireEvent.click(screen.getByTestId('mock-explorer-open-app')); });
         expect(tracked()).toBe('src/app.ts');
 
         // A second single click reuses the preview slot; the tracked path moves
         // with the active tab, not with the tab count.
-        fireEvent.click(screen.getByTestId('mock-explorer-open-lib'));
+        await act(async () => { fireEvent.click(screen.getByTestId('mock-explorer-open-lib')); });
         expect(tracked()).toBe('src/lib/util.ts');
     });
 
-    it('promotes a preview in place from Keep Open', () => {
+    it('promotes a preview in place from Keep Open', async () => {
         renderWithTree();
-        fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
+        await act(async () => { fireEvent.click(screen.getByTestId('mock-explorer-open-app')); });
         const activeTab = screen.getAllByRole('tab').find(tab => tab.getAttribute('aria-selected') === 'true')!;
         expect(activeTab.getAttribute('data-preview')).toBe('true');
 
-        runTabAction('keep-open');
+        await runTabAction('keep-open');
 
         expect(screen.getAllByRole('tab')).toHaveLength(1);
         expect(activeTab.getAttribute('data-preview')).toBeNull();
@@ -204,11 +205,11 @@ describe('unified panel tree tracking (AC-06)', () => {
             dock: dockStub({ setTarget, selectMode }),
             workspaceRootPath: '/repos/local',
         });
-        fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
+        await act(async () => { fireEvent.click(screen.getByTestId('mock-explorer-open-app')); });
 
-        runTabAction('copy-path');
+        await runTabAction('copy-path');
         expect(writeText).toHaveBeenLastCalledWith('/repos/local/src/app.ts');
-        runTabAction('copy-relative-path');
+        await runTabAction('copy-relative-path');
         expect(writeText).toHaveBeenLastCalledWith('src/app.ts');
 
         writeUnifiedTreeState(WS, { open: false, width: 220 });
@@ -221,7 +222,7 @@ describe('unified panel tree tracking (AC-06)', () => {
         );
         const activeTab = screen.getAllByRole('tab').find(tab => tab.getAttribute('aria-selected') === 'true')!;
 
-        runTabAction('reveal-in-explorer');
+        await runTabAction('reveal-in-explorer');
 
         expect(setTarget).toHaveBeenCalledWith(WS);
         expect(selectMode).toHaveBeenCalledWith('explorer');
@@ -237,37 +238,37 @@ describe('unified panel tree tracking (AC-06)', () => {
         expect(activeTab.getAttribute('aria-selected')).toBe('true');
     });
 
-    it('copies the path of the clicked local tab instead of the active tab', () => {
+    it('copies the path of the clicked local tab instead of the active tab', async () => {
         const writeText = vi.fn(async () => undefined);
         Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
         renderWithTree({ workspaceRootPath: '/repos/local' });
-        fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
-        runTabAction('keep-open');
-        fireEvent.click(screen.getByTestId('mock-explorer-open-lib'));
+        await act(async () => { fireEvent.click(screen.getByTestId('mock-explorer-open-app')); });
+        await runTabAction('keep-open');
+        await act(async () => { fireEvent.click(screen.getByTestId('mock-explorer-open-lib')); });
 
         const [appTab, libTab] = screen.getAllByRole('tab');
         expect(libTab.getAttribute('aria-selected')).toBe('true');
         fireEvent.contextMenu(appTab, { clientX: 20, clientY: 30 });
-        fireEvent.click(screen.getByTestId('unified-panel-tab-menu-copy-path'));
+        await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-tab-menu-copy-path')); });
 
         expect(writeText).toHaveBeenCalledWith('/repos/local/src/app.ts');
     });
 
-    it('sends an explicit reveal request each time, even for the already-tracked file', () => {
+    it('sends an explicit reveal request each time, even for the already-tracked file', async () => {
         renderWithTree();
-        fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
+        await act(async () => { fireEvent.click(screen.getByTestId('mock-explorer-open-app')); });
         const column = () => screen.getByTestId('mock-explorer');
         expect(tracked()).toBe('src/app.ts');
         expect(column().getAttribute('data-reveal')).toBeNull();
 
-        runTabAction('reveal-in-explorer');
+        await runTabAction('reveal-in-explorer');
         expect(column().getAttribute('data-reveal')).toBe('src/app.ts#1');
 
-        runTabAction('reveal-in-explorer');
+        await runTabAction('reveal-in-explorer');
         expect(column().getAttribute('data-reveal')).toBe('src/app.ts#2');
     });
 
-    it('omits Copy Path for a remote-clone file while preserving relative copy and reveal', () => {
+    it('omits Copy Path for a remote-clone file while preserving relative copy and reveal', async () => {
         const writeText = vi.fn(async () => undefined);
         const setTarget = vi.fn(() => true);
         const selectMode = vi.fn();
@@ -277,12 +278,12 @@ describe('unified panel tree tracking (AC-06)', () => {
             routingRef: 'remote:server-1:ws-1',
             workspaceRootPath: '/remote/repo',
         });
-        fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
+        await act(async () => { fireEvent.click(screen.getByTestId('mock-explorer-open-app')); });
 
         const activeTab = screen.getAllByRole('tab').find(tab => tab.getAttribute('aria-selected') === 'true')!;
         fireEvent.contextMenu(activeTab, { clientX: 20, clientY: 30 });
         expect(screen.queryByTestId('unified-panel-tab-menu-copy-path')).toBeNull();
-        fireEvent.click(screen.getByTestId('unified-panel-tab-menu-copy-relative-path'));
+        await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-tab-menu-copy-relative-path')); });
         expect(writeText).toHaveBeenLastCalledWith('src/app.ts');
 
         writeUnifiedTreeState(WS, { open: false, width: 220 });
@@ -294,7 +295,7 @@ describe('unified panel tree tracking (AC-06)', () => {
                 workspaceRootPath="/remote/repo"
             />,
         );
-        runTabAction('reveal-in-explorer');
+        await runTabAction('reveal-in-explorer');
 
         expect(setTarget).toHaveBeenCalledWith(WS);
         expect(selectMode).toHaveBeenCalledWith('explorer');
@@ -311,7 +312,7 @@ describe('unified panel tree tracking (AC-06)', () => {
         expect(activeTab.getAttribute('aria-selected')).toBe('true');
     });
 
-    it('copies and reveals a repo-group-owned file without changing its active tab', () => {
+    it('copies and reveals a repo-group-owned file without changing its active tab', async () => {
         const writeText = vi.fn(async () => undefined);
         const setTarget = vi.fn(() => true);
         const selectMode = vi.fn();
@@ -330,11 +331,11 @@ describe('unified panel tree tracking (AC-06)', () => {
             }),
             targets,
         });
-        fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
+        await act(async () => { fireEvent.click(screen.getByTestId('mock-explorer-open-app')); });
 
-        runTabAction('copy-path');
+        await runTabAction('copy-path');
         expect(writeText).toHaveBeenLastCalledWith('/repos/api/src/app.ts');
-        runTabAction('copy-relative-path');
+        await runTabAction('copy-relative-path');
         expect(writeText).toHaveBeenLastCalledWith('src/app.ts');
 
         writeUnifiedTreeState(WS, { open: false, width: 220 });
@@ -353,7 +354,7 @@ describe('unified panel tree tracking (AC-06)', () => {
         );
         const activeTab = screen.getAllByRole('tab').find(tab => tab.getAttribute('aria-selected') === 'true')!;
 
-        runTabAction('reveal-in-explorer');
+        await runTabAction('reveal-in-explorer');
 
         expect(setTarget).toHaveBeenCalledWith(MEMBER);
         expect(selectMode).toHaveBeenCalledWith('explorer');
@@ -374,31 +375,31 @@ describe('unified panel tree tracking (AC-06)', () => {
         expect(activeTab.getAttribute('aria-selected')).toBe('true');
     });
 
-    it('stops tracking for a non-file tab, so the tree keeps the last highlight', () => {
+    it('stops tracking for a non-file tab, so the tree keeps the last highlight', async () => {
         renderWithTree();
-        fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
+        await act(async () => { fireEvent.click(screen.getByTestId('mock-explorer-open-app')); });
         expect(tracked()).toBe('src/app.ts');
 
-        openViaMenu('unified-panel-open-terminal');
+        await openViaMenu('unified-panel-open-terminal');
         // Not `'null'`: "leave the tree alone" and "clear the highlight" are
         // different instructions, and a terminal tab means the former.
         expect(tracked()).toBeNull();
         expect(screen.getByTestId('mock-explorer').getAttribute('data-tracking')).toBe('off');
     });
 
-    it('clears the highlight for a trusted absolute path, which has no row in any tree', () => {
+    it('clears the highlight for a trusted absolute path, which has no row in any tree', async () => {
         renderWithTree();
-        fireEvent.click(screen.getByTestId('mock-explorer-open-trusted'));
+        await act(async () => { fireEvent.click(screen.getByTestId('mock-explorer-open-trusted')); });
         expect(tracked()).toBe('null');
     });
 
-    it('clears the highlight when the dock is retargeted away from the file owner', () => {
+    it('clears the highlight when the dock is retargeted away from the file owner', async () => {
         const targets = [{ workspaceId: WS, label: 'group' }, { workspaceId: MEMBER, label: 'api' }];
         writeUnifiedTreeState(WS, { open: true, width: 220 });
         const { rerender } = renderPanel({ dock: dockStub({ target: MEMBER, targets }) });
 
         // Opened from the member's tree, so the tab is owned by the member.
-        fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
+        await act(async () => { fireEvent.click(screen.getByTestId('mock-explorer-open-app')); });
         expect(tracked()).toBe('src/app.ts');
 
         // The picker moves the tree to the group repo; the open tab does not move

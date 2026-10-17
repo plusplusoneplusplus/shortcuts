@@ -117,8 +117,7 @@ interface DashboardConfig {
     repoGroupAggregatedChatsEnabled?: boolean;
     /** Whether the collapsed workspace rail offers manual sidebar refresh. Default false. */
     railManualRefreshEnabled?: boolean;
-    /** Whether the collapsed workspace rail shows the Git summary. Default false. */
-    railGitSummaryEnabled?: boolean;
+    adminMachineSwitchEnabled?: boolean;
     /** Whether the collapsed workspace rail mirrors the Admin and quota controls. Default false. */
     railStatusActionsEnabled?: boolean;
     schedulerDelayHintEnabled?: boolean;
@@ -128,6 +127,9 @@ interface DashboardConfig {
     explorerEditorTabsEnabled?: boolean;
     /** Whether unified right-panel Markdown file tabs offer a rendered preview. Default false. */
     markdownPanelPreviewEnabled?: boolean;
+    /** Whether unified right-panel source files can be split into two panes. Default false. */
+    panelSourceSplitEnabled?: boolean;
+    panelSettingsEnabled?: boolean;
     /** Whether unified right-panel resource tabs can be reordered. Default true. */
     panelTabReorderingEnabled?: boolean;
     /** Whether the owning server allows confirmed permanent Explorer deletion. Default true. */
@@ -613,9 +615,9 @@ export function isRailManualRefreshEnabled(): boolean {
     return getConfig().railManualRefreshEnabled !== false;
 }
 
-/** Returns true when the collapsed workspace rail shows Git status (`features.railGitSummary`). */
-export function isRailGitSummaryEnabled(): boolean {
-    return getConfig().railGitSummaryEnabled === true;
+/** Returns true when Desktop Admin may target a registered remote server (`features.adminMachineSwitch`). */
+export function isAdminMachineSwitchEnabled(): boolean {
+    return getConfig().adminMachineSwitchEnabled === true;
 }
 
 /** Returns true when the collapsed workspace rail mirrors Admin and quota (`features.railStatusActions`). */

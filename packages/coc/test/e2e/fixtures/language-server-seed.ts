@@ -45,11 +45,10 @@ export async function enableLanguageServers(
 }
 
 /**
- * Turn language support off for one workspace. Call before `page.goto`.
+ * Save a legacy "off" config for one workspace. Call before `page.goto`.
  *
- * Writing the config is what makes "off" mean off: leaving the workspace
- * unconfigured would let the first read seed it from the detected languages
- * and start a server after all.
+ * Reads strip saved enable fields, so this no longer turns language support
+ * off; specs use it to prove a stale saved `false` is ignored.
  */
 export async function disableLanguageServers(
     baseURL: string,

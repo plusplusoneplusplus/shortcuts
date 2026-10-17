@@ -16,7 +16,8 @@ export type UnifiedPanelTabMenuAction =
     | UnifiedPanelBulkCloseAction
     | 'copy-path'
     | 'copy-relative-path'
-    | 'reveal-in-explorer';
+    | 'reveal-in-explorer'
+    | 'open-to-side';
 
 export interface UnifiedPanelTabMenuItem {
     action: UnifiedPanelTabMenuAction;
@@ -29,6 +30,8 @@ export interface UnifiedPanelFileActionAvailability {
     copyPath: boolean;
     copyRelativePath: boolean;
     revealInExplorer: boolean;
+    /** The source split is available: offer "Open to the Right". */
+    openToSide?: boolean;
 }
 
 export function unifiedPanelBulkCloseTargets(
@@ -101,6 +104,9 @@ export function unifiedPanelTabMenuItems(
         },
     );
     if (tab.kind === 'file') {
+        if (fileActions.openToSide) {
+            items.push({ action: 'open-to-side', label: 'Open to the Right', group: 'file', disabled: false });
+        }
         if (fileActions.copyPath) {
             items.push({ action: 'copy-path', label: 'Copy Path', group: 'file', disabled: false });
         }

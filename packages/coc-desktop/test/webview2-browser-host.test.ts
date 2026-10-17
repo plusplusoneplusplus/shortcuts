@@ -54,7 +54,7 @@ vi.mock('../src/webview2-process', async importOriginal => ({
     },
 }));
 
-const sink: BrowserEventSink = { state: vi.fn(), newTab: vi.fn(), download: vi.fn(), closeRequested: vi.fn(), openMenuRequested: vi.fn(), focusAddressRequested: vi.fn() };
+const sink: BrowserEventSink = { state: vi.fn(), newTab: vi.fn(), download: vi.fn(), closeRequested: vi.fn(), openMenuRequested: vi.fn(), focusAddressRequested: vi.fn(), reopenClosedRequested: vi.fn() };
 const bounds = { x: 10, y: 20, width: 300, height: 200 };
 
 describe('WebView2 private frame event transport', () => {
@@ -651,6 +651,24 @@ describe('WebView2 native focus handoff', () => {
         await view.close();
         mocks.onEvent({ event: 'focus-address-requested', viewId: '7:tab:1' });
         expect(sink.focusAddressRequested).toHaveBeenCalledOnce();
+    });
+
+    it('returns focus and forwards reopen-closed only for a live visible source view', async () => {
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'remote-workspace', url: 'https://example.test' }, sink);
+        mocks.onEvent({ event: 'reopen-closed-requested', viewId: '7:tab:1' });
+        expect(sink.reopenClosedRequested).not.toHaveBeenCalled();
+        await view.setBounds(bounds);
+        mocks.onEvent({ event: 'reopen-closed-requested', viewId: '8:tab:1' });
+        expect(sink.reopenClosedRequested).not.toHaveBeenCalled();
+        mocks.onEvent({ event: 'reopen-closed-requested', viewId: '7:tab:1' });
+        await vi.waitFor(() => expect(sink.reopenClosedRequested).toHaveBeenCalledOnce());
+        expect(mocks.request).toHaveBeenCalledWith('focus-host', { viewId: '7:tab:1' });
+        expect(mocks.owner.focus.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(sink.reopenClosedRequested!).mock.invocationCallOrder[0]);
+        expect(sink.openMenuRequested).not.toHaveBeenCalled();
+        await view.close();
+        mocks.onEvent({ event: 'reopen-closed-requested', viewId: '7:tab:1' });
+        expect(sink.reopenClosedRequested).toHaveBeenCalledOnce();
     });
 
     it('does not start a helper when no browser view is present', async () => {

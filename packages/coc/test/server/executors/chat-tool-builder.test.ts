@@ -122,6 +122,16 @@ describe('buildChatToolBundle', () => {
         );
     });
 
+    it.each([
+        [true, false], [false, false], [true, true],
+    ])('gates Sentinel guidance with suggestions enabled=%s, disabled by owner=%s', (enabled, disabled) => {
+        writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: disabled ? ['suggest_follow_ups'] : [] });
+        const result = buildChatToolBundle({ dataDir: tmpDir, workspaceId: WS_ID, store: makeStore(),
+            sentinelNextSteps: true, followUpSuggestions: { enabled, count: 3 } });
+        expect(result.tools.some(tool => tool.name === 'suggest_follow_ups')).toBe(enabled && !disabled);
+        expect(result.toolGuidance.includes('<sentinel_next_steps>')).toBe(enabled && !disabled);
+    });
+
     it('assembles the common chat tools and suffixes when enabled', () => {
         writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
 

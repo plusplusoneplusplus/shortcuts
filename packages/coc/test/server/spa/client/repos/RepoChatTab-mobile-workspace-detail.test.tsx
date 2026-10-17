@@ -27,7 +27,6 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     isForEachEnabled: () => false,
     isMapReduceEnabled: () => false,
-    isRailGitSummaryEnabled: () => false,
     isRailStatusActionsEnabled: () => false,
     isSchedulesInScheduledSlideEnabled: () => mocks.schedulesEnabled,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',

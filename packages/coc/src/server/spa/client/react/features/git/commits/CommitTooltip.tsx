@@ -42,12 +42,12 @@ export function CommitTooltip({ commit, anchorRect, onMouseEnter, onMouseLeave, 
 
         // Flip above if overflowing bottom
         if (top + rect.height > viewportH) {
-            top = anchorRect.top - rect.height - 4;
+            top = Math.max(8, anchorRect.top - rect.height - 4);
         }
 
         // Guard against right-side overflow
         const viewportW = window.innerWidth;
-        const finalLeft = Math.min(left, viewportW - rect.width - 8);
+        const finalLeft = Math.max(8, Math.min(left, viewportW - rect.width - 8));
 
         setPosition({ top, left: finalLeft });
     }, [anchorRect]);
@@ -74,6 +74,7 @@ export function CommitTooltip({ commit, anchorRect, onMouseEnter, onMouseLeave, 
             onMouseLeave={onMouseLeave}
             // A portal is outside the peek panel's DOM; keep its controls from
             // triggering the panel's document-level outside-click dismissal.
+            onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
         >
             {/* Full subject */}

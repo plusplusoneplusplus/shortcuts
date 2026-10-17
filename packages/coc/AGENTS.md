@@ -45,7 +45,9 @@ references before editing. Paths are package-relative.
   not files/duplicated route logic. Invalidate/broadcast both scopes.
 - Workspace/process REST, SSE, and WebSockets target their owner:
   use `getCocClientForWorkspace`, `useCocClient(ref)`, or the clone-routed helpers.
-  Unresolved remote selections never fall through locally; admin stays page-origin.
+  Unresolved remote selections never fall through locally. Server-owned Admin code
+  uses `useAdminServer()` (`admin/adminTarget.tsx`), never `getSpaCocClient()`, so
+  the default-off Desktop machine switch can target a registered remote.
   ChatDetail owner WebSocket refreshes coalesce matching notifications per microtask
   batch; preserve later refreshes and discard scheduled work on effect cleanup.
   Dashboard discovery uses `ProcessWebSocketServer.dashboardDiscovery` for targeted,
@@ -81,7 +83,7 @@ references before editing. Paths are package-relative.
   keeps status/type separate from execution-mode pills. Queue and pinned snapshots
   project owner-verified current process modes in a transcript-free batch; Ralph
   identity wins, unknown modes stay omitted, and mode changes refresh queue snapshots.
-  Rail Git tiles (`features.railGitSummary`) use the same previews, read only the
+  Collapsed-rail Git tiles use the same previews, read only the
   owner's git-info/working tree (groups: per-member git-info, never a group branch).
   Sync previews lazily page the expanded Git outgoing prefix on that owner;
   commit routes retain page/member/clone ownership and already-read metadata.
@@ -584,6 +586,11 @@ references before editing. Paths are package-relative.
   `test/server/snapshot-domain-contract.test.ts` for export/import/wipe consistency.
 
 ## Chat and Provider Safety
+
+- Default-off `features.sentinelNextSteps` gates optional 1–3 Sentinel actions and
+  click-to-send. Resolve the UI gate from the conversation owner. Keep clicks on
+  the normal guarded follow-up path; suggestion display grants no authority and
+  clicks request only the named scope. Ordinary modes retain their suggestion behavior.
 
 - Pause and delay menus use body portals and `useAnchoredPanelPosition` with
   constrained height, viewport-bounded width, and contained vertical scrolling.

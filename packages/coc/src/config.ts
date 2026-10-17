@@ -321,6 +321,8 @@ export interface CLIConfig {
         teamsBridgeObservability?: boolean;
         teamsAiAnswerRelay?: boolean;
         teamsMessageReaction?: boolean;
+        /** Optional Sentinel next actions and click-to-send. Disabled by default. */
+        sentinelNextSteps?: boolean;
         /** Native prerequisite authoring and admission. Disabled by default. */
         sentinelTodoDependencies?: boolean;
         sentinelTodoTags?: boolean;
@@ -331,6 +333,7 @@ export interface CLIConfig {
         /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Disabled by default. */
         toolScripting?: boolean;
         sentinelPrOutcomeWake?: boolean;
+        sentinelTodoDateTimeTriggers?: boolean;
         sentinelDesktopMirror?: boolean;
         botManagedConversations?: boolean;
         /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Disabled by default. */
@@ -351,8 +354,8 @@ export interface CLIConfig {
         chatFolders?: boolean;
         /** Manual sidebar data refresh on the collapsed workspace rail. Enabled by default. */
         railManualRefresh?: boolean;
-        /** Git changes/sync/branch summary on the collapsed workspace rail. Disabled by default. */
-        railGitSummary?: boolean;
+        /** Desktop Admin selector for configuring a registered remote CoC server. Disabled by default. */
+        adminMachineSwitch?: boolean;
         /** Admin and provider-quota shortcuts on the collapsed workspace rail. Enabled by default. */
         railStatusActions?: boolean;
         schedulerDelayHint?: boolean;
@@ -370,6 +373,9 @@ export interface CLIConfig {
         explorerDelete?: boolean;
         /** Rendered Markdown preview in unified right-panel file tabs. Disabled by default. */
         markdownPanelPreview?: boolean;
+        /** Two-pane source file split in the unified right panel. Disabled by default. */
+        panelSourceSplit?: boolean;
+        panelSettings?: boolean;
         panelTabReordering?: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab?: boolean;
@@ -741,6 +747,7 @@ export interface ResolvedCLIConfig {
         teamsBridgeObservability: boolean;
         teamsAiAnswerRelay: boolean;
         teamsMessageReaction: boolean;
+        sentinelNextSteps: boolean;
         sentinelTodoDependencies: boolean;
         sentinelTodoTags: boolean;
         sentinelTodoExternalReferences: boolean;
@@ -749,6 +756,7 @@ export interface ResolvedCLIConfig {
         /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Disabled by default. */
         toolScripting: boolean;
         sentinelPrOutcomeWake: boolean;
+        sentinelTodoDateTimeTriggers: boolean;
         sentinelDesktopMirror: boolean;
         botManagedConversations: boolean;
         /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Enabled by default. */
@@ -768,8 +776,8 @@ export interface ResolvedCLIConfig {
         chatFolders: boolean;
         /** Manual sidebar data refresh on the collapsed workspace rail. Disabled by default. */
         railManualRefresh: boolean;
-        /** Git changes/sync/branch summary on the collapsed workspace rail. Disabled by default. */
-        railGitSummary: boolean;
+        /** Desktop Admin selector for configuring a registered remote CoC server. Disabled by default. */
+        adminMachineSwitch: boolean;
         /** Admin and provider-quota shortcuts on the collapsed workspace rail. Disabled by default. */
         railStatusActions: boolean;
         schedulerDelayHint: boolean;
@@ -787,6 +795,9 @@ export interface ResolvedCLIConfig {
         explorerDelete: boolean;
         /** Rendered Markdown preview in unified right-panel file tabs. Disabled by default. */
         markdownPanelPreview: boolean;
+        /** Two-pane source file split in the unified right panel. Disabled by default. */
+        panelSourceSplit: boolean;
+        panelSettings: boolean;
         panelTabReordering: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab: boolean;
@@ -1077,12 +1088,14 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         teamsBridgeObservability: false,
         teamsAiAnswerRelay: true,
         teamsMessageReaction: false,
+        sentinelNextSteps: false,
         sentinelTodoDependencies: false,
         sentinelTodoTags: false,
         sentinelTodoExternalReferences: false,
         sentinelTodoScrubber: false,
         toolScripting: false,
         sentinelPrOutcomeWake: false,
+        sentinelTodoDateTimeTriggers: false,
         sentinelDesktopMirror: false,
         botManagedConversations: false,
         quickAskSidenotes: true,
@@ -1094,7 +1107,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         schedulesInScheduledSlide: true,
         chatFolders: false,
         railManualRefresh: true,
-        railGitSummary: false,
+        adminMachineSwitch: false,
         railStatusActions: true,
         schedulerDelayHint: false,
         composerWordHint: true,
@@ -1104,6 +1117,8 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         explorerEditorTabs: false,
         explorerDelete: true,
         markdownPanelPreview: false,
+        panelSourceSplit: false,
+        panelSettings: false,
         panelTabReordering: true,
         htmlPageTab: true,
         chatStyleSelector: true,

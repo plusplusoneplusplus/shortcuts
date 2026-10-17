@@ -79,6 +79,8 @@ export interface QueueRuntimeConfig {
     getDefaultIdleTimeoutMs(): number;
     /** Follow-up suggestion policy for the next completed turn. */
     getFollowUpSuggestions(): QueueFollowUpSuggestionsConfig;
+    /** Optional Sentinel next actions, read when building each turn. */
+    getSentinelNextStepsEnabled(): boolean;
     /** Ask User policy for the next turn built. */
     getAskUser(): QueueAskUserConfig;
     /** Global skill-source folder settings for the next skill resolution. */
@@ -171,6 +173,7 @@ export function createQueueRuntimeConfig(source: QueueConfigSource): QueueRuntim
         getDefaultTimeoutMs: () => readFromSnapshot(source.config).timeoutMs,
         getDefaultIdleTimeoutMs: () => readFromSnapshot(source.config).idleTimeoutMs,
         getFollowUpSuggestions: () => readFromSnapshot(source.config).followUpSuggestions,
+        getSentinelNextStepsEnabled: () => source.config.features.sentinelNextSteps === true,
         getAskUser: () => readFromSnapshot(source.config).askUser,
         getSkillFolders: () => readFromSnapshot(source.config).skillFolders,
         getRalphFinalCheckPolicy: () => readFromSnapshot(source.config).ralphFinalCheck,
@@ -201,6 +204,7 @@ export function createFixedQueueRuntimeConfig(overrides: {
     sensitiveInput?: QueueSensitiveInputConfig;
 } = {}): QueueRuntimeConfig {
     const file = overrides.config;
+    const sentinelNextStepsEnabled = file?.features?.sentinelNextSteps === true;
 
     const timeoutMs = overrides.defaultTimeoutMs
         ?? resolveDefaultTimeoutMs(file?.timeout);
@@ -236,6 +240,7 @@ export function createFixedQueueRuntimeConfig(overrides: {
         getDefaultTimeoutMs: () => timeoutMs,
         getDefaultIdleTimeoutMs: () => idleTimeoutMs,
         getFollowUpSuggestions: () => followUpSuggestions,
+        getSentinelNextStepsEnabled: () => sentinelNextStepsEnabled,
         getAskUser: () => askUser,
         getSkillFolders: () => skillFolders,
         getRalphFinalCheckPolicy: () => ralphFinalCheck,

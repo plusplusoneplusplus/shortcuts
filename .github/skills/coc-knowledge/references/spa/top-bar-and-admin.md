@@ -127,6 +127,42 @@ Below the shell's 600px container breakpoint the sidebar collapses into
 `.ar-mobile-tab-select`; the nav buttons still exist but are hidden, so at phone width
 sections are reached with `selectOption('settings:appearance')`.
 
+### Admin machine target
+
+With `features.adminMachineSwitch` (default off) in the desktop shell, outside
+container mode, `AdminDialog` wraps `AdminPanel` in `AdminTargetProvider` +
+`AdminTargetGate` (`admin/adminTarget.tsx`). The flag is read once per open from
+the connected server. A "Configure machine" `<select>` in the Admin top bar lists
+the connected server first, then the connected server's registry
+(`servers.list()`, never the target's). Rows show credential-free connection
+hints for duplicate labels and status text. Selection is in-memory only: every
+dialog mount starts on the connected server, and embedded-route navigation keeps it.
+
+Server-owned Admin code reads `useAdminServer()`: `client`, `apiBase`/`rawApiBase`,
+`resolveUrl`, `fetch`, `isRemote`, `cacheScope`, `label` and target `serversEnabled`.
+Without the provider it returns page-origin defaults. Each selection gets a
+scoped `CocClient` that aborts reads on switch and counts writes; the selector is
+disabled while writes or registered saves are pending. The gate remounts content
+per selection. Remotes mount only after an `/api/health` identity check against
+the registry entry; offline, removed, unreachable and mismatched targets show an
+unavailable panel with Retry and never fall back locally. Network errors on a
+ready remote show a banner, keep drafts and refuse writes until Retry re-checks
+the same target. Remote saves skip local side effects (`applyRuntimeConfigPatch`,
+display-setting invalidation, onboarding, reload after restart). Memory uses
+`useMemoryV2Api()` so workspace writes stay on the target, provider-model hooks take an
+owner `{ baseUrl, client }`, the Servers view edits the target's registry, and
+memory process links are disabled for remote targets.
+
+Ownership: config/features, preferences, AI provider routing/models/effort tiers,
+provider credentials, prompts, Teams/WhatsApp (including OAuth polling), memory,
+skills, Dreams, logs, usage stats, server name/restart, backup/reset, storage and
+the database browser follow the target. Link handlers, Desktop Preferences
+(browser engines/profiles/history) and the welcome tour stay local and are badged
+"This desktop" while the switch is active. Drafts register through
+`useAdminDirtyGuard`. Switching while dirty offers Save / Discard / Cancel; Save
+switches only once every draft is clean on the original machine; otherwise
+the outstanding cards are listed and target and edits stay. Destructive confirmations name the target.
+
 ### Writing tests against admin
 
 Three consequences of admin being modal (`test/e2e/admin-dialog.spec.ts` covers the
@@ -218,6 +254,6 @@ provider-level errors. `StatusActions` passes the active clone-qualified repo or
 selection into `useAgentProvidersQuota`, so initial load, polling, and force refresh use the
 owning server. Changing owner clears the displayed snapshot, and an unresolved remote route
 shows its own error without falling through to page-origin quota. It links to
-`#admin/agents`; that Admin page remains page-origin administration. An optional
+`#admin/agents`; that Admin page follows the Admin machine target. An optional
 `railContainer` adds a collapsed-rail trigger sharing the same hook and dropdown
 (see [shell.md](shell.md), `features.railStatusActions`).

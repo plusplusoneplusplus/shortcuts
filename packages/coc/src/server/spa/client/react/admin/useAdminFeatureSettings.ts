@@ -10,9 +10,10 @@
  * code here.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../api/cocClient';
 import { invalidateDisplaySettings } from '../hooks/preferences/useDisplaySettings';
 import { applyRuntimeConfigPatch } from '../utils/config';
+import { useAdminServer } from './adminTarget';
 import {
     ADMIN_SETTING_DEFINITIONS,
     getFeatureSettingTab,
@@ -76,6 +77,7 @@ export interface AdminFeatureSettings {
 
 export function useAdminFeatureSettings(options: UseAdminFeatureSettingsOptions): AdminFeatureSettings {
     const { addToast, searchActive } = options;
+    const adminServer = useAdminServer();
     const [featureValues, setFeatureValues] = useState<FeatureValues>(() => readFeatureValues(undefined));
     const [featuresSnapshot, setFeaturesSnapshot] = useState<FeatureValues>(() => readFeatureValues(undefined));
     // Live search/filter for the Workspace Features card. Local UI state only —
@@ -100,17 +102,17 @@ export function useAdminFeatureSettings(options: UseAdminFeatureSettingsOptions)
     const handleSaveFeatures = useCallback(async () => {
         setFeaturesSaving(true);
         try {
-            await getSpaCocClient().admin.updateConfig({ ...featureValues });
+            await adminServer.client.admin.updateConfig({ ...featureValues });
             addToast('Settings saved', 'success');
-            invalidateDisplaySettings();
-            applyRuntimeConfigPatch(readRuntimeFeatureValues(featureValues));
+            if (!adminServer.isRemote) invalidateDisplaySettings();
+            if (!adminServer.isRemote) applyRuntimeConfigPatch(readRuntimeFeatureValues(featureValues));
             setFeaturesSnapshot({ ...featureValues });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setFeaturesSaving(false);
         }
-    }, [featureValues, addToast]);
+    }, [adminServer, featureValues, addToast]);
 
     const handleCancelFeatures = useCallback(() => {
         setFeatureValues({ ...featuresSnapshot });
@@ -131,21 +133,21 @@ export function useAdminFeatureSettings(options: UseAdminFeatureSettingsOptions)
         for (const def of defs) saved[def.key] = featureValues[def.key];
         setSavingTab(tab);
         try {
-            await getSpaCocClient().admin.updateConfig({ ...saved });
+            await adminServer.client.admin.updateConfig({ ...saved });
             addToast('Settings saved', 'success');
-            invalidateDisplaySettings();
+            if (!adminServer.isRemote) invalidateDisplaySettings();
             const runtimeValues: Record<string, unknown> = {};
             for (const def of defs) {
                 if (def.runtimeFlag) runtimeValues[def.runtimeFlag] = saved[def.key];
             }
-            applyRuntimeConfigPatch(runtimeValues);
+            if (!adminServer.isRemote) applyRuntimeConfigPatch(runtimeValues);
             setFeaturesSnapshot(prev => ({ ...prev, ...saved }));
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {
             setSavingTab(null);
         }
-    }, [featureValues, addToast]);
+    }, [adminServer, featureValues, addToast]);
 
     const handleCancelTab = useCallback((tab: FeatureSettingTab) => {
         const reverted: FeatureValues = {};

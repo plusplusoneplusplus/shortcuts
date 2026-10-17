@@ -1,3 +1,4 @@
+import { useFileIdentityOpen } from '../../language-servers/useFileIdentityOpen';
 /**
  * ExplorerPanel — top-level panel for the Explorer sub-tab.
  * Left/right split: FileTree sidebar + preview pane.
@@ -327,6 +328,8 @@ export function ExplorerPanel({
     const [selectedPath, setSelectedPath] = useExplorerSelectedPath(ownerKey);
     const [expandedPaths, setExpandedPaths] = useExplorerExpandedPaths(ownerKey);
     const [previewFile, setPreviewFile] = useExplorerPreviewFile(ownerKey);
+    const previewFileRef = useRef(previewFile);
+    previewFileRef.current = previewFile;
     // Not persisted: an external capability dies with its language-server
     // connection, so restoring one could only ever show "unavailable".
     const [externalPreview, setExternalPreview] = useState<{
@@ -343,6 +346,7 @@ export function ExplorerPanel({
     // renders one buffer per tab, each owning its own loading/error/dirty state.
     const tabsEnabled = useExplorerEditorTabsEnabled();
     const tabs = useExplorerTabs(ownerKey);
+    const fileIdentity = useFileIdentityOpen(JSON.stringify([ownerKey, routingRef]));
     const tabsState = tabs.state;
     const { openFile: openFileTab, openSearch: openSearchTab, openExternal: openExternalTab, close: closeTabById, closeMany: closeTabsByIds, pin: pinTabById, activate: activateTabById, idsOther, idsAll } = tabs;
     // The freshest session, readable from the keyboard listener without making
@@ -647,8 +651,7 @@ export function ExplorerPanel({
             if (lastName.includes('.')) {
                 // A deep link is an explicit request for one file, so with tabs
                 // on it opens pinned and the workspace's other tabs stay put.
-                if (tabsEnabled) openFileTab({ path: decoded, name: lastName, preview: false });
-                else setPreviewFile({ path: decoded, name: lastName });
+                openFileInEditor({ path: decoded, name: lastName }, { preview: false });
             }
         }
     }, [ownerKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -670,13 +673,19 @@ export function ExplorerPanel({
             onOpenFile(file, options);
             return;
         }
-        if (tabsEnabled) {
-            setMobileTreeVisible(false);
-            openFileTab({ ...file, preview: options.preview });
-            return;
-        }
-        setPreviewFile(file);
-    }, [onOpenFile, tabsEnabled, openFileTab, setPreviewFile]);
+        const commit = (path: string) => {
+            const resolved = { ...file, path, name: path === file.path ? file.name : path.split('/').pop()! };
+            if (tabsEnabled) {
+                setMobileTreeVisible(false);
+                openFileTab({ ...resolved, preview: options.preview });
+            } else setPreviewFile(resolved);
+        };
+        if (file.path.startsWith(TRUSTED_PATH_PREFIX)) { commit(file.path); return; }
+        fileIdentity.open({ workspaceId, routingRef }, file.path,
+            () => tabsEnabled
+                ? tabsRef.current.tabs.filter(tab => tab.kind === 'file').map(tab => tab.path)
+                : previewFileRef.current ? [previewFileRef.current.path] : [], commit);
+    }, [onOpenFile, tabsEnabled, openFileTab, setPreviewFile, workspaceId, routingRef, fileIdentity.open]);
 
     /**
      * A language-server jump into another file. It goes through the same opener
@@ -1511,6 +1520,7 @@ export function ExplorerPanel({
 
     return (
         <div ref={rootRef} className={`flex flex-col lg:flex-row h-full overflow-hidden${isDragging ? ' select-none' : ''}`} data-testid="explorer-panel">
+            {fileIdentity.error}
             {/* Left aside — file tree (hidden on mobile when previewing a file) */}
             <aside
                 ref={sidebarRef}

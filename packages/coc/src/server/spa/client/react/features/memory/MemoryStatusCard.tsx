@@ -9,8 +9,9 @@
  * This card never reads or edits V1 bounded-memory state.
  */
 
-import { useState, useEffect } from 'react';
-import { memoryV2Api, type MemoryScopeInfo } from './memoryV2Api';
+import { useState, useEffect, useMemo } from 'react';
+import { createMemoryV2Api, memoryV2Api, type MemoryScopeInfo } from './memoryV2Api';
+import { useWorkspaceOwner } from '../../repos/workspaceOwnerContext';
 import { useApp } from '../../contexts/AppContext';
 import { Spinner } from '../../ui';
 
@@ -20,6 +21,8 @@ interface MemoryStatusCardProps {
 
 export function MemoryStatusCard({ workspaceId }: MemoryStatusCardProps) {
     const { dispatch } = useApp();
+    const client = useWorkspaceOwner(workspaceId)?.client;
+    const api = useMemo(() => client ? createMemoryV2Api(() => client, () => client) : memoryV2Api, [client]);
     const [scope, setScope] = useState<MemoryScopeInfo | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -28,7 +31,7 @@ export function MemoryStatusCard({ workspaceId }: MemoryStatusCardProps) {
         let cancelled = false;
         setLoading(true);
         setError(null);
-        memoryV2Api.listScopes()
+        api.listScopes()
             .then(scopes => {
                 if (cancelled) return;
                 const ws = scopes.find(
@@ -41,7 +44,7 @@ export function MemoryStatusCard({ workspaceId }: MemoryStatusCardProps) {
             })
             .finally(() => { if (!cancelled) setLoading(false); });
         return () => { cancelled = true; };
-    }, [workspaceId]);
+    }, [workspaceId, api]);
 
     const handleOpenInMemory = () => {
         const scopeId = scope?.id ?? `workspace:${workspaceId}`;

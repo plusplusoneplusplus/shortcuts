@@ -135,6 +135,7 @@ export interface AdminResolvedConfig {
     sentinelTodoTags?: boolean;
     sentinelTodoExternalReferences?: boolean;
     sentinelPrOutcomeWake?: boolean;
+    sentinelTodoDateTimeTriggers?: boolean;
     sentinelDesktopMirror?: boolean;
     botManagedConversations?: boolean;
     quickAskSidenotes?: boolean;
@@ -237,6 +238,7 @@ export interface AdminConfigUpdate {
   'features.sentinelTodoTags'?: boolean;
   'features.sentinelTodoExternalReferences'?: boolean;
   'features.sentinelPrOutcomeWake'?: boolean;
+  'features.sentinelTodoDateTimeTriggers'?: boolean;
   'features.sentinelDesktopMirror'?: boolean;
   'features.quickAskSidenotes'?: boolean;
   'features.arxivPaperIngest'?: boolean;
@@ -277,6 +279,7 @@ export interface RuntimeDashboardConfig {
     browserControlEnabled?: boolean;
     browserFrameControlEnabled?: boolean;
     browserRichPasteEnabled?: boolean;
+    panelSettingsEnabled?: boolean;
     mcpOauthEnabled: boolean;
     focusedDiffEnabled: boolean;
     containerDefaultAgentEnabled: boolean;
@@ -304,12 +307,14 @@ export interface RuntimeDashboardConfig {
     teamsBridgeObservabilityEnabled: boolean;
     teamsAiAnswerRelayEnabled: boolean;
     teamsMessageReactionEnabled: boolean;
+    sentinelNextStepsEnabled: boolean;
     sentinelTodoDependenciesEnabled: boolean;
     sentinelTodoTagsEnabled: boolean;
     sentinelTodoExternalReferencesEnabled: boolean;
     sentinelTodoScrubberEnabled: boolean;
     toolScriptingEnabled: boolean;
     sentinelPrOutcomeWakeEnabled: boolean;
+    sentinelTodoDateTimeTriggersEnabled: boolean;
     sentinelDesktopMirrorEnabled: boolean;
     botManagedConversationsEnabled: boolean;
     quickAskSidenotesEnabled: boolean;

@@ -1,4 +1,4 @@
-import { CocApiError, type PerRepoPreferences } from '@plusplusoneplusplus/coc-client';
+import { CocApiError, type CocClient, type PerRepoPreferences } from '@plusplusoneplusplus/coc-client';
 import type { NotesGitConfig } from '../../../../notes-git-types';
 import { translateSpaCocClientError } from '../../api/cocClient';
 import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
@@ -32,9 +32,9 @@ export interface PerRepoPrefsClient extends PerRepoPreferences {
  * GET /api/workspaces/:wsId/preferences
  * Throws an Error if the response is not ok (non-2xx).
  */
-export async function getWorkspacePreferences(wsId: string): Promise<PerRepoPrefsClient> {
+export async function getWorkspacePreferences(wsId: string, client = getCocClientForWorkspace(wsId)): Promise<PerRepoPrefsClient> {
   try {
-    return await getRepoPreferences(getCocClientForWorkspace(wsId), wsId) as PerRepoPrefsClient;
+    return await getRepoPreferences(client, wsId) as PerRepoPrefsClient;
   } catch (error) {
     if (error instanceof CocApiError) {
       throw new Error(`Failed to load preferences: ${error.status} ${error.statusText}`);
@@ -50,10 +50,11 @@ export async function getWorkspacePreferences(wsId: string): Promise<PerRepoPref
  */
 export async function patchWorkspacePreferences(
   wsId: string,
-  partial: Partial<PerRepoPrefsClient>
+  partial: Partial<PerRepoPrefsClient>,
+  client: CocClient = getCocClientForWorkspace(wsId),
 ): Promise<void> {
   try {
-    await patchRepoPreferences(getCocClientForWorkspace(wsId), wsId, partial);
+    await patchRepoPreferences(client, wsId, partial);
   } catch (error) {
     if (error instanceof CocApiError) {
       throw new Error(`Failed to patch preferences: ${error.status} ${error.statusText}`);

@@ -1,3 +1,4 @@
+import '../../language-servers/fileIdentityMock';
 // @vitest-environment jsdom
 /**
  * AC-04 of repo-content-search — ExplorerPanel hosts the Search view:

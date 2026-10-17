@@ -55,6 +55,7 @@ function renderMenu(props: Partial<React.ComponentProps<typeof UnifiedPanelOpenM
             targetRoutingRef={props.targetRoutingRef}
             targets={props.targets}
             todoInput={props.todoInput}
+            settingsAvailable={props.settingsAvailable}
             {...handlers}
         />,
     );
@@ -103,6 +104,27 @@ describe('opening costs nothing', () => {
 });
 
 describe('actions', () => {
+    it('omits Settings by default and opens it with its icon when admitted', () => {
+        const { unmount } = renderMenu();
+        expect(screen.queryByTestId('unified-panel-open-settings')).toBeNull();
+        unmount();
+        const { onOpenWorkspaceResource, onClose } = renderMenu({ settingsAvailable: true });
+        const row = screen.getByTestId('unified-panel-open-settings');
+        expect(row.textContent).toContain('Settings');
+        expect(row.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+        fireEvent.click(row);
+        expect(onOpenWorkspaceResource).toHaveBeenCalledWith('settings');
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('opens Settings through keyboard filtering and Enter without navigation', async () => {
+        const { onOpenWorkspaceResource } = renderMenu({ settingsAvailable: true });
+        const hash = location.hash;
+        await search('settings');
+        fireEvent.keyDown(screen.getByTestId('unified-panel-open-menu-search'), { key: 'Enter' });
+        expect(onOpenWorkspaceResource).toHaveBeenCalledWith('settings');
+        expect(location.hash).toBe(hash);
+    });
     it('opens a workspace resource through the panel callback', async () => {
         const { onOpenWorkspaceResource } = renderMenu();
         fireEvent.click(screen.getByTestId('unified-panel-open-terminal'));

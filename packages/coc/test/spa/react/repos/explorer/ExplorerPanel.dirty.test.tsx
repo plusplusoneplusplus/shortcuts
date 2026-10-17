@@ -1,3 +1,4 @@
+import '../../language-servers/fileIdentityMock';
 // @vitest-environment jsdom
 /**
  * AC-03 of preserve-explorer-state (wiring): ExplorerPanel forwards its preview
