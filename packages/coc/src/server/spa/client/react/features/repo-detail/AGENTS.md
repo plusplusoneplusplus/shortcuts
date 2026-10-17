@@ -299,7 +299,10 @@ prefixes and invalid suffix text. The selected row receives the current line
 through the same pinned navigation path as symbols. Rows retained from an older
 filename query cannot be selected until the current search answers.
 Backspacing a prefix restores the mode the dialog was opened in. The footer
-names the active filter. Do not add a second palette component.
+names the active filter. Do not add a second palette component. The typing
+debounce follows the mode the dialog was opened in, not the active prefix:
+Ctrl/Cmd+P waits 40 ms; Go To All waits `GO_TO_ALL_DEBOUNCE_MS` (500 ms) for
+every search it issues, including `f ` file searches.
 
 Symbols are answered over the language-server bridge, never HTTP:
 `features/language-servers/useWorkspaceSymbols.ts` holds one workspace

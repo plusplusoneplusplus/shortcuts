@@ -169,7 +169,8 @@ framing as a document attach. No sentinel document path is involved.
 The palette holds one workspace attachment per repository for as long as the
 dialog is open — up to six in a repo group — and fans `workspace/symbol` out to
 every attached server advertising `workspaceSymbolProvider`, merging each
-answer as it arrives. A server that times out, dies, or does not support the
+answer as it arrives. A Ctrl/Cmd+, palette waits 500 ms of typing quiet before
+each fan-out, aborting the superseded one. A server that times out, dies, or does not support the
 method is "no answer": some failing is `partial`, all failing is `failed`, and
 none of it throws into the dialog. There is no HTTP symbol route; the fan-out
 is browser-side, so a group member on another host is reached directly.
