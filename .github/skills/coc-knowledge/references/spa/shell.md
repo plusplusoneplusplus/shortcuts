@@ -115,6 +115,8 @@ stay mounted in the panel to preserve filters, selections and drafts.
 owner-qualified tab without clearing the selected chat. Alt+I/Alt+R use these
 routes; removed page routes and invalid panel routes replace to the workspace.
 The same panel mounts on mobile, where its toggle opens a full-width presentation.
+Externally hosted Git details leave the Workspace push/back state unchanged, so
+hiding the panel restores the selected list segment.
 WI/PR list/detail layouts respond to the panel width with their single-pane back
 navigation and restore the split when widened.
 

@@ -72,7 +72,9 @@ canvases, and chat diffs, plus a file-tree column pinned to its right edge.
 `RepoDetail.tsx` renders it for a repo and `repos/RepoGroupView.tsx` for a repo
 group; both mount it at every breakpoint and wrap their subtree in
 `UnifiedPanelHostProvider`. Mobile opens a full-width presentation, keeping the
-workspace mounted. Work Items and Pull Requests use owner-qualified panel tabs
+workspace mounted. Git detail hosts own navigation through `onViewChange` without
+pushing the chat detail pane; hiding the panel preserves the selected list segment.
+Work Items and Pull Requests use owner-qualified panel tabs
 from the add menu; their page-level routes and header taxonomy are absent. There is no
 second panel and no flag to switch between panels. The panel's own contract —
 tab identity, entry-point seams, keep-alive, the close guards — is in

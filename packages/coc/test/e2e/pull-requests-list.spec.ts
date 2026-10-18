@@ -6,7 +6,8 @@ import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace, request } from './fixtures/seed';
 import { setupPrRoutes } from './fixtures/pr-mock';
 import { resolveCanonicalOriginId } from '@plusplusoneplusplus/forge';
-import { gotoWorkspace, openSubTab } from './fixtures/remote-shell';
+import { gotoWorkspace } from './fixtures/remote-shell';
+import { expandPrPanel, openPrPanel, prPanelHash } from './fixtures/pr-navigation';
 import {
     MOCK_PR_LIST,
     MOCK_PR_LIST_WITH_DIFF_STATS,
@@ -28,7 +29,7 @@ async function enablePullRequestsFeature(serverUrl: string): Promise<void> {
 
 /**
  * Mock the `git-info` endpoints so the SPA treats the seeded workspace as a
- * real git repo (required for the Pull Requests sub-tab to render).
+ * real git repo for the owner-specific Pull Requests resource.
  */
 async function mockGitInfo(page: any, wsId: string): Promise<void> {
     await page.route(
@@ -53,10 +54,8 @@ async function mockGitInfo(page: any, wsId: string): Promise<void> {
 
 /**
  * Seed a workspace for PR tests. Runs `git init` on the temp dir so the
- * server's GET /api/workspaces reports isGitRepo=true (required so the
- * Pull Requests sub-tab isn't filtered out on initial render, before the
- * mocked git-info response arrives). Mocked routes still handle the rest
- * of the git surface.
+ * server's GET /api/workspaces reports isGitRepo=true before the mocked
+ * git-info response arrives. Mocked routes handle the rest of the git surface.
  */
 async function seedPrWorkspace(
     serverUrl: string,
@@ -70,11 +69,12 @@ async function seedPrWorkspace(
     return { id, cleanup: () => safeRmSync(rootPath) };
 }
 
-/** Navigate to the PR sub-tab for the first repo in the list. */
+/** Navigate to a workspace and open its PR resource from the panel menu. */
 async function openPrTab(page: any, serverUrl: string, wsId: string) {
     await enablePullRequestsFeature(serverUrl);
     await mockGitInfo(page, wsId);
-    await gotoWorkspace(page, serverUrl, wsId, 'pull-requests');
+    await gotoWorkspace(page, serverUrl, wsId);
+    await openPrPanel(page);
 }
 
 /**
@@ -182,18 +182,25 @@ async function runTeamFilterProviderDemo(
     }
 }
 
-test.describe('Pull Requests tab — list', () => {
-    test('sub-tab button is visible and clickable', async ({ page, serverUrl }) => {
+/** PR panel entry, queue interactions, split layout, and keep-alive regression coverage. */
+test.describe('Pull Requests panel — list', () => {
+    test('resource menu opens the owner-specific Pull Requests tab', async ({ page, serverUrl }) => {
         const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-1', 'My Repo');
         const routeCleanup = await setupPrRoutes(page, serverUrl, repoId);
         try {
             await enablePullRequestsFeature(serverUrl);
             await mockGitInfo(page, repoId);
             await gotoWorkspace(page, serverUrl, repoId);
+            const workspaceUrl = page.url();
 
-            const prSubTab = page.locator('button[data-subtab="pull-requests"]');
-            await expect(prSubTab).toBeVisible({ timeout: 10000 });
-            await prSubTab.click();
+            await openPrPanel(page);
+            await expect(page.getByTestId('pr-list')).toBeVisible({ timeout: 10000 });
+            const tab = page.locator('[role="tab"][data-kind="pull-requests"]');
+            await expect(tab).toHaveCount(1);
+            await expect(tab).toHaveAttribute('aria-selected', 'true');
+            // Opening a resource must not navigate away from the current chat view.
+            await expect(page).toHaveURL(workspaceUrl);
+            await expect(page.getByTestId('pr-row')).toHaveCount(MOCK_PR_LIST.length);
         } finally {
             await routeCleanup();
             cleanup();
@@ -376,14 +383,15 @@ test.describe('Pull Requests tab — list', () => {
         }
     });
 
-    test('clicking a PR row shows detail in right panel while list remains visible', async ({ page, serverUrl }) => {
+    test('expanding the panel shows PR detail alongside the list', async ({ page, serverUrl }) => {
         const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-8', 'My Repo');
         const routeCleanup = await setupPrRoutes(page, serverUrl, repoId, {
             pullRequests: MOCK_PR_LIST,
-            prDetail: MOCK_PR_OPEN,
+            prDetail: MOCK_PR_LIST[2],
         });
         try {
             await openPrTab(page, serverUrl, repoId);
+            await expandPrPanel(page);
             await expect(page.locator('.pr-row')).toHaveCount(3, { timeout: 10000 });
 
             await page.locator('.pr-row').first().click();
@@ -392,6 +400,8 @@ test.describe('Pull Requests tab — list', () => {
             await expect(
                 page.locator('[data-testid="pr-detail"], .pr-detail'),
             ).toBeVisible({ timeout: 10000 });
+            await expect(page.getByTestId('pr-title')).toHaveText(MOCK_PR_LIST[2].title);
+            await expect(page).toHaveURL(`${serverUrl}/${prPanelHash(repoId, '3/overview')}`);
 
             // List panel stays visible (split-panel layout)
             await expect(page.locator('[data-testid="pr-list-panel"]')).toBeVisible({ timeout: 10000 });
@@ -402,7 +412,7 @@ test.describe('Pull Requests tab — list', () => {
         }
     });
 
-    test('uses cached data when navigating away and back (no second fetch)', async ({ page, serverUrl }) => {
+    test('closing and reopening the PR tab preserves search and selection without refetching', async ({ page, serverUrl }) => {
         const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-cache-1', 'My Repo');
         let fetchCount = 0;
         const prListPattern = (url: string) => {
@@ -410,35 +420,43 @@ test.describe('Pull Requests tab — list', () => {
             return parsed.pathname.startsWith('/api/origins/') && parsed.pathname.endsWith('/pull-requests');
         };
 
+        const routeCleanup = await setupPrRoutes(page, serverUrl, repoId, {
+            pullRequests: [MOCK_PR_OPEN, ...MOCK_PR_LIST],
+        });
         await page.route(prListPattern, (route) => {
             fetchCount++;
             route.fulfill({
                 status: 200,
-                json: { pullRequests: MOCK_PR_LIST, fetchedAt: Date.now() },
+                json: { pullRequests: [MOCK_PR_OPEN, ...MOCK_PR_LIST], fetchedAt: Date.now() },
             });
         });
         try {
             await openPrTab(page, serverUrl, repoId);
-            await expect(page.locator('.pr-row')).toHaveCount(3, { timeout: 10000 });
+            await expect(page.locator('.pr-row')).toHaveCount(4, { timeout: 10000 });
             expect(fetchCount).toBe(1);
 
-            // Navigate away to a different view. Admin is no longer usable for
-            // this: it opens as an overlay dialog and deliberately leaves the
-            // page behind mounted, so the PR list would never unmount.
-            // Hash-only, so the SPA (and its cache) is never reloaded.
-            await page.evaluate(() => { location.hash = '#wiki'; });
-            await expect(page.locator('[data-testid="pr-list"]')).not.toBeVisible({ timeout: 5000 });
+            await page.getByTestId('search-input').fill(MOCK_PR_OPEN.title);
+            await expect(page.getByTestId('pr-row')).toHaveCount(1, { timeout: 10000 });
+            await page.getByTestId('pr-row').click();
+            await expect(page.getByTestId('pr-title')).toHaveText(MOCK_PR_OPEN.title, { timeout: 10000 });
+            const tab = page.locator('[role="tab"][data-kind="pull-requests"]');
+            await tab.getByRole('button', { name: 'Close Pull Requests', exact: true }).click();
+            await expect(tab).toHaveCount(0);
+            // A closed work resource stays mounted, but hidden.
+            await expect(page.getByTestId('pr-detail')).toBeAttached();
+            await expect(page.getByTestId('pr-detail')).toBeHidden();
 
-            // Navigate back to the PR tab (without full page reload)
-            await page.click('[data-tab="repos"]');
-            await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
-            await openSubTab(page, 'pull-requests');
-            await expect(page.locator('.pr-row')).toHaveCount(3, { timeout: 10000 });
-
-            // No additional fetch — cache was used
+            await openPrPanel(page);
+            await expect(page.getByTestId('pr-title')).toHaveText(MOCK_PR_OPEN.title, { timeout: 10000 });
+            await expect(page.getByTestId('pr-detail')).toBeVisible();
+            await page.getByTestId('back-button').click();
+            await expect(page.getByTestId('search-input')).toHaveValue(MOCK_PR_OPEN.title);
+            await expect(page.getByTestId('pr-row')).toHaveCount(1, { timeout: 10000 });
+            await expect(page.getByTestId('pr-row')).toContainText(MOCK_PR_OPEN.title);
             expect(fetchCount).toBe(1);
         } finally {
             await page.unroute(prListPattern);
+            await routeCleanup();
             cleanup();
         }
     });
@@ -467,7 +485,7 @@ test.describe('Pull Requests tab — list', () => {
             await page.click('[data-testid="refresh-button"]');
             await expect(page.locator('.pr-row')).toHaveCount(3, { timeout: 10000 });
 
-            expect(fetchCount).toBe(2);
+            await expect.poll(() => fetchCount).toBe(2);
         } finally {
             await page.unroute(prListPattern);
             cleanup();

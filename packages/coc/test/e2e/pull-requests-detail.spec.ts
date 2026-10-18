@@ -9,6 +9,7 @@ import { seedWorkspace, request } from './fixtures/seed';
 import { MOCK_PR_CHECKS, MOCK_PR_DIFF, MOCK_PR_OPEN, MOCK_PR_THREADS } from './fixtures/pr-fixtures';
 import { setupPrRoutes } from './fixtures/pr-mock';
 import { gotoWorkspace } from './fixtures/remote-shell';
+import { openPrPanel, prPanelHash } from './fixtures/pr-navigation';
 
 /** Enable the Pull Requests feature flag on the running server. */
 async function enablePullRequestsFeature(serverUrl: string): Promise<void> {
@@ -23,7 +24,7 @@ async function enablePullRequestsFeature(serverUrl: string): Promise<void> {
 
 /**
  * Mock the `git-info` endpoints so the SPA treats the seeded workspace as a
- * real git repo (required for the Pull Requests sub-tab to render).
+ * real git repo for the owner-specific Pull Requests resource.
  */
 async function mockGitInfo(page: any, wsId: string): Promise<void> {
     await page.route(
@@ -46,6 +47,7 @@ async function mockGitInfo(page: any, wsId: string): Promise<void> {
     );
 }
 
+/** Detail content and tab navigation inside the compact workspace PR panel. */
 test.describe('Pull Requests — detail view', () => {
     let tmpDir: string;
     const repoId = 'ws-pr-detail';
@@ -58,16 +60,19 @@ test.describe('Pull Requests — detail view', () => {
         await enablePullRequestsFeature(serverUrl);
         await mockGitInfo(page, repoId);
         await setupPrRoutes(page, serverUrl, repoId, {
+            pullRequests: [MOCK_PR_OPEN],
             prDetail: MOCK_PR_OPEN,
             threads: MOCK_PR_THREADS,
             diff: MOCK_PR_DIFF,
             checks: MOCK_PR_CHECKS,
         });
 
-        await gotoWorkspace(page, serverUrl, repoId, 'pull-requests');
+        await gotoWorkspace(page, serverUrl, repoId);
+        await openPrPanel(page);
         await expect(page.getByTestId('pr-list')).toBeVisible({ timeout: 10000 });
         await page.getByTestId('pr-row').first().click();
         await expect(page.getByTestId('pr-detail')).toBeVisible({ timeout: 10000 });
+        await expect(page).toHaveURL(`${serverUrl}/${prPanelHash(repoId, `${MOCK_PR_OPEN.number}/overview`)}`);
     });
 
     test.afterEach(() => {
@@ -162,9 +167,10 @@ test.describe('Pull Requests — detail view', () => {
         await expect(page.getByTestId('pr-delta')).toContainText('+2 / -1', { timeout: 10000 });
     });
 
-    test('switching to Files tab renders the AI files panel', async ({ page }) => {
+    test('switching to Files tab renders the AI files panel', async ({ page, serverUrl }) => {
         await page.getByTestId('tab-files').click();
         await expect(page.getByTestId('pr-files-panel')).toBeVisible({ timeout: 10000 });
+        await expect(page).toHaveURL(`${serverUrl}/${prPanelHash(repoId, `${MOCK_PR_OPEN.number}/files`)}`);
     });
 
     test('switching to Commits tab renders the commit intent table', async ({ page }) => {
@@ -182,5 +188,15 @@ test.describe('Pull Requests — detail view', () => {
         await page.getByTestId('pr-open-ai-assistant').click();
         await expect(page.getByTestId('pr-ai-assistant')).toBeVisible({ timeout: 10000 });
         await page.getByTestId('pr-ai-assistant-close').click();
+    });
+
+    test('compact detail back button returns to the owner-specific list', async ({ page, serverUrl }) => {
+        await expect(page.getByTestId('pr-list-panel')).toHaveCount(0);
+        await page.getByTestId('back-button').click();
+        await expect(page.getByTestId('pr-list')).toBeVisible({ timeout: 10000 });
+        await expect(page.getByTestId('pr-row')).toHaveCount(1, { timeout: 10000 });
+        await expect(page.getByTestId('pr-row')).toContainText(MOCK_PR_OPEN.title);
+        await expect(page.getByTestId('pr-detail')).toHaveCount(0);
+        await expect(page).toHaveURL(`${serverUrl}/${prPanelHash(repoId)}`);
     });
 });
