@@ -423,15 +423,13 @@ describe('hero metadata', () => {
 // ── Back button ────────────────────────────────────────────────────────────────
 
 describe('back button', () => {
-    it('dispatches CLEAR_SELECTED_PR and calls onBack when back is clicked (mobile)', async () => {
+    it('calls the panel back action when back is clicked (mobile)', async () => {
         mockFetchDetail(makePr());
         const onBack = vi.fn();
         await act(async () => { await renderDetail({ onBack, isMobile: true }); });
         await waitFor(() => expect(screen.getByTestId('back-button')).toBeInTheDocument());
 
         fireEvent.click(screen.getByTestId('back-button'));
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'CLEAR_SELECTED_PR' });
-        expect(window.location.hash).toContain('pull-requests');
         expect(onBack).toHaveBeenCalled();
     });
 
@@ -446,6 +444,12 @@ describe('back button', () => {
 // ── Tabs ───────────────────────────────────────────────────────────────────────
 
 describe('tabs', () => {
+    it('uses Overview for an invalid restored panel section', async () => {
+        mockFetchDetail(makePr());
+        await act(async () => { await renderDetail({ selectedTab: 'removed-section' }); });
+        await waitFor(() => expect(screen.getByTestId('overview-tab')).toBeInTheDocument());
+    });
+
     it('opens reviews with the current concrete owner after mounted owner and PR changes', async () => {
         const { registerCloneBaseUrls, setActiveCloneForRouting } = await import(
             '../../../../../src/server/spa/client/react/repos/cloneRegistry'

@@ -77,7 +77,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     // Locked pop-out window (AC-02): when set, this window is pinned to one scope,
     // so every cross-scope switcher (segmented switcher, My Work / My Life toggles,
     // classic repo tab strip, identity chip) is hidden. The in-scope tab clusters
-    // (Chat / WIs / PRs / Notes / Git / Settings) stay — the full app for the scope.
+    // (workspace identity and page tabs) stay available for the selected scope.
     const isWindowLocked = !!useLockedWorkspaceId();
     // On macOS desktop the native title bar is replaced by hiddenInset traffic lights
     // that overlay the left edge of this header. Reserve space so they don't cover
@@ -286,10 +286,10 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                     </button>
                 )}
                 {/* The shared right panel owns its Search / Explorer controls. */}
-                {showRemoteHeader && !!selectedRepo && (
+                {!!selectedRepo && (
                     <WorkspaceDockToggle workspaceId={String(selectedRepo.workspace.id)} />
                 )}
-                {showVirtualHeader && isRepoGroupWorkspaceId(state.selectedRepoId) && (
+                {isRepoGroupWorkspaceId(state.selectedRepoId) && (
                     <WorkspaceDockToggle workspaceId={parseRemoteCloneKey(String(state.selectedRepoId))?.workspaceId ?? String(state.selectedRepoId)} />
                 )}
                 {/* Status cluster — hidden here when it lives in the global

@@ -73,14 +73,14 @@ export interface PersistedNotesView {
  * chat, whose `resourceId` is the ledger's parent process id. Only the
  * descriptor persists; the ledger itself lives on the owning server.
  */
-export type UnifiedTabKind = 'terminal' | 'notes' | 'settings' | 'file' | 'note' | 'canvas' | 'diff' | 'git' | 'external' | 'html-page' | 'browser' | 'paste' | 'todo';
+export type UnifiedTabKind = 'terminal' | 'work-items' | 'pull-requests' | 'notes' | 'settings' | 'file' | 'note' | 'canvas' | 'diff' | 'git' | 'external' | 'html-page' | 'browser' | 'paste' | 'todo';
 
 /** Which set a tab belongs to: the workspace's, or one chat's. */
 export type UnifiedTabScope = 'workspace' | 'chat';
 
 /** Kinds recognized by the descriptor codec; the "+" menu has its own action list. */
 export const ALL_UNIFIED_TAB_KINDS: readonly UnifiedTabKind[] = [
-    'terminal', 'notes', 'settings', 'file', 'note', 'canvas', 'diff', 'git', 'html-page', 'browser', 'paste', 'todo',
+    'terminal', 'work-items', 'pull-requests', 'notes', 'settings', 'file', 'note', 'canvas', 'diff', 'git', 'html-page', 'browser', 'paste', 'todo',
 ];
 
 /** The fixed resource id of a workspace's one Git tab. */
@@ -96,7 +96,7 @@ export const GIT_TAB_RESOURCE_ID = 'git';
 const EPHEMERAL_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['external', 'browser', 'paste']);
 
 /** Kinds that belong to the workspace and survive a chat switch. */
-const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['terminal', 'notes', 'settings', 'note', 'html-page', 'browser']);
+const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['terminal', 'work-items', 'pull-requests', 'notes', 'settings', 'note', 'html-page', 'browser']);
 
 /**
  * The scope key used for the workspace's own selection — the active tab when no
@@ -219,6 +219,8 @@ export interface UnifiedPanelTab {
     gitMemberId?: string;
     /** A `notes` tab's panel-local selected note. */
     notesView?: PersistedNotesView;
+    /** Encoded WI/PR detail suffix; presentation only, independent of tab identity. */
+    workPath?: string;
     /** Desktop view id; a restored page tab reopens this id to reattach the live view. */
     htmlPageId?: string;
     /**
@@ -394,6 +396,7 @@ function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
         && a.preview === b.preview
         && gitViewKey(a.gitView) === gitViewKey(b.gitView)
         && a.gitMemberId === b.gitMemberId
+        && a.workPath === b.workPath
         && notesViewKey(a.notesView) === notesViewKey(b.notesView)
         && a.htmlPageId === b.htmlPageId
         && a.browserUrl === b.browserUrl
@@ -512,6 +515,8 @@ export function inheritDraftTabs(state: UnifiedPanelState, chatId: string): Unif
 
 /** What `openTab` needs to place and identify a resource. */
 export interface OpenUnifiedTabInput {
+    /** Encoded WI/PR detail suffix; presentation only, independent of tab identity. */
+    workPath?: string;
     kind: UnifiedTabKind;
     /** The clone that owns the resource — a group member or remote clone. */
     ownerWorkspaceId: string;
@@ -604,6 +609,7 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
     const opened: UnifiedPanelTab = {
         id,
         kind: input.kind,
+        ...(input.workPath === undefined ? {} : { workPath: input.workPath }),
         ownerWorkspaceId: input.ownerWorkspaceId,
         ...(input.ownerRoutingRef === undefined ? {} : { ownerRoutingRef: input.ownerRoutingRef }),
         chatId,
@@ -624,6 +630,7 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
         const existing = list[index];
         const merged: UnifiedPanelTab = {
             ...opened,
+            ...(input.workPath === undefined && existing.workPath !== undefined ? { workPath: existing.workPath } : {}),
             // Keep the existing reveal position — and its nonce — when this open
             // supplied none, so re-focusing a tab neither forgets where it was
             // pointed nor scrolls it back there. The column travels with its
@@ -1077,6 +1084,7 @@ function parseTab(raw: unknown, expectedScopeKey: string): UnifiedPanelTab | nul
         ...(kind === 'git' ? gitViewField(value.gitView) : {}),
         ...(kind === 'git' && isNonEmptyString(value.gitMemberId) ? { gitMemberId: value.gitMemberId } : {}),
         ...(kind === 'notes' ? notesViewField(value.notesView) : {}),
+        ...(typeof value.workPath === 'string' ? { workPath: value.workPath } : {}),
         ...(kind === 'html-page' ? { htmlPageId: value.htmlPageId as string } : {}),
     };
     return tab;

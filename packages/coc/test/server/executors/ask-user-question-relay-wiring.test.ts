@@ -108,12 +108,15 @@ describe('ask_user question relay wiring', () => {
         const trackMessagingJob = vi.fn();
         const options = makeOptions();
         options.runtime.getAskUserQuestionRelay = () => ({ relay: vi.fn(() => false), locateOrigin });
-        options.runtime.getSendToConversationRuntime = () => ({ trackMessagingJob });
+        options.runtime.getSendToConversationRuntime = () => ({ serverIdentity: 'owning-installation', trackMessagingJob });
         options.runtime.getEnqueueChat = () => enqueue;
         sdkMocks.mockSendMessage.mockImplementation(async (sdkOptions: any) => {
             const tool = sdkOptions.tools.find((tool: any) => tool.name === 'send_to_conversation');
             expect(await tool.handler({ content: 'delegate this', provider: 'copilot', mode: 'autopilot' }))
-                .not.toHaveProperty('error');
+                .toMatchObject({
+                    processId: 'queue_child-task',
+                    openLink: '#chat-references/owning-installation/ws-1/queue_child-task',
+                });
             return { success: true, response: 'Delegated', sessionId: 'session' };
         });
         if (kind === 'initial') {

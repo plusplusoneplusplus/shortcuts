@@ -3,8 +3,11 @@
  * Replaces the Plans tab with a list + detail split view.
  */
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button, cn } from '../../ui';
+import { useContainerCompact } from '../../hooks/ui/useContainerCompact';
+import { useWorkResourceNavigation } from '../repo-detail/unified-right-panel/workResourceNavigation';
+import { parseWorkItemDeepLink } from '../../layout/dashboardRoutes';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { WorkItemSection } from './WorkItemSection';
@@ -15,8 +18,7 @@ import { WorkItemCommitReviewPane } from './WorkItemCommitReviewPane';
 import { CreateWorkItemDialog } from './CreateWorkItemDialog';
 import { ImportFromGitHubDialog } from './ImportFromGitHubDialog';
 import { useWorkItems } from '../../contexts/WorkItemContext';
-import { useApp } from '../../contexts/AppContext';
-import { requestForWorkspace } from '../../repos/cloneRegistry';
+import { useWorkspaceSettingsRequest } from '../repo-settings/workspaceSettingsClient';
 import { useFileCommentCounts } from '../git/hooks/useFileCommentCounts';
 import { computeDiffCommentKey } from '../../../comments/diff-comment-utils';
 import { buildWorkItemHash, buildWorkItemSessionHash, buildWorkItemCommitHash } from '../../layout/Router';
@@ -71,18 +73,23 @@ export function WorkItemsTab({ workspaceId, originId, attachmentDestinationId, o
     const [showCreateDialog, setShowCreateDialog] = useState(false);
     const [createDialogType, setCreateDialogType] = useState<WorkItemTypeLabel>('work-item');
     const [createDialogParentId, setCreateDialogParentId] = useState<string | undefined>(undefined);
-    const [activeTracker, setActiveTracker] = useState<WorkItemTrackerViewKind>(() => readStoredWorkItemTrackerView(workspaceId));
+    const [activeTracker, setActiveTracker] = useState<WorkItemTrackerViewKind>(() => readStoredWorkItemTrackerView(attachmentDestinationId ?? workspaceId));
     const [remoteProviderFilter, setRemoteProviderFilter] = useState<WorkItemRemoteProviderFilter>('all');
     const [detectedRemoteProvider, setDetectedRemoteProvider] = useState<WorkItemSyncProvider | undefined>(undefined);
     const [mobileShowDetail, setMobileShowDetail] = useState(false);
-    const { isMobile, isTablet } = useBreakpoint();
+    const { isMobile: viewportMobile, isTablet } = useBreakpoint();
+    const { ref: containerRef, compact: isMobile } = useContainerCompact(viewportMobile);
+    const routeOwner = attachmentDestinationId ?? workspaceId;
+    const request = useWorkspaceSettingsRequest(workspaceId);
+    const { path: panelPath, navigate, listHash } = useWorkResourceNavigation('work-items', routeOwner);
     const { dispatch } = useWorkItems();
-    const { state: appState } = useApp();
-    const deepLinkConsumedRef = useRef(false);
     const workItemOriginId = useMemo(
         () => originId ?? resolveWorkItemOriginId({ workspaceId }),
         [originId, workspaceId],
     );
+    useEffect(() => {
+        dispatch({ type: 'MARK_WORK_ITEMS_SEEN', repoId: workItemOriginId });
+    }, [dispatch, workItemOriginId]);
     const hierarchyEnabled = isWorkItemsHierarchyEnabled();
     const { width: leftPanelWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: isTablet ? 280 : 340,
@@ -91,25 +98,15 @@ export function WorkItemsTab({ workspaceId, originId, attachmentDestinationId, o
         storageKey: 'work-items-left-panel-width',
     });
 
-    // Initialise from URL deep-link on first mount only.
     useEffect(() => {
-        if (deepLinkConsumedRef.current) return;
-        deepLinkConsumedRef.current = true;
-        if (appState.selectedWorkItemId) {
-            setSelectedWorkItemId(appState.selectedWorkItemId);
-            if (appState.selectedWorkItemSessionTaskId) {
-                setSelectedSessionTaskId(appState.selectedWorkItemSessionTaskId);
-            }
-            if (appState.selectedWorkItemCommitHash) {
-                setSelectedCommitHash(appState.selectedWorkItemCommitHash);
-                if (appState.selectedWorkItemCommitFilePath) {
-                    setSelectedCommitFile(appState.selectedWorkItemCommitFilePath);
-                }
-            }
-            if (isMobile) setMobileShowDetail(true);
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+        if (panelPath === undefined) return;
+        const link = parseWorkItemDeepLink(listHash + (panelPath ? '/' + panelPath : ''));
+        setSelectedWorkItemId(link.itemId);
+        setSelectedSessionTaskId(link.sessionTaskId);
+        setSelectedCommitHash(link.commitHash);
+        setSelectedCommitFile(link.commitFilePath);
+        setMobileShowDetail(Boolean(link.itemId));
+    }, [panelPath, listHash]);
 
     // Fetch changed files when a commit is selected, auto-select the first file
     useEffect(() => {
@@ -119,17 +116,17 @@ export function WorkItemsTab({ workspaceId, originId, attachmentDestinationId, o
         }
         setCommitFilesLoading(true);
         // Route to the selected clone's server (remote clones hit their own host).
-        requestForWorkspace<{ files?: { status: string; path: string }[] }>(workspaceId, `/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${selectedCommitHash}/files`)
+        request<{ files?: { status: string; path: string }[] }>(`/workspaces/${encodeURIComponent(workspaceId)}/git/commits/${selectedCommitHash}/files`)
             .then((data) => {
                 const files = data.files ?? [];
                 setCommitFiles(files);
                 if (files.length > 0) {
-                    setSelectedCommitFile(files[0].path);
+                    setSelectedCommitFile(current => current ?? files[0].path);
                 }
             })
             .catch(() => setCommitFiles([]))
             .finally(() => setCommitFilesLoading(false));
-    }, [workspaceId, selectedCommitHash]);
+    }, [request, workspaceId, selectedCommitHash]);
 
     // Fetch comment counts for the selected commit's files
     const commentCounts = useFileCommentCounts(
@@ -171,7 +168,7 @@ export function WorkItemsTab({ workspaceId, originId, attachmentDestinationId, o
         setSelectedCommitHash(null);
         setSelectedCommitFile(null);
         if (isMobile) setMobileShowDetail(true);
-        location.hash = buildWorkItemHash(workspaceId, id);
+        navigate(buildWorkItemHash(routeOwner, id));
     }, [isMobile, workspaceId]);
 
     const handleBack = useCallback(() => {
@@ -180,13 +177,13 @@ export function WorkItemsTab({ workspaceId, originId, attachmentDestinationId, o
         setSelectedCommitHash(null);
         setSelectedCommitFile(null);
         setMobileShowDetail(false);
-        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/work-items';
+        navigate(listHash);
     }, [workspaceId]);
 
     const handleBackFromSession = useCallback(() => {
         setSelectedSessionTaskId(null);
         if (selectedWorkItemId) {
-            location.hash = buildWorkItemHash(workspaceId, selectedWorkItemId);
+            navigate(buildWorkItemHash(routeOwner, selectedWorkItemId));
         }
     }, [workspaceId, selectedWorkItemId]);
 
@@ -195,7 +192,7 @@ export function WorkItemsTab({ workspaceId, originId, attachmentDestinationId, o
         setSelectedCommitFile(null);
         setHunkTarget(undefined);
         if (selectedWorkItemId) {
-            location.hash = buildWorkItemCommitHash(workspaceId, selectedWorkItemId, sha);
+            navigate(buildWorkItemCommitHash(routeOwner, selectedWorkItemId, sha));
         }
     }, [workspaceId, selectedWorkItemId]);
 
@@ -204,12 +201,12 @@ export function WorkItemsTab({ workspaceId, originId, attachmentDestinationId, o
             setSelectedCommitFile(null);
             setHunkTarget(undefined);
             if (selectedWorkItemId && selectedCommitHash) {
-                location.hash = buildWorkItemCommitHash(workspaceId, selectedWorkItemId, selectedCommitHash);
+                navigate(buildWorkItemCommitHash(routeOwner, selectedWorkItemId, selectedCommitHash));
             }
         } else {
             setSelectedCommitHash(null);
             if (selectedWorkItemId) {
-                location.hash = buildWorkItemHash(workspaceId, selectedWorkItemId);
+                navigate(buildWorkItemHash(routeOwner, selectedWorkItemId));
             }
         }
     }, [selectedCommitFile, selectedWorkItemId, selectedCommitHash, workspaceId]);
@@ -218,7 +215,7 @@ export function WorkItemsTab({ workspaceId, originId, attachmentDestinationId, o
         setSelectedCommitFile(filePath);
         setHunkTarget(undefined);
         if (selectedWorkItemId && selectedCommitHash) {
-            location.hash = buildWorkItemCommitHash(workspaceId, selectedWorkItemId, selectedCommitHash, filePath);
+            navigate(buildWorkItemCommitHash(routeOwner, selectedWorkItemId, selectedCommitHash, filePath));
         }
     }, [workspaceId, selectedWorkItemId, selectedCommitHash]);
 
@@ -230,7 +227,7 @@ export function WorkItemsTab({ workspaceId, originId, attachmentDestinationId, o
     const handleViewTask = useCallback((taskId: string) => {
         setSelectedSessionTaskId(taskId);
         if (selectedWorkItemId) {
-            location.hash = buildWorkItemSessionHash(workspaceId, selectedWorkItemId, taskId);
+            navigate(buildWorkItemSessionHash(routeOwner, selectedWorkItemId, taskId));
         }
     }, [workspaceId, selectedWorkItemId]);
 
@@ -241,7 +238,7 @@ export function WorkItemsTab({ workspaceId, originId, attachmentDestinationId, o
         setSelectedCommitHash(null);
         setSelectedCommitFile(null);
         if (isMobile) setMobileShowDetail(true);
-        location.hash = buildWorkItemHash(workspaceId, item.id);
+        navigate(buildWorkItemHash(routeOwner, item.id));
     }, [dispatch, workItemOriginId, workspaceId, isMobile]);
 
     const handleExecuted = useCallback(() => {
@@ -272,7 +269,7 @@ export function WorkItemsTab({ workspaceId, originId, attachmentDestinationId, o
     );
     const selectTracker = useCallback((viewKind: WorkItemTrackerViewKind) => {
         setActiveTracker(viewKind);
-        writeStoredWorkItemTrackerView(workspaceId, viewKind);
+        writeStoredWorkItemTrackerView(routeOwner, viewKind);
     }, [workspaceId]);
 
     const handleImported = useCallback((item: any, provider?: WorkItemSyncProvider) => {
@@ -288,7 +285,7 @@ export function WorkItemsTab({ workspaceId, originId, attachmentDestinationId, o
         setSelectedCommitFile(null);
         setHighlightedWorkItemId(item.id);
         if (isMobile) setMobileShowDetail(true);
-        location.hash = buildWorkItemHash(workspaceId, item.id);
+        navigate(buildWorkItemHash(routeOwner, item.id));
         setTimeout(() => setHighlightedWorkItemId(null), 2000);
     }, [dispatch, workItemOriginId, workspaceId, isMobile, selectTracker]);
 
@@ -299,7 +296,7 @@ export function WorkItemsTab({ workspaceId, originId, attachmentDestinationId, o
     const remoteTabProvider = detectedRemoteProvider ?? (remoteProviderFilter === 'all' ? undefined : remoteProviderFilter);
 
     const listPane = hierarchyEnabled ? (
-        <div className="flex flex-col h-full" data-testid="work-item-tracker-tabs-panel">
+        <div className="flex flex-col h-full min-h-0 min-w-0" data-testid="work-item-tracker-tabs-panel">
             <div
                 className="border-b border-[#d0d7de] dark:border-[#474749] bg-white dark:bg-[#1e1e1e] px-2 py-2 shrink-0"
                 role="tablist"
@@ -327,7 +324,7 @@ export function WorkItemsTab({ workspaceId, originId, attachmentDestinationId, o
                                     setSelectedCommitHash(null);
                                     setSelectedCommitFile(null);
                                     if (isMobile) setMobileShowDetail(false);
-                                    location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/work-items';
+                                    navigate(listHash);
                                 }}
                                 data-testid={`work-item-tracker-tab-${tab.kind}`}
                             >
@@ -421,13 +418,14 @@ export function WorkItemsTab({ workspaceId, originId, attachmentDestinationId, o
         ) : (
             <WorkItemDetail
                 workItemId={selectedWorkItemId}
+                compact={isMobile}
                 workspaceId={workspaceId}
                 originId={workItemOriginId}
                 onBack={handleBack}
                 onExecuted={handleExecuted}
                 onViewTask={handleViewTask}
                 onViewCommit={handleViewCommit}
-                onNavigateToTasksTab={onNavigateToTasksTab}
+                onNavigateToTasksTab={onNavigateToTasksTab ?? handleViewTask}
             />
         )
     ) : (
@@ -455,7 +453,7 @@ export function WorkItemsTab({ workspaceId, originId, attachmentDestinationId, o
     if (isMobile) {
         return (
             <>
-                <div className="flex flex-col h-full overflow-hidden" data-testid="work-items-panel">
+                <div className="flex flex-col h-full overflow-hidden" ref={containerRef} data-testid="work-items-panel">
                     {mobileShowDetail && selectedWorkItemId ? (
                         <div className="flex-1 flex flex-col overflow-hidden">{detailPane}</div>
                     ) : (
@@ -494,7 +492,7 @@ export function WorkItemsTab({ workspaceId, originId, attachmentDestinationId, o
 
     return (
         <>
-            <div className={cn('flex h-full overflow-hidden', isDragging && 'select-none')} data-testid="work-items-panel">
+            <div className={cn('flex h-full overflow-hidden', isDragging && 'select-none')} ref={containerRef} data-testid="work-items-panel">
                 <div
                     className="flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col overflow-hidden"
                     style={{ width: leftPanelWidth }}

@@ -1,7 +1,7 @@
 /**
  * useDropdownPopover — shared interaction plumbing for the remote repo-picker
  * dropdowns. Owns the `open` state plus the three behaviors that used to be
- * duplicated (and had drifted) across RemoteScopeCluster and the virtual
+ * duplicated (and had drifted) across WorkspaceIdentityChip and the virtual
  * workspace header:
  *   • outside-click closes the popover
  *   • Escape closes the popover AND refocuses the trigger

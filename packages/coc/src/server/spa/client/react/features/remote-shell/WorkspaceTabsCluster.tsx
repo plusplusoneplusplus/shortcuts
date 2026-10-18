@@ -4,7 +4,6 @@ import { useQueue } from '../../contexts/QueueContext';
 import { useRepos } from '../../contexts/ReposContext';
 import { useTerminalEnabled } from '../../hooks/feature-flags/useTerminalEnabled';
 import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabled';
-import { usePullRequestsEnabled } from '../../hooks/feature-flags/usePullRequestsEnabled';
 import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
 import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
 import { useSchedulesInScheduledSlideEnabled } from '../../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
@@ -56,7 +55,6 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
 
     const terminalEnabled = useTerminalEnabled();
     const workflowsEnabled = useWorkflowsEnabled();
-    const pullRequestsEnabled = usePullRequestsEnabled();
     const dreamsEnabled = useDreamsEnabled();
     const showPlanDepTab = useShowPlanDepTab();
     const schedulesInScheduledSlideEnabled = useSchedulesInScheduledSlideEnabled();
@@ -70,9 +68,9 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
 
     const tabs = useMemo(() => computeVisibleSubTabs({
         isGitRepo, terminalEnabled, workflowsEnabled,
-        pullRequestsEnabled, dreamsEnabled, showPlanDepTab,
+        dreamsEnabled, showPlanDepTab,
         schedulesInScheduledSlideEnabled,
-    }), [isGitRepo, terminalEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab, schedulesInScheduledSlideEnabled]);
+    }), [isGitRepo, terminalEnabled, workflowsEnabled, dreamsEnabled, showPlanDepTab, schedulesInScheduledSlideEnabled]);
     const { clone: cloneTabs } = useMemo(() => partitionShellTabs(tabs), [tabs]);
 
     const group = useMemo(() => {

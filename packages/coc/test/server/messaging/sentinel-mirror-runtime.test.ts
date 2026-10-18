@@ -601,6 +601,7 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
             store: f.store, workspaceId: 'workspace-a', parentProcessId: f.processId,
             enqueueChat: input => enqueue(input, f.bridge.enqueueAdmitted),
             runtime: {
+                serverIdentity: jobs.serverIdentity,
                 messagingOrigin: () => hub.locateOrigin({
                     workspaceId: user.workspaceId, processId: user.processId, requestId: user.requestId,
                 }),
@@ -616,6 +617,7 @@ describe.each(['whatsapp', 'teams'] as const)('durable Sentinel mirror runtime (
         try {
             const result = await tool.handler({ content: 'complete the helper', workspaceId: 'workspace-b', mode: 'autopilot' });
             if ('error' in result) throw new Error(result.error);
+            expect(result.openLink).toBe(`#chat-references/${jobs.serverIdentity}/workspace-b/${result.processId}`);
             const job = jobs.list('workspace-a')[0];
             expect(job.messagingOrigin).toEqual({
                 connector, chatKey: user.destination.chatKey, threadId: user.destination.threadId,

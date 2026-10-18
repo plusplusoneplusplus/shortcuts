@@ -1,3 +1,5 @@
+import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
+import { useWorkspaceOwner } from '../../../repos/workspaceOwnerContext';
 /**
  * ComposerPrChip — the compact, in-composer pull-request chip (design 01·B,
  * "Quiet rail — inside the input").
@@ -387,12 +389,12 @@ interface PrLinkTarget {
     external: boolean;
 }
 
-function getPrLinkTarget(item: PrStatusCardItem, number: number | string): PrLinkTarget {
+function getPrLinkTarget(item: PrStatusCardItem, number: number | string, ownerId: string, scopeId?: string): PrLinkTarget {
     const providerUrl = item.pr?.url || item.url;
     if (providerUrl) {
         return { href: providerUrl, external: true };
     }
-    return { href: buildPrDetailHash(item.repoId, number), external: false };
+    return { href: buildPrDetailHash(ownerId, number, scopeId), external: false };
 }
 
 function externalLinkAttrs(external: boolean): Pick<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'target' | 'rel'> {
@@ -420,7 +422,10 @@ function ViewLink({ target, itemKey }: { target: PrLinkTarget; itemKey: string }
 
 export function ComposerPrChip({ item, onDismiss, onRetry, onRefresh, refreshing, autoFix }: ComposerPrChipProps) {
     const number = item.pr?.number ?? item.number;
-    const linkTarget = getPrLinkTarget(item, number);
+    const host = useUnifiedPanelHost();
+    const owner = useWorkspaceOwner(item.repoId);
+    const ownerId = owner?.selectionId ?? (host?.workspaceId === item.repoId ? host.routingRef ?? item.repoId : item.repoId);
+    const linkTarget = getPrLinkTarget(item, number, ownerId, host?.routingRef ?? host?.workspaceId);
 
     // Self-measure the chip's own row width so the author label can hide when the
     // composer pane is narrow (AC-02), mirroring FollowUpInputArea's

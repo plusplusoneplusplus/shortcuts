@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { toQueueProcessId, type ProcessStore, type QueuedTask, type WorkspaceInfo } from '@plusplusoneplusplus/forge';
+import { buildDashboardChatReference } from '../shared/chat-reference';
 import { onTaskTerminal } from '../messaging/chat-target';
 import type { MessagingJobNotices } from '../messaging/job-notices';
 import { findRequestAnswer, findRequestTurn, RELAY_ANSWER_TEXT, isTerminalStatus } from '../messaging/relay-answer';
@@ -27,12 +28,14 @@ export interface DelegatedReviewTodo {
     status: string;
 }
 
-function reviewPrompt(job: DelegatedJob, sentinel: boolean, repository?: WorkspaceInfo, todo?: DelegatedReviewTodo): string {
+function reviewPrompt(job: DelegatedJob, sentinel: boolean, serverIdentity: string, repository?: WorkspaceInfo, todo?: DelegatedReviewTodo): string {
     return `${sentinel ? '' : `${SENTINEL_JOB_REVIEW_INSTRUCTIONS}\n\n`}${job.boundary === 'grill' ? 'This is the grilling milestone only. A validated goal is spec ready, awaiting explicit user implementation approval. Return pending feature work to Todo; only explicitly design-only work may finish. Do not start execution or mark implementation Done. Failed/cancelled grilling is not execution completion.\n' : ''}${SENTINEL_JOB_REVIEW_PREFIX}
 ${JSON.stringify({
         parent: job.parent, child: job.child, jobId: job.id, title: job.title,
         repository: { workspaceId: job.child.workspaceId, name: repository?.name, rootPath: repository?.rootPath },
         ...job.terminal!.result,
+        links: [...new Set([buildDashboardChatReference(serverIdentity, job.child.workspaceId, job.child.processId),
+            ...job.terminal!.result.links.filter(link => !/^(#\/process\/|#repos\/|\/api\/workspaces\/[^/]+\/ralph-sessions\/)/.test(link))])].slice(0, 20),
         ...(todo ? { todo } : {}),
     })}`;
 }
@@ -107,7 +110,7 @@ export class DelegatedJobReviews {
             const parent = await this.deps.store.getProcess(job.parent.processId, job.parent.workspaceId);
             const sentinel = parent?.metadata?.workspaceId === job.parent.workspaceId
                 && normalizeChatMode(parent.metadata.mode) === 'sentinel';
-            const content = reviewPrompt(job, sentinel, repository, this.findTodo(job));
+            const content = reviewPrompt(job, sentinel, this.deps.jobs.serverIdentity, repository, this.findTodo(job));
             const result = await this.deps.delivery.deliverOnce(
                 job.parent.workspaceId, job.parent.processId, receiptId,
                 { content, displayContent: content },

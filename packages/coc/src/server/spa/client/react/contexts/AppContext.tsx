@@ -5,7 +5,7 @@
 
 import { createContext, useContext, useReducer, useEffect, useRef, type ReactNode, type Dispatch } from 'react';
 import type { GitCommit } from '@plusplusoneplusplus/coc-client';
-import type { DashboardTab, RepoSubTab, SettingsSection, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, PrDetailTab, TasksPanelNavState } from '../types/dashboard';
+import type { DashboardTab, RepoSubTab, SettingsSection, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, TasksPanelNavState } from '../types/dashboard';
 import { REPO_SUB_TAB_VALUES } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 import { getSpaCocClient } from '../api/cocClient';
@@ -40,6 +40,7 @@ function normalizeRepoRouteSuffix(value: unknown): string | null {
     if (typeof value !== 'string') return null;
     if (!value.startsWith('/')) return null;
     const tab = value.slice(1).split('/')[0];
+    if (tab === 'panel') return value;
     if (!VALID_REPO_SUB_TAB_SET.has(tab)) return null;
     return value;
 }
@@ -47,7 +48,7 @@ function normalizeRepoRouteSuffix(value: unknown): string | null {
 export function getRepoSubTabFromRouteSuffix(suffix: string | null | undefined): RepoSubTab | null {
     const normalized = normalizeRepoRouteSuffix(suffix);
     if (!normalized) return null;
-    return normalized.slice(1).split('/')[0] as RepoSubTab;
+    return normalized.startsWith('/panel/') ? 'activity' : normalized.slice(1).split('/')[0] as RepoSubTab;
 }
 
 /**
@@ -244,15 +245,9 @@ export interface AppContextState {
      * and `repoGroupGitMemberState` remembers the validated member preference.
      */
     gitRouteScope: GitRouteScope | null;
-    selectedPrId: number | string | null;
-    selectedPrDetailTab: PrDetailTab | null;
     selectedWorkflowProcessId: string | null;
     selectedExplorerPath: string | null;
     selectedNotePath: string | null;
-    selectedWorkItemId: string | null;
-    selectedWorkItemSessionTaskId: string | null;
-    selectedWorkItemCommitHash: string | null;
-    selectedWorkItemCommitFilePath: string | null;
     conversationCache: Record<string, ConversationCacheEntry>;
     wsStatus: WsStatus;
     activeMemorySubTab: MemorySubTab;
@@ -333,15 +328,9 @@ const initialState: AppContextState = {
     selectedGitCommitHash: null,
     selectedGitFilePath: null,
     gitRouteScope: null,
-    selectedPrId: null,
-    selectedPrDetailTab: null,
     selectedWorkflowProcessId: null,
     selectedExplorerPath: null,
     selectedNotePath: null,
-    selectedWorkItemId: null,
-    selectedWorkItemSessionTaskId: null,
-    selectedWorkItemCommitHash: null,
-    selectedWorkItemCommitFilePath: null,
     conversationCache: {},
     wsStatus: 'closed',
     activeMemorySubTab: 'facts',
@@ -443,16 +432,12 @@ export type AppAction =
     | { type: 'CLEAR_REPO_WIKI_INITIAL' }
     | { type: 'SET_EXPLORER_PATH'; path: string | null }
     | { type: 'SET_SELECTED_NOTE_PATH'; notePath: string | null }
-    | { type: 'SET_WORK_ITEM_DEEP_LINK'; workItemId: string | null; sessionTaskId?: string | null; commitHash?: string | null; commitFilePath?: string | null }
     | { type: 'SET_MEMORY_SUB_TAB'; tab: MemorySubTab }
     | { type: 'SET_MEMORY_SCOPE'; scopeId: string | null }
     | { type: 'SET_SKILLS_SUB_TAB'; tab: SkillsSubTab }
     | { type: 'SET_ADMIN_SUB_TAB'; tab: AdminSubTab }
     | { type: 'SET_ADMIN_DB_DEEP_LINK'; table: string | null; page: number; sort: string | null; order: 'asc' | 'desc' | null }
     | { type: 'SET_WIKI_TAB'; wikiId: string; tab: string }
-    | { type: 'SET_SELECTED_PR'; prId: number | string }
-    | { type: 'SET_PR_DETAIL_TAB'; tab: PrDetailTab }
-    | { type: 'CLEAR_SELECTED_PR' }
     | { type: 'SET_TASKS_NAV_STATE'; repoId: string; navState: TasksPanelNavState }
     | { type: 'SET_SETTINGS_SECTION'; section: SettingsSection }
     | { type: 'SET_WELCOME_PREFERENCES'; payload: { hasSeenWelcome?: boolean; onboardingProgress?: Partial<OnboardingProgress>; dismissedTips?: string[]; activityFilters?: { workspace?: string; myWorkExcludedTypes?: string[] } } }
@@ -770,14 +755,6 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
                 : state.notePathState;
             return { ...state, selectedNotePath: action.notePath, notePathState: updatedNoteState };
         }
-        case 'SET_WORK_ITEM_DEEP_LINK':
-            return {
-                ...state,
-                selectedWorkItemId: action.workItemId,
-                selectedWorkItemSessionTaskId: action.sessionTaskId ?? null,
-                selectedWorkItemCommitHash: action.commitHash ?? null,
-                selectedWorkItemCommitFilePath: action.commitFilePath ?? null,
-            };
         case 'SET_MEMORY_SUB_TAB':
             return { ...state, activeMemorySubTab: action.tab };
         case 'SET_MEMORY_SCOPE':
@@ -790,12 +767,6 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, adminDbTable: action.table, adminDbPage: action.page, adminDbSort: action.sort, adminDbOrder: action.order };
         case 'SET_WIKI_TAB':
             return { ...state, wikiTabState: { ...state.wikiTabState, [action.wikiId]: action.tab } };
-        case 'SET_SELECTED_PR':
-            return { ...state, selectedPrId: action.prId };
-        case 'SET_PR_DETAIL_TAB':
-            return state.selectedPrDetailTab === action.tab ? state : { ...state, selectedPrDetailTab: action.tab };
-        case 'CLEAR_SELECTED_PR':
-            return { ...state, selectedPrId: null, selectedPrDetailTab: null };
         case 'SET_TASKS_NAV_STATE': {
             const key = `${action.repoId}::tasks`;
             if (areTasksPanelNavStatesEqual(state.repoSubTabNavState[key], action.navState)) {

@@ -3,13 +3,17 @@
  * and badge counts at 375×812.
  */
 import { test, expect } from '../fixtures/server-fixture';
-import { seedWorkspace, seedQueueTask } from '../fixtures/seed';
+import { request, seedWorkspace, seedQueueTask } from '../fixtures/seed';
 import { MOBILE } from './viewports';
 
 test.use({ viewport: MOBILE, hasTouch: true });
 
 test.describe('MobileTabBar', () => {
     test('mobile: "···" more button opens BottomSheet with overflow tabs', async ({ page, serverUrl }) => {
+        const config = await request(`${serverUrl}/api/admin/config`, {
+            method: 'PUT', body: JSON.stringify({ 'workflows.enabled': true }),
+        });
+        expect(config.status).toBe(200);
         await seedWorkspace(serverUrl, 'ws-more-1', 'more-repo-1');
         await page.goto(`${serverUrl}/#repos`);
         await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
@@ -27,11 +31,16 @@ test.describe('MobileTabBar', () => {
         // The overflow tab list should be present with at least one item
         const moreSheet = page.locator('[data-testid="mobile-tab-more-sheet"]');
         await expect(moreSheet).toBeVisible();
-        const overflowItems = moreSheet.locator('button');
-        await expect(overflowItems.first()).toBeVisible();
+        await expect(moreSheet.getByTestId('mobile-tab-more-item-workflows')).toBeVisible();
+        await expect(moreSheet.getByTestId('mobile-tab-more-item-work-items')).toHaveCount(0);
+        await expect(moreSheet.getByTestId('mobile-tab-more-item-pull-requests')).toHaveCount(0);
     });
 
     test('mobile: tapping overflow tab activates it and closes BottomSheet', async ({ page, serverUrl }) => {
+        const config = await request(`${serverUrl}/api/admin/config`, {
+            method: 'PUT', body: JSON.stringify({ 'workflows.enabled': true }),
+        });
+        expect(config.status).toBe(200);
         await seedWorkspace(serverUrl, 'ws-more-2', 'more-repo-2');
         await page.goto(`${serverUrl}/#repos`);
         await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
@@ -44,14 +53,10 @@ test.describe('MobileTabBar', () => {
 
         // Wait for sheet and tap Workflows overflow item
         const workflowsItem = page.locator('[data-testid="mobile-tab-more-item-workflows"]');
-        if (await workflowsItem.count() > 0) {
-            await expect(workflowsItem).toBeVisible({ timeout: 5000 });
-            await workflowsItem.tap();
-
-            // Sheet should close after selection
-            const sheet = page.locator('[data-testid="bottomsheet-panel"]');
-            await expect(sheet).toBeHidden({ timeout: 5000 });
-        }
+        await expect(workflowsItem).toBeVisible({ timeout: 5000 });
+        await workflowsItem.tap();
+        await expect(page).toHaveURL(/#repos\/ws-more-2\/workflows$/);
+        await expect(page.locator('[data-testid="bottomsheet-panel"]')).toBeHidden({ timeout: 5000 });
     });
 
     test('mobile: the scope bar is hidden when a repo is selected', async ({ page, serverUrl }) => {
@@ -83,9 +88,8 @@ test.describe('MobileTabBar', () => {
 
         // MobileTabBar (repo sub-tab bar) should be visible
         await expect(mobileTabBar).toBeVisible({ timeout: 5000 });
-        // Should have at least the 3 pinned tabs plus the '···' more button
-        const buttons = mobileTabBar.locator('button');
-        await expect(buttons).toHaveCount(4, { timeout: 5000 }); // 3 pinned + 1 more
+        await expect(mobileTabBar.locator('button[data-tab]')).toHaveText(['Workspace', 'Plans (Dep.)']);
+        await expect(page.getByTestId('mobile-tab-more-btn')).toHaveCount(0);
     });
 
     test('mobile: MobileTabBar activity badge visible when repo has running queue tasks', async ({ page, serverUrl }) => {

@@ -2,8 +2,7 @@
  * repoSubTabs — pure definitions and visibility logic for the repo sub-tab strip.
  *
  * Extracted from RepoDetail so the same tab taxonomy and feature-flag/layout
- * filtering can be reused by the remote-first shell (RemoteScopeCluster /
- * WorkspaceTabsCluster) without duplicating logic. Keeping it pure also makes
+ * filtering can be reused by the remote-first shell (WorkspaceTabsCluster) without duplicating logic. Keeping it pure also makes
  * it unit-testable.
  */
 
@@ -20,9 +19,7 @@ export const SUB_TABS: SubTabDef[] = [
     { key: 'chats', label: 'Chats', shortcut: 'Alt+A' },
     { key: 'git', label: 'Git', shortcut: 'Alt+G' },
     { key: 'terminal', label: 'Terminal' },
-    { key: 'work-items', label: 'WIs', shortcut: 'Alt+I' },
     { key: 'dreams', label: 'Dreams', shortcut: 'Alt+D' },
-    { key: 'pull-requests', label: 'PRs', shortcut: 'Alt+R' },
     { key: 'explorer', label: 'Explorer', shortcut: 'Alt+E' },
     { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
     { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
@@ -42,7 +39,7 @@ export const VISIBLE_SUB_TABS: SubTabDef[] = SHOW_WIKI_TAB
  */
 export const TAB_GROUP_INDEX: Record<string, number> = {
     'chats': 1, 'activity': 1, 'git': 1, 'terminal': 1,
-    'work-items': 2, 'dreams': 2, 'pull-requests': 2, 'tasks': 2,
+    'dreams': 2, 'tasks': 2,
     'explorer': 3, 'workflows': 3, 'schedules': 3,
     'wiki': 4,
 };
@@ -51,7 +48,6 @@ export interface VisibleSubTabOptions {
     isGitRepo: boolean;
     terminalEnabled: boolean;
     workflowsEnabled: boolean;
-    pullRequestsEnabled: boolean;
     dreamsEnabled: boolean;
     /** When false (default), the deprecated `tasks` sub-tab is hidden in the tab strip. */
     showPlanDepTab: boolean;
@@ -66,7 +62,7 @@ export interface VisibleSubTabOptions {
      * mounted instead (Router). The remote-first shell hosts the Scheduled slide
      * too — its content is a chromeless `RepoDetail` whose `RepoChatTab` carries
      * the slide — so `WorkspaceTabsCluster` passes this flag as well. Optional
-     * only because `RemoteScopeCluster` never renders the clone-scoped
+     * only because `WorkspaceIdentityChip` never renders the clone-scoped
      * `schedules` tab, so the flag is a no-op there.
      */
     schedulesInScheduledSlideEnabled?: boolean;
@@ -82,16 +78,15 @@ export interface VisibleSubTabOptions {
 export function computeVisibleSubTabs(opts: VisibleSubTabOptions): SubTabDef[] {
     const {
         isGitRepo, terminalEnabled, workflowsEnabled,
-        pullRequestsEnabled, dreamsEnabled, showPlanDepTab,
+        dreamsEnabled, showPlanDepTab,
         schedulesInScheduledSlideEnabled = false,
     } = opts;
 
     let tabs: SubTabDef[] = VISIBLE_SUB_TABS;
-    if (!isGitRepo) tabs = tabs.filter(t => t.key !== 'git' && t.key !== 'pull-requests');
+    if (!isGitRepo) tabs = tabs.filter(t => t.key !== 'git');
     if (!showPlanDepTab) tabs = tabs.filter(t => t.key !== 'tasks');
     if (!terminalEnabled) tabs = tabs.filter(t => t.key !== 'terminal');
     if (!workflowsEnabled) tabs = tabs.filter(t => t.key !== 'workflows');
-    if (!pullRequestsEnabled) tabs = tabs.filter(t => t.key !== 'pull-requests');
     if (!dreamsEnabled) tabs = tabs.filter(t => t.key !== 'dreams');
     // Schedules tab retirement (AC-04): when the schedules-in-slide flag is ON,
     // hide the standalone `schedules` sub-tab.

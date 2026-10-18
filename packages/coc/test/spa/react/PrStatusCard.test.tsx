@@ -74,7 +74,7 @@ describe('PrStatusCard', () => {
         expect(getByTestId(`pr-status-card-branches-${item.key}`).textContent).toBe('feature/card → main');
 
         const link = getByTestId(`pr-status-card-open-${item.key}`) as HTMLAnchorElement;
-        expect(link.getAttribute('href')).toBe('#repos/ws-abc/pull-requests/101/overview');
+        expect(link.getAttribute('href')).toBe('#repos/ws-abc/panel/pull-requests/ws-abc/101/overview');
     });
 
     it('error state: shows the error message, a retry button, and a deep-link', () => {
@@ -87,7 +87,7 @@ describe('PrStatusCard', () => {
         fireEvent.click(getByTestId(`pr-status-card-retry-${item.key}`));
         expect(onRetry).toHaveBeenCalledWith(item.key);
         expect(getByTestId(`pr-status-card-open-${item.key}`).getAttribute('href'))
-            .toBe('#repos/ws-abc/pull-requests/101/overview');
+            .toBe('#repos/ws-abc/panel/pull-requests/ws-abc/101/overview');
     });
 
     it('error state: omits the retry button when no onRetry handler is provided', () => {

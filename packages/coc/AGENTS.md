@@ -104,7 +104,14 @@ references before editing. Paths are package-relative.
   offline entries). Remote create mode posts to the remote's own queue/Ralph API with no
   local fallback; output never carries paths, URLs, or credentials. Successful remote
   launches expose unavailable automatic parent result return through `resultDelivery`
-  and retain the clone chat link for inspecting the outcome. Explicit `source: dashboard`
+  and expose canonical `#chat-references/<serverIdentity>/<workspaceId>/<processId>`
+  links with independently encoded segments for inspecting the outcome. Local tool
+  replies and delegated-result evidence use the same identity-only builder in
+  `src/server/shared/chat-reference.ts`. Server composition supplies installation identity;
+  remote admission verifies the owning server through health reads around its single
+  POST. Never substitute a transport alias, endpoint or viewer's server identity.
+  AI reuses generated job/artifact links unchanged; the existing SPA resolver verifies
+  visible ownership and fails unavailable without local fallback. Explicit `source: dashboard`
   reads the invoking workspace's dashboard relay through a late-bound runtime getter,
   including unregistered/offline destinations. Its stable server/workspace `target`
   is read-only, not a dispatch ID or ownership proof; unknown identities have no target.
@@ -469,8 +476,12 @@ references before editing. Paths are package-relative.
   Review updates cannot overwrite those verdicts or reopen archived/Done items.
   Conversation references (`attachReference`, REST `.../items/:itemId/references`, tool
   `attach_reference`) live in `sentinel_todo_references`, apart from job links: normal items
-  only, the chat must exist in the named local workspace, duplicates are no-ops, and they never
-  change status, create execution/review state, or message the referenced chat.
+  only, and the target must exist in exactly the named local workspace — a saved chat, a live
+  queued/running chat task (`queue_` ID, task `repoId` and payload workspace must match), or a
+  Ralph session journal. Ralph iterations store the verified `sessionId` and open
+  `#repos/<ws>/chats/ralph/<sessionId>`; any iteration of a referenced session is a duplicate.
+  Duplicates are no-ops, and references never change status, create execution/review state,
+  or message, start or retry the referenced chat.
   The `references` contract combines conversation entries (missing kind means conversation)
   with typed `pr`/`email`/`link` external entries. Default-off live
   `features.sentinelTodoExternalReferences` gates external reads and create/update

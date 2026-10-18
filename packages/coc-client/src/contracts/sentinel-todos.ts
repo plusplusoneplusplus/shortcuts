@@ -102,6 +102,8 @@ export interface SentinelTodoConversationReference {
   verification?: 'verified' | 'unverified';
   processId: string;
   workspaceId: string;
+  /** Stable Ralph session identity; the reference opens the session view. */
+  sessionId?: string;
   openLink: string;
   title?: string;
   attachedAt: string;

@@ -47,7 +47,7 @@ function makeStore(
         getWorkspaces: vi.fn().mockResolvedValue(
             workspaceIds.map(id => ({ id, name: id, rootPath: `/repo/${id}` })),
         ),
-        getProcess: vi.fn(async (id: string) => processes[id] as never),
+        getProcess: vi.fn(async (id: string) => (processes[id] ? { ...processes[id], metadata: { workspaceId: workspaceIds[0], ...processes[id].metadata } } : undefined) as never),
     };
     return store as ProcessStore;
 }
@@ -81,6 +81,8 @@ function makeTool(opts?: MakeToolOpts) {
     const parentProcessId = opts && 'parentProcessId' in opts ? opts.parentProcessId : DEFAULT_PARENT_ID;
     const parentMeta = opts?.parentMeta ?? DEFAULT_PARENT_META;
     const processes = {
+        queue_existing: { id: 'queue_existing', metadata: {} },
+        queue_target: { id: 'queue_target', metadata: {} },
         ...(opts?.extraProcesses ?? {}),
         ...(parentProcessId ? { [parentProcessId]: { id: parentProcessId, metadata: parentMeta } } : {}),
     };
@@ -92,7 +94,7 @@ function makeTool(opts?: MakeToolOpts) {
         sendMessage: opts?.sendMessage,
         launchRalph: opts?.launchRalph,
         parentProcessId: parentProcessId ?? undefined,
-        runtime: { isAutoProviderRoutingAvailable: () => true, ...opts?.runtime },
+        runtime: { serverIdentity: 'local-installation', isAutoProviderRoutingAvailable: () => true, ...opts?.runtime },
     });
     return { tool, enqueueChat, captured };
 }
@@ -209,7 +211,7 @@ describe('createSendToConversationTool — cancel dispatch', () => {
         const { tool, enqueueChat } = makeTool({ sendMessage, launchRalph, runtime: { cancelConversation } });
         expect(await tool.handler({ action: 'cancel', processId: ' queue_target ', workspaceId: 'ws-2' }, invocationStub)).toEqual({
             processId: 'queue_target', workspaceId: 'ws-2', cancelled: true, status: 'cancelled',
-            openLink: '#repos/ws-2/chats/queue_target',
+            openLink: '#chat-references/local-installation/ws-2/queue_target',
         });
         expect(cancelConversation).toHaveBeenCalledWith('queue_target', 'ws-2');
         expect(enqueueChat).not.toHaveBeenCalled();
@@ -256,7 +258,7 @@ describe('createSendToConversationTool — cancel dispatch', () => {
         const cancelConversation = vi.fn().mockResolvedValue({ processId: 'target', cancelled: false, status: 'completed' });
         const { tool } = makeTool({ runtime: { cancelConversation } });
         expect(await tool.handler({ action: 'cancel', processId: 'target' }, invocationStub)).toEqual({
-            processId: 'target', openLink: '#/process/target', cancelled: false, status: 'completed',
+            processId: 'target', cancelled: false, status: 'completed',
         });
     });
 
@@ -298,7 +300,7 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
 
         // Uniform return shape: { processId, openLink }; no turnIndex in create mode.
         expect(result.processId).toBe('queue_task-123');
-        expect(result.openLink).toBe('#/process/queue_task-123');
+        expect(result.openLink).toBe('#chat-references/local-installation/ws-1/queue_task-123');
         expect(result.turnIndex).toBeUndefined();
     });
 
@@ -384,6 +386,7 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
     it('errors when no workspace can be resolved', async () => {
         const enqueueChat = vi.fn(async () => 'task-x');
         const { tool } = createSendToConversationTool({
+            runtime: { serverIdentity: 'local-installation' },
             store: makeStore(['ws-1']),
             workspaceId: undefined,
             enqueueChat,
@@ -506,6 +509,7 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         } as unknown as ProcessStore;
         const captured: { input?: CreateTaskInput } = {};
         const { tool } = createSendToConversationTool({
+            runtime: { serverIdentity: 'local-installation' },
             store,
             workspaceId: 'ws-1',
             enqueueChat: async input => { captured.input = input; return 'task-1'; },
@@ -712,6 +716,7 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         } as unknown as ProcessStore;
         const captured: { input?: CreateTaskInput } = {};
         const { tool } = createSendToConversationTool({
+            runtime: { serverIdentity: 'local-installation' },
             store,
             workspaceId: 'ws-1',
             enqueueChat: async input => { captured.input = input; return 'task-1'; },
@@ -739,7 +744,7 @@ describe('createSendToConversationTool — post mode (processId provided)', () =
         // Post mode must NOT enqueue a new conversation.
         expect(enqueueChat).not.toHaveBeenCalled();
         expect(result.processId).toBe('queue_existing');
-        expect(result.openLink).toBe('#/process/queue_existing');
+        expect(result.openLink).toBe('#chat-references/local-installation/ws-1/queue_existing');
         expect(result.turnIndex).toBe(7);
     });
 
@@ -957,7 +962,7 @@ describe('createSendToConversationTool — post mode (processId provided)', () =
     it('surfaces a delivery failure as a tool error', async () => {
         const sendMessage = vi.fn(async () => { throw new Error('process not found'); });
         const { tool } = makeTool({ sendMessage });
-        const result = await tool.handler({ processId: 'queue_missing', content: 'hi' }, invocationStub);
+        const result = await tool.handler({ processId: 'queue_existing', content: 'hi' }, invocationStub);
         expect('error' in result && result.error).toMatch(/process not found/i);
     });
 });
@@ -977,7 +982,7 @@ describe('createSendToConversationTool — ralph mode (create only)', () => {
         });
         const result = asSuccess(await tool.handler({ content: '  Build the thing  ', mode: 'ralph' }, invocationStub));
 
-        expect(result).toEqual({ processId: 'queue_ralph-task', sessionId: 'ralph-1', openLink: '#/process/queue_ralph-task' });
+        expect(result).toEqual({ processId: 'queue_ralph-task', sessionId: 'ralph-1', openLink: '#chat-references/local-installation/ws-1/queue_ralph-task' });
         expect(enqueueChat).not.toHaveBeenCalled();
         expect(launchRalph).toHaveBeenCalledWith({
             goalSpec: 'Build the thing',
@@ -1139,7 +1144,7 @@ describe('createSendToConversationTool — workspace targets (names, remote clon
             list: vi.fn().mockResolvedValue({ entries, servers: [] }),
             isRemoteAutoProviderRoutingAvailable: vi.fn().mockResolvedValue(true),
             validateRemoteProvider: vi.fn(),
-            startRemoteChat: vi.fn().mockResolvedValue({ processId: 'queue_remote-task' }),
+            startRemoteChat: vi.fn().mockResolvedValue({ serverIdentity: 'remote-installation', processId: 'queue_remote-task' }),
         };
     }
 
@@ -1156,7 +1161,7 @@ describe('createSendToConversationTool — workspace targets (names, remote clon
         const result = asSuccess(await tool.handler({ content: 'hi', workspaceId: 'API' }, invocationStub));
 
         expect(captured.input?.workspaceId ?? payloadOf(captured.input!).workspaceId).toBe('ws-api');
-        expect(result.openLink).toBe(`#/process/${result.processId}`);
+        expect(result.openLink).toBe(`#chat-references/local-installation/ws-api/${result.processId}`);
         expect(directory.startRemoteChat).not.toHaveBeenCalled();
         expect(result.resultDelivery).toBeUndefined();
     });
@@ -1170,7 +1175,7 @@ describe('createSendToConversationTool — workspace targets (names, remote clon
         expect(directory.startRemoteChat).toHaveBeenCalledWith(expect.objectContaining({ serverId: 'srv-1', kind: 'queue' }));
         expect(result).toMatchObject({
             processId: 'queue_remote-task',
-            openLink: `#repos/${encodeURIComponent('remote:srv-1:w-api')}/chats/queue_remote-task`,
+            openLink: '#chat-references/remote-installation/w-api/queue_remote-task',
         });
     });
 
@@ -1178,7 +1183,7 @@ describe('createSendToConversationTool — workspace targets (names, remote clon
         'reports unavailable remote result return from a Sentinel for %s without duplicate admission', async mode => {
             const trackMessagingJob = vi.fn();
             const directory = makeDirectory();
-            directory.startRemoteChat.mockResolvedValue({ processId: 'queue_remote-task', sessionId: 'ralph-1' } as any);
+            directory.startRemoteChat.mockResolvedValue({ serverIdentity: 'remote-installation', processId: 'queue_remote-task', sessionId: 'ralph-1' } as any);
             const { tool, enqueueChat } = makeTool({
                 parentMeta: { provider: 'codex', mode: 'sentinel' } as ParentMeta & { mode?: string },
                 runtime: { workspaceDirectory: directory,
@@ -1192,7 +1197,7 @@ describe('createSendToConversationTool — workspace targets (names, remote clon
             expect(result.resultDelivery?.reason).toContain('WhatsApp/Teams');
             expect(result.resultDelivery?.reason).toContain('openLink');
             expect(result.resultDelivery?.reason).toContain('do not launch a duplicate');
-            expect(result.openLink).toBe(`#repos/${encodeURIComponent('remote:srv-1:w-web')}/chats/queue_remote-task`);
+            expect(result.openLink).toBe('#chat-references/remote-installation/w-web/queue_remote-task');
             expect(directory.startRemoteChat).toHaveBeenCalledTimes(1);
             expect(enqueueChat).not.toHaveBeenCalled();
             expect(trackMessagingJob).not.toHaveBeenCalled();
@@ -1278,7 +1283,7 @@ describe('createSendToConversationTool — workspace targets (names, remote clon
 
     it('launches remote ralph through the remote Ralph launch API', async () => {
         const { tool, directory } = makeTargetTool();
-        (directory.startRemoteChat as any).mockResolvedValue({ processId: 'queue_r1', sessionId: 'ralph-1' });
+        (directory.startRemoteChat as any).mockResolvedValue({ serverIdentity: 'remote-installation', processId: 'queue_r1', sessionId: 'ralph-1' });
 
         const result = asSuccess(await tool.handler({ content: ' goal ', workspaceId: 'web@dev-vm', mode: 'ralph', title: 'G' }, invocationStub));
 
@@ -1317,7 +1322,7 @@ describe('createSendToConversationTool — workspace targets (names, remote clon
 
 describe('createSendToConversationTool — remote create over HTTP (real directory, mocked fetch)', () => {
     it('POSTs the chat to the remote /api/queue at its effective URL', async () => {
-        const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ task: { id: 't-9' } }), { status: 201 })) as unknown as typeof fetch;
+        const fetchImpl = vi.fn(async (url: string) => new Response(JSON.stringify(url.endsWith('/api/health') ? { serverIdentity: 'remote-installation' } : { task: { id: 't-9' } }), { status: 201 })) as unknown as typeof fetch;
         const workspaceDirectory = createWorkspaceDirectory({
             store: makeStore([]),
             remoteServers: { list: () => [{ id: 'srv-1', label: 'vm', kind: 'url', url: 'http://vm:4000', effectiveUrl: 'http://vm:4000', status: 'online' } as any] },
@@ -1327,7 +1332,7 @@ describe('createSendToConversationTool — remote create over HTTP (real directo
 
         const result = asSuccess(await tool.handler({ content: 'hi', workspaceId: 'remote:srv-1:w1' }, invocationStub));
 
-        const [url, init] = (fetchImpl as any).mock.calls[0];
+        const [url, init] = (fetchImpl as any).mock.calls.find(([, init]: any) => init?.method === 'POST');
         expect(url).toBe('http://vm:4000/api/queue');
         expect(init.method).toBe('POST');
         expect(JSON.parse(init.body)).toMatchObject({ type: 'chat', workspaceId: 'w1', payload: { prompt: 'hi', mode: 'ask' } });
@@ -1337,7 +1342,7 @@ describe('createSendToConversationTool — remote create over HTTP (real directo
 
     it.each(['ask', 'autopilot', 'ralph'] as const)('POSTs Auto %s and explicit models to the target server API', async mode => {
         const fetchImpl = vi.fn(async (url: string) => new Response(JSON.stringify(
-            url.endsWith('/api/config/runtime') ? { features: { autoAgentProviderRoutingEnabled: true } } : mode === 'ralph' ? { processId: 'queue_t-9', sessionId: 'r-1' } : { task: { id: 't-9' } },
+            url.endsWith('/api/health') ? { serverIdentity: 'remote-installation' } : url.endsWith('/api/config/runtime') ? { features: { autoAgentProviderRoutingEnabled: true } } : mode === 'ralph' ? { processId: 'queue_t-9', sessionId: 'r-1' } : { task: { id: 't-9' } },
         ), { status: 201 })) as unknown as typeof fetch;
         const workspaceDirectory = createWorkspaceDirectory({
             store: makeStore([]),
@@ -1347,7 +1352,7 @@ describe('createSendToConversationTool — remote create over HTTP (real directo
         const { tool, enqueueChat } = makeTool({ runtime: { workspaceDirectory } });
         const result = asSuccess(await tool.handler({ content: 'goal', workspaceId: 'remote:srv-1:w1', provider: 'auto', mode, model: 'opus' }, invocationStub));
         expect(result.resultDelivery?.status).toBe('unavailable');
-        const [url, init] = (fetchImpl as any).mock.calls[1];
+        const [url, init] = (fetchImpl as any).mock.calls.find(([, init]: any) => init?.method === 'POST');
         expect(url).toBe(`http://vm:4000/api/${mode === 'ralph' ? 'ralph-launch' : 'queue'}`);
         const body = JSON.parse(init.body);
         expect(body.workspaceId).toBe('w1');
@@ -1358,7 +1363,7 @@ describe('createSendToConversationTool — remote create over HTTP (real directo
     });
 
     it('reports a remote rejection without falling back locally', async () => {
-        const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: 'Unknown workspace' }), { status: 400 })) as unknown as typeof fetch;
+        const fetchImpl = vi.fn(async (url: string) => new Response(JSON.stringify(url.endsWith('/api/health') ? { serverIdentity: 'remote-installation' } : { error: 'Unknown workspace' }), { status: url.endsWith('/api/health') ? 200 : 400 })) as unknown as typeof fetch;
         const workspaceDirectory = createWorkspaceDirectory({
             store: makeStore([]),
             remoteServers: { list: () => [{ id: 'srv-1', label: 'vm', kind: 'url', effectiveUrl: 'http://vm:4000', status: 'online' } as any] },
@@ -1407,7 +1412,7 @@ describe('createSendToConversationTool — messaging completion notices', () => 
             }),
             isRemoteAutoProviderRoutingAvailable: vi.fn().mockResolvedValue(true),
             validateRemoteProvider: vi.fn(),
-            startRemoteChat: vi.fn().mockResolvedValue({ processId: 'queue_remote-task' }),
+            startRemoteChat: vi.fn().mockResolvedValue({ serverIdentity: 'remote-installation', processId: 'queue_remote-task' }),
         };
         const { tool, enqueueChat } = makeTool({ runtime: { workspaceDirectory: directory, messagingOrigin, trackMessagingJob } });
 
@@ -1509,6 +1514,7 @@ describe('Auto delegation capability fallback', () => {
 
     it.each(['ask', 'autopilot', 'ralph'] as const)('preflights disabled remote Auto %s using destination capabilities/defaults', async mode => {
         const fetchImpl = vi.fn(async (url: string, _init?: RequestInit) => {
+            if (url.endsWith('/api/health')) return new Response(JSON.stringify({ serverIdentity: 'remote-installation' }));
             if (url.endsWith('/api/config/runtime')) return new Response(JSON.stringify({ features: { autoAgentProviderRoutingEnabled: false } }));
             if (url.endsWith('/api/agent-providers')) return new Response(JSON.stringify({ providers: [{ id: 'codex', enabled: true, available: true }] }));
             return new Response(JSON.stringify(mode === 'ralph' ? { processId: 'queue_r', sessionId: 'r' } : { task: { id: 'child' } }), { status: 201 });
@@ -1519,8 +1525,8 @@ describe('Auto delegation capability fallback', () => {
         const validateProvider = vi.fn().mockRejectedValue(new Error('Local Codex disabled'));
         const { tool, enqueueChat } = makeTool({ parentMeta: { provider: 'codex', model: 'gpt-5.5', reasoningEffort: 'high' }, runtime: { workspaceDirectory, validateProvider } });
         asSuccess(await tool.handler({ content: 'goal', provider: 'auto', mode, workspaceId: 'remote:srv-1:w1' }, invocationStub));
-        expect(fetchImpl).toHaveBeenCalledTimes(3);
-        const body = JSON.parse(fetchImpl.mock.calls[2][1]!.body as string);
+        expect(fetchImpl).toHaveBeenCalledTimes(5);
+        const body = JSON.parse(fetchImpl.mock.calls.find(([, init]) => init?.method === 'POST')![1]!.body as string);
         expect(mode === 'ralph' ? body.provider : body.payload.provider).toBe('codex');
         expect(mode === 'ralph' ? body.autoProviderRouting : body.payload.context).toBeUndefined();
         expect(body.config).toEqual({ effortTier: 'medium' });
@@ -1531,6 +1537,7 @@ describe('Auto delegation capability fallback', () => {
 
     it.each(['missing-endpoint', 'disabled-provider', 'capability-error', 'no-parent', 'bad-model', 'dispatch-error', 'auto-dispatch-error'] as const)('handles remote %s without blind retries', async scenario => {
         const fetchImpl = vi.fn(async (url: string, _init?: RequestInit) => {
+            if (url.endsWith('/api/health')) return new Response(JSON.stringify({ serverIdentity: 'remote-installation' }));
             if (url.endsWith('/api/config/runtime')) return new Response(JSON.stringify({ features: { autoAgentProviderRoutingEnabled: scenario === 'auto-dispatch-error' } }), { status: scenario === 'missing-endpoint' ? 404 : scenario === 'capability-error' ? 503 : 200 });
             if (url.endsWith('/api/agent-providers')) return new Response(JSON.stringify({ providers: [{ id: 'codex', enabled: scenario !== 'disabled-provider', available: true }] }));
             return new Response(JSON.stringify(scenario.endsWith('dispatch-error') ? { error: 'quota exhausted' } : { task: { id: 'child' } }), { status: scenario.endsWith('dispatch-error') ? 429 : 201 });
@@ -1577,7 +1584,7 @@ describe('native Ralph grilling delegation contract', () => {
         const launchRalph = vi.fn().mockResolvedValue({ ok: true, processId: 'queue_execute', sessionId: 'ralph-execute' });
         const { tool } = makeTool({ launchRalph });
         const result = await tool.handler({ content: 'Build', mode: 'ralph', entryPoint: 'execute' }, invocationStub);
-        expect(result).toEqual({ processId: 'queue_execute', sessionId: 'ralph-execute', openLink: '#/process/queue_execute' });
+        expect(result).toEqual({ processId: 'queue_execute', sessionId: 'ralph-execute', openLink: '#chat-references/local-installation/ws-1/queue_execute' });
         expect(launchRalph.mock.calls[0][0].entryPoint).toBe('execute');
     });
 });
@@ -1594,7 +1601,7 @@ describe('remote native grilling capability and admission boundary', () => {
 
     it('checks the owning target before admission and sends only its physical workspace and explicit AI settings', async () => {
         const fetchImpl = vi.fn(async (url: string) => new Response(JSON.stringify(
-            url.endsWith('/config/runtime') ? { features: { autoAgentProviderRoutingEnabled: true } }
+            url.endsWith('/api/health') ? { serverIdentity: 'remote-installation' } : url.endsWith('/config/runtime') ? { features: { autoAgentProviderRoutingEnabled: true } }
                 : url.endsWith('/capabilities') ? { version: 1, grilling: true }
                     : { processId: 'queue_native', sessionId: 'ralph-native', phase: 'grilling' }), { status: 200 }));
         const { tool, enqueueChat } = remote(fetchImpl as any);
@@ -1602,8 +1609,8 @@ describe('remote native grilling capability and admission boundary', () => {
         expect(result).toMatchObject({ phase: 'grilling', owner: { workspaceId: 'physical-target', serverId: 'srv-grill' },
             resultDelivery: { status: 'unavailable' } });
         expect(fetchImpl.mock.calls.map(call => call[0])).toEqual(['http://target:4000/api/config/runtime',
-            'http://target:4000/api/ralph-launch/capabilities', 'http://target:4000/api/ralph-launch']);
-        const body = JSON.parse((fetchImpl.mock.calls.at(-1) as any)[1].body);
+            'http://target:4000/api/health', 'http://target:4000/api/ralph-launch/capabilities', 'http://target:4000/api/ralph-launch', 'http://target:4000/api/health']);
+        const body = JSON.parse((fetchImpl.mock.calls.find((call: any) => call[1]?.method === 'POST') as any)[1].body);
         expect(body).toMatchObject({ workspaceId: 'physical-target', entryPoint: 'grill', autoProviderRouting: true, config: { effortTier: 'medium' } });
         expect(body).not.toHaveProperty('workingDirectory'); expect(body).not.toHaveProperty('folderPath');
         expect(body).not.toHaveProperty('spawnedFromProcessId'); expect(body.config).not.toHaveProperty('model');
@@ -1611,10 +1618,10 @@ describe('remote native grilling capability and admission boundary', () => {
     });
 
     it.each([{ version: 1, grilling: false }, {}, { version: 0, grilling: true }])('refuses old/disabled capabilities without a POST: %j', async capabilities => {
-        const fetchImpl = vi.fn(async () => new Response(JSON.stringify(capabilities), { status: 200 }));
+        const fetchImpl = vi.fn(async (url: string) => new Response(JSON.stringify(url.endsWith('/api/health') ? { serverIdentity: 'remote-installation' } : capabilities), { status: 200 }));
         const { tool, enqueueChat } = remote(fetchImpl as any);
         const result = await tool.handler({ ...args, provider: 'codex' }, invocationStub);
-        expect(result).toHaveProperty('error'); expect(fetchImpl).toHaveBeenCalledOnce();
+        expect(result).toHaveProperty('error'); expect(fetchImpl).toHaveBeenCalledTimes(2);
         expect(enqueueChat).not.toHaveBeenCalled();
     });
 
@@ -1626,12 +1633,77 @@ describe('remote native grilling capability and admission boundary', () => {
 
     it('uncertain acceptance attempts one POST and warns against relaunch', async () => {
         const fetchImpl = vi.fn(async (url: string) => {
+            if (url.endsWith('/api/health')) return new Response(JSON.stringify({ serverIdentity: 'remote-installation' }));
             if (url.endsWith('/capabilities')) return new Response(JSON.stringify({ version: 1, grilling: true }), { status: 200 });
             throw new Error('connection reset after request');
         });
         const { tool, enqueueChat } = remote(fetchImpl as any);
         const result = await tool.handler({ ...args, provider: 'codex' }, invocationStub);
         expect((result as any).error).toContain('Admission is uncertain');
-        expect(fetchImpl).toHaveBeenCalledTimes(2); expect(enqueueChat).not.toHaveBeenCalled();
+        expect(fetchImpl).toHaveBeenCalledTimes(3); expect(enqueueChat).not.toHaveBeenCalled();
     });
+});
+
+describe('durable job link ownership at admission', () => {
+    it('rejects unknown local installation identity before launching a duplicateable job', async () => {
+        const { tool, enqueueChat } = makeTool({ runtime: { serverIdentity: undefined } });
+        expect(await tool.handler({ content: 'Work' }, invocationStub)).toMatchObject({ error: expect.stringContaining('identity') });
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('uses the existing conversation owner rather than the invoking workspace', async () => {
+        const sendMessage = vi.fn(async () => ({ turnIndex: 1 }));
+        const { tool } = createSendToConversationTool({ workspaceId: 'parent', enqueueChat: vi.fn(), sendMessage,
+            store: { getProcess: async () => ({ id: 'queue_child', metadata: { workspaceId: 'child/workspace ?#%' } }) } as unknown as ProcessStore,
+            runtime: { serverIdentity: 'owning-installation' } });
+        expect(await tool.handler({ content: 'Continue', processId: 'queue_child' }, invocationStub)).toMatchObject({
+            openLink: '#chat-references/owning-installation/child%2Fworkspace%20%3F%23%25/queue_child',
+        });
+    });
+
+    it('does not post when the process owner is unknown', async () => {
+        const sendMessage = vi.fn();
+        const { tool } = createSendToConversationTool({ workspaceId: 'parent', enqueueChat: vi.fn(), sendMessage,
+            store: { getProcess: async () => ({ id: 'queue_child', metadata: {} }) } as unknown as ProcessStore,
+            runtime: { serverIdentity: 'owning-installation' } });
+        expect(await tool.handler({ content: 'Continue', processId: 'queue_child' }, invocationStub)).toHaveProperty('error');
+        expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it.each(['missing', 'replaced', 'offline', 'changed-before-post', 'changed-after-post', 'endpoint-after-post'] as const)(
+        'fails closed for %s remote ownership without a local launch or retry', async state => {
+            const server = { id: 'ssh-forward-22', kind: 'ssh', effectiveUrl: 'http://target:5000', serverIdentity: 'owning-installation' };
+            let posts = 0;
+            let healthReads = 0;
+            const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+                if (url.endsWith('/api/health')) {
+                    healthReads++;
+                    if (state === 'offline') throw new Error('private transport failure');
+                    return new Response(JSON.stringify(state === 'missing' ? {}
+                        : { serverIdentity: state === 'replaced' || (state === 'changed-after-post' && healthReads > 1)
+                            ? 'replacement-installation' : 'owning-installation' }));
+                }
+                if (url.endsWith('/capabilities')) {
+                    if (state === 'changed-before-post') server.effectiveUrl = 'http://replacement:7000';
+                    return new Response(JSON.stringify({ version: 1, grilling: true }));
+                }
+                if (init?.method === 'POST') {
+                    posts++;
+                    if (state === 'endpoint-after-post') server.effectiveUrl = 'http://replacement:7000';
+                    return new Response(JSON.stringify({ processId: 'queue_remote', sessionId: 'ralph', phase: 'grilling' }));
+                }
+                throw new Error('Unexpected request');
+            });
+            const workspaceDirectory = createWorkspaceDirectory({ store: makeStore(),
+                remoteServers: { list: () => [server as any] }, fetchImpl: fetchImpl as typeof fetch });
+            const { tool, enqueueChat } = makeTool({ runtime: { workspaceDirectory } });
+            const result = await tool.handler({ content: 'Interview', workspaceId: 'remote:ssh-forward-22:child',
+                provider: 'copilot', mode: 'ralph', entryPoint: 'grill' }, invocationStub);
+            expect(result).toHaveProperty('error');
+            expect(result).not.toHaveProperty('openLink');
+            expect(posts).toBe(state.endsWith('after-post') ? 1 : 0);
+            if (posts) expect((result as any).error).toContain('Do not launch a duplicate job');
+            expect(JSON.stringify(result)).not.toContain('private transport failure');
+            expect(enqueueChat).not.toHaveBeenCalled();
+        });
 });

@@ -247,20 +247,6 @@ describe('RepoDetail queue — remote-clone request routing', () => {
         expect(mockDispatch.mock.calls.some(([action]) => action.type === 'SET_GIT_ROUTE')).toBe(false);
     });
 
-    it.each([undefined, 'one', 'two'])('passes repo owner %s to the PR tab', serverId => {
-        activeSubTab = 'pull-requests';
-        renderDetail(REMOTE_WS, serverId);
-        expect(screen.getByTestId('repo-pr-owner')).toHaveAttribute('data-destination', serverId ? `remote:${serverId}:${REMOTE_WS}` : REMOTE_WS);
-        expect(screen.getByTestId('repo-pr-owner')).toHaveAttribute('data-workspace', REMOTE_WS);
-    });
-
-    it.each([undefined, 'one', 'two'])('passes repo owner %s to work-item reviews', serverId => {
-        activeSubTab = 'work-items';
-        renderDetail(REMOTE_WS, serverId);
-        expect(screen.getByTestId('repo-work-item-owner')).toHaveAttribute('data-destination', serverId ? `remote:${serverId}:${REMOTE_WS}` : REMOTE_WS);
-        expect(screen.getByTestId('repo-work-item-owner')).toHaveAttribute('data-workspace', REMOTE_WS);
-    });
-
     const queueSeedUrls = (list: string[], wsId: string) =>
         list.filter(u => u.includes('/queue?') && u.includes(`repoId=${wsId}`));
     const resumeUrls = (list: string[], wsId: string) =>

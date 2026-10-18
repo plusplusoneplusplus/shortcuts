@@ -1,3 +1,5 @@
+import { useUnifiedPanelHost } from '../repo-detail/unified-right-panel/unifiedPanelHost';
+import { buildWorkResourceHash } from '../../layout/workResourceRoute';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
     ConvertDreamCardRequest,
@@ -104,7 +106,7 @@ function sourceHash(workspaceId: string, processId: string): string {
 }
 
 function workItemHash(workspaceId: string, workItemId: string): string {
-    return '#repos/' + encodeURIComponent(workspaceId) + '/work-items/' + encodeURIComponent(workItemId);
+    return buildWorkResourceHash(workspaceId, 'work-items', workspaceId, encodeURIComponent(workItemId));
 }
 
 function nextActionCopy(category: DreamCardCategory): string {
@@ -431,6 +433,8 @@ interface NextActionDialogProps {
 }
 
 function NextActionDialog({ card, workspaceId, originId, onClose, onConverted }: NextActionDialogProps) {
+    const panelHost = useUnifiedPanelHost();
+    const routeOwner = panelHost?.workspaceId === workspaceId ? panelHost.routingRef ?? workspaceId : workspaceId;
     const workItemOriginId = originId ?? resolveWorkItemOriginId({ workspaceId });
     const [actionKind, setActionKind] = useState<DreamNextActionKind>(defaultNextActionKind(card));
     const [skillPrompt, setSkillPrompt] = useState(renderSkillHardeningPrompt(card));
@@ -514,7 +518,7 @@ function NextActionDialog({ card, workspaceId, originId, onClose, onConverted }:
                 await onConverted({
                     artifactType: 'work-item',
                     artifactId: item.id,
-                    artifactUrl: workItemHash(workspaceId, item.id),
+                    artifactUrl: workItemHash(routeOwner, item.id),
                 });
             } else {
                 const workItemId = existingWorkItemId.trim();
@@ -532,7 +536,7 @@ function NextActionDialog({ card, workspaceId, originId, onClose, onConverted }:
                 await onConverted({
                     artifactType: 'work-item',
                     artifactId: item.id,
-                    artifactUrl: workItemHash(workspaceId, item.id),
+                    artifactUrl: workItemHash(routeOwner, item.id),
                 });
             }
             onClose();

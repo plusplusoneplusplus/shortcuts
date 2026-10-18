@@ -1,6 +1,6 @@
 /**
  * repoPickerModel — pure, presentation-facing helpers shared by the two remote
- * repo-picker dropdowns (RemoteScopeCluster's remote picker and the virtual
+ * repo-picker dropdowns (WorkspaceIdentityChip's remote picker and the virtual
  * workspace header's repo picker). Kept dependency-light (no React) so both the
  * headless hook and the presentational rows can reuse one source of truth.
  */

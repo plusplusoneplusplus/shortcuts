@@ -295,8 +295,10 @@ describe('keyboard', () => {
     it('never parks the cursor on a disabled action', async () => {
         const { onOpenResource, onOpenWorkspaceResource } = renderMenu({ chatId: null });
         const input = screen.getByTestId('unified-panel-open-menu-search');
-        // terminal, explorer, notes, browser, [canvas disabled] — arrowing past
+        // terminal, explorer, work-items, pull-requests, notes, browser, [canvas disabled] — arrowing past
         // Browser must wrap to Terminal rather than land on Canvas.
+        fireEvent.keyDown(input, { key: 'ArrowDown' });
+        fireEvent.keyDown(input, { key: 'ArrowDown' });
         fireEvent.keyDown(input, { key: 'ArrowDown' });
         fireEvent.keyDown(input, { key: 'ArrowDown' });
         fireEvent.keyDown(input, { key: 'ArrowDown' });
@@ -429,6 +431,8 @@ describe('the chat\'s Changes entry', () => {
         expect(labels).toEqual([
             'unified-panel-open-terminal',
             'unified-panel-open-explorer',
+            'unified-panel-open-work-items',
+            'unified-panel-open-pull-requests',
             'unified-panel-open-notes',
             'unified-panel-open-browser',
             'unified-panel-open-canvas',
@@ -506,7 +510,7 @@ describe('UnifiedPanelOpenMenu — Sentinel To-do', () => {
         expect(icon.getAttribute('aria-hidden')).not.toBeNull();
         expect(icon.querySelector('svg polyline')).not.toBeNull();
         expect(row.textContent).toBe('To-do');
-        for (const action of ['terminal', 'explorer', 'notes', 'browser']) {
+        for (const action of ['terminal', 'explorer', 'work-items', 'pull-requests', 'notes', 'browser']) {
             const leading = screen.getByTestId(`unified-panel-open-${action}`).firstElementChild as HTMLElement;
             expect(leading.className).toBe(icon.className);
             expect(leading.textContent || leading.querySelector('svg')).toBeTruthy();

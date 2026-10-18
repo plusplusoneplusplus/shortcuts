@@ -143,7 +143,8 @@ const DESCRIPTION =
     'assessment; acknowledge only the results you actually judged, not running follow-ups. Unrelated edits do not ' +
     'clear pending reviews. A newer user verdict supersedes stale job reviews; preserve it. ' +
     '`attach_reference` links an existing conversation (`conversationId`, plus `conversationWorkspaceId` when it is not this ' +
-    'chat\'s workspace) to a normal item as a reference only, with `itemId` and `expectedRevision`: it never sends the ' +
+    'chat\'s workspace) to a normal item as a reference only, with `itemId` and `expectedRevision`. Saved, queued and running chats ' +
+    'qualify; a Ralph iteration or Ralph session ID links its whole session. It never starts or sends the ' +
     'conversation anything, never changes status, and is not a job or review evidence. Re-attaching is a no-op. ' +
     'For dashboard-visible chats, first use list_workspaces and search_conversations with source dashboard. Ask the user when matches are ambiguous. ' +
     'Pass the selected conversationTarget (exact serverIdentity/workspaceId), conversationTitle (discovery search text), and conversationOffset (selected result page offset, default 0). ' +
@@ -253,7 +254,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                 offset: { type: 'integer', minimum: 0, description: 'list: use nextOffset to page past active items into older Done/archived history.' },
                 itemId: { type: 'string', description: 'list: exact item lookup, including older records; update/attach_reference/create_trigger/edit_trigger: the owning item.' },
                 expectedRevision: { type: 'number', description: 'The item revision for item edits, or rule revision for trigger lifecycle actions.' },
-                conversationId: { type: 'string', description: 'attach_reference: process ID of the existing conversation to reference.' },
+                conversationId: { type: 'string', description: 'attach_reference: process ID of the existing (saved, queued or running) conversation, or a Ralph session ID.' },
                 conversationWorkspaceId: { type: 'string', description: 'attach_reference: that conversation\'s workspace (default: this chat\'s).' },
                 conversationTarget: { type: 'object', additionalProperties: false, required: ['serverIdentity', 'workspaceId'],
                     properties: { serverIdentity: { type: 'string' }, workspaceId: { type: 'string' } },

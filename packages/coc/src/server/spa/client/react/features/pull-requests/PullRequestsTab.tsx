@@ -1,3 +1,8 @@
+import { decodeSegment } from '../../layout/routePath';
+import { useReposOptional } from '../../contexts/ReposContext';
+import { useWorkspaceOwner } from '../../repos/workspaceOwnerContext';
+import { useWorkspaceSettingsRepos } from '../repo-settings/workspaceSettingsClient';
+import { routingRefForPanelOwner } from '../repo-detail/unified-right-panel/unifiedPanelOwnerRouting';
 /**
  * PullRequestsTab — fetches and renders the redesigned "PR review
  * command queue" left rail plus the PR detail / batch panel right pane.
@@ -25,6 +30,9 @@ import { useCocClient } from '../../repos/cloneRouting';
 import { resolveCanonicalOriginId } from '../../repos/originScope';
 import { useApp } from '../../contexts/AppContext';
 import { cn } from '../../ui';
+import { useContainerCompact } from '../../hooks/ui/useContainerCompact';
+import { useWorkResourceNavigation } from '../repo-detail/unified-right-panel/workResourceNavigation';
+import { buildWorkResourceHash } from '../../layout/workResourceRoute';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import {
@@ -34,7 +42,6 @@ import {
     isSessionContextAttachmentsEnabled,
 } from '../../utils/config';
 import { SHOW_FOCUSED_DIFF } from '../../featureFlags';
-import { DockedStatusFooter } from '../../layout/DockedStatusFooter';
 import { PullRequestDetail } from './PullRequestDetail';
 import { PullRequestRow, type PrClassificationBadgeStatus } from './PullRequestRow';
 import { PrQueueFilters } from './PrQueueFilters';
@@ -174,7 +181,17 @@ function buildRecentOpenedRecord(pr: unknown, prNumber: number): { number: numbe
 }
 
 export function PullRequestsTab({ repoId, workspaceId, attachmentDestinationId, remoteUrl }: PullRequestsTabProps) {
-    const { state, dispatch } = useApp();
+    const { state } = useApp();
+    const reposContext = useReposOptional();
+    const owner = useWorkspaceOwner(workspaceId);
+    const serverRepos = useWorkspaceSettingsRepos(workspaceId, reposContext?.repos);
+    const availableWorkspaces = useMemo<WorkspaceLike[]>(() => {
+        if (!owner) return state.workspaces ?? [];
+        const choices = serverRepos?.map(repo => ({ ...repo.workspace, remoteUrl: repo.gitInfo?.remoteUrl ?? repo.workspace.remoteUrl }))
+            ?? (owner.baseUrl ? [] : state.workspaces ?? []);
+        return choices.some(workspace => workspace.id === workspaceId)
+            ? choices : [...choices, { id: workspaceId, remoteUrl }];
+    }, [owner, serverRepos, state.workspaces, workspaceId, remoteUrl]);
     // Provider-backed PR list/detail calls use origin routes with explicit
     // selected-clone metadata; durable PR state shares the same origin key.
     const cloneClient = useCocClient(workspaceId);
@@ -191,7 +208,16 @@ export function PullRequestsTab({ repoId, workspaceId, attachmentDestinationId, 
     const [searchText, setSearchText] = useState('');
     const [hasMore, setHasMore] = useState(false);
     const [fetchedAt, setFetchedAt] = useState<number | null>(null);
-    const { isMobile } = useBreakpoint();
+    const { isMobile: viewportMobile } = useBreakpoint();
+    const { ref: containerRef, compact: isMobile } = useContainerCompact(viewportMobile);
+    const routeOwner = attachmentDestinationId ?? workspaceId;
+    const { path: panelPath, navigate, listHash } = useWorkResourceNavigation('pull-requests', routeOwner);
+    const [selectedPrId, setSelectedPrId] = useState<string | number | null>(null);
+    useEffect(() => {
+        if (panelPath === undefined) return;
+        setSelectedPrId(panelPath ? decodeSegment(panelPath.split('/')[0]) : null);
+        setMobileShowDetail(Boolean(panelPath));
+    }, [panelPath]);
     const { width: leftPanelWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: 276,
         minWidth: 200,
@@ -911,15 +937,14 @@ export function PullRequestsTab({ repoId, workspaceId, attachmentDestinationId, 
 
     function handleRowClick(pr: PullRequest) {
         const prNumber = pr.number ?? pr.id;
-        dispatch({ type: 'SET_SELECTED_PR', prId: prNumber });
-        dispatch({ type: 'SET_PR_DETAIL_TAB', tab: 'overview' });
-        window.location.hash = `#repos/${encodeURIComponent(repoId)}/pull-requests/${prNumber}/overview`;
+        setSelectedPrId(prNumber);
+        navigate(buildWorkResourceHash(routeOwner, 'pull-requests', routeOwner, `${prNumber}/overview`));
         if (isMobile) setMobileShowDetail(true);
     }
 
     /** Navigate to a PR detail page after validating that the PR exists. */
     const openPrInRepo = useCallback(async (targetRepoId: string, targetWorkspaceId: string, prNumber: number): Promise<unknown> => {
-        const targetWorkspace = (state.workspaces ?? []).find((ws: WorkspaceLike) => ws.id === targetWorkspaceId);
+        const targetWorkspace = availableWorkspaces.find((ws: WorkspaceLike) => ws.id === targetWorkspaceId);
         const targetOriginId = resolveCanonicalOriginId({
             workspaceId: targetWorkspaceId,
             remoteUrl: targetWorkspace?.remoteUrl ?? (targetWorkspaceId === workspaceId ? remoteUrl : undefined),
@@ -936,12 +961,12 @@ export function PullRequestsTab({ repoId, workspaceId, attachmentDestinationId, 
             }
             throw new PullRequestOpenError(getSpaCocClientErrorMessage(err, `Failed to open pull request #${prNumber}.`));
         }
-        dispatch({ type: 'SET_SELECTED_PR', prId: prNumber });
-        dispatch({ type: 'SET_PR_DETAIL_TAB', tab: 'overview' });
-        window.location.hash = `#repos/${encodeURIComponent(targetRepoId)}/pull-requests/${prNumber}/overview`;
+        if (targetWorkspaceId === workspaceId) setSelectedPrId(prNumber);
+        const targetOwner = routingRefForPanelOwner(routeOwner, targetWorkspaceId) ?? targetWorkspaceId;
+        navigate(buildWorkResourceHash(targetOwner, 'pull-requests', targetOwner, `${prNumber}/overview`));
         if (isMobile) setMobileShowDetail(true);
         return pr;
-    }, [dispatch, isMobile, remoteUrl, state.workspaces, workspaceId, cloneClient]);
+    }, [isMobile, remoteUrl, availableWorkspaces, workspaceId, cloneClient, navigate, routeOwner]);
 
     const recordRecentOpenedPr = useCallback(async (
         targetRepoId: string,
@@ -949,7 +974,7 @@ export function PullRequestsTab({ repoId, workspaceId, attachmentDestinationId, 
         prNumber: number,
         pr: unknown,
     ) => {
-        const targetWorkspace = (state.workspaces ?? []).find((ws: WorkspaceLike) => ws.id === targetWorkspaceId);
+        const targetWorkspace = availableWorkspaces.find((ws: WorkspaceLike) => ws.id === targetWorkspaceId);
         const targetOriginId = resolveCanonicalOriginId({
             workspaceId: targetWorkspaceId,
             remoteUrl: targetWorkspace?.remoteUrl ?? (targetWorkspaceId === workspaceId ? remoteUrl : undefined),
@@ -962,7 +987,7 @@ export function PullRequestsTab({ repoId, workspaceId, attachmentDestinationId, 
         if (targetOriginId === originId) {
             setRecentOpenedPrs(data.entries ?? []);
         }
-    }, [repoId, workspaceId, remoteUrl, originId, state.workspaces, cloneClient]);
+    }, [repoId, workspaceId, remoteUrl, originId, availableWorkspaces, cloneClient]);
 
     const removeRecentOpenedPr = useCallback(async (entry: RecentOpenedPullRequestEntry) => {
         const data = await cloneClient.pullRequests.removeRecentOpenedForOrigin(
@@ -1025,7 +1050,7 @@ export function PullRequestsTab({ repoId, workspaceId, attachmentDestinationId, 
             prNumber = parsed.number;
         } else {
             const ws = matchWorkspaceForPrUrl(
-                (state.workspaces ?? []) as WorkspaceLike[],
+                availableWorkspaces,
                 parsed,
             );
             if (!ws) {
@@ -1051,7 +1076,7 @@ export function PullRequestsTab({ repoId, workspaceId, attachmentDestinationId, 
         } finally {
             setOpenPrLoading(false);
         }
-    }, [openPrInput, openPrLoading, openPrInRepo, recordRecentOpenedPr, repoId, state.workspaces, workspaceId]);
+    }, [openPrInput, openPrLoading, openPrInRepo, recordRecentOpenedPr, repoId, availableWorkspaces, workspaceId]);
 
     function handlePrSelect(id: string, checked: boolean, shiftKey: boolean, sectionPrs: PullRequest[]) {
         const sectionIds = sectionPrs.map(getPrSelectionId);
@@ -1611,7 +1636,7 @@ export function PullRequestsTab({ repoId, workspaceId, attachmentDestinationId, 
                                     key={pr.id}
                                     pr={pr}
                                     onClick={() => handleRowClick(pr)}
-                                    isSelected={state.selectedPrId != null && String(pr.number ?? pr.id) === String(state.selectedPrId)}
+                                    isSelected={selectedPrId != null && String(pr.number ?? pr.id) === String(selectedPrId)}
                                     isChecked={selectedPrIds.has(getPrSelectionId(pr))}
                                     onSelect={(id, checked, shiftKey) =>
                                         handlePrSelect(id, checked, shiftKey, filteredByPill)
@@ -1695,14 +1720,16 @@ export function PullRequestsTab({ repoId, workspaceId, attachmentDestinationId, 
                 setAnchorPrId(null);
             }}
         />
-    ) : state.selectedPrId != null ? (
+    ) : selectedPrId != null ? (
         <PullRequestDetail
             attachmentDestinationId={attachmentDestinationId}
             repoId={repoId}
             workspaceId={workspaceId}
             remoteUrl={remoteUrl}
-            prId={state.selectedPrId}
-            onBack={() => { if (isMobile) setMobileShowDetail(false); }}
+            prId={selectedPrId}
+            selectedTab={panelPath?.split('/')[1]}
+            onNavigateTab={tab => navigate(buildWorkResourceHash(routeOwner, 'pull-requests', routeOwner, `${selectedPrId}/${tab}`))}
+            onBack={() => { setSelectedPrId(null); setMobileShowDetail(false); navigate(listHash); }}
             isMobile={isMobile}
         />
     ) : (
@@ -1716,7 +1743,7 @@ export function PullRequestsTab({ repoId, workspaceId, attachmentDestinationId, 
 
     if (isMobile) {
         return (
-            <div className="flex flex-col h-full overflow-hidden" data-testid="pr-split-panel">
+            <div className="flex flex-col h-full overflow-hidden" ref={containerRef} data-testid="pr-split-panel">
                 {mobileShowDetail ? (
                     <div className="flex-1 flex flex-col overflow-hidden" data-testid="pr-detail-panel">
                         {detailContent}
@@ -1733,7 +1760,7 @@ export function PullRequestsTab({ repoId, workspaceId, attachmentDestinationId, 
     const effectiveLeftPanelWidth = queueCollapsed ? QUEUE_COLLAPSED_WIDTH : leftPanelWidth;
 
     return (
-        <div className={cn('flex h-full overflow-hidden', isDragging && 'select-none')} data-testid="pr-split-panel">
+        <div className={cn('flex h-full overflow-hidden', isDragging && 'select-none')} ref={containerRef} data-testid="pr-split-panel">
             <div
                 className="flex-shrink-0 border-r border-gray-200 flex flex-col overflow-hidden bg-white dark:border-gray-700 dark:bg-gray-900"
                 style={{ width: effectiveLeftPanelWidth }}
@@ -1741,12 +1768,6 @@ export function PullRequestsTab({ repoId, workspaceId, attachmentDestinationId, 
                 data-collapsed={queueCollapsed}
             >
                 {queuePanel}
-                {/* Docked status/action cluster at the bottom of the PR queue
-                    sidebar (remote-first shell) — `GlobalStatusDock` stands down
-                    on this sub-tab. Hidden while collapsed: the 44px rail can't
-                    fit the cluster. No-ops in classic / mobile via
-                    `DockedStatusFooter`'s own gate. */}
-                {!queueCollapsed && <DockedStatusFooter />}
             </div>
 
             {!queueCollapsed && (

@@ -66,6 +66,20 @@ describe('Sentinel to-do job links', () => {
         return todos.get(at).items.find(item => item.id === itemId)!;
     }
 
+    it('exposes durable local job links without rewriting ledger history or remote ownership', async () => {
+        const item = await createItem();
+        await link(item.id, 'queue_local');
+        const remoteLink = '#chat-references/remote-installation/ws-other/queue_remote';
+        await link(item.id, 'queue_remote', { kind: 'remote', serverId: 'ssh-alias', workspaceId: 'ws-other', openLink: remoteLink });
+        const scoped = new SentinelTodoService({ todos, serverIdentity: 'owning-installation',
+            store: { getProcess: async id => processes.get(id) } });
+        const view = await scoped.list(owner);
+        expect(view.items[0].jobs.map(job => job.openLink)).toEqual([
+            '#chat-references/owning-installation/ws-child/queue_local', remoteLink,
+        ]);
+        expect(current(item.id).jobs[0].openLink).toBe('#/process/queue_local');
+    });
+
     it('returns spec-ready feature work to Todo without consuming the execution result', async () => {
         const item = await createItem();
         await link(item.id, 'queue_grill', { kind: 'ralph', sessionId: 'ralph-grill' });
@@ -291,7 +305,7 @@ describe('Sentinel to-do job links', () => {
         function makeTool(opts: { bound?: typeof owner; enqueue?: (input: CreateTaskInput) => Promise<string>; tracking?: boolean } = {}) {
             const enqueueChat = vi.fn(opts.enqueue ?? (async () => 'task-1'));
             const launchRalph = vi.fn(async () => ({ ok: true as const, processId: 'queue_ralph', sessionId: 'ralph-1' }));
-            const startRemoteChat = vi.fn(async (): Promise<{ processId: string; sessionId?: string }> => ({ processId: 'queue_remote' }));
+            const startRemoteChat = vi.fn(async (): Promise<{ serverIdentity: string; processId: string; sessionId?: string }> => ({ serverIdentity: 'remote-installation', processId: 'queue_remote' }));
             const store = {
                 getWorkspaces: async () => [{ id: 'ws-a', name: 'a', rootPath: '/a' }, { id: 'ws-child', name: 'child', rootPath: '/c' }],
                 getProcess: async (id: string) => processes.get(id),
@@ -306,7 +320,7 @@ describe('Sentinel to-do job links', () => {
             const { tool } = createSendToConversationTool({
                 store, workspaceId: bound.workspaceId, enqueueChat, launchRalph: launchRalph as any,
                 parentProcessId: bound.processId,
-                runtime: { workspaceDirectory: directory as any },
+                runtime: { serverIdentity: 'local-installation', workspaceDirectory: directory as any },
                 ...(opts.tracking === false ? {} : { todoTracking: createSentinelTodoTracking({ service, owner: bound }) }),
             });
             const call = (args: Record<string, unknown>) => (tool as any).handler(args, invocation);
@@ -397,7 +411,7 @@ describe('Sentinel to-do job links', () => {
             expect(result).toMatchObject({ processId: 'queue_task-1', tracking: { status: 'tracked', itemId: item.id } });
             expect(current(item.id)).toMatchObject({
                 status: 'in_progress',
-                jobs: [{ processId: 'queue_task-1', workspaceId: 'ws-child', kind: 'local', title: 'Fix it', openLink: '#/process/queue_task-1' }],
+                jobs: [{ processId: 'queue_task-1', workspaceId: 'ws-child', kind: 'local', title: 'Fix it', openLink: '#chat-references/local-installation/ws-child/queue_task-1' }],
             });
             expect(current(item.id).jobs[0].sessionId).toBeUndefined();
         });
@@ -435,7 +449,7 @@ describe('Sentinel to-do job links', () => {
         it('preserves remote Ralph launch metadata through dispatch, list and reload while status is unavailable', async () => {
             const item = await createItem();
             const { call, startRemoteChat } = makeTool();
-            startRemoteChat.mockResolvedValueOnce({ processId: 'queue_remote', sessionId: 'session-remote' });
+            startRemoteChat.mockResolvedValueOnce({ serverIdentity: 'remote-installation', processId: 'queue_remote', sessionId: 'session-remote' });
             await call({ content: 'goal', mode: 'ralph', workspaceId: 'remote:srv-1:w-api', todoItemId: item.id });
             expect(startRemoteChat).toHaveBeenCalledWith(expect.objectContaining({ kind: 'ralph' }));
             const reloaded = new SentinelTodoService({
@@ -457,7 +471,7 @@ describe('Sentinel to-do job links', () => {
             const job = current(item.id).jobs[0];
             expect(job).toMatchObject({ processId: 'queue_remote', workspaceId: 'w-api', serverId: 'srv-1', kind: 'remote' });
             expect(job.sessionId).toBeUndefined();
-            expect(job.openLink).toBe(`#repos/${encodeURIComponent('remote:srv-1:w-api')}/chats/queue_remote`);
+            expect(job.openLink).toBe('#chat-references/remote-installation/w-api/queue_remote');
             expect((await service.list(owner)).items[0].jobs[0].execution).toEqual({ state: 'unavailable' });
         });
 
@@ -507,10 +521,10 @@ describe('Sentinel to-do job links', () => {
         it('preserves standalone dispatch when the addon has no server ledger capability', async () => {
             const store = { getProcess: async (id: string) => processes.get(id), getWorkspaces: async () => [{ id: 'ws-a' }] } as any;
             const enqueue = vi.fn(async () => 'task-9');
-            const off = buildSendToConversationAddon(store, 'ws-a', enqueue, owner.processId);
+            const off = buildSendToConversationAddon(store, 'ws-a', enqueue, owner.processId, undefined, { serverIdentity: 'local-installation' });
             const offTool = off.tools.find(tool => tool.name === 'send_to_conversation') as any;
             const result = await offTool.handler({ content: 'go' }, invocation);
-            expect(result).toEqual({ processId: 'queue_task-9', openLink: '#/process/queue_task-9' });
+            expect(result).toEqual({ processId: 'queue_task-9', openLink: '#chat-references/local-installation/ws-a/queue_task-9' });
 
             const on = buildSendToConversationAddon(store, 'ws-a', enqueue, owner.processId,
                 undefined, undefined, undefined, { service, owner });

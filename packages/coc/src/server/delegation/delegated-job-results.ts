@@ -6,7 +6,7 @@ import type { RalphSessionCompleteEvent } from '../queue/queue-executor-bridge';
 import type { RalphSessionRecord } from '../ralph/types';
 import type { RalphSessionStore } from '../ralph/ralph-session-store';
 import { getRalphTaskKind } from '../ralph/task-kind';
-import { buildChatOpenLink } from '../servers/workspace-directory';
+import { buildDashboardChatReference } from '../shared/chat-reference';
 import { isRalphFinalCheckRepairTurn, getRalphContext } from '../tasks/task-types';
 import { RalphGrillingStore, reconcileRalphGoal } from '../ralph/grilling-state';
 import { resolveRalphExecutionOwner } from '../ralph/ralph-execution-owner';
@@ -286,7 +286,7 @@ export class DelegatedJobResults {
     }
 
     private sessionLinks(job: DelegatedJob): string[] {
-        return [`/api/workspaces/${encodeURIComponent(job.child.workspaceId)}/ralph-sessions/${encodeURIComponent(job.child.sessionId!)}`,
+        return [...this.links(job),
             ...(this.deps.sessions ? [this.deps.sessions.getProgressPath(job.child.workspaceId, job.child.sessionId!).slice(0, 2_000)] : [])];
     }
 
@@ -307,7 +307,7 @@ export class DelegatedJobResults {
                     + (outcome === 'capped' ? ' The automation limit was reached; goal completion is not confirmed.' : '')
                     + (summary ? `\n${summary}` : ''),
             links: session ? [
-                `/api/workspaces/${encodeURIComponent(session.workspaceId)}/ralph-sessions/${encodeURIComponent(session.sessionId)}`,
+                buildDashboardChatReference(this.deps.jobs.serverIdentity, processId ? session.workspaceId : job.child.workspaceId, processId ?? job.child.processId),
                 ...(this.deps.sessions ? [this.deps.sessions.getProgressPath(session.workspaceId, session.sessionId)] : []),
             ] : this.sessionLinks(job),
         });
@@ -413,7 +413,7 @@ export class DelegatedJobResults {
     }
 
     private links(job: DelegatedJob, resultFilePath?: string): string[] {
-        return [buildChatOpenLink(job.child.workspaceId, job.child.processId),
+        return [buildDashboardChatReference(this.deps.jobs.serverIdentity, job.child.workspaceId, job.child.processId),
             ...(resultFilePath ? [resultFilePath.slice(0, 2_000)] : [])];
     }
 }

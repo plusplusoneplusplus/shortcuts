@@ -13,7 +13,7 @@ selected `workspaceId`/`repoId` choosing the clone. Route contracts, response ca
 and warming: [../rest-api.md](../rest-api.md).
 
 `WorkItemContext` keys persistent lists, pagination, unseen IDs, and realtime revisions
-by origin ID, so same-origin clones share list state and remote-shell badges.
+by origin ID, so same-origin clones share list state.
 `work-item-added`/`-updated`/`-removed` WebSocket events update both the raw event scope
 and the resolved origin scope for known workspaces; origin-scoped events update the
 origin scope directly. `WorkItemHierarchyTree` refetches through the origin-scoped
@@ -44,9 +44,10 @@ flipping is separate.
 ## Tracker tabs
 
 `WorkItemsTab` presents hierarchy mode as two tracker tabs, **Local** and **Remote**.
-The selection persists in `localStorage` under a `workspaceId`-scoped key; invalid saved
-values fall back to Local. Work item, session, and commit deep links keep the existing
-hash shape while the list pane initializes from the saved tab.
+The tracker selection persists under the concrete owner selection id; invalid values
+fall back to Local. The right-panel descriptor owns item/session/commit selection;
+canonical panel links retain both the hosting scope and member owner. See
+[shell routing](shell.md#workspace-panel-resources).
 
 **Local** passes `tracker=local-only` to the tree endpoint and shows local creation
 actions for local-only Epic trees.

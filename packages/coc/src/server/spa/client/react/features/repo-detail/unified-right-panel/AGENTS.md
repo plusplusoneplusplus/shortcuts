@@ -1,14 +1,13 @@
 # unified-right-panel
 
 The workspace's one and only right panel: a Cursor-style resource-tabbed column
-holding Terminal, Notes, Settings, files, notes, canvases, chat diffs, local HTML pages, and web browser tabs, with a
-Search/Explorer navigator at its right edge. The panel is unconditional within
-the desktop dock gate.
+holding Terminal, Work Items, Pull Requests, Notes, Settings, files, canvases,
+chat diffs, local HTML pages and web browser tabs, with a Search/Explorer navigator
+at its right edge. It mounts at every breakpoint.
 
 `RepoDetail.tsx` and `repos/RepoGroupView.tsx` render it under the
-`dockAvailable` gate (desktop) and wrap their subtree in
-`UnifiedPanelHostProvider` under the same condition; the panel does not widen
-that gate. The state around it — open, selected Search/Explorer mode, width,
+workspace host and wrap their subtree in `UnifiedPanelHostProvider`. Mobile
+uses a full-width presentation with a visible header toggle. The state around it — open, selected Search/Explorer mode, width,
 resize, and target — comes from
 `../useWorkspaceDock`, described in `../AGENTS.md`.
 
@@ -112,8 +111,15 @@ model. A dock target change keeps explicit member opens valid within that panel.
 
 ## Views are reused, never re-implemented
 
-Notes and Settings exist for repos and groups only as panel tabs; the add-tab
-menu always lists both. `unifiedPanelWorkspaceResources.ts` builds their
+Work Items, Pull Requests, Notes and Settings exist for repos and groups as
+panel tools. The add-tab menu always offers them. WI/PR tools follow the dock
+target and carry its concrete owner route; Notes/Settings belong to the panel
+workspace. `UnifiedWorkResourceTab` reuses the existing list/detail screens under
+the pinned owner client. Their descriptor `workPath` owns detail selection;
+`workResourceNavigation.tsx` preserves hosting scope and selected chat through
+canonical `/panel/<kind>/<owner>/...` routes. WI/PR views remain mounted when
+closed to preserve filters and drafts. Container width selects their compact
+list/detail presentation. `unifiedPanelWorkspaceResources.ts` builds their
 workspace-owned descriptors (Settings carries the panel's concrete owner, never
 the dock target) for the menu and for every outside link
 (`usePanelWorkspaceResourceOpener`, `openPanelWorkspaceResource`), so links focus

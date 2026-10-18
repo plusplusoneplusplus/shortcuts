@@ -39,10 +39,11 @@ test.use({ viewport: PHONE, hasTouch: true });
 async function openMobileWorkspace(page: Page, serverUrl: string): Promise<string> {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-mobile-ws-'));
     const repoDir = createMultiCommitRepo(tmpDir);
+    const workspaceId = `${WS_ID}-${path.basename(tmpDir)}`;
 
-    await seedWorkspace(serverUrl, WS_ID, WS_NAME, repoDir);
+    await seedWorkspace(serverUrl, workspaceId, WS_NAME, repoDir);
     await seedProcess(serverUrl, 'proc-mobile-ws-1', {
-        workspaceId: WS_ID,
+        workspaceId,
         promptPreview: CHAT_PREVIEW,
         type: 'chat',
         status: 'completed',
@@ -55,7 +56,7 @@ async function openMobileWorkspace(page: Page, serverUrl: string): Promise<strin
         }),
     });
 
-    await page.goto(`${serverUrl}/#repos/${WS_ID}`);
+    await page.goto(`${serverUrl}/#repos/${workspaceId}`);
     await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 15_000 });
 
     // Both chat URL aliases resolve to the Workspace tab.
@@ -129,7 +130,7 @@ test.describe('Mobile Workspace panel (390×844)', () => {
         }
     });
 
-    test('tapping a commit pushes the detail and back returns to the Git segment', async ({ page, serverUrl }) => {
+    test('tapping a commit opens the resource panel and hiding it returns to the Git segment', async ({ page, serverUrl }) => {
         const tmpDir = await openMobileWorkspace(page, serverUrl);
         try {
             await showGitSegment(page);
@@ -138,14 +139,16 @@ test.describe('Mobile Workspace panel (390×844)', () => {
             await expect(commitRow).toBeVisible({ timeout: 15_000 });
             await commitRow.tap();
 
-            const detail = page.locator('[data-testid="split-workspace-detail"]');
-            await expect(detail).toBeVisible({ timeout: 15_000 });
+            const detail = page.getByTestId('unified-right-panel');
+            await expect(detail).toHaveAttribute('data-open', 'true');
+            await expect(detail.getByTestId('file-diff-section')).toBeVisible({ timeout: 15_000 });
             await expect(page.locator('[data-testid="split-workspace-git"]')).toBeHidden();
 
-            await page.locator('[data-testid="split-workspace-mobile-back"]').tap();
-            // Back lands on the segment the user came from, not on Chats.
+            await page.getByRole('button', { name: 'Hide right panel', exact: true }).tap();
+            await expect(detail).toHaveAttribute('data-open', 'false');
             await expect(page.locator('[data-testid="split-workspace-git"]')).toBeVisible();
             await expect(page.locator('[data-testid="split-workspace-panel"]')).toHaveAttribute('data-mobile-pane', 'git');
+            await expect(page.locator('[data-testid="split-workspace-panel"]')).toHaveAttribute('data-mobile-detail', 'false');
         } finally {
             safeRmSync(tmpDir);
         }

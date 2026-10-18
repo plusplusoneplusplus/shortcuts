@@ -601,9 +601,11 @@ detail route already evicts sub-caches.
 `features/pull-requests/PrChecksSummary.tsx` chips, and `prStatusFreshness.ts` — stay
 exported and unit-tested but are mounted nowhere.
 
-## Pull Requests tab
+## Pull Requests panel tool
 
-Enabled by default via `pullRequests.enabled`. Admin → Configure → Features exposes
+The right-panel add-tab menu opens the existing PR queue/detail screen for one
+concrete owner. Panel-local selection and owner-qualified routes follow
+[shell routing](shell.md#workspace-panel-resources). Enabled by default via `pullRequests.enabled`. Admin → Configure → Features exposes
 `pullRequests.suggestions` and `pullRequests.autoClassifyTeam`, both disabled by
 default, through runtime config helpers.
 

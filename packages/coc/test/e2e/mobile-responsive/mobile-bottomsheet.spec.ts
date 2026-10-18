@@ -3,13 +3,17 @@
  * at 375×812.
  */
 import { test, expect } from '../fixtures/server-fixture';
-import { seedWorkspace } from '../fixtures/seed';
+import { request, seedWorkspace } from '../fixtures/seed';
 import { MOBILE } from './viewports';
 
 test.use({ viewport: MOBILE, hasTouch: true });
 
 test.describe('BottomSheet Gestures', () => {
     test('mobile: BottomSheet drag-to-dismiss closes the sheet', async ({ page, serverUrl }) => {
+        const config = await request(`${serverUrl}/api/admin/config`, {
+            method: 'PUT', body: JSON.stringify({ 'workflows.enabled': true }),
+        });
+        expect(config.status).toBe(200);
         await seedWorkspace(serverUrl, 'ws-bsd-1', 'bsd-repo-1');
         await page.goto(`${serverUrl}/#repos`);
         await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });

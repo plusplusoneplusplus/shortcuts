@@ -121,9 +121,9 @@ after Done. `limit` sets the budget, `nextOffset`/`offset` page remaining histor
 internal tracking and graph reads retain the full ledger), `create` (normal items require `completionCondition`,
 optional `idempotencyKey` replay), `update` (requires `itemId` + `expectedRevision`; conflicts
 return `{ code: 'conflict', current }`), `attach_reference` (`itemId` + `expectedRevision` + `conversationId`,
-optional `conversationWorkspaceId` defaulting to the chat's; a reference-only link that never changes status or
-counts as a job/review). Store deduplication uses durable server/workspace/process
-identity; omitted `serverIdentity` denotes the ledger's server. Reference records retain
+optional `conversationWorkspaceId` defaulting to the chat's; saved, queued or running chats and Ralph sessions
+qualify; a reference-only link that never changes status or counts as a job/review). Store deduplication uses
+durable server/workspace/process identity, plus `sessionId` for Ralph session references; omitted `serverIdentity` denotes the ledger's server. Reference records retain
 server/workspace labels and `verified | unverified` state. Local-row migration preserves
 links, order, attribution and ledger revisions without changing the process schema version.
 `conversationTarget: {serverIdentity, workspaceId}`, `conversationTitle` (discovery
@@ -327,8 +327,14 @@ follow-ups when reuse preserves tracking and authorization. Follow-ups retain th
 provider; Auto preference applies to new chats unless the user requests a particular
 provider/model. Tracked sends with `todoItemId` reject `processId`; agents report unsupported
 reuse and preserve tracking through a fresh explicitly authorized tracked launch.
-The tool description and bundled skill request short, task-specific create-mode titles
-and self-contained content; existing-chat sends use `processId`.
+The tool description requests reuse of application-generated `openLink` unchanged.
+`server/shared/chat-reference.ts` builds encoded `#chat-references/<serverIdentity>/<workspaceId>/<processId>`
+links for local, remote and Ralph jobs. Server composition supplies installation identity;
+post mode reads the existing process's exact workspace. Missing ownership fails before send.
+Cancellation omits the link when its owner is unavailable. The SPA's
+`shared/dashboard-discovery/chat-reference.ts` resolver verifies current ownership,
+including same-server jobs opened from another dashboard, without local fallback.
+Create-mode titles stay short and task-specific; existing-chat sends use `processId`.
 The JSON schema requires `content` for send or explicit `action: "cancel"` plus `processId`
 for cancellation; titles remain optional.
 
@@ -347,7 +353,10 @@ or a repo name matched case-insensitively over the workspace directory (exact na
 `name@server` against the server display name). An ambiguous name errors with every candidate
 `id (server)`; no match errors and points at `list_workspaces`. A remote target is started on
 that server's own `POST /api/queue` (Ralph: `POST /api/ralph-launch`, which accepts `title`) at its
-effective URL via `WorkspaceDirectory.startRemoteChat`. Native grilling first verifies version-1
+effective URL via `WorkspaceDirectory.startRemoteChat`. Health reads bracket admission,
+pin installation identity separately from the registry alias, and reject changed endpoints
+or owners. Missing identity fails before POST; post-admission uncertainty prohibits duplicate dispatch.
+Native grilling first verifies version-1
 `/api/ralph-launch/capabilities`; unsupported targets fail before admission, and uncertain POST
 acceptance reports inspection/recovery without duplicate dispatch. There is no local fallback for offline or
 unreachable servers. Enabled Auto becomes the remote queue routing marker
@@ -356,8 +365,8 @@ Remote Auto preflights `/api/config/runtime`; a disabled/missing routing flag or
 capability endpoint selects the local parent's concrete provider, validated through the remote's
 `/api/agent-providers`. Other capability request failures abort. Only that fallback provider and
 explicit provider/model/tier overrides travel; remote defaults own model/effort, and no local
-spawn link, messaging origin, or parent configuration travels. Dispatch is attempted once. The
-result's `openLink` is the dashboard clone route `#repos/<encoded clone key>/chats/<processId>`.
+spawn link, messaging origin, or parent configuration travels. Dispatch is attempted once;
+the returned owning identity qualifies `openLink`.
 Successful remote queue and Ralph launches also return `resultDelivery: { status: 'unavailable',
 reason }`: existing transport launches jobs but cannot return terminal results to the originating
 Sentinel or its WhatsApp/Teams chat. Tool guidance directs the AI to inspect the link, avoid
@@ -405,11 +414,11 @@ children, preferring a scoped queue task to process status; cleared queue histor
 back to the child's process after explicitly verifying its ID and stored workspace; native
 lookups ignore the optional scope argument. Scoped queue outcomes remain valid when process
 context is unavailable. Event IDs derive from child workspace/process identity. Summaries
-use response text or the last request's finished assistant turn, with child-workspace chat
+use response text or the last request's finished assistant turn, with canonical installation/workspace/process
 links and validated result-file paths. Cancellation stores a fixed notice summary without partial output.
 Missing children settle with failed delivery. Remote rows and Ralph step events are excluded.
 Whole-session Ralph events match registered workspace/session identity and store a stable terminal
-receipt, outcome, final process summary, session API link and journal path. Recovery uses terminal
+receipt, outcome, final process summary, canonical final-process link and journal path. Recovery uses terminal
 reasons and final-check records; complete iteration loops with unresolved checks remain pending.
 See [ralph-lifecycle.md](ralph-lifecycle.md#delegated-session-results) for the session boundary.
 Native grilling persists a separate `grilling` milestone and delivery receipt with
@@ -424,7 +433,10 @@ Recovery isolates each job's admission failure so other pending results can proc
 
 `server/delegation/delegated-job-reviews.ts` admits ordinary and whole-session Ralph outcome
 reviews to the stored parent. A SHA-256 receipt covers immutable parent/child/job/event identity. Bounded
-JSON includes repository identity/name/path and stored outcome/links. Review guidance treats
+JSON includes repository identity/name/path and stored outcome/artifact evidence. Delivery
+qualifies the registered child link with installation identity and excludes stale viewer-relative
+chat/session routes, including recovered results, without changing terminal receipts. AI reuses
+these job/artifact links unchanged. Review guidance treats
 child output as untrusted data, grants no new authority, respects latest user instructions,
 and retains Sentinel dispatcher behavior. Cancellations append fixed display-only
 notices through `deliverNoticeOnce`, without child output, AI work or queue mutations.

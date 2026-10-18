@@ -110,6 +110,7 @@ interface WorkItemDetailProps {
     workItemId: string;
     workspaceId: string;
     originId?: string;
+    compact?: boolean;
     onBack?: () => void;
     onExecuted?: () => void;
     /** Called when the user clicks the execution session entry for a task. */
@@ -316,7 +317,7 @@ function ConflictValueCard({ label, value, selected, onSelect }: { label: string
     );
 }
 
-export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onExecuted, onViewTask, onViewCommit, onNavigateToTasksTab }: WorkItemDetailProps) {
+export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onExecuted, onViewTask, onViewCommit, onNavigateToTasksTab, compact = false }: WorkItemDetailProps) {
     // AC-07: all work-item detail reads/writes target the selected clone's server.
     const cloneClient = useCocClient(workspaceId);
     const workItemOriginId = originId ?? resolveWorkItemOriginId({ workspaceId });
@@ -349,7 +350,8 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
     const [showAiDraftApplyDialog, setShowAiDraftApplyDialog] = useState(false);
     const [startingGoalGrilling, setStartingGoalGrilling] = useState(false);
     const aiAuthoringEnabled = isWorkItemsAiAuthoringEnabled();
-    const { isMobile } = useBreakpoint();
+    const { isMobile: viewportMobile } = useBreakpoint();
+    const isMobile = viewportMobile || compact;
     const workItemChatTarget = useMemo<ReviewChatTarget>(() => ({
         type: 'work-item',
         workspaceId,
@@ -371,6 +373,7 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
     } = useReviewChatPresentation({
         target: workItemChatTarget,
         forceLensOnNonDesktop: true,
+        isDesktop: isMobile ? false : undefined,
     });
     const workItemChatResize = useResizablePanel({
         initialWidth: 360,
@@ -938,12 +941,12 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
         && !item.githubMirror
         && !item.azureBoardsMirror;
     const workflowCommandCenter = workflowEnabled && isLocalOnlyWorkflowItem;
-    const compactWorkflowLayout = workflowCommandCenter && isMobile;
-    const compactWorkflowActionClass = compactWorkflowLayout
+    const compactLayout = isMobile;
+    const compactWorkflowActionClass = compactLayout
         ? 'min-h-10 flex-1 px-3 text-[12px]'
         : 'min-h-[22px] px-[6px] text-[10px]';
-    const compactWorkflowReviewButtonClass = compactWorkflowLayout ? 'flex-1 justify-center' : undefined;
-    const compactWorkflowIconButtonClass = compactWorkflowLayout
+    const compactWorkflowReviewButtonClass = compactLayout ? 'flex-1 justify-center' : undefined;
+    const compactWorkflowIconButtonClass = compactLayout
         ? 'inline-flex min-h-10 w-10 items-center justify-center rounded-[4px] border border-red-200 bg-red-50 text-[15px] dark:border-red-800 dark:bg-red-900/20'
         : 'text-[12px] bg-transparent border-0 p-0';
     const statusCfg = statusConfigFor(item.status, workflowCommandCenter, effectiveType);
@@ -1027,12 +1030,12 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
             {/* ── Detail header ── */}
             <div
                 className="border-b border-[#d0d7de] dark:border-[#474749] bg-white dark:bg-[#1e1e1e] grid gap-2 shrink-0"
-                style={{ padding: compactWorkflowLayout ? '10px 12px' : '12px 16px' }}
+                style={{ padding: compactLayout ? '10px 12px' : '12px 16px' }}
             >
                 {/* Title row */}
                 <div
                     className="grid gap-2 items-center"
-                    style={{ gridTemplateColumns: compactWorkflowLayout ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) auto auto' }}
+                    style={{ gridTemplateColumns: compactLayout ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) auto auto' }}
                 >
                     <div className="flex items-center gap-2 min-w-0">
                         {onBack && (
@@ -1063,7 +1066,7 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
                     <button
                         className={cn(
                             'inline-flex items-center justify-center gap-[5px] border border-[rgba(31,35,40,0.15)] rounded-md bg-[#1f883d] text-white px-2 text-[12px] font-semibold tracking-[0.02em] whitespace-nowrap hover:bg-[#1a7f37] disabled:opacity-50 dark:bg-[#238636] dark:hover:bg-[#2ea043]',
-                            compactWorkflowLayout ? 'min-h-10 w-full' : 'min-h-7',
+                            compactLayout ? 'min-h-10 w-full' : 'min-h-7',
                         )}
                         onClick={handleSave}
                         disabled={!isDirty || saving}
@@ -1073,11 +1076,11 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
                     >
                         Save
                     </button>
-                    {!compactWorkflowLayout && <span />}
+                    {!compactLayout && <span />}
                 </div>
 
                 {/* Properties row + inline actions */}
-                <div className={cn('flex items-center gap-1.5 flex-wrap text-[11px] leading-[1.35]', compactWorkflowLayout && 'gap-2')} data-testid="work-item-properties-row">
+                <div className={cn('flex items-center gap-1.5 flex-wrap text-[11px] leading-[1.35]', compactLayout && 'gap-2')} data-testid="work-item-properties-row">
                     <span className={cn('inline-flex items-center rounded-full text-[11px] leading-[1.25] px-[7px] py-px border whitespace-nowrap', typePillClass)}>
                         {TYPE_LABELS[effectiveType as WorkItemTypeLabel] ?? effectiveType}
                     </span>
@@ -1186,7 +1189,7 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
                     <div
                         className={cn(
                             'flex items-center gap-2 shrink-0',
-                            compactWorkflowLayout && 'order-last w-full flex-wrap gap-2 pt-1',
+                            compactLayout && 'order-last w-full flex-wrap gap-2 pt-1',
                         )}
                         data-testid="work-item-primary-actions"
                     >
@@ -1280,7 +1283,7 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
                     className="grid gap-3 items-start"
                     style={{
                         gridTemplateColumns: 'minmax(0, 1fr)',
-                        padding: compactWorkflowLayout ? '10px 10px 18px' : '12px 16px 18px',
+                        padding: compactLayout ? '10px 10px 18px' : '12px 16px 18px',
                     }}
                 >
                 {error && (
@@ -1515,7 +1518,7 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
                                 data-testid="work-item-review-comment"
                             />
                             <div
-                                className={cn('flex gap-2', compactWorkflowLayout && 'flex-wrap')}
+                                className={cn('flex gap-2', compactLayout && 'flex-wrap')}
                                 data-testid="work-item-review-actions"
                             >
                                 <Button variant="primary" size="sm" onClick={handleAcceptDone} disabled={acceptingDone} loading={acceptingDone} data-testid="work-item-accept-done-btn" className={compactWorkflowReviewButtonClass}>
@@ -1626,11 +1629,11 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
                                 return (
                                     <div key={i} className="rounded-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] text-xs" data-testid={`exec-entry-${i}`}>
                                         <div
-                                            className={cn('flex gap-2 px-3 py-2', compactWorkflowLayout ? 'items-start flex-wrap gap-y-1' : 'items-center')}
+                                            className={cn('flex gap-2 px-3 py-2', compactLayout ? 'items-start flex-wrap gap-y-1' : 'items-center')}
                                             data-testid={`exec-header-${i}`}
                                         >
                                             <span>{exec.status === 'running' ? '🔵' : exec.status === 'completed' ? '🟢' : exec.status === 'failed' ? '🔴' : '⚪'}</span>
-                                            <span className={cn('font-medium text-[#3c3c3c] dark:text-[#cccccc]', compactWorkflowLayout && 'min-w-0 flex-1 basis-[calc(100%-1.75rem)]')}>
+                                            <span className={cn('font-medium text-[#3c3c3c] dark:text-[#cccccc]', compactLayout && 'min-w-0 flex-1 basis-[calc(100%-1.75rem)]')}>
                                                 Run #{i + 1}{exec.title ? `: ${exec.title}` : ''}
                                             </span>
                                             {exec.autoReExecuted && (
@@ -1648,7 +1651,7 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
                                                     🔎 AI review
                                                 </span>
                                             )}
-                                            <span className={cn('text-[#848484]', compactWorkflowLayout && 'basis-full pl-6')}>{formatRelativeTime(exec.startedAt)}</span>
+                                            <span className={cn('text-[#848484]', compactLayout && 'basis-full pl-6')}>{formatRelativeTime(exec.startedAt)}</span>
                                             {exec.completedAt && <span className="text-[#848484]">· {formatRelativeTime(exec.completedAt)}</span>}
                                         </div>
                                         {metadataChips.length > 0 && (
@@ -1716,7 +1719,7 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
                                                     const openCount = ct?.open ?? 0;
                                                     const resolvedCount = ct?.resolved ?? 0;
                                                     return (
-                                                        <div key={c.sha} className={cn('flex items-start gap-1.5 text-[10px]', compactWorkflowLayout && 'flex-wrap')}>
+                                                        <div key={c.sha} className={cn('flex items-start gap-1.5 text-[10px]', compactLayout && 'flex-wrap')}>
                                                             {onViewCommit ? (
                                                                 <button onClick={() => onViewCommit(c.sha)} className="text-[#0078d4] hover:underline shrink-0 font-mono bg-transparent border-none cursor-pointer p-0" title={c.message} data-testid={`exec-commit-${c.sha.slice(0, 7)}`}>
                                                                     {c.sha.slice(0, 7)}
@@ -1755,7 +1758,7 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
                                                                 </button>
                                                             )}
                                                             <span
-                                                                className={cn('text-[#3c3c3c] dark:text-[#cccccc] truncate', compactWorkflowLayout && 'basis-full whitespace-normal break-words pl-0')}
+                                                                className={cn('text-[#3c3c3c] dark:text-[#cccccc] truncate', compactLayout && 'basis-full whitespace-normal break-words pl-0')}
                                                                 title={c.message}
                                                                 data-testid={`exec-commit-message-${c.sha.slice(0, 7)}`}
                                                             >

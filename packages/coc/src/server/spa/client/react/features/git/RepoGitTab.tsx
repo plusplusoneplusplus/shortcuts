@@ -262,15 +262,10 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repo
     restoreViewRef.current = restoreView;
     hydrateRef.current = loaded => selection.hydrateFromInitialLoad(loaded, restoreViewRef.current);
 
-    // Mobile Workspace panel (AC-02): this tab has no `mobileShowDetail` of its
-    // own — a selection IS its detail view — so the shell's full-screen push is
-    // driven straight off `selection.view`. The two effects are a closed loop:
-    // selecting a commit pushes the detail, and popping the detail (back button)
-    // clears the selection, so re-tapping the same commit selects afresh and
-    // pushes again. Outside the mobile Workspace panel the context is null and
-    // both effects are inert, leaving every other layout untouched.
+    // An external detail host owns navigation through onViewChange; only an
+    // inline mobile detail uses the Workspace push/back state.
     const mobileWorkspacePane = useMobileWorkspacePane();
-    const setMobileWorkspaceDetailOpen = mobileWorkspacePane?.setDetailOpen;
+    const setMobileWorkspaceDetailOpen = onViewChange ? undefined : mobileWorkspacePane?.setDetailOpen;
     const mobileWorkspaceDetailOpen = mobileWorkspacePane?.detailOpen ?? false;
     const gitView = selection.view;
     const clearSelection = selection.clearSelection;

@@ -31,7 +31,7 @@ import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 import { hasExplicitUrlScheme, normalizeBrowserUrl } from './unifiedBrowserTabs';
 
 /** The non-search entries the menu offers. */
-export type OpenMenuActionId = 'terminal' | 'explorer' | 'notes' | 'settings' | 'browser' | 'canvas' | 'changes' | 'todo';
+export type OpenMenuActionId = 'terminal' | 'work-items' | 'pull-requests' | 'explorer' | 'notes' | 'settings' | 'browser' | 'canvas' | 'changes' | 'todo';
 
 export interface OpenMenuAction {
     id: OpenMenuActionId;
@@ -98,6 +98,8 @@ export function openMenuActions(input: OpenMenuActionsInput): OpenMenuAction[] {
     if (!isRepoGroupWorkspaceId(input.targetWorkspaceId)) {
         actions.push({ id: 'explorer', label: 'Explorer', ...repoGate });
     }
+    actions.push({ id: 'work-items', label: 'Work Items', ...repoGate });
+    actions.push({ id: 'pull-requests', label: 'Pull Requests', ...repoGate });
     actions.push({ id: 'notes', label: 'Notes' });
     if (input.settingsAvailable) actions.push({ id: 'settings', label: 'Settings' });
     // A blank browser tab. It belongs to the target's concrete workspace (its

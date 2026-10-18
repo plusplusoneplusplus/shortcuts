@@ -58,6 +58,8 @@ import { UnifiedGitTab } from './UnifiedGitTab';
 import { UnifiedNoteTab } from './UnifiedNoteTab';
 import { UnifiedPasteTab } from './UnifiedPasteTab';
 import { UnifiedTodoTab } from './UnifiedTodoTab';
+import { UnifiedWorkResourceTab } from './UnifiedWorkResourceTab';
+import { useUnifiedPanelHost } from './unifiedPanelHost';
 import { WorkspaceSettingsSlot } from '../../repo-settings/WorkspaceSettingsHost';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, isMarkdownPanelPreviewEnabled } from '../../../utils/config';
@@ -135,6 +137,7 @@ export function UnifiedTabView({
     onFileNavigationMount, onFileNavigationLocation, onSourceModelChange,
     onNotesSelectionChange, canvasSwitcher,
 }: UnifiedTabViewProps) {
+    const panelHost = useUnifiedPanelHost();
     const [markdownPreviewEnabled, setMarkdownPreviewEnabled] = useState(
         () => isMarkdownPanelPreviewEnabled(),
     );
@@ -202,6 +205,9 @@ export function UnifiedTabView({
         [onNotesSelectionChange, tab.id],
     );
     switch (tab.kind) {
+        case 'work-items':
+        case 'pull-requests':
+            return <UnifiedWorkResourceTab tab={tab} scopeId={panelHost?.routingRef ?? scopeWorkspaceId} />;
         case 'settings':
             return <WorkspaceSettingsSlot ownerKey={tab.ownerRoutingRef ?? tab.ownerWorkspaceId} />;
         case 'paste':

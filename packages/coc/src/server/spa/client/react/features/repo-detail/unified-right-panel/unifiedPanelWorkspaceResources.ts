@@ -1,7 +1,7 @@
 /**
  * unifiedPanelWorkspaceResources — the one way to open or focus a workspace's
- * Notes or Settings. Both live only as right-panel tabs owned by the panel's
- * workspace (repo or group, local or remote clone), so the add-tab menu and
+ * resource tools. Notes/Settings belong to the panel workspace; WI/PR tabs
+ * carry a concrete repo or group-member owner. The add-tab menu and
  * every link outside the panel build the same descriptor and land on the same
  * tab instead of switching a page-level view.
  */
@@ -15,7 +15,7 @@ import { updateUnifiedPanelState } from './unifiedPanelOpen';
 import { useUnifiedPanelHost } from './unifiedPanelHost';
 import { openTab, unifiedTabId, updateNotesView, type OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 
-export type PanelWorkspaceResourceKind = 'notes' | 'settings';
+export type PanelWorkspaceResourceKind = 'notes' | 'settings' | 'work-items' | 'pull-requests';
 
 export interface PanelWorkspaceResourceOwner {
     /** The panel's scope and the resource owner: a raw repo or group workspace id. */
@@ -32,7 +32,7 @@ export function panelOwnerForSelection(selectionId: string, chatId: string | nul
     return { workspaceId: remote?.workspaceId ?? selectionId, routingRef: remote ? selectionId : null, chatId };
 }
 
-/** The descriptor for `owner`'s Notes or Settings tab. */
+/** One workspace-owned tool descriptor, shared by the menu and external links. */
 export function panelWorkspaceResourceInput(
     kind: PanelWorkspaceResourceKind,
     owner: PanelWorkspaceResourceOwner,
@@ -40,15 +40,15 @@ export function panelWorkspaceResourceInput(
     return {
         kind,
         ownerWorkspaceId: owner.workspaceId,
-        ...(kind === 'settings' ? { ownerRoutingRef: owner.routingRef } : {}),
+        ...(kind !== 'notes' ? { ownerRoutingRef: owner.routingRef } : {}),
         chatId: owner.chatId,
         resourceId: kind,
-        label: kind === 'settings' ? 'Settings' : 'Notes',
+        label: kind === 'settings' ? 'Settings' : kind === 'notes' ? 'Notes' : kind === 'work-items' ? 'Work Items' : 'Pull Requests',
     };
 }
 
 /**
- * Open (or focus) `owner`'s Notes or Settings tab and reveal its panel. A
+ * Open (or focus) `owner`'s resource tab and reveal its panel. A
  * `notePath` selects that note in the Notes tab, mounted or not.
  */
 export function openPanelWorkspaceResource(

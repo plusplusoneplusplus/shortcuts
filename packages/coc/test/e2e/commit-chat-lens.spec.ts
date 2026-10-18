@@ -20,9 +20,9 @@ function placementStorageKey(workspaceId: string, commitHash: string): string {
     return `coc.reviewChat.placement.commit.${encodeURIComponent(workspaceId)}.${encodeURIComponent(commitHash)}`;
 }
 
-async function seedWorkItemCommit(serverUrl: string, repoDir: string, commit: { hash: string; subject: string }): Promise<void> {
+async function seedWorkItemCommit(serverUrl: string, workspaceId: string, repoDir: string, commit: { hash: string; subject: string }): Promise<void> {
     const remoteUrl = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: repoDir, encoding: 'utf8' }).trim();
-    const originId = resolveCanonicalOriginId({ workspaceId: WORKSPACE_ID, remoteUrl });
+    const originId = resolveCanonicalOriginId({ workspaceId, remoteUrl });
     const createRes = await request(`${serverUrl}/api/origins/${encodeURIComponent(originId)}/work-items`, {
         method: 'POST',
         body: JSON.stringify({
@@ -32,14 +32,14 @@ async function seedWorkItemCommit(serverUrl: string, repoDir: string, commit: { 
             priority: 'normal',
             source: 'manual',
             plan: { content: 'Review the linked commit in the embedded work item pane.' },
-            workspaceId: WORKSPACE_ID,
+            workspaceId,
         }),
     });
     expect(createRes.status).toBe(201);
 
     const changeRes = await request(`${serverUrl}/api/origins/${encodeURIComponent(originId)}/work-items/${encodeURIComponent(WORK_ITEM_ID)}/changes`, {
         method: 'POST',
-        body: JSON.stringify({ workspaceId: WORKSPACE_ID, planVersion: 1 }),
+        body: JSON.stringify({ workspaceId, planVersion: 1 }),
     });
     expect(changeRes.status).toBe(201);
     const change = JSON.parse(changeRes.body);
@@ -47,7 +47,7 @@ async function seedWorkItemCommit(serverUrl: string, repoDir: string, commit: { 
     const patchRes = await request(`${serverUrl}/api/origins/${encodeURIComponent(originId)}/work-items/${encodeURIComponent(WORK_ITEM_ID)}/changes/${encodeURIComponent(change.id)}`, {
         method: 'PATCH',
         body: JSON.stringify({
-            workspaceId: WORKSPACE_ID,
+            workspaceId,
             status: 'closed',
             completedAt: new Date('2026-03-07T12:00:00Z').toISOString(),
             commits: [
@@ -361,21 +361,24 @@ for (const surface of ['commit', 'file', 'work-item'] as const) {
 
         const repoDir = createMultiCommitRepo(dataDir);
         const commit = latestCommit(repoDir);
-        const storageKey = placementStorageKey(WORKSPACE_ID, commit.hash);
+        const workspaceId = `${WORKSPACE_ID}-${surface}`;
+        const storageKey = placementStorageKey(workspaceId, commit.hash);
 
-        await seedWorkspace(serverUrl, WORKSPACE_ID, 'Commit Chat Lens', repoDir);
+        await seedWorkspace(serverUrl, workspaceId, 'Commit Chat Lens', repoDir);
         if (surface === 'work-item') {
-            await seedWorkItemCommit(serverUrl, repoDir, commit);
+            await seedWorkItemCommit(serverUrl, workspaceId, repoDir, commit);
         }
         await enableCommitChatLensFeature(serverUrl);
 
-        const workspaceRoute = `repos/${encodeURIComponent(WORKSPACE_ID)}`;
+        const workspaceRoute = `repos/${encodeURIComponent(workspaceId)}`;
         const commitRoute = `${workspaceRoute}/git/${encodeURIComponent(commit.hash)}`;
         const route = surface === 'work-item'
-            ? `${workspaceRoute}/work-items/${encodeURIComponent(WORK_ITEM_ID)}/commit/${encodeURIComponent(commit.hash)}/${CHANGED_FILE.split('/').map(encodeURIComponent).join('/')}`
+            ? `${workspaceRoute}/panel/work-items/${encodeURIComponent(workspaceId)}/${encodeURIComponent(WORK_ITEM_ID)}/commit/${encodeURIComponent(commit.hash)}/${CHANGED_FILE.split('/').map(encodeURIComponent).join('/')}`
             : commitRoute;
-        await page.goto(`${serverUrl}/?workspace=${encodeURIComponent(WORKSPACE_ID)}#${route}`);
+        await page.goto(`${serverUrl}/?workspace=${encodeURIComponent(workspaceId)}#${route}`);
         if (surface === 'work-item') {
+            await expect(page).toHaveURL(`${serverUrl}/?workspace=${encodeURIComponent(workspaceId)}#${route}`);
+            await expect(page.getByTestId('unified-right-panel')).toHaveAttribute('data-open', 'true');
             await expect(page.getByTestId('work-item-commit-review')).toBeVisible();
         } else {
             await expect(page.getByTestId(`commit-row-${commit.shortHash}`)).toBeVisible();

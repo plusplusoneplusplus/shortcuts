@@ -1503,6 +1503,20 @@ describe('UnifiedTodoTab', () => {
         expect(refs.textContent).not.toMatch(/Queued|Running|Status|Review|Job /);
     });
 
+    it('opens Ralph references at the stable session view instead of one iteration', async () => {
+        get.mockResolvedValue(ledger([item({
+            jobs: [],
+            references: [{
+                processId: 'queue_iter1', workspaceId: 'ws-other', sessionId: 'ralph-1', title: 'Sentinel To-do Jobs',
+                openLink: '#repos/ws-other/chats/ralph/ralph-1', attachedAt: '2026-10-09T00:00:00.000Z', attachedBy: 'sentinel',
+            }],
+        })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        fireEvent.click(within(await screen.findByTestId('sentinel-todo-row-i1')).getByRole('button', { pressed: false }));
+        const refs = within(screen.getByTestId('sentinel-todo-detail-i1')).getByRole('list', { name: 'Referenced conversations for Fix login' });
+        expect(within(refs).getByRole('link', { name: 'Sentinel To-do Jobs' }).getAttribute('href')).toBe('#repos/ws-other/chats/ralph/ralph-1');
+    });
+
     it('renders items from servers without references unchanged', async () => {
         const legacy = item();
         delete (legacy as Partial<SentinelTodoItem>).references;

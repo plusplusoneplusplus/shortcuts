@@ -8,6 +8,7 @@
  * so existing importers keep working.
  */
 
+import { buildWorkResourceHash } from './workResourceRoute';
 import { useEffect, useLayoutEffect, useCallback, useRef, useState } from 'react';
 import { DashboardChatReferenceRoute } from './DashboardChatReferenceRoute';
 import { useApp } from '../contexts/AppContext';
@@ -47,11 +48,9 @@ const ALL_REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
     g: 'git',
     e: 'explorer',
     t: 'tasks',
-    r: 'pull-requests',
     a: 'chats',
     w: 'workflows',
     s: 'schedules',
-    i: 'work-items',
     d: 'dreams',
 };
 
@@ -151,6 +150,11 @@ export function Router() {
 
             if (e.altKey && !e.ctrlKey && !e.metaKey) {
                 const letter = e.code.replace('Key', '').toLowerCase();
+                if (!isVirtualWorkspaceId(state.selectedRepoId) && (letter === 'i' || letter === 'r')) {
+                    e.preventDefault();
+                    location.hash = buildWorkResourceHash(state.selectedRepoId, letter === 'i' ? 'work-items' : 'pull-requests');
+                    return;
+                }
                 if (letter === 'q') {
                     e.preventDefault();
                     queueDispatch({ type: 'OPEN_DIALOG', workspaceId: getWorkspaceIdFromSelectionId(state.selectedRepoId) });

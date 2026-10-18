@@ -126,7 +126,7 @@ describe('ChatPrStatusCard / usePrChatStatusItems', () => {
 
         // Deep-link points at the PR detail view for this repo.
         const link = getByTestId(`pr-status-card-open-${GH_ORIGIN}:42`) as HTMLAnchorElement;
-        expect(link.getAttribute('href')).toBe('#repos/ws1/pull-requests/42/overview');
+        expect(link.getAttribute('href')).toBe('#repos/ws1/panel/pull-requests/ws1/42/overview');
 
         // Fresh detection persists a binding so it survives a later reload (AC-01).
         await waitFor(() =>

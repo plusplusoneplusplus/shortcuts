@@ -85,6 +85,7 @@ function setup(state: QueueGlobalState = freshState()) {
     };
 
     const { tool } = createSendToConversationTool({
+        runtime: { serverIdentity: 'owning-installation' },
         store: store as any,
         workspaceId: WS_ID,
         enqueueChat,
@@ -106,7 +107,7 @@ describe('send_to_conversation create-mode enqueue binding (real enqueueViaBridg
         // Returned identity is queue_<taskId> with an openable deep link.
         expect(result.error).toBeUndefined();
         expect(result.processId).toMatch(/^queue_/);
-        expect(result.openLink).toBe(`#/process/${result.processId}`);
+        expect(result.openLink).toBe(`#chat-references/owning-installation/${WS_ID}/${result.processId}`);
         // Create mode has no turnIndex.
         expect(result.turnIndex).toBeUndefined();
 
@@ -170,7 +171,7 @@ describe('send_to_conversation create-mode enqueue binding (real enqueueViaBridg
             getDefaultProvider: () => 'codex', isAutoProviderRoutingActive: () => true,
         });
         const { tool } = createSendToConversationTool({
-            runtime: { isAutoProviderRoutingAvailable: () => true },
+            runtime: { serverIdentity: 'owning-installation', isAutoProviderRoutingAvailable: () => true },
             store, workspaceId: WS_ID, parentProcessId: PARENT_PID,
             enqueueChat: async input => {
                 await prepare(input);
@@ -232,7 +233,7 @@ describe('send_to_conversation create-mode enqueue binding (real enqueueViaBridg
         const resolveDefaultProvider = vi.fn().mockRejectedValue(new Error('Auto disabled'));
         const { tool } = createSendToConversationTool({
             store, workspaceId: WS_ID, parentProcessId: PARENT_PID,
-            runtime: { isAutoProviderRoutingAvailable: () => false },
+            runtime: { serverIdentity: 'owning-installation', isAutoProviderRoutingAvailable: () => false },
             enqueueChat: async input => {
                 await prepareTaskForEnqueue(input, {
                     getDefaultProvider: () => 'copilot', isAutoProviderRoutingActive: () => false, resolveDefaultProvider,
@@ -257,7 +258,7 @@ describe('send_to_conversation create-mode enqueue binding (real enqueueViaBridg
         const { bridge, store } = setup();
         const { tool } = createSendToConversationTool({
             store, workspaceId: WS_ID, parentProcessId: PARENT_PID,
-            runtime: { isAutoProviderRoutingAvailable: () => true },
+            runtime: { serverIdentity: 'owning-installation', isAutoProviderRoutingAvailable: () => true },
             enqueueChat: async input => {
                 await prepareTaskForEnqueue(input, { isAutoProviderRoutingActive: () => true });
                 return enqueueViaBridge(input, bridge, freshState(), ROOT, store);
@@ -350,6 +351,7 @@ describe('send_to_conversation custom title lifecycle and SQLite restarts', () =
         for (const workspace of workspaces) bridge.registerRepoId(workspace.id, workspace.rootPath);
         persistence = new SqliteQueuePersistence(bridge, store.getDatabase());
         const { tool } = createSendToConversationTool({
+            runtime: { serverIdentity: 'owning-installation' },
             store,
             workspaceId: 'ws-caller',
             parentProcessId: PARENT_PID,

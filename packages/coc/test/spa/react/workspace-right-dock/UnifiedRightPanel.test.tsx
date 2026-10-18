@@ -12,6 +12,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedWorkResourceTab', () => ({
+    UnifiedWorkResourceTab: ({ tab }: { tab: { kind: string; ownerWorkspaceId: string; ownerRoutingRef?: string | null } }) => (
+        <input aria-label={`${tab.kind} draft`} data-owner={tab.ownerRoutingRef ?? tab.ownerWorkspaceId} defaultValue="" />
+    ),
+}));
+
 // Mock the reused heavy views by source path so Monaco / xterm / API clients
 // never load here, and so mount and unmount are observable.
 vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView', () => ({
@@ -199,6 +205,42 @@ describe('UnifiedRightPanel', () => {
         clearUnifiedPanelState();
         clearUnifiedTreeState();
         delete (window as { cocDesktop?: unknown }).cocDesktop;
+    });
+
+    it('keeps closed work-resource drafts inside their hosting panel scope', async () => {
+        const rendered = renderPanel({ dock: dockStub({ target: 'member-a' }) });
+        await openViaMenu('unified-panel-open-work-items');
+        const first = screen.getByRole('textbox', { name: 'work-items draft' });
+        fireEvent.change(first, { target: { value: 'scope one' } });
+        rendered.rerender(<UnifiedRightPanel workspaceId="another-group" dock={dockStub({ target: 'member-a' })} />);
+        await openViaMenu('unified-panel-open-work-items');
+        const second = screen.getByRole('textbox', { name: 'work-items draft' });
+        expect(second).not.toBe(first);
+        expect(second).toHaveValue('');
+    });
+
+    it.each(['work-items', 'pull-requests'] as const)('opens/focuses one member-owned %s tool and retains drafts through close and target changes', async kind => {
+        const view = (target: string, chatId: string) => <UnifiedRightPanel workspaceId={WS}
+            routingRef="remote:server-a:ws-1" chatId={chatId} dock={dockStub({ target })} />;
+        const rendered = render(view('member-a', 'chat-1'));
+        await openViaMenu(`unified-panel-open-${kind}`);
+        const input = screen.getByRole('textbox', { name: `${kind} draft` });
+        expect(input).toHaveAttribute('data-owner', 'remote:server-a:member-a');
+        fireEvent.change(input, { target: { value: 'pending' } });
+        const first = readUnifiedPanelState(WS).workspaceTabs[0];
+        await openViaMenu(`unified-panel-open-${kind}`);
+        expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(1);
+        rendered.rerender(view('member-b', 'chat-2'));
+        await openViaMenu(`unified-panel-open-${kind}`);
+        expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(2);
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-${first.id}`));
+        expect(screen.getByRole('textbox', { name: `${kind} draft` })).toBe(input);
+        expect(input).toHaveValue('pending');
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${first.id}`));
+        rendered.rerender(view('member-a', 'chat-2'));
+        await openViaMenu(`unified-panel-open-${kind}`);
+        expect(screen.getByRole('textbox', { name: `${kind} draft` })).toBe(input);
+        expect(input).toHaveValue('pending');
     });
 
     it.each([null, 'remote:server-a:ws-1'])('opens, focuses and closes Settings on its panel owner, not the dock target (%s)', async routingRef => {

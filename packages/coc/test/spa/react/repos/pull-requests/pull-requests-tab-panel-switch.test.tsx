@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockDispatch = vi.hoisted(() => vi.fn());
 const mockFetchApi = vi.hoisted(() => vi.fn());
-const mockSelectedPrId = vi.hoisted(() => ({ value: null as number | string | null }));
 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
@@ -21,7 +20,7 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
-    useApp: () => ({ state: { selectedPrId: mockSelectedPrId.value }, dispatch: mockDispatch }),
+    useApp: () => ({ state: {}, dispatch: mockDispatch }),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
@@ -89,7 +88,6 @@ async function renderTab() {
 beforeEach(() => {
     vi.resetModules();
     vi.resetAllMocks();
-    mockSelectedPrId.value = null;
     mockFetchApi.mockResolvedValue(templates);
 });
 
@@ -109,10 +107,11 @@ describe('PullRequestsTab batch panel switching', () => {
     });
 
     it('reverts to PullRequestDetail when batch selection is cleared', async () => {
-        mockSelectedPrId.value = 1;
         mockFetchOk();
 
         await act(async () => { await renderTab(); });
+        await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
+        fireEvent.click(screen.getByTestId('pr-row'));
         await waitFor(() => expect(screen.getByTestId('mock-pr-detail')).toHaveTextContent('PR detail 1'));
         expect(screen.getByTestId('mock-pr-detail').getAttribute('data-remote-url')).toBe('https://github.com/octo/repo.git');
 

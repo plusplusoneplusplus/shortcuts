@@ -162,13 +162,11 @@ describe('GlobalStatusDock', () => {
         }
     });
 
-    it('renders nothing on the workspace pull-requests sub-tab (PullRequestsTab docks the cluster in its PR queue footer)', () => {
-        mockAppState = { activeTab: 'repos', selectedRepoId: 'ws-a', activeRepoSubTab: 'pull-requests' };
-        const { container } = render(<GlobalStatusDock />);
-        // The PR queue column is independently resizable, so the global band
-        // would not line up under it — the tab hosts its own sidebar footer.
-        expect(screen.queryByTestId('status-actions')).toBeNull();
-        expect(container.firstChild).toBeNull();
+    it.each(['work-items', 'pull-requests'])('keeps the global dock for a retired %s page tab', tab => {
+        mockAppState = { activeTab: 'repos', selectedRepoId: 'ws-a', activeRepoSubTab: tab };
+        render(<GlobalStatusDock />);
+        expect(screen.getAllByTestId('status-actions')).toHaveLength(1);
+        expect(screen.getByTestId('global-status-dock')).toBeTruthy();
     });
 
     it('still renders when a stale pull-requests sub-tab lingers but the active tab is not a workspace', () => {

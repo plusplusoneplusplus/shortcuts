@@ -84,7 +84,7 @@ describe('ordinary delegated job result recording', () => {
         expect(persisted()).toMatchObject({
             parent: { workspaceId: parentWorkspace, processId: parentId },
             terminal: { result: { outcome: 'completed', summary: 'Fixed search. Tests passed.',
-                terminalEventId: `ordinary:${childWorkspace}:${childId}:terminal`, links: [`#repos/${childWorkspace}/chats/${childId}`] },
+                terminalEventId: `ordinary:${childWorkspace}:${childId}:terminal`, links: [`#chat-references/${jobs.serverIdentity}/${childWorkspace}/${childId}`] },
             delivery: { state: 'pending' } },
         });
         expect(jobs.list(childWorkspace)).toEqual([]);
@@ -202,7 +202,7 @@ describe('ordinary delegated job result recording', () => {
         const artifact = path.join(dataDir, 'result.txt');
         await child({ result: JSON.stringify({ response: 'Stored result', timeline: ['large transcript'] }), resultFilePath: artifact });
         await service().restore();
-        expect(persisted().terminal?.result).toMatchObject({ outcome: 'completed', summary: 'Stored result', links: [`#repos/${childWorkspace}/chats/${childId}`, artifact] });
+        expect(persisted().terminal?.result).toMatchObject({ outcome: 'completed', summary: 'Stored result', links: [`#chat-references/${jobs.serverIdentity}/${childWorkspace}/${childId}`, artifact] });
         expect(store.getProcess).toHaveBeenCalledWith(childId, childWorkspace);
     });
 
@@ -265,7 +265,7 @@ describe('ordinary delegated job result recording', () => {
         await service().restore();
         expect(persisted().terminal).toMatchObject({ delivery: { state: 'failed' },
             result: { summary: 'The delegated job is unavailable after restart.',
-                links: [`#repos/${childWorkspace}/chats/${childId}`] } });
+                links: [`#chat-references/${jobs.serverIdentity}/${childWorkspace}/${childId}`] } });
         expect(JSON.stringify(persisted())).not.toContain('Wrong');
         expect(JSON.stringify(persisted())).not.toContain('wrong-artifact');
     });
@@ -280,7 +280,7 @@ describe('ordinary delegated job result recording', () => {
         await flush();
         expect(persisted().terminal?.result).toMatchObject({ outcome,
             summary: outcome === 'completed' ? 'Queue result' : 'The delegated job failed; no result summary was stored.',
-            links: [`#repos/${childWorkspace}/chats/${childId}`] });
+            links: [`#chat-references/${jobs.serverIdentity}/${childWorkspace}/${childId}`] });
         if (outcome === 'failed') expect(persisted().terminal?.result.reason).toBe('Queue failure');
         expect(JSON.stringify(persisted())).not.toContain('Wrong');
         expect(JSON.stringify(persisted())).not.toContain('wrong-artifact');
@@ -296,7 +296,7 @@ describe('ordinary delegated job result recording', () => {
             metadata: { workspaceId }, result: 'Done' }));
         await service().restore();
         expect(jobs.list(parentWorkspace)[0].terminal?.result.links).toEqual([
-            `#repos/${encodeURIComponent(workspaceId)}/chats/${encodeURIComponent(processId)}`,
+            `#chat-references/${jobs.serverIdentity}/${encodeURIComponent(workspaceId)}/${encodeURIComponent(processId)}`,
         ]);
     });
 
@@ -594,7 +594,7 @@ describe('ordinary delegated job result recording', () => {
             const { onResult } = ralph(); complete(reason); await flush();
             expect(persisted().terminal?.result).toMatchObject({ outcome, reason,
                 terminalEventId: `ralph:${childWorkspace}:${sessionId}:terminal`,
-                links: [`/api/workspaces/${childWorkspace}/ralph-sessions/${sessionId}`, path.join(dataDir, 'progress.md')] });
+                links: [`#chat-references/${jobs.serverIdentity}/${childWorkspace}/queue_final-check`, path.join(dataDir, 'progress.md')] });
             expect(onResult).toHaveBeenCalledWith(persisted());
             expect(jobs.list(childWorkspace)).toEqual([]);
             if (outcome === 'capped') expect(persisted().terminal?.result.summary).toContain('goal completion is not confirmed');

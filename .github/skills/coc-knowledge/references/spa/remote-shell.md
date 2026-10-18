@@ -14,8 +14,7 @@ scope bar, and per-clone workspace header.
 `TopBar` renders one of three top rows.
 
 **`RemoteShellHeader`** — desktop with a real repo selected.
-`RemoteScopeCluster` holds the current-remote chip plus Work Items / Pull
-Requests pills; the chip's dropdown lists recent remotes from the global preference
+`WorkspaceIdentityChip` owns repository identity; its dropdown lists recent remotes from the global preference
 `recentRemotes` (MRU keys `groupKey(group)`, cap 8; default-group fallback before any
 MRU), search over all remotes, and `AddFolderDialog` / `AddRepoDialog` /
 `CloneRepoDialog`. Selecting a remote records the MRU entry and picks that remote's
@@ -33,7 +32,7 @@ dialogs. `header-new-btn` is the first right-side action, enqueuing for the acti
 
 **`VirtualWorkspaceShellHeader`** — desktop + tab `repos` + a
 virtual workspace selected (`my_work`, `my_life`, or a repo group). Virtual workspaces
-have no repo or git context, so they cannot flow through `RemoteScopeCluster` /
+have no repo or git context, so they cannot flow through `WorkspaceIdentityChip` /
 `WorkspaceTabsCluster`; each supplies a `VirtualWorkspaceHeaderConfig` of identity chip,
 sub-tabs, and actions (`MY_WORK_HEADER_CONFIG` / `MY_LIFE_HEADER_CONFIG` exported from
 `MyWorkView` / `MyLifeView`), driven by `useVirtualWorkspaceHeader`.
@@ -131,7 +130,7 @@ remembered repo with the usual switch-back split button; a pinned *remote* sets
 `identitySuppressed`, collapsing the chip to a bare chevron picker trigger
 (`data-identity-suppressed`).
 
-`RemoteScopeCluster` renders the chip itself unless `hideIdentity` is set; both headers
+`RemoteShellHeader` renders the chip itself unless `hideIdentity` is set; both headers
 forward `hideIdentity` so identity renders exactly once. Virtual-scope navigation
 (`goToMyWork` / `goToMyLife`, saved-note-path restore) lives in shared
 `hooks/useScopeNavigation.ts`, used by the switcher and the standalone toggles alike.
@@ -141,8 +140,9 @@ forward `hideIdentity` so identity renders exactly once. Virtual-scope navigatio
 `shellModel.ts` and `repoGrouping.ts` hold the shared behavior. Aggregated remote
 checkouts fold into the matching local origin's tab by normalized git URL; a
 remote-only repo gets its own group. `groupReposByRemote` sorts clones **local-first**,
-so the default clone is local when one exists. `partitionShellTabs` keeps Work Items and
-Pull Requests remote-scoped.
+so the default clone is local when one exists. `partitionShellTabs` keeps page tabs in
+source order and excludes the workspace aliases. Work Items and Pull Requests use
+owner-qualified right-panel tools, including member targets inside repo groups.
 
 `computeCloneStatusMap` / `cloneStatusColor` drive clone dots: local clones are
 queue-derived; remote clones blend connection-first via `blendRemoteCloneStatus`
@@ -154,12 +154,12 @@ menu while the active tab stays inline.
 
 ### Shared picker chrome
 
-The remote picker (`RemoteScopeCluster`, rows = remote groups) and the virtual repo
+The remote picker (`WorkspaceIdentityChip`, rows = remote groups) and the virtual repo
 picker (`VirtualWorkspaceShellHeader`, rows = individual repos) share the presentational
 `RepoPickerPopover` (`PickerSection` / `PickerRow` / `PickerEmpty`) and the interaction
 hook `useDropdownPopover` (open state, outside-click, Escape-close-and-refocus-trigger,
-search auto-focus). They differ in the remote picker's Add-repository footer and remote
-sub-tabs versus the virtual picker's identity chip and navigation-only rows; offline is
+search auto-focus). They differ in the remote picker's Add-repository footer
+and the virtual picker's identity chip and navigation-only rows; offline is
 per-repo in the virtual picker only, group rows show the aggregate dot.
 `PickerRow` also takes an optional `className`, which the mobile list uses for the
 shared `.repo-item` hook and a 44px touch target.

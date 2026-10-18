@@ -40,9 +40,9 @@ export interface ClientTokenUsage {
 export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'stats' | 'admin' | 'memory' | 'skills' | 'logs' | 'servers' | 'dreams-admin';
 
 export const REPO_SUB_TAB_VALUES = [
-    'chats', 'work-items', 'settings', 'workflows', 'templates', 'tasks',
+    'chats', 'settings', 'workflows', 'templates', 'tasks',
     'schedules', 'git', 'wiki', 'workflow', 'explorer', 'activity',
-    'pull-requests', 'terminal', 'notes', 'dreams', 'cli-sessions', 'copilot-sessions',
+     'terminal', 'notes', 'dreams', 'cli-sessions', 'copilot-sessions',
     'today',
 ] as const;
 export type RepoSubTab = typeof REPO_SUB_TAB_VALUES[number];
