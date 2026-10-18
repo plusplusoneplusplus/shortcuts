@@ -104,6 +104,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `teamsMessageReaction` | off | Live Teams channel message Like attempts before routing, independent of answer relay and bridge observability |
 | `sentinelTodoDependencies` | off | Live gate for native owner-scoped prerequisite authoring; publishes `sentinelTodoDependenciesEnabled`, and grants no execution authority |
 | `sentinelTodoExternalReferences` | off | Live gate for typed PR/email/web display references in item create/update, tool and panel; publishes `sentinelTodoExternalReferencesEnabled`; preserves conversation attachments and grants no authority |
+| `sentinelTodoJobs` | off | Live experimental opt-in for Sentinel To-do prompt jobs; publishes `sentinelTodoJobsEnabled`. The Admin row requires `sentinel.enabled`; Scrubber retains its independent flag |
 | `sentinelPrOutcomeWake` | off | Live gate for tracked delegated-PR outcome reviews and To-do detail controls; publishes `sentinelPrOutcomeWakeEnabled`, uses native trigger infrastructure, and does not change CI/conflict repair permission |
 | `sentinelDesktopMirror` | off | Admin → Configure → Sentinel → Sentinel desktop messaging mirror; live gate for newly accepted exact-owner dashboard submissions and final replies to active local Sentinel bindings. Bound submissions require an identifiable normal Teams/WhatsApp account at capture; missing identity or staging storage rejects admission safely until available. Existing history is not replayed. See [server architecture](server-architecture.md#desktop-sentinel-mirror) for durable delivery and failure policy |
 | `botManagedConversations` | off | Live integration-control identification gate, independent of AI provider, Teams relay, and bridge observability; runtime capability `botManagedConversationsEnabled` |
@@ -197,7 +198,7 @@ Editors keeps only `features.arxivPaperIngest` (Notes Editor). The Chat tab host
 
 `#admin/settings/sentinel` owns the Sentinel behavior controls: `sentinel.enabled`,
 `features.sentinelNextSteps`, `sentinelTodoDependencies`, `sentinelTodoTags`, `sentinelTodoExternalReferences`,
-`sentinelTodoScrubber`, `sentinelPrOutcomeWake`, and `sentinelDesktopMirror`. The
+`sentinelTodoScrubber`, `sentinelTodoJobs`, `sentinelPrOutcomeWake`, and `sentinelDesktopMirror`. The
 presentation-only `sentinelResultCards` lives on Appearance → Chat Interface. Registry groups organize mode, To-do/PR outcomes and
 messaging. Features search renders links to Sentinel, not duplicate controls.
 Shared triggers, execution and connector settings retain their tabs. The existing shared

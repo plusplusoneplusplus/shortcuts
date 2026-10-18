@@ -685,6 +685,15 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-sentinel-todo-scrubber-enabled',
         },
     }),
+    bool({
+        key: 'features.sentinelTodoJobs', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoJobsEnabled',
+        ui: {
+            tab: 'sentinel', group: 'sentinelTodos', order: 32.61, label: 'Sentinel To-do jobs', badge: 'experimental',
+            dependsOn: 'sentinel.enabled',
+            hint: 'Manage scheduled and on-demand prompt jobs from each Sentinel chat\'s To-do tab. Requires Sentinel Mode. Disabled by default.',
+            testId: 'toggle-sentinel-todo-jobs-enabled',
+        },
+    }),
     {
         key: 'ralph.finalCheck.maxGapFixLoops',
         value: { kind: 'number', integer: true, min: 1 },

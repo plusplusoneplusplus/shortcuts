@@ -321,6 +321,8 @@ references before editing. Paths are package-relative.
 - Sentinel-specific Admin controls use registry `ui.tab: 'sentinel'` at
   `#admin/settings/sentinel`. Features search links to that tab; saves and cancels
   affect only its registry keys. Shared triggers and messaging settings keep their own tabs.
+  `features.sentinelTodoJobs` is live, experimental and default-off in `sentinelTodos`;
+  its Admin row depends on `sentinel.enabled` and publishes `sentinelTodoJobsEnabled`.
 - `copilot.transformTransport` is an installation-wide Admin setting (Direct HTTP default, restart required).
   Direct one-shot requests use the Copilot CLI account; never persist its token in Admin config.
   System One, the shared Copilot decision backend, and titles use `gpt-6-luna`.

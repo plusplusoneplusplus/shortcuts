@@ -208,6 +208,34 @@ describe('RuntimeConfigService', () => {
     // ── updateConfig ─────────────────────────────────────────────────────
 
     describe('updateConfig', () => {
+        it('persists live To-do jobs opt-in and opt-out on its owning server only', async () => {
+            const svc = new RuntimeConfigService({ configPath });
+            const otherOwner = new RuntimeConfigService({ fileConfig: {} });
+            const runtimeFlag = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.sentinelTodoJobsEnabled;
+            expect(runtimeFlag()).toBe(false);
+            expect(svc.sources['features.sentinelTodoJobs']).toBe('default');
+            const changed = vi.fn();
+            svc.onChange(changed);
+
+            const enabled = await svc.updateConfig({
+                'sentinel.enabled': true, 'features.sentinelTodoJobs': true,
+            });
+            expect(enabled.effects).toContainEqual({
+                field: 'features.sentinelTodoJobs', runtime: 'live', requiresRestart: false,
+            });
+            expect(runtimeFlag()).toBe(true);
+            expect(enabled.sources['features.sentinelTodoJobs']).toBe('file');
+            expect(new RuntimeConfigService({ configPath }).config.features.sentinelTodoJobs).toBe(true);
+            expect(otherOwner.config.features.sentinelTodoJobs).toBe(false);
+            expect(svc.config.features.sentinelTodoScrubber).toBe(false);
+
+            await svc.updateConfig({ 'features.sentinelTodoJobs': false });
+            expect(runtimeFlag()).toBe(false);
+            expect(new RuntimeConfigService({ configPath }).config.features.sentinelTodoJobs).toBe(false);
+            expect(changed).toHaveBeenCalledTimes(2);
+            expect(svc.config.sentinel.enabled).toBe(true);
+        });
+
         it('persists live scrubber opt-in and opt-out without changing another server or Sentinel Mode', async () => {
             const svc = new RuntimeConfigService({ configPath });
             const otherOwner = new RuntimeConfigService({ fileConfig: {} });

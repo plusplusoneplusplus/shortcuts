@@ -137,6 +137,29 @@ describe('TabFeatureSettingsCard', () => {
         expect(controller.featureValues['sentinel.enabled']).toBe(false);
     });
 
+    it('shows To-do jobs under To-do & PR Outcomes only with Sentinel Mode and saves its live flag', async () => {
+        render(<Harness tabs={['sentinel']} />);
+        expect(controller.featureValues['features.sentinelTodoJobs']).toBe(false);
+        expect(screen.queryByTestId('toggle-sentinel-todo-jobs-enabled')).toBeNull();
+        fireEvent.click(screen.getByTestId('toggle-sentinel-enabled'));
+        const toggle = screen.getByTestId('toggle-sentinel-todo-jobs-enabled');
+        expect(toggle).toHaveProperty('checked', false);
+        expect(toggle.closest('#sentinel-group-sentinelTodos')).not.toBeNull();
+        expect(toggle.closest('.ar-row')?.textContent).toContain('Experimental');
+        fireEvent.click(toggle);
+        await act(async () => { await controller.handleSaveTab('sentinel'); });
+        expect(updateConfig.mock.calls[0][0]).toMatchObject({
+            'sentinel.enabled': true, 'features.sentinelTodoJobs': true,
+            'features.sentinelTodoScrubber': false,
+        });
+        expect(applyRuntimeConfigPatch.mock.calls[0][0]).toMatchObject({
+            sentinelEnabled: true, sentinelTodoJobsEnabled: true,
+        });
+        expect(controller.isTabDirty('sentinel')).toBe(false);
+        fireEvent.click(screen.getByTestId('toggle-sentinel-enabled'));
+        expect(screen.queryByTestId('toggle-sentinel-todo-jobs-enabled')).toBeNull();
+    });
+
     it('defaults to Direct HTTP and saves an explicit SDK choice without credential fields', async () => {
         render(<Harness tabs={['ai']} />);
         const select = screen.getByTestId('select-copilot-transform-transport') as HTMLSelectElement;
