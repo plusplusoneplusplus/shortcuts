@@ -359,8 +359,18 @@ describe('RepoDetail — layout mode chat tab mounting', () => {
         mockDispatch.mockClear();
         mockQueueDispatch.mockClear();
         mockDreamsEnabled = false;
+        mockIsMobile = false;
+        localStorage.clear();
+        clearUnifiedPanelState('ws-1');
 
         location.hash = '';
+    });
+
+    afterEach(() => {
+        cleanup();
+        mockIsMobile = false;
+        localStorage.clear();
+        clearUnifiedPanelState('ws-1');
     });
 
     it('classic mode: mounts Activity RepoChatTab, does NOT mount Chats RepoChatTab', () => {
@@ -409,25 +419,28 @@ describe('RepoDetail — layout mode chat tab mounting', () => {
         expect(redirectCalls.length).toBe(0);
     });
 
-    it('classic mode: switching to classic does NOT redirect away from work-items', () => {
-
-        mockActiveRepoSubTab = 'work-items';
+    it.each(['work-items', 'pull-requests'])('falls back to Workspace for retired %s page tabs', tab => {
+        mockActiveRepoSubTab = tab;
         renderDetail();
 
-        // Work Items tab is now visible in classic mode — should NOT redirect
-        const redirectCalls = mockDispatch.mock.calls.filter(
-            (c: any[]) => c[0]?.type === 'SET_REPO_SUB_TAB' && c[0]?.tab === 'activity'
-        );
-        expect(redirectCalls.length).toBe(0);
+        expect(gitTabRedirectCalls()).toHaveLength(1);
+        expect(screen.getByTestId('repo-chat-tab-activity')).toBeTruthy();
     });
 
-    it('classic mode: Work Items tab button is present in the tab strip', () => {
-
+    it.each([false, true])('offers WI/PR only in the workspace panel menu (mobile=%s)', isMobile => {
+        mockIsMobile = isMobile;
         mockActiveRepoSubTab = 'activity';
+        setWorkspaceDockOpen('ws-1', true);
         const { container } = renderDetail();
 
-        const workItemsTab = container.querySelector('[data-subtab="work-items"]');
-        expect(workItemsTab).toBeTruthy();
+        expect(container.querySelector('[data-subtab="work-items"]')).toBeNull();
+        expect(container.querySelector('[data-subtab="pull-requests"]')).toBeNull();
+
+        fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+        expect(screen.getByTestId('unified-panel-open-work-items')).toBeTruthy();
+        expect(screen.getByTestId('unified-panel-open-pull-requests')).toBeTruthy();
+        expect(screen.getByTestId('repo-chat-tab-activity')).toBeTruthy();
+        expect(gitTabRedirectCalls()).toHaveLength(0);
     });
 });
 

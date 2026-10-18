@@ -185,7 +185,10 @@ describe('native Ralph grilling admission and recovery', () => {
         const terminal = jobs.list('ws-parent')[0].terminal!.result;
         expect(terminal.terminalEventId).toBe(`ralph:${workspaceId}:${sessionId}:terminal`);
         expect(terminal.summary).toContain('Executed in the actual target');
-        expect(terminal.links[0]).toContain(`/ws-parent/ralph-sessions/${execution.sessionId}`);
+        expect(terminal.links).toEqual([
+            `#chat-references/${jobs.serverIdentity}/${execution.workspaceId}/${execution.processId}`,
+            sessions.getProgressPath(execution.workspaceId, execution.sessionId),
+        ]);
         const remoteJobs = new DelegatedJobStore(path.join(dataDir, 'remote-ledger-test'));
         remoteJobs.register(relationship);
         state.start.execution!.remote = true; await grilling.write(state);
