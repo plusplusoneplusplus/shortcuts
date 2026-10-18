@@ -136,7 +136,7 @@ import { popOutOpened } from '../../utils/popOutWindow';
 import { isConcreteChatProvider, resolveActiveChatProvider, type AgentSelectorProvider, type ConcreteChatProvider } from '../../utils/providerSelection';
 import { RestartWithProviderButton } from './RestartWithProviderButton';
 import { useChatHistoryPagingEnabled } from './hooks/useChatHistoryPagingEnabled';
-import { useChatHistoryPaging } from './hooks/useChatHistoryPaging';
+import { scrollToTurnElement, useChatHistoryPaging } from './hooks/useChatHistoryPaging';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -1525,7 +1525,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     historyRef.current = historyPaging;
     const getOwnerProcess = historyPaging.readProcess;
     useEffect(() => {
-        if (!pagingEnabled || loading || !historyPaging.history) return;
+        if (pagingEnabled === null || loading || (pagingEnabled && !historyPaging.history)) return;
         const navigate = (event?: Event) => {
             const detail = (event as CustomEvent | undefined)?.detail;
             if (detail?.taskId && detail.taskId !== taskId) return;
@@ -1537,7 +1537,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             }
             const params = new URLSearchParams(window.location.hash.split('?')[1] ?? window.location.search);
             const raw = detail?.turnIndex ?? targetTurnIndex ?? params.get('turnIndex') ?? params.get('turn');
-            if (raw != null && Number.isInteger(Number(raw))) void historyPaging.navigateToTurn(Number(raw));
+            if (raw != null && /^\d+$/.test(String(raw)) && Number.isSafeInteger(Number(raw))) {
+                if (pagingEnabled) void historyPaging.navigateToTurn(Number(raw));
+                else if (conversationContainerRef.current) scrollToTurnElement(conversationContainerRef.current, Number(raw));
+            }
         };
         navigate();
         window.addEventListener('hashchange', navigate);

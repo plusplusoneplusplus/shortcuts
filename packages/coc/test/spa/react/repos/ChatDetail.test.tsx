@@ -711,6 +711,21 @@ describe('ChatDetail shared paged hydration', () => {
         expect(cursors).toEqual([170, 140, 110, 80, 50, 20]);
         await waitFor(() => expect(document.querySelector('[data-turn-index="5"]')?.classList.contains('minimap-highlight-pulse')).toBe(true));
     });
+    it.each(['ask', 'sentinel'])('opens job-history turn links in %s with history paging disabled', async mode => {
+        mockState.chatHistoryPagingEnabled = false;
+        window.location.hash = '#repos/ws-local/chats/queue_full?turn=1';
+        setupStandardFetch(undefined, makeProcess({
+            id: 'queue_full', metadata: { mode, sessionId: 'session' },
+            conversationTurns: [
+                { role: 'user', content: 'Run job', turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: 'Job result', turnIndex: 1, timeline: [] },
+            ],
+        }));
+        render(<Wrap><ChatDetail taskId="queue_full" workspaceId="ws-local" /></Wrap>);
+        await screen.findByText('Job result');
+        await waitFor(() => expect(document.querySelector('[data-turn-index="1"]')?.classList.contains('minimap-highlight-pulse')).toBe(true));
+        expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/turns?'))).toBe(false);
+    });
     it('rejects a latest-page cache when live paging is disabled and loads full history', async () => {
         mockState.chatHistoryPagingEnabled = true;
         pagedFetch();

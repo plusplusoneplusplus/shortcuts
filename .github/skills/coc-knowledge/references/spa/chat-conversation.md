@@ -30,7 +30,8 @@ resolves whether it highlighted the turn; an optional `accept` check rejects a l
 and cancels background retries so a failed verification never jumps later. `ChatDetail` mounts
 the conversation minimap only after hydration for non-Sentinel displayed modes, resolved
 from owner-scoped process state independently of pinned Sentinel origins. Owner/chat changes
-abort requests and discard delayed results. Flag-off hydration and rendering remain full-history.
+abort requests and discard delayed results. Flag-off hydration and rendering remain full-history;
+hash turn links and explicit turn targets scroll/highlight those already-loaded turns without page reads.
 
 ### ConversationTurnBubble
 
