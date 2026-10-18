@@ -165,6 +165,11 @@ export function buildChatOpenLink(workspaceSelectionId: string, processId: strin
     return `#repos/${encodeURIComponent(workspaceSelectionId)}/chats/${encodeURIComponent(processId)}`;
 }
 
+/** The stable Ralph session view, valid across every iteration of the session. */
+export function buildRalphSessionOpenLink(workspaceSelectionId: string, sessionId: string): string {
+    return `#repos/${encodeURIComponent(workspaceSelectionId)}/chats/ralph/${encodeURIComponent(sessionId)}`;
+}
+
 // ============================================================================
 // Implementation
 // ============================================================================

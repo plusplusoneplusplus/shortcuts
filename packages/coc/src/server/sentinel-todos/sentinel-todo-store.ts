@@ -80,6 +80,8 @@ const referenceSchema = z.object({
     verification: z.enum(['verified', 'unverified']).optional(),
     processId: id,
     workspaceId: id,
+    /** Stable Ralph session identity; the reference opens the session view. */
+    sessionId: id.optional(),
     openLink: z.string().min(1).max(2_000),
     title: z.string().max(200).optional(),
     attachedAt: z.iso.datetime(),
@@ -832,7 +834,9 @@ export class SentinelTodoStore {
                 throw new SentinelTodoError('invalid', 'Conversation references attach to normal items only');
             }
             const conversations = current.references.filter(isConversationReference);
-            if (conversations.some(ref => ref.processId === reference.processId
+            // Any iteration of an already-referenced Ralph session is the same reference.
+            if (conversations.some(ref => (ref.processId === reference.processId
+                || (reference.sessionId !== undefined && ref.sessionId === reference.sessionId))
                 && ref.workspaceId === reference.workspaceId && ref.serverIdentity === reference.serverIdentity)) {
                 return { item: current, ledgerRevision: ledger.revision, changed: false };
             }
@@ -1090,7 +1094,7 @@ export class SentinelTodoStore {
         item.references.filter(isConversationReference).forEach((ref, order) => statement.run(
             owner.workspaceId, owner.processId, item.id, ref.serverIdentity ?? '', ref.processId, order,
             ref.workspaceId, ref.openLink, ref.title ?? null, ref.attachedAt, ref.attachedBy,
-            JSON.stringify({ serverLabel: ref.serverLabel, workspaceLabel: ref.workspaceLabel, verification: ref.verification }),
+            JSON.stringify({ serverLabel: ref.serverLabel, workspaceLabel: ref.workspaceLabel, verification: ref.verification, sessionId: ref.sessionId }),
         ));
     }
 

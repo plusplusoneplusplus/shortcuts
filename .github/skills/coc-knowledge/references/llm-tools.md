@@ -121,9 +121,9 @@ after Done. `limit` sets the budget, `nextOffset`/`offset` page remaining histor
 internal tracking and graph reads retain the full ledger), `create` (normal items require `completionCondition`,
 optional `idempotencyKey` replay), `update` (requires `itemId` + `expectedRevision`; conflicts
 return `{ code: 'conflict', current }`), `attach_reference` (`itemId` + `expectedRevision` + `conversationId`,
-optional `conversationWorkspaceId` defaulting to the chat's; a reference-only link that never changes status or
-counts as a job/review). Store deduplication uses durable server/workspace/process
-identity; omitted `serverIdentity` denotes the ledger's server. Reference records retain
+optional `conversationWorkspaceId` defaulting to the chat's; saved, queued or running chats and Ralph sessions
+qualify; a reference-only link that never changes status or counts as a job/review). Store deduplication uses
+durable server/workspace/process identity, plus `sessionId` for Ralph session references; omitted `serverIdentity` denotes the ledger's server. Reference records retain
 server/workspace labels and `verified | unverified` state. Local-row migration preserves
 links, order, attribution and ledger revisions without changing the process schema version.
 `conversationTarget: {serverIdentity, workspaceId}`, `conversationTitle` (discovery

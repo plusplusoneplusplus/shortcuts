@@ -80,7 +80,8 @@ export function SentinelTodoConversationReferences({ item, owner, onFollowLink }
                 const key = `${item.id}|ref:${identity}`;
                 const remoteOwner = parseRemoteCloneKey(owner.ownerRoutingRef);
                 const href = ref.serverIdentity ? `#chat-references/${[ref.serverIdentity, ref.workspaceId, ref.processId].map(encodeSegment).join('/')}`
-                    : `${repoHashBase(remoteOwner ? buildRemoteCloneKey(remoteOwner.serverId, ref.workspaceId) : ref.workspaceId)}/chats/${encodeSegment(ref.processId)}`;
+                    : `${repoHashBase(remoteOwner ? buildRemoteCloneKey(remoteOwner.serverId, ref.workspaceId) : ref.workspaceId)}/chats/`
+                        + (ref.sessionId ? `ralph/${encodeSegment(ref.sessionId)}` : encodeSegment(ref.processId));
                 return <li key={identity} className="flex min-w-0 flex-wrap items-center gap-1" data-testid={`sentinel-todo-reference-${item.id}-${ref.processId}`}>
                     <span className="shrink-0 rounded bg-black/[0.06] px-1 text-[10px] font-medium uppercase tracking-wide text-[#616161] dark:bg-white/[0.08] dark:text-[#a0a0a0]">Ref</span>
                     <a href={href} title={ref.title ?? ref.processId} data-todo-link={key}

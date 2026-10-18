@@ -1,8 +1,9 @@
 import { isQueueProcessId, toTaskId, type ProcessStore, type TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { grillingResultJob, type DelegatedJob, type DelegatedJobStore } from '../delegation/delegated-job-store';
 import { buildDashboardChatReference } from '../shared/chat-reference';
-import { buildChatOpenLink } from '../servers/workspace-directory';
-import { normalizeChatMode } from '../tasks/task-types';
+import { buildChatOpenLink, buildRalphSessionOpenLink } from '../servers/workspace-directory';
+import { getRalphContext, normalizeChatMode } from '../tasks/task-types';
+import { RalphSessionStore } from '../ralph/ralph-session-store';
 import type { SentinelTodoDependencyEvaluation, SentinelTodoDependencyReadiness, SentinelTodoTrackedAdmission } from '@plusplusoneplusplus/coc-client';
 import type { CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { parsePullRequestUrl, type PrStatusFetcher, type PrStatusSnapshot } from '../triggers/pr-status-fetcher';
@@ -32,6 +33,9 @@ import { matchTodoTags, tagSuggestSchema } from './sentinel-todo-tags';
 import type { DashboardDiscoveryRuntime, DashboardWorkspaceTarget } from '@plusplusoneplusplus/coc-client';
 import { z } from 'zod';
 import { getServerLogger } from '../logging/server-logger';
+
+/** Process/session IDs safe to resolve as a repo-scoped journal path segment. */
+const REFERENCE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
 const dashboardReferenceSchema = z.object({
     processId: z.string().min(1).max(200),
@@ -477,7 +481,8 @@ export class SentinelTodoService {
 
     /**
      * Attaches an existing local conversation as a reference-only link. The
-     * conversation must exist in the named workspace on this server; the link
+     * target must exist in the named workspace on this server — a saved chat,
+     * a queued/running chat not saved yet, or a Ralph session — and the link
      * and title are server-derived. Nothing is sent to that conversation, and
      * the item's status and job bookkeeping stay untouched.
      */
@@ -496,16 +501,47 @@ export class SentinelTodoService {
         if (processId === owner.processId && workspaceId === owner.workspaceId) {
             throw new SentinelTodoError('invalid', 'A Sentinel chat cannot reference itself');
         }
-        const process = await this.deps.store.getProcess(processId);
-        if (!process || process.id !== processId || process.metadata?.workspaceId !== workspaceId) {
-            throw new SentinelTodoError('not_found', 'Conversation not found in that workspace');
-        }
-        const title = (process.customTitle || process.title || process.promptPreview || '').trim().slice(0, 200);
+        const target = await this.referenceTarget(processId, workspaceId);
+        if (!target) throw new SentinelTodoError('not_found', 'Conversation not found in that workspace');
+        const title = target.title.trim().slice(0, 200);
+        const { sessionId } = target;
         const result = this.withVisibleErrors(() => this.deps.todos.attachReference(owner, itemId, expectedRevision, {
-            processId, workspaceId, openLink: buildChatOpenLink(workspaceId, processId), ...(title ? { title } : {}),
+            processId, workspaceId, ...(sessionId ? { sessionId } : {}), ...(title ? { title } : {}),
+            openLink: sessionId ? buildRalphSessionOpenLink(workspaceId, sessionId) : buildChatOpenLink(workspaceId, processId),
         }, actor));
         if (result.changed) this.emit({ owner, item: result.item, ledgerRevision: result.ledgerRevision });
         return this.visibleWrite({ item: result.item, ledgerRevision: result.ledgerRevision, attached: result.changed });
+    }
+
+    /**
+     * Proves a local reference target in exactly `workspaceId` from server
+     * state only: the saved process, else the live queued/running chat task
+     * for a `queue_` ID, else a Ralph session journal. Ralph iterations carry
+     * their stable session so the link survives later iterations.
+     */
+    private async referenceTarget(processId: string, workspaceId: string): Promise<{ title: string; sessionId?: string } | undefined> {
+        const process = await this.deps.store.getProcess(processId);
+        const task = !process && isQueueProcessId(processId) ? this.deps.getTask?.(toTaskId(processId)) : undefined;
+        const payload = task?.payload as { workspaceId?: unknown; prompt?: unknown } | undefined;
+        let source: Parameters<typeof getRalphContext>[0];
+        let title = '';
+        if (process) {
+            if (process.id !== processId || process.metadata?.workspaceId !== workspaceId) return undefined;
+            source = process;
+            title = process.customTitle || process.title || process.promptPreview || '';
+        } else if (task) {
+            if (task.type !== 'chat' || (task.status !== 'queued' && task.status !== 'running')
+                || task.repoId !== workspaceId || (payload?.workspaceId !== undefined && payload.workspaceId !== workspaceId)) return undefined;
+            source = task;
+            title = task.displayName || (typeof payload?.prompt === 'string' ? payload.prompt : '');
+        }
+        const sessionId = source ? getRalphContext(source)?.sessionId : processId;
+        const session = typeof sessionId === 'string' && REFERENCE_ID.test(sessionId) && this.deps.dataDir
+            ? await new RalphSessionStore({ dataDir: this.deps.dataDir }).readSessionRecord(workspaceId, sessionId).catch(() => null)
+            : null;
+        const verified = session && session.sessionId === sessionId && session.workspaceId === workspaceId ? session : undefined;
+        if (!source && !verified) return undefined;
+        return { title: title || verified?.originalGoal || '', ...(verified ? { sessionId: verified.sessionId } : {}) };
     }
 
     /** Resolve exact discovery evidence; caller-authored labels/verification never reach storage. */
