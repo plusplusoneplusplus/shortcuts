@@ -27,6 +27,13 @@ function stubClient(probe: () => Promise<void> = async () => undefined): PrProvi
         probeRepository: vi.fn(probe),
         resolveCurrentUser: vi.fn(async () => 'octocat'),
         listPullRequests: vi.fn(async () => ({ items: [] })),
+        getPullRequest: vi.fn(async (id: number) => ({
+            candidate: { id, title: `PR ${id}`, url: `https://example.test/${id}`, author: {}, lifecycle: 'open' as const, isDraft: false, sourceBranch: 'x', targetBranch: 'main', headSha: 'sha' },
+            description: '',
+            inRepository: true,
+        })),
+        loadReviews: vi.fn(async () => []),
+        loadChecks: vi.fn(async () => []),
     };
 }
 
@@ -186,6 +193,15 @@ describe('query_pull_request tool', () => {
             expect(result).toMatchObject({ success: false, code: 'provider-unavailable' });
             expect(JSON.stringify(result)).not.toContain('token=abc');
         });
+    });
+
+    it('returns get-mode results in input order as JSON', async () => {
+        const client = stubClient();
+        const { tool } = make(vi.fn(async () => client));
+        const result = await invoke(tool, { provider: 'github', repository: 'o/r', ids: [2, 1, 2] });
+        expect(result).toMatchObject({ success: true, mode: 'get', provider: 'github', repository: 'o/r' });
+        expect(result.results.map((r: any) => [r.id, r.ok])).toEqual([[2, true], [1, true], [2, true]]);
+        expect(client.getPullRequest).toHaveBeenCalledTimes(2);
     });
 
     it('returns a query-mode page as JSON', async () => {

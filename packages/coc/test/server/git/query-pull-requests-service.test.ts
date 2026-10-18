@@ -3,6 +3,12 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+const ghAdapterMocks = vi.hoisted(() => ({
+    getPullRequest: vi.fn(),
+    getReviewers: vi.fn(),
+    getChecks: vi.fn(),
+}));
+
 const octokitMocks = vi.hoisted(() => ({
     graphql: vi.fn(),
     getAuthenticated: vi.fn(),
@@ -12,6 +18,7 @@ const octokitMocks = vi.hoisted(() => ({
 const adoMocks = vi.hoisted(() => ({
     getRepository: vi.fn(async () => ({ id: 'repo-guid' })),
     getPullRequests: vi.fn(),
+    getPullRequestById: vi.fn(),
     getChecks: vi.fn(),
     resolveUserId: vi.fn(),
 }));
@@ -31,7 +38,11 @@ vi.mock('azure-devops-node-api', async (importOriginal) => {
     return {
         ...actual,
         WebApi: vi.fn(function () {
-            return { getGitApi: async () => ({ getRepository: adoMocks.getRepository, getPullRequests: adoMocks.getPullRequests }) };
+            return { getGitApi: async () => ({
+                getRepository: adoMocks.getRepository,
+                getPullRequests: adoMocks.getPullRequests,
+                getPullRequestById: adoMocks.getPullRequestById,
+            }) };
         }),
         getBearerHandler: vi.fn(() => ({})),
     };
@@ -44,11 +55,14 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         resolveAdoAccessTokenValue: vi.fn(async () => 'ado-token'),
         getOrResolveAdoUserId: adoMocks.resolveUserId,
         createAdoPullRequestsAdapter: vi.fn(() => ({ getChecks: adoMocks.getChecks })),
+        createGitHubPullRequestsAdapter: vi.fn(() => ghAdapterMocks),
     };
 });
 
 import {
     createPrProviderClientFactory,
+    MAX_CHECKS,
+    MAX_DESCRIPTION_CHARS,
     MAX_SCAN_CANDIDATES,
     parsePrQueryRequest,
     QUERY_PAGE_SIZE,
@@ -56,6 +70,7 @@ import {
     summarizeChecks,
     type PrCandidate,
     type PrCandidatePage,
+    type PrDetailSource,
     type PrListQuery,
     type PrProviderClient,
 } from '../../../src/server/git/query-pull-requests-service';
@@ -87,6 +102,9 @@ function pagedClient(pages: PrCandidate[][], overrides: Partial<PrProviderClient
         probeRepository: vi.fn(async () => undefined),
         resolveCurrentUser: vi.fn(async () => 'octocat'),
         listPullRequests,
+        getPullRequest: vi.fn(async () => { throw new Error('unused'); }),
+        loadReviews: vi.fn(async () => []),
+        loadChecks: vi.fn(async () => []),
         ...overrides,
     };
     return { client, listPullRequests };
@@ -252,6 +270,192 @@ describe('runPrQuery query mode (stub client)', () => {
         const { client } = pagedClient([Array.from({ length: 12 }, (_, i) => candidate(i + 1))], { loadCi });
         await expect(query({ ci: 'passing' }, client, controller.signal)).rejects.toMatchObject({ code: 'cancelled' });
         expect(loadCi.mock.calls.length).toBeLessThanOrEqual(4);
+    });
+});
+
+function detailSource(id: number, extra: Partial<PrDetailSource> = {}): PrDetailSource {
+    return {
+        candidate: candidate(id, { headSha: `sha${id}` }),
+        description: `Body ${id}`,
+        mergeability: { state: 'mergeable' },
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        inRepository: true,
+        ...extra,
+    };
+}
+
+function notFound() {
+    return Object.assign(new Error('Not Found secret'), { status: 404 });
+}
+
+function getClient(sources: Record<number, PrDetailSource | (() => Promise<PrDetailSource>)>, overrides: Partial<PrProviderClient> = {}) {
+    const { client } = pagedClient([], {
+        getPullRequest: vi.fn(async (id: number) => {
+            const source = sources[id];
+            if (!source) throw notFound();
+            return typeof source === 'function' ? source() : source;
+        }),
+        loadReviews: vi.fn(async () => [{ reviewer: { id: 'u1', login: 'mona' }, vote: 'approved' as const, isRequired: false }]),
+        loadChecks: vi.fn(async () => [
+            { id: 'c1', name: 'build', status: 'success' as const, source: 'check' as const, raw: { secret: 1 } },
+            { id: 'c2', name: 'test', status: 'running' as const, source: 'check' as const },
+        ]),
+        ...overrides,
+    });
+    return client;
+}
+
+async function get(ids: unknown, client: PrProviderClient, signal?: AbortSignal, provider = 'github', repository = 'o/r'): Promise<any> {
+    return runPrQuery(parsePrQueryRequest({ provider, repository, ids }), { createClient: async () => client, signal });
+}
+
+describe('runPrQuery get mode (stub client)', () => {
+    it('returns full details for a single ID in the same results shape', async () => {
+        const client = getClient({ 42: detailSource(42) });
+        const result = await get(42, client);
+        expect(result).toMatchObject({ success: true, mode: 'get', provider: 'github', repository: 'o/r' });
+        expect(result.results).toHaveLength(1);
+        const [entry] = result.results;
+        expect(entry).toMatchObject({ id: 42, ok: true });
+        expect(entry.pullRequest).toEqual({
+            id: 42, title: 'PR 42', url: 'https://example.test/pr/42', author: { login: 'octocat' },
+            lifecycle: 'open', isDraft: false, sourceBranch: 'feature/42', targetBranch: 'main',
+            ci: { state: 'pending', counts: { success: 1, failure: 0, pending: 1, other: 0 } },
+            description: 'Body 42', descriptionTruncated: false,
+            mergeability: { state: 'mergeable' },
+            reviews: [{ reviewer: { id: 'u1', login: 'mona' }, vote: 'approved', isRequired: false }],
+            checks: [{ name: 'build', status: 'success' }, { name: 'test', status: 'running' }],
+            createdAt: '2026-01-01T00:00:00.000Z',
+        });
+        expect(JSON.stringify(result)).not.toContain('secret');
+        expect(entry.pullRequest).not.toHaveProperty('headSha');
+        expect(client.probeRepository).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps input order with mixed outcomes and fetches duplicates once', async () => {
+        const client = getClient({
+            42: detailSource(42),
+            7: async () => { throw Object.assign(new Error('boom secret'), { status: 502 }); },
+        });
+        const result = await get([42, 999, 7, 42], client);
+        expect(result.success).toBe(true);
+        expect(result.results.map((r: any) => [r.id, r.ok, r.error?.code])).toEqual([
+            [42, true, undefined], [999, false, 'not-found'], [7, false, 'provider-error'], [42, true, undefined],
+        ]);
+        expect(result.results[3]).toEqual(result.results[0]);
+        expect(client.getPullRequest).toHaveBeenCalledTimes(3);
+        expect(result.results[2].error.message).toContain('HTTP 502');
+        expect(JSON.stringify(result)).not.toContain('secret');
+    });
+
+    it('keeps at most 4 provider requests in flight', async () => {
+        let inFlight = 0;
+        let peak = 0;
+        const track = <T>(value: T) => async () => {
+            inFlight++;
+            peak = Math.max(peak, inFlight);
+            await new Promise(resolve => setTimeout(resolve, 1));
+            inFlight--;
+            return value;
+        };
+        const ids = Array.from({ length: 12 }, (_, i) => i + 1);
+        const client = getClient(Object.fromEntries(ids.map(id => [id, track(detailSource(id))])), {
+            loadReviews: vi.fn(track([])),
+            loadChecks: vi.fn(track([])),
+        });
+        const result = await get(ids, client);
+        expect(result.results).toHaveLength(12);
+        expect(peak).toBeLessThanOrEqual(4);
+        expect(peak).toBeGreaterThan(1);
+    });
+
+    it.each([401, 403])('fails the whole call with auth-failed on HTTP %i for a later ID', async (status) => {
+        const client = getClient({ 1: detailSource(1), 2: async () => { throw Object.assign(new Error('x'), { status }); } });
+        await expect(get([1, 2], client)).rejects.toMatchObject({ code: 'auth-failed' });
+    });
+
+    it('fails the whole call when a subresource is rejected for credentials', async () => {
+        const client = getClient({ 1: detailSource(1) }, {
+            loadChecks: vi.fn(async () => { throw Object.assign(new Error('x'), { status: 401 }); }),
+        });
+        await expect(get(1, client)).rejects.toMatchObject({ code: 'auth-failed' });
+    });
+
+    it('reports wrong-repository instead of another repository\'s PR', async () => {
+        const client = getClient({ 5: detailSource(5, { inRepository: false }) });
+        const result = await get(5, client, undefined, 'ado', 'org/proj/repo');
+        expect(result.results[0]).toEqual({ id: 5, ok: false, error: { code: 'wrong-repository', message: expect.any(String) } });
+        expect(JSON.stringify(result)).not.toContain('PR 5');
+        expect(client.loadChecks).not.toHaveBeenCalled();
+    });
+
+    it('marks failed subresources null + unavailable with ci unavailable, never an empty array', async () => {
+        const client = getClient({ 1: detailSource(1) }, {
+            loadReviews: vi.fn(async () => { throw Object.assign(new Error('x'), { status: 500 }); }),
+            loadChecks: vi.fn(async () => { throw new Error('network'); }),
+        });
+        const { pullRequest } = (await get(1, client)).results[0];
+        expect(pullRequest.reviews).toBeNull();
+        expect(pullRequest.checks).toBeNull();
+        expect(pullRequest.unavailable).toEqual(['reviews', 'checks']);
+        expect(pullRequest.reason).toEqual(expect.stringContaining('HTTP 500'));
+        expect(pullRequest.ci).toEqual({ state: 'unavailable', reason: expect.any(String) });
+    });
+
+    it('reports checks unavailable when the head commit is unknown, and unknown mergeability', async () => {
+        const source = detailSource(1, { candidate: candidate(1), mergeability: undefined });
+        const client = getClient({ 1: source });
+        const { pullRequest } = (await get(1, client)).results[0];
+        expect(client.loadChecks).not.toHaveBeenCalled();
+        expect(pullRequest.checks).toBeNull();
+        expect(pullRequest.unavailable).toEqual(['checks']);
+        expect(pullRequest.ci.state).toBe('unavailable');
+        expect(pullRequest.mergeability).toEqual({ state: 'unknown' });
+    });
+
+    it('uses reviews carried by the detail response and keeps an empty list as "none"', async () => {
+        const client = getClient({ 1: detailSource(1, { reviews: [] }) }, { loadChecks: vi.fn(async () => []) });
+        const { pullRequest } = (await get(1, client)).results[0];
+        expect(client.loadReviews).not.toHaveBeenCalled();
+        expect(pullRequest.reviews).toEqual([]);
+        expect(pullRequest.checks).toEqual([]);
+        expect(pullRequest.ci.state).toBe('none');
+        expect(pullRequest).not.toHaveProperty('unavailable');
+    });
+
+    it('truncates long descriptions and check lists with flags', async () => {
+        const long = 'x'.repeat(MAX_DESCRIPTION_CHARS + 5);
+        const many = Array.from({ length: MAX_CHECKS + 3 }, (_, i) => ({
+            id: `c${i}`, name: `c${i}`, status: 'failure' as const, source: 'check' as const, description: 'd'.repeat(600),
+        }));
+        const client = getClient({ 1: detailSource(1, { description: long }) }, { loadChecks: vi.fn(async () => many) });
+        const { pullRequest } = (await get(1, client)).results[0];
+        expect(pullRequest.description).toHaveLength(MAX_DESCRIPTION_CHARS);
+        expect(pullRequest.descriptionTruncated).toBe(true);
+        expect(pullRequest.checks).toHaveLength(MAX_CHECKS);
+        expect(pullRequest.checksTruncated).toBe(true);
+        expect(pullRequest.checks[0].description).toHaveLength(500);
+        expect(pullRequest.ci.counts.failure).toBe(MAX_CHECKS + 3);
+    });
+
+    it('returns cancelled on a mid-batch abort and makes no further provider calls', async () => {
+        const controller = new AbortController();
+        let release!: () => void;
+        const hold = new Promise<void>(resolve => { release = resolve; });
+        const ids = Array.from({ length: 10 }, (_, i) => i + 1);
+        const client = getClient(Object.fromEntries(ids.map(id => [id, async () => {
+            if (id === 1) controller.abort();
+            await hold;
+            return detailSource(id);
+        }])));
+        const pending = get(ids, client, controller.signal);
+        await expect(pending).rejects.toMatchObject({ code: 'cancelled' });
+        const calls = (client.getPullRequest as any).mock.calls.length;
+        release();
+        await new Promise(resolve => setTimeout(resolve, 5));
+        expect((client.getPullRequest as any).mock.calls.length).toBe(calls);
+        expect(calls).toBeLessThanOrEqual(4);
+        expect(client.loadReviews).not.toHaveBeenCalled();
     });
 });
 
@@ -444,5 +648,139 @@ describe('Azure DevOps client', () => {
         expect(adoMocks.getPullRequests.mock.calls.at(-1)?.[1]).toEqual({ status: 1, creatorId: GUID });
         expect(result.items[0].ci).toEqual({ state: 'none', counts: { success: 0, failure: 0, pending: 0, other: 0 } });
         expect(result.items[0]).not.toHaveProperty('headSha');
+    });
+});
+
+describe('GitHub client get mode', () => {
+    let dataDir: string;
+
+    beforeEach(() => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'query-pr-gh-get-'));
+        fs.writeFileSync(path.join(dataDir, 'providers.json'), JSON.stringify({ providers: { github: { token: 'ghp_test' } } }));
+        ghAdapterMocks.getPullRequest.mockReset();
+        ghAdapterMocks.getReviewers.mockReset();
+        ghAdapterMocks.getChecks.mockReset();
+    });
+
+    afterEach(() => {
+        fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    const run = (ids: unknown) => runPrQuery(
+        parsePrQueryRequest({ provider: 'github', repository: 'o/r', ids }),
+        { createClient: createPrProviderClientFactory(dataDir) },
+    ) as Promise<any>;
+
+    const user = (id: string) => ({ id, login: id, displayName: id.toUpperCase() });
+
+    it('maps forge details, keeps the latest deciding vote per user and pins checks to the head', async () => {
+        ghAdapterMocks.getPullRequest.mockResolvedValue({
+            id: 9001, number: 3, title: 'T3', description: 'Body', author: user('octocat'),
+            sourceBranch: 'feature', targetBranch: 'main', status: 'draft', isDraft: true,
+            createdAt: new Date('2026-02-01T00:00:00Z'), updatedAt: new Date('2026-02-02T00:00:00Z'),
+            url: 'https://github.com/o/r/pull/3', repositoryId: 'o/r', reviewers: [], labels: [],
+            headSha: 'abc', mergeability: { state: 'blocked', blockedReason: 'Waiting' }, raw: { token: 'secret' },
+        });
+        ghAdapterMocks.getReviewers.mockResolvedValue([
+            { identity: user('mona'), vote: 'approved', isRequired: false },
+            { identity: user('mona'), vote: 'no-vote', isRequired: false },
+            { identity: user('hubot'), vote: 'approved', isRequired: false },
+            { identity: user('hubot'), vote: 'rejected', isRequired: false },
+            { identity: user('lurker'), vote: 'no-vote', isRequired: false },
+        ]);
+        ghAdapterMocks.getChecks.mockResolvedValue([{ id: '1', name: 'ci', status: 'failure', source: 'check', raw: {} }]);
+        const result = await run(3);
+        const { pullRequest } = result.results[0];
+        expect(ghAdapterMocks.getPullRequest).toHaveBeenCalledWith('o/r', 3);
+        expect(ghAdapterMocks.getChecks).toHaveBeenCalledWith('o/r', 3, 'abc');
+        expect(pullRequest).toMatchObject({
+            id: 3, lifecycle: 'open', isDraft: true, description: 'Body',
+            mergeability: { state: 'blocked', blockedReason: 'Waiting' },
+            ci: { state: 'failing' },
+            createdAt: '2026-02-01T00:00:00.000Z', updatedAt: '2026-02-02T00:00:00.000Z',
+        });
+        expect(pullRequest.reviews).toEqual([
+            { reviewer: { id: 'mona', login: 'mona', displayName: 'MONA' }, vote: 'approved', isRequired: false },
+            { reviewer: { id: 'hubot', login: 'hubot', displayName: 'HUBOT' }, vote: 'rejected', isRequired: false },
+            { reviewer: { id: 'lurker', login: 'lurker', displayName: 'LURKER' }, vote: 'no-vote', isRequired: false },
+        ]);
+        expect(JSON.stringify(result)).not.toContain('secret');
+    });
+
+    it('maps a pulls.get 404 (for example an issue number) to not-found', async () => {
+        ghAdapterMocks.getPullRequest.mockRejectedValue(Object.assign(new Error('Not Found'), { status: 404 }));
+        const result = await run([1]);
+        expect(result.results[0]).toMatchObject({ id: 1, ok: false, error: { code: 'not-found' } });
+    });
+});
+
+describe('Azure DevOps client get mode', () => {
+    beforeEach(() => {
+        adoMocks.getRepository.mockReset();
+        adoMocks.getRepository.mockResolvedValue({ id: 'repo-guid', project: { id: 'proj-guid' } } as any);
+        adoMocks.getPullRequestById.mockReset();
+        adoMocks.getChecks.mockReset();
+    });
+
+    const run = (ids: unknown) => runPrQuery(
+        parsePrQueryRequest({ provider: 'ado', repository: 'My Org/Proj/Repo', ids }),
+        { createClient: createPrProviderClientFactory('/unused') },
+    ) as Promise<any>;
+
+    function adoDetail(id: number, extra: Record<string, unknown> = {}) {
+        return {
+            pullRequestId: id, title: `T${id}`, description: 'Body', status: 3, isDraft: false,
+            sourceRefName: 'refs/heads/feature/x', targetRefName: 'refs/heads/main',
+            createdBy: { id: GUID, uniqueName: 'jane@example.com', displayName: 'Jane' },
+            creationDate: '2026-03-01T00:00:00Z', closedDate: '2026-03-02T00:00:00Z',
+            lastMergeSourceCommit: { commitId: `sha${id}` },
+            mergeStatus: 2,
+            repository: { id: 'repo-guid', name: 'repo', project: { id: 'proj-guid', name: 'proj' } },
+            reviewers: [
+                { id: 'r1', displayName: 'Rev', uniqueName: 'rev@example.com', vote: 10, isRequired: true },
+                { id: 'r2', displayName: 'Waiter', vote: -5 },
+            ],
+            ...extra,
+        };
+    }
+
+    it('maps details with reviewer votes from the PR itself and checks pinned to the head', async () => {
+        adoMocks.getPullRequestById.mockResolvedValue(adoDetail(42));
+        adoMocks.getChecks.mockResolvedValue([{ id: 'c', name: 'build', status: 'success', source: 'status' }]);
+        const result = await run(42);
+        expect(adoMocks.getPullRequestById).toHaveBeenCalledWith(42, 'Proj');
+        expect(adoMocks.getChecks).toHaveBeenCalledWith('Repo', 42, 'sha42');
+        expect(result.results[0].pullRequest).toMatchObject({
+            id: 42, url: 'https://dev.azure.com/My%20Org/Proj/_git/Repo/pullrequest/42', lifecycle: 'merged',
+            mergeability: { state: 'conflicting' }, ci: { state: 'passing' },
+            createdAt: '2026-03-01T00:00:00.000Z', mergedAt: '2026-03-02T00:00:00.000Z',
+            reviews: [
+                { reviewer: { id: 'r1', login: 'rev@example.com', displayName: 'Rev' }, vote: 'approved', isRequired: true },
+                { reviewer: { id: 'r2', displayName: 'Waiter' }, vote: 'waiting-for-author', isRequired: false },
+            ],
+        });
+        expect(result.results[0].pullRequest).not.toHaveProperty('closedAt');
+    });
+
+    it.each([
+        ['another repository', { repository: { id: 'other', name: 'Other', project: { id: 'proj-guid', name: 'Proj' } } }],
+        ['another project', { repository: { id: 'x', name: 'Repo', project: { id: 'p2', name: 'Elsewhere' } } }],
+        ['no repository', { repository: undefined }],
+    ])('guards against a PR from %s in the same organization', async (_label, extra) => {
+        adoMocks.getPullRequestById.mockResolvedValue(adoDetail(5, extra));
+        const result = await run(5);
+        expect(result.results[0]).toMatchObject({ id: 5, ok: false, error: { code: 'wrong-repository' } });
+        expect(adoMocks.getChecks).not.toHaveBeenCalled();
+    });
+
+    it('matches the repository by probed ID when the name differs in case or was renamed', async () => {
+        adoMocks.getPullRequestById.mockResolvedValue(adoDetail(5, { repository: { id: 'REPO-GUID', name: 'renamed', project: { id: 'proj-guid' } } }));
+        adoMocks.getChecks.mockResolvedValue([]);
+        expect((await run(5)).results[0].ok).toBe(true);
+    });
+
+    it('maps a null lookup to not-found', async () => {
+        adoMocks.getPullRequestById.mockResolvedValue(null);
+        expect((await run(5)).results[0]).toMatchObject({ ok: false, error: { code: 'not-found' } });
     });
 });

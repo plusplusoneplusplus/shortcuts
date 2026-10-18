@@ -21,11 +21,18 @@ import { Octokit } from '@octokit/rest';
 import * as azdev from 'azure-devops-node-api';
 import {
     createAdoPullRequestsAdapter,
+    createGitHubPullRequestsAdapter,
     getOrResolveAdoUserId,
     resolveAdoAccessTokenValue,
     type ProviderCheckStatus,
+    type ProviderPullRequestCheck,
+    type Reviewer,
 } from '@plusplusoneplusplus/forge';
-import { PullRequestStatus } from 'azure-devops-node-api/interfaces/GitInterfaces';
+import {
+    PullRequestAsyncStatus,
+    PullRequestStatus,
+    type GitPullRequest,
+} from 'azure-devops-node-api/interfaces/GitInterfaces';
 import { readProvidersConfig } from '../providers/providers-config';
 
 export type PrQueryProvider = 'github' | 'ado';
@@ -361,6 +368,73 @@ export type PrCandidate = Omit<PrSummary, 'ci'> & {
     headSha?: string;
 };
 
+export type PrMergeabilityState = 'mergeable' | 'conflicting' | 'blocked' | 'unknown';
+
+export interface PrMergeability {
+    state: PrMergeabilityState;
+    blockedReason?: string;
+}
+
+export type PrReviewVote = Reviewer['vote'];
+
+export interface PrReview {
+    reviewer: PrAuthor;
+    vote: PrReviewVote;
+    isRequired: boolean;
+}
+
+/** One PR as read by a provider client for get mode, before subresources. */
+export interface PrDetailSource {
+    candidate: PrCandidate;
+    description: string;
+    mergeability?: PrMergeability;
+    createdAt?: Date;
+    updatedAt?: Date;
+    mergedAt?: Date;
+    closedAt?: Date;
+    /** Reviews already carried by the detail response (ADO); absent → `loadReviews`. */
+    reviews?: PrReview[];
+    /** False when the provider returned a PR that belongs to a different repository. */
+    inRepository: boolean;
+}
+
+export interface PrCheck {
+    name: string;
+    group?: string;
+    status: ProviderCheckStatus;
+    description?: string;
+    detailsUrl?: string;
+    startedAt?: string;
+    completedAt?: string;
+}
+
+export type PrUnavailablePart = 'reviews' | 'checks' | 'mergeability';
+
+/** Get-mode details: the summary fields plus description, mergeability, reviews and checks. */
+export interface PrDetail extends PrSummary {
+    description: string;
+    descriptionTruncated: boolean;
+    mergeability: PrMergeability;
+    /** `null` when the reviews could not be read; `[]` means there are none. */
+    reviews: PrReview[] | null;
+    /** `null` when the checks could not be read; `[]` means there are none. */
+    checks: PrCheck[] | null;
+    checksTruncated?: boolean;
+    createdAt?: string;
+    updatedAt?: string;
+    mergedAt?: string;
+    closedAt?: string;
+    unavailable?: PrUnavailablePart[];
+    /** Sanitized explanation for `unavailable` parts. */
+    reason?: string;
+}
+
+export type PrGetErrorCode = 'not-found' | 'wrong-repository' | 'provider-error' | 'cancelled';
+
+export type PrGetResult =
+    | { id: number; ok: true; pullRequest: PrDetail }
+    | { id: number; ok: false; error: { code: PrGetErrorCode; message: string } };
+
 /**
  * Aggregates check statuses (latest run per check) into one CI state:
  * any failure/cancelled → failing; else any pending/running → pending;
@@ -426,6 +500,12 @@ export interface PrProviderClient {
     listPullRequests(query: PrListQuery): Promise<PrCandidatePage>;
     /** CI for a listed PR whose listing did not carry it. Throws when the lookup fails. */
     loadCi?(candidate: PrCandidate): Promise<PrCiSummary>;
+    /** One PR by ID. Throws (HTTP 404 → not found) when it cannot be read. */
+    getPullRequest(id: number): Promise<PrDetailSource>;
+    /** Canonical reviewer votes for a PR whose detail did not carry them. */
+    loadReviews(source: PrDetailSource): Promise<PrReview[]>;
+    /** Checks on the PR head commit (`candidate.headSha`). Throws when any source fails. */
+    loadChecks(source: PrDetailSource): Promise<ProviderPullRequestCheck[]>;
 }
 
 export type CreatePrProviderClient = (identity: PrRepositoryIdentity) => Promise<PrProviderClient>;
@@ -596,6 +676,7 @@ async function createGitHubClient(
         throw new PrQueryError('credentials-missing', 'GitHub is not signed in on this server (no token in providers.json).');
     }
     const octokit = new Octokit({ auth: token });
+    const adapter = createGitHubPullRequestsAdapter({ token, owner: identity.owner, repo: identity.repo });
     return {
         async probeRepository() {
             try {
@@ -635,7 +716,65 @@ async function createGitHubClient(
                 : undefined;
             return { items, ...(next ? { next } : {}) };
         },
+        async getPullRequest(id) {
+            const pr = await adapter.getPullRequest(identity.repository, id);
+            const candidate: PrCandidate = {
+                id,
+                title: pr.title,
+                url: pr.url,
+                author: toPrAuthor(pr.author),
+                lifecycle: pr.status === 'merged' ? 'merged' : pr.status === 'closed' ? 'closed' : 'open',
+                isDraft: pr.isDraft === true || pr.status === 'draft',
+                sourceBranch: pr.sourceBranch,
+                targetBranch: pr.targetBranch,
+            };
+            if (pr.headSha) candidate.headSha = pr.headSha;
+            return {
+                candidate,
+                description: pr.description ?? '',
+                ...(pr.mergeability ? { mergeability: pr.mergeability } : {}),
+                createdAt: pr.createdAt,
+                updatedAt: pr.updatedAt,
+                ...(pr.mergedAt ? { mergedAt: pr.mergedAt } : {}),
+                ...(pr.closedAt ? { closedAt: pr.closedAt } : {}),
+                // `pulls.get` is scoped to owner/repo, so a hit is always in this repository.
+                inRepository: true,
+            };
+        },
+        async loadReviews(source) {
+            return latestGitHubVotes(await adapter.getReviewers(identity.repository, source.candidate.id));
+        },
+        async loadChecks(source) {
+            if (!adapter.getChecks || !source.candidate.headSha) throw new Error('head commit unknown');
+            // Pinning the head SHA makes forge throw (instead of skipping) when a check source fails.
+            return adapter.getChecks(identity.repository, source.candidate.id, source.candidate.headSha);
+        },
     };
+}
+
+function toPrAuthor(identity: { id?: string; login?: string; displayName?: string } | undefined): PrAuthor {
+    const author: PrAuthor = {};
+    if (identity?.id) author.id = identity.id;
+    if (identity?.login) author.login = identity.login;
+    if (identity?.displayName) author.displayName = identity.displayName;
+    return author;
+}
+
+/**
+ * GitHub returns every review in order. Keep one entry per user: the latest
+ * deciding vote (approve / request changes), or `no-vote` for users who only
+ * commented or whose review was dismissed.
+ */
+function latestGitHubVotes(reviewers: readonly Reviewer[]): PrReview[] {
+    const byUser = new Map<string, PrReview>();
+    for (const reviewer of reviewers) {
+        const key = reviewer.identity.id || reviewer.identity.login || reviewer.identity.displayName;
+        const existing = byUser.get(key);
+        if (existing && reviewer.vote === 'no-vote') continue;
+        if (existing) byUser.delete(key);
+        byUser.set(key, { reviewer: toPrAuthor(reviewer.identity), vote: reviewer.vote, isRequired: reviewer.isRequired });
+    }
+    return [...byUser.values()];
 }
 
 const ADO_STATUS: Record<PrQueryStatus, PullRequestStatus> = {
@@ -647,6 +786,50 @@ const ADO_STATUS: Record<PrQueryStatus, PullRequestStatus> = {
 
 function stripRefsHeads(ref: string | undefined): string {
     return (ref ?? '').replace(/^refs\/heads\//, '');
+}
+
+function adoVote(vote: number | undefined): PrReviewVote {
+    switch (vote) {
+        case 10: return 'approved';
+        case 5: return 'approved-with-suggestions';
+        case -5: return 'waiting-for-author';
+        case -10: return 'rejected';
+        default: return 'no-vote';
+    }
+}
+
+/** Same mapping as forge's ADO adapter. */
+function adoMergeability(status: PullRequestAsyncStatus | undefined): PrMergeability {
+    switch (status) {
+        case PullRequestAsyncStatus.Conflicts: return { state: 'conflicting' };
+        case PullRequestAsyncStatus.Succeeded: return { state: 'mergeable' };
+        case PullRequestAsyncStatus.RejectedByPolicy:
+        case PullRequestAsyncStatus.Failure:
+            return { state: 'blocked', blockedReason: 'Provider policy or merge preview failure requires attention' };
+        default: return { state: 'unknown' };
+    }
+}
+
+function sameName(a: string | undefined, b: string | undefined): boolean {
+    return !!a && !!b && a.toLowerCase() === b.toLowerCase();
+}
+
+function adoCandidate(pr: GitPullRequest, webRepoUrl: string): PrCandidate {
+    const id = pr.pullRequestId as number;
+    const candidate: PrCandidate = {
+        id,
+        title: pr.title ?? '',
+        url: `${webRepoUrl}/pullrequest/${id}`,
+        author: toPrAuthor({ id: pr.createdBy?.id, login: pr.createdBy?.uniqueName, displayName: pr.createdBy?.displayName }),
+        lifecycle: pr.status === PullRequestStatus.Completed ? 'merged'
+            : pr.status === PullRequestStatus.Abandoned ? 'closed' : 'open',
+        isDraft: pr.isDraft === true,
+        sourceBranch: stripRefsHeads(pr.sourceRefName),
+        targetBranch: stripRefsHeads(pr.targetRefName),
+    };
+    const headSha = pr.lastMergeSourceCommit?.commitId;
+    if (headSha) candidate.headSha = headSha;
+    return candidate;
 }
 
 async function createAdoClient(
@@ -666,9 +849,11 @@ async function createAdoClient(
     const connection = new azdev.WebApi(orgUrl, azdev.getBearerHandler(token));
     const webRepoUrl = `${orgUrl}/${encodeURIComponent(identity.project)}/_git/${encodeURIComponent(identity.repo)}`;
     let adapter: ReturnType<typeof createAdoPullRequestsAdapter> | undefined;
+    let probed: { id?: string; projectId?: string } = {};
+    const checks = () => adapter ??= createAdoPullRequestsAdapter({ orgUrl, token, project: identity.project, repo: identity.repo });
     return {
         async probeRepository() {
-            let repository: unknown;
+            let repository: { id?: string; project?: { id?: string } } | null;
             try {
                 const git = await connection.getGitApi();
                 repository = await git.getRepository(identity.repo, identity.project);
@@ -679,6 +864,7 @@ async function createAdoClient(
             if (!repository) {
                 throw toPrQueryError({ statusCode: 404 }, 'ado', 'repository');
             }
+            probed = { id: repository.id, projectId: repository.project?.id };
         },
         async resolveCurrentUser() {
             const id = await getOrResolveAdoUserId(orgUrl, token);
@@ -707,37 +893,50 @@ async function createAdoClient(
             if (!prs) throw toPrQueryError({ statusCode: 404 }, 'ado', 'request');
             const items: PrCandidate[] = prs
                 .filter(pr => typeof pr.pullRequestId === 'number')
-                .map(pr => {
-                    const author: PrAuthor = {};
-                    if (pr.createdBy?.id) author.id = pr.createdBy.id;
-                    if (pr.createdBy?.uniqueName) author.login = pr.createdBy.uniqueName;
-                    if (pr.createdBy?.displayName) author.displayName = pr.createdBy.displayName;
-                    const id = pr.pullRequestId as number;
-                    const candidate: PrCandidate = {
-                        id,
-                        title: pr.title ?? '',
-                        url: `${webRepoUrl}/pullrequest/${id}`,
-                        author,
-                        lifecycle: pr.status === PullRequestStatus.Completed ? 'merged'
-                            : pr.status === PullRequestStatus.Abandoned ? 'closed' : 'open',
-                        isDraft: pr.isDraft === true,
-                        sourceBranch: stripRefsHeads(pr.sourceRefName),
-                        targetBranch: stripRefsHeads(pr.targetRefName),
-                    };
-                    const headSha = pr.lastMergeSourceCommit?.commitId;
-                    if (headSha) candidate.headSha = headSha;
-                    return candidate;
-                });
+                .map(pr => adoCandidate(pr, webRepoUrl));
             const next = prs.length >= query.pageSize ? String(skip + prs.length) : undefined;
             return { items, ...(next ? { next } : {}) };
         },
         async loadCi(candidate) {
-            adapter ??= createAdoPullRequestsAdapter({ orgUrl, token, project: identity.project, repo: identity.repo });
             // Pinning to the listed head makes forge read only current-iteration
             // statuses and throw (instead of skipping) when a status source fails.
-            if (!adapter.getChecks) throw new Error('checks unsupported');
-            const checks = await adapter.getChecks(identity.repo, candidate.id, candidate.headSha);
-            return summarizeChecks(checks.map(check => check.status));
+            const service = checks();
+            if (!service.getChecks) throw new Error('checks unsupported');
+            const result = await service.getChecks(identity.repo, candidate.id, candidate.headSha);
+            return summarizeChecks(result.map(check => check.status));
+        },
+        async getPullRequest(id) {
+            const git = await connection.getGitApi();
+            // Organization-wide lookup; typed-rest-client resolves a 404 as null.
+            const pr = await git.getPullRequestById(id, identity.project);
+            if (!pr || typeof pr.pullRequestId !== 'number') throw { statusCode: 404 };
+            const repository = pr.repository;
+            const inRepository = (sameName(repository?.name, identity.repo) || sameName(repository?.id, probed.id))
+                && (sameName(repository?.project?.name, identity.project) || sameName(repository?.project?.id, probed.projectId));
+            const candidate = adoCandidate(pr, webRepoUrl);
+            const closed = pr.closedDate ? new Date(pr.closedDate) : undefined;
+            return {
+                candidate,
+                description: pr.description ?? '',
+                mergeability: adoMergeability(pr.mergeStatus),
+                ...(pr.creationDate ? { createdAt: new Date(pr.creationDate) } : {}),
+                ...(closed && candidate.lifecycle === 'merged' ? { mergedAt: closed } : {}),
+                ...(closed && candidate.lifecycle === 'closed' ? { closedAt: closed } : {}),
+                reviews: (pr.reviewers ?? []).map(reviewer => ({
+                    reviewer: toPrAuthor({ id: reviewer.id, login: reviewer.uniqueName, displayName: reviewer.displayName }),
+                    vote: adoVote(reviewer.vote),
+                    isRequired: reviewer.isRequired === true,
+                })),
+                inRepository,
+            };
+        },
+        async loadReviews(source) {
+            return source.reviews ?? [];
+        },
+        async loadChecks(source) {
+            const service = checks();
+            if (!service.getChecks || !source.candidate.headSha) throw new Error('head commit unknown');
+            return service.getChecks(identity.repo, source.candidate.id, source.candidate.headSha);
         },
     };
 }
@@ -810,7 +1009,7 @@ export async function runPrQuery(request: PrQueryRequest, deps: RunPrQueryDeps):
     if (request.mode === 'query') {
         return runQueryMode(request, client, signal);
     }
-    throw new PrQueryError('provider-unavailable', 'Get mode is not available on this server yet.');
+    return runGetMode(request, client, signal);
 }
 
 async function resolveAuthor(
@@ -968,5 +1167,171 @@ async function runQueryMode(
         ...(nextPosition ? { nextCursor: encodePrQueryCursor(identity, filters, nextPosition) } : {}),
         scan: { truncated, candidatesScanned: scanned },
         ciUnavailableExcluded,
+    };
+}
+
+/** Get-mode limits on returned detail. */
+export const MAX_DESCRIPTION_CHARS = 20_000;
+export const MAX_CHECKS = 100;
+export const MAX_CHECK_DESCRIPTION_CHARS = 500;
+
+function isoDate(value: Date | undefined): string | undefined {
+    if (!(value instanceof Date)) return undefined;
+    const time = value.getTime();
+    // ADO maps a missing date to the epoch; treat it as unknown.
+    return Number.isFinite(time) && time > 0 ? value.toISOString() : undefined;
+}
+
+function toCheck(check: ProviderPullRequestCheck): PrCheck {
+    const out: PrCheck = { name: check.name, status: check.status };
+    if (check.group) out.group = check.group;
+    if (check.description) out.description = check.description.slice(0, MAX_CHECK_DESCRIPTION_CHARS);
+    if (check.detailsUrl) out.detailsUrl = check.detailsUrl;
+    const startedAt = isoDate(check.startedAt);
+    const completedAt = isoDate(check.completedAt);
+    if (startedAt) out.startedAt = startedAt;
+    if (completedAt) out.completedAt = completedAt;
+    return out;
+}
+
+/**
+ * A provider failure while reading one PR or one of its parts. Credentials,
+ * rate limits and cancellation end the whole call; anything else stays local
+ * to that ID (or part).
+ */
+function classifyItemFailure(err: unknown, provider: PrQueryProvider): { status?: number } {
+    if (err instanceof PrQueryError) throw err;
+    const status = statusOf(err);
+    if (isRateLimited(err, status) || status === 401 || status === 403) {
+        throw toPrQueryError(err, provider, 'request');
+    }
+    return { status };
+}
+
+/**
+ * Get mode. Each unique ID is fetched once with at most
+ * {@link MAX_CONCURRENT_REQUESTS} provider requests in flight; results come
+ * back in input order with one entry per input position. Repository-level and
+ * credential failures, and cancellation, fail the whole call.
+ */
+async function runGetMode(
+    request: Extract<PrQueryRequest, { mode: 'get' }>,
+    client: PrProviderClient,
+    signal: AbortSignal | undefined,
+): Promise<PrQuerySuccess> {
+    const { identity } = request;
+    const provider = identity.provider;
+    const label = providerLabel(provider);
+    const unique = [...new Set(request.ids)];
+    const results = new Map<number, PrGetResult>();
+    let fatal: PrQueryError | undefined;
+
+    // Throws once the call is cancelled or another ID already failed the whole call.
+    const checkpoint = () => {
+        throwIfAborted(signal);
+        if (fatal) throw fatal;
+    };
+
+    const fetchOne = async (id: number): Promise<PrGetResult> => {
+        checkpoint();
+        let source: PrDetailSource;
+        try {
+            source = await awaitUnlessAborted(client.getPullRequest(id), signal);
+        } catch (err) {
+            const { status } = classifyItemFailure(err, provider);
+            if (status === 404) {
+                return { id, ok: false, error: { code: 'not-found', message: `${label} pull request ${id} was not found in this repository.` } };
+            }
+            return { id, ok: false, error: { code: 'provider-error', message: `${label} pull request ${id} could not be read${status ? ` (HTTP ${status})` : ''}.` } };
+        }
+        if (!source.inRepository) {
+            return { id, ok: false, error: { code: 'wrong-repository', message: `${label} pull request ${id} belongs to a different repository.` } };
+        }
+
+        const unavailable: PrUnavailablePart[] = [];
+        const reasons: string[] = [];
+        const partFailed = (part: PrUnavailablePart, err: unknown) => {
+            const { status } = classifyItemFailure(err, provider);
+            unavailable.push(part);
+            reasons.push(`${part} could not be read${status ? ` (HTTP ${status})` : ''}`);
+        };
+
+        let reviews: PrReview[] | null = null;
+        if (source.reviews) {
+            reviews = source.reviews;
+        } else {
+            checkpoint();
+            try {
+                reviews = await awaitUnlessAborted(client.loadReviews(source), signal);
+            } catch (err) {
+                partFailed('reviews', err);
+            }
+        }
+
+        let checks: ProviderPullRequestCheck[] | null = null;
+        if (source.candidate.headSha) {
+            checkpoint();
+            try {
+                checks = await awaitUnlessAborted(client.loadChecks(source), signal);
+            } catch (err) {
+                partFailed('checks', err);
+            }
+        } else {
+            unavailable.push('checks');
+            reasons.push('checks could not be read (head commit unknown)');
+        }
+
+        const { headSha: _headSha, ...summary } = source.candidate;
+        const ci: PrCiSummary = checks
+            ? summarizeChecks(checks.map(check => check.status))
+            : { state: 'unavailable', reason: 'CI status could not be read.' };
+        const description = source.description ?? '';
+        const detail: PrDetail = {
+            ...toSummary(summary, ci),
+            description: description.slice(0, MAX_DESCRIPTION_CHARS),
+            descriptionTruncated: description.length > MAX_DESCRIPTION_CHARS,
+            mergeability: source.mergeability ?? { state: 'unknown' },
+            reviews,
+            checks: checks ? checks.slice(0, MAX_CHECKS).map(toCheck) : null,
+        };
+        if (checks && checks.length > MAX_CHECKS) detail.checksTruncated = true;
+        const createdAt = isoDate(source.createdAt);
+        const updatedAt = isoDate(source.updatedAt);
+        const mergedAt = isoDate(source.mergedAt);
+        const closedAt = isoDate(source.closedAt);
+        if (createdAt) detail.createdAt = createdAt;
+        if (updatedAt) detail.updatedAt = updatedAt;
+        if (mergedAt) detail.mergedAt = mergedAt;
+        if (closedAt) detail.closedAt = closedAt;
+        if (unavailable.length > 0) {
+            detail.unavailable = unavailable;
+            detail.reason = `${reasons.join('; ')}.`;
+        }
+        return { id, ok: true, pullRequest: detail };
+    };
+
+    // Each worker runs its provider requests one at a time, so at most
+    // MAX_CONCURRENT_REQUESTS requests are in flight across the batch.
+    let next = 0;
+    const worker = async () => {
+        while (!fatal && next < unique.length) {
+            const id = unique[next++];
+            try {
+                results.set(id, await fetchOne(id));
+            } catch (err) {
+                fatal ??= err instanceof PrQueryError ? err : toPrQueryError(err, provider, 'request');
+            }
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(MAX_CONCURRENT_REQUESTS, unique.length) }, worker));
+    throwIfAborted(signal);
+    if (fatal) throw fatal;
+
+    return {
+        success: true,
+        mode: 'get',
+        provider,
+        repository: identity.repository,
+        results: request.ids.map(id => results.get(id) as PrGetResult),
     };
 }
