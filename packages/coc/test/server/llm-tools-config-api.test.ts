@@ -152,10 +152,12 @@ describe('LLM Tools Config API endpoints', () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
             expect(res.status).toBe(200);
             const data = res.json();
-            expect(data.tools).toHaveLength(getEffectiveLlmToolRegistry({ cronEnabled: false }).length);
+            expect(data.tools).toHaveLength(getEffectiveLlmToolRegistry({ cronEnabled: false, llmToolSystemOneEnabled: true, toolScriptingEnabled: true }).length);
             const names = data.tools.map((t: any) => t.name);
             expect(names).toContain('tavily_web_search');
             expect(names).toContain('suggest_follow_ups');
+            expect(names).toContain('run_tool_script');
+            expect(names).toContain('system_one');
             expect(names).not.toContain('get_work_item');
             expect(names).not.toContain('create_update_work_item');
             expect(names).not.toContain('create_bug');
@@ -321,7 +323,7 @@ describe('LLM Tools Config API endpoints', () => {
             expect(res.status).toBe(200);
             const data = res.json();
             expect(data.disabledLlmTools).toEqual(['tavily_web_search', 'memory']);
-            expect(data.tools).toHaveLength(getEffectiveLlmToolRegistry({ cronEnabled: false }).length);
+            expect(data.tools).toHaveLength(getEffectiveLlmToolRegistry({ cronEnabled: false, llmToolSystemOneEnabled: true, toolScriptingEnabled: true }).length);
             expect(data.conversationRetrievalAvailable).toBe(true);
             // The PUT response carries the same additive param metadata as GET.
             const followUps = data.tools.find((t: any) => t.name === 'suggest_follow_ups');
@@ -486,7 +488,7 @@ describe('LLM Tools Config API endpoints', () => {
         it('GET returns the tool registry for a group id', async () => {
             const res = await request(`${base()}/api/workspaces/${GROUP_ID}/llm-tools-config`);
             expect(res.status).toBe(200);
-            expect(res.json().tools).toHaveLength(getEffectiveLlmToolRegistry({ cronEnabled: false }).length);
+            expect(res.json().tools).toHaveLength(getEffectiveLlmToolRegistry({ cronEnabled: false, llmToolSystemOneEnabled: true, toolScriptingEnabled: true }).length);
         });
 
         it('PUT round-trips disabledLlmTools through the group preferences file', async () => {

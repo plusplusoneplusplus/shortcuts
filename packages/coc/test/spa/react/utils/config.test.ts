@@ -13,12 +13,16 @@ import {
     isComposerWordHintEnabled,
     isDreamsEnabled,
     isExplorerDeleteEnabled,
+    isExplorerEditorTabsEnabled,
     isFeatureEnabled,
+    isMarkdownPanelPreviewEnabled,
+    isPanelSourceSplitEnabled,
     isPanelTabReorderingEnabled,
     isPullRequestsAutoClassifyTeamEnabled,
     isRailManualRefreshEnabled,
     isRailStatusActionsEnabled,
     isServersEnabled,
+    isSchedulerDelayHintEnabled,
     isSentinelEnabled,
 } from '../../../../src/server/spa/client/react/utils/config';
 
@@ -32,6 +36,10 @@ describe.each([
     ['railStatusActionsEnabled', isRailStatusActionsEnabled],
     ['explorerDeleteEnabled', isExplorerDeleteEnabled],
     ['panelTabReorderingEnabled', isPanelTabReorderingEnabled],
+    ['explorerEditorTabsEnabled', isExplorerEditorTabsEnabled],
+    ['markdownPanelPreviewEnabled', isMarkdownPanelPreviewEnabled],
+    ['panelSourceSplitEnabled', isPanelSourceSplitEnabled],
+    ['schedulerDelayHintEnabled', isSchedulerDelayHintEnabled],
 ] as const)('%s default-on behavior', (flag, isEnabled) => {
     it('enables an absent setting with or without bootstrap config', () => {
         expect(isEnabled()).toBe(true);
@@ -284,5 +292,13 @@ describe('getBackendEndpointInfo', () => {
         expect(info!.apiUrl).toBe(`${window.location.origin}/api`);
         const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         expect(info!.wsUrl).toBe(`${scheme}//${window.location.host}/ws`);
+    });
+});
+
+describe('removed Notes / panel-Settings availability accessors', () => {
+    it('exports no accessor that could gate Notes or the Settings panel tab', async () => {
+        const config = await import('../../../../src/server/spa/client/react/utils/config');
+        expect(config).not.toHaveProperty('isNotesEnabled');
+        expect(config).not.toHaveProperty('isPanelSettingsEnabled');
     });
 });

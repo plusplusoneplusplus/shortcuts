@@ -83,7 +83,8 @@ function writerConflict(workspaceId: string, match: MembershipMatch): RepoGroupW
         writerWorkspaceId: match.writerWorkspaceId,
         writerGroupId: match.workspace.id,
         writerGroupName: match.workspace.name,
-        writerGroupLink: `#repos/${encodeURIComponent(match.workspace.id)}/settings`,
+        // Group Settings is a right-panel tab, so the link opens the group itself.
+        writerGroupLink: `#repos/${encodeURIComponent(match.workspace.id)}`,
         reason: match.unresolved ? 'unresolved-membership' : 'writer-exists',
     };
 }

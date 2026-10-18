@@ -22,8 +22,7 @@ export interface VirtualWorkspaceMobileTabBarProps {
     config: VirtualWorkspaceHeaderConfig;
     /**
      * Which tabs stay inline; the rest fold into `···`. Defaults to the first
-     * three visible tabs, which is the right answer for a repo group
-     * (Workspace · Git · Notes, with Settings in the overflow).
+     * three visible tabs. A repo group has none, leaving only the back slot.
      */
     pinnedTabs?: RepoSubTab[];
 }

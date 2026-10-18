@@ -102,6 +102,17 @@ describe('admin setting registry integrity', () => {
         }
     });
 
+    it('has no availability setting for Notes or the panel Settings tab', () => {
+        const keys = ADMIN_SETTING_DEFINITIONS.map(d => d.key);
+        expect(keys).not.toContain('notes.enabled');
+        expect(keys).not.toContain('features.panelSettings');
+        expect(ADMIN_EDITABLE_KEYS).not.toContain('notes.enabled');
+        expect(ADMIN_EDITABLE_KEYS).not.toContain('features.panelSettings');
+        const flags = ADMIN_SETTING_DEFINITIONS.map(d => d.runtimeFlag);
+        expect(flags).not.toContain('notesEnabled');
+        expect(flags).not.toContain('panelSettingsEnabled');
+    });
+
     it('has unique runtime flags', () => {
         const seen = new Set<string>();
         for (const def of ADMIN_SETTING_DEFINITIONS) {
@@ -337,14 +348,16 @@ describe('runtime feature flags', () => {
         expect(buildRuntimeFeatureFlags({}).kustoEnabled).toBe(false);
     });
 
-    it('registers LLMToolSystemOne.enabled as a live, default-off feature flag', () => {
+    it('registers LLMToolSystemOne.enabled as a live, default-on feature flag', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'LLMToolSystemOne.enabled');
         expect(def, 'LLMToolSystemOne.enabled must be an admin setting').toBeDefined();
-        expect(def!.default).toBe(false);
+        expect(def!.default).toBe(true);
         expect(def!.runtime).toBe('live');
         expect(def!.runtimeFlag).toBe('llmToolSystemOneEnabled');
-        expect(def!.ui?.hint).toContain('Copilot');
-        expect(buildRuntimeFeatureFlags({}).llmToolSystemOneEnabled).toBe(false);
+        expect(def!.ui?.hint).toContain('referenced content is also sent to Copilot');
+        expect(def!.ui?.hint).toContain('Enabled by default');
+        expect(buildRuntimeFeatureFlags({}).llmToolSystemOneEnabled).toBe(true);
+        expect(buildRuntimeFeatureFlags({ LLMToolSystemOne: { enabled: false } } as any).llmToolSystemOneEnabled).toBe(false);
         expect(buildRuntimeFeatureFlags({ LLMToolSystemOne: { enabled: true } } as any).llmToolSystemOneEnabled).toBe(true);
     });
 
@@ -407,13 +420,17 @@ describe('Features card UI metadata', () => {
         })).sentinelTodoScrubberEnabled).toBe(true);
     });
 
-    it('exposes tool scripting as a live, default-off toggle', () => {
+    it('exposes tool scripting as a live, default-on toggle', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.toolScripting')!;
-        expect(def.default).toBe(false);
+        expect(def.default).toBe(true);
+        expect(def.ui?.hint).toContain('Enabled by default');
         expect(def.runtime).toBe('live');
         expect(def.ui).toMatchObject({ group: 'review', testId: 'toggle-tool-scripting-enabled' });
-        expect(DEFAULT_CONFIG.features.toolScripting).toBe(false);
-        expect(buildRuntimeFeatures(DEFAULT_CONFIG).toolScriptingEnabled).toBe(false);
+        expect(DEFAULT_CONFIG.features.toolScripting).toBe(true);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).toolScriptingEnabled).toBe(true);
+        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
+            features: { toolScripting: false },
+        })).toolScriptingEnabled).toBe(false);
         expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
             features: { toolScripting: true },
         })).toolScriptingEnabled).toBe(true);
@@ -645,18 +662,6 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { sentinelResultCards: false } }).sentinelResultCardsEnabled).toBe(false);
     });
 
-    it('exposes the scheduler delay hint as a default-off live Appearance setting', () => {
-        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.schedulerDelayHint')!;
-        expect(def.default).toBe(false);
-        expect(def.runtime).toBe('live');
-        expect(def.runtimeFlag).toBe('schedulerDelayHintEnabled');
-        expect(def.ui?.tab).toBe('appearance');
-        expect(def.ui?.badge).toBe('experimental');
-        expect(DEFAULT_CONFIG.features.schedulerDelayHint).toBe(false);
-        expect(buildRuntimeFeatureFlags({}).schedulerDelayHintEnabled).toBe(false);
-        expect(buildRuntimeFeatureFlags({ features: { schedulerDelayHint: true } }).schedulerDelayHintEnabled).toBe(true);
-    });
-
     it('exposes sidebar refresh as a default-on Appearance setting', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.railManualRefresh')!;
         expect(def.default).toBe(true);
@@ -715,37 +720,28 @@ describe('Features card UI metadata', () => {
     // Explorer multi-tab editor: a default-off Features toggle with a live
     // runtime flag, so the SPA can gate the whole tab strip while the existing
     // single-preview Explorer stays the shipped behavior.
-    it('exposes explorer editor tabs as a default-off experimental feature', () => {
+    it('keeps explorer editor tabs on the Features card', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.explorerEditorTabs');
         expect(def, 'features.explorerEditorTabs must be an admin setting').toBeDefined();
         expect(def!.value).toEqual({ kind: 'boolean' });
-        expect(def!.default, 'explorer editor tabs must default off (opt-in)').toBe(false);
-        expect(def!.runtime).toBe('live');
-        expect(def!.runtimeFlag).toBe('explorerEditorTabsEnabled');
-        expect(def!.ui, 'explorer editor tabs must appear on the Features card').toBeDefined();
-        expect(def!.ui!.group).toBe('editorFiles');
         expect(def!.ui!.label).toBe('Explorer editor tabs');
-        expect(def!.ui!.badge).toBe('experimental');
-        expect(def!.ui!.hint).toMatch(/disabled by default/i);
         expect(getFeatureCardSettings('editorFiles').some(d => d.key === 'features.explorerEditorTabs')).toBe(true);
-        // Off in the resolved default config, off when absent from a partial
-        // config, and on only when the config file opts in.
-        expect(DEFAULT_CONFIG.features.explorerEditorTabs).toBe(false);
-        expect(buildRuntimeFeatures(DEFAULT_CONFIG).explorerEditorTabsEnabled).toBe(false);
-        expect(buildRuntimeFeatureFlags({}).explorerEditorTabsEnabled).toBe(false);
-        expect(buildRuntimeFeatureFlags({ features: { explorerEditorTabs: true } }).explorerEditorTabsEnabled).toBe(true);
     });
 
     it.each([
-        ['features.explorerDelete', 'explorerDelete', 'explorerDeleteEnabled', 60],
-        ['features.panelTabReordering', 'panelTabReordering', 'panelTabReorderingEnabled', 40],
-    ] as const)('enables experimental %s by default with an explicit false opt-out', (key, field, flag, order) => {
+        ['features.explorerEditorTabs', 'explorerEditorTabs', 'explorerEditorTabsEnabled', 'editorFiles', 10],
+        ['features.markdownPanelPreview', 'markdownPanelPreview', 'markdownPanelPreviewEnabled', 'editorFiles', 20],
+        ['features.panelSourceSplit', 'panelSourceSplit', 'panelSourceSplitEnabled', 'editorFiles', 30],
+        ['features.explorerDelete', 'explorerDelete', 'explorerDeleteEnabled', 'editorFiles', 60],
+        ['features.panelTabReordering', 'panelTabReordering', 'panelTabReorderingEnabled', 'editorFiles', 40],
+        ['features.schedulerDelayHint', 'schedulerDelayHint', 'schedulerDelayHintEnabled', 'uiGeneral', 75],
+    ] as const)('enables experimental %s by default with an explicit false opt-out', (key, field, flag, group, order) => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === key)!;
         expect(def.default).toBe(true);
         expect(def.absentFallback).toBeUndefined();
         expect(def.runtime).toBe('live');
         expect(def.runtimeFlag).toBe(flag);
-        expect(def.ui).toMatchObject({ tab: 'appearance', group: 'editorFiles', order, badge: 'experimental' });
+        expect(def.ui).toMatchObject({ tab: 'appearance', group, order, badge: 'experimental' });
         expect(def.ui!.hint).toMatch(/enabled by default/i);
         expect(def.ui!.hint).not.toMatch(/disabled by default/i);
         expect(DEFAULT_CONFIG.features[field]).toBe(true);
@@ -831,7 +827,6 @@ describe('feature toggle settings-tab placement', () => {
         'features.explorerEditorTabs': 'appearance',
         'features.markdownPanelPreview': 'appearance',
         'features.panelSourceSplit': 'appearance',
-        'features.panelSettings': 'appearance',
         'features.diffFilePicker': 'appearance',
         'vimNavigation.enabled': 'appearance',
         'features.scopeSwitcher': 'appearance',
@@ -856,7 +851,6 @@ describe('feature toggle settings-tab placement', () => {
         'kusto.enabled': 'integrations',
         'workItems.sync.enabled': 'integrations',
         // Features (module/tool-level toggles stay)
-        'notes.enabled': 'features',
         'myWork.enabled': 'features',
         'myWork.todayView': 'features',
         'myLife.enabled': 'features',
@@ -920,9 +914,9 @@ describe('feature toggle settings-tab placement', () => {
         for (const key of ['features.explorerEditorTabs', 'features.markdownPanelPreview', 'features.panelSourceSplit']) {
             const def = getAdminSettingDefinition(key)!;
             expect(def.ui).toMatchObject({ tab: 'appearance', group: 'editorFiles', badge: 'experimental' });
-            expect(def.default, key).toBe(false);
+            expect(def.default, key).toBe(true);
             expect(def.runtime, key).toBe('live');
-            expect(buildRuntimeFeatureFlags({})[def.runtimeFlag!], key).toBe(false);
+            expect(buildRuntimeFeatureFlags({})[def.runtimeFlag!], key).toBe(true);
         }
         expect(FEATURE_CARD_GROUPS.find(g => g.id === 'editorNotes')?.heading).toBe('Notes Editor');
     });

@@ -1,13 +1,12 @@
 /**
- * Repo group Settings tab, end to end in a real browser against a real server.
+ * Repo group Settings panel, end to end in a real browser against a real server.
  *
  * This is the automated stand-in for the manual demo each AC of the
  * repo-group-agent-settings feature asks for: open a group, walk the Settings
  * sidebar, and confirm the Agent sections work and persist for the group alone.
  *
- *   AC-01 — the split sidebar: a "Group" and an "Agent" nav group, hash routing
- *           at #repos/<groupId>/settings/<section>, deep links, the fallback to
- *           Member repos for a section a group does not have, and the filter box.
+ *   AC-01 — the split sidebar: a "Group" and an "Agent" nav group, local
+ *           section navigation, retired URL redirects, and the filter box.
  *   AC-02 — MCP Servers: toggling a server persists onto the group workspace
  *           record and leaves the member repo's own config alone; the
  *           workspace-scope add/edit affordances are gone.
@@ -23,6 +22,7 @@
  */
 
 import { test, expect } from './fixtures/server-fixture';
+import { openWorkspacePanel } from './fixtures/remote-shell';
 import { seedWorkspace, request } from './fixtures/seed';
 import type { Page } from '@playwright/test';
 
@@ -91,9 +91,10 @@ async function mockMcpConfigGet(page: Page, workspaceId: string, config: McpConf
 
 /** Open a group settings section and wait for the content pane. */
 async function openGroupSettings(page: Page, serverUrl: string, groupId: string, section?: string): Promise<void> {
-    const suffix = section ? `/${section}` : '';
-    await page.goto(`${serverUrl}/#repos/${encodeURIComponent(groupId)}/settings${suffix}`);
-    await expect(page.locator('[data-testid="settings-content-panel"]')).toBeVisible({ timeout: 15_000 });
+    await page.goto(`${serverUrl}/#repos/${encodeURIComponent(groupId)}`);
+    await expect(page.getByTestId('repo-group-view')).toBeVisible();
+    await openWorkspacePanel(page, 'settings');
+    if (section) await page.getByTestId(`nav-item-${section}`).click();
 }
 
 /** GET a JSON API and parse it. */
@@ -139,43 +140,50 @@ test.describe('Repo group Settings — sidebar (AC-01)', () => {
         await expect(page.locator('[data-testid="nav-item-instructions"]')).toHaveCount(0);
         await expect(page.locator('[data-testid="nav-item-memory"]')).toHaveCount(0);
 
-        // No hash section => Member repos.
+        // A newly opened panel starts on Member repos.
         await expect(page.locator('[data-testid="settings-section-title"]')).toHaveText('Member repos');
     });
 
-    test('GS.2 clicking each Agent item swaps the pane and rewrites the hash', async ({ page, serverUrl }) => {
+    test('GS.2 clicking each Agent item swaps the pane within the panel', async ({ page, serverUrl }) => {
         const groupId = await seedGroup(serverUrl);
         await mockMcpConfigGet(page, groupId, TWO_SERVERS);
         await openGroupSettings(page, serverUrl, groupId);
+        const workspaceUrl = page.url();
 
         await page.locator('[data-testid="nav-item-mcp"]').click();
         await expect(page.locator('[data-testid="mcp-toggle-code-tools"]')).toBeAttached({ timeout: 10_000 });
-        expect(decodeURIComponent(new URL(page.url()).hash)).toBe(`#repos/${groupId}/settings/mcp`);
+        await expect(page).toHaveURL(workspaceUrl);
 
         await page.locator('[data-testid="nav-item-skills"]').click();
         await expect(page.locator('[data-testid="agent-skills-panel"]')).toBeVisible({ timeout: 10_000 });
-        expect(decodeURIComponent(new URL(page.url()).hash)).toBe(`#repos/${groupId}/settings/skills`);
+        await expect(page).toHaveURL(workspaceUrl);
 
         await page.locator('[data-testid="nav-item-llm-tools"]').click();
         await expect(page.locator('[data-testid="llm-tools-panel"]')).toBeVisible({ timeout: 10_000 });
-        expect(decodeURIComponent(new URL(page.url()).hash)).toBe(`#repos/${groupId}/settings/llm-tools`);
+        await expect(page).toHaveURL(workspaceUrl);
 
         await page.locator('[data-testid="nav-item-members"]').click();
         await expect(page.locator('[data-testid="settings-section-title"]')).toHaveText('Member repos');
-        expect(decodeURIComponent(new URL(page.url()).hash)).toBe(`#repos/${groupId}/settings/members`);
+        await expect(page).toHaveURL(workspaceUrl);
     });
 
-    test('GS.3 a deep link to llm-tools lands on LLM Tools after a full reload', async ({ page, serverUrl }) => {
+    test('GS.3 the LLM Tools panel opens after a full reload', async ({ page, serverUrl }) => {
         const groupId = await seedGroup(serverUrl);
         await openGroupSettings(page, serverUrl, groupId, 'llm-tools');
+        await page.reload();
+        await openWorkspacePanel(page, 'settings');
+        await page.getByTestId('nav-item-llm-tools').click();
 
         await expect(page.locator('[data-testid="llm-tools-panel"]')).toBeVisible({ timeout: 15_000 });
         await expect(page.locator('[data-testid="settings-section-title"]')).toHaveText('LLM Tools');
     });
 
-    test('GS.4 a section a group does not have falls back to Member repos', async ({ page, serverUrl }) => {
+    test('GS.4 a retired settings deep link returns to Workspace and the panel opens on Member repos', async ({ page, serverUrl }) => {
         const groupId = await seedGroup(serverUrl);
-        await openGroupSettings(page, serverUrl, groupId, 'instructions');
+        await page.goto(`${serverUrl}/#repos/${encodeURIComponent(groupId)}/settings/instructions`);
+        await expect(page).toHaveURL(`${serverUrl}/#repos/${groupId}/activity`);
+        await openWorkspacePanel(page, 'settings');
+        await expect(page.getByTestId('nav-item-instructions')).toHaveCount(0);
 
         await expect(page.locator('[data-testid="settings-section-title"]')).toHaveText('Member repos');
     });

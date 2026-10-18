@@ -29,9 +29,11 @@ import type { MessagingJobOrigin } from './job-notices';
 import { LocalTopicMemory, localTopicsReply, resolveLocalTopic, type LocalTopicQueue } from './local-topics';
 import { IncomingImagesError, MAX_MESSAGING_IMAGES } from './incoming-images';
 import { PendingImages, PendingImagesError, PENDING_IMAGE_TTL_MS, type PendingImageContext, type PendingImageScope } from './pending-images';
+import { listTodosReply, TODOS_NO_TARGET_REPLY, type MessagingTodoReader } from './messaging-todos';
 import { createCache } from '../cache';
 
 const EMPTY_CHAT_REPLY = 'Send a message to start a chat.';
+const THREAD_NO_TOPIC_REPLY = '❌ No topic selected in this thread. Use `/list topics`, then `/select topic <n>` here.';
 
 interface ImageRootFrame {
     scope: PendingImageScope;
@@ -49,6 +51,7 @@ function createInstructionCache() {
 }
 
 const TEAMS_FORMAT = {
+    platform: 'teams' as const,
     strong: (text: string) => `**${escapeTeamsMarkdown(text)}**`,
     code: teamsCodeSpan,
     escape: escapeTeamsMarkdown,
@@ -82,6 +85,8 @@ export interface TeamsCommandRouterDeps {
     /** Provider quota for the `quota` command. */
     getQuota?: MessagingQuotaSource;
     readGitStatus?: MessagingGitStatusReader;
+    /** Read-only Sentinel to-do ledgers for `list todos`; absent without server ledger infrastructure. */
+    getTodos?: () => MessagingTodoReader | undefined;
     /** Compacts a chat's provider context for the `compact` command. */
     compact?: MessagingCompactor;
     /** Local + remote repo directory for read-only `list remotes` / `list topics <ref>`. */
@@ -210,7 +215,7 @@ export class TeamsCommandRouter {
 
     hasPendingImageInstructions(msg: InboundTeamsMessage): boolean {
         if (this.stopped || !msg.senderAadId || msg.botAuthored || msg.initializationReplay || msg.historicalSelectionReplay) return false;
-        const command = parseMessagingCommand(msg.text);
+        const command = parseMessagingCommand(msg.text, 'teams');
         return (command.type === 'chat' || command.type === 'chat-explicit')
             && !!command.args && (this.pendingImages.has(this.rootFrame(msg)?.scope ?? this.imageContext(msg))
                 || this.consumedImageInstructions.has(this.instructionKey(msg)));
@@ -271,13 +276,13 @@ export class TeamsCommandRouter {
             if ((msg.images?.length || (msg.senderAadId && this.pendingImages.has(this.imageContext(msg))))
                 && (msg.initializationReplay || msg.historicalSelectionReplay)) return;
             if (msg.images?.length) {
-                const mediaCommand = parseMessagingCommand(msg.text);
+                const mediaCommand = parseMessagingCommand(msg.text, 'teams');
                 if (mediaCommand.type === 'invalid' || isMessagingControlCommand(mediaCommand)) {
                     await this.deps.sendReply('Send the images with chat instructions, separately from control commands.', msg.replyToMessageId || msg.messageId);
                     return;
                 }
             }
-            const parsedImageCommand = parseMessagingCommand(msg.text);
+            const parsedImageCommand = parseMessagingCommand(msg.text, 'teams');
             const explicit = msg.images?.length && !msg.replyToMessageId && parsedImageCommand.type === 'chat'
                 ? /^\[([^\]]+)\]$/.exec(parsedImageCommand.args) : null;
             const imageCommand = explicit && parsedImageCommand.type === 'chat'
@@ -318,7 +323,7 @@ export class TeamsCommandRouter {
             }
             if (msg.replyToMessageId && this.deps.isAnswerRelayEnabled?.() === true) {
                 boundThread = true;
-                command = parseMessagingCommand(msg.text);
+                command = parseMessagingCommand(msg.text, 'teams');
                 if ('historicalSelectionReplay' in msg && msg.historicalSelectionReplay === true) {
                     if (!isMessagingControlCommand(command) || this.deps.hasThreadCommand?.(msg)) return;
                     const key = `${msg.channelId}\0${msg.replyToMessageId}`;
@@ -395,7 +400,7 @@ export class TeamsCommandRouter {
                 return;
             }
 
-            command = parseMessagingCommand(msg.text);
+            command = parseMessagingCommand(msg.text, 'teams');
             const userKey = msg.senderAadId ?? msg.senderName ?? 'anonymous';
             if (command.type !== 'chat' && command.type !== 'chat-explicit') observe?.('dispatch-command');
             if (command.type === 'invalid') {
@@ -405,8 +410,8 @@ export class TeamsCommandRouter {
             } else if (command.type === 'chat') {
                 await this.handleChat(userKey, command.args, command.mode, msg, observe);
             } else {
-                await this.sendControlReply(command,
-                    await this.handleControlCommand(userKey, command, `${msg.channelId}\0${userKey}`, msg), msg.messageId);
+                await this.sendControlReply(command, command.type === 'list-todos' ? await this.selectedTodosReply(userKey)
+                    : await this.handleControlCommand(userKey, command, `${msg.channelId}\0${userKey}`, msg), msg.messageId);
             }
             if (consumedRoots && !msg.replyToMessageId) {
                 const state = this.userState.get(userKey);
@@ -478,9 +483,18 @@ export class TeamsCommandRouter {
         });
     }
 
+    /** Top-level `list todos` reads the sender's selected topic in the selected repo only. */
+    private async selectedTodosReply(userKey: string): Promise<string> {
+        const state = this.userState.get(userKey);
+        const workspace = resolveChatWorkspace(await this.deps.store.getWorkspaces(), state.selectedRepo);
+        if (!workspace || !state.selectedTopic) return TODOS_NO_TARGET_REPLY;
+        return listTodosReply(this.deps.getTodos?.(), this.deps.store,
+            { workspaceId: workspace.id, processId: state.selectedTopic }, escapeTeamsMarkdown);
+    }
+
     private async sendControlReply(command: MessagingControlCommand, text: string, replyToId: string): Promise<void> {
         // The connector's lossless text splitter also fits Teams' Markdown command replies.
-        for (const part of command.type === 'git-status' ? chunkWhatsAppText(text, 3000) : [text]) {
+        for (const part of command.type === 'git-status' || command.type === 'list-todos' ? chunkWhatsAppText(text, 3000) : [text]) {
             await this.deps.sendReply(part, replyToId);
         }
     }
@@ -488,7 +502,7 @@ export class TeamsCommandRouter {
     private async handleThreadCommand(msg: InboundTeamsMessage, command: MessagingControlCommand, silent = false): Promise<void> {
         const root = msg.replyToMessageId!;
         if (silent && (command.type === 'list-repos' || command.type === 'list-topics' || command.type === 'list-remotes'
-            || command.type === 'help' || command.type === 'quota' || command.type === 'git-status')) return;
+            || command.type === 'help' || command.type === 'quota' || command.type === 'git-status' || command.type === 'list-todos')) return;
         // Remote browsing is read-only and never touches the thread's selection.
         const remoteBrowse = command.type === 'list-remotes' || (command.type === 'list-topics' && !!command.args);
         if (command.type === 'list-repos' || command.type === 'help' || command.type === 'quota' || command.type === 'git-status' || remoteBrowse) {
@@ -496,6 +510,16 @@ export class TeamsCommandRouter {
             await this.sendControlReply(command, command.type === 'help' ? formatMessagingHelp(TEAMS_FORMAT)
                 : command.type === 'quota' ? await readQuotaReply(this.deps.getQuota)
                     : await this.handleControlCommand('', command, `${msg.channelId}\0${root}`, msg), root);
+            return;
+        }
+        if (command.type === 'list-todos') {
+            this.deps.recordThreadCommand?.(msg);
+            // A bound thread lists its own chat's ledger, never the sender's selection.
+            const binding = await this.deps.resolveThreadReply?.(msg);
+            await this.sendControlReply(command, binding?.process
+                ? await listTodosReply(this.deps.getTodos?.(), this.deps.store,
+                    { workspaceId: binding.workspaceId, processId: binding.process.id }, escapeTeamsMarkdown)
+                : THREAD_NO_TOPIC_REPLY, root);
             return;
         }
         if (command.type === 'compact') {
@@ -507,7 +531,7 @@ export class TeamsCommandRouter {
             await this.deps.sendReply(processId
                 ? await compactChatReply(this.deps.store, this.deps.compact,
                     { processId, workspaceId: binding!.workspaceId }, command.args, escapeTeamsMarkdown, this.deps.handOffOrigin?.(msg) ? { ...this.deps.handOffOrigin(msg)!, threadId: root } : undefined)
-                : '❌ No topic selected in this thread. Use `/list topics`, then `/select topic <n>` here.', root);
+                : THREAD_NO_TOPIC_REPLY, root);
             return;
         }
         if (!this.deps.selectThreadTarget) throw new Error('Teams thread selection is unavailable');

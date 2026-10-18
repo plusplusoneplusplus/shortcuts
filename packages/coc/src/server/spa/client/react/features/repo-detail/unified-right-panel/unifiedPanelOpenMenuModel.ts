@@ -65,7 +65,7 @@ export interface OpenMenuActionsInput {
      * rather than disabled for every other chat.
      */
     todoAvailable?: boolean;
-    /** The panel has a shared Settings page and its default-off flag is enabled. */
+    /** The panel's workspace owns a Settings page (every repo and group dock host does). */
     settingsAvailable?: boolean;
 }
 

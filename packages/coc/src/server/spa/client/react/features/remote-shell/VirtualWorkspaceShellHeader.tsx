@@ -161,7 +161,7 @@ export function VirtualWorkspaceShellHeader({ config, repos, onSelectRepo, hideI
                 </RepoPickerPopover>
             </div>
 
-            <span className="w-px h-[18px] bg-[#d8dee4] dark:bg-[#3c3c3c] flex-shrink-0" aria-hidden />
+            {visibleTabs.length > 0 && <span className="w-px h-[18px] bg-[#d8dee4] dark:bg-[#3c3c3c] flex-shrink-0" aria-hidden />}
             </>
             )}
 

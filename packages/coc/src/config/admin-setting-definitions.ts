@@ -498,14 +498,6 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'notes.enabled', default: true, runtime: 'live', runtimeFlag: 'notesEnabled',
-        ui: {
-            group: 'dashboard', order: 10, label: 'Notes',
-            hint: 'Markdown notebooks for creating and editing notes.',
-            testId: 'toggle-notes-enabled',
-        },
-    }),
-    bool({
         key: 'myWork.enabled', default: false, runtime: 'live', runtimeFlag: 'myWorkEnabled',
         ui: {
             group: 'dashboard', order: 20, label: 'My Work',
@@ -822,18 +814,18 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'LLMToolSystemOne.enabled', default: false, runtime: 'live', runtimeFlag: 'llmToolSystemOneEnabled',
+        key: 'LLMToolSystemOne.enabled', default: true, runtime: 'live', runtimeFlag: 'llmToolSystemOneEnabled',
         ui: {
             group: 'review', order: 64, label: 'System One tool', badge: 'experimental',
-            hint: 'Chat AI can call `system_one` for fast yes/no, choice, or score judgments over earlier tool output, files, or short text. Always runs on Copilot (gpt-6-luna), so in Claude, Codex, or OpenCode chats the referenced content is also sent to Copilot. Disabled by default.',
+            hint: 'Chat AI can call `system_one` for fast yes/no, choice, or score judgments over earlier tool output, files, or short text. Always runs on Copilot (gpt-6-luna), so in Claude, Codex, or OpenCode chats the referenced content is also sent to Copilot. Enabled by default.',
             testId: 'toggle-llm-tool-system-one-enabled',
         },
     }),
     bool({
-        key: 'features.toolScripting', default: false, runtime: 'live', runtimeFlag: 'toolScriptingEnabled',
+        key: 'features.toolScripting', default: true, runtime: 'live', runtimeFlag: 'toolScriptingEnabled',
         ui: {
             group: 'review', order: 64.5, label: 'Tool scripting', badge: 'experimental',
-            hint: 'Chat AI can call `run_tool_script` to run a short JavaScript script that calls other enabled CoC tools in loops or in parallel, returning only the script result. Approval-gated tools still ask. Disabled by default.',
+            hint: 'Chat AI can call `run_tool_script` to run a short JavaScript script that calls other enabled CoC tools in loops or in parallel, returning only the script result. Approval-gated tools still ask. Enabled by default.',
             testId: 'toggle-tool-scripting-enabled',
         },
     }),
@@ -1072,10 +1064,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.schedulerDelayHint', default: false, runtime: 'live', runtimeFlag: 'schedulerDelayHintEnabled',
+        key: 'features.schedulerDelayHint', default: true, runtime: 'live', runtimeFlag: 'schedulerDelayHintEnabled',
         ui: {
             tab: 'appearance', group: 'uiGeneral', order: 75, label: 'Scheduler delay hint', badge: 'experimental',
-            hint: 'Shows the configured delay between tasks on the ALL and AP scheduler buttons for each scope. Disabled by default.',
+            hint: 'Shows the configured delay between tasks on the ALL and AP scheduler buttons for each scope. Enabled by default.',
             testId: 'toggle-scheduler-delay-hint-enabled',
         },
     }),
@@ -1217,10 +1209,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     // way to reach it and a second flag would have no reachable state of its
     // own. Split them if a use for async-without-the-model ever appears.
     bool({
-        key: 'features.explorerEditorTabs', default: false, runtime: 'live', runtimeFlag: 'explorerEditorTabsEnabled',
+        key: 'features.explorerEditorTabs', default: true, runtime: 'live', runtimeFlag: 'explorerEditorTabsEnabled',
         ui: {
             tab: 'appearance', group: 'editorFiles', order: 10, label: 'Explorer editor tabs', badge: 'experimental',
-            hint: 'VS Code-style multiple editor tabs in the File Explorer: a preview tab that single-clicks replace, pinned tabs from double-click or editing, drag reorder, MRU cycling, and per-workspace restore. Disabled by default — with the flag off the Explorer keeps its single preview pane.',
+            hint: 'VS Code-style multiple editor tabs in the File Explorer: a preview tab that single-clicks replace, pinned tabs from double-click or editing, drag reorder, MRU cycling, and per-workspace restore. Enabled by default — with the flag off the Explorer keeps its single preview pane.',
             testId: 'toggle-explorer-editor-tabs-enabled',
         },
     }),
@@ -1233,27 +1225,19 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.markdownPanelPreview', default: false, runtime: 'live', runtimeFlag: 'markdownPanelPreviewEnabled',
+        key: 'features.markdownPanelPreview', default: true, runtime: 'live', runtimeFlag: 'markdownPanelPreviewEnabled',
         ui: {
             tab: 'appearance', group: 'editorFiles', order: 20, label: 'Markdown panel preview', badge: 'experimental',
-            hint: 'Open Markdown file tabs in the unified right panel as rendered Markdown, with a switch to the raw editor. Disabled by default.',
+            hint: 'Open Markdown file tabs in the unified right panel as rendered Markdown, with a switch to the raw editor. Enabled by default.',
             testId: 'toggle-markdown-panel-preview-enabled',
         },
     }),
     bool({
-        key: 'features.panelSourceSplit', default: false, runtime: 'live', runtimeFlag: 'panelSourceSplitEnabled',
+        key: 'features.panelSourceSplit', default: true, runtime: 'live', runtimeFlag: 'panelSourceSplitEnabled',
         ui: {
             tab: 'appearance', group: 'editorFiles', order: 30, label: 'Side-by-side source files', badge: 'experimental',
-            hint: 'Drag a file tab to the right edge of the unified right panel, or use its tab menu, to view and edit two source files side by side. The split lasts for the current session. Disabled by default.',
+            hint: 'Drag a file tab to the right edge of the unified right panel, or use its tab menu, to view and edit two source files side by side. The split lasts for the current session. Enabled by default.',
             testId: 'toggle-panel-source-split-enabled',
-        },
-    }),
-    bool({
-        key: 'features.panelSettings', default: false, runtime: 'live', runtimeFlag: 'panelSettingsEnabled',
-        ui: {
-            tab: 'appearance', group: 'editorFiles', order: 35, label: 'Settings panel tab', badge: 'experimental',
-            hint: 'Add Settings to the right-panel add-tab menu, sharing the workspace Settings page and its pending edits. Disabled by default.',
-            testId: 'toggle-panel-settings-enabled',
         },
     }),
     bool({

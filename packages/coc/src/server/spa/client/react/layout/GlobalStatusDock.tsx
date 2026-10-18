@@ -40,7 +40,7 @@ import { StatusActions } from './StatusActions';
 import { useApp } from '../contexts/AppContext';
 import { useVisibleDashboardTab } from './useVisibleDashboardTab';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
-import { isRepoGroupWorkspaceId } from '../repos/virtualWorkspaceIds';
+import { isRepoGroupWorkspaceId, isVirtualWorkspaceId } from '../repos/virtualWorkspaceIds';
 
 /** Fallback width when no split sidebar is mounted (matches the panel default). */
 const DEFAULT_LEFT_COL_WIDTH = 360;
@@ -65,31 +65,21 @@ export function GlobalStatusDock({ onAdminOpen }: GlobalStatusDockProps) {
         visibleTab === 'repos' &&
         !!state.selectedRepoId &&
         (state.activeRepoSubTab === 'chats' || state.activeRepoSubTab === 'activity');
-    // The Workspace split owns the status footer for repos and groups.
-    const inPanelFooter = inChatSubTab;
+    // The Workspace split owns the status footer for repos and groups; a group
+    // has no other view.
+    const inPanelFooter = inChatSubTab
+        || (visibleTab === 'repos' && isRepoGroupWorkspaceId(state.selectedRepoId));
     if (inPanelFooter) return null;
 
-    // The notes sub-tab hosts the cluster in `NotesView`'s own left-column
-    // footer (the `NotesSidebar` `DockedStatusFooter`), so the note editor pane
-    // keeps full height. Don't paint a second partial-width band — with an empty
-    // strip beside it — beneath the editor. Applies to regular repos, My Life,
-    // and My Work alike, since My Work now docks per-sub-tab like a regular repo.
-    const inNotesSidebarFooter =
+    // My Work / My Life's Notes and Settings sub-tabs host the cluster in their
+    // own sidebar footers (`NotesSidebar`, `RepoSettingsTab` nav), so the editor
+    // keeps full height. Repos and groups show Notes/Settings only in the right
+    // panel, never as a page.
+    const inVirtualSidebarFooter =
         visibleTab === 'repos' &&
-        !!state.selectedRepoId &&
-        state.activeRepoSubTab === 'notes';
-    if (inNotesSidebarFooter) return null;
-
-    // The settings sub-tab hosts the cluster in `RepoSettingsTab`'s own nav
-    // footer, matching Notes/Admin owned-sidebar behavior. A repo group is the
-    // exception: its Settings tab is a plain scrolling pane with no nav sidebar
-    // (`RepoGroupSettingsTab`), so there is no footer to defer to.
-    const inSettingsSidebarFooter =
-        visibleTab === 'repos' &&
-        !!state.selectedRepoId &&
-        !isRepoGroupWorkspaceId(state.selectedRepoId) &&
-        state.activeRepoSubTab === 'settings';
-    if (inSettingsSidebarFooter) return null;
+        isVirtualWorkspaceId(state.selectedRepoId) &&
+        (state.activeRepoSubTab === 'notes' || state.activeRepoSubTab === 'settings');
+    if (inVirtualSidebarFooter) return null;
 
     // The notes-git sub-tab (My Work / My Life) hosts the cluster at the bottom
     // of `NotesGitTab`'s own commit-history sidebar, so the diff detail pane

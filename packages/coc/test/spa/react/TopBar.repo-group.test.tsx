@@ -42,6 +42,7 @@ vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useMyLifeEnabl
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { NotificationProvider } from '../../../src/server/spa/client/react/contexts/NotificationContext';
 import { ThemeProvider } from '../../../src/server/spa/client/react/layout/ThemeProvider';
+import { buildRemoteCloneKey } from '../../../src/server/spa/client/react/repos/cloneIdentity';
 import { TopBar } from '../../../src/server/spa/client/react/layout/TopBar';
 import { MY_WORK_WORKSPACE_ID } from '../../../src/server/spa/client/react/repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID } from '../../../src/server/spa/client/react/repos/MyLifeView';
@@ -108,16 +109,15 @@ afterEach(() => {
 });
 
 describe('TopBar — repo-group virtual header', () => {
-    it('renders Workspace, Notes and Settings with the split flag on, without a Git header tab', () => {
+    it('renders no Workspace, Notes, Settings or Git header tabs for a group', () => {
         renderTopBarWithGroup();
         const header = screen.getByTestId('virtual-workspace-shell-header');
         expect(header.getAttribute('data-workspace')).toBe(GROUP_ID);
-        expect(screen.getByTestId('repo-group-shell-tab-chats').textContent).toBe('Workspace');
-        expect(screen.queryByTestId('repo-group-shell-tab-git')).toBeNull();
-        expect(screen.getByTestId('repo-group-shell-tab-notes').textContent).toBe('Notes');
-        expect(screen.getByTestId('repo-group-shell-tab-settings').textContent).toBe('Settings');
-        expect([...header.querySelectorAll('button[data-subtab]')].map(tab => tab.getAttribute('data-subtab')))
-            .toEqual(['chats', 'notes', 'settings']);
+        expect(header.querySelectorAll('button[data-subtab]')).toHaveLength(0);
+        for (const tab of ['chats', 'notes', 'settings', 'git']) {
+            expect(screen.queryByTestId(`repo-group-shell-tab-${tab}`)).toBeNull();
+        }
+        expect(header.textContent).not.toMatch(/Workspace|Notes|Settings/);
     });
 
     it('labels the header with the registered group name', () => {
@@ -182,6 +182,18 @@ describe('TopBar — repo-group dock toggle', () => {
             fireEvent.click(screen.getByRole('button', { name: 'Hide right panel' }));
         });
         expect(localStorage.getItem(openKey)).toBe('0');
+    });
+
+    it.each(['server-a', 'server-b'])('uses the remote group dock scope on %s', serverId => {
+        const workspaceId = 'group-remote-dock';
+        const selectionId = buildRemoteCloneKey(serverId, workspaceId);
+        renderTopBarWithGroup(false, selectionId);
+        fireEvent.click(screen.getByRole('button', { name: 'Show right panel' }));
+        expect(localStorage.getItem(workspaceDockOpenStorageKey(workspaceId))).toBe('1');
+        expect(localStorage.getItem(workspaceDockOpenStorageKey(selectionId))).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Expand right panel' }));
+        expect(screen.getByRole('button', { name: 'Hide right panel' })).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: 'Hide right panel' }));
     });
 
     it('renders no controls for My Work or My Life', () => {

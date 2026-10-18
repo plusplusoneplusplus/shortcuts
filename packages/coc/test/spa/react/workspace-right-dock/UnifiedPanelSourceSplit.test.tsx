@@ -283,8 +283,17 @@ describe('source split creation (AC-01)', () => {
         expect(screen.getAllByTestId(/^unified-panel-split-pane-header-/)).toHaveLength(2);
     });
 
-    it('is absent while the feature flag is off', async () => {
+    it('is offered when the flag is absent from runtime config (default on)', () => {
         _resetRuntimeConfig();
+        const a = openFile('src/a.ts');
+        renderPanel();
+        fireEvent.contextMenu(screen.getByTestId(`unified-panel-tab-${a}`), { clientX: 5, clientY: 5 });
+        expect(screen.getByRole('menuitem', { name: 'Open to the Right' })).toBeInTheDocument();
+    });
+
+    it('is absent while the feature flag is explicitly off', async () => {
+        _resetRuntimeConfig();
+        applyRuntimeConfigPatch({ panelSourceSplitEnabled: false });
         const a = openFile('src/a.ts');
         renderPanel();
         fireEvent.dragStart(screen.getByTestId(`unified-panel-tab-${a}`), { dataTransfer: { setData: () => undefined } });

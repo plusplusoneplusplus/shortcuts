@@ -648,6 +648,9 @@ test.describe('ExplorerPanel – Content search', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('ExplorerPanel – Editor tabs', () => {
+    // File opens resolve identity over HTTP before publishing the tab. Several
+    // serial opens and a full reload need more than the single-action budget.
+    test.setTimeout(60_000);
     test('E.18 preview replacement, pinning, switching and closing across a tab strip', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
@@ -672,7 +675,7 @@ test.describe('ExplorerPanel – Editor tabs', () => {
 
             // 2. A double click pins, so the next single click adds a tab.
             await treeNode(page, 'src/utils.ts').dblclick();
-            await expect(editorTab(page, 'file:src/utils.ts')).not.toHaveAttribute('data-preview', 'true');
+            await expect(editorTab(page, 'file:src/utils.ts')).not.toHaveAttribute('data-preview', 'true', { timeout: 15_000 });
             await treeNode(page, 'src/index.ts').click();
             await expectEditorTabs(page, ['file:src/utils.ts', 'file:src/index.ts']);
 
@@ -708,6 +711,7 @@ test.describe('ExplorerPanel – Editor tabs', () => {
             // Two files with the SAME filename still keep two distinct tabs
             // open in order, even though the host strip now renders basename labels.
             await treeNode(page, 'README.md').dblclick();
+            await expect(editorTab(page, 'README.md')).not.toHaveAttribute('data-preview', 'true', { timeout: 15_000 });
             await treeNode(page, 'docs/README.md').dblclick();
             await expectEditorTabs(page, ['file:README.md', 'file:docs/README.md']);
             const readmeTabs = page.locator(`${UNIFIED_PANEL} [data-testid^="unified-panel-tab-label-"]`).filter({ hasText: 'README.md' });
@@ -740,6 +744,7 @@ test.describe('ExplorerPanel – Editor tabs', () => {
             await treeNode(page, 'src').click();
             await expect(treeNode(page, 'src/index.ts')).toBeVisible({ timeout: 5_000 });
             await treeNode(page, 'src/index.ts').dblclick();
+            await expect(editorTab(page, 'file:src/index.ts')).not.toHaveAttribute('data-preview', 'true', { timeout: 15_000 });
             await treeNode(page, 'src/utils.ts').dblclick();
             await expectEditorTabs(page, ['file:src/index.ts', 'file:src/utils.ts']);
 
@@ -792,6 +797,7 @@ test.describe('ExplorerPanel – Editor tabs', () => {
             await treeNode(page, 'src').click();
             await expect(treeNode(page, 'src/index.ts')).toBeVisible({ timeout: 5_000 });
             await treeNode(page, 'src/index.ts').dblclick();
+            await expect(editorTab(page, 'file:src/index.ts')).not.toHaveAttribute('data-preview', 'true', { timeout: 15_000 });
             await treeNode(page, 'src/utils.ts').dblclick();
             await expectEditorTabs(page, ['file:src/index.ts', 'file:src/utils.ts']);
 
@@ -854,6 +860,7 @@ test.describe('ExplorerPanel – Editor tabs', () => {
             // Pin every file so they stack instead of replacing one preview tab.
             for (const filePath of overflowPaths) {
                 await treeNode(page, filePath).dblclick();
+                await expect(editorTab(page, `file:${filePath}`)).not.toHaveAttribute('data-preview', 'true', { timeout: 15_000 });
             }
             await expectEditorTabs(page, overflowPaths.map(p => `file:${p}`));
 
@@ -899,6 +906,7 @@ test.describe('ExplorerPanel – Editor tabs', () => {
             await treeNode(page, 'src').click();
             await expect(treeNode(page, 'src/index.ts')).toBeVisible({ timeout: 5_000 });
             await treeNode(page, 'src/index.ts').dblclick();
+            await expect(editorTab(page, 'file:src/index.ts')).not.toHaveAttribute('data-preview', 'true', { timeout: 15_000 });
             await treeNode(page, 'src/utils.ts').dblclick();
             await expectEditorTabs(page, ['file:src/index.ts', 'file:src/utils.ts']);
 

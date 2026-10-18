@@ -89,9 +89,8 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `commitChatLensDormantMode` | `'ghost'` | Enum `'ghost'` \| `'pill'` — how the lens recedes on pointer-out |
 | `scopeSwitcher` | on | One segmented scope switcher replacing the My Work / My Life toggles and workspace chip |
 | `pinnedScopes` | on | Needs `scopeSwitcher`; pinned repo / repo-group segments in the scope switcher, persisted as the global `pinnedScopes` preference |
-| `markdownPanelPreview` | off | Rendered Markdown preview in unified right-panel file tabs; other file viewers stay unchanged |
-| `panelSourceSplit` | off | Experimental live two-pane source-file split in the unified right panel (drag a file tab to the right edge or tab menu **Open to the Right**); session-only; runtime `panelSourceSplitEnabled` |
-| `panelSettings` | off | Add-tab Settings entry shares the full workspace Settings page and pending edits with the top-level entry; runtime `panelSettingsEnabled`; see [shared Settings](spa/shell.md#shared-workspace-settings) |
+| `markdownPanelPreview` | on | Rendered Markdown preview in unified right-panel file tabs; other file viewers stay unchanged |
+| `panelSourceSplit` | on | Experimental live two-pane source-file split in the unified right panel (drag a file tab to the right edge or tab menu **Open to the Right**); session-only; runtime `panelSourceSplitEnabled` |
 | `explorerDelete` | on | Experimental live owning-server gate for confirmed permanent single-entry Explorer deletion; Appearance setting, runtime `explorerDeleteEnabled`; absent partial-config keys are on, explicit `false` disables; remote owners that omit the runtime flag stay off |
 | `panelTabReordering` | on | Experimental live mixed-resource tab reordering (drag, Alt+Left/Right, tab menu) in the unified right panel, saved per workspace and chat; runtime `panelTabReorderingEnabled`; explicit `false` restores sectioned ordering |
 | `htmlPageTab` | on | Desktop only: local `.html`/`.htm` chat links open as a rendered page tab (Electron `WebContentsView`) in the right panel; off, web SPA, remote workspaces, or missing files use the source viewer |
@@ -183,7 +182,7 @@ Sidebar tabs are `.ar-nav-item` buttons grouped by user task: Configure (setting
 
 The `settings` section promotes `ai`, `chat`, `sentinel`, `appearance`, `editors`, `features`, `integrations`, `providers`, and `advanced` from `SETTINGS_SUBTABS` in `adminNavigation.ts`.
 
-**Placement rule.** Admin → Browser owns every browser-related control, including browser-specific UI toggles. Otherwise Appearance owns every UI-only control: presentation, layout, display, navigation and editor-UI preferences, plus feature toggles that only change interface behavior. Operational, auth, transport, security, AI-behavior and response-style settings stay on their domain tab, even when they surface in the UI; product module toggles (Notes, My Work, Terminal, PR tab, …) stay on Features. Every control renders on exactly one page; Features search links to it.
+**Placement rule.** Admin → Browser owns every browser-related control, including browser-specific UI toggles. Otherwise Appearance owns every UI-only control: presentation, layout, display, navigation and editor-UI preferences, plus feature toggles that only change interface behavior. Operational, auth, transport, security, AI-behavior and response-style settings stay on their domain tab, even when they surface in the UI; product module toggles (My Work, Terminal, PR tab, …) stay on Features. Notes and the panel Settings tab have no availability setting. Every control renders on exactly one page; Features search links to it.
 
 Appearance has a section jump bar (`AppearanceSectionNav`, `APPEARANCE_SECTIONS` in `configSettingsCards.tsx`) and two cards with separate save flows:
 

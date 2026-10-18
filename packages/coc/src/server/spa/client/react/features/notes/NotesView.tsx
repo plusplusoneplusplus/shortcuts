@@ -36,9 +36,9 @@ export interface NotesViewProps {
     sourceSelectionId?: string;
     initialNotePath?: string | null;
     /**
-     * URL navigation is used by the main Notes sub-tab. Local navigation keeps
-     * this instance's selection private to an embedding host such as the
-     * unified right panel.
+     * URL navigation is used by My Work / My Life's Notes sub-tab. Local
+     * navigation keeps this instance's selection private to an embedding host
+     * such as the unified right panel.
      */
     navigation?: 'url' | 'local';
     /** Reports this instance's selection to an embedding host. */

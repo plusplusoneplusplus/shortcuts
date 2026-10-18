@@ -339,7 +339,7 @@ export function ExplorerPanel({
     // result set, and a stale one restored after a reload would be a lie.
     const [searchEditor, setSearchEditor] = useState<{ text: string; query: string } | null>(null);
 
-    // VS Code-style editor tabs (`features.explorerEditorTabs`, off by default).
+    // VS Code-style editor tabs (`features.explorerEditorTabs`, on by default).
     // With the flag off nothing below runs: every open still writes the single
     // `previewFile`/`searchEditor` pair above. With it on the same opens go
     // through the persisted per-workspace tab session and the editor area

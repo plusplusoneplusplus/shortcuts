@@ -6,4 +6,3 @@ export { useNotesAutoCommit } from './hooks/useNotesAutoCommit';
 export { useNotesChat } from './hooks/useNotesChat';
 export { useNotesDragDrop, getNotesParentPath } from './hooks/useNotesDragDrop';
 export { useNotesGit } from './hooks/useNotesGit';
-export { useNotesEnabled } from './hooks/useNotesEnabled';

@@ -11,6 +11,7 @@
  *
  * @vitest-environment jsdom
  */
+import { readUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
@@ -68,7 +69,12 @@ describe('RepoGroupMemberList', () => {
         expect(readOnlyToggle('r2').checked).toBe(true);
         expect(field('r1').value).toBe('');
         const row = screen.getByTestId('repo-group-member-row-r2');
-        expect(row.querySelector('a')?.getAttribute('href')).toBe('#repos/remote%3Aowner%3Agroup-owner/settings');
+        expect(row.querySelector('a')?.getAttribute('href')).toBe('#repos/remote%3Aowner%3Agroup-owner');
+        // The writer group's Settings opens as a tab in that group's own panel.
+        fireEvent.click(row.querySelector('a')!);
+        expect(readUnifiedPanelState('group-owner').workspaceTabs).toEqual([expect.objectContaining({
+            kind: 'settings', ownerWorkspaceId: 'group-owner', ownerRoutingRef: 'remote:owner:group-owner',
+        })]);
         expect(mockUpdateRepoGroup).toHaveBeenCalledWith(GROUP_ID, { readOnly: { r2: false } }, 'http://remote:3000');
     });
 

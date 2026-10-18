@@ -2,12 +2,11 @@ import { useMemo } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useWorkItems } from '../../contexts/WorkItemContext';
 import { useTerminalEnabled } from '../../hooks/feature-flags/useTerminalEnabled';
-import { useNotesEnabled } from '../notes/hooks/useNotesEnabled';
 import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabled';
 import { usePullRequestsEnabled } from '../../hooks/feature-flags/usePullRequestsEnabled';
 import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
 import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
-import { computeVisibleSubTabs, type SubTabDef } from '../repo-detail/repoSubTabs';
+import { computeVisibleSubTabs, subTabClickTarget, type SubTabDef } from '../repo-detail/repoSubTabs';
 import type { RepoData } from '../../repos/repoGrouping';
 import { resolveRepoWorkItemOriginScope } from '../work-items/workItemOriginScope';
 import type { RepoSubTab } from '../../types/dashboard';
@@ -32,7 +31,6 @@ export function RemoteScopeCluster({ repo, repos, hideIdentity }: RemoteScopeClu
     const { switchSubTab } = useShellNavigation();
 
     const terminalEnabled = useTerminalEnabled();
-    const notesEnabled = useNotesEnabled();
     const workflowsEnabled = useWorkflowsEnabled();
     const pullRequestsEnabled = usePullRequestsEnabled();
     const dreamsEnabled = useDreamsEnabled();
@@ -43,16 +41,16 @@ export function RemoteScopeCluster({ repo, repos, hideIdentity }: RemoteScopeClu
     const activeTab = rawActiveTab === 'chats' ? 'activity' : rawActiveTab;
 
     const tabs = useMemo(() => computeVisibleSubTabs({
-        isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
+        isGitRepo, terminalEnabled, workflowsEnabled,
         pullRequestsEnabled, dreamsEnabled, showPlanDepTab,
-    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab]);
+    }), [isGitRepo, terminalEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab]);
     const { remote: remoteTabs } = useMemo(() => partitionShellTabs(tabs), [tabs]);
     const workItemOriginId = useMemo(() => repo ? resolveRepoWorkItemOriginScope(repo).originId : '', [repo]);
     const unseenWorkItemCount = repo ? (workItemState.unseenByRepo[workItemOriginId] || []).length : 0;
 
     const onRemoteTab = (key: RepoSubTab) => {
         if (key === 'work-items') workItemDispatch({ type: 'MARK_WORK_ITEMS_SEEN', repoId: workItemOriginId });
-        switchSubTab(key);
+        switchSubTab(subTabClickTarget(activeTab, key));
     };
 
     const badge = (key: RepoSubTab) => {

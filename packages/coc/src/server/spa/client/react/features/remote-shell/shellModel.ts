@@ -14,7 +14,7 @@ import type { RepoData, RepoGroup } from '../../repos/repoGrouping';
 import { getRepoSelectionId } from '../../repos/cloneIdentity';
 import type { RemoteConnectionStatus, RemoteQueueStatus } from '../../repos/remoteWorkspaceAggregation';
 import type { RepoSubTab } from '../../types/dashboard';
-import type { SubTabDef } from '../repo-detail/repoSubTabs';
+import { isWorkspaceSubTab, type SubTabDef } from '../repo-detail/repoSubTabs';
 
 // ── Tab scoping ──────────────────────────────────────────────────────────────
 
@@ -27,7 +27,8 @@ const REMOTE_ORDER: RepoSubTab[] = ['work-items', 'pull-requests'];
 export interface PartitionedShellTabs {
     /** Remote-scoped tabs (Work Items, Pull Requests) — left of the divider, always shown. */
     remote: SubTabDef[];
-    /** Clone-scoped tabs in display order. Shown inline until they run out of
+    /** Clone-scoped tabs in display order, excluding the Workspace surface itself
+     *  (the repo's main view needs no tab). Shown inline until they run out of
      *  horizontal room, after which the tail collapses into the ⋯ overflow. */
     clone: SubTabDef[];
 }
@@ -40,7 +41,7 @@ export function partitionShellTabs(tabs: SubTabDef[]): PartitionedShellTabs {
     const byKey = new Map<RepoSubTab, SubTabDef>(tabs.map(t => [t.key, t]));
     const remote = REMOTE_ORDER.map(k => byKey.get(k)).filter((t): t is SubTabDef => !!t);
     const taken = new Set<RepoSubTab>(remote.map(t => t.key));
-    const clone = tabs.filter(t => !taken.has(t.key));
+    const clone = tabs.filter(t => !taken.has(t.key) && !isWorkspaceSubTab(t.key));
     return { remote, clone };
 }
 

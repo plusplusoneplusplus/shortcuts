@@ -67,17 +67,19 @@ test.describe('Mobile scope shell (390×844)', () => {
         expect(page.url()).toContain(encodeURIComponent(groupId));
     });
 
-    test('the group tab bar pins Workspace / Notes / Settings', async ({ page, serverUrl }) => {
+    test('the group header leaves Workspace / Notes / Settings out of the tab bar', async ({ page, serverUrl }) => {
         const groupId = await seedGroup(serverUrl);
         await page.goto(`${serverUrl}/#repos/${encodeURIComponent(groupId)}`);
 
         const bar = page.locator('[data-testid="mobile-tab-bar"]');
         await expect(bar).toBeVisible({ timeout: 15_000 });
-        await expect(bar.locator('button[data-tab="chats"]')).toBeVisible();
+        await expect(page.getByTestId('repo-group-name-back')).toBeVisible();
+        await expect(bar.locator('button[data-tab="chats"]')).toHaveCount(0);
         await expect(bar.locator('button[data-tab="git"]')).toHaveCount(0);
-        await expect(bar.locator('button[data-tab="notes"]')).toBeVisible();
+        await expect(bar.locator('button[data-tab="notes"]')).toHaveCount(0);
 
-        await expect(bar.locator('button[data-tab="settings"]')).toBeVisible();
+        await expect(bar.locator('button[data-tab="settings"]')).toHaveCount(0);
+        await expect(page.getByTestId('split-workspace-panel')).toBeVisible();
     });
 
     test('goes back from a group to the scope list', async ({ page, serverUrl }) => {

@@ -45,9 +45,10 @@ export function useVirtualWorkspaceHeader(config: VirtualWorkspaceHeaderConfig):
 
     // Fall back to the config's landing tab (default `notes`) when the current
     // sub-tab is not one of the visible tabs. Guard the fallback against being a
-    // hidden tab so we never land on something the header doesn't show.
+    // hidden tab so we never land on something the header doesn't show; a
+    // tab-less config (a repo group) lands on its default view.
     const fallbackTab: RepoSubTab =
-        config.defaultTab && visibleTabs.some(t => t.key === config.defaultTab)
+        config.defaultTab && (visibleTabs.length === 0 || visibleTabs.some(t => t.key === config.defaultTab))
             ? config.defaultTab
             : 'notes';
     const activeTab: RepoSubTab = visibleTabs.some(t => t.key === state.activeRepoSubTab)

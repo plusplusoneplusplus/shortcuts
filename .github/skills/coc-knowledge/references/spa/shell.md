@@ -56,7 +56,10 @@ Inner-tab navigation is client-local and workspace-scoped. `AppContext` persists
 `coc-repo-route-state`, dropping unknown sub-tab ids on hydrate. `Router` records the
 suffix for every `#repos/<workspaceId>/<subroute>` hash and expands a bare
 `#repos/<workspaceId>` hash to the remembered route, then the remembered tab, then
-`/chats`.
+`/chats`. Repos and groups have no Notes/Settings page: their `notes`, `settings`,
+`copilot` and `info` segments (except `settings/display` → admin) replace to
+`/activity` before any sub-tab or suffix is recorded. Only My Work / My Life
+keep those pages and their Alt+N / Alt+C shortcuts.
 
 `layout/dashboardRoutes.ts` owns parsing, redirects, and stale-selection clearing:
 `resolveDashboardRoute(hash, ctx)` turns one hash into an ordered list of typed
@@ -98,15 +101,22 @@ capability loading, and falls back to the chat surface only when the active sub-
 absent from the resolved `visibleSubTabs` — that fallback does not erase the stored deep
 route suffix.
 
-### Shared workspace Settings
+### Workspace Notes and Settings
 
-`features/repo-settings/WorkspaceSettingsHost.tsx` keeps one lazily mounted
-`RepoSettingsTab` or `RepoGroupSettingsTab` behind the top-level Settings entry
-and the default-off `features.panelSettings` add-tab entry. A stable portal
-container moves between hosts without remounting forms. The panel tab belongs
-to the panel workspace and concrete server, independently of its dock target
-or selected chat. Panel section navigation stays local; closing parks the form
-and preserves drafts for reopening or top-level access.
+For repos and groups, Notes and Settings are right-panel tabs only; the add-tab
+menu always lists both. `unified-right-panel/unifiedPanelWorkspaceResources.ts`
+builds their owner-qualified descriptors for the menu and for outside links
+(`usePanelWorkspaceResourceOpener`, `openPanelWorkspaceResource`): links focus
+the existing tab, select a requested note, reveal the dock, and are offered only
+when their workspace owns the hosting panel. Group header dock controls resolve
+clone selections to the raw workspace id used by `RepoGroupView`; resource tabs
+retain their concrete server route.
+
+`features/repo-settings/WorkspaceSettingsHost.tsx` mounts one `RepoSettingsTab`
+or `RepoGroupSettingsTab` on first panel open and keeps it in a stable portal
+container. The tab belongs to the panel workspace and concrete server,
+independently of its dock target or selected chat. Section navigation stays
+local; closing parks the form in a hidden node and preserves drafts.
 
 `workspaceSettingsClient.tsx` supplies one pinned client through
 `WorkspaceOwnerContext`. Settings sections, shared preference hooks, Notes and
@@ -548,8 +558,10 @@ features default off.
 | `features.gitCrossCloneCherryPick` | `gitCrossCloneCherryPickEnabled` | on |
 | `features.gitWorktreeExecution` | `isGitWorktreeExecutionEnabled()` | off |
 | `features.sessionContextAttachments` | `sessionContextAttachmentsEnabled` | off |
-| `features.markdownPanelPreview` | `markdownPanelPreviewEnabled` | off |
-| `features.panelSourceSplit` | `panelSourceSplitEnabled` | off |
+| `features.markdownPanelPreview` | `isMarkdownPanelPreviewEnabled()` | on |
+| `features.panelSourceSplit` | `isPanelSourceSplitEnabled()` | on |
+| `features.explorerEditorTabs` | `isExplorerEditorTabsEnabled()` | on |
+| `features.schedulerDelayHint` | `isSchedulerDelayHintEnabled()` | on |
 | `features.htmlPageTab` | `htmlPageTabEnabled` | on |
 | `features.quickAskSidenotes` | live server flag | — |
 ### Unified right panel
@@ -607,7 +619,7 @@ order, active selection, and preview state. The draft copies remain in place, an
 inheritance does not reveal a collapsed dock.
 
 Quick Open has an explicit repo or repo-group scope. A desktop repo group owns
-Ctrl/Cmd+P across all of its sub-tabs even while the panel is closed, and sends
+Ctrl/Cmd+P even while the panel is closed, and sends
 one search request to the group's owning server. Selecting a member result
 atomically switches the dock target, opens Explorer mode and the tree, and opens
 a result-owned preview without changing the page-level group. Ordinary repos and

@@ -47,6 +47,7 @@ import {
     DEFAULT_CONTENT_SEARCH_MODES,
     type TreeEntry,
 } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/types';
+import { applyRuntimeConfigPatch } from '../../../../../src/server/spa/client/react/utils/config';
 
 const WS = 'ws-open-in-editor';
 
@@ -73,6 +74,11 @@ function buildText(overrides: Partial<Parameters<typeof buildSearchEditorText>[0
         ...overrides,
     });
 }
+
+beforeEach(() => {
+    // These cover the single-pane Explorer; editor tabs are on by default.
+    applyRuntimeConfigPatch({ explorerEditorTabsEnabled: false });
+});
 
 describe('buildSearchEditorText', () => {
     it('writes a header naming the query and the result counts', () => {

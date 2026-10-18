@@ -78,6 +78,9 @@ const { mockState } = vi.hoisted(() => ({
 
 // Config
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isSchedulerDelayHintEnabled: () => false,
+    isMarkdownPanelPreviewEnabled: () => false,
+    isPanelSourceSplitEnabled: () => false,
     isFeatureEnabled: (name: string) => name === 'chatHistoryPagingEnabled' && mockState.chatHistoryPagingEnabled,
     getFeatureValue: () => undefined,
     isComposerWordHintEnabled: () => false,

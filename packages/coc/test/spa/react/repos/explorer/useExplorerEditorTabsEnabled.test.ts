@@ -2,10 +2,10 @@
  * useExplorerEditorTabsEnabled / isExplorerEditorTabsEnabled — tests for the
  * global admin `features.explorerEditorTabs` flag read path.
  *
- * The multi-tab Explorer editor ships behind a runtime flag that is off by
- * default, so with the flag absent or off the Explorer must keep its current
- * single replaceable preview pane. The flag gates UI only, so it also has to
- * track live config updates without a page reload.
+ * The multi-tab Explorer editor ships behind a runtime flag that is on by
+ * default; only an explicit `false` keeps the single replaceable preview pane.
+ * The flag gates UI only, so it also has to track live config updates without
+ * a page reload.
  *
  * @vitest-environment jsdom
  */
@@ -16,11 +16,11 @@ import { useExplorerEditorTabsEnabled } from '../../../../../src/server/spa/clie
 
 describe('explorer editor tabs feature flag', () => {
     // Runs first, before any patch below writes the flag: an absent
-    // `explorerEditorTabsEnabled` must read as off, not as undefined-is-truthy.
-    it('defaults to false when the flag is absent from config', () => {
-        expect(isExplorerEditorTabsEnabled()).toBe(false);
+    // `explorerEditorTabsEnabled` (partial or older runtime config) reads as on.
+    it('defaults to true when the flag is absent from config', () => {
+        expect(isExplorerEditorTabsEnabled()).toBe(true);
         const { result } = renderHook(() => useExplorerEditorTabsEnabled());
-        expect(result.current).toBe(false);
+        expect(result.current).toBe(true);
     });
 
     it('isExplorerEditorTabsEnabled reflects the runtime flag', () => {
@@ -30,9 +30,9 @@ describe('explorer editor tabs feature flag', () => {
         expect(isExplorerEditorTabsEnabled()).toBe(false);
     });
 
-    it('reads a non-boolean flag value as off', () => {
+    it('reads only an explicit false as off', () => {
         applyRuntimeConfigPatch({ explorerEditorTabsEnabled: 'yes' as unknown as boolean });
-        expect(isExplorerEditorTabsEnabled()).toBe(false);
+        expect(isExplorerEditorTabsEnabled()).toBe(true);
         applyRuntimeConfigPatch({ explorerEditorTabsEnabled: false });
     });
 

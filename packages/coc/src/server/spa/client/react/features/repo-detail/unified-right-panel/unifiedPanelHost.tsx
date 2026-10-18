@@ -10,7 +10,7 @@
  * vanish instead of opening. So the two dock hosts — `RepoDetail` and
  * `RepoGroupView` — publish their panel here, and everything below them asks.
  *
- * Two fields, both load-bearing:
+ * Two fields are load-bearing for chat entry points:
  *  - `workspaceId` is the panel's SCOPE (the group id inside a repo group), the
  *    key its store is saved under — not necessarily the clone a resource's
  *    bytes come from, which travels as the descriptor's `ownerWorkspaceId`.
@@ -29,6 +29,8 @@ export interface UnifiedPanelHost {
     workspaceId: string;
     /** The chat whose tabs the panel is currently showing, or null for none. */
     chatId: string | null;
+    /** Remote clone key of the panel's workspace; null or absent for a local owner. */
+    routingRef?: string | null;
 }
 
 const UnifiedPanelHostContext = createContext<UnifiedPanelHost | null>(null);
@@ -47,10 +49,10 @@ export interface UnifiedPanelHostProviderProps {
  */
 export function UnifiedPanelHostProvider({ host, children }: UnifiedPanelHostProviderProps) {
     const value = useMemo(
-        () => (host === null ? null : { workspaceId: host.workspaceId, chatId: host.chatId }),
+        () => (host === null ? null : { workspaceId: host.workspaceId, chatId: host.chatId, routingRef: host.routingRef ?? null }),
         // `workspaceId` is a non-optional string, so `undefined` here means
         // "no host" — the null case cannot alias a real one.
-        [host?.workspaceId, host?.chatId],
+        [host?.workspaceId, host?.chatId, host?.routingRef],
     );
     return (
         <UnifiedPanelHostContext.Provider value={value}>

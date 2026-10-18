@@ -16,7 +16,7 @@ import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture } from './fixtures/repo-fixtures';
 import { createNotesStore, mockNotesApi, type NoteTreeNode } from './fixtures/notes-fixtures';
-import { gotoWorkspace } from './fixtures/remote-shell';
+import { gotoWorkspace, openWorkspacePanel } from './fixtures/remote-shell';
 
 const WS_ID = 'ws-pdf-resize-mock';
 
@@ -45,7 +45,8 @@ async function openNotesPage(
     serverUrl: string,
     wsId: string,
 ): Promise<void> {
-    await gotoWorkspace(page, serverUrl, wsId, 'notes');
+    await gotoWorkspace(page, serverUrl, wsId);
+    await openWorkspacePanel(page, 'notes');
     await expect(page.locator('[data-testid="notes-sidebar"]')).toBeVisible({ timeout: 15_000 });
 }
 

@@ -1,7 +1,7 @@
 /**
- * `features.explorerEditorTabs` (the Explorer multi-tab editor) ships default-off
- * and the shared E2E server config leaves it off, so a spec that wants the tab
- * strip has to turn it on for its own server first.
+ * `features.explorerEditorTabs` (the Explorer multi-tab editor) ships default-on;
+ * specs that need the tab strip still write it explicitly so they do not depend
+ * on the default.
  *
  * It is a `runtime: 'live'` flag, so this must run BEFORE the page load that
  * should see tabs. The server fixture gives each test its own `configPath`, so

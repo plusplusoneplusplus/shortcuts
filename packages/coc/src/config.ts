@@ -133,10 +133,6 @@ export interface CLIConfig {
     terminal?: {
         enabled?: boolean;
     };
-    /** Notes configuration */
-    notes?: {
-        enabled?: boolean;
-    };
     /** My Work configuration */
     myWork?: {
         enabled?: boolean;
@@ -267,7 +263,7 @@ export interface CLIConfig {
             subscription?: string;
         };
     };
-    /** `system_one` LLM tool (quick Copilot-backed decisions over chat context). Disabled by default. */
+    /** `system_one` LLM tool (quick Copilot-backed decisions over chat context). Enabled by default. */
     LLMToolSystemOne?: {
         enabled?: boolean;
     };
@@ -367,15 +363,14 @@ export interface CLIConfig {
         canvasHostApis?: boolean;
         /** `ask_user` `sensitive-input` questions: secrets pasted in the desktop dashboard go straight to a sink. Disabled by default. */
         sensitiveInput?: boolean;
-        /** VS Code-style multiple editor tabs in the File Explorer. Disabled by default. */
+        /** VS Code-style multiple editor tabs in the File Explorer. Enabled by default. */
         explorerEditorTabs?: boolean;
         /** Confirmed permanent Explorer deletion. Disabled by default. */
         explorerDelete?: boolean;
-        /** Rendered Markdown preview in unified right-panel file tabs. Disabled by default. */
+        /** Rendered Markdown preview in unified right-panel file tabs. Enabled by default. */
         markdownPanelPreview?: boolean;
-        /** Two-pane source file split in the unified right panel. Disabled by default. */
+        /** Two-pane source file split in the unified right panel. Enabled by default. */
         panelSourceSplit?: boolean;
-        panelSettings?: boolean;
         panelTabReordering?: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab?: boolean;
@@ -566,10 +561,6 @@ export interface ResolvedCLIConfig {
     logging?: LoggingConfig;
     /** Terminal configuration */
     terminal: {
-        enabled: boolean;
-    };
-    /** Notes configuration */
-    notes: {
         enabled: boolean;
     };
     /** My Work configuration */
@@ -789,15 +780,14 @@ export interface ResolvedCLIConfig {
         canvasHostApis: boolean;
         /** `ask_user` `sensitive-input` questions: secrets pasted in the desktop dashboard go straight to a sink. Disabled by default. */
         sensitiveInput: boolean;
-        /** VS Code-style multiple editor tabs in the File Explorer. Disabled by default. */
+        /** VS Code-style multiple editor tabs in the File Explorer. Enabled by default. */
         explorerEditorTabs: boolean;
         /** Confirmed permanent Explorer deletion. Disabled by default. */
         explorerDelete: boolean;
-        /** Rendered Markdown preview in unified right-panel file tabs. Disabled by default. */
+        /** Rendered Markdown preview in unified right-panel file tabs. Enabled by default. */
         markdownPanelPreview: boolean;
-        /** Two-pane source file split in the unified right panel. Disabled by default. */
+        /** Two-pane source file split in the unified right panel. Enabled by default. */
         panelSourceSplit: boolean;
-        panelSettings: boolean;
         panelTabReordering: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab: boolean;
@@ -938,9 +928,6 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     terminal: {
         enabled: true,
     },
-    notes: {
-        enabled: true,
-    },
     myWork: {
         enabled: false,
         todayView: false,
@@ -1023,7 +1010,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     browserControl: { enabled: false, framesEnabled: false, richPasteEnabled: false },
     LLMToolSystemOne: {
-        enabled: false,
+        enabled: true,
     },
     containerDefaultAgent: {
         enabled: false,
@@ -1093,7 +1080,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         sentinelTodoTags: false,
         sentinelTodoExternalReferences: false,
         sentinelTodoScrubber: false,
-        toolScripting: false,
+        toolScripting: true,
         sentinelPrOutcomeWake: false,
         sentinelTodoDateTimeTriggers: false,
         sentinelDesktopMirror: false,
@@ -1109,16 +1096,15 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         railManualRefresh: true,
         adminMachineSwitch: false,
         railStatusActions: true,
-        schedulerDelayHint: false,
+        schedulerDelayHint: true,
         composerWordHint: true,
         gitWorktreeExecution: false,
         canvasHostApis: false,
         sensitiveInput: false,
-        explorerEditorTabs: false,
+        explorerEditorTabs: true,
         explorerDelete: true,
-        markdownPanelPreview: false,
-        panelSourceSplit: false,
-        panelSettings: false,
+        markdownPanelPreview: true,
+        panelSourceSplit: true,
         panelTabReordering: true,
         htmlPageTab: true,
         chatStyleSelector: true,

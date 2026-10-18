@@ -161,7 +161,7 @@ test.describe('Git advanced — Branch file review', () => {
         );
 
         await gotoWorkspace(page, serverUrl, wsId, 'git');
-        await expect(page.locator('button[data-subtab="activity"]')).toHaveAttribute('data-active', 'true');
+        await expect(page.getByTestId('split-workspace-panel')).toBeVisible();
         await expect(page.getByTestId('git-split-workspace-list')).toBeVisible();
 
         // BranchChanges should be visible
@@ -384,7 +384,7 @@ test.describe('Git advanced — Branch large diff', () => {
         );
 
         await gotoWorkspace(page, serverUrl, wsId, 'git');
-        await expect(page.locator('button[data-subtab="activity"]')).toHaveAttribute('data-active', 'true');
+        await expect(page.getByTestId('split-workspace-panel')).toBeVisible();
         await expect(page.getByTestId('git-split-workspace-list')).toBeVisible();
 
         // BranchChanges should be visible

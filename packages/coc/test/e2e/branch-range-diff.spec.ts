@@ -183,7 +183,7 @@ async function openBranchRangeOverview(
     });
     await mockGitRoutes(page, wsId, opts);
     await gotoWorkspace(page, serverUrl, wsId, 'git');
-    await expect(page.locator('button[data-subtab="activity"]')).toHaveAttribute('data-active', 'true');
+    await expect(page.getByTestId('split-workspace-panel')).toBeVisible();
     await expect(page.getByTestId('git-split-workspace-list')).toBeVisible();
     await expect(page.getByTestId('branch-changes')).toBeVisible({ timeout: 10_000 });
     await page.getByTestId('branch-changes-header').click();

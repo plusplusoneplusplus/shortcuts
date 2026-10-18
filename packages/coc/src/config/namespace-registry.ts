@@ -22,7 +22,6 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'models'
     | 'logging'
     | 'terminal'
-    | 'notes'
     | 'myWork'
     | 'myLife'
     | 'scratchpad'

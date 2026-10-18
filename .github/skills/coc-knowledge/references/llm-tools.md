@@ -623,7 +623,7 @@ in `server/index.ts` and shares it with the decision route and executors via
 `runtime.getDecisionService`; `ChatBaseExecutor.buildSystemOneDeps` binds the ledger to the
 process. Offered to all chat providers (ask, autopilot, Ralph, follow-ups) by
 `buildSystemOneToolsAddon`, gated live by the `LLMToolSystemOne.enabled` admin flag
-(default off); on by default per repo once the flag is on.
+(default on; explicit `false` hides it) and per-repo `disabledLlmTools`.
 
 ### run_tool_script
 
@@ -650,7 +650,7 @@ feeds the normal tool-event handler; when the parent id is not on the timeline (
 bridge ids) it maps to the newest running `run_tool_script` row, once per script.
 `ToolCallLedger` skips nested calls, so `system_one` refs see only the script call. The SPA
 card shows `code` as a Script block and pretty-prints the JSON result. Gated live by
-`features.toolScripting` (default off), enabled by default per repo once on, and left out for
+`features.toolScripting` (default on; explicit `false` turns it off), enabled by default per repo, and left out for
 Codex chats (`includeToolScripting: false`; Codex code mode already has `functions.exec`),
 browser-only bundles, scrubber turns and PR-outcome-review turns.
 

@@ -19,7 +19,7 @@ import {
 import {
     gotoWorkspace,
     selectRepoNamed,
-    openSubTab,
+    openWorkspacePanel,
     openRemotePicker,
     openAddRepoOption,
     removeWorkspaceViaRowMenu,
@@ -254,10 +254,10 @@ test.describe('Add Repo workflow', () => {
             await page.click('#add-repo-submit');
             await expect(page.locator('#add-repo-overlay')).toBeHidden({ timeout: 5000 });
 
-            // Select the repo and navigate to settings sub-tab to verify detail color dot
+            // Select the repo and open its Settings panel to verify the color dot
             await selectRepoNamed(page, 'color-test');
-            await openSubTab(page, 'settings');
-            await expect(page.locator('button[data-subtab="settings"]')).toHaveAttribute('data-active', 'true');
+            await openWorkspacePanel(page, 'settings');
+            await expect(page.getByTestId('settings-content-panel')).toBeVisible();
             const detailDot = page.locator('#repo-detail-content .repo-color-dot');
             await expect(detailDot.first()).toHaveAttribute('style', /#107c10|rgb\s*\(\s*16\s*,\s*124\s*,\s*16\s*\)/);
         } finally {
@@ -305,15 +305,35 @@ test.describe('Remove Repo', () => {
 // ================================================================
 
 test.describe('Sub-tab Navigation', () => {
-    test('default sub-tab is Settings', async ({ page, serverUrl }) => {
+    test('Settings opens only through the workspace panel', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-sub-1', 'info-repo', '/tmp/info-repo');
 
         await page.goto(serverUrl);
         await gotoWorkspace(page, serverUrl, 'ws-sub-1');
 
-        await page.click('button[data-subtab="settings"]');
-        await expect(page.locator('button[data-subtab="settings"]')).toHaveAttribute('data-active', 'true');
-        await expect(page.locator('[data-testid="settings-content-panel"]')).toBeVisible();
+        await expect(page.locator('button[data-subtab="settings"]')).toHaveCount(0);
+        await openWorkspacePanel(page, 'settings');
+        const settingsTab = page.getByTestId('unified-right-panel').locator('[role="tab"][data-kind="settings"]');
+        await settingsTab.getByRole('button', { name: /Close/ }).click();
+        await expect(page.getByTestId('settings-content-panel')).toBeHidden();
+        await openWorkspacePanel(page, 'settings');
+        await expect(settingsTab).toHaveCount(1);
+    });
+
+    test('retired Notes and Settings URLs return to Workspace without restoring a page tab', async ({ page, serverUrl }) => {
+        test.setTimeout(60_000);
+        await seedWorkspace(serverUrl, 'ws-panel-routes', 'panel-routes-repo');
+        for (const route of ['notes', 'settings/mcp', 'copilot', 'info']) {
+            await gotoWorkspace(page, serverUrl, 'ws-panel-routes', route);
+            await expect(page).toHaveURL(`${serverUrl}/#repos/ws-panel-routes/activity`);
+            await expect(page.getByTestId('split-workspace-panel')).toBeVisible();
+            await expect(page.locator('button[data-subtab="notes"], button[data-subtab="settings"]')).toHaveCount(0);
+        }
+        await gotoWorkspace(page, serverUrl, 'ws-panel-routes');
+        await expect(page).toHaveURL(`${serverUrl}/#repos/ws-panel-routes/activity`);
+        await openWorkspacePanel(page, 'notes');
+        await openWorkspacePanel(page, 'settings');
+        await expect(page.getByTestId('unified-right-panel').locator('[role="tab"][data-kind="notes"]')).toHaveCount(1);
     });
 
     test('switch to Workflows tab', async ({ page, serverUrl }) => {
@@ -325,7 +345,7 @@ test.describe('Sub-tab Navigation', () => {
 
         await page.click('button[data-subtab="workflows"]');
         await expect(page.locator('button[data-subtab="workflows"]')).toHaveAttribute('data-active', 'true');
-        await expect(page.locator('button[data-subtab="settings"]')).toHaveAttribute('data-active', 'false');
+        await expect(page.locator('button[data-subtab="settings"]')).toHaveCount(0);
 
         const subContent = page.locator('#repo-sub-tab-content');
         await expect(subContent).toBeVisible();
@@ -344,17 +364,19 @@ test.describe('Sub-tab Navigation', () => {
         await expect(page.locator('.repo-tasks-toolbar')).toBeVisible();
     });
 
-    test('switch to Activity tab', async ({ page, serverUrl }) => {
+    test('clicking the active header tab returns to Workspace', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-sub-activity', 'activity-repo', '/tmp/activity-repo');
 
         await page.goto(serverUrl);
-        await gotoWorkspace(page, serverUrl, 'ws-sub-activity');
-
-        await page.click('button[data-subtab="activity"]');
-        await expect(page.locator('button[data-subtab="activity"]')).toHaveAttribute('data-active', 'true');
-        await expect(page.locator('button[data-subtab="settings"]')).toHaveAttribute('data-active', 'false');
-
-        await expect(page.locator('[data-testid="split-workspace-panel"]')).toBeVisible({ timeout: 10000 });
+        await enableWorkflowsFeature(serverUrl);
+        await gotoWorkspace(page, serverUrl, 'ws-sub-activity', 'workflows');
+        const workflows = page.locator('button[data-subtab="workflows"]');
+        await expect(workflows).toHaveAttribute('data-active', 'true');
+        await workflows.click();
+        await expect(workflows).toHaveAttribute('data-active', 'false');
+        await expect(page.locator('button[data-subtab="activity"]')).toHaveCount(0);
+        await expect(page.locator('button[data-subtab="settings"]')).toHaveCount(0);
+        await expect(page.getByTestId('split-workspace-panel')).toBeVisible({ timeout: 10000 });
     });
 
     test('sub-tab state persists on re-select', async ({ page, serverUrl }) => {
@@ -383,7 +405,7 @@ test.describe('Sub-tab Navigation', () => {
         await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
 
         await expect(page.locator('button[data-subtab="workflows"]')).toHaveAttribute('data-active', 'true');
-        await expect(page.locator('button[data-subtab="settings"]')).toHaveAttribute('data-active', 'false');
+        await expect(page.locator('button[data-subtab="settings"]')).toHaveCount(0);
     });
 
     test('hash navigation works for Activity sub-tab', async ({ page, serverUrl }) => {
@@ -394,9 +416,8 @@ test.describe('Sub-tab Navigation', () => {
         await expect(page.locator('[data-tab="repos"]')).toHaveClass(/active/);
         await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
 
-        await expect(page.locator('button[data-subtab="activity"]')).toHaveAttribute('data-active', 'true');
-        await expect(page.locator('button[data-subtab="settings"]')).toHaveAttribute('data-active', 'false');
-        await expect(page.locator('[data-testid="split-workspace-panel"]')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('button[data-subtab="settings"]')).toHaveCount(0);
+        await expect(page.getByTestId('split-workspace-panel')).toBeVisible({ timeout: 10000 });
     });
 });
 
@@ -409,7 +430,8 @@ test.describe('Info Tab Content', () => {
         await seedWorkspace(serverUrl, 'ws-info-1', 'info-repo', testWorkspacePath('info-repo'), '#107c10');
 
         await page.goto(serverUrl);
-        await gotoWorkspace(page, serverUrl, 'ws-info-1', 'settings');
+        await gotoWorkspace(page, serverUrl, 'ws-info-1');
+        await openWorkspacePanel(page, 'settings');
         await expect(page.locator('[data-testid="info-workspace-card"]')).toBeVisible();
 
         // Verify path is displayed
@@ -435,7 +457,8 @@ test.describe('Info Tab Content', () => {
             await seedWorkspace(serverUrl, 'ws-git-info', 'git-info-repo', repoDir);
 
             await page.goto(serverUrl);
-            await gotoWorkspace(page, serverUrl, 'ws-git-info', 'settings');
+            await gotoWorkspace(page, serverUrl, 'ws-git-info');
+            await openWorkspacePanel(page, 'settings');
             await expect(page.locator('[data-testid="info-workspace-card"]')).toBeVisible();
 
             // Branch cell should show a real branch name (main or master)
@@ -457,7 +480,8 @@ test.describe('Info Tab Content', () => {
         await seedProcess(serverUrl, 'stats-p4', { status: 'failed', workspaceId: 'ws-stats' });
 
         await page.goto(serverUrl);
-        await gotoWorkspace(page, serverUrl, 'ws-stats', 'settings');
+        await gotoWorkspace(page, serverUrl, 'ws-stats');
+        await openWorkspacePanel(page, 'settings');
         await expect(page.locator('[data-testid="settings-content-panel"]')).toBeVisible();
 
         const completedItem = page.locator('[data-testid="info-stat-completed"]');
@@ -481,7 +505,8 @@ test.describe('Info Tab Content', () => {
         }
 
         await page.goto(serverUrl);
-        await gotoWorkspace(page, serverUrl, 'ws-recent', 'settings');
+        await gotoWorkspace(page, serverUrl, 'ws-recent');
+        await openWorkspacePanel(page, 'settings');
         await expect(page.locator('[data-testid="settings-content-panel"]')).toBeVisible();
 
         // Wait for recent processes to load
@@ -701,10 +726,10 @@ test.describe('Explorer Sub-tab', () => {
             await expect(page.locator('[data-tab="repos"]')).toHaveClass(/active/);
             await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
             // Explorer never had a visible sub-tab; the redirect guard sends
-            // it to the default Workspace (chats, rendered as the "activity"
-            // key/button) view instead, exactly like the Schedules
+            // it to the default Workspace (the chats/activity view),
+            // exactly like the Schedules
             // hash-redirect case below.
-            await expect(page.locator('button[data-subtab="activity"]')).toHaveAttribute('data-active', 'true');
+            await expect(page.getByTestId('split-workspace-panel')).toBeVisible();
             await expect(page.locator('button[data-subtab="explorer"]')).toHaveCount(0);
 
             // The panel is still reachable from here through its own toggle.
@@ -861,7 +886,7 @@ test.describe('Hash Navigation — Remaining Sub-tabs', () => {
 
             await expect(page.locator('[data-tab="repos"]')).toHaveClass(/active/);
             await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
-            await expect(page.locator('button[data-subtab="activity"]')).toHaveAttribute('data-active', 'true');
+            await expect(page.getByTestId('split-workspace-panel')).toBeVisible();
             await expect(page.locator('[data-testid="git-split-workspace-list"]')).toBeVisible({ timeout: 10000 });
         } finally {
             safeRmSync(tmpDir);
@@ -885,7 +910,7 @@ test.describe('Hash Navigation — Remaining Sub-tabs', () => {
 
         await expect(page.locator('[data-tab="repos"]')).toHaveClass(/active/);
         await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
-        await expect(page.locator('button[data-subtab="activity"]')).toHaveAttribute('data-active', 'true');
+        await expect(page.getByTestId('split-workspace-panel')).toBeVisible();
         await expect(page.locator('button[data-subtab="schedules"]')).toHaveCount(0);
     });
 });
@@ -895,42 +920,19 @@ test.describe('Hash Navigation — Remaining Sub-tabs', () => {
 // ================================================================
 
 test.describe('Sub-tab Badges', () => {
-    test('activity badge visible on activity sub-tab when repo has queue tasks', async ({ page, serverUrl }) => {
+    test('Workspace renders queued tasks without a header tab', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-badge-queued', 'badge-queued-repo');
-
-        // Seed a queued task for this workspace
         await seedQueueTask(serverUrl, {
             type: 'chat',
             displayName: 'Queued Badge Task',
             repoId: 'ws-badge-queued',
         });
-
-        await page.goto(serverUrl);
         await gotoWorkspace(page, serverUrl, 'ws-badge-queued', 'activity');
-        await expect(page.locator('[data-testid="split-workspace-panel"]')).toBeVisible({ timeout: 10000 });
-
-        // Either the task text or the badge should be visible (task may be queued, running, or just completed)
-        // Check that the Activity tab content at least rendered (queue was fetched)
-        const subTabContent = page.locator('#repo-sub-tab-content');
-        await expect(subTabContent).toBeVisible();
-
-        // Verify the sub-tab button strip contains the activity button
-        await expect(page.locator('button[data-subtab="activity"]')).toHaveAttribute('data-active', 'true');
-
-        // The badge may or may not be visible depending on how quickly the task is processed.
-        // If it's visible, verify it shows a count > 0.
-        const queuedBadge = page.locator('[data-testid="activity-queued-badge"]');
-        const runningBadge = page.locator('[data-testid="activity-running-badge"]');
-        const queuedCount = await queuedBadge.count();
-        const runningCount = await runningBadge.count();
-        if (queuedCount > 0 && await queuedBadge.isVisible()) {
-            const text = await queuedBadge.textContent();
-            expect(Number(text)).toBeGreaterThan(0);
-        } else if (runningCount > 0 && await runningBadge.isVisible()) {
-            const text = await runningBadge.textContent();
-            expect(Number(text)).toBeGreaterThan(0);
-        }
-        // If neither badge is visible, the task was processed quickly — that's also valid.
+        await expect(page.getByTestId('split-workspace-panel')).toBeVisible();
+        await expect(page.getByTestId('activity-queued-badge')).toHaveCount(0);
+        await expect(page.getByTestId('activity-running-badge')).toHaveCount(0);
+        await expect(page.locator('button[data-subtab="activity"]')).toHaveCount(0);
+        await expect(page.locator('#repo-sub-tab-content')).toBeVisible();
     });
 
     test('tasks count badge appears when repo has tasks', async ({ page, serverUrl }) => {

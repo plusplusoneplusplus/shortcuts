@@ -34,7 +34,7 @@ import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
 import { useMyWorkTodayViewEnabled } from '../hooks/feature-flags/useMyWorkTodayViewEnabled';
 import { useMyLifeEnabled } from '../hooks/feature-flags/useMyLifeEnabled';
 import { RepoManagementPopover } from '../repos/RepoManagementPopover';
-import { findRepoBySelectionId } from '../repos/cloneIdentity';
+import { findRepoBySelectionId, parseRemoteCloneKey } from '../repos/cloneIdentity';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { isDesktopShell } from '../hooks/ui/useDesktopShell';
 import { getHostname } from '../utils/config';
@@ -290,7 +290,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                     <WorkspaceDockToggle workspaceId={String(selectedRepo.workspace.id)} />
                 )}
                 {showVirtualHeader && isRepoGroupWorkspaceId(state.selectedRepoId) && (
-                    <WorkspaceDockToggle workspaceId={String(state.selectedRepoId)} />
+                    <WorkspaceDockToggle workspaceId={parseRemoteCloneKey(String(state.selectedRepoId))?.workspaceId ?? String(state.selectedRepoId)} />
                 )}
                 {/* Status cluster — hidden here when it lives in the global
                     bottom status bar (remote-first shell, desktop). */}

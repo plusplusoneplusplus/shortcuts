@@ -178,8 +178,9 @@ describe('TabFeatureSettingsCard', () => {
         }
         for (const testId of ['toggle-explorer-editor-tabs-enabled', 'toggle-markdown-panel-preview-enabled']) {
             const toggle = section.querySelector(`[data-testid="${testId}"]`) as HTMLInputElement;
-            expect(toggle.checked, testId).toBe(false);
-            expect(toggle.closest('.ar-row')?.textContent, testId).toContain('Experimental');
+            // Default-on experimental toggles drop the Experimental pill.
+            expect(toggle.checked, testId).toBe(true);
+            expect(toggle.closest('.ar-row')?.textContent, testId).not.toContain('Experimental');
         }
     });
 
@@ -190,20 +191,20 @@ describe('TabFeatureSettingsCard', () => {
         expect(Array.from(section.querySelectorAll('input')).map(i => i.getAttribute('data-testid'))).toEqual(['toggle-arxiv-paper-ingest-enabled']);
     });
 
-    it('saves moved editor UI opt-ins from Appearance with their existing keys and runtime flags', async () => {
+    it('saves moved editor UI toggles from Appearance with their existing keys and runtime flags', async () => {
         render(<Harness tabs={['appearance', 'editors']} />);
         fireEvent.click(screen.getByTestId('toggle-explorer-editor-tabs-enabled'));
         fireEvent.click(screen.getByTestId('toggle-arxiv-paper-ingest-enabled'));
         await act(async () => { await controller.handleSaveTab('appearance'); });
         const payload = updateConfig.mock.calls[0][0] as Record<string, unknown>;
         expect(payload).toMatchObject({
-            'features.explorerEditorTabs': true,
-            'features.markdownPanelPreview': false,
+            'features.explorerEditorTabs': false,
+            'features.markdownPanelPreview': true,
         });
         expect(payload).not.toHaveProperty('features.arxivPaperIngest');
         expect(applyRuntimeConfigPatch.mock.calls[0][0]).toMatchObject({
-            explorerEditorTabsEnabled: true,
-            markdownPanelPreviewEnabled: false,
+            explorerEditorTabsEnabled: false,
+            markdownPanelPreviewEnabled: true,
         });
         expect(controller.isTabDirty('appearance')).toBe(false);
         expect(controller.isTabDirty('editors')).toBe(true);

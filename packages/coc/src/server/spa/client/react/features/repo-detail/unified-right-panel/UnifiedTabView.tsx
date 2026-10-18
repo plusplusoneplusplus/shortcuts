@@ -7,8 +7,8 @@
  *  - `terminal` / `notes` — `TerminalView` and the full editable `NotesView`. There is no Explorer
  *    tab: the file tree is the panel's own right-edge column, which the panel
  *    shell renders beside whichever view is active.
- *  - `settings` — the workspace's existing full Settings page, shared with
- *    top-level Settings through `WorkspaceSettingsSlot`, without a second form.
+ *  - `settings` — the workspace's full Settings page, portaled in through
+ *    `WorkspaceSettingsSlot` so closing the tab parks the form with its drafts.
  *  - `file` — the Explorer's `PreviewPane`, the same buffer controller the
  *    Explorer sub-tab uses, so load/retry/dirty/save/status behave
  *    identically wherever a file was opened from. Trusted absolute paths are
@@ -60,7 +60,7 @@ import { UnifiedPasteTab } from './UnifiedPasteTab';
 import { UnifiedTodoTab } from './UnifiedTodoTab';
 import { WorkspaceSettingsSlot } from '../../repo-settings/WorkspaceSettingsHost';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled } from '../../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isMarkdownPanelPreviewEnabled } from '../../../utils/config';
 
 export interface UnifiedTabViewProps {
     tab: UnifiedPanelTab;
@@ -136,10 +136,10 @@ export function UnifiedTabView({
     onNotesSelectionChange, canvasSwitcher,
 }: UnifiedTabViewProps) {
     const [markdownPreviewEnabled, setMarkdownPreviewEnabled] = useState(
-        () => isFeatureEnabled('markdownPanelPreviewEnabled'),
+        () => isMarkdownPanelPreviewEnabled(),
     );
     useEffect(() => {
-        const update = () => setMarkdownPreviewEnabled(isFeatureEnabled('markdownPanelPreviewEnabled'));
+        const update = () => setMarkdownPreviewEnabled(isMarkdownPanelPreviewEnabled());
         window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
         return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
     }, []);
@@ -203,7 +203,7 @@ export function UnifiedTabView({
     );
     switch (tab.kind) {
         case 'settings':
-            return <WorkspaceSettingsSlot panel active={isActive} ownerKey={tab.ownerRoutingRef ?? tab.ownerWorkspaceId} />;
+            return <WorkspaceSettingsSlot ownerKey={tab.ownerRoutingRef ?? tab.ownerWorkspaceId} />;
         case 'paste':
             return <UnifiedPasteTab scopeWorkspaceId={scopeWorkspaceId} resourceId={tab.resourceId} />;
         case 'terminal':

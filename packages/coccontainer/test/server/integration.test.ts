@@ -146,7 +146,6 @@ describe('CoCContainer Server Integration', () => {
         expect(res.body).toContain('"pullRequestsEnabled":true');
         // The locally-unavailable features are disabled through the same map.
         expect(res.body).toContain('"terminalEnabled":false');
-        expect(res.body).toContain('"notesEnabled":false');
         expect(res.body).toContain('"workflowsEnabled":false');
     });
 

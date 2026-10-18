@@ -471,13 +471,16 @@ describe('Admin Handler', () => {
             expect(body.sources['terminal.enabled']).toBe('default');
         });
 
-        it('should return notes.enabled=true by default', async () => {
+        it('should not expose Notes or panel-Settings availability settings', async () => {
             const configPath = path.join(dataDir, 'config.yaml');
             const srv = await startServerWithConfig(configPath);
             const res = await request(`${srv.url}/api/admin/config`);
             const body = JSON.parse(res.body);
-            expect(body.resolved.notes.enabled).toBe(true);
-            expect(body.sources['notes.enabled']).toBe('default');
+            expect(body.resolved.notes).toBeUndefined();
+            expect(body.resolved.features.panelSettings).toBeUndefined();
+            expect(body.defaults).not.toHaveProperty('notes.enabled');
+            expect(body.defaults).not.toHaveProperty('features.panelSettings');
+            expect(body.sources).not.toHaveProperty('notes.enabled');
         });
 
         it('should return myWork.enabled=false by default', async () => {
@@ -495,7 +498,6 @@ describe('Admin Handler', () => {
             const res = await request(`${srv.url}/api/admin/config`);
             const body = JSON.parse(res.body);
             expect(body.defaults).toBeDefined();
-            expect(body.defaults['notes.enabled']).toBe(true);
             expect(body.defaults['workflows.enabled']).toBe(false);
             expect(body.defaults['excalidraw.enabled']).toBe(false);
             expect(body.defaults['terminal.enabled']).toBe(true);
@@ -504,13 +506,13 @@ describe('Admin Handler', () => {
 
         it('should allow comparing resolved values with defaults to detect modifications', async () => {
             const configPath = path.join(dataDir, 'config.yaml');
-            fs.writeFileSync(configPath, 'notes:\n  enabled: false\n');
+            fs.writeFileSync(configPath, 'terminal:\n  enabled: false\n');
             const srv = await startServerWithConfig(configPath);
             const res = await request(`${srv.url}/api/admin/config`);
             const body = JSON.parse(res.body);
-            expect(body.resolved.notes.enabled).toBe(false);
-            expect(body.defaults['notes.enabled']).toBe(true);
-            expect(body.resolved.notes.enabled !== body.defaults['notes.enabled']).toBe(true);
+            expect(body.resolved.terminal.enabled).toBe(false);
+            expect(body.defaults['terminal.enabled']).toBe(true);
+            expect(body.resolved.terminal.enabled !== body.defaults['terminal.enabled']).toBe(true);
         });
     });
 
@@ -1498,44 +1500,16 @@ describe('Admin Handler', () => {
             expect(body.error).toContain('terminal.enabled');
         });
 
-        it('should accept notes.enabled=true', async () => {
+        it('should reject Notes and panel-Settings availability keys as non-editable', async () => {
             const configPath = path.join(dataDir, 'config.yaml');
             const srv = await startServerWithConfig(configPath);
             const res = await request(`${srv.url}/api/admin/config`, {
                 method: 'PUT',
-                body: JSON.stringify({ 'notes.enabled': true }),
-                headers: { 'Content-Type': 'application/json' },
-            });
-            expect(res.status).toBe(200);
-            const body = JSON.parse(res.body);
-            expect(body.resolved.notes.enabled).toBe(true);
-            expect(body.sources['notes.enabled']).toBe('file');
-        });
-
-        it('should accept notes.enabled=false', async () => {
-            const configPath = path.join(dataDir, 'config.yaml');
-            const srv = await startServerWithConfig(configPath);
-            const res = await request(`${srv.url}/api/admin/config`, {
-                method: 'PUT',
-                body: JSON.stringify({ 'notes.enabled': false }),
-                headers: { 'Content-Type': 'application/json' },
-            });
-            expect(res.status).toBe(200);
-            const body = JSON.parse(res.body);
-            expect(body.resolved.notes.enabled).toBe(false);
-        });
-
-        it('should reject non-boolean notes.enabled', async () => {
-            const configPath = path.join(dataDir, 'config.yaml');
-            const srv = await startServerWithConfig(configPath);
-            const res = await request(`${srv.url}/api/admin/config`, {
-                method: 'PUT',
-                body: JSON.stringify({ 'notes.enabled': 'yes' }),
+                body: JSON.stringify({ 'notes.enabled': false, 'features.panelSettings': false }),
                 headers: { 'Content-Type': 'application/json' },
             });
             expect(res.status).toBe(400);
-            const body = JSON.parse(res.body);
-            expect(body.error).toContain('notes.enabled');
+            expect(JSON.parse(res.body).error).toContain('editable');
         });
 
         it('should accept myWork.enabled=true', async () => {

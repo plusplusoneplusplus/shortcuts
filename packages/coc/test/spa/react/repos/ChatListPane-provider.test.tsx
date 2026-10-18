@@ -30,6 +30,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isSchedulerDelayHintEnabled: () => false,
     isFeatureEnabled: () => false,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     isChatFoldersEnabled: () => false,

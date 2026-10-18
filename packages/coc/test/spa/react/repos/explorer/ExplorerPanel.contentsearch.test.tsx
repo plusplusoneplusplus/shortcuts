@@ -39,6 +39,7 @@ import { clearExplorerTreeCache } from '../../../../../src/server/spa/client/rea
 import { clearExplorerContentResults } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerStateStore';
 import { SEARCH_DEBOUNCE_MS } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/ContentSearchPanel';
 import type { TreeEntry } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/types';
+import { applyRuntimeConfigPatch } from '../../../../../src/server/spa/client/react/utils/config';
 
 const WS = 'ws-explorer';
 
@@ -73,6 +74,8 @@ async function renderPanel() {
 }
 
 beforeEach(() => {
+    // These cover the single-pane Explorer; editor tabs are on by default.
+    applyRuntimeConfigPatch({ explorerEditorTabsEnabled: false });
     localStorage.clear();
     location.hash = '';
     clearExplorerTreeCache();

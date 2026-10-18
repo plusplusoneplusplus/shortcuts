@@ -1,5 +1,8 @@
 import type { RepoGroupMemberAccess, RepoGroupWriterConflict } from '@plusplusoneplusplus/coc-client';
 import { buildRemoteCloneKey } from './cloneIdentity';
+import { useAppOptional } from '../contexts/AppContext';
+import { useQueueOptional } from '../contexts/QueueContext';
+import { openPanelWorkspaceResource, panelOwnerForSelection } from '../features/repo-detail/unified-right-panel/unifiedPanelWorkspaceResources';
 
 export function RepoGroupAccessStatus({ access, readOnly, conflicts = [], serverId }: {
     access?: RepoGroupMemberAccess;
@@ -7,6 +10,14 @@ export function RepoGroupAccessStatus({ access, readOnly, conflicts = [], server
     conflicts?: RepoGroupWriterConflict[];
     serverId?: string;
 }) {
+    const appDispatch = useAppOptional()?.dispatch;
+    const selectedTaskIdByRepo = useQueueOptional()?.state.selectedTaskIdByRepo;
+    // The writer group's member list lives in its Settings panel tab: open that
+    // tab in the writer group's own panel, then show the group.
+    const openWriterSettings = (selectionId: string) => {
+        appDispatch?.({ type: 'SET_SETTINGS_SECTION', section: 'members' });
+        openPanelWorkspaceResource('settings', panelOwnerForSelection(selectionId, selectedTaskIdByRepo?.[selectionId] ?? null));
+    };
     const writers = conflicts.length ? conflicts : access?.writers ?? [];
     const conflicting = conflicts.length > 0 || new Set(writers.map(writer => writer.writerGroupId)).size > 1;
     return (
@@ -26,7 +37,8 @@ export function RepoGroupAccessStatus({ access, readOnly, conflicts = [], server
                     <span key={`${writer.writerGroupId}:${writer.writerWorkspaceId}:${index}`}>
                         {writer.reason === 'unresolved-membership' ? 'Possible writer (unresolved)' : 'Writer'}: {writer.writerGroupName}
                         {' · '}
-                        <a className="underline text-[#0078d4]" href={`#repos/${encodeURIComponent(selectionId)}/settings`}>
+                        <a className="underline text-[#0078d4]" href={`#repos/${encodeURIComponent(selectionId)}`}
+                            onClick={() => openWriterSettings(selectionId)}>
                             Open writer group
                         </a>
                     </span>

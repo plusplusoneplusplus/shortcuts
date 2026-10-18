@@ -28,6 +28,7 @@ import { ComposerPrReviewersPopover } from './ComposerPrReviewersPopover';
 import { usePrAutoFixTrigger, type UsePrAutoFixTriggerResult } from './usePrAutoFixTrigger';
 import { usePrAutoMergeMutation, type UsePrAutoMergeMutationResult } from './usePrAutoMergeMutation';
 import type { PrStatusCardItem } from './PrStatusCard';
+import { usePanelWorkspaceResourceOpener } from '../../repo-detail/unified-right-panel/unifiedPanelWorkspaceResources';
 
 /** CI auto-fix wiring passed from the connected chip stack (AC-05). */
 export interface ComposerPrChipAutoFixContext {
@@ -261,6 +262,9 @@ function ReviewersBadge({ item }: { item: PrStatusCardItem }) {
 function ChecksBadge({ item, autoFix, autoMerge }: { item: PrStatusCardItem; autoFix?: UsePrAutoFixTriggerResult; autoMerge?: UsePrAutoMergeMutationResult }) {
     const [open, setOpen] = React.useState(false);
     const anchorRef = React.useRef<HTMLButtonElement | null>(null);
+    // Auto-archive lives in the chat workspace's Settings panel tab; offered only
+    // when that workspace owns the panel hosting this chat.
+    const openPanelResource = usePanelWorkspaceResourceOpener(item.repoId);
 
     if (item.checksState !== 'ready') return null;
     const rows = item.checks ?? [];
@@ -321,7 +325,9 @@ function ChecksBadge({ item, autoFix, autoMerge }: { item: PrStatusCardItem; aut
         }
         : undefined;
     const openHref = item.pr?.url || item.url;
-    const archiveSettingsHref = `#repos/${encodeURIComponent(item.repoId)}/settings/preferences`;
+    const openArchiveSettings = openPanelResource
+        ? () => openPanelResource('settings', { settingsSection: 'preferences' })
+        : undefined;
     const popoverAutoMerge = autoMerge
         ? { enabled: autoMerge.enabled, busy: autoMerge.busy, disabledReason: autoMerge.disabledReason, onToggle: (next: boolean) => { void autoMerge.toggle(next); } }
         : undefined;
@@ -354,7 +360,7 @@ function ChecksBadge({ item, autoFix, autoMerge }: { item: PrStatusCardItem; aut
                     autoFix={popoverAutoFix}
                     openHref={openHref}
                     autoMerge={popoverAutoMerge}
-                    archiveSettingsHref={archiveSettingsHref}
+                    onOpenArchiveSettings={openArchiveSettings}
                 />
             )}
         </>

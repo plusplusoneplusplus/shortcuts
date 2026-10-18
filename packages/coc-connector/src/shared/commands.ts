@@ -17,7 +17,7 @@
  *   - `list topics <ref>` lists a remote repo's chats read-only; `<ref>` is a
  *     `n.m` number from `list remotes` or `name@server`. Bare `list topics`
  *     lists local repos together (last24hours, top5). A trailing `-v` on either form also shows topic ids.
- *   - Platform-limited commands (`list todos`, WhatsApp only) parse and show in
+ *   - Platform-limited commands (`list todos`: CoC WhatsApp and Teams) parse and show in
  *     help only when the caller names that platform; elsewhere the text keeps
  *     its old meaning, so no connector advertises a command it cannot handle.
  */
@@ -69,7 +69,7 @@ export const MESSAGING_COMMAND_SPECS: readonly CommandSpec[] = [
     { type: 'create-topic', group: 'Topics', pattern: /^create\s+(?:chat\s+)?topic$/i, usage: 'create topic', summary: 'Next message starts a new chat' },
     { type: 'select-topic', group: 'Topics', pattern: /^select\s+(?:chat\s+)?topic\s+(.+)$/i, usage: 'select topic <n|id>', summary: 'Continue an existing chat', example: 'select topic 1' },
     { type: 'compact', group: 'Topics', pattern: /^compact(?:\s+(.+))?$/is, usage: 'compact [instructions]', summary: 'Summarize context: replied-to chat, else selected topic' },
-    { type: 'list-todos', group: 'Topics', pattern: /^(?:list\s+)?todos?$/i, platforms: ['whatsapp'], usage: 'list todos', summary: 'Not-done to-do items of the replied-to Sentinel chat, else the selected topic (alias: todo; read-only)' },
+    { type: 'list-todos', group: 'Topics', pattern: /^(?:list\s+)?todos?$/i, platforms: ['whatsapp', 'teams'], usage: 'list todos', summary: 'Active and 5 latest Done to-do items of the replied-to Sentinel chat, else the selected topic (alias: todo; read-only)' },
     { type: 'help', group: 'Tools', pattern: /^help$/i, usage: 'help', summary: 'Show this help' },
     { type: 'quota', group: 'Tools', pattern: /^quota$/i, usage: 'quota', summary: 'Show AI provider quota' },
 ];
@@ -171,7 +171,7 @@ export function parseMessagingCommand(text: string, platform?: MessagingPlatform
         return message ? parseChat(message, mode) : { type: 'chat', args: '', mode };
     }
     if (value.startsWith('/') || COMMAND_LIKE_PATTERN.test(body)
-        || (platform === 'whatsapp' && TODO_COMMAND_LIKE_PATTERN.test(body))) return { type: 'invalid', args: value };
+        || (!!platform && TODO_COMMAND_LIKE_PATTERN.test(body))) return { type: 'invalid', args: value };
     return parseChat(value);
 }
 

@@ -78,9 +78,6 @@ vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useGitInfo',
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useTerminalEnabled', () => ({
     useTerminalEnabled: () => false,
 }));
-vi.mock('../../../../src/server/spa/client/react/features/notes/hooks/useNotesEnabled', () => ({
-    useNotesEnabled: () => false,
-}));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useWorkflowsEnabled', () => ({
     useWorkflowsEnabled: () => false,
 }));
@@ -116,6 +113,9 @@ vi.mock('../../../../src/server/spa/client/react/layout/TopBar', () => ({ SHOW_W
 vi.mock('../../../../src/server/spa/client/react/layout/MobileTabBar', () => ({ MobileTabBar: () => null }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isSchedulerDelayHintEnabled: () => false,
+    isMarkdownPanelPreviewEnabled: () => false,
+    isPanelSourceSplitEnabled: () => false,
     isContainerMode: () => false,
     getApiBase: () => '',
     getHostname: () => 'Local',
@@ -123,7 +123,6 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isTerminalEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
     isRailStatusActionsEnabled: () => false,
-    isNotesEnabled: () => false,
     isMyWorkEnabled: () => false,
     isMyLifeEnabled: () => false,
     isScratchpadEnabled: () => false,

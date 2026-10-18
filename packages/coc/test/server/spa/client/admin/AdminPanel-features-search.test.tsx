@@ -135,7 +135,6 @@ function mockConfigResponse(overrides: Record<string, any> = {}) {
         json: async () => ({
             resolved: {
                 terminal: { enabled: true },
-                notes: { enabled: true },
                 myWork: { enabled: true },
                 ...overrides,
             },
@@ -298,14 +297,14 @@ describe('AdminPanel — Workspace Features search', () => {
         await gotoFeaturesSubTab();
         await waitFor(() => expect(screen.getByTestId('toggle-terminal-enabled')).toBeTruthy());
 
-        // Sanity: Notes (dashboard group) is visible before filtering.
-        expect(screen.getByTestId('toggle-notes-enabled')).toBeTruthy();
+        // Sanity: My Work (dashboard group) is visible before filtering.
+        expect(screen.getByTestId('toggle-mywork-enabled')).toBeTruthy();
 
         fireEvent.change(screen.getByTestId('feature-search-input'), { target: { value: 'terminal' } });
 
         // Only the Terminal row (devTools group) survives the filter.
         expect(screen.getByTestId('toggle-terminal-enabled')).toBeTruthy();
-        expect(screen.queryByTestId('toggle-notes-enabled')).toBeNull();
+        expect(screen.queryByTestId('toggle-mywork-enabled')).toBeNull();
         // Its group heading is kept; groups with no matches are hidden entirely.
         expect(screen.getByTestId('feature-group-dev-tools')).toBeTruthy();
         // Which groups have no match is read off the live catalog rather than
@@ -498,7 +497,7 @@ describe('AdminPanel — Workspace Features search', () => {
         fireEvent.change(screen.getByTestId('feature-search-input'), { target: { value: 'SHELL ACCESS' } });
 
         expect(screen.getByTestId('toggle-terminal-enabled')).toBeTruthy();
-        expect(screen.queryByTestId('toggle-notes-enabled')).toBeNull();
+        expect(screen.queryByTestId('toggle-mywork-enabled')).toBeNull();
     });
 
     it('(c) renders the empty-state when nothing matches', async () => {
@@ -523,7 +522,7 @@ describe('AdminPanel — Workspace Features search', () => {
 
         expect(screen.queryByTestId('feature-search-empty')).toBeNull();
         expect(screen.getByTestId('toggle-terminal-enabled')).toBeTruthy();
-        expect(screen.getByTestId('toggle-notes-enabled')).toBeTruthy();
+        expect(screen.getByTestId('toggle-mywork-enabled')).toBeTruthy();
     });
 
     it('clear button restores the full grouped list', async () => {
@@ -532,11 +531,11 @@ describe('AdminPanel — Workspace Features search', () => {
         await waitFor(() => expect(screen.getByTestId('toggle-terminal-enabled')).toBeTruthy());
 
         fireEvent.change(screen.getByTestId('feature-search-input'), { target: { value: 'terminal' } });
-        expect(screen.queryByTestId('toggle-notes-enabled')).toBeNull();
+        expect(screen.queryByTestId('toggle-mywork-enabled')).toBeNull();
 
         fireEvent.click(screen.getByTestId('feature-search-clear'));
 
-        expect(screen.getByTestId('toggle-notes-enabled')).toBeTruthy();
+        expect(screen.getByTestId('toggle-mywork-enabled')).toBeTruthy();
         expect(screen.getByTestId('feature-group-dashboard')).toBeTruthy();
         expect((screen.getByTestId('feature-search-input') as HTMLInputElement).value).toBe('');
     });

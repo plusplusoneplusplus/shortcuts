@@ -35,7 +35,7 @@ describe('ADMIN_EDITABLE_KEYS', () => {
             'serve.serverName',
             'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count',
             'chat.askUser.enabled',
-            'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled',
+            'terminal.enabled', 'myWork.enabled', 'myLife.enabled',
             'scratchpad.enabled', 'scratchpad.layout',
             'workflows.enabled', 'pullRequests.enabled', 'pullRequests.autoClassifyTeam', 'servers.enabled',
             'ralph.enabled', 'forEach.enabled', 'vimNavigation.enabled', 'cron.enabled', 'dreams.enabled',
@@ -291,7 +291,7 @@ describe('validate()', () => {
     const booleanFields = [
         'showReportIntent', 'groupSingleLineMessages',
         'chat.followUpSuggestions.enabled', 'chat.askUser.enabled',
-        'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled',
+        'terminal.enabled', 'myWork.enabled', 'myLife.enabled',
         'scratchpad.enabled', 'workflows.enabled', 'pullRequests.enabled', 'pullRequests.autoClassifyTeam',
         'servers.enabled', 'ralph.enabled', 'forEach.enabled', 'vimNavigation.enabled', 'cron.enabled', 'dreams.enabled',
         'excalidraw.enabled',
@@ -433,7 +433,6 @@ describe('apply()', () => {
     // Feature flag nested fields
     const nestedBoolFields: Array<[string, (cfg: CLIConfig) => boolean | undefined]> = [
         ['terminal.enabled', (c) => c.terminal?.enabled],
-        ['notes.enabled', (c) => c.notes?.enabled],
         ['myWork.enabled', (c) => c.myWork?.enabled],
         ['myLife.enabled', (c) => c.myLife?.enabled],
         ['scratchpad.enabled', (c) => c.scratchpad?.enabled],
@@ -567,7 +566,7 @@ describe('runtime classification', () => {
     });
 
     const liveFeatures = [
-        'notes.enabled', 'myWork.enabled', 'myLife.enabled',
+        'myWork.enabled', 'myLife.enabled',
         'scratchpad.enabled', 'workflows.enabled', 'pullRequests.enabled', 'pullRequests.autoClassifyTeam',
         'servers.enabled', 'ralph.enabled', 'forEach.enabled', 'vimNavigation.enabled', 'dreams.enabled',
         'excalidraw.enabled', 'features.focusedDiff',

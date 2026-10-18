@@ -1315,8 +1315,8 @@ describe('AdminPanel', () => {
             const display = writes.find(w => 'showReportIntent' in w.body)!;
             expect(display.body).toEqual({ taskCardDensity: 'compact', historyGrouping: true, showReportIntent: true, toolCompactness: 1 });
             const registry = writes.find(w => 'features.markdownPanelPreview' in w.body)!;
-            expect(registry.body['features.markdownPanelPreview']).toBe(true);
-            expect(registry.body['features.explorerEditorTabs']).toBe(false);
+            expect(registry.body['features.markdownPanelPreview']).toBe(false);
+            expect(registry.body['features.explorerEditorTabs']).toBe(true);
             expect(registry.body).not.toHaveProperty('features.arxivPaperIngest');
             expect(registry.body).not.toHaveProperty('chat.followUpSuggestions.enabled');
             await waitFor(() => expect((screen.getByTestId('settings-tab-features-appearance-save') as HTMLButtonElement).disabled).toBe(true));
@@ -1750,7 +1750,10 @@ describe('AdminPanel', () => {
 
             await waitFor(() => expect(capturedBody).not.toBeNull());
             expect(capturedBody['terminal.enabled']).toBe(true);
-            expect(capturedBody['notes.enabled']).toBe(false);
+            expect(capturedBody).not.toHaveProperty('notes.enabled');
+            expect(capturedBody).not.toHaveProperty('features.panelSettings');
+            expect(screen.queryByTestId('toggle-notes-enabled')).toBeNull();
+            expect(screen.queryByTestId('toggle-panel-settings-enabled')).toBeNull();
         });
 
         it('renders Servers toggle unchecked by default and includes servers.enabled in PUT', async () => {

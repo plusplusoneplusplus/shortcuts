@@ -112,14 +112,17 @@ model. A dock target change keeps explicit member opens valid within that panel.
 
 ## Views are reused, never re-implemented
 
-Settings uses `repo-settings/WorkspaceSettingsHost.tsx`: one live `RepoSettingsTab`
-or `RepoGroupSettingsTab` instance moves between top-level and panel slots through
-a stable portal container. Default-off `features.panelSettings` admits the menu
-entry; its workspace-owned descriptor carries the panel's concrete owner, never
-the dock target. Panel navigation stays local. Closing parks the form without
-discarding drafts; the top-level entry remains available. `workspaceSettingsClient.tsx`
-pins all settings calls to that owner and rejects missing or changed remote routes
-without falling through locally.
+Notes and Settings exist for repos and groups only as panel tabs; the add-tab
+menu always lists both. `unifiedPanelWorkspaceResources.ts` builds their
+workspace-owned descriptors (Settings carries the panel's concrete owner, never
+the dock target) for the menu and for every outside link
+(`usePanelWorkspaceResourceOpener`, `openPanelWorkspaceResource`), so links focus
+the same tab, select a requested note and reveal the dock. Settings uses
+`repo-settings/WorkspaceSettingsHost.tsx`: one live `RepoSettingsTab` or
+`RepoGroupSettingsTab` mounts on first open and portals into the panel slot.
+Navigation stays local. Closing parks the form in a hidden node without
+discarding drafts. `workspaceSettingsClient.tsx` pins all settings calls to that
+owner and rejects missing or changed remote routes without falling through locally.
 
 There is no second editor, search backend, terminal manager, or canvas store.
 `git` is filled by `RepoGitTab`'s own `RepoGitDetailPane` through a portal.
@@ -150,7 +153,7 @@ bodies stay mounted after first use; only their visibility changes.
 
 Resource toolbars render *below* the strip.
 
-The live, default-off `features.markdownPanelPreview` flag applies only to
+The live, default-on `features.markdownPanelPreview` flag applies only to
 file tabs in this panel. `UnifiedTabView` opts `PreviewPane` into a rendered
 default for editable `.md` and `.markdown` files. Its toolbar selects
 Rendered or Raw; a line-targeted open selects Raw for Monaco's precise
@@ -165,7 +168,7 @@ file-viewer behavior.
 
 ## Source split
 
-Live, default-off `features.panelSourceSplit` lets two `file` tabs show side by
+Live, default-on `features.panelSourceSplit` lets two `file` tabs show side by
 side; no other kind can enter a pane, and there are never more than two. A
 file-tab drag from the strip (`onTabDragChange`) shows a drop target over the
 right half of the editor area; dropping, or the file tab menu's **Open to the

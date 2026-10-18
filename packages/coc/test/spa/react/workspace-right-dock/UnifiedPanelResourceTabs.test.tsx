@@ -253,7 +253,8 @@ describe('UnifiedRightPanel — file tabs (AC-04)', () => {
     });
 
     it('reorders a dirty file across a mounted terminal without remounting or changing activation', async () => {
-        applyRuntimeConfigPatch({ panelTabReorderingEnabled: true });
+        // Edits the raw Monaco buffer, so keep the default-on rendered Markdown view off.
+        applyRuntimeConfigPatch({ panelTabReorderingEnabled: true, markdownPanelPreviewEnabled: false });
         const fileId = openFile({ path: 'sample.md' });
         const terminalId = openUnifiedPanelTab(WS, {
             kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'terminal', label: 'Terminal',

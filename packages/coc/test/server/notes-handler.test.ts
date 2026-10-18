@@ -13,7 +13,6 @@ import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore, getRepoDataPath } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '../../src/server/types';
-import { validateConfigWithSchema } from '../../src/config/schema';
 import { writeRepoPreferences } from '../../src/server/preferences-handler';
 
 // ============================================================================
@@ -134,27 +133,6 @@ describe('Notes Handler', () => {
             fs.writeFileSync(fullPath, content, 'utf-8');
         }
     }
-
-    // ========================================================================
-    // Config Schema
-    // ========================================================================
-
-    describe('Config Schema', () => {
-        it('should accept { notes: { enabled: true } }', () => {
-            const config = validateConfigWithSchema({ notes: { enabled: true } });
-            expect(config.notes?.enabled).toBe(true);
-        });
-
-        it('should accept { notes: { enabled: false } }', () => {
-            const config = validateConfigWithSchema({ notes: { enabled: false } });
-            expect(config.notes?.enabled).toBe(false);
-        });
-
-        it('should allow unknown keys in notes (passthrough)', () => {
-            const config = validateConfigWithSchema({ notes: { enabled: true, foo: 'bar' } });
-            expect(config.notes?.enabled).toBe(true);
-        });
-    });
 
     // ========================================================================
     // GET /api/workspaces/:id/notes/tree — Tree

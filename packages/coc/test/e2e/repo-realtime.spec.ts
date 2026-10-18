@@ -12,7 +12,7 @@ import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace, seedProcess, request } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
-import { gotoWorkspace } from './fixtures/remote-shell';
+import { gotoWorkspace, openWorkspacePanel } from './fixtures/remote-shell';
 
 // ================================================================
 // 8.1 — New process updates stats badge
@@ -27,8 +27,9 @@ test.describe('Repo real-time: stats badge', () => {
             workspaceId: 'ws-rt-stats',
         });
 
-        // Navigate straight to the repo Settings sub-tab (stats live there).
-        await gotoWorkspace(page, serverUrl, 'ws-rt-stats', 'settings');
+        // Open the repo Settings panel (stats live there).
+        await gotoWorkspace(page, serverUrl, 'ws-rt-stats');
+        await openWorkspacePanel(page, 'settings');
         await expect(page.locator('[data-testid="settings-content-panel"]')).toBeVisible();
 
         // Verify initial stats: 1 completed
@@ -103,7 +104,8 @@ test.describe('Repo real-time: process status change', () => {
         });
 
         // Navigate straight to Settings (the stats grid lives there).
-        await gotoWorkspace(page, serverUrl, 'ws-rt-status', 'settings');
+        await gotoWorkspace(page, serverUrl, 'ws-rt-status');
+        await openWorkspacePanel(page, 'settings');
         await expect(page.locator('[data-testid="settings-content-panel"]')).toBeVisible();
 
         // Verify running=1 in stats

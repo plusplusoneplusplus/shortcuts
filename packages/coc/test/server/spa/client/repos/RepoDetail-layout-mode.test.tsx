@@ -76,9 +76,6 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useTermi
     useTerminalEnabled: () => false,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/features/notes/hooks/useNotesEnabled', () => ({
-    useNotesEnabled: () => false,
-}));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useWorkflowsEnabled', () => ({
     useWorkflowsEnabled: () => false,
@@ -157,7 +154,6 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', async (import
     isRalphEnabled: () => false,
     isTerminalEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
-    isNotesEnabled: () => false,
     isMyWorkEnabled: () => false,
     isMyLifeEnabled: () => false,
     isScratchpadEnabled: () => false,

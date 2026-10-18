@@ -34,16 +34,16 @@ const file: UnifiedPanelTab = {
 describe('unified Markdown file-tab opt-in', () => {
     beforeEach(() => _resetRuntimeConfig());
 
-    it('defaults off, reacts to live config changes, and retains the concrete file owner', () => {
+    it('defaults on, reacts to live config changes, and retains the concrete file owner', () => {
         render(<UnifiedTabView tab={file} scopeWorkspaceId="ws-group" onClose={vi.fn()} />);
         const view = screen.getByTestId('panel-file');
-        expect(view).toHaveAttribute('data-preview', 'false');
+        expect(view).toHaveAttribute('data-preview', 'true');
         expect(view).toHaveAttribute('data-repo', 'ws-member');
         expect(view).toHaveAttribute('data-route', 'remote:member');
-        act(() => applyRuntimeConfigPatch({ markdownPanelPreviewEnabled: true }));
-        expect(view).toHaveAttribute('data-preview', 'true');
         act(() => applyRuntimeConfigPatch({ markdownPanelPreviewEnabled: false }));
         expect(view).toHaveAttribute('data-preview', 'false');
+        act(() => applyRuntimeConfigPatch({ markdownPanelPreviewEnabled: true }));
+        expect(view).toHaveAttribute('data-preview', 'true');
     });
 
     it('forwards repeat line navigation on the same file without replacing its view', () => {

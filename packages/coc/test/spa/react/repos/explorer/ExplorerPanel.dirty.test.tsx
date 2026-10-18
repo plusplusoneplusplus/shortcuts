@@ -37,6 +37,7 @@ import { clearExplorerTreeCache } from '../../../../../src/server/spa/client/rea
 import { explorerPreviewStorageKey } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerStateStore';
 import { isExplorerDirty, clearExplorerDirty } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerDirtyStore';
 import type { TreeEntry } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/types';
+import { applyRuntimeConfigPatch } from '../../../../../src/server/spa/client/react/utils/config';
 
 const ROOT_ENTRIES: TreeEntry[] = [
     { name: 'a.ts', type: 'file', path: 'a.ts' },
@@ -48,6 +49,8 @@ function seedOpenFile(wsId: string) {
 }
 
 beforeEach(() => {
+    // These cover the single-pane Explorer; editor tabs are on by default.
+    applyRuntimeConfigPatch({ explorerEditorTabsEnabled: false });
     localStorage.clear();
     clearExplorerTreeCache();
     clearExplorerDirty();

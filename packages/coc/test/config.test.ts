@@ -490,7 +490,6 @@ timeout: 300
                 showReportIntent: true,
                 chat: { followUpSuggestions: { enabled: true, count: 3 }, askUser: { enabled: true } },
                 terminal: { enabled: false },
-                notes: { enabled: false },
                 myWork: { enabled: false },
                 myLife: { enabled: false },
                 scratchpad: { enabled: false, layout: 'vertical' },
@@ -579,16 +578,6 @@ timeout: 300
         it('should override terminal.enabled=false from file', () => {
             const result = mergeConfig(DEFAULT_CONFIG, { terminal: { enabled: false } });
             expect(result.terminal.enabled).toBe(false);
-        });
-
-        it('should preserve notes.enabled default when not overridden', () => {
-            const result = mergeConfig(DEFAULT_CONFIG, { model: 'x' });
-            expect(result.notes.enabled).toBe(true);
-        });
-
-        it('should override notes.enabled from file', () => {
-            const result = mergeConfig(DEFAULT_CONFIG, { notes: { enabled: true } });
-            expect(result.notes.enabled).toBe(true);
         });
 
         it('should preserve scratchpad.enabled default when not overridden', () => {
@@ -744,14 +733,14 @@ timeout: 300
             expect(result.kusto.enabled).toBe(true);
         });
 
-        it('should default LLMToolSystemOne.enabled to false', () => {
-            const result = mergeConfig(DEFAULT_CONFIG, {});
-            expect(result.LLMToolSystemOne.enabled).toBe(false);
+        it('should default LLMToolSystemOne.enabled to true', () => {
+            expect(mergeConfig(DEFAULT_CONFIG, {}).LLMToolSystemOne.enabled).toBe(true);
+            expect(mergeConfig(DEFAULT_CONFIG, { LLMToolSystemOne: {} }).LLMToolSystemOne.enabled).toBe(true);
         });
 
-        it('should override LLMToolSystemOne.enabled from file', () => {
-            const result = mergeConfig(DEFAULT_CONFIG, { LLMToolSystemOne: { enabled: true } });
-            expect(result.LLMToolSystemOne.enabled).toBe(true);
+        it('should honor explicit LLMToolSystemOne.enabled from file', () => {
+            expect(mergeConfig(DEFAULT_CONFIG, { LLMToolSystemOne: { enabled: false } }).LLMToolSystemOne.enabled).toBe(false);
+            expect(mergeConfig(DEFAULT_CONFIG, { LLMToolSystemOne: { enabled: true } }).LLMToolSystemOne.enabled).toBe(true);
         });
 
         it('should preserve auto provider routing defaults when not overridden', () => {
@@ -993,20 +982,16 @@ timeout: 300
             expect(result.sources['terminal.enabled']).toBe('default');
         });
 
-        it('should report file source for notes.enabled when set', () => {
-            const configPath = path.join(tmpDir, 'notes.yaml');
-            fs.writeFileSync(configPath, 'notes:\n  enabled: true\n');
+        it('does not resolve the removed Notes and panel-Settings availability keys', () => {
+            const configPath = path.join(tmpDir, 'removed-keys.yaml');
+            fs.writeFileSync(configPath, 'notes:\n  enabled: false\nfeatures:\n  panelSettings: false\n');
             const result = getResolvedConfigWithSource(configPath);
-            expect(result.resolved.notes.enabled).toBe(true);
-            expect(result.sources['notes.enabled']).toBe('file');
-        });
-
-        it('should report default source for notes.enabled when not set', () => {
-            const configPath = path.join(tmpDir, 'no-notes.yaml');
-            fs.writeFileSync(configPath, 'model: gpt-4\n');
-            const result = getResolvedConfigWithSource(configPath);
-            expect(result.resolved.notes.enabled).toBe(true);
-            expect(result.sources['notes.enabled']).toBe('default');
+            expect((result.resolved as unknown as Record<string, unknown>).notes).toBeUndefined();
+            expect((result.resolved.features as unknown as Record<string, unknown>).panelSettings).toBeUndefined();
+            expect(result.sources['notes.enabled']).toBeUndefined();
+            expect(result.sources['features.panelSettings']).toBeUndefined();
+            expect(DEFAULT_CONFIG).not.toHaveProperty('notes');
+            expect(DEFAULT_CONFIG.features).not.toHaveProperty('panelSettings');
         });
 
         it('should report file source for workflows.enabled when set', () => {
@@ -1087,8 +1072,6 @@ timeout: 300
                 '  theme: light',
                 '  serverName: MBP',
                 'terminal:',
-                '  enabled: true',
-                'notes:',
                 '  enabled: true',
                 'myWork:',
                 '  enabled: true',
@@ -1224,16 +1207,15 @@ timeout: 300
                 '  railManualRefresh: true',
                 '  chatHistoryPaging: true',
                 '  railStatusActions: true',
-                '  schedulerDelayHint: true',
+                '  schedulerDelayHint: false',
                 '  composerWordHint: false',
                 '  chatProviderSwitching: true',
                 '  canvasHostApis: true',
                 '  sensitiveInput: true',
-                '  explorerEditorTabs: true',
+                '  explorerEditorTabs: false',
                 '  explorerDelete: true',
-                '  markdownPanelPreview: true',
-                '  panelSourceSplit: true',
-                '  panelSettings: true',
+                '  markdownPanelPreview: false',
+                '  panelSourceSplit: false',
                 '  panelTabReordering: true',
                 '  htmlPageTab: false',
                 '  chatStyleSelector: true',
@@ -1380,8 +1362,6 @@ timeout: 300
                 '      file: true',
                 'terminal:',
                 '  enabled: false',
-                'notes:',
-                '  enabled: false',
                 'myWork:',
                 '  enabled: true',
                 '  todayView: true',
@@ -1451,7 +1431,7 @@ timeout: 300
               {
                 "resolved": {
                   "LLMToolSystemOne": {
-                    "enabled": false,
+                    "enabled": true,
                   },
                   "agentProviderRouting": {
                     "auto": {
@@ -1557,16 +1537,15 @@ timeout: 300
                     "defaultChatStyle": "default",
                     "diffFilePicker": true,
                     "explorerDelete": true,
-                    "explorerEditorTabs": false,
+                    "explorerEditorTabs": true,
                     "focusedDiff": true,
                     "gitCommitLookup": false,
                     "gitCrossCloneCherryPick": true,
                     "gitWorktreeExecution": true,
                     "htmlPageTab": true,
-                    "markdownPanelPreview": false,
+                    "markdownPanelPreview": true,
                     "nativeCliSessions": false,
-                    "panelSettings": false,
-                    "panelSourceSplit": false,
+                    "panelSourceSplit": true,
                     "panelTabReordering": true,
                     "pinnedScopes": true,
                     "quickAskSidenotes": true,
@@ -1575,7 +1554,7 @@ timeout: 300
                     "ralphMultiAgentGrill": false,
                     "repoGroupAggregatedChats": false,
                     "repoGroupExclusiveWriter": false,
-                    "schedulerDelayHint": false,
+                    "schedulerDelayHint": true,
                     "schedulesInScheduledSlide": true,
                     "scopeSwitcher": true,
                     "sensitiveInput": false,
@@ -1592,7 +1571,7 @@ timeout: 300
                     "teamsAiAnswerRelay": true,
                     "teamsBridgeObservability": false,
                     "teamsMessageReaction": true,
-                    "toolScripting": false,
+                    "toolScripting": true,
                   },
                   "forEach": {
                     "enabled": false,
@@ -1663,9 +1642,6 @@ timeout: 300
                   "myWork": {
                     "enabled": true,
                     "todayView": true,
-                  },
-                  "notes": {
-                    "enabled": false,
                   },
                   "opencode": {
                     "enabled": false,
@@ -1804,7 +1780,6 @@ timeout: 300
                   "features.htmlPageTab": "default",
                   "features.markdownPanelPreview": "default",
                   "features.nativeCliSessions": "default",
-                  "features.panelSettings": "default",
                   "features.panelSourceSplit": "default",
                   "features.panelTabReordering": "default",
                   "features.pinnedScopes": "default",
@@ -1855,7 +1830,6 @@ timeout: 300
                   "myLife.enabled": "file",
                   "myWork.enabled": "file",
                   "myWork.todayView": "file",
-                  "notes.enabled": "file",
                   "opencode.enabled": "default",
                   "output": "file",
                   "parallel": "file",
@@ -1935,7 +1909,6 @@ timeout: 300
 
         it('should return correct default for nested boolean feature flags', () => {
             const defaults = getDefaultValues();
-            expect(defaults['notes.enabled']).toBe(DEFAULT_CONFIG.notes.enabled);
             expect(defaults['terminal.enabled']).toBe(DEFAULT_CONFIG.terminal.enabled);
             expect(defaults['workflows.enabled']).toBe(DEFAULT_CONFIG.workflows.enabled);
             expect(defaults['excalidraw.enabled']).toBe(DEFAULT_CONFIG.excalidraw.enabled);

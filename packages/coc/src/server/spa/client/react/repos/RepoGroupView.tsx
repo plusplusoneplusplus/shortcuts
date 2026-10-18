@@ -3,27 +3,26 @@
  *
  * A repo group is a virtual workspace (own root under `~/.coc/repos/<groupId>/`,
  * no git) that knows about a set of registered repo workspaces; chats started
- * here get the member repos injected server-side. The view shows Workspace
- * (chat), Notes and Settings. Git lives inside the Workspace split.
+ * here get the member repos injected server-side. The view is the Workspace
+ * split (chat + member Git) and nothing else; Notes and Settings open as tabs in
+ * the group's right panel.
  *
  * `RepoGroupGitTab` hosts ONE member repo inside the split Workspace panel. The group's root is never treated as a git repo.
  *
- * In the remote-first desktop shell the header (identity + sub-tabs) lives in
- * the global TopBar (`VirtualWorkspaceShellHeader`); in the classic shell and on
- * mobile it renders here as `VirtualWorkspaceInlineHeader`.
+ * In the remote-first desktop shell the header (identity) lives in the global
+ * TopBar (`VirtualWorkspaceShellHeader`); on mobile it renders here as
+ * `VirtualWorkspaceMobileTabBar`.
  *
  * On desktop the group also gets the workspace
  * right dock. The dock's own state scopes to the group, while its Terminal and
  * Explorer point at a target picked in the panel's open menu: the group root, or any
- * live member repo. Notes stays on the group. Members come from
+ * live member repo. Notes and Settings stay on the group. Members come from
  * `GET /api/repo-groups/:id`; stale ones are listed but not selectable.
  *
- * Member descriptions are edited on the Settings tab (`RepoGroupSettingsTab`),
- * not here — the Workspace tab is the chat and nothing else.
+ * Member descriptions are edited in the panel's Settings tab (`RepoGroupSettingsTab`).
  */
 
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { NotesView } from '../features/notes/NotesView';
 import { RepoChatTab } from '../features/chat/RepoChatTab';
 import { RefreshSidebarButton } from '../features/chat/RefreshSidebarButton';
 import { SplitWorkspacePanel } from '../features/repo-detail/SplitWorkspacePanel';
@@ -47,12 +46,11 @@ import { resolveRepoGroupName, resolveRepoGroupDisplayName } from './repoGroupNa
 import type { RepoGroupMember } from './repoGroupService';
 import { RepoGroupGitTab } from './RepoGroupGitTab';
 import { RepoGroupSettingsTab } from './RepoGroupSettingsTab';
-import { WorkspaceSettingsProvider, WorkspaceSettingsSlot } from '../features/repo-settings/WorkspaceSettingsHost';
+import { WorkspaceSettingsProvider } from '../features/repo-settings/WorkspaceSettingsHost';
 import { WorkspaceSettingsApiProvider } from '../features/repo-settings/workspaceSettingsClient';
 import { useRepoGroupMembers } from './useRepoGroupMembers';
 import { useWorkspaceDock, type DockTarget } from '../features/repo-detail/useWorkspaceDock';
 import { setWorkspaceDockExpanded, useWorkspaceDockExpanded } from '../features/repo-detail/WorkspaceDockToggle';
-import { VirtualWorkspaceInlineHeader } from '../features/remote-shell/VirtualWorkspaceInlineHeader';
 import { VirtualWorkspaceMobileTabBar } from '../features/remote-shell/VirtualWorkspaceMobileTabBar';
 import type { VirtualWorkspaceHeaderConfig } from '../features/remote-shell/virtualWorkspaceHeader';
 import { getRemoteCloneKey, getWorkspaceSelectionId, parseRemoteCloneKey } from './cloneIdentity';
@@ -68,21 +66,10 @@ import { WorkspaceOwnerContext } from './workspaceOwnerContext';
 import type { RepoChatTabListContext } from '../features/chat/RepoChatTab';
 
 /**
- * The only tabs a repo group exposes: chat ("Workspace"), Notes, and Settings.
- * Settings reuses a real repo's Alt+C — a group is never on screen at the same
- * time as a repo, so the shortcut cannot collide.
- */
-const REPO_GROUP_TABS: VirtualWorkspaceHeaderConfig['tabs'] = [
-    { key: 'chats', label: 'Workspace', shortcut: 'Alt+W' },
-    { key: 'notes', label: 'Notes', shortcut: 'Alt+N' },
-    { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },
-];
-
-/**
- * Header identity + tabs for a repo-group virtual workspace, shared by the
- * TopBar (`VirtualWorkspaceShellHeader`) and in-body (`VirtualWorkspaceInlineHeader`)
- * header variants. Unlike My Work / My Life the config is per-group (id + name),
- * so it is built on demand rather than being a module constant.
+ * Header identity for a repo-group virtual workspace, shared by the TopBar
+ * (`VirtualWorkspaceShellHeader`) and mobile header variants. A group has no
+ * sub-tabs: the Workspace split is its only view. Unlike My Work / My Life the
+ * config is per-group (id + name), so it is built on demand.
  */
 export function getRepoGroupHeaderConfig(
     workspaceId: string,
@@ -93,7 +80,7 @@ export function getRepoGroupHeaderConfig(
         icon: '🗂️',
         label,
         testIdPrefix: 'repo-group',
-        tabs: REPO_GROUP_TABS,
+        tabs: [],
         actions: [],
         defaultTab: 'chats',
     };
@@ -143,9 +130,6 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     const queueQueuedCount = queueJobs.queued.length;
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
-    // In the remote-first desktop shell the header lives in the global TopBar
-    // (`VirtualWorkspaceShellHeader`); render the in-body header everywhere else.
-    const headerInTopBar = !isMobile;
 
     // Group name comes from the registered workspace — the local list for a local
     // group, the aggregated remote groups for one that lives on a remote server.
@@ -168,16 +152,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
         [selectionId, state.workspaces, remoteGroups],
     );
 
-    // Landing tab when the current sub-tab is not one of the group's tabs (e.g.
-    // arriving from a repo's Git tab). Mirrors useVirtualWorkspaceHeader so the
-    // highlighted header tab and the content pane always agree.
-    // A `git` deep link (or a leftover selection) in split mode lands on
-    // Workspace, while the git route stays intact for the embedded git host.
-    const activeTab = headerConfig.tabs.some(t => t.key === state.activeRepoSubTab)
-        ? state.activeRepoSubTab
-        : 'chats';
-
-    // Right dock (Terminal / Explorer / Notes) — same gate as RepoDetail. Its
+    // Right dock (Terminal / Explorer / Notes / Settings) — same gate as RepoDetail. Its
     // state scopes to the GROUP, so switching member repos never closes or
     // resizes it; only the terminal/explorer content follows the picker. The
     // group detail read goes to whichever server owns the group — local for a
@@ -226,8 +201,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
         ? allRepoGroupChatRows(chatFeed.model).find(row => row.key === memberChat.selectedKey)
         : undefined;
     // Member repos, for the dock's target picker and the Git tab's host. The
-    // Settings tab does its own read — it needs the descriptions too, and only
-    // while it is the visible tab.
+    // Settings page does its own read — it needs the descriptions too.
     // The split panel mounts the git list with the Chats tab, so it needs the
     // members straight away rather than on first Git-tab visit.
     const members = useRepoGroupMembers(workspaceId, groupBaseUrl,
@@ -332,35 +306,29 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     // See RepoDetail: publishes the panel to chat entry points below, scoped to
     // the group id (the panel's store key) and the chat it is showing.
     const unifiedPanelHost = useMemo(
-        () => (dockAvailable ? { workspaceId, chatId: panelChatId } : null),
-        [dockAvailable, workspaceId, panelChatId],
+        () => (dockAvailable ? { workspaceId, chatId: panelChatId, routingRef: groupRoutingRef } : null),
+        [dockAvailable, workspaceId, panelChatId, groupRoutingRef],
     );
 
     return (
-        <WorkspaceSettingsProvider ownerKey={selectionId} topLevelActive={activeTab === 'settings'}
-            renderPage={inPanel => <WorkspaceSettingsApiProvider workspaceId={workspaceId} selectionId={selectionId}>
-                <RepoGroupSettingsTab workspaceId={workspaceId} selectionId={selectionId}
-                    baseUrl={groupBaseUrl} active={activeTab === 'settings' || inPanel} navigation={inPanel ? 'local' : 'route'} />
+        <WorkspaceSettingsProvider ownerKey={selectionId}
+            renderPage={() => <WorkspaceSettingsApiProvider workspaceId={workspaceId} selectionId={selectionId}>
+                <RepoGroupSettingsTab workspaceId={workspaceId} selectionId={selectionId} baseUrl={groupBaseUrl} />
             </WorkspaceSettingsApiProvider>}>
         <UnifiedPanelHostProvider host={unifiedPanelHost}>
         <div className="flex flex-col h-full" data-testid="repo-group-view" data-workspace={workspaceId}>
-            {isMobile
-                ? <VirtualWorkspaceMobileTabBar
-                    config={headerConfig}
-                    pinnedTabs={['chats', 'notes', 'settings']}
-                />
-                : !headerInTopBar && <VirtualWorkspaceInlineHeader config={headerConfig} />}
+            {isMobile && <VirtualWorkspaceMobileTabBar config={headerConfig} />}
 
-            {/* Tab content + the right dock as the outermost-right, full-height
+            {/* Workspace content + the right dock as the outermost-right, full-height
                 column — mirrors RepoDetail's workspace content row. */}
             <div className="flex flex-row flex-1 min-h-0 min-w-0 overflow-hidden">
                 <div className="flex-1 min-h-0 min-w-0 overflow-hidden" style={dockExpanded ? { display: 'none' } : undefined} data-testid="repo-group-content">
-                    <div style={{ display: activeTab === 'chats' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                    <div className="h-full min-w-0 overflow-hidden">
                             <SplitWorkspacePanel
                                 workspaceId={workspaceId}
                                 mobileChatBackLabel={aggregatedChats ? 'Back to group chats' : undefined}
                                 onMobileChatBack={aggregatedChats ? memberChat.backToGroupChats : undefined}
-                                footer={headerInTopBar ? <StatusActions variant="sidebar" /> : undefined}
+                                footer={isMobile ? undefined : <StatusActions variant="sidebar" />}
                                 onNewChat={handleSplitNewChat}
                                 railShortcuts={<>
                                     <div ref={setSplitRailShortcutNode} className="contents" />
@@ -372,7 +340,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                     ...queueJobs,
                                     scopeLabel: `${resolveRepoGroupDisplayName(selectionId, state.workspaces, remoteGroups)} / Group queue`,
                                     routeId: selectionId,
-                                    scopeKey: `${selectionId}:${workspaceReadSource(queueClient)}:${activeTab}`,
+                                    scopeKey: `${selectionId}:${workspaceReadSource(queueClient)}:chats`,
                                 }}
                                 railGit={splitGitAvailable ? (
                                     <GroupRailGitView
@@ -445,7 +413,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                         onActivateDetail={() => setSplitLastClicked('git')}
                                         rightPanel={dockAvailable ? { chatId: panelChatId, ownerRoutingRef: groupRoutingRef } : undefined}
                                         headerToolbarContainer={splitGitHeaderNode}
-                                        active={activeTab === 'chats'}
+                                        active
                                     />
                                 ) : null}
                                 gitHeaderExtra={
@@ -463,18 +431,6 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                     />
                                 }
                             />
-                    </div>
-                    <div style={{ display: activeTab === 'notes' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                        <NotesView
-                            workspaceId={workspaceId}
-                            initialNotePath={state.selectedNotePath}
-                            defaultScope="per-note"
-                            active={activeTab === 'notes'}
-                            dockStatusFooter
-                        />
-                    </div>
-                    <div style={{ display: activeTab === 'settings' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                        <WorkspaceSettingsSlot />
                     </div>
                 </div>
                 {dockAvailable && (

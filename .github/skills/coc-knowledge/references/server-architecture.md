@@ -464,9 +464,10 @@ answer-part ordering stays independent.
 Teams and WhatsApp parse inbound text with the shared `parseMessagingCommand`
 grammar from `coc-connector` (slash optional, `help`, `quota`, `git status`,
 `compact [instructions]`, `[chatid]`, `/ask`, `/autopilot`, `/ralph`, `/sentinel`; unknown `/word` → "Unknown
-command" + generated help, never sent to the AI). WhatsApp passes `platform: 'whatsapp'`,
-enabling the WhatsApp-only read-only `list todos` (alias `todo[s]`): not-Done, non-archived
-Sentinel ledger items of the quoted chat, else the selected topic (`messaging-todos.ts`).
+command" + generated help, never sent to the AI). The CoC routers pass `platform: 'whatsapp'`
+or `'teams'`, enabling read-only `list todos` (alias `todo[s]`): every active non-archived
+Sentinel ledger item plus at most the 5 most recent Done of the quoted chat or bound Teams thread,
+else the sender's selected topic (`messaging-todos.ts`).
 `formatMessagingHelp` derives grouped help from the command/mode specs. Routers
 use native WhatsApp bold or Teams Markdown rendered by the manager as safe HTML;
 `MESSAGING_HELP_TEXT` is the plain-text fallback. Container Teams keeps its own

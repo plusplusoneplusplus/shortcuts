@@ -23,7 +23,7 @@ import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture } from './fixtures/repo-fixtures';
 import { createNotesStore, mockNotesApi, type NoteTreeNode } from './fixtures/notes-fixtures';
-import { gotoWorkspace } from './fixtures/remote-shell';
+import { gotoWorkspace, openWorkspacePanel } from './fixtures/remote-shell';
 
 const WS_ID = 'ws-embed-indent-mock';
 const NOTE_PATH = 'Journal/getting-started.md';
@@ -64,7 +64,8 @@ async function openNotesPage(
     serverUrl: string,
     wsId: string,
 ): Promise<void> {
-    await gotoWorkspace(page, serverUrl, wsId, 'notes');
+    await gotoWorkspace(page, serverUrl, wsId);
+    await openWorkspacePanel(page, 'notes');
     await expect(page.locator('[data-testid="notes-sidebar"]')).toBeVisible({ timeout: 15_000 });
 }
 
@@ -97,6 +98,7 @@ function px(value: string): number {
 }
 
 test.describe('Notes page — visual embed indentation', () => {
+    test.setTimeout(60_000);
     test('indents an image via toolbar + keyboard, autosaves data-indent, and preserves it on reload', async ({
         page,
         serverUrl,
@@ -154,6 +156,7 @@ test.describe('Notes page — visual embed indentation', () => {
             // Reload the whole page and reopen the note; the persisted indent
             // round-trips to the same visual offset.
             await page.reload();
+            await openWorkspacePanel(page, 'notes');
             await expect(page.locator('[data-testid="notes-sidebar"]')).toBeVisible({ timeout: 15_000 });
             await openFirstPage(page);
 
@@ -216,7 +219,8 @@ test.describe('Notes page — visual embed indentation', () => {
 
             // Narrow the pane so the deep indent (16rem) plus a 1200px image would
             // overflow a naive layout, then let it reflow.
-            await page.setViewportSize({ width: 640, height: 900 });
+            // Keep the desktop dock mounted while narrowing its editor.
+            await page.setViewportSize({ width: 800, height: 900 });
             await page.waitForTimeout(300);
 
             // The editor content area has no horizontal overflow: its scroll width

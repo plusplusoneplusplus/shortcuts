@@ -20,14 +20,12 @@ A client-side filter narrows the navigation list. Each section renders a header 
 
 | Property | Value |
 |---|---|
-| Tab key | `settings` |
-| Tab label | `Settings` |
-| Tab position | Listed after Notes; default tab for newly-opened repos |
-| Default tab | Yes — `settings` is the default for a fresh repo selection |
-| Keyboard shortcut | `Alt+C` |
-| URL fragment | `#repos/<workspaceId>/settings` |
-| Deep-link URL | `#repos/<workspaceId>/settings/<section>` |
-| Implementing component | `RepoSettingsTab` (`features/repo-settings/RepoSettingsTab.tsx`) |
+| Entry point (repos, groups) | Right-panel add-tab menu → **Settings** (always listed); links open the same owner-qualified panel tab |
+| Panel tab | `settings` kind, workspace-owned, one per panel owner; closing keeps pending edits |
+| Page entry (My Work / My Life only) | `#repos/<workspaceId>/settings[/<section>]`, `Alt+C` |
+| Repo/group page URLs | `#repos/<id>/settings[/<section>]` lands on the workspace; there is no Settings page |
+| Section navigation | Local inside the panel; the URL is unchanged |
+| Implementing component | `RepoSettingsTab` (`features/repo-settings/RepoSettingsTab.tsx`) via `WorkspaceSettingsHost` |
 | Section keys | `info`, `preferences`, `mcp`, `skills`, `llm-tools`, `instructions`, `memory`, `tasks`, `notes` |
 | Legacy redirect | `#repos/<id>/settings/run-script-template` → `#repos/<id>/workflows` |
 
@@ -190,7 +188,7 @@ A client-side filter narrows the navigation list. Each section renders a header 
 | Nav groups | Two groups with labels: **Repository** (Info, Preferences, Plans Folder, Notes) and **Agent** (MCP Servers, Agent Skills, LLM Tools, Custom Instructions, Memory) |
 | Search filter | Text input filters nav items client-side; non-matching items are hidden, group headers stay |
 | Badges | MCP: count of enabled servers; Skills: installed count; Instructions: blue dot if any mode has content |
-| Section routing | Hash updates to `#repos/<workspaceId>/settings/<section>` |
+| Section routing | Panel: local selection, URL unchanged; My Work / My Life page: hash updates to `#repos/<workspaceId>/settings/<section>` |
 | Sidebar width | Fixed `w-52` |
 | Section header | Title + description rendered above the content card; optional save/refresh affordances |
 | Content surface | Each section's body is wrapped in a `SectionCard` |

@@ -27,8 +27,6 @@ export const SUB_TABS: SubTabDef[] = [
     { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
     { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
     { key: 'tasks', label: 'Tasks (Dep.)', shortcut: 'Alt+T' },
-    { key: 'notes', label: 'Notes', shortcut: 'Alt+N' },
-    { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },
     { key: 'wiki', label: 'Wiki' },
 ];
 
@@ -46,13 +44,12 @@ export const TAB_GROUP_INDEX: Record<string, number> = {
     'chats': 1, 'activity': 1, 'git': 1, 'terminal': 1,
     'work-items': 2, 'dreams': 2, 'pull-requests': 2, 'tasks': 2,
     'explorer': 3, 'workflows': 3, 'schedules': 3,
-    'notes': 4, 'settings': 4, 'wiki': 4,
+    'wiki': 4,
 };
 
 export interface VisibleSubTabOptions {
     isGitRepo: boolean;
     terminalEnabled: boolean;
-    notesEnabled: boolean;
     workflowsEnabled: boolean;
     pullRequestsEnabled: boolean;
     dreamsEnabled: boolean;
@@ -84,7 +81,7 @@ export interface VisibleSubTabOptions {
  */
 export function computeVisibleSubTabs(opts: VisibleSubTabOptions): SubTabDef[] {
     const {
-        isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
+        isGitRepo, terminalEnabled, workflowsEnabled,
         pullRequestsEnabled, dreamsEnabled, showPlanDepTab,
         schedulesInScheduledSlideEnabled = false,
     } = opts;
@@ -93,7 +90,6 @@ export function computeVisibleSubTabs(opts: VisibleSubTabOptions): SubTabDef[] {
     if (!isGitRepo) tabs = tabs.filter(t => t.key !== 'git' && t.key !== 'pull-requests');
     if (!showPlanDepTab) tabs = tabs.filter(t => t.key !== 'tasks');
     if (!terminalEnabled) tabs = tabs.filter(t => t.key !== 'terminal');
-    if (!notesEnabled) tabs = tabs.filter(t => t.key !== 'notes');
     if (!workflowsEnabled) tabs = tabs.filter(t => t.key !== 'workflows');
     if (!pullRequestsEnabled) tabs = tabs.filter(t => t.key !== 'pull-requests');
     if (!dreamsEnabled) tabs = tabs.filter(t => t.key !== 'dreams');
@@ -112,4 +108,17 @@ export function computeVisibleSubTabs(opts: VisibleSubTabOptions): SubTabDef[] {
         .map(t => (t.key === 'activity' || t.key === 'chats') ? { ...t, label: 'Workspace' } : t);
 
     return tabs;
+}
+
+/** The workspace surface (chat + Git split): the repo's main view, aliased `chats`/`activity`. */
+export function isWorkspaceSubTab(tab: RepoSubTab | null | undefined): boolean {
+    return tab === 'chats' || tab === 'activity';
+}
+
+/**
+ * Where a header sub-tab click goes. The desktop header has no Workspace tab,
+ * so clicking the active tab again returns to the workspace.
+ */
+export function subTabClickTarget(activeTab: RepoSubTab | null | undefined, tab: RepoSubTab): RepoSubTab {
+    return activeTab === tab ? 'activity' : tab;
 }

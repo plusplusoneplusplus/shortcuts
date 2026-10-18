@@ -57,12 +57,43 @@ describe('resolveDashboardRoute — top-level activation', () => {
 
 // ── Repo sub-routes ───────────────────────────────────────────────────────────
 
-describe('resolveDashboardRoute — repo group settings', () => {
-    it('activates the Settings sub-tab for a bare #repos/group-x/settings', () => {
-        const r = resolveDashboardRoute('#repos/group-frontend/settings', makeCtx());
-        expect(appActions(r)).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'settings' });
-        // No section suffix to canonicalize to — the group settings pane has none.
-        expect(navigations(r)).toEqual([]);
+describe('resolveDashboardRoute — Notes/Settings are panel-only for repos and groups', () => {
+    it.each([
+        ['ws1', '/settings'], ['ws1', '/settings/mcp'], ['ws1', '/notes'], ['ws1', '/notes/a/b.md'],
+        ['ws1', '/copilot/mcp'], ['ws1', '/info'],
+        ['group-frontend', '/settings'], ['group-frontend', '/settings/members'], ['group-frontend', '/notes/x.md'],
+        ['remote:server-a:group-frontend', '/settings'], ['remote:server-a:ws1', '/notes'],
+    ])('lands %s%s on the workspace, never a hidden Notes/Settings view', (id, suffix) => {
+        const encoded = encodeURIComponent(id);
+        const r = resolveDashboardRoute('#repos/' + encoded + suffix, makeCtx());
+        expect(r.effects).toEqual([
+            { kind: 'app', action: { type: 'SET_ACTIVE_TAB', tab: 'repos' } },
+            { kind: 'app', action: { type: 'SET_SELECTED_REPO', id } },
+            { kind: 'navigate', hash: '#repos/' + encoded + '/activity', mode: 'replace' },
+        ]);
+    });
+
+    it('does not replay a remembered Notes/Settings suffix as a page', () => {
+        const r = resolveDashboardRoute('#repos/group-frontend', makeCtx({
+            repoRouteState: { 'group-frontend': '/settings' },
+        }));
+        expect(navigations(r).at(-1)).toEqual({ kind: 'navigate', hash: '#repos/group-frontend/activity', mode: 'replace' });
+        expect(appActions(r)).not.toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'settings' });
+        expect(appActions(r).some(action => action.type === 'RECORD_REPO_ROUTE_SUFFIX')).toBe(false);
+    });
+
+    it('keeps My Work / My Life Notes and Settings pages', () => {
+        const notes = resolveDashboardRoute('#repos/my_work/notes/a%2Fb/c', makeCtx());
+        expect(appActions(notes)).toEqual(expect.arrayContaining([
+            { type: 'SET_REPO_SUB_TAB', tab: 'notes' },
+            { type: 'SET_SELECTED_NOTE_PATH', notePath: 'a/b/c' },
+        ]));
+        const settings = resolveDashboardRoute('#repos/my_life/settings/preferences', makeCtx());
+        expect(appActions(settings)).toEqual(expect.arrayContaining([
+            { type: 'SET_REPO_SUB_TAB', tab: 'settings' },
+            { type: 'SET_SETTINGS_SECTION', section: 'preferences' },
+        ]));
+        expect(navigations(settings)).toEqual([]);
     });
 
     describe('resolveDashboardRoute — group member chats', () => {
@@ -93,26 +124,6 @@ describe('resolveDashboardRoute — repo group settings', () => {
         });
     });
 
-    it('remembers the bare /settings suffix so returning to the group lands there', () => {
-        const r = resolveDashboardRoute('#repos/group-frontend/settings', makeCtx());
-        expect(appActions(r)).toContainEqual({
-            type: 'RECORD_REPO_ROUTE_SUFFIX',
-            repoId: 'group-frontend',
-            suffix: '/settings',
-        });
-    });
-
-    it('replays the remembered /settings suffix when the group is opened bare', () => {
-        const r = resolveDashboardRoute('#repos/group-frontend', makeCtx({
-            repoRouteState: { 'group-frontend': '/settings' },
-        }));
-        expect(navigations(r)).toContainEqual({
-            kind: 'navigate',
-            hash: '#repos/group-frontend/settings',
-            mode: 'replaceState',
-        });
-        expect(appActions(r)).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'settings' });
-    });
 });
 
 
@@ -196,13 +207,6 @@ describe('resolveDashboardRoute — repo sub-routes', () => {
         expect(navigations(r)[0]).toEqual({ kind: 'navigate', hash: '#repos/ws1/tasks', mode: 'replaceState' });
     });
 
-    it('notes route decodes per-segment so an encoded slash survives', () => {
-        const r = resolveDashboardRoute('#repos/ws1/notes/a%2Fb/c', makeCtx());
-        expect(appActions({ effects: r.effects })).toEqual(
-            expect.arrayContaining([{ type: 'SET_SELECTED_NOTE_PATH', notePath: 'a/b/c' }]),
-        );
-    });
-
     it('chats route with a task id selects that queue task', () => {
         const r = resolveDashboardRoute('#repos/ws1/chats/task-9', makeCtx());
         expect(queueActions(r)).toEqual([{ type: 'SELECT_QUEUE_TASK', id: 'task-9', repoId: 'ws1' }]);
@@ -266,9 +270,9 @@ describe('resolveDashboardRoute — legacy redirects', () => {
         ]);
     });
 
-    it('#repos/ws1/copilot/mcp redirects to /settings/mcp', () => {
-        const r = resolveDashboardRoute('#repos/ws1/copilot/mcp', makeCtx());
-        expect(navigations(r)).toEqual([{ kind: 'navigate', hash: '#repos/ws1/settings/mcp', mode: 'replace' }]);
+    it('#repos/my_work/copilot/mcp redirects to /settings/mcp', () => {
+        const r = resolveDashboardRoute('#repos/my_work/copilot/mcp', makeCtx());
+        expect(navigations(r)).toEqual([{ kind: 'navigate', hash: '#repos/my_work/settings/mcp', mode: 'replace' }]);
         expect(appActions({ effects: r.effects })).toEqual(
             expect.arrayContaining([
                 { type: 'SET_REPO_SUB_TAB', tab: 'settings' },
@@ -277,9 +281,9 @@ describe('resolveDashboardRoute — legacy redirects', () => {
         );
     });
 
-    it('#repos/ws1/info redirects to /settings/info', () => {
-        const r = resolveDashboardRoute('#repos/ws1/info', makeCtx());
-        expect(navigations(r)).toEqual([{ kind: 'navigate', hash: '#repos/ws1/settings/info', mode: 'replace' }]);
+    it('#repos/my_life/info redirects to /settings/info', () => {
+        const r = resolveDashboardRoute('#repos/my_life/info', makeCtx());
+        expect(navigations(r)).toEqual([{ kind: 'navigate', hash: '#repos/my_life/settings/info', mode: 'replace' }]);
     });
 
     it('#repos/ws1/settings/display redirects to the admin settings tab', () => {

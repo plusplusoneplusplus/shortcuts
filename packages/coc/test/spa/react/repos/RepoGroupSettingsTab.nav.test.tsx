@@ -68,7 +68,7 @@ const MEMBERS = [
     { workspaceId: 'r2', stale: false, name: 'docs', rootPath: '/r/r2' },
 ];
 
-async function renderGroupSettings(initialSection?: SettingsSection, navigation: 'route' | 'local' = 'route') {
+async function renderGroupSettings(initialSection?: SettingsSection) {
     const { RepoGroupSettingsTab } = await import(
         '../../../../src/server/spa/client/react/repos/RepoGroupSettingsTab'
     );
@@ -87,7 +87,7 @@ async function renderGroupSettings(initialSection?: SettingsSection, navigation:
     return render(
         <AppProvider>
             <InitialSectionSetter />
-            <RepoGroupSettingsTab workspaceId={GROUP_ID} active navigation={navigation} />
+            <RepoGroupSettingsTab workspaceId={GROUP_ID} />
         </AppProvider>
     );
 }
@@ -102,7 +102,7 @@ beforeEach(() => {
 describe('RepoGroupSettingsTab navigation', () => {
     it('uses the same sections locally in the panel without replacing the workspace route', async () => {
         location.hash = `#repos/${GROUP_ID}/chats`;
-        await renderGroupSettings(undefined, 'local');
+        await renderGroupSettings();
         fireEvent.click(screen.getByTestId('nav-item-llm-tools'));
         await screen.findByTestId('llm-tools-panel');
         expect(location.hash).toBe(`#repos/${GROUP_ID}/chats`);
@@ -138,21 +138,22 @@ describe('RepoGroupSettingsTab navigation', () => {
         await waitFor(() => expect(screen.getByTestId('nav-item-members').textContent).toContain('2'));
     });
 
-    it('swaps the right pane and rewrites the hash when a section is picked', async () => {
+    it('swaps the right pane without touching the hash when a section is picked', async () => {
+        location.hash = `#repos/${GROUP_ID}/chats`;
         await renderGroupSettings();
 
         fireEvent.click(screen.getByTestId('nav-item-llm-tools'));
         await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
         expect(screen.getByTestId('llm-tools-panel').getAttribute('data-workspace-id')).toBe(GROUP_ID);
-        expect(location.hash).toBe('#repos/' + GROUP_ID + '/settings/llm-tools');
+        expect(location.hash).toBe(`#repos/${GROUP_ID}/chats`);
 
         fireEvent.click(screen.getByTestId('nav-item-mcp'));
         await waitFor(() => expect(screen.getByTestId('mcp-servers-panel')).toBeTruthy());
-        expect(location.hash).toBe('#repos/' + GROUP_ID + '/settings/mcp');
+        expect(location.hash).toBe(`#repos/${GROUP_ID}/chats`);
 
         fireEvent.click(screen.getByTestId('nav-item-skills'));
         await waitFor(() => expect(screen.getByTestId('agent-skills-panel')).toBeTruthy());
-        expect(location.hash).toBe('#repos/' + GROUP_ID + '/settings/skills');
+        expect(location.hash).toBe(`#repos/${GROUP_ID}/chats`);
         expect(screen.queryByTestId('repo-group-member-list')).toBeNull();
     });
 

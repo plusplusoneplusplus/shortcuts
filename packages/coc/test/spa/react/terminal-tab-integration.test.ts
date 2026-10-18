@@ -55,7 +55,7 @@ describe('Router terminal integration', () => {
     });
 
     it('imports isTerminalEnabled from utils/config', () => {
-        expect(ROUTER_SOURCE).toContain("isTerminalEnabled, isNotesEnabled, isDreamsEnabled");
+        expect(ROUTER_SOURCE).toContain("isTerminalEnabled, isDreamsEnabled");
     });
 });
 
@@ -98,7 +98,7 @@ describe('RepoDetail terminal visibility gating', () => {
         // Assert the two facts this test actually cares about rather than pinning
         // the entire dependency array verbatim (which drifts every time an
         // unrelated flag — e.g. schedulesInScheduledSlideEnabled — is added).
-        expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, notesEnabled,');
+        expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, workflowsEnabled,');
     });
 });
 

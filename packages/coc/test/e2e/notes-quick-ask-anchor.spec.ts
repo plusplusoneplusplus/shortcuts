@@ -5,7 +5,7 @@ import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture } from './fixtures/repo-fixtures';
 import { createNotesStore, mockNotesApi, type NoteTreeNode } from './fixtures/notes-fixtures';
-import { gotoWorkspace } from './fixtures/remote-shell';
+import { gotoWorkspace, openWorkspacePanel } from './fixtures/remote-shell';
 
 const WS_ID = 'ws-notes-quick-ask';
 const NOTE_PATH = 'Journal/quick-ask.md';
@@ -44,7 +44,8 @@ async function enableQuickAsk(page: import('@playwright/test').Page): Promise<vo
 }
 
 async function openNote(page: import('@playwright/test').Page, serverUrl: string): Promise<void> {
-    await gotoWorkspace(page, serverUrl, WS_ID, 'notes');
+    await gotoWorkspace(page, serverUrl, WS_ID);
+    await openWorkspacePanel(page, 'notes');
     await expect(page.locator('[data-testid="notes-sidebar"]')).toBeVisible({ timeout: 15_000 });
     await page.locator('[data-testid="notes-tree-item-Journal"]').click();
     await page.locator('[data-testid="notes-tree-item-quick-ask.md"]').click();
@@ -106,6 +107,7 @@ test('Notes Quick Ask persists, reloads, reopens, and deletes its source underli
         }).toContain('"s":"gradient descent"');
 
         await page.reload();
+        await openWorkspacePanel(page, 'notes');
         await expect(page.locator('.ProseMirror')).toContainText(SELECTED_TEXT, { timeout: 15_000 });
         await expect(page.locator('.note-quick-ask-anchor')).toHaveText(SELECTED_TEXT);
         await expect(page.locator('.qa-sidenote-ref')).toBeVisible();
