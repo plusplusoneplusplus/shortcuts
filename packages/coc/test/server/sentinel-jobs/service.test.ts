@@ -496,6 +496,26 @@ describe('SentinelJobService', () => {
         expect(enqueue.mock.calls[0][0].id).not.toBe(handbackId);
     });
 
+    it('retains a pending handback when shutdown races the completed job response read', async () => {
+        const job = jobStore.create(owner, input);
+        const run = await service.start(owner, job.id);
+        const call = enqueue.mock.calls[0][0] as CreateTaskInput;
+        await service.guard(guardTask(call));
+        let release!: (value: AIProcess | undefined) => void;
+        const waiting = new Promise<AIProcess | undefined>(resolve => { release = resolve; });
+        const read = vi.spyOn(service.deps.store, 'getProcess').mockImplementationOnce(() => waiting);
+        const queue = new FakeQueue();
+        service.attach(queue);
+        queue.emit('taskCompleted', owner.workspaceId, guardTask(call));
+        await flush();
+        const shutdown = service.shutdown();
+        release(processes.get(call.processId!));
+        await shutdown;
+        expect(jobStore.run(owner, job.id, run.id)).toMatchObject({ status: 'completed', handbackState: 'pending' });
+        expect(enqueue).toHaveBeenCalledTimes(1);
+        read.mockRestore();
+    });
+
     it('shutdown awaits every in-flight start before returning, even one still blocked on async owner validation', async () => {
         const job = jobStore.create(owner, input);
         let release!: () => void;

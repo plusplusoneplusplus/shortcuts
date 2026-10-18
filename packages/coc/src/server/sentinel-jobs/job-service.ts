@@ -331,7 +331,7 @@ export class SentinelJobService {
             const updated = this.deps.jobs.patchRun(owner, id, runId, { result: result.slice(0, 16_000) })!;
             await this.handback(owner, job, updated);
         } catch (handbackError) {
-            this.deps.jobs.patchRun(owner, id, runId, { handbackState: 'failed' });
+            this.deps.jobs.patchRun(owner, id, runId, { handbackState: this.disposed ? 'pending' : 'failed' });
             console.error('[sentinel-jobs] Could not queue Sentinel handback:', handbackError);
         }
         this.changed(owner);
@@ -339,13 +339,16 @@ export class SentinelJobService {
 
     private async handback(owner: SentinelTodoOwner, job: JobRecord, run: JobRunRecord): Promise<void> {
         try { await this.assertOwner(owner); }
-        catch { this.deps.jobs.patchRun(owner, job.id, run.id, { handbackState: 'suppressed' }); return; }
+        catch {
+            this.deps.jobs.patchRun(owner, job.id, run.id, { handbackState: this.disposed ? 'pending' : 'suppressed' });
+            return;
+        }
         const sentinel = await this.deps.store.getProcess(owner.processId, owner.workspaceId);
         const parentTask = !sentinel && isQueueProcessId(owner.processId) ? this.deps.getTask(toTaskId(owner.processId)) : undefined;
         const queuedSentinel = parentTask && ACTIVE.includes(parentTask.status as typeof ACTIVE[number])
             && parentTask.payload?.mode === 'sentinel' && parentTask.payload.workspaceId === owner.workspaceId;
         if (!sentinel && !queuedSentinel) {
-            this.deps.jobs.patchRun(owner, job.id, run.id, { handbackState: 'suppressed' }); return;
+            this.deps.jobs.patchRun(owner, job.id, run.id, { handbackState: this.disposed ? 'pending' : 'suppressed' }); return;
         }
         const taskId = run.handbackTaskId ?? randomUUID();
         const context: JobTaskContext = { ...owner, jobId: job.id, runId: run.id, kind: 'handback' };
