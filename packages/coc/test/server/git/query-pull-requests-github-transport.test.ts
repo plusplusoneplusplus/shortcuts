@@ -24,6 +24,9 @@ const run = (args: Record<string, unknown> = {}, signal?: AbortSignal) => runPrQ
 ) as Promise<any>;
 const check = (id: number, conclusion = 'success') => ({ id, name: `check-${id}`, status: 'completed', conclusion });
 const status = (id: number, state = 'success') => ({ id, context: `status-${id}`, state });
+const review = (id: number, state = 'APPROVED', userId = 1) => ({
+    id, state, user: { id: userId, login: `reviewer-${userId}` },
+});
 
 beforeEach(() => {
     vi.resetAllMocks();
@@ -127,6 +130,111 @@ describe('GitHub checks through the real adapter', () => {
             expect(mock).toHaveBeenCalledWith({ owner: 'owner', repo: 'repo', ref: 'head', per_page: 100, page: 2 });
         }
         expect(transport.pulls.get).toHaveBeenCalledTimes(1);
+    });
+
+    describe('GitHub review history through the real adapter', () => {
+        it('uses a later-page rejection over approval and includes later reviewers', async () => {
+            transport.pulls.listReviews.mockImplementation(async ({ page }) => ({
+                data: page === 1 ? Array.from({ length: 100 }, (_, id) => review(id))
+                    : [review(100, 'CHANGES_REQUESTED'), review(101, 'APPROVED', 2)],
+            }));
+            const detail = (await run({ ids: 42 })).results[0].pullRequest;
+            expect(detail.reviews).toEqual([
+                { reviewer: { id: '1', login: 'reviewer-1', displayName: 'reviewer-1' }, vote: 'rejected', isRequired: false },
+                { reviewer: { id: '2', login: 'reviewer-2', displayName: 'reviewer-2' }, vote: 'approved', isRequired: false },
+            ]);
+            expect(transport.pulls.listReviews).toHaveBeenCalledTimes(2);
+            expect(transport.pulls.listReviews).toHaveBeenNthCalledWith(2, {
+                owner: 'owner', repo: 'repo', pull_number: 42, per_page: 100, page: 2,
+            });
+        });
+
+        it('preserves deciding-vote policy across three pages of comments and dismissed reviews', async () => {
+            transport.pulls.listReviews.mockImplementation(async ({ page }) => ({
+                data: page === 1 ? Array.from({ length: 100 }, (_, id) => review(id))
+                    : page === 2 ? Array.from({ length: 100 }, (_, id) => review(100 + id, 'COMMENTED'))
+                        : [review(200, 'DISMISSED'), review(201, 'COMMENTED', 2)],
+            }));
+            const detail = (await run({ ids: 42 })).results[0].pullRequest;
+            expect(detail.reviews.map((item: { vote: string }) => item.vote)).toEqual(['approved', 'no-vote']);
+            expect(transport.pulls.listReviews).toHaveBeenCalledTimes(3);
+        });
+
+        it('checks the next page at the exact 100-review boundary', async () => {
+            transport.pulls.listReviews.mockImplementation(async ({ page }) => ({
+                data: page === 1 ? Array.from({ length: 100 }, (_, id) => review(id)) : [],
+            }));
+            const detail = (await run({ ids: 42 })).results[0].pullRequest;
+            expect(detail.reviews).toHaveLength(1);
+            expect(detail.reviews[0].vote).toBe('approved');
+            expect(transport.pulls.listReviews).toHaveBeenCalledTimes(2);
+        });
+
+        it.each([401, 403, 429, 500])('does not publish partial reviews after later-page HTTP %i', async (httpStatus) => {
+            transport.pulls.listReviews.mockImplementation(async ({ page }) => {
+                if (page === 2) throw Object.assign(new Error('private review response'), { status: httpStatus });
+                return { data: Array.from({ length: 100 }, (_, id) => review(id)) };
+            });
+            if (httpStatus === 500) {
+                const detail = (await run({ ids: 42 })).results[0].pullRequest;
+                expect(detail.reviews).toBeNull();
+                expect(detail.unavailable).toEqual(['reviews']);
+                expect(detail.checks).toEqual([]);
+                expect(JSON.stringify(detail)).not.toContain('private review response');
+            } else {
+                await expect(run({ ids: 42 })).rejects.toMatchObject({
+                    code: httpStatus === 429 ? 'provider-unavailable' : 'auth-failed',
+                });
+                expect(transport.checks.listForRef).not.toHaveBeenCalled();
+            }
+        });
+
+        it('rejects a missing later-page review payload without using earlier approvals', async () => {
+            transport.pulls.listReviews
+                .mockResolvedValueOnce({ data: Array.from({ length: 100 }, (_, id) => review(id)) })
+                .mockResolvedValueOnce({ data: null });
+            const detail = (await run({ ids: 42 })).results[0].pullRequest;
+            expect(detail.reviews).toBeNull();
+            expect(detail.unavailable).toEqual(['reviews']);
+        });
+
+        it.each([1, 2])('starts no more requests after cancelling a held review page %i', async (heldPage) => {
+            const controller = new AbortController();
+            let release!: () => void;
+            let started!: () => void;
+            const gate = new Promise<void>(resolve => { release = resolve; });
+            const entered = new Promise<void>(resolve => { started = resolve; });
+            transport.pulls.listReviews.mockImplementation(async ({ page }) => {
+                if (page === heldPage) {
+                    started();
+                    await gate;
+                }
+                return { data: Array.from({ length: 100 }, (_, id) => review((page - 1) * 100 + id)) };
+            });
+            const pending = run({ ids: 42 }, controller.signal);
+            await entered;
+            controller.abort();
+            await expect(pending).rejects.toMatchObject({ code: 'cancelled' });
+            release();
+            await new Promise(resolve => setImmediate(resolve));
+            expect(transport.pulls.listReviews).toHaveBeenCalledTimes(heldPage);
+            expect(transport.checks.listForRef).not.toHaveBeenCalled();
+            expect(transport.repos.getCombinedStatusForRef).not.toHaveBeenCalled();
+        });
+
+        it('scopes every review page to the requested repository', async () => {
+            transport.pulls.listReviews.mockImplementation(async ({ owner, page }) => ({
+                data: page === 1 ? Array.from({ length: 100 }, (_, id) => review(id))
+                    : [review(100, owner === 'other' ? 'CHANGES_REQUESTED' : 'APPROVED')],
+            }));
+            const first = (await run({ ids: 42 })).results[0].pullRequest;
+            const second = (await run({ repository: 'other/project', ids: 42 })).results[0].pullRequest;
+            expect(first.reviews[0].vote).toBe('approved');
+            expect(second.reviews[0].vote).toBe('rejected');
+            expect(transport.pulls.listReviews).toHaveBeenLastCalledWith({
+                owner: 'other', repo: 'project', pull_number: 42, per_page: 100, page: 2,
+            });
+        });
     });
 
     it('keeps exactly 100 checks complete after checking the empty next page', async () => {

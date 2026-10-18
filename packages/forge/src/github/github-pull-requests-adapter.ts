@@ -477,14 +477,22 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
     }
 
     async getReviewers(_repositoryId: string, pullRequestId: number | string, signal?: AbortSignal): Promise<Reviewer[]> {
-        signal?.throwIfAborted();
-        const { data } = await this.octokit.pulls.listReviews({
-            owner: this.owner,
-            repo: this.repo,
-            pull_number: Number(pullRequestId),
-        });
+        const reviews: GitHubReview[] = [];
+        for (let page = 1; ; page++) {
+            signal?.throwIfAborted();
+            const { data } = await this.octokit.pulls.listReviews({
+                owner: this.owner,
+                repo: this.repo,
+                pull_number: Number(pullRequestId),
+                per_page: 100,
+                page,
+            });
+            reviews.push(...data as unknown as GitHubReview[]);
+            if (data.length < 100) break;
+        }
 
-        return (data as unknown as GitHubReview[]).map(r => ({
+        signal?.throwIfAborted();
+        return reviews.map(r => ({
             identity: mapGitHubUser(r.user),
             vote: mapGitHubReviewVote(r.state),
             isRequired: false,

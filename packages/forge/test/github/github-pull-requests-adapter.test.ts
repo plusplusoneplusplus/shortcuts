@@ -370,6 +370,46 @@ describe('GitHubPullRequestsAdapter', () => {
     });
 
     describe('getReviewers', () => {
+        it('reads every review page in chronological provider order', async () => {
+            vi.mocked(octokit.pulls.listReviews)
+                .mockResolvedValueOnce({ data: Array.from({ length: 100 }, () => mockGitHubReview) })
+                .mockResolvedValueOnce({ data: [{ ...mockGitHubReview, state: 'CHANGES_REQUESTED' }] });
+            const reviewers = await adapter.getReviewers('repo', 42);
+            expect(reviewers).toHaveLength(101);
+            expect(reviewers[0].vote).toBe('approved');
+            expect(reviewers.at(-1)?.vote).toBe('rejected');
+            expect(octokit.pulls.listReviews).toHaveBeenNthCalledWith(2, {
+                owner: 'owner', repo: 'repo', pull_number: 42, per_page: 100, page: 2,
+            });
+        });
+
+        it('requires an empty following page when exactly 100 reviews exist', async () => {
+            vi.mocked(octokit.pulls.listReviews)
+                .mockResolvedValueOnce({ data: Array.from({ length: 100 }, () => mockGitHubReview) })
+                .mockResolvedValueOnce({ data: [] });
+            expect(await adapter.getReviewers('repo', 42)).toHaveLength(100);
+            expect(octokit.pulls.listReviews).toHaveBeenCalledTimes(2);
+        });
+
+        it('propagates an exact later-page error without publishing partial reviews', async () => {
+            const error = Object.assign(new Error('review source failed'), { status: 401 });
+            vi.mocked(octokit.pulls.listReviews)
+                .mockResolvedValueOnce({ data: Array.from({ length: 100 }, () => mockGitHubReview) })
+                .mockRejectedValueOnce(error);
+            await expect(adapter.getReviewers('repo', 42)).rejects.toBe(error);
+        });
+
+        it('checks cancellation before requesting the next review page', async () => {
+            const controller = new AbortController();
+            const reason = new Error('cancelled review page');
+            vi.mocked(octokit.pulls.listReviews).mockImplementationOnce(async () => {
+                controller.abort(reason);
+                return { data: Array.from({ length: 100 }, () => mockGitHubReview) };
+            });
+            await expect(adapter.getReviewers('repo', 42, controller.signal)).rejects.toBe(reason);
+            expect(octokit.pulls.listReviews).toHaveBeenCalledTimes(1);
+        });
+
         it('maps GitHub reviews to canonical Reviewer', async () => {
             const reviewers = await adapter.getReviewers('repo', 42);
             expect(reviewers).toHaveLength(1);
