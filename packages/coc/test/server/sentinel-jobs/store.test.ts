@@ -1,15 +1,41 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { SentinelJobStore } from '../../../src/server/sentinel-jobs/job-store';
-import { createTodoTestDatabase, createTodoTestDirectory } from '../sentinel-todos/test-db';
+import { createTodoTestDatabase } from '../sentinel-todos/test-db';
+import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
+import { createSentinelTodosDomain } from '../../../src/server/storage/snapshot/delegated-jobs-domain';
 
 const owner = { workspaceId: 'ws-a', processId: 'queue_parent' };
 const input = { name: 'Review', instructions: 'Check evidence', provider: 'copilot', model: 'model' };
 let fixture: ReturnType<typeof createTodoTestDatabase>;
 let store: SentinelJobStore;
-beforeEach(() => { fixture = createTodoTestDatabase(createTodoTestDirectory()); store = new SentinelJobStore(fixture.db); });
+beforeEach(() => {
+    const directory = path.resolve('.sentinel-jobs-tests', randomUUID());
+    fs.mkdirSync(directory, { recursive: true });
+    fixture = createTodoTestDatabase(directory);
+    store = new SentinelJobStore(fixture.db);
+});
 afterEach(() => fixture.dispose());
 
 describe('scheduled job definitions and durable runs', () => {
+    it('keeps job state machine-local and wipes definitions and runs with the owning ledger', async () => {
+        new SentinelTodoStore(fixture.db);
+        const job = store.create(owner, input);
+        store.createRun(owner, job.id, 'manual', 'queue_job', new Date().toISOString());
+        fixture.close();
+        const domain = createSentinelTodosDomain();
+        const context = { dataDir: fixture.dataDir, store: undefined, includeWikis: false };
+        expect(await domain.collect(context as never)).toMatchObject({ data: {}, metadata: {}, warnings: [] });
+        const result = { errors: [] as string[] };
+        await domain.executeWipe(context as never, (await domain.planWipe(context as never)).plan, result);
+        expect(result.errors).toEqual([]);
+        fixture = createTodoTestDatabase(fixture.dataDir);
+        const restored = new SentinelJobStore(fixture.db);
+        expect(restored.list(owner)).toEqual([]);
+        expect(restored.runs(owner, job.id)).toEqual([]);
+    });
     it('persists defaults, limits each owner independently and enforces scoped identity', () => {
         const job = store.create(owner, input);
         expect(job).toMatchObject({ mode: 'ask', enabled: true, autoCompactThreshold: 100_000, revision: 1 });

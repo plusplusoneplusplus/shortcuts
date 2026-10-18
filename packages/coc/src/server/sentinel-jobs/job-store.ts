@@ -10,14 +10,14 @@ export const jobInputSchema = z.object({
     instructions: z.string().trim().min(1).max(50_000),
     provider: z.enum(['copilot', 'codex', 'claude', 'opencode']),
     model: z.string().trim().min(1).max(200),
-    effort: z.string().trim().min(1).max(100).optional(),
+    effort: z.string().trim().max(100).optional(),
     mode: z.enum(['ask', 'autopilot']).default('ask'),
     cron: z.string().trim().max(200).optional(),
     enabled: z.boolean().default(true),
     autoCompactThreshold: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(100_000),
 }).strict();
 
-export type JobRecord = Omit<SentinelScheduledJob, 'runs' | 'activeRun' | 'nextRunAt'> & { runCount: number };
+export type JobRecord = Omit<SentinelScheduledJob, 'runs' | 'activeRun' | 'nextRunAt'> & { runCount: number; chatCreated?: boolean };
 export interface JobRunRecord extends SentinelScheduledJobRun {
     taskId?: string;
     handbackTaskId?: string;
@@ -82,9 +82,9 @@ export class SentinelJobStore {
     update(owner: SentinelTodoOwner, id: string, input: Partial<SentinelScheduledJobInput>, expectedRevision: number): JobRecord {
         return this.db.transaction(() => {
             const current = this.mutable(owner, id, expectedRevision);
-            const { id: _, revision: _revision, runCount: _count, processId: _process, ...settings } = current;
+            const { id: _, revision: _revision, runCount: _count, processId: _process, chatCreated: _chat, ...settings } = current;
             const next = { ...this.validate({ ...settings, ...input }), id: current.id,
-                processId: current.processId, runCount: current.runCount, revision: current.revision + 1 };
+                processId: current.processId, chatCreated: current.chatCreated, runCount: current.runCount, revision: current.revision + 1 };
             this.save(owner, next);
             return next;
         })();
@@ -130,6 +130,10 @@ export class SentinelJobStore {
         })();
     }
 
+    markChatCreated(owner: SentinelTodoOwner, id: string): void {
+        this.db.transaction(() => this.save(owner, { ...this.get(owner, id), chatCreated: true }))();
+    }
+
     patchRun(owner: SentinelTodoOwner, id: string, runId: string, patch: Partial<JobRunRecord>,
         from?: readonly JobRunRecord['status'][]): JobRunRecord | undefined {
         return this.db.transaction(() => {
@@ -157,6 +161,7 @@ export class SentinelJobStore {
         if (!parsed.success) throw new JobError('invalid', 'Invalid job settings');
         const value = parsed.data;
         if (value.cron === '') delete value.cron;
+        if (value.effort === '') delete value.effort;
         if (value.cron) {
             const error = validateScrubCron(value.cron);
             if (error) throw new JobError('invalid', error);

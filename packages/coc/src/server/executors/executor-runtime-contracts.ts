@@ -157,6 +157,7 @@ export interface ExecutorRuntimeCapabilities {
      * chat then gets no findings tool and its run fails without changes.
      */
     readonly getSentinelScrubber?: () => ScrubberRunService | undefined;
+    readonly getSentinelScheduledJobs?: () => import('../sentinel-jobs/job-service').SentinelJobService | undefined;
     /** Shared decision service; powers the `system_one` tool. Absent → the tool is not offered. */
     readonly getDecisionService?: () => DecisionService | undefined;
     /** MCP OAuth manager used to surface an interactive authorization prompt. */
@@ -246,7 +247,7 @@ export type ChatExecutorRuntime = Pick<
 >;
 
 /** Capabilities visible to {@link ProcessLifecycleRunner}. */
-export type LifecycleRuntime = Pick<ExecutorRuntimeCapabilities, 'getChatStyleSelectorEnabled' | 'getDefaultChatStyle' | 'getSentinelTodos' | 'getSentinelDependencyAdmission' | 'getTriggerInfra'>;
+export type LifecycleRuntime = Pick<ExecutorRuntimeCapabilities, 'getChatStyleSelectorEnabled' | 'getDefaultChatStyle' | 'getSentinelTodos' | 'getSentinelDependencyAdmission' | 'getTriggerInfra' | 'getSentinelScheduledJobs'>;
 
 /** Capabilities visible to the Dreams task executor. */
 export type DreamRuntime = Pick<ExecutorRuntimeCapabilities, 'getDreamRunExecutor'>;

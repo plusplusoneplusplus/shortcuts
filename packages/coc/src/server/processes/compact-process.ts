@@ -24,12 +24,14 @@ import { pendingMessageTask } from './queued-pending-message';
 import { APIError, badRequest, internalError } from '../errors';
 import { normalizeChatMode, type ChatProvider } from '../tasks/task-types';
 import { readActiveProviderSession, turnProviderAttribution } from './active-provider-session';
+import { isScheduledJobProcess, JOB_COMPACTION_INSTRUCTIONS } from '../sentinel-jobs/job-metadata';
 
 export const SENTINEL_COMPACTION_INSTRUCTIONS = 'Preserve Sentinel’s active goals, unresolved asks, decisions, blockers and next actions. Retain explicit authorizations, their scope, cancellations and superseding instructions. Keep exact owner/workspace/conversation IDs and to-do/job IDs, links and status. Distinguish proposed, authorized, attempted, completed, failed and cancelled work. Never infer permission or success; remove stale details and duplication.';
 
 function resolveCompactionInstructions(proc: AIProcess, customInstructions?: string): string | undefined {
     if (customInstructions?.trim()) return customInstructions;
-    return normalizeChatMode(proc.metadata?.mode) === 'sentinel' ? SENTINEL_COMPACTION_INSTRUCTIONS : undefined;
+    if (normalizeChatMode(proc.metadata?.mode) === 'sentinel') return SENTINEL_COMPACTION_INSTRUCTIONS;
+    return isScheduledJobProcess(proc) ? JOB_COMPACTION_INSTRUCTIONS : undefined;
 }
 
 /** Terminal statuses: the only ones idle enough to compact. */
