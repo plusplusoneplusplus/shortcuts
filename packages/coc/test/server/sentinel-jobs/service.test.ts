@@ -120,6 +120,13 @@ beforeEach(() => {
 afterEach(() => fixture.dispose());
 
 describe('SentinelJobService', () => {
+    it.each(['low', 'medium', 'high', 'xhigh'])('forwards %s as explicit reasoning effort, not a model-routing tier', async effort => {
+        const job = jobStore.create(owner, { ...input, effort });
+        await service.start(owner, job.id);
+        const call = enqueue.mock.calls[0][0] as CreateTaskInput;
+        expect(call.config).toMatchObject({ reasoningEffort: effort, model: input.model });
+        expect(call.config).not.toHaveProperty('effortTier');
+    });
     it('allows an explicit manual run of a paused job while refusing scheduled admission', async () => {
         const job = jobStore.create(owner, { ...input, enabled: false });
         await expect(service.start(owner, job.id, 'schedule')).rejects.toMatchObject({ code: 'conflict' });

@@ -4,6 +4,7 @@ export interface SentinelScheduledJobInput {
   instructions: string;
   provider: string;
   model: string;
+  /** Reasoning effort: low, medium, high or xhigh. Empty string clears it on update. */
   effort?: string;
   mode?: 'ask' | 'autopilot';
   cron?: string;

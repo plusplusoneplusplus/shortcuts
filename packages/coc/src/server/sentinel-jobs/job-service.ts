@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { isQueueProcessId, toTaskId, toQueueProcessId, type CreateTaskInput, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
-import type { SentinelScheduledJob } from '@plusplusoneplusplus/coc-client';
+import type { ReasoningEffort, SentinelScheduledJob } from '@plusplusoneplusplus/coc-client';
 import { getRepoDataPath } from '../paths';
 import { nextCronTime } from '../schedule/cron-utils';
 import { readAutoCompact } from '../processes/auto-compact';
@@ -114,7 +114,7 @@ export class SentinelJobService {
                     ].join('\n'),
                     context: { sentinelScheduledJob: context },
                 },
-                config: { model: job.model, ...(job.effort ? { effortTier: job.effort } : {}),
+                config: { model: job.model, ...(job.effort ? { reasoningEffort: job.effort as ReasoningEffort } : {}),
                     retryAttempts: 0, retryOnFailure: false, timeoutMs: 0 },
                 displayName: `[Job: ${job.name}] run #${run.runNumber}`,
             });

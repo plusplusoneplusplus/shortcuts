@@ -53,8 +53,18 @@ describe('scheduled job definitions and durable runs', () => {
         { mode: 'sentinel' }, { mode: 'ralph' }, { provider: 'auto' }, { provider: '' },
         { model: '' }, { name: '' }, { instructions: '' }, { autoCompactThreshold: 0 },
         { autoCompactThreshold: 1.5 }, { cron: '* * * * *' }, { cron: 'bad' }, { unknown: true },
+        { name: 'n'.repeat(121) }, { instructions: 'i'.repeat(32_001) },
+        { effort: 'max' }, { effort: 'very-low' }, { effort: 'other' },
     ])('rejects invalid input %j', patch => {
         expect(() => store.create(owner, { ...input, ...patch } as never)).toThrow();
+    });
+
+    it('accepts the editor length boundaries and canonical reasoning efforts', () => {
+        for (const effort of ['low', 'medium', 'high', 'xhigh', '']) {
+            const job = store.create(owner, { ...input, name: 'n'.repeat(120),
+                instructions: 'i'.repeat(32_000), effort });
+            expect(job.effort).toBe(effort || undefined);
+        }
     });
 
     it('checks revisions, clears a cron and safely rejects changes during runs or handbacks', () => {

@@ -6,11 +6,11 @@ import { validateScrubCron } from '../schedule/scrub-cron';
 import type { SentinelTodoOwner } from '../sentinel-todos/sentinel-todo-store';
 
 export const jobInputSchema = z.object({
-    name: z.string().trim().min(1).max(200),
-    instructions: z.string().trim().min(1).max(50_000),
+    name: z.string().trim().min(1).max(120),
+    instructions: z.string().trim().min(1).max(32_000),
     provider: z.enum(['copilot', 'codex', 'claude', 'opencode']),
     model: z.string().trim().min(1).max(200),
-    effort: z.string().trim().max(100).optional(),
+    effort: z.enum(['', 'low', 'medium', 'high', 'xhigh']).optional(),
     mode: z.enum(['ask', 'autopilot']).default('ask'),
     cron: z.string().trim().max(200).optional(),
     enabled: z.boolean().default(true),
