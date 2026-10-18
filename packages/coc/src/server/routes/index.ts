@@ -710,6 +710,16 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     scheduledJobService.attach(bridge.registry);
     const jobScheduler = new SentinelJobScheduler({ jobs: scheduledJobs, service: scheduledJobService, getEnabled: getJobsEnabled });
+    const previousJobsRemoveWorkspace = store.removeWorkspace;
+    const jobsRemoveWorkspace: ProcessStore['removeWorkspace'] = async id => {
+        const removed = await previousJobsRemoveWorkspace.call(store, id);
+        if (removed) {
+            jobScheduler.refreshAll();
+            await scheduledJobService.invalidate();
+        }
+        return removed;
+    };
+    store.removeWorkspace = jobsRemoveWorkspace;
     opts.setSentinelScheduledJobs?.(() => scheduledJobService);
     registerSentinelJobRoutes({ routes, jobs: scheduledJobs, service: scheduledJobService,
         onConfigChange: () => jobScheduler.refreshAll() });
@@ -1487,6 +1497,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         jobScheduler.dispose();
         disposeDependencyPolling?.();
         if (store.onProcessChange === scrubberProcessChange) store.onProcessChange = previousScrubberProcessChange;
+        if (store.removeWorkspace === jobsRemoveWorkspace) store.removeWorkspace = previousJobsRemoveWorkspace;
         scrubberRuns.dispose();
         if (!(store instanceof SqliteProcessStore)) todoDb.close();
     });

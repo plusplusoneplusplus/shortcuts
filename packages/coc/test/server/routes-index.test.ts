@@ -198,6 +198,63 @@ function makeOpts(overrides: Partial<RegisterRoutesOptions> = {}): RegisterRoute
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('registerAllRoutes', () => {
+    it.each(['sentinel', 'workspace'])('revokes jobs and handbacks immediately after %s removal without affecting another workspace', async removed => {
+        const store = new SqliteProcessStore({ dbPath: path.join(tmpDir, 'processes.db') });
+        const owners = [
+            { workspaceId: 'ws-jobs-a', processId: 'queue_owner_a' },
+            { workspaceId: 'ws-jobs-b', processId: 'queue_owner_b' },
+        ];
+        for (const owner of owners) {
+            await store.registerWorkspace({ id: owner.workspaceId, name: 'Jobs', rootPath: tmpDir });
+            await store.addProcess({ id: owner.processId, type: 'chat', status: 'completed', startTime: new Date(),
+                metadata: { ...owner, mode: 'sentinel', provider: 'copilot' } });
+        }
+        const jobs = new SentinelJobStore(store.getDatabase());
+        const input = { name: 'Review', instructions: 'Read evidence', provider: 'copilot', model: 'model', cron: '0 * * * *' };
+        const a = jobs.create(owners[0], input);
+        const b = jobs.create(owners[1], input);
+        const notification = jobs.create(owners[0], input);
+        const bridge = makeBridge();
+        bridge.registry = new EventEmitter();
+        bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => input.id!);
+        bridge.getTask = vi.fn();
+        const cancel = vi.fn();
+        bridge.findExecutorForTask = vi.fn().mockReturnValue({ cancelTask: cancel });
+        let getJobs!: () => SentinelJobService | undefined;
+        const opts = makeOpts({ store, bridge, dataDir: tmpDir,
+            setSentinelScheduledJobs: get => { getJobs = get; } });
+        const config = opts.runtimeConfigService!.config as any;
+        config.sentinel = { enabled: true };
+        config.features.sentinelTodoJobs = true;
+        const refresh = vi.spyOn(SentinelJobScheduler.prototype, 'refreshAll');
+        const composition = registerAllRoutes([], opts);
+        try {
+            await composition.scrubberReady;
+            const runA = await getJobs()!.start(owners[0], a.id);
+            const runB = await getJobs()!.start(owners[1], b.id);
+            const handback = await getJobs()!.start(owners[0], notification.id);
+            jobs.patchRun(owners[0], notification.id, handback.id, {
+                status: 'completed', handbackState: 'queued', handbackTaskId: 'pending-handback',
+            });
+            const previousRefreshes = refresh.mock.calls.length;
+            if (removed === 'workspace') await store.removeWorkspace(owners[0].workspaceId);
+            else await store.removeProcess(owners[0].processId);
+            await vi.waitFor(() => expect(jobs.run(owners[0], a.id, runA.id).status).toBe('cancelled'));
+            expect(refresh.mock.calls.length).toBeGreaterThan(previousRefreshes);
+            expect(cancel).toHaveBeenCalledWith(runA.taskId);
+            expect(cancel).toHaveBeenCalledWith('pending-handback');
+            expect(jobs.run(owners[0], notification.id, handback.id).handbackState).toBe('suppressed');
+            expect(jobs.run(owners[1], b.id, runB.id).status).toBe('queued');
+            expect(cancel).not.toHaveBeenCalledWith(runB.taskId);
+            expect(jobs.get(owners[0], a.id).processId).toBeTruthy();
+            await expect(getJobs()!.assertOwner(owners[0])).rejects.toBeDefined();
+        } finally {
+            await composition.sentinelJobsShutdown();
+            composition.whatsappMessagingManager.dispose();
+            store.close();
+        }
+    });
+
     it('wires native job recovery, both live gates, queue cancellation and awaited scheduler shutdown independently of scrubber', async () => {
         const store = new SqliteProcessStore({ dbPath: path.join(tmpDir, 'processes.db') });
         const owner = { workspaceId: 'ws-jobs', processId: 'queue_owner' };

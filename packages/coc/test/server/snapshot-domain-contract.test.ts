@@ -36,6 +36,7 @@ import { createSentinelMirrorOutboxDomain, createSentinelTodosDomain } from '../
 import { SENTINEL_MIRROR_OUTBOX_FILE, SentinelMirrorOutbox } from '../../src/server/messaging/sentinel-mirror-outbox';
 import { SentinelTodoStore } from '../../src/server/sentinel-todos/sentinel-todo-store';
 import { SentinelDependencyStore, type DependencyAdmissionRecord } from '../../src/server/sentinel-todos/sentinel-dependency-store';
+import { SentinelJobStore } from '../../src/server/sentinel-jobs/job-store';
 
 // ============================================================================
 // Helpers
@@ -219,6 +220,44 @@ describe('snapshot domain behavior', () => {
         await domain.executeWipe({ dataDir, store, includeWikis: true }, planResult.plan, result);
         expect(await store.getAllProcesses()).toHaveLength(0);
         expect(fs.existsSync(wikiDir)).toBe(false);
+    });
+
+    it('sentinel-jobs: excludes local definitions, runs and snapshots from aggregate export/import and wipes them together', async () => {
+        new SentinelTodoStore(store.getDatabase());
+        const jobs = new SentinelJobStore(store.getDatabase());
+        const owner = { workspaceId: 'ws1', processId: 'p1' };
+        const job = jobs.create(owner, { name: 'Local job', instructions: 'MACHINE_LOCAL_JOB_INSTRUCTIONS',
+            provider: 'copilot', model: 'model' });
+        const run = jobs.createRun(owner, job.id, 'manual', 'queue_job', new Date().toISOString());
+        const snapshots = path.join(dataDir, 'repos', owner.workspaceId, 'sentinel-jobs');
+        const file = path.join(snapshots, owner.processId, job.id, `${run.id}.json`);
+        writeJSON(file, { privateSnapshotMarker: 'MACHINE_LOCAL_SNAPSHOT' });
+        if (process.platform !== 'win32') fs.chmodSync(file, 0o400);
+        const ctx = { dataDir, store, includeWikis: false };
+        const exported = JSON.stringify(await collectStorageSnapshot(ctx));
+        for (const marker of [job.id, run.id, job.instructions, 'MACHINE_LOCAL_SNAPSHOT']) {
+            expect(exported).not.toContain(marker);
+        }
+        const domain = createSentinelTodosDomain();
+        const payload = Object.assign(emptyPayload(), {
+            sentinelScheduledJobs: [{ id: 'foreign-job' }], sentinelScheduledJobRuns: [{ id: 'foreign-run' }],
+        });
+        const imported = createImportResult();
+        await domain.restoreReplace(payload, ctx, imported);
+        await domain.restoreMerge(payload, ctx, imported);
+        expect(imported.errors).toEqual([]);
+        expect(jobs.list(owner)).toEqual([jobs.get(owner, job.id)]);
+        expect(jobs.run(owner, job.id, run.id)).toEqual(run);
+        const plan = await domain.planWipe(ctx);
+        expect(plan.plan).toContain(snapshots);
+        expect(fs.existsSync(file)).toBe(true);
+        const result = { errors: [] as string[] };
+        await domain.executeWipe(ctx, plan.plan, result);
+        expect(result.errors).toEqual([]);
+        expect(jobs.list(owner)).toEqual([]);
+        expect(jobs.runs(owner, job.id)).toEqual([]);
+        expect(fs.existsSync(snapshots)).toBe(false);
+        expect(await store.getProcess('p1')).toBeDefined();
     });
 
     it('sentinel-todos: excludes items from import/export and wipes only its SQLite tables', async () => {
