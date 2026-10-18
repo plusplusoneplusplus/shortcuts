@@ -23,7 +23,11 @@ async function invoke(tool: { handler: (...a: any[]) => unknown }, args: unknown
 }
 
 function stubClient(probe: () => Promise<void> = async () => undefined): PrProviderClient {
-    return { probeRepository: vi.fn(probe) };
+    return {
+        probeRepository: vi.fn(probe),
+        resolveCurrentUser: vi.fn(async () => 'octocat'),
+        listPullRequests: vi.fn(async () => ({ items: [] })),
+    };
 }
 
 describe('query_pull_request tool', () => {
@@ -182,6 +186,23 @@ describe('query_pull_request tool', () => {
             expect(result).toMatchObject({ success: false, code: 'provider-unavailable' });
             expect(JSON.stringify(result)).not.toContain('token=abc');
         });
+    });
+
+    it('returns a query-mode page as JSON', async () => {
+        const client = stubClient();
+        vi.mocked(client.listPullRequests).mockResolvedValue({
+            items: [{
+                id: 5, title: 'Fix', url: 'https://github.com/o/r/pull/5', author: { login: 'octocat' }, lifecycle: 'open',
+                isDraft: false, sourceBranch: 'fix', targetBranch: 'main', ci: { state: 'passing', counts: { success: 1, failure: 0, pending: 0, other: 0 } },
+            }],
+        });
+        const { tool } = make(vi.fn(async () => client));
+        const result = await invoke(tool, { provider: 'github', repository: 'o/r', limit: 5 });
+        expect(result).toMatchObject({
+            success: true, mode: 'query', provider: 'github', repository: 'o/r', filters: { status: 'open' },
+            items: [{ id: 5, ci: { state: 'passing' } }], scan: { truncated: false, candidatesScanned: 1 }, ciUnavailableExcluded: 0,
+        });
+        expect(result.nextCursor).toBeUndefined();
     });
 
     describe('cancellation', () => {
