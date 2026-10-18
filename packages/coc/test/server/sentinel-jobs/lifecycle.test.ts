@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as http from 'node:http';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TaskQueueManager, type QueuedTask } from '@plusplusoneplusplus/forge';
 import { ProcessLifecycleRunner, type LifecycleRunnerOptions } from '../../../src/server/executors/process-lifecycle-runner';
@@ -9,6 +10,8 @@ import { SentinelJobService, getJobTaskContext } from '../../../src/server/senti
 import { SentinelJobStore } from '../../../src/server/sentinel-jobs/job-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
+import { registerSentinelJobRoutes } from '../../../src/server/sentinel-jobs/job-routes';
+import { createRouter, type Route } from '../../../src/server/shared/router';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createTodoTestDatabase } from '../sentinel-todos/test-db';
 
@@ -81,6 +84,55 @@ async function execute(task: QueuedTask): Promise<void> {
 }
 
 describe('scheduled job queue and lifecycle integration', () => {
+    it('executes HTTP-created runs through the queue and lifecycle, then gates both routes and queued provider dispatch live', async () => {
+        const routes: Route[] = [];
+        registerSentinelJobRoutes({ routes, jobs, service, onConfigChange: () => {} });
+        const server = http.createServer(createRouter({ routes, spaHtml: '' }));
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        try {
+            const address = server.address();
+            if (!address || typeof address === 'string') throw new Error('Missing server address');
+            const base = `http://127.0.0.1:${address.port}/api/workspaces/${owner.workspaceId}/sentinel-todos/${owner.processId}/jobs`;
+            const created = await fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: 'HTTP job', instructions: 'Read the snapshot', provider: 'copilot', model: 'model' }) });
+            expect(created.status).toBe(201);
+            const job = await created.json() as { id: string };
+            const response = await fetch(`${base}/${job.id}/runs`, { method: 'POST' });
+            expect(response.status).toBe(202);
+            const run = await response.json() as { id: string };
+            const task = queue.getTask(jobs.run(owner, job.id, run.id).taskId!)!;
+            await execute(task);
+            await vi.waitFor(() => expect(jobs.run(owner, job.id, run.id).handbackState).toBe('queued'));
+            await execute(queue.getTask(jobs.run(owner, job.id, run.id).handbackTaskId!)!);
+            await vi.waitFor(() => expect(jobs.run(owner, job.id, run.id).handbackState).toBe('delivered'));
+            const result = await (await fetch(base)).json() as { jobs: Array<{ processId: string; runs: unknown[] }> };
+            expect(result.jobs[0].processId).toBe(task.processId);
+            expect(result.jobs[0].runs).toEqual([expect.objectContaining({
+                status: 'completed', turnIndex: 0,
+                jobTurnHref: `#repos/${owner.workspaceId}/chats/${task.processId}?turn=0`,
+                sentinelFollowUpHref: `#repos/${owner.workspaceId}/chats/${owner.processId}?turn=0`,
+            })]);
+
+            const nextResponse = await fetch(`${base}/${job.id}/runs`, { method: 'POST' });
+            expect(nextResponse.status).toBe(202);
+            const next = await nextResponse.json() as { id: string };
+            const nextTask = queue.getTask(jobs.run(owner, job.id, next.id).taskId!)!;
+            expect(nextTask.processId).toBe(task.processId);
+            enabled = false;
+            expect((await fetch(base)).status).toBe(404);
+            expect((await fetch(`${base}/${job.id}/runs`, { method: 'POST' })).status).toBe(404);
+            await execute(nextTask);
+            await vi.waitFor(() => expect(jobs.run(owner, job.id, next.id).status).toBe('failed'));
+            expect(jobs.run(owner, job.id, next.id).handbackState).toBe('suppressed');
+            expect(options.executeFollowUpFn).toHaveBeenCalledTimes(2);
+            expect(options.executeByTypeFn).not.toHaveBeenCalled();
+            enabled = true;
+            expect((await fetch(base)).status).toBe(200);
+        } finally {
+            await new Promise<void>(resolve => server.close(() => resolve()));
+        }
+    });
+
     it('runs jobs in parallel, serializes handbacks behind the Sentinel, and adds turns to a stable chat', async () => {
         const sentinelTurn = queue.enqueue({ id: 'sentinel-active', processId: owner.processId, repoId: owner.workspaceId,
             type: 'chat', priority: 'normal', payload: { kind: 'chat', mode: 'sentinel',
