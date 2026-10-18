@@ -120,6 +120,18 @@ beforeEach(() => {
 afterEach(() => fixture.dispose());
 
 describe('SentinelJobService', () => {
+    it('links the canonical next turn using the workspace chat route', async () => {
+        const job = jobStore.create(owner, input);
+        const run = await service.start(owner, job.id);
+        const call = enqueue.mock.calls[0][0] as CreateTaskInput;
+        const chat = processes.get(call.processId!)!;
+        processes.set(chat.id, { ...chat, conversationTurns: [assistantTurn(7, 'Earlier result')] } as AIProcess);
+        await service.guard(guardTask(call));
+        expect(jobStore.run(owner, job.id, run.id)).toMatchObject({
+            turnIndex: 8, jobTurnHref: `#repos/${owner.workspaceId}/chats/${chat.id}?turn=8`,
+        });
+    });
+
     it.each(['low', 'medium', 'high', 'xhigh'])('forwards %s as explicit reasoning effort, not a model-routing tier', async effort => {
         const job = jobStore.create(owner, { ...input, effort });
         await service.start(owner, job.id);

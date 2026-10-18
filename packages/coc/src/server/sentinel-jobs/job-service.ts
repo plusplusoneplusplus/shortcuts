@@ -28,7 +28,7 @@ export interface JobServiceDeps {
 const ACTIVE = ['queued', 'running'] as const;
 const pending = (run: JobRunRecord) => run.handbackState === 'pending' || run.handbackState === 'queued';
 const href = (owner: SentinelTodoOwner, processId: string, turnIndex = 0) =>
-    `#repos/${encodeURIComponent(owner.workspaceId)}/chats/${encodeURIComponent(processId)}?turn=${turnIndex}`;
+    `#repos/${owner.workspaceId}/chats/${encodeURIComponent(processId)}?turn=${turnIndex}`;
 
 /** One persistent chat per job, using only the existing workspace task queue. */
 export class SentinelJobService {
