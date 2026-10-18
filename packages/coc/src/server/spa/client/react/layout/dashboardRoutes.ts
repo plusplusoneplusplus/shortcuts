@@ -14,6 +14,8 @@
  * compatibility with existing importers.
  */
 
+import { buildWorkResourceHash, parseWorkResourceRoute, type WorkResourceRoute } from './workResourceRoute';
+import { openWorkResourceRoute } from '../features/repo-detail/unified-right-panel/workResourceNavigation';
 import type {
     DashboardTab,
     RepoSubTab,
@@ -204,10 +206,9 @@ export function parseWorkflowDeepLink(hash: string): { repoId: string; processId
 export const VALID_PR_DETAIL_TABS: Set<string> = new Set(['overview', 'files', 'commits', 'checks']);
 
 export function parsePrDetailTab(hash: string): PrDetailTab {
-    const parts = hashSegments(hash);
-    if (parts[0] === 'repos' && parts[1] && parts[2] === 'pull-requests' && parts[3] && parts[4] && VALID_PR_DETAIL_TABS.has(parts[4])) {
-        return parts[4] as PrDetailTab;
-    }
+    const route = parseWorkResourceRoute(hash);
+    const tab = route?.path.split('/')[1];
+    if (route?.kind === 'pull-requests' && tab && VALID_PR_DETAIL_TABS.has(tab)) return tab as PrDetailTab;
     return 'overview';
 }
 
@@ -500,40 +501,42 @@ export interface WorkItemDeepLink {
 
 /**
  * Parse a work-items deep-link. Supported forms:
- *   #repos/{wsId}/work-items/{itemId}
- *   #repos/{wsId}/work-items/{itemId}/session/{taskId}
- *   #repos/{wsId}/work-items/{itemId}/commit/{sha}
- *   #repos/{wsId}/work-items/{itemId}/commit/{sha}/{filePath...}
+ *   #repos/{wsId}/panel/work-items/{ownerId}/{itemId}
+ *   #repos/{wsId}/panel/work-items/{ownerId}/{itemId}/session/{taskId}
+ *   #repos/{wsId}/panel/work-items/{ownerId}/{itemId}/commit/{sha}
+ *   #repos/{wsId}/panel/work-items/{ownerId}/{itemId}/commit/{sha}/{filePath...}
  */
 export function parseWorkItemDeepLink(hash: string): WorkItemDeepLink {
     const base: WorkItemDeepLink = { itemId: null, sessionTaskId: null, commitHash: null, commitFilePath: null };
-    const parts = hashSegments(hash);
-    if (parts[0] !== 'repos' || !parts[1] || parts[2] !== 'work-items' || !parts[3]) return base;
-    const itemId = decodeSegment(parts[3]);
-    if (parts[4] === 'session' && parts[5]) {
-        return { itemId, sessionTaskId: decodeSegment(parts[5]), commitHash: null, commitFilePath: null };
+    const route = parseWorkResourceRoute(hash);
+    if (!route || route.kind !== 'work-items') return base;
+    const parts = route.path.split('/');
+    if (!parts[0]) return base;
+    const itemId = decodeSegment(parts[0]);
+    if (parts[1] === 'session' && parts[2]) {
+        return { itemId, sessionTaskId: decodeSegment(parts[2]), commitHash: null, commitFilePath: null };
     }
-    if (parts[4] === 'commit' && parts[5]) {
-        const commitHash = decodeSegment(parts[5]);
-        const commitFilePath = parts[6] ? decodePath(parts.slice(6)) : null;
+    if (parts[1] === 'commit' && parts[2]) {
+        const commitHash = decodeSegment(parts[2]);
+        const commitFilePath = parts[3] ? decodePath(parts.slice(3)) : null;
         return { itemId, sessionTaskId: null, commitHash, commitFilePath };
     }
     return { itemId, sessionTaskId: null, commitHash: null, commitFilePath: null };
 }
 
-/** Build `#repos/{wsId}/work-items/{itemId}` */
+/** Build `#repos/{wsId}/panel/work-items/{ownerId}/{itemId}` */
 export function buildWorkItemHash(wsId: string, itemId: string): string {
-    return repoHashBase(wsId) + '/work-items/' + encodeSegment(itemId);
+    return buildWorkResourceHash(wsId, 'work-items') + '/' + encodeSegment(itemId);
 }
 
-/** Build `#repos/{wsId}/work-items/{itemId}/session/{taskId}` */
+/** Build `#repos/{wsId}/panel/work-items/{ownerId}/{itemId}/session/{taskId}` */
 export function buildWorkItemSessionHash(wsId: string, itemId: string, taskId: string): string {
-    return repoHashBase(wsId) + '/work-items/' + encodeSegment(itemId) + '/session/' + encodeSegment(taskId);
+    return buildWorkResourceHash(wsId, 'work-items') + '/' + encodeSegment(itemId) + '/session/' + encodeSegment(taskId);
 }
 
-/** Build `#repos/{wsId}/work-items/{itemId}/commit/{sha}[/{filePath...}]` */
+/** Build `#repos/{wsId}/panel/work-items/{ownerId}/{itemId}/commit/{sha}[/{filePath...}]` */
 export function buildWorkItemCommitHash(wsId: string, itemId: string, commitHash: string, filePath?: string): string {
-    let h = repoHashBase(wsId) + '/work-items/' + encodeSegment(itemId) + '/commit/' + encodeSegment(commitHash);
+    let h = buildWorkResourceHash(wsId, 'work-items') + '/' + encodeSegment(itemId) + '/commit/' + encodeSegment(commitHash);
     if (filePath) {
         h += '/' + encodePath(filePath);
     }
@@ -656,6 +659,7 @@ export interface RouteContext {
 
 /** A single ordered side effect a resolved route asks the applier to perform. */
 export type RouteEffect =
+    | { kind: 'panel'; route: WorkResourceRoute; chatId: string | null }
     | { kind: 'app'; action: AppAction }
     | { kind: 'queue'; action: QueueAction }
     | { kind: 'navigate'; hash: string; mode: 'replace' | 'replaceState' };
@@ -694,6 +698,19 @@ function resolveReposRoute(hashIn: string, ctx: RouteContext, effects: RouteEffe
     }
     effects.push({ kind: 'app', action: { type: 'SET_SELECTED_REPO', id: repoId } });
 
+    if (parts[2] === 'panel') {
+        const route = parseWorkResourceRoute('#' + hash);
+        if (route) {
+            effects.push({ kind: 'app', action: { type: 'SET_REPO_SUB_TAB', tab: resolveChatSubTab() } });
+            effects.push({ kind: 'app', action: { type: 'RECORD_REPO_ROUTE_SUFFIX', repoId, suffix: '/' + parts.slice(2).join('/') } });
+            effects.push({ kind: 'panel', route, chatId: ctx.queueState.selectedTaskIdByRepo?.[repoId] ?? null });
+        } else effects.push({ kind: 'navigate', hash: '#repos/' + parts[1] + '/activity', mode: 'replace' });
+        return;
+    }
+    if (parts[2] === 'work-items' || parts[2] === 'pull-requests') {
+        effects.push({ kind: 'navigate', hash: '#repos/' + parts[1] + '/activity', mode: 'replace' });
+        return;
+    }
     // Redirect legacy #repos/:id/workflows deep-links to workflows tab
     if (parts[2] === 'workflows') {
         effects.push({ kind: 'app', action: { type: 'SET_REPO_SUB_TAB', tab: 'workflows' } });
@@ -849,32 +866,6 @@ function resolveReposRoute(hashIn: string, ctx: RouteContext, effects: RouteEffe
     } else if (parts[2] === 'notes') {
         effects.push({ kind: 'app', action: { type: 'SET_SELECTED_NOTE_PATH', notePath: null } });
     }
-    // Pull-requests deep-link: #repos/{id}/pull-requests and #repos/{id}/pull-requests/{prNumber}/{subTab}
-    if (parts[2] === 'pull-requests' && parts[3]) {
-        effects.push({ kind: 'app', action: { type: 'SET_SELECTED_PR', prId: decodeSegment(parts[3]) } });
-        const subTab = (parts[4] && VALID_PR_DETAIL_TABS.has(parts[4]) ? parts[4] : 'overview') as PrDetailTab;
-        effects.push({ kind: 'app', action: { type: 'SET_PR_DETAIL_TAB', tab: subTab } });
-    } else if (parts[2] === 'pull-requests') {
-        effects.push({ kind: 'app', action: { type: 'CLEAR_SELECTED_PR' } });
-    }
-    // Work-items deep-link: #repos/{id}/work-items[/{itemId}[/session/{taskId}|/commit/{sha}[/{filePath}]]]
-    if (parts[2] === 'work-items') {
-        if (parts[3]) {
-            const link = parseWorkItemDeepLink('#' + hash);
-            effects.push({
-                kind: 'app',
-                action: {
-                    type: 'SET_WORK_ITEM_DEEP_LINK',
-                    workItemId: link.itemId,
-                    sessionTaskId: link.sessionTaskId,
-                    commitHash: link.commitHash,
-                    commitFilePath: link.commitFilePath,
-                },
-            });
-        } else {
-            effects.push({ kind: 'app', action: { type: 'SET_WORK_ITEM_DEEP_LINK', workItemId: null } });
-        }
-    }
     // Settings section deep-link: #repos/{id}/settings/{section}
     if (parts[2] === 'settings') {
         if (parts[3] === 'display') {
@@ -1010,6 +1001,9 @@ export function applyRouteEffects(
 ): void {
     for (const effect of effects) {
         switch (effect.kind) {
+            case 'panel':
+                openWorkResourceRoute(effect.route, effect.chatId);
+                break;
             case 'app':
                 handlers.dispatch(effect.action);
                 break;

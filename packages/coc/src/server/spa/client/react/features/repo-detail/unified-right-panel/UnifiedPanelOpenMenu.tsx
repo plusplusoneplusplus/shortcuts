@@ -56,7 +56,7 @@ import {
 } from './unifiedPanelOpenMenuModel';
 import { chatChangesTabInput, useUnifiedChatChanges } from './unifiedChatChanges';
 import { browserOpenInput } from './unifiedBrowserTabs';
-import { SETTINGS_ICON, TODO_ICON } from './UnifiedPanelTabStrip';
+import { SETTINGS_ICON, TODO_ICON, PULL_REQUESTS_ICON } from './UnifiedPanelTabStrip';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 
 /** Results requested and rendered per query, matching QuickOpen. */
@@ -82,7 +82,7 @@ export interface UnifiedPanelOpenMenuProps {
     /** The panel's workspace owns a Settings page; see `openMenuActions`. */
     settingsAvailable?: boolean;
     /** Open one of the workspace-owned views against the current target. */
-    onOpenWorkspaceResource: (action: 'terminal' | 'explorer' | 'notes' | 'settings') => void;
+    onOpenWorkspaceResource: (action: 'terminal' | 'work-items' | 'pull-requests' | 'explorer' | 'notes' | 'settings') => void;
     /** Dismiss the menu and hand focus back to the "+" trigger. */
     onClose: () => void;
 }
@@ -504,6 +504,8 @@ export function UnifiedPanelOpenMenu({
 
 /** Keyed by action id so a new action cannot ship without a leading icon. */
 const ACTION_ICONS: Readonly<Record<OpenMenuActionId, ReactNode>> = {
+    'work-items': TODO_ICON,
+    'pull-requests': PULL_REQUESTS_ICON,
     settings: SETTINGS_ICON,
     terminal: '▶',
     explorer: '🗂',

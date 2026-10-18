@@ -18,31 +18,9 @@ import { isWorkspaceSubTab, type SubTabDef } from '../repo-detail/repoSubTabs';
 
 // ── Tab scoping ──────────────────────────────────────────────────────────────
 
-/** Sub-tabs that belong to the REMOTE (shared across all clones of an origin). */
-export const REMOTE_SCOPE_KEYS: ReadonlyArray<RepoSubTab> = ['work-items', 'pull-requests'];
-
-// Fixed display order for the remote scope (only present tabs are emitted).
-const REMOTE_ORDER: RepoSubTab[] = ['work-items', 'pull-requests'];
-
-export interface PartitionedShellTabs {
-    /** Remote-scoped tabs (Work Items, Pull Requests) — left of the divider, always shown. */
-    remote: SubTabDef[];
-    /** Clone-scoped tabs in display order, excluding the Workspace surface itself
-     *  (the repo's main view needs no tab). Shown inline until they run out of
-     *  horizontal room, after which the tail collapses into the ⋯ overflow. */
-    clone: SubTabDef[];
-}
-
-/**
- * Split the visible sub-tabs into the two scopes. Remote-scoped tabs come first
- * in a stable order; every other tab is clone-scoped and kept in source order.
- */
-export function partitionShellTabs(tabs: SubTabDef[]): PartitionedShellTabs {
-    const byKey = new Map<RepoSubTab, SubTabDef>(tabs.map(t => [t.key, t]));
-    const remote = REMOTE_ORDER.map(k => byKey.get(k)).filter((t): t is SubTabDef => !!t);
-    const taken = new Set<RepoSubTab>(remote.map(t => t.key));
-    const clone = tabs.filter(t => !taken.has(t.key) && !isWorkspaceSubTab(t.key));
-    return { remote, clone };
+/** Page tabs shown beside workspace identity; resource tools live in the panel. */
+export function partitionShellTabs(tabs: SubTabDef[]): { clone: SubTabDef[] } {
+    return { clone: tabs.filter(tab => !isWorkspaceSubTab(tab.key)) };
 }
 
 /**

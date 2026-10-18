@@ -56,8 +56,7 @@ placeholders still admit task hydration. Router, chat openers and
 panel hosts use `selectedTaskIdByRepo[sourceSelectionId]` for one concrete owner;
 remote selections never mirror into bare workspace keys. Explicit chat routes
 retain missing/unavailable process identities for detail errors, and unresolved
-remote owners skip local reachability probes. Work-items badge and
-Resume Queue use `getCocClientForWorkspace(ws.id)`. Work-item commit reviews receive the repo’s concrete selection id
+remote owners skip local reachability probes. Resume Queue uses `getCocClientForWorkspace(ws.id)`. Work-item commit reviews receive the repo’s concrete selection id
 through `WorkItemsTab` and `WorkItemCommitReviewPane` as
 `attachmentDestinationId`; diff payloads keep the plain workspace id.
 `/chat/launch-terminal` deliberately stays on the local-origin
@@ -71,8 +70,10 @@ and process events cannot replace page-origin queue or process-index state.
 surface: a single Cursor-style tab strip over Terminal, Notes, files, notes,
 canvases, and chat diffs, plus a file-tree column pinned to its right edge.
 `RepoDetail.tsx` renders it for a repo and `repos/RepoGroupView.tsx` for a repo
-group; both gate on `dockAvailable` (desktop) and wrap
-their subtree in `UnifiedPanelHostProvider` under the same gate. There is no
+group; both mount it at every breakpoint and wrap their subtree in
+`UnifiedPanelHostProvider`. Mobile opens a full-width presentation, keeping the
+workspace mounted. Work Items and Pull Requests use owner-qualified panel tabs
+from the add menu; their page-level routes and header taxonomy are absent. There is no
 second panel and no flag to switch between panels. The panel's own contract —
 tab identity, entry-point seams, keep-alive, the close guards — is in
 `unified-right-panel/AGENTS.md`.

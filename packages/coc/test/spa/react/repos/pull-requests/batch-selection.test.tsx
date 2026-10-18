@@ -19,9 +19,10 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isSessionContextAttachmentsEnabled: () => false,
 }));
 
+vi.mock('../../../../../src/server/spa/client/react/features/pull-requests/PullRequestDetail', () => ({ PullRequestDetail: () => <div>PR detail</div> }));
 const mockDispatch = vi.fn();
 vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
-    useApp: () => ({ state: { selectedPrId: null }, dispatch: mockDispatch }),
+    useApp: () => ({ state: {}, dispatch: mockDispatch }),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
@@ -115,8 +116,7 @@ describe('pull request batch selection', () => {
         fireEvent.click(screen.getAllByTestId('pr-row')[0]);
 
         // Fixtures share a createdAt, so the newest-first order falls back to number desc.
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_PR', prId: 6 });
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_PR_DETAIL_TAB', tab: 'overview' });
+        expect(location.hash).toContain('/panel/pull-requests/ws-1/6/overview');
     });
 
     it('shift-click selects an inclusive range within a section', async () => {

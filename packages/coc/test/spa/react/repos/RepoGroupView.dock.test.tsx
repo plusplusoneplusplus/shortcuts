@@ -295,18 +295,18 @@ describe('RepoGroupView right panel', () => {
         expect(screen.getByTestId('repo-group-content').style.display).toBe('none');
         mockBreakpoint = 'mobile';
         view.rerender(<RepoGroupView workspaceId={GROUP_ID} />);
-        expect(screen.queryByTestId('unified-right-panel')).toBeNull();
-        expect(screen.getByTestId('repo-group-content').style.display).toBe('');
+        expect(screen.getByTestId('unified-right-panel').dataset.expanded).toBe('true');
+        expect(screen.getByTestId('repo-group-content').style.display).toBe('none');
         mockBreakpoint = 'desktop';
         view.rerender(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.getByTestId('unified-right-panel').dataset.expanded).toBe('false');
         expect(screen.getByTestId('repo-group-content').style.display).toBe('');
     });
 
-    it('omits the panel on mobile', () => {
+    it('mounts the panel on mobile', () => {
         mockBreakpoint = 'mobile';
         render(<RepoGroupView workspaceId={GROUP_ID} />);
-        expect(screen.queryByTestId('unified-right-panel')).toBeNull();
+        expect(screen.getByTestId('unified-right-panel')).toBeTruthy();
     });
 
     it('lists the group root plus every member and defaults to the first member', async () => {

@@ -20,6 +20,8 @@ import type { ReviewChatPresentation, ReviewChatTarget } from '../commits/commit
 export interface UseReviewChatPresentationOptions {
     target: ReviewChatTarget | undefined;
     supportsChat?: boolean;
+    /** A narrow container uses the same presentation as a narrow viewport. */
+    isDesktop?: boolean;
     forceLensOnNonDesktop?: boolean;
     legacyOpenStorageKey?: string;
 }
@@ -44,8 +46,10 @@ export function useReviewChatPresentation({
     supportsChat = true,
     forceLensOnNonDesktop = false,
     legacyOpenStorageKey,
+    isDesktop: desktopOverride,
 }: UseReviewChatPresentationOptions): UseReviewChatPresentationReturn {
-    const { isDesktop } = useBreakpoint();
+    const { isDesktop: viewportDesktop } = useBreakpoint();
+    const isDesktop = desktopOverride ?? viewportDesktop;
     const [configRevision, setConfigRevision] = useState(0);
     const lensFeatureEnabled = useMemo(() => isCommitChatLensEnabled(), [configRevision]);
     const targetStorageId = useMemo(() => {

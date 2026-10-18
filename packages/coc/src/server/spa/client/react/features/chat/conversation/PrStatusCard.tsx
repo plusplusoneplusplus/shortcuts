@@ -1,3 +1,5 @@
+import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
+import { useWorkspaceOwner } from '../../../repos/workspaceOwnerContext';
 /**
  * PrStatusCard — pinned, read-only status card for the pull requests a chat
  * created (AC-02).
@@ -506,7 +508,10 @@ function PrStatusCardRow({
     onExpandChecks?: (key: string) => void;
 }) {
     const number = item.pr?.number ?? item.number;
-    const detailHash = buildPrDetailHash(item.repoId, number);
+    const host = useUnifiedPanelHost();
+    const owner = useWorkspaceOwner(item.repoId);
+    const ownerId = owner?.selectionId ?? (host?.workspaceId === item.repoId ? host.routingRef ?? item.repoId : item.repoId);
+    const detailHash = buildPrDetailHash(ownerId, number, host?.routingRef ?? host?.workspaceId);
     const terminal = item.state === 'ready' && isTerminalPrStatus(item.pr?.status);
     const autoMerge =
         item.state === 'ready' && item.pr

@@ -157,7 +157,6 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     // resizes it; only the terminal/explorer content follows the picker. The
     // group detail read goes to whichever server owns the group — local for a
     // local group, the remote's baseUrl for one aggregated from a remote server.
-    const dockAvailable = !isMobile;
     const remoteGroup = useMemo(
         () => (remoteGroups ?? []).find(ws => getWorkspaceSelectionId(ws) === selectionId),
         [remoteGroups, selectionId],
@@ -224,15 +223,16 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
         }
     }, [chatFeed.refresh, refreshSidebarGit, toast]);
     const dockTargets = useMemo(
-        () => (dockAvailable && members ? repoGroupDockTargets(workspaceId, members) : undefined),
-        [dockAvailable, members, workspaceId]
+        () => (members ? repoGroupDockTargets(workspaceId, members) : undefined),
+        [members, workspaceId]
     );
     const dock = useWorkspaceDock(workspaceId, dockTargets);
     // An expanded panel covers the whole content row; the content stays mounted.
-    const dockExpanded = useWorkspaceDockExpanded(workspaceId) && dock.isOpen && dockAvailable;
+    const dockExpansion = useWorkspaceDockExpanded(workspaceId);
+    const dockExpanded = dock.isOpen && (isMobile || dockExpansion);
     useEffect(() => {
-        if (!dockAvailable) setWorkspaceDockExpanded(workspaceId, false);
-    }, [dockAvailable, workspaceId]);
+        if (isMobile) setWorkspaceDockExpanded(workspaceId, false);
+    }, [isMobile, workspaceId]);
     // Slots for the split Workspace panel: mobile's last-clicked detail,
     // the middle chat detail, and the shared Git toolbar. State-backed
     // (not refs) so the portals mount once the nodes exist — same shape as
@@ -288,12 +288,6 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     // no provider (a focused test host) the panel simply has no chat scope.
     const panelChatId = useQueueOptional()?.state.selectedTaskIdByRepo[selectionId] ?? null;
     const openSearchMatch = useCallback((match: ContentSearchOverlayMatch, signal: AbortSignal) => {
-        if (!dockAvailable) {
-            return Promise.resolve({
-                opened: false as const,
-                error: 'The file panel is unavailable in this view.',
-            });
-        }
         return openContentSearchMatch({
             panelWorkspaceId: workspaceId,
             scope: 'group',
@@ -302,12 +296,12 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
             signal,
             match,
         });
-    }, [dockAvailable, groupBaseUrl, panelChatId, workspaceId]);
+    }, [groupBaseUrl, panelChatId, workspaceId]);
     // See RepoDetail: publishes the panel to chat entry points below, scoped to
     // the group id (the panel's store key) and the chat it is showing.
     const unifiedPanelHost = useMemo(
-        () => (dockAvailable ? { workspaceId, chatId: panelChatId, routingRef: groupRoutingRef } : null),
-        [dockAvailable, workspaceId, panelChatId, groupRoutingRef],
+        () => ({ workspaceId, chatId: panelChatId, routingRef: groupRoutingRef }),
+        [workspaceId, panelChatId, groupRoutingRef],
     );
 
     return (
@@ -378,7 +372,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                         detailContainer={splitDetailNode}
                                         railShortcutContainer={splitRailShortcutNode}
                                         railScopeLabel={`${resolveRepoGroupDisplayName(selectionId, state.workspaces, remoteGroups)} / Group`}
-                                        detailActive={dockAvailable || splitLastClicked === 'chat' || !splitGitAvailable}
+                                        detailActive={true}
                                         onActivateDetail={() => setSplitLastClicked('chat')}
                                         renderList={aggregatedChats ? renderAggregatedList : undefined}
                                         refreshList={aggregatedChats ? chatFeed.refresh : undefined}
@@ -411,7 +405,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                         detailContainer={splitDetailNode}
                                         detailActive={splitLastClicked === 'git'}
                                         onActivateDetail={() => setSplitLastClicked('git')}
-                                        rightPanel={dockAvailable ? { chatId: panelChatId, ownerRoutingRef: groupRoutingRef } : undefined}
+                                        rightPanel={{ chatId: panelChatId, ownerRoutingRef: groupRoutingRef }}
                                         headerToolbarContainer={splitGitHeaderNode}
                                         active
                                     />
@@ -433,7 +427,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                             />
                     </div>
                 </div>
-                {dockAvailable && (
+
                     <UnifiedRightPanel
                         workspaceId={workspaceId}
                         routingRef={groupRoutingRef}
@@ -447,7 +441,6 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                             baseUrl: groupBaseUrl,
                         }}
                     />
-                )}
             </div>
 
             {/* Ctrl/Cmd+Shift+F — one query across the group's live members. */}

@@ -48,7 +48,7 @@ const mockDispatch = vi.fn();
 let mockSelectedPrId: number | string | null = null;
 let mockWorkspaces: Array<{ id: string; remoteUrl?: string }> = [];
 vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
-    useApp: () => ({ state: { selectedPrId: mockSelectedPrId, workspaces: mockWorkspaces }, dispatch: mockDispatch }),
+    useApp: () => ({ state: { workspaces: mockWorkspaces }, dispatch: mockDispatch }),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/preferences/preferencesApi', () => ({
@@ -59,12 +59,6 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/preferences/preference
 // Default to desktop layout.
 vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true }),
-}));
-
-// Stub the docked status footer (shell chrome with its own suite) so the tab
-// tests can assert its placement without pulling the StatusActions graph.
-vi.mock('../../../../../src/server/spa/client/react/layout/DockedStatusFooter', () => ({
-    DockedStatusFooter: () => <div data-testid="docked-status-footer" />,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useResizablePanel', () => ({
@@ -130,13 +124,18 @@ function mockFetchNetworkError() {
     global.fetch = vi.fn().mockRejectedValue(new Error('Network failure'));
 }
 
-async function renderTab(props: Partial<any> = {}) {
+async function renderTab(props: Partial<any> = {}, ownerContext: any = null) {
     const { PullRequestsTab } = await import(
         '../../../../../src/server/spa/client/react/features/pull-requests/PullRequestsTab'
     );
-    return render(
-        <PullRequestsTab repoId="repo-1" workspaceId="ws-1" {...props} />
-    );
+    const { WorkResourceNavigationContext } = await import('../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/workResourceNavigation');
+    const { WorkspaceOwnerContext } = await import('../../../../../src/server/spa/client/react/repos/workspaceOwnerContext');
+    const tab = { kind: 'pull-requests', ownerWorkspaceId: 'ws-1', workPath: mockSelectedPrId == null ? undefined : `${mockSelectedPrId}/overview` } as any;
+    return render(<PullRequestsTab repoId="repo-1" workspaceId="ws-1" {...props} />, {
+        wrapper: ({ children }) => <WorkspaceOwnerContext.Provider value={ownerContext}>
+            <WorkResourceNavigationContext.Provider value={{ scopeId: ownerContext?.selectionId ?? 'repo-1', tab }}>{children}</WorkResourceNavigationContext.Provider>
+        </WorkspaceOwnerContext.Provider>,
+    });
 }
 
 beforeEach(() => {
@@ -994,15 +993,15 @@ describe('error state', () => {
 // ── Row click ──────────────────────────────────────────────────────────────────
 
 describe('row click', () => {
-    it('dispatches SET_SELECTED_PR with pr.number and updates hash when a row is clicked', async () => {
+    it('opens the owner-qualified panel route with pr.number when a row is clicked', async () => {
         // number (42) is the sequential PR number; id (3395712046) is the GitHub DB id.
         mockFetchOk([makePr({ id: 3395712046, number: 42, title: 'My PR' })]);
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
 
         fireEvent.click(screen.getByTestId('pr-row'));
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_PR', prId: 42 });
-        expect(window.location.hash).toContain('pull-requests/42');
+        expect(window.location.hash).toContain('/panel/pull-requests/ws-1/42/overview');
+        expect(window.location.hash).toContain('pull-requests/ws-1/42');
     });
 
     it('does NOT use the GitHub internal DB id in the hash (regression: pr detail 404)', async () => {
@@ -1014,8 +1013,8 @@ describe('row click', () => {
         fireEvent.click(screen.getByTestId('pr-row'));
         // Must use the sequential number, never the large DB id.
         expect(window.location.hash).not.toContain('3395712046');
-        expect(window.location.hash).toContain('pull-requests/7');
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_PR', prId: 7 });
+        expect(window.location.hash).toContain('pull-requests/ws-1/7');
+        expect(window.location.hash).toContain('/panel/pull-requests/ws-1/7/overview');
     });
 
     it('falls back to pr.id when pr.number is absent', async () => {
@@ -1027,8 +1026,8 @@ describe('row click', () => {
         await waitFor(() => expect(screen.getByTestId('pr-row')).toBeInTheDocument());
 
         fireEvent.click(screen.getByTestId('pr-row'));
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_PR', prId: 99 });
-        expect(window.location.hash).toContain('pull-requests/99');
+        expect(window.location.hash).toContain('/panel/pull-requests/ws-1/99/overview');
+        expect(window.location.hash).toContain('pull-requests/ws-1/99');
     });
 });
 
@@ -1120,28 +1119,6 @@ describe('queue collapse toggle', () => {
         expect(screen.getByTestId('pr-state-dot')).toBeInTheDocument();
         expect(screen.queryByText('Compact PR')).not.toBeInTheDocument();
         expect(screen.queryByTestId('pr-risk-pill')).not.toBeInTheDocument();
-    });
-
-    it('docks the status footer at the bottom of the PR queue sidebar', async () => {
-        mockFetchOk([]);
-        await act(async () => { await renderTab(); });
-        const panel = screen.getByTestId('pr-list-panel');
-        const footer = screen.getByTestId('docked-status-footer');
-        expect(panel.contains(footer)).toBe(true);
-        // Pinned after the queue content so it sits at the bottom of the column.
-        expect(panel.lastElementChild).toBe(footer);
-    });
-
-    it('hides the docked status footer while the queue is collapsed (44px rail)', async () => {
-        mockFetchOk([]);
-        await act(async () => { await renderTab(); });
-        expect(screen.getByTestId('docked-status-footer')).toBeInTheDocument();
-
-        await act(async () => { fireEvent.click(screen.getByTestId('pr-queue-toggle')); });
-        expect(screen.queryByTestId('docked-status-footer')).not.toBeInTheDocument();
-
-        await act(async () => { fireEvent.click(screen.getByTestId('pr-queue-toggle')); });
-        expect(screen.getByTestId('docked-status-footer')).toBeInTheDocument();
     });
 
     it('hides the resize handle when collapsed', async () => {
@@ -1369,7 +1346,7 @@ describe('open PR by number or URL', () => {
         expect(String(fetchMock.mock.calls[3][0])).toContain('/origins/local_ws-1/pull-requests/8');
         expect(String(fetchMock.mock.calls[3][0])).toContain('workspaceId=ws-1');
         expect(String(fetchMock.mock.calls[3][0])).toContain('repoId=repo-1');
-        expect(window.location.hash).toContain('#repos/repo-1/pull-requests/8/overview');
+        expect(window.location.hash).toContain('#repos/repo-1/panel/pull-requests/ws-1/8/overview');
     });
 
     it('hides recent entries when the queue rail is collapsed', async () => {
@@ -1432,9 +1409,9 @@ describe('open PR by number or URL', () => {
             webUrl: 'https://github.com/acme/web/pull/7?notification=1',
         });
         await waitFor(() =>
-            expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_PR', prId: 7 }),
+            expect(window.location.hash).toContain('/panel/pull-requests/ws-1/7/overview'),
         );
-        expect(window.location.hash).toContain('#repos/repo-1/pull-requests/7/overview');
+        expect(window.location.hash).toContain('#repos/repo-1/panel/pull-requests/ws-1/7/overview');
         await waitFor(() => expect(screen.getByText('Validated PR')).toBeInTheDocument());
     });
 
@@ -1460,7 +1437,7 @@ describe('open PR by number or URL', () => {
         expect(String(fetchMock.mock.calls[3][0])).toContain('/origins/local_ws-1/pull-requests/12');
         expect(String(fetchMock.mock.calls[3][0])).toContain('workspaceId=ws-1');
         expect(String(fetchMock.mock.calls[3][0])).toContain('repoId=repo-1');
-        expect(window.location.hash).toContain('pull-requests/12/overview');
+        expect(window.location.hash).toContain('panel/pull-requests/ws-1/12/overview');
     });
 
     it('opens a PR from a full GitHub URL matched to another registered workspace', async () => {
@@ -1499,7 +1476,7 @@ describe('open PR by number or URL', () => {
             title: 'API workspace PR',
         });
         await waitFor(() =>
-            expect(window.location.hash).toContain('#repos/ws-2/pull-requests/99/overview'),
+            expect(window.location.hash).toContain('#repos/repo-1/panel/pull-requests/ws-2/99/overview'),
         );
     });
 
@@ -1518,7 +1495,7 @@ describe('open PR by number or URL', () => {
         fireEvent.change(screen.getByTestId('open-pr-input'), { target: { value: '50' } });
         await act(async () => { fireEvent.click(screen.getByTestId('open-pr-button')); });
 
-        await waitFor(() => expect(window.location.hash).toContain('pull-requests/50/overview'));
+        await waitFor(() => expect(window.location.hash).toContain('panel/pull-requests/ws-1/50/overview'));
         expect(screen.queryByTestId('open-pr-error')).not.toBeInTheDocument();
     });
 
@@ -1729,5 +1706,25 @@ describe('selection attachment ownership', () => {
             expect(screen.getByTestId('pr-detail-owner')).toHaveAttribute('data-destination', destination);
             expect(screen.getByTestId('pr-detail-owner')).toHaveAttribute('data-workspace', 'ws-1');
         }
+    });
+});
+
+
+describe('panel owner PR URL lookup', () => {
+    it('opens a remote owner URL without borrowing a matching local workspace', async () => {
+        const { CocClient } = await import('@plusplusoneplusplus/coc-client');
+        const remoteUrl = 'https://github.com/acme/remote.git';
+        mockWorkspaces = [{ id: 'local-other', remoteUrl }];
+        mockFetchOk([]);
+        const owner = { workspaceId: 'ws-1', selectionId: 'remote:owner:ws-1', baseUrl: 'https://owner.test',
+            client: new CocClient({ baseUrl: 'https://owner.test' }) };
+        await renderTab({ remoteUrl, attachmentDestinationId: owner.selectionId }, owner);
+        await waitFor(() => expect(screen.getByTestId('open-pr-input')).toBeInTheDocument());
+        fireEvent.change(screen.getByTestId('open-pr-input'), { target: { value: 'https://github.com/acme/remote/pull/17' } });
+        fireEvent.click(screen.getByTestId('open-pr-button'));
+        await waitFor(() => expect(location.hash).toContain('/panel/pull-requests/remote%3Aowner%3Aws-1/17/overview'));
+        const urls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.map(call => String(call[0]));
+        expect(urls.every(url => url.startsWith('https://owner.test/'))).toBe(true);
+        expect(urls.some(url => url.includes('local-other'))).toBe(false);
     });
 });

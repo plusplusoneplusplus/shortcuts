@@ -13,7 +13,6 @@ import {
     summarizeRemote,
     remoteProviderLabel,
     remoteProviderKind,
-    REMOTE_SCOPE_KEYS,
 } from '../../../../src/server/spa/client/react/features/remote-shell/shellModel';
 import type { SubTabDef } from '../../../../src/server/spa/client/react/features/repo-detail/repoSubTabs';
 import type { RepoData, RepoGroup } from '../../../../src/server/spa/client/react/repos/repoGrouping';
@@ -33,35 +32,10 @@ const remoteRepo = (id: string, connection: RemoteConnectionStatus, queue: Remot
         },
     } as RepoData);
 
-describe('scope key sets', () => {
-    it('declares Work Items + Pull Requests as remote-scoped', () => {
-        expect([...REMOTE_SCOPE_KEYS]).toEqual(['work-items', 'pull-requests']);
-    });
-});
-
 describe('partitionShellTabs', () => {
-    it('splits remote-scope (stable order) from all other clone tabs (source order)', () => {
-        const tabs = [
-            tab('activity'), tab('cli-sessions'), tab('git'), tab('terminal'),
-            tab('work-items'), tab('pull-requests'),
-            tab('explorer'), tab('schedules'), tab('chats'),
-        ];
-        const { remote, clone } = partitionShellTabs(tabs);
-        expect(remote.map(t => t.key)).toEqual(['work-items', 'pull-requests']);
-        // Every other tab except the Workspace surface (either chat alias) is
-        // clone-scoped, in source order (no fixed overflow).
-        expect(clone.map(t => t.key)).toEqual(['cli-sessions', 'git', 'terminal', 'explorer', 'schedules']);
-    });
-
-    it('omits remote tabs that are not present (e.g. non-git repo)', () => {
-        const { remote, clone } = partitionShellTabs([tab('activity'), tab('work-items'), tab('explorer')]);
-        expect(remote.map(t => t.key)).toEqual(['work-items']);
-        expect(clone.map(t => t.key)).toEqual(['explorer']);
-    });
-
-    it('preserves relabeled tab definitions in the remote bucket', () => {
-        const { remote } = partitionShellTabs([tab('work-items', 'Work Items'), tab('pull-requests', 'Full Requests')]);
-        expect(remote.map(t => t.label)).toEqual(['Work Items', 'Full Requests']);
+    it('keeps page tabs in source order and excludes the workspace aliases', () => {
+        expect(partitionShellTabs([tab('activity'), tab('dreams'), tab('schedules'), tab('chats')]).clone.map(t => t.key))
+            .toEqual(['dreams', 'schedules']);
     });
 });
 

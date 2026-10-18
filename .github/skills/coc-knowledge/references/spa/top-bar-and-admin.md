@@ -9,6 +9,8 @@ The right-hand action cluster is
 `[Connected pill | NotificationBell | AgentProviderQuotaIndicator | Admin | Theme]`, with
 the quota indicator hidden below the `md` breakpoint. The mobile CoC/hostname link is a
 shrinkable truncated flex item so the action cluster stays reachable on narrow phones.
+Repository and group scopes expose the right-panel toggle at every breakpoint;
+Work Items and Pull Requests open from that panel's add-tab menu.
 
 ### Admin sidebar groups
 

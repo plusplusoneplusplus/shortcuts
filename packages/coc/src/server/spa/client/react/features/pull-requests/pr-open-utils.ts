@@ -1,3 +1,4 @@
+import { buildWorkResourceHash } from '../../layout/workResourceRoute';
 /**
  * Helpers for the "Open PR" input on the Pull Requests tab.
  *
@@ -117,12 +118,12 @@ function stripDotGit(s: string): string {
  * Build the dashboard hash-route that deep-links into the existing
  * `PullRequestDetail` view for a PR, opening its overview sub-tab.
  *
- * Centralizes the `#repos/{repoId}/pull-requests/{prNumber}/overview` shape so
+ * Centralizes the `#repos/{repoId}/panel/pull-requests/{ownerId}/{prNumber}/overview` shape so
  * the PR status card and the Pull Requests tab share one definition. Both
  * segments are URL-encoded.
  */
-export function buildPrDetailHash(repoId: string, prNumber: number | string): string {
-    return `#repos/${encodeURIComponent(String(repoId))}/pull-requests/${encodeURIComponent(String(prNumber))}/overview`;
+export function buildPrDetailHash(repoId: string, prNumber: number | string, scopeId = repoId): string {
+    return buildWorkResourceHash(scopeId, 'pull-requests', repoId, `${encodeURIComponent(String(prNumber))}/overview`);
 }
 
 /**

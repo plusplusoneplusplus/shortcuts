@@ -2,7 +2,7 @@
  * Shared model for the virtual-workspace shell header (My Work / My Life).
  *
  * Virtual workspaces have no real repo / git context, so they can't flow through
- * `RemoteScopeCluster` / `WorkspaceTabsCluster` (which assume a `RepoData` with
+ * `WorkspaceIdentityChip` / `WorkspaceTabsCluster` (which assume a `RepoData` with
  * git info, clone grouping, remote/PR/WI links, unseen counts, …). Instead they
  * describe themselves with this lightweight config, rendered by
  * `VirtualWorkspaceShellHeader` (remote-first desktop TopBar) and

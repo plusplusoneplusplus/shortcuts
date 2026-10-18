@@ -238,10 +238,10 @@ describe('resolveDashboardRoute — repo sub-routes', () => {
     });
 
     it('work-item session deep-link populates the work-item deep link', () => {
-        const r = resolveDashboardRoute('#repos/ws1/work-items/it1/session/t1', makeCtx());
+        const r = resolveDashboardRoute('#repos/ws1/panel/work-items/ws1/it1/session/t1', makeCtx());
         expect(appActions({ effects: r.effects })).toEqual(
             expect.arrayContaining([
-                { type: 'SET_WORK_ITEM_DEEP_LINK', workItemId: 'it1', sessionTaskId: 't1', commitHash: null, commitFilePath: null },
+                { type: 'SET_REPO_SUB_TAB', tab: 'activity' },
             ]),
         );
     });

@@ -120,7 +120,7 @@ describe('ComposerPrChip', () => {
         const { getByTestId } = render(<ComposerPrChip item={item} onDismiss={() => {}} />);
 
         const number = getByTestId(`composer-pr-chip-num-${KEY}`) as HTMLAnchorElement;
-        expect(number.getAttribute('href')).toBe('#repos/ws1/pull-requests/42/overview');
+        expect(number.getAttribute('href')).toBe('#repos/ws1/panel/pull-requests/ws1/42/overview');
         expect(number.getAttribute('target')).toBeNull();
         expect(number.getAttribute('rel')).toBeNull();
     });

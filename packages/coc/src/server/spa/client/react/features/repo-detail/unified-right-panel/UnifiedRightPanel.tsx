@@ -54,6 +54,7 @@ import { useFileIdentityOpen } from '../../language-servers/useFileIdentityOpen'
  * have to be visible in the strip rather than only in the view itself.
  */
 
+import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { cn } from '../../../ui/cn';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled } from '../../../utils/config';
@@ -183,6 +184,7 @@ import {
     unifiedTabId,
     type OpenUnifiedPreviewTabInput,
     type OpenUnifiedTabInput,
+    type UnifiedPanelTab,
 } from './unifiedPanelTabsModel';
 import { getRepoGroup } from '../../../repos/repoGroupService';
 import {
@@ -281,7 +283,8 @@ export function UnifiedRightPanel({
     // Expanded covers the workspace row; only an open panel can be expanded, and
     // closing the panel drops the flag so the next open starts at its own width.
     const expandedFlag = useWorkspaceDockExpanded(workspaceId);
-    const expanded = isOpen && expandedFlag;
+    const { isMobile } = useBreakpoint();
+    const expanded = isOpen && (isMobile || expandedFlag);
     useEffect(() => {
         if (!isOpen) setWorkspaceDockExpanded(workspaceId, false);
     }, [isOpen, workspaceId]);
@@ -361,10 +364,20 @@ export function UnifiedRightPanel({
     // Tabs whose views are live right now: mounted, and still visible from this
     // chat. Dropping the invisible ones is what makes a chat switch swap the
     // chat-owned views without disturbing the workspace ones.
-    const mountedTabs = useMemo(
-        () => tabs.filter(tab => mountedIds.has(tab.id)),
-        [tabs, mountedIds],
-    );
+    const retainedScope = JSON.stringify([workspaceId, routingRef]);
+    const retainedScopeRef = useRef(retainedScope);
+    const retainedWorkTabs = useRef(new Map<string, UnifiedPanelTab>());
+    const mountedTabs = useMemo(() => {
+        if (retainedScopeRef.current !== retainedScope) {
+            retainedWorkTabs.current.clear();
+            retainedScopeRef.current = retainedScope;
+        }
+        const live = tabs.filter(tab => mountedIds.has(tab.id));
+        for (const tab of live) {
+            if (tab.kind === 'work-items' || tab.kind === 'pull-requests') retainedWorkTabs.current.set(tab.id, tab);
+        }
+        return [...live, ...Array.from(retainedWorkTabs.current.values()).filter(tab => !live.some(item => item.id === tab.id))];
+    }, [tabs, mountedIds, retainedScope]);
     // A collapsed canvas burst: the active canvas carries the switcher chip in
     // its own header, next to the title (the strip shows it otherwise).
     const stackedCanvasTabs = useMemo(() => compressedCanvasTabs(tabs, activeId).canvasTabs, [tabs, activeId]);
@@ -408,7 +421,11 @@ export function UnifiedRightPanel({
             return Object.keys(retained).length === Object.keys(prev).length ? prev : retained;
         });
     }, [state.tabs]);
-    const openWorkspaceResource = useCallback((kind: 'terminal' | 'notes' | 'settings') => {
+    const openWorkspaceResource = useCallback((kind: 'terminal' | 'notes' | 'settings' | 'work-items' | 'pull-requests') => {
+        if (kind === 'work-items' || kind === 'pull-requests') {
+            open({ ...panelWorkspaceResourceInput(kind, { workspaceId: target, routingRef: targetRoutingRef ?? null, chatId }), ...(target !== workspaceId ? { repoLabel: targetLabel } : {}) });
+            return;
+        }
         if (kind !== 'terminal') {
             open(panelWorkspaceResourceInput(kind, { workspaceId, routingRef: routingRef ?? null, chatId }));
             return;
@@ -2109,8 +2126,8 @@ export function UnifiedRightPanel({
                                 Open…
                             </button>
                         </div>
-                    ) : (
-                        mountedTabs.map(tab => {
+                    ) : null}
+                    {mountedTabs.map(tab => {
                             const pane = splitPaneOf(tab.id);
                             const visible = splitShown ? pane !== null : tab.id === activeId;
                             return (
@@ -2194,8 +2211,7 @@ export function UnifiedRightPanel({
                                 />}
                             </div>
                             );
-                        })
-                    )}
+                        })}
 
                     {splitShown && split !== null && (
                         <div

@@ -90,7 +90,16 @@ export const SETTINGS_ICON = (
     </svg>
 );
 
+export const PULL_REQUESTS_ICON = (
+    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" aria-hidden="true">
+        <path d="M4 5v6m8 0V7L8 3" /><circle cx="4" cy="3" r="2" /><circle cx="4" cy="13" r="2" /><circle cx="12" cy="13" r="2" />
+    </svg>
+);
+
 const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
+    'work-items': TODO_ICON,
+    'pull-requests': PULL_REQUESTS_ICON,
+    external: <span aria-hidden="true">↗</span>,
     settings: SETTINGS_ICON,
     todo: TODO_ICON,
     terminal: (

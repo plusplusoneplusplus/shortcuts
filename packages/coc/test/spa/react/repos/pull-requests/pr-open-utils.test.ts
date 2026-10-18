@@ -174,10 +174,10 @@ describe('matchWorkspaceForPrUrl', () => {
 
 describe('buildPrDetailHash', () => {
     it('builds the overview deep-link route for a PR', () => {
-        expect(buildPrDetailHash('ws-abc', 101)).toBe('#repos/ws-abc/pull-requests/101/overview');
+        expect(buildPrDetailHash('ws-abc', 101)).toBe('#repos/ws-abc/panel/pull-requests/ws-abc/101/overview');
     });
 
     it('URL-encodes the repo id and PR number', () => {
-        expect(buildPrDetailHash('org/repo id', '12 3')).toBe('#repos/org%2Frepo%20id/pull-requests/12%203/overview');
+        expect(buildPrDetailHash('org/repo id', '12 3')).toBe('#repos/org%2Frepo%20id/panel/pull-requests/org%2Frepo%20id/12%203/overview');
     });
 });

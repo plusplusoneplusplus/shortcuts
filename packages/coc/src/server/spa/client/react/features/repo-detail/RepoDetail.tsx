@@ -5,7 +5,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
-import { useWorkItems, loadUnseenWorkItemIds } from '../../contexts/WorkItemContext';
 import { Button, cn } from '../../ui';
 import { getRepoDisplayName } from './RepoTabStrip';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
@@ -23,8 +22,6 @@ import { RepoSettingsTab } from '../repo-settings/RepoSettingsTab';
 import { WorkspaceSettingsProvider } from '../repo-settings/WorkspaceSettingsHost';
 import { WorkspaceSettingsApiProvider } from '../repo-settings/workspaceSettingsClient';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
-import { PullRequestsTab } from '../pull-requests/PullRequestsTab';
-import { WorkItemsTab } from '../work-items/WorkItemsTab';
 import { WorkflowDetailView } from '../../processes/dag';
 import { TerminalView } from '../terminal/TerminalView';
 import { DreamsPanel } from '../dreams/DreamsPanel';
@@ -47,7 +44,6 @@ import { RepoRailGitView } from './RailGitSummary';
 import { useRepoRailGit } from './useRailGitSummary';
 import { useTerminalEnabled } from '../../hooks/feature-flags/useTerminalEnabled';
 import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabled';
-import { usePullRequestsEnabled } from '../../hooks/feature-flags/usePullRequestsEnabled';
 import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
 import { useNativeCliSessionsEnabled } from '../../hooks/feature-flags/useNativeCliSessionsEnabled';
 import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
@@ -151,7 +147,6 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const refreshSidebarGit = useCallback(() => railGitStatus.refresh(true), [railGitStatus.refresh]);
     const terminalEnabled = useTerminalEnabled();
     const workflowsEnabled = useWorkflowsEnabled();
-    const pullRequestsEnabled = usePullRequestsEnabled();
     const dreamsEnabled = useDreamsEnabled();
     const nativeCliSessionsEnabled = useNativeCliSessionsEnabled();
     const showPlanDepTab = useShowPlanDepTab();
@@ -177,19 +172,19 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // Portal host inside the split panel's "Git" section header — RepoGitTab
     // portals its compact toolbar here so it shares the 22px header row.
     const [splitGitHeaderNode, setSplitGitHeaderNode] = useState<HTMLDivElement | null>(null);
-    // Workspace right dock (Terminal + Explorer), available on desktop; the chrome
+    // Workspace right panel, available at every breakpoint; the chrome
     // header owns the controls when present, while the remote-first chromeless
     // shell renders them in the global TopBar. Both drive the same cross-tree
     // open and mode stores.
     const dock = useWorkspaceDock(ws.id);
-    const dockAvailable = !isMobile;
     // An expanded panel covers the whole content row; the content stays mounted.
-    const dockExpanded = useWorkspaceDockExpanded(ws.id) && dock.isOpen && dockAvailable;
+    const dockExpansion = useWorkspaceDockExpanded(ws.id);
+    const dockExpanded = dock.isOpen && (isMobile || dockExpansion);
     useEffect(() => {
-        if (!dockAvailable) setWorkspaceDockExpanded(ws.id, false);
-    }, [dockAvailable, ws.id]);
-    // The dock slot renders the one resource-tabbed panel — same availability
-    // gate, same controller, so the header toggle and the persisted width all
+        if (isMobile) setWorkspaceDockExpanded(ws.id, false);
+    }, [isMobile, ws.id]);
+    // The resource panel shares the header toggle and persisted width through
+    // the same controller; all panel entry points
     // hang off `useWorkspaceDock` above.
     // Which chat owns the panel's chat-scoped tabs (files, canvases, diffs).
     // The selection lives in the queue store rather than in `RepoChatTab`, so
@@ -206,15 +201,9 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
         scopeWorkspaceId: ws.id,
         ownerRoutingRef: explorerRoutingRef,
         chatId: panelChatId,
-        enabled: dockAvailable,
+        enabled: true,
     });
     const openSearchMatch = useCallback((match: ContentSearchOverlayMatch, signal: AbortSignal) => {
-        if (!dockAvailable) {
-            return Promise.resolve({
-                opened: false as const,
-                error: 'The file panel is unavailable in this view.',
-            });
-        }
         return openContentSearchMatch({
             panelWorkspaceId: ws.id,
             scope: 'repo',
@@ -222,41 +211,25 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
             signal,
             match,
         });
-    }, [dockAvailable, panelChatId, ws.id]);
+    }, [panelChatId, ws.id]);
     // Published to the whole subtree so chat entry points (source links, diffs,
     // canvas embeds) know a unified panel is on screen for them and which chat
-    // it is showing. Null on mobile, where entry points use in-chat surfaces.
+    // it is showing, including the mobile full-width presentation.
     const unifiedPanelHost = useMemo(
-        () => (dockAvailable ? { workspaceId: ws.id, chatId: panelChatId, routingRef: explorerRoutingRef } : null),
-        [dockAvailable, ws.id, panelChatId, explorerRoutingRef],
+        () => ({ workspaceId: ws.id, chatId: panelChatId, routingRef: explorerRoutingRef }),
+        [ws.id, panelChatId, explorerRoutingRef],
     );
-    const showHeaderDockControls = dockAvailable && !chromeless;
+    const showHeaderDockControls = !chromeless;
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(ws.id, sessionContextAttachmentsEnabled);
     const [headerContextDropTarget, setHeaderContextDropTarget] = useState<'task' | 'ask' | null>(null);
     const [headerContextDropFeedback, setHeaderContextDropFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-    // Work items: load for this repo if not yet in context (for badge)
-    const { state: workItemState, dispatch: workItemDispatch } = useWorkItems();
-    useEffect(() => {
-        if (workItemState.workItemsByRepo[workItemOriginId] !== undefined) return;
-        getCocClientForWorkspace(ws.id).workItems.listForOrigin(workItemOriginId, { limit: 20 }, { workspaceId: ws.id })
-            .then(data => {
-                if (data) {
-                    workItemDispatch({ type: 'SET_WORK_ITEMS', repoId: workItemOriginId, items: data.items || [], total: data.total ?? 0, hasMore: data.hasMore ?? false });
-                    const ids = loadUnseenWorkItemIds(workItemOriginId);
-                    workItemDispatch({ type: 'LOAD_UNSEEN_WORK_ITEMS', repoId: workItemOriginId, ids });
-                }
-            })
-            .catch(() => {});
-    }, [ws.id, workItemOriginId, workItemDispatch, workItemState.workItemsByRepo]);
-    const unseenWorkItemCount = (workItemState.unseenByRepo[workItemOriginId] || []).length;
-
     const visibleSubTabs = useMemo(() => computeVisibleSubTabs({
         isGitRepo, terminalEnabled, workflowsEnabled,
-        pullRequestsEnabled, dreamsEnabled, showPlanDepTab,
+        dreamsEnabled, showPlanDepTab,
         schedulesInScheduledSlideEnabled,
-    }), [isGitRepo, terminalEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab, schedulesInScheduledSlideEnabled]);
+    }), [isGitRepo, terminalEnabled, workflowsEnabled, dreamsEnabled, showPlanDepTab, schedulesInScheduledSlideEnabled]);
 
     // Redirect only after the capability set for this workspace has resolved.
     // Route memory is kept separately in AppContext, so this display fallback
@@ -438,16 +411,10 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     useWorkspaceQueueSeed(ws.id, queueClient, sourceSelectionId);
 
     const switchSubTab = (tab: RepoSubTab) => {
-        if (tab === 'work-items') workItemDispatch({ type: 'MARK_WORK_ITEMS_SEEN', repoId: workItemOriginId });
         dispatch({ type: 'SET_REPO_SUB_TAB', tab });
         const selectedTaskId = queueState.selectedTaskIdByRepo[sourceSelectionId] ?? null;
         location.hash = '#repos/' + encodeURIComponent(sourceSelectionId) + buildRepoSubTabSuffix(tab, state, selectedTaskId);
     };
-
-    const handleNavigateToTask = useCallback((taskId: string) => {
-        switchSubTab('tasks');
-        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: taskId, repoId: sourceSelectionId });
-    }, [sourceSelectionId, queueDispatch]);
 
     const handleTasksNavStateChange = useCallback((navState: TasksPanelNavState) => {
         dispatch({ type: 'SET_TASKS_NAV_STATE', repoId: ws.id, navState });
@@ -570,9 +537,6 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                         )}
                                         {t.key === 'activity' && queueQueuedCount > 0 && (
                                             <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="activity-queued-badge" title="Queued">{queueQueuedCount}</span>
-                                        )}
-                                        {t.key === 'work-items' && unseenWorkItemCount > 0 && (
-                                            <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="work-items-new-badge" title="Work items with updates">{unseenWorkItemCount}</span>
                                         )}
                                         {t.key === 'wiki' && wikiGeneratingCount > 0 && (
                                             <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#16825d] text-white px-1 py-px rounded-full animate-pulse" data-testid="wiki-generating-badge" title="Generating">⟳</span>
@@ -730,7 +694,6 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                     pinnedTabs={['activity', 'tasks', 'git']}
                     taskCount={taskCount}
                     activityCount={queueRunningCount + queueQueuedCount}
-                    workItemCount={unseenWorkItemCount}
                     leadingSlot={mobileLeadingSlot}
                     actions={[
                         ...([{ label: 'Queue Task', icon: '🤖', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }) }]),
@@ -750,9 +713,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
             <div className="flex flex-row flex-1 min-h-0 min-w-0 overflow-hidden">
             {/* Sub-tab content */}
             <div id="repo-sub-tab-content" className={cn("flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden")} style={dockExpanded ? { display: 'none' } : undefined}>
-                {activeSubTab === 'work-items' ? (
-                    <WorkItemsTab key={ws.id} workspaceId={ws.id} attachmentDestinationId={sourceSelectionId} originId={workItemOriginId} onNavigateToTasksTab={handleNavigateToTask} />
-                ) : activeSubTab === 'tasks' ? (
+                {activeSubTab === 'tasks' ? (
                     <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                         <TasksPanel
                                 key={ws.id}
@@ -764,7 +725,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                             />
                     </div>
                 ) : (
-                    <div className={cn("flex flex-col flex-1 min-h-0 min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'dreams' || activeSubTab === 'cli-sessions' || activeSubTab === 'copilot-sessions' ? "overflow-hidden" : "overflow-y-auto")}>
+                    <div className={cn("flex flex-col flex-1 min-h-0 min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'terminal' || activeSubTab === 'dreams' || activeSubTab === 'cli-sessions' || activeSubTab === 'copilot-sessions' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'workflows' && <TemplatesTab key={ws.id} repo={repo} />}
                             <div style={{ display: (activeSubTab === 'activity' || activeSubTab === 'chats') ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 <SplitWorkspacePanel
@@ -800,7 +761,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                             detailContainer={splitDetailNode}
                                             railShortcutContainer={splitRailShortcutNode}
                                             railScopeLabel={railScopeLabel}
-                                            detailActive={dockAvailable || splitLastClicked === 'chat'}
+                                            detailActive={true}
                                             onActivateDetail={() => setSplitLastClicked('chat')}
                                         />
                                     }
@@ -810,9 +771,8 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                             key={`${ws.id}-split-git`}
                                             workspaceId={ws.id}
                                             layout="split-workspace"
-                                            detailContainer={dockAvailable ? splitGitPanel.detailContainer : splitDetailNode}
-                                            detailActive={dockAvailable || splitLastClicked === 'git'}
-                                            onActivateDetail={dockAvailable ? undefined : () => setSplitLastClicked('git')}
+                                            detailContainer={splitGitPanel.detailContainer}
+                                            detailActive={true}
                                             onViewChange={splitGitPanel.onViewChange}
                                             detailOpen={splitGitPanel.detailOpen}
                                             restoreView={splitGitPanel.restoreView}
@@ -851,14 +811,6 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                 />
                             )}
                         </div>
-                        {isGitRepo && <div style={{ display: activeSubTab === 'pull-requests' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                            {wasVisited('pull-requests') && <PullRequestsTab
-                                attachmentDestinationId={sourceSelectionId}
-                                repoId={ws.id}
-                                workspaceId={ws.id}
-                                remoteUrl={ws.remoteUrl ?? undefined}
-                            />}
-                        </div>}
                         {terminalEnabled && (
                             <div style={{ display: activeSubTab === 'terminal' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 {wasVisited('terminal') && <TerminalView key={ws.id} workspaceId={ws.id} />}
@@ -878,7 +830,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                     </div>
                 )}
             </div>
-            {dockAvailable && (
+
                 <UnifiedRightPanel
                     workspaceId={ws.id}
                     routingRef={explorerRoutingRef}
@@ -886,7 +838,6 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                     dock={dock}
                     workspaceRootPath={ws.rootPath}
                 />
-            )}
             </div>
 
             {/* Generate Task with AI dialog */}

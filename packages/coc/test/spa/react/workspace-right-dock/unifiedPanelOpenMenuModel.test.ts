@@ -31,13 +31,13 @@ function ids(actions: readonly OpenMenuAction[]): string[] {
 describe('openMenuActions', () => {
     it('offers terminal, explorer, notes, browser and canvas for a concrete repo with a chat', () => {
         const actions = openMenuActions({ targetWorkspaceId: REPO, chatId: 'chat-1' });
-        expect(ids(actions)).toEqual(['terminal', 'explorer', 'notes', 'browser', 'canvas']);
+        expect(ids(actions)).toEqual(['terminal', 'explorer', 'work-items', 'pull-requests', 'notes', 'browser', 'canvas']);
         expect(actions.every(action => action.disabled !== true)).toBe(true);
     });
 
     it('omits Explorer for a repo group root, which has no single file tree', () => {
         const actions = openMenuActions({ targetWorkspaceId: GROUP, chatId: 'chat-1' });
-        expect(ids(actions)).toEqual(['terminal', 'notes', 'browser', 'canvas']);
+        expect(ids(actions)).toEqual(['terminal', 'work-items', 'pull-requests', 'notes', 'browser', 'canvas']);
     });
 
     it('disables Canvas with a reason when no chat is selected, rather than hiding it', () => {
@@ -65,7 +65,7 @@ describe('openMenuActions', () => {
 
     it('lists Changes right after New Canvas for a chat that changed files', () => {
         const actions = openMenuActions({ targetWorkspaceId: REPO, chatId: 'chat-1', chatHasChanges: true });
-        expect(ids(actions)).toEqual(['terminal', 'explorer', 'notes', 'browser', 'canvas', 'changes']);
+        expect(ids(actions)).toEqual(['terminal', 'explorer', 'work-items', 'pull-requests', 'notes', 'browser', 'canvas', 'changes']);
         expect(actions.find(action => action.id === 'changes')?.disabled).toBeUndefined();
     });
 
@@ -100,7 +100,7 @@ describe('buildOpenMenuItems', () => {
     it('lists actions and chat canvases and fetches nothing with an empty query', () => {
         const items = buildOpenMenuItems({ actions, files, canvases, query: '' });
         expect(items.map(item => item.key)).toEqual([
-            'action:terminal', 'action:explorer', 'action:notes', 'action:browser', 'action:canvas', 'canvas:c1',
+            'action:terminal', 'action:explorer', 'action:work-items', 'action:pull-requests', 'action:notes', 'action:browser', 'action:canvas', 'canvas:c1',
         ]);
     });
 

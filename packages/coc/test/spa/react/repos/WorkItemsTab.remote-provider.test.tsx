@@ -1,3 +1,4 @@
+import { WorkResourceNavigationContext } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/workResourceNavigation';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { WorkItemsTab } from '../../../../src/server/spa/client/react/features/work-items/WorkItemsTab';
@@ -197,7 +198,9 @@ describe('WorkItemsTab — remote provider tab icon', () => {
         mocks.appState.selectedWorkItemId = 'wi-deep-link';
         mocks.appState.selectedWorkItemSessionTaskId = 'task-deep-link';
 
-        render(<WorkItemsTab workspaceId="ws-test" />);
+        render(<WorkResourceNavigationContext.Provider value={{ scopeId: 'ws-test', tab: {
+            kind: 'work-items', ownerWorkspaceId: 'ws-test', workPath: 'wi-deep-link/session/task-deep-link',
+        } as any }}><WorkItemsTab workspaceId="ws-test" /></WorkResourceNavigationContext.Provider>);
 
         expect(screen.getByTestId('mock-work-item-execution-session')).toBeTruthy();
         expect(screen.getByTestId('work-item-tracker-tab-local')).toHaveAttribute('aria-selected', 'false');

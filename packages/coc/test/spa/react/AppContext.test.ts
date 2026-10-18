@@ -47,7 +47,6 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         wsStatus: 'closed',
         selectedGitCommitHash: null,
         selectedGitFilePath: null,
-        selectedPrId: null,
         selectedRepoWikiId: null,
         selectedWorkflowProcessId: null,
         repoWikiInitialTab: null,
@@ -507,10 +506,10 @@ describe('AppContext reducer', () => {
             const result = appReducer(state, {
                 type: 'RECORD_REPO_ROUTE_SUFFIX',
                 repoId: 'repo-a',
-                suffix: '/work-items/item-1/session/task-1',
+                suffix: '/panel/work-items/repo-a/item-1/session/task-1',
             });
-            expect(result.repoRouteState['repo-a']).toBe('/work-items/item-1/session/task-1');
-            expect(result.repoTabState['repo-a']).toBe('work-items');
+            expect(result.repoRouteState['repo-a']).toBe('/panel/work-items/repo-a/item-1/session/task-1');
+            expect(result.repoTabState['repo-a']).toBe('activity');
         });
 
         it('ignores route suffixes with unknown sub-tabs', () => {
@@ -1414,52 +1413,6 @@ describe('AppContext reducer', () => {
         });
     });
 
-    // ── SET_SELECTED_PR / CLEAR_SELECTED_PR ───────────────────────
-    describe('SET_SELECTED_PR', () => {
-        it('sets selectedPrId to a numeric ID', () => {
-            const result = appReducer(makeState(), { type: 'SET_SELECTED_PR', prId: 42 });
-            expect(result.selectedPrId).toBe(42);
-        });
-
-        it('sets selectedPrId to a string ID (ADO GUID)', () => {
-            const result = appReducer(makeState(), { type: 'SET_SELECTED_PR', prId: 'abc-guid-123' });
-            expect(result.selectedPrId).toBe('abc-guid-123');
-        });
-
-        it('overwrites existing selectedPrId', () => {
-            const state = makeState({ selectedPrId: 1 });
-            const result = appReducer(state, { type: 'SET_SELECTED_PR', prId: 2 });
-            expect(result.selectedPrId).toBe(2);
-        });
-
-        it('does not affect other state fields', () => {
-            const state = makeState({ selectedRepoId: 'r1' });
-            const result = appReducer(state, { type: 'SET_SELECTED_PR', prId: 42 });
-            expect(result.selectedRepoId).toBe('r1');
-        });
-    });
-
-    describe('CLEAR_SELECTED_PR', () => {
-        it('resets selectedPrId to null', () => {
-            const state = makeState({ selectedPrId: 42 });
-            const result = appReducer(state, { type: 'CLEAR_SELECTED_PR' });
-            expect(result.selectedPrId).toBeNull();
-        });
-
-        it('is a no-op when selectedPrId is already null', () => {
-            const state = makeState({ selectedPrId: null });
-            const result = appReducer(state, { type: 'CLEAR_SELECTED_PR' });
-            expect(result.selectedPrId).toBeNull();
-        });
-
-        it('does not affect selectedGitCommitHash', () => {
-            const state = makeState({ selectedGitCommitHash: 'abc', selectedPrId: 1 });
-            const result = appReducer(state, { type: 'CLEAR_SELECTED_PR' });
-            expect(result.selectedGitCommitHash).toBe('abc');
-        });
-    });
-
-    // ── SET_TASKS_NAV_STATE ────────────────────────────────────────────
     describe('SET_TASKS_NAV_STATE', () => {
         const nav = (overrides: Partial<NonNullable<AppContextState['repoSubTabNavState'][string]>> = {}) => ({
             openFilePath: null,

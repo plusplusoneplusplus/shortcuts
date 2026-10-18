@@ -101,16 +101,27 @@ capability loading, and falls back to the chat surface only when the active sub-
 absent from the resolved `visibleSubTabs` — that fallback does not erase the stored deep
 route suffix.
 
-### Workspace Notes and Settings
+### Workspace panel resources
 
-For repos and groups, Notes and Settings are right-panel tabs only; the add-tab
-menu always lists both. `unified-right-panel/unifiedPanelWorkspaceResources.ts`
-builds their owner-qualified descriptors for the menu and for outside links
-(`usePanelWorkspaceResourceOpener`, `openPanelWorkspaceResource`): links focus
-the existing tab, select a requested note, reveal the dock, and are offered only
-when their workspace owns the hosting panel. Group header dock controls resolve
-clone selections to the raw workspace id used by `RepoGroupView`; resource tabs
-retain their concrete server route.
+For repos and groups, Work Items, Pull Requests, Notes and Settings open from the
+right-panel add-tab menu. Each WI/PR tab belongs to one concrete local or remote
+owner; member targets keep their group's hosting workspace. `UnifiedWorkResourceTab`
+reuses `WorkItemsTab` and `PullRequestsTab` under the pinned owner client.
+`workPath` persists list/detail selection in the descriptor. Closed WI/PR views
+stay mounted in the panel to preserve filters, selections and drafts.
+
+`layout/workResourceRoute.ts` owns canonical
+`#repos/<scope>/panel/<kind>/<owner>/<detail>` links. Router opens/focuses the
+owner-qualified tab without clearing the selected chat. Alt+I/Alt+R use these
+routes; removed page routes and invalid panel routes replace to the workspace.
+The same panel mounts on mobile, where its toggle opens a full-width presentation.
+WI/PR list/detail layouts respond to the panel width with their single-pane back
+navigation and restore the split when widened.
+
+`unifiedPanelWorkspaceResources.ts` builds Notes/Settings descriptors for the menu
+and outside links. Those resources belong to the panel workspace; WI/PR tools use
+the current dock target. Group dock controls resolve clone selections to raw
+workspace ids while descriptors retain concrete server routes.
 
 `features/repo-settings/WorkspaceSettingsHost.tsx` mounts one `RepoSettingsTab`
 or `RepoGroupSettingsTab` on first panel open and keeps it in a stable portal

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { cn } from '../../ui';
 import { isMacPlatform } from '../../utils/composerKeyboardShortcuts';
 
@@ -298,7 +299,8 @@ export function cycleWorkspaceDock(workspaceId: string): void {
 export function WorkspaceDockToggle({ workspaceId }: { workspaceId: string }) {
     const [isOpen] = useDockOpen(workspaceDockOpenStorageKey(workspaceId));
     const expanded = useWorkspaceDockExpanded(workspaceId) && isOpen;
-    const label = !isOpen ? 'Show right panel' : expanded ? 'Hide right panel' : 'Expand right panel';
+    const { isMobile } = useBreakpoint();
+    const label = !isOpen ? 'Show right panel' : expanded || isMobile ? 'Hide right panel' : 'Expand right panel';
     useEffect(() => {
         if (!expanded) return;
         const onKeyDown = (event: KeyboardEvent) => {
@@ -317,13 +319,13 @@ export function WorkspaceDockToggle({ workspaceId }: { workspaceId: string }) {
         <button
             type="button"
             data-testid="workspace-dock-toggle"
-            onClick={() => cycleWorkspaceDock(workspaceId)}
+            onClick={() => isMobile ? toggleWorkspaceDockOpen(workspaceId) : cycleWorkspaceDock(workspaceId)}
             aria-label={label}
             aria-expanded={isOpen}
             aria-keyshortcuts={mac ? 'Meta+\\' : 'Control+\\'}
             title={`${label}; ${mac ? '⌘' : 'Ctrl+'}\\ shows/hides right panel`}
             className={cn(
-                'hidden h-7 w-7 items-center justify-center rounded-md border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0969da] md:inline-flex',
+                'inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0969da]',
                 isOpen
                     ? 'border-[#0969da]/40 bg-[#ddf4ff] text-[#0969da] dark:bg-[#3794ff]/20 dark:text-[#79c0ff]'
                     : 'border-[#d0d7de] bg-white text-[#656d76] hover:bg-[#f6f8fa] dark:border-[#3c3c3c] dark:bg-[#1e1e1e] dark:text-[#999] dark:hover:bg-[#2a2a2a]',

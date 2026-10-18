@@ -2,7 +2,7 @@
  * WorkspaceIdentityChip — the active-workspace identity pill: status dot,
  * provider badge, remote-group name, `⧉N` clone-count badge, and a chevron that
  * opens the remote-group picker (`RepoPickerPopover`) with the add-repository
- * actions. Extracted from `RemoteScopeCluster` so the chip renders exactly once
+ * actions. Extracted from `WorkspaceIdentityChip` so the chip renders exactly once
  * whether identity lives in the cluster (legacy header) or in the
  * `ScopeSlideSwitcher`'s workspace segment.
  *

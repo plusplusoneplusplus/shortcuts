@@ -379,7 +379,7 @@ describe('DreamsPanel', () => {
         await waitFor(() => expect(mocks.convert).toHaveBeenCalledWith('ws-1', 'dream-1', {
             artifactType: 'work-item',
             artifactId: 'WI-456',
-            artifactUrl: '#repos/ws-1/work-items/WI-456',
+            artifactUrl: '#repos/ws-1/panel/work-items/ws-1/WI-456',
         }));
     });
 
@@ -408,7 +408,7 @@ describe('DreamsPanel', () => {
         await waitFor(() => expect(mocks.convert).toHaveBeenCalledWith('ws-1', 'dream-1', {
             artifactType: 'work-item',
             artifactId: 'WI-123',
-            artifactUrl: '#repos/ws-1/work-items/WI-123',
+            artifactUrl: '#repos/ws-1/panel/work-items/ws-1/WI-123',
         }));
     });
 });

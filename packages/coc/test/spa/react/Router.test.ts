@@ -141,8 +141,8 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('activity')).toBe(true);
     });
 
-    it('includes "pull-requests"', () => {
-        expect(VALID_REPO_SUB_TABS.has('pull-requests')).toBe(true);
+    it('excludes the Pull Requests panel tool', () => {
+        expect(VALID_REPO_SUB_TABS.has('pull-requests')).toBe(false);
     });
 
     it('includes "cli-sessions"', () => {
@@ -154,8 +154,8 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('today')).toBe(true);
     });
 
-    it('has exactly 19 entries', () => {
-        expect(VALID_REPO_SUB_TABS.size).toBe(19);
+    it('has exactly 17 entries', () => {
+        expect(VALID_REPO_SUB_TABS.size).toBe(17);
     });
 });
 
@@ -959,15 +959,15 @@ describe('handleHash repo sub-tab restore (URL precedence + reducer)', () => {
     });
 
     it('explicit deep repo hashes record the full route suffix', () => {
-        const dispatches = repoHashDispatches('#repos/repo-a/work-items/item-1/session/task-1');
+        const dispatches = repoHashDispatches('#repos/repo-a/panel/work-items/repo-a/item-1/session/task-1');
         expect(dispatches).toContainEqual({
             type: 'RECORD_REPO_ROUTE_SUFFIX',
             repoId: 'repo-a',
-            suffix: '/work-items/item-1/session/task-1',
+            suffix: '/panel/work-items/repo-a/item-1/session/task-1',
         });
-        const next = navigate(makeReducerState(), '#repos/repo-a/work-items/item-1/session/task-1');
-        expect(next.repoRouteState['repo-a']).toBe('/work-items/item-1/session/task-1');
-        expect(next.repoTabState['repo-a']).toBe('work-items');
+        const next = navigate(makeReducerState(), '#repos/repo-a/panel/work-items/repo-a/item-1/session/task-1');
+        expect(next.repoRouteState['repo-a']).toBe('/panel/work-items/repo-a/item-1/session/task-1');
+        expect(next.repoTabState['repo-a']).toBe('activity');
     });
 
     it('bare #repos/:id restores the repo remembered route tab', () => {
@@ -1590,10 +1590,7 @@ describe('Bare W key no longer navigates to wiki', () => {
         expect(dispatches).toHaveLength(0);
     });
 
-    it('Alt+I dispatches work-items navigation', () => {
-        const dispatches = simulateKeyHandler({ key: 'i', code: 'KeyI', altKey: true }, repoState);
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'work-items' });
-    });
+
 });
 
 // ─── Alt+<letter> repo sub-tab keyboard shortcuts ─────────────────
@@ -1629,9 +1626,9 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
 
     const repoState: MockState = { activeTab: 'repos', selectedRepoId: 'my-repo' };
 
-    it('REPO_TAB_SHORTCUTS maps 9 letters to sub-tabs (wiki hidden), with no Notes/Settings page shortcut', () => {
-        expect(Object.keys(REPO_TAB_SHORTCUTS)).toHaveLength(9);
-        expect(REPO_TAB_SHORTCUTS['i']).toBe('work-items');
+    it('REPO_TAB_SHORTCUTS maps 7 letters to sub-tabs (wiki hidden), with no Notes/Settings page shortcut', () => {
+        expect(Object.keys(REPO_TAB_SHORTCUTS)).toHaveLength(7);
+        expect(REPO_TAB_SHORTCUTS['i']).toBeUndefined();
         expect(REPO_TAB_SHORTCUTS['d']).toBe('dreams');
         expect(Object.values(REPO_TAB_SHORTCUTS)).not.toContain('notes');
         expect(Object.values(REPO_TAB_SHORTCUTS)).not.toContain('settings');
@@ -1647,7 +1644,6 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
         ['g', 'KeyG', 'git'],
         ['e', 'KeyE', 'explorer'],
         ['t', 'KeyT', 'tasks'],
-        ['r', 'KeyR', 'pull-requests'],
         ['a', 'KeyA', 'chats'],
         ['w', 'KeyW', 'workflows'],
         ['s', 'KeyS', 'schedules'],
@@ -2169,9 +2165,11 @@ describe('Router source-level: Alt+<letter> keyboard shortcuts', () => {
         expect(ROUTER_SOURCE).not.toContain("e.key === 'w' || e.key === 'W'");
     });
 
-    it('work-items shortcut (Alt+I) is defined in ALL_REPO_TAB_SHORTCUTS and exported in REPO_TAB_SHORTCUTS', () => {
-        expect(ROUTER_SOURCE).toContain("i: 'work-items'");
-        expect(REPO_TAB_SHORTCUTS['i']).toBe('work-items');
+    it('Alt+I and Alt+R open panel routes without page taxonomy', () => {
+        expect(ROUTER_SOURCE).toContain("letter === 'i' || letter === 'r'");
+        expect(ROUTER_SOURCE).toContain('buildWorkResourceHash(state.selectedRepoId');
+        expect(REPO_TAB_SHORTCUTS['i']).toBeUndefined();
+        expect(REPO_TAB_SHORTCUTS['r']).toBeUndefined();
     });
 
     it('bare A is no longer a shortcut (replaced by Alt+A)', () => {
@@ -2202,131 +2200,29 @@ describe('Router source-level: Alt+<letter> keyboard shortcuts', () => {
 
 // ─── pull-requests deep-link dispatch simulation ──────────────────
 
-describe('handleHash pull-requests dispatch simulation', () => {
-    function simulatePrHash(rawHash: string): Array<{ type: string; [key: string]: any }> {
-        const dispatches: Array<{ type: string; [key: string]: any }> = [];
-        const hash = rawHash.replace(/^#/, '');
-        const tab = tabFromHash('#' + hash);
-        if (tab === 'repos') {
-            const parts = hash.split('/');
-            if (parts.length >= 2 && parts[0] === 'repos' && parts[1]) {
-                dispatches.push({ type: 'SET_SELECTED_REPO', id: decodeURIComponent(parts[1]) });
-                if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
-                    dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] });
-                }
-                // Pull-requests deep-link handling (mirrors Router.tsx)
-                if (parts[2] === 'pull-requests' && parts[3]) {
-                    dispatches.push({ type: 'SET_SELECTED_PR', prId: decodeURIComponent(parts[3]) });
-                    const subTab = parts[4] && VALID_PR_DETAIL_TABS.has(parts[4]) ? parts[4] : 'overview';
-                    dispatches.push({ type: 'SET_PR_DETAIL_TAB', tab: subTab });
-                } else if (parts[2] === 'pull-requests') {
-                    dispatches.push({ type: 'CLEAR_SELECTED_PR' });
-                }
-            }
-        }
-        return dispatches;
-    }
-
-    it('dispatches SET_REPO_SUB_TAB pull-requests for #repos/r1/pull-requests', () => {
-        const dispatches = simulatePrHash('#repos/r1/pull-requests');
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'pull-requests' });
-    });
-
-    it('dispatches CLEAR_SELECTED_PR for #repos/r1/pull-requests (list route)', () => {
-        const dispatches = simulatePrHash('#repos/r1/pull-requests');
-        expect(dispatches).toContainEqual({ type: 'CLEAR_SELECTED_PR' });
-    });
-
-    it('dispatches SET_SELECTED_PR for #repos/r1/pull-requests/42', () => {
-        const dispatches = simulatePrHash('#repos/r1/pull-requests/42');
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'pull-requests' });
-        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_PR', prId: '42' });
-    });
-
-    it('does not dispatch CLEAR_SELECTED_PR for #repos/r1/pull-requests/42', () => {
-        const dispatches = simulatePrHash('#repos/r1/pull-requests/42');
-        expect(dispatches.find(d => d.type === 'CLEAR_SELECTED_PR')).toBeUndefined();
-    });
-
-    it('URL-decodes the prId', () => {
-        const dispatches = simulatePrHash('#repos/r1/pull-requests/abc%2F123');
-        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_PR', prId: 'abc/123' });
-    });
-
-    it('dispatches SET_SELECTED_REPO alongside PR actions', () => {
-        const dispatches = simulatePrHash('#repos/my-repo/pull-requests/7');
-        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_REPO', id: 'my-repo' });
-        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_PR', prId: '7' });
-    });
-
-    it('tabFromHash returns "repos" for #repos/r1/pull-requests', () => {
-        expect(tabFromHash('#repos/r1/pull-requests')).toBe('repos');
-    });
-
-    it('tabFromHash returns "repos" for #repos/r1/pull-requests/42', () => {
-        expect(tabFromHash('#repos/r1/pull-requests/42')).toBe('repos');
-    });
-
-    it('pull-requests is in VALID_REPO_SUB_TABS', () => {
-        expect(VALID_REPO_SUB_TABS.has('pull-requests')).toBe(true);
-    });
-
-    it('dispatches SET_PR_DETAIL_TAB overview by default for #repos/r1/pull-requests/42', () => {
-        const dispatches = simulatePrHash('#repos/r1/pull-requests/42');
-        expect(dispatches).toContainEqual({ type: 'SET_PR_DETAIL_TAB', tab: 'overview' });
-    });
-
-    it('dispatches SET_PR_DETAIL_TAB commits for #repos/r1/pull-requests/42/commits', () => {
-        const dispatches = simulatePrHash('#repos/r1/pull-requests/42/commits');
-        expect(dispatches).toContainEqual({ type: 'SET_PR_DETAIL_TAB', tab: 'commits' });
-    });
-
-    it('dispatches SET_PR_DETAIL_TAB checks for #repos/r1/pull-requests/42/checks', () => {
-        const dispatches = simulatePrHash('#repos/r1/pull-requests/42/checks');
-        expect(dispatches).toContainEqual({ type: 'SET_PR_DETAIL_TAB', tab: 'checks' });
-    });
-
-    it('dispatches SET_PR_DETAIL_TAB files for #repos/r1/pull-requests/42/files', () => {
-        const dispatches = simulatePrHash('#repos/r1/pull-requests/42/files');
-        expect(dispatches).toContainEqual({ type: 'SET_PR_DETAIL_TAB', tab: 'files' });
-    });
-
-    it('dispatches SET_PR_DETAIL_TAB overview for #repos/r1/pull-requests/42/overview', () => {
-        const dispatches = simulatePrHash('#repos/r1/pull-requests/42/overview');
-        expect(dispatches).toContainEqual({ type: 'SET_PR_DETAIL_TAB', tab: 'overview' });
-    });
-
-    it('defaults to overview for invalid sub-tab #repos/r1/pull-requests/42/bogus', () => {
-        const dispatches = simulatePrHash('#repos/r1/pull-requests/42/bogus');
-        expect(dispatches).toContainEqual({ type: 'SET_PR_DETAIL_TAB', tab: 'overview' });
-    });
-});
-
-// ─── parsePrDetailTab ──────────────────────────────────────────────
-
 describe('parsePrDetailTab', () => {
     it('returns "overview" for hash without sub-tab', () => {
-        expect(parsePrDetailTab('#repos/r1/pull-requests/42')).toBe('overview');
+        expect(parsePrDetailTab('#repos/r1/panel/pull-requests/r1/42')).toBe('overview');
     });
 
     it('returns "overview" for explicit overview sub-tab', () => {
-        expect(parsePrDetailTab('#repos/r1/pull-requests/42/overview')).toBe('overview');
+        expect(parsePrDetailTab('#repos/r1/panel/pull-requests/r1/42/overview')).toBe('overview');
     });
 
     it('returns "files" for files sub-tab', () => {
-        expect(parsePrDetailTab('#repos/r1/pull-requests/42/files')).toBe('files');
+        expect(parsePrDetailTab('#repos/r1/panel/pull-requests/r1/42/files')).toBe('files');
     });
 
     it('returns "commits" for commits sub-tab', () => {
-        expect(parsePrDetailTab('#repos/r1/pull-requests/42/commits')).toBe('commits');
+        expect(parsePrDetailTab('#repos/r1/panel/pull-requests/r1/42/commits')).toBe('commits');
     });
 
     it('returns "checks" for checks sub-tab', () => {
-        expect(parsePrDetailTab('#repos/r1/pull-requests/42/checks')).toBe('checks');
+        expect(parsePrDetailTab('#repos/r1/panel/pull-requests/r1/42/checks')).toBe('checks');
     });
 
     it('returns "overview" for invalid sub-tab', () => {
-        expect(parsePrDetailTab('#repos/r1/pull-requests/42/invalid')).toBe('overview');
+        expect(parsePrDetailTab('#repos/r1/panel/pull-requests/r1/42/invalid')).toBe('overview');
     });
 
     it('returns "overview" for list-level hash', () => {

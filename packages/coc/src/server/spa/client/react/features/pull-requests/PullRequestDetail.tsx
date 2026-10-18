@@ -17,7 +17,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { cn } from '../../ui';
-import { useApp } from '../../contexts/AppContext';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useCocClient } from '../../repos/cloneRouting';
 import { formatTimestamp, prStatusBadge, autoMergeBadge } from './pr-utils';
@@ -67,6 +66,8 @@ export interface PullRequestDetailProps {
     onBack: () => void;
     /** When true (mobile), renders the back button. Hidden on desktop. */
     isMobile?: boolean;
+    selectedTab?: string;
+    onNavigateTab?: (tab: PrDetailTab) => void;
 }
 
 const TAB_DEFINITIONS: Array<{ id: PrDetailTab; label: string }> = [
@@ -78,8 +79,7 @@ const TAB_DEFINITIONS: Array<{ id: PrDetailTab; label: string }> = [
 
 const EMPTY_FILES: FileChange[] = [];
 
-export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId, remoteUrl, prId, onBack, isMobile = false }: PullRequestDetailProps) {
-    const { state, dispatch } = useApp();
+export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId, remoteUrl, prId, onBack, isMobile = false, selectedTab, onNavigateTab }: PullRequestDetailProps) {
     const cloneClient = useCocClient(workspaceId);
     const [pr, setPr] = useState<PullRequest | null>(null);
     const [threads, setThreads] = useState<CommentThread[]>([]);
@@ -96,8 +96,8 @@ export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const initialTab = (state.selectedPrDetailTab as PrDetailTab) ?? 'overview';
-    const [detailTab, setDetailTab] = useState<PrDetailTab>(initialTab);
+    const requestedTab = TAB_DEFINITIONS.some(tab => tab.id === selectedTab) ? selectedTab as PrDetailTab : 'overview';
+    const [detailTab, setDetailTab] = useState<PrDetailTab>(requestedTab);
     const [aiPassRunning, setAiPassRunning] = useState(false);
     const [aiPassDone, setAiPassDone] = useState(false);
     const [summaryCopied, setSummaryCopied] = useState(false);
@@ -142,7 +142,7 @@ export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId
         presentation: assistantPresentation,
         lensEnabled: assistantLensEnabled,
         isDesktop: assistantIsDesktop,
-    } = useReviewChatPresentation({ target: prChatTarget });
+    } = useReviewChatPresentation({ target: prChatTarget, isDesktop: isMobile ? false : undefined });
     const openAssistant = useCallback(() => {
         if (!assistantOpen) toggleAssistant();
     }, [assistantOpen, toggleAssistant]);
@@ -162,11 +162,9 @@ export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId
     const switchTab = useCallback(
         (tab: PrDetailTab) => {
             setDetailTab(tab);
-            dispatch({ type: 'SET_PR_DETAIL_TAB', tab });
-            const newHash = `#repos/${encodeURIComponent(String(repoId))}/pull-requests/${encodeURIComponent(String(prId))}/${tab}`;
-            history.replaceState(null, '', newHash);
+            onNavigateTab?.(tab);
         },
-        [dispatch, repoId, prId],
+        [onNavigateTab],
     );
 
     const fetchAll = useCallback((force = false) => {
@@ -251,10 +249,10 @@ export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId
 
     // Sync local tab state when context changes (e.g. hash navigation)
     useEffect(() => {
-        if (state.selectedPrDetailTab && state.selectedPrDetailTab !== detailTab) {
-            setDetailTab(state.selectedPrDetailTab as PrDetailTab);
+        if (requestedTab !== detailTab) {
+            setDetailTab(requestedTab);
         }
-    }, [state.selectedPrDetailTab]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [requestedTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const threadGroups = useMemo(() => buildThreadGroupsFromThreads(threads), [threads]);
     const timeline = useMemo(() => buildTimelineFromRealData(threads, commits, threadGroups), [threads, commits, threadGroups]);
@@ -300,8 +298,6 @@ export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId
 
 
     const handleBack = () => {
-        dispatch({ type: 'CLEAR_SELECTED_PR' });
-        window.location.hash = `#repos/${encodeURIComponent(String(repoId))}/pull-requests`;
         onBack();
     };
 
@@ -432,7 +428,7 @@ export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId
                         </span>
                     )}
 
-                    <span className="inline-flex shrink-0 items-center gap-1" data-testid="pr-branches">
+                    <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-1 break-all" data-testid="pr-branches">
                         <strong className="font-mono text-gray-700 dark:text-gray-300">
                             {pr.author?.displayName ?? 'unknown'}
                         </strong>
@@ -465,7 +461,7 @@ export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId
                         <span className="shrink-0">· upd {formatTimestamp(pr.updatedAt)}</span>
                     )}
 
-                    <div className="ml-auto flex shrink-0 items-center gap-px">
+                    <div className="ml-auto flex max-w-full flex-wrap items-center gap-1">
                         <button
                             type="button"
                             className="inline-flex min-h-[20px] items-center justify-center rounded border border-transparent bg-green-600 px-1.5 py-0 text-[11px] font-semibold leading-none text-white shadow-sm hover:bg-green-700"
@@ -580,7 +576,7 @@ export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId
             >
                 {detailTab === 'overview' && (
                     <div className="w-full px-2.5 pb-7 pt-2" data-testid="overview-tab">
-                        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_264px]">
+                        <div className={cn("grid gap-2", !isMobile && "lg:grid-cols-[minmax(0,1fr)_264px]")}>
                             <div className="grid gap-2">
                                 {reviewSummary && (
                                     <PrReviewSummaryPanel
@@ -677,7 +673,7 @@ export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId
                                 Failed to load checks: {checksError}
                             </div>
                         )}
-                        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_264px]">
+                        <div className={cn("grid gap-2", !isMobile && "lg:grid-cols-[minmax(0,1fr)_264px]")}>
                             <PrChecksTable rows={checkRows} />
                             <PrMergeReadiness items={mergeReadiness} />
                         </div>
