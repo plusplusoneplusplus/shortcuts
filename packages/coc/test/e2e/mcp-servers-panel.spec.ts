@@ -1,5 +1,5 @@
 /**
- * Tests the MCP Servers settings panel at #repos/:id/settings/mcp:
+ * Tests the MCP Servers settings panel in the workspace dock:
  *   - Navigation to the panel and rendering
  *   - Empty state when no MCP servers are configured
  *   - Server list rendering with available servers
@@ -11,6 +11,7 @@
 
 import { test, expect } from './fixtures/server-fixture';
 import { seedWorkspace, request } from './fixtures/seed';
+import { gotoWorkspace, openWorkspacePanel } from './fixtures/remote-shell';
 import type { Page } from '@playwright/test';
 
 // ---------------------------------------------------------------------------
@@ -47,7 +48,9 @@ async function setupAndNavigate(
 ): Promise<void> {
     await seedWorkspace(serverUrl, WS_ID, WS_NAME);
     await dismissOnboarding(serverUrl);
-    await page.goto(`${serverUrl}/#repos/${WS_ID}/settings/mcp`);
+    await gotoWorkspace(page, serverUrl, WS_ID);
+    await openWorkspacePanel(page, 'settings');
+    await page.getByTestId('nav-item-mcp').click();
     await expect(page.locator('[data-testid="settings-content-panel"]')).toBeVisible({ timeout: 10_000 });
 }
 
@@ -91,7 +94,7 @@ const TWO_SERVERS: McpConfigResponse = {
 // ---------------------------------------------------------------------------
 
 test.describe('MCP Servers Panel — Navigation', () => {
-    test('MCP.1 navigates to settings/mcp and renders the panel', async ({ page, serverUrl }) => {
+    test('MCP.1 opens MCP settings in the workspace panel', async ({ page, serverUrl }) => {
         await mockMcpConfig(page, TWO_SERVERS);
         await setupAndNavigate(page, serverUrl);
 
@@ -105,7 +108,8 @@ test.describe('MCP Servers Panel — Navigation', () => {
         await dismissOnboarding(serverUrl);
 
         // Start on a different section (info)
-        await page.goto(`${serverUrl}/#repos/${WS_ID}/settings/info`);
+        await gotoWorkspace(page, serverUrl, WS_ID);
+        await openWorkspacePanel(page, 'settings');
         await expect(page.locator('[data-testid="settings-content-panel"]')).toBeVisible({ timeout: 10_000 });
 
         // Click MCP nav
@@ -323,7 +327,9 @@ test.describe('MCP Servers Panel — Persistence', () => {
         await expect(page.locator('[data-testid="mcp-toggle-code-tools"]')).not.toBeChecked({ timeout: 5_000 });
 
         // Reload the page
-        await page.goto(`${serverUrl}/#repos/${WS_ID}/settings/mcp`);
+        await gotoWorkspace(page, serverUrl, WS_ID);
+        await openWorkspacePanel(page, 'settings');
+        await page.getByTestId('nav-item-mcp').click();
         await expect(page.locator('[data-testid="settings-content-panel"]')).toBeVisible({ timeout: 10_000 });
 
         // code-tools should still be disabled after reload

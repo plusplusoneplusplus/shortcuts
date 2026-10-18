@@ -1,29 +1,17 @@
-/**
- * Notes page — status dock regression (remote-first shell)
- *
- * Regression: on a workspace's Notes sub-tab the app-wide `GlobalStatusDock`
- * painted a partial-width bottom band the width of the left sidebar column,
- * leaving an empty white strip beneath the note editor to its right — because
- * the notes view was never registered among the pages that dock the status
- * cluster in their own left-column footer (Admin, My Work, chat/activity).
- *
- * Fix: `NotesView` docks the cluster in its own `NotesSidebar` footer
- * (`dockStatusFooter`) and `GlobalStatusDock` stands down on the notes sub-tab,
- * so the editor pane keeps full height and no partial-width band is painted.
- *
- */
+/** Notes in a workspace panel leaves status actions in the workspace sidebar. */
 
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
+import { gotoWorkspace, openWorkspacePanel } from './fixtures/remote-shell';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture } from './fixtures/repo-fixtures';
 
 const WS_ID = 'ws-notes-dock';
 
 test.describe('Notes page — status dock (remote-first shell)', () => {
-    test('notes sub-tab docks the status cluster in its own sidebar, no global band', async ({
+    test('Notes panel keeps one workspace status footer and no global band', async ({
         page,
         serverUrl,
     }) => {
@@ -40,31 +28,23 @@ test.describe('Notes page — status dock (remote-first shell)', () => {
                 timeout: 15_000,
             });
 
-            // Navigate to the workspace Notes sub-tab.
-            await page.evaluate((id) => {
-                location.hash = `#repos/${id}/notes`;
-            }, WS_ID);
+            await gotoWorkspace(page, serverUrl, WS_ID);
+            await openWorkspacePanel(page, 'notes');
 
             // The notes view (with its own left sidebar) renders.
             const sidebar = page.locator('[data-testid="notes-sidebar"]');
             await expect(sidebar).toBeVisible({ timeout: 15_000 });
             await expect(page.locator('[data-testid="notes-content"]')).toBeVisible({ timeout: 5_000 });
 
-            // Fix #1 — the app-wide partial-width status band stands down on the
-            // notes sub-tab, so no empty strip is painted beside the editor.
-            await expect(page.locator('[data-testid="global-status-dock"]')).toHaveCount(0, {
-                timeout: 5_000,
-            });
+            await page.getByTestId('unified-right-panel').locator('[role="tab"][data-kind="notes"]').focus();
+            await page.keyboard.press('Escape');
+            await expect(page.getByTestId('unified-right-panel')).toHaveAttribute('data-expanded', 'false');
+            await expect(page.getByTestId('global-status-dock')).toHaveCount(0);
+            await expect(sidebar.getByTestId('sidebar-status-actions')).toHaveCount(0);
+            await expect(page.getByTestId('sidebar-status-actions')).toBeVisible();
 
-            // Fix #2 — the status/action cluster is now docked INSIDE the notes
-            // sidebar footer, keeping the editor pane full height.
-            await expect(sidebar.locator('[data-testid="sidebar-status-actions"]')).toBeVisible({
-                timeout: 5_000,
-            });
-
-            // The editor column extends to (near) the viewport bottom — there is
-            // no reserved band beneath it. The docked footer lives in the left
-            // sidebar column, not below the editor.
+            // The panel reaches the viewport bottom without reserving space
+            // for another status footer below the editor.
             const viewport = page.viewportSize();
             const contentBox = await page.locator('[data-testid="notes-content"]').boundingBox();
             expect(contentBox).not.toBeNull();

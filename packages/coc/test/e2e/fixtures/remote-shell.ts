@@ -19,6 +19,23 @@ export async function gotoWorkspace(
     await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 15_000 });
 }
 
+/** Open or focus a dock resource, expanded so its desktop sidebar stays in flow. */
+export async function openWorkspacePanel(page: Page, kind: 'notes' | 'settings'): Promise<void> {
+    const panel = page.getByTestId('unified-right-panel');
+    if (await panel.getAttribute('data-open') !== 'true') {
+        await page.getByTestId('workspace-dock-toggle').first().click();
+    }
+    await expect(panel).toHaveAttribute('data-open', 'true');
+    if (await panel.getAttribute('data-expanded') !== 'true') {
+        await page.getByTestId('workspace-dock-toggle').first().click();
+    }
+    await expect(panel).toHaveAttribute('data-expanded', 'true');
+    await panel.getByTestId('unified-panel-open-menu').click();
+    await page.getByTestId(`unified-panel-open-${kind}`).click();
+    await expect(panel.locator(`[role="tab"][data-kind="${kind}"]`)).toHaveAttribute('aria-selected', 'true');
+    await expect(panel.getByTestId(kind === 'notes' ? 'notes-sidebar' : 'settings-content-panel')).toBeVisible();
+}
+
 /** Open the picker, optionally filtering rows; leave it open for the caller. */
 export async function openRemotePicker(page: Page, query?: string): Promise<void> {
     await expect(page.locator('[data-testid="remote-chip"]').first()).toBeVisible({ timeout: 20_000 });
@@ -42,7 +59,8 @@ export async function selectRepoNamed(page: Page, name: string): Promise<void> {
 export async function openSubTab(page: Page, key: string): Promise<void> {
     const inline = page.locator(`button[data-subtab="${key}"]`).first();
     if (await inline.isVisible().catch(() => false)) {
-        await inline.click();
+        // Clicking an already active header tab returns to Workspace.
+        if (await inline.getAttribute('data-active') !== 'true') await inline.click();
     } else {
         await page.locator('[data-testid="subbar-overflow-toggle"]').click();
         await page.locator(`[data-testid="subbar-overflow-menu"] [data-subtab="${key}"]`).click();

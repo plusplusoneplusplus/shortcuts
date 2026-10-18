@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { test, expect } from './fixtures/server-fixture';
 import { request, seedQueueTask, seedWorkspace } from './fixtures/seed';
-import { openAddRepoOption, openRemotePicker } from './fixtures/remote-shell';
+import { openAddRepoOption, openRemotePicker, openWorkspacePanel } from './fixtures/remote-shell';
 import { createMultiCommitRepo } from './fixtures/git-fixtures';
 import { createE2EMockSDKService } from './fixtures/mock-ai';
 
@@ -38,7 +38,8 @@ test('exclusive writer create/edit/settings, authoritative rejection, handoff an
     };
     const read = async (id: string) => JSON.parse((await request(`${serverUrl}/api/repo-groups/${id}`)).body);
     const firstId = await create('First writer');
-    await page.goto(`${serverUrl}/#repos/${firstId}/settings`);
+    await page.goto(`${serverUrl}/#repos/${firstId}`);
+    await openWorkspacePanel(page, 'settings');
     await expect(page.getByTestId(`repo-group-member-row-${memberId}`)).toContainText('Writer');
     await page.screenshot({ path: testInfo.outputPath('initial-writer.png') });
     await page.goto(`${serverUrl}/#repos/${memberId}/chats`);
@@ -58,7 +59,7 @@ test('exclusive writer create/edit/settings, authoritative rejection, handoff an
     await expect(page.getByTestId(`repo-group-member-description-${memberId}`)).toHaveValue('Preserved draft');
     await expect(toggle).not.toBeChecked();
     await expect(page.locator('#repo-group-dialog').getByRole('link', { name: 'Open writer group' }))
-        .toHaveAttribute('href', `#repos/${firstId}/settings`);
+        .toHaveAttribute('href', `#repos/${firstId}`);
     await page.screenshot({ path: testInfo.outputPath('rejected-create.png') });
     await toggle.check();
     await page.getByTestId('repo-group-save-btn').click();
@@ -67,7 +68,8 @@ test('exclusive writer create/edit/settings, authoritative rejection, handoff an
     const secondId = workspaces.find((ws: any) => ws.name === 'Second group').id;
     expect((await read(secondId)).members[0]).toMatchObject({ readOnly: true, description: 'Preserved draft' });
 
-    await page.goto(`${serverUrl}/#repos/${secondId}/settings`);
+    await page.goto(`${serverUrl}/#repos/${secondId}`);
+    await openWorkspacePanel(page, 'settings');
     const row = page.getByTestId(`repo-group-member-row-${memberId}`);
     await expect(row).toContainText('Read-only');
     // A rejected save may roll back before uncheck() verifies its final state.
@@ -82,10 +84,11 @@ test('exclusive writer create/edit/settings, authoritative rejection, handoff an
     await expect(page.getByTestId(`repo-group-member-read-only-${memberId}`)).toBeChecked();
     expect((await read(secondId)).members[0].readOnly).toBe(true);
     await row.getByRole('link', { name: 'Open writer group' }).click();
-    await expect(page).toHaveURL(`${serverUrl}/#repos/${firstId}/settings`);
+    await expect(page).toHaveURL(new RegExp(`#repos/${firstId}/(?:chats|activity)$`));
     await page.getByTestId(`repo-group-member-read-only-${memberId}`).check();
     await expect.poll(async () => (await read(firstId)).members[0].readOnly).toBe(true);
-    await page.goto(`${serverUrl}/#repos/${secondId}/settings`);
+    await page.goto(`${serverUrl}/#repos/${secondId}`);
+    await openWorkspacePanel(page, 'settings');
     await page.getByTestId(`repo-group-member-read-only-${memberId}`).uncheck();
     await expect.poll(async () => (await read(secondId)).members[0].readOnly).toBe(false);
 
@@ -109,7 +112,8 @@ test('exclusive writer create/edit/settings, authoritative rejection, handoff an
     await openRemotePicker(page, 'Third saved writer');
     await expect(page.getByTestId('repo-group-item')).toBeVisible();
     await page.keyboard.press('Escape');
-    await page.goto(`${serverUrl}/#repos/${thirdId}/settings`);
+    await page.goto(`${serverUrl}/#repos/${thirdId}`);
+    await openWorkspacePanel(page, 'settings');
     await expect(row.getByRole('alert')).toContainText('Second group');
     await expect(row.getByRole('alert')).toContainText('Third saved writer');
     await expect(row.getByRole('link', { name: 'Open writer group' })).toHaveCount(2);
@@ -126,12 +130,15 @@ test('exclusive writer create/edit/settings, authoritative rejection, handoff an
     await page.getByTestId('repo-group-save-btn').click();
     await expect(page.locator('#repo-group-dialog')).toBeHidden();
     expect((await read(thirdId)).name).toBe('Renamed saved writer');
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(`${serverUrl}/#repos/${thirdId}/settings`);
+    // Settings lives in the desktop dock; keep it mounted for the narrow-row check.
+    await page.setViewportSize({ width: 800, height: 844 });
+    await page.goto(`${serverUrl}/#repos/${thirdId}`);
+    await openWorkspacePanel(page, 'settings');
     await expect(row).toContainText('Writer conflict');
     const width = await row.evaluate(element => ({ scroll: element.scrollWidth, client: element.clientWidth }));
     expect(width.scroll).toBeLessThanOrEqual(width.client + 1);
     await page.screenshot({ path: testInfo.outputPath('narrow-saved-conflicts.png') });
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.getByTestId('repo-group-name-back').click();
     await page.getByRole('button', { name: 'More actions for Renamed saved writer' }).click();
     await page.getByRole('menuitem', { name: /Edit/ }).click();
@@ -191,7 +198,7 @@ test('remote owner capability, authoritative save and writer links stay separate
         await page.getByTestId(`repo-group-member-check-${memberId}`).check();
         const toggle = page.getByTestId(`repo-group-member-read-only-${memberId}`);
         await expect(toggle).toBeChecked();
-        const remoteLink = `#repos/remote%3Afixture-owner%3A${remoteOwnerId}/settings`;
+        const remoteLink = `#repos/remote%3Afixture-owner%3A${remoteOwnerId}`;
         await expect(page.locator('#repo-group-dialog').getByRole('link', { name: 'Open writer group' }))
             .toHaveAttribute('href', remoteLink);
         await toggle.uncheck();
@@ -205,7 +212,8 @@ test('remote owner capability, authoritative save and writer links stay separate
         expect((await request(`${serverUrl}/api/repo-groups/group-remote-second`)).status).toBe(404);
         const owner = JSON.parse((await request(`${serverUrl}/api/repo-groups/${localOwnerId}`)).body);
         expect(owner.members[0].readOnly).toBe(false);
-        await page.goto(`${serverUrl}/?remoteFixture#repos/remote%3Afixture-owner%3Agroup-remote-second/settings`);
+        await page.goto(`${serverUrl}/?remoteFixture#repos/remote%3Afixture-owner%3Agroup-remote-second`);
+        await openWorkspacePanel(page, 'settings');
         const row = page.getByTestId(`repo-group-member-row-${memberId}`);
         await expect(row).toContainText('Shared repository');
         const savedToggle = page.getByTestId(`repo-group-member-read-only-${memberId}`);
@@ -224,7 +232,7 @@ test('remote owner capability, authoritative save and writer links stay separate
         expect(rejectedGroup.members[0].readOnly).toBe(true);
         await expect(row.getByRole('link', { name: 'Open writer group' })).toHaveAttribute('href', remoteLink);
         await row.getByRole('link', { name: 'Open writer group' }).click();
-        await expect(page).toHaveURL(new RegExp(`remote%3Afixture-owner%3A${remoteOwnerId}/settings$`));
+        await expect(page).toHaveURL(new RegExp(`remote%3Afixture-owner%3A${remoteOwnerId}/(?:chats|activity)$`));
         await expect(row).toContainText('Writer');
         expect(errors).toEqual([]);
         expect(consoleErrors.filter(message => !/^Failed to load resource: the server responded with a status of (404|409)\b/.test(message))).toEqual([]);

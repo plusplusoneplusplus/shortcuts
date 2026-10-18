@@ -19,6 +19,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { test, expect, safeRmSync, type Page } from './fixtures/server-fixture';
+import { gotoWorkspace, openWorkspacePanel } from './fixtures/remote-shell';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture } from './fixtures/repo-fixtures';
 
@@ -48,12 +49,10 @@ function seedNotesTree(dataDir: string, wsId = WS_ID): string {
     return root;
 }
 
-/** Navigate to the workspace Notes sub-tab and wait for the tree to render. */
+/** Open the workspace Notes panel and wait for the tree to render. */
 async function openNotesTree(page: Page, serverUrl: string, wsId = WS_ID): Promise<void> {
-    await page.goto(serverUrl);
-    await page.evaluate((id) => {
-        location.hash = `#repos/${id}/notes`;
-    }, wsId);
+    await gotoWorkspace(page, serverUrl, wsId);
+    await openWorkspacePanel(page, 'notes');
     await expect(page.locator('[data-testid="notes-sidebar"]')).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('[data-testid="notes-tree"]')).toBeVisible({ timeout: 10_000 });
 }

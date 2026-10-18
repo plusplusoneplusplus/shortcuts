@@ -108,7 +108,9 @@ menu always lists both. `unified-right-panel/unifiedPanelWorkspaceResources.ts`
 builds their owner-qualified descriptors for the menu and for outside links
 (`usePanelWorkspaceResourceOpener`, `openPanelWorkspaceResource`): links focus
 the existing tab, select a requested note, reveal the dock, and are offered only
-when their workspace owns the hosting panel.
+when their workspace owns the hosting panel. Group header dock controls resolve
+clone selections to the raw workspace id used by `RepoGroupView`; resource tabs
+retain their concrete server route.
 
 `features/repo-settings/WorkspaceSettingsHost.tsx` mounts one `RepoSettingsTab`
 or `RepoGroupSettingsTab` on first panel open and keeps it in a stable portal

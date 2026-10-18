@@ -12,7 +12,7 @@
  * the notes API itself is served entirely from an in-memory mock — no real note
  * files on disk. See fixtures/notes-fixtures.ts.
  *
- * Hash routing (#repos/{id}/notes) selects the repo and the notes sub-tab.
+ * The workspace dock resource menu opens the Notes panel.
  */
 
 import * as fs from 'fs';
@@ -22,7 +22,7 @@ import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture } from './fixtures/repo-fixtures';
 import { createNotesStore, mockNotesApi, type NoteTreeNode } from './fixtures/notes-fixtures';
-import { gotoWorkspace } from './fixtures/remote-shell';
+import { gotoWorkspace, openWorkspacePanel } from './fixtures/remote-shell';
 
 const WS_ID = 'ws-notes-mock';
 
@@ -42,14 +42,15 @@ function seedTree(): NoteTreeNode[] {
 }
 
 /**
- * Navigate straight to the workspace Notes sub-tab and wait for the sidebar.
+ * Open the workspace Notes panel and wait for the sidebar.
  */
 async function openNotesPage(
     page: import('@playwright/test').Page,
     serverUrl: string,
     wsId: string,
 ): Promise<void> {
-    await gotoWorkspace(page, serverUrl, wsId, 'notes');
+    await gotoWorkspace(page, serverUrl, wsId);
+    await openWorkspacePanel(page, 'notes');
     await expect(page.locator('[data-testid="notes-sidebar"]')).toBeVisible({ timeout: 15_000 });
 }
 
