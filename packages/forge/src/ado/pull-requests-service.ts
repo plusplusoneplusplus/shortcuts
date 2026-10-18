@@ -301,6 +301,7 @@ export class AdoPullRequestsService {
         repositoryId: string,
         pullRequestId: number,
         project?: string,
+        strict = false,
     ): Promise<GitPullRequestIteration[]> {
         const api = await this.getGitApi();
         try {
@@ -314,8 +315,10 @@ export class AdoPullRequestsService {
                 project,
                 false,
             );
+            if (strict && result == null) throw new Error('PR iterations are unavailable');
             return result ?? [];
         } catch (error) {
+            if (strict) throw error;
             throw new AdoPullRequestError(
                 `Failed to get iterations for PR ${pullRequestId}: ${error}`,
             );
@@ -392,12 +395,14 @@ export class AdoPullRequestsService {
 
     /**
      * Fetch all per-PR statuses (e.g. build/CI statuses posted against the
-     * pull request itself). Returns an empty list on failure (best-effort).
+     * pull request itself). Strict reads preserve transport errors; default reads
+     * return an empty list on failure (best-effort).
      */
     async getPullRequestStatuses(
         repositoryId: string,
         pullRequestId: number,
         project?: string,
+        strict = false,
     ): Promise<GitPullRequestStatus[]> {
         const logger = getLogger();
         const api = await this.getGitApi();
@@ -407,6 +412,7 @@ export class AdoPullRequestsService {
                 `getPullRequestStatuses: repo=${repositoryId} PR #${pullRequestId} project=${project ?? '(default)'}`,
             );
             const result = await api.getPullRequestStatuses(repositoryId, pullRequestId, project);
+            if (strict && result == null) throw new Error('PR statuses are unavailable');
             const statuses = (result as unknown as GitPullRequestStatus[] | undefined) ?? [];
             logger.info(
                 LogCategory.ADO,
@@ -414,6 +420,7 @@ export class AdoPullRequestsService {
             );
             return statuses;
         } catch (err) {
+            if (strict) throw err;
             const errMsg = err instanceof Error ? err.message : String(err);
             logger.warn(
                 LogCategory.ADO,
@@ -425,12 +432,14 @@ export class AdoPullRequestsService {
 
     /**
      * Fetch per-commit statuses for a given commit SHA (latest run per
-     * context). Returns an empty list on failure (best-effort).
+     * context). Strict reads preserve transport errors; default reads return an
+     * empty list on failure (best-effort).
      */
     async getCommitStatuses(
         repositoryId: string,
         commitId: string,
         project?: string,
+        strict = false,
     ): Promise<GitStatus[]> {
         const logger = getLogger();
         const api = await this.getGitApi();
@@ -440,6 +449,7 @@ export class AdoPullRequestsService {
                 `getCommitStatuses: repo=${repositoryId} commit=${commitId} project=${project ?? '(default)'}`,
             );
             const result = await api.getStatuses(commitId, repositoryId, project, undefined, undefined, true);
+            if (strict && result == null) throw new Error('Commit statuses are unavailable');
             const statuses = (result as unknown as GitStatus[] | undefined) ?? [];
             logger.info(
                 LogCategory.ADO,
@@ -447,6 +457,7 @@ export class AdoPullRequestsService {
             );
             return statuses;
         } catch (err) {
+            if (strict) throw err;
             const errMsg = err instanceof Error ? err.message : String(err);
             logger.warn(
                 LogCategory.ADO,

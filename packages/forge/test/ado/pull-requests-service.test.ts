@@ -61,6 +61,25 @@ describe('AdoPullRequestsService', () => {
         await expect(service.getRefTip('repo', 'refs/heads/feature', 'project')).rejects.toThrow('Permission denied');
     });
 
+    it.each([
+        ['getPullRequestIterations', 'getPullRequestIterations', 42],
+        ['getPullRequestStatuses', 'getPullRequestStatuses', 42],
+        ['getCommitStatuses', 'getStatuses', 'head'],
+    ] as const)('%s preserves the exact transport error in strict mode', async (method, transport, id) => {
+        const error = Object.assign(new Error('Denied'), { statusCode: 401 });
+        gitApi[transport].mockRejectedValue(error);
+        // Each operation's second argument is either the PR number or commit SHA.
+        const read = service[method].bind(service) as (
+            repo: string, id: number | string, project: string, strict: boolean,
+        ) => Promise<unknown>;
+        await expect(read('repo', id, 'project', true)).rejects.toBe(error);
+        if (method === 'getPullRequestIterations') {
+            await expect(read('repo', id, 'project', false)).rejects.toBeInstanceOf(AdoPullRequestError);
+        } else {
+            await expect(read('repo', id, 'project', false)).resolves.toEqual([]);
+        }
+    });
+
     // ── listPullRequests ─────────────────────────────────────
 
     it('listPullRequests delegates to gitApi.getPullRequests with correct args', async () => {

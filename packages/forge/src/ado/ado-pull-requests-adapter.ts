@@ -542,7 +542,7 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
 
         const out: PullRequestCheck[] = [];
         const iterations = expectedHeadSha
-            ? await this.service.getPullRequestIterations(effectiveRepo, Number(pullRequestId), this.project)
+            ? await this.service.getPullRequestIterations(effectiveRepo, Number(pullRequestId), this.project, true)
             : undefined;
         const iteration = iterations?.at(-1);
         if (expectedHeadSha && iteration?.sourceRefCommit?.commitId !== expectedHeadSha) {
@@ -554,6 +554,7 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
             effectiveRepo,
             Number(pullRequestId),
             this.project,
+            !!expectedHeadSha,
         );
         for (const status of prStatuses) {
             // Unqualified PR statuses can remain green across pushes. Only the
@@ -562,7 +563,7 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
             out.push(mapAdoCheck(status, 'check', 'pr-status'));
         }
 
-        // Per-commit statuses on the head SHA (latest iteration). Best-effort.
+        // Head-pinned reads require both status sources; unpinned reads are best-effort.
         try {
             const commitIterations = iterations ?? await this.service.getPullRequestIterations(
                 effectiveRepo,
@@ -577,6 +578,7 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
                     effectiveRepo,
                     headSha,
                     this.project,
+                    !!expectedHeadSha,
                 );
                 for (const status of commitStatuses) {
                     out.push(mapAdoCheck(status, 'status', 'commit-status'));

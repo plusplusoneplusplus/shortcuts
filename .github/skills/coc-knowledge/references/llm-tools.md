@@ -252,7 +252,10 @@ review only, never repairs, retries, deployment or new jobs. Untracked/history p
 does not establish ownership. See [server architecture](server-architecture.md#delegated-pr-outcome-reviews).
 
 The same `ci-failure` monitor polls authoritative merge previews and current-head
-checks. Conflict identity includes provider/host/repository/PR and head/base SHAs;
+checks. ADO head-pinned checks require successful iteration, PR-status and
+commit-status reads and preserve transport errors for authentication/rate-limit
+classification; unpinned checks use best-effort status reads.
+Conflict identity includes provider/host/repository/PR and head/base SHAs;
 unknown previews wait, policies remain blockers, and terminal PRs stop. Database
 writer admission and durable owner-chat delivery serialize CI/conflict/manual
 repairs. Repair execution uses high-priority FIFO behind existing pause markers,

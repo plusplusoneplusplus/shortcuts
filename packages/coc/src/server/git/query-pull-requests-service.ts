@@ -898,8 +898,8 @@ async function createAdoClient(
             return { items, ...(next ? { next } : {}) };
         },
         async loadCi(candidate) {
-            // Pinning to the listed head makes forge read only current-iteration
-            // statuses and throw (instead of skipping) when a status source fails.
+            // A listed head is required for an authoritative, strict status read.
+            if (!candidate.headSha) throw new Error('head commit unknown');
             const service = checks();
             if (!service.getChecks) throw new Error('checks unsupported');
             const result = await service.getChecks(identity.repo, candidate.id, candidate.headSha);
