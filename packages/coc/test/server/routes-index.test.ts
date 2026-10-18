@@ -309,6 +309,14 @@ describe('registerAllRoutes', () => {
             expect(cancel).toHaveBeenCalledWith(active.taskId);
             expect(getScrubber()).toBeDefined();
             expect((await read()).statusCode).toBe(404);
+            const persistentProcessId = jobs.get(owner, job.id).processId!;
+            expect(await store.getProcess(persistentProcessId)).toBeDefined();
+            config.features.sentinelTodoJobs = true;
+            const next = await getJobs()!.start(owner, job.id);
+            expect(next.status).toBe('queued');
+            expect(next.taskId).not.toBe(active.taskId);
+            expect(jobs.get(owner, job.id).processId).toBe(persistentProcessId);
+            expect(await store.getProcess(persistentProcessId)).toBeDefined();
             await composition.sentinelJobsShutdown();
             expect(disposed).toHaveBeenCalledOnce();
         } finally {

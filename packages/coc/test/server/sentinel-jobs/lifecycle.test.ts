@@ -84,6 +84,36 @@ async function execute(task: QueuedTask): Promise<void> {
 }
 
 describe('scheduled job queue and lifecycle integration', () => {
+    it.each(['cancelled', 'enqueue-failed'])('reuses the persisted chat with a fresh task ID after the first run is %s', async outcome => {
+        const job = jobs.create(owner, { name: 'A', instructions: 'Read', provider: 'copilot', model: 'model' });
+        if (outcome === 'enqueue-failed') {
+            vi.spyOn(service.deps, 'enqueue').mockImplementationOnce(async input => {
+                expect(await store.getProcess(input.processId!)).toBeDefined();
+                throw new Error('Queue admission unavailable');
+            });
+        }
+        const first = await service.start(owner, job.id);
+        const firstRecord = jobs.run(owner, job.id, first.id);
+        const processId = jobs.get(owner, job.id).processId!;
+        expect(await store.getProcess(processId)).toBeDefined();
+        if (outcome === 'cancelled') {
+            expect(queue.getTask(firstRecord.taskId!)?.status).toBe('queued');
+            await service.cancel(owner, job.id, first.id);
+            expect(queue.getTask(firstRecord.taskId!)?.status).toBe('cancelled');
+        } else expect(first.status).toBe('failed');
+        const next = await service.start(owner, job.id);
+        expect(next.status).toBe('queued');
+        expect(next.taskId).not.toBe(firstRecord.taskId);
+        const nextTask = queue.getTask(next.taskId!)!;
+        expect(nextTask.processId).toBe(processId);
+        expect(jobs.get(owner, job.id).processId).toBe(processId);
+        await execute(nextTask);
+        await vi.waitFor(() => expect(jobs.run(owner, job.id, next.id).status).toBe('completed'));
+        expect((await store.getProcess(processId))?.conversationTurns?.map(turn => turn.role)).toEqual(['user', 'assistant']);
+        expect(store.processes.size).toBe(2);
+        expect(options.executeByTypeFn).not.toHaveBeenCalled();
+    });
+
     it('executes HTTP-created runs through the queue and lifecycle, then gates both routes and queued provider dispatch live', async () => {
         const routes: Route[] = [];
         registerSentinelJobRoutes({ routes, jobs, service, onConfigChange: () => {} });

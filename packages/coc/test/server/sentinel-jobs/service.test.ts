@@ -120,6 +120,21 @@ beforeEach(() => {
 afterEach(() => fixture.dispose());
 
 describe('SentinelJobService', () => {
+    it('exposes an active run separately after more than twenty overlap skips fill the visible history', async () => {
+        const job = jobStore.create(owner, input);
+        const active = await service.start(owner, job.id);
+        for (let index = 0; index < 25; index++) {
+            expect(await service.start(owner, job.id, 'schedule')).toMatchObject({ status: 'skipped', skipReason: 'overlap' });
+        }
+        const view = service.view(owner, jobStore.get(owner, job.id));
+        expect(view.runs).toHaveLength(20);
+        expect(view.runs.every(run => run.status === 'skipped')).toBe(true);
+        expect(view.activeRun).toMatchObject({ id: active.id, status: 'queued' });
+        expect(jobStore.run(owner, job.id, active.id).status).toBe('queued');
+        await expect(service.start(owner, job.id)).rejects.toMatchObject({ code: 'conflict' });
+        expect(enqueue).toHaveBeenCalledTimes(1);
+    });
+
     it('links the canonical next turn using the workspace chat route', async () => {
         const job = jobStore.create(owner, input);
         const run = await service.start(owner, job.id);
