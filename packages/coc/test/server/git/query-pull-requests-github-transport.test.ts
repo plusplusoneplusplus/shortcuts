@@ -18,9 +18,9 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => ({
 import { createPrProviderClientFactory, parsePrQueryRequest, runPrQuery } from '../../../src/server/git/query-pull-requests-service';
 
 let dataDir: string;
-const run = (args: Record<string, unknown> = {}) => runPrQuery(
+const run = (args: Record<string, unknown> = {}, signal?: AbortSignal) => runPrQuery(
     parsePrQueryRequest({ provider: 'github', repository: 'owner/repo', ...args }),
-    { createClient: createPrProviderClientFactory(dataDir) },
+    { createClient: createPrProviderClientFactory(dataDir), signal },
 ) as Promise<any>;
 const check = (id: number, conclusion = 'success') => ({ id, name: `check-${id}`, status: 'completed', conclusion });
 const status = (id: number, state = 'success') => ({ id, context: `status-${id}`, state });
@@ -43,6 +43,70 @@ beforeEach(() => {
     }] } });
 });
 afterEach(() => fs.rmSync(dataDir, { recursive: true, force: true }));
+
+describe('GitHub cancellation through the real adapter', () => {
+    for (const mode of ['query', 'get']) {
+        it.each(['checks-empty', 'checks-full', 'checks-error', 'statuses-full'])(
+            `starts no requests after a delayed %s completes following ${mode} cancellation`,
+            async (stage) => {
+                const controller = new AbortController();
+                let release!: () => void;
+                let started!: () => void;
+                const gate = new Promise<void>(resolve => { release = resolve; });
+                const entered = new Promise<void>(resolve => { started = resolve; });
+                const operation = stage.startsWith('checks') ? transport.checks.listForRef : transport.repos.getCombinedStatusForRef;
+                operation.mockImplementationOnce(async () => {
+                    started();
+                    await gate;
+                    if (stage === 'checks-error') throw new Error('late failure');
+                    return { data: stage === 'statuses-full'
+                        ? { statuses: Array.from({ length: 100 }, (_, id) => status(id)) }
+                        : { check_runs: stage === 'checks-full' ? Array.from({ length: 100 }, (_, id) => check(id)) : [] } };
+                });
+                const pending = run(mode === 'get' ? { ids: 42 } : {}, controller.signal);
+                await entered;
+                controller.abort();
+                await expect(pending).rejects.toMatchObject({ code: 'cancelled' });
+                const operations = [transport.graphql, transport.repos.get, transport.pulls.get, transport.pulls.listReviews,
+                    transport.checks.listForRef, transport.repos.getCombinedStatusForRef];
+                const counts = operations.map(mock => mock.mock.calls.length);
+                release();
+                await new Promise(resolve => setImmediate(resolve));
+                expect(operations.map(mock => mock.mock.calls.length)).toEqual(counts);
+            },
+        );
+    }
+
+    it.each(['probe', 'list', 'detail', 'reviews'])('does not continue after a delayed %s response', async (stage) => {
+        const controller = new AbortController();
+        const operation = stage === 'probe' ? transport.repos.get : stage === 'list' ? transport.graphql
+            : stage === 'detail' ? transport.pulls.get : transport.pulls.listReviews;
+        let release!: () => void;
+        let started!: () => void;
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        const entered = new Promise<void>(resolve => { started = resolve; });
+        const response = await operation();
+        operation.mockClear();
+        operation.mockImplementationOnce(async () => { started(); await gate; return response; });
+        const pending = run(stage === 'list' ? {} : { ids: [42, 43, 44, 45, 46] }, controller.signal);
+        await entered;
+        controller.abort();
+        await expect(pending).rejects.toMatchObject({ code: 'cancelled' });
+        const operations = [transport.graphql, transport.repos.get, transport.pulls.get, transport.pulls.listReviews,
+            transport.checks.listForRef, transport.repos.getCombinedStatusForRef];
+        const counts = operations.map(mock => mock.mock.calls.length);
+        release();
+        await new Promise(resolve => setImmediate(resolve));
+        expect(operations.map(mock => mock.mock.calls.length)).toEqual(counts);
+    });
+
+    it('does not dispatch for an already cancelled invocation', async () => {
+        const controller = new AbortController();
+        controller.abort();
+        await expect(run({ ids: 42 }, controller.signal)).rejects.toMatchObject({ code: 'cancelled' });
+        expect(transport.repos.get).not.toHaveBeenCalled();
+    });
+});
 
 describe('GitHub checks through the real adapter', () => {
     it.each(['check', 'status'])('includes later-page %s failures in query filters and get summaries', async (source) => {

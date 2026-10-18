@@ -508,13 +508,13 @@ export interface PrProviderClient {
     loadChecks(source: PrDetailSource): Promise<ProviderPullRequestCheck[]>;
 }
 
-export type CreatePrProviderClient = (identity: PrRepositoryIdentity) => Promise<PrProviderClient>;
+export type CreatePrProviderClient = (identity: PrRepositoryIdentity, signal?: AbortSignal) => Promise<PrProviderClient>;
 
 /** Production client factory: resolves this server's credentials for the caller-named repository. */
 export function createPrProviderClientFactory(dataDir: string): CreatePrProviderClient {
-    return async (identity) => identity.provider === 'github'
-        ? createGitHubClient(dataDir, identity)
-        : createAdoClient(dataDir, identity);
+    return async (identity, signal) => identity.provider === 'github'
+        ? createGitHubClient(dataDir, identity, signal)
+        : createAdoClient(dataDir, identity, signal);
 }
 
 const GITHUB_STATUS_QUALIFIERS: Record<PrQueryStatus, string[]> = {
@@ -661,13 +661,16 @@ function toGitHubSearchError(err: unknown): PrQueryError {
 async function createGitHubClient(
     dataDir: string,
     identity: Extract<PrRepositoryIdentity, { provider: 'github' }>,
+    signal?: AbortSignal,
 ): Promise<PrProviderClient> {
+    throwIfAborted(signal);
     let token: string | undefined;
     try {
         token = (await readProvidersConfig(dataDir)).providers.github?.token;
     } catch {
         token = undefined;
     }
+    throwIfAborted(signal);
     if (!token) {
         throw new PrQueryError('credentials-missing', 'GitHub is not signed in on this server (no token in providers.json).');
     }
@@ -675,6 +678,7 @@ async function createGitHubClient(
     const adapter = createGitHubPullRequestsAdapter({ token, owner: identity.owner, repo: identity.repo });
     return {
         async probeRepository() {
+            throwIfAborted(signal);
             try {
                 await octokit.repos.get({ owner: identity.owner, repo: identity.repo });
             } catch (err) {
@@ -682,11 +686,13 @@ async function createGitHubClient(
             }
         },
         async resolveCurrentUser() {
+            throwIfAborted(signal);
             const { data } = await octokit.users.getAuthenticated();
             if (!data?.login) throw new Error('no login');
             return data.login;
         },
         async listPullRequests(query) {
+            throwIfAborted(signal);
             const q = [
                 'is:pr',
                 `repo:${identity.owner}/${identity.repo}`,
@@ -713,11 +719,13 @@ async function createGitHubClient(
             return { items, ...(next ? { next } : {}) };
         },
         async loadCi(candidate) {
+            throwIfAborted(signal);
             if (!adapter.getChecks || !candidate.headSha) throw new Error('head commit unknown');
-            const checks = await adapter.getChecks(identity.repository, candidate.id, candidate.headSha);
+            const checks = await adapter.getChecks(identity.repository, candidate.id, candidate.headSha, signal);
             return summarizeChecks(checks.map(check => check.status));
         },
         async getPullRequest(id) {
+            throwIfAborted(signal);
             const pr = await adapter.getPullRequest(identity.repository, id);
             const candidate: PrCandidate = {
                 id,
@@ -743,12 +751,14 @@ async function createGitHubClient(
             };
         },
         async loadReviews(source) {
-            return latestGitHubVotes(await adapter.getReviewers(identity.repository, source.candidate.id));
+            throwIfAborted(signal);
+            return latestGitHubVotes(await adapter.getReviewers(identity.repository, source.candidate.id, signal));
         },
         async loadChecks(source) {
+            throwIfAborted(signal);
             if (!adapter.getChecks || !source.candidate.headSha) throw new Error('head commit unknown');
             // Pinning the head SHA makes forge throw (instead of skipping) when a check source fails.
-            return adapter.getChecks(identity.repository, source.candidate.id, source.candidate.headSha);
+            return adapter.getChecks(identity.repository, source.candidate.id, source.candidate.headSha, signal);
         },
     };
 }
@@ -836,13 +846,17 @@ function adoCandidate(pr: GitPullRequest, webRepoUrl: string): PrCandidate {
 async function createAdoClient(
     dataDir: string,
     identity: Extract<PrRepositoryIdentity, { provider: 'ado' }>,
+    signal?: AbortSignal,
 ): Promise<PrProviderClient> {
+    throwIfAborted(signal);
     let token: string;
     try {
         token = await resolveAdoAccessTokenValue({ dataDir });
     } catch {
+        throwIfAborted(signal);
         throw new PrQueryError('credentials-missing', 'Azure DevOps is not signed in on this server (no Azure CLI account).');
     }
+    throwIfAborted(signal);
     if (!token) {
         throw new PrQueryError('credentials-missing', 'Azure DevOps is not signed in on this server (no Azure CLI account).');
     }
@@ -854,9 +868,11 @@ async function createAdoClient(
     const checks = () => adapter ??= createAdoPullRequestsAdapter({ orgUrl, token, project: identity.project, repo: identity.repo });
     return {
         async probeRepository() {
+            throwIfAborted(signal);
             let repository: { id?: string; project?: { id?: string } } | null;
             try {
                 const git = await connection.getGitApi();
+                throwIfAborted(signal);
                 repository = await git.getRepository(identity.repo, identity.project);
             } catch (err) {
                 throw toPrQueryError(err, 'ado', 'repository');
@@ -868,11 +884,13 @@ async function createAdoClient(
             probed = { id: repository.id, projectId: repository.project?.id };
         },
         async resolveCurrentUser() {
-            const id = await getOrResolveAdoUserId(orgUrl, token);
+            throwIfAborted(signal);
+            const id = await getOrResolveAdoUserId(orgUrl, token, signal);
             if (!id) throw new Error('no identity');
             return id;
         },
         async listPullRequests(query) {
+            throwIfAborted(signal);
             if (query.after !== undefined && !/^\d+$/.test(query.after)) {
                 throw new PrQueryError('invalid-cursor', '`cursor` is malformed; pass a `nextCursor` from an earlier result.');
             }
@@ -880,6 +898,7 @@ async function createAdoClient(
             let prs: Awaited<ReturnType<Awaited<ReturnType<typeof connection.getGitApi>>['getPullRequests']>> | null;
             try {
                 const git = await connection.getGitApi();
+                throwIfAborted(signal);
                 prs = await git.getPullRequests(
                     identity.repo,
                     { status: ADO_STATUS[query.status], ...(query.author ? { creatorId: query.author } : {}) },
@@ -899,15 +918,18 @@ async function createAdoClient(
             return { items, ...(next ? { next } : {}) };
         },
         async loadCi(candidate) {
+            throwIfAborted(signal);
             // A listed head is required for an authoritative, strict status read.
             if (!candidate.headSha) throw new Error('head commit unknown');
             const service = checks();
             if (!service.getChecks) throw new Error('checks unsupported');
-            const result = await service.getChecks(identity.repo, candidate.id, candidate.headSha);
+            const result = await service.getChecks(identity.repo, candidate.id, candidate.headSha, signal);
             return summarizeChecks(result.map(check => check.status));
         },
         async getPullRequest(id) {
+            throwIfAborted(signal);
             const git = await connection.getGitApi();
+            throwIfAborted(signal);
             // Organization-wide lookup; typed-rest-client resolves a 404 as null.
             const pr = await git.getPullRequestById(id, identity.project);
             if (!pr || typeof pr.pullRequestId !== 'number') throw { statusCode: 404 };
@@ -932,12 +954,14 @@ async function createAdoClient(
             };
         },
         async loadReviews(source) {
+            throwIfAborted(signal);
             return source.reviews ?? [];
         },
         async loadChecks(source) {
+            throwIfAborted(signal);
             const service = checks();
             if (!service.getChecks || !source.candidate.headSha) throw new Error('head commit unknown');
-            return service.getChecks(identity.repo, source.candidate.id, source.candidate.headSha);
+            return service.getChecks(identity.repo, source.candidate.id, source.candidate.headSha, signal);
         },
     };
 }
@@ -1003,7 +1027,7 @@ export function awaitUnlessAborted<T>(promise: Promise<T>, signal: AbortSignal |
 export async function runPrQuery(request: PrQueryRequest, deps: RunPrQueryDeps): Promise<PrQuerySuccess> {
     const { signal } = deps;
     throwIfAborted(signal);
-    const client = await awaitUnlessAborted(deps.createClient(request.identity), signal);
+    const client = await awaitUnlessAborted(deps.createClient(request.identity, signal), signal);
     throwIfAborted(signal);
     await awaitUnlessAborted(client.probeRepository(), signal);
     throwIfAborted(signal);

@@ -26,6 +26,23 @@ function stubResponse(body: string, statusCode = 200): void {
 beforeEach(() => vi.clearAllMocks());
 
 describe('ADO token-bound identity', () => {
+    it('preserves cancellation without dispatching an identity request', async () => {
+        const controller = new AbortController();
+        const reason = new Error('cancelled identity');
+        controller.abort(reason);
+        await expect(getOrResolveAdoUserId(ORG_URL, BEARER, controller.signal)).rejects.toBe(reason);
+        expect(https.get).not.toHaveBeenCalled();
+    });
+
+    it('checks cancellation again after loading the HTTPS transport', async () => {
+        const controller = new AbortController();
+        const reason = new Error('cancelled while loading transport');
+        const pending = getOrResolveAdoUserId(ORG_URL, BEARER, controller.signal);
+        controller.abort(reason);
+        await expect(pending).rejects.toBe(reason);
+        expect(https.get).not.toHaveBeenCalled();
+    });
+
     it('uses the supplied bearer token and strips the organization trailing slash', async () => {
         stubResponse(JSON.stringify({ authenticatedUser: { id: ID } }));
         expect(await resolveAdoUserIdFromConnectionData(ORG_URL + '/', BEARER)).toBe(ID);

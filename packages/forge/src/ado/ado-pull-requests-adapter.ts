@@ -532,7 +532,8 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
         return commits.map(mapAdoCommit);
     }
 
-    async getChecks(repositoryId: string, pullRequestId: number | string, expectedHeadSha?: string): Promise<PullRequestCheck[]> {
+    async getChecks(repositoryId: string, pullRequestId: number | string, expectedHeadSha?: string, signal?: AbortSignal): Promise<PullRequestCheck[]> {
+        signal?.throwIfAborted();
         const logger = getLogger();
         const effectiveRepo = this.repo ?? repositoryId;
         logger.info(
@@ -542,7 +543,7 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
 
         const out: PullRequestCheck[] = [];
         const iterations = expectedHeadSha
-            ? await this.service.getPullRequestIterations(effectiveRepo, Number(pullRequestId), this.project, true)
+            ? await this.service.getPullRequestIterations(effectiveRepo, Number(pullRequestId), this.project, true, signal)
             : undefined;
         const iteration = iterations?.at(-1);
         if (expectedHeadSha && iteration?.sourceRefCommit?.commitId !== expectedHeadSha) {
@@ -555,6 +556,7 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
             Number(pullRequestId),
             this.project,
             !!expectedHeadSha,
+            signal,
         );
         for (const status of prStatuses) {
             // Unqualified PR statuses can remain green across pushes. Only the
@@ -569,6 +571,8 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
                 effectiveRepo,
                 Number(pullRequestId),
                 this.project,
+                false,
+                signal,
             );
             const headSha = commitIterations.length
                 ? commitIterations[commitIterations.length - 1].sourceRefCommit?.commitId
@@ -579,12 +583,14 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
                     headSha,
                     this.project,
                     !!expectedHeadSha,
+                    signal,
                 );
                 for (const status of commitStatuses) {
                     out.push(mapAdoCheck(status, 'status', 'commit-status'));
                 }
             }
         } catch (err) {
+            signal?.throwIfAborted();
             if (expectedHeadSha) throw err;
             logger.warn(
                 LogCategory.ADO,
@@ -592,6 +598,7 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
             );
         }
 
+        signal?.throwIfAborted();
         return dedupeChecks(out);
     }
 

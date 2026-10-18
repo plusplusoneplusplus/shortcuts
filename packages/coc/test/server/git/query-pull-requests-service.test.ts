@@ -622,7 +622,7 @@ describe('Azure DevOps client', () => {
         const c = await client();
         const [listed] = (await c.listPullRequests({ status: 'open', pageSize: 100 })).items;
         const result = await c.loadCi!(listed);
-        expect(adoMocks.getChecks).toHaveBeenCalledWith('Repo', 7, 'sha7');
+        expect(adoMocks.getChecks).toHaveBeenCalledWith('Repo', 7, 'sha7', undefined);
         expect(result.state).toBe('pending');
     });
 
@@ -630,7 +630,7 @@ describe('Azure DevOps client', () => {
         adoMocks.resolveUserId.mockResolvedValueOnce(GUID).mockResolvedValueOnce(null);
         const c = await client();
         expect(await c.resolveCurrentUser()).toBe(GUID);
-        expect(adoMocks.resolveUserId).toHaveBeenCalledWith('https://dev.azure.com/My%20Org', 'ado-token');
+        expect(adoMocks.resolveUserId).toHaveBeenCalledWith('https://dev.azure.com/My%20Org', 'ado-token', undefined);
         await expect(c.resolveCurrentUser()).rejects.toThrow();
     });
 
@@ -693,7 +693,7 @@ describe('GitHub client get mode', () => {
         const result = await run(3);
         const { pullRequest } = result.results[0];
         expect(ghAdapterMocks.getPullRequest).toHaveBeenCalledWith('o/r', 3);
-        expect(ghAdapterMocks.getChecks).toHaveBeenCalledWith('o/r', 3, 'abc');
+        expect(ghAdapterMocks.getChecks).toHaveBeenCalledWith('o/r', 3, 'abc', undefined);
         expect(pullRequest).toMatchObject({
             id: 3, lifecycle: 'open', isDraft: true, description: 'Body',
             mergeability: { state: 'blocked', blockedReason: 'Waiting' },
@@ -750,7 +750,7 @@ describe('Azure DevOps client get mode', () => {
         adoMocks.getChecks.mockResolvedValue([{ id: 'c', name: 'build', status: 'success', source: 'status' }]);
         const result = await run(42);
         expect(adoMocks.getPullRequestById).toHaveBeenCalledWith(42, 'Proj');
-        expect(adoMocks.getChecks).toHaveBeenCalledWith('Repo', 42, 'sha42');
+        expect(adoMocks.getChecks).toHaveBeenCalledWith('Repo', 42, 'sha42', undefined);
         expect(result.results[0].pullRequest).toMatchObject({
             id: 42, url: 'https://dev.azure.com/My%20Org/Proj/_git/Repo/pullrequest/42', lifecycle: 'merged',
             mergeability: { state: 'conflicting' }, ci: { state: 'passing' },

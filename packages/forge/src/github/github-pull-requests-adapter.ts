@@ -476,7 +476,8 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
         };
     }
 
-    async getReviewers(_repositoryId: string, pullRequestId: number | string): Promise<Reviewer[]> {
+    async getReviewers(_repositoryId: string, pullRequestId: number | string, signal?: AbortSignal): Promise<Reviewer[]> {
+        signal?.throwIfAborted();
         const { data } = await this.octokit.pulls.listReviews({
             owner: this.owner,
             repo: this.repo,
@@ -531,7 +532,8 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
         return (data as unknown as GitHubPullRequestCommit[]).map(mapGitHubPullRequestCommit);
     }
 
-    async getChecks(_repositoryId: string, pullRequestId: number | string, expectedHeadSha?: string): Promise<PullRequestCheck[]> {
+    async getChecks(_repositoryId: string, pullRequestId: number | string, expectedHeadSha?: string, signal?: AbortSignal): Promise<PullRequestCheck[]> {
+        signal?.throwIfAborted();
         // Resolve the head SHA for the PR.
         const prData = expectedHeadSha ? undefined : (await this.octokit.pulls.get({
             owner: this.owner,
@@ -547,6 +549,7 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
         // not also break the legacy status fetch.
         try {
             for (let page = 1; ; page++) {
+                signal?.throwIfAborted();
                 const { data } = await this.octokit.checks.listForRef({
                     owner: this.owner,
                     repo: this.repo,
@@ -559,6 +562,7 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
                 if (runs.length < 100) break;
             }
         } catch (error) {
+            signal?.throwIfAborted();
             if (expectedHeadSha) throw error;
             // Token may lack `checks:read` — fall through to combined status.
         }
@@ -566,6 +570,7 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
         // Legacy combined commit-status (per-context). Best-effort.
         try {
             for (let page = 1; ; page++) {
+                signal?.throwIfAborted();
                 const { data } = await this.octokit.repos.getCombinedStatusForRef({
                     owner: this.owner,
                     repo: this.repo,
@@ -578,10 +583,12 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
                 if (items.length < 100) break;
             }
         } catch (error) {
+            signal?.throwIfAborted();
             if (expectedHeadSha) throw error;
             // Some repos may have neither checks nor statuses configured.
         }
 
+        signal?.throwIfAborted();
         return checks;
     }
 

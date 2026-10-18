@@ -8,10 +8,11 @@ const git = vi.hoisted(() => ({
     getPullRequestStatuses: vi.fn(),
     getStatuses: vi.fn(),
 }));
+const sdk = vi.hoisted(() => ({ getGitApi: vi.fn() }));
 
 vi.mock('azure-devops-node-api', async (importOriginal) => ({
     ...await importOriginal<typeof import('azure-devops-node-api')>(),
-    WebApi: vi.fn(function () { return { getGitApi: async () => git }; }),
+    WebApi: vi.fn(function () { return { getGitApi: sdk.getGitApi }; }),
     getBearerHandler: vi.fn(() => ({})),
 }));
 
@@ -35,19 +36,60 @@ const pr = {
     repository: { id: 'repo-id', name: 'repo', project: { id: 'project-id', name: 'project' } },
 };
 
-const run = (args: Record<string, unknown> = {}) => runPrQuery(
+const run = (args: Record<string, unknown> = {}, signal?: AbortSignal) => runPrQuery(
     parsePrQueryRequest({ provider: 'ado', repository: 'org/project/repo', ...args }),
-    { createClient: createPrProviderClientFactory('/unused') },
+    { createClient: createPrProviderClientFactory('/unused'), signal },
 ) as Promise<any>;
 
 beforeEach(() => {
     vi.resetAllMocks();
+    sdk.getGitApi.mockResolvedValue(git);
     git.getRepository.mockResolvedValue({ id: 'repo-id', project: { id: 'project-id' } });
     git.getPullRequests.mockResolvedValue([pr]);
     git.getPullRequestById.mockResolvedValue(pr);
     git.getPullRequestIterations.mockResolvedValue([{ id: 2, sourceRefCommit: { commitId: 'head' } }]);
     git.getPullRequestStatuses.mockResolvedValue([]);
     git.getStatuses.mockResolvedValue([]);
+});
+
+describe('ADO cancellation through the real adapter and service', () => {
+    for (const mode of ['query', 'get']) {
+        it.each(['api-probe', 'api-pr', 'api-checks', 'probe', 'pr', 'iterations', 'pr-statuses', 'commit-statuses'])(
+            `starts no requests after a delayed %s completes following ${mode} cancellation`,
+            async (stage) => {
+                const controller = new AbortController();
+                const operation = stage.startsWith('api-') ? sdk.getGitApi : stage === 'probe' ? git.getRepository
+                    : stage === 'pr' ? (mode === 'query' ? git.getPullRequests : git.getPullRequestById)
+                    : stage === 'iterations' ? git.getPullRequestIterations
+                    : stage === 'pr-statuses' ? git.getPullRequestStatuses : git.getStatuses;
+                const response = await operation();
+                operation.mockClear();
+                const precedingApiCalls = stage === 'api-checks' ? 2 : stage === 'api-pr' ? 1 : 0;
+                for (let i = 0; i < precedingApiCalls; i++) operation.mockResolvedValueOnce(git);
+                let release!: () => void;
+                let started!: () => void;
+                const gate = new Promise<void>(resolve => { release = resolve; });
+                const entered = new Promise<void>(resolve => { started = resolve; });
+                operation.mockImplementationOnce(async () => { started(); await gate; return response; });
+                const pending = run(mode === 'get' ? { ids: 42 } : {}, controller.signal);
+                await entered;
+                controller.abort();
+                await expect(pending).rejects.toMatchObject({ code: 'cancelled' });
+                const operations = [sdk.getGitApi, ...Object.values(git)];
+                const counts = operations.map(mock => mock.mock.calls.length);
+                release();
+                await new Promise(resolve => setImmediate(resolve));
+                expect(operations.map(mock => mock.mock.calls.length)).toEqual(counts);
+            },
+        );
+    }
+
+    it('does not dispatch for an already cancelled invocation', async () => {
+        const controller = new AbortController();
+        controller.abort();
+        await expect(run({ ids: 42 }, controller.signal)).rejects.toMatchObject({ code: 'cancelled' });
+        expect(sdk.getGitApi).not.toHaveBeenCalled();
+    });
 });
 
 describe('ADO strict CI through the real adapter and service', () => {

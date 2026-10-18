@@ -81,6 +81,24 @@ describe('AdoPullRequestsService', () => {
     });
 
     // ── listPullRequests ─────────────────────────────────────
+    it.each([
+        ['iterations', (svc: AdoPullRequestsService, signal: AbortSignal) => svc.getPullRequestIterations('repo', 42, 'project', false, signal)],
+        ['PR statuses', (svc: AdoPullRequestsService, signal: AbortSignal) => svc.getPullRequestStatuses('repo', 42, 'project', false, signal)],
+        ['commit statuses', (svc: AdoPullRequestsService, signal: AbortSignal) => svc.getCommitStatuses('repo', 'head', 'project', false, signal)],
+    ] as const)('checks cancellation before and after acquiring the API for %s', async (_label, read) => {
+        const controller = new AbortController();
+        const reason = new Error('cancelled API acquisition');
+        vi.mocked(connection.getGitApi).mockImplementationOnce(async () => {
+            controller.abort(reason);
+            return gitApi;
+        });
+        await expect(read(service, controller.signal)).rejects.toBe(reason);
+        expect(gitApi.getPullRequestIterations).not.toHaveBeenCalled();
+        expect(gitApi.getPullRequestStatuses).not.toHaveBeenCalled();
+        expect(gitApi.getStatuses).not.toHaveBeenCalled();
+        await expect(read(service, controller.signal)).rejects.toBe(reason);
+        expect(connection.getGitApi).toHaveBeenCalledTimes(1);
+    });
 
     it('listPullRequests delegates to gitApi.getPullRequests with correct args', async () => {
         const criteria = { status: 1 };

@@ -473,6 +473,29 @@ describe('GitHubPullRequestsAdapter', () => {
     });
 
     describe('getChecks', () => {
+        it('preserves abort reasons in best-effort reads without starting the next source', async () => {
+            const controller = new AbortController();
+            const reason = new Error('cancelled checks');
+            vi.mocked(octokit.checks.listForRef).mockImplementationOnce(async () => {
+                controller.abort(reason);
+                throw new Error('transport interrupted');
+            });
+            await expect(adapter.getChecks('repo', 42, undefined, controller.signal)).rejects.toBe(reason);
+            expect(octokit.repos.getCombinedStatusForRef).not.toHaveBeenCalled();
+        });
+
+        it('checks cancellation after resolving an unpinned head', async () => {
+            const controller = new AbortController();
+            const reason = new Error('cancelled head');
+            vi.mocked(octokit.pulls.get).mockImplementationOnce(async () => {
+                controller.abort(reason);
+                return { data: mockGitHubPr };
+            });
+            await expect(adapter.getChecks('repo', 42, undefined, controller.signal)).rejects.toBe(reason);
+            expect(octokit.checks.listForRef).not.toHaveBeenCalled();
+            expect(octokit.repos.getCombinedStatusForRef).not.toHaveBeenCalled();
+        });
+
         it('resolves head SHA from the PR then maps check-runs and combined statuses', async () => {
             const checks = await adapter.getChecks('repo', 42);
             expect(octokit.pulls.get).toHaveBeenCalledWith({ owner: 'owner', repo: 'repo', pull_number: 42 });

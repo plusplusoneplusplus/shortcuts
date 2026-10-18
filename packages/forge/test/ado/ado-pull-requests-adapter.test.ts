@@ -129,7 +129,7 @@ describe('AdoPullRequestsAdapter', () => {
         const adapter = new AdoPullRequestsAdapter(service, 'project');
         const checks = await adapter.getChecks('repo', 42, 'new-head');
         expect(checks.map(c => c.name)).toEqual(['current']);
-        expect(service.getCommitStatuses).toHaveBeenCalledWith('repo', 'new-head', 'project', true);
+        expect(service.getCommitStatuses).toHaveBeenCalledWith('repo', 'new-head', 'project', true, undefined);
         await expect(adapter.getChecks('repo', 42, 'old-head')).rejects.toThrow('head changed');
         vi.mocked(service.getCommitStatuses).mockRejectedValueOnce(new Error('Permission denied'));
         await expect(adapter.getChecks('repo', 42, 'new-head')).rejects.toThrow('Permission denied');
@@ -642,8 +642,8 @@ describe('AdoPullRequestsAdapter', () => {
             const a = new AdoPullRequestsAdapter(svc, 'my-project');
             const checks = await a.getChecks('repo-id', 42);
 
-            expect(svc.getPullRequestStatuses).toHaveBeenCalledWith('repo-id', 42, 'my-project', false);
-            expect(svc.getCommitStatuses).toHaveBeenCalledWith('repo-id', 'head-sha-checks', 'my-project', false);
+            expect(svc.getPullRequestStatuses).toHaveBeenCalledWith('repo-id', 42, 'my-project', false, undefined);
+            expect(svc.getCommitStatuses).toHaveBeenCalledWith('repo-id', 'head-sha-checks', 'my-project', false, undefined);
             expect(checks).toHaveLength(2);
 
             const prCheck = checks.find(c => c.source === 'check');
@@ -733,8 +733,8 @@ describe('AdoPullRequestsAdapter', () => {
             });
             const a = new AdoPullRequestsAdapter(svc, 'my-project', 'my-repo');
             await a.getChecks('ws-48cyxk', 99);
-            expect(svc.getPullRequestStatuses).toHaveBeenCalledWith('my-repo', 99, 'my-project', false);
-            expect(svc.getCommitStatuses).toHaveBeenCalledWith('my-repo', 'head-sha-checks', 'my-project', false);
+            expect(svc.getPullRequestStatuses).toHaveBeenCalledWith('my-repo', 99, 'my-project', false, undefined);
+            expect(svc.getCommitStatuses).toHaveBeenCalledWith('my-repo', 'head-sha-checks', 'my-project', false, undefined);
         });
 
         it('falls back to a sensible name when context is missing', async () => {

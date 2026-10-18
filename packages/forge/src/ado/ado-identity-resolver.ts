@@ -7,11 +7,14 @@ import { getLogger, LogCategory } from '../logger';
 export async function resolveAdoUserIdFromConnectionData(
     orgUrl: string,
     bearerToken: string,
+    signal?: AbortSignal,
 ): Promise<string | null> {
+    signal?.throwIfAborted();
     const logger = getLogger();
     try {
         const url = `${orgUrl.replace(/\/$/, '')}/_apis/connectionData`;
         const https = await import('https');
+        signal?.throwIfAborted();
         return await new Promise((resolve) => {
             const req = https.get(
                 url,
@@ -51,6 +54,7 @@ export async function resolveAdoUserIdFromConnectionData(
             });
         });
     } catch {
+        signal?.throwIfAborted();
         logger.warn(LogCategory.ADO, 'ADO identity resolution failed');
         return null;
     }
@@ -59,6 +63,7 @@ export async function resolveAdoUserIdFromConnectionData(
 export async function getOrResolveAdoUserId(
     orgUrl: string,
     bearerToken: string,
+    signal?: AbortSignal,
 ): Promise<string | null> {
-    return resolveAdoUserIdFromConnectionData(orgUrl, bearerToken);
+    return resolveAdoUserIdFromConnectionData(orgUrl, bearerToken, signal);
 }

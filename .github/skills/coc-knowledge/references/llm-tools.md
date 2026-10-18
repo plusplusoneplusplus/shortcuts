@@ -78,6 +78,9 @@ service. GitHub search rollups with more than 100 contexts resolve CI through
 head-pinned adapter reads. The adapter paginates check runs and combined statuses;
 aggregation uses every returned check before get-mode detail rows are capped at
 100 with `checksTruncated`. Provider failures cannot establish passing or empty CI.
+Each invocation binds its abort signal to the provider client. Request checkpoints
+cover adapter pagination, ADO API acquisition and identity transport loading;
+late in-flight completions cannot dispatch further provider requests.
 
 ### suggest_follow_ups
 

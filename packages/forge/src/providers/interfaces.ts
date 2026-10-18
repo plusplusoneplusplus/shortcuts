@@ -53,7 +53,7 @@ export interface IPullRequestsService {
         pullRequestId: number | string,
         body: string,
     ): Promise<CommentThread>;
-    getReviewers(repositoryId: string, pullRequestId: number | string): Promise<Reviewer[]>;
+    getReviewers(repositoryId: string, pullRequestId: number | string, signal?: AbortSignal): Promise<Reviewer[]>;
     addReviewers(
         repositoryId: string,
         pullRequestId: number | string,
@@ -68,7 +68,7 @@ export interface IPullRequestsService {
      * request. Adapters should return the latest run per check/context (deduped
      * across retries). Optional — not all providers support this.
      */
-    getChecks?(repositoryId: string, pullRequestId: number | string, headSha?: string): Promise<PullRequestCheck[]>;
+    getChecks?(repositoryId: string, pullRequestId: number | string, headSha?: string, signal?: AbortSignal): Promise<PullRequestCheck[]>;
     /**
      * Returns pull requests previously reviewed by the authenticated user, most recent first.
      * Used by the PR-suggestion feature to learn review patterns.

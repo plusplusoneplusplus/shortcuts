@@ -302,8 +302,11 @@ export class AdoPullRequestsService {
         pullRequestId: number,
         project?: string,
         strict = false,
+        signal?: AbortSignal,
     ): Promise<GitPullRequestIteration[]> {
+        signal?.throwIfAborted();
         const api = await this.getGitApi();
+        signal?.throwIfAborted();
         try {
             getLogger().info(
                 LogCategory.ADO,
@@ -318,6 +321,7 @@ export class AdoPullRequestsService {
             if (strict && result == null) throw new Error('PR iterations are unavailable');
             return result ?? [];
         } catch (error) {
+            signal?.throwIfAborted();
             if (strict) throw error;
             throw new AdoPullRequestError(
                 `Failed to get iterations for PR ${pullRequestId}: ${error}`,
@@ -403,9 +407,12 @@ export class AdoPullRequestsService {
         pullRequestId: number,
         project?: string,
         strict = false,
+        signal?: AbortSignal,
     ): Promise<GitPullRequestStatus[]> {
+        signal?.throwIfAborted();
         const logger = getLogger();
         const api = await this.getGitApi();
+        signal?.throwIfAborted();
         try {
             logger.info(
                 LogCategory.ADO,
@@ -420,6 +427,7 @@ export class AdoPullRequestsService {
             );
             return statuses;
         } catch (err) {
+            signal?.throwIfAborted();
             if (strict) throw err;
             const errMsg = err instanceof Error ? err.message : String(err);
             logger.warn(
@@ -440,9 +448,12 @@ export class AdoPullRequestsService {
         commitId: string,
         project?: string,
         strict = false,
+        signal?: AbortSignal,
     ): Promise<GitStatus[]> {
+        signal?.throwIfAborted();
         const logger = getLogger();
         const api = await this.getGitApi();
+        signal?.throwIfAborted();
         try {
             logger.info(
                 LogCategory.ADO,
@@ -457,6 +468,7 @@ export class AdoPullRequestsService {
             );
             return statuses;
         } catch (err) {
+            signal?.throwIfAborted();
             if (strict) throw err;
             const errMsg = err instanceof Error ? err.message : String(err);
             logger.warn(
