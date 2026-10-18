@@ -84,6 +84,10 @@ aggregation uses every returned check before get-mode detail rows are capped at
 GitHub reviews are paginated to completion before selecting each reviewer's latest
 deciding vote; page failures expose unavailable reviews, never partial history.
 
+ADO head-pinned checks read all latest-per-context commit statuses in 1000-row
+pages before aggregation. Missing pages and transport errors discard partial
+statuses; unpinned best-effort callers retain single-page reads.
+
 Each invocation binds its abort signal to the provider client. Request checkpoints
 cover adapter pagination, ADO API acquisition and identity transport loading;
 late in-flight completions cannot dispatch further provider requests.

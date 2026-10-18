@@ -440,8 +440,8 @@ export class AdoPullRequestsService {
 
     /**
      * Fetch per-commit statuses for a given commit SHA (latest run per
-     * context). Strict reads preserve transport errors; default reads return an
-     * empty list on failure (best-effort).
+     * context). Strict reads paginate to completion and preserve transport errors;
+     * default reads return one page or an empty list on failure (best-effort).
      */
     async getCommitStatuses(
         repositoryId: string,
@@ -459,9 +459,19 @@ export class AdoPullRequestsService {
                 LogCategory.ADO,
                 `getCommitStatuses: repo=${repositoryId} commit=${commitId} project=${project ?? '(default)'}`,
             );
-            const result = await api.getStatuses(commitId, repositoryId, project, undefined, undefined, true);
-            if (strict && result == null) throw new Error('Commit statuses are unavailable');
-            const statuses = (result as unknown as GitStatus[] | undefined) ?? [];
+            const statuses: GitStatus[] = [];
+            const pageSize = 1000;
+            do {
+                signal?.throwIfAborted();
+                const result = await api.getStatuses(
+                    commitId, repositoryId, project,
+                    strict ? pageSize : undefined, strict ? statuses.length : undefined, true,
+                );
+                signal?.throwIfAborted();
+                if (strict && result == null) throw new Error('Commit statuses are unavailable');
+                statuses.push(...(result ?? []));
+                if (!strict || !result || result.length < pageSize) break;
+            } while (true);
             logger.info(
                 LogCategory.ADO,
                 `getCommitStatuses: returned ${statuses.length} status(es) for commit ${commitId}`,
