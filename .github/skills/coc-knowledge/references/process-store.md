@@ -230,6 +230,17 @@ snapshot with ledger/item/source/evidence revisions, conjunctive blockers and li
 never authority or dispatch state.
 Callers re-evaluate before using readiness; stale external-I/O snapshots conflict.
 
+### Sentinel prompt-job store
+
+`sentinel-jobs/job-store.ts` owns `sentinel_scheduled_jobs` and
+`sentinel_scheduled_job_runs` in the shared native database, keyed by workspace,
+parent Sentinel and job. These definitions are distinct from the ledger's
+item-linked `sentinel_todo_jobs`. Transactions enforce the ten-job limit,
+expected revisions and a single active run per job. The public history contains
+the last 20 runs; active or pending-delivery records remain protected from pruning.
+Run records retain queue/turn/delivery identities. Definitions and snapshot files
+are machine-local, excluded from snapshot export/import and cleared by ledger wipe.
+
 ### Sentinel dependency operations
 
 `sentinel-dependency-store.ts` owns machine-local `sentinel_dependency_wakes`,
@@ -529,13 +540,18 @@ Queued payloads and compaction metadata persist the resolved instruction. Copilo
 forwards it to the history RPC; Claude uses the native `/compact` argument; Codex
 ignores custom instructions and warns.
 
-`processes/auto-compact.ts` owns `metadata.autoCompact`, default off per conversation.
+`processes/auto-compact.ts` owns `metadata.autoCompact`, default off per Sentinel conversation.
 The default `thresholdTokens` is 700000, a finite positive safe integer. The lifecycle
 runner's `onResponseCompleted` hook checks after a completed, persisted response,
 before pending-message drain. One mutation admission claims the latest non-display-only
 assistant turn and admits its task (`lastEvaluatedTurnIndex`, one attempt per response) only when
 `currentTokens > thresholdTokens`, independently of `tokenLimit`. Unknown usage, pauses
 and pending manual or automatic compactions skip; settings saves and resume never trigger.
+
+Ordinary Ask/Autopilot chats with owner-matching scheduled-job metadata use the same
+admission and failure rules. Jobs enable compaction at their configured absolute
+threshold (default 100000), with `JOB_COMPACTION_INSTRUCTIONS` retaining job context
+without granting Sentinel identity or ledger-writing authority.
 
 Automatic attempts admit ordinary durable compaction tasks with `payload.trigger: 'auto'`,
 always queued. The owning queue's `enqueue(..., { beforeQueuedProcessTasks: true })`

@@ -202,3 +202,18 @@ or timed-out runs pause config and disarm its timer; saving config resumes it. O
 validation failures disarm timers, and shutdown invalidates asynchronous checks and
 clears timers without changing persisted config. Distant cron dates re-arm at the shared
 timer registry's delay cap rather than firing early.
+
+### Sentinel prompt-job schedules
+
+`sentinel-jobs/job-scheduler.ts` reuses `ScheduleTimerRegistry`, `nextCronTime` and
+`validateScrubCron` for owner/job timers. Both live Sentinel/jobs gates must be on.
+Schedules use server local time and arm future dates without catch-up. Each tick
+re-arms independently of completion; an active job records a skipped overlap.
+Multiple selected minutes are rejected even for dates beyond the validation horizon.
+
+`SentinelJobService` queues each run at low priority into one persistent Ask/Autopilot
+chat, with a fresh read-only snapshot path. Terminal events queue a receipt-keyed
+Sentinel handback behind its active turn. Job turns have no timeouts or retries;
+failure does not pause the schedule. Restart interrupts active runs and reconciles
+undelivered handbacks. Live gate/owner removal revokes timers and admitted work;
+shutdown stops timers and drains asynchronous admission.

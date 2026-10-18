@@ -272,6 +272,24 @@ Owner-scoped rules use `SentinelTodoTriggerService` under `triggers.enabled`. Da
 `removeSentinelTodo` and `runSentinelTodoNow`. Every method requires the owner's
 workspace and Sentinel process; mutation methods carry the rule revision.
 
+### To-do prompt jobs
+
+`client.sentinelTodos.jobs` uses the ledger owner's client and the base path `/api/workspaces/:workspaceId/sentinel-todos/:processId/jobs`. The owning server requires live `sentinel.enabled` and default-off `features.sentinelTodoJobs`; every command proves the Sentinel owner. Contracts live in `coc-client/src/contracts/sentinel-scheduled-jobs.ts`.
+
+| Method | Suffix | Client operation |
+|---|---|---|
+| GET | `/` | `list`: definitions, active run and last 20 runs per job |
+| POST | `/` | `create`: user prompt/config, up to 10 per Sentinel |
+| PATCH | `/:jobId` | `update`: partial config and `expectedRevision`; `enabled` pauses/resumes |
+| DELETE | `/:jobId` | `delete`: `expectedRevision` |
+| POST | `/:jobId/runs` | `start`: manual run in the persistent job chat |
+| POST | `/:jobId/runs/:runId/cancel` | `cancel`: exact owner/job/run |
+
+Editing instructions/config and deletion conflict while a run or Sentinel handback
+is pending. Schedule-only `enabled` updates remain available; paused schedules still
+permit Run now. Blank `cron`/`effort` clears the optional setting. The first run creates
+the persistent job chat before queue admission; every later run reuses it.
+
 ### To-do Scrubber
 
 `sentinel-scrubber/scrubber-routes.ts` defines owner-validated commands below the ledger's `/scrubber` path: GET config/active run/history, PUT `/config`, POST `/runs`, GET `/runs/:runId`, POST `/runs/:runId/cancel`, and POST `/runs/:runId/findings/:itemId/{accept|dismiss|undo}`. Each request proves the Sentinel owner with the transcript-free `SentinelTodoService.assertOwner`, not a full ledger list. 
