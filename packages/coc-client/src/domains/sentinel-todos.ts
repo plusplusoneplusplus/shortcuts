@@ -1,4 +1,7 @@
 import type {
+  SentinelScheduledJob,
+  SentinelScheduledJobInput,
+  SentinelScheduledJobRun,
   SentinelTodoTagLibrary,
   WriteSentinelTodoTagRequest,
   DeleteSentinelTodoTagRequest,
@@ -39,9 +42,11 @@ function ledgerPath(workspaceId: string, processId: string, suffix = ''): string
  */
 export class SentinelTodosClient {
   readonly scrubber: SentinelScrubberClient;
+  readonly jobs: SentinelScheduledJobsClient;
 
   constructor(private readonly transport: RequestAdapter) {
     this.scrubber = new SentinelScrubberClient(transport);
+    this.jobs = new SentinelScheduledJobsClient(transport);
   }
 
   getTags(workspaceId: string, processId: string, options?: { signal?: AbortSignal }): Promise<SentinelTodoTagLibrary> {
@@ -145,8 +150,40 @@ export class SentinelTodosClient {
     return this.transport.request(ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/readiness`),
       { ...options, method: 'POST', body: {} });
   }
+}
 
+/** Resolve the owner client before accessing jobs (including remote workspaces). */
+export class SentinelScheduledJobsClient {
+  constructor(private readonly transport: RequestAdapter) {}
 
+  private path(workspaceId: string, processId: string, jobId?: string): string {
+    return ledgerPath(workspaceId, processId, '/jobs' + (jobId ? `/${encodePathSegment(jobId)}` : ''));
+  }
+
+  list(workspaceId: string, processId: string, options?: { signal?: AbortSignal }): Promise<{ jobs: SentinelScheduledJob[] }> {
+    return this.transport.request(this.path(workspaceId, processId), options);
+  }
+
+  create(workspaceId: string, processId: string, input: SentinelScheduledJobInput): Promise<SentinelScheduledJob> {
+    return this.transport.request(this.path(workspaceId, processId), { method: 'POST', body: input });
+  }
+
+  update(workspaceId: string, processId: string, jobId: string,
+    input: Partial<SentinelScheduledJobInput> & { expectedRevision: number }): Promise<SentinelScheduledJob> {
+    return this.transport.request(this.path(workspaceId, processId, jobId), { method: 'PATCH', body: input });
+  }
+
+  delete(workspaceId: string, processId: string, jobId: string, input: { expectedRevision: number }): Promise<void> {
+    return this.transport.request(this.path(workspaceId, processId, jobId), { method: 'DELETE', body: input });
+  }
+
+  start(workspaceId: string, processId: string, jobId: string): Promise<SentinelScheduledJobRun> {
+    return this.transport.request(this.path(workspaceId, processId, jobId) + '/runs', { method: 'POST' });
+  }
+
+  cancel(workspaceId: string, processId: string, jobId: string, runId: string): Promise<SentinelScheduledJobRun> {
+    return this.transport.request(this.path(workspaceId, processId, jobId) + `/runs/${encodePathSegment(runId)}/cancel`, { method: 'POST' });
+  }
 }
 
 /** Resolve the client from the owner workspace before accessing this resource. */
