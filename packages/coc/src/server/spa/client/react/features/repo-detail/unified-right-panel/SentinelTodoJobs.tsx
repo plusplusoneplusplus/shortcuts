@@ -228,7 +228,8 @@ function JobRow({ job, owner, onFollowLink, disabled, onEdit, onDelete, onRun, o
             <ol className="mt-2 flex max-h-64 flex-col gap-2 overflow-auto">
                 {job.runs.map(run => <li key={run.id} className="border-t border-[#e0e0e0] pt-1 dark:border-[#3c3c3c]">
                     <p>#{run.runNumber} · {run.trigger} · {run.status}{run.skipReason && `: ${run.skipReason}`}</p>
-                    <RunTime label="Started" value={run.startedAt ?? run.createdAt} />
+                    <RunTime label="Created" value={run.createdAt} />
+                    <RunTime label="Started" value={run.startedAt} />
                     <RunTime label="Finished" value={run.finishedAt} />
                     {run.durationMs !== undefined && <p>Duration: {(run.durationMs / 1000).toFixed(1)}s</p>}
                     {run.error && <p className="text-[#c72e2e] dark:text-[#f48771]">{run.error}</p>}

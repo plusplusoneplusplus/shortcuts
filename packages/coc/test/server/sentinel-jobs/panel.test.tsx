@@ -86,6 +86,14 @@ describe('Sentinel To-do Jobs', () => {
         expect(screen.getByRole('button', { name: /Jobs \(0\/10\)/ })).toHaveAttribute('aria-expanded', 'false');
         expect(screen.getByText(/No user jobs yet/)).not.toBeVisible();
     });
+    it('waits for the owning ledger before mounting job controls or subscriptions', async () => {
+        const page = render(<SentinelTodoJobs owner={owner} ready={false} items={[]} onFollowLink={follow} />);
+        expect(mock.list).not.toHaveBeenCalled();
+        expect(mock.connect).not.toHaveBeenCalled();
+        page.rerender(<SentinelTodoJobs owner={owner} ready items={[]} onFollowLink={follow} />);
+        await screen.findByText(/No user jobs yet/);
+        expect(mock.list).toHaveBeenCalledTimes(1);
+    });
     it('shows the Scrubber as the pinned first built-in row using its unchanged endpoints', async () => {
         applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: true });
         mock.list.mockResolvedValue({ jobs: [job()] });
@@ -242,6 +250,28 @@ describe('Sentinel To-do Jobs', () => {
         expect(mock.request).toHaveBeenCalledWith('/config/runtime', expect.objectContaining({ signal: expect.any(AbortSignal) }));
         expect(mock.refs).toContain('remote:server:group-a');
         expect(mock.list).toHaveBeenCalledWith('ws-a', 'queue_sentinel', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    });
+    it('keeps remote Jobs disabled even when local Jobs are enabled', async () => {
+        mock.route = { kind: 'remote', baseUrl: 'https://example.invalid' };
+        mock.request.mockResolvedValue({ features: { sentinelEnabled: true, sentinelTodoJobsEnabled: false, sentinelTodoScrubberEnabled: true } });
+        view();
+        await screen.findByRole('button', { name: 'Scrub now' });
+        expect(screen.queryByRole('region', { name: 'Jobs' })).toBeNull();
+        expect(mock.list).not.toHaveBeenCalled();
+    });
+    it('discards a late mutation result after switching to another Sentinel', async () => {
+        mock.list.mockResolvedValue({ jobs: [job()] });
+        const page = view();
+        const start = deferred<SentinelScheduledJobRun>();
+        mock.start.mockReturnValue(start.promise);
+        fireEvent.click(await screen.findByRole('button', { name: 'Run now' }));
+        mock.list.mockResolvedValue({ jobs: [] });
+        page.rerender(<SentinelTodoJobs owner={{ ...owner, processId: 'queue_other' }} items={[]} onFollowLink={follow} />);
+        await screen.findByText(/No user jobs yet/);
+        await act(async () => start.resolve(run()));
+        expect(screen.queryByText('Daily review')).toBeNull();
+        expect(mock.list).toHaveBeenCalledTimes(2);
+        expect(mock.list.mock.calls[1].slice(0, 2)).toEqual(['ws-a', 'queue_other']);
     });
     it('does not fall back to local jobs on remote policy failure or unresolved ownership', async () => {
         mock.route = { kind: 'remote', baseUrl: 'https://example.invalid' };
