@@ -102,7 +102,7 @@ route suffix.
 
 `features/repo-settings/WorkspaceSettingsHost.tsx` keeps one lazily mounted
 `RepoSettingsTab` or `RepoGroupSettingsTab` behind the top-level Settings entry
-and the default-off `features.panelSettings` add-tab entry. A stable portal
+and the default-on `features.panelSettings` add-tab entry. A stable portal
 container moves between hosts without remounting forms. The panel tab belongs
 to the panel workspace and concrete server, independently of its dock target
 or selected chat. Panel section navigation stays local; closing parks the form
@@ -548,8 +548,11 @@ features default off.
 | `features.gitCrossCloneCherryPick` | `gitCrossCloneCherryPickEnabled` | on |
 | `features.gitWorktreeExecution` | `isGitWorktreeExecutionEnabled()` | off |
 | `features.sessionContextAttachments` | `sessionContextAttachmentsEnabled` | off |
-| `features.markdownPanelPreview` | `markdownPanelPreviewEnabled` | off |
-| `features.panelSourceSplit` | `panelSourceSplitEnabled` | off |
+| `features.markdownPanelPreview` | `isMarkdownPanelPreviewEnabled()` | on |
+| `features.panelSourceSplit` | `isPanelSourceSplitEnabled()` | on |
+| `features.panelSettings` | `isPanelSettingsEnabled()` | on |
+| `features.explorerEditorTabs` | `isExplorerEditorTabsEnabled()` | on |
+| `features.schedulerDelayHint` | `isSchedulerDelayHintEnabled()` | on |
 | `features.htmlPageTab` | `htmlPageTabEnabled` | on |
 | `features.quickAskSidenotes` | live server flag | — |
 ### Unified right panel

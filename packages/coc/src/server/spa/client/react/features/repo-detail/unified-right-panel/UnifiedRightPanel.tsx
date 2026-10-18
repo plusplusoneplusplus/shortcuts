@@ -56,7 +56,7 @@ import { useFileIdentityOpen } from '../../language-servers/useFileIdentityOpen'
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { cn } from '../../../ui/cn';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled, isPanelTabReorderingEnabled } from '../../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isPanelSettingsEnabled, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled } from '../../../utils/config';
 import { useContainerWidth } from '../../chat/hooks/useContainerWidth';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import {
@@ -247,14 +247,14 @@ export function UnifiedRightPanel({
 }: UnifiedRightPanelProps) {
     const { isOpen, mode, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
     const [reorderEnabled, setReorderEnabled] = useState(() => isPanelTabReorderingEnabled());
-    const [splitEnabled, setSplitEnabled] = useState(() => isFeatureEnabled('panelSourceSplitEnabled'));
+    const [splitEnabled, setSplitEnabled] = useState(() => isPanelSourceSplitEnabled());
     const { ownerKey: settingsOwner, focusPanel: focusPanelSettings } = useWorkspaceSettingsPanel();
-    const [settingsEnabled, setSettingsEnabled] = useState(() => isFeatureEnabled('panelSettingsEnabled'));
+    const [settingsEnabled, setSettingsEnabled] = useState(() => isPanelSettingsEnabled());
     useEffect(() => {
         const update = () => {
             setReorderEnabled(isPanelTabReorderingEnabled());
-            setSplitEnabled(isFeatureEnabled('panelSourceSplitEnabled'));
-            setSettingsEnabled(isFeatureEnabled('panelSettingsEnabled'));
+            setSplitEnabled(isPanelSourceSplitEnabled());
+            setSettingsEnabled(isPanelSettingsEnabled());
         };
         window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
         return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);

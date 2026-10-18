@@ -86,7 +86,7 @@ vi.mock('../../../../src/server/spa/client/react/features/language-servers/langu
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { WorkspaceSettingsProvider, WorkspaceSettingsSlot } from '../../../../src/server/spa/client/react/features/repo-settings/WorkspaceSettingsHost';
-import { applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
+import { _resetRuntimeConfig, applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
 import {
     inheritDraftPanelTabs,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
@@ -230,7 +230,16 @@ describe('UnifiedRightPanel', () => {
         expect(input).toHaveValue('pending');
     });
 
-    it('keeps Settings absent until the default-off flag is enabled', async () => {
+    it('offers Settings when the default-on flag is absent from runtime config', async () => {
+        _resetRuntimeConfig();
+        render(<WorkspaceSettingsProvider ownerKey={WS} topLevelActive={false} renderPage={() => null}>
+            <UnifiedRightPanel workspaceId={WS} dock={dockStub()} />
+        </WorkspaceSettingsProvider>);
+        await act(async () => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
+        expect(screen.getByTestId('unified-panel-open-settings')).toBeTruthy();
+    });
+
+    it('keeps Settings absent while the flag is explicitly off and follows live changes', async () => {
         render(<WorkspaceSettingsProvider ownerKey={WS} topLevelActive={false} renderPage={() => null}>
             <UnifiedRightPanel workspaceId={WS} dock={dockStub()} />
         </WorkspaceSettingsProvider>);

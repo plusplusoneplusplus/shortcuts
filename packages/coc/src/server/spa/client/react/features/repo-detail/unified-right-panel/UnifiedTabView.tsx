@@ -60,7 +60,7 @@ import { UnifiedPasteTab } from './UnifiedPasteTab';
 import { UnifiedTodoTab } from './UnifiedTodoTab';
 import { WorkspaceSettingsSlot } from '../../repo-settings/WorkspaceSettingsHost';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled } from '../../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isMarkdownPanelPreviewEnabled } from '../../../utils/config';
 
 export interface UnifiedTabViewProps {
     tab: UnifiedPanelTab;
@@ -136,10 +136,10 @@ export function UnifiedTabView({
     onNotesSelectionChange, canvasSwitcher,
 }: UnifiedTabViewProps) {
     const [markdownPreviewEnabled, setMarkdownPreviewEnabled] = useState(
-        () => isFeatureEnabled('markdownPanelPreviewEnabled'),
+        () => isMarkdownPanelPreviewEnabled(),
     );
     useEffect(() => {
-        const update = () => setMarkdownPreviewEnabled(isFeatureEnabled('markdownPanelPreviewEnabled'));
+        const update = () => setMarkdownPreviewEnabled(isMarkdownPanelPreviewEnabled());
         window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
         return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
     }, []);

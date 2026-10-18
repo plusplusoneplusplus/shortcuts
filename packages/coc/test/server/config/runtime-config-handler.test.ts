@@ -87,7 +87,7 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.ralphEnabled).toBe(false);
         expect(result.features.forEachEnabled).toBe(false);
         expect(result.features.sentinelEnabled).toBe(false);
-        expect(result.features.vimNavigationEnabled).toBe(false);
+        expect((result.features as Record<string, unknown>).vimNavigationEnabled).toBe(false);
         expect(result.features.cronEnabled).toBe(false);
         expect(result.features.dreamsEnabled).toBe(false);
         expect(result.features.excalidrawEnabled).toBe(false);
@@ -105,7 +105,14 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.workItemsSyncEnabled).toBe(false);
         expect(result.features.workItemsWorkflowEnabled).toBe(false);
         expect(result.features.gitWorktreeExecutionEnabled).toBe(false);
-        expect(result.features.markdownPanelPreviewEnabled).toBe(false);
+        expect(result.features.markdownPanelPreviewEnabled).toBe(true);
+        expect(result.features.explorerEditorTabsEnabled).toBe(true);
+        expect((result.features as Record<string, unknown>).panelSourceSplitEnabled).toBe(true);
+        expect((result.features as Record<string, unknown>).panelSettingsEnabled).toBe(true);
+        expect(result.features.schedulerDelayHintEnabled).toBe(true);
+        expect(result.features.chatFoldersEnabled).toBe(false);
+        expect(result.features.repoGroupAggregatedChatsEnabled).toBe(false);
+        expect((result.features as Record<string, unknown>).vimNavigationEnabled).toBe(false);
         expect(result.features.panelTabReorderingEnabled).toBe(true);
         expect(result.features.explorerDeleteEnabled).toBe(true);
         expect(result.features.chatHistoryPagingEnabled).toBe(false);
@@ -136,9 +143,22 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1').features.chatHistoryPagingEnabled).toBe(true);
     });
 
-    it('exposes the opt-in Markdown panel preview flag', () => {
-        const svc = createMockRuntimeConfigService({ features: { markdownPanelPreview: true } });
-        expect(buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1').features.markdownPanelPreviewEnabled).toBe(true);
+    it('exposes explicit false for default-on UI flags without a restart', () => {
+        const svc = createMockRuntimeConfigService({
+            features: {
+                explorerEditorTabs: false,
+                markdownPanelPreview: false,
+                panelSourceSplit: false,
+                panelSettings: false,
+                schedulerDelayHint: false,
+            },
+        });
+        const features = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1').features;
+        expect(features.explorerEditorTabsEnabled).toBe(false);
+        expect(features.markdownPanelPreviewEnabled).toBe(false);
+        expect((features as Record<string, unknown>).panelSourceSplitEnabled).toBe(false);
+        expect((features as Record<string, unknown>).panelSettingsEnabled).toBe(false);
+        expect(features.schedulerDelayHintEnabled).toBe(false);
     });
 
     it('exposes the diff file picker flag, on by default and live-toggleable off', () => {

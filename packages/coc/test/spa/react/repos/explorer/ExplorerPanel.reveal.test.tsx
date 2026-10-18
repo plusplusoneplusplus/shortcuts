@@ -36,6 +36,7 @@ import {
     explorerSelectedStorageKey,
 } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerStateStore';
 import type { TreeEntry } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/types';
+import { applyRuntimeConfigPatch } from '../../../../../src/server/spa/client/react/utils/config';
 
 const WS = 'ws-reveal';
 const DEEP = 'a/b/c/deep.ts';
@@ -96,6 +97,8 @@ async function mount(options: {
 }
 
 beforeEach(() => {
+    // These cover the single-pane Explorer; editor tabs are on by default.
+    applyRuntimeConfigPatch({ explorerEditorTabsEnabled: false });
     localStorage.clear();
     location.hash = '';
     clearExplorerTreeCache();

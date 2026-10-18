@@ -651,18 +651,6 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { sentinelResultCards: false } }).sentinelResultCardsEnabled).toBe(false);
     });
 
-    it('exposes the scheduler delay hint as a default-off live Appearance setting', () => {
-        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.schedulerDelayHint')!;
-        expect(def.default).toBe(false);
-        expect(def.runtime).toBe('live');
-        expect(def.runtimeFlag).toBe('schedulerDelayHintEnabled');
-        expect(def.ui?.tab).toBe('appearance');
-        expect(def.ui?.badge).toBe('experimental');
-        expect(DEFAULT_CONFIG.features.schedulerDelayHint).toBe(false);
-        expect(buildRuntimeFeatureFlags({}).schedulerDelayHintEnabled).toBe(false);
-        expect(buildRuntimeFeatureFlags({ features: { schedulerDelayHint: true } }).schedulerDelayHintEnabled).toBe(true);
-    });
-
     it('exposes sidebar refresh as a default-on Appearance setting', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.railManualRefresh')!;
         expect(def.default).toBe(true);
@@ -721,37 +709,29 @@ describe('Features card UI metadata', () => {
     // Explorer multi-tab editor: a default-off Features toggle with a live
     // runtime flag, so the SPA can gate the whole tab strip while the existing
     // single-preview Explorer stays the shipped behavior.
-    it('exposes explorer editor tabs as a default-off experimental feature', () => {
+    it('keeps explorer editor tabs on the Features card', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.explorerEditorTabs');
         expect(def, 'features.explorerEditorTabs must be an admin setting').toBeDefined();
         expect(def!.value).toEqual({ kind: 'boolean' });
-        expect(def!.default, 'explorer editor tabs must default off (opt-in)').toBe(false);
-        expect(def!.runtime).toBe('live');
-        expect(def!.runtimeFlag).toBe('explorerEditorTabsEnabled');
-        expect(def!.ui, 'explorer editor tabs must appear on the Features card').toBeDefined();
-        expect(def!.ui!.group).toBe('editorFiles');
         expect(def!.ui!.label).toBe('Explorer editor tabs');
-        expect(def!.ui!.badge).toBe('experimental');
-        expect(def!.ui!.hint).toMatch(/disabled by default/i);
         expect(getFeatureCardSettings('editorFiles').some(d => d.key === 'features.explorerEditorTabs')).toBe(true);
-        // Off in the resolved default config, off when absent from a partial
-        // config, and on only when the config file opts in.
-        expect(DEFAULT_CONFIG.features.explorerEditorTabs).toBe(false);
-        expect(buildRuntimeFeatures(DEFAULT_CONFIG).explorerEditorTabsEnabled).toBe(false);
-        expect(buildRuntimeFeatureFlags({}).explorerEditorTabsEnabled).toBe(false);
-        expect(buildRuntimeFeatureFlags({ features: { explorerEditorTabs: true } }).explorerEditorTabsEnabled).toBe(true);
     });
 
     it.each([
-        ['features.explorerDelete', 'explorerDelete', 'explorerDeleteEnabled', 60],
-        ['features.panelTabReordering', 'panelTabReordering', 'panelTabReorderingEnabled', 40],
-    ] as const)('enables experimental %s by default with an explicit false opt-out', (key, field, flag, order) => {
+        ['features.explorerEditorTabs', 'explorerEditorTabs', 'explorerEditorTabsEnabled', 'editorFiles', 10],
+        ['features.markdownPanelPreview', 'markdownPanelPreview', 'markdownPanelPreviewEnabled', 'editorFiles', 20],
+        ['features.panelSourceSplit', 'panelSourceSplit', 'panelSourceSplitEnabled', 'editorFiles', 30],
+        ['features.panelSettings', 'panelSettings', 'panelSettingsEnabled', 'editorFiles', 35],
+        ['features.explorerDelete', 'explorerDelete', 'explorerDeleteEnabled', 'editorFiles', 60],
+        ['features.panelTabReordering', 'panelTabReordering', 'panelTabReorderingEnabled', 'editorFiles', 40],
+        ['features.schedulerDelayHint', 'schedulerDelayHint', 'schedulerDelayHintEnabled', 'uiGeneral', 75],
+    ] as const)('enables experimental %s by default with an explicit false opt-out', (key, field, flag, group, order) => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === key)!;
         expect(def.default).toBe(true);
         expect(def.absentFallback).toBeUndefined();
         expect(def.runtime).toBe('live');
         expect(def.runtimeFlag).toBe(flag);
-        expect(def.ui).toMatchObject({ tab: 'appearance', group: 'editorFiles', order, badge: 'experimental' });
+        expect(def.ui).toMatchObject({ tab: 'appearance', group, order, badge: 'experimental' });
         expect(def.ui!.hint).toMatch(/enabled by default/i);
         expect(def.ui!.hint).not.toMatch(/disabled by default/i);
         expect(DEFAULT_CONFIG.features[field]).toBe(true);
@@ -926,9 +906,9 @@ describe('feature toggle settings-tab placement', () => {
         for (const key of ['features.explorerEditorTabs', 'features.markdownPanelPreview', 'features.panelSourceSplit']) {
             const def = getAdminSettingDefinition(key)!;
             expect(def.ui).toMatchObject({ tab: 'appearance', group: 'editorFiles', badge: 'experimental' });
-            expect(def.default, key).toBe(false);
+            expect(def.default, key).toBe(true);
             expect(def.runtime, key).toBe('live');
-            expect(buildRuntimeFeatureFlags({})[def.runtimeFlag!], key).toBe(false);
+            expect(buildRuntimeFeatureFlags({})[def.runtimeFlag!], key).toBe(true);
         }
         expect(FEATURE_CARD_GROUPS.find(g => g.id === 'editorNotes')?.heading).toBe('Notes Editor');
     });

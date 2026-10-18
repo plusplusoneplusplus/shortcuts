@@ -367,13 +367,13 @@ export interface CLIConfig {
         canvasHostApis?: boolean;
         /** `ask_user` `sensitive-input` questions: secrets pasted in the desktop dashboard go straight to a sink. Disabled by default. */
         sensitiveInput?: boolean;
-        /** VS Code-style multiple editor tabs in the File Explorer. Disabled by default. */
+        /** VS Code-style multiple editor tabs in the File Explorer. Enabled by default. */
         explorerEditorTabs?: boolean;
         /** Confirmed permanent Explorer deletion. Disabled by default. */
         explorerDelete?: boolean;
-        /** Rendered Markdown preview in unified right-panel file tabs. Disabled by default. */
+        /** Rendered Markdown preview in unified right-panel file tabs. Enabled by default. */
         markdownPanelPreview?: boolean;
-        /** Two-pane source file split in the unified right panel. Disabled by default. */
+        /** Two-pane source file split in the unified right panel. Enabled by default. */
         panelSourceSplit?: boolean;
         panelSettings?: boolean;
         panelTabReordering?: boolean;
@@ -789,13 +789,13 @@ export interface ResolvedCLIConfig {
         canvasHostApis: boolean;
         /** `ask_user` `sensitive-input` questions: secrets pasted in the desktop dashboard go straight to a sink. Disabled by default. */
         sensitiveInput: boolean;
-        /** VS Code-style multiple editor tabs in the File Explorer. Disabled by default. */
+        /** VS Code-style multiple editor tabs in the File Explorer. Enabled by default. */
         explorerEditorTabs: boolean;
         /** Confirmed permanent Explorer deletion. Disabled by default. */
         explorerDelete: boolean;
-        /** Rendered Markdown preview in unified right-panel file tabs. Disabled by default. */
+        /** Rendered Markdown preview in unified right-panel file tabs. Enabled by default. */
         markdownPanelPreview: boolean;
-        /** Two-pane source file split in the unified right panel. Disabled by default. */
+        /** Two-pane source file split in the unified right panel. Enabled by default. */
         panelSourceSplit: boolean;
         panelSettings: boolean;
         panelTabReordering: boolean;
@@ -1109,16 +1109,16 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         railManualRefresh: true,
         adminMachineSwitch: false,
         railStatusActions: true,
-        schedulerDelayHint: false,
+        schedulerDelayHint: true,
         composerWordHint: true,
         gitWorktreeExecution: false,
         canvasHostApis: false,
         sensitiveInput: false,
-        explorerEditorTabs: false,
+        explorerEditorTabs: true,
         explorerDelete: true,
-        markdownPanelPreview: false,
-        panelSourceSplit: false,
-        panelSettings: false,
+        markdownPanelPreview: true,
+        panelSourceSplit: true,
+        panelSettings: true,
         panelTabReordering: true,
         htmlPageTab: true,
         chatStyleSelector: true,

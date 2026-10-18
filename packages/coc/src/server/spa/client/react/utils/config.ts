@@ -123,11 +123,11 @@ interface DashboardConfig {
     schedulerDelayHintEnabled?: boolean;
     /** Whether chat composers show the client-side English word hint. Default true. */
     composerWordHintEnabled?: boolean;
-    /** Whether the File Explorer shows VS Code-style multiple editor tabs. Default false. */
+    /** Whether the File Explorer shows VS Code-style multiple editor tabs. Default true. */
     explorerEditorTabsEnabled?: boolean;
-    /** Whether unified right-panel Markdown file tabs offer a rendered preview. Default false. */
+    /** Whether unified right-panel Markdown file tabs offer a rendered preview. Default true. */
     markdownPanelPreviewEnabled?: boolean;
-    /** Whether unified right-panel source files can be split into two panes. Default false. */
+    /** Whether unified right-panel source files can be split into two panes. Default true. */
     panelSourceSplitEnabled?: boolean;
     panelSettingsEnabled?: boolean;
     /** Whether unified right-panel resource tabs can be reordered. Default true. */
@@ -348,6 +348,26 @@ export function isHtmlPageTabEnabled(): boolean {
 /** Unified right-panel tab reordering (`features.panelTabReordering`); on unless the server says off. */
 export function isPanelTabReorderingEnabled(): boolean {
     return getConfig().panelTabReorderingEnabled !== false;
+}
+
+/** Rendered Markdown in unified right-panel file tabs (`features.markdownPanelPreview`); on unless the server says off. */
+export function isMarkdownPanelPreviewEnabled(): boolean {
+    return getConfig().markdownPanelPreviewEnabled !== false;
+}
+
+/** Side-by-side unified right-panel source files (`features.panelSourceSplit`); on unless the server says off. */
+export function isPanelSourceSplitEnabled(): boolean {
+    return getConfig().panelSourceSplitEnabled !== false;
+}
+
+/** Settings in the unified right-panel add-tab menu (`features.panelSettings`); on unless the server says off. */
+export function isPanelSettingsEnabled(): boolean {
+    return getConfig().panelSettingsEnabled !== false;
+}
+
+/** Scheduler delay labels on the ALL/AP buttons (`features.schedulerDelayHint`); on unless the server says off. */
+export function isSchedulerDelayHintEnabled(): boolean {
+    return getConfig().schedulerDelayHintEnabled !== false;
 }
 
 /** Local Explorer deletion (`features.explorerDelete`); on unless the server says off. */
@@ -651,7 +671,7 @@ export function isComposerWordHintEnabled(): boolean {
  * are persisted per workspace. Gates UI only — nothing server-side changes.
  */
 export function isExplorerEditorTabsEnabled(): boolean {
-    return getConfig().explorerEditorTabsEnabled === true;
+    return getConfig().explorerEditorTabsEnabled !== false;
 }
 
 /**

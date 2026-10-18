@@ -13,12 +13,17 @@ import {
     isComposerWordHintEnabled,
     isDreamsEnabled,
     isExplorerDeleteEnabled,
+    isExplorerEditorTabsEnabled,
     isFeatureEnabled,
+    isMarkdownPanelPreviewEnabled,
+    isPanelSettingsEnabled,
+    isPanelSourceSplitEnabled,
     isPanelTabReorderingEnabled,
     isPullRequestsAutoClassifyTeamEnabled,
     isRailManualRefreshEnabled,
     isRailStatusActionsEnabled,
     isServersEnabled,
+    isSchedulerDelayHintEnabled,
     isSentinelEnabled,
 } from '../../../../src/server/spa/client/react/utils/config';
 
@@ -32,6 +37,11 @@ describe.each([
     ['railStatusActionsEnabled', isRailStatusActionsEnabled],
     ['explorerDeleteEnabled', isExplorerDeleteEnabled],
     ['panelTabReorderingEnabled', isPanelTabReorderingEnabled],
+    ['explorerEditorTabsEnabled', isExplorerEditorTabsEnabled],
+    ['markdownPanelPreviewEnabled', isMarkdownPanelPreviewEnabled],
+    ['panelSourceSplitEnabled', isPanelSourceSplitEnabled],
+    ['panelSettingsEnabled', isPanelSettingsEnabled],
+    ['schedulerDelayHintEnabled', isSchedulerDelayHintEnabled],
 ] as const)('%s default-on behavior', (flag, isEnabled) => {
     it('enables an absent setting with or without bootstrap config', () => {
         expect(isEnabled()).toBe(true);

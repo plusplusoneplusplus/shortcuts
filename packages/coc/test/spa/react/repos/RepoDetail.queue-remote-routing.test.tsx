@@ -116,6 +116,10 @@ vi.mock('../../../../src/server/spa/client/react/layout/TopBar', () => ({ SHOW_W
 vi.mock('../../../../src/server/spa/client/react/layout/MobileTabBar', () => ({ MobileTabBar: () => null }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isSchedulerDelayHintEnabled: () => false,
+    isMarkdownPanelPreviewEnabled: () => false,
+    isPanelSourceSplitEnabled: () => false,
+    isPanelSettingsEnabled: () => false,
     isContainerMode: () => false,
     getApiBase: () => '',
     getHostname: () => 'Local',

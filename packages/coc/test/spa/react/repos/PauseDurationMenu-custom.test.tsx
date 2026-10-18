@@ -17,7 +17,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { AgentProvidersQuotaResponse } from '@plusplusoneplusplus/coc-client';
 import { renderWithProviders } from '../test-utils';
-import { applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
+import { _resetRuntimeConfig, applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
 import { ChatListPane } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
 import { SplitWorkspacePanel } from '../../../../src/server/spa/client/react/features/repo-detail/SplitWorkspacePanel';
 import { splitWorkspaceLeftCollapsedStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceLeftCollapse';
@@ -750,6 +750,13 @@ describe('configured scheduler delay hints', () => {
         openAutopilotMenu();
         expect(screen.getByTestId('task-delay-autopilot-custom')).toHaveTextContent('7m');
         expect(props.onSetTaskDelay).not.toHaveBeenCalled();
+    });
+
+    it('shows the hints when the default-on flag is absent from runtime config', () => {
+        _resetRuntimeConfig();
+        renderPane({ taskDelayMinutes: 15, autopilotTaskDelayMinutes: 7 });
+        expect(screen.getByTestId('scheduler-delay-hint-all')).toHaveTextContent('15m');
+        expect(screen.getByTestId('scheduler-delay-hint-autopilot')).toHaveTextContent('7m');
     });
 
     it('obeys live flag changes without modifying configured values', () => {

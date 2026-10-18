@@ -192,7 +192,7 @@ The ALL and AP pause pills share per-scope repeating delay settings: presets, Of
 and custom integer minutes from 1 through 1440. `RepoChatTab` reads queue stats and
 writes through the workspace-routed `QueueClient.setTaskDelay`, refreshing after success;
 failures retain confirmed configuration. With live Appearance flag
-`features.schedulerDelayHint` enabled (default off), `SchedulerDelayHint` displays each
+`features.schedulerDelayHint` enabled (default on), `SchedulerDelayHint` displays each
 scope's confirmed interval, independent of pause state and active cooldowns. Unknown,
 invalid or mixed aggregate values produce no hint. Narrow containers retain the clock
 and accessible interval while hiding interval text.
