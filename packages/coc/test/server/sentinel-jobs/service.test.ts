@@ -280,6 +280,26 @@ describe('SentinelJobService', () => {
         expect(fs.existsSync(match2![1])).toBe(true);
         void second;
     });
+    it('hands back the current run response, not a later manual chat response', async () => {
+        const job = jobStore.create(owner, input);
+        const run = await service.start(owner, job.id);
+        const call = enqueue.mock.calls[0][0] as CreateTaskInput;
+        await service.guard(guardTask(call));
+        const chat = processes.get(call.processId!)!;
+        processes.set(chat.id, { ...chat, conversationTurns: [
+            { role: 'user', content: 'Run job', turnIndex: 0, timestamp: new Date() },
+            assistantTurn(1, 'This run result'),
+            { role: 'user', content: 'A later manual message', turnIndex: 2, timestamp: new Date() },
+            assistantTurn(3, 'Unrelated later result'),
+        ] as AIProcess['conversationTurns'] });
+        const queue = new FakeQueue();
+        service.attach(queue);
+        queue.emit('taskCompleted', owner.workspaceId, guardTask(call, { status: 'completed' }));
+        await flush();
+        expect(jobStore.run(owner, job.id, run.id).result).toBe('This run result');
+        expect(enqueue.mock.calls[1][0].payload.prompt).toContain('This run result');
+        expect(enqueue.mock.calls[1][0].payload.prompt).not.toContain('Unrelated later result');
+    });
 
     it('is single-flight per job but runs independent jobs in parallel', async () => {
         const a = jobStore.create(owner, input);
@@ -479,6 +499,34 @@ describe('SentinelJobService', () => {
         expect(jobStore.run(owner, jobD.id, runD.id).handbackState).toBe('queued'); // left alone — its task is still live
         expect(jobStore.run(owner, jobE.id, runE.id).handbackState).toBe('queued'); // re-queued since no task was ever recorded
         expect(enqueue).toHaveBeenCalled();
+    });
+
+    it('does not cancel active work when an owner read fails unexpectedly', async () => {
+        const job = jobStore.create(owner, input);
+        const run = await service.start(owner, job.id);
+        const failure = new Error('Database read unavailable');
+        const assertOwner = vi.spyOn(todoService, 'assertOwner').mockRejectedValueOnce(failure);
+        await expect(service.invalidate()).rejects.toBe(failure);
+        expect(jobStore.run(owner, job.id, run.id).status).toBe('queued');
+        expect(cancelTask).not.toHaveBeenCalled();
+        assertOwner.mockRestore();
+    });
+
+    it('reports unexpected owner read failures as handback errors, not owner revocation', async () => {
+        const job = jobStore.create(owner, input);
+        const run = await service.start(owner, job.id);
+        const call = enqueue.mock.calls[0][0] as CreateTaskInput;
+        const failure = new Error('Database read unavailable');
+        const assertOwner = vi.spyOn(todoService, 'assertOwner').mockRejectedValueOnce(failure);
+        const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const queue = new FakeQueue();
+        service.attach(queue);
+        queue.emit('taskCompleted', owner.workspaceId, guardTask(call, { status: 'completed' }));
+        await flush();
+        expect(jobStore.run(owner, job.id, run.id).handbackState).toBe('failed');
+        expect(log).toHaveBeenCalledWith('[sentinel-jobs] Could not queue Sentinel handback:', failure);
+        assertOwner.mockRestore();
+        log.mockRestore();
     });
 
     it('invalidate suppresses pending handbacks and cancels active runs the moment the owner becomes invalid', async () => {

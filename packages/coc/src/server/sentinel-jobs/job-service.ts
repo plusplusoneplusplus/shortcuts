@@ -7,7 +7,7 @@ import { getRepoDataPath } from '../paths';
 import { nextCronTime } from '../schedule/cron-utils';
 import { readAutoCompact } from '../processes/auto-compact';
 import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
-import type { SentinelTodoOwner } from '../sentinel-todos/sentinel-todo-store';
+import { SentinelTodoError, type SentinelTodoOwner } from '../sentinel-todos/sentinel-todo-store';
 import { JobError, SentinelJobStore, type JobRecord, type JobRunRecord } from './job-store';
 import { getJobTaskContext, type JobTaskContext } from './job-metadata';
 export { getJobTaskContext } from './job-metadata';
@@ -253,7 +253,8 @@ export class SentinelJobService {
 
     private async invalidateOwners(): Promise<void> {
         for (const { owner, job } of this.deps.jobs.all()) {
-            try { await this.assertOwner(owner); continue; } catch { /* revoke below */ }
+            try { await this.assertOwner(owner); continue; }
+            catch (error) { if (!ownerUnavailable(error)) throw error; }
             for (const run of this.deps.jobs.runs(owner, job.id)) {
                 if (pending(run)) {
                     this.deps.jobs.patchRun(owner, job.id, run.id, { handbackState: 'suppressed' });
@@ -290,7 +291,11 @@ export class SentinelJobService {
     private async terminal(task: QueuedTask, status: 'completed' | 'failed' | 'cancelled', detail?: unknown): Promise<void> {
         const context = getJobTaskContext(task)!;
         let run: JobRunRecord;
-        try { run = this.deps.jobs.run(context, context.jobId, context.runId); } catch { return; }
+        try { run = this.deps.jobs.run(context, context.jobId, context.runId); }
+        catch (error) {
+            if (error instanceof JobError && error.code === 'not_found') return;
+            throw error;
+        }
         if (context.kind === 'handback') {
             if (run.handbackTaskId !== task.id || run.handbackState !== 'queued') return;
             const process = await this.deps.store.getProcess(context.processId, context.workspaceId);
@@ -324,9 +329,9 @@ export class SentinelJobService {
         const job = this.deps.jobs.get(owner, id);
         try {
             const process = job.processId ? await this.deps.store.getProcess(job.processId, owner.workspaceId) : undefined;
-            const assistant = process ? [...(process.conversationTurns ?? [])].reverse()
-                .find(turn => turn.role === 'assistant' && !turn.displayOnly && !turn.streaming
-                    && turn.turnIndex >= (run.turnIndex ?? 0)) : undefined;
+            const response = process?.conversationTurns?.filter(turn => !turn.displayOnly
+                && turn.turnIndex > (run.turnIndex ?? -1)).sort((a, b) => a.turnIndex - b.turnIndex)[0];
+            const assistant = response?.role === 'assistant' && !response.streaming ? response : undefined;
             const result = assistant?.content || 'Completed without a final response';
             const updated = this.deps.jobs.patchRun(owner, id, runId, { result: result.slice(0, 16_000) })!;
             await this.handback(owner, job, updated);
@@ -339,7 +344,8 @@ export class SentinelJobService {
 
     private async handback(owner: SentinelTodoOwner, job: JobRecord, run: JobRunRecord): Promise<void> {
         try { await this.assertOwner(owner); }
-        catch {
+        catch (error) {
+            if (!ownerUnavailable(error)) throw error;
             this.deps.jobs.patchRun(owner, job.id, run.id, { handbackState: this.disposed ? 'pending' : 'suppressed' });
             return;
         }
@@ -420,4 +426,8 @@ export class SentinelJobService {
 
 function message(error: unknown): string {
     return error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown failure';
+}
+
+function ownerUnavailable(error: unknown): boolean {
+    return (error instanceof JobError || error instanceof SentinelTodoError) && error.code === 'not_found';
 }
