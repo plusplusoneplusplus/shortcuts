@@ -122,6 +122,7 @@ describe('Sentinel To-do Jobs', () => {
         view();
         await fillNew();
         expect(screen.getByLabelText('Mode')).toHaveValue('ask');
+        expect(within(screen.getByLabelText('Effort')).queryByRole('option', { name: 'max', exact: true })).toBeNull();
         expect(screen.getByLabelText('Auto-compact threshold (tokens)')).toHaveValue(100_000);
         fireEvent.click(screen.getByRole('button', { name: 'Create job' }));
         await waitFor(() => expect(mock.create).toHaveBeenCalledWith('ws-a', 'queue_sentinel', {

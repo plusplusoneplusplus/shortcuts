@@ -56,7 +56,7 @@ export function SentinelTodoJobDialog({ job, client, baseUrl, busy, error, onSav
                     <datalist id={`${id}-models`}>{models.filter(model => model.enabled).map(model => <option key={model.id} value={model.id}>{model.name ?? model.id}</option>)}</datalist></div>
                 <div><label htmlFor={`${id}-effort`}>Effort</label>
                     <select id={`${id}-effort`} className={INPUT} value={draft.effort} disabled={busy} onChange={event => update('effort', event.target.value)}>
-                        <option value="">Provider default</option>{['low', 'medium', 'high', 'xhigh', 'max'].map(effort => <option key={effort} value={effort}>{effort}</option>)}
+                        <option value="">Provider default</option>{['low', 'medium', 'high', 'xhigh'].map(effort => <option key={effort} value={effort}>{effort}</option>)}
                     </select></div>
                 <div><label htmlFor={`${id}-mode`}>Mode</label>
                     <select id={`${id}-mode`} className={INPUT} value={draft.mode} disabled={busy}
