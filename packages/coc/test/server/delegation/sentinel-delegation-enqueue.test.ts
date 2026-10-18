@@ -64,7 +64,7 @@ describe('Sentinel delegation admission', () => {
     it('passes tracked owner/item/action context through local and native Ralph tool admission', async () => {
         const tracking = { owner: { workspaceId: parentWorkspace, processId: parentId }, itemId: 'dependent' };
         const taskId = '00000000-0000-4000-8000-000000000001';
-        const tool = createSendToConversationTool({
+        const tool = createSendToConversationTool({ runtime: { serverIdentity: 'local-installation' },
             store, workspaceId: parentWorkspace, parentProcessId: parentId,
             enqueueChat: task => admit(task, enqueue),
             launchRalph: vi.fn(async request => {
@@ -90,7 +90,7 @@ describe('Sentinel delegation admission', () => {
             });
             expect(jobs.list(childWorkspace)).toEqual([]);
         });
-        const { tool } = createSendToConversationTool({
+        const { tool } = createSendToConversationTool({ runtime: { serverIdentity: 'local-installation' },
             store, workspaceId: parentWorkspace, parentProcessId: parentId,
             enqueueChat: task => admit(task, enqueue),
             launchRalph: request => launchRalphSession(request, {
@@ -121,7 +121,7 @@ describe('Sentinel delegation admission', () => {
         const { tool } = createSendToConversationTool({
             store, workspaceId: parentWorkspace, parentProcessId: parentId,
             enqueueChat: task => admit(task, enqueue),
-            runtime: { messagingOrigin: () => origin, trackMessagingJob: vi.fn() },
+            runtime: { serverIdentity: 'local-installation', messagingOrigin: () => origin, trackMessagingJob: vi.fn() },
             launchRalph: request => launchRalphSession(request, {
                 dataDir, store, bridge: { enqueue: task => admit(task, enqueue) } as any,
             }),
@@ -147,7 +147,7 @@ describe('Sentinel delegation admission', () => {
         });
         const { tool } = createSendToConversationTool({
             store, workspaceId: parentWorkspace, parentProcessId: parentId,
-            runtime: { messagingOrigin: () => origin, trackMessagingJob },
+            runtime: { serverIdentity: 'local-installation', messagingOrigin: () => origin, trackMessagingJob },
             enqueueChat: task => admit(task, enqueue),
             launchRalph: request => launchRalphSession(request, {
                 dataDir, store, bridge: { enqueue: task => admit(task, enqueue) } as any,

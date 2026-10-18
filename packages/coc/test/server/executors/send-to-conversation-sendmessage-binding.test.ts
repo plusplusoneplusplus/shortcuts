@@ -40,6 +40,7 @@ function setup(bridgeOverrides: Record<string, unknown> = {}) {
         throw new Error('enqueueChat must not be called in post mode');
     });
     const { tool } = createSendToConversationTool({
+        runtime: { serverIdentity: 'owning-installation' },
         store: store as any,
         workspaceId: WS_ID,
         enqueueChat,
@@ -63,7 +64,7 @@ describe('send_to_conversation post-mode delivery binding (real ProcessMessageDe
 
         expect(result.error).toBeUndefined();
         expect(result.processId).toBe('queue_target');
-        expect(result.openLink).toBe('#/process/queue_target');
+        expect(result.openLink).toBe(`#chat-references/owning-installation/${WS_ID}/queue_target`);
         expect(result.turnIndex).toBe(0);
 
         // The message was delivered through the real enqueue path...
@@ -89,6 +90,7 @@ describe('send_to_conversation post-mode delivery binding (real ProcessMessageDe
 
         expect(result.error).toBeUndefined();
         expect(result.turnIndex).toBe(0);
+        expect(result.openLink).toBe(`#chat-references/owning-installation/${WS_ID}/bare-uuid`);
     });
 
     it('applies post-mode effortTier using the existing conversation provider without changing provider metadata', async () => {
@@ -127,6 +129,7 @@ describe('send_to_conversation post-mode delivery binding (real ProcessMessageDe
         const store = createMockProcessStore();
         const sendMessage = createSendMessageCapability(store as any, bridge as any);
         const { tool } = createSendToConversationTool({
+        runtime: { serverIdentity: 'owning-installation' },
             store: store as any,
             workspaceId: WS_ID,
             enqueueChat: vi.fn(async () => 'unused') as any,

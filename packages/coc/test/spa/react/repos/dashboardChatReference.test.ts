@@ -6,6 +6,13 @@ import { publishDashboardTopology } from '../../../../src/server/spa/client/reac
 import { tagRemoteWorkspaces } from '../../../../src/server/spa/client/react/repos/remoteWorkspaceAggregation';
 import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 import { repoHashBase } from '../../../../src/server/spa/client/react/layout/routePath';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { getOrCreateServerIdentity } from '../../../../src/server/servers/server-identity';
+import { createWorkspaceDirectory } from '../../../../src/server/servers/workspace-directory';
+import { createSendToConversationTool } from '../../../../src/server/llm-tools/send-to-conversation-tool';
 
 const reference = { serverIdentity: 'destination', workspaceId: 'same', processId: 'chat' };
 const local = { id: 'same', name: 'Local collision' } as WorkspaceInfo;
@@ -39,6 +46,62 @@ describe('durable chat reference parser', () => {
         '#chat-references/server/%ZZ/chat', '#chat-references/server/ws/chat?alias=other',
         '#chat-references/server/ws/' + 'x'.repeat(513)])('rejects malformed selector %s', hash => {
         expect(parseDashboardChatReference(hash)).toBeNull();
+    });
+});
+
+describe('application-generated job links through the shared resolver', () => {
+    const invocation = { sessionId: 'parent-session', toolCallId: 'delegate', toolName: 'send_to_conversation', arguments: {} };
+    const store = { getWorkspaces: async () => [{ id: 'parent' }, { id: 'same' }] } as unknown as ProcessStore;
+
+    async function launch(remote: boolean) {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'job-links-'));
+        try {
+            const identity = getOrCreateServerIdentity(directory);
+            // Reopening this installation uses the same identity, independently of ports/workspaces.
+            expect(getOrCreateServerIdentity(directory)).toBe(identity);
+            const fetchImpl = vi.fn(async (url: string) => json(url.endsWith('/health')
+                ? { serverIdentity: identity } : { task: { id: 'child/a ?#%' } }));
+            const workspaceDirectory = createWorkspaceDirectory({ store,
+                remoteServers: { list: () => [{ id: 'ssh-alias-port-22', kind: 'ssh',
+                    effectiveUrl: 'http://localhost:5555', serverIdentity: identity } as never] },
+                fetchImpl: fetchImpl as typeof fetch });
+            const enqueueChat = vi.fn(async () => 'child/a ?#%');
+            const { tool } = createSendToConversationTool({ store, workspaceId: 'parent', enqueueChat,
+                runtime: { serverIdentity: remote ? 'invoking-installation' : identity, workspaceDirectory } });
+            const result = await tool.handler({ content: 'Authorized work', provider: 'copilot',
+                workspaceId: remote ? 'remote:ssh-alias-port-22:same' : 'same' }, invocation);
+            if ('error' in result) throw new Error(result.error);
+            expect(result.openLink).toBe(`#chat-references/${identity}/same/${encodeURIComponent(result.processId)}`);
+            expect(enqueueChat).toHaveBeenCalledTimes(remote ? 0 : 1);
+            expect(fetchImpl).toHaveBeenCalledTimes(remote ? 3 : 0);
+            return { identity, result };
+        } finally {
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    }
+
+    it.each([false, true])('resolves a generated link on a remote viewer (remote dispatch: %s)', async remote => {
+        const { identity, result } = await launch(remote);
+        const selector = parseDashboardChatReference(result.openLink!)!;
+        // The creator's local job is remote from this viewer; a local ID collision cannot win.
+        publishDashboardTopology('viewer', [local, ...rows('ssh', 7000, identity, false, 'reconnected-alias')], 'viewer-installation');
+        const fetcher = serve(url => url.pathname.endsWith('/health') ? { serverIdentity: identity }
+            : { process: { id: result.processId, workspaceId: 'same', type: 'chat' } });
+        await expect(resolve(selector)).resolves.toMatchObject({
+            selectionId: buildRemoteCloneKey('reconnected-alias', 'same'), processId: result.processId,
+        });
+        expect(fetcher.mock.calls.every(([url]) => new URL(String(url)).port === '7000')).toBe(true);
+        expect(new URL(String(fetcher.mock.calls[1][0])).searchParams.get('workspace')).toBe('same');
+    });
+
+    it.each(['offline', 'unknown', 'replaced'] as const)('keeps generated links unavailable for %s owners', async state => {
+        const { identity, result } = await launch(false);
+        const remotes = rows('ssh', 7000, state === 'replaced' ? 'replacement' : identity, state === 'offline');
+        if (state === 'unknown') remotes[0].remote.serverIdentity = undefined;
+        publishDashboardTopology('viewer', [local, ...remotes], 'viewer-installation');
+        const fetcher = serve();
+        await expect(resolve(parseDashboardChatReference(result.openLink!)!)).rejects.toThrow('Referenced chat unavailable');
+        expect(fetcher).not.toHaveBeenCalled();
     });
 });
 

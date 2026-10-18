@@ -74,6 +74,7 @@ export interface RemoteChatRequest {
 }
 
 export interface RemoteChatResult {
+    serverIdentity: string;
     /** Remote process id (queue-prefixed for queue tasks). */
     processId: string;
     /** Ralph only. */
@@ -430,6 +431,19 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
             if (!server.effectiveUrl) {
                 throw new Error(`Remote server "${label}" is offline (no reachable endpoint). The chat was not started.`);
             }
+            const target = { effectiveUrl: server.effectiveUrl, serverIdentity: server.serverIdentity };
+            let serverIdentity: string;
+            try {
+                const health = await requestJson(`${target.effectiveUrl}/api/health`, listTimeoutMs);
+                assertCurrentTarget(server.id, target);
+                if (typeof health?.serverIdentity !== 'string' || !health.serverIdentity.trim()
+                    || (target.serverIdentity && health.serverIdentity !== target.serverIdentity)) {
+                    throw new Error('Server identity unavailable or replaced');
+                }
+                serverIdentity = health.serverIdentity;
+            } catch {
+                throw new Error('Remote owning server identity unavailable or replaced. The chat was not started.');
+            }
             const grilling = request.kind === 'ralph' && request.body.entryPoint === 'grill';
             if (grilling) {
                 try {
@@ -441,6 +455,7 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
                     throw new Error(`Remote server "${label}" cannot admit native Ralph grilling: ${error instanceof Error ? error.message : String(error)}. No launch was attempted.`);
                 }
             }
+            assertCurrentTarget(server.id, target);
             const path = request.kind === 'ralph' ? '/api/ralph-launch' : '/api/queue';
             let body: any;
             try {
@@ -452,6 +467,15 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
                     ? `${prefix}: ${reason}. Admission is uncertain; inspect the remote chat list before retrying. Do not launch a duplicate job.`
                     : `${prefix}: ${reason}. The chat was not started.`);
             }
+            // A transport change during admission must not publish a guessed owner.
+            try {
+                assertCurrentTarget(server.id, target);
+                const after = await requestJson(`${target.effectiveUrl}/api/health`, listTimeoutMs);
+                assertCurrentTarget(server.id, target);
+                if (after?.serverIdentity !== serverIdentity) throw new Error('Server identity changed');
+            } catch {
+                throw new Error('Remote job admission is uncertain: owning server unavailable or replaced. Do not launch a duplicate job.');
+            }
             if (request.kind === 'ralph') {
                 if (typeof body?.processId !== 'string') {
                     throw new Error(`Remote server "${label}" returned no processId for the Ralph launch.`
@@ -460,13 +484,13 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
                 if (grilling && (body.phase !== 'grilling' || typeof body.sessionId !== 'string')) {
                     throw new Error(`Remote server "${label}" did not confirm native grilling admission. Acceptance is uncertain; inspect the remote chat list, do not relaunch.`);
                 }
-                return { processId: body.processId, ...(typeof body.sessionId === 'string' ? { sessionId: body.sessionId } : {}) };
+                return { serverIdentity, processId: body.processId, ...(typeof body.sessionId === 'string' ? { sessionId: body.sessionId } : {}) };
             }
             const taskId = body?.task?.id;
             if (typeof taskId !== 'string' || !taskId) {
                 throw new Error(`Remote server "${label}" returned no task id for the new chat.`);
             }
-            return { processId: toQueueProcessId(taskId) };
+            return { serverIdentity, processId: toQueueProcessId(taskId) };
         },
     };
 }

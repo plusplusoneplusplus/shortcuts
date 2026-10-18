@@ -44,9 +44,9 @@ import { normalizeChatMode, VALID_CHAT_PROVIDERS, type ChatProvider, type Reason
 import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 import type { MessagingJobOrigin } from '../messaging/job-notices';
 import { APIError } from '../errors';
+import { buildDashboardChatReference } from '../shared/chat-reference';
 import type { ConversationCancellationResult } from '../processes/cancel-conversation';
 import {
-    buildChatOpenLink,
     createWorkspaceDirectory,
     parseRemoteCloneKey,
     type WorkspaceDirectory,
@@ -171,6 +171,8 @@ export type ValidateSendToConversationProviderFn = (provider: ChatProvider) => P
 export type GetSendToConversationEffortTiersFn = (provider: ChatProvider) => StoredEffortTiersMap | undefined;
 
 export interface SendToConversationRuntimeOptions {
+    /** Installation identity supplied by server composition, never a transport alias. */
+    serverIdentity?: string;
     /** Read-only discovery is late-bound because WebSocket infrastructure starts after routes. */
     getDashboardDiscovery?: () => import('@plusplusoneplusplus/coc-client').DashboardDiscoveryRuntime | undefined;
     /** Shared process/queue cancellation lifecycle, bound on the owning local server. */
@@ -226,8 +228,8 @@ export interface SendToConversationSuccess {
     owner?: { workspaceId: string; serverId?: string };
     /** Conversation process id. */
     processId: string;
-    /** SPA deep-link to the conversation. */
-    openLink: string;
+    /** Canonical chat link; cancellation without a recorded owner omits it. */
+    openLink?: string;
     /** Post mode only: appended user-turn index. */
     turnIndex?: number;
     /** Ralph mode only: the launched Ralph session id. */
@@ -293,10 +295,10 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
     const tool = defineTool<SendToConversationArgs>('send_to_conversation', {
         description:
             'With `processId`, post to an existing local chat; without it, create a separate fire-and-forget chat. ' +
-            'Returns `{ processId, openLink, turnIndex? }`. Supply a short, task-specific `title` for new chats. ' +
+            'Returns `{ processId, openLink, turnIndex? }`; reuse openLink unchanged. Supply a short, task-specific `title` for new chats. ' +
             '`mode: "ralph"` starts execution by default; `entryPoint: "grill"` interviews, then awaits user Start approval. Returns sessionId, phase and owner. `plan` is not supported. ' +
             'Prefer `provider: "auto"` unless a provider/model was requested. ' +
-            'Remote launches return `resultDelivery.status: "unavailable"`: no automatic result reviews or WhatsApp/Teams return; inspect `openLink`. ' +
+            'Remote launches return `resultDelivery.status: "unavailable"`; inspect `openLink` for results. ' +
             'Do not promise an automatic return or start a duplicate job. ' +
             'Use `{ action: "cancel", processId }` to stop local work, retaining history. ' +
             'Omit send-only fields; optional `workspaceId` asserts ownership. Returns `cancelled` and `status`; ' +
@@ -400,9 +402,9 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 }
                 try {
                     const result = await runtime.cancelConversation(processId, args.workspaceId);
-                    return { ...result, openLink: result.workspaceId
-                        ? buildChatOpenLink(result.workspaceId, result.processId)
-                        : `#/process/${encodeURIComponent(result.processId)}` };
+                    return { ...result, ...(result.workspaceId && runtime.serverIdentity ? {
+                        openLink: buildDashboardChatReference(runtime.serverIdentity, result.workspaceId, result.processId),
+                    } : {}) };
                 } catch (err) {
                     return {
                         error: `Failed to cancel conversation: ${err instanceof Error ? err.message : String(err)}`,
@@ -482,6 +484,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                     };
                 }
                 return postToExistingConversation({
+                    serverIdentity: runtime?.serverIdentity,
                     store,
                     sendMessage,
                     processId: targetProcessId,
@@ -509,6 +512,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             try { preparedTracking = todoTracking?.prepare && todoItemId ? await todoTracking.prepare(todoItemId, args) : { dependencyBound: false }; }
             catch (error) { return { error: error instanceof Error ? error.message : String(error), code: 'untracked' }; }
             return createNewConversation({
+                serverIdentity: runtime?.serverIdentity,
                 trackedAdmission: preparedTracking?.context,
                 dependencyBound: preparedTracking?.dependencyBound,
                 store,
@@ -543,6 +547,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
 // ============================================================================
 
 async function postToExistingConversation(params: {
+    serverIdentity?: string;
     store: ProcessStore;
     sendMessage?: SendMessageFn;
     processId: string;
@@ -585,6 +590,9 @@ async function postToExistingConversation(params: {
             return { error: tierOverride.error };
         }
 
+        const target = await resolveProcessForTool(store, processId);
+        if (!target) return { error: `Conversation '${processId}' not found; no message was sent.` };
+        const openLink = buildDashboardChatReference(params.serverIdentity, target.metadata?.workspaceId, target.id);
         const { turnIndex } = await sendMessage({
             processId,
             content,
@@ -595,7 +603,7 @@ async function postToExistingConversation(params: {
         });
         return {
             processId,
-            openLink: `#/process/${processId}`,
+            openLink,
             turnIndex,
         };
     } catch (err) {
@@ -626,6 +634,7 @@ async function resolveDefaultCreateMode(
 }
 
 async function createNewConversation(params: {
+    serverIdentity?: string;
     trackedAdmission?: SentinelTodoTrackedAdmission;
     dependencyBound?: boolean;
     requestId?: string;
@@ -706,6 +715,7 @@ async function createNewConversation(params: {
         }), track, { kind: 'remote', workspaceId: target.workspaceId, serverId: target.serverId, title });
     }
     const requestedWorkspaceId = target.workspaceId;
+    if (!params.serverIdentity) return { error: 'Chat link unavailable: owning server identity is required. The chat was not started.' };
 
     // --- resolve provider/model/reasoningEffort ---------------------------
     // The tool is built per chat turn, so `parentProcessId` identifies the
@@ -765,6 +775,7 @@ async function createNewConversation(params: {
 
     if (mode === 'ralph') {
         return withTracking(await launchRalphConversation({
+            serverIdentity: params.serverIdentity,
             launchRalph,
             entryPoint: args.entryPoint,
             requestId: params.requestId,
@@ -832,7 +843,7 @@ async function createNewConversation(params: {
 
     return withTracking({
         processId,
-        openLink: `#/process/${processId}`,
+        openLink: buildDashboardChatReference(params.serverIdentity, requestedWorkspaceId, processId),
     }, track, { kind: 'local', workspaceId: requestedWorkspaceId, title });
 }
 
@@ -851,7 +862,7 @@ async function withTracking(
     track: ((job: SendToConversationAdmittedJob) => Promise<SendToConversationTracking>) | undefined,
     job: Pick<SendToConversationAdmittedJob, 'kind' | 'workspaceId' | 'serverId' | 'title'>,
 ): Promise<SendToConversationResult> {
-    if (!track || 'error' in result) return result;
+    if (!track || 'error' in result || !result.openLink) return result;
     let tracking: SendToConversationTracking;
     try {
         tracking = await track({
@@ -1064,7 +1075,7 @@ async function createRemoteConversation(params: {
         });
         return {
             processId: result.processId,
-            openLink: buildChatOpenLink(target.cloneKey, result.processId),
+            openLink: buildDashboardChatReference(result.serverIdentity, target.workspaceId, result.processId),
             resultDelivery: {
                 status: 'unavailable',
                 reason: 'The remote job was started, but automatic result return to the originating conversation '
@@ -1085,6 +1096,7 @@ async function createRemoteConversation(params: {
  * no worktree is requested and max iterations come from repo preferences.
  */
 async function launchRalphConversation(params: {
+    serverIdentity?: string;
     trackedAdmission?: SentinelTodoTrackedAdmission;
     requestId?: string;
     entryPoint?: 'grill' | 'execute';
@@ -1134,7 +1146,7 @@ async function launchRalphConversation(params: {
             processId: result.processId,
             sessionId: result.sessionId,
             ...(params.entryPoint === 'grill' ? { phase: 'grilling' as const, owner: { workspaceId } } : {}),
-            openLink: `#/process/${result.processId}`,
+            openLink: buildDashboardChatReference(params.serverIdentity, workspaceId, result.processId),
         };
     } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);

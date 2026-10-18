@@ -157,7 +157,7 @@ describe('delegated success/failure review scheduling', () => {
         expect(bridge.steerProcess).not.toHaveBeenCalled();
     });
 
-    it.each(['completed', 'failed'] as const)('supplies only a short prefix and unchanged structured %s context', async outcome => {
+    it.each(['completed', 'failed'] as const)('supplies a short prefix and canonical job/artifact evidence for %s context', async outcome => {
         const job = record(outcome);
         await reviews.schedule(job);
         const prompt = queue.getTask(receipt())!.payload.prompt as string;
@@ -169,7 +169,7 @@ describe('delegated success/failure review scheduling', () => {
         const context = JSON.parse(json);
         expect(context).toMatchObject({ parent: job.parent, child: job.child, title: job.title,
             jobId: job.id, terminalEventId: 'child-terminal',
-            outcome, summary: job.terminal?.result.summary, links: job.terminal?.result.links,
+            outcome, summary: job.terminal?.result.summary, links: [`#chat-references/${jobs.serverIdentity}/${childWorkspace}/${childId}`, path.join(directory, 'child', 'result.txt')],
             repository: { workspaceId: childWorkspace, name: 'Child repository', rootPath: path.join(directory, 'child') } });
         const storedTurn = (await store.getProcess(parentId))!.conversationTurns![0];
         expect(storedTurn.content).toBe(prompt);
@@ -191,6 +191,7 @@ describe('delegated success/failure review scheduling', () => {
                 parent: job.parent, child: job.child, jobId: job.id, title: job.title,
                 repository: { workspaceId: childWorkspace, name: 'Child repository', rootPath: path.join(directory, 'child') },
                 ...job.terminal!.result,
+                links: [`#chat-references/${jobs.serverIdentity}/${childWorkspace}/${childId}`, path.join(directory, 'child', 'result.txt')],
             })}`);
             expect(JSON.parse(prompt.split('\n').at(-1)!)).not.toHaveProperty('todo');
             expect(row().terminal?.delivery).toEqual({ state: 'queued', receiptId: receipt() });
@@ -210,6 +211,20 @@ describe('delegated success/failure review scheduling', () => {
         expect(queue.getTask('active')?.status).toBe('running');
         expect(bridge.enqueue).not.toHaveBeenCalled();
         expect(bridge.steerProcess).not.toHaveBeenCalled();
+    });
+
+    it('requalifies recovered links without changing terminal evidence or artifact paths', async () => {
+        const job = record();
+        const original = job.terminal!.result;
+        await restart();
+        const prompt = queue.getTask(receipt())!.payload.prompt as string;
+        const evidence = JSON.parse(prompt.split('\n').at(-1)!);
+        expect(evidence.links).toEqual([
+            `#chat-references/${jobs.serverIdentity}/${childWorkspace}/${childId}`,
+            path.join(directory, 'child', 'result.txt'),
+        ]);
+        expect(evidence.links.join(' ')).not.toMatch(/#\/process|#repos|\/api\/workspaces/);
+        expect(row().terminal!.result).toEqual(original);
     });
 
     it('recovers terminal results recorded before admission and does not repeat admission on restart', async () => {
@@ -597,7 +612,7 @@ describe('delegated success/failure review scheduling', () => {
                 jobId: ralphId, terminalEventId: 'ralph:ws-child:session:terminal', outcome, reason,
                 child: { sessionId: 'session' },
             });
-            expect(prompt).toContain('/api/workspaces/ws-child/ralph-sessions/session');
+            expect(prompt).toContain(`#chat-references/${jobs.serverIdentity}/${childWorkspace}/queue_ralph-first`);
             await restart();
             expect(queue.getAll()).toHaveLength(1);
             queue.markStarted(receiptId); queue.markCompleted(receiptId, 'Explained the outcome and suggested a next step.');

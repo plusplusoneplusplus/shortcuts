@@ -129,6 +129,7 @@ describe('buildChatToolBundle send_to_conversation wiring', () => {
         const enqueueChat = vi.fn().mockResolvedValue('task-123');
         const result = buildChatToolBundle({
             dataDir: tmpDir,
+            sendToConversationRuntime: { serverIdentity: 'owning-installation' },
             store: makeStore(),
             workspaceId: WS_ID,
             // The parent process supplies the inherited provider.

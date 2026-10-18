@@ -1,5 +1,6 @@
 import { isQueueProcessId, toTaskId, type ProcessStore, type TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { grillingResultJob, type DelegatedJob, type DelegatedJobStore } from '../delegation/delegated-job-store';
+import { buildDashboardChatReference } from '../shared/chat-reference';
 import { buildChatOpenLink } from '../servers/workspace-directory';
 import { normalizeChatMode } from '../tasks/task-types';
 import type { SentinelTodoDependencyEvaluation, SentinelTodoDependencyReadiness, SentinelTodoTrackedAdmission } from '@plusplusoneplusplus/coc-client';
@@ -80,6 +81,10 @@ export type SentinelTodoLedgerView = { revision: number; items: SentinelTodoItem
  * after the write committed. Nothing here starts, retries, or cancels a job.
  */
 export class SentinelTodoService {
+    jobOpenLink(workspaceId: string, processId: string): string {
+        return buildDashboardChatReference(this.deps.serverIdentity, workspaceId, processId);
+    }
+
     /** Bound once by route composition; tools share readiness and durable launch tracking. */
     dependencyActions?: {
         project(owner: SentinelTodoOwner, ledger: SentinelTodoLedger): (item: SentinelTodoItem) => Pick<SentinelTodoItemView, 'dependencyReadiness'>;
@@ -445,6 +450,7 @@ export class SentinelTodoService {
                 ...this.visibleItem(item),
                 ...dependencies?.(item),
                 jobs: item.jobs.map(link => ({ ...link,
+                    ...(!link.serverId && this.deps.serverIdentity ? { openLink: this.jobOpenLink(link.workspaceId, link.processId) } : {}),
                     mode: this.jobMode(link, modes),
                     execution: this.execution(link, owner, delegated, item.userVerdictRevision),
                 })),
@@ -539,7 +545,7 @@ export class SentinelTodoService {
             processId, workspaceId: target.workspaceId, serverIdentity: target.serverIdentity,
             serverLabel: result.serverLabel.slice(0, 200), workspaceLabel: result.workspaceLabel.slice(0, 200),
             verification: result.verification, title: row.title.slice(0, 200),
-            openLink: `#chat-references/${encodeURIComponent(target.serverIdentity)}/${encodeURIComponent(target.workspaceId)}/${encodeURIComponent(processId)}`,
+            openLink: buildDashboardChatReference(target.serverIdentity, target.workspaceId, processId),
         }, actor));
         if (stored.changed) this.emit({ owner, item: stored.item, ledgerRevision: stored.ledgerRevision });
         return this.visibleWrite({ item: stored.item, ledgerRevision: stored.ledgerRevision, attached: stored.changed });

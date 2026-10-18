@@ -40,7 +40,7 @@ describe('native dependency readiness and durable admission', () => {
 
     function wire(onChange?: () => void) {
         todos = new SentinelTodoStore(processes.getDatabase());
-        service = new SentinelTodoService({ todos, store: processes, getDependenciesEnabled: () => enabled,
+        service = new SentinelTodoService({ serverIdentity: 'local-installation', todos, store: processes, getDependenciesEnabled: () => enabled,
             fetchPr, resolveWorkspaceRoot: async () => directory });
         receipts = new SentinelDependencyStore(processes.getDatabase(), todos);
         actions = new SentinelDependencyActions({
@@ -131,6 +131,7 @@ describe('native dependency readiness and durable admission', () => {
         expect(task.id).toBeTruthy();
         expect(current().jobs).toHaveLength(1);
         expect(current().jobs[0].workspaceId).toBe('ws-child');
+        expect(current().jobs[0].openLink).toBe(`#chat-references/local-installation/ws-child/queue_${task.id}`);
         expect((await service.list(owner)).items.find(item => item.id === itemId)).not.toHaveProperty('dependencyAction');
         await service.evaluateDependencies(owner, itemId);
         expect(actions.project(owner, todos.get(owner))(current()).dependencyReadiness?.state).toBe('ready');
@@ -146,7 +147,7 @@ describe('native dependency readiness and durable admission', () => {
             await actions.guard(task, 'enqueue');
             return queue.enqueue(task);
         });
-        const { tool } = createSendToConversationTool({
+        const { tool } = createSendToConversationTool({ runtime: { serverIdentity: 'local-installation' },
             store: processes, workspaceId: owner.workspaceId, parentProcessId: owner.processId,
             enqueueChat, todoTracking: createSentinelTodoTracking({ service, owner }),
         });

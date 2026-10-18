@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { getOrCreateServerIdentity } from '../servers/server-identity';
 import { getRepoDataPath } from '../paths';
 import { atomicWriteJsonUnique } from '../shared/fs-utils';
 import { parsePullRequestUrl } from '../triggers/pr-status-fetcher';
@@ -77,6 +78,8 @@ function pullRequestKey(pr: DelegatedJobPullRequest['pr']): string {
  */
 export class DelegatedJobStore {
     constructor(private readonly dataDir: string) {}
+
+    get serverIdentity(): string { return getOrCreateServerIdentity(this.dataDir); }
 
     list(workspaceId: string): DelegatedJob[] {
         const file = getRepoDataPath(this.dataDir, workspaceId, DELEGATED_JOBS_FILE);

@@ -104,7 +104,14 @@ references before editing. Paths are package-relative.
   offline entries). Remote create mode posts to the remote's own queue/Ralph API with no
   local fallback; output never carries paths, URLs, or credentials. Successful remote
   launches expose unavailable automatic parent result return through `resultDelivery`
-  and retain the clone chat link for inspecting the outcome. Explicit `source: dashboard`
+  and expose canonical `#chat-references/<serverIdentity>/<workspaceId>/<processId>`
+  links with independently encoded segments for inspecting the outcome. Local tool
+  replies and delegated-result evidence use the same identity-only builder in
+  `src/server/shared/chat-reference.ts`. Server composition supplies installation identity;
+  remote admission verifies the owning server through health reads around its single
+  POST. Never substitute a transport alias, endpoint or viewer's server identity.
+  AI reuses generated job/artifact links unchanged; the existing SPA resolver verifies
+  visible ownership and fails unavailable without local fallback. Explicit `source: dashboard`
   reads the invoking workspace's dashboard relay through a late-bound runtime getter,
   including unregistered/offline destinations. Its stable server/workspace `target`
   is read-only, not a dispatch ID or ownership proof; unknown identities have no target.

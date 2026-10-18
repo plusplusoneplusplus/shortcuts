@@ -882,6 +882,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const workspaceDirectory = createWorkspaceDirectory({ store, dataDir, remoteServers: remoteServerRuntime });
     // Connectors register their completion/result transports below.
     opts.setSendToConversationRuntime?.({
+        serverIdentity: getOrCreateServerIdentity(dataDir),
         cancelConversation: (processId, workspaceId) => cancelConversation(store, bridge, processId, workspaceId),
         isAutoProviderRoutingAvailable: () => isAutoProviderRoutingActive() && !!agentProvidersQuotaCache,
         validateProvider: validateSendToConversationProvider,

@@ -348,7 +348,7 @@ export class SentinelDependencyActions {
                 input.id ??= randomUUID();
                 const linked = this.deps.receipts.todos.linkJob(owner, itemId, {
                     processId: toQueueProcessId(input.id), workspaceId: target,
-                    kind: ralph ? 'ralph' : 'local', openLink: `#/process/${toQueueProcessId(input.id)}`,
+                    kind: ralph ? 'ralph' : 'local', openLink: this.deps.service.jobOpenLink(target, toQueueProcessId(input.id)),
                     ...(ralph?.sessionId ? { sessionId: ralph.sessionId } : {}),
                 });
                 this.deps.receipts.reserveAdmission(owner, itemId, {
