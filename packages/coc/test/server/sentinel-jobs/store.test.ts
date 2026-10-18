@@ -96,6 +96,16 @@ describe('scheduled job definitions and durable runs', () => {
         expect(store.patchRun(owner, a.id, run.id, { status: 'completed' }, ['running'])).toBeUndefined();
         expect(store.run(owner, a.id, run.id).status).toBe('cancelled');
     });
+    it('allows schedule-only pause/resume during a run or handback without unlocking edits', () => {
+        const job = store.create(owner, { ...input, cron: '0 * * * *' });
+        const run = store.createRun(owner, job.id, 'schedule', 'queue_job', new Date().toISOString());
+        expect(store.update(owner, job.id, { enabled: false }, 1)).toMatchObject({ enabled: false, revision: 2 });
+        expect(store.run(owner, job.id, run.id).status).toBe('queued');
+        expect(() => store.update(owner, job.id, { enabled: true, name: 'Changed' }, 2)).toThrow(/Cancel/);
+        store.patchRun(owner, job.id, run.id, { status: 'completed', handbackState: 'queued' });
+        expect(store.update(owner, job.id, { enabled: true }, 2)).toMatchObject({ enabled: true, revision: 3 });
+        expect(() => store.delete(owner, job.id, 3)).toThrow(/handback/);
+    });
 
     it('retains 20 recent history records and a monotonic counter without pruning active runs', () => {
         const job = store.create(owner, input);

@@ -81,7 +81,8 @@ export class SentinelJobStore {
 
     update(owner: SentinelTodoOwner, id: string, input: Partial<SentinelScheduledJobInput>, expectedRevision: number): JobRecord {
         return this.db.transaction(() => {
-            const current = this.mutable(owner, id, expectedRevision);
+            const togglingSchedule = Object.keys(input).length === 1 && typeof input.enabled === 'boolean';
+            const current = this.mutable(owner, id, expectedRevision, togglingSchedule);
             const { id: _, revision: _revision, runCount: _count, processId: _process, chatCreated: _chat, ...settings } = current;
             const next = { ...this.validate({ ...settings, ...input }), id: current.id,
                 processId: current.processId, chatCreated: current.chatCreated, runCount: current.runCount, revision: current.revision + 1 };
@@ -147,10 +148,10 @@ export class SentinelJobStore {
         })();
     }
 
-    private mutable(owner: SentinelTodoOwner, id: string, revision: number): JobRecord {
+    private mutable(owner: SentinelTodoOwner, id: string, revision: number, togglingSchedule = false): JobRecord {
         const job = this.get(owner, id);
         if (job.revision !== revision) throw new JobError('conflict', 'Job changed since it was loaded');
-        if (this.runs(owner, id).some(run => active(run) || pending(run))) {
+        if (!togglingSchedule && this.runs(owner, id).some(run => active(run) || pending(run))) {
             throw new JobError('conflict', 'Cancel the active run and wait for its Sentinel handback before editing or deleting');
         }
         return job;
