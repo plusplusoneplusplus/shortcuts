@@ -54,7 +54,7 @@ describe('scheduled job definitions and durable runs', () => {
         { model: '' }, { name: '' }, { instructions: '' }, { autoCompactThreshold: 0 },
         { autoCompactThreshold: 1.5 }, { cron: '* * * * *' }, { cron: 'bad' }, { unknown: true },
         { name: 'n'.repeat(121) }, { instructions: 'i'.repeat(32_001) },
-        { effort: 'max' }, { effort: 'very-low' }, { effort: 'other' },
+        { effort: 'max' }, { effort: 'very-low' }, { effort: 'other' }, { cron: '0,30 9 1 1 *' },
     ])('rejects invalid input %j', patch => {
         expect(() => store.create(owner, { ...input, ...patch } as never)).toThrow();
     });

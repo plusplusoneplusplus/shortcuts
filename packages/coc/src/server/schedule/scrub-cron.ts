@@ -33,6 +33,8 @@ export function validateScrubCron(cron: string, now: Date = new Date()): string 
             || [...values].some(value => !Number.isInteger(value) || value < min || value > max))) {
             return 'Invalid cron expression: a field is out of range';
         }
+        // Every matching hour includes all selected minutes, even beyond the scan horizon.
+        if (fields.minutes.size > 1) return 'The schedule must run at most once an hour';
     } catch (error) {
         return error instanceof Error ? error.message : 'Invalid cron expression';
     }

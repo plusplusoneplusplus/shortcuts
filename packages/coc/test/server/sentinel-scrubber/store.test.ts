@@ -69,6 +69,20 @@ describe('scrubber model', () => {
         expect(validateScrubCron('0 0-23/00 * * *', at)).toMatch(/step must be positive/);
         expect(validateScrubCron('0-999999999 9 * * *', at)).toMatch(/out of range/);
     });
+
+    it.each([
+        '0,30 9 1 1 *', '*/30 9 1 1 *', '0-30/30 9 1 1 *',
+        '15,45 9 1 2 *', '0,30 9 1 */3 *',
+    ])('rejects sparse sub-hourly cron %s beyond the firing scan horizon', cron => {
+        expect(validateScrubCron(cron, new Date(2026, 9, 11))).toMatch(/once an hour/);
+    });
+
+    it.each([
+        '0 9 1 1 *', '30 9 1 1 *', '0,0 9 1 1 *',
+        '0-0 9 1 1 *', '0-59/60 9 1 1 *', '0 9,10 1 1 *',
+    ])('accepts sparse hourly-or-slower cron %s regardless of minute syntax', cron => {
+        expect(validateScrubCron(cron, new Date(2026, 9, 11))).toBeUndefined();
+    });
 });
 
 describe('ScrubberStore', () => {
