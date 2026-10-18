@@ -74,7 +74,10 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 ### query_pull_request
 
 `features.queryPullRequestTool` gates the read-only, repository-bound query/get
-service. GitHub search rollups with more than 100 contexts resolve CI through
+service. The published `ids` schema accepts a positive integer or a non-empty
+array of up to 20 positive integers; omitting it selects query mode.
+
+GitHub search rollups with more than 100 contexts resolve CI through
 head-pinned adapter reads. The adapter paginates check runs and combined statuses;
 aggregation uses every returned check before get-mode detail rows are capped at
 100 with `checksTruncated`. Provider failures cannot establish passing or empty CI.

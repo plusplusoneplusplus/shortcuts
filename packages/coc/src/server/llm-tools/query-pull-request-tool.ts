@@ -73,10 +73,15 @@ export function createQueryPullRequestTool(deps: QueryPullRequestToolDeps): { to
                 provider: { type: 'string', enum: ['github', 'ado'], description: 'Pull request host.' },
                 repository: { type: 'string', description: 'GitHub "owner/repo", or Azure DevOps "organization/project/repository".' },
                 ids: {
-                    type: 'array',
-                    items: { type: 'integer', minimum: 1 },
-                    minItems: 1,
-                    maxItems: MAX_GET_IDS,
+                    anyOf: [
+                        { type: 'integer', minimum: 1 },
+                        {
+                            type: 'array',
+                            items: { type: 'integer', minimum: 1 },
+                            minItems: 1,
+                            maxItems: MAX_GET_IDS,
+                        },
+                    ],
                     description: `Get mode: PR IDs (a single integer is also accepted). At most ${MAX_GET_IDS}.`,
                 },
                 status: { type: 'string', enum: ['open', 'merged', 'closed', 'all'], description: 'Query mode: lifecycle filter. Default "open" (includes drafts).' },

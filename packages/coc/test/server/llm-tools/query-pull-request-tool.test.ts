@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { fromJSONSchema } from 'zod';
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
@@ -62,6 +63,53 @@ describe('query_pull_request tool', () => {
         expect(props.processId).toBeUndefined();
         expect((tool.parameters as any).required).toEqual(['provider', 'repository']);
         expect(tool.description).toMatch(/untrusted/i);
+    });
+
+    describe('published ID schema', () => {
+        it.each([
+            ['scalar', 42],
+            ['single-element array', [42]],
+            ['multiple IDs', [42, 7]],
+            ['maximum-size array', Array.from({ length: 20 }, (_, index) => index + 1)],
+        ])('accepts %s IDs through schema validation and the handler', async (_label, ids) => {
+            const { tool } = make();
+            // Validate the serialized schema a tool consumer receives, not a parallel test schema.
+            const schema = fromJSONSchema(JSON.parse(JSON.stringify(tool.parameters)));
+            const args = { provider: 'github', repository: 'o/r', ids };
+            expect(schema.safeParse(args).success).toBe(true);
+            const result = await invoke(tool, args);
+            expect(result).toMatchObject({ success: true, mode: 'get' });
+            expect(result.results.map((item: { id: number }) => item.id)).toEqual(Array.isArray(ids) ? ids : [ids]);
+        });
+
+        it.each([
+            ['empty array', []],
+            ['too many IDs', Array.from({ length: 21 }, (_, index) => index + 1)],
+            ['zero scalar', 0],
+            ['negative scalar', -1],
+            ['fractional scalar', 1.5],
+            ['string scalar', '42'],
+            ['null', null],
+            ['boolean', true],
+            ['zero in array', [42, 0]],
+            ['negative in array', [-1]],
+            ['fraction in array', [1.5]],
+            ['string in array', ['42']],
+            ['nested array', [[42]]],
+        ])('rejects %s in the published schema and handler', async (_label, ids) => {
+            const { tool, createClient } = make();
+            const schema = fromJSONSchema(JSON.parse(JSON.stringify(tool.parameters)));
+            const args = { provider: 'github', repository: 'o/r', ids };
+            expect(schema.safeParse(args).success).toBe(false);
+            expect(await invoke(tool, args)).toMatchObject({ success: false, code: 'invalid-input' });
+            expect(createClient).not.toHaveBeenCalled();
+        });
+
+        it('keeps query mode valid without IDs', () => {
+            const { tool } = make();
+            const schema = fromJSONSchema(JSON.parse(JSON.stringify(tool.parameters)));
+            expect(schema.safeParse({ provider: 'github', repository: 'o/r' }).success).toBe(true);
+        });
     });
 
     describe('invalid-input before any provider I/O', () => {
