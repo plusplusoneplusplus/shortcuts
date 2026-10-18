@@ -71,6 +71,14 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `submit-scrub-findings-tool.ts` | `submit_scrub_findings` | One structured findings batch from an owner-bound scrubber child chat. |
 | `sentinel-todos-tool.ts` | `sentinel_todos` | Sentinel chat to-do ledger bookkeeping — see below. |
 
+### query_pull_request
+
+`features.queryPullRequestTool` gates the read-only, repository-bound query/get
+service. GitHub search rollups with more than 100 contexts resolve CI through
+head-pinned adapter reads. The adapter paginates check runs and combined statuses;
+aggregation uses every returned check before get-mode detail rows are capped at
+100 with `checksTruncated`. Provider failures cannot establish passing or empty CI.
+
 ### suggest_follow_ups
 
 Default-off live `features.sentinelNextSteps` selects optional 1–3 distinct actions,

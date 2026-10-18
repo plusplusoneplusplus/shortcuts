@@ -546,15 +546,17 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
         // Modern check-runs (GitHub Apps). Best-effort: failures here should
         // not also break the legacy status fetch.
         try {
-            const { data: checkData } = await this.octokit.checks.listForRef({
-                owner: this.owner,
-                repo: this.repo,
-                ref: headSha,
-                per_page: 100,
-            });
-            const runs = (checkData as unknown as { check_runs?: GitHubCheckRun[] }).check_runs ?? [];
-            for (const run of runs) {
-                checks.push(mapCheckRun(run));
+            for (let page = 1; ; page++) {
+                const { data } = await this.octokit.checks.listForRef({
+                    owner: this.owner,
+                    repo: this.repo,
+                    ref: headSha,
+                    per_page: 100,
+                    page,
+                });
+                const runs = (data as unknown as { check_runs: GitHubCheckRun[] }).check_runs;
+                for (const run of runs) checks.push(mapCheckRun(run));
+                if (runs.length < 100) break;
             }
         } catch (error) {
             if (expectedHeadSha) throw error;
@@ -563,14 +565,17 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
 
         // Legacy combined commit-status (per-context). Best-effort.
         try {
-            const { data: statusData } = await this.octokit.repos.getCombinedStatusForRef({
-                owner: this.owner,
-                repo: this.repo,
-                ref: headSha,
-            });
-            const items = (statusData as unknown as GitHubCombinedStatusResponse).statuses ?? [];
-            for (const item of items) {
-                checks.push(mapCombinedStatusItem(item));
+            for (let page = 1; ; page++) {
+                const { data } = await this.octokit.repos.getCombinedStatusForRef({
+                    owner: this.owner,
+                    repo: this.repo,
+                    ref: headSha,
+                    per_page: 100,
+                    page,
+                });
+                const items = (data as unknown as GitHubCombinedStatusResponse).statuses;
+                for (const item of items) checks.push(mapCombinedStatusItem(item));
+                if (items.length < 100) break;
             }
         } catch (error) {
             if (expectedHeadSha) throw error;

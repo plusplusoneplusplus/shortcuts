@@ -535,6 +535,7 @@ query QueryPullRequests($q: String!, $first: Int!, $after: String) {
         commits(last: 1) {
           nodes {
             commit {
+              oid
               statusCheckRollup {
                 state
                 contexts(first: 100) {
@@ -571,7 +572,7 @@ interface GitHubSearchNode {
     headRefName?: string;
     baseRefName?: string;
     author?: { login?: string; id?: string; name?: string | null } | null;
-    commits?: { nodes?: Array<{ commit?: { statusCheckRollup?: {
+    commits?: { nodes?: Array<{ commit?: { oid?: string; statusCheckRollup?: {
         state?: string;
         contexts?: { pageInfo?: { hasNextPage?: boolean }; nodes?: Array<GitHubRollupContext | null> };
     } | null } } | null> };
@@ -614,16 +615,7 @@ function gitHubRollupCi(node: GitHubSearchNode): PrCiSummary {
     const rollup = node.commits?.nodes?.[0]?.commit?.statusCheckRollup;
     if (!rollup) return summarizeChecks([]);
     const contexts = (rollup.contexts?.nodes ?? []).filter((c): c is GitHubRollupContext => !!c);
-    const summary = summarizeChecks(contexts.map(mapGitHubRollupContext));
-    if (rollup.contexts?.pageInfo?.hasNextPage) {
-        // Counts cover the first 100 contexts only; the overall state comes from GitHub's rollup.
-        const state: PrQueryCi | undefined = rollup.state === 'SUCCESS' ? 'passing'
-            : rollup.state === 'FAILURE' || rollup.state === 'ERROR' ? 'failing'
-                : rollup.state === 'PENDING' || rollup.state === 'EXPECTED' ? 'pending'
-                    : undefined;
-        if (state) summary.state = state;
-    }
-    return summary;
+    return summarizeChecks(contexts.map(mapGitHubRollupContext));
 }
 
 function mapGitHubSearchNode(node: GitHubSearchNode): PrCandidate {
@@ -642,7 +634,11 @@ function mapGitHubSearchNode(node: GitHubSearchNode): PrCandidate {
         isDraft: node.isDraft === true,
         sourceBranch: node.headRefName ?? '',
         targetBranch: node.baseRefName ?? '',
-        ci: gitHubRollupCi(node),
+        headSha: node.commits?.nodes?.[0]?.commit?.oid,
+        // A partial rollup cannot establish complete CI counts. Resolve it from
+        // the same head through the paginated adapter in loadCi.
+        ...(node.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.pageInfo?.hasNextPage
+            ? {} : { ci: gitHubRollupCi(node) }),
     };
 }
 
@@ -715,6 +711,11 @@ async function createGitHubClient(
                 ? response.search.pageInfo.endCursor
                 : undefined;
             return { items, ...(next ? { next } : {}) };
+        },
+        async loadCi(candidate) {
+            if (!adapter.getChecks || !candidate.headSha) throw new Error('head commit unknown');
+            const checks = await adapter.getChecks(identity.repository, candidate.id, candidate.headSha);
+            return summarizeChecks(checks.map(check => check.status));
         },
         async getPullRequest(id) {
             const pr = await adapter.getPullRequest(identity.repository, id);

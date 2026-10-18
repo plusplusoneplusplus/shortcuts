@@ -531,14 +531,15 @@ describe('GitHub client', () => {
         expect(page.items[1].ci).toEqual({ state: 'none', counts: { success: 0, failure: 0, pending: 0, other: 0 } });
     });
 
-    it('takes the overall state from the rollup when contexts are truncated', async () => {
+    it('defers truncated rollups to a complete head-pinned CI read', async () => {
         octokitMocks.graphql.mockResolvedValue({ search: { pageInfo: { hasNextPage: false }, nodes: [
-            node(1, { commits: { nodes: [{ commit: { statusCheckRollup: { state: 'FAILURE', contexts: { pageInfo: { hasNextPage: true }, nodes: [
+            node(1, { commits: { nodes: [{ commit: { oid: 'listed-head', statusCheckRollup: { state: 'FAILURE', contexts: { pageInfo: { hasNextPage: true }, nodes: [
                 { __typename: 'CheckRun', status: 'COMPLETED', conclusion: 'SUCCESS' },
             ] } } } }] } }),
         ] } });
         const page = await (await client()).listPullRequests({ status: 'open', pageSize: 100 });
-        expect(page.items[0].ci?.state).toBe('failing');
+        expect(page.items[0].ci).toBeUndefined();
+        expect(page.items[0].headSha).toBe('listed-head');
     });
 
     it.each([

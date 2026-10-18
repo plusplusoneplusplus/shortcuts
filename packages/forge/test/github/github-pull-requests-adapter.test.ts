@@ -481,11 +481,14 @@ describe('GitHubPullRequestsAdapter', () => {
                 repo: 'repo',
                 ref: 'abc123',
                 per_page: 100,
+                page: 1,
             });
             expect((octokit as any).repos.getCombinedStatusForRef).toHaveBeenCalledWith({
                 owner: 'owner',
                 repo: 'repo',
                 ref: 'abc123',
+                per_page: 100,
+                page: 1,
             });
             expect(checks).toHaveLength(2);
 
