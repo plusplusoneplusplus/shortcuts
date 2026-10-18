@@ -157,7 +157,7 @@ describe('RepoGroupDialog create (repo-group AC-01)', () => {
     it('defaults shared additions read-only and preserves the entire draft on an authoritative writer conflict', async () => {
         const writer = {
             workspaceId: 'a', writerWorkspaceId: 'a', writerGroupId: 'group-owner',
-            writerGroupName: 'Owner', writerGroupLink: '#repos/group-owner/settings', reason: 'writer-exists',
+            writerGroupName: 'Owner', writerGroupLink: '#repos/group-owner', reason: 'writer-exists',
         };
         mockSharing.mockReturnValue({
             access: { enabled: true, members: [
@@ -181,7 +181,7 @@ describe('RepoGroupDialog create (repo-group AC-01)', () => {
         expect((screen.getByTestId('repo-group-name-input') as HTMLInputElement).value).toBe('Draft group');
         expect((screen.getByTestId('repo-group-member-description-f') as HTMLInputElement).value).toBe('Unrelated draft');
         expect((screen.getByTestId('repo-group-member-read-only-a') as HTMLInputElement).checked).toBe(false);
-        expect(screen.getByRole('link', { name: 'Open writer group' }).getAttribute('href')).toBe('#repos/group-owner/settings');
+        expect(screen.getByRole('link', { name: 'Open writer group' }).getAttribute('href')).toBe('#repos/group-owner');
         expect(onSaved).not.toHaveBeenCalled();
         fireEvent.click(screen.getByTestId('repo-group-member-read-only-a'));
         mockCreateRepoGroup.mockResolvedValueOnce({ workspace: { id: 'group-new' }, members: [] });
@@ -204,7 +204,7 @@ describe('RepoGroupDialog create (repo-group AC-01)', () => {
         fireEvent.click(screen.getByTestId('repo-group-member-check-r'));
         expect((screen.getByTestId('repo-group-member-read-only-r') as HTMLInputElement).checked).toBe(true);
         expect(screen.getByRole('link', { name: 'Open writer group' }).getAttribute('href'))
-            .toBe('#repos/remote%3Asrv-1%3Agroup-owner/settings');
+            .toBe('#repos/remote%3Asrv-1%3Agroup-owner');
     });
 
     it('lists every saved conflicting writer without changing loaded policies', async () => {

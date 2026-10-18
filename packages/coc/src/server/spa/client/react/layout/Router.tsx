@@ -16,11 +16,12 @@ import { useQueue } from '../contexts/QueueContext';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
 import { SHOW_WIKI_TAB } from './TopBar';
-import { isTerminalEnabled, isNotesEnabled, isDreamsEnabled, isSchedulesInScheduledSlideEnabled } from '../utils/config';
+import { isTerminalEnabled, isDreamsEnabled, isSchedulesInScheduledSlideEnabled } from '../utils/config';
 import { splitWorkspaceLeftCollapsedStorageKey, toggleLeftCollapsed } from '../features/repo-detail/WorkspaceLeftCollapse';
 import { toggleWorkspaceDockOpen } from '../features/repo-detail/WorkspaceDockToggle';
 import type { DashboardTab, RepoSubTab } from '../types/dashboard';
 import { getWorkspaceIdFromSelectionId } from '../repos/cloneIdentity';
+import { isVirtualWorkspaceId } from '../repos/virtualWorkspaceIds';
 import {
     resolveDashboardRoute,
     applyRouteEffects,
@@ -50,10 +51,14 @@ const ALL_REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
     a: 'chats',
     w: 'workflows',
     s: 'schedules',
-    c: 'settings',
     i: 'work-items',
-    n: 'notes',
     d: 'dreams',
+};
+
+/** My Work / My Life keep page-level Notes and Settings; repos and groups open them in the right panel. */
+export const VIRTUAL_WORKSPACE_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
+    n: 'notes',
+    c: 'settings',
 };
 
 export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = SHOW_WIKI_TAB
@@ -151,10 +156,10 @@ export function Router() {
                     queueDispatch({ type: 'OPEN_DIALOG', workspaceId: getWorkspaceIdFromSelectionId(state.selectedRepoId) });
                     return;
                 }
-                const rawTab = REPO_TAB_SHORTCUTS[letter];
+                const rawTab = (isVirtualWorkspaceId(state.selectedRepoId) ? VIRTUAL_WORKSPACE_TAB_SHORTCUTS[letter] : undefined)
+                    ?? REPO_TAB_SHORTCUTS[letter];
                 if (rawTab) {
                     if (rawTab === 'terminal' && !isTerminalEnabled()) return;
-                    if (rawTab === 'notes' && !isNotesEnabled()) return;
                     if (rawTab === 'dreams' && !isDreamsEnabled()) return;
                     // The 'chats' shortcut maps to the chat surface, whose canonical
                     // sub-tab key differs by layout mode (`'activity'` in classic).

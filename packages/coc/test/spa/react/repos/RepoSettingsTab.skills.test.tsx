@@ -144,10 +144,10 @@ async function renderSettingsTab({
     return render(
         <AppProvider>
             <InitialSectionSetter />
-            {panel ? <WorkspaceSettingsProvider ownerKey={workspaceId} topLevelActive={false}
-                renderPage={inPanel => <RepoSettingsTab workspaceId={workspaceId} repo={makeRepo(workspaceId) as any}
-                    navigation={inPanel ? 'local' : 'route'} />}>
-                <WorkspaceSettingsSlot panel active ownerKey={workspaceId} />
+            {panel ? <WorkspaceSettingsProvider ownerKey={workspaceId}
+                renderPage={() => <RepoSettingsTab workspaceId={workspaceId} repo={makeRepo(workspaceId) as any}
+                    navigation="local" />}>
+                <WorkspaceSettingsSlot ownerKey={workspaceId} />
             </WorkspaceSettingsProvider> : <RepoSettingsTab workspaceId={workspaceId} repo={makeRepo(workspaceId) as any} dockStatusFooter={dockStatusFooter} />}
         </AppProvider>
     );

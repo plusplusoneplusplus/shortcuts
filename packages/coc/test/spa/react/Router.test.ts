@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, parseRalphSessionDeepLink, REPO_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink, parseAdminSubTab, VALID_ADMIN_SUB_TABS, VALID_PR_DETAIL_TABS, parsePrDetailTab, parseAdminDatabaseDeepLink, buildDbBrowserHash, buildRepoSubTabSuffix, buildWorkspaceSubTabSuffix } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, parseRalphSessionDeepLink, REPO_TAB_SHORTCUTS, VIRTUAL_WORKSPACE_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink, parseAdminSubTab, VALID_ADMIN_SUB_TABS, VALID_PR_DETAIL_TABS, parsePrDetailTab, parseAdminDatabaseDeepLink, buildDbBrowserHash, buildRepoSubTabSuffix, buildWorkspaceSubTabSuffix } from '../../../src/server/spa/client/react/layout/Router';
 import { SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
 import type { AppContextState, AppAction } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { appReducer } from '../../../src/server/spa/client/react/contexts/AppContext';
@@ -297,20 +297,7 @@ describe('buildWorkspaceSubTabSuffix', () => {
         } as AppContextState;
     }
 
-    it('narrows the settings section to one a repo group actually renders', () => {
-        // A group keeps sections it has (the Agent ones + members)…
-        expect(buildWorkspaceSubTabSuffix('group-frontend', 'settings', stateWith({ settingsSection: 'llm-tools' })))
-            .toBe('/settings/llm-tools');
-        expect(buildWorkspaceSubTabSuffix('group-frontend', 'settings', stateWith({ settingsSection: 'members' })))
-            .toBe('/settings/members');
-        // …and falls back to Member repos for a repo-only section like Info.
-        expect(buildWorkspaceSubTabSuffix('group-frontend', 'settings', stateWith({ settingsSection: 'info' })))
-            .toBe('/settings/members');
-    });
-
-    it('keeps the settings section for a real repo and for My Work / My Life', () => {
-        expect(buildWorkspaceSubTabSuffix('repo-1', 'settings', stateWith({ settingsSection: 'llm-tools' })))
-            .toBe('/settings/llm-tools');
+    it('keeps the settings section for My Work / My Life', () => {
         expect(buildWorkspaceSubTabSuffix('my_work', 'settings', stateWith({ settingsSection: 'mcp' })))
             .toBe('/settings/mcp');
     });
@@ -1642,10 +1629,18 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
 
     const repoState: MockState = { activeTab: 'repos', selectedRepoId: 'my-repo' };
 
-    it('REPO_TAB_SHORTCUTS maps 11 letters to sub-tabs (wiki hidden)', () => {
-        expect(Object.keys(REPO_TAB_SHORTCUTS)).toHaveLength(11);
+    it('REPO_TAB_SHORTCUTS maps 9 letters to sub-tabs (wiki hidden), with no Notes/Settings page shortcut', () => {
+        expect(Object.keys(REPO_TAB_SHORTCUTS)).toHaveLength(9);
         expect(REPO_TAB_SHORTCUTS['i']).toBe('work-items');
         expect(REPO_TAB_SHORTCUTS['d']).toBe('dreams');
+        expect(Object.values(REPO_TAB_SHORTCUTS)).not.toContain('notes');
+        expect(Object.values(REPO_TAB_SHORTCUTS)).not.toContain('settings');
+    });
+
+    it('keeps Alt+N / Alt+C only for My Work and My Life pages', () => {
+        expect(VIRTUAL_WORKSPACE_TAB_SHORTCUTS).toEqual({ n: 'notes', c: 'settings' });
+        expect(simulateAltKeyHandler({ key: 'c', code: 'KeyC', altKey: true }, repoState)).toHaveLength(0);
+        expect(simulateAltKeyHandler({ key: 'n', code: 'KeyN', altKey: true }, repoState)).toHaveLength(0);
     });
 
     it.each([
@@ -1656,7 +1651,6 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
         ['a', 'KeyA', 'chats'],
         ['w', 'KeyW', 'workflows'],
         ['s', 'KeyS', 'schedules'],
-        ['c', 'KeyC', 'settings'],
     ] as [string, string, string][])('Alt+%s dispatches SET_REPO_SUB_TAB %s', (letter, code, tab) => {
         const dispatches = simulateAltKeyHandler({ key: letter, code, altKey: true }, repoState);
         expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab });
@@ -1665,7 +1659,6 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
     it.each([
         ['å', 'KeyA', 'chats'],
         ['ê', 'KeyE', 'explorer'],
-        ['©', 'KeyC', 'settings'],
     ] as [string, string, string][])('macOS Option+key: e.key="%s" e.code="%s" dispatches SET_REPO_SUB_TAB %s', (key, code, tab) => {
         // On macOS, Option+letter produces a Unicode char in e.key but e.code reflects the physical key
         const dispatches = simulateAltKeyHandler({ key, code, altKey: true }, repoState);

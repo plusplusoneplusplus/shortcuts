@@ -210,7 +210,7 @@ describe('repo-group exclusive writer admission', () => {
             code: 'REPO_GROUP_WRITER_CONFLICT',
             details: { conflicts: [{
                 workspaceId: 'repo', writerWorkspaceId: 'repo', writerGroupId: first.id,
-                writerGroupName: 'First', writerGroupLink: `#repos/${first.id}/settings`, reason: 'writer-exists',
+                writerGroupName: 'First', writerGroupLink: `#repos/${first.id}`, reason: 'writer-exists',
             }] },
         });
         expect(fs.existsSync(path.join(dataDir, 'repos', 'group-second'))).toBe(false);

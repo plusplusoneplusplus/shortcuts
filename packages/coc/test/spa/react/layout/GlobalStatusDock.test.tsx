@@ -87,11 +87,11 @@ describe('GlobalStatusDock', () => {
         // Regression: the stand-downs read the tab BEHIND the dialog. Reading
         // `state.activeTab` instead would flip them off the moment admin opened
         // and paint a second dock under the note editor.
-        mockAppState = { activeTab: 'repos', selectedRepoId: 'ws-a', activeRepoSubTab: 'notes' };
+        mockAppState = { activeTab: 'repos', selectedRepoId: 'my_work', activeRepoSubTab: 'notes' };
         const { container, rerender } = render(<GlobalStatusDock />);
         expect(container.firstChild).toBeNull();
 
-        mockAppState = { activeTab: 'admin', selectedRepoId: 'ws-a', activeRepoSubTab: 'notes' };
+        mockAppState = { activeTab: 'admin', selectedRepoId: 'my_work', activeRepoSubTab: 'notes' };
         rerender(<GlobalStatusDock />);
         expect(screen.queryByTestId('status-actions')).toBeNull();
         expect(container.firstChild).toBeNull();
@@ -136,8 +136,8 @@ describe('GlobalStatusDock', () => {
         expect(container.firstChild).toBeNull();
     });
 
-    it('renders nothing on the workspace notes sub-tab (NotesView docks the cluster in its own sidebar footer)', () => {
-        mockAppState = { activeTab: 'repos', selectedRepoId: 'ws-a', activeRepoSubTab: 'notes' };
+    it('renders nothing on My Work\'s notes sub-tab (NotesView docks the cluster in its own sidebar footer)', () => {
+        mockAppState = { activeTab: 'repos', selectedRepoId: 'my_work', activeRepoSubTab: 'notes' };
         const { container } = render(<GlobalStatusDock />);
         // NotesView hosts the cluster in its own NotesSidebar footer, so the
         // global band stands down — otherwise a partial-width band paints an
@@ -146,11 +146,20 @@ describe('GlobalStatusDock', () => {
         expect(container.firstChild).toBeNull();
     });
 
-    it('renders nothing on the workspace settings sub-tab (RepoSettingsTab docks the cluster in its own sidebar footer)', () => {
-        mockAppState = { activeTab: 'repos', selectedRepoId: 'ws-a', activeRepoSubTab: 'settings' };
+    it('renders nothing on My Life\'s settings sub-tab (RepoSettingsTab docks the cluster in its own sidebar footer)', () => {
+        mockAppState = { activeTab: 'repos', selectedRepoId: 'my_life', activeRepoSubTab: 'settings' };
         const { container } = render(<GlobalStatusDock />);
         expect(screen.queryByTestId('status-actions')).toBeNull();
         expect(container.firstChild).toBeNull();
+    });
+
+    it('defers to a repo group\'s Workspace footer whatever sub-tab lingers', () => {
+        for (const tab of ['notes', 'settings', 'pull-requests', 'work-items']) {
+            mockAppState = { activeTab: 'repos', selectedRepoId: 'group-docs', activeRepoSubTab: tab };
+            const { container, unmount } = render(<GlobalStatusDock />);
+            expect(container.firstChild).toBeNull();
+            unmount();
+        }
     });
 
     it('renders nothing on the workspace pull-requests sub-tab (PullRequestsTab docks the cluster in its PR queue footer)', () => {

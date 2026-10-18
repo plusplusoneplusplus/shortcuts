@@ -7,9 +7,8 @@
  * own member list — but none of the sections that need a writable repo (Info,
  * Plans Folder, Notes, Instructions, Memory).
  *
- * This lives apart from `RepoGroupSettingsTab` so the hash builder in
- * `dashboardRoutes` can reuse it without pulling the whole settings pane — and
- * its panels — into the router module.
+ * Kept apart from `RepoGroupSettingsTab` so the section model stays testable
+ * without the settings pane and its panels.
  */
 import type { SettingsNavGroup } from '../features/repo-settings/SettingsShell';
 import type { SettingsSection } from '../types/dashboard';

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { DreamCard } from '@plusplusoneplusplus/coc-client';
+import { UnifiedPanelHostProvider } from '../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
+import { clearUnifiedPanelState, readUnifiedPanelState } from '../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 
 const mocks = vi.hoisted(() => ({
     isDreamsEnabled: vi.fn(),
@@ -294,8 +296,33 @@ describe('DreamsPanel', () => {
         await waitFor(() => expect(mocks.convert).toHaveBeenCalledWith('ws-1', 'dream-workflow', {
             artifactType: 'note',
             artifactId: 'Dreams/dream-workflow.md',
-            artifactUrl: '#repos/ws-1/notes/Dreams/dream-workflow.md',
         }));
+    });
+
+    it('opens a converted note in the hosting panel\'s Notes tab, never through a Notes page URL', async () => {
+        const noteCard: DreamCard = {
+            ...sampleCard,
+            id: 'dream-note',
+            conversion: {
+                artifactType: 'note',
+                artifactId: 'Dreams/dream-note.md',
+                artifactUrl: '#repos/ws-1/notes/Dreams/dream-note.md',
+                createdAt: '2026-06-10T08:03:00.000Z',
+            },
+        };
+        mocks.listCards.mockResolvedValue([noteCard]);
+        const view = render(<DreamsPanel workspaceId="ws-1" />);
+        await screen.findByTestId('dream-card-dream-note');
+        expect(screen.queryByTestId('dream-open-note-dream-note')).toBeNull();
+        expect(screen.queryByText('Open artifact')).toBeNull();
+        view.unmount();
+
+        clearUnifiedPanelState();
+        render(<UnifiedPanelHostProvider host={{ workspaceId: 'ws-1', chatId: 'chat-1' }}><DreamsPanel workspaceId="ws-1" /></UnifiedPanelHostProvider>);
+        fireEvent.click(await screen.findByTestId('dream-open-note-dream-note'));
+        const [tab] = readUnifiedPanelState('ws-1').workspaceTabs;
+        expect(tab).toMatchObject({ kind: 'notes', ownerWorkspaceId: 'ws-1', notesView: { notePath: 'Dreams/dream-note.md' } });
+        expect(readUnifiedPanelState('ws-1').activeByScope['chat-1']).toBe(tab.id);
     });
 
     it('saves an approved workflow dream to memory and records conversion', async () => {

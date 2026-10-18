@@ -9,7 +9,6 @@ import {
     isDreamsEnabled,
     isMyLifeEnabled,
     isMyWorkEnabled,
-    isNotesEnabled,
     isPullRequestsEnabled,
     isScratchpadEnabled,
     isShowPlanDepTab,
@@ -26,7 +25,6 @@ interface DisplaySettings {
     historyGrouping: boolean;
     groupSingleLineMessages: boolean;
     terminalEnabled: boolean;
-    notesEnabled: boolean;
     myWorkEnabled: boolean;
     myLifeEnabled: boolean;
     scratchpadEnabled: boolean;
@@ -45,7 +43,6 @@ const DEFAULT_SETTINGS: DisplaySettings = {
     historyGrouping: true,
     groupSingleLineMessages: true,
     terminalEnabled: true,
-    notesEnabled: true,
     myWorkEnabled: false,
     myLifeEnabled: false,
     scratchpadEnabled: false,
@@ -62,7 +59,6 @@ function getInitialSettings(): DisplaySettings {
     return {
         ...DEFAULT_SETTINGS,
         terminalEnabled: isTerminalEnabled(),
-        notesEnabled: isNotesEnabled(),
         myWorkEnabled: isMyWorkEnabled(),
         myLifeEnabled: isMyLifeEnabled(),
         scratchpadEnabled: isScratchpadEnabled(),
@@ -89,7 +85,6 @@ async function fetchDisplaySettings(): Promise<DisplaySettings> {
             historyGrouping: resolved?.historyGrouping ?? true,
             groupSingleLineMessages: resolved?.groupSingleLineMessages ?? true,
             terminalEnabled: resolved?.terminal?.enabled ?? true,
-            notesEnabled: resolved?.notes?.enabled ?? true,
             myWorkEnabled: resolved?.myWork?.enabled ?? false,
             myLifeEnabled: resolved?.myLife?.enabled ?? false,
             scratchpadEnabled: resolved?.scratchpad?.enabled ?? false,

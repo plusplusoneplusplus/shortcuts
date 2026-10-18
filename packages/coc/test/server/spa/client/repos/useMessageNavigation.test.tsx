@@ -21,7 +21,6 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/preferences/useDisplay
         historyGrouping: true,
         groupSingleLineMessages: true,
         terminalEnabled: true,
-        notesEnabled: true,
         myWorkEnabled: false,
         myLifeEnabled: false,
         scratchpadEnabled: false,

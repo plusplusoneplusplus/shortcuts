@@ -133,10 +133,6 @@ export interface CLIConfig {
     terminal?: {
         enabled?: boolean;
     };
-    /** Notes configuration */
-    notes?: {
-        enabled?: boolean;
-    };
     /** My Work configuration */
     myWork?: {
         enabled?: boolean;
@@ -375,7 +371,6 @@ export interface CLIConfig {
         markdownPanelPreview?: boolean;
         /** Two-pane source file split in the unified right panel. Enabled by default. */
         panelSourceSplit?: boolean;
-        panelSettings?: boolean;
         panelTabReordering?: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab?: boolean;
@@ -566,10 +561,6 @@ export interface ResolvedCLIConfig {
     logging?: LoggingConfig;
     /** Terminal configuration */
     terminal: {
-        enabled: boolean;
-    };
-    /** Notes configuration */
-    notes: {
         enabled: boolean;
     };
     /** My Work configuration */
@@ -797,7 +788,6 @@ export interface ResolvedCLIConfig {
         markdownPanelPreview: boolean;
         /** Two-pane source file split in the unified right panel. Enabled by default. */
         panelSourceSplit: boolean;
-        panelSettings: boolean;
         panelTabReordering: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab: boolean;
@@ -936,9 +926,6 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         theme: 'auto',
     },
     terminal: {
-        enabled: true,
-    },
-    notes: {
         enabled: true,
     },
     myWork: {
@@ -1118,7 +1105,6 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         explorerDelete: true,
         markdownPanelPreview: true,
         panelSourceSplit: true,
-        panelSettings: true,
         panelTabReordering: true,
         htmlPageTab: true,
         chatStyleSelector: true,

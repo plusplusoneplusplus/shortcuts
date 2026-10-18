@@ -27,11 +27,10 @@ export function generateContainerHtml(): string {
         containerMode: true,
         // CoC embeds runtime feature flags through the generic `features` map
         // (window.__DASHBOARD_CONFIG__.features), which the SPA flattens onto
-        // its config. Container doesn't run terminal/notes/wiki locally — agents
+        // its config. Container doesn't run terminal/wiki locally — agents
         // provide those — but the Pull Requests tab must stay enabled.
         features: {
             terminalEnabled: false,
-            notesEnabled: false,
             workflowsEnabled: false,
             pullRequestsEnabled: true,
         },

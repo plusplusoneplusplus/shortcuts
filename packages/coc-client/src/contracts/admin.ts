@@ -191,7 +191,6 @@ export interface AdminConfigUpdate {
   'chat.globalSystemPrompt'?: string | null;
   'serve.serverName'?: string | null;
   'terminal.enabled'?: boolean;
-  'notes.enabled'?: boolean;
   'myWork.enabled'?: boolean;
   'myLife.enabled'?: boolean;
   'scratchpad.enabled'?: boolean;
@@ -257,7 +256,6 @@ export interface RuntimeDashboardConfig {
   revision: number;
   features: {
     terminalEnabled: boolean;
-    notesEnabled: boolean;
     myWorkEnabled: boolean;
     myLifeEnabled: boolean;
     scratchpadEnabled: boolean;
@@ -279,7 +277,6 @@ export interface RuntimeDashboardConfig {
     browserControlEnabled?: boolean;
     browserFrameControlEnabled?: boolean;
     browserRichPasteEnabled?: boolean;
-    panelSettingsEnabled?: boolean;
     mcpOauthEnabled: boolean;
     focusedDiffEnabled: boolean;
     containerDefaultAgentEnabled: boolean;

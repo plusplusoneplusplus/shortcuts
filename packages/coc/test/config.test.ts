@@ -490,7 +490,6 @@ timeout: 300
                 showReportIntent: true,
                 chat: { followUpSuggestions: { enabled: true, count: 3 }, askUser: { enabled: true } },
                 terminal: { enabled: false },
-                notes: { enabled: false },
                 myWork: { enabled: false },
                 myLife: { enabled: false },
                 scratchpad: { enabled: false, layout: 'vertical' },
@@ -579,16 +578,6 @@ timeout: 300
         it('should override terminal.enabled=false from file', () => {
             const result = mergeConfig(DEFAULT_CONFIG, { terminal: { enabled: false } });
             expect(result.terminal.enabled).toBe(false);
-        });
-
-        it('should preserve notes.enabled default when not overridden', () => {
-            const result = mergeConfig(DEFAULT_CONFIG, { model: 'x' });
-            expect(result.notes.enabled).toBe(true);
-        });
-
-        it('should override notes.enabled from file', () => {
-            const result = mergeConfig(DEFAULT_CONFIG, { notes: { enabled: true } });
-            expect(result.notes.enabled).toBe(true);
         });
 
         it('should preserve scratchpad.enabled default when not overridden', () => {
@@ -993,20 +982,16 @@ timeout: 300
             expect(result.sources['terminal.enabled']).toBe('default');
         });
 
-        it('should report file source for notes.enabled when set', () => {
-            const configPath = path.join(tmpDir, 'notes.yaml');
-            fs.writeFileSync(configPath, 'notes:\n  enabled: true\n');
+        it('does not resolve the removed Notes and panel-Settings availability keys', () => {
+            const configPath = path.join(tmpDir, 'removed-keys.yaml');
+            fs.writeFileSync(configPath, 'notes:\n  enabled: false\nfeatures:\n  panelSettings: false\n');
             const result = getResolvedConfigWithSource(configPath);
-            expect(result.resolved.notes.enabled).toBe(true);
-            expect(result.sources['notes.enabled']).toBe('file');
-        });
-
-        it('should report default source for notes.enabled when not set', () => {
-            const configPath = path.join(tmpDir, 'no-notes.yaml');
-            fs.writeFileSync(configPath, 'model: gpt-4\n');
-            const result = getResolvedConfigWithSource(configPath);
-            expect(result.resolved.notes.enabled).toBe(true);
-            expect(result.sources['notes.enabled']).toBe('default');
+            expect((result.resolved as unknown as Record<string, unknown>).notes).toBeUndefined();
+            expect((result.resolved.features as unknown as Record<string, unknown>).panelSettings).toBeUndefined();
+            expect(result.sources['notes.enabled']).toBeUndefined();
+            expect(result.sources['features.panelSettings']).toBeUndefined();
+            expect(DEFAULT_CONFIG).not.toHaveProperty('notes');
+            expect(DEFAULT_CONFIG.features).not.toHaveProperty('panelSettings');
         });
 
         it('should report file source for workflows.enabled when set', () => {
@@ -1087,8 +1072,6 @@ timeout: 300
                 '  theme: light',
                 '  serverName: MBP',
                 'terminal:',
-                '  enabled: true',
-                'notes:',
                 '  enabled: true',
                 'myWork:',
                 '  enabled: true',
@@ -1233,7 +1216,6 @@ timeout: 300
                 '  explorerDelete: true',
                 '  markdownPanelPreview: false',
                 '  panelSourceSplit: false',
-                '  panelSettings: false',
                 '  panelTabReordering: true',
                 '  htmlPageTab: false',
                 '  chatStyleSelector: true',
@@ -1379,8 +1361,6 @@ timeout: 300
                 '      level: info',
                 '      file: true',
                 'terminal:',
-                '  enabled: false',
-                'notes:',
                 '  enabled: false',
                 'myWork:',
                 '  enabled: true',
@@ -1565,7 +1545,6 @@ timeout: 300
                     "htmlPageTab": true,
                     "markdownPanelPreview": true,
                     "nativeCliSessions": false,
-                    "panelSettings": true,
                     "panelSourceSplit": true,
                     "panelTabReordering": true,
                     "pinnedScopes": true,
@@ -1663,9 +1642,6 @@ timeout: 300
                   "myWork": {
                     "enabled": true,
                     "todayView": true,
-                  },
-                  "notes": {
-                    "enabled": false,
                   },
                   "opencode": {
                     "enabled": false,
@@ -1804,7 +1780,6 @@ timeout: 300
                   "features.htmlPageTab": "default",
                   "features.markdownPanelPreview": "default",
                   "features.nativeCliSessions": "default",
-                  "features.panelSettings": "default",
                   "features.panelSourceSplit": "default",
                   "features.panelTabReordering": "default",
                   "features.pinnedScopes": "default",
@@ -1855,7 +1830,6 @@ timeout: 300
                   "myLife.enabled": "file",
                   "myWork.enabled": "file",
                   "myWork.todayView": "file",
-                  "notes.enabled": "file",
                   "opencode.enabled": "default",
                   "output": "file",
                   "parallel": "file",
@@ -1935,7 +1909,6 @@ timeout: 300
 
         it('should return correct default for nested boolean feature flags', () => {
             const defaults = getDefaultValues();
-            expect(defaults['notes.enabled']).toBe(DEFAULT_CONFIG.notes.enabled);
             expect(defaults['terminal.enabled']).toBe(DEFAULT_CONFIG.terminal.enabled);
             expect(defaults['workflows.enabled']).toBe(DEFAULT_CONFIG.workflows.enabled);
             expect(defaults['excalidraw.enabled']).toBe(DEFAULT_CONFIG.excalidraw.enabled);

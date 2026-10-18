@@ -16,7 +16,6 @@ import {
     isExplorerEditorTabsEnabled,
     isFeatureEnabled,
     isMarkdownPanelPreviewEnabled,
-    isPanelSettingsEnabled,
     isPanelSourceSplitEnabled,
     isPanelTabReorderingEnabled,
     isPullRequestsAutoClassifyTeamEnabled,
@@ -40,7 +39,6 @@ describe.each([
     ['explorerEditorTabsEnabled', isExplorerEditorTabsEnabled],
     ['markdownPanelPreviewEnabled', isMarkdownPanelPreviewEnabled],
     ['panelSourceSplitEnabled', isPanelSourceSplitEnabled],
-    ['panelSettingsEnabled', isPanelSettingsEnabled],
     ['schedulerDelayHintEnabled', isSchedulerDelayHintEnabled],
 ] as const)('%s default-on behavior', (flag, isEnabled) => {
     it('enables an absent setting with or without bootstrap config', () => {
@@ -294,5 +292,13 @@ describe('getBackendEndpointInfo', () => {
         expect(info!.apiUrl).toBe(`${window.location.origin}/api`);
         const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         expect(info!.wsUrl).toBe(`${scheme}//${window.location.host}/ws`);
+    });
+});
+
+describe('removed Notes / panel-Settings availability accessors', () => {
+    it('exports no accessor that could gate Notes or the Settings panel tab', async () => {
+        const config = await import('../../../../src/server/spa/client/react/utils/config');
+        expect(config).not.toHaveProperty('isNotesEnabled');
+        expect(config).not.toHaveProperty('isPanelSettingsEnabled');
     });
 });

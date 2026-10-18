@@ -133,22 +133,22 @@ describe('Settings concrete owner', () => {
         expect(network).not.toHaveBeenCalled();
     });
 
-    it('shares the real folder settings form and its save/error behavior between top and panel on the owning server', async () => {
+    it('keeps the real folder settings form and its save/error behavior across panel close/reopen on the owning server', async () => {
         network.mockImplementation(async (_url, init) => init?.method === 'PATCH'
             ? new Response(JSON.stringify({ error: 'Folder rejected' }), { status: 400 })
             : new Response(JSON.stringify({ taskRootPath: 'plans', folderPaths: [] }), { status: 200 }));
-        const page = (top: boolean) => <WorkspaceSettingsProvider ownerKey={REMOTE} topLevelActive={top}
+        const page = (open: boolean) => <WorkspaceSettingsProvider ownerKey={REMOTE}
             renderPage={() => <WorkspaceSettingsApiProvider workspaceId={WS} selectionId={REMOTE}>
                 <TasksSettingsSection workspaceId={WS} />
             </WorkspaceSettingsApiProvider>}>
-            <WorkspaceSettingsSlot />
-            <WorkspaceSettingsSlot panel active={!top} ownerKey={REMOTE} />
+            {open && <WorkspaceSettingsSlot ownerKey={REMOTE} />}
         </WorkspaceSettingsProvider>;
         const view = render(page(true));
         await screen.findByTestId('tasks-settings-section');
         const input = screen.getByTestId('new-folder-input');
         fireEvent.change(input, { target: { value: 'extra-plans' } });
         view.rerender(page(false));
+        view.rerender(page(true));
         expect(screen.getByTestId('new-folder-input')).toBe(input);
         expect(input).toHaveValue('extra-plans');
         fireEvent.click(screen.getByTestId('add-folder-btn'));
@@ -166,7 +166,7 @@ describe('Settings concrete owner', () => {
             ? { id: groupId, name: 'Example', members: [{ workspaceId: 'member-a', name: 'Member', stale: false, readOnly: false }] }
             : {}), { status: 200 }));
         render(<WorkspaceSettingsApiProvider workspaceId={groupId} selectionId={selectionId}>
-            <RepoGroupSettingsTab workspaceId={groupId} selectionId={selectionId} baseUrl={BASE} active navigation="local" />
+            <RepoGroupSettingsTab workspaceId={groupId} selectionId={selectionId} baseUrl={BASE} />
         </WorkspaceSettingsApiProvider>);
         const input = await screen.findByTestId('repo-group-member-description-member-a');
         fireEvent.change(input, { target: { value: 'Pending group description' } });

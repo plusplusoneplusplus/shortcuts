@@ -1,9 +1,9 @@
 /**
  * RepoGroupView — repo-group virtual workspace landing view (AC-02).
  *
- * The group workspace exposes the Workspace (chat), Git, Notes and Settings tabs
- * — every OTHER git-dependent tab is absent by construction. The heavy tab
- * bodies (chat, notes, settings) are stubbed.
+ * The group shows only its Workspace split (chat + member Git); Notes and
+ * Settings open as right-panel tabs, never as group pages. The heavy bodies are
+ * stubbed.
  *
  * @vitest-environment jsdom
  */
@@ -52,9 +52,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/RepoChatTab', () 
     ),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
-    NotesView: ({ workspaceId, active, dockStatusFooter }: { workspaceId: string; active: boolean; dockStatusFooter?: boolean }) => (
-        <div data-testid="stub-notes-view" data-workspace={workspaceId} data-active={String(active)} data-dock-footer={String(!!dockStatusFooter)} />
-    ),
+    NotesView: () => <div data-testid="stub-notes-view" />,
 }));
 // The Git tab hosts the real single-repo git panel; stub the host so this file
 // stays a tab-shell test and never drags in the git hook tree.
@@ -70,8 +68,8 @@ vi.mock('../../../../src/server/spa/client/react/repos/useRepoGroupMembers', () 
     },
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/RepoGroupSettingsTab', () => ({
-    RepoGroupSettingsTab: ({ workspaceId, active }: { workspaceId: string; active: boolean }) => (
-        <div data-testid="stub-group-settings" data-workspace={workspaceId} data-active={String(active)} />
+    RepoGroupSettingsTab: ({ workspaceId }: { workspaceId: string }) => (
+        <div data-testid="stub-group-settings" data-workspace={workspaceId} />
     ),
 }));
 
@@ -108,24 +106,13 @@ beforeEach(() => {
     };
 });
 
-describe('getRepoGroupHeaderConfig (AC-02 tab gating)', () => {
-    // Git is the ONE git-dependent tab a group exposes (AC-01): it hosts the
-    // single-repo panel for a member, never for the group root itself. Every
-    // other git-dependent tab (PRs, work items, branches, …) stays hidden.
-    it('declares exactly the Workspace (chats), Git, Notes and Settings tabs', () => {
+describe('getRepoGroupHeaderConfig', () => {
+    it('declares no sub-tabs: the Workspace split is the only group view', () => {
         const config = getRepoGroupHeaderConfig(GROUP_ID, 'Frontend');
-        expect(config.tabs.map(t => t.key)).toEqual(['chats', 'notes', 'settings']);
-        expect(config.tabs.map(t => t.label)).toEqual(['Workspace', 'Notes', 'Settings']);
-        expect(config.tabs.map(t => t.key)).not.toContain('pull-requests');
-        expect(config.tabs.map(t => t.key)).not.toContain('work-items');
+        expect(config.tabs).toEqual([]);
     });
 
-    it('puts Settings last and gives it the repo settings shortcut', () => {
-        const config = getRepoGroupHeaderConfig(GROUP_ID, 'Frontend');
-        expect(config.tabs.at(-1)).toEqual({ key: 'settings', label: 'Settings', shortcut: 'Alt+C' });
-    });
-
-    it('lands on the Workspace tab, has no header actions, and carries the group identity', () => {
+    it('lands on the Workspace, has no header actions, and carries the group identity', () => {
         const config = getRepoGroupHeaderConfig(GROUP_ID, 'Frontend');
         expect(config.defaultTab).toBe('chats');
         expect(config.actions).toEqual([]);
@@ -136,18 +123,18 @@ describe('getRepoGroupHeaderConfig (AC-02 tab gating)', () => {
 });
 
 describe('RepoGroupView', () => {
-    it('shows the Settings pane (and hides chat/notes) when Settings is active', () => {
-        mockAppState.activeRepoSubTab = 'settings';
+    it.each(['chats', 'notes', 'settings', 'pull-requests', 'git'])('always shows the Workspace and no Notes/Settings page (sub-tab %s)', tab => {
+        mockAppState.activeRepoSubTab = tab;
         render(<RepoGroupView workspaceId={GROUP_ID} />);
-        const settings = screen.getByTestId('stub-group-settings');
-        expect(settings.getAttribute('data-workspace')).toBe(GROUP_ID);
-        expect(settings.getAttribute('data-active')).toBe('true');
-        expect((settings.parentElement as HTMLElement).style.display).not.toBe('none');
-        expect((screen.getByTestId('stub-chat-tab').closest('[style]') as HTMLElement).style.display).toBe('none');
-        expect((screen.getByTestId('stub-notes-view').parentElement as HTMLElement).style.display).toBe('none');
+        const chat = screen.getByTestId('stub-chat-tab');
+        expect(chat.getAttribute('data-workspace')).toBe(GROUP_ID);
+        expect(chat.closest('[style*="display: none"]')).toBeNull();
+        expect(screen.queryByTestId('stub-notes-view')).toBeNull();
+        // Settings mounts only once its panel tab opens.
+        expect(screen.queryByTestId('stub-group-settings')).toBeNull();
     });
 
-    it('no longer renders the inline Member repos strip on the Workspace tab', () => {
+    it('no longer renders the inline Member repos strip on the Workspace', () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.queryByTestId('repo-group-members-toggle')).toBeNull();
         expect(screen.queryByTestId('repo-group-members-panel')).toBeNull();
@@ -165,47 +152,18 @@ describe('RepoGroupView', () => {
         expect(mockMemberLookup).toHaveBeenCalledWith(GROUP_ID, 'http://box-b:4000', true);
     });
 
-    it('shows the chat tab (and hides notes) on the default Workspace tab', () => {
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-        const chat = screen.getByTestId('stub-chat-tab');
-        const notes = screen.getByTestId('stub-notes-view');
-        expect(chat.getAttribute('data-workspace')).toBe(GROUP_ID);
-        expect((chat.parentElement as HTMLElement).style.display).not.toBe('none');
-        expect((notes.parentElement as HTMLElement).style.display).toBe('none');
-        // Settings mounts on first visit, so the default tab never renders it.
-        expect(screen.queryByTestId('stub-group-settings')).toBeNull();
-    });
-
-    it('shows the notes tab targeting the group workspace when Notes is active', () => {
-        mockAppState.activeRepoSubTab = 'notes';
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-        const notes = screen.getByTestId('stub-notes-view');
-        expect(notes.getAttribute('data-workspace')).toBe(GROUP_ID);
-        expect(notes.getAttribute('data-active')).toBe('true');
-        expect((notes.parentElement as HTMLElement).style.display).not.toBe('none');
-        expect((screen.getByTestId('stub-chat-tab').closest('[style]') as HTMLElement).style.display).toBe('none');
-    });
-
-    it('falls back to the Workspace tab when arriving from a git-dependent sub-tab', () => {
-        mockAppState.activeRepoSubTab = 'pull-requests';
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-        expect(screen.getByTestId('stub-chat-tab').closest('[style*="display: none"]')).toBeNull();
-        expect((screen.getByTestId('stub-notes-view').parentElement as HTMLElement).style.display).toBe('none');
-    });
-
     it('omits the inline header in the remote-first desktop shell (header lives in the TopBar)', () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.queryByTestId('repo-group-header')).toBeNull();
     });
 
-    it('renders the mobile tab bar (with a back affordance) instead of the inline header', () => {
-        // A group used to render `VirtualWorkspaceInlineHeader` on mobile, which
-        // has no back affordance — a user who landed on a group was stuck there.
+    it('renders the mobile header with a back affordance and no tabs', () => {
         mockBreakpoint = 'mobile';
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.queryByTestId('repo-group-header')).toBeNull();
         expect(screen.getByTestId('repo-group-mobile-header')).toBeTruthy();
         expect(screen.getByTestId('repo-group-name-back')).toBeTruthy();
+        expect(screen.getByTestId('mobile-tab-bar').querySelectorAll('button[data-tab]')).toHaveLength(0);
     });
 
     it('clears the selection and returns to the scope list from the back button', () => {
@@ -218,22 +176,10 @@ describe('RepoGroupView', () => {
         expect(location.hash).toBe('');
     });
 
-    it('offers the group\'s four tabs on mobile, three pinned and Settings behind the more menu', () => {
-        mockBreakpoint = 'mobile';
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-
-        const bar = screen.getByTestId('mobile-tab-bar');
-        expect([...bar.querySelectorAll('button[data-tab]')].map(b => b.getAttribute('data-tab')))
-            .toEqual(['chats', 'notes', 'settings']);
-
-        expect(bar.querySelector('button[data-tab="settings"]')).toBeTruthy();
-    });
-
-    it('docks the status footer inside both the Workspace and Notes tabs', () => {
-        // The group chat tab owns its own left column, so GlobalStatusDock stands
+    it('docks the status footer inside the Workspace split', () => {
+        // The group chat owns its own left column, so GlobalStatusDock stands
         // down for it — the cluster has to be pinned here or it disappears.
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.getByTestId('stub-chat-tab').closest('[data-testid="split-workspace-panel"]')).toBeTruthy();
-        expect(screen.getByTestId('stub-notes-view').getAttribute('data-dock-footer')).toBe('true');
     });
 });

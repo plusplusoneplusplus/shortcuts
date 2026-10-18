@@ -224,8 +224,7 @@ It uses the panel scope (the group id for a repo group), not the chat's member
 workspace id. Clicking again closes only the tree; chats without a matching
 panel use the source-canvas directory tree.
 
-On desktop, a repo group's mounted panel also owns Ctrl/Cmd+P while collapsed,
-from every group sub-tab. The Quick Open portal may appear without changing the
+On desktop, a repo group's mounted panel also owns Ctrl/Cmd+P while collapsed. The Quick Open portal may appear without changing the
 stored open bit; only an accepted file selection opens Explorer mode. Ordinary
 repos still require an open panel or mounted Explorer owner, Ctrl/Cmd+O remains
 target-repo Exact Open, and mobile mounts no group panel listener.
@@ -234,7 +233,7 @@ The Notes resource renders the shared `../notes/NotesView.tsx`, including its
 tree, editor, comments, and per-note chat. It is scoped to the panel workspace,
 not the current dock target. `navigation="local"` keeps its note selection
 inside that instance: selecting, creating, renaming, or deleting a panel note
-does not write the Notes route or the app-wide selected note. The selected path
+does not write the URL or the app-wide selected note. The selected path
 lives in the Notes tab descriptor and restores per panel scope. Tree validation
 clears a missing restored path without activating the Notes tab.
 `layout="container"` sizes it by the panel width, not the window: below 720px

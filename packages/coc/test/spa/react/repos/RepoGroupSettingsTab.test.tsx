@@ -25,6 +25,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/repoGroupService', () => 
 }));
 
 import { RepoGroupSettingsTab } from '../../../../src/server/spa/client/react/repos/RepoGroupSettingsTab';
+import { WorkspaceSettingsProvider, WorkspaceSettingsSlot } from '../../../../src/server/spa/client/react/features/repo-settings/WorkspaceSettingsHost';
 
 const GROUP_ID = 'group-ai-repos';
 
@@ -42,7 +43,7 @@ beforeEach(() => {
 
 describe('RepoGroupSettingsTab', () => {
     it('renders the shared settings shell landing on Member repos, with a Group and an Agent nav group', async () => {
-        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
+        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} />);
 
         const tab = screen.getByTestId('repo-group-settings-tab');
         expect(tab.getAttribute('data-workspace')).toBe(GROUP_ID);
@@ -68,25 +69,25 @@ describe('RepoGroupSettingsTab', () => {
         await waitFor(() => expect(screen.getByTestId('repo-group-member-list')).toBeTruthy());
     });
 
-    it('makes no group read while it is not the visible tab', () => {
-        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active={false} />);
+    it('retains a pending member description when its panel tab closes and reopens', async () => {
+        const page = (open: boolean) => <WorkspaceSettingsProvider ownerKey={GROUP_ID}
+            renderPage={() => <RepoGroupSettingsTab workspaceId={GROUP_ID} />}>
+            {open && <WorkspaceSettingsSlot ownerKey={GROUP_ID} />}
+        </WorkspaceSettingsProvider>;
+        const view = render(page(false));
         expect(mockGetRepoGroup).not.toHaveBeenCalled();
-        expect(screen.queryByTestId('repo-group-member-list')).toBeNull();
-    });
-
-    it('retains a pending member description when the shared page is hidden and shown', async () => {
-        const view = render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
+        view.rerender(page(true));
         const input = await screen.findByTestId('repo-group-member-description-r2');
         fireEvent.change(input, { target: { value: 'Pending description' } });
-        view.rerender(<RepoGroupSettingsTab workspaceId={GROUP_ID} active={false} />);
-        view.rerender(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
+        view.rerender(page(false));
+        view.rerender(page(true));
         expect(screen.getByTestId('repo-group-member-description-r2')).toBe(input);
         expect(input).toHaveValue('Pending description');
         expect(mockGetRepoGroup).toHaveBeenCalledOnce();
         expect(mockUpdateRepoGroup).not.toHaveBeenCalled();
     });
     it('lists every member in the Member repos section with its name, path, stale badge and description', async () => {
-        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
+        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} />);
         await waitFor(() => expect(mockGetRepoGroup).toHaveBeenCalledWith(GROUP_ID, undefined));
 
         await waitFor(() => expect(screen.getByTestId('repo-group-member-description-r1')).toBeTruthy());
@@ -104,7 +105,7 @@ describe('RepoGroupSettingsTab', () => {
     });
 
     it('saves an edited description on Enter', async () => {
-        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
+        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} />);
         await waitFor(() => expect(screen.getByTestId('repo-group-member-description-r2')).toBeTruthy());
 
         fireEvent.change(screen.getByTestId('repo-group-member-description-r2'), { target: { value: 'Docs site' } });
@@ -115,7 +116,7 @@ describe('RepoGroupSettingsTab', () => {
     });
 
     it('saves on blur, and clearing a description saves the empty string', async () => {
-        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
+        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} />);
         await waitFor(() => expect(screen.getByTestId('repo-group-member-description-r1')).toBeTruthy());
 
         fireEvent.change(screen.getByTestId('repo-group-member-description-r1'), { target: { value: '' } });
@@ -126,7 +127,7 @@ describe('RepoGroupSettingsTab', () => {
     });
 
     it('reverts on Escape without saving', async () => {
-        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
+        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} />);
         await waitFor(() => expect(screen.getByTestId('repo-group-member-description-r1')).toBeTruthy());
 
         const input = screen.getByTestId('repo-group-member-description-r1') as HTMLInputElement;
@@ -140,7 +141,7 @@ describe('RepoGroupSettingsTab', () => {
 
     it('rolls the row back and shows the server error when the save fails', async () => {
         mockUpdateRepoGroup.mockRejectedValue(new Error('Group is read-only'));
-        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
+        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} />);
         await waitFor(() => expect(screen.getByTestId('repo-group-member-description-r1')).toBeTruthy());
 
         fireEvent.change(screen.getByTestId('repo-group-member-description-r1'), { target: { value: 'Next' } });
@@ -152,7 +153,7 @@ describe('RepoGroupSettingsTab', () => {
     });
 
     it('routes the read and the save to the server owning a remote group', async () => {
-        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} baseUrl="http://remote:3000" active />);
+        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} baseUrl="http://remote:3000" />);
         await waitFor(() => expect(mockGetRepoGroup).toHaveBeenCalledWith(GROUP_ID, 'http://remote:3000'));
 
         fireEvent.change(screen.getByTestId('repo-group-member-description-r2'), { target: { value: 'Docs site' } });
@@ -162,7 +163,7 @@ describe('RepoGroupSettingsTab', () => {
     });
 
     it('saves a read-only toggle to the server owning a remote group', async () => {
-        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} baseUrl="http://remote:3000" active />);
+        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} baseUrl="http://remote:3000" />);
         await waitFor(() => expect(screen.getByTestId('repo-group-member-read-only-r1')).toBeTruthy());
 
         fireEvent.click(screen.getByTestId('repo-group-member-read-only-r1'));
@@ -176,7 +177,7 @@ describe('RepoGroupSettingsTab', () => {
 
     it('points an empty group at the group edit dialog', async () => {
         mockGetRepoGroup.mockResolvedValue({ id: GROUP_ID, name: 'AI Repos', members: [] });
-        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
+        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} />);
 
         await waitFor(() => expect(screen.getByTestId('repo-group-members-empty')).toBeTruthy());
         expect(screen.getByTestId('repo-group-members-empty').textContent).toContain('Edit group');
@@ -185,7 +186,7 @@ describe('RepoGroupSettingsTab', () => {
     it('shows a loading placeholder until the group read resolves', async () => {
         let resolveRead: (value: unknown) => void = () => {};
         mockGetRepoGroup.mockReturnValue(new Promise(resolve => { resolveRead = resolve; }));
-        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
+        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} />);
 
         expect(screen.getByTestId('repo-group-settings-loading')).toBeTruthy();
         resolveRead({ id: GROUP_ID, name: 'AI Repos', members: MEMBERS });
@@ -193,7 +194,7 @@ describe('RepoGroupSettingsTab', () => {
     });
 
     it('ticks a member read-only and PATCHes just that flag', async () => {
-        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
+        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} />);
         await waitFor(() => expect(screen.getByTestId('repo-group-member-read-only-r1')).toBeTruthy());
 
         fireEvent.click(screen.getByTestId('repo-group-member-read-only-r1'));
@@ -209,7 +210,7 @@ describe('RepoGroupSettingsTab', () => {
             name: 'AI Repos',
             members: [{ workspaceId: 'r1', stale: false, name: 'shortcuts', rootPath: '/r/r1', readOnly: true }],
         });
-        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
+        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} />);
         await waitFor(() => expect((screen.getByTestId('repo-group-member-read-only-r1') as HTMLInputElement).checked)
             .toBe(true));
         expect(screen.getByTestId('repo-group-read-only-badge-r1')).toBeTruthy();
@@ -222,7 +223,7 @@ describe('RepoGroupSettingsTab', () => {
 
     it('reverts the checkbox and shows the server error when the flag save fails', async () => {
         mockUpdateRepoGroup.mockRejectedValue(new Error('readOnly must be a boolean'));
-        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
+        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} />);
         await waitFor(() => expect(screen.getByTestId('repo-group-member-read-only-r1')).toBeTruthy());
 
         fireEvent.click(screen.getByTestId('repo-group-member-read-only-r1'));

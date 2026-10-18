@@ -102,6 +102,17 @@ describe('admin setting registry integrity', () => {
         }
     });
 
+    it('has no availability setting for Notes or the panel Settings tab', () => {
+        const keys = ADMIN_SETTING_DEFINITIONS.map(d => d.key);
+        expect(keys).not.toContain('notes.enabled');
+        expect(keys).not.toContain('features.panelSettings');
+        expect(ADMIN_EDITABLE_KEYS).not.toContain('notes.enabled');
+        expect(ADMIN_EDITABLE_KEYS).not.toContain('features.panelSettings');
+        const flags = ADMIN_SETTING_DEFINITIONS.map(d => d.runtimeFlag);
+        expect(flags).not.toContain('notesEnabled');
+        expect(flags).not.toContain('panelSettingsEnabled');
+    });
+
     it('has unique runtime flags', () => {
         const seen = new Set<string>();
         for (const def of ADMIN_SETTING_DEFINITIONS) {
@@ -721,7 +732,6 @@ describe('Features card UI metadata', () => {
         ['features.explorerEditorTabs', 'explorerEditorTabs', 'explorerEditorTabsEnabled', 'editorFiles', 10],
         ['features.markdownPanelPreview', 'markdownPanelPreview', 'markdownPanelPreviewEnabled', 'editorFiles', 20],
         ['features.panelSourceSplit', 'panelSourceSplit', 'panelSourceSplitEnabled', 'editorFiles', 30],
-        ['features.panelSettings', 'panelSettings', 'panelSettingsEnabled', 'editorFiles', 35],
         ['features.explorerDelete', 'explorerDelete', 'explorerDeleteEnabled', 'editorFiles', 60],
         ['features.panelTabReordering', 'panelTabReordering', 'panelTabReorderingEnabled', 'editorFiles', 40],
         ['features.schedulerDelayHint', 'schedulerDelayHint', 'schedulerDelayHintEnabled', 'uiGeneral', 75],
@@ -817,7 +827,6 @@ describe('feature toggle settings-tab placement', () => {
         'features.explorerEditorTabs': 'appearance',
         'features.markdownPanelPreview': 'appearance',
         'features.panelSourceSplit': 'appearance',
-        'features.panelSettings': 'appearance',
         'features.diffFilePicker': 'appearance',
         'vimNavigation.enabled': 'appearance',
         'features.scopeSwitcher': 'appearance',
@@ -842,7 +851,6 @@ describe('feature toggle settings-tab placement', () => {
         'kusto.enabled': 'integrations',
         'workItems.sync.enabled': 'integrations',
         // Features (module/tool-level toggles stay)
-        'notes.enabled': 'features',
         'myWork.enabled': 'features',
         'myWork.todayView': 'features',
         'myLife.enabled': 'features',

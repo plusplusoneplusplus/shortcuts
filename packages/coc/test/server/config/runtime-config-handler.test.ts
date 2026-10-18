@@ -73,7 +73,8 @@ describe('buildRuntimeDashboardConfig', () => {
         const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
 
         expect(result.features.terminalEnabled).toBe(true);
-        expect(result.features.notesEnabled).toBe(true);
+        expect(result.features).not.toHaveProperty('notesEnabled');
+        expect(result.features).not.toHaveProperty('panelSettingsEnabled');
         expect(result.features.myWorkEnabled).toBe(false);
         expect(result.features.myLifeEnabled).toBe(false);
         expect(result.features.scratchpadEnabled).toBe(false);
@@ -108,7 +109,6 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.markdownPanelPreviewEnabled).toBe(true);
         expect(result.features.explorerEditorTabsEnabled).toBe(true);
         expect((result.features as Record<string, unknown>).panelSourceSplitEnabled).toBe(true);
-        expect((result.features as Record<string, unknown>).panelSettingsEnabled).toBe(true);
         expect(result.features.schedulerDelayHintEnabled).toBe(true);
         expect(result.features.chatFoldersEnabled).toBe(false);
         expect(result.features.repoGroupAggregatedChatsEnabled).toBe(false);
@@ -149,7 +149,6 @@ describe('buildRuntimeDashboardConfig', () => {
                 explorerEditorTabs: false,
                 markdownPanelPreview: false,
                 panelSourceSplit: false,
-                panelSettings: false,
                 schedulerDelayHint: false,
             },
         });
@@ -157,7 +156,6 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(features.explorerEditorTabsEnabled).toBe(false);
         expect(features.markdownPanelPreviewEnabled).toBe(false);
         expect((features as Record<string, unknown>).panelSourceSplitEnabled).toBe(false);
-        expect((features as Record<string, unknown>).panelSettingsEnabled).toBe(false);
         expect(features.schedulerDelayHintEnabled).toBe(false);
     });
 

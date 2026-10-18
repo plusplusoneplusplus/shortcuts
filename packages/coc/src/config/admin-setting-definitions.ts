@@ -498,14 +498,6 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'notes.enabled', default: true, runtime: 'live', runtimeFlag: 'notesEnabled',
-        ui: {
-            group: 'dashboard', order: 10, label: 'Notes',
-            hint: 'Markdown notebooks for creating and editing notes.',
-            testId: 'toggle-notes-enabled',
-        },
-    }),
-    bool({
         key: 'myWork.enabled', default: false, runtime: 'live', runtimeFlag: 'myWorkEnabled',
         ui: {
             group: 'dashboard', order: 20, label: 'My Work',
@@ -1246,14 +1238,6 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             tab: 'appearance', group: 'editorFiles', order: 30, label: 'Side-by-side source files', badge: 'experimental',
             hint: 'Drag a file tab to the right edge of the unified right panel, or use its tab menu, to view and edit two source files side by side. The split lasts for the current session. Enabled by default.',
             testId: 'toggle-panel-source-split-enabled',
-        },
-    }),
-    bool({
-        key: 'features.panelSettings', default: true, runtime: 'live', runtimeFlag: 'panelSettingsEnabled',
-        ui: {
-            tab: 'appearance', group: 'editorFiles', order: 35, label: 'Settings panel tab', badge: 'experimental',
-            hint: 'Add Settings to the right-panel add-tab menu, sharing the workspace Settings page and its pending edits. Enabled by default.',
-            testId: 'toggle-panel-settings-enabled',
         },
     }),
     bool({

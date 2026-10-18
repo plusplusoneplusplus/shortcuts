@@ -10,7 +10,6 @@ const mockSelectClone = vi.fn();
 const mockSwitchSubTab = vi.fn();
 let mockAppState: any = { activeTab: 'repos', activeRepoSubTab: 'chats' };
 let mockQueueState: any = { repoQueueMap: {} };
-let mockQueueStats: any = { running: 0, queued: 0 };
 let mockGitInfo: any = { ahead: 0, behind: 0 };
 let mockUnseenCounts: Record<string, number> = {};
 let mockSchedulesInScheduledSlideEnabled = false;
@@ -27,14 +26,13 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({ 
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({ useQueue: () => ({ state: mockQueueState, dispatch: vi.fn() }) }));
 vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({ useRepos: () => ({ fetchRepos: vi.fn(), repos: [], unseenCounts: mockUnseenCounts }) }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useTerminalEnabled', () => ({ useTerminalEnabled: () => true }));
-vi.mock('../../../../src/server/spa/client/react/features/notes/hooks/useNotesEnabled', () => ({ useNotesEnabled: () => true }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useWorkflowsEnabled', () => ({ useWorkflowsEnabled: () => true }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/usePullRequestsEnabled', () => ({ usePullRequestsEnabled: () => true }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useDreamsEnabled', () => ({ useDreamsEnabled: () => true }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useNativeCliSessionsEnabled', () => ({ useNativeCliSessionsEnabled: () => true }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useShowPlanDepTab', () => ({ useShowPlanDepTab: () => true }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSchedulesInScheduledSlideEnabled', () => ({ useSchedulesInScheduledSlideEnabled: () => mockSchedulesInScheduledSlideEnabled }));
-vi.mock('../../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats', () => ({ useRepoQueueStats: () => mockQueueStats, isHidden: () => false }));
+vi.mock('../../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats', () => ({ isHidden: () => false }));
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useGitInfo', () => ({ useGitInfo: () => mockGitInfo }));
 vi.mock('../../../../src/server/spa/client/react/features/remote-shell/useShellNavigation', () => ({
     useShellNavigation: () => ({ selectClone: mockSelectClone, switchSubTab: mockSwitchSubTab }),
@@ -59,7 +57,6 @@ beforeEach(() => {
     mockRemoveWorkspace.mockReset().mockResolvedValue(undefined);
     mockAppState = { activeTab: 'repos', activeRepoSubTab: 'chats' };
     mockQueueState = { repoQueueMap: {} };
-    mockQueueStats = { running: 0, queued: 0 };
     mockGitInfo = { ahead: 0, behind: 0 };
     mockUnseenCounts = {};
 
@@ -93,9 +90,18 @@ describe('WorkspaceTabsCluster', () => {
         const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
         render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
 
-        const git = screen.getAllByTestId('clone-scope-tab').find(el => el.getAttribute('data-subtab') === 'notes')!;
-        fireEvent.click(git);
-        expect(mockSwitchSubTab).toHaveBeenCalledWith('notes');
+        const schedules = screen.getAllByTestId('clone-scope-tab').find(el => el.getAttribute('data-subtab') === 'schedules')!;
+        fireEvent.click(schedules);
+        expect(mockSwitchSubTab).toHaveBeenCalledWith('schedules');
+    });
+
+    it('returns to the workspace when the active clone tab is clicked again', () => {
+        mockAppState = { activeTab: 'repos', activeRepoSubTab: 'schedules' };
+        const selected = repo('a', 'shortcuts');
+        render(<WorkspaceTabsCluster repo={selected as any} repos={[selected] as any} />);
+        const schedules = screen.getAllByTestId('clone-scope-tab').find(el => el.getAttribute('data-subtab') === 'schedules')!;
+        fireEvent.click(schedules);
+        expect(mockSwitchSubTab).toHaveBeenCalledWith('activity');
     });
 
     it('keeps a remote clone key when switching its sub-tab', () => {
@@ -109,35 +115,45 @@ describe('WorkspaceTabsCluster', () => {
         };
         render(<WorkspaceTabsCluster repo={remote as any} repos={[remote] as any} />);
 
-        const explorer = screen.getAllByTestId('clone-scope-tab')
-            .find(el => el.getAttribute('data-subtab') === 'settings')!;
-        fireEvent.click(explorer);
+        const workflows = screen.getAllByTestId('clone-scope-tab')
+            .find(el => el.getAttribute('data-subtab') === 'workflows')!;
+        fireEvent.click(workflows);
 
-        expect(mockSelectClone).toHaveBeenCalledWith('remote:server-1:shared', 'settings');
+        expect(mockSelectClone).toHaveBeenCalledWith('remote:server-1:shared', 'workflows');
         expect(mockSwitchSubTab).not.toHaveBeenCalled();
     });
 
     it('highlights the active clone sub-tab on the repos tab', () => {
-        mockAppState = { activeTab: 'repos', activeRepoSubTab: 'notes' };
+        mockAppState = { activeTab: 'repos', activeRepoSubTab: 'workflows' };
         const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
         render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
 
-        const git = screen.getAllByTestId('clone-scope-tab').find(el => el.getAttribute('data-subtab') === 'notes')!;
-        expect(git.getAttribute('data-active')).toBe('true');
+        const workflows = screen.getAllByTestId('clone-scope-tab').find(el => el.getAttribute('data-subtab') === 'workflows')!;
+        expect(workflows.getAttribute('data-active')).toBe('true');
+        expect(workflows.getAttribute('aria-current')).toBe('page');
     });
 
-    it.each(['chats', 'activity'])('highlights Workspace for the %s route', (activeRepoSubTab) => {
+    it.each(['chats', 'activity'])('highlights no header tab on the workspace (%s route)', (activeRepoSubTab) => {
         mockAppState = { activeTab: 'repos', activeRepoSubTab };
         const selected = repo('a', 'shortcuts');
         render(<WorkspaceTabsCluster repo={selected as any} repos={[selected] as any} />);
 
         const active = screen.getAllByTestId('clone-scope-tab').filter(el => el.getAttribute('data-active') === 'true');
-        expect(active).toHaveLength(1);
-        expect(active[0].getAttribute('data-subtab')).toBe('activity');
-        expect(active[0].getAttribute('aria-current')).toBe('page');
+        expect(active).toHaveLength(0);
     });
 
-    it.each(['notes', 'chats', 'activity'])('does not highlight %s off the repos tab', (activeRepoSubTab) => {
+    it('renders no Workspace, Notes or Settings header tab', () => {
+        const selected = repo('a', 'shortcuts');
+        render(<WorkspaceTabsCluster repo={selected as any} repos={[selected] as any} />);
+        const cluster = screen.getByTestId('workspace-tabs-cluster');
+        const keys = screen.getAllByTestId('clone-scope-tab').map(el => el.getAttribute('data-subtab'));
+        for (const key of ['activity', 'chats', 'notes', 'settings']) expect(keys).not.toContain(key);
+        const labels = screen.getAllByTestId('clone-scope-tab').map(el => el.textContent);
+        expect(labels.some(label => /Workspace|Notes|Settings/.test(label ?? ''))).toBe(false);
+        expect(cluster.querySelector('[data-measure-key="activity"]')).toBeNull();
+    });
+
+    it.each(['workflows', 'chats', 'activity'])('does not highlight %s off the repos tab', (activeRepoSubTab) => {
         // The header still renders on the top-level pages, but no workspace sub-tab
         // is being viewed there — so none should show as active.
         mockAppState = { activeTab: 'admin', activeRepoSubTab };
@@ -193,8 +209,6 @@ describe('WorkspaceTabsCluster', () => {
 
         const cloneTabs = screen.getAllByTestId('clone-scope-tab');
         expect(cloneTabs.map(el => el.getAttribute('data-subtab'))).not.toContain('git');
-        const chatTab = cloneTabs.find(el => el.getAttribute('data-subtab') === 'activity');
-        expect(chatTab?.textContent).toContain('Workspace');
     });
 });
 

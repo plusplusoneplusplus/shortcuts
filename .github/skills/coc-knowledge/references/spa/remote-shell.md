@@ -229,7 +229,7 @@ that same registry.
   inline in the dialog.
 - Group Quick Open uses the same owner route for its single
   `/api/repo-groups/:id/search` request. On desktop its group-scoped unified panel owns
-  Ctrl/Cmd+P from every group sub-tab even while collapsed; the portal alone opens first,
+  Ctrl/Cmd+P even while collapsed; the portal alone opens first,
   and accepting a member result opens the panel, switches its target, and creates a
   result-owned preview without navigating away from the group. Mobile has no group panel
   or shortcut owner.
@@ -314,17 +314,17 @@ explicit. Rows disclose Writer/Read-only policies and every conflicting writer. 
 
 **View.** A `group-<slug>` id renders `repos/RepoGroupView.tsx`, a branch in `ReposView`
 recognized by id **prefix** (unlike My Work / My Life's id-equality checks) with no
-feature flag. It exposes Workspace (chat, key `chats`, `RepoChatTab`), Notes (`NotesView`,
-notes root = the group's own workspace dir), and Settings
-(`repos/RepoGroupSettingsTab.tsx`, `Alt+C`). The group's Workspace tab hosts
-the member Git list in `SplitWorkspacePanel` on desktop and mobile. Its desktop
+feature flag. Its only view is the Workspace (chat, key `chats`, `RepoChatTab`)
+whatever sub-tab is stored; Notes (notes root = the group's own workspace dir) and
+Settings (`repos/RepoGroupSettingsTab.tsx`) open as tabs in the group's right
+panel. The Workspace hosts the member Git list in `SplitWorkspacePanel` on desktop and mobile. Its desktop
 split header and collapsed rail start group chats, the rail counts the group's running and queued tasks,
 and the remote-first shell pins status actions below the left column. Once
 membership loads, groups without a healthy member show chats across the full
 left column with no Git section.
 `getRepoGroupHeaderConfig(workspaceId, label)` supplies the
 `VirtualWorkspaceHeaderConfig` (`testIdPrefix: 'repo-group'`, `defaultTab: 'chats'`, no
-actions), labeled with the registered workspace name (id fallback while loading).
+tabs or actions), labeled with the registered workspace name (id fallback while loading).
 
 ### Group Git
 
@@ -377,14 +377,11 @@ Member repos plus the group's MCP Servers, Agent Skills and LLM Tools. Member
 descriptions and Read-only policies save optimistically through
 `PATCH /api/repo-groups/:id`, with row-local errors and rollback. Membership
 itself stays in `RepoGroupDialog`. Group settings never write member-repo agent
-preferences. The [shared Settings host](shell.md#shared-workspace-settings) preserves
-the full page across top-level and panel access.
-
-`#repos/<groupId>/settings` is the canonical group entry; sidebar section links
-use the concrete selection id with `/settings/<section>`. Panel section
-navigation keeps the current workspace hash. The page mounts lazily and retains
-its member snapshot and drafts while hidden. `GlobalStatusDock` exempts groups
-from its Settings stand-down because the group shell has no docked sidebar footer.
+preferences. The [Settings host](shell.md#workspace-notes-and-settings) mounts the
+page on first panel open and retains its member snapshot and drafts while the tab
+is closed. Section navigation keeps the current workspace hash. Writer-conflict
+links open the writer group's Settings tab in that group's own panel.
+`GlobalStatusDock` always defers to the group Workspace footer.
 Members come from `useRepoGroupMembers(workspaceId, baseUrl, enabled)`
 (`repos/useRepoGroupMembers.ts`). The Workspace view loads members immediately
 for its Git list and dock target picker; Settings reads member descriptions separately.
@@ -509,7 +506,10 @@ the heavily-mocked `featureFlags.ts` so partial test mocks of it do not break on
 missing export.
 
 `computeVisibleSubTabs` uses classic ordering and labels, hides standalone Git,
-Terminal and Explorer tabs, and labels the chat tab Workspace. Both `activity`
-and `chats` remain route aliases. Desktop quick actions include Queue Task, Ask
+Terminal and Explorer tabs, has no Notes or Settings tab, and labels the chat tab
+Workspace for the mobile tab bar. Both `activity` and `chats` remain route aliases.
+The desktop header has no Workspace tab: `partitionShellTabs` drops it, the
+workspace is the repo's main view, and clicking an active header tab returns to
+it (`subTabClickTarget`). Desktop quick actions include Queue Task, Ask
 and Generate Plan; deprecated plans use the "Plans (Dep.)" label. Git lives inside `SplitWorkspacePanel`;
 Terminal and Explorer live in the desktop right panel.

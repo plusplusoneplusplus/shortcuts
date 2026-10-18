@@ -156,7 +156,7 @@ describe('Repo Group Handler', () => {
             code: 'REPO_GROUP_WRITER_CONFLICT',
             details: { conflicts: [expect.objectContaining({
                 workspaceId: repoA.id, writerGroupId: first.workspace.id,
-                writerGroupLink: `#repos/${first.workspace.id}/settings`,
+                writerGroupLink: `#repos/${first.workspace.id}`,
             })] },
         });
         expect(broadcastEvents).toHaveLength(eventsBefore);

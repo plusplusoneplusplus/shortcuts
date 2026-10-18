@@ -18,6 +18,7 @@ import { getRepoPreferences, patchRepoPreferences } from '../../api/repoPreferen
 import { isDreamsEnabled } from '../../utils/config';
 import { toQueueProcessId } from '../../utils/queue-process-id';
 import { resolveWorkItemOriginId } from '../work-items/workItemOriginScope';
+import { usePanelWorkspaceResourceOpener } from '../repo-detail/unified-right-panel/unifiedPanelWorkspaceResources';
 
 type DreamFilterId = 'visible' | 'approved' | 'dismissed' | 'converted' | 'superseded' | 'all';
 type DreamNextActionKind = 'skill-hardening-task' | 'note' | 'memory' | 'work-item-create' | 'work-item-update';
@@ -100,11 +101,6 @@ function statusLabel(status: DreamCardStatus): string {
 
 function sourceHash(workspaceId: string, processId: string): string {
     return '#repos/' + encodeURIComponent(workspaceId) + '/activity/' + encodeURIComponent(processId);
-}
-
-function noteHash(workspaceId: string, notePath: string): string {
-    const encodedPath = notePath.split('/').map(encodeURIComponent).join('/');
-    return '#repos/' + encodeURIComponent(workspaceId) + '/notes/' + encodedPath;
 }
 
 function workItemHash(workspaceId: string, workItemId: string): string {
@@ -486,10 +482,10 @@ function NextActionDialog({ card, workspaceId, originId, onClose, onConverted }:
                 if (!path) throw new Error('Note path is required.');
                 if (!content) throw new Error('Note content is required.');
                 await client.notes.saveContent(workspaceId, path, content);
+                // A note opens in the workspace's Notes panel tab by its path.
                 await onConverted({
                     artifactType: 'note',
                     artifactId: path,
-                    artifactUrl: noteHash(workspaceId, path),
                 });
             } else if (actionKind === 'memory') {
                 const content = memoryContent.trim();
@@ -726,6 +722,8 @@ function DreamCardView({
     const canSupersede = card.status === 'visible' || card.status === 'candidate';
     const isBusy = busyAction?.startsWith(`${card.id}:`) ?? false;
     const updatedAt = formatDate(card.updatedAt);
+    const openPanelResource = usePanelWorkspaceResourceOpener(workspaceId);
+    const noteArtifact = card.conversion?.artifactType === 'note' ? card.conversion.artifactId : null;
 
     return (
         <Card className="bg-white p-4 dark:bg-[#252526]" data-testid={`dream-card-${card.id}`} aria-label={`Dream card ${card.id}: ${statusLabel(card.status)}`}>
@@ -799,7 +797,13 @@ function DreamCardView({
                         {card.conversion && (
                             <p>
                                 <strong>Conversion recorded:</strong> {CONVERSION_LABELS[card.conversion.artifactType]} {card.conversion.artifactId}
-                                {card.conversion.artifactUrl && (
+                                {noteArtifact ? openPanelResource && (
+                                    <>
+                                        {' '}
+                                        <button type="button" className="text-[#0969da] hover:underline" data-testid={`dream-open-note-${card.id}`}
+                                            onClick={() => openPanelResource('notes', { notePath: noteArtifact })}>Open note</button>
+                                    </>
+                                ) : card.conversion.artifactUrl && (
                                     <>
                                         {' '}
                                         <a className="text-[#0969da] hover:underline" href={card.conversion.artifactUrl} target="_blank" rel="noreferrer">Open artifact</a>

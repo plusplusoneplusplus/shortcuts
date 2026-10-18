@@ -92,8 +92,8 @@ export interface ComposerPrChecksPopoverProps {
     openHref?: string;
     /** Auto-merge toggle wired to the server mutation. Omit when unavailable. */
     autoMerge?: ComposerPrChecksAutoMerge;
-    /** Hash link to the auto-archive settings section (e.g. `#repos/{id}/settings/preferences`). */
-    archiveSettingsHref?: string;
+    /** Opens the workspace's Settings panel tab on its auto-archive (Preferences) section. */
+    onOpenArchiveSettings?: () => void;
 }
 
 /**
@@ -172,7 +172,7 @@ export function ComposerPrChecksPopover({
     autoFix,
     openHref,
     autoMerge,
-    archiveSettingsHref,
+    onOpenArchiveSettings,
 }: ComposerPrChecksPopoverProps) {
     const popoverRef = useRef<HTMLDivElement | null>(null);
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -239,7 +239,7 @@ export function ComposerPrChecksPopover({
         return () => document.removeEventListener('keydown', handler);
     }, [onClose]);
 
-    const showArchive = Boolean(archiveSettingsHref);
+    const showArchive = Boolean(onOpenArchiveSettings);
     const showAutoFix = Boolean(autoFix?.enabled);
     const showToggles = showAutoFix;
 
@@ -481,17 +481,17 @@ export function ComposerPrChecksPopover({
 
             {/* ── Auto-archive settings link ────────────────────────────────── */}
             {showArchive && (
-                <a
-                    href={archiveSettingsHref}
-                    className="mt-2 flex items-center justify-between rounded-md border-t border-[#d0d7de] px-1 pt-2 text-[11px] text-[#57606a] no-underline hover:bg-black/[0.04] hover:text-[#1f2328] dark:border-[#3c3c3c] dark:text-[#8b949e] dark:hover:bg-white/[0.06] dark:hover:text-[#c9d1d9]"
+                <button
+                    type="button"
+                    className="mt-2 flex w-full items-center justify-between rounded-md border-t border-[#d0d7de] px-1 pt-2 text-[11px] text-[#57606a] no-underline hover:bg-black/[0.04] hover:text-[#1f2328] dark:border-[#3c3c3c] dark:text-[#8b949e] dark:hover:bg-white/[0.06] dark:hover:text-[#c9d1d9]"
                     data-testid={`composer-pr-chip-archive-settings-${itemKey}`}
-                    onClick={onClose}
+                    onClick={() => { onOpenArchiveSettings?.(); onClose(); }}
                 >
                     <span>Auto-archive settings</span>
                     <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M3 8h10M9 4l4 4-4 4" />
                     </svg>
-                </a>
+                </button>
             )}
         </div>,
         document.body,

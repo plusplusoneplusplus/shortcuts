@@ -79,6 +79,7 @@ export interface UnifiedPanelOpenMenuProps {
     onOpenResource: (input: OpenUnifiedTabInput) => void;
     /** The selected Sentinel chat's To-do tab; null hides the entry. */
     todoInput?: OpenUnifiedTabInput | null;
+    /** The panel's workspace owns a Settings page; see `openMenuActions`. */
     settingsAvailable?: boolean;
     /** Open one of the workspace-owned views against the current target. */
     onOpenWorkspaceResource: (action: 'terminal' | 'explorer' | 'notes' | 'settings') => void;

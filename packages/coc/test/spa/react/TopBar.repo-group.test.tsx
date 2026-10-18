@@ -108,16 +108,15 @@ afterEach(() => {
 });
 
 describe('TopBar — repo-group virtual header', () => {
-    it('renders Workspace, Notes and Settings with the split flag on, without a Git header tab', () => {
+    it('renders no Workspace, Notes, Settings or Git header tabs for a group', () => {
         renderTopBarWithGroup();
         const header = screen.getByTestId('virtual-workspace-shell-header');
         expect(header.getAttribute('data-workspace')).toBe(GROUP_ID);
-        expect(screen.getByTestId('repo-group-shell-tab-chats').textContent).toBe('Workspace');
-        expect(screen.queryByTestId('repo-group-shell-tab-git')).toBeNull();
-        expect(screen.getByTestId('repo-group-shell-tab-notes').textContent).toBe('Notes');
-        expect(screen.getByTestId('repo-group-shell-tab-settings').textContent).toBe('Settings');
-        expect([...header.querySelectorAll('button[data-subtab]')].map(tab => tab.getAttribute('data-subtab')))
-            .toEqual(['chats', 'notes', 'settings']);
+        expect(header.querySelectorAll('button[data-subtab]')).toHaveLength(0);
+        for (const tab of ['chats', 'notes', 'settings', 'git']) {
+            expect(screen.queryByTestId(`repo-group-shell-tab-${tab}`)).toBeNull();
+        }
+        expect(header.textContent).not.toMatch(/Workspace|Notes|Settings/);
     });
 
     it('labels the header with the registered group name', () => {

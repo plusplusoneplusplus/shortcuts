@@ -20,7 +20,6 @@ interface DashboardConfig {
      */
     features?: Record<string, unknown>;
     terminalEnabled?: boolean;
-    notesEnabled?: boolean;
     myWorkEnabled?: boolean;
     myWorkTodayViewEnabled?: boolean;
     myLifeEnabled?: boolean;
@@ -129,7 +128,6 @@ interface DashboardConfig {
     markdownPanelPreviewEnabled?: boolean;
     /** Whether unified right-panel source files can be split into two panes. Default true. */
     panelSourceSplitEnabled?: boolean;
-    panelSettingsEnabled?: boolean;
     /** Whether unified right-panel resource tabs can be reordered. Default true. */
     panelTabReorderingEnabled?: boolean;
     /** Whether the owning server allows confirmed permanent Explorer deletion. Default true. */
@@ -360,11 +358,6 @@ export function isPanelSourceSplitEnabled(): boolean {
     return getConfig().panelSourceSplitEnabled !== false;
 }
 
-/** Settings in the unified right-panel add-tab menu (`features.panelSettings`); on unless the server says off. */
-export function isPanelSettingsEnabled(): boolean {
-    return getConfig().panelSettingsEnabled !== false;
-}
-
 /** Scheduler delay labels on the ALL/AP buttons (`features.schedulerDelayHint`); on unless the server says off. */
 export function isSchedulerDelayHintEnabled(): boolean {
     return getConfig().schedulerDelayHintEnabled !== false;
@@ -373,10 +366,6 @@ export function isSchedulerDelayHintEnabled(): boolean {
 /** Local Explorer deletion (`features.explorerDelete`); on unless the server says off. */
 export function isExplorerDeleteEnabled(): boolean {
     return getConfig().explorerDeleteEnabled !== false;
-}
-
-export function isNotesEnabled(): boolean {
-    return getConfig().notesEnabled === true;
 }
 
 export function isMyWorkEnabled(): boolean {

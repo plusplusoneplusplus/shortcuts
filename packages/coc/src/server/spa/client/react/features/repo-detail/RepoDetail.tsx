@@ -20,14 +20,13 @@ import { useWorkspaceDock } from './useWorkspaceDock';
 import { WorkspaceDockToggle, setWorkspaceDockExpanded, useWorkspaceDockExpanded } from './WorkspaceDockToggle';
 import { StatusActions } from '../../layout/StatusActions';
 import { RepoSettingsTab } from '../repo-settings/RepoSettingsTab';
-import { WorkspaceSettingsProvider, WorkspaceSettingsSlot } from '../repo-settings/WorkspaceSettingsHost';
+import { WorkspaceSettingsProvider } from '../repo-settings/WorkspaceSettingsHost';
 import { WorkspaceSettingsApiProvider } from '../repo-settings/workspaceSettingsClient';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
 import { PullRequestsTab } from '../pull-requests/PullRequestsTab';
 import { WorkItemsTab } from '../work-items/WorkItemsTab';
 import { WorkflowDetailView } from '../../processes/dag';
 import { TerminalView } from '../terminal/TerminalView';
-import { NotesView } from '../notes/NotesView';
 import { DreamsPanel } from '../dreams/DreamsPanel';
 import { NativeCliSessionsPanel } from '../native-copilot-sessions/NativeCopilotSessionsPanel';
 import { AddRepoDialog } from '../../repos/AddRepoDialog';
@@ -47,7 +46,6 @@ import { useGitInfo } from '../git/hooks/useGitInfo';
 import { RepoRailGitView } from './RailGitSummary';
 import { useRepoRailGit } from './useRailGitSummary';
 import { useTerminalEnabled } from '../../hooks/feature-flags/useTerminalEnabled';
-import { useNotesEnabled } from '../notes/hooks/useNotesEnabled';
 import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabled';
 import { usePullRequestsEnabled } from '../../hooks/feature-flags/usePullRequestsEnabled';
 import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
@@ -128,7 +126,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // so we only mount their (often slow) data-fetching hooks on first activation
     // rather than for every repo switch. Without this guard, opening any repo
     // would synchronously hammer endpoints like /api/repos/:id/tree,
-    // /workspaces/:id/notes/tree, /workspaces/:id/work-items, and the various
+    // /workspaces/:id/work-items and the various
     // git endpoints — blocking the Node event loop for many seconds on large
     // repos and starving the chat tab's /queue + /history requests behind them.
     const [visitedSubTabs, setVisitedSubTabs] = useState<Set<string>>(() => new Set(activeSubTab ? [activeSubTab] : []));
@@ -152,7 +150,6 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const railGitStatus = useRepoRailGit({ client: queueClient, routingRef: sourceSelectionId, workspaceId: ws.id, enabled: isGitRepo });
     const refreshSidebarGit = useCallback(() => railGitStatus.refresh(true), [railGitStatus.refresh]);
     const terminalEnabled = useTerminalEnabled();
-    const notesEnabled = useNotesEnabled();
     const workflowsEnabled = useWorkflowsEnabled();
     const pullRequestsEnabled = usePullRequestsEnabled();
     const dreamsEnabled = useDreamsEnabled();
@@ -230,8 +227,8 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // canvas embeds) know a unified panel is on screen for them and which chat
     // it is showing. Null on mobile, where entry points use in-chat surfaces.
     const unifiedPanelHost = useMemo(
-        () => (dockAvailable ? { workspaceId: ws.id, chatId: panelChatId } : null),
-        [dockAvailable, ws.id, panelChatId],
+        () => (dockAvailable ? { workspaceId: ws.id, chatId: panelChatId, routingRef: explorerRoutingRef } : null),
+        [dockAvailable, ws.id, panelChatId, explorerRoutingRef],
     );
     const showHeaderDockControls = dockAvailable && !chromeless;
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
@@ -256,10 +253,10 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const unseenWorkItemCount = (workItemState.unseenByRepo[workItemOriginId] || []).length;
 
     const visibleSubTabs = useMemo(() => computeVisibleSubTabs({
-        isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
+        isGitRepo, terminalEnabled, workflowsEnabled,
         pullRequestsEnabled, dreamsEnabled, showPlanDepTab,
         schedulesInScheduledSlideEnabled,
-    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab, schedulesInScheduledSlideEnabled]);
+    }), [isGitRepo, terminalEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab, schedulesInScheduledSlideEnabled]);
 
     // Redirect only after the capability set for this workspace has resolved.
     // Route memory is kept separately in AppContext, so this display fallback
@@ -487,10 +484,9 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     ) : undefined;
 
     return (
-        <WorkspaceSettingsProvider ownerKey={sourceSelectionId} topLevelActive={activeSubTab === 'settings'}
-            renderPage={inPanel => <WorkspaceSettingsApiProvider workspaceId={ws.id} selectionId={sourceSelectionId}>
-                <RepoSettingsTab workspaceId={ws.id} repo={repo} selectionId={sourceSelectionId}
-                    navigation={inPanel ? 'local' : 'route'} dockStatusFooter={!inPanel} />
+        <WorkspaceSettingsProvider ownerKey={sourceSelectionId}
+            renderPage={() => <WorkspaceSettingsApiProvider workspaceId={ws.id} selectionId={sourceSelectionId}>
+                <RepoSettingsTab workspaceId={ws.id} repo={repo} selectionId={sourceSelectionId} navigation="local" />
             </WorkspaceSettingsApiProvider>}>
         <UnifiedPanelHostProvider host={unifiedPanelHost}>
         <div id="repo-detail-content" className="flex flex-col h-full min-h-0 min-w-0">
@@ -768,8 +764,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                             />
                     </div>
                 ) : (
-                    <div className={cn("flex flex-col flex-1 min-h-0 min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' || activeSubTab === 'dreams' || activeSubTab === 'cli-sessions' || activeSubTab === 'copilot-sessions' ? "overflow-hidden" : "overflow-y-auto")}>
-                        {activeSubTab === 'settings' && <WorkspaceSettingsSlot />}
+                    <div className={cn("flex flex-col flex-1 min-h-0 min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'dreams' || activeSubTab === 'cli-sessions' || activeSubTab === 'copilot-sessions' ? "overflow-hidden" : "overflow-y-auto")}>
                         {activeSubTab === 'workflows' && <TemplatesTab key={ws.id} repo={repo} />}
                             <div style={{ display: (activeSubTab === 'activity' || activeSubTab === 'chats') ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 <SplitWorkspacePanel
@@ -867,19 +862,6 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                         {terminalEnabled && (
                             <div style={{ display: activeSubTab === 'terminal' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                                 {wasVisited('terminal') && <TerminalView key={ws.id} workspaceId={ws.id} />}
-                            </div>
-                        )}
-                        {notesEnabled && (
-                            <div style={{ display: activeSubTab === 'notes' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                                {wasVisited('notes') && <NotesView
-                                    key={ws.id}
-                                    workspaceId={ws.id}
-                                    sourceSelectionId={sourceSelectionId}
-                                    initialNotePath={state.selectedNotePath}
-                                    defaultScope="per-note"
-                                    active={activeSubTab === 'notes'}
-                                    dockStatusFooter
-                                />}
                             </div>
                         )}
                         {dreamsEnabled && (

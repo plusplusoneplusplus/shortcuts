@@ -3,22 +3,20 @@ import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
 import { useRepos } from '../../contexts/ReposContext';
 import { useTerminalEnabled } from '../../hooks/feature-flags/useTerminalEnabled';
-import { useNotesEnabled } from '../notes/hooks/useNotesEnabled';
 import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabled';
 import { usePullRequestsEnabled } from '../../hooks/feature-flags/usePullRequestsEnabled';
 import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
 import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
 import { useSchedulesInScheduledSlideEnabled } from '../../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
-import { isHidden as isHiddenTask, useRepoQueueStats } from '../../queue/hooks/useRepoQueueStats';
+import { isHidden as isHiddenTask } from '../../queue/hooks/useRepoQueueStats';
 import { useGitInfo } from '../git/hooks/useGitInfo';
-import { computeVisibleSubTabs, type SubTabDef } from '../repo-detail/repoSubTabs';
+import { computeVisibleSubTabs, subTabClickTarget, type SubTabDef } from '../repo-detail/repoSubTabs';
 import { getRepoHashColor, getServerHashColor, groupKey, groupReposByRemote, isRemoteRepo, truncatePath } from '../../repos/repoGrouping';
 import { getRepoSelectionId } from '../../repos/cloneIdentity';
 import { cloneStatusColor, computeCloneStatusMap, computeVisibleTabKeys, describeRemoveBlock, partitionShellTabs, summarizeRemote } from './shellModel';
 import { useShellNavigation } from './useShellNavigation';
 import { useRecentRemotes } from './useRecentRemotes';
 import { useWorkspaceRemoval } from './useWorkspaceRemoval';
-import { useCocClient } from '../../repos/cloneRouting';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import { Dialog } from '../../ui/Dialog';
 import { ToastContainer, useToast } from '../../ui/Toast';
@@ -57,27 +55,24 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
     const { toasts, addToast, removeToast } = useToast();
 
     const terminalEnabled = useTerminalEnabled();
-    const notesEnabled = useNotesEnabled();
     const workflowsEnabled = useWorkflowsEnabled();
     const pullRequestsEnabled = usePullRequestsEnabled();
     const dreamsEnabled = useDreamsEnabled();
     const showPlanDepTab = useShowPlanDepTab();
     const schedulesInScheduledSlideEnabled = useSchedulesInScheduledSlideEnabled();
     const isGitRepo = !!repo.gitInfo?.isGitRepo;
-    // Match the rendered Workspace key, including RepoDetail's 'chats' fallback.
-    // Top-level pages have no active workspace sub-tab.
+    // The Workspace surface has no header tab; 'chats' normalizes to its
+    // 'activity' alias. Top-level pages have no active workspace sub-tab.
     const rawActiveTab = state.activeTab === 'repos' ? state.activeRepoSubTab : null;
     const activeTab = rawActiveTab === 'chats' ? 'activity' : rawActiveTab;
 
-    const queueClient = useCocClient(ws);
-    const { running: runningCount, queued: queuedCount } = useRepoQueueStats(workspaceId, queueClient, getRepoSelectionId(repo));
     const { ahead: gitAhead, behind: gitBehind } = useGitInfo(workspaceId);
 
     const tabs = useMemo(() => computeVisibleSubTabs({
-        isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
+        isGitRepo, terminalEnabled, workflowsEnabled,
         pullRequestsEnabled, dreamsEnabled, showPlanDepTab,
         schedulesInScheduledSlideEnabled,
-    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab, schedulesInScheduledSlideEnabled]);
+    }), [isGitRepo, terminalEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab, schedulesInScheduledSlideEnabled]);
     const { clone: cloneTabs } = useMemo(() => partitionShellTabs(tabs), [tabs]);
 
     const group = useMemo(() => {
@@ -196,22 +191,17 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
     }, [cloneStatus, requestRemove]);
 
     const onTab = (key: RepoSubTab) => {
+        const next = subTabClickTarget(activeTab, key);
         if (cloneId === workspaceId) {
-            switchSubTab(key);
+            switchSubTab(next);
         } else {
-            selectClone(cloneId, key);
+            selectClone(cloneId, next);
         }
         setOvOpen(false);
     };
 
     const badge = (key: RepoSubTab, forMeasure = false) => {
         const tid = (id: string) => (forMeasure ? {} : { 'data-testid': id });
-        if ((key === 'activity' || key === 'chats') && runningCount > 0) {
-            return <span {...tid('subbar-running-badge')} className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#16825d] text-white px-1 rounded-full">{runningCount}</span>;
-        }
-        if ((key === 'activity' || key === 'chats') && queuedCount > 0) {
-            return <span {...tid('subbar-queued-badge')} className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#0078d4] text-white px-1 rounded-full">{queuedCount}</span>;
-        }
         if (key === 'git' && (gitAhead > 0 || gitBehind > 0)) {
             return (
                 <span className="ml-0.5 font-mono text-[10px] opacity-70">

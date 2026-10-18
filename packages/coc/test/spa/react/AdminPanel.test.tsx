@@ -1750,7 +1750,10 @@ describe('AdminPanel', () => {
 
             await waitFor(() => expect(capturedBody).not.toBeNull());
             expect(capturedBody['terminal.enabled']).toBe(true);
-            expect(capturedBody['notes.enabled']).toBe(false);
+            expect(capturedBody).not.toHaveProperty('notes.enabled');
+            expect(capturedBody).not.toHaveProperty('features.panelSettings');
+            expect(screen.queryByTestId('toggle-notes-enabled')).toBeNull();
+            expect(screen.queryByTestId('toggle-panel-settings-enabled')).toBeNull();
         });
 
         it('renders Servers toggle unchecked by default and includes servers.enabled in PUT', async () => {

@@ -66,7 +66,6 @@ describe('loadRuntimeConfig', () => {
                 revision: 1,
                 features: {
                     terminalEnabled: true,
-                    notesEnabled: true,
                     myWorkEnabled: false,
                     myLifeEnabled: false,
                     scratchpadEnabled: false,
@@ -228,7 +227,6 @@ describe('loadRuntimeConfig', () => {
                 revision: 1,
                 features: {
                     terminalEnabled: true,
-                    notesEnabled: true,
                     myWorkEnabled: false,
                     myLifeEnabled: false,
                     scratchpadEnabled: false,
@@ -264,7 +262,6 @@ describe('loadRuntimeConfig', () => {
                 revision: 1,
                 features: {
                     terminalEnabled: true,
-                    notesEnabled: true,
                     myWorkEnabled: false,
                     myLifeEnabled: false,
                     scratchpadEnabled: false,
@@ -302,7 +299,6 @@ describe('loadRuntimeConfig', () => {
                 revision: 1,
                 features: {
                     terminalEnabled: true,
-                    notesEnabled: false,
                     myWorkEnabled: false,
                     myLifeEnabled: false,
                     scratchpadEnabled: false,

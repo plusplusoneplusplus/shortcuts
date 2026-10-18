@@ -1,9 +1,10 @@
 /**
- * RepoGroupSettingsTab — the Settings tab of a repo-group virtual workspace.
+ * RepoGroupSettingsTab — the Settings page of a repo-group virtual workspace,
+ * shown in the group's right-panel Settings tab.
  *
  * A group gets the same split-panel settings surface a real repo gets: the
- * shared `SettingsNavSidebar` on the left, a card content surface on the right,
- * and `#repos/<groupId>/settings/<section>` hash routing. Only the nav entries
+ * shared `SettingsNavSidebar` on the left and a card content surface on the
+ * right. Section navigation stays inside the page. Only the nav entries
  * differ - a group has "Group" (Member repos) and "Agent" (MCP Servers, Agent
  * Skills, LLM Tools); it has no git checkout, so Info / Plans Folder / Notes /
  * Instructions / Memory stay off the list.
@@ -18,7 +19,7 @@
  * the Member repos section only edits descriptions and the read-only policy,
  * against the same `PATCH /api/repo-groups/:id`.
  */
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useMemo, useState } from 'react';
 import { useAppOptional } from '../contexts/AppContext';
 import { useReposOptional } from '../contexts/ReposContext';
 import { ToastContext } from '../contexts/ToastContext';
@@ -49,30 +50,15 @@ export interface RepoGroupSettingsTabProps {
     selectionId?: string;
     /** Base URL of the server owning the group; omit for a local group. */
     baseUrl?: string;
-    /**
-     * Starts the lazy mount on first activation. The page and member snapshot
-     * remain mounted afterwards so hidden Settings keeps pending edits.
-     */
-    active: boolean;
-    navigation?: 'route' | 'local';
 }
 
-export function RepoGroupSettingsTab({ workspaceId, selectionId = workspaceId, baseUrl, active, navigation }: RepoGroupSettingsTabProps) {
-    // Everything below fetches on mount, so stay empty until the tab is first
-    // opened — and stay mounted afterwards so switching tabs keeps the state.
-    const [visited, setVisited] = useState(active);
-    useEffect(() => { if (active) setVisited(true); }, [active]);
-
-    if (!visited) return <div data-testid="repo-group-settings-tab" data-workspace={workspaceId} />;
-    return <RepoGroupSettingsPane workspaceId={workspaceId} selectionId={selectionId} baseUrl={baseUrl} active navigation={navigation} />;
-}
-
-function RepoGroupSettingsPane({ workspaceId, selectionId = workspaceId, baseUrl, active, navigation = 'route' }: RepoGroupSettingsTabProps) {
+/** Mounted lazily, and kept mounted, by the shared Settings host. */
+export function RepoGroupSettingsTab({ workspaceId, selectionId = workspaceId, baseUrl }: RepoGroupSettingsTabProps) {
     const app = useAppOptional();
     const addToast = useContext(ToastContext)?.addToast;
     const allRepos = useWorkspaceSettingsRepos(workspaceId, useReposOptional()?.repos);
     const resolveClient = useWorkspaceSettingsClientResolver(workspaceId);
-    const members = useRepoGroupMembers(workspaceId, baseUrl, active);
+    const members = useRepoGroupMembers(workspaceId, baseUrl, true);
 
     // The app reducer owns the section when the tab runs inside the dashboard;
     // the local copy is the fallback for a standalone mount (tests, pop-outs).
@@ -82,8 +68,7 @@ function RepoGroupSettingsPane({ workspaceId, selectionId = workspaceId, baseUrl
     const setActiveSection = useCallback((section: SettingsSection) => {
         setLocalSection(section);
         app?.dispatch({ type: 'SET_SETTINGS_SECTION', section });
-        if (navigation === 'route') location.hash = '#repos/' + encodeURIComponent(selectionId) + '/settings/' + section;
-    }, [app, selectionId, navigation]);
+    }, [app]);
 
     const skillsController = useWorkspaceSkillsController({
         workspaceId,

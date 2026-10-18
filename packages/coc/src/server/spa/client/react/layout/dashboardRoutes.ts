@@ -34,10 +34,9 @@ import {
 import type { NativeCliSessionProviderId } from '@plusplusoneplusplus/coc-client';
 import { isNativeCliProviderAvailable, isNativeCliSessionProviderId } from '@plusplusoneplusplus/coc-client';
 import { isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
-import { isRepoGroupWorkspaceId } from '../repos/virtualWorkspaceIds';
+import { isRepoGroupWorkspaceId, isVirtualWorkspaceId } from '../repos/virtualWorkspaceIds';
 import { buildRemoteCloneKey, parseRemoteCloneKey } from '../repos/cloneIdentity';
 import { buildGitRouteSuffix, parseGitRoute } from './gitRoute';
-import { resolveRepoGroupSection } from '../repos/repoGroupSettingsSections';
 import { parseDashboardChatReference, type DashboardChatReference } from '../shared/dashboard-discovery/chat-reference';
 import type { AppAction, AppContextState } from '../contexts/AppContext';
 import type { QueueAction, QueueContextState } from '../contexts/QueueContext';
@@ -449,18 +448,11 @@ export function buildRepoSubTabSuffix(
 }
 
 /**
- * `buildRepoSubTabSuffix`, but aware of which workspace the tab belongs to.
- *
- * The only difference today is Settings. Every workspace kind now has a
- * sectioned settings tab, so the hash carries the open section — but a repo
- * group only has `members`, `mcp`, `skills` and `llm-tools`. Arriving on a
- * group with a repo-only section remembered (`info`, say) would otherwise write
- * a hash the group cannot honour, so it is pinned to the group's landing
- * section instead.
+ * `buildRepoSubTabSuffix`, but aware of which workspace the tab belongs to: a
+ * repo group's Git route names its selected member.
  *
  * Prefer this over `buildRepoSubTabSuffix` wherever the target workspace id is
- * in hand; this is the form the router records and replays, so a group that
- * lands on Settings comes back to the same section.
+ * in hand; this is the form the router records and replays.
  */
 export function buildWorkspaceSubTabSuffix(
     workspaceId: string,
@@ -468,9 +460,6 @@ export function buildWorkspaceSubTabSuffix(
     state: AppContextState,
     selectedTaskId?: string | null
 ): string {
-    if (tab === 'settings' && isRepoGroupWorkspaceId(workspaceId)) {
-        return '/settings/' + encodeSegment(resolveRepoGroupSection(state.settingsSection));
-    }
     if (tab === 'git' && isRepoGroupWorkspaceId(workspaceId)) {
         return buildRepoGroupGitSuffix(workspaceId, state);
     }
@@ -677,6 +666,12 @@ export interface RouteResolution {
     chatReference?: DashboardChatReference | null;
 }
 
+/** Route segments that select a Notes/Settings page, which only My Work / My Life have. */
+function isWorkspacePanelOnlySegment(segment: string | undefined, next: string | undefined): boolean {
+    if (segment === 'settings') return next !== 'display';
+    return segment === 'notes' || segment === 'copilot' || segment === 'info';
+}
+
 /**
  * Resolve `#repos/...` deep-links into effects. Pushes onto the shared `effects`
  * list in the exact order the imperative dispatcher ran, and returns early on a
@@ -714,6 +709,12 @@ function resolveReposRoute(hashIn: string, ctx: RouteContext, effects: RouteEffe
     if (parts[2] === 'settings' && parts[3] === 'run-script-template') {
         effects.push({ kind: 'app', action: { type: 'SET_REPO_SUB_TAB', tab: 'workflows' } });
         effects.push({ kind: 'navigate', hash: '#repos/' + parts[1] + '/workflows', mode: 'replace' });
+        return;
+    }
+    // A repo or group has no Notes/Settings page: both are right-panel tabs, so a
+    // page selector lands on the workspace rather than selecting a hidden view.
+    if (!isVirtualWorkspaceId(repoId) && isWorkspacePanelOnlySegment(parts[2], parts[3])) {
+        effects.push({ kind: 'navigate', hash: '#repos/' + parts[1] + '/' + resolveChatSubTab(), mode: 'replace' });
         return;
     }
     if (

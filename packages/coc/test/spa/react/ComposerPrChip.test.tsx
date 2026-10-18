@@ -10,6 +10,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, fireEvent, act } from '@testing-library/react';
 import React from 'react';
 import { ComposerPrChip } from '../../../src/server/spa/client/react/features/chat/conversation/ComposerPrChip';
+import { UnifiedPanelHostProvider } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
+import { clearUnifiedPanelState, readUnifiedPanelState } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import type { PrStatusCardItem } from '../../../src/server/spa/client/react/features/chat/conversation/PrStatusCard';
 import type { PrCheckRow, CheckStatus } from '../../../src/server/spa/client/react/features/pull-requests/pr-derived-data';
 import type { Reviewer } from '../../../src/server/spa/client/react/features/pull-requests/pr-utils';
@@ -446,14 +448,36 @@ describe('ComposerPrChip — failed-checks popover', () => {
         expect(getByTestId(`composer-pr-chip-counts-failed-${KEY}`).textContent).toBe('1');
     });
 
-    it('redesign: auto-archive settings link points to preferences settings', () => {
-        const { getByTestId } = render(
-            <ComposerPrChip item={readyItem({ checksState: 'ready', checks: failingChecks })} onDismiss={() => {}} />,
+    it('redesign: auto-archive settings opens the chat workspace\'s Settings panel tab', () => {
+        clearUnifiedPanelState();
+        const { getByTestId, queryByTestId } = render(
+            <UnifiedPanelHostProvider host={{ workspaceId: 'ws1', chatId: 'chat-1' }}>
+                <ComposerPrChip item={readyItem({ checksState: 'ready', checks: failingChecks })} onDismiss={() => {}} />
+            </UnifiedPanelHostProvider>,
         );
         fireEvent.click(getByTestId('composer-pr-chip-checks'));
-        const link = getByTestId(`composer-pr-chip-archive-settings-${KEY}`) as HTMLAnchorElement;
-        expect(link.getAttribute('href')).toBe('#repos/ws1/settings/preferences');
-        expect(link.textContent).toContain('Auto-archive settings');
+        const button = getByTestId(`composer-pr-chip-archive-settings-${KEY}`);
+        expect(button.tagName).toBe('BUTTON');
+        expect(button.getAttribute('href')).toBeNull();
+        expect(button.textContent).toContain('Auto-archive settings');
+        fireEvent.click(button);
+        const [tab] = readUnifiedPanelState('ws1').workspaceTabs;
+        expect(tab).toMatchObject({ kind: 'settings', ownerWorkspaceId: 'ws1', ownerRoutingRef: null });
+        expect(readUnifiedPanelState('ws1').activeByScope['chat-1']).toBe(tab.id);
+        expect(queryByTestId(`composer-pr-chip-archive-settings-${KEY}`)).toBeNull();
+    });
+
+    it('redesign: offers no auto-archive settings link outside its own workspace panel', () => {
+        for (const host of [null, { workspaceId: 'group-x', chatId: null }]) {
+            const { getByTestId, queryByTestId, unmount } = render(
+                <UnifiedPanelHostProvider host={host}>
+                    <ComposerPrChip item={readyItem({ checksState: 'ready', checks: failingChecks })} onDismiss={() => {}} />
+                </UnifiedPanelHostProvider>,
+            );
+            fireEvent.click(getByTestId('composer-pr-chip-checks'));
+            expect(queryByTestId(`composer-pr-chip-archive-settings-${KEY}`)).toBeNull();
+            unmount();
+        }
     });
 
     it('redesign: external open link is absent when the PR has no provider URL', () => {
@@ -515,7 +539,9 @@ describe('ComposerPrChip — clickable check categories', () => {
 
     function openPopover(checks: PrCheckRow[] = mixedChecks) {
         const utils = render(
-            <ComposerPrChip item={readyItem({ checksState: 'ready', checks })} onDismiss={() => {}} />,
+            <UnifiedPanelHostProvider host={{ workspaceId: 'ws1', chatId: null }}>
+                <ComposerPrChip item={readyItem({ checksState: 'ready', checks })} onDismiss={() => {}} />
+            </UnifiedPanelHostProvider>,
         );
         fireEvent.click(utils.getByTestId('composer-pr-chip-checks'));
         return utils;

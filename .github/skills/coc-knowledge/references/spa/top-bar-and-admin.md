@@ -116,7 +116,8 @@ non-admin tab, seeded with `repos`).
 The admin sidebar hosts no `DockedStatusFooter`: the page behind the dialog keeps its own
 dock, so `GlobalStatusDock` needs no admin stand-down. Its remaining sub-tab stand-downs
 evaluate against `useVisibleDashboardTab()`, not `state.activeTab`, so opening admin over
-Notes, Settings, Git, or PRs does not flip them off and paint a second dock.
+My Work / My Life Notes or Settings, Git, or PRs does not flip them off and paint a
+second dock. A repo group always defers to its Workspace footer.
 
 Hash parsing stays in `dashboardRoutes.ts` (`parseAdminSubTab`,
 `parseSettingsSubTabFromHash`, `parseAdminDatabaseDeepLink`) and `adminNavigation.ts`.

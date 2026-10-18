@@ -148,7 +148,7 @@ Tool routes (separate `DashboardTab`s) sharing the admin shell: `memory`, `skill
 
 - **Given** Settings → Features is active
 - **When** the user toggles feature flags
-- **Then** clicking Save calls `PUT /api/admin/config` with the flat namespaced keys (e.g. `terminal.enabled`, `notes.enabled`, `myWork.enabled`, `myLife.enabled`, `scratchpad.enabled`, `scratchpad.layout`, `workflows.enabled`, `pullRequests.enabled`, `pullRequests.suggestions`, `servers.enabled`, `ralph.enabled`, `vimNavigation.enabled`, `loops.enabled`, `excalidraw.enabled`, `mcpOauth.enabled`, `features.focusedDiff`, `workItems.hierarchy.enabled`)
+- **Then** clicking Save calls `PUT /api/admin/config` with the flat namespaced keys (e.g. `terminal.enabled`, `myWork.enabled`, `myLife.enabled`, `scratchpad.enabled`, `scratchpad.layout`, `workflows.enabled`, `pullRequests.enabled`, `pullRequests.suggestions`, `servers.enabled`, `ralph.enabled`, `vimNavigation.enabled`, `loops.enabled`, `excalidraw.enabled`, `mcpOauth.enabled`, `features.focusedDiff`, `workItems.hierarchy.enabled`)
 - **And** the toggle list reflects the namespaced config registry (see `src/config/namespace-registry.ts`)
 
 ---

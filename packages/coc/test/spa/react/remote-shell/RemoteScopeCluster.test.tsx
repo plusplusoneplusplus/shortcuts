@@ -37,7 +37,6 @@ vi.mock('../../../../src/server/spa/client/react/contexts/WorkItemContext', () =
     useWorkItems: () => ({ state: mockWorkItemState, dispatch: mockWorkItemDispatch }),
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useTerminalEnabled', () => ({ useTerminalEnabled: () => true }));
-vi.mock('../../../../src/server/spa/client/react/features/notes/hooks/useNotesEnabled', () => ({ useNotesEnabled: () => true }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useWorkflowsEnabled', () => ({ useWorkflowsEnabled: () => true }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/usePullRequestsEnabled', () => ({ usePullRequestsEnabled: () => true }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useDreamsEnabled', () => ({ useDreamsEnabled: () => true }));
@@ -167,6 +166,14 @@ describe('RemoteScopeCluster', () => {
 
         expect(mockWorkItemDispatch).toHaveBeenCalledWith({ type: 'MARK_WORK_ITEMS_SEEN', repoId: 'gh_acme_shortcuts' });
         expect(mockSwitchSubTab).toHaveBeenCalledWith('work-items');
+    });
+
+    it('returns to the workspace when the active WI/PR tab is clicked again', () => {
+        mockAppState = { selectedRepoId: 'a', activeTab: 'repos', activeRepoSubTab: 'pull-requests' };
+        render(<RemoteScopeCluster repo={mockRepos[0]} repos={mockRepos} />);
+        const prs = screen.getAllByTestId('remote-scope-tab').find(el => el.getAttribute('data-subtab') === 'pull-requests')!;
+        fireEvent.click(prs);
+        expect(mockSwitchSubTab).toHaveBeenCalledWith('activity');
     });
 
     it('highlights the active remote sub-tab on the repos tab', () => {

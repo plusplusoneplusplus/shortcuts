@@ -44,18 +44,19 @@ describe('partitionShellTabs', () => {
         const tabs = [
             tab('activity'), tab('cli-sessions'), tab('git'), tab('terminal'),
             tab('work-items'), tab('pull-requests'),
-            tab('explorer'), tab('schedules'), tab('settings'),
+            tab('explorer'), tab('schedules'), tab('chats'),
         ];
         const { remote, clone } = partitionShellTabs(tabs);
         expect(remote.map(t => t.key)).toEqual(['work-items', 'pull-requests']);
-        // Every non-remote tab is clone-scoped, in source order (no fixed overflow).
-        expect(clone.map(t => t.key)).toEqual(['activity', 'cli-sessions', 'git', 'terminal', 'explorer', 'schedules', 'settings']);
+        // Every other tab except the Workspace surface (either chat alias) is
+        // clone-scoped, in source order (no fixed overflow).
+        expect(clone.map(t => t.key)).toEqual(['cli-sessions', 'git', 'terminal', 'explorer', 'schedules']);
     });
 
     it('omits remote tabs that are not present (e.g. non-git repo)', () => {
         const { remote, clone } = partitionShellTabs([tab('activity'), tab('work-items'), tab('explorer')]);
         expect(remote.map(t => t.key)).toEqual(['work-items']);
-        expect(clone.map(t => t.key)).toEqual(['activity', 'explorer']);
+        expect(clone.map(t => t.key)).toEqual(['explorer']);
     });
 
     it('preserves relabeled tab definitions in the remote bucket', () => {

@@ -73,7 +73,7 @@ describe('Workspace dock — flag gating (AC-01)', () => {
     });
 
     it('gates the unified panel host on dockAvailable alone', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('() => (dockAvailable ? { workspaceId: ws.id, chatId: panelChatId } : null),');
+        expect(REPO_DETAIL_SOURCE).toContain('() => (dockAvailable ? { workspaceId: ws.id, chatId: panelChatId, routingRef: explorerRoutingRef } : null),');
     });
 });
 
