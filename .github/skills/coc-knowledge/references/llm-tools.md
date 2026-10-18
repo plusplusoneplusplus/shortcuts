@@ -76,6 +76,9 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 `features.queryPullRequestTool` gates the read-only, repository-bound query/get
 service. The published `ids` schema accepts a positive integer or a non-empty
 array of up to 20 positive integers; omitting it selects query mode.
+Cursor parsing bounds offsets to the fixed 100-candidate page and accepts only
+nonempty continuations; ADO continuations are canonical nonnegative safe integers.
+Malformed positions fail before client creation, credentials or provider I/O.
 
 GitHub search rollups with more than 100 contexts resolve CI through
 head-pinned adapter reads. The adapter paginates check runs and combined statuses;

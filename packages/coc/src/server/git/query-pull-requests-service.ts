@@ -264,13 +264,19 @@ export function decodePrQueryCursor(
     }
     const position = payload?.position;
     if (!payload || payload.v !== CURSOR_VERSION || !position || typeof position !== 'object'
-        || typeof position.offset !== 'number' || !Number.isSafeInteger(position.offset) || position.offset < 0
-        || (position.after !== undefined && typeof position.after !== 'string')) {
+        || Array.isArray(position)
+        || typeof position.offset !== 'number' || !Number.isSafeInteger(position.offset)
+        || position.offset < 0 || position.offset >= QUERY_PAGE_SIZE
+        || (position.after !== undefined && (typeof position.after !== 'string' || !position.after.trim()))) {
         throw fail('`cursor` is malformed; pass a `nextCursor` from an earlier result.');
     }
     if (payload.provider !== identity.provider || payload.repository !== identity.repository
         || payload.filtersHash !== hashFilters(filters)) {
         throw fail('`cursor` belongs to a different provider, repository or filter set; repeat the original query arguments.');
+    }
+    if (identity.provider === 'ado' && position.after !== undefined
+        && (!/^(0|[1-9]\d*)$/.test(position.after) || !Number.isSafeInteger(Number(position.after)))) {
+        throw fail('`cursor` is malformed; pass a `nextCursor` from an earlier result.');
     }
     return { ...(position.after !== undefined ? { after: position.after } : {}), offset: position.offset };
 }

@@ -92,6 +92,20 @@ describe('ADO cancellation through the real adapter and service', () => {
     });
 });
 
+it('round-trips ADO cursors within and across fixed provider pages', async () => {
+    const page = Array.from({ length: 100 }, (_, i) => ({ ...pr, pullRequestId: i + 1 }));
+    git.getPullRequests.mockImplementation(async (_repo, _criteria, _project, _max, skip) =>
+        skip === 0 ? page : [{ ...pr, pullRequestId: 101 }]);
+    const first = await run({ limit: 99 });
+    expect(first.items.map((item: { id: number }) => item.id)).toEqual(page.slice(0, 99).map(item => item.pullRequestId));
+    const second = await run({ limit: 1, cursor: first.nextCursor });
+    expect(second.items.map((item: { id: number }) => item.id)).toEqual([100]);
+    const third = await run({ limit: 1, cursor: second.nextCursor });
+    expect(third.items.map((item: { id: number }) => item.id)).toEqual([101]);
+    expect(third.nextCursor).toBeUndefined();
+    expect(git.getPullRequests.mock.calls.map(call => call[4])).toEqual([0, 0, 100]);
+});
+
 describe('ADO strict CI through the real adapter and service', () => {
     for (const operation of ['getPullRequestIterations', 'getPullRequestStatuses', 'getStatuses'] as const) {
         describe(operation, () => {

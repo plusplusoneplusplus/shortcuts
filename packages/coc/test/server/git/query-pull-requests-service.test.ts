@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { resolveAdoAccessTokenValue } from '@plusplusoneplusplus/forge';
 
 const ghAdapterMocks = vi.hoisted(() => ({
     getPullRequest: vi.fn(),
@@ -61,6 +62,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 
 import {
     createPrProviderClientFactory,
+    encodePrQueryCursor,
     MAX_CHECKS,
     MAX_DESCRIPTION_CHARS,
     MAX_SCAN_CANDIDATES,
@@ -73,6 +75,7 @@ import {
     type PrDetailSource,
     type PrListQuery,
     type PrProviderClient,
+    type PrQueryCursorPosition,
 } from '../../../src/server/git/query-pull-requests-service';
 
 const GUID = '0f0e0d0c-0b0a-0908-0706-050403020100';
@@ -120,6 +123,46 @@ async function query(args: Record<string, unknown>, client: PrProviderClient, si
         signal,
     });
 }
+
+describe('cursor positions before provider client creation', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    for (const provider of ['github', 'ado'] as const) {
+        const repository = provider === 'github' ? 'o/r' : 'org/project/repo';
+        const identity = parsePrQueryRequest({ provider, repository }).identity;
+        const invalidPositions: PrQueryCursorPosition[] = [
+            { offset: -1 }, { offset: 0.5 }, { offset: 100 }, { offset: 101 },
+            { offset: Number.MAX_SAFE_INTEGER }, { offset: 0, after: '' }, { offset: 0, after: ' ' },
+            ...(provider === 'ado' ? [
+                'abc', '-1', '1.5', '1e2', ' 100', '100 ', '01', '9007199254740992',
+            ].map(after => ({ after, offset: 0 })) : []),
+        ];
+
+        it.each(invalidPositions)(`${provider} rejects malformed position %j without credentials or I/O`, (position) => {
+            const createClient = vi.fn(createPrProviderClientFactory('/unused'));
+            const cursor = encodePrQueryCursor(identity, { status: 'open' }, position);
+            expect(() => runPrQuery(parsePrQueryRequest({ provider, repository, cursor }), { createClient }))
+                .toThrow(expect.objectContaining({ code: 'invalid-cursor' }));
+            expect(createClient).not.toHaveBeenCalled();
+            expect(resolveAdoAccessTokenValue).not.toHaveBeenCalled();
+            expect(adoMocks.getRepository).not.toHaveBeenCalled();
+            expect(adoMocks.getPullRequests).not.toHaveBeenCalled();
+            expect(octokitMocks.reposGet).not.toHaveBeenCalled();
+            expect(octokitMocks.graphql).not.toHaveBeenCalled();
+        });
+
+        it.each(provider === 'ado' ? ['0', '100', '200', String(Number.MAX_SAFE_INTEGER)] : ['opaque+/='])(
+            `${provider} preserves valid continuation %s and boundary offsets`, (after) => {
+                for (const offset of [0, 99]) {
+                    const cursor = encodePrQueryCursor(identity, { status: 'open' }, { after, offset });
+                    expect(parsePrQueryRequest({ provider, repository, cursor })).toMatchObject({
+                        mode: 'query', position: { after, offset },
+                    });
+                }
+            },
+        );
+    }
+});
 
 describe('summarizeChecks', () => {
     it.each([
