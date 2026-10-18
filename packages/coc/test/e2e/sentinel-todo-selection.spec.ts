@@ -59,9 +59,10 @@ test.beforeAll(async () => {
                     },
                 },
                 events: { connect: () => ({ close() {} }) },
+                triggers: { listSentinelTodo: async () => [], sentinelTodoCapabilities: async () => ({ dateTime: false }) },
             };
             applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: true,
-                sentinelTodoDependenciesEnabled: true, sentinelTodoScrubberEnabled: false, triggersEnabled: false });
+                sentinelTodoDependenciesEnabled: true, sentinelTodoScrubberEnabled: false });
             createRoot(document.getElementById('fixture')).render(<UnifiedTodoTab scopeWorkspaceId="parent"
                 chatId="sentinel" owner={{ ownerWorkspaceId: 'parent',
                     ownerRoutingRef: remote ? 'remote-parent' : null, processId: 'sentinel' }} />);

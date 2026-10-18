@@ -34,7 +34,6 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'dangerousCommandGuard'
     | 'vimNavigation'
     | 'cron'
-    | 'triggers'
     | 'dreams'
     | 'mcpOauth'
     | 'excalidraw'

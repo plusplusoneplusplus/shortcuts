@@ -683,16 +683,6 @@ timeout: 300
             expect(result.cron.enabled).toBe(true);
         });
 
-        it('should default triggers.enabled to true', () => {
-            const result = mergeConfig(DEFAULT_CONFIG, {});
-            expect(result.triggers.enabled).toBe(true);
-        });
-
-        it('should allow triggers.enabled=false as an explicit opt-out', () => {
-            const result = mergeConfig(DEFAULT_CONFIG, { triggers: { enabled: false } });
-            expect(result.triggers.enabled).toBe(false);
-        });
-
         it('should default effortLevels.enabled to true', () => {
             const result = mergeConfig(DEFAULT_CONFIG, {});
             expect(result.effortLevels.enabled).toBe(true);
@@ -1243,8 +1233,6 @@ timeout: 300
                 '    enabled: true',
                 'effortLevels:',
                 '  enabled: true',
-                'triggers:',
-                '  enabled: true',
                 'copilot:',
                 '  transformTransport: sdk',
             ].join('\n'));
@@ -1706,9 +1694,6 @@ timeout: 300
                   },
                   "timeout": 450,
                   "toolCompactness": 2,
-                  "triggers": {
-                    "enabled": true,
-                  },
                   "vimNavigation": {
                     "enabled": true,
                   },
@@ -1860,7 +1845,6 @@ timeout: 300
                   "terminal.enabled": "file",
                   "timeout": "file",
                   "toolCompactness": "file",
-                  "triggers.enabled": "default",
                   "vimNavigation.enabled": "file",
                   "workItems.aiAuthoring.enabled": "default",
                   "workItems.hierarchy.enabled": "default",

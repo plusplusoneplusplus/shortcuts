@@ -553,7 +553,7 @@ fold.
 
 ### PR auto-fix
 
-With `triggers.enabled` on, `usePrAutoFixTrigger` connects composer controls to the
+`usePrAutoFixTrigger` connects composer controls to the
 PR-bound owner conversation. New opt-ins explicitly select `ci-and-conflicts`;
 missing/`ci` scope stays CI-only and has a deliberate in-place upgrade. The compact
 popover exposes persisted repair status/blockers and refreshes monitor state with

@@ -1093,22 +1093,18 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         });
     }
 
-    // Trigger routes (generic event → action framework). Gated on the
-    // triggers.enabled feature flag — the create endpoint is also rejected
-    // server-side when the flag is off.
+    // Trigger routes (generic event → action framework).
     if (opts.triggerStore && opts.triggerManager) {
         registerTriggerRoutes(routes, {
             store: opts.triggerStore,
             manager: opts.triggerManager,
             emit: opts.triggerEmit,
-            enabled: opts.resolvedConfig?.triggers?.enabled ?? true,
             resolveWorkspaceId: resolveProcessWorkspaceId,
             validatePrOwner: createPrRepairOwnerValidator(store, resolveProcessWorkspaceId),
         });
     }
     if (opts.sentinelTodoTriggers) {
-        registerSentinelTodoTriggerRoutes(routes, opts.sentinelTodoTriggers,
-            opts.resolvedConfig?.triggers?.enabled ?? true);
+        registerSentinelTodoTriggerRoutes(routes, opts.sentinelTodoTriggers);
     }
 
     // MCP OAuth routes (feature-flagged via mcpOauth.enabled)

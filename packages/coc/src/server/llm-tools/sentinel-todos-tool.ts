@@ -51,7 +51,7 @@ export interface SentinelTodosToolDeps {
             | 'attachDashboardReference' | 'tagsEnabled' | 'getTags' | 'createTag' | 'updateTag' | 'deleteTag' | 'suggestTags' | 'externalReferencesEnabled'>>;
     /** The invoking Sentinel chat; every call is scoped to this ledger. */
     owner: SentinelTodoOwner;
-    /** Present only when existing triggers.enabled infrastructure is available. */
+    /** Present when trigger infrastructure is available. */
     triggers?: Pick<SentinelTodoTriggerService, 'list' | 'create' | 'edit' | 'setPaused' | 'remove' | 'runNow'>
         & Partial<Pick<SentinelTodoTriggerService, 'isDateTimeEnabled'>>;
 }
@@ -428,7 +428,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                     return { error: 'Tag service unavailable.', code: 'disabled' };
                 }
                 if (TRIGGER_ACTIONS.some(action => action === args?.action)) {
-                    if (!deps.triggers) return { error: 'Triggers are disabled (triggers.enabled is off).', code: 'disabled' };
+                    if (!deps.triggers) return { error: 'Triggers are unavailable.', code: 'disabled' };
                     if (args.action === 'list_triggers') return { triggers: await deps.triggers.list(owner) };
                     if (args.action === 'create_trigger') return {
                         trigger: await deps.triggers.create(owner, {

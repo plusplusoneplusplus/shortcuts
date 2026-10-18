@@ -240,7 +240,8 @@ Tag-only notifications carry `tagOnly: true`, refresh readers and never autoopen
 
 ### PR repair monitors
 
-`triggers.enabled` gates owner-workspace monitors. Missing/`ci` repair scope
+Trigger infrastructure is always wired; monitors exist only for explicitly
+authorized owner-workspace PRs. Missing/`ci` repair scope
 authorizes CI only; explicit `ci-and-conflicts` upgrades a matching monitor without
 resetting history. Repairs share durable PR writer admission and never bypass merge
 policies. See [LLM tools](llm-tools.md#create_pull_request) for polling invariants.
@@ -254,7 +255,7 @@ policies. See [LLM tools](llm-tools.md#create_pull_request) for polling invarian
 
 ### Sentinel To-do trigger rules
 
-Owner-scoped rules use `SentinelTodoTriggerService` under `triggers.enabled`. Date authoring/actions/arming additionally require default-off live `features.sentinelTodoDateTimeTriggers` (`403` off). Rules never expire and share the server's 50-active cap. Every operation validates the owning Sentinel workspace/process; foreign rules/items return `404`. Manual/Done/archived items are ineligible; terminal rules cannot edit/resume/refire. Generic `/triggers` APIs exclude bound rules and reject their mutation. Wakes never change item status, launch jobs or grant authorization.
+Owner-scoped rules use `SentinelTodoTriggerService`. Date authoring/actions/arming additionally require default-off live `features.sentinelTodoDateTimeTriggers` (`403` off). Rules never expire and share the server's 50-active cap. Every operation validates the owning Sentinel workspace/process; foreign rules/items return `404`. Manual/Done/archived items are ineligible; terminal rules cannot edit/resume/refire. Generic `/triggers` APIs exclude bound rules and reject their mutation. Wakes never change item status, launch jobs or grant authorization.
 
 | Method | Path | Description |
 |--------|------|-------------|

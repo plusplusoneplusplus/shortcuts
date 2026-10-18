@@ -123,10 +123,10 @@ describe('Trigger REST API Handler', () => {
     let mockManager: any;
     let emit: ReturnType<typeof vi.fn>;
 
-    function register(enabled = true) {
+    function register() {
         routes = [];
         emit = vi.fn();
-        const ctx: TriggerRouteContext = { store, manager: mockManager, emit, enabled };
+        const ctx: TriggerRouteContext = { store, manager: mockManager, emit };
         registerTriggerRoutes(routes, ctx);
     }
 
@@ -211,14 +211,6 @@ describe('Trigger REST API Handler', () => {
                 event: { type: 'condition-monitor', monitor: 'ci-failure', originId: 'o', prId: '1', pollIntervalMs: 5 },
             });
             expect(res.statusCode).toBe(400);
-        });
-
-        it('returns 403 when the feature flag is off', async () => {
-            register(false);
-            const res = await dispatch(routes, 'POST', '/api/workspaces/ws1/triggers', VALID_CREATE_BODY);
-            expect(res.statusCode).toBe(403);
-            expect(mockManager.arm).not.toHaveBeenCalled();
-            expect(store.getByWorkspace('ws1')).toHaveLength(0);
         });
     });
 
@@ -356,7 +348,7 @@ describe('Trigger REST API Handler — workspace boundary', () => {
             if (processId.startsWith('queue_ws2')) return 'ws2';
             return undefined;
         });
-        const ctx: TriggerRouteContext = { store, manager: mockManager, enabled: true, resolveWorkspaceId };
+        const ctx: TriggerRouteContext = { store, manager: mockManager, resolveWorkspaceId };
         registerTriggerRoutes(routes, ctx);
     });
 

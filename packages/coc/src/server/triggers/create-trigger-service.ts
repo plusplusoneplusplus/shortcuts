@@ -10,11 +10,6 @@ export interface CreateTriggerContext {
     manager: TriggerManager;
     /** Optional WebSocket emitter for broadcasting trigger state changes. */
     emit?: TriggerEventEmit;
-    /**
-     * Feature-flag gate (`triggers.enabled`). When false, mutating endpoints
-     * (create) are rejected so the API is a no-op while the flag is off.
-     */
-    enabled: boolean;
     /** Clock injection for deterministic tests. Defaults to `Date.now`. */
     now?: () => number;
     /**
@@ -171,9 +166,6 @@ export async function createTrigger(
     reuseCiMonitor = false,
     watch = true,
 ): Promise<Trigger> {
-    if (!ctx.enabled) {
-        throw new CreateTriggerError(403, 'Triggers are disabled (triggers.enabled is off)');
-    }
     const validation = validateCreateTriggerBody(body);
     if (!validation.valid) {
         throw new CreateTriggerError(400, validation.error!);

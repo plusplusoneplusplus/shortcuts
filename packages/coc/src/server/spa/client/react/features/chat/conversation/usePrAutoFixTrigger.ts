@@ -9,7 +9,7 @@
  * the server that actually owns that workspace (AC-06) — never a raw page-origin
  * `fetchApi`.
  *
- * The hook is inert (and disabled-with-reason) until the feature is enabled AND
+ * The hook is inert (and disabled-with-reason) until the chip wires auto-fix AND
  * the full PR/conversation context (workspaceId, processId, originId, prId) is
  * resolvable, so the composer can render a disabled control with a tooltip rather
  * than a half-wired one.
@@ -21,7 +21,7 @@ import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import type { CiFixCheck } from './prAutoFixPrompt';
 
 export interface PrAutoFixTriggerContext {
-    /** Whether the triggers feature flag is on (gates all behaviour). */
+    /** Whether the chip wires auto-fix controls (gates all behaviour). */
     enabled: boolean;
     /** Owning workspace id — scopes the trigger + routes to the clone. */
     workspaceId?: string;
@@ -36,7 +36,7 @@ export interface PrAutoFixTriggerContext {
 }
 
 export interface UsePrAutoFixTriggerResult {
-    /** True only when enabled AND all PR/conversation context is resolvable. */
+    /** True only when wired AND all PR/conversation context is resolvable. */
     available: boolean;
     /** Whether a `ci-failure` monitor is currently armed for this PR. */
     armed: boolean;

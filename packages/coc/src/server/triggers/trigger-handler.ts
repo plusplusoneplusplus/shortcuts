@@ -92,7 +92,7 @@ const VALID_PATCH_STATUSES = new Set(['active', 'paused', 'disarmed']);
 // ============================================================================
 
 export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext): void {
-    const { store, manager, emit, enabled } = ctx;
+    const { store, manager, emit } = ctx;
     const now = ctx.now ?? Date.now;
 
     // ------------------------------------------------------------------
@@ -102,9 +102,6 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/triggers$/,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match) => {
-            if (!enabled) {
-                return sendError(res, 403, 'Triggers are disabled (triggers.enabled is off)');
-            }
             const workspaceId = decodeURIComponent(match![1]);
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
@@ -150,7 +147,6 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/triggers$/,
         handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
-            if (!enabled) return sendError(res, 403, 'Triggers are disabled (triggers.enabled is off)');
             const workspaceId = decodeURIComponent(match![1]);
             const triggers = store.getByWorkspace(workspaceId).filter(trigger => !trigger.binding);
             sendJSON(res, 200, { triggers: triggers.map(serializeTrigger) });
@@ -164,7 +160,6 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/triggers\/([^/]+)$/,
         handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
-            if (!enabled) return sendError(res, 403, 'Triggers are disabled (triggers.enabled is off)');
             const workspaceId = decodeURIComponent(match![1]);
             const triggerId = decodeURIComponent(match![2]);
             const trigger = resolveTriggerForWorkspace(store, workspaceId, triggerId);
@@ -182,7 +177,6 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
         method: 'PATCH',
         pattern: /^\/api\/workspaces\/([^/]+)\/triggers\/([^/]+)$/,
         handler: async (req: http.IncomingMessage, res: http.ServerResponse, match) => {
-            if (!enabled) return sendError(res, 403, 'Triggers are disabled (triggers.enabled is off)');
             const workspaceId = decodeURIComponent(match![1]);
             const triggerId = decodeURIComponent(match![2]);
             const body = await parseBodyOrReject(req, res);
@@ -245,7 +239,6 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
         method: 'DELETE',
         pattern: /^\/api\/workspaces\/([^/]+)\/triggers\/([^/]+)$/,
         handler: async (_req: http.IncomingMessage, res: http.ServerResponse, match) => {
-            if (!enabled) return sendError(res, 403, 'Triggers are disabled (triggers.enabled is off)');
             const workspaceId = decodeURIComponent(match![1]);
             const triggerId = decodeURIComponent(match![2]);
             const trigger = resolveTriggerForWorkspace(store, workspaceId, triggerId);
@@ -280,7 +273,6 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
         method: 'GET',
         pattern: /^\/api\/triggers$/,
         handler: async (_req: http.IncomingMessage, res: http.ServerResponse) => {
-            if (!enabled) return sendError(res, 403, 'Triggers are disabled (triggers.enabled is off)');
             const triggers = store.getAll().filter(trigger => !trigger.binding);
             sendJSON(res, 200, { triggers: triggers.map(serializeTrigger) });
         },

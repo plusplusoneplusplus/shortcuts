@@ -34,8 +34,6 @@ import { usePanelWorkspaceResourceOpener } from '../../repo-detail/unified-right
 
 /** CI auto-fix wiring passed from the connected chip stack (AC-05). */
 export interface ComposerPrChipAutoFixContext {
-    /** Whether the triggers feature flag is on. */
-    enabled: boolean;
     /** Owning workspace id (trigger scope + clone routing). */
     workspaceId?: string;
     /** Conversation (process) the fix action targets. */
@@ -53,7 +51,7 @@ export interface ComposerPrChipProps {
     onRefresh?: (key: string) => void;
     /** A force-refresh is in flight — spins the icon and disables the button. */
     refreshing?: boolean;
-    /** CI auto-fix context (AC-05). Omit (or `enabled: false`) to hide the controls + badge. */
+    /** CI auto-fix context (AC-05). Omit to hide the controls + badge. */
     autoFix?: ComposerPrChipAutoFixContext;
 }
 
@@ -303,13 +301,12 @@ function ChecksBadge({ item, autoFix, autoMerge }: { item: PrStatusCardItem; aut
 
     const failed = rows.filter(row => row.status === 'failure');
 
-    // `autoFix` is only supplied when the feature is enabled, so the controls
+    // `autoFix` is only supplied when the chip wires auto-fix, so the controls
     // always render; `disabledReason` (set when the PR/conversation context is
     // unresolved or a call is in flight) disables both controls, while
     // `fixNowDisabledReason` disables only "Fix now" when nothing is failing yet.
     const popoverAutoFix: ComposerPrChecksAutoFix | undefined = autoFix
         ? {
-            enabled: true,
             armed: autoFix.armed,
             busy: autoFix.busy,
             ciOnly: autoFix.ciOnly,
@@ -437,11 +434,11 @@ export function ComposerPrChip({ item, onDismiss, onRetry, onRefresh, refreshing
     const rowWidth = useContainerWidth(rowRef);
     const authorHidden = rowWidth.width > 0 && rowWidth.isNarrow;
 
-    // Per-PR CI auto-fix lifecycle (AC-05). The hook is inert until the feature
-    // is enabled AND the PR/conversation context resolves, so it's safe to call
-    // in every render state.
+    // Per-PR CI auto-fix lifecycle (AC-05). The hook is inert until the chip
+    // wires auto-fix AND the PR/conversation context resolves, so it's safe to
+    // call in every render state.
     const autoFixState = usePrAutoFixTrigger({
-        enabled: autoFix?.enabled ?? false,
+        enabled: autoFix !== undefined,
         workspaceId: autoFix?.workspaceId,
         processId: autoFix?.processId,
         originId: item.originId,
@@ -519,8 +516,8 @@ export function ComposerPrChip({ item, onDismiss, onRetry, onRefresh, refreshing
             {!authorHidden && <AuthorLabel alias={authorAlias} />}
             {pr && <StatusBadge status={pr.status} />}
             <ReviewersBadge item={item} />
-            <ChecksBadge item={item} autoFix={autoFix?.enabled ? autoFixState : undefined} autoMerge={autoFix?.enabled ? autoMergeState : undefined} />
-            {autoFix?.enabled && autoFixState.armed && <AutoFixOnBadge itemKey={item.key} />}
+            <ChecksBadge item={item} autoFix={autoFix ? autoFixState : undefined} autoMerge={autoFix ? autoMergeState : undefined} />
+            {autoFix && autoFixState.armed && <AutoFixOnBadge itemKey={item.key} />}
             {diff && (
                 <span className="composer-pr-secondary shrink-0 font-mono text-[11px]" data-testid="composer-pr-chip-diff">
                     <span className="font-semibold text-[#1a7f37] dark:text-[#3fb950]">+{diff.additions}</span>{' '}

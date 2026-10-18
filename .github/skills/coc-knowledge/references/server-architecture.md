@@ -148,7 +148,7 @@ the identity of the entire delegated session.
 
 `triggers/sentinel-todo-trigger-service.ts` owns authoring for normal eligible items,
 using exact owner checks, optimistic revisions and owner-scoped creation receipts.
-PR rules use `triggers.enabled`; date rules additionally require default-off live
+PR rules need no setting; date rules require default-off live
 `features.sentinelTodoDateTimeTriggers`. Both share the active cap and never expire.
 PR authoring preflights canonical provider URLs. Date authoring validates future
 UTC `firesAt`, IANA `timeZone` and matching `localTime` through coc-client's

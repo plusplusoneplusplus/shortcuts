@@ -215,7 +215,7 @@ describe('create_pull_request tool', () => {
         const { tool } = createCreatePullRequestTool({ workspaceId: WORKSPACE_ID, processId: PROCESS_ID,
             store, createPullRequest: async () => RESULT });
         expect(await invoke(tool, { title: 'T', autoFix: true })).toMatchObject({ success: true, url: RESULT.url,
-            autoFix: { requested: true, enabled: false, warning: 'Triggers are disabled or unavailable.' } });
+            autoFix: { requested: true, enabled: false, warning: 'Triggers are unavailable.' } });
     });
 
     it('does not arm a monitor without a successful binding', async () => {

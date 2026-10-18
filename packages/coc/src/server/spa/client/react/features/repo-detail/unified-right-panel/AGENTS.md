@@ -986,8 +986,7 @@ Tests use isolated mock clients in
 
 ### To-do triggers
 
-`SentinelTodoTriggers` is a separate section below the cards, gated by existing
-`triggers.enabled`. Its owner-qualified `client.triggers` calls use the ledger's
+`SentinelTodoTriggers` is a separate section below the cards. Its owner-qualified `client.triggers` calls use the ledger's
 workspace/process on the owning server. `sentinelTodoTriggerModel` keeps rule
 Waiting/Paused/terminal/error and delivery state separate from item/job/review
 states; rows link the canonical PR or display the saved zoned date and UTC tooltip.

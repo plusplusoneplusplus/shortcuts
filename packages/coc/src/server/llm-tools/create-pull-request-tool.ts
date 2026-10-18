@@ -39,7 +39,7 @@ export interface CreatePullRequestToolDeps {
     workingDirectory?: string;
     /** Process store used to resolve the workspace and write the binding. */
     store: PrBindingWriterStore;
-    /** Late-bound, absent when triggers are disabled or unavailable. */
+    /** Late-bound, absent when trigger infrastructure is unavailable. */
     getCreateTrigger?: () => CreateTriggerFn | undefined;
     getRegisterPrOutcome?: () => RegisterSentinelPrOutcome | undefined;
     /** Injectable service (tests). Defaults to the shared create-PR service. */
@@ -85,7 +85,7 @@ export function createCreatePullRequestTool(deps: CreatePullRequestToolDeps): { 
                 body: { type: 'string', description: 'Markdown explaining what changed, why, and material validation/limitations; omit SHA manifests and internal automation bookkeeping unless requested (keep exact SHAs in tool arguments/job evidence).' },
                 base: { type: 'string', description: 'Target branch. Defaults to the repo\'s default branch.' },
                 draft: { type: 'boolean', description: 'Open as a draft PR. Default false.' },
-                autoFix: { type: 'boolean', description: 'Opt into Auto-fix CI & conflicts: authorize validated repairs, commits and pushes to this existing PR in its owner conversation, including green-CI merge conflicts. Explicit true upgrades a CI-only monitor; false/omitted preserves its scope. Requires triggers.enabled. Set true only with user authorization for both CI and conflict repairs; does not bypass approvals or auto-merge policy.' },
+                autoFix: { type: 'boolean', description: 'Opt into Auto-fix CI & conflicts: authorize validated repairs, commits and pushes to this existing PR in its owner conversation, including green-CI merge conflicts. Explicit true upgrades a CI-only monitor; false/omitted preserves its scope. Set true only with user authorization for both CI and conflict repairs; does not bypass approvals or auto-merge policy.' },
                 autoMerge: { type: 'boolean', description: 'Turn on auto-merge. Default false. Set true only when authorized by the user, including invoking a skill with a documented auto-merge default; pass false when the user disables it.' },
                 mergeMethod: { type: 'string', enum: [...MERGE_METHODS], description: 'Auto-merge method. Default "merge".' },
                 commits: {
@@ -155,7 +155,7 @@ export function createCreatePullRequestTool(deps: CreatePullRequestToolDeps): { 
                 try {
                     const createTrigger = deps.getCreateTrigger?.();
                     if (!createTrigger) {
-                        throw new Error('Triggers are disabled or unavailable.');
+                        throw new Error('Triggers are unavailable.');
                     }
                     if (!binding) {
                         throw new Error('The PR could not be bound to this conversation.');

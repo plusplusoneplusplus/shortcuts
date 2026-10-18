@@ -32,7 +32,6 @@ import { ComposerPrChip } from './ComposerPrChip';
 import { ComposerPrFoldRow } from './ComposerPrFoldRow';
 import { partitionComposerPrChips, summarizeFoldedPrChips } from './composerPrChipFold';
 import { usePrChatStatusItems, type UsePrChatStatusItemsOptions } from './usePrChatStatusItems';
-import { isTriggersEnabled } from '../../../utils/config';
 import type { PrStatusCardItem } from './PrStatusCard';
 import { normalizeChatMode, type ChatMode } from '../../../repos/modeConfig';
 
@@ -90,7 +89,6 @@ export function ChatComposerPrChips(options: ChatComposerPrChipsProps) {
     if (hidden || (head.length === 0 && folded.length === 0)) return null;
 
     const autoFix = {
-        enabled: isTriggersEnabled(),
         workspaceId: statusOptions.workspaceId,
         processId: processId ?? undefined,
     };

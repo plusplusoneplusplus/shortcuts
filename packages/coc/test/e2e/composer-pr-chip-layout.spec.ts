@@ -29,7 +29,7 @@ test.beforeAll(async () => {
                     window.showState = next => setState(next);
                     return <><ComposerPrChip item={{ ...ready, state, error: 'Long error message '.repeat(20) }}
                         onDismiss={() => { window.dismissed = true; }} onRetry={() => { window.retried = true; }}
-                        onRefresh={() => {}} autoFix={{ enabled: true }} />
+                        onRefresh={() => {}} autoFix={{}} />
                         <ComposerPrFoldRow summary={{ count: 12, numbers: [850, 849, 848, 847],
                             dotStatuses: ['merged', 'closed'], breakdownText: '10 merged · 2 closed' }}
                             open={false} onToggle={() => { window.toggled = true; }} /></>;

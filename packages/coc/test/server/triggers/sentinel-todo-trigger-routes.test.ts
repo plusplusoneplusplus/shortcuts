@@ -44,11 +44,11 @@ describe('Sentinel To-do trigger REST ownership and lifecycle', () => {
         const firer = new SentinelTodoTriggerFirer({ triggers, todos, processes: store, executor: { execute }, emit: vi.fn() });
         service = new SentinelTodoTriggerService({
             triggers, todos, owners: new SentinelTodoService({ todos, store }), firer,
-            manager: { arm: vi.fn(), disarm: vi.fn() }, fetchPr, enabled: true,
+            manager: { arm: vi.fn(), disarm: vi.fn() }, fetchPr,
             dateTimeEnabled: () => dateTimeEnabled,
         });
         routes = [];
-        registerSentinelTodoTriggerRoutes(routes, service, true);
+        registerSentinelTodoTriggerRoutes(routes, service);
     });
     afterEach(() => store.close());
 
@@ -159,23 +159,13 @@ describe('Sentinel To-do trigger REST ownership and lifecycle', () => {
         expect(result.body.error).toContain('credentials unavailable');
     });
 
-    it.each([
-        ['GET', ''], ['POST', ''], ['POST', '/preview'], ['PATCH', '/rule-1'],
-        ['DELETE', '/rule-1'], ['POST', '/rule-1/pause'], ['POST', '/rule-1/resume'], ['POST', '/rule-1/run-now'],
-    ])('gates %s %s when triggers.enabled is off', async (method, suffix) => {
-        routes = [];
-        registerSentinelTodoTriggerRoutes(routes, service, false);
-        expect((await request(method, `${base}${suffix}`, { itemId, prUrl })).status).toBe(403);
-        expect(fetchPr).not.toHaveBeenCalled();
-    });
-
     it('prevents legacy trigger endpoints bypassing bound-rule revision or ownership rules', async () => {
         const rule = (await create()).body.trigger;
         const timerRegistry = new ScheduleTimerRegistry();
         const manager = new TriggerManager({
             store: triggers, timerRegistry, actionExecutor: { execute }, resolveEvaluator: () => undefined,
         });
-        registerTriggerRoutes(routes, { store: triggers, manager, enabled: true });
+        registerTriggerRoutes(routes, { store: triggers, manager });
         try {
             const path = `/api/workspaces/${owner.workspaceId}/triggers/${rule.id}`;
             expect((await request('PATCH', path, { status: 'active' })).status).toBe(409);

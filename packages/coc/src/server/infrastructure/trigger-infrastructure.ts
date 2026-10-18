@@ -174,7 +174,7 @@ export async function createTriggerInfrastructure(
     const sentinelTodoTriggers = new SentinelTodoTriggerService({
         triggers: triggerStore, todos,
         owners: new SentinelTodoService({ todos, store, getTask: id => queueFacade.getTask(id) }),
-        manager: triggerManager, firer: sentinelTodoFirer, enabled: true,
+        manager: triggerManager, firer: sentinelTodoFirer,
         fetchPr: options.prStatusFetcher ?? createPrStatusFetcher({ dataDir }), emit, now,
         dateTimeEnabled: options.getDateTimeEnabled,
     });
@@ -270,7 +270,7 @@ export async function createTriggerInfrastructure(
     return {
         triggerStore, triggerManager, sentinelTodoFirer, sentinelTodoTriggers, sentinelPrOutcomes, timerRegistry, emit, dispose,
         createTrigger: (workspaceId, body, reuseCiMonitor) => createTrigger({
-            store: triggerStore, manager: triggerManager, emit, enabled: true,
+            store: triggerStore, manager: triggerManager, emit,
             resolveWorkspaceId, now: options.now,
             validatePrOwner: createPrRepairOwnerValidator(store, resolveWorkspaceId),
         }, workspaceId, body, reuseCiMonitor),

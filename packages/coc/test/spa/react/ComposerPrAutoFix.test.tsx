@@ -37,7 +37,6 @@ const mocks = vi.hoisted(() => ({
         sendMessage: vi.fn(),
     },
     getCocClientForWorkspace: vi.fn(),
-    triggersEnabled: true,
 }));
 
 vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -50,13 +49,7 @@ vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     getCocClientForWorkspace: mocks.getCocClientForWorkspace,
 }));
 
-vi.mock('../../../src/server/spa/client/react/utils/config', async (importOriginal) => {
-    const actual = await importOriginal<Record<string, unknown>>();
-    return {
-        ...actual,
-        isTriggersEnabled: () => mocks.triggersEnabled,
-    };
-});
+import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
 
 import { ChatComposerPrChips } from '../../../src/server/spa/client/react/features/chat/conversation/ChatComposerPrChips';
 import { usePrAutoFixTrigger } from '../../../src/server/spa/client/react/features/chat/conversation/usePrAutoFixTrigger';
@@ -149,7 +142,6 @@ describe('ComposerPrChip CI auto-fix controls (AC-05)', () => {
         for (const fn of Object.values(mocks.triggers)) fn.mockReset();
         mocks.processes.sendMessage.mockReset();
         mocks.getCocClientForWorkspace.mockReset();
-        mocks.triggersEnabled = true;
 
         mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
         mocks.pullRequests.createChatBindingForOrigin.mockResolvedValue({ prId: '42', taskId: 't1' });
@@ -316,25 +308,20 @@ describe('ComposerPrChip CI auto-fix controls (AC-05)', () => {
         expect(mocks.triggers.delete).toHaveBeenCalledWith('ws1', 'trg-1');
     });
 
-    it('opens the popover without auto-fix controls when the flag is off and nothing is failing', async () => {
-        mocks.triggersEnabled = false;
-        const { badge, queryByTestId } = await renderWithPendingPr('proc-1');
-        expect(badge.tagName).toBe('BUTTON');
-        fireEvent.click(badge);
-        // The checks are still browsable; only the auto-fix block is gone.
-        expect(queryByTestId(`composer-pr-chip-checks-popover-${ITEM_KEY}`)).not.toBeNull();
-        expect(queryByTestId(`composer-pr-chip-autofix-${ITEM_KEY}`)).toBeNull();
-    });
-
-    it('hides the auto-fix controls + badge when the triggers flag is off', async () => {
-        mocks.triggersEnabled = false;
-        mocks.triggers.list.mockResolvedValue([activeMonitor()]);
-        const { badge, queryByTestId } = await renderWithFailingPr('proc-1');
-        fireEvent.click(badge);
-        expect(queryByTestId(`composer-pr-chip-autofix-toggle-${ITEM_KEY}`)).toBeNull();
-        expect(queryByTestId(`composer-pr-chip-autofix-badge-${ITEM_KEY}`)).toBeNull();
-        // Disabled feature performs no trigger network calls.
-        expect(mocks.triggers.list).not.toHaveBeenCalled();
+    it('shows auto-fix controls without a triggers flag but arms nothing until the user opts in', async () => {
+        applyRuntimeConfigPatch({ triggersEnabled: false });
+        try {
+            const { badge, getByTestId } = await renderWithPendingPr('proc-1');
+            fireEvent.click(badge);
+            const toggle = getByTestId(`composer-pr-chip-autofix-toggle-${ITEM_KEY}`);
+            expect(toggle.getAttribute('data-armed')).toBe('false');
+            await waitFor(() => expect(mocks.triggers.list).toHaveBeenCalledWith('ws1'));
+            expect(mocks.triggers.create).not.toHaveBeenCalled();
+            expect(mocks.triggers.repairCi).not.toHaveBeenCalled();
+            expect(mocks.processes.sendMessage).not.toHaveBeenCalled();
+        } finally {
+            applyRuntimeConfigPatch({ triggersEnabled: undefined });
+        }
     });
 
     it('labels new opt-ins Auto-fix CI & conflicts', async () => {

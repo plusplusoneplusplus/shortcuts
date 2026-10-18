@@ -301,8 +301,8 @@ references before editing. Paths are package-relative.
   scheduler for receipt reconciliation/retries. Trigger code never writes item
   status or launches a job; external PR metadata is data, not instructions.
   `SentinelTodoTriggerService` owns rule authoring with expected revisions,
-  eligibility and shared-cap checks. Rules use `triggers.enabled` (default on),
-  never expire and require no additional approval gate. Clearing rules hides their
+  eligibility and shared-cap checks. Trigger infrastructure is always wired;
+  rules never expire and require no additional approval gate. Clearing rules hides their
   presentation while preserving delivery and keyed authoring receipts; retries
   must not duplicate wakes or revive removed rules.
   Sentinel tool actions use late-bound `getTriggerInfra().sentinelTodoTriggers`;

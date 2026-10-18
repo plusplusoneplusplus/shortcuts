@@ -98,7 +98,7 @@ beforeEach(() => {
     events.clear();
     client.sentinelTodos.get.mockReset().mockImplementation(async () => ({ revision: 2, items: [item('one'), item('two')] }));
     applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false,
-        sentinelPrOutcomeWakeEnabled: false, sentinelTodoTagsEnabled: false, triggersEnabled: false,
+        sentinelPrOutcomeWakeEnabled: false, sentinelTodoTagsEnabled: false,
         sessionContextAttachmentsEnabled: false });
 });
 afterEach(() => { cleanup(); clearUnifiedPanelState(); clearUnifiedTreeState(); clearSentinelTodoExcursion(); clearSentinelTodoChats(); });
