@@ -436,6 +436,20 @@ describe('Features card UI metadata', () => {
         })).toolScriptingEnabled).toBe(true);
     });
 
+    it('exposes the query pull request tool as a live, default-off toggle', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.queryPullRequestTool')!;
+        expect(def.default).toBe(false);
+        expect(def.runtime).toBe('live');
+        expect(def.runtimeFlag).toBe('queryPullRequestToolEnabled');
+        expect(def.ui).toMatchObject({ group: 'review', badge: 'experimental', testId: 'toggle-query-pull-request-tool-enabled' });
+        expect(def.ui?.hint).toContain('Disabled by default');
+        expect(DEFAULT_CONFIG.features.queryPullRequestTool).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).queryPullRequestToolEnabled).toBe(false);
+        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
+            features: { queryPullRequestTool: true },
+        })).queryPullRequestToolEnabled).toBe(true);
+    });
+
     it('exposes Teams message reaction as an independent live, default-off toggle', () => {
         const reaction = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.teamsMessageReaction')!;
         expect(reaction.value).toEqual({ kind: 'boolean' });
@@ -874,6 +888,7 @@ describe('feature toggle settings-tab placement', () => {
         'excalidraw.enabled': 'features',
         'LLMToolSystemOne.enabled': 'features',
         'features.toolScripting': 'features',
+        'features.queryPullRequestTool': 'features',
         'features.canvasHostApis': 'features',
         'features.sensitiveInput': 'browser',
         'features.focusedDiff': 'features',

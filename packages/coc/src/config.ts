@@ -328,6 +328,8 @@ export interface CLIConfig {
         sentinelTodoScrubber?: boolean;
         /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Disabled by default. */
         toolScripting?: boolean;
+        /** Read-only `query_pull_request` LLM tool (GitHub / Azure DevOps PRs). Disabled by default. */
+        queryPullRequestTool?: boolean;
         sentinelPrOutcomeWake?: boolean;
         sentinelTodoDateTimeTriggers?: boolean;
         sentinelDesktopMirror?: boolean;
@@ -746,6 +748,8 @@ export interface ResolvedCLIConfig {
         sentinelTodoScrubber: boolean;
         /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Disabled by default. */
         toolScripting: boolean;
+        /** Read-only `query_pull_request` LLM tool (GitHub / Azure DevOps PRs). Disabled by default. */
+        queryPullRequestTool: boolean;
         sentinelPrOutcomeWake: boolean;
         sentinelTodoDateTimeTriggers: boolean;
         sentinelDesktopMirror: boolean;
@@ -1081,6 +1085,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         sentinelTodoExternalReferences: false,
         sentinelTodoScrubber: false,
         toolScripting: true,
+        queryPullRequestTool: false,
         sentinelPrOutcomeWake: false,
         sentinelTodoDateTimeTriggers: false,
         sentinelDesktopMirror: false,

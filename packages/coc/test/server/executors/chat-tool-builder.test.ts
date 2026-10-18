@@ -288,6 +288,69 @@ describe('buildChatToolBundle', () => {
         expect(result.tools.map(t => t.name)).not.toContain('kusto_query');
     });
 
+    describe('query_pull_request', () => {
+        const build = (overrides: Record<string, unknown> = {}) => buildChatToolBundle({
+            dataDir: tmpDir,
+            store: makeStore(false),
+            workspaceId: WS_ID,
+            processId: 'proc-1',
+            followUpSuggestions: { enabled: false, count: 0 },
+            ...overrides,
+        }).tools.map(t => t.name);
+
+        it('is hidden by default because the admin flag defaults off', () => {
+            expect(build()).not.toContain('query_pull_request');
+        });
+
+        it('is offered in ask and write turns once the admin flag is on', () => {
+            // Ask turn: no write-only deps.
+            expect(build({ queryPullRequestToolEnabled: true })).toContain('query_pull_request');
+            // Write (autopilot / Ralph) turn: create_pull_request deps present.
+            const write = build({ queryPullRequestToolEnabled: true, createPullRequest: { workspaceId: WS_ID, processId: 'proc-1', store: {} as never } });
+            expect(write).toContain('query_pull_request');
+            expect(write).toContain('create_pull_request');
+        });
+
+        it('reads the admin flag from config on every build (no restart needed)', () => {
+            const configPath = path.join(tmpDir, CONFIG_FILE_NAME);
+            fs.writeFileSync(configPath, 'features:\n  queryPullRequestTool: true\n');
+            expect(build()).toContain('query_pull_request');
+            fs.writeFileSync(configPath, 'features:\n  queryPullRequestTool: false\n');
+            expect(build()).not.toContain('query_pull_request');
+        });
+
+        it('honors per-workspace disables without affecting other workspaces', () => {
+            writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: ['query_pull_request'] });
+            expect(build({ queryPullRequestToolEnabled: true })).not.toContain('query_pull_request');
+            expect(build({ queryPullRequestToolEnabled: true, workspaceId: 'ws-other' })).toContain('query_pull_request');
+        });
+
+        it('honors context exclusions and the include opt-out', () => {
+            expect(build({ queryPullRequestToolEnabled: true, excludeTools: ['query_pull_request'] })).not.toContain('query_pull_request');
+            expect(build({ queryPullRequestToolEnabled: true, includeQueryPullRequestTool: false })).not.toContain('query_pull_request');
+        });
+
+        it('is not offered on PR outcome review turns', () => {
+            expect(build({ queryPullRequestToolEnabled: true, sentinelPrOutcomeReview: true })).not.toContain('query_pull_request');
+        });
+
+        it('is reachable from run_tool_script when both are enabled', () => {
+            const result = buildChatToolBundle({
+                dataDir: tmpDir, store: makeStore(false), workspaceId: WS_ID, processId: 'proc-1',
+                queryPullRequestToolEnabled: true, toolScriptingEnabled: true,
+            });
+            expect(result.tools.map(t => t.name)).toEqual(expect.arrayContaining(['query_pull_request', 'run_tool_script']));
+        });
+
+        it.each([
+            ['processId', { processId: undefined }],
+            ['workspaceId', { workspaceId: undefined }],
+            ['dataDir', { dataDir: undefined }],
+        ])('is not offered without %s', (_label, missing) => {
+            expect(build({ queryPullRequestToolEnabled: true, ...missing })).not.toContain('query_pull_request');
+        });
+    });
+
     describe('system_one', () => {
         const systemOne = () => ({
             service: { evaluate: vi.fn() } as any,

@@ -39,7 +39,7 @@ export interface ApiRouteContext {
      * config changes without a server restart. Falls back to startup
      * values when runtimeConfigService is not available.
      */
-    getLiveFeatureFlags?: () => { excalidrawEnabled: boolean; canvasEnabled: boolean; kustoEnabled: boolean; browserControlEnabled?: boolean; llmToolSystemOneEnabled?: boolean; toolScriptingEnabled?: boolean; chatStyleSelectorEnabled: boolean; chatProviderSwitchingEnabled: boolean; chatHistoryPagingEnabled?: boolean; botManagedConversationsEnabled?: boolean; defaultChatStyle: ChatStyle };
+    getLiveFeatureFlags?: () => { excalidrawEnabled: boolean; canvasEnabled: boolean; kustoEnabled: boolean; browserControlEnabled?: boolean; llmToolSystemOneEnabled?: boolean; toolScriptingEnabled?: boolean; queryPullRequestToolEnabled?: boolean; chatStyleSelectorEnabled: boolean; chatProviderSwitchingEnabled: boolean; chatHistoryPagingEnabled?: boolean; botManagedConversationsEnabled?: boolean; defaultChatStyle: ChatStyle };
 }
 
 /** Maximum git output buffer size (50 MB) — matches forge DEFAULT_MAX_BUFFER. */

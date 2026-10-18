@@ -162,6 +162,7 @@ describe('LLM Tools Config API endpoints', () => {
             expect(names).not.toContain('create_update_work_item');
             expect(names).not.toContain('create_bug');
             expect(names).not.toContain('scheduleWakeup');
+            expect(names).not.toContain('query_pull_request');
         });
 
         it('returns registry defaults when no preferences are set', async () => {

@@ -881,7 +881,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             // Static config — short-lived private cache (both branches below are 200s).
             setStaticConfigCacheHeaders(res);
             const liveFlags = ctx.getLiveFeatureFlags?.() ?? { excalidrawEnabled: false, canvasEnabled: false, kustoEnabled: false, llmToolSystemOneEnabled: DEFAULT_CONFIG.LLMToolSystemOne.enabled, chatStyleSelectorEnabled: false, chatProviderSwitchingEnabled: false };
-            const effectiveRegistry = buildSettingsToolList(getEffectiveLlmToolRegistry({ cronEnabled: ctx.cronEnabled, canvasEnabled: liveFlags.canvasEnabled, kustoEnabled: liveFlags.kustoEnabled, browserControlEnabled: ctx.getLiveFeatureFlags?.().browserControlEnabled, llmToolSystemOneEnabled: liveFlags.llmToolSystemOneEnabled ?? DEFAULT_CONFIG.LLMToolSystemOne.enabled, toolScriptingEnabled: ctx.getLiveFeatureFlags?.()?.toolScriptingEnabled ?? DEFAULT_CONFIG.features.toolScripting }));
+            const effectiveRegistry = buildSettingsToolList(getEffectiveLlmToolRegistry({ cronEnabled: ctx.cronEnabled, canvasEnabled: liveFlags.canvasEnabled, kustoEnabled: liveFlags.kustoEnabled, browserControlEnabled: ctx.getLiveFeatureFlags?.().browserControlEnabled, llmToolSystemOneEnabled: liveFlags.llmToolSystemOneEnabled ?? DEFAULT_CONFIG.LLMToolSystemOne.enabled, toolScriptingEnabled: ctx.getLiveFeatureFlags?.()?.toolScriptingEnabled ?? DEFAULT_CONFIG.features.toolScripting, queryPullRequestToolEnabled: ctx.getLiveFeatureFlags?.()?.queryPullRequestToolEnabled ?? DEFAULT_CONFIG.features.queryPullRequestTool }));
             const conversationRetrievalAvailable = typeof ctx.store.searchConversations === 'function';
             if (!ctx.dataDir) {
                 sendJSON(res, 200, {
@@ -936,7 +936,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             });
             writeRepoPreferences(ctx.dataDir, ws.id, merged);
             sendJSON(res, 200, {
-                tools: buildSettingsToolList(getEffectiveLlmToolRegistry({ cronEnabled: ctx.cronEnabled, canvasEnabled: ctx.getLiveFeatureFlags?.()?.canvasEnabled ?? false, kustoEnabled: ctx.getLiveFeatureFlags?.()?.kustoEnabled ?? false, browserControlEnabled: ctx.getLiveFeatureFlags?.().browserControlEnabled, llmToolSystemOneEnabled: ctx.getLiveFeatureFlags?.()?.llmToolSystemOneEnabled ?? DEFAULT_CONFIG.LLMToolSystemOne.enabled, toolScriptingEnabled: ctx.getLiveFeatureFlags?.()?.toolScriptingEnabled ?? DEFAULT_CONFIG.features.toolScripting })),
+                tools: buildSettingsToolList(getEffectiveLlmToolRegistry({ cronEnabled: ctx.cronEnabled, canvasEnabled: ctx.getLiveFeatureFlags?.()?.canvasEnabled ?? false, kustoEnabled: ctx.getLiveFeatureFlags?.()?.kustoEnabled ?? false, browserControlEnabled: ctx.getLiveFeatureFlags?.().browserControlEnabled, llmToolSystemOneEnabled: ctx.getLiveFeatureFlags?.()?.llmToolSystemOneEnabled ?? DEFAULT_CONFIG.LLMToolSystemOne.enabled, toolScriptingEnabled: ctx.getLiveFeatureFlags?.()?.toolScriptingEnabled ?? DEFAULT_CONFIG.features.toolScripting, queryPullRequestToolEnabled: ctx.getLiveFeatureFlags?.()?.queryPullRequestToolEnabled ?? DEFAULT_CONFIG.features.queryPullRequestTool })),
                 disabledLlmTools: merged.disabledLlmTools ?? getEffectiveDefaultDisabledTools(),
                 approvalRequiredLlmTools: merged.approvalRequiredLlmTools ?? [],
                 conversationRetrievalAvailable: typeof ctx.store.searchConversations === 'function',

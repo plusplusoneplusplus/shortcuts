@@ -45,6 +45,7 @@ import { createSearchConversationsTool } from '../llm-tools/search-conversations
 import { createSuggestFollowUpsTool, SENTINEL_NEXT_STEPS_GUIDANCE } from '../llm-tools/suggest-follow-ups-tool';
 import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
 import { createCreatePullRequestTool, type CreatePullRequestToolDeps } from '../llm-tools/create-pull-request-tool';
+import { createQueryPullRequestTool, type QueryPullRequestToolDeps } from '../llm-tools/query-pull-request-tool';
 import { tagBlock, tagGuidanceSuffix } from './prompt-tags';
 import type { ChatMode, ChatPayload, ChatProvider, DreamRunPayload, ForEachGenerationContext, MapReduceGenerationContext, PrClassificationPayload, RunScriptPayload } from '../tasks/task-types';
 import {
@@ -748,6 +749,31 @@ export function buildSystemOneToolsAddon(
     }
 
     const { tool } = createSystemOneTool({ ...deps, workspaceId });
+    // No prose suffix — the tool description carries its own guidance.
+    return { tools: [tool], suffix: '' };
+}
+
+// ============================================================================
+// Query Pull Request (read-only; gated by features.queryPullRequestTool)
+// ============================================================================
+
+export function buildQueryPullRequestToolsAddon(
+    dataDir: string | undefined,
+    workspaceId: string | undefined,
+    processId: string | undefined,
+    opts?: { enabled?: boolean; createClient?: QueryPullRequestToolDeps['createClient'] },
+): { tools: Tool<any>[]; suffix: string } {
+    if (!dataDir || !workspaceId || !processId) {
+        return { tools: [], suffix: '' };
+    }
+
+    const enabled = opts?.enabled
+        ?? resolveConfig(path.join(dataDir, CONFIG_FILE_NAME)).features.queryPullRequestTool;
+    if (!enabled) {
+        return { tools: [], suffix: '' };
+    }
+
+    const { tool } = createQueryPullRequestTool({ dataDir, workspaceId, processId, createClient: opts?.createClient });
     // No prose suffix — the tool description carries its own guidance.
     return { tools: [tool], suffix: '' };
 }

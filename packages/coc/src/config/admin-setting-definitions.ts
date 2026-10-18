@@ -830,6 +830,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.queryPullRequestTool', default: false, runtime: 'live', runtimeFlag: 'queryPullRequestToolEnabled',
+        ui: {
+            group: 'review', order: 64.6, label: 'Query pull request tool', badge: 'experimental',
+            hint: 'Chat AI can call `query_pull_request` to read GitHub or Azure DevOps pull requests (list with filters, or get by ID) for a repository it names, using this server\'s credentials. Read-only. Disabled by default.',
+            testId: 'toggle-query-pull-request-tool-enabled',
+        },
+    }),
+    bool({
         key: 'mcpOauth.enabled', default: false, runtime: 'restartRequired', runtimeFlag: 'mcpOauthEnabled',
         ui: {
             tab: 'integrations', group: 'infrastructure', order: 20, label: 'MCP OAuth', badge: 'restart',
