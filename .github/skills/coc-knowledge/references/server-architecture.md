@@ -155,6 +155,12 @@ UTC `firesAt`, IANA `timeZone` and matching `localTime` through coc-client's
 `dateTimeCandidates`; gaps reject and overlaps require an explicit instant.
 Only the absolute instant and display zone persist in the existing JSON event.
 
+`triggers/script-condition-result.ts` supplies canonical result encoding and SHA-256
+hashing for script conditions. Object keys sort lexically at every level, array order
+is significant and encoded UTF-8 JSON is capped at 16 KiB. Non-JSON values reject
+without invoking serialization hooks. Validation must precede any runner conversion
+that could silently drop fields or normalize non-JSON values.
+
 `triggers/sentinel-todo-trigger-firer.ts` commits one-shot PR/date decisions using
 the trigger and to-do stores' shared database writer. It checks the rule revision
 and current owner-scoped item after asynchronous Sentinel lookup. Missing, manual,

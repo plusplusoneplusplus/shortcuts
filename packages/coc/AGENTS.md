@@ -313,6 +313,9 @@ references before editing. Paths are package-relative.
   must not duplicate wakes or revive removed rules.
   Sentinel tool actions use late-bound `getTriggerInfra().sentinelTodoTriggers`;
   the rule owner is the invoking chat, never a tool argument.
+  `triggers/script-condition-result.ts` canonicalizes script result JSON with
+  recursive lexical key ordering, a 16 KiB UTF-8 cap and SHA-256 hashing. It rejects
+  non-JSON values; runner-side JSON normalization must not bypass this validation.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated
