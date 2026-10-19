@@ -44,6 +44,7 @@ let dataDir: string;
 function makeCommands() {
     return {
         jobs: {
+            assertOwner: vi.fn().mockResolvedValue(undefined),
             list: vi.fn().mockResolvedValue([]), get: vi.fn(), update: vi.fn(), start: vi.fn(), cancel: vi.fn(),
             create: vi.fn(async (_owner: unknown, input: Record<string, unknown>) => ({ id: 'job-1', ...input })),
         },

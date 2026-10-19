@@ -289,7 +289,7 @@ describe('buildChatToolBundle', () => {
     });
 
     describe('sentinel_jobs', () => {
-        const jobs = () => ({ list: vi.fn(async () => []), get: vi.fn(), create: vi.fn(), update: vi.fn(), start: vi.fn(), cancel: vi.fn() });
+        const jobs = () => ({ assertOwner: vi.fn(async () => undefined), list: vi.fn(async () => []), get: vi.fn(), create: vi.fn(), update: vi.fn(), start: vi.fn(), cancel: vi.fn() });
         const build = (extra: Record<string, unknown> = {}, commands = jobs()) => buildChatToolBundle({
             dataDir: tmpDir, workspaceId: WS_ID, processId: 'owner', store: makeStore(),
             canvasToolsEnabled: false, kustoToolsEnabled: false, systemOneToolEnabled: false, toolScriptingEnabled: false,

@@ -22,7 +22,7 @@ export interface SentinelJobDefaults { provider?: string; model?: string; effort
 export interface SentinelJobsToolDeps {
     /** The invoking Sentinel chat; every call is scoped to its jobs. */
     owner: SentinelTodoOwner;
-    jobs: Pick<SentinelJobCommands, 'list' | 'get' | 'create' | 'update' | 'start' | 'cancel'>;
+    jobs: Pick<SentinelJobCommands, 'assertOwner' | 'list' | 'get' | 'create' | 'update' | 'start' | 'cancel'>;
     /** Present only when the scrubber feature is wired; commands still re-check the flag. */
     scrubber?: Pick<ScrubberCommands, 'view' | 'putConfig' | 'start' | 'cancel'>;
     defaults: () => SentinelJobDefaults;
@@ -138,6 +138,7 @@ export function createSentinelJobsTool(deps: SentinelJobsToolDeps) {
         handler: async (args: SentinelJobsArgs): Promise<SentinelJobsResult> => {
             const kind = args.kind;
             try {
+                await jobs.assertOwner(owner);
                 if (args.action === 'list') {
                     const list = await jobs.list(owner);
                     if (!scrubber) return { jobs: list };

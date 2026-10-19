@@ -21,6 +21,7 @@ let todos: SentinelTodoStore;
 let scrubberStore: ScrubberStore;
 let processes: Map<string, AIProcess>;
 let jobsEnabled: boolean;
+let sentinelEnabled: boolean;
 let scrubberEnabled: boolean;
 let enqueue: ReturnType<typeof vi.fn>;
 let scrubEnqueue: ReturnType<typeof vi.fn>;
@@ -55,12 +56,13 @@ beforeEach(() => {
     scrubberStore = new ScrubberStore(fixture.db);
     const todoService = new SentinelTodoService({ todos, store });
     jobsEnabled = true;
+    sentinelEnabled = true;
     scrubberEnabled = true;
     enqueue = vi.fn(async (input: CreateTaskInput) => input.id ?? 'task');
     scrubEnqueue = vi.fn(async (input: CreateTaskInput) => input.id!);
     onConfigChange = vi.fn();
     const service = new SentinelJobService({ dataDir: fixture.dataDir, jobs: jobStore, todos: todoService, store,
-        getEnabled: () => jobsEnabled, enqueue, cancelTask: vi.fn(() => true), getTask: () => undefined });
+        getEnabled: () => sentinelEnabled && jobsEnabled, enqueue, cancelTask: vi.fn(() => true), getTask: () => undefined });
     jobCommands = new SentinelJobCommands({ jobs: jobStore, service, onConfigChange });
     const runs = new ScrubberRunService({ dataDir: fixture.dataDir, todos: todoService, scrubber: scrubberStore,
         engine: new ScrubberEngine({ todos, scrubber: scrubberStore }), enqueue: scrubEnqueue, cancelTask: vi.fn(() => true) });
@@ -188,6 +190,35 @@ describe('ownership and feature gates', () => {
         expect(enqueue).not.toHaveBeenCalled();
     });
 
+    it.each(['sentinel', 'jobs', 'owner', 'workspace'] as const)(
+        'revokes every action on an issued tool after %s becomes unavailable', async gate => {
+            const job = await createJob();
+            const tool = createSentinelJobsTool({ owner, jobs: jobCommands, scrubber: scrubberCommands,
+                defaults: () => defaults }) as any;
+            expect((await tool.handler({ action: 'get', kind: 'scrubber' }, {})).scrubber).toBeDefined();
+            const config = scrubberStore.getConfig(owner);
+            const scrubberCalls = ['view', 'putConfig', 'start', 'cancel'] as const;
+            const spies = scrubberCalls.map(method => vi.spyOn(scrubberCommands, method));
+            if (gate === 'sentinel') sentinelEnabled = false;
+            if (gate === 'jobs') jobsEnabled = false;
+            if (gate === 'owner') processes.delete(owner.processId);
+            if (gate === 'workspace') processes.set(owner.processId, sentinel(owner.processId, 'ws-b'));
+
+            for (const kind of ['custom', 'scrubber'] as const) {
+                for (const action of ['list', 'get', 'create', 'update', 'pause', 'resume', 'run_now', 'cancel'] as const) {
+                    expect(await tool.handler({ action, kind, jobId: job.id, runId: 'run', expectedRevision: 0,
+                        name: 'Changed', instructions: 'Check', enabled: true }, {})).toMatchObject({ code: 'not_found' });
+                }
+            }
+            for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+            expect(jobStore.list(owner)).toEqual([expect.objectContaining({ id: job.id, revision: 1, name: 'Nightly' })]);
+            expect(scrubberStore.getConfig(owner)).toEqual(config);
+            expect(enqueue).not.toHaveBeenCalled();
+            expect(scrubEnqueue).not.toHaveBeenCalled();
+            // Scrubber REST commands remain independent of the jobs feature.
+            if (gate === 'sentinel' || gate === 'jobs') expect((await scrubberCommands.view(owner)).config).toEqual(config);
+        });
+
     it('rejects non-Sentinel owners and calls after the feature is disabled', async () => {
         processes.set('queue_ask', { ...sentinel('queue_ask', 'ws-a'), metadata: { mode: 'ask', workspaceId: 'ws-a' } } as AIProcess);
         expect(await call({ action: 'list' }, { workspaceId: 'ws-a', processId: 'queue_ask' })).toMatchObject({ code: 'not_found' });
@@ -230,6 +261,22 @@ describe('built-in scrubber', () => {
         expect((await call({ action: 'get', kind: 'scrubber' })).scrubber.activeRun.id).toBe(run.id);
         expect((await call({ action: 'cancel', kind: 'scrubber', runId: run.id })).run).toMatchObject({ status: 'cancelled' });
         expect(await call({ action: 'cancel', kind: 'scrubber', runId: run.id }, sibling)).toMatchObject({ code: 'not_found' });
+    });
+
+    it('revokes scrubber actions on an issued tool when only the scrubber flag is disabled', async () => {
+        const tool = createSentinelJobsTool({ owner, jobs: jobCommands, scrubber: scrubberCommands,
+            defaults: () => defaults }) as any;
+        expect((await tool.handler({ action: 'get', kind: 'scrubber' }, {})).scrubber).toBeDefined();
+        const config = scrubberStore.getConfig(owner);
+        scrubberEnabled = false;
+        for (const action of ['get', 'update', 'pause', 'resume', 'run_now', 'cancel'] as const) {
+            expect(await tool.handler({ action, kind: 'scrubber', expectedRevision: 0, enabled: true, runId: 'run' }, {}))
+                .toMatchObject({ code: 'not_found' });
+        }
+        expect(await tool.handler({ action: 'list' }, {}))
+            .toMatchObject({ jobs: [], scrubber: { unavailable: expect.any(String) } });
+        expect(scrubberStore.getConfig(owner)).toEqual(config);
+        expect(scrubEnqueue).not.toHaveBeenCalled();
     });
 
     it('is unavailable when the scrubber flag is off or not wired', async () => {

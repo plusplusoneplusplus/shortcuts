@@ -140,7 +140,10 @@ disable and approval-required preferences apply). Route composition publishes
 `getSentinelJobCommands`, returning the same owner-validated `SentinelJobCommands`
 and `ScrubberCommands` instances REST uses — `undefined` while Sentinel jobs are
 off, `scrubber` absent while `features.sentinelTodoScrubber` is off; commands still
-re-check owner and flags on every call. `ChatBaseExecutor.buildSentinelJobsDeps`
+re-check owner and flags on every call. The tool gates every action through
+`SentinelJobCommands.assertOwner`, including scrubber actions on issued tools;
+scrubber REST commands retain their independent feature gate.
+`ChatBaseExecutor.buildSentinelJobsDeps`
 binds the tool to the invoking Sentinel chat (`workspaceId`, `processId`; never a
 tool argument) and only on attended turns: scheduled-job handbacks
 (`FollowUpTurnOptions.sentinelJobHandback`, set by the lifecycle runner),

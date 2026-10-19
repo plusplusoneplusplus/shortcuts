@@ -18,6 +18,11 @@ export interface SentinelJobCommandsDeps {
 export class SentinelJobCommands {
     constructor(private readonly deps: SentinelJobCommandsDeps) {}
 
+    /** Live availability and ownership gate, also used before scrubber tool dispatch. */
+    assertOwner(owner: SentinelTodoOwner): Promise<void> {
+        return this.deps.service.assertOwner(owner);
+    }
+
     async list(owner: SentinelTodoOwner): Promise<SentinelScheduledJob[]> {
         await this.deps.service.assertOwner(owner);
         return this.deps.jobs.list(owner).map(job => this.deps.service.view(owner, job));
