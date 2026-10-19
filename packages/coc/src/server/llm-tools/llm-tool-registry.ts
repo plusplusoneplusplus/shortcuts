@@ -166,6 +166,13 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
+        name: 'sentinel_jobs',
+        label: 'Sentinel Jobs',
+        description: 'Lets a Sentinel chat list, create, edit, schedule, pause/resume, run and cancel its own custom to-do jobs and To-do Scrubber on your instructions. Never deletes jobs.',
+        // Opt-in rollout; schedules and runs must stay visible single calls.
+        enabledByDefault: false, scriptable: false,
+    },
+    {
         name: 'tavily_web_search',
         label: 'Tavily Web Search',
         description: 'Searches the live web via Tavily API for current information.',

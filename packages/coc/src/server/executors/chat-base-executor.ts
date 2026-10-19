@@ -67,6 +67,7 @@ import { isMessagingJobOrigin } from '../messaging/job-notices';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
+import type { SentinelJobDefaults, SentinelJobsToolDeps } from '../llm-tools/sentinel-jobs-tool';
 import { createSubmitScrubFindingsTool } from '../llm-tools/submit-scrub-findings-tool';
 import { getScrubChildContext } from '../sentinel-scrubber/scrubber-runs';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
@@ -83,6 +84,7 @@ import type { RalphGrillPlanningProgress, RalphGrillQuestionPlanningResult, Ralp
 import { createToolCallLedger } from './tool-call-ledger';
 import type { SystemOneAddonDeps } from './prompt-builder';
 import type { CreatePullRequestToolDeps } from '../llm-tools/create-pull-request-tool';
+import { readAutomationTurnSource } from '../processes/automation-turn-source';
 /** Log prefix for every line this executor writes. */
 const CHAT_EXECUTOR_LOG_LABEL = '[ChatModeExecutor]';
 
@@ -290,6 +292,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      * result, cached here to avoid re-spawning a CLI on every turn.
      */
     private readonly providerReasoningModelCache = new Map<ChatProvider, ModelInfo[]>();
+    /** Each Sentinel chat's latest resolved turn settings, inherited by jobs `sentinel_jobs` creates. */
+    private readonly sentinelJobDefaults = new Map<string, SentinelJobDefaults>();
 
     constructor(store: ProcessStore, options: ChatModeExecutorOptions, dataDir?: string) {
         super(store, dataDir);
@@ -733,6 +737,32 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     }
 
     /**
+     * `sentinel_jobs` wiring for one turn: only the Sentinel chat that owns the
+     * jobs, and only on turns a person started — handbacks, PR outcome reviews,
+     * read-only and automation (cron/wakeup/trigger) turns get no new job
+     * authority. Every call is still owner- and flag-checked server-side.
+     */
+    protected buildSentinelJobsDeps(
+        processId: string,
+        workspaceId: string | undefined,
+        mode: ChatMode | undefined,
+        provider: ChatProvider,
+        unattended: boolean,
+    ): SentinelJobsToolDeps | undefined {
+        if (unattended || normalizeChatMode(mode) !== 'sentinel' || !workspaceId) return undefined;
+        const commands = this.runtime.getSentinelJobCommands?.();
+        if (!commands) return undefined;
+        this.sentinelJobDefaults.set(processId, { provider });
+        return { ...commands, owner: { workspaceId, processId }, defaults: () => this.sentinelJobDefaults.get(processId) ?? { provider } };
+    }
+
+    /** Records the turn's resolved model/effort for a chat wired with `sentinel_jobs`. */
+    protected recordSentinelJobDefaults(processId: string, provider: ChatProvider, model: string | undefined, effort: string | undefined): void {
+        if (!this.sentinelJobDefaults.has(processId)) return;
+        this.sentinelJobDefaults.set(processId, { provider, ...(model ? { model } : {}), ...(effort ? { effort } : {}) });
+    }
+
+    /**
      * `submit_scrub_findings` for a Sentinel To-do Scrubber child chat; its
      * first turn starting marks the run running. Other chats get nothing.
      */
@@ -995,6 +1025,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             createPullRequest: isAsk ? undefined : this.buildCreatePullRequestDeps(processId, payload.workspaceId, workingDirectory),
             // Sentinel runs on the ask path; only it gets the to-do ledger tool.
             sentinelTodos: isAsk ? this.buildSentinelTodoDeps(processId, payload.workspaceId, payload.mode) : undefined,
+            sentinelJobs: isAsk ? this.buildSentinelJobsDeps(processId, payload.workspaceId, payload.mode,
+                payload.provider ?? this.provider, !!scrubContext || !!readAutomationTurnSource(payload.context as Record<string, unknown> | undefined)) : undefined,
             scrubFindings: isAsk ? this.buildScrubFindingsTool(task) : undefined,
             // Registered in autopilot too, so the tool block is identical to
             // ask mode and a mid-chat mode switch does not invalidate the
@@ -1358,6 +1390,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             const effectiveModel = policy.resolvedModel;
             policyModelId = policy.modelId;
             policyReasoningEffort = policy.reasoningEffort;
+            this.recordSentinelJobDefaults(processId, taskProvider, policy.resolvedModel, policy.reasoningEffort);
             await this.assertChatImageModel(taskProvider, effectiveAiService, policy.modelId, attachments);
             imagesAccepted = true;
 

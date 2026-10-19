@@ -28,6 +28,9 @@ export interface SentinelJobsToolDeps {
     defaults: () => SentinelJobDefaults;
 }
 
+/** The server-bound command objects; the executor adds the owner and defaults per turn. */
+export type SentinelJobCommandSet = Pick<SentinelJobsToolDeps, 'jobs' | 'scrubber'>;
+
 type JobSettings = Partial<SentinelScheduledJobInput>;
 
 export interface SentinelJobsArgs extends JobSettings {
@@ -68,6 +71,30 @@ const DESCRIPTION =
     'arrive through the normal handback. `cancel` needs `runId` (and `jobId` for custom). Deleting jobs and reviewing ' +
     'scrubber findings are user actions in the Jobs panel. Report failures to the user as-is.';
 
+/** Input schema, shared with the settings-page parameter mirror. */
+export const SENTINEL_JOBS_TOOL_PARAMETERS = {
+    type: 'object',
+    properties: {
+        action: { type: 'string', enum: ['list', 'get', 'create', 'update', 'pause', 'resume', 'run_now', 'cancel'] },
+        kind: { type: 'string', enum: ['custom', 'scrubber'], description: 'Required except for list: a custom job or the built-in scrubber.' },
+        jobId: { type: 'string', description: 'Custom job id for get/update/pause/resume/run_now/cancel.' },
+        expectedRevision: { type: 'number', description: 'Current revision for update/pause/resume.' },
+        runId: { type: 'string', description: 'cancel: the active run id.' },
+        itemIds: { type: 'array', items: { type: 'string' }, description: 'Scrubber run_now: open to-do item ids to check (default all eligible).' },
+        name: { type: 'string' },
+        instructions: { type: 'string' },
+        provider: { type: 'string', enum: ['copilot', 'codex', 'claude', 'opencode'] },
+        model: { type: 'string' },
+        effort: { type: 'string', enum: ['', 'low', 'medium', 'high', 'xhigh'], description: 'Empty string clears it on update.' },
+        mode: { type: 'string', enum: ['ask', 'autopilot'] },
+        cron: { type: 'string', description: 'Five-field cron in the server\'s local time; empty string clears a custom schedule.' },
+        enabled: { type: 'boolean', description: 'Whether the schedule runs (create default false).' },
+        autoCompactThreshold: { type: 'integer', minimum: 1, description: 'Absolute context-token threshold.' },
+    },
+    required: ['action'],
+    additionalProperties: false,
+};
+
 export function createSentinelJobsTool(deps: SentinelJobsToolDeps) {
     const { owner, jobs, scrubber } = deps;
 
@@ -107,28 +134,7 @@ export function createSentinelJobsTool(deps: SentinelJobsToolDeps) {
 
     const tool = defineTool<SentinelJobsArgs>(SENTINEL_JOBS_TOOL_NAME, {
         description: DESCRIPTION,
-        parameters: {
-            type: 'object',
-            properties: {
-                action: { type: 'string', enum: ['list', 'get', 'create', 'update', 'pause', 'resume', 'run_now', 'cancel'] },
-                kind: { type: 'string', enum: ['custom', 'scrubber'], description: 'Required except for list: a custom job or the built-in scrubber.' },
-                jobId: { type: 'string', description: 'Custom job id for get/update/pause/resume/run_now/cancel.' },
-                expectedRevision: { type: 'number', description: 'Current revision for update/pause/resume.' },
-                runId: { type: 'string', description: 'cancel: the active run id.' },
-                itemIds: { type: 'array', items: { type: 'string' }, description: 'Scrubber run_now: open to-do item ids to check (default all eligible).' },
-                name: { type: 'string' },
-                instructions: { type: 'string' },
-                provider: { type: 'string', enum: ['copilot', 'codex', 'claude', 'opencode'] },
-                model: { type: 'string' },
-                effort: { type: 'string', enum: ['', 'low', 'medium', 'high', 'xhigh'], description: 'Empty string clears it on update.' },
-                mode: { type: 'string', enum: ['ask', 'autopilot'] },
-                cron: { type: 'string', description: 'Five-field cron in the server\'s local time; empty string clears a custom schedule.' },
-                enabled: { type: 'boolean', description: 'Whether the schedule runs (create default false).' },
-                autoCompactThreshold: { type: 'integer', minimum: 1, description: 'Absolute context-token threshold.' },
-            },
-            required: ['action'],
-            additionalProperties: false,
-        },
+        parameters: SENTINEL_JOBS_TOOL_PARAMETERS,
         handler: async (args: SentinelJobsArgs): Promise<SentinelJobsResult> => {
             const kind = args.kind;
             try {

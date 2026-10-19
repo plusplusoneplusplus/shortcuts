@@ -94,6 +94,8 @@ import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduc
 export interface FollowUpTurnOptions {
     /** Native scheduled-job admission, checked by the lifecycle runner. Jobs have no run deadlines. */
     sentinelScheduledJob?: boolean;
+    /** A scheduled-job handback into its Sentinel; such turns never get `sentinel_jobs`. */
+    sentinelJobHandback?: boolean;
     /** Trusted native admission marker; never derived from prompt text or process metadata. */
     sentinelPrOutcomeReview?: boolean;
     sentinelPrOutcomeStopped?: boolean;
@@ -544,6 +546,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     ? this.buildCreatePullRequestDeps(processId, wsId, workingDirectory)
                     : undefined,
                 sentinelTodos: this.buildSentinelTodoDeps(processId, wsId, currentMode),
+                sentinelJobs: this.buildSentinelJobsDeps(processId, wsId, currentMode, sessionProvider,
+                    reviewOnly || turnSource !== undefined || options?.sentinelJobHandback === true),
                 // Registered regardless of `currentMode` so toggling the mode
                 // pill mid-chat leaves the tool block byte-identical and the
                 // resumed session keeps its prefix cache. A machine-triggered
@@ -695,6 +699,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     logger,
                 }),
             });
+            this.recordSentinelJobDefaults(processId, sessionProvider, policy.resolvedModel, policy.reasoningEffort);
 
             await this.assertChatImageModel(sessionProvider, followUpAiService, policy.modelId, attachments);
             imagesAccepted = true;

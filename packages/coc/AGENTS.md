@@ -469,7 +469,9 @@ references before editing. Paths are package-relative.
   start, retry, or cancel jobs. Every Sentinel chat has a persistent ledger.
   Sentinel Mode and To-do Scrubber are independently default-off. The
   `sentinel_todos` tool is bound to the invoking Sentinel chat via the late-bound
-  `getSentinelTodos` runtime capability.
+  `getSentinelTodos` runtime capability. The opt-in `sentinel_jobs` tool reuses the
+  REST job/scrubber command objects (`getSentinelJobCommands`), bound to the owning
+  Sentinel's attended turns only; handbacks, reviews and automation turns never get it.
   Default-off `features.sentinelTodoTags` exposes parent-ledger tag definitions
   and metadata through the same service, REST client and tool. Target workspaces
   share their parent's library, never another parent's tags. Matching uses the

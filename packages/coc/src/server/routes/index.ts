@@ -340,6 +340,7 @@ export interface RegisterRoutesOptions {
     setSentinelDependencyAdmission?: (get: NonNullable<import('../executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelDependencyAdmission']>) => void;
     setSentinelScrubber?: (get: () => ScrubberRunService | undefined) => void;
     setSentinelScheduledJobs?: (get: () => SentinelJobService | undefined) => void;
+    setSentinelJobCommands?: (get: NonNullable<import('../executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelJobCommands']>) => void;
     /** Publish the WhatsApp/Teams ask_user question relay to the executor runtime. */
     setAskUserQuestionRelay?: (relay: AskUserQuestionRelay) => void;
     /** Shared native Notes index lifecycle, validated by the composition root. */
@@ -760,6 +761,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         runs: scrubberRuns, getEnabled: getScrubberEnabled, onChange: scrubberChanged });
     registerScrubberRoutes({ routes, todos: sentinelTodos, scrubber, engine: scrubberEngine,
         runs: scrubberRuns, getEnabled: getScrubberEnabled, onChange: scrubberChanged, commands: scrubberCommands });
+    opts.setSentinelJobCommands?.(() => getJobsEnabled()
+        ? { jobs: jobCommands, ...(getScrubberEnabled() ? { scrubber: scrubberCommands } : {}) } : undefined);
     const sentinelTodoHooks = createSentinelTodoDelegationHooks(sentinelTodos);
     // Bound after the WhatsApp connector is wired below.
     let autoCompactionOrigins: ReturnType<typeof createAutoCompactionOrigins> | undefined;

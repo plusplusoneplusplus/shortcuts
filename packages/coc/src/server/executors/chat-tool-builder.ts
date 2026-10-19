@@ -8,6 +8,7 @@ import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { WakeupToolDeps, CronToolDeps } from '../llm-tools/cron-tools';
 import type { CreatePullRequestToolDeps } from '../llm-tools/create-pull-request-tool';
 import type { SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
+import { createSentinelJobsTool, type SentinelJobsToolDeps } from '../llm-tools/sentinel-jobs-tool';
 import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
 import type { BrowserControlRuntime } from '@plusplusoneplusplus/coc-client';
 import { createBrowserTool, type BrowserToolStateStore } from '../llm-tools/browser-tools';
@@ -102,6 +103,11 @@ export interface ChatToolBundleOptions {
      * or standalone executors without the server capability.
      */
     sentinelTodos?: SentinelTodosToolDeps;
+    /**
+     * `sentinel_jobs` wiring, bound to the owning Sentinel chat. Pass it only
+     * for that chat's attended turns; review turns never get the tool.
+     */
+    sentinelJobs?: SentinelJobsToolDeps;
     /**
      * A Sentinel To-do Scrubber child chat: its findings tool replaces every
      * other LLM tool, so the chat can neither write the ledger nor message
@@ -257,6 +263,10 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
     if (options.sentinelTodos) {
         addons.push(buildSentinelTodosAddon(options.sentinelPrOutcomeReview
             ? { ...options.sentinelTodos, reviewOnly: true, triggers: undefined } : options.sentinelTodos));
+    }
+
+    if (options.sentinelJobs && !options.sentinelPrOutcomeReview) {
+        addons.push({ tools: [createSentinelJobsTool(options.sentinelJobs)], suffix: '' });
     }
 
     if (options.memoryV2 && !options.sentinelPrOutcomeReview) {

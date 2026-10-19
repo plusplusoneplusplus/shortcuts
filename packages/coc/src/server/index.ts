@@ -339,6 +339,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     let getSentinelScrubberCapability: (() => import('./sentinel-scrubber/scrubber-runs').ScrubberRunService | undefined) | undefined;
     let getSentinelScheduledJobsCapability: (() => import('./sentinel-jobs/job-service').SentinelJobService | undefined) | undefined;
+    let getSentinelJobCommandsCapability: import('./executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelJobCommands'];
 
     // Native Teams sign-in always needs pending lifecycle routes.
     const mcpOauthEnabled = resolvedConfig.mcpOauth.enabled === true;
@@ -513,6 +514,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 registered: false, warning: 'Native PR outcome monitoring is unavailable because triggers are disabled.',
             })) : undefined,
         () => getSentinelScheduledJobsCapability?.(),
+        () => getSentinelJobCommandsCapability?.(),
     );
     // Owner workspace for cron automation: live queue task, then persisted process.
     const resolveProcessWorkspaceId = createProcessWorkspaceResolver(bridge, store);
@@ -870,6 +872,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         setSentinelDependencyAdmission: (get) => { getSentinelDependencyAdmissionCapability = get; },
         setSentinelScrubber: (get) => { getSentinelScrubberCapability = get; },
         setSentinelScheduledJobs: (get) => { getSentinelScheduledJobsCapability = get; },
+        setSentinelJobCommands: (get) => { getSentinelJobCommandsCapability = get; },
         setSendToConversationRuntime: (runtime) => { sendToConversationRuntime = runtime; },
         notesSearchService,
     });
