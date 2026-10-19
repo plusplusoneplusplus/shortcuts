@@ -1,9 +1,9 @@
-import type { EvaluationOutcome, EventEvaluator } from './trigger-manager';
+import type { EvaluationOptions, EvaluationOutcome, EventEvaluator } from './trigger-manager';
 import type { ScriptConditionEvent, Trigger } from './trigger-types';
 import { canonicalizeScriptConditionResult } from './script-condition-result';
 
 /** The owner-scoped runtime supplies tools, strict JSON validation and cancellation. */
-export type ScriptConditionRunner = (trigger: Trigger, state: unknown) => Promise<unknown>;
+export type ScriptConditionRunner = (trigger: Trigger, state: unknown, signal?: AbortSignal) => Promise<unknown>;
 
 /** Computes a repeating condition's next baseline without mutating the stored rule. */
 export class ScriptConditionEvaluator implements EventEvaluator {
@@ -12,16 +12,20 @@ export class ScriptConditionEvaluator implements EventEvaluator {
         private readonly now: () => number = Date.now,
     ) {}
 
-    async evaluate(trigger: Trigger): Promise<EvaluationOutcome & { event: ScriptConditionEvent }> {
+    async evaluate(trigger: Trigger, options?: EvaluationOptions): Promise<EvaluationOutcome & { event: ScriptConditionEvent }> {
         const event = trigger.event;
         if (event.type !== 'script-condition') {
             throw new Error(`ScriptConditionEvaluator cannot evaluate event ${event.type}`);
         }
+        const signal = options?.signal;
+        signal?.throwIfAborted();
         if (trigger.status !== 'active' || event.paused) return { fire: false, event };
 
         try {
             const state: unknown = event.lastResult === undefined ? null : JSON.parse(event.lastResult);
-            const result = canonicalizeScriptConditionResult(await this.run(trigger, state));
+            const value = await this.run(trigger, state, signal);
+            signal?.throwIfAborted();
+            const result = canonicalizeScriptConditionResult(value);
             const changed = result.hash !== event.lastResultHash;
             const { lastError: _cleared, ...rest } = event;
             return {
@@ -30,6 +34,8 @@ export class ScriptConditionEvaluator implements EventEvaluator {
                 changed: changed || event.consecutiveFailures !== 0 || event.lastError !== undefined,
             };
         } catch (error) {
+            // Revocation is not a failed script; the trigger-only deadline still is.
+            signal?.throwIfAborted();
             const consecutiveFailures = event.consecutiveFailures + 1;
             return {
                 fire: false,

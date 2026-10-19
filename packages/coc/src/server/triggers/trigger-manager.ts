@@ -83,9 +83,16 @@ export interface EvaluationOutcome {
     changed?: boolean;
 }
 
+export interface EvaluationOptions {
+    manualCi?: boolean;
+    refreshOutcome?: boolean;
+    /** Cancels background script execution when admission is revoked. */
+    signal?: AbortSignal;
+}
+
 /** Evaluates a trigger's event each tick. One per event kind. */
 export interface EventEvaluator {
-    evaluate(trigger: Trigger, options?: { manualCi?: boolean; refreshOutcome?: boolean }): Promise<EvaluationOutcome>;
+    evaluate(trigger: Trigger, options?: EvaluationOptions): Promise<EvaluationOutcome>;
 }
 
 /**
@@ -173,6 +180,8 @@ export class TriggerManager {
     private readonly now: () => number;
     private stopped = false;
     private readonly ticking = new Set<string>();
+    private readonly scriptRuns = new Map<string, AbortController>();
+    private readonly deferredScriptArms = new Set<string>();
 
     /** Shared timer-arming lifecycle kernel (delay/overdue/reschedule/shutdown). */
     private readonly scheduler: PeriodicEntryScheduler<Trigger | DependencyPollEntry | PrOutcomeRegistrationEntry>;
@@ -302,12 +311,20 @@ export class TriggerManager {
      * (or falls back to the event's poll cadence from now).
      */
     arm(trigger: Trigger): void {
-        if (!this.stopped) this.scheduler.arm(trigger);
+        if (this.stopped) return;
+        if (this.scriptRuns.get(trigger.id)?.signal.aborted) {
+            // An overdue replacement must not lose its tick to the old run's guard.
+            this.deferredScriptArms.add(trigger.id);
+            return;
+        }
+        this.scheduler.arm(trigger);
     }
 
-    /** Cancel the timer for a trigger (does not mutate persisted state). */
+    /** Cancel the timer and any script evaluation without mutating persisted state. */
     disarm(triggerId: string): void {
         this.scheduler.disarm(triggerId);
+        this.deferredScriptArms.delete(triggerId);
+        this.scriptRuns.get(triggerId)?.abort(new Error('Script condition admission revoked'));
     }
 
     /**
@@ -317,6 +334,8 @@ export class TriggerManager {
     shutdownAll(): void {
         this.stopped = true;
         this.scheduler.shutdownAll();
+        this.deferredScriptArms.clear();
+        for (const run of this.scriptRuns.values()) run.abort(new Error('Trigger manager shut down'));
     }
 
     /**
@@ -379,7 +398,13 @@ export class TriggerManager {
             }
             await this.evaluateTick(triggerId, manualCi);
         }
-        finally { this.ticking.delete(triggerId); }
+        finally {
+            this.ticking.delete(triggerId);
+            if (this.deferredScriptArms.delete(triggerId)) {
+                const current = this.deps.store.getById(triggerId);
+                if (current) this.arm(current);
+            }
+        }
     }
 
     private async evaluateTick(triggerId: string, manualCi: boolean): Promise<void> {
@@ -436,9 +461,13 @@ export class TriggerManager {
         }
 
         let outcome: EvaluationOutcome;
+        const scriptRun = trigger.event.type === 'script-condition' ? new AbortController() : undefined;
+        if (scriptRun) this.scriptRuns.set(triggerId, scriptRun);
         try {
-            outcome = await evaluator.evaluate(trigger, manualCi ? { manualCi: true } : undefined);
+            outcome = await evaluator.evaluate(trigger, scriptRun ? { signal: scriptRun.signal }
+                : manualCi ? { manualCi: true } : undefined);
         } catch (err) {
+            if (scriptRun?.signal.aborted) return;
             logger.warn(LogCategory.AI, `[TriggerManager] Evaluator error for ${triggerId}: ${err instanceof Error ? err.message : String(err)}`);
             const current = this.deps.store.getById(triggerId);
             if (current?.event.monitor === 'ci-failure') {
@@ -449,11 +478,13 @@ export class TriggerManager {
             if (current?.status === 'active') this.reschedule(current);
             if (manualCi) throw err;
             return;
+        } finally {
+            if (scriptRun) this.scriptRuns.delete(triggerId);
         }
 
         // Re-read in case state changed during the async evaluate (e.g. the
         // in-flight action completed and cleared the guard).
-        if (this.stopped) return;
+        if (this.stopped || scriptRun?.signal.aborted) return;
         const current = this.deps.store.getById(triggerId);
         if (!current || (current.status !== 'active' && !(manualCi && current.status === 'paused') && !hasPendingRepair(current))) return;
         if (current.revision !== trigger.revision) {

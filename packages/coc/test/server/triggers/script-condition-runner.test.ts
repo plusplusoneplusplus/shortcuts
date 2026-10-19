@@ -141,10 +141,11 @@ describe('runScriptCondition', () => {
             inFlight: false, createdAt: '2026-10-19T00:00:00Z', expiresAt: null,
             lastTickAt: null, nextTickAt: null, revision: 1,
         };
-        const evaluator = new ScriptConditionEvaluator((rule, state) => runScriptCondition({
-            code: rule.event.type === 'script-condition' ? rule.event.script : '', state, runtime,
+        const owner = new AbortController();
+        const evaluator = new ScriptConditionEvaluator((rule, state, signal) => runScriptCondition({
+            code: rule.event.type === 'script-condition' ? rule.event.script : '', state, runtime, signal,
         }));
-        const evaluation = evaluator.evaluate(trigger);
+        const evaluation = evaluator.evaluate(trigger, { signal: owner.signal });
         await vi.advanceTimersByTimeAsync(SCRIPT_CONDITION_DEADLINE_MS);
         const outcome = await evaluation;
         expect(outcome).toMatchObject({
@@ -154,6 +155,7 @@ describe('runScriptCondition', () => {
                 lastError: { message: 'Script condition exceeded its 60-second deadline' },
             },
         });
+        expect(owner.signal.aborted).toBe(false);
         expect(vi.getTimerCount()).toBe(0);
     });
 });

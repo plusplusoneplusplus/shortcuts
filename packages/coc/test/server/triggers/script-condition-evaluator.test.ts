@@ -28,7 +28,7 @@ describe('ScriptConditionEvaluator', () => {
         const original = structuredClone(trigger);
         const run = vi.fn().mockResolvedValue(value);
         const outcome = await new ScriptConditionEvaluator(run).evaluate(trigger);
-        expect(run).toHaveBeenCalledExactlyOnceWith(trigger, null);
+        expect(run).toHaveBeenCalledExactlyOnceWith(trigger, null, undefined);
         expect(outcome).toMatchObject({ fire: false, changed: true, event: baseline(value) });
         expect(trigger).toEqual(original);
     });
@@ -109,6 +109,40 @@ describe('ScriptConditionEvaluator', () => {
         expect(outcome).toMatchObject({ fire: false, changed: true,
             event: { ...baseline({ valid: true }), consecutiveFailures: 1, lastError: { message: 'Tool denied', at: new Date(now).toISOString() } } });
         expect(trigger).toEqual(original);
+    });
+
+    it('rejects pre-revoked runs without constructing a runtime or changing failure state', async () => {
+        const controller = new AbortController();
+        const reason = new Error('Rule removed');
+        controller.abort(reason);
+        const run = vi.fn();
+        const trigger = rule({ ...baseline(1), consecutiveFailures: 4 });
+        const original = structuredClone(trigger);
+        await expect(new ScriptConditionEvaluator(run).evaluate(trigger, { signal: controller.signal })).rejects.toBe(reason);
+        expect(run).not.toHaveBeenCalled();
+        expect(trigger).toEqual(original);
+    });
+
+    it.each(['reject', 'resolve'] as const)('propagates revocation when the runner later %ss without recording a failure', async settlement => {
+        const controller = new AbortController();
+        const reason = new Error('Owner revoked');
+        const trigger = rule({ ...baseline(1), consecutiveFailures: 4 });
+        const original = structuredClone(trigger);
+        const run = vi.fn(async (_trigger: Trigger, _state: unknown, signal?: AbortSignal) => {
+            expect(signal).toBe(controller.signal);
+            controller.abort(reason);
+            if (settlement === 'reject') throw new Error('Tool cancelled');
+            return 2;
+        });
+        await expect(new ScriptConditionEvaluator(run).evaluate(trigger, { signal: controller.signal })).rejects.toBe(reason);
+        expect(trigger).toEqual(original);
+    });
+
+    it('counts an AbortError as a script failure when the owner signal is still live', async () => {
+        const controller = new AbortController();
+        const run = vi.fn().mockRejectedValue(new DOMException('Provider timed out', 'AbortError'));
+        const outcome = await new ScriptConditionEvaluator(run).evaluate(rule(), { signal: controller.signal });
+        expect(outcome).toMatchObject({ fire: false, event: { consecutiveFailures: 1, lastError: { message: 'Provider timed out' } } });
     });
 
     it('pauses at five consecutive failures and skips subsequent runs', async () => {

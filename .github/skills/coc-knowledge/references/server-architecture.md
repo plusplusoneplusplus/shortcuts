@@ -163,7 +163,9 @@ that could silently drop fields or normalize non-JSON values.
 
 `ScriptConditionEvent` stores source/revision, interval, canonical result/hash and
 failure/pause state. `script-condition-evaluator.ts` uses an injected runner with a
-freshly parsed previous result (initially null). The first success establishes a
+freshly parsed previous result (initially null) and the manager's abort signal.
+Revocation propagates without changing failure or baseline state, even if the
+runner returns a late success. The first success establishes a
 baseline; subsequent hash changes request repeating fires without terminal state.
 The evaluator leaves input rules untouched. Execution/validation failures preserve
 baseline state, record a timestamped error (500 characters maximum) and pause the
@@ -174,8 +176,15 @@ per failure, capped at one hour without shortening longer configured intervals.
 with a trigger-only 60-second abort deadline. The engine terminates workers and aborts
 in-flight tool calls on cancellation; the wrapper preserves the cancellation reason
 and clears its deadline timer on every outcome. The caller owns and disposes the
-owner-resolved unattended runtime. Owner/tool admission and scheduling require
-separate wiring.
+owner-resolved unattended runtime.
+
+`TriggerManager` owns one abort controller per active script evaluation. Disarm,
+live script refresh and shutdown revoke execution; callers disarm on edits,
+pause/removal and owner revocation. Replacement timer arms wait until the cancelled
+run releases its overlap guard and reload the persisted rule. Cancelled outcomes
+cannot persist failures, baselines or wakes. The runner's internal deadline remains
+a script failure because it does not abort the manager's admission signal.
+Production owner/tool admission and lifecycle subscriptions require separate wiring.
 
 `triggers/sentinel-todo-trigger-firer.ts` commits one-shot PR/date decisions using
 the trigger and to-do stores' shared database writer. It checks the rule revision

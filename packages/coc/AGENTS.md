@@ -348,8 +348,13 @@ references before editing. Paths are package-relative.
   before another evaluation; acknowledged result wakes resume polling, while
   acknowledged pause notices stop timers. Ineligible pause recipients still leave
   the rule paused. `refreshScriptConditions` reconciles live timer gates without
-  deleting rows. Owner/tool admission, revocation cancellation, manual resume
-  resets and production wiring remain caller responsibilities.
+  deleting rows. Manager disarm, live refresh and shutdown abort active script
+  evaluations through the evaluator/runner signal; revocations preserve failure
+  counts and baselines, while deadline expiry counts as a failure. Replacement
+  timers wait for the cancelled run's overlap guard to release. Callers must
+  disarm on edits, pause/removal or owner revocation and wire live refresh.
+  Owner/tool admission, manual resume resets and production wiring remain caller
+  responsibilities.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated

@@ -9,8 +9,11 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
+import { CocToolRuntime, defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import { TriggerStore } from '../../../src/server/triggers/trigger-store';
 import { TriggerManager } from '../../../src/server/triggers/trigger-manager';
+import { ScriptConditionEvaluator } from '../../../src/server/triggers/script-condition-evaluator';
+import { runScriptCondition } from '../../../src/server/triggers/script-condition-runner';
 import type {
     EvaluationOutcome,
     EventEvaluator,
@@ -873,6 +876,154 @@ describe('script-condition repeating scheduler', () => {
         await flush();
         expect(h.firer.fireScriptResult).not.toHaveBeenCalled();
         expect(h.store.getById('trigger_1')?.event).not.toHaveProperty('lastResult');
+    });
+
+    it.each(['disarm', 'flag', 'shutdown'] as const)('aborts an active script on %s without persisting a failure or rearming', async reason => {
+        let signal: AbortSignal | undefined;
+        let enabled = true;
+        const evaluator: EventEvaluator = {
+            evaluate: vi.fn((_trigger, options) => {
+                signal = options?.signal;
+                return new Promise((_resolve, reject) => signal!.addEventListener('abort', () => reject(signal!.reason), { once: true }));
+            }),
+        };
+        const h = setup(evaluator, () => enabled);
+        const original = h.store.getById('trigger_1');
+        h.timer._fire('trigger_1');
+        expect(signal?.aborted).toBe(false);
+        if (reason === 'disarm') h.manager.disarm('trigger_1');
+        if (reason === 'flag') {
+            enabled = false;
+            h.manager.refreshScriptConditions();
+        }
+        if (reason === 'shutdown') h.manager.shutdownAll();
+        expect(signal?.aborted).toBe(true);
+        await flush();
+        expect(h.store.getById('trigger_1')).toEqual(original);
+        expect(h.timer.has('trigger_1')).toBe(false);
+        expect(h.firer.fireScriptResult).not.toHaveBeenCalled();
+        expect(h.firer.pauseScriptCondition).not.toHaveBeenCalled();
+    });
+
+    it('discards a successful outcome even when a disarmed evaluator ignores cancellation', async () => {
+        let release!: (value: EvaluationOutcome) => void;
+        const evaluator: EventEvaluator = { evaluate: vi.fn(() => new Promise(resolve => { release = resolve; })) };
+        const h = setup(evaluator);
+        const original = h.store.getById('trigger_1');
+        h.timer._fire('trigger_1');
+        h.manager.disarm('trigger_1');
+        release({ fire: true, event: scriptEvent({ lastResult: '2', lastResultHash: 'two' }) });
+        await flush();
+        expect(h.store.getById('trigger_1')).toEqual(original);
+        expect(h.timer.has('trigger_1')).toBe(false);
+        expect(h.firer.fireScriptResult).not.toHaveBeenCalled();
+    });
+
+    it.each(['arm', 'refresh'] as const)('defers an overdue replacement through %s until the cancelled run releases its tick guard', async method => {
+        let release!: (value: EvaluationOutcome) => void;
+        let signal: AbortSignal | undefined;
+        const evaluate = vi.fn<EventEvaluator['evaluate']>()
+            .mockImplementationOnce((_trigger, options) => {
+                signal = options?.signal;
+                return new Promise(resolve => { release = resolve; });
+            })
+            .mockImplementation(async trigger => ({ fire: false, event: trigger.event }));
+        const h = setup({ evaluate });
+        h.timer._fire('trigger_1');
+        const edited = { ...rule(), revision: 2, nextTickAt: new Date(BASE - 1).toISOString(),
+            event: scriptEvent({ scriptRevision: 2, script: 'return 3' }) };
+        h.store.update(edited);
+        if (method === 'refresh') h.manager.refreshScriptConditions();
+        else {
+            h.manager.disarm('trigger_1');
+            h.manager.arm(edited);
+        }
+        expect(signal?.aborted).toBe(true);
+        expect(h.timer.has('trigger_1')).toBe(false);
+        release({ fire: true, event: scriptEvent({ lastResult: '2', lastResultHash: 'two' }) });
+        await flush();
+        expect(h.store.getById('trigger_1')).toEqual(edited);
+        expect(h.firer.fireScriptResult).not.toHaveBeenCalled();
+        expect(h.timer._delay('trigger_1')).toBe(0);
+        await tick(h);
+        expect(evaluate).toHaveBeenCalledTimes(2);
+        expect(h.timer._delay('trigger_1')).toBe(300_000);
+        h.manager.shutdownAll();
+    });
+
+    it.each(['disarm', 'shutdown'] as const)('cancels a deferred replacement on a subsequent %s', async reason => {
+        let release!: (value: EvaluationOutcome) => void;
+        const h = setup({ evaluate: vi.fn(() => new Promise(resolve => { release = resolve; })) });
+        h.timer._fire('trigger_1');
+        h.manager.refreshScriptConditions();
+        if (reason === 'disarm') h.manager.disarm('trigger_1');
+        else h.manager.shutdownAll();
+        release({ fire: false, event: scriptEvent() });
+        await flush();
+        expect(h.timer.has('trigger_1')).toBe(false);
+        expect(h.store.getById('trigger_1')?.lastTickAt).toBeNull();
+    });
+
+    it('cancels only the selected rule and releases its run registration for a later run', async () => {
+        const signals: AbortSignal[] = [];
+        const evaluator = new ScriptConditionEvaluator(async (_trigger, _state, signal) => {
+            signals.push(signal!);
+            return new Promise((_resolve, reject) => signal!.addEventListener('abort', () => reject(signal!.reason), { once: true }));
+        });
+        const h = setup(evaluator);
+        h.store.insert({ ...rule(), id: 'other-rule', workspaceId: 'other-workspace', processId: 'other-owner' });
+        h.manager.armAll();
+        h.timer._fire('trigger_1');
+        h.timer._fire('other-rule');
+        h.manager.disarm('trigger_1');
+        await flush();
+        expect(signals.map(signal => signal.aborted)).toEqual([true, false]);
+        h.manager.arm(h.store.getById('trigger_1')!);
+        h.timer._fire('trigger_1');
+        expect(signals.map(signal => signal.aborted)).toEqual([true, false, false]);
+        h.manager.shutdownAll();
+        await flush();
+        expect(signals.every(signal => signal.aborted)).toBe(true);
+    });
+
+    it('terminates the real worker and its tool call through the manager/evaluator signal chain', async () => {
+        let started!: () => void;
+        const toolStarted = new Promise<void>(resolve => { started = resolve; });
+        let finished!: () => void;
+        const runFinished = new Promise<void>(resolve => { finished = resolve; });
+        let toolSignal: AbortSignal | undefined;
+        const runtime = new CocToolRuntime([defineTool('slow', {
+            handler: async (_args, invocation) => {
+                toolSignal = invocation.signal;
+                started();
+                return new Promise<string>(resolve => invocation.signal!.addEventListener('abort', () => resolve('cancelled'), { once: true }));
+            },
+        })]);
+        const evaluator = new ScriptConditionEvaluator(async (trigger, state, signal) => {
+            try {
+                if (trigger.event.type !== 'script-condition') throw new Error('Expected script rule');
+                return await runScriptCondition({ code: trigger.event.script, state, runtime, signal });
+            } finally { finished(); }
+        });
+        const h = setup(evaluator);
+        const original = { ...rule(), event: scriptEvent({ script: 'return await tools.slow({});',
+            consecutiveFailures: 4, lastResult: '1', lastResultHash: 'one' }) };
+        h.store.update(original);
+        try {
+            h.timer._fire('trigger_1');
+            await toolStarted;
+            h.manager.disarm('trigger_1');
+            await runFinished;
+            await flush();
+            expect(toolSignal?.aborted).toBe(true);
+            expect(h.store.getById('trigger_1')).toEqual(original);
+            expect(h.timer.has('trigger_1')).toBe(false);
+            expect(h.firer.fireScriptResult).not.toHaveBeenCalled();
+            expect(h.firer.pauseScriptCondition).not.toHaveBeenCalled();
+        } finally {
+            h.manager.shutdownAll();
+            runtime.dispose();
+        }
     });
 
     it('retries failed pending deliveries without reevaluating the script', async () => {
