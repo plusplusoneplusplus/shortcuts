@@ -174,8 +174,8 @@ per failure, capped at one hour without shortening longer configured intervals.
 with a trigger-only 60-second abort deadline. The engine terminates workers and aborts
 in-flight tool calls on cancellation; the wrapper preserves the cancellation reason
 and clears its deadline timer on every outcome. The caller owns and disposes the
-owner-resolved unattended runtime. Owner/tool admission, scheduling, persisted pause
-status and delivery require separate wiring.
+owner-resolved unattended runtime. Owner/tool admission, scheduling and persisted
+pause status require separate wiring.
 
 `triggers/sentinel-todo-trigger-firer.ts` commits one-shot PR/date decisions using
 the trigger and to-do stores' shared database writer. It checks the rule revision
@@ -185,6 +185,15 @@ fixed delivery identity and immutable wake prompt before queue work; delivery er
 remain pending and visible. Date recovery rechecks item/owner eligibility and
 removal before admission; missing owners fail without retargeting. Clearing retains
 dedupe receipts. A date wake grants no new authorization.
+
+`SentinelTodoTriggerFirer.fireScriptResult` atomically commits an evaluated changed
+result, immutable prompt and `script-condition:<ruleId>:<resultHash>` receipt. It
+retains active status/cadence and holds newer results while a delivery is pending.
+Delivery checks live flags, source revision, owner and current item eligibility;
+retries preserve the saved prompt and do not mark edited rules delivered. The wake
+contains bounded top-level changed-field names and escaped JSON marked as untrusted
+data. The production manager must call this path before persisting a changed
+baseline; script admission and scheduler wiring remain caller responsibilities.
 
 `QueueActionExecutor` sends bound wakes through `ProcessMessageDeliveryService.deliverOnce`,
 which serializes owner checks and dedupe with human follow-ups and buffer draining.

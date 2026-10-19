@@ -326,8 +326,14 @@ references before editing. Paths are package-relative.
   longer intervals. `runScriptCondition` passes state and strict JSON validation
   to the shared script engine with a trigger-only 60-second abort deadline. Abort
   terminates workers and cancels inner calls; the caller disposes its owner-resolved
-  unattended runtime. Owner/tool admission, scheduling, persisted pause status and
-  wake delivery require separate wiring.
+  unattended runtime. `SentinelTodoTriggerFirer.fireScriptResult` commits a changed
+  evaluated event and immutable untrusted-data wake together, using rule/result-hash
+  receipts through the shared message admission service. It retains active status
+  and cadence, blocks result replacement during pending delivery, and rechecks live
+  flags, owner/item eligibility and revisions before admission. Pending retries
+  reuse the saved prompt; script revisions revoke stale deliveries. Owner/tool
+  admission, scheduling, persisted pause status and production delivery wiring
+  remain caller responsibilities.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated
