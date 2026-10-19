@@ -708,6 +708,10 @@ references before editing. Paths are package-relative.
   additional responses for this display.
 - Keep tools mode-invariant; gate call-time behavior and unattended `ask_user`.
   Preserve explicit PR-write/final-check/grill exceptions.
+  Background script bundles set `unattendedScript`: omit ask-user wiring and deny
+  configured approval-gated tools before consulting prompts or session approvals.
+  Owner resolution and native/provider permission denial remain caller responsibilities;
+  nested `run_tool_script` is synthesized by the engine, bypassing its tool handler.
   Codex discovery uses filtered tools; Copilot context tier uses billing metadata.
 - Fresh session objects per turn; never cache sessions or add `sendFollowUp`.
   Only supported provider client processes may stay warm.

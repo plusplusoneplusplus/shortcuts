@@ -747,9 +747,18 @@ browser-only bundles, scrubber turns and PR-outcome-review turns.
 to the current mode, apply `applyLlmToolPreferences()` from `prompt-builder.ts` (effective
 disabled list plus context exclusions), then `applyLlmToolApprovalGate()`. `run_tool_script` is
 built last over that final list filtered by `isScriptableLlmTool`, so scripts reach only tools
-the turn already offers and gated tools still ask; the script tool is itself gateable. Its
+the turn already offers with the same approval policy; the script tool is itself gateable. Its
 callable list excludes mode-specific tools such as `create_pull_request`, keeping the tool block
 identical across ask, autopilot and follow-ups.
+
+`ChatToolBundleOptions.unattendedScript` omits ask-user construction and sets the
+approval gate's `denyApprovals` policy. Gated handlers return a denied result before
+consulting interactive wiring or saved session approvals. The script engine turns
+that result into `ToolCallError`, including for gated tools called by nested scripts.
+Ungated tools and workspace preferences retain their normal behavior. Ordinary
+bundles retain their existing interactive and noninteractive approval policies.
+Owner resolution and native/provider permission denial require caller wiring; the
+engine synthesizes nested `run_tool_script` calls independently of its tool handler.
 
 Some addons emit a prompt `suffix` wrapped in a named XML-style tag via `tagGuidanceSuffix()`
 from `prompt-tags.ts`, so aggregated `toolGuidance` is self-delimiting. Most addons emit

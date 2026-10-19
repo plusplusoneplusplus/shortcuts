@@ -2,16 +2,18 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
+import { CocToolRuntime, type Tool } from '@plusplusoneplusplus/coc-agent-sdk';
+import { runScriptCondition } from '../../../src/server/triggers/script-condition-runner';
 import {
     applyLlmToolApprovalGate,
     formatLlmToolApprovalArgs,
     LLM_TOOL_APPROVAL_ARGS_CAP,
     LLM_TOOL_DENIED_MESSAGE,
+    LLM_TOOL_UNATTENDED_DENIED_MESSAGE,
     type LlmToolApprovalRecord,
 } from '../../../src/server/executors/llm-tool-approval-gate';
 import { DangerousCommandSessionApprovals } from '../../../src/server/executors/dangerous-command-session-approvals';
-import { buildChatToolBundle } from '../../../src/server/executors/chat-tool-builder';
+import { buildChatToolBundle, type ChatToolBundleOptions } from '../../../src/server/executors/chat-tool-builder';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import {
     ASK_USER_LLM_TOOL_APPROVAL_OPTIONS,
@@ -81,6 +83,32 @@ describe('applyLlmToolApprovalGate', () => {
         const [wrapped] = gate([tool]);
         await expect(wrapped.handler!({}, invocation)).resolves.toBe('ran');
         expect(records[0].outcome).toBe('auto-allowed');
+    });
+
+    it.each([true, false])('explicit denial bypasses approval wiring and saved approvals (interactive=%s)', async interactive => {
+        const tool = makeTool('send_to_conversation');
+        approvals.add('proc-1', tool.name);
+        const getAskApproval = vi.fn(() => vi.fn(async () => 'approve-once' as const));
+        const isInteractive = vi.fn(() => interactive);
+        const [wrapped] = gate([tool], { denyApprovals: true, isInteractive, getAskApproval });
+        await expect(wrapped.handler!({}, invocation)).resolves.toEqual({
+            textResultForLlm: LLM_TOOL_UNATTENDED_DENIED_MESSAGE,
+            resultType: 'denied', error: LLM_TOOL_UNATTENDED_DENIED_MESSAGE,
+        });
+        expect(tool.handler).not.toHaveBeenCalled();
+        expect(isInteractive).not.toHaveBeenCalled();
+        expect(getAskApproval).not.toHaveBeenCalled();
+        expect(records).toEqual([{ toolName: tool.name, toolCallId: 'call-1', outcome: 'deny' }]);
+        expect(approvals.list('proc-1')).toEqual([tool.name]);
+    });
+
+    it('explicit denial preserves ungated tools and their invocation', async () => {
+        const tool = makeTool('search_conversations');
+        const [wrapped] = gate([tool], { denyApprovals: true });
+        expect(wrapped).toBe(tool);
+        await expect(wrapped.handler!({ query: 'x' }, invocation)).resolves.toBe('ran');
+        expect(tool.handler).toHaveBeenCalledWith({ query: 'x' }, invocation);
+        expect(records).toEqual([]);
     });
 
     it('approve-once runs the tool and asks again next time', async () => {
@@ -205,6 +233,7 @@ describe('buildChatToolBundle approval gate wiring', () => {
         isInteractive?: () => boolean,
         emitQuestions = vi.fn(async () => {}),
         onLlmToolApprovalDecision?: (record: LlmToolApprovalRecord) => void,
+        overrides: Partial<ChatToolBundleOptions> = {},
     ) {
         return buildChatToolBundle({
             onLlmToolApprovalDecision,
@@ -216,6 +245,7 @@ describe('buildChatToolBundle approval gate wiring', () => {
                 enabled: true,
                 deps: { emitQuestions, computeTurnIndex: () => 1, ...(isInteractive ? { isInteractive } : {}) },
             },
+            ...overrides,
         });
     }
 
@@ -248,6 +278,81 @@ describe('buildChatToolBundle approval gate wiring', () => {
         const tool = bundle.tools.find(t => t.name === 'search_conversations')!;
         await tool.handler!({ query: 'x' }, { ...invocation, toolName: 'search_conversations' });
         expect(records).toEqual([{ toolName: 'search_conversations', toolCallId: 'call-1', outcome: 'auto-allowed' }]);
+    });
+
+    it.each([true, false])('background bundles exclude ask_user and deny without emitting (interactive=%s)', async interactive => {
+        writeRepoPreferences(tmpDir, WS, { disabledLlmTools: [], approvalRequiredLlmTools: ['search_conversations'] });
+        const emitQuestions = vi.fn(async () => {});
+        const bundle = build(() => interactive, emitQuestions, undefined, { unattendedScript: true });
+        expect(bundle.askUser).toBeUndefined();
+        expect(bundle.tools.map(t => t.name)).not.toContain('ask_user');
+        const tool = bundle.tools.find(t => t.name === 'search_conversations')!;
+        await expect(tool.handler!({ query: 'x' }, invocation)).resolves.toMatchObject({ resultType: 'denied' });
+        expect(emitQuestions).not.toHaveBeenCalled();
+    });
+
+    it('background bundles deny when ask-user wiring is absent, including the script tool itself', async () => {
+        writeRepoPreferences(tmpDir, WS, {
+            disabledLlmTools: [], approvalRequiredLlmTools: ['search_conversations', 'run_tool_script'],
+        });
+        const searchConversations = vi.fn();
+        const bundle = build(undefined, undefined, undefined, {
+            unattendedScript: true, askUser: undefined, toolScriptingEnabled: true,
+            store: { searchConversations } as any,
+        });
+        for (const name of ['search_conversations', 'run_tool_script']) {
+            const tool = bundle.tools.find(t => t.name === name)!;
+            await expect(tool.handler!({ query: 'x', code: 'return 1;' }, invocation))
+                .resolves.toMatchObject({ resultType: 'denied', error: LLM_TOOL_UNATTENDED_DENIED_MESSAGE });
+        }
+        expect(searchConversations).not.toHaveBeenCalled();
+        expect(bundle.askUser).toBeUndefined();
+    });
+
+    it.each([false, true])('gated calls throw ToolCallError inside the worker without approval (nested=%s)', async nested => {
+        writeRepoPreferences(tmpDir, WS, { disabledLlmTools: [], approvalRequiredLlmTools: ['search_conversations'] });
+        const emitQuestions = vi.fn(async () => {});
+        const searchConversations = vi.fn();
+        const bundle = build(undefined, emitQuestions, undefined, {
+            unattendedScript: true,
+            store: { searchConversations } as any,
+        });
+        const runtime = new CocToolRuntime(bundle.tools, { workspaceId: WS, processId: 'owner' });
+        const code = `try {
+            await tools.search_conversations({ query: 'x' }); return 'unexpected';
+        } catch (error) {
+            return { name: error.name, toolName: error.toolName, code: error.code, message: error.message };
+        }`;
+        try {
+            const result = await runScriptCondition({
+                code: nested ? `return (await tools.run_tool_script({ code: ${JSON.stringify(code)} })).result;` : code,
+                state: null, runtime,
+            });
+            expect(result).toEqual({
+                name: 'ToolCallError', toolName: 'search_conversations', code: 'TOOL_ERROR',
+                message: LLM_TOOL_UNATTENDED_DENIED_MESSAGE,
+            });
+            expect(emitQuestions).not.toHaveBeenCalled();
+            expect(searchConversations).not.toHaveBeenCalled();
+        } finally {
+            runtime.dispose();
+        }
+    });
+
+    it('background bundles retain owner workspace preferences and ungated tools', async () => {
+        writeRepoPreferences(tmpDir, WS, { disabledLlmTools: [], approvalRequiredLlmTools: ['search_conversations'] });
+        writeRepoPreferences(tmpDir, 'other-workspace', { disabledLlmTools: [], approvalRequiredLlmTools: [] });
+        const searchConversations = vi.fn(async () => ({ results: [], total: 0 }));
+        const bundle = build(undefined, undefined, undefined, {
+            unattendedScript: true, workspaceId: 'other-workspace',
+            store: { searchConversations } as any,
+        });
+        await bundle.tools.find(t => t.name === 'search_conversations')!.handler!({ query: 'x' }, invocation);
+        expect(searchConversations).toHaveBeenCalledOnce();
+        writeRepoPreferences(tmpDir, 'other-workspace', { disabledLlmTools: ['search_conversations'] });
+        expect(build(undefined, undefined, undefined, {
+            unattendedScript: true, workspaceId: 'other-workspace',
+        }).tools.map(t => t.name)).not.toContain('search_conversations');
     });
 
     it('leaves handlers untouched when the repo list is empty', () => {
