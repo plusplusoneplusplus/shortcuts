@@ -16,6 +16,10 @@ const controllers = new Map<string, {
 // Files whose read fails: the mock reports an error and never mounts an editor.
 const missingFiles = new Set<string>();
 
+// Files whose editor is still loading: the view renders, but reports its
+// navigation controller and location only once `finishEditorLoad` runs.
+const loadingEditors = new Map<string, () => void>();
+
 function snapshot(line: number, column = 1): EditorNavigationSnapshot {
     return {
         selection: {
@@ -58,16 +62,20 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/P
             return { controller, restore };
         }, []);
         const missing = missingFiles.has(filePath);
+        const [loaded, setLoaded] = useState(() => !loadingEditors.has(filePath));
+        // Registered while rendering, not in an effect, so the hook exists as
+        // soon as the view is in the DOM.
+        if (!loaded) loadingEditors.set(filePath, () => setLoaded(true));
         useEffect(() => {
             if (missing) onStatusChange?.('error');
         }, [missing, onStatusChange]);
         if (!missing) controllers.set(filePath, entry);
         useEffect(() => {
-            if (missing) return undefined;
+            if (missing || !loaded) return undefined;
             onNavigationMount?.(entry.controller);
             onNavigationLocation?.(currentRef.current, 'user');
             return () => onNavigationMount?.(null);
-        }, [entry.controller, missing, onNavigationLocation, onNavigationMount]);
+        }, [entry.controller, loaded, missing, onNavigationLocation, onNavigationMount]);
         return (
             <div>
                 <button data-testid={`mock-file-${filePath}`}>{filePath}</button>
@@ -290,10 +298,40 @@ function mouseHistory(target: HTMLElement, button: 3 | 4) {
     return { down, up };
 }
 
+const recordedFiles = () => readUnifiedPanelNavigationHistory(WS).entries.map(entry => entry.file.resourceId);
+
+/**
+ * A trip is replayable once its destination editor has reported its location,
+ * not when the destination's DOM appears: the report runs in a passive effect,
+ * which React defers to a later task when an async open renders past its
+ * scheduler slice (slow CI runners) and real editors report after loading.
+ */
+async function awaitRecordedTrip(fromPath = 'a.ts', toPath = 'b.ts') {
+    await waitFor(() => {
+        const { entries, index } = readUnifiedPanelNavigationHistory(WS);
+        expect(entries.map(entry => entry.file.resourceId)).toEqual(expect.arrayContaining([fromPath, toPath]));
+        expect(entries[index]?.file.resourceId).toBe(toPath);
+    });
+    return screen.getByTestId(`mock-file-${toPath}`);
+}
+
+function jumpToB() {
+    fireEvent.click(screen.getByTestId('jump-to-b'));
+    return awaitRecordedTrip();
+}
+
+function startEditorLoad(path: string) {
+    loadingEditors.set(path, () => undefined);
+}
+
+function finishEditorLoad(path: string) {
+    const finish = loadingEditors.get(path);
+    loadingEditors.delete(path);
+    act(() => finish?.());
+}
+
 async function expectRecordedTrip(fromPath = 'a.ts', toPath = 'b.ts') {
-    await waitFor(() => expect(readUnifiedPanelNavigationHistory(WS).entries.map(entry => entry.file.resourceId))
-        .toEqual(expect.arrayContaining([fromPath, toPath])));
-    const destination = screen.getByTestId(`mock-file-${toPath}`);
+    const destination = await awaitRecordedTrip(fromPath, toPath);
     act(() => destination.focus());
 
     expect(pressHistory('back').defaultPrevented).toBe(true);
@@ -322,6 +360,7 @@ beforeEach(() => {
     localStorage.clear();
     controllers.clear();
     missingFiles.clear();
+    loadingEditors.clear();
     clearUnifiedPanelState();
     clearUnifiedTreeState();
     stubOffsetParent();
@@ -338,8 +377,7 @@ describe('unified panel file navigation history', () => {
         seedFile();
         renderPanel();
         await screen.findByTestId('mock-file-a.ts');
-        fireEvent.click(screen.getByTestId('jump-to-b'));
-        const b = await screen.findByTestId('mock-file-b.ts');
+        const b = await jumpToB();
         act(() => b.focus());
 
         expect(pressHistory('back').defaultPrevented).toBe(true);
@@ -362,8 +400,7 @@ describe('unified panel file navigation history', () => {
             seedFile();
             renderPanel();
             await screen.findByTestId('mock-file-a.ts');
-            fireEvent.click(screen.getByTestId('jump-to-b'));
-            const b = await screen.findByTestId('mock-file-b.ts');
+            const b = await jumpToB();
             act(() => b.focus());
 
             expect(pressHistory('back').defaultPrevented).toBe(false);
@@ -378,6 +415,30 @@ describe('unified panel file navigation history', () => {
             await waitFor(() => expect(
                 screen.getByTestId(`unified-panel-tab-${fileId('b.ts')}`),
             ).toHaveAttribute('aria-selected', 'true'));
+        } finally {
+            platform.mockRestore();
+        }
+    });
+
+    it('replays a jump once its destination editor reports a location, not when its view renders', async () => {
+        const platform = vi.spyOn(window.navigator, 'platform', 'get').mockReturnValue('MacIntel');
+        try {
+            startEditorLoad('b.ts');
+            seedFile();
+            renderPanel();
+            await screen.findByTestId('mock-file-a.ts');
+            fireEvent.click(screen.getByTestId('jump-to-b'));
+            await screen.findByTestId('mock-file-b.ts');
+            expect(recordedFiles()).toEqual(['a.ts']);
+
+            finishEditorLoad('b.ts');
+            const b = await awaitRecordedTrip();
+            act(() => b.focus());
+            expect(pressMacHistory('back').defaultPrevented).toBe(true);
+            await waitFor(() => expect(
+                screen.getByTestId(`unified-panel-tab-${fileId('a.ts')}`),
+            ).toHaveAttribute('aria-selected', 'true'));
+            expect(controllers.get('a.ts')?.restore).toHaveBeenCalledWith(snapshot(1, 3));
         } finally {
             platform.mockRestore();
         }
@@ -483,8 +544,7 @@ describe('unified panel file navigation history', () => {
         seedFile();
         renderPanel();
         await screen.findByTestId('mock-file-a.ts');
-        fireEvent.click(screen.getByTestId('jump-to-b'));
-        const b = await screen.findByTestId('mock-file-b.ts');
+        const b = await jumpToB();
         act(() => b.focus());
 
         expect(pressHistory('back').defaultPrevented).toBe(true);
@@ -526,8 +586,7 @@ describe('unified panel file navigation history', () => {
         seedFile();
         renderPanel();
         await screen.findByTestId('mock-file-a.ts');
-        fireEvent.click(screen.getByTestId('jump-to-b'));
-        const b = await screen.findByTestId('mock-file-b.ts');
+        const b = await jumpToB();
 
         const back = mouseHistory(b, 3);
         expect(back.down.defaultPrevented).toBe(true);
@@ -585,8 +644,7 @@ describe('unified panel file navigation history', () => {
         seedFile();
         renderPanel();
         await screen.findByTestId('mock-file-a.ts');
-        fireEvent.click(screen.getByTestId('jump-to-b'));
-        await screen.findByTestId('mock-file-b.ts');
+        await jumpToB();
         const tabB = screen.getByTestId(`unified-panel-tab-${fileId('b.ts')}`);
         const order = () => screen.getAllByRole('tab').map(tab => tab.getAttribute('data-tab-id'));
         expect(order()).toEqual([fileId('a.ts'), fileId('b.ts')]);
@@ -613,8 +671,7 @@ describe('unified panel file navigation history', () => {
         seedFile();
         renderPanel();
         await screen.findByTestId('mock-file-a.ts');
-        fireEvent.click(screen.getByTestId('jump-to-b'));
-        await screen.findByTestId('mock-file-b.ts');
+        await jumpToB();
 
         fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${fileId('b.ts')}`));
         await waitFor(() => expect(
@@ -641,8 +698,7 @@ describe('unified panel file navigation history', () => {
         seedFile();
         renderPanel();
         await screen.findByTestId('mock-file-a.ts');
-        fireEvent.click(screen.getByTestId('jump-to-b'));
-        await screen.findByTestId('mock-file-b.ts');
+        await jumpToB();
         fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${fileId('b.ts')}`));
         await waitFor(() => expect(screen.queryByTestId(`unified-panel-tab-${fileId('b.ts')}`)).toBeNull());
         const a = screen.getByTestId('mock-file-a.ts');
@@ -749,8 +805,7 @@ describe('unified panel file navigation history', () => {
         seedFile();
         const first = renderPanel();
         await screen.findByTestId('mock-file-a.ts');
-        fireEvent.click(screen.getByTestId('jump-to-b'));
-        await screen.findByTestId('mock-file-b.ts');
+        await jumpToB();
         first.unmount();
         // A reload drops the in-memory cache; only localStorage survives.
         const saved = { ...localStorage };
@@ -768,8 +823,7 @@ describe('unified panel file navigation history', () => {
         seedFile();
         const first = renderPanel();
         await screen.findByTestId('mock-file-a.ts');
-        fireEvent.click(screen.getByTestId('jump-to-b'));
-        await screen.findByTestId('mock-file-b.ts');
+        await jumpToB();
         first.unmount();
 
         renderPanel();
