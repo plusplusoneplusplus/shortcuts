@@ -71,6 +71,7 @@ import { createSubmitScrubFindingsTool } from '../llm-tools/submit-scrub-finding
 import { getScrubChildContext } from '../sentinel-scrubber/scrubber-runs';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
 import { buildChatModeDirective, loadChatModeInstructions, persistChatModeContextOnUserTurn, prependChatModeDirective } from './chat-mode-directive';
+import { resolveAdditionalInstructionsBlock, withAdditionalInstructions } from '../processes/sentinel-additional-instructions';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
 import { assertIncomingImageFiles, assertChatImageTransport, assertCopilotImageModel, cleanupChatAttachmentTempDir, getChatImageAttachments } from './chat-image-policy';
 import { buildChatTurnSendOptions, buildMcpOAuthHandler } from './chat-turn-runner';
@@ -1064,8 +1065,15 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 : autoFolderContext,
         });
         await persistChatModeContextOnUserTurn(this.store, processId, modeDirective);
+        // Initial Sentinel context also carries the chat's saved additional
+        // instructions (kept out of the recorded marker).
+        const additionalInstructions = directiveMode === 'sentinel'
+            ? await resolveAdditionalInstructionsBlock(
+                this.store, processId, this.queueConfig.getSentinelAdditionalInstructionsEnabled())
+            : undefined;
         const effectivePrompt = prependChatModeDirective(
-            ctx.browserPrompt ? `${ctx.browserPrompt}\n\n${grilledPrompt}` : grilledPrompt, modeDirective);
+            ctx.browserPrompt ? `${ctx.browserPrompt}\n\n${grilledPrompt}` : grilledPrompt,
+            withAdditionalInstructions(modeDirective, additionalInstructions));
 
         return {
             agentMode: (isAsk ? 'interactive' : 'autopilot') as AgentMode,

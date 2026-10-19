@@ -52,6 +52,7 @@ import { readNoteContent } from './note-chat-executor';
 import { suppressesPlanSaveGuidance } from './auto-folder-utils';
 import { emitMessageSteering } from '../streaming/sse-handler';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
+import { resolveAdditionalInstructionsBlock, withAdditionalInstructions } from '../processes/sentinel-additional-instructions';
 import {
     buildChatModeDirective,
     buildFollowUpChatModeDisplayBlock,
@@ -636,7 +637,15 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 : undefined;
             // Order-independent with the decoration above: the directive
             // prepends, the repo-group listing appends.
-            const followUpMessage = prependChatModeDirective(decorated.prompt, modeDirective);
+            // A Sentinel context (re)build — the turns that carry the directive —
+            // also carries the latest saved additional instructions. Ordinary
+            // turns send neither, so saved edits wait for the next boundary.
+            const additionalInstructions = modeDirective && currentMode === 'sentinel'
+                ? await resolveAdditionalInstructionsBlock(
+                    this.store, processId, this.queueConfig.getSentinelAdditionalInstructionsEnabled())
+                : undefined;
+            const followUpMessage = prependChatModeDirective(
+                decorated.prompt, withAdditionalInstructions(modeDirective, additionalInstructions));
             // Recorded only on the turns that actually carried the block (the
             // repo-group listing is recorded the same way inside the
             // decoration), so the next turn's decision — and the transcript's

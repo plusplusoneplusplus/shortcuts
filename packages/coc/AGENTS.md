@@ -764,7 +764,10 @@ references before editing. Paths are package-relative.
   `delegation/sentinel-job-review-instructions.ts` and are appended by
   `chat-turn-system-message.ts` on every first/follow-up Sentinel request, including
   resumed, provider-switched and post-compaction sessions, independently of admin/repo
-  prompts. Sentinel completion messages contain only the untrusted-result prefix and
+  prompts. Saved per-chat additional instructions (default-off
+  `features.sentinelAdditionalInstructions`) ride only the turns that carry the Sentinel
+  mode directive, read fresh there, never the system message or the stored marker.
+  Sentinel completion messages contain only the untrusted-result prefix and
   result JSON; non-Sentinel parents receive the shared rules inline.
   `features.sentinelResultCards` is a default-on, live presentation gate; explicit false
   opts out. Cards require server delivery correlation, the exact result envelope and

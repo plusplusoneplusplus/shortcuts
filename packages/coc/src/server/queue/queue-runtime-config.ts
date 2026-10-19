@@ -81,6 +81,8 @@ export interface QueueRuntimeConfig {
     getFollowUpSuggestions(): QueueFollowUpSuggestionsConfig;
     /** Optional Sentinel next actions, read when building each turn. */
     getSentinelNextStepsEnabled(): boolean;
+    /** Sentinel per-chat additional instructions, read when Sentinel context is next built. */
+    getSentinelAdditionalInstructionsEnabled(): boolean;
     /** Ask User policy for the next turn built. */
     getAskUser(): QueueAskUserConfig;
     /** Global skill-source folder settings for the next skill resolution. */
@@ -174,6 +176,7 @@ export function createQueueRuntimeConfig(source: QueueConfigSource): QueueRuntim
         getDefaultIdleTimeoutMs: () => readFromSnapshot(source.config).idleTimeoutMs,
         getFollowUpSuggestions: () => readFromSnapshot(source.config).followUpSuggestions,
         getSentinelNextStepsEnabled: () => source.config.features.sentinelNextSteps === true,
+        getSentinelAdditionalInstructionsEnabled: () => source.config.features.sentinelAdditionalInstructions === true,
         getAskUser: () => readFromSnapshot(source.config).askUser,
         getSkillFolders: () => readFromSnapshot(source.config).skillFolders,
         getRalphFinalCheckPolicy: () => readFromSnapshot(source.config).ralphFinalCheck,
@@ -205,6 +208,7 @@ export function createFixedQueueRuntimeConfig(overrides: {
 } = {}): QueueRuntimeConfig {
     const file = overrides.config;
     const sentinelNextStepsEnabled = file?.features?.sentinelNextSteps === true;
+    const sentinelAdditionalInstructionsEnabled = file?.features?.sentinelAdditionalInstructions === true;
 
     const timeoutMs = overrides.defaultTimeoutMs
         ?? resolveDefaultTimeoutMs(file?.timeout);
@@ -241,6 +245,7 @@ export function createFixedQueueRuntimeConfig(overrides: {
         getDefaultIdleTimeoutMs: () => idleTimeoutMs,
         getFollowUpSuggestions: () => followUpSuggestions,
         getSentinelNextStepsEnabled: () => sentinelNextStepsEnabled,
+        getSentinelAdditionalInstructionsEnabled: () => sentinelAdditionalInstructionsEnabled,
         getAskUser: () => askUser,
         getSkillFolders: () => skillFolders,
         getRalphFinalCheckPolicy: () => ralphFinalCheck,
