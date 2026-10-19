@@ -775,7 +775,12 @@ reference-only conversations keep navigation without job badges. Default-off liv
 cards and an external-link editor in the existing detail form. External replacements
 and clears preserve conversation attachments; omission preserves external links.
 External links follow shared desktop/web navigation without selecting the card or
-starting a conversation excursion. References remain display metadata. Normal tracking
+starting a conversation excursion. References remain display metadata. Detail notes
+store and edit raw Markdown but display inline Markdown through `SentinelTodoNotes`
+(the AskUser safe renderer: raw HTML escaped, non-http(s)/mailto/relative/hash URLs
+become `#`); links stop row propagation, http(s) opens the panel browser, in-app hash
+links join the excursion, and a remote ledger qualifies bare `#repos/<ws>` links with
+its server. Normal tracking
 comes first, then an always-visible Manual tracking
 section with its own add form and separate Done/Archived groups. Following an in-app To-do
 Job/Ref link starts a per-window, in-memory excursion: visited hosted chats show an origin
