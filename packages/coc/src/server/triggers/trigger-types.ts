@@ -178,11 +178,11 @@ export interface SendMessageAction {
 export type TriggerAction = SendMessageAction;
 
 // ============================================================================
-// Sentinel To-do binding (one-shot wake rules)
+// Sentinel To-do binding
 // ============================================================================
 
 /**
- * Binds a one-shot trigger to an item of its owning Sentinel's to-do ledger.
+ * Binds a trigger to an item of its owning Sentinel's to-do ledger.
  * The Sentinel chat is `trigger.processId`; the trigger never writes the item.
  */
 export interface SentinelTodoTriggerBinding {
@@ -207,14 +207,17 @@ export interface SentinelTodoTriggerBinding {
 export type TriggerOutcome = 'fired' | 'closed-unmerged' | 'skipped' | 'error';
 
 /**
- * Durable record of a wake message. Saved with the terminal outcome before any
- * queue work, so a crash between fire and enqueue is re-delivered once at
- * startup; `deliveryId` rides on the queued/buffered message for dedupe.
+ * Durable record of a wake message, saved before queue work with the one-shot
+ * outcome or repeating result. Recovery replays pending wakes; `deliveryId`
+ * rides on queued/buffered messages and persisted turns for dedupe.
  */
 export interface TriggerDelivery {
     deliveryId: string;
     firedAt: string;
-    reason: 'merged' | 'closed' | 'run-now' | 'due';
+    reason: 'merged' | 'closed' | 'run-now' | 'due' | 'script-changed';
+    /** Script wake admission is bound to this exact result and source revision. */
+    resultHash?: string;
+    scriptRevision?: number;
     state: 'pending' | 'delivered' | 'failed';
     deliveredAt?: string;
     /** Item revision captured when the fire committed. */
@@ -281,7 +284,7 @@ export interface Trigger {
     outcome?: TriggerOutcome;
     outcomeReason?: string;
 
-    /** Durable wake-message delivery (one-shot rules only). */
+    /** Durable wake-message delivery; repeating rules retain their latest receipt. */
     delivery?: TriggerDelivery;
 }
 

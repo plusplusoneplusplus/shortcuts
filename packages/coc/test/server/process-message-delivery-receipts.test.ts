@@ -1,4 +1,11 @@
 import fs from 'node:fs';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
+import { TriggerStore } from '../../src/server/triggers/trigger-store';
+import { SentinelTodoStore } from '../../src/server/sentinel-todos/sentinel-todo-store';
+import { SentinelTodoTriggerFirer } from '../../src/server/triggers/sentinel-todo-trigger-firer';
+import { QueueActionExecutor } from '../../src/server/triggers/queue-action-executor';
+import { canonicalizeScriptConditionResult } from '../../src/server/triggers/script-condition-result';
+import type { ScriptConditionEvent, Trigger } from '../../src/server/triggers/trigger-types';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -67,6 +74,71 @@ describe('durable review admission', () => {
             ...review, turnSource: { source: 'trigger', triggerId: 'pr-watch', deliveryId: id },
         });
     }
+
+    it('deduplicates script result hashes after accepted delivery errors, restart and returning results', async () => {
+        let triggerDb = new NativeDatabase(path.join(directory, 'triggers.db'));
+        let triggers = new TriggerStore(triggerDb);
+        let todos = new SentinelTodoStore(triggerDb);
+        const owner = { workspaceId, processId };
+        const item = todos.create(owner, { title: 'Watch PR' }, { actor: 'user' }).item;
+        const result = (value: unknown) => {
+            const encoded = canonicalizeScriptConditionResult(value);
+            return { lastResult: encoded.canonicalJson, lastResultHash: encoded.hash };
+        };
+        const rule: Trigger = {
+            id: 'script-rule', ...owner, status: 'active', revision: 1,
+            createdAt: new Date().toISOString(), expiresAt: null, lastTickAt: null, nextTickAt: null, inFlight: false,
+            binding: { kind: 'sentinel-todo', itemId: item.id, armedBy: 'sentinel', armedAt: new Date().toISOString() },
+            event: { type: 'script-condition', script: 'return state;', scriptRevision: 1, intervalMs: 300_000,
+                consecutiveFailures: 0, paused: false, ...result({ state: 'open' }) },
+            action: { type: 'send-message', processId, mode: 'inherit', prompt: '' },
+        };
+        triggers.insert(rule);
+        let failAfterAdmission = true;
+        const createFirer = () => {
+            const executor = new QueueActionExecutor({
+                processStore: store, queueManager: queue, resolveWorkspaceId: async () => workspaceId,
+                messageDelivery: service,
+            });
+            return new SentinelTodoTriggerFirer({
+                triggers, todos, processes: store, scriptConditionsEnabled: () => true, emit: () => {},
+                executor: { async execute(...args) {
+                    await executor.execute(...args);
+                    if (failAfterAdmission) throw new Error('Lost delivery acknowledgement');
+                } },
+            });
+        };
+        let firer = createFirer();
+        const fire = async (state: string) => {
+            const current = triggers.getById(rule.id)!;
+            await firer.fireScriptResult(rule.id,
+                { ...current.event as ScriptConditionEvent, ...result({ state }) }, current.revision);
+        };
+        try {
+            await expect(fire('approved')).rejects.toThrow('acknowledgement');
+            const receipt = triggers.getById(rule.id)!.delivery!.deliveryId;
+            expect(queue.getAll()).toHaveLength(1);
+            expect(triggers.getById(rule.id)!.delivery!.state).toBe('pending');
+            triggerDb.close();
+            restart(true);
+            triggerDb = new NativeDatabase(path.join(directory, 'triggers.db'));
+            triggers = new TriggerStore(triggerDb);
+            todos = new SentinelTodoStore(triggerDb);
+            failAfterAdmission = false;
+            firer = createFirer();
+            await firer.deliverPending(rule.id);
+            expect(queue.getAll()).toHaveLength(0);
+            expect(triggers.getById(rule.id)!.delivery).toMatchObject({ state: 'delivered', deliveryId: receipt });
+            expect((await store.getProcess(processId))!.conversationTurns).toHaveLength(1);
+            await store.updateProcess(processId, { status: 'completed' });
+            await fire('merged');
+            expect((await store.getProcess(processId))!.conversationTurns).toHaveLength(2);
+            await fire('approved');
+            expect((await store.getProcess(processId))!.conversationTurns).toHaveLength(2);
+            expect(triggers.getById(rule.id)!.status).toBe('active');
+            expect(todos.get(owner).items[0].status).toBe(item.status);
+        } finally { triggerDb.close(); }
+    });
 
     it('serializes PR repair receipts with human delivery in an ordinary owner chat', async () => {
         await store.updateProcess(processId, { metadata: { workspaceId, mode: 'ask', provider: 'copilot' } });
