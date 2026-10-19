@@ -757,15 +757,19 @@ the turn already offers with the same approval policy; the script tool is itself
 callable list excludes mode-specific tools such as `create_pull_request`, keeping the tool block
 identical across ask, autopilot and follow-ups.
 
-`ChatToolBundleOptions.unattendedScript` omits ask-user construction and sets the
-approval gate's `denyApprovals` policy. Gated handlers return a denied result before
-consulting interactive wiring or saved session approvals. The script engine turns
+`ChatTurnContextInput.unattendedScript` propagates to the tool bundle, omits
+ask-user construction and sets the approval gate's `denyApprovals` policy. Gated
+handlers return a denied result before consulting interactive wiring or saved
+session approvals. The script engine turns
 that result into `ToolCallError`, including for gated tools called by nested scripts.
 Ungated tools and workspace preferences retain their normal behavior. Ordinary
 bundles retain their existing interactive and noninteractive approval policies.
-Owner resolution and native/provider permission denial require caller wiring.
-Synthetic nested `run_tool_script` calls use the engine's inherited nesting policy,
-which the background caller derives from the owner's enabled and approval settings.
+`runScriptConditionWithOwnerTools` builds that context from supplied owner-bound
+capabilities, including Memory V2, and creates a per-run runtime from its full CoC
+tool list without the ordinary chat scriptable subset filter. It disposes both
+resources on success, failure or cancellation and starts no provider session.
+Synthetic nesting requires an enabled, ungated owner script tool. Callers validate
+the owner, live flags and rule revision, resolve capabilities and abort revocations.
 
 Some addons emit a prompt `suffix` wrapped in a named XML-style tag via `tagGuidanceSuffix()`
 from `prompt-tags.ts`, so aggregated `toolGuidance` is self-delimiting. Most addons emit

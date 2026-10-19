@@ -326,9 +326,13 @@ references before editing. Paths are package-relative.
   longer intervals. `runScriptCondition` passes state and strict JSON validation
   to the shared script engine with a trigger-only 60-second abort deadline. Abort
   terminates workers and cancels inner calls; the caller disposes its owner-resolved
-  unattended runtime. Nested scripts default to denied; set `allowNestedScripts`
-  only after checking that the owner's script tool is enabled and ungated. The
-  engine inherits this policy across children; chat's default remains enabled.
+  unattended runtime. `runScriptConditionWithOwnerTools` assembles the supplied
+  owner-bound capabilities through the shared chat context, including Memory V2,
+  and disposes its context/runtime after every outcome. It uses the full resolved
+  CoC list, omits questions and denies approval-gated handlers. Nested scripts
+  require the owner's script tool to survive filtering and require no approval;
+  children inherit that policy. Callers validate owner, live flags and revision
+  and abort on revocation. Provider sessions are not started by this adapter.
   `SentinelTodoTriggerFirer.fireScriptResult` commits a changed
   evaluated event and immutable untrusted-data wake together, using rule/result-hash
   receipts through the shared message admission service. It retains active status
@@ -714,8 +718,8 @@ references before editing. Paths are package-relative.
   additional responses for this display.
 - Keep tools mode-invariant; gate call-time behavior and unattended `ask_user`.
   Preserve explicit PR-write/final-check/grill exceptions.
-  Background script bundles set `unattendedScript`: omit ask-user wiring and deny
-  configured approval-gated tools before consulting prompts or session approvals.
+  Background script contexts and bundles set `unattendedScript`: omit questions
+  and deny configured approval-gated tools before consulting prompts or session approvals.
   Owner resolution and native/provider permission denial remain caller responsibilities;
   synthetic nested `run_tool_script` calls obey the inherited engine nesting policy.
   Codex discovery uses filtered tools; Copilot context tier uses billing metadata.
