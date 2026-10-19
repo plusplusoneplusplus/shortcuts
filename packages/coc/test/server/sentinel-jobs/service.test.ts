@@ -264,7 +264,13 @@ describe('SentinelJobService', () => {
         const content = JSON.parse(fs.readFileSync(snapshotPath, 'utf8'));
         expect(content).toMatchObject({ owner, jobId: job.id, runId: run.id, readOnly: true });
         expect(content.ledger.items[0].title).toBe('Ship the feature');
-        if (process.platform !== 'win32') expect(fs.statSync(snapshotPath).mode & 0o777).toBe(0o400);
+        // Compare against a control file written with the same mode so the check holds on every
+        // platform: POSIX keeps owner-only 0o400, Windows can only report read-only as 0o444.
+        const modeOf = (file: string) => fs.statSync(file).mode & 0o777;
+        const control = path.join(fixture.dataDir, 'snapshot-mode-control');
+        fs.writeFileSync(control, '', { mode: 0o400 });
+        expect(modeOf(snapshotPath)).toBe(modeOf(control));
+        expect(modeOf(snapshotPath) & 0o222).toBe(0);
 
         // A second run gets its own fresh snapshot at a different path.
         addProcess(call.processId!);

@@ -231,6 +231,21 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
         },
         required: ['sources', 'questions'],
     },
+    query_pull_request: {
+        type: 'object',
+        properties: {
+            provider: { type: 'string' },
+            repository: { type: 'string' },
+            // A single integer or an array of integers (`anyOf` in the live schema).
+            ids: { anyOf: [{ type: 'integer' }, { type: 'array', items: { type: 'integer' } }] },
+            status: { type: 'string' },
+            author: { type: 'string' },
+            ci: { type: 'string' },
+            limit: { type: 'integer' },
+            cursor: { type: 'string' },
+        },
+        required: ['provider', 'repository'],
+    },
     tavily_web_search: {
         type: 'object',
         properties: {

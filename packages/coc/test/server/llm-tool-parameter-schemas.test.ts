@@ -25,6 +25,7 @@ import { createMemoryStoreFactTool, createMemoryRecallTool } from '../../src/ser
 import { createCreatePullRequestTool } from '../../src/server/llm-tools/create-pull-request-tool';
 import { createSystemOneTool } from '../../src/server/llm-tools/system-one-tool';
 import { createRunToolScriptTool } from '../../src/server/llm-tools/run-tool-script-tool';
+import { createQueryPullRequestTool } from '../../src/server/llm-tools/query-pull-request-tool';
 
 /**
  * Registry tools that intentionally have no locally-declared schema and so
@@ -128,6 +129,7 @@ describe('schema mirror drift guard', () => {
         { name: 'recall_memory', parameters: createMemoryRecallTool({} as any).tool.parameters },
         { name: 'system_one', parameters: createSystemOneTool({} as any).tool.parameters },
         { name: 'run_tool_script', parameters: createRunToolScriptTool({ tools: [] }).tool.parameters },
+        { name: 'query_pull_request', parameters: createQueryPullRequestTool({} as any).tool.parameters },
     ];
 
     it.each(liveSchemas)('mirror for $name matches the live tool schema summary', ({ name, parameters }) => {
