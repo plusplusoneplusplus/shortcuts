@@ -266,7 +266,7 @@ describe('UnifiedTodoTab links and remembered view', () => {
             'http://localhost:7000', [{ id: 'ws-1', name: 'Remote' } as WorkspaceInfo]), 'local');
         vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify(
             String(input).includes('/health') ? { serverIdentity: 'destination' }
-                : { process: { id: 'chat-a', workspaceId: 'ws-1', type: 'chat' } }),
+                : { process: { id: 'chat-a', metadata: { workspaceId: 'ws-1' }, type: 'chat' } }),
             { headers: { 'Content-Type': 'application/json' } })));
         const first = await renderOrigin();
         await act(async () => { fireEvent.click(first.link); });
@@ -278,6 +278,22 @@ describe('UnifiedTodoTab links and remembered view', () => {
         const second = await renderOrigin();
         expect(document.activeElement).toBe(second.link);
         expect(getSentinelTodoExcursion()).toBeNull();
+    });
+
+    it.each([undefined, {}, { workspaceId: 'other' }])('does not start a remote reference excursion with invalid ownership metadata %j', async metadata => {
+        const reference: SentinelTodoConversationReference = { ...(item().references![0] as SentinelTodoConversationReference), serverIdentity: 'destination', verification: 'unverified' as const };
+        get.mockResolvedValue({ revision: 1, items: [item({ references: [reference] })] });
+        publishDashboardTopology('ws-1', tagRemoteWorkspaces({ id: 'ssh', label: 'Laptop', kind: 'ssh', serverIdentity: 'destination' },
+            'http://localhost:7000', [{ id: 'ws-1', name: 'Remote' } as WorkspaceInfo]), 'local');
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify(
+            String(input).includes('/health') ? { serverIdentity: 'destination' }
+                : { process: { id: 'chat-a', workspaceId: 'ws-1', metadata, type: 'chat' } }),
+            { headers: { 'Content-Type': 'application/json' } })));
+        const { link } = await renderOrigin();
+        fireEvent.click(link);
+        expect(await screen.findByText(/Referenced chat unavailable/)).toBeTruthy();
+        expect(getSentinelTodoExcursion()).toBeNull();
+        expect(window.location.hash).toBe(ORIGIN.href);
     });
 
     it.each([{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { button: 1 }])('leaves modified clicks (%o) to the browser', async init => {

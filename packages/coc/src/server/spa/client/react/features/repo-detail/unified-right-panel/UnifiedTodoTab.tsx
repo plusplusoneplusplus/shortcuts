@@ -28,6 +28,7 @@ import { SENTINEL_TODO_RECENT_LIMIT } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { SentinelTodoJobPreview } from './SentinelTodoJobPreview';
 import { SentinelTodoConversationReferences } from './SentinelTodoConversationReferences';
+import { SentinelTodoNotes } from './SentinelTodoNotes';
 import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/Spinner';
 import { cn } from '../../../ui/cn';
@@ -1091,7 +1092,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                                             </button>
                                         )}
                                         {(!foldNotes || notesOpen) && (
-                                            <div id={`${domId}-notes`} className="whitespace-pre-wrap break-words">{item.notes}</div>
+                                            <SentinelTodoNotes id={`${domId}-notes`} notes={item.notes} owner={owner} itemId={item.id} onFollowLink={onFollowLink} />
                                         )}
                                     </dd></>
                             )}

@@ -60,7 +60,7 @@ export async function resolveDashboardChatReference(reference: DashboardChatRefe
             workspace: workspaceId, exclude: ['conversation', 'toolCalls'],
         }, { signal });
         current();
-        if (result?.process?.id !== processId || result.process.workspaceId !== workspaceId
+        if (result?.process?.id !== processId || result.process.metadata?.workspaceId !== workspaceId
             || result.process.type !== 'chat') throw unavailable();
         // Detect endpoint replacement during the process read, including cached offline attachments.
         await verify();
