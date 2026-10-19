@@ -165,8 +165,12 @@ that could silently drop fields or normalize non-JSON values.
 failure/pause state. `script-condition-evaluator.ts` uses an injected runner with a
 freshly parsed previous result (initially null). The first success establishes a
 baseline; subsequent hash changes request repeating fires without terminal state.
-The evaluator leaves input rules untouched and propagates execution/validation errors.
-Runtime admission, failure bookkeeping, scheduling and delivery require separate wiring.
+The evaluator leaves input rules untouched. Execution/validation failures preserve
+baseline state, record a timestamped error (500 characters maximum) and pause the
+event at five consecutive failures. Success clears errors and resets the failure
+count, including unchanged results. `getScriptConditionPollDelay` doubles cadence
+per failure, capped at one hour without shortening longer configured intervals.
+Runtime admission, scheduling, persisted pause status and delivery require separate wiring.
 
 `triggers/sentinel-todo-trigger-firer.ts` commits one-shot PR/date decisions using
 the trigger and to-do stores' shared database writer. It checks the rule revision

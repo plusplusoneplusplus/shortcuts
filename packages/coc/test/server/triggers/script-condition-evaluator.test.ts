@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ScriptConditionEvaluator } from '../../../src/server/triggers/script-condition-evaluator';
+import { getScriptConditionPollDelay, ScriptConditionEvaluator } from '../../../src/server/triggers/script-condition-evaluator';
 import { canonicalizeScriptConditionResult } from '../../../src/server/triggers/script-condition-result';
 import type { ScriptConditionEvent, Trigger } from '../../../src/server/triggers/trigger-types';
 
@@ -90,19 +90,85 @@ describe('ScriptConditionEvaluator', () => {
         expect(run).not.toHaveBeenCalled();
     });
 
-    it.each([undefined, NaN, { invalid: undefined }, 'x'.repeat(16_384)])('rejects invalid or oversized result without advancing the baseline', async value => {
+    it.each([undefined, NaN, { invalid: undefined }, 'x'.repeat(16_384)])('records invalid or oversized result as one failure without advancing the baseline', async value => {
         const trigger = rule(baseline({ valid: true }));
         const original = structuredClone(trigger);
-        await expect(new ScriptConditionEvaluator(async () => value).evaluate(trigger)).rejects.toThrow();
+        const outcome = await new ScriptConditionEvaluator(async () => value).evaluate(trigger);
+        expect(outcome).toMatchObject({ fire: false, changed: true,
+            event: { ...baseline({ valid: true }), consecutiveFailures: 1, paused: false } });
+        expect(outcome.event.lastError?.message).toBeTruthy();
         expect(trigger).toEqual(original);
     });
 
-    it('propagates runner errors without mutating the previous result', async () => {
+    it('records runner errors without mutating the previous result', async () => {
         const trigger = rule(baseline({ valid: true }));
         const original = structuredClone(trigger);
         const error = new Error('Tool denied');
-        await expect(new ScriptConditionEvaluator(async () => { throw error; }).evaluate(trigger)).rejects.toBe(error);
+        const now = Date.parse('2026-10-19T12:00:00Z');
+        const outcome = await new ScriptConditionEvaluator(async () => { throw error; }, () => now).evaluate(trigger);
+        expect(outcome).toMatchObject({ fire: false, changed: true,
+            event: { ...baseline({ valid: true }), consecutiveFailures: 1, lastError: { message: 'Tool denied', at: new Date(now).toISOString() } } });
         expect(trigger).toEqual(original);
+    });
+
+    it('pauses at five consecutive failures and skips subsequent runs', async () => {
+        const run = vi.fn().mockRejectedValue(new Error('Script failed'));
+        const evaluator = new ScriptConditionEvaluator(run);
+        let trigger = rule(baseline({ stable: true }));
+        for (let failures = 1; failures <= 5; failures++) {
+            const original = structuredClone(trigger);
+            const outcome = await evaluator.evaluate(trigger);
+            expect(outcome).toMatchObject({ fire: false, changed: true,
+                event: { ...baseline({ stable: true }), consecutiveFailures: failures, paused: failures === 5 } });
+            expect(outcome.autoDisarm).toBeUndefined();
+            expect(trigger).toEqual(original);
+            trigger = { ...trigger, event: outcome.event };
+        }
+        expect(await evaluator.evaluate(trigger)).toEqual({ fire: false, event: trigger.event });
+        expect(run).toHaveBeenCalledTimes(5);
+    });
+
+    it.each([false, true])('clears errors and failures on success with changed result %s', async changed => {
+        const trigger = rule({ ...baseline({ value: 1 }), consecutiveFailures: 4,
+            lastError: { message: 'Failed', at: '2026-10-19T00:00:00Z' } });
+        const outcome = await new ScriptConditionEvaluator(async () => ({ value: changed ? 2 : 1 })).evaluate(trigger);
+        expect(outcome).toMatchObject({ fire: changed, changed: true, event: { consecutiveFailures: 0, paused: false } });
+        expect(outcome.event).not.toHaveProperty('lastError');
+        expect(getScriptConditionPollDelay(outcome.event)).toBe(900_000);
+    });
+
+    it('keeps first success silent after failures and restarts the failure streak', async () => {
+        const run = vi.fn().mockRejectedValueOnce(new Error('fail')).mockResolvedValueOnce(null).mockRejectedValueOnce(new Error('again'));
+        const evaluator = new ScriptConditionEvaluator(run);
+        let trigger = rule();
+        for (const failures of [1, 0, 1]) {
+            const outcome = await evaluator.evaluate(trigger);
+            expect(outcome.fire).toBe(false);
+            expect(outcome.event.consecutiveFailures).toBe(failures);
+            trigger = { ...trigger, event: outcome.event };
+        }
+        expect(trigger.event).toMatchObject(baseline(null));
+    });
+
+    it.each([
+        [new Error('x'.repeat(1_000)), 'x'.repeat(500)],
+        [new Error(''), 'Unknown error'],
+        ['thrown string', 'thrown string'],
+        [null, 'null'],
+        [Object.create(null), 'Unknown error'],
+    ])('stores bounded error text for case %#', async (error, message) => {
+        const outcome = await new ScriptConditionEvaluator(async () => { throw error; }).evaluate(rule());
+        expect(outcome.event.lastError?.message).toBe(message);
+        expect(outcome.event.consecutiveFailures).toBe(1);
+        expect(outcome.event.lastResult).toBeUndefined();
+        expect(outcome.event.lastResultHash).toBeUndefined();
+    });
+
+    it('records a corrupt stored baseline as a failure without invoking the runner', async () => {
+        const run = vi.fn();
+        const outcome = await new ScriptConditionEvaluator(run).evaluate(rule({ lastResult: '{', lastResultHash: 'stored' }));
+        expect(outcome).toMatchObject({ fire: false, event: { lastResult: '{', lastResultHash: 'stored', consecutiveFailures: 1 } });
+        expect(run).not.toHaveBeenCalled();
     });
 
     it('rejects other event kinds before executing the runner', async () => {
@@ -110,5 +176,17 @@ describe('ScriptConditionEvaluator', () => {
         const trigger: Trigger = { ...rule(), event: { type: 'date-time', firesAt: '2026-10-20T00:00:00Z', timeZone: 'UTC' } };
         await expect(new ScriptConditionEvaluator(run).evaluate(trigger)).rejects.toThrow('cannot evaluate event date-time');
         expect(run).not.toHaveBeenCalled();
+    });
+});
+
+describe('getScriptConditionPollDelay', () => {
+    it.each([
+        [300_000, 0, 300_000], [300_000, 1, 600_000], [300_000, 2, 1_200_000],
+        [300_000, 3, 2_400_000], [300_000, 4, 3_600_000], [300_000, 5, 3_600_000],
+        [900_000, 1, 1_800_000], [900_000, 2, 3_600_000], [900_000, 1_000, 3_600_000],
+        [7_200_000, 0, 7_200_000], [7_200_000, 1, 7_200_000],
+    ])('uses interval %i and failure count %i to delay %i ms', (intervalMs, consecutiveFailures, delay) => {
+        const event = rule({ intervalMs, consecutiveFailures }).event as ScriptConditionEvent;
+        expect(getScriptConditionPollDelay(event)).toBe(delay);
     });
 });

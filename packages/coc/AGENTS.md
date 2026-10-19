@@ -320,7 +320,11 @@ references before editing. Paths are package-relative.
   `ScriptConditionEvaluator` computes a first-run baseline and repeating whole-result
   changes through an injected runner, without mutating the input rule. Its event
   stores source/revision, cadence, canonical result/hash and failure/pause fields.
-  Runtime, scheduling, failure bookkeeping and wake delivery require separate wiring.
+  Failures preserve the baseline, record bounded error text and pause the event at
+  five consecutive failures; success clears errors and resets the count. Its poll
+  delay helper doubles cadence per failure, capped at one hour without shortening
+  longer intervals. Runtime, scheduling, persisted pause status and wake delivery
+  require separate wiring.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated
