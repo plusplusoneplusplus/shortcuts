@@ -174,8 +174,8 @@ per failure, capped at one hour without shortening longer configured intervals.
 with a trigger-only 60-second abort deadline. The engine terminates workers and aborts
 in-flight tool calls on cancellation; the wrapper preserves the cancellation reason
 and clears its deadline timer on every outcome. The caller owns and disposes the
-owner-resolved unattended runtime. Owner/tool admission, scheduling and persisted
-pause status require separate wiring.
+owner-resolved unattended runtime. Owner/tool admission and scheduling require
+separate wiring.
 
 `triggers/sentinel-todo-trigger-firer.ts` commits one-shot PR/date decisions using
 the trigger and to-do stores' shared database writer. It checks the rule revision
@@ -193,7 +193,14 @@ Delivery checks live flags, source revision, owner and current item eligibility;
 retries preserve the saved prompt and do not mark edited rules delivered. The wake
 contains bounded top-level changed-field names and escaped JSON marked as untrusted
 data. The production manager must call this path before persisting a changed
-baseline; script admission and scheduler wiring remain caller responsibilities.
+baseline. `pauseScriptCondition` atomically commits the fifth failure, paused
+status and a notice receipt unique to that pause episode. Retries/restarts reuse
+its immutable prompt through the same delivery path, including while paused;
+manual resume or source revision changes revoke admission. Error text is escaped
+untrusted JSON and grants no authority to resume or act. The manager must commit
+this pause before saving the failed event, disarm evaluation timers and retain
+pending-notice retries. Manual resume resets and production wiring remain caller
+responsibilities.
 
 `QueueActionExecutor` sends bound wakes through `ProcessMessageDeliveryService.deliverOnce`,
 which serializes owner checks and dedupe with human follow-ups and buffer draining.

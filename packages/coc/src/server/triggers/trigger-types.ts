@@ -21,7 +21,7 @@
 /**
  * Lifecycle status of a trigger.
  * - `active`   — armed; the manager evaluates its event on each tick.
- * - `paused`   — temporarily disabled (manual toggle); timer disarmed.
+ * - `paused`   — temporarily disabled (manual or automatic pause); timer disarmed.
  * - `disarmed` — terminally stopped (PR merged/closed or manual delete).
  * - `expired`  — terminally stopped because the TTL elapsed.
  */
@@ -214,7 +214,7 @@ export type TriggerOutcome = 'fired' | 'closed-unmerged' | 'skipped' | 'error';
 export interface TriggerDelivery {
     deliveryId: string;
     firedAt: string;
-    reason: 'merged' | 'closed' | 'run-now' | 'due' | 'script-changed';
+    reason: 'merged' | 'closed' | 'run-now' | 'due' | 'script-changed' | 'script-paused';
     /** Script wake admission is bound to this exact result and source revision. */
     resultHash?: string;
     scriptRevision?: number;

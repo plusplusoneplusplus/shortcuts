@@ -75,7 +75,7 @@ describe('durable review admission', () => {
         });
     }
 
-    it('deduplicates script result hashes after accepted delivery errors, restart and returning results', async () => {
+    it.each(['result', 'pause'] as const)('deduplicates script %s wakes after lost acknowledgement and SQLite restart', async kind => {
         let triggerDb = new NativeDatabase(path.join(directory, 'triggers.db'));
         let triggers = new TriggerStore(triggerDb);
         let todos = new SentinelTodoStore(triggerDb);
@@ -90,7 +90,7 @@ describe('durable review admission', () => {
             createdAt: new Date().toISOString(), expiresAt: null, lastTickAt: null, nextTickAt: null, inFlight: false,
             binding: { kind: 'sentinel-todo', itemId: item.id, armedBy: 'sentinel', armedAt: new Date().toISOString() },
             event: { type: 'script-condition', script: 'return state;', scriptRevision: 1, intervalMs: 300_000,
-                consecutiveFailures: 0, paused: false, ...result({ state: 'open' }) },
+                consecutiveFailures: kind === 'pause' ? 4 : 0, paused: false, ...result({ state: 'open' }) },
             action: { type: 'send-message', processId, mode: 'inherit', prompt: '' },
         };
         triggers.insert(rule);
@@ -111,8 +111,14 @@ describe('durable review admission', () => {
         let firer = createFirer();
         const fire = async (state: string) => {
             const current = triggers.getById(rule.id)!;
-            await firer.fireScriptResult(rule.id,
-                { ...current.event as ScriptConditionEvent, ...result({ state }) }, current.revision);
+            if (kind === 'pause') {
+                await firer.pauseScriptCondition(rule.id, { ...current.event as ScriptConditionEvent,
+                    consecutiveFailures: 5, paused: true, lastError: { message: 'Script failed', at: new Date().toISOString() },
+                }, current.revision);
+            } else {
+                await firer.fireScriptResult(rule.id,
+                    { ...current.event as ScriptConditionEvent, ...result({ state }) }, current.revision);
+            }
         };
         try {
             await expect(fire('approved')).rejects.toThrow('acknowledgement');
@@ -131,11 +137,17 @@ describe('durable review admission', () => {
             expect(triggers.getById(rule.id)!.delivery).toMatchObject({ state: 'delivered', deliveryId: receipt });
             expect((await store.getProcess(processId))!.conversationTurns).toHaveLength(1);
             await store.updateProcess(processId, { status: 'completed' });
+            if (kind === 'pause') {
+                const paused = triggers.getById(rule.id)!;
+                expect(paused.status).toBe('paused');
+                triggers.update({ ...paused, status: 'active', revision: paused.revision + 1,
+                    event: { ...paused.event as ScriptConditionEvent, paused: false, consecutiveFailures: 4 } });
+            }
             await fire('merged');
             expect((await store.getProcess(processId))!.conversationTurns).toHaveLength(2);
             await fire('approved');
             expect((await store.getProcess(processId))!.conversationTurns).toHaveLength(2);
-            expect(triggers.getById(rule.id)!.status).toBe('active');
+            expect(triggers.getById(rule.id)!.status).toBe(kind === 'pause' ? 'paused' : 'active');
             expect(todos.get(owner).items[0].status).toBe(item.status);
         } finally { triggerDb.close(); }
     });

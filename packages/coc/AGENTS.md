@@ -331,9 +331,12 @@ references before editing. Paths are package-relative.
   receipts through the shared message admission service. It retains active status
   and cadence, blocks result replacement during pending delivery, and rechecks live
   flags, owner/item eligibility and revisions before admission. Pending retries
-  reuse the saved prompt; script revisions revoke stale deliveries. Owner/tool
-  admission, scheduling, persisted pause status and production delivery wiring
-  remain caller responsibilities.
+  reuse the saved prompt; script revisions revoke stale deliveries.
+  `pauseScriptCondition` atomically commits the fifth failure, paused status and
+  one immutable notice with a persisted receipt unique to that pause episode.
+  Paused notices retry while the rule remains paused and eligible; errors are
+  untrusted JSON and grant no authority to resume. Owner/tool admission, timer
+  disarming, manual resume resets and production wiring remain caller responsibilities.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated
