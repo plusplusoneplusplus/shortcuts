@@ -22,7 +22,7 @@ function serve(handler?: (url: URL) => unknown | Promise<unknown>) {
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
         const url = new URL(String(input), 'http://localhost:4000');
         return json(await (handler ? handler(url) : url.pathname.endsWith('/health') ? { serverIdentity: 'destination' }
-            : { process: { id: 'chat', workspaceId: 'same', type: 'chat' } }));
+            : { process: { id: 'chat', metadata: { workspaceId: 'same' }, type: 'chat' } }));
     });
     vi.stubGlobal('fetch', fetcher);
     return fetcher;

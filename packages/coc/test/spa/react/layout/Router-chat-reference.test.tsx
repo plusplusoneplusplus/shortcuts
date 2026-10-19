@@ -34,7 +34,7 @@ const navigate = (value: string) => {
 const json = (value: unknown) => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } });
 function serve(handler: (url: URL, init?: RequestInit) => unknown | Promise<unknown> = url =>
     url.pathname.endsWith('/health') ? { serverIdentity: 'destination' }
-        : { process: { id: 'chat', workspaceId: 'same', type: 'chat' } }) {
+        : { process: { id: 'chat', metadata: { workspaceId: 'same' }, type: 'chat' } }) {
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
         json(await handler(new URL(String(input), 'http://localhost:4000'), init)));
     vi.stubGlobal('fetch', fetcher);
@@ -107,7 +107,7 @@ describe('Router direct chat references', () => {
         window.history.replaceState(null, '', '#chat-references/local-server/same/' + encodeURIComponent(processId));
         publishDashboardTopology('owner', [local]);
         const fetcher = serve(url => url.pathname.endsWith('/health') ? { serverIdentity: 'local-server' }
-            : { process: { id: processId, workspaceId: 'same', type: 'chat' } });
+            : { process: { id: processId, metadata: { workspaceId: 'same' }, type: 'chat' } });
         render(<Router />);
         expect(fetcher).not.toHaveBeenCalled(); expect(mocks.repos).not.toHaveBeenCalled();
         act(() => { publishDashboardTopology('owner', [local], 'local-server'); });
@@ -144,12 +144,20 @@ describe('Router direct chat references', () => {
         expect(fetcher).not.toHaveBeenCalled(); expect(mocks.repos).not.toHaveBeenCalled();
     });
 
-    it('rejects a mismatched process instead of navigating to a same-id local chat', async () => {
-        publish(); serve(url => url.pathname.endsWith('/health') ? { serverIdentity: 'destination' }
-            : { process: { id: 'other', workspaceId: 'same', type: 'chat' } });
+    it.each(['local-server', 'destination'].flatMap(identity => [
+        { metadata: undefined }, { metadata: {} }, { metadata: { workspaceId: 'other' } },
+        { workspaceId: 'same', metadata: undefined },
+        { workspaceId: 'same', metadata: { workspaceId: 'other' } },
+        { id: 'other' }, { id: 'queue_chat' }, { type: 'run-script' },
+    ].map(patch => ({ identity, patch }))))('rejects invalid process on $identity: $patch', async ({ identity, patch }) => {
+        publish();
+        const directHash = `#chat-references/${identity}/same/chat`;
+        window.history.replaceState(null, '', directHash);
+        serve(url => url.pathname.endsWith('/health') ? { serverIdentity: identity }
+            : { process: { id: 'chat', metadata: { workspaceId: 'same' }, type: 'chat', ...patch } });
         render(<Router />);
         await screen.findByRole('button', { name: 'Retry' });
-        expect(location.hash).toBe(hash); expect(mocks.dispatch).not.toHaveBeenCalled();
+        expect(location.hash).toBe(directHash); expect(mocks.dispatch).not.toHaveBeenCalled();
         expect(mocks.queue).not.toHaveBeenCalled();
     });
 
@@ -174,7 +182,7 @@ describe('Router direct chat references', () => {
         publish(); let finish!: (value: unknown) => void;
         const fetcher = serve(url => url.port === '5000' ? new Promise(resolve => { finish = resolve; })
             : url.pathname.endsWith('/health') ? { serverIdentity: 'destination' }
-                : { process: { id: 'chat', workspaceId: 'same', type: 'chat' } });
+                : { process: { id: 'chat', metadata: { workspaceId: 'same' }, type: 'chat' } });
         render(<Router />); await flush();
         act(() => publish(rows('ssh', 7000, false, 'new-alias')));
         await waitFor(() => expect(location.hash).toContain(encodeURIComponent(buildRemoteCloneKey('new-alias', 'same'))));
@@ -190,7 +198,7 @@ describe('Router direct chat references', () => {
         serve(url => {
             if (first) { first = false; return new Promise(resolve => { finish = resolve; }); }
             return url.pathname.endsWith('/health') ? { serverIdentity: 'destination' }
-                : { process: { id: 'second', workspaceId: 'same', type: 'chat' } };
+                : { process: { id: 'second', metadata: { workspaceId: 'same' }, type: 'chat' } };
         });
         render(<Router />); await flush();
         act(() => navigate('#chat-references/destination/same/second'));
