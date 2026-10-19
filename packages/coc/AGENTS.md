@@ -317,6 +317,10 @@ references before editing. Paths are package-relative.
   `triggers/script-condition-result.ts` canonicalizes script result JSON with
   recursive lexical key ordering, a 16 KiB UTF-8 cap and SHA-256 hashing. It rejects
   non-JSON values; runner-side JSON normalization must not bypass this validation.
+  `ScriptConditionEvaluator` computes a first-run baseline and repeating whole-result
+  changes through an injected runner, without mutating the input rule. Its event
+  stores source/revision, cadence, canonical result/hash and failure/pause fields.
+  Runtime, scheduling, failure bookkeeping and wake delivery require separate wiring.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated
