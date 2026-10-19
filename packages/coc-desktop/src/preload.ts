@@ -76,6 +76,7 @@ const BROWSER_VIEW_DOWNLOAD_CHANNEL = 'coc-desktop:browser-view-download';
 const BROWSER_PREFERENCES_GET_CHANNEL = 'coc-desktop:browser-preferences-get';
 const BROWSER_PREFERENCES_SET_CHANNEL = 'coc-desktop:browser-preferences-set';
 const BROWSER_PAGE_ZOOM_SET_CHANNEL = 'coc-desktop:browser-page-zoom-set';
+const BROWSER_CLICKONCE_SET_CHANNEL = 'coc-desktop:browser-clickonce-set';
 const BROWSER_PREFERENCES_CHANGED_CHANNEL = 'coc-desktop:browser-preferences-changed';
 const BROWSER_IMPORT_COOKIES_CHANNEL = 'coc-desktop:browser-import-cookies';
 const BROWSER_CLEAR_DATA_CHANNEL = 'coc-desktop:browser-clear-data';
@@ -163,6 +164,7 @@ type BrowserCookieImportResult = { ok: true; count: number } | { ok: false; reas
 /** What `browser.open` loads (mirrors `BrowserSource`); a bare string is a `url` source. */
 type BrowserSource = { kind: 'url'; url: string } | { kind: 'file'; path: string };
 interface BrowserPreferences {
+    clickOnce?: { enabled: boolean; supported: boolean };
     defaultEngine: BrowserEngine;
     engines: { engine: BrowserEngine; available: boolean; reason?: string; message?: string }[];
     clearing: BrowserEngine[];
@@ -300,6 +302,7 @@ const browser = {
     onDownload: (callback: (event: BrowserDownloadEvent) => void) =>
         subscribe(BROWSER_VIEW_DOWNLOAD_CHANNEL, callback),
     getPreferences: (): Promise<BrowserPreferences> => ipcRenderer.invoke(BROWSER_PREFERENCES_GET_CHANNEL),
+    setClickOnce: (enabled: boolean): Promise<BrowserOperationResult> => ipcRenderer.invoke(BROWSER_CLICKONCE_SET_CHANNEL, enabled),
     setPageZoom: (percent: number): Promise<BrowserOperationResult> => ipcRenderer.invoke(BROWSER_PAGE_ZOOM_SET_CHANNEL, percent),
     setDefaultEngine: (engine: BrowserEngine): Promise<{ ok: boolean; reason?: string; message?: string }> =>
         ipcRenderer.invoke(BROWSER_PREFERENCES_SET_CHANNEL, engine),

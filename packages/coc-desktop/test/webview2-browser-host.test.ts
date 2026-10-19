@@ -57,6 +57,55 @@ vi.mock('../src/webview2-process', async importOriginal => ({
 const sink: BrowserEventSink = { state: vi.fn(), newTab: vi.fn(), download: vi.fn(), closeRequested: vi.fn(), openMenuRequested: vi.fn(), focusAddressRequested: vi.fn(), reopenClosedRequested: vi.fn() };
 const bounds = { x: 10, y: 20, width: 300, height: 200 };
 
+describe('WebView2 ClickOnce transport', () => {
+    beforeEach(() => { vi.clearAllMocks(); mocks.request.mockReset().mockResolvedValue(undefined); });
+    it('passes opt-in explicitly and binds launch requests to a live exact native source', async () => {
+        const application = vi.fn();
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: 'https://fixture.test/', clickOnceEnabled: true }, { ...sink, application });
+        expect(mocks.request).toHaveBeenCalledWith('open', expect.objectContaining({ clickOnceEnabled: true }));
+        const url = 'https://fixture.test/app.application?value=synthetic%2Fvalue';
+        for (const kind of ['navigation', 'new-window', 'download']) {
+            mocks.onEvent({ event: 'application', viewId: '7:tab:1', kind, url });
+            expect(application).toHaveBeenLastCalledWith({ kind, url }, expect.any(Function));
+        }
+        const current = application.mock.calls.at(-1)![1];
+        expect(current()).toBe(true);
+        mocks.onEvent({ event: 'document-starting', viewId: '7:tab:1' });
+        expect(current()).toBe(false);
+        mocks.onEvent({ event: 'application', viewId: '7:tab:1', kind: 'download',
+            url: 'https://fixture.test/deploy?value=original', deploymentUrl: url, mimeType: 'application/x-ms-application' });
+        expect(application).toHaveBeenLastCalledWith({ kind: 'download', url: 'https://fixture.test/deploy?value=original', deploymentUrl: url, mimeType: 'application/x-ms-application' }, expect.any(Function));
+        const beforeNavigate = application.mock.calls.at(-1)![1];
+        await view.navigate('https://fixture.test/next');
+        expect(beforeNavigate()).toBe(false);
+        mocks.onEvent({ event: 'application', viewId: '7:tab:1', kind: 'navigation', url });
+        const beforeClose = application.mock.calls.at(-1)![1];
+        await view.close();
+        expect(beforeClose()).toBe(false);
+        mocks.onEvent({ event: 'application', viewId: '7:tab:1', kind: 'navigation', url });
+        expect(application).toHaveBeenCalledTimes(5);
+        await host.dispose();
+    });
+    it('rejects disabled, foreign, malformed and non-deployment requests', async () => {
+        const application = vi.fn();
+        const host = new WebView2BrowserHost('profile');
+        await host.create({ ownerId: 7, viewId: 'off', sessionKey: 'workspace', url: 'https://fixture.test/' }, { ...sink, application });
+        await host.create({ ownerId: 8, viewId: 'on', sessionKey: 'other', url: 'https://fixture.test/', clickOnceEnabled: true }, { ...sink, application });
+        for (const message of [
+            { viewId: '7:off:1', kind: 'navigation', url: 'https://fixture.test/app.application' },
+            { viewId: 'foreign', kind: 'navigation', url: 'https://fixture.test/app.application' },
+            { viewId: '8:on:2', kind: 'navigation', url: 'file:///app.application' },
+            { viewId: '8:on:2', kind: 'navigation', url: 'https://fixture.test/report.pdf' },
+            { viewId: '8:on:2', kind: 'execute', url: 'https://fixture.test/app.application' },
+            { viewId: '8:on:2', kind: { toString: 'invalid' }, url: 'https://fixture.test/app.application' },
+            { viewId: '8:on:2', kind: 'download', url: 'https://fixture.test/deploy', mimeType: {} },
+        ]) mocks.onEvent({ event: 'application', ...message });
+        expect(application).not.toHaveBeenCalled();
+        await host.dispose();
+    });
+});
+
 describe('WebView2 private frame event transport', () => {
     beforeEach(() => {
         vi.clearAllMocks();

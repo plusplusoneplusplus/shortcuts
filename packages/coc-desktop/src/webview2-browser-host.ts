@@ -7,6 +7,7 @@ import { validateBrowserUrl, type BrowserAvailability, type BrowserViewState } f
 import { browserMessage, WebView2Process } from './webview2-process';
 import type { HtmlPageBounds } from './html-page-policy';
 import { randomUUID } from 'node:crypto';
+import { isClickOnceRequest, type BrowserApplicationRequest } from './browser-clickonce';
 
 const execFileAsync = promisify(execFile);
 
@@ -28,6 +29,7 @@ interface NativeEntry {
     cdpReady: Promise<void>;
     cdpGeneration: number;
     cdpError?: Error;
+    documentGeneration: number;
 }
 
 export class WebView2BrowserHost implements BrowserEngineHost {
@@ -88,7 +90,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         const id = `${request.ownerId}:${request.viewId}:${++this.sequence}`;
         const entry: NativeEntry = {
             nativeId: id, request, sink, parent, window, bounds: null, fullscreen: false, wasFullscreen: window.isFullScreen(), pageZoom: request.pageZoomPercent ?? 100,
-            cdpListeners: new Set(), cdpSessions: new Map(), cdpReady: Promise.resolve(), cdpGeneration: 0,
+            cdpListeners: new Set(), cdpSessions: new Map(), cdpReady: Promise.resolve(), cdpGeneration: 0, documentGeneration: 0,
             state: { viewId: request.viewId, engine: 'webview2', url: request.url, title: '', canGoBack: false, canGoForward: false, loading: true },
             reposition: () => {
                 if (entry.bounds && !window.isDestroyed()) { void this.process.request('bounds', { viewId: id, bounds: this.bounds(entry) }).catch(error => this.viewFailure(entry, error)); }
@@ -97,7 +99,8 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         this.views.set(id, entry);
         window.on('move', entry.reposition);
         window.on('resize', entry.reposition);
-        try { await this.process.request('open', { viewId: id, url: request.url, parent, pageZoomPercent: entry.pageZoom }); }
+        try { await this.process.request('open', { viewId: id, url: request.url, parent, pageZoomPercent: entry.pageZoom,
+            ...(request.clickOnceEnabled ? { clickOnceEnabled: true } : {}) }); }
         catch (error) {
             this.remove(id, entry);
             throw error;
@@ -145,14 +148,17 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             importCookies: cookies => this.process.request('import-cookies', { viewId: id, cookies }),
             snapshot: () => ({ ...entry.state }),
             navigate: async url => {
+                entry.documentGeneration++;
                 entry.request.url = url;
                 await this.process.request('navigate', { viewId: id, url });
             },
             nav: async action => {
+                if (action !== 'stop') entry.documentGeneration++;
                 if (action === 'reload' && entry.state.errorCode === 'runtime-crashed') {
                     if (this.process.running) { await this.process.request('close', { viewId: id }); }
                     entry.state = { ...entry.state, error: undefined, errorCode: undefined, loading: true };
-                    await this.process.request('open', { viewId: id, url: entry.request.url, parent: entry.parent, pageZoomPercent: entry.pageZoom });
+                    await this.process.request('open', { viewId: id, url: entry.request.url, parent: entry.parent, pageZoomPercent: entry.pageZoom,
+                        ...(entry.request.clickOnceEnabled ? { clickOnceEnabled: true } : {}) });
                     await this.process.request('bounds', { viewId: id, bounds: this.bounds(entry) });
                 } else { await this.process.request('nav', { viewId: id, action }); }
             },
@@ -272,6 +278,26 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         }
         const entry = this.views.get(message.viewId);
         if (!entry) { return; }
+        if (message.event === 'document-starting') {
+            entry.documentGeneration++;
+            return;
+        }
+        if (message.event === 'application') {
+            if (!entry.request.clickOnceEnabled || entry.state.errorCode === 'runtime-crashed'
+                || (message.kind !== 'navigation' && message.kind !== 'new-window' && message.kind !== 'download') || typeof message.url !== 'string'
+                || (message.mimeType !== undefined && typeof message.mimeType !== 'string')
+                || (message.deploymentUrl !== undefined && typeof message.deploymentUrl !== 'string')) return;
+            const request: BrowserApplicationRequest = {
+                kind: message.kind, url: message.url,
+                ...(typeof message.mimeType === 'string' ? { mimeType: message.mimeType } : {}),
+                ...(typeof message.deploymentUrl === 'string' ? { deploymentUrl: message.deploymentUrl } : {}),
+            };
+            if (!isClickOnceRequest(request)) return;
+            const generation = entry.documentGeneration;
+            entry.sink.application?.(request, () => this.views.get(entry.nativeId) === entry
+                && !entry.window.isDestroyed() && entry.state.errorCode !== 'runtime-crashed' && entry.documentGeneration === generation);
+            return;
+        }
         if (message.event === 'cdp-error') {
             if (!entry.cdpListeners.size) { return; }
             entry.cdpError = new BrowserHostError(message.reason === 'native-unavailable' ? 'native-unavailable' : 'invalid',

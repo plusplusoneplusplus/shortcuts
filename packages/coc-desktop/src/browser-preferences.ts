@@ -42,6 +42,14 @@ export function writeBrowserPageZoom(dataDir: string, percent: number): void {
     writePreferences(dataDir, { pageZoomPercent: percent });
 }
 
+export function readBrowserClickOnce(dataDir: string): boolean {
+    return readPreferences(dataDir).clickOnceEnabled === true;
+}
+
+export function writeBrowserClickOnce(dataDir: string, enabled: boolean): void {
+    writePreferences(dataDir, { clickOnceEnabled: enabled });
+}
+
 function writePreferences(dataDir: string, update: Record<string, unknown>): void {
     const preferences = { ...readPreferences(dataDir), version: 1, ...update };
     fs.mkdirSync(dataDir, { recursive: true });

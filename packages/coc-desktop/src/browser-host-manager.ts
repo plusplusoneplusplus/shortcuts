@@ -6,6 +6,7 @@ import {
     type BrowserSourceKind, type BrowserViewState,
 } from './browser-view-policy';
 import { parseBrowserCookies } from './browser-cookie-import';
+import { dispatchClickOnce, ClickOnceError, type ClickOncePolicy } from './browser-clickonce';
 import { validateHtmlPagePath, type HtmlPageBounds } from './html-page-policy';
 import type { BrowserHistoryStore } from './browser-history';
 import { BrowserControlQueue } from './browser-control-queue';
@@ -33,6 +34,7 @@ interface Entry {
     control?: BrowserControlQueue;
     popout?: boolean;
     activity?: BrowserControlActivityEvent & { routingOwnerId: number };
+    hostGeneration?: object;
 }
 
 function throwRejected(results: PromiseSettledResult<unknown>[]): void {
@@ -41,6 +43,7 @@ function throwRejected(results: PromiseSettledResult<unknown>[]): void {
 }
 
 export interface BrowserManagerOptions {
+    clickOnce?: ClickOncePolicy;
     richClipboard?: RichClipboard;
     history: Pick<BrowserHistoryStore, 'recordVisit' | 'updateTitle' | 'flush' | 'clearEngine'>;
     hosts: Record<BrowserEngine, BrowserEngineHost>;
@@ -427,12 +430,29 @@ export class BrowserHostManager {
         return this.start(entry, sink => host.create({
             ownerId: entry.ownerId, viewId: entry.viewId, sessionKey: entry.sessionKey, url,
             pageZoomPercent: this.options.getPageZoom(),
+            ...(this.options.clickOnce?.enabled() ? { clickOnceEnabled: true } : {}),
         }, sink));
     }
 
     private async start(entry: Entry, create: (sink: BrowserEventSink) => Promise<BrowserHostedView>): Promise<BrowserHostedView> {
         if (entry.closed) { throw new BrowserHostError('not-found', 'Browser tab closed during startup.'); }
+        let applicationPending = false;
+        const generation = entry.hostGeneration = {};
         const view = await create({
+            application: (request, current) => {
+                if (entry.sourceKind !== 'url' || applicationPending || !this.options.clickOnce) return;
+                const live = () => !this.disposed && !entry.closed && entry.hostGeneration === generation && this.entry(entry.ownerId, entry.viewId) === entry && current();
+                applicationPending = true;
+                void dispatchClickOnce(this.options.clickOnce, request, live, entry.ownerId).then(result => {
+                    if (live() && result === 'accepted') this.options.clickOnce!.report(entry.ownerId, 'Windows accepted the activation request. The application may still require installation or approval.');
+                    if (live() && result === 'disabled') this.options.clickOnce!.report(entry.ownerId, 'ClickOnce is disabled. Enable it in Desktop Preferences and open a new tab.');
+                    if (live() && result === 'cancelled') this.options.clickOnce!.report(entry.ownerId, 'ClickOnce activation was cancelled.');
+                }).catch(error => {
+                    // URLs and native diagnostics are deliberately excluded.
+                    console.error('[coc-desktop] ClickOnce activation failed.');
+                    if (live()) this.options.clickOnce!.report(entry.ownerId, error instanceof ClickOnceError ? error.message : 'ClickOnce activation failed.');
+                }).finally(() => { applicationPending = false; });
+            },
             state: state => {
                 if (entry.closed) return;
                 if (state.error) entry.committedPage = undefined;

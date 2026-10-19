@@ -8,6 +8,7 @@ import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type B
 import { BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL, type BrowserEngine } from '../src/browser-view-policy';
 import { htmlPageFileUrl, toHtmlPageLoadState, toHtmlPageOpenResult } from '../src/html-page-policy';
 import { BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_STOP_CHANNEL } from '../src/browser-control-command';
+import type { ClickOncePolicy } from '../src/browser-clickonce';
 
 function deferred<T>() {
     let resolve!: (value: T) => void;
@@ -17,7 +18,7 @@ function deferred<T>() {
 
 function harness(defaultEngine: BrowserEngine = 'electron', history: Pick<BrowserHistoryStore, 'recordVisit' | 'updateTitle' | 'flush' | 'clearEngine'> = {
     clearEngine: vi.fn(async () => true), recordVisit: vi.fn(async () => true), updateTitle: vi.fn(async () => true), flush: vi.fn(async () => {}),
-}) {
+}, clickOnce?: ClickOncePolicy) {
     let pageZoom = 100;
     const savePageZoom = vi.fn((percent: number) => { pageZoom = percent; });
     const send = vi.fn();
@@ -52,11 +53,86 @@ function harness(defaultEngine: BrowserEngine = 'electron', history: Pick<Browse
         dispose: vi.fn(async () => {}),
     };
     const manager = new BrowserHostManager({
-        history, hosts, fileHost, getDefault: () => defaultEngine, saveDefault: engine => { defaultEngine = engine; },
+        history, hosts, fileHost, clickOnce, getDefault: () => defaultEngine, saveDefault: engine => { defaultEngine = engine; },
         getPageZoom: () => pageZoom, savePageZoom, send, changed,
     });
     return { manager, hosts, fileHost, files, created, send, changed, history, savePageZoom };
 }
+
+describe('owner-bound ClickOnce requests', () => {
+    const request = { kind: 'navigation' as const, url: 'https://fixture.test/app.application?value=synthetic%2Fvalue' };
+    function setup(engine: BrowserEngine = 'electron') {
+        const clickOnce: ClickOncePolicy = {
+            enabled: vi.fn(() => true), ownerCurrent: vi.fn(() => true),
+            activate: vi.fn(async () => 'accepted' as const), report: vi.fn(),
+        };
+        return { ...harness(engine, undefined, clickOnce), clickOnce };
+    }
+    it.each(['electron', 'webview2'] as const)('shares policy across %s workspace owners without emitting URLs or recording launch visits', async engine => {
+        const h = setup(engine);
+        await h.manager.open(1, 'view', 'https://fixture.test/', 'local');
+        await h.manager.open(2, 'view', 'https://fixture.test/', 'remote:server:workspace');
+        expect(h.created[0].request.clickOnceEnabled).toBe(true);
+        h.send.mockClear();
+        h.created[1].sink.application!(request, () => true);
+        h.created[1].sink.application!(request, () => true);
+        expect(h.clickOnce.ownerCurrent).toHaveBeenCalledExactlyOnceWith(2);
+        await vi.waitFor(() => expect(h.clickOnce.report).toHaveBeenCalledWith(2, expect.stringContaining('accepted')));
+        expect(h.clickOnce.activate).toHaveBeenCalledExactlyOnceWith(request.url);
+        expect(h.history.recordVisit).not.toHaveBeenCalled();
+        expect(h.send).not.toHaveBeenCalled();
+        expect(h.clickOnce.report).toHaveBeenCalledWith(2, expect.stringContaining('accepted'));
+        await h.manager.dispose();
+    });
+    it.each(['close', 'reload', 'replace', 'dispose', 'document', 'owner'] as const)('rejects a source request after %s', async action => {
+        const h = setup();
+        await h.manager.open(1, 'view', 'https://fixture.test/', 'local');
+        let current = true;
+        if (action === 'close' || action === 'replace') await h.manager.close(1, 'view');
+        if (action === 'replace') await h.manager.open(1, 'view', 'https://fixture.test/', 'different');
+        if (action === 'reload') await h.manager.reloadOwner(1);
+        if (action === 'dispose') await h.manager.dispose();
+        if (action === 'document') current = false;
+        if (action === 'owner') vi.mocked(h.clickOnce.ownerCurrent).mockReturnValue(false);
+        h.created[0].sink.application!(request, () => current);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(h.clickOnce.activate).not.toHaveBeenCalled();
+        expect(h.clickOnce.report).not.toHaveBeenCalled();
+        await h.manager.dispose();
+    });
+    it('suppresses late dispatch results after its owner closes without retrying activation', async () => {
+        const h = setup();
+        const activation = deferred<'accepted'>();
+        vi.mocked(h.clickOnce.activate).mockReturnValue(activation.promise);
+        await h.manager.open(1, 'view', 'https://fixture.test/', 'local');
+        h.created[0].sink.application!(request, () => true);
+        expect(h.clickOnce.activate).toHaveBeenCalledExactlyOnceWith(request.url);
+        await h.manager.closeOwner(1);
+        activation.resolve('accepted');
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(h.clickOnce.report).not.toHaveBeenCalled();
+        expect(h.clickOnce.activate).toHaveBeenCalledOnce();
+        await h.manager.dispose();
+    });
+    it('gates default-off requests and sanitizes unexpected activation failures', async () => {
+        const h = setup();
+        vi.mocked(h.clickOnce.enabled).mockReturnValue(false);
+        await h.manager.open(1, 'view', 'https://fixture.test/', 'local');
+        expect(h.created[0].request.clickOnceEnabled).toBeUndefined();
+        h.created[0].sink.application!(request, () => true);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(h.clickOnce.activate).not.toHaveBeenCalled();
+        vi.mocked(h.clickOnce.enabled).mockReturnValue(true);
+        vi.mocked(h.clickOnce.activate).mockRejectedValue(new Error(request.url));
+        const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+        h.created[0].sink.application!(request, () => true);
+        await vi.waitFor(() => expect(log).toHaveBeenCalledWith('[coc-desktop] ClickOnce activation failed.'));
+        expect(JSON.stringify(vi.mocked(h.clickOnce.report).mock.calls)).not.toContain(request.url);
+        expect(h.clickOnce.report).toHaveBeenLastCalledWith(1, 'ClickOnce activation failed.');
+        log.mockRestore();
+        await h.manager.dispose();
+    });
+});
 
 describe('trusted controlling-turn visibility', () => {
     afterEach(() => vi.restoreAllMocks());

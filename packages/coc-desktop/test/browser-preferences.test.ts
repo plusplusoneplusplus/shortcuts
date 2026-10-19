@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { browserProfilePath, readBrowserEngine, writeBrowserEngine, readBrowserPageZoom, writeBrowserPageZoom, BROWSER_PREFERENCES_FILENAME } from '../src/browser-preferences';
+import { browserProfilePath, readBrowserEngine, writeBrowserEngine, readBrowserPageZoom, writeBrowserPageZoom, readBrowserClickOnce, writeBrowserClickOnce, BROWSER_PREFERENCES_FILENAME } from '../src/browser-preferences';
 
 const directories: string[] = [];
 function directory(): string {
@@ -13,6 +13,21 @@ function directory(): string {
 afterEach(() => { directories.forEach(dir => fs.rmSync(dir, { recursive: true, force: true })); directories.length = 0; vi.restoreAllMocks(); });
 
 describe('desktop browser preferences', () => {
+    it('defaults ClickOnce off and preserves independent installation-wide preferences', () => {
+        const dir = directory();
+        expect(readBrowserClickOnce(dir)).toBe(false);
+        writeBrowserClickOnce(dir, true);
+        writeBrowserEngine(dir, 'webview2');
+        writeBrowserPageZoom(dir, 125);
+        expect(readBrowserClickOnce(dir)).toBe(true);
+        writeBrowserClickOnce(dir, false);
+        expect(readBrowserEngine(dir, 'win32', 'x64')).toBe('webview2');
+        expect(readBrowserPageZoom(dir)).toBe(125);
+        for (const clickOnceEnabled of [null, 'true', 1]) {
+            fs.writeFileSync(path.join(dir, BROWSER_PREFERENCES_FILENAME), JSON.stringify({ clickOnceEnabled }));
+            expect(readBrowserClickOnce(dir)).toBe(false);
+        }
+    });
     it('persists page zoom alongside the engine without either write erasing the other', () => {
         const dir = directory();
         expect(readBrowserPageZoom(dir)).toBe(100);

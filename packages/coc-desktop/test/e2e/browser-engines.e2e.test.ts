@@ -47,6 +47,21 @@ afterEach(async () => {
 });
 
 describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine => {
+    it.skipIf(process.platform !== 'win32' || process.arch !== 'x64')('intercepts ClickOnce navigation, window.open, popups and redirects without launching untrusted code', async () => {
+        const directory = profileRoot('clickonce-');
+        temporary.push(directory);
+        const steps = await scenario(engine, directory, '--clickonce-check');
+        const result = steps.get('clickonce')!;
+        expect(result.activations).toEqual(Array(4).fill('https://fixture.test/App.application?value=a%2Fb+z&value=two&empty='));
+        expect(result.consents).toEqual([]);
+        expect(result.externalCalls).toEqual([]);
+        expect(result.newTabs).toEqual([]);
+        expect(result.downloads).toEqual([]);
+        expect(result.home.url).not.toContain('.application');
+        const history = JSON.stringify(steps.get('saved-history')?.history);
+        expect(history).not.toContain('.application');
+        expect(history).not.toContain('application-redirect');
+    }, 90_000);
     it('qualifies address-copy page identity through redirects, title updates, popups and stopped loads', async () => {
         const directory = profileRoot('address-copy-');
         temporary.push(directory);

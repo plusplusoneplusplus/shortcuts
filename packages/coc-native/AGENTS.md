@@ -352,7 +352,12 @@ do not start it. `build:native` and `ensure:native` include it only on Windows
 x64; other targets retain their native server artifacts without WebView2
 initialization. `--check` detects the runtime without opening a view. Hosted
 pages receive no host objects or CoC bridge; navigation is HTTP(S)-only, with
-`about:blank` allowed inside authentication popups. Typed `import-cookies` commands
+`about:blank` allowed inside authentication popups. Default-off `open.clickOnceEnabled`
+intercepts HTTPS `.application` navigation/new windows and deployment MIME downloads
+as source-qualified `application` events. Main owns opt-in and lifecycle policy.
+Redirect recognition retains the original correlated HTTPS activation URL without
+creating successful-document history events. General navigation policy stays HTTP(S)-only.
+Typed `import-cookies` commands
 target an existing view and use its profile cookie manager independently of the
 current page URL. `import-profile-cookies` initializes the helper when needed,
 uses a hidden controller for profile access without navigating or registering a
@@ -368,15 +373,29 @@ SSO uses eligible Windows-connected accounts and does not guarantee Conditional
 Access compliance or change organization policy. Clearing browser data does not
 disconnect Windows accounts; SSO can authenticate again.
 
+`clickonce.rs` provides isolated `--clickonce` activation and `--clickonce-check`
+capability probing without initializing WebView2. It loads the system32
+`dfshim.dll` and resolves the documented `LaunchApplication` export. Activation
+accepts only a bounded HTTPS URL through a strict stdin JSON object; the helper
+never accepts executable/argument paths, downloads a local manifest, or prints
+URLs/native exception text. Replies distinguish acceptance, Windows cancellation,
+missing handler and failure. Acceptance does not prove an application opened.
+Desktop main validates deployment recognition, installation opt-in and source
+ownership before spawning this mode without a CoC confirmation. Windows deployment
+may show installation or trust prompts. Browser-profile cookies are not transferred.
+
 Run `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-webview2`
-for navigation-history/protocol policy, default SSO, and Windows child-window positioning and stacking checks. Real desktop contracts require Windows x64 with
+for ClickOnce URL policy, navigation-history/protocol policy, default SSO, and Windows child-window positioning and stacking checks. Real desktop contracts require Windows x64 with
 WebView2 installed, `npm run build:native -w packages/coc-native`,
 `npm run build -w packages/coc-native`, and
 `npm run build -w packages/coc-desktop`, then set `COC_DESKTOP_E2E=1` and run
 `npm run test:run -w packages/coc-desktop -- test/e2e/browser-engines.e2e.test.ts`.
 The same live suite runs Electron on macOS/Linux; headless Linux needs Xvfb and
 `COC_DESKTOP_E2E_NO_SANDBOX=1`. Missing runtime on Windows is a failed required
-check, not a skip.
+check, not a skip. Live ClickOnce cases stub activation and test real engine
+interception and direct activation routing without installing code. `test/webview2.test.ts`
+probes the debug helper's ClickOnce export and rejects invalid input without
+calling activation.
 
 ### Server artifacts
 

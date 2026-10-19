@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
     deferAttach: false,
     attach: undefined as undefined | (() => void),
     expire: undefined as undefined | (() => void),
+    beforeRequest: undefined as undefined | ((details: any, callback: any) => void),
+    download: undefined as undefined | ((event: any, item: any, wc: any) => void),
+    external: vi.fn().mockResolvedValue(undefined),
     revoke: vi.fn(),
     handlers: new Map<string, ((...args: any[]) => void)[]>(),
     owner: { id: 7, focus: vi.fn(), executeJavaScript: vi.fn().mockResolvedValue(true) },
@@ -20,6 +23,7 @@ const mocks = vi.hoisted(() => ({
         clearCodeCaches: vi.fn().mockResolvedValue(undefined),
         cookies: { set: vi.fn().mockResolvedValue(undefined), flushStore: vi.fn().mockResolvedValue(undefined) },
         flushStorageData: vi.fn(),
+        webRequest: { onBeforeRequest: vi.fn() },
     },
     contents: {
         focus: vi.fn(),
@@ -63,7 +67,7 @@ vi.mock('electron', () => ({
     },
     webContents: { fromId: () => mocks.owner },
     session: { fromPath: () => mocks.profile },
-    shell: {},
+    shell: { openExternal: mocks.external },
 }));
 
 beforeEach(() => {
@@ -75,6 +79,8 @@ beforeEach(() => {
         handlers.push(handler);
         mocks.handlers.set(name, handlers);
     });
+    mocks.profile.webRequest.onBeforeRequest.mockImplementation(callback => { mocks.beforeRequest = callback; });
+    mocks.profile.on.mockImplementation((name, callback) => { if (name === 'will-download') mocks.download = callback; });
 });
 
 function emit(name: string, ...args: any[]) {
@@ -137,6 +143,98 @@ async function view() {
     };
     return { sink, hosted, press };
 }
+
+describe('Electron ClickOnce routing', () => {
+    const url = 'https://fixture.test/App.application?value=a%2Fb+z&value=two';
+    async function opened(enabled = true) {
+        const sink: BrowserEventSink = {
+            state: vi.fn(), newTab: vi.fn(), download: vi.fn(), closeRequested: vi.fn(), openMenuRequested: vi.fn(),
+            application: vi.fn(), visited: vi.fn(),
+        };
+        const hosted = await new ElectronBrowserHost('profile').create({
+            ownerId: 7, viewId: 'application', sessionKey: 'workspace', url: 'https://fixture.test/', clickOnceEnabled: enabled,
+        }, sink);
+        return { hosted, sink };
+    }
+    it('leaves default-off navigation, new windows and downloads unchanged', async () => {
+        const h = await opened(false);
+        const event = { preventDefault: vi.fn() };
+        mocks.handlers.get('will-navigate')![0](event, url);
+        expect(event.preventDefault).not.toHaveBeenCalled();
+        mocks.contents.setWindowOpenHandler.mock.calls.at(-1)![0]({ url, disposition: 'foreground-tab' });
+        expect(h.sink.newTab).toHaveBeenCalledWith(url);
+        mocks.download!(event, { getURL: () => url, getURLChain: () => [url], getMimeType: () => 'application/x-ms-application' }, mocks.contents);
+        await vi.waitFor(() => expect(mocks.external).toHaveBeenCalledWith(url));
+        expect(h.sink.application).not.toHaveBeenCalled();
+        await h.hosted.close();
+    });
+    it('intercepts direct navigation, programmatic navigation and window.open without creating tabs', async () => {
+        const h = await opened();
+        const event = { preventDefault: vi.fn() };
+        mocks.handlers.get('will-navigate')![0](event, url);
+        expect(event.preventDefault).toHaveBeenCalledOnce();
+        expect(h.sink.application).toHaveBeenLastCalledWith({ kind: 'navigation', url }, expect.any(Function));
+        await h.hosted.navigate(url);
+        expect(mocks.contents.loadURL).not.toHaveBeenCalled();
+        const decision = mocks.contents.setWindowOpenHandler.mock.calls.at(-1)![0]({ url, disposition: 'new-window' });
+        expect(decision).toEqual({ action: 'deny' });
+        expect(h.sink.application).toHaveBeenLastCalledWith({ kind: 'new-window', url }, expect.any(Function));
+        expect(h.sink.newTab).not.toHaveBeenCalled();
+        expect(mocks.external).not.toHaveBeenCalled();
+        expect(h.sink.visited).not.toHaveBeenCalled();
+        await h.hosted.close();
+    });
+    it('preserves original redirect and MIME download activation queries', async () => {
+        const h = await opened();
+        const original = 'https://fixture.test/deploy?value=original%2Fquery&value=two';
+        emit('did-start-navigation', original, false, true);
+        const event = { preventDefault: vi.fn() };
+        mocks.handlers.get('will-redirect')![0](event, url, false, true);
+        expect(event.preventDefault).toHaveBeenCalledOnce();
+        expect(h.sink.application).toHaveBeenLastCalledWith({ kind: 'navigation', url: original, deploymentUrl: url }, expect.any(Function));
+        mocks.download!(event, { getURL: () => 'https://fixture.test/artifact', getURLChain: () => [original, 'https://fixture.test/artifact'], getMimeType: () => 'application/x-ms-application' }, mocks.contents);
+        expect(h.sink.application).toHaveBeenLastCalledWith({
+            kind: 'download', url: original, deploymentUrl: 'https://fixture.test/artifact', mimeType: 'application/x-ms-application',
+        }, expect.any(Function));
+        expect(mocks.external).not.toHaveBeenCalled();
+        await h.hosted.close();
+    });
+    it('rejects stale source callbacks after navigation, crash or close and ignores subframes', async () => {
+        const h = await opened();
+        const current = () => vi.mocked(h.sink.application!).mock.calls.at(-1)![1];
+        const event = { preventDefault: vi.fn() };
+        mocks.handlers.get('will-navigate')![0](event, url, false, false);
+        expect(h.sink.application).not.toHaveBeenCalled();
+        mocks.handlers.get('will-navigate')![0](event, url);
+        const beforeNavigation = current();
+        expect(beforeNavigation()).toBe(true);
+        emit('did-start-navigation', 'https://fixture.test/other', false, true);
+        expect(beforeNavigation()).toBe(false);
+        mocks.handlers.get('will-navigate')![0](event, url);
+        const beforeCrash = current();
+        emit('render-process-gone', { reason: 'crashed' });
+        expect(beforeCrash()).toBe(false);
+        mocks.handlers.get('will-navigate')![0](event, url);
+        const beforeClose = current();
+        expect(beforeClose()).toBe(false);
+        await h.hosted.close();
+        expect(beforeClose()).toBe(false);
+    });
+    it('handles initial main-frame requests but not foreign guests or ordinary downloads', async () => {
+        const h = await opened();
+        const callback = vi.fn();
+        mocks.beforeRequest!({ webContentsId: mocks.contents.id, resourceType: 'mainFrame', url }, callback);
+        expect(callback).toHaveBeenLastCalledWith({ cancel: true });
+        mocks.beforeRequest!({ webContentsId: 999, resourceType: 'mainFrame', url }, callback);
+        expect(callback).toHaveBeenLastCalledWith({ cancel: false });
+        mocks.beforeRequest!({ webContentsId: mocks.contents.id, resourceType: 'subFrame', url }, callback);
+        expect(callback).toHaveBeenLastCalledWith({ cancel: false });
+        const ordinary = 'https://fixture.test/report.zip';
+        mocks.download!({ preventDefault: vi.fn() }, { getURL: () => ordinary, getURLChain: () => [ordinary], getMimeType: () => 'application/zip' }, mocks.contents);
+        await vi.waitFor(() => expect(mocks.external).toHaveBeenCalledWith(ordinary));
+        await h.hosted.close();
+    });
+});
 
 describe('Electron browser CDP capability', () => {
     it('invalidates the copy identity only for a new main document, not subframes or same-document navigation', async () => {

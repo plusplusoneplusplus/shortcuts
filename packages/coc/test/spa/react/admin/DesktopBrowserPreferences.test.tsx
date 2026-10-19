@@ -30,6 +30,25 @@ beforeEach(() => {
 afterEach(() => { cleanup(); mocks.bridge = undefined; vi.restoreAllMocks(); });
 
 describe('Desktop Preferences browser engines', () => {
+    it('saves default-off ClickOnce through desktop IPC and displays platform restrictions', async () => {
+        preferences.clickOnce = { enabled: false, supported: true };
+        const setClickOnce = vi.fn(async (enabled: boolean) => {
+            preferences = { ...preferences, clickOnce: { enabled, supported: true } };
+            return { ok: true as const };
+        });
+        mocks.bridge!.setClickOnce = setClickOnce;
+        const fetch = vi.spyOn(globalThis, 'fetch');
+        render(<DesktopBrowserPreferences />);
+        const toggle = await screen.findByRole('checkbox', { name: 'Windows ClickOnce' });
+        expect((toggle as HTMLInputElement).checked).toBe(false);
+        fireEvent.click(toggle);
+        await waitFor(() => expect((toggle as HTMLInputElement).checked).toBe(true));
+        expect(setClickOnce).toHaveBeenCalledExactlyOnceWith(true);
+        expect(fetch).not.toHaveBeenCalled();
+        preferences = { ...preferences, clickOnce: { enabled: false, supported: false } };
+        await act(async () => changed?.());
+        expect((toggle as HTMLInputElement).disabled).toBe(true);
+    });
     it('saves via the local desktop bridge, not workspace server preferences', async () => {
         const fetch = vi.spyOn(globalThis, 'fetch');
         render(<DesktopBrowserPreferences />);

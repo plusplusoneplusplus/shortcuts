@@ -31,6 +31,12 @@ references before editing. Paths are package-relative.
 - Embedded web-page zoom uses desktop browser preference IPC and broadcasts, not
   workspace/server state or app zoom. Browser toolbar controls affect every URL guest;
   HTML previews, editors, terminals and external browser windows keep their own behavior.
+- Windows ClickOnce is an installation-wide, default-off Desktop Preferences toggle,
+  not a workspace/server flag. New URL tabs retain its interception setting; main
+  rechecks the current preference and exact source lifecycle before activation.
+  Enabled deployment links activate without a CoC confirmation; Windows may show
+  installation or trust prompts. Never expose activation URLs or
+  executable paths through a renderer launch API, logs or persisted launch records.
 - Browser rich paste requires owning-server `browserControl.richPasteEnabled`
   and frame control. Relay the policy separately from model arguments and require
   desktop `richPasteSupported`; reject unsupported clients without fallback.

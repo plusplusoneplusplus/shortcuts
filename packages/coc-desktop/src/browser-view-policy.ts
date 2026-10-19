@@ -177,6 +177,7 @@ export const BROWSER_VIEW_DOWNLOAD_CHANNEL = 'coc-desktop:browser-view-download'
 export const BROWSER_PREFERENCES_GET_CHANNEL = 'coc-desktop:browser-preferences-get';
 export const BROWSER_PREFERENCES_SET_CHANNEL = 'coc-desktop:browser-preferences-set';
 export const BROWSER_PAGE_ZOOM_SET_CHANNEL = 'coc-desktop:browser-page-zoom-set';
+export const BROWSER_CLICKONCE_SET_CHANNEL = 'coc-desktop:browser-clickonce-set';
 export const BROWSER_PREFERENCES_CHANGED_CHANNEL = 'coc-desktop:browser-preferences-changed';
 export const BROWSER_IMPORT_COOKIES_CHANNEL = 'coc-desktop:browser-import-cookies';
 export const BROWSER_CLEAR_DATA_CHANNEL = 'coc-desktop:browser-clear-data';
@@ -238,6 +239,7 @@ export interface BrowserAvailability {
 }
 
 export interface BrowserPreferences {
+    clickOnce?: { enabled: boolean; supported: boolean };
     defaultEngine: BrowserEngine;
     engines: BrowserAvailability[];
     clearing: BrowserEngine[];
