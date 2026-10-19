@@ -323,8 +323,11 @@ references before editing. Paths are package-relative.
   Failures preserve the baseline, record bounded error text and pause the event at
   five consecutive failures; success clears errors and resets the count. Its poll
   delay helper doubles cadence per failure, capped at one hour without shortening
-  longer intervals. Runtime, scheduling, persisted pause status and wake delivery
-  require separate wiring.
+  longer intervals. `runScriptCondition` passes state and strict JSON validation
+  to the shared script engine with a trigger-only 60-second abort deadline. Abort
+  terminates workers and cancels inner calls; the caller disposes its owner-resolved
+  unattended runtime. Owner/tool admission, scheduling, persisted pause status and
+  wake delivery require separate wiring.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated
