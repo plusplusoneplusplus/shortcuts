@@ -161,6 +161,13 @@ is significant and encoded UTF-8 JSON is capped at 16 KiB. Non-JSON values rejec
 without invoking serialization hooks. Validation must precede any runner conversion
 that could silently drop fields or normalize non-JSON values.
 
+`ScriptConditionEvent` stores source/revision, interval, canonical result/hash and
+failure/pause state. `script-condition-evaluator.ts` uses an injected runner with a
+freshly parsed previous result (initially null). The first success establishes a
+baseline; subsequent hash changes request repeating fires without terminal state.
+The evaluator leaves input rules untouched and propagates execution/validation errors.
+Runtime admission, failure bookkeeping, scheduling and delivery require separate wiring.
+
 `triggers/sentinel-todo-trigger-firer.ts` commits one-shot PR/date decisions using
 the trigger and to-do stores' shared database writer. It checks the rule revision
 and current owner-scoped item after asynchronous Sentinel lookup. Missing, manual,

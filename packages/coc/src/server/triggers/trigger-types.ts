@@ -5,7 +5,7 @@
  *
  * This is intentionally shaped as a small, extensible abstraction:
  *  - `event` is a discriminated union of server-side condition monitors for
- *    CI failures and PR merges, plus absolute one-time Sentinel date events.
+ *    CI failures and PR merges, absolute Sentinel dates and script conditions.
  *  - `action` is a discriminated union with one variant: `send-message`.
  *
  * The framework reuses existing plumbing rather than inventing new plumbing:
@@ -83,13 +83,6 @@ export interface ConditionMonitorEvent {
 }
 
 /**
- * Designed-for, NOT built this iteration. Declared so the union is open for
- * extension without reworking the framework.
- */
-// export interface ScheduleEvent { type: 'schedule'; cron: string; }
-// export interface IntervalEvent { type: 'interval'; intervalMs: number; }
-
-/**
  * A provider-qualified pull request, watched by URL with this server's own
  * credentials (no clone or workspace needed). `workspaceId`/`originId` are
  * recorded only when the PR was picked from a local workspace.
@@ -139,7 +132,25 @@ export interface DateTimeTriggerEvent {
     timeZone: string;
 }
 
-export type TriggerEvent = ConditionMonitorEvent | PrMergedMonitorEvent | DateTimeTriggerEvent;
+/** Repeating Sentinel To-do condition, evaluated against the previous JSON result. */
+export interface ScriptConditionEvent {
+    type: 'script-condition';
+    monitor?: never;
+    /** Body of an async JavaScript function receiving tools and state. */
+    script: string;
+    /** Incremented when source or interval changes; baseline resets with it. */
+    scriptRevision: number;
+    intervalMs: number;
+    /** Canonical JSON text; absence means the first run has not succeeded. */
+    lastResult?: string;
+    lastResultHash?: string;
+    consecutiveFailures: number;
+    lastError?: { message: string; at: string };
+    /** Mirrors the script rule's disabled state, including automatic failure pauses. */
+    paused: boolean;
+}
+
+export type TriggerEvent = ConditionMonitorEvent | PrMergedMonitorEvent | DateTimeTriggerEvent | ScriptConditionEvent;
 
 // ============================================================================
 // Action (discriminated union — only `send-message` built this iteration)
