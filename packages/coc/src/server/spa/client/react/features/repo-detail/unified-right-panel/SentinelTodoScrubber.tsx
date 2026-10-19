@@ -20,7 +20,7 @@ function readEnabled() {
     return isFeatureEnabled('sentinelTodoScrubberEnabled');
 }
 
-type Props = {
+export type SentinelTodoScrubberProps = {
     ready?: boolean;
     /** A function child places the Scrubber itself; otherwise it renders before the children. */
     children?: ReactNode | ((scrubber: ReactNode) => ReactNode);
@@ -29,7 +29,11 @@ type Props = {
     owner: SentinelTodoOwner;
     items: readonly SentinelTodoItem[];
     onFollowLink: (event: MouseEvent<HTMLAnchorElement>, key: string) => void;
+    /** Jobs keeps the existing findings engine and changes only the row presentation. */
+    builtInRow?: boolean;
+    enabledOverride?: boolean;
 };
+type Props = SentinelTodoScrubberProps;
 
 function place(children: Props['children'], scrubber: ReactNode) {
     return typeof children === 'function' ? children(scrubber) : <>{scrubber}{children}</>;
@@ -41,13 +45,13 @@ export function SentinelTodoScrubber(props: Props) {
     const ref = props.owner.ownerRoutingRef === null ? undefined : props.owner.ownerRoutingRef ?? props.owner.ownerWorkspaceId;
     const client = useCocClient(ref);
     const route = resolveCloneRoute(ref);
-    if (!enabled || props.ready === false) return <>{props.toolbar}{place(props.children, null)}</>;
+    if (!(props.enabledOverride ?? enabled) || props.ready === false) return <>{props.toolbar}{place(props.children, null)}</>;
     if (route.kind === 'unresolved-remote') return <>{props.toolbar}{place(props.children, <p role="status">Scrubber unavailable: owning server is not connected.</p>)}</>;
     return <ScrubberStrip key={`${sentinelTodoOwnerKey(props.owner)}:${route.kind === 'remote' ? route.baseUrl : 'local'}`}
         {...props} client={client} />;
 }
 
-function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, onLedgerChange }: Props & { client: CocClient }) {
+function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, onLedgerChange, builtInRow }: Props & { client: CocClient }) {
     const id = useId();
     const [findings, setFindings] = useState<ReadonlyMap<string, SentinelScrubFindingRecord>>(new Map());
     const [data, setData] = useState<SentinelScrubberResponse | null>(null);
@@ -214,9 +218,11 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, 
         <section aria-label="To-do Scrubber" data-testid="sentinel-scrubber-strip"
             className="flex min-w-0 flex-col gap-1 break-words rounded border border-[#e0e0e0] bg-white p-2 [overflow-wrap:anywhere] dark:border-[#3c3c3c] dark:bg-[#1e1e1e]">
             <div className="flex flex-wrap items-center gap-1">
-                <strong className="mr-auto">Scrubber</strong>
+                <strong className="mr-auto">{builtInRow ? 'To-do Scrubber · built-in' : 'Scrubber'}</strong>
                 <AcceptAllScrubProposals />
-                <Button size="sm" disabled={!data || !!active || busy || !!loadError} onClick={() => { void start(); }}>Scrub now</Button>
+                <Button size="sm" disabled={!data || !!active || busy || !!loadError} onClick={() => { void start(); }}>{builtInRow ? 'Run now' : 'Scrub now'}</Button>
+                {builtInRow && config && <Button size="sm" variant="secondary" disabled={busy || !!loadError}
+                    onClick={() => { void saveConfig({ ...config, enabled: !config.enabled }); }}>{config.enabled ? 'Pause' : 'Resume'}</Button>}
                 <Button size="sm" variant="secondary" disabled={!config || busy || !!loadError} onClick={() => setSchedule(schedule ? null : { ...config! })}>Schedule ▾</Button>
             </div>
             {loadError && <p role="alert">{loadError} <Button size="sm" variant="secondary" onClick={() => { void load(); }}>Refresh scrubber</Button></p>}

@@ -356,12 +356,17 @@ describe('AdminPanel — Workspace Features search', () => {
     });
 
     it('discovers every Sentinel setting as a link to its single owning tab', async () => {
+        // Sentinel Mode on, so dependsOn-gated rows (To-do jobs) are discoverable too.
+        mockFetch.mockImplementation((url: string, opts?: any) => url.includes('/admin/config') && opts?.method !== 'PUT'
+            ? Promise.resolve(mockConfigResponse({ sentinel: { enabled: true } }))
+            : defaultFetchImpl(url, opts));
         render(<AdminPanel />);
         await gotoFeaturesSubTab();
         const defs = ADMIN_SETTING_DEFINITIONS.filter(def => getFeatureSettingTab(def) === 'sentinel');
         // Presentation-only result cards live on Appearance, not Sentinel.
-        expect(defs).toHaveLength(9);
+        expect(defs).toHaveLength(10);
         expect(defs.some(def => def.key === 'features.sentinelResultCards')).toBe(false);
+        expect(defs.some(def => def.key === 'features.sentinelTodoJobs')).toBe(true);
         for (const def of defs) {
             expect(screen.queryByText(def.ui!.label)).toBeNull();
         }

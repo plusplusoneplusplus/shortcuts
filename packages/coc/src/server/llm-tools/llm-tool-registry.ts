@@ -160,6 +160,12 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true, scriptable: false,
     },
     {
+        name: 'query_pull_request',
+        label: 'Query Pull Request',
+        description: 'Reads GitHub or Azure DevOps pull requests for a repository the AI names: list with status/author/CI filters, or get full details by ID. Read-only.',
+        enabledByDefault: true,
+    },
+    {
         name: 'tavily_web_search',
         label: 'Tavily Web Search',
         description: 'Searches the live web via Tavily API for current information.',
@@ -185,6 +191,9 @@ export const SYSTEM_ONE_LLM_TOOL_NAMES = ['system_one'] as const;
 /** Tool names belonging to the tool-scripting feature (gated by `features.toolScripting`). */
 export const TOOL_SCRIPTING_LLM_TOOL_NAMES = ['run_tool_script'] as const;
 
+/** Tool names belonging to the query-pull-request feature (gated by `features.queryPullRequestTool`). */
+export const QUERY_PULL_REQUEST_LLM_TOOL_NAMES = ['query_pull_request'] as const;
+
 const SCRIPTABLE_LLM_TOOL_NAMES = new Set(LLM_TOOL_REGISTRY.filter(t => t.scriptable !== false).map(t => t.name));
 
 /** Whether `run_tool_script` scripts may call this tool. Unregistered tools are not scriptable. */
@@ -199,7 +208,7 @@ export function isScriptableLlmTool(toolName: string): boolean {
  * the dashboard tool list and per-workspace settings do not advertise a tool
  * the executor will not register.
  */
-export function getEffectiveLlmToolRegistry(opts: { cronEnabled?: boolean; canvasEnabled?: boolean; kustoEnabled?: boolean; browserControlEnabled?: boolean; llmToolSystemOneEnabled?: boolean; toolScriptingEnabled?: boolean } = {}): readonly LlmToolMeta[] {
+export function getEffectiveLlmToolRegistry(opts: { cronEnabled?: boolean; canvasEnabled?: boolean; kustoEnabled?: boolean; browserControlEnabled?: boolean; llmToolSystemOneEnabled?: boolean; toolScriptingEnabled?: boolean; queryPullRequestToolEnabled?: boolean } = {}): readonly LlmToolMeta[] {
     let registry = [...LLM_TOOL_REGISTRY];
     if (!opts.cronEnabled) {
         registry = registry.filter(t => t.name !== 'scheduleWakeup');
@@ -218,6 +227,9 @@ export function getEffectiveLlmToolRegistry(opts: { cronEnabled?: boolean; canva
     }
     if (!opts.toolScriptingEnabled) {
         registry = registry.filter(t => !(TOOL_SCRIPTING_LLM_TOOL_NAMES as readonly string[]).includes(t.name));
+    }
+    if (!opts.queryPullRequestToolEnabled) {
+        registry = registry.filter(t => !(QUERY_PULL_REQUEST_LLM_TOOL_NAMES as readonly string[]).includes(t.name));
     }
     return registry;
 }

@@ -13,6 +13,7 @@ import { pendingMessageTask } from '../processes/queued-pending-message';
 import { readAutomationTurnSource } from '../processes/automation-turn-source';
 import type { PendingMessage } from '@plusplusoneplusplus/forge';
 import { BaseExecutor } from '../executors/base-executor';
+import { getJobTaskContext } from '../sentinel-jobs/job-metadata';
 import type { FollowUpTurnOptions } from '../executors/follow-up-executor';
 import { resolveSkillConfig } from '../executors/skill-config-resolver';
 import { TitleGenerationService } from '../executors/title-generator';
@@ -1303,6 +1304,7 @@ function isAutoProviderRoutingRequested(context: ChatPayload['context'] | undefi
  *   in the same workspace.
  */
 export function defaultIsExclusive(task: QueuedTask): boolean {
+    if (getJobTaskContext(task)?.kind === 'run') return false;
     if (task.payload.kind === 'compact') return false;
     // Chat has mode-dependent exclusivity
     if (isChatPayload(task.payload)) {

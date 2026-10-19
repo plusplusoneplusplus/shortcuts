@@ -91,6 +91,8 @@ import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduc
  * changed since.
  */
 export interface FollowUpTurnOptions {
+    /** Native scheduled-job admission, checked by the lifecycle runner. Jobs have no run deadlines. */
+    sentinelScheduledJob?: boolean;
     /** Trusted native admission marker; never derived from prompt text or process metadata. */
     sentinelPrOutcomeReview?: boolean;
     sentinelPrOutcomeStopped?: boolean;
@@ -724,8 +726,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                         readOnlyDirectories: repoGroupContext.readOnlyDirectories,
                     } : {}),
                     signal: turnAbort.signal,
-                    timeoutMs: this.defaultTimeoutMs,
-                    idleTimeoutMs: this.defaultIdleTimeoutMs,
+                    timeoutMs: options?.sentinelScheduledJob ? 0 : this.defaultTimeoutMs,
+                    idleTimeoutMs: options?.sentinelScheduledJob ? 0 : this.defaultIdleTimeoutMs,
                     keepWarm: this.keepClientWarm(),
                     warmKey: processId,
                     systemMessage: historySystemMessage,

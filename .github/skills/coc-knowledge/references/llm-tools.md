@@ -71,6 +71,30 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `submit-scrub-findings-tool.ts` | `submit_scrub_findings` | One structured findings batch from an owner-bound scrubber child chat. |
 | `sentinel-todos-tool.ts` | `sentinel_todos` | Sentinel chat to-do ledger bookkeeping — see below. |
 
+### query_pull_request
+
+`features.queryPullRequestTool` gates the read-only, repository-bound query/get
+service. The published `ids` schema accepts a positive integer or a non-empty
+array of up to 20 positive integers; omitting it selects query mode.
+Cursor parsing bounds offsets to the fixed 100-candidate page and accepts only
+nonempty continuations; ADO continuations are canonical nonnegative safe integers.
+Malformed positions fail before client creation, credentials or provider I/O.
+
+GitHub search rollups with more than 100 contexts resolve CI through
+head-pinned adapter reads. The adapter paginates check runs and combined statuses;
+aggregation uses every returned check before get-mode detail rows are capped at
+100 with `checksTruncated`. Provider failures cannot establish passing or empty CI.
+GitHub reviews are paginated to completion before selecting each reviewer's latest
+deciding vote; page failures expose unavailable reviews, never partial history.
+
+ADO head-pinned checks read all latest-per-context commit statuses in 1000-row
+pages before aggregation. Missing pages and transport errors discard partial
+statuses; unpinned best-effort callers retain single-page reads.
+
+Each invocation binds its abort signal to the provider client. Request checkpoints
+cover adapter pagination, ADO API acquisition and identity transport loading;
+late in-flight completions cannot dispatch further provider requests.
+
 ### suggest_follow_ups
 
 Default-off live `features.sentinelNextSteps` selects optional 1–3 distinct actions,
@@ -252,7 +276,10 @@ review only, never repairs, retries, deployment or new jobs. Untracked/history p
 does not establish ownership. See [server architecture](server-architecture.md#delegated-pr-outcome-reviews).
 
 The same `ci-failure` monitor polls authoritative merge previews and current-head
-checks. Conflict identity includes provider/host/repository/PR and head/base SHAs;
+checks. ADO head-pinned checks require successful iteration, PR-status and
+commit-status reads and preserve transport errors for authentication/rate-limit
+classification; unpinned checks use best-effort status reads.
+Conflict identity includes provider/host/repository/PR and head/base SHAs;
 unknown previews wait, policies remain blockers, and terminal PRs stop. Database
 writer admission and durable owner-chat delivery serialize CI/conflict/manual
 repairs. Repair execution uses high-priority FIFO behind existing pause markers,

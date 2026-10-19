@@ -5,9 +5,10 @@
  * refreshed by that server's `sentinel-todos-changed` events. Every write
  * carries the item revision it was based on; a conflict reloads the current
  * ledger and keeps whatever the user typed. Job links only navigate; the
- * optional Scrubber strip controls its separate read-only assessment chats. Active normal items come first, then
+ * optional Jobs section manages persistent prompt jobs and the built-in Scrubber;
+ * with Jobs disabled, the Scrubber strip controls its read-only assessment chats. Active normal items come first, then
  * the chat's Manual tracking section with its own add form and groups, then the
- * normal Done and Archived sections, then triggers and the Scrubber strip,
+ * normal Done and Archived sections, then triggers and Jobs or the Scrubber strip,
  * all in the list column beside the detail pane.
  */
 
@@ -49,7 +50,7 @@ import { openUnifiedPanelTab } from './unifiedPanelOpen';
 import { resourcePathName } from './unifiedPanelOpenMenuModel';
 import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
 import { AcceptAllScrubProposals, ScrubberFindingsContext, SentinelTodoScrubFinding } from './SentinelTodoScrubFinding';
-import { SentinelTodoScrubber } from './SentinelTodoScrubber';
+import { SentinelTodoJobs } from './SentinelTodoJobs';
 import { sentinelTodoRecentPage } from './sentinelTodoStatusModel';
 import {
     endSentinelTodoExcursion,
@@ -613,7 +614,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                         aria-label={`Unpin ${originTitle} To-do`}>Unpin</Button>
                 </div>
             )}
-            <SentinelTodoScrubber owner={owner} ready={ledger !== null} items={ledger?.items ?? []} onFollowLink={followLink} onLedgerChange={load} toolbar={
+            <SentinelTodoJobs owner={owner} ready={ledger !== null} items={ledger?.items ?? []} onFollowLink={followLink} onLedgerChange={load} toolbar={
             <div role="toolbar" aria-label="To-do actions" className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold">To-do</span>
                 {ledger && sections.active.length > 0 && (
@@ -774,7 +775,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             </section>
             </div>
             </>}
-            </SentinelTodoScrubber>
+            </SentinelTodoJobs>
         </div>
     );
 }

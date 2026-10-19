@@ -19,10 +19,10 @@ export function createSentinelTodosDomain(): StorageSnapshotDomain<string[]> {
         collect: () => EMPTY_COLLECT_RESULT,
         restoreReplace() { /* Machine-local bookkeeping is not portable conversation data. */ },
         restoreMerge() { /* Import cannot attach items to another server's chats. */ },
-        planWipe() {
-            return { plan: [], counts: {}, errors: [] };
+        planWipe(ctx) {
+            return { plan: listRepoFiles(ctx.dataDir, 'sentinel-jobs'), counts: {}, errors: [] };
         },
-        executeWipe(ctx, _plan, result) {
+        executeWipe(ctx, snapshots, result) {
             try {
                 withLedgerDb(ctx, SENTINEL_TODO_TABLES, db => db.transaction(() => {
                     // Additive feature tables may be absent in an existing database.
@@ -33,6 +33,7 @@ export function createSentinelTodosDomain(): StorageSnapshotDomain<string[]> {
                     }
                     for (const table of SENTINEL_TODO_TABLES) db.prepare(`DELETE FROM ${table}`).run();
                 })());
+                for (const directory of snapshots ?? []) fs.rmSync(directory, { recursive: true, force: true });
             } catch (error) {
                 result.errors.push(`Failed to clear Sentinel to-do ledger: ${getErrorMessage(error)}`);
             }
@@ -41,6 +42,7 @@ export function createSentinelTodosDomain(): StorageSnapshotDomain<string[]> {
 }
 
 const OPTIONAL_SENTINEL_TODO_TABLES = [
+    'sentinel_scheduled_job_runs', 'sentinel_scheduled_jobs',
     'sentinel_todo_tag_assignments', 'sentinel_todo_tag_libraries',
     'sentinel_pr_outcome_controls',
     'sentinel_dependency_ralph_starts', 'sentinel_dependency_admissions', 'sentinel_dependency_polls', 'sentinel_dependency_wakes',

@@ -230,6 +230,20 @@ describe('FollowUpExecutor', () => {
             excludedBuiltinTools: [],
             dispose: vi.fn(),
         });
+
+    });
+
+    it.each(['ask', 'autopilot'] as const)('runs an admitted %s job without SDK deadlines or Sentinel ledger tools', async mode => {
+        await store.addProcess(makeProcess({ metadata: { type: 'chat', workspaceId: 'owner', mode, provider: 'copilot',
+            sentinelScheduledJob: { workspaceId: 'owner', processId: 'queue_sentinel', jobId: 'job' } } }));
+        const executor = makeExecutor(store, { getSentinelTodos: () => ({}) as never });
+        await executor.executeFollowUp('proc-1', 'Read the fresh snapshot', undefined, mode,
+            undefined, undefined, undefined, undefined, undefined, undefined, undefined, { sentinelScheduledJob: true });
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.timeoutMs).toBe(0);
+        expect(call.idleTimeoutMs).toBe(0);
+        expect(mockBuildChatToolBundle.mock.calls[0][0].sentinelTodos).toBeUndefined();
+        expect((await store.getProcess('proc-1'))?.metadata?.mode).toBe(mode);
     });
 
     it.each([1, 2, 3])('persists %i Sentinel suggestions on the ordinary follow-up path', async count => {

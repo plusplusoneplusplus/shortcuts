@@ -93,6 +93,27 @@ describe('chat history paging runtime flag', () => {
 });
 
 describe('Sentinel opt-in runtime flags', () => {
+    it.each([undefined, false, 'true', 1])('keeps To-do jobs off without a true capability (%s)', value => {
+        Object.defineProperty(window, '__DASHBOARD_CONFIG__', {
+            configurable: true,
+            value: { features: { sentinelTodoJobsEnabled: value } },
+        });
+        expect(isFeatureEnabled('sentinelTodoJobsEnabled')).toBe(false);
+    });
+
+    it('reads To-do jobs bootstrap and live opt-in independently of Scrubber', () => {
+        Object.defineProperty(window, '__DASHBOARD_CONFIG__', {
+            configurable: true,
+            value: { features: { sentinelTodoJobsEnabled: true } },
+        });
+        expect(isFeatureEnabled('sentinelTodoJobsEnabled')).toBe(true);
+        expect(isFeatureEnabled('sentinelTodoScrubberEnabled')).toBe(false);
+        applyRuntimeConfigPatch({ sentinelTodoJobsEnabled: false });
+        expect(isFeatureEnabled('sentinelTodoJobsEnabled')).toBe(false);
+        applyRuntimeConfigPatch({ sentinelTodoJobsEnabled: true });
+        expect(isFeatureEnabled('sentinelTodoJobsEnabled')).toBe(true);
+    });
+
     it.each([undefined, true, false])('keeps Sentinel Mode and Scrubber off with retired ledger value %s', value => {
         Object.defineProperty(window, '__DASHBOARD_CONFIG__', {
             configurable: true,

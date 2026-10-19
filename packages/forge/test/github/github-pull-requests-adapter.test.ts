@@ -370,6 +370,46 @@ describe('GitHubPullRequestsAdapter', () => {
     });
 
     describe('getReviewers', () => {
+        it('reads every review page in chronological provider order', async () => {
+            vi.mocked(octokit.pulls.listReviews)
+                .mockResolvedValueOnce({ data: Array.from({ length: 100 }, () => mockGitHubReview) })
+                .mockResolvedValueOnce({ data: [{ ...mockGitHubReview, state: 'CHANGES_REQUESTED' }] });
+            const reviewers = await adapter.getReviewers('repo', 42);
+            expect(reviewers).toHaveLength(101);
+            expect(reviewers[0].vote).toBe('approved');
+            expect(reviewers.at(-1)?.vote).toBe('rejected');
+            expect(octokit.pulls.listReviews).toHaveBeenNthCalledWith(2, {
+                owner: 'owner', repo: 'repo', pull_number: 42, per_page: 100, page: 2,
+            });
+        });
+
+        it('requires an empty following page when exactly 100 reviews exist', async () => {
+            vi.mocked(octokit.pulls.listReviews)
+                .mockResolvedValueOnce({ data: Array.from({ length: 100 }, () => mockGitHubReview) })
+                .mockResolvedValueOnce({ data: [] });
+            expect(await adapter.getReviewers('repo', 42)).toHaveLength(100);
+            expect(octokit.pulls.listReviews).toHaveBeenCalledTimes(2);
+        });
+
+        it('propagates an exact later-page error without publishing partial reviews', async () => {
+            const error = Object.assign(new Error('review source failed'), { status: 401 });
+            vi.mocked(octokit.pulls.listReviews)
+                .mockResolvedValueOnce({ data: Array.from({ length: 100 }, () => mockGitHubReview) })
+                .mockRejectedValueOnce(error);
+            await expect(adapter.getReviewers('repo', 42)).rejects.toBe(error);
+        });
+
+        it('checks cancellation before requesting the next review page', async () => {
+            const controller = new AbortController();
+            const reason = new Error('cancelled review page');
+            vi.mocked(octokit.pulls.listReviews).mockImplementationOnce(async () => {
+                controller.abort(reason);
+                return { data: Array.from({ length: 100 }, () => mockGitHubReview) };
+            });
+            await expect(adapter.getReviewers('repo', 42, controller.signal)).rejects.toBe(reason);
+            expect(octokit.pulls.listReviews).toHaveBeenCalledTimes(1);
+        });
+
         it('maps GitHub reviews to canonical Reviewer', async () => {
             const reviewers = await adapter.getReviewers('repo', 42);
             expect(reviewers).toHaveLength(1);
@@ -473,6 +513,29 @@ describe('GitHubPullRequestsAdapter', () => {
     });
 
     describe('getChecks', () => {
+        it('preserves abort reasons in best-effort reads without starting the next source', async () => {
+            const controller = new AbortController();
+            const reason = new Error('cancelled checks');
+            vi.mocked(octokit.checks.listForRef).mockImplementationOnce(async () => {
+                controller.abort(reason);
+                throw new Error('transport interrupted');
+            });
+            await expect(adapter.getChecks('repo', 42, undefined, controller.signal)).rejects.toBe(reason);
+            expect(octokit.repos.getCombinedStatusForRef).not.toHaveBeenCalled();
+        });
+
+        it('checks cancellation after resolving an unpinned head', async () => {
+            const controller = new AbortController();
+            const reason = new Error('cancelled head');
+            vi.mocked(octokit.pulls.get).mockImplementationOnce(async () => {
+                controller.abort(reason);
+                return { data: mockGitHubPr };
+            });
+            await expect(adapter.getChecks('repo', 42, undefined, controller.signal)).rejects.toBe(reason);
+            expect(octokit.checks.listForRef).not.toHaveBeenCalled();
+            expect(octokit.repos.getCombinedStatusForRef).not.toHaveBeenCalled();
+        });
+
         it('resolves head SHA from the PR then maps check-runs and combined statuses', async () => {
             const checks = await adapter.getChecks('repo', 42);
             expect(octokit.pulls.get).toHaveBeenCalledWith({ owner: 'owner', repo: 'repo', pull_number: 42 });
@@ -481,11 +544,14 @@ describe('GitHubPullRequestsAdapter', () => {
                 repo: 'repo',
                 ref: 'abc123',
                 per_page: 100,
+                page: 1,
             });
             expect((octokit as any).repos.getCombinedStatusForRef).toHaveBeenCalledWith({
                 owner: 'owner',
                 repo: 'repo',
                 ref: 'abc123',
+                per_page: 100,
+                page: 1,
             });
             expect(checks).toHaveLength(2);
 

@@ -85,7 +85,7 @@ describe('resolveFeatureBadge', () => {
 
     it('omits the ledger setting while retaining the opt-in scrubber and Sentinel Mode badges', () => {
         expect(ADMIN_SETTING_DEFINITIONS.some(d => d.key === 'features.sentinelTodoLedger')).toBe(false);
-        for (const key of ['features.sentinelTodoScrubber', 'sentinel.enabled']) {
+        for (const key of ['features.sentinelTodoScrubber', 'features.sentinelTodoJobs', 'sentinel.enabled']) {
             expect(def(key).default).toBe(false);
             expect(resolveFeatureBadge(def(key))?.label).toBe('Experimental');
         }

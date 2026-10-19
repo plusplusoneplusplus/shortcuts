@@ -9,6 +9,8 @@ import {
 import { ProcessMessageDeliveryService } from '../../../src/server/processes/process-message-delivery-service';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
+import { JOB_COMPACTION_INSTRUCTIONS } from '../../../src/server/sentinel-jobs/job-metadata';
+import { isSentinelProcess } from '../../../src/server/processes/auto-compact';
 
 const sdk = createMockSDKService();
 const compactSession = vi.fn();
@@ -85,6 +87,24 @@ describe('Sentinel auto-compact lifecycle', () => {
         await enable();
         expect(compactTasks()).toHaveLength(0);
         expect(await autoState()).toMatchObject({ enabled: true, thresholdTokens: 800, consecutiveFailures: 0 });
+    });
+
+    it.each(['ask', 'autopilot'])('applies job-specific compaction without giving a %s job Sentinel identity', async mode => {
+        await store.updateProcess(proc.id, { metadata: { ...proc.metadata!, mode,
+            sentinelScheduledJob: { workspaceId: 'ws-a', processId: 'queue_owner', jobId: 'job-one' } } });
+        await enable();
+        await respond({ currentTokens: 900, tokenLimit: LIMIT });
+        expect(isSentinelProcess(await current())).toBe(false);
+        expect(queuedCompact()?.payload.customInstructions).toBe(JOB_COMPACTION_INSTRUCTIONS);
+        expect(JOB_COMPACTION_INSTRUCTIONS).toContain('has no authority to write its ledger');
+    });
+
+    it('does not grant job compaction to an unscoped or cross-workspace marker', async () => {
+        await store.updateProcess(proc.id, { metadata: { ...proc.metadata!, mode: 'ask',
+            sentinelScheduledJob: { workspaceId: 'ws-other', processId: 'queue_owner', jobId: 'job-one' } } });
+        await enable();
+        await respond({ currentTokens: 900, tokenLimit: LIMIT });
+        expect(compactTasks()).toHaveLength(0);
     });
 
     it.each(['copilot', 'claude'] as const)('queues one background %s compaction with the Sentinel default after exceeding the threshold', async provider => {

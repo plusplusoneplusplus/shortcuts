@@ -685,6 +685,15 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-sentinel-todo-scrubber-enabled',
         },
     }),
+    bool({
+        key: 'features.sentinelTodoJobs', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoJobsEnabled',
+        ui: {
+            tab: 'sentinel', group: 'sentinelTodos', order: 32.61, label: 'Sentinel To-do jobs', badge: 'experimental',
+            dependsOn: 'sentinel.enabled',
+            hint: 'Manage scheduled and on-demand prompt jobs from each Sentinel chat\'s To-do tab. Requires Sentinel Mode. Disabled by default.',
+            testId: 'toggle-sentinel-todo-jobs-enabled',
+        },
+    }),
     {
         key: 'ralph.finalCheck.maxGapFixLoops',
         value: { kind: 'number', integer: true, min: 1 },
@@ -827,6 +836,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             group: 'review', order: 64.5, label: 'Tool scripting', badge: 'experimental',
             hint: 'Chat AI can call `run_tool_script` to run a short JavaScript script that calls other enabled CoC tools in loops or in parallel, returning only the script result. Approval-gated tools still ask. Enabled by default.',
             testId: 'toggle-tool-scripting-enabled',
+        },
+    }),
+    bool({
+        key: 'features.queryPullRequestTool', default: false, runtime: 'live', runtimeFlag: 'queryPullRequestToolEnabled',
+        ui: {
+            group: 'review', order: 64.6, label: 'Query pull request tool', badge: 'experimental',
+            hint: 'Chat AI can call `query_pull_request` to read GitHub or Azure DevOps pull requests (list with filters, or get by ID) for a repository it names, using this server\'s credentials. Read-only. Disabled by default.',
+            testId: 'toggle-query-pull-request-tool-enabled',
         },
     }),
     bool({

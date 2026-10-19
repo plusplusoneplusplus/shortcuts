@@ -61,7 +61,44 @@ describe('AdoPullRequestsService', () => {
         await expect(service.getRefTip('repo', 'refs/heads/feature', 'project')).rejects.toThrow('Permission denied');
     });
 
+    it.each([
+        ['getPullRequestIterations', 'getPullRequestIterations', 42],
+        ['getPullRequestStatuses', 'getPullRequestStatuses', 42],
+        ['getCommitStatuses', 'getStatuses', 'head'],
+    ] as const)('%s preserves the exact transport error in strict mode', async (method, transport, id) => {
+        const error = Object.assign(new Error('Denied'), { statusCode: 401 });
+        gitApi[transport].mockRejectedValue(error);
+        // Each operation's second argument is either the PR number or commit SHA.
+        const read = service[method].bind(service) as (
+            repo: string, id: number | string, project: string, strict: boolean,
+        ) => Promise<unknown>;
+        await expect(read('repo', id, 'project', true)).rejects.toBe(error);
+        if (method === 'getPullRequestIterations') {
+            await expect(read('repo', id, 'project', false)).rejects.toBeInstanceOf(AdoPullRequestError);
+        } else {
+            await expect(read('repo', id, 'project', false)).resolves.toEqual([]);
+        }
+    });
+
     // ── listPullRequests ─────────────────────────────────────
+    it.each([
+        ['iterations', (svc: AdoPullRequestsService, signal: AbortSignal) => svc.getPullRequestIterations('repo', 42, 'project', false, signal)],
+        ['PR statuses', (svc: AdoPullRequestsService, signal: AbortSignal) => svc.getPullRequestStatuses('repo', 42, 'project', false, signal)],
+        ['commit statuses', (svc: AdoPullRequestsService, signal: AbortSignal) => svc.getCommitStatuses('repo', 'head', 'project', false, signal)],
+    ] as const)('checks cancellation before and after acquiring the API for %s', async (_label, read) => {
+        const controller = new AbortController();
+        const reason = new Error('cancelled API acquisition');
+        vi.mocked(connection.getGitApi).mockImplementationOnce(async () => {
+            controller.abort(reason);
+            return gitApi;
+        });
+        await expect(read(service, controller.signal)).rejects.toBe(reason);
+        expect(gitApi.getPullRequestIterations).not.toHaveBeenCalled();
+        expect(gitApi.getPullRequestStatuses).not.toHaveBeenCalled();
+        expect(gitApi.getStatuses).not.toHaveBeenCalled();
+        await expect(read(service, controller.signal)).rejects.toBe(reason);
+        expect(connection.getGitApi).toHaveBeenCalledTimes(1);
+    });
 
     it('listPullRequests delegates to gitApi.getPullRequests with correct args', async () => {
         const criteria = { status: 1 };
@@ -477,6 +514,49 @@ describe('AdoPullRequestsService', () => {
     });
 
     // ── getCommitStatuses ────────────────────────────────────
+
+    it('strict commit statuses read every page with latestOnly and repository binding', async () => {
+        const page = Array.from({ length: 1000 }, (_, id) => ({ id, state: 2 }));
+        const last = { id: 2000, state: 3 };
+        gitApi.getStatuses.mockResolvedValueOnce(page).mockResolvedValueOnce(page).mockResolvedValueOnce([last]);
+
+        const statuses = await service.getCommitStatuses('repo-1', 'sha-1', 'proj', true);
+
+        expect(statuses).toEqual([...page, ...page, last]);
+        expect(gitApi.getStatuses.mock.calls).toEqual([
+            ['sha-1', 'repo-1', 'proj', 1000, 0, true],
+            ['sha-1', 'repo-1', 'proj', 1000, 1000, true],
+            ['sha-1', 'repo-1', 'proj', 1000, 2000, true],
+        ]);
+    });
+
+    it('strict commit statuses confirm completion after an exactly full page', async () => {
+        const page = Array.from({ length: 1000 }, (_, id) => ({ id, state: 2 }));
+        gitApi.getStatuses.mockResolvedValueOnce(page).mockResolvedValueOnce([]);
+        await expect(service.getCommitStatuses('repo', 'head', undefined, true)).resolves.toEqual(page);
+        expect(gitApi.getStatuses).toHaveBeenCalledTimes(2);
+    });
+
+    it('strict commit statuses reject missing later pages and preserve later transport errors', async () => {
+        const page = Array.from({ length: 1000 }, (_, id) => ({ id, state: 2 }));
+        gitApi.getStatuses.mockResolvedValueOnce(page).mockResolvedValueOnce(undefined);
+        await expect(service.getCommitStatuses('repo', 'head', undefined, true))
+            .rejects.toThrow('Commit statuses are unavailable');
+        const error = Object.assign(new Error('Denied'), { statusCode: 401 });
+        gitApi.getStatuses.mockResolvedValueOnce(page).mockRejectedValueOnce(error);
+        await expect(service.getCommitStatuses('repo', 'head', undefined, true)).rejects.toBe(error);
+    });
+
+    it('strict commit statuses preserve cancellation and do not start another page', async () => {
+        const controller = new AbortController();
+        const reason = new Error('cancelled status pagination');
+        gitApi.getStatuses.mockImplementationOnce(async () => {
+            controller.abort(reason);
+            return Array.from({ length: 1000 }, (_, id) => ({ id, state: 2 }));
+        });
+        await expect(service.getCommitStatuses('repo', 'head', undefined, true, controller.signal)).rejects.toBe(reason);
+        expect(gitApi.getStatuses).toHaveBeenCalledTimes(1);
+    });
 
     it('getCommitStatuses delegates to gitApi.getStatuses with latestOnly=true and returns the array', async () => {
         const statuses = [{ id: 10, state: 2 }];

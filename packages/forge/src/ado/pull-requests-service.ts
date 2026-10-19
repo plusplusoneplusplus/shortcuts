@@ -301,8 +301,12 @@ export class AdoPullRequestsService {
         repositoryId: string,
         pullRequestId: number,
         project?: string,
+        strict = false,
+        signal?: AbortSignal,
     ): Promise<GitPullRequestIteration[]> {
+        signal?.throwIfAborted();
         const api = await this.getGitApi();
+        signal?.throwIfAborted();
         try {
             getLogger().info(
                 LogCategory.ADO,
@@ -314,8 +318,11 @@ export class AdoPullRequestsService {
                 project,
                 false,
             );
+            if (strict && result == null) throw new Error('PR iterations are unavailable');
             return result ?? [];
         } catch (error) {
+            signal?.throwIfAborted();
+            if (strict) throw error;
             throw new AdoPullRequestError(
                 `Failed to get iterations for PR ${pullRequestId}: ${error}`,
             );
@@ -392,21 +399,27 @@ export class AdoPullRequestsService {
 
     /**
      * Fetch all per-PR statuses (e.g. build/CI statuses posted against the
-     * pull request itself). Returns an empty list on failure (best-effort).
+     * pull request itself). Strict reads preserve transport errors; default reads
+     * return an empty list on failure (best-effort).
      */
     async getPullRequestStatuses(
         repositoryId: string,
         pullRequestId: number,
         project?: string,
+        strict = false,
+        signal?: AbortSignal,
     ): Promise<GitPullRequestStatus[]> {
+        signal?.throwIfAborted();
         const logger = getLogger();
         const api = await this.getGitApi();
+        signal?.throwIfAborted();
         try {
             logger.info(
                 LogCategory.ADO,
                 `getPullRequestStatuses: repo=${repositoryId} PR #${pullRequestId} project=${project ?? '(default)'}`,
             );
             const result = await api.getPullRequestStatuses(repositoryId, pullRequestId, project);
+            if (strict && result == null) throw new Error('PR statuses are unavailable');
             const statuses = (result as unknown as GitPullRequestStatus[] | undefined) ?? [];
             logger.info(
                 LogCategory.ADO,
@@ -414,6 +427,8 @@ export class AdoPullRequestsService {
             );
             return statuses;
         } catch (err) {
+            signal?.throwIfAborted();
+            if (strict) throw err;
             const errMsg = err instanceof Error ? err.message : String(err);
             logger.warn(
                 LogCategory.ADO,
@@ -425,28 +440,46 @@ export class AdoPullRequestsService {
 
     /**
      * Fetch per-commit statuses for a given commit SHA (latest run per
-     * context). Returns an empty list on failure (best-effort).
+     * context). Strict reads paginate to completion and preserve transport errors;
+     * default reads return one page or an empty list on failure (best-effort).
      */
     async getCommitStatuses(
         repositoryId: string,
         commitId: string,
         project?: string,
+        strict = false,
+        signal?: AbortSignal,
     ): Promise<GitStatus[]> {
+        signal?.throwIfAborted();
         const logger = getLogger();
         const api = await this.getGitApi();
+        signal?.throwIfAborted();
         try {
             logger.info(
                 LogCategory.ADO,
                 `getCommitStatuses: repo=${repositoryId} commit=${commitId} project=${project ?? '(default)'}`,
             );
-            const result = await api.getStatuses(commitId, repositoryId, project, undefined, undefined, true);
-            const statuses = (result as unknown as GitStatus[] | undefined) ?? [];
+            const statuses: GitStatus[] = [];
+            const pageSize = 1000;
+            do {
+                signal?.throwIfAborted();
+                const result = await api.getStatuses(
+                    commitId, repositoryId, project,
+                    strict ? pageSize : undefined, strict ? statuses.length : undefined, true,
+                );
+                signal?.throwIfAborted();
+                if (strict && result == null) throw new Error('Commit statuses are unavailable');
+                statuses.push(...(result ?? []));
+                if (!strict || !result || result.length < pageSize) break;
+            } while (true);
             logger.info(
                 LogCategory.ADO,
                 `getCommitStatuses: returned ${statuses.length} status(es) for commit ${commitId}`,
             );
             return statuses;
         } catch (err) {
+            signal?.throwIfAborted();
+            if (strict) throw err;
             const errMsg = err instanceof Error ? err.message : String(err);
             logger.warn(
                 LogCategory.ADO,

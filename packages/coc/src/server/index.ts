@@ -136,6 +136,7 @@ interface CloseHandlerDeps {
     repoTreeService?: { dispose(): void };
     agentProvidersQuotaCache?: { dispose(): void };
     quotaPauseWatcher?: { dispose(): void };
+    sentinelJobsShutdown?: () => Promise<void>;
     containerLink?: { stop(): void };
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
@@ -159,6 +160,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         scheduleManager.dispose();
         deps.watchService.dispose();
         deps.scheduleInfraDispose();
+        await deps.sentinelJobsShutdown?.();
         deps.cronExecutor?.shutdownAll();
         deps.cronInfraDispose?.();
         deps.turnPerformanceInfraDispose?.();
@@ -336,6 +338,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     let getSentinelDependencyAdmissionCapability: import('./executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelDependencyAdmission'];
 
     let getSentinelScrubberCapability: (() => import('./sentinel-scrubber/scrubber-runs').ScrubberRunService | undefined) | undefined;
+    let getSentinelScheduledJobsCapability: (() => import('./sentinel-jobs/job-service').SentinelJobService | undefined) | undefined;
 
     // Native Teams sign-in always needs pending lifecycle routes.
     const mcpOauthEnabled = resolvedConfig.mcpOauth.enabled === true;
@@ -509,6 +512,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             ? triggerInfra?.sentinelPrOutcomes.registerSubmission ?? (async () => ({
                 registered: false, warning: 'Native PR outcome monitoring is unavailable because triggers are disabled.',
             })) : undefined,
+        () => getSentinelScheduledJobsCapability?.(),
     );
     // Owner workspace for cron automation: live queue task, then persisted process.
     const resolveProcessWorkspaceId = createProcessWorkspaceResolver(bridge, store);
@@ -825,7 +829,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     let localBaseUrl = formatLocalBaseUrl(host, port);
     const routes: Route[] = [];
-    const { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService, scrubberReady } = registerAllRoutes(routes, {
+    const { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService, scrubberReady, sentinelJobsShutdown } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
         dataDir, configPath: options.configPath,
@@ -868,6 +872,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         setSentinelTodos: (get) => { getSentinelTodosCapability = get; },
         setSentinelDependencyAdmission: (get) => { getSentinelDependencyAdmissionCapability = get; },
         setSentinelScrubber: (get) => { getSentinelScrubberCapability = get; },
+        setSentinelScheduledJobs: (get) => { getSentinelScheduledJobsCapability = get; },
         setSendToConversationRuntime: (runtime) => { sendToConversationRuntime = runtime; },
         notesSearchService,
     });
@@ -1128,6 +1133,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             mcpOauthDispose: mcpOauthInfra?.dispose,
             teamsMessagingManager,
             whatsappMessagingManager,
+            sentinelJobsShutdown,
             syncEngines,
             workItemGitHubPullPoller,
             workItemAzureBoardsPullPoller,

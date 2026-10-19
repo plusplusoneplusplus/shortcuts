@@ -476,14 +476,23 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
         };
     }
 
-    async getReviewers(_repositoryId: string, pullRequestId: number | string): Promise<Reviewer[]> {
-        const { data } = await this.octokit.pulls.listReviews({
-            owner: this.owner,
-            repo: this.repo,
-            pull_number: Number(pullRequestId),
-        });
+    async getReviewers(_repositoryId: string, pullRequestId: number | string, signal?: AbortSignal): Promise<Reviewer[]> {
+        const reviews: GitHubReview[] = [];
+        for (let page = 1; ; page++) {
+            signal?.throwIfAborted();
+            const { data } = await this.octokit.pulls.listReviews({
+                owner: this.owner,
+                repo: this.repo,
+                pull_number: Number(pullRequestId),
+                per_page: 100,
+                page,
+            });
+            reviews.push(...data as unknown as GitHubReview[]);
+            if (data.length < 100) break;
+        }
 
-        return (data as unknown as GitHubReview[]).map(r => ({
+        signal?.throwIfAborted();
+        return reviews.map(r => ({
             identity: mapGitHubUser(r.user),
             vote: mapGitHubReviewVote(r.state),
             isRequired: false,
@@ -531,7 +540,8 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
         return (data as unknown as GitHubPullRequestCommit[]).map(mapGitHubPullRequestCommit);
     }
 
-    async getChecks(_repositoryId: string, pullRequestId: number | string, expectedHeadSha?: string): Promise<PullRequestCheck[]> {
+    async getChecks(_repositoryId: string, pullRequestId: number | string, expectedHeadSha?: string, signal?: AbortSignal): Promise<PullRequestCheck[]> {
+        signal?.throwIfAborted();
         // Resolve the head SHA for the PR.
         const prData = expectedHeadSha ? undefined : (await this.octokit.pulls.get({
             owner: this.owner,
@@ -546,37 +556,47 @@ export class GitHubPullRequestsAdapter implements IPullRequestsService {
         // Modern check-runs (GitHub Apps). Best-effort: failures here should
         // not also break the legacy status fetch.
         try {
-            const { data: checkData } = await this.octokit.checks.listForRef({
-                owner: this.owner,
-                repo: this.repo,
-                ref: headSha,
-                per_page: 100,
-            });
-            const runs = (checkData as unknown as { check_runs?: GitHubCheckRun[] }).check_runs ?? [];
-            for (const run of runs) {
-                checks.push(mapCheckRun(run));
+            for (let page = 1; ; page++) {
+                signal?.throwIfAborted();
+                const { data } = await this.octokit.checks.listForRef({
+                    owner: this.owner,
+                    repo: this.repo,
+                    ref: headSha,
+                    per_page: 100,
+                    page,
+                });
+                const runs = (data as unknown as { check_runs: GitHubCheckRun[] }).check_runs;
+                for (const run of runs) checks.push(mapCheckRun(run));
+                if (runs.length < 100) break;
             }
         } catch (error) {
+            signal?.throwIfAborted();
             if (expectedHeadSha) throw error;
             // Token may lack `checks:read` — fall through to combined status.
         }
 
         // Legacy combined commit-status (per-context). Best-effort.
         try {
-            const { data: statusData } = await this.octokit.repos.getCombinedStatusForRef({
-                owner: this.owner,
-                repo: this.repo,
-                ref: headSha,
-            });
-            const items = (statusData as unknown as GitHubCombinedStatusResponse).statuses ?? [];
-            for (const item of items) {
-                checks.push(mapCombinedStatusItem(item));
+            for (let page = 1; ; page++) {
+                signal?.throwIfAborted();
+                const { data } = await this.octokit.repos.getCombinedStatusForRef({
+                    owner: this.owner,
+                    repo: this.repo,
+                    ref: headSha,
+                    per_page: 100,
+                    page,
+                });
+                const items = (data as unknown as GitHubCombinedStatusResponse).statuses;
+                for (const item of items) checks.push(mapCombinedStatusItem(item));
+                if (items.length < 100) break;
             }
         } catch (error) {
+            signal?.throwIfAborted();
             if (expectedHeadSha) throw error;
             // Some repos may have neither checks nor statuses configured.
         }
 
+        signal?.throwIfAborted();
         return checks;
     }
 

@@ -41,6 +41,19 @@ describe('run_tool_script registry gating', () => {
     });
 });
 
+describe('query_pull_request registry gating', () => {
+    it('is advertised only when the query pull request flag is on', () => {
+        expect(getEffectiveLlmToolRegistry().map(t => t.name)).not.toContain('query_pull_request');
+        expect(getEffectiveLlmToolRegistry({ queryPullRequestToolEnabled: false }).map(t => t.name)).not.toContain('query_pull_request');
+        expect(getEffectiveLlmToolRegistry({ queryPullRequestToolEnabled: true }).find(t => t.name === 'query_pull_request'))
+            .toMatchObject({ enabledByDefault: true });
+    });
+
+    it('is scriptable because it is read-only', () => {
+        expect(isScriptableLlmTool('query_pull_request')).toBe(true);
+    });
+});
+
 describe('LLM_TOOL_REGISTRY', () => {
     it('contains all expected tools', () => {
         const names = LLM_TOOL_REGISTRY.map(t => t.name);
@@ -220,7 +233,7 @@ describe('getEffectiveLlmToolRegistry', () => {
         const names = getEffectiveLlmToolRegistry({ cronEnabled: true, canvasEnabled: true, kustoEnabled: true, llmToolSystemOneEnabled: true, browserControlEnabled: true }).map(t => t.name);
         expect(names).toContain('scheduleWakeup');
         // Should equal the full registry length when all flags on
-        expect(getEffectiveLlmToolRegistry({ cronEnabled: true, canvasEnabled: true, kustoEnabled: true, llmToolSystemOneEnabled: true, browserControlEnabled: true, toolScriptingEnabled: true })).toHaveLength(LLM_TOOL_REGISTRY.length);
+        expect(getEffectiveLlmToolRegistry({ cronEnabled: true, canvasEnabled: true, kustoEnabled: true, llmToolSystemOneEnabled: true, browserControlEnabled: true, toolScriptingEnabled: true, queryPullRequestToolEnabled: true })).toHaveLength(LLM_TOOL_REGISTRY.length);
     });
 
     it('no longer advertises the removed excalidraw tools regardless of flags', async () => {
@@ -232,8 +245,8 @@ describe('getEffectiveLlmToolRegistry', () => {
 
     it('returns registry minus feature-gated entries when all off', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        // Wakeup, three canvas tools, Kusto, System One, browser and run_tool_script are feature-gated.
-        expect(getEffectiveLlmToolRegistry({ cronEnabled: false, canvasEnabled: false, kustoEnabled: false, llmToolSystemOneEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 8);
+        // Wakeup, three canvas tools, Kusto, System One, browser, run_tool_script and query_pull_request are feature-gated.
+        expect(getEffectiveLlmToolRegistry({ cronEnabled: false, canvasEnabled: false, kustoEnabled: false, llmToolSystemOneEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 9);
     });
 
     it('hides browser by default and includes it only when its live flag is enabled', async () => {

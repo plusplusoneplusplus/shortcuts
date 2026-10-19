@@ -940,7 +940,19 @@ read-only `test/e2e/sentinel-todo-job-preview.spec.ts` native-style fixture.
 
 ### To-do Scrubber
 
-`SentinelTodoScrubber` wraps the To-do body after a ledger loads, gated by the
+`SentinelTodoJobs` selects the automation presentation after a ledger loads.
+The owning server's live `sentinelEnabled` and `sentinelTodoJobsEnabled`
+capabilities enable a collapsible Jobs list using `client.sentinelTodos.jobs`.
+Owner/endpoint remounts abort pending reads and discard late results; mutations
+retain their admission lock until the authoritative reload settles. Dialog
+drafts retain captured revisions on errors. User job history carries run timing
+and clone-qualified job/Sentinel turn links. Model catalogs use the same owner
+client; Autopilot displays a permission warning.
+
+With Jobs enabled, `SentinelTodoScrubber` supplies the pinned built-in row only
+when the independent scrubber flag is enabled, retaining its findings context,
+routes and execution engine. With Jobs disabled, it renders the existing strip.
+The wrapper is gated by the
 live, default-off scrubber flag. `UnifiedTodoTab` passes a function child that places
 the single strip (and its history) in the list column below triggers, beside the
 detail pane; a plain child renders the strip first. The strip is not sticky and its

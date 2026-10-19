@@ -37,6 +37,9 @@ import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import type { SendToConversationRuntimeOptions } from '../../src/server/llm-tools/send-to-conversation-tool';
 import { DEFAULT_CONFIG, mergeConfig } from '../../src/config';
+import { SentinelJobStore } from '../../src/server/sentinel-jobs/job-store';
+import type { SentinelJobService } from '../../src/server/sentinel-jobs/job-service';
+import { SentinelJobScheduler } from '../../src/server/sentinel-jobs/job-scheduler';
 
 // ── Minimal stubs ─────────────────────────────────────────────────────────────
 
@@ -195,6 +198,133 @@ function makeOpts(overrides: Partial<RegisterRoutesOptions> = {}): RegisterRoute
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('registerAllRoutes', () => {
+    it.each(['sentinel', 'workspace'])('revokes jobs and handbacks immediately after %s removal without affecting another workspace', async removed => {
+        const store = new SqliteProcessStore({ dbPath: path.join(tmpDir, 'processes.db') });
+        const owners = [
+            { workspaceId: 'ws-jobs-a', processId: 'queue_owner_a' },
+            { workspaceId: 'ws-jobs-b', processId: 'queue_owner_b' },
+        ];
+        for (const owner of owners) {
+            await store.registerWorkspace({ id: owner.workspaceId, name: 'Jobs', rootPath: tmpDir });
+            await store.addProcess({ id: owner.processId, type: 'chat', status: 'completed', startTime: new Date(),
+                metadata: { ...owner, mode: 'sentinel', provider: 'copilot' } });
+        }
+        const jobs = new SentinelJobStore(store.getDatabase());
+        const input = { name: 'Review', instructions: 'Read evidence', provider: 'copilot', model: 'model', cron: '0 * * * *' };
+        const a = jobs.create(owners[0], input);
+        const b = jobs.create(owners[1], input);
+        const notification = jobs.create(owners[0], input);
+        const bridge = makeBridge();
+        bridge.registry = new EventEmitter();
+        bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => input.id!);
+        bridge.getTask = vi.fn();
+        const cancel = vi.fn();
+        bridge.findExecutorForTask = vi.fn().mockReturnValue({ cancelTask: cancel });
+        let getJobs!: () => SentinelJobService | undefined;
+        const opts = makeOpts({ store, bridge, dataDir: tmpDir,
+            setSentinelScheduledJobs: get => { getJobs = get; } });
+        const config = opts.runtimeConfigService!.config as any;
+        config.sentinel = { enabled: true };
+        config.features.sentinelTodoJobs = true;
+        const refresh = vi.spyOn(SentinelJobScheduler.prototype, 'refreshAll');
+        const composition = registerAllRoutes([], opts);
+        try {
+            await composition.scrubberReady;
+            const runA = await getJobs()!.start(owners[0], a.id);
+            const runB = await getJobs()!.start(owners[1], b.id);
+            const handback = await getJobs()!.start(owners[0], notification.id);
+            jobs.patchRun(owners[0], notification.id, handback.id, {
+                status: 'completed', handbackState: 'queued', handbackTaskId: 'pending-handback',
+            });
+            const previousRefreshes = refresh.mock.calls.length;
+            if (removed === 'workspace') await store.removeWorkspace(owners[0].workspaceId);
+            else await store.removeProcess(owners[0].processId);
+            await vi.waitFor(() => expect(jobs.run(owners[0], a.id, runA.id).status).toBe('cancelled'));
+            expect(refresh.mock.calls.length).toBeGreaterThan(previousRefreshes);
+            expect(cancel).toHaveBeenCalledWith(runA.taskId);
+            expect(cancel).toHaveBeenCalledWith('pending-handback');
+            expect(jobs.run(owners[0], notification.id, handback.id).handbackState).toBe('suppressed');
+            expect(jobs.run(owners[1], b.id, runB.id).status).toBe('queued');
+            expect(cancel).not.toHaveBeenCalledWith(runB.taskId);
+            expect(jobs.get(owners[0], a.id).processId).toBeTruthy();
+            await expect(getJobs()!.assertOwner(owners[0])).rejects.toBeDefined();
+        } finally {
+            await composition.sentinelJobsShutdown();
+            composition.whatsappMessagingManager.dispose();
+            store.close();
+        }
+    });
+
+    it('wires native job recovery, both live gates, queue cancellation and awaited scheduler shutdown independently of scrubber', async () => {
+        const store = new SqliteProcessStore({ dbPath: path.join(tmpDir, 'processes.db') });
+        const owner = { workspaceId: 'ws-jobs', processId: 'queue_owner' };
+        await store.registerWorkspace({ id: owner.workspaceId, name: 'Jobs', rootPath: tmpDir });
+        await store.addProcess({ id: owner.processId, type: 'chat', status: 'completed', startTime: new Date(),
+            promptPreview: 'Sentinel', metadata: { ...owner, mode: 'sentinel', provider: 'copilot' } });
+        const jobs = new SentinelJobStore(store.getDatabase());
+        const job = jobs.create(owner, { name: 'Review', instructions: 'Read evidence', provider: 'copilot',
+            model: 'model', cron: '0 * * * *' });
+        const orphan = jobs.createRun(owner, job.id, 'manual', 'queue_orphan', new Date().toISOString());
+        jobs.patchRun(owner, job.id, orphan.id, { taskId: 'orphan-task', status: 'running' });
+        const bridge = makeBridge();
+        bridge.registry = new EventEmitter();
+        bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => input.id!);
+        bridge.getTask = vi.fn();
+        const cancel = vi.fn();
+        bridge.findExecutorForTask = vi.fn().mockReturnValue({ cancelTask: cancel });
+        let getJobs!: () => SentinelJobService | undefined;
+        let getScrubber!: () => ScrubberRunService | undefined;
+        const opts = makeOpts({ store, bridge, dataDir: tmpDir,
+            setSentinelScheduledJobs: get => { getJobs = get; }, setSentinelScrubber: get => { getScrubber = get; } });
+        const config = opts.runtimeConfigService!.config as any;
+        config.features.sentinelTodoScrubber = true;
+        const disposed = vi.spyOn(SentinelJobScheduler.prototype, 'dispose');
+        const routes: Route[] = [];
+        const composition = registerAllRoutes(routes, opts);
+        const base = `/api/workspaces/${owner.workspaceId}/sentinel-todos/${owner.processId}/jobs`;
+        const read = async () => {
+            const found = findRoute(routes, 'GET', base)!;
+            const response = fakeRes();
+            await found.route.handler(fakeJsonReq('GET', {}), response, found.match);
+            return response;
+        };
+        try {
+            await composition.scrubberReady;
+            expect(jobs.run(owner, job.id, orphan.id).status).toBe('interrupted');
+            expect(cancel).toHaveBeenCalledWith('orphan-task');
+            expect((await read()).statusCode).toBe(404);
+            config.features.sentinelTodoJobs = true;
+            expect((await read()).statusCode).toBe(404); // Sentinel itself is still off
+            config.sentinel = { enabled: true };
+            expect((await read()).statusCode).toBe(200);
+            const active = await getJobs()!.start(owner, job.id);
+            expect(active.status).toBe('queued');
+            expect(bridge.enqueue).toHaveBeenCalledWith(expect.objectContaining({
+                processId: 'queue_orphan', priority: 'low', repoId: owner.workspaceId,
+                payload: expect.objectContaining({ mode: 'ask', processId: 'queue_orphan' }),
+            }));
+            config.features.sentinelTodoJobs = false;
+            vi.mocked(opts.runtimeConfigService!.onChange).mock.calls[0][0]({} as never);
+            await vi.waitFor(() => expect(jobs.run(owner, job.id, active.id).status).toBe('cancelled'));
+            expect(cancel).toHaveBeenCalledWith(active.taskId);
+            expect(getScrubber()).toBeDefined();
+            expect((await read()).statusCode).toBe(404);
+            const persistentProcessId = jobs.get(owner, job.id).processId!;
+            expect(await store.getProcess(persistentProcessId)).toBeDefined();
+            config.features.sentinelTodoJobs = true;
+            const next = await getJobs()!.start(owner, job.id);
+            expect(next.status).toBe('queued');
+            expect(next.taskId).not.toBe(active.taskId);
+            expect(jobs.get(owner, job.id).processId).toBe(persistentProcessId);
+            expect(await store.getProcess(persistentProcessId)).toBeDefined();
+            await composition.sentinelJobsShutdown();
+            expect(disposed).toHaveBeenCalledOnce();
+        } finally {
+            await composition.sentinelJobsShutdown();
+            composition.whatsappMessagingManager.dispose();
+            store.close();
+        }
+    });
     it('publishes browser state before the socket exists and resolves the live broker later', async () => {
         let socket: any;
         let getRuntime!: Parameters<NonNullable<RegisterRoutesOptions['setBrowserControl']>>[0];

@@ -321,6 +321,20 @@ references before editing. Paths are package-relative.
 - Sentinel-specific Admin controls use registry `ui.tab: 'sentinel'` at
   `#admin/settings/sentinel`. Features search links to that tab; saves and cancels
   affect only its registry keys. Shared triggers and messaging settings keep their own tabs.
+  `features.sentinelTodoJobs` is live, experimental and default-off in `sentinelTodos`;
+  its Admin row depends on `sentinel.enabled` and publishes `sentinelTodoJobsEnabled`.
+- Sentinel prompt jobs (`src/server/sentinel-jobs/`) require both live flags, prove
+  the exact Sentinel owner and share the native ledger database. Definitions use
+  expected revisions and a ten-job owner limit. The first run persists one ordinary
+  Ask/Autopilot chat; later runs retain it, including after cancellation or failure.
+  Snapshot paths stay repo-scoped and read-only. Runs and handbacks use the existing
+  low-priority task queue; job metadata grants compaction, never Sentinel identity.
+  Active runs and pending handbacks block edits/deletion, but schedule-only
+  pause/resume remains available. Cron is future-only, local-time and at most hourly.
+  Startup interrupts orphaned runs and reconciles handbacks by receipt; shutdown
+  drains admission before disposal. Owner removal revokes work, while unexpected
+  owner-read errors surface without cancelling it. Snapshot export/import excludes
+  these machine-local definitions; ledger wipe clears tables and snapshot directories.
 - `copilot.transformTransport` is an installation-wide Admin setting (Direct HTTP default, restart required).
   Direct one-shot requests use the Copilot CLI account; never persist its token in Admin config.
   System One, the shared Copilot decision backend, and titles use `gpt-6-luna`.

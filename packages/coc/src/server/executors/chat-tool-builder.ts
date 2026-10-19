@@ -23,6 +23,7 @@ import {
     buildKustoToolsAddon,
     buildSystemOneToolsAddon,
     type SystemOneAddonDeps,
+    buildQueryPullRequestToolsAddon,
     buildSendToConversationAddon,
     buildFollowUpSuggestionsAddon,
     buildCronToolsAddon,
@@ -88,6 +89,9 @@ export interface ChatToolBundleOptions {
     includeSystemOneTool?: boolean;
     /** Overrides the `LLMToolSystemOne.enabled` config flag (used by tests). */
     systemOneToolEnabled?: boolean;
+    includeQueryPullRequestTool?: boolean;
+    /** Overrides the `features.queryPullRequestTool` config flag (used by tests). */
+    queryPullRequestToolEnabled?: boolean;
     /**
      * `create_pull_request` wiring. Pass it only for write-capable (autopilot /
      * Ralph) turns — absent → the tool is not offered (ask mode).
@@ -234,6 +238,15 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
             options.processId,
             options.systemOne,
             options.systemOneToolEnabled !== undefined ? { enabled: options.systemOneToolEnabled } : undefined,
+        ));
+    }
+
+    if (options.includeQueryPullRequestTool !== false && !options.sentinelPrOutcomeReview) {
+        addons.push(buildQueryPullRequestToolsAddon(
+            options.dataDir,
+            options.workspaceId,
+            options.processId,
+            options.queryPullRequestToolEnabled !== undefined ? { enabled: options.queryPullRequestToolEnabled } : undefined,
         ));
     }
 
