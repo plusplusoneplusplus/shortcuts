@@ -1020,6 +1020,14 @@ reads and suppress late results. Unavailable targets keep the current chat and
 show retry guidance; opening never changes the ledger's stored verification.
 Modified clicks keep durable hrefs for the browser.
 
+`SentinelTodoNotes` renders detail notes as inline Markdown with
+`renderAskUserMarkdownInline` (raw HTML escaped, unsafe schemes become `#`) inside
+the raw text layout; edits and storage stay raw Markdown. Note links carry
+`<itemId>|note:<n>` link keys, stop row propagation, open http(s) in the panel
+browser on plain clicks and follow `#…` links through the excursion. Under a remote
+ledger owner, bare `#repos/<ws>` links gain that server's clone key; already-qualified
+and `#chat-references/…` links are unchanged. `notes-links-panel.test.tsx` covers it.
+
 A plain primary click on an in-app (`#…`) Job or verified Ref link starts one in-memory
 excursion per window (`sentinelTodoExcursion.ts`): the origin's panel scope, chat,
 ledger owner, published title and owner-qualified chat route, the followed link,
