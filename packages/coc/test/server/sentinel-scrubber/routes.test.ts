@@ -114,7 +114,8 @@ describe('Scrubber REST commands', () => {
         await expect(client.get(owner.workspaceId, 'queue_ask')).rejects.toMatchObject({ status: 404 });
         await expect(client.getRun('ws-b', owner.processId, 'run')).rejects.toMatchObject({ status: 404 });
         await expect(client.get(owner.workspaceId, 'queue_missing')).rejects.toMatchObject({ status: 404 });
-        expect(assertOwner).toHaveBeenCalledTimes(5);
+        // The successful summary read is re-proved by the shared scrubber commands.
+        expect(assertOwner).toHaveBeenCalledTimes(6);
         expect(list).not.toHaveBeenCalled();
     });
 

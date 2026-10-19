@@ -19,6 +19,7 @@ import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { WakeupToolDeps, CronToolDeps } from '../llm-tools/cron-tools';
 import type { CreatePullRequestToolDeps } from '../llm-tools/create-pull-request-tool';
 import type { SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
+import type { SentinelJobsToolDeps } from '../llm-tools/sentinel-jobs-tool';
 import type { MemoryV2Addon } from './memory-v2-addon';
 import type { SystemOneAddonDeps } from './prompt-builder';
 import { buildMemoryV2Addon } from './memory-v2-addon';
@@ -84,6 +85,8 @@ export interface ChatTurnContextInput {
     createPullRequest?: CreatePullRequestToolDeps;
     /** `sentinel_todos` wiring; Sentinel chats only. */
     sentinelTodos?: SentinelTodosToolDeps;
+    /** `sentinel_jobs` wiring; the owning Sentinel chat's attended turns only. */
+    sentinelJobs?: SentinelJobsToolDeps;
     /** A scrubber child chat's only tool; also skips Memory V2. */
     scrubFindings?: Tool<any>;
     /** Additional tool names to exclude beyond workspace preferences. */
@@ -213,6 +216,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         browserSignal: input.browserSignal,
         createPullRequest: input.createPullRequest,
         sentinelTodos: input.sentinelTodos,
+        sentinelJobs: input.sentinelJobs,
         scrubFindings: input.scrubFindings,
         excludeTools: input.excludeTools,
         onLlmToolApprovalDecision: input.onLlmToolApprovalDecision,

@@ -825,6 +825,8 @@ export class SqliteProcessStore implements ProcessStore {
             delete metadata.stoppedChatResume;
             delete metadata.rewindHistory;
             delete metadata.botControl;
+            // Per-chat Sentinel instructions never carry into another chat.
+            delete metadata.additionalInstructions;
 
             const now = new Date();
             const newRow: Record<string, unknown> = {

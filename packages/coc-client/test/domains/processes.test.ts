@@ -121,6 +121,19 @@ describe('ProcessesClient', () => {
       options: { method: 'POST', query: { workspace: 'remote/ws' } } });
   });
 
+  it('scopes additional-instructions reads and saves to the owning workspace', async () => {
+    const additionalInstructions = { text: 'Prefer small PRs', updatedAt: '2026-10-19T00:00:00.000Z' };
+    const adapter = createMockAdapter({ additionalInstructions });
+    const client = new ProcessesClient(adapter, new CocClient().options);
+    await expect(client.getAdditionalInstructions('proc/1', { workspace: 'remote/ws' }))
+      .resolves.toEqual({ additionalInstructions });
+    await client.updateAdditionalInstructions('proc/1', 'Prefer small PRs', { workspace: 'remote/ws' });
+    expect(adapter.calls[0]).toEqual({ path: '/processes/proc%2F1/additional-instructions',
+      options: { query: { workspace: 'remote/ws' } } });
+    expect(adapter.calls[1]).toMatchObject({ path: '/processes/proc%2F1/additional-instructions',
+      options: { method: 'PUT', query: { workspace: 'remote/ws' }, body: { text: 'Prefer small PRs' } } });
+  });
+
   it('uses a 700000-token default without enabling auto-compact', async () => {
     const adapter = createMockAdapter({ autoCompact: { enabled: false, thresholdTokens: AUTO_COMPACT_THRESHOLD_DEFAULT } });
     const client = new ProcessesClient(adapter, new CocClient().options);

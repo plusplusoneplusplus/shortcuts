@@ -21,7 +21,7 @@ describe('isScriptableLlmTool', () => {
     });
 
     it('excludes interactive, side-channel and outward-facing tools', () => {
-        for (const name of ['ask_user', 'suggest_follow_ups', 'create_pull_request', 'send_to_conversation', 'browser']) {
+        for (const name of ['ask_user', 'suggest_follow_ups', 'create_pull_request', 'send_to_conversation', 'browser', 'sentinel_jobs']) {
             expect(isScriptableLlmTool(name)).toBe(false);
         }
     });
@@ -91,7 +91,7 @@ describe('LLM_TOOL_REGISTRY', () => {
         expect(tavily!.enabledByDefault).toBe(false);
     });
 
-    it.each(['save_memory', 'recall_memory'])('%s is disabled by default', name => {
+    it.each(['save_memory', 'recall_memory', 'sentinel_jobs'])('%s is disabled by default', name => {
         expect(LLM_TOOL_REGISTRY.find(t => t.name === name)?.enabledByDefault).toBe(false);
         expect(getEffectiveDefaultDisabledTools()).toContain(name);
     });
@@ -105,7 +105,7 @@ describe('LLM_TOOL_REGISTRY', () => {
     });
 
     it('all other tools are enabled by default', () => {
-        const optIn = new Set(['tavily_web_search', 'save_memory', 'recall_memory']);
+        const optIn = new Set(['tavily_web_search', 'save_memory', 'recall_memory', 'sentinel_jobs']);
         const enabledByDefaultTools = LLM_TOOL_REGISTRY.filter(t => !optIn.has(t.name));
         for (const tool of enabledByDefaultTools) {
             expect(tool.enabledByDefault).toBe(true);

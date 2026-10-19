@@ -10,6 +10,7 @@
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { ConversationMetadataPopover, type MetaRow, type ConversationToolInventoryTarget } from './ConversationMetadataPopover';
 import { readBotControl } from '../../../utils/botControl';
+import type { AdditionalInstructionsTarget } from './AdditionalInstructionsDialog';
 
 /**
  * Everything the "i" button needs about a conversation. `ChatDetail` owns the
@@ -21,6 +22,8 @@ export interface ChatHeaderMetadata {
     /** Output of `buildMetadataProcess` — queue task merged with the process record. */
     metadataProcess: any;
     toolInventoryTarget?: ConversationToolInventoryTarget;
+    /** Only set for flag-enabled Sentinel chats with a known owner. */
+    additionalInstructionsTarget?: AdditionalInstructionsTarget;
     turnsCount: number;
     isPending: boolean;
     resumeSessionId: string | null | undefined;
@@ -44,6 +47,7 @@ export interface ChatMetadataButtonProps extends ChatHeaderMetadata {
 export function ChatMetadataButton({
     metadataProcess,
     toolInventoryTarget,
+    additionalInstructionsTarget,
     turnsCount,
     isPending,
     resumeSessionId,
@@ -65,6 +69,7 @@ export function ChatMetadataButton({
         <ConversationMetadataPopover
             process={metadataProcess}
             toolInventoryTarget={toolInventoryTarget}
+            additionalInstructionsTarget={additionalInstructionsTarget}
             turnsCount={turnsCount}
             extraRows={extraRows}
             triggerClassName={triggerClassName}

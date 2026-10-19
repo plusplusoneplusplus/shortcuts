@@ -27,6 +27,7 @@
 import type { LlmToolMeta } from './llm-tool-registry';
 import { summarizeToolParameters } from './llm-tool-parameters';
 import { BROWSER_TOOL_PARAMETERS } from '@plusplusoneplusplus/coc-client';
+import { SENTINEL_JOBS_TOOL_PARAMETERS } from './sentinel-jobs-tool';
 
 /**
  * Mirror of each tool's input-schema structure, keyed by the tool name as
@@ -246,6 +247,7 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
         },
         required: ['provider', 'repository'],
     },
+    sentinel_jobs: SENTINEL_JOBS_TOOL_PARAMETERS,
     tavily_web_search: {
         type: 'object',
         properties: {

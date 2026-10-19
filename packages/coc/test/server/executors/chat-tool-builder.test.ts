@@ -288,6 +288,46 @@ describe('buildChatToolBundle', () => {
         expect(result.tools.map(t => t.name)).not.toContain('kusto_query');
     });
 
+    describe('sentinel_jobs', () => {
+        const jobs = () => ({ assertOwner: vi.fn(async () => undefined), list: vi.fn(async () => []), get: vi.fn(), create: vi.fn(), update: vi.fn(), start: vi.fn(), cancel: vi.fn() });
+        const build = (extra: Record<string, unknown> = {}, commands = jobs()) => buildChatToolBundle({
+            dataDir: tmpDir, workspaceId: WS_ID, processId: 'owner', store: makeStore(),
+            canvasToolsEnabled: false, kustoToolsEnabled: false, systemOneToolEnabled: false, toolScriptingEnabled: false,
+            sentinelJobs: { owner: { workspaceId: WS_ID, processId: 'owner' }, jobs: commands, defaults: () => ({}) },
+            ...extra,
+        });
+        const names = (bundle: ReturnType<typeof buildChatToolBundle>) => bundle.tools.map(tool => tool.name);
+
+        it('is an opt-in tool: absent under default preferences and when disabled again', () => {
+            expect(names(build())).not.toContain('sentinel_jobs');
+            writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
+            expect(names(build())).toContain('sentinel_jobs');
+            writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: ['sentinel_jobs'] });
+            expect(names(build())).not.toContain('sentinel_jobs');
+        });
+
+        it('honors the approval-required gate and stays out of scripts', () => {
+            writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [], approvalRequiredLlmTools: ['sentinel_jobs'] });
+            const bundle = build({ toolScriptingEnabled: true });
+            expect(bundle.tools.find(tool => tool.name === 'sentinel_jobs')!.handler!.name).toBe('gatedHandler');
+            expect(names(bundle)).toContain('run_tool_script');
+        });
+
+        it('is never offered to PR outcome reviews or scrubber children', () => {
+            writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
+            expect(names(build({ sentinelPrOutcomeReview: true }))).not.toContain('sentinel_jobs');
+            expect(names(build({ scrubFindings: { name: 'submit_scrub_findings' } as never }))).toEqual(['submit_scrub_findings']);
+        });
+
+        it('binds calls to the supplied owner', async () => {
+            writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
+            const commands = jobs();
+            const tool = build({}, commands).tools.find(t => t.name === 'sentinel_jobs')!;
+            await tool.handler!({ action: 'list', workspaceId: 'ws-other', processId: 'forged' } as never, {} as never);
+            expect(commands.list).toHaveBeenCalledWith({ workspaceId: WS_ID, processId: 'owner' });
+        });
+    });
+
     describe('query_pull_request', () => {
         const build = (overrides: Record<string, unknown> = {}) => buildChatToolBundle({
             dataDir: tmpDir,

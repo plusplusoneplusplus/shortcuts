@@ -24,6 +24,10 @@ import {
     prependChatModeDirective,
 } from '../../../src/server/executors/chat-mode-directive';
 import { FollowUpExecutor } from '../../../src/server/executors/follow-up-executor';
+import {
+    ADDITIONAL_INSTRUCTIONS_TAG,
+    saveAdditionalInstructions,
+} from '../../../src/server/processes/sentinel-additional-instructions';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import {
     normalizeChatModeOrDefault,
@@ -2607,6 +2611,177 @@ describe('FollowUpExecutor chat-mode directive injection', () => {
         await makeExecutor(store).executeFollowUp('proc-mode-legacy', 'hello again', undefined, 'ask');
 
         expect(sentPrompt(0)).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
+    });
+});
+
+// ============================================================================
+// Sentinel additional instructions on context boundaries
+// ============================================================================
+
+describe('FollowUpExecutor Sentinel additional instructions', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    const OPEN = `<${ADDITIONAL_INSTRUCTIONS_TAG}>`;
+    const sentinelMarker = buildChatModeDirective({ mode: 'sentinel' })!;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        mockBuildFollowUpSuggestionsAddon.mockReset().mockReturnValue({ tools: [], suffix: '' });
+        mockBuildChatToolBundle.mockReset().mockReturnValue(makeMockToolBundle());
+        mockWithRepoInstructions.mockReset().mockImplementation(async (sm: any) => sm);
+        mockReadNoteContent.mockReset().mockResolvedValue(undefined);
+        mockBuildMemoryV2Addon.mockReset().mockResolvedValue({
+            systemMessageSuffix: undefined,
+            tools: [],
+            suffix: '',
+            excludedBuiltinTools: [],
+            dispose: vi.fn(),
+        });
+    });
+
+    function sentCall(index: number): any {
+        return sdkMocks.mockSendMessage.mock.calls[index][0] as any;
+    }
+
+    function blockCount(prompt: string): number {
+        return prompt.split(OPEN).length - 1;
+    }
+
+    function executor(enabled = true) {
+        return makeExecutor(store, {
+            queueConfig: createFixedQueueRuntimeConfig({
+                config: { features: { sentinelAdditionalInstructions: enabled } } as any,
+            }),
+        });
+    }
+
+    /** A live Sentinel chat whose first turn already carried the dispatcher block. */
+    async function seedSentinel(id: string, text: string, overrides?: Partial<AIProcess>): Promise<void> {
+        await store.addProcess(makeProcess({
+            id,
+            sdkSessionId: `sdk-${id}`,
+            metadata: { type: 'chat', mode: 'sentinel', additionalInstructions: { text } } as any,
+            conversationTurns: [
+                {
+                    role: 'user', content: 'Hello', timestamp: new Date('2026-01-01T00:00:00Z'),
+                    turnIndex: 0, timeline: [], chatModeContext: sentinelMarker,
+                },
+                { role: 'assistant', content: 'Hi', timestamp: new Date('2026-01-01T00:00:01Z'), turnIndex: 1, timeline: [] },
+            ],
+            ...overrides,
+        }));
+    }
+
+    async function userTurn(id: string, timestamp: string): Promise<void> {
+        await store.appendConversationTurn(id, (idx: number) => ({
+            role: 'user' as const, content: 'next', timestamp: new Date(timestamp), turnIndex: idx, timeline: [],
+        }));
+    }
+
+    async function setCompaction(id: string, state: 'completed' | 'failed' | 'cancelled' | 'queued', completedAt: string) {
+        const proc = await store.getProcess(id);
+        await store.updateProcess(id, {
+            metadata: { ...proc!.metadata, compaction: { state, completedAt } } as any,
+        });
+    }
+
+    async function followUp(exec: FollowUpExecutor, id: string, timestamp: string): Promise<void> {
+        await userTurn(id, timestamp);
+        await exec.executeFollowUp(id, 'next', undefined, 'sentinel');
+    }
+
+    it('does not inject on ordinary follow-ups, even after an edit', async () => {
+        await seedSentinel('proc-ai-steady', 'Reply in French.');
+        const exec = executor();
+        await followUp(exec, 'proc-ai-steady', '2026-01-02T00:00:00Z');
+        await saveAdditionalInstructions(store, 'proc-ai-steady', undefined, 'Reply in German.');
+        await followUp(exec, 'proc-ai-steady', '2026-01-03T00:00:00Z');
+
+        for (const i of [0, 1]) {
+            expect(sentCall(i).prompt).not.toContain(OPEN);
+            expect(sentCall(i).systemMessage?.content ?? '').not.toContain(OPEN);
+        }
+    });
+
+    it('applies A, keeps A while B is pending, then injects B once per successful compaction', async () => {
+        await seedSentinel('proc-ai-cycle', 'Instruction A');
+        const exec = executor();
+
+        await setCompaction('proc-ai-cycle', 'completed', '2026-01-02T00:00:00Z');
+        await followUp(exec, 'proc-ai-cycle', '2026-01-03T00:00:00Z');
+        expect(blockCount(sentCall(0).prompt)).toBe(1);
+        expect(sentCall(0).prompt).toContain('Instruction A');
+        // The block follows the dispatcher rules and precedes the user text.
+        const prompt0 = sentCall(0).prompt as string;
+        expect(prompt0.indexOf(OPEN)).toBeGreaterThan(prompt0.indexOf('</coc-chat-mode>'));
+        expect(prompt0.indexOf(OPEN)).toBeLessThan(prompt0.lastIndexOf('next'));
+        // The recorded marker stays the mode directive alone.
+        const turns = (await store.getProcess('proc-ai-cycle'))!.conversationTurns!;
+        expect(turns.filter(t => t.chatModeContext).every(t => !t.chatModeContext!.includes(OPEN))).toBe(true);
+
+        await followUp(exec, 'proc-ai-cycle', '2026-01-04T00:00:00Z');
+        expect(sentCall(1).prompt).not.toContain(OPEN);
+
+        await saveAdditionalInstructions(store, 'proc-ai-cycle', undefined, 'Instruction B');
+        await followUp(exec, 'proc-ai-cycle', '2026-01-05T00:00:00Z');
+        expect(sentCall(2).prompt).not.toContain(OPEN);
+
+        await setCompaction('proc-ai-cycle', 'completed', '2026-01-06T00:00:00Z');
+        await followUp(exec, 'proc-ai-cycle', '2026-01-07T00:00:00Z');
+        expect(blockCount(sentCall(3).prompt)).toBe(1);
+        expect(sentCall(3).prompt).toContain('Instruction B');
+        expect(sentCall(3).prompt).not.toContain('Instruction A');
+
+        await followUp(exec, 'proc-ai-cycle', '2026-01-08T00:00:00Z');
+        expect(sentCall(4).prompt).not.toContain(OPEN);
+
+        await setCompaction('proc-ai-cycle', 'completed', '2026-01-09T00:00:00Z');
+        await followUp(exec, 'proc-ai-cycle', '2026-01-10T00:00:00Z');
+        expect(blockCount(sentCall(5).prompt)).toBe(1);
+    });
+
+    it.each(['failed', 'cancelled', 'queued'] as const)('does not activate edits after a %s compaction', async (state) => {
+        await seedSentinel(`proc-ai-${state}`, 'Instruction A');
+        await setCompaction(`proc-ai-${state}`, state, '2026-01-02T00:00:00Z');
+        await followUp(executor(), `proc-ai-${state}`, '2026-01-03T00:00:00Z');
+        expect(sentCall(0).prompt).not.toContain(OPEN);
+    });
+
+    it('omits the block after clearing while still resending the mode directive', async () => {
+        await seedSentinel('proc-ai-clear', 'Instruction A');
+        await saveAdditionalInstructions(store, 'proc-ai-clear', undefined, '   ');
+        await setCompaction('proc-ai-clear', 'completed', '2026-01-02T00:00:00Z');
+        await followUp(executor(), 'proc-ai-clear', '2026-01-03T00:00:00Z');
+        expect(sentCall(0).prompt).toContain('<coc-sentinel-dispatcher>');
+        expect(sentCall(0).prompt).not.toContain(OPEN);
+    });
+
+    it('uses the latest saved value when rebuilding without a resumable session', async () => {
+        await seedSentinel('proc-ai-fresh', 'Instruction A', { sdkSessionId: undefined });
+        await saveAdditionalInstructions(store, 'proc-ai-fresh', undefined, 'Instruction B');
+        await followUp(executor(), 'proc-ai-fresh', '2026-01-02T00:00:00Z');
+        expect(blockCount(sentCall(0).prompt)).toBe(1);
+        expect(sentCall(0).prompt).toContain('Instruction B');
+    });
+
+    it('sends nothing when the flag is off, keeping the saved value', async () => {
+        await seedSentinel('proc-ai-off', 'Instruction A');
+        await setCompaction('proc-ai-off', 'completed', '2026-01-02T00:00:00Z');
+        await followUp(executor(false), 'proc-ai-off', '2026-01-03T00:00:00Z');
+        expect(sentCall(0).prompt).toContain('<coc-sentinel-dispatcher>');
+        expect(sentCall(0).prompt).not.toContain(OPEN);
+        expect((await store.getProcess('proc-ai-off'))!.metadata?.additionalInstructions).toEqual({ text: 'Instruction A' });
+    });
+
+    it('never injects into a non-Sentinel chat', async () => {
+        await store.addProcess(makeProcess({
+            id: 'proc-ai-ask',
+            sdkSessionId: undefined,
+            metadata: { type: 'chat', mode: 'ask', additionalInstructions: { text: 'Instruction A' } } as any,
+        }));
+        await executor().executeFollowUp('proc-ai-ask', 'next', undefined, 'ask');
+        expect(sentCall(0).prompt).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
+        expect(sentCall(0).prompt).not.toContain(OPEN);
     });
 });
 

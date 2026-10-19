@@ -33,6 +33,7 @@ import { RALPH_GRILL_MAX_ROUNDS } from '../../../src/server/ralph/grill-planning
 import { nestRuntime, type FlatExecutorOptions } from './runtime-options-helper';
 import { backgroundTasksRegistry } from '../../../src/server/streaming/background-tasks-registry';
 import { SENTINEL_DISPATCHER_DIRECTIVE } from '../../../src/server/executors/chat-mode-directive';
+import { ADDITIONAL_INSTRUCTIONS_TAG } from '../../../src/server/processes/sentinel-additional-instructions';
 import { SENTINEL_JOB_REVIEW_INSTRUCTIONS } from '../../../src/server/delegation/sentinel-job-review-instructions';
 import { saveImagesToTempFiles } from '../../../src/server/core/image-utils';
 import * as imageStore from '../../../src/server/executors/image-store';
@@ -948,6 +949,56 @@ describe('first-turn chat-mode directive is recorded', () => {
         const recorded = store.processes.get(processId)?.conversationTurns?.[0].chatModeContext ?? '';
         // Verbatim: the marker is the exact block the prompt carried.
         expect(sdkMocks.mockSendMessage.mock.calls[0][0].prompt).toContain(recorded);
+    });
+});
+
+describe('first-turn Sentinel additional instructions', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    const OPEN = `<${ADDITIONAL_INSTRUCTIONS_TAG}>`;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1' });
+    });
+
+    async function run(mode: 'sentinel' | 'ask', enabled: boolean, id: string) {
+        const task: QueuedTask = { ...makeChatTask('ask', id), payload: { kind: 'chat', mode, prompt: 'Hi' } } as QueuedTask;
+        const processId = toQueueProcessId(task.id);
+        await store.addProcess({
+            id: processId,
+            type: 'chat',
+            status: 'running',
+            startTime: new Date(),
+            promptPreview: 'Hi',
+            metadata: { type: 'chat', mode, additionalInstructions: { text: 'Keep replies under three lines.' } } as any,
+            conversationTurns: [{ role: 'user', content: 'Hi', timestamp: new Date(), turnIndex: 0, timeline: [] }],
+        });
+        const queueConfig = createFixedQueueRuntimeConfig({ config: { features: { sentinelAdditionalInstructions: enabled } } as any });
+        await new ChatExecutor(store, makeOptions(store, { queueConfig })).execute(task, 'Hi');
+        return { call: sdkMocks.mockSendMessage.mock.calls[0][0], processId };
+    }
+
+    it('appends the saved text once after the dispatcher rules, outside the system message and marker', async () => {
+        const { call, processId } = await run('sentinel', true, 'task-ai-first');
+        expect(call.prompt.split(OPEN)).toHaveLength(2);
+        expect(call.prompt).toContain('Keep replies under three lines.');
+        expect(call.prompt.indexOf(OPEN)).toBeGreaterThan(call.prompt.indexOf(SENTINEL_DISPATCHER_DIRECTIVE));
+        expect(call.systemMessage?.content ?? '').not.toContain(OPEN);
+        expect(call.systemMessage?.content).toContain(SENTINEL_JOB_REVIEW_INSTRUCTIONS);
+        expect(store.processes.get(processId)?.conversationTurns?.[0].chatModeContext ?? '').not.toContain(OPEN);
+    });
+
+    it('omits the block when the flag is off', async () => {
+        const { call } = await run('sentinel', false, 'task-ai-first-off');
+        expect(call.prompt).toContain(SENTINEL_DISPATCHER_DIRECTIVE);
+        expect(call.prompt).not.toContain(OPEN);
+    });
+
+    it('omits the block for non-Sentinel chats', async () => {
+        const { call } = await run('ask', true, 'task-ai-first-ask');
+        expect(call.prompt).not.toContain(OPEN);
     });
 });
 

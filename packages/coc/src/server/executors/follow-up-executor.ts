@@ -52,6 +52,7 @@ import { readNoteContent } from './note-chat-executor';
 import { suppressesPlanSaveGuidance } from './auto-folder-utils';
 import { emitMessageSteering } from '../streaming/sse-handler';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
+import { resolveAdditionalInstructionsBlock, withAdditionalInstructions } from '../processes/sentinel-additional-instructions';
 import {
     buildChatModeDirective,
     buildFollowUpChatModeDisplayBlock,
@@ -93,6 +94,8 @@ import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduc
 export interface FollowUpTurnOptions {
     /** Native scheduled-job admission, checked by the lifecycle runner. Jobs have no run deadlines. */
     sentinelScheduledJob?: boolean;
+    /** A scheduled-job handback into its Sentinel; such turns never get `sentinel_jobs`. */
+    sentinelJobHandback?: boolean;
     /** Trusted native admission marker; never derived from prompt text or process metadata. */
     sentinelPrOutcomeReview?: boolean;
     sentinelPrOutcomeStopped?: boolean;
@@ -543,6 +546,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     ? this.buildCreatePullRequestDeps(processId, wsId, workingDirectory)
                     : undefined,
                 sentinelTodos: this.buildSentinelTodoDeps(processId, wsId, currentMode),
+                sentinelJobs: this.buildSentinelJobsDeps(processId, wsId, currentMode, sessionProvider,
+                    reviewOnly || turnSource !== undefined || options?.sentinelJobHandback === true),
                 // Registered regardless of `currentMode` so toggling the mode
                 // pill mid-chat leaves the tool block byte-identical and the
                 // resumed session keeps its prefix cache. A machine-triggered
@@ -636,7 +641,15 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 : undefined;
             // Order-independent with the decoration above: the directive
             // prepends, the repo-group listing appends.
-            const followUpMessage = prependChatModeDirective(decorated.prompt, modeDirective);
+            // A Sentinel context (re)build — the turns that carry the directive —
+            // also carries the latest saved additional instructions. Ordinary
+            // turns send neither, so saved edits wait for the next boundary.
+            const additionalInstructions = modeDirective && currentMode === 'sentinel'
+                ? await resolveAdditionalInstructionsBlock(
+                    this.store, processId, this.queueConfig.getSentinelAdditionalInstructionsEnabled())
+                : undefined;
+            const followUpMessage = prependChatModeDirective(
+                decorated.prompt, withAdditionalInstructions(modeDirective, additionalInstructions));
             // Recorded only on the turns that actually carried the block (the
             // repo-group listing is recorded the same way inside the
             // decoration), so the next turn's decision — and the transcript's
@@ -686,6 +699,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     logger,
                 }),
             });
+            this.recordSentinelJobDefaults(processId, sessionProvider, policy.resolvedModel, policy.reasoningEffort);
 
             await this.assertChatImageModel(sessionProvider, followUpAiService, policy.modelId, attachments);
             imagesAccepted = true;

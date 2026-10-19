@@ -324,6 +324,8 @@ export interface CLIConfig {
         sentinelTodoScrubber?: boolean;
         /** Scheduled and on-demand Sentinel To-do jobs. Disabled by default. */
         sentinelTodoJobs?: boolean;
+        /** Per-chat Sentinel additional instructions editor and context injection. Disabled by default. */
+        sentinelAdditionalInstructions?: boolean;
         /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Disabled by default. */
         toolScripting?: boolean;
         /** Read-only `query_pull_request` LLM tool (GitHub / Azure DevOps PRs). Disabled by default. */
@@ -742,6 +744,8 @@ export interface ResolvedCLIConfig {
         sentinelTodoScrubber: boolean;
         /** Scheduled and on-demand Sentinel To-do jobs. Disabled by default. */
         sentinelTodoJobs: boolean;
+        /** Per-chat Sentinel additional instructions editor and context injection. Disabled by default. */
+        sentinelAdditionalInstructions: boolean;
         /** `run_tool_script` LLM tool: model-written scripts that call CoC tools. Disabled by default. */
         toolScripting: boolean;
         /** Read-only `query_pull_request` LLM tool (GitHub / Azure DevOps PRs). Disabled by default. */
@@ -1078,6 +1082,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         sentinelTodoExternalReferences: false,
         sentinelTodoScrubber: false,
         sentinelTodoJobs: false,
+        sentinelAdditionalInstructions: false,
         toolScripting: true,
         queryPullRequestTool: false,
         sentinelPrOutcomeWake: false,

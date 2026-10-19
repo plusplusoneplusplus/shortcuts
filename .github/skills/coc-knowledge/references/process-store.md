@@ -531,6 +531,21 @@ of short mutation admission. Queued compactions use non-retrying tasks with prov
 timeout and queued-only cancellation. They recover on restart; interrupted running
 compactions settle as failed without replay.
 
+### Sentinel additional instructions
+
+`processes/sentinel-additional-instructions.ts` owns `metadata.additionalInstructions`
+(`{ text, updatedAt }`, missing = empty) behind live default-off
+`features.sentinelAdditionalInstructions` (`QueueRuntimeConfig.getSentinelAdditionalInstructionsEnabled`).
+Only its REST route writes it; forks drop it, and it never propagates to delegated or child chats.
+The saved text rides the outgoing user turn as one `<coc-sentinel-additional-instructions>`
+block after the Sentinel mode directive, only on turns that carry that directive (first turn,
+history rebuild without a resumable session or provider switch, first turn after a completed
+compaction, directive drift). Executors read the value fresh at that boundary; edits stay pending
+on ordinary turns, and failed/cancelled/queued compactions do not activate them. The block stays
+out of the system message and the `chatModeContext` marker, is not disclosed in the stored turn,
+and grants no permissions. Provider-native background compaction is not surfaced, so it does
+not trigger re-injection.
+
 ### Sentinel auto-compact
 
 `processes/compact-process.ts` resolves `SENTINEL_COMPACTION_INSTRUCTIONS` from

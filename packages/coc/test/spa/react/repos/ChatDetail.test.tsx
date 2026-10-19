@@ -71,6 +71,7 @@ const { mockState } = vi.hoisted(() => ({
         // tests keep the pre-experiment toolbar.
         chatStyleSelectorEnabled: false,
         chatHistoryPagingEnabled: false,
+        sentinelAdditionalInstructionsEnabled: false,
         realMinimap: false,
         sseOptions: undefined as any,
     },
@@ -81,7 +82,8 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isSchedulerDelayHintEnabled: () => false,
     isMarkdownPanelPreviewEnabled: () => false,
     isPanelSourceSplitEnabled: () => false,
-    isFeatureEnabled: (name: string) => name === 'chatHistoryPagingEnabled' && mockState.chatHistoryPagingEnabled,
+    isFeatureEnabled: (name: string) => (name === 'chatHistoryPagingEnabled' && mockState.chatHistoryPagingEnabled)
+        || (name === 'sentinelAdditionalInstructionsEnabled' && mockState.sentinelAdditionalInstructionsEnabled),
     getFeatureValue: () => undefined,
     isComposerWordHintEnabled: () => false,
     isContainerMode: () => false,
@@ -537,6 +539,7 @@ beforeEach(() => {
     mockState.prItems = [];
     mockState.sessionContextAttachmentsEnabled = false;
     mockState.chatHistoryPagingEnabled = false;
+    mockState.sentinelAdditionalInstructionsEnabled = false;
     mockState.realMinimap = false;
     mockState.sseOptions = undefined;
     resetActiveChatAttach();
@@ -3596,6 +3599,41 @@ describe('ChatDetail — onHeaderMetadataChange', () => {
         );
 
         expect(onHeaderMetadataChange).toHaveBeenCalledWith(null);
+    });
+});
+
+describe('ChatDetail — Sentinel additional instructions target', () => {
+    const instructionReads = () => fetchMock.mock.calls.filter(([url]) => String(url).includes('/additional-instructions'));
+    const lastTarget = (publish: ReturnType<typeof vi.fn>) => publish.mock.calls.at(-1)?.[0]?.additionalInstructionsTarget;
+
+    it.each([
+        { label: 'flag off', flag: false, mode: 'sentinel' },
+        { label: 'non-Sentinel chat', flag: true, mode: 'ask' },
+    ])('omits the editor target for $label', async ({ flag, mode }) => {
+        mockState.sentinelAdditionalInstructionsEnabled = flag;
+        const publish = vi.fn();
+        setupStandardFetch(makeTask(), makeProcess({ metadata: { workspaceId: 'ws-owner', mode } }));
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-owner" hideHeader onHeaderMetadataChange={publish} /></Wrap>);
+        await waitFor(() => expect(publish.mock.calls.at(-1)?.[0]?.toolInventoryTarget).toBeDefined());
+        expect(lastTarget(publish)).toBeUndefined();
+    });
+
+    it('routes a group member Sentinel chat to its scoped owner without reading while closed', async () => {
+        mockState.sentinelAdditionalInstructionsEnabled = true;
+        const publish = vi.fn();
+        const owner = { workspaceId: 'ws-member', selectionId: 'remote:server-a:ws-member', baseUrl: 'https://owner.example.test' };
+        setupStandardFetch(makeTask(), makeProcess({ metadata: { workspaceId: 'ws-member', mode: 'sentinel' } }));
+        render(<Wrap><WorkspaceOwnerContext.Provider value={owner}>
+            <ChatDetail taskId="task-1" workspaceId="ws-member" sourceSelectionId="remote:server-b:ws-member"
+                sourceBaseUrl="https://other.example.test" hideHeader onHeaderMetadataChange={publish} />
+        </WorkspaceOwnerContext.Provider></Wrap>);
+        await waitFor(() => expect(lastTarget(publish)).toBeDefined());
+        const target = lastTarget(publish);
+        expect(target).toMatchObject({ workspaceId: 'ws-member', processId: 'proc-1' });
+        expect(target.client).toBe(publish.mock.calls.at(-1)![0].toolInventoryTarget.client);
+        expect(instructionReads()).toHaveLength(0);
+        await target.client.processes.getAdditionalInstructions(target.processId, { workspace: target.workspaceId }).catch(() => undefined);
+        expect(String(instructionReads()[0][0])).toBe(`${owner.baseUrl}/api/processes/proc-1/additional-instructions?workspace=ws-member`);
     });
 });
 

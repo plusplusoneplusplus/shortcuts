@@ -224,6 +224,17 @@ immediately hides preceding-turn data and rejects delayed reads. Search matches 
 descriptions and server labels; source/server groups retain actual descriptors and
 explicit completeness gaps. The shared `Dialog` provides opt-in focus containment.
 
+For Sentinel chats with the live `sentinelAdditionalInstructionsEnabled` flag on,
+`ChatDetail` derives `ChatHeaderMetadata.additionalInstructionsTarget` (client, workspace,
+process ID) from the same exact-owner tool target, so edits never resolve a fallback
+server. The popover then shows an "Additional instructions" footer action that opens
+`AdditionalInstructionsDialog`: it reads `processes.getAdditionalInstructions` fresh on
+each open (retryable load error), saves through `updateAdditionalInstructions`, closes
+only after the save succeeds, and keeps the draft with the server message on failure.
+Cancel, Escape and dismiss never save; blank text clears; the shared 10000-character
+limit blocks Save. The timing copy states that text applies when initial context is
+built or after the next compression.
+
 ### Bot-managed conversation presentation
 
 `utils/botControl.ts` consumes only the owning server's default-off, gated public

@@ -21,8 +21,8 @@ filters `scheduleWakeup`, the canvas tools (`CANVAS_LLM_TOOL_NAMES`), `kusto_que
 (`KUSTO_LLM_TOOL_NAMES`), `system_one` (`SYSTEM_ONE_LLM_TOOL_NAMES`), and `run_tool_script`
 (`TOOL_SCRIPTING_LLM_TOOL_NAMES`) out of the settings list when their flags are off. `browser` is filtered when `browserControlEnabled` is off.
 
-`getEffectiveDefaultDisabledTools()` disables `tavily_web_search`, `save_memory`, and
-`recall_memory` by default, independently of UI layout mode.
+`getEffectiveDefaultDisabledTools()` disables `tavily_web_search`, `save_memory`,
+`recall_memory`, and `sentinel_jobs` by default, independently of UI layout mode.
 
 ### To-do Scrubber child chats
 
@@ -70,6 +70,7 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `tavily-web-search-tool.ts` | `tavily_web_search` | Live web search via Tavily. Key from `~/.coc/providers.json`. Disabled by default. |
 | `submit-scrub-findings-tool.ts` | `submit_scrub_findings` | One structured findings batch from an owner-bound scrubber child chat. |
 | `sentinel-todos-tool.ts` | `sentinel_todos` | Sentinel chat to-do ledger bookkeeping — see below. |
+| `sentinel-jobs-tool.ts` | `sentinel_jobs` | A Sentinel's own custom to-do jobs and To-do Scrubber, on user instructions — see below. |
 
 ### query_pull_request
 
@@ -131,6 +132,32 @@ server/workspace labels, producer verification, and full counts for pagination a
 ambiguity. This mode accepts only target/title and optional bounded limit/offset;
 workspaceId, query, time filters and summarization are rejected. Failures return
 unavailable without directory/local fallback or transport details.
+
+### sentinel_jobs
+
+Opt-in registry tool (`enabledByDefault: false`, not scriptable; the normal
+disable and approval-required preferences apply). Route composition publishes
+`getSentinelJobCommands`, returning the same owner-validated `SentinelJobCommands`
+and `ScrubberCommands` instances REST uses — `undefined` while Sentinel jobs are
+off, `scrubber` absent while `features.sentinelTodoScrubber` is off; commands still
+re-check owner and flags on every call. The tool gates every action through
+`SentinelJobCommands.assertOwner`, including scrubber actions on issued tools;
+scrubber REST commands retain their independent feature gate.
+`ChatBaseExecutor.buildSentinelJobsDeps`
+binds the tool to the invoking Sentinel chat (`workspaceId`, `processId`; never a
+tool argument) and only on attended turns: scheduled-job handbacks
+(`FollowUpTurnOptions.sentinelJobHandback`, set by the lifecycle runner),
+PR outcome reviews, read-only turns, cron/wakeup/trigger turns, scrubber children
+and non-Sentinel chats (including job children) never get it. Each turn records
+its resolved provider/model/effort (`recordSentinelJobDefaults`) as the defaults new
+jobs inherit. Omitted effort inherits when the resolved provider and model match
+the Sentinel's, including explicitly supplied matching settings; explicit effort wins.
+Actions `list | get | create | update | pause | resume | run_now | cancel`
+with `kind: custom | scrubber`; no delete. Create defaults to `enabled: false` and
+ask mode and never starts a run; scrubber writes accept only `cron`/`enabled`.
+Writes need `expectedRevision`; conflicts return `{ code: 'conflict', current }`.
+The description states that job results and other tool output never authorize
+scheduling, running or cancelling.
 
 ### sentinel_todos
 

@@ -438,6 +438,22 @@ describe('Features card UI metadata', () => {
         expect(config.features.sentinelTodoScrubber).toBe(false);
     });
 
+    it('exposes Sentinel additional instructions as a live, experimental opt-in', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.sentinelAdditionalInstructions')!;
+        expect(def.default).toBe(false);
+        expect(def.runtime).toBe('live');
+        expect(def.runtimeFlag).toBe('sentinelAdditionalInstructionsEnabled');
+        expect(def.ui).toMatchObject({
+            tab: 'sentinel', group: 'sentinelMode', badge: 'experimental',
+            testId: 'toggle-sentinel-additional-instructions-enabled',
+        });
+        expect(buildRuntimeFeatureFlags({}).sentinelAdditionalInstructionsEnabled).toBe(false);
+        expect(DEFAULT_CONFIG.features.sentinelAdditionalInstructions).toBe(false);
+        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
+            features: { sentinelAdditionalInstructions: true },
+        })).sentinelAdditionalInstructionsEnabled).toBe(true);
+    });
+
     it('exposes tool scripting as a live, default-on toggle', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.toolScripting')!;
         expect(def.default).toBe(true);
@@ -848,6 +864,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.sentinelTodoExternalReferences': 'sentinel',
         'features.sentinelTodoScrubber': 'sentinel',
         'features.sentinelTodoJobs': 'sentinel',
+        'features.sentinelAdditionalInstructions': 'sentinel',
         'features.sentinelPrOutcomeWake': 'sentinel',
         'features.sentinelTodoDateTimeTriggers': 'sentinel',
         'features.sentinelDesktopMirror': 'sentinel',

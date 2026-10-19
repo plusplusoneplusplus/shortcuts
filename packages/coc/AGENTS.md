@@ -469,7 +469,12 @@ references before editing. Paths are package-relative.
   start, retry, or cancel jobs. Every Sentinel chat has a persistent ledger.
   Sentinel Mode and To-do Scrubber are independently default-off. The
   `sentinel_todos` tool is bound to the invoking Sentinel chat via the late-bound
-  `getSentinelTodos` runtime capability.
+  `getSentinelTodos` runtime capability. The opt-in `sentinel_jobs` tool reuses the
+  REST job/scrubber command objects (`getSentinelJobCommands`), bound to the owning
+  Sentinel's attended turns only; handbacks, reviews and automation turns never get it.
+  Every tool action, including scrubber actions, rechecks live jobs availability and
+  ownership through `SentinelJobCommands.assertOwner`. New jobs inherit omitted effort
+  when their resolved provider/model match the Sentinel's, including explicit matches.
   Default-off `features.sentinelTodoTags` exposes parent-ledger tag definitions
   and metadata through the same service, REST client and tool. Target workspaces
   share their parent's library, never another parent's tags. Matching uses the
@@ -764,7 +769,10 @@ references before editing. Paths are package-relative.
   `delegation/sentinel-job-review-instructions.ts` and are appended by
   `chat-turn-system-message.ts` on every first/follow-up Sentinel request, including
   resumed, provider-switched and post-compaction sessions, independently of admin/repo
-  prompts. Sentinel completion messages contain only the untrusted-result prefix and
+  prompts. Saved per-chat additional instructions (default-off
+  `features.sentinelAdditionalInstructions`) ride only the turns that carry the Sentinel
+  mode directive, read fresh there, never the system message or the stored marker.
+  Sentinel completion messages contain only the untrusted-result prefix and
   result JSON; non-Sentinel parents receive the shared rules inline.
   `features.sentinelResultCards` is a default-on, live presentation gate; explicit false
   opts out. Cards require server delivery correlation, the exact result envelope and

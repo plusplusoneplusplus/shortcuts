@@ -636,6 +636,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         // that is already queued.
                         {
                             ...(getJobTaskContext(task)?.kind === 'run' ? { sentinelScheduledJob: true } : {}),
+                            ...(getJobTaskContext(task)?.kind === 'handback' ? { sentinelJobHandback: true } : {}),
                             ...(userTurnPersisted ? { userTurnPersisted: true } : {}),
                             ...(imageTempDir ? { imageTempDir } : {}),
                             ...(followUpPayload.provider ? { requestedProvider: followUpPayload.provider } : {}),

@@ -12,10 +12,12 @@ import { ScrubberEngine } from '../sentinel-scrubber/scrubber-engine';
 import { ScrubberRunService } from '../sentinel-scrubber/scrubber-runs';
 import { ScrubberScheduler } from '../sentinel-scrubber/scrubber-scheduler';
 import { registerScrubberRoutes } from '../sentinel-scrubber/scrubber-routes';
+import { ScrubberCommands } from '../sentinel-scrubber/scrubber-commands';
 import { SentinelJobStore } from '../sentinel-jobs/job-store';
 import { SentinelJobService } from '../sentinel-jobs/job-service';
 import { SentinelJobScheduler } from '../sentinel-jobs/job-scheduler';
 import { registerSentinelJobRoutes } from '../sentinel-jobs/job-routes';
+import { SentinelJobCommands } from '../sentinel-jobs/job-commands';
 import type { Route } from '../types';
 import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker, CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { SqliteProcessStore, modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX, SDK_PROVIDER_OPENCODE, getLogger, LogCategory, toQueueProcessId, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
@@ -338,6 +340,7 @@ export interface RegisterRoutesOptions {
     setSentinelDependencyAdmission?: (get: NonNullable<import('../executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelDependencyAdmission']>) => void;
     setSentinelScrubber?: (get: () => ScrubberRunService | undefined) => void;
     setSentinelScheduledJobs?: (get: () => SentinelJobService | undefined) => void;
+    setSentinelJobCommands?: (get: NonNullable<import('../executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelJobCommands']>) => void;
     /** Publish the WhatsApp/Teams ask_user question relay to the executor runtime. */
     setAskUserQuestionRelay?: (relay: AskUserQuestionRelay) => void;
     /** Shared native Notes index lifecycle, validated by the composition root. */
@@ -721,8 +724,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     };
     store.removeWorkspace = jobsRemoveWorkspace;
     opts.setSentinelScheduledJobs?.(() => scheduledJobService);
-    registerSentinelJobRoutes({ routes, jobs: scheduledJobs, service: scheduledJobService,
+    const jobCommands = new SentinelJobCommands({ jobs: scheduledJobs, service: scheduledJobService,
         onConfigChange: () => jobScheduler.refreshAll() });
+    registerSentinelJobRoutes({ routes, jobs: scheduledJobs, service: scheduledJobService, commands: jobCommands });
     const sentinelJobsShutdown = async () => {
         jobScheduler.dispose();
         await scheduledJobService.shutdown();
@@ -753,8 +757,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     };
     store.onProcessChange = scrubberProcessChange;
     opts.setSentinelScrubber?.(() => getScrubberEnabled() ? scrubberRuns : undefined);
-    registerScrubberRoutes({ routes, todos: sentinelTodos, scrubber, engine: scrubberEngine,
+    const scrubberCommands = new ScrubberCommands({ todos: sentinelTodos, scrubber,
         runs: scrubberRuns, getEnabled: getScrubberEnabled, onChange: scrubberChanged });
+    registerScrubberRoutes({ routes, todos: sentinelTodos, scrubber, engine: scrubberEngine,
+        runs: scrubberRuns, getEnabled: getScrubberEnabled, onChange: scrubberChanged, commands: scrubberCommands });
+    opts.setSentinelJobCommands?.(() => getJobsEnabled()
+        ? { jobs: jobCommands, ...(getScrubberEnabled() ? { scrubber: scrubberCommands } : {}) } : undefined);
     const sentinelTodoHooks = createSentinelTodoDelegationHooks(sentinelTodos);
     // Bound after the WhatsApp connector is wired below.
     let autoCompactionOrigins: ReturnType<typeof createAutoCompactionOrigins> | undefined;
@@ -849,6 +857,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             chatProviderSwitchingEnabled: opts.runtimeConfigService!.config.features?.chatProviderSwitching === true,
             chatHistoryPagingEnabled: opts.runtimeConfigService!.config.features?.chatHistoryPaging === true,
             botManagedConversationsEnabled: opts.runtimeConfigService!.config.features?.botManagedConversations === true,
+            sentinelAdditionalInstructionsEnabled: opts.runtimeConfigService!.config.features?.sentinelAdditionalInstructions === true,
             defaultChatStyle: coerceChatStyle(opts.runtimeConfigService!.config.features?.defaultChatStyle),
         })
         : () => ({
@@ -863,6 +872,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             chatProviderSwitchingEnabled: opts.resolvedConfig?.features?.chatProviderSwitching === true,
             chatHistoryPagingEnabled: opts.resolvedConfig?.features?.chatHistoryPaging === true,
             botManagedConversationsEnabled: opts.resolvedConfig?.features?.botManagedConversations === true,
+            sentinelAdditionalInstructionsEnabled: opts.resolvedConfig?.features?.sentinelAdditionalInstructions === true,
             defaultChatStyle: coerceChatStyle(opts.resolvedConfig?.features?.defaultChatStyle),
         });
     const isKustoEnabled = (): boolean => getLiveFeatureFlags().kustoEnabled;
