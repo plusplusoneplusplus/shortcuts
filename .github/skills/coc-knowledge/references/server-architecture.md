@@ -170,7 +170,12 @@ baseline state, record a timestamped error (500 characters maximum) and pause th
 event at five consecutive failures. Success clears errors and resets the failure
 count, including unchanged results. `getScriptConditionPollDelay` doubles cadence
 per failure, capped at one hour without shortening longer configured intervals.
-Runtime admission, scheduling, persisted pause status and delivery require separate wiring.
+`script-condition-runner.ts` passes state and strict JSON validation to `runToolScript`
+with a trigger-only 60-second abort deadline. The engine terminates workers and aborts
+in-flight tool calls on cancellation; the wrapper preserves the cancellation reason
+and clears its deadline timer on every outcome. The caller owns and disposes the
+owner-resolved unattended runtime. Owner/tool admission, scheduling, persisted pause
+status and delivery require separate wiring.
 
 `triggers/sentinel-todo-trigger-firer.ts` commits one-shot PR/date decisions using
 the trigger and to-do stores' shared database writer. It checks the rule revision
