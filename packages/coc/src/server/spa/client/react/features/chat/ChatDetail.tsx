@@ -99,7 +99,7 @@ import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { resolveLoadedTaskMode } from './chatMode';
 import { useSentinelAutoCompact } from './AutoCompactPanel';
 import { normalizeChatMode } from '../../repos/modeConfig';
-import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isCanvasEnabled, isCronEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, getDefaultChatStyle } from '../../utils/config';
+import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isCanvasEnabled, isCronEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, getDefaultChatStyle, isFeatureEnabled } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
@@ -2889,9 +2889,17 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             || hydrationScope?.key !== conversationStateKey) return undefined;
         return { client, workspaceId: browserWorkspaceId, processId: processDetails.id as string, refreshKey: toolInventoryRevision };
     }, [loading, historyOwnerAvailable, browserWorkspaceId, processDetails?.id, client, conversationStateKey, hydrationScope, toolInventoryRevision]);
+    const isSentinelChat = resolveLoadedTaskMode(task) === 'sentinel' || metadataProcess?.metadata?.mode === 'sentinel';
+    // Same exact-owner guard as the tool inventory: edits never resolve a fallback server.
+    const additionalInstructionsTarget = useMemo(() => {
+        if (!isSentinelChat || !toolInventoryTarget || !isFeatureEnabled('sentinelAdditionalInstructionsEnabled')) return undefined;
+        const { client: ownerClient, workspaceId: ownerWorkspaceId, processId: ownerProcessId } = toolInventoryTarget;
+        return { client: ownerClient, workspaceId: ownerWorkspaceId, processId: ownerProcessId };
+    }, [isSentinelChat, toolInventoryTarget?.client, toolInventoryTarget?.workspaceId, toolInventoryTarget?.processId]);
     const headerMetadata: ChatHeaderMetadata = useMemo(() => ({
         metadataProcess,
         toolInventoryTarget,
+        additionalInstructionsTarget,
         turnsCount: turns.length,
         isPending,
         resumeSessionId,
@@ -2905,7 +2913,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         // Deps deliberately omit launchInteractiveResume / copyResumeCommand:
         // both are plain functions re-created every render, so including them
         // would rebuild the bundle — and re-emit it — on every poll.
-    }), [metadataProcess, toolInventoryTarget, turns.length, isPending, resumeSessionId, resumeLaunching, task?.status, handleFork, forking, onStartFreshSameContext, startingFreshSameContext]);
+    }), [metadataProcess, toolInventoryTarget, additionalInstructionsTarget, turns.length, isPending, resumeSessionId, resumeLaunching, task?.status, handleFork, forking, onStartFreshSameContext, startingFreshSameContext]);
 
     const onHeaderMetadataChangeRef = useRef(onHeaderMetadataChange);
     onHeaderMetadataChangeRef.current = onHeaderMetadataChange;
@@ -2925,6 +2933,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     task={task}
                     metadataProcess={headerMetadata.metadataProcess}
                     toolInventoryTarget={headerMetadata.toolInventoryTarget}
+                    additionalInstructionsTarget={headerMetadata.additionalInstructionsTarget}
                     planPath={effectivePlanPath}
                     createdFiles={displayFiles}
                     pinnedFile={pinnedFile}

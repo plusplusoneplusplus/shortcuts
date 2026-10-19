@@ -56,6 +56,7 @@ export interface ChatHeaderProps {
     task: any;
     metadataProcess: any;
     toolInventoryTarget?: ChatHeaderMetadata['toolInventoryTarget'];
+    additionalInstructionsTarget?: ChatHeaderMetadata['additionalInstructionsTarget'];
     planPath: string;
     createdFiles: { filePath: string }[];
     pinnedFile: { filePath: string } | undefined;
@@ -336,6 +337,7 @@ export function ChatHeader({
     task,
     metadataProcess,
     toolInventoryTarget,
+    additionalInstructionsTarget,
     planPath,
     createdFiles,
     pinnedFile,
@@ -517,6 +519,7 @@ export function ChatHeader({
                 <ChatMetadataButton
                     metadataProcess={metadataProcess}
                     toolInventoryTarget={toolInventoryTarget}
+                    additionalInstructionsTarget={additionalInstructionsTarget}
                     turnsCount={turns.length}
                     isPending={isPending}
                     resumeSessionId={resumeSessionId}
