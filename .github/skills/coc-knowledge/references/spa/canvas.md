@@ -57,8 +57,8 @@ normal unified-panel model.
 
 ### Editing and conflicts
 
-Markdown canvases toggle between Preview (the shared `useMarkdownPreview` pipeline, its
-rendered HTML passed to `useMermaid` as the re-render key) and Edit (plain textarea).
+Markdown canvases toggle between Preview (`chatMarkdownToHtml` with canvas embeds and
+SVG fences enabled, hydrated by `MarkdownView`) and Edit (plain textarea).
 Edits autosave debounced through `client.canvases.save(...)` carrying `expectedRevision`;
 HTTP 409 surfaces a conflict, and a live AI update arriving over unsaved local edits is
 held rather than clobbering the draft. The header revision chip steps through the canvas
@@ -208,10 +208,14 @@ which would cost a parse of up to `MAX_KUSTO_ROWS` (10,000) rows per revision sw
 
 ### Inline embeds
 
-`canvas://<canvasId>` references render through `shared/CanvasEmbed.tsx`, which fetches the
-descriptor and picks the renderer from the persisted `type`: Excalidraw a view-only preview, extension `ExtensionCanvasView`, `kusto` a compact
-`KustoView`, markdown/code a document preview. `.md-excalidraw-embed` placeholders in
-historical message HTML remain supported.
+Bare `canvas://<canvasId>` and `[label](canvas://<canvasId>)` references in chat and
+Markdown canvas previews render through `shared/CanvasEmbed.tsx`. IDs contain 1–128
+letters, digits or hyphens and start with a letter or digit. Inline/fenced code
+and Edit text stay literal. The owning workspace routes descriptor reads and
+interactive calls. Persisted `type` selects Excalidraw, `ExtensionCanvasView`, compact
+`KustoView`, or a plain markdown/code document preview. Document previews do not expand
+nested references, bounding self/cyclic links. Preview displays saved Kusto results
+without running queries. Historical `.md-excalidraw-embed` placeholders remain supported.
 
 All generic embeds share a title/type disclosure. Sentinel conversations default every
 kind to collapsed, including Kusto's last group member and historical Excalidraw
