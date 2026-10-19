@@ -723,6 +723,12 @@ non-finite numbers, undefined values, sparse arrays, cycles, accessors and non-J
 objects without invoking serialization hooks. Chat callers retain normal JSON conversion;
 state and strict mode apply only to the run receiving those options.
 
+The `allowNestedScripts` policy is inherited by child runners: false rejects synthetic
+`run_tool_script` calls with `ToolCallError` before starting a child, even when the
+runtime contains a handler for that name. Its SDK default is true for chat.
+`runScriptCondition` defaults it to false; the owner-resolved background caller
+may enable it only when `run_tool_script` is enabled and requires no approval.
+
 Inner calls emit `ToolEvent`s with `parentToolCallId` = the script's call id through
 `onNestedToolEvent`, bound to `BaseExecutor.buildNestedToolEventHandler(processId)`. That sink
 feeds the normal tool-event handler; when the parent id is not on the timeline (Claude/Codex
@@ -757,8 +763,9 @@ consulting interactive wiring or saved session approvals. The script engine turn
 that result into `ToolCallError`, including for gated tools called by nested scripts.
 Ungated tools and workspace preferences retain their normal behavior. Ordinary
 bundles retain their existing interactive and noninteractive approval policies.
-Owner resolution and native/provider permission denial require caller wiring; the
-engine synthesizes nested `run_tool_script` calls independently of its tool handler.
+Owner resolution and native/provider permission denial require caller wiring.
+Synthetic nested `run_tool_script` calls use the engine's inherited nesting policy,
+which the background caller derives from the owner's enabled and approval settings.
 
 Some addons emit a prompt `suffix` wrapped in a named XML-style tag via `tagGuidanceSuffix()`
 from `prompt-tags.ts`, so aggregated `toolGuidance` is self-delimiting. Most addons emit

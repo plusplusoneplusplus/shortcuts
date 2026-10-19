@@ -9,6 +9,8 @@ export interface ScriptConditionRunOptions {
     runtime: CocToolRuntime;
     /** Owner/rule revocation and server shutdown cancellation. */
     signal?: AbortSignal;
+    /** Set true only when the owner's run_tool_script tool is enabled and ungated. */
+    allowNestedScripts?: boolean;
 }
 
 /** Trigger-only deadline; the shared chat scripting engine remains unbounded. */
@@ -24,6 +26,7 @@ export async function runScriptCondition(options: ScriptConditionRunOptions): Pr
             code: options.code,
             state: options.state,
             requireJsonResult: true,
+            allowNestedScripts: options.allowNestedScripts === true,
             runtime: options.runtime,
             scriptToolCallId: '',
             depth: 1,

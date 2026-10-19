@@ -52,6 +52,8 @@ export interface ToolScriptRunOptions {
     state?: unknown;
     /** Reject lossy JSON conversion before the value leaves the worker. Default false. */
     requireJsonResult?: boolean;
+    /** Defaults to true for chat. Background callers must check the owner's tool policy. */
+    allowNestedScripts?: boolean;
     onToolEvent?: (event: ToolEvent) => void;
 }
 
@@ -139,6 +141,9 @@ export function runToolScript(opts: ToolScriptRunOptions): Promise<ToolScriptRun
 
     async function invoke(name: string, args: unknown, toolCallId: string): Promise<CallOutcome> {
         if (name === RUN_TOOL_SCRIPT_TOOL_NAME) {
+            if (opts.allowNestedScripts === false) {
+                return { ok: false, message: 'run_tool_script is denied by the script nesting policy', code: 'TOOL_ERROR' };
+            }
             const code = (args as { code?: unknown } | null)?.code;
             if (typeof code !== 'string') {
                 return { ok: false, message: 'run_tool_script needs a `code` string', code: 'TOOL_ERROR' };
@@ -150,6 +155,7 @@ export function runToolScript(opts: ToolScriptRunOptions): Promise<ToolScriptRun
                 depth: opts.depth + 1,
                 signal: runAbort.signal,
                 onToolEvent: opts.onToolEvent,
+                allowNestedScripts: opts.allowNestedScripts,
             });
             if (!child.ok) {
                 return {

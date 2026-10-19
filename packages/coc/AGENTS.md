@@ -326,7 +326,10 @@ references before editing. Paths are package-relative.
   longer intervals. `runScriptCondition` passes state and strict JSON validation
   to the shared script engine with a trigger-only 60-second abort deadline. Abort
   terminates workers and cancels inner calls; the caller disposes its owner-resolved
-  unattended runtime. `SentinelTodoTriggerFirer.fireScriptResult` commits a changed
+  unattended runtime. Nested scripts default to denied; set `allowNestedScripts`
+  only after checking that the owner's script tool is enabled and ungated. The
+  engine inherits this policy across children; chat's default remains enabled.
+  `SentinelTodoTriggerFirer.fireScriptResult` commits a changed
   evaluated event and immutable untrusted-data wake together, using rule/result-hash
   receipts through the shared message admission service. It retains active status
   and cadence, blocks result replacement during pending delivery, and rechecks live
@@ -711,7 +714,7 @@ references before editing. Paths are package-relative.
   Background script bundles set `unattendedScript`: omit ask-user wiring and deny
   configured approval-gated tools before consulting prompts or session approvals.
   Owner resolution and native/provider permission denial remain caller responsibilities;
-  nested `run_tool_script` is synthesized by the engine, bypassing its tool handler.
+  synthetic nested `run_tool_script` calls obey the inherited engine nesting policy.
   Codex discovery uses filtered tools; Copilot context tier uses billing metadata.
 - Fresh session objects per turn; never cache sessions or add `sendFollowUp`.
   Only supported provider client processes may stay warm.

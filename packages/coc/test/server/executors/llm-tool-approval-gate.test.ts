@@ -315,6 +315,7 @@ describe('buildChatToolBundle approval gate wiring', () => {
         const searchConversations = vi.fn();
         const bundle = build(undefined, emitQuestions, undefined, {
             unattendedScript: true,
+            toolScriptingEnabled: true,
             store: { searchConversations } as any,
         });
         const runtime = new CocToolRuntime(bundle.tools, { workspaceId: WS, processId: 'owner' });
@@ -326,7 +327,8 @@ describe('buildChatToolBundle approval gate wiring', () => {
         try {
             const result = await runScriptCondition({
                 code: nested ? `return (await tools.run_tool_script({ code: ${JSON.stringify(code)} })).result;` : code,
-                state: null, runtime,
+                // The script tool is enabled and ungated; the child tool is gated.
+                state: null, runtime, allowNestedScripts: true,
             });
             expect(result).toEqual({
                 name: 'ToolCallError', toolName: 'search_conversations', code: 'TOOL_ERROR',

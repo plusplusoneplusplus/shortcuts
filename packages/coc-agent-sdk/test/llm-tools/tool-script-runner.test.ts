@@ -197,6 +197,38 @@ describe('runToolScript', () => {
         expect(direct.result).toBe('DEPTH_LIMIT');
     });
 
+    it('denies synthetic nesting before executing a child or its runtime handler', async () => {
+        let handled = 0;
+        const nested = tool('run_tool_script', async () => { handled++; return 'allowed'; });
+        const child = tool('child', async () => { handled++; return 'ran'; });
+        const events: ToolEvent[] = [];
+        const result = await run(`
+            try { await tools.run_tool_script({ code: 'return await tools.child({});' }); }
+            catch (e) { return { name: e.name, code: e.code, message: e.message }; }
+        `, [nested, child], { allowNestedScripts: false, onToolEvent: e => events.push(e) });
+        expect(result.ok).toBe(true);
+        expect(result.result).toMatchObject({ name: 'ToolCallError', code: 'TOOL_ERROR', message: expect.stringContaining('denied') });
+        expect(handled).toBe(0);
+        expect(result.callCount).toBe(1);
+        expect(result.calls).toEqual([{ name: 'run_tool_script', ok: false, error: expect.stringContaining('denied') }]);
+        expect(events.map(e => e.type)).toEqual(['tool-start', 'tool-failed']);
+    });
+
+    it('propagates an explicit nesting allowance through depth three', async () => {
+        const child = 'return await tools.echo({ value: 3 });';
+        const parent = `return await tools.run_tool_script({ code: ${JSON.stringify(child)} });`;
+        const result = await run(`return await tools.run_tool_script({ code: ${JSON.stringify(parent)} });`,
+            [echo], { allowNestedScripts: true });
+        expect(result.ok).toBe(true);
+        expect(result.result).toMatchObject({ result: { result: { got: { value: 3 } } } });
+    });
+
+    it('keeps ordinary tools available when nesting is denied', async () => {
+        const result = await run('return await tools.echo({ value: 1 });', [echo], { allowNestedScripts: false });
+        expect(result.ok).toBe(true);
+        expect(result.result).toEqual({ got: { value: 1 } });
+    });
+
     it('never runs more than the in-flight limit at once', async () => {
         let active = 0;
         let peak = 0;

@@ -38,6 +38,39 @@ describe('runScriptCondition', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
+    it.each([undefined, false])('denies nested scripts without explicit owner admission (%s)', async allowNestedScripts => {
+        const handler = vi.fn(async () => 'should not run');
+        runtime.dispose();
+        runtime = new CocToolRuntime([
+            defineTool('run_tool_script', { handler }),
+            defineTool('effect', { handler }),
+        ]);
+        await expect(runScriptCondition({
+            code: `return await tools.run_tool_script({ code: 'return await tools.effect({});' });`,
+            state: null, runtime, allowNestedScripts,
+        })).rejects.toMatchObject({ name: 'ToolCallError', message: expect.stringContaining('denied') });
+        expect(handler).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('lets a script catch the nesting denial as ToolCallError', async () => {
+        await expect(runScriptCondition({
+            code: `try { await tools.run_tool_script({ code: 'return 1;' }); }
+                catch (e) { return { name: e.name, code: e.code }; }`,
+            state: null, runtime,
+        })).resolves.toEqual({ name: 'ToolCallError', code: 'TOOL_ERROR' });
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('permits admitted nesting through depth three', async () => {
+        const child = `return await tools.run_tool_script({ code: 'return 3;' });`;
+        await expect(runScriptCondition({
+            code: `return await tools.run_tool_script({ code: ${JSON.stringify(child)} });`,
+            state: null, runtime, allowNestedScripts: true,
+        })).resolves.toMatchObject({ result: { result: 3 } });
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
     it.each(['return undefined;', 'return NaN;', 'return { value: undefined };', 'return new Date();'])
         ('rejects a non-JSON result: %s', async code => {
             await expect(runScriptCondition({ code, state: null, runtime })).rejects.toThrow();
