@@ -216,7 +216,8 @@ references before editing. Paths are package-relative.
   Remote links retain encoded durable segments under `#chat-references/`.
   `shared/dashboard-discovery/chat-reference.ts` parses and resolves these against
   current visible topology, preferring an online exact server/workspace alias.
-  Health checks bracket a transcript-excluded exact-process metadata read; changed
+  Health checks bracket a transcript-excluded exact-process metadata read; ownership
+  requires `process.metadata.workspaceId`, exact process ID and chat type. Changed
   topology, ownership or cancellation rejects without fallback. The resolver returns
   a concrete clone chat route without changing selection; callers own read deadlines
   and immediate navigation. `dashboardRoutes` reserves durable reference hashes,

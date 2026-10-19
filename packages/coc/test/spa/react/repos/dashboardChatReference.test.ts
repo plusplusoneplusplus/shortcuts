@@ -10,6 +10,10 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { Route } from '../../../../src/server/types';
+import { registerApiProcessRoutes } from '../../../../src/server/routes/api-process-routes';
+import { createMockProcessStore } from '../../../server/helpers/mock-process-store';
 import { getOrCreateServerIdentity } from '../../../../src/server/servers/server-identity';
 import { createWorkspaceDirectory } from '../../../../src/server/servers/workspace-directory';
 import { createSendToConversationTool } from '../../../../src/server/llm-tools/send-to-conversation-tool';
@@ -23,7 +27,7 @@ const resolve = (value = reference, signal = new AbortController().signal) => re
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
 function serve(handler: (url: URL, init?: RequestInit) => unknown | Promise<unknown> = url =>
     url.pathname.endsWith('/health') ? { serverIdentity: 'destination' }
-        : { process: { id: 'chat', workspaceId: 'same', type: 'chat' } }) {
+        : { process: { id: 'chat', metadata: { workspaceId: 'same' }, type: 'chat' } }) {
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
         json(await handler(new URL(String(input), 'http://localhost:4000'), init)));
     vi.stubGlobal('fetch', fetcher);
@@ -86,7 +90,7 @@ describe('application-generated job links through the shared resolver', () => {
         // The creator's local job is remote from this viewer; a local ID collision cannot win.
         publishDashboardTopology('viewer', [local, ...rows('ssh', 7000, identity, false, 'reconnected-alias')], 'viewer-installation');
         const fetcher = serve(url => url.pathname.endsWith('/health') ? { serverIdentity: identity }
-            : { process: { id: result.processId, workspaceId: 'same', type: 'chat' } });
+            : { process: { id: result.processId, metadata: { workspaceId: 'same' }, type: 'chat' } });
         await expect(resolve(selector)).resolves.toMatchObject({
             selectionId: buildRemoteCloneKey('reconnected-alias', 'same'), processId: result.processId,
         });
@@ -106,6 +110,40 @@ describe('application-generated job links through the shared resolver', () => {
 });
 
 describe('exact dashboard chat destination verification', () => {
+    it.each(['local', 'remote'] as const)('resolves %s ownership from the real process detail serialization', async kind => {
+        const store = createMockProcessStore({ initialProcesses: [{
+            id: 'chat', type: 'chat', status: 'completed', promptPreview: 'Saved chat',
+            startTime: new Date(), metadata: { workspaceId: 'same', type: 'chat' },
+            conversationTurns: [], fullPrompt: 'Private prompt', result: 'Private result',
+        }] });
+        const routes: Route[] = [];
+        registerApiProcessRoutes({ routes, store, gitOpsStore: {} as never });
+        const detail = routes.find(route => route.method === 'GET' && route.pattern instanceof RegExp
+            && route.pattern.test('/api/processes/chat'))!;
+        const identity = kind === 'local' ? 'local-server' : 'destination';
+        publishDashboardTopology('owner', [local, ...rows()], 'local-server');
+        const fetcher = serve(async url => {
+            if (url.pathname.endsWith('/health')) return { serverIdentity: identity };
+            let body = '';
+            const response = { headersSent: false, writeHead: vi.fn(), end: (value: Buffer) => { body = value.toString(); } };
+            await detail.handler({ url: url.pathname + url.search } as IncomingMessage,
+                response as unknown as ServerResponse, url.pathname.match(detail.pattern as RegExp)!);
+            expect(response.writeHead).toHaveBeenCalledWith(200, expect.any(Object));
+            const payload = JSON.parse(body);
+            expect(payload).toMatchObject({ process: { id: 'chat', metadata: { workspaceId: 'same' } }, children: [], total: 0 });
+            expect(payload.process).not.toHaveProperty('workspaceId');
+            expect(payload.process).not.toHaveProperty('conversationTurns');
+            expect(payload.process).not.toHaveProperty('fullPrompt');
+            expect(payload.process).not.toHaveProperty('result');
+            return payload;
+        });
+        await expect(resolve({ ...reference, serverIdentity: identity })).resolves.toMatchObject({
+            selectionId: kind === 'local' ? 'same' : buildRemoteCloneKey('ssh', 'same'), processId: 'chat',
+        });
+        expect(fetcher).toHaveBeenCalledTimes(3);
+        expect(store.getProcess).toHaveBeenCalledWith('chat', 'same');
+    });
+
     it.each(['ssh', 'devtunnel'] as const)('uses the current %s endpoint and alias after offline reconnect and a port change', async kind => {
         const fetcher = serve();
         publishDashboardTopology('owner', [local, ...rows(kind, 5000, 'destination', true)], 'local-server');
@@ -134,7 +172,7 @@ describe('exact dashboard chat destination verification', () => {
     it('resolves a page-origin chat using only observed page-origin identity', async () => {
         publishDashboardTopology('owner', [local, ...rows()], 'local-server');
         const fetcher = serve(url => url.pathname.endsWith('/health') ? { serverIdentity: 'local-server' }
-            : { process: { id: 'chat', workspaceId: 'same', type: 'chat' } });
+            : { process: { id: 'chat', metadata: { workspaceId: 'same' }, type: 'chat' } });
         await expect(resolve({ ...reference, serverIdentity: 'local-server' })).resolves.toMatchObject({
             selectionId: 'same', href: '#repos/same/chats/chat',
         });
@@ -151,11 +189,15 @@ describe('exact dashboard chat destination verification', () => {
         expect(fetcher).not.toHaveBeenCalled();
     });
 
-    it.each([{ id: 'different' }, { workspaceId: 'different' }, { type: 'run-script' }, { id: 'queue_chat' }])(
+    it.each([{ id: 'different' }, { metadata: { workspaceId: 'different' } },
+        { metadata: undefined }, { metadata: {} }, { metadata: { workspaceId: '' } },
+        { workspaceId: 'same', metadata: undefined },
+        { workspaceId: 'same', metadata: { workspaceId: 'different' } },
+        { type: 'run-script' }, { id: 'queue_chat' }])(
         'rejects process identity mismatch %j without local or queue alias fallback', async patch => {
             publishDashboardTopology('owner', [local, ...rows()], 'local-server');
             const fetcher = serve(url => url.pathname.endsWith('/health') ? { serverIdentity: 'destination' }
-                : { process: { id: 'chat', workspaceId: 'same', type: 'chat', ...patch } });
+                : { process: { id: 'chat', metadata: { workspaceId: 'same' }, type: 'chat', ...patch } });
             await expect(resolve()).rejects.toThrow('Referenced chat unavailable');
             expect(fetcher).toHaveBeenCalledTimes(2);
         });
@@ -164,7 +206,7 @@ describe('exact dashboard chat destination verification', () => {
         publishDashboardTopology('owner', rows());
         let healthReads = 0;
         const fetcher = serve(url => {
-            if (!url.pathname.endsWith('/health')) return { process: { id: 'chat', workspaceId: 'same', type: 'chat' } };
+            if (!url.pathname.endsWith('/health')) return { process: { id: 'chat', metadata: { workspaceId: 'same' }, type: 'chat' } };
             healthReads++;
             return timing === 'missing' ? {} : { serverIdentity: timing === 'after' && healthReads === 1 ? 'destination' : 'other' };
         });
@@ -193,7 +235,7 @@ describe('exact dashboard chat destination verification', () => {
         if (change === 'abort') controller.abort(new Error('caller aborted'));
         else publishDashboardTopology('owner', change === 'removed' ? []
             : rows('ssh', change === 'port' ? 7000 : 5000, change === 'identity' ? 'replacement' : 'destination'));
-        finish({ process: { id: 'chat', workspaceId: 'same', type: 'chat' } });
+        finish({ process: { id: 'chat', metadata: { workspaceId: 'same' }, type: 'chat' } });
         await outcome.toThrow(change === 'abort' ? 'caller aborted' : 'Referenced chat unavailable');
         expect(fetcher).toHaveBeenCalledTimes(2);
     });
@@ -205,7 +247,7 @@ describe('exact dashboard chat destination verification', () => {
         serve(url => {
             input.processId = 'different';
             return url.pathname.endsWith('/health') ? { serverIdentity: 'destination' }
-                : { process: { id: processId, workspaceId: 'same', type: 'chat' } };
+                : { process: { id: processId, metadata: { workspaceId: 'same' }, type: 'chat' } };
         });
         const result = await resolve(input);
         expect(result.processId).toBe(processId);
