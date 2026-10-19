@@ -868,6 +868,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.sentinelPrOutcomeWake': 'sentinel',
         'features.sentinelFollowUpResults': 'sentinel',
         'features.sentinelTodoDateTimeTriggers': 'sentinel',
+        'features.sentinelTodoScriptTriggers': 'sentinel',
         'features.sentinelDesktopMirror': 'sentinel',
         // Appearance — every UI-only preference and feature toggle
         'features.composerWordHint': 'appearance',

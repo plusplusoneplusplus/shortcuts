@@ -367,6 +367,7 @@ describe('AdminPanel — Workspace Features search', () => {
         expect(defs).toHaveLength(12);
         expect(defs.some(def => def.key === 'features.sentinelResultCards')).toBe(false);
         expect(defs.some(def => def.key === 'features.sentinelTodoJobs')).toBe(true);
+        expect(defs.some(def => def.key === 'features.sentinelTodoScriptTriggers')).toBe(true);
         expect(defs.some(def => def.key === 'features.sentinelAdditionalInstructions')).toBe(true);
         for (const def of defs) {
             expect(screen.queryByText(def.ui!.label)).toBeNull();

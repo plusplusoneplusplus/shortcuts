@@ -356,6 +356,9 @@ references before editing. Paths are package-relative.
   affect only its registry keys. Shared triggers and messaging settings keep their own tabs.
   `features.sentinelTodoJobs` is live, experimental and default-off in `sentinelTodos`;
   its Admin row depends on `sentinel.enabled` and publishes `sentinelTodoJobsEnabled`.
+  `features.sentinelTodoScriptTriggers` is a separate live default-off switch in
+  that group, publishing `sentinelTodoScriptTriggersEnabled`; execution must also
+  require live `features.toolScripting`. Keep both saved switches independent.
 - Sentinel prompt jobs (`src/server/sentinel-jobs/`) require both live flags, prove
   the exact Sentinel owner and share the native ledger database. Definitions use
   expected revisions and a ten-job owner limit. A definition holds either an explicit
