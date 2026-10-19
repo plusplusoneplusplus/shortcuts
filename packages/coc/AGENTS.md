@@ -342,8 +342,14 @@ references before editing. Paths are package-relative.
   `pauseScriptCondition` atomically commits the fifth failure, paused status and
   one immutable notice with a persisted receipt unique to that pause episode.
   Paused notices retry while the rule remains paused and eligible; errors are
-  untrusted JSON and grant no authority to resume. Owner/tool admission, timer
-  disarming, manual resume resets and production wiring remain caller responsibilities.
+  untrusted JSON and grant no authority to resume. `TriggerManager` requires an
+  injected script firer and live combined flags, uses script cadence/backoff and
+  routes repeating decisions before baseline persistence. Pending receipts retry
+  before another evaluation; acknowledged result wakes resume polling, while
+  acknowledged pause notices stop timers. Ineligible pause recipients still leave
+  the rule paused. `refreshScriptConditions` reconciles live timer gates without
+  deleting rows. Owner/tool admission, revocation cancellation, manual resume
+  resets and production wiring remain caller responsibilities.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated

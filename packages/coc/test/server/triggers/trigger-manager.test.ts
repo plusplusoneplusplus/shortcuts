@@ -16,9 +16,10 @@ import type {
     EventEvaluator,
     ActionExecutor,
     OneShotFirer,
+    ScriptConditionFirer,
     TriggerManagerDeps,
 } from '../../../src/server/triggers/trigger-manager';
-import type { PrMergedMonitorEvent, Trigger, TriggerAction, TriggerEvent } from '../../../src/server/triggers/trigger-types';
+import type { PrMergedMonitorEvent, ScriptConditionEvent, Trigger, TriggerAction, TriggerEvent } from '../../../src/server/triggers/trigger-types';
 
 // ============================================================================
 // Helpers & fakes
@@ -129,6 +130,8 @@ function makeManager(
         action?: ReturnType<typeof fakeActionExecutor>;
         emit?: TriggerManagerDeps['emit'];
         oneShotFirer?: OneShotFirer;
+        scriptConditionFirer?: ScriptConditionFirer;
+        scriptConditionsEnabled?: () => boolean;
     } = {},
 ): Harness {
     const store = new TriggerStore(new Database(':memory:'));
@@ -141,6 +144,8 @@ function makeManager(
         resolveEvaluator: () => evaluator,
         actionExecutor: action,
         oneShotFirer: opts.oneShotFirer,
+        scriptConditionFirer: opts.scriptConditionFirer,
+        scriptConditionsEnabled: opts.scriptConditionsEnabled,
         emit: opts.emit,
         now: () => clock.t,
     });
@@ -705,5 +710,224 @@ describe('TriggerManager', () => {
             expect((persisted.event as PrMergedMonitorEvent).lastSeenStatus).toBeUndefined();
             expect(h.timer.has('trigger_1')).toBe(true);
         });
+    });
+});
+
+
+describe('script-condition repeating scheduler', () => {
+    const scriptEvent = (extra = {}): ScriptConditionEvent => ({
+        type: 'script-condition', script: 'return 1', scriptRevision: 1, intervalMs: 300_000,
+        consecutiveFailures: 0, paused: false, ...extra,
+    });
+    const rule = () => makeTrigger({ event: scriptEvent(), expiresAt: null,
+        binding: { kind: 'sentinel-todo', itemId: 'item', armedBy: 'sentinel', armedAt: new Date(BASE).toISOString() } });
+    function setup(evaluator: EventEvaluator, enabled = () => true) {
+        const firer: ScriptConditionFirer = {
+            fireScriptResult: vi.fn(async (id, event) => {
+                const current = h.store.getById(id)!;
+                expect(current.event).not.toEqual(event);
+                h.store.update({ ...current, event, revision: current.revision + 1,
+                    delivery: { deliveryId: 'receipt', reason: 'script-changed', state: 'delivered',
+                        firedAt: new Date(BASE).toISOString(), resultHash: event.lastResultHash, scriptRevision: event.scriptRevision } });
+            }),
+            pauseScriptCondition: vi.fn(async (id, event) => {
+                const current = h.store.getById(id)!;
+                expect(current.event).toMatchObject({ consecutiveFailures: 4, paused: false });
+                h.store.update({ ...current, event, status: 'paused', nextTickAt: null, revision: current.revision + 1,
+                    delivery: { deliveryId: 'paused-receipt', reason: 'script-paused', state: 'pending',
+                        firedAt: new Date(BASE).toISOString(), scriptRevision: event.scriptRevision } });
+            }),
+            canRetryDelivery: t => t.delivery?.state === 'pending',
+            deliverPending: vi.fn(async id => {
+                const current = h.store.getById(id)!;
+                h.store.update({ ...current, delivery: { ...current.delivery!, state: 'delivered' } });
+            }),
+        };
+        const h = makeManager(evaluator, { scriptConditionFirer: firer, scriptConditionsEnabled: enabled });
+        h.store.insert(rule());
+        h.manager.armAll();
+        return { ...h, firer };
+    }
+    async function tick(h: ReturnType<typeof setup>) { h.timer._fire('trigger_1'); await flush(); }
+
+    it('stores silent baselines and uses script cadence without invoking an action', async () => {
+        const event = scriptEvent({ lastResult: '1', lastResultHash: 'one' });
+        const h = setup(fakeEvaluator({ fire: false, event, changed: true }));
+        expect(h.timer._delay('trigger_1')).toBe(300_000);
+        await tick(h);
+        expect(h.store.getById('trigger_1')).toMatchObject({ event, lastTickAt: new Date(BASE).toISOString(), status: 'active' });
+        expect(h.firer.fireScriptResult).not.toHaveBeenCalled();
+        expect(h.action.calls).toHaveLength(0);
+        expect(h.timer._delay('trigger_1')).toBe(300_000);
+    });
+
+    it('fires repeatedly through the script firer before advancing the baseline', async () => {
+        let n = 1;
+        const h = setup(fakeEvaluator(() => ({ fire: true, event: scriptEvent({ lastResult: String(++n), lastResultHash: String(n) }) })));
+        h.store.update({ ...rule(), event: scriptEvent({ lastResult: '1', lastResultHash: '1' }) });
+        await tick(h);
+        await tick(h);
+        expect(h.firer.fireScriptResult).toHaveBeenCalledTimes(2);
+        expect(h.firer.fireScriptResult).toHaveBeenLastCalledWith('trigger_1', expect.objectContaining({ lastResult: '3' }), 2);
+        expect(h.store.getById('trigger_1')).toMatchObject({ status: 'active', event: { lastResult: '3' } });
+        expect(h.action.calls).toHaveLength(0);
+        expect(h.timer.has('trigger_1')).toBe(true);
+    });
+
+    it('preserves the old baseline when result commit fails and retries later', async () => {
+        const h = setup(fakeEvaluator({ fire: true, event: scriptEvent({ lastResult: '2', lastResultHash: 'two' }) }));
+        h.store.update({ ...rule(), event: scriptEvent({ lastResult: '1', lastResultHash: 'one' }) });
+        vi.mocked(h.firer.fireScriptResult).mockRejectedValueOnce(new Error('store busy'));
+        await tick(h);
+        expect(h.store.getById('trigger_1')?.event).toMatchObject({ lastResult: '1' });
+        await tick(h);
+        expect(h.store.getById('trigger_1')?.event).toMatchObject({ lastResult: '2' });
+    });
+
+    it('retries a pending wake before evaluation and resumes polling after acknowledgement', async () => {
+        const evaluator = fakeEvaluator({ fire: false, event: scriptEvent() });
+        const h = setup(evaluator);
+        const current = h.store.getById('trigger_1')!;
+        h.store.update({ ...current, delivery: { deliveryId: 'receipt', state: 'pending', reason: 'script-changed', firedAt: new Date(BASE).toISOString() } });
+        await tick(h);
+        expect(evaluator.evaluate).not.toHaveBeenCalled();
+        expect(h.firer.deliverPending).toHaveBeenCalledTimes(1);
+        expect(h.timer.has('trigger_1')).toBe(true);
+        await tick(h);
+        expect(evaluator.evaluate).toHaveBeenCalledTimes(1);
+    });
+
+    it('persists failure backoff then resets cadence after success', async () => {
+        let event = scriptEvent({ consecutiveFailures: 2, lastError: { message: 'failed', at: 'now' } });
+        const h = setup(fakeEvaluator(() => ({ fire: false, event, changed: true })));
+        await tick(h);
+        expect(h.timer._delay('trigger_1')).toBe(1_200_000);
+        event = scriptEvent({ lastResult: '1', lastResultHash: 'one' });
+        await tick(h);
+        expect(h.timer._delay('trigger_1')).toBe(300_000);
+        expect(h.store.getById('trigger_1')?.event).not.toHaveProperty('lastError');
+    });
+
+    it('commits the fifth failure through the pause firer, retries its notice, then stops', async () => {
+        const event = scriptEvent({ consecutiveFailures: 5, paused: true, lastError: { message: 'failed', at: 'now' } });
+        const evaluator = fakeEvaluator({ fire: false, event, changed: true });
+        const h = setup(evaluator);
+        h.store.update({ ...rule(), event: scriptEvent({ consecutiveFailures: 4 }) });
+        await tick(h);
+        expect(h.firer.pauseScriptCondition).toHaveBeenCalledWith('trigger_1', event, 1);
+        expect(h.store.getById('trigger_1')?.status).toBe('paused');
+        expect(h.timer.has('trigger_1')).toBe(true);
+        await tick(h);
+        expect(h.firer.deliverPending).toHaveBeenCalledTimes(1);
+        expect(evaluator.evaluate).toHaveBeenCalledTimes(1);
+        expect(h.timer.has('trigger_1')).toBe(false);
+    });
+
+    it('stops the fifth failed run even if its owner/item is no longer eligible for a notice', async () => {
+        const event = scriptEvent({ consecutiveFailures: 5, paused: true, lastError: { message: 'failed', at: 'now' } });
+        const h = setup(fakeEvaluator({ fire: false, event }));
+        h.store.update({ ...rule(), event: scriptEvent({ consecutiveFailures: 4 }) });
+        vi.mocked(h.firer.pauseScriptCondition).mockResolvedValue(undefined);
+        await tick(h);
+        expect(h.store.getById('trigger_1')).toMatchObject({ status: 'paused', event, nextTickAt: null });
+        expect(h.timer.has('trigger_1')).toBe(false);
+    });
+
+    it('restores pending pause notices on startup without running scripts', async () => {
+        const evaluator = fakeEvaluator({ fire: false, event: scriptEvent() });
+        const h = setup(evaluator);
+        h.manager.disarm('trigger_1');
+        h.store.update({ ...rule(), status: 'paused', event: scriptEvent({ paused: true, consecutiveFailures: 5 }),
+            delivery: { deliveryId: 'pause', reason: 'script-paused', state: 'pending', firedAt: new Date(BASE).toISOString() } });
+        h.manager.armAll();
+        await tick(h);
+        expect(h.firer.deliverPending).toHaveBeenCalledTimes(1);
+        expect(evaluator.evaluate).not.toHaveBeenCalled();
+        expect(h.timer.has('trigger_1')).toBe(false);
+    });
+
+    it('keeps rules stored when live gates turn off and resumes scheduling when enabled', async () => {
+        let enabled = false;
+        const evaluator = fakeEvaluator({ fire: false, event: scriptEvent() });
+        const h = setup(evaluator, () => enabled);
+        expect(h.timer.has('trigger_1')).toBe(false);
+        enabled = true;
+        h.manager.refreshScriptConditions();
+        expect(h.timer.has('trigger_1')).toBe(true);
+        enabled = false;
+        await tick(h);
+        expect(evaluator.evaluate).not.toHaveBeenCalled();
+        expect(h.store.getById('trigger_1')).toEqual(rule());
+    });
+
+    it.each(['edit', 'flag', 'shutdown'] as const)('discards an evaluation after %s during the run', async reason => {
+        let release!: (value: EvaluationOutcome) => void;
+        let enabled = true;
+        const evaluator = { evaluate: vi.fn(() => new Promise<EvaluationOutcome>(r => { release = r; })) };
+        const h = setup(evaluator, () => enabled);
+        h.timer._fire('trigger_1');
+        if (reason === 'edit') h.store.update({ ...rule(), revision: 2, event: scriptEvent({ scriptRevision: 2 }) });
+        if (reason === 'flag') enabled = false;
+        if (reason === 'shutdown') h.manager.shutdownAll();
+        release({ fire: true, event: scriptEvent({ lastResult: '2', lastResultHash: 'two' }) });
+        await flush();
+        expect(h.firer.fireScriptResult).not.toHaveBeenCalled();
+        expect(h.store.getById('trigger_1')?.event).not.toHaveProperty('lastResult');
+    });
+
+    it('retries failed pending deliveries without reevaluating the script', async () => {
+        const evaluator = fakeEvaluator({ fire: false, event: scriptEvent() });
+        const h = setup(evaluator);
+        h.store.update({ ...rule(), delivery: { deliveryId: 'receipt', state: 'pending', reason: 'script-changed', firedAt: new Date(BASE).toISOString() } });
+        vi.mocked(h.firer.deliverPending!).mockRejectedValueOnce(new Error('queue unavailable'));
+        await tick(h);
+        expect(evaluator.evaluate).not.toHaveBeenCalled();
+        expect(h.store.getById('trigger_1')?.delivery?.state).toBe('pending');
+        expect(h.timer.has('trigger_1')).toBe(true);
+        await tick(h);
+        expect(h.store.getById('trigger_1')?.delivery?.state).toBe('delivered');
+    });
+
+    it('keeps a pending pause decision retryable when owner lookup fails before commit', async () => {
+        const event = scriptEvent({ paused: true, consecutiveFailures: 5, lastError: { message: 'failed', at: 'now' } });
+        const h = setup(fakeEvaluator({ fire: false, event }));
+        h.store.update({ ...rule(), event: scriptEvent({ consecutiveFailures: 4 }) });
+        vi.mocked(h.firer.pauseScriptCondition).mockRejectedValueOnce(new Error('owner lookup unavailable'));
+        await tick(h);
+        expect(h.store.getById('trigger_1')?.event).toMatchObject({ consecutiveFailures: 4, paused: false });
+        expect(h.timer.has('trigger_1')).toBe(true);
+        await tick(h);
+        expect(h.store.getById('trigger_1')).toMatchObject({ status: 'paused', delivery: { state: 'pending' } });
+    });
+
+    it('does not reconcile pending script wakes while the live flags are off', async () => {
+        let enabled = true;
+        const h = setup(fakeEvaluator({ fire: false, event: scriptEvent() }), () => enabled);
+        h.store.update({ ...rule(), delivery: { deliveryId: 'receipt', state: 'pending', reason: 'script-changed', firedAt: new Date(BASE).toISOString() } });
+        enabled = false;
+        h.manager.refreshScriptConditions();
+        await h.manager.reconcilePendingDeliveries();
+        expect(h.firer.deliverPending).not.toHaveBeenCalled();
+        expect(h.timer.has('trigger_1')).toBe(false);
+        expect(h.store.getById('trigger_1')?.delivery?.state).toBe('pending');
+    });
+
+    it('excludes unbound, removed and delegated rules from script scheduling', () => {
+        const h = setup(fakeEvaluator({ fire: false, event: scriptEvent() }));
+        h.manager.disarm('trigger_1');
+        for (const binding of [undefined, { ...rule().binding!, removedAt: 'now' },
+            { ...rule().binding!, delegatedPr: { jobId: 'job', receiptId: 'receipt' } }]) {
+            h.store.update({ ...rule(), binding });
+            h.manager.armAll();
+            expect(h.timer.has('trigger_1')).toBe(false);
+        }
+    });
+
+    it('requires explicit script admission and a script firer', () => {
+        const h = makeManager(fakeEvaluator({ fire: false, event: scriptEvent() }));
+        h.store.insert(rule());
+        h.manager.armAll();
+        expect(h.timer.has('trigger_1')).toBe(false);
+        expect(h.store.getById('trigger_1')).toEqual(rule());
     });
 });

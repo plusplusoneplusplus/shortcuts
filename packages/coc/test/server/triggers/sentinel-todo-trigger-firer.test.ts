@@ -6,6 +6,9 @@ import { TriggerStore } from '../../../src/server/triggers/trigger-store';
 import { SentinelTodoTriggerFirer } from '../../../src/server/triggers/sentinel-todo-trigger-firer';
 import { canonicalizeScriptConditionResult } from '../../../src/server/triggers/script-condition-result';
 import type { ScriptConditionEvent, Trigger } from '../../../src/server/triggers/trigger-types';
+import { TriggerManager } from '../../../src/server/triggers/trigger-manager';
+import { ScriptConditionEvaluator } from '../../../src/server/triggers/script-condition-evaluator';
+import type { ScheduleTimerRegistry } from '../../../src/server/schedule/schedule-timer-registry';
 import { ReviewDeliveryRejectedError } from '../../../src/server/processes/process-message-delivery-service';
 
 const owner = { workspaceId: 'ws-owner', processId: 'sentinel-owner' };
@@ -381,6 +384,62 @@ describe('SentinelTodoTriggerFirer', () => {
             firer = makeFirer();
         });
         const fire = () => firer.fireScriptResult(rule.id, next, triggers.getById(rule.id)!.revision);
+
+        it('polls a real evaluator and firer through baseline, repeated changes, retry and automatic pause', async () => {
+            const baseline = { ...(rule.event as ScriptConditionEvent) };
+            delete baseline.lastResult;
+            delete baseline.lastResultHash;
+            triggers.update({ ...rule, event: baseline });
+            const timers = new Map<string, () => void>();
+            const timerRegistry = {
+                set: (id: string, callback: () => void) => { timers.set(id, callback); return { wasCapped: false }; },
+                cancel: (id: string) => { timers.delete(id); }, clear: () => timers.clear(),
+            } as unknown as ScheduleTimerRegistry;
+            let value = 1;
+            let fail = false;
+            const run = vi.fn(async () => { if (fail) throw new Error('script failed'); return { value }; });
+            const evaluator = new ScriptConditionEvaluator(run, () => Date.parse(timestamp));
+            const action = vi.fn();
+            const manager = new TriggerManager({
+                store: triggers, timerRegistry, resolveEvaluator: () => evaluator,
+                scriptConditionFirer: firer, scriptConditionsEnabled: () => enabled,
+                actionExecutor: { execute: action }, now: () => Date.parse(timestamp),
+            });
+            const tick = async () => {
+                const callback = timers.get(rule.id);
+                expect(callback).toBeDefined();
+                timers.delete(rule.id);
+                callback!();
+                await new Promise(resolve => setTimeout(resolve, 0));
+            };
+            manager.armAll();
+            await tick();
+            expect(execute).not.toHaveBeenCalled();
+            value = 2;
+            execute.mockRejectedValueOnce(new Error('queue temporarily unavailable'));
+            await tick();
+            const receipt = triggers.getById(rule.id)?.delivery?.deliveryId;
+            expect(triggers.getById(rule.id)).toMatchObject({ status: 'active', delivery: { state: 'pending' } });
+            expect(run).toHaveBeenCalledTimes(2);
+            await tick();
+            expect(run).toHaveBeenCalledTimes(2);
+            expect(triggers.getById(rule.id)?.delivery).toMatchObject({ state: 'delivered', deliveryId: receipt });
+            await tick();
+            expect(execute).toHaveBeenCalledTimes(2);
+            value = 3;
+            await tick();
+            expect(execute).toHaveBeenCalledTimes(3);
+            const lastBaseline = (triggers.getById(rule.id)!.event as ScriptConditionEvent).lastResult;
+            fail = true;
+            for (let n = 0; n < 5; n++) await tick();
+            expect(triggers.getById(rule.id)).toMatchObject({ status: 'paused',
+                event: { consecutiveFailures: 5, paused: true, lastResult: lastBaseline },
+                delivery: { state: 'delivered', reason: 'script-paused' } });
+            expect(execute).toHaveBeenCalledTimes(4);
+            expect(timers.has(rule.id)).toBe(false);
+            expect(action).not.toHaveBeenCalled();
+            manager.shutdownAll();
+        });
 
         describe('automatic script pause notices', () => {
             let failure: ScriptConditionEvent;
