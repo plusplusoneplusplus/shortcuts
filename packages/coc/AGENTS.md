@@ -473,7 +473,8 @@ references before editing. Paths are package-relative.
   REST job/scrubber command objects (`getSentinelJobCommands`), bound to the owning
   Sentinel's attended turns only; handbacks, reviews and automation turns never get it.
   Every tool action, including scrubber actions, rechecks live jobs availability and
-  ownership through `SentinelJobCommands.assertOwner`.
+  ownership through `SentinelJobCommands.assertOwner`. New jobs inherit omitted effort
+  when their resolved provider/model match the Sentinel's, including explicit matches.
   Default-off `features.sentinelTodoTags` exposes parent-ledger tag definitions
   and metadata through the same service, REST client and tool. Target workspaces
   share their parent's library, never another parent's tags. Matching uses the

@@ -115,7 +115,7 @@ export function createSentinelJobsTool(deps: SentinelJobsToolDeps) {
         if (!provider || !model) {
             throw new JobError('invalid', 'Could not resolve a provider and model for this job; ask the user which provider and model to use.');
         }
-        const effort = settings.effort ?? (inherit && settings.model === undefined ? defaults.effort : undefined);
+        const effort = settings.effort ?? (inherit && model === defaults.model ? defaults.effort : undefined);
         return jobs.create(owner, {
             ...settings, name: settings.name ?? '', instructions: settings.instructions ?? '',
             provider, model, ...(effort ? { effort } : {}), enabled: settings.enabled ?? false,

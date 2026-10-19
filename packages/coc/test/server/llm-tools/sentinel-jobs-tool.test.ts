@@ -107,6 +107,23 @@ describe('custom jobs', () => {
         expect(enqueue).not.toHaveBeenCalled();
     });
 
+    it.each([
+        { settings: {}, provider: 'copilot', model: 'gpt-5', effort: 'high' },
+        { settings: { provider: 'copilot' }, provider: 'copilot', model: 'gpt-5', effort: 'high' },
+        { settings: { model: 'gpt-5' }, provider: 'copilot', model: 'gpt-5', effort: 'high' },
+        { settings: { provider: 'copilot', model: 'gpt-5' }, provider: 'copilot', model: 'gpt-5', effort: 'high' },
+        { settings: { model: 'gpt-5', effort: 'low' }, provider: 'copilot', model: 'gpt-5', effort: 'low' },
+        { settings: { model: 'gpt-5', effort: '' }, provider: 'copilot', model: 'gpt-5', effort: undefined },
+        { settings: { model: 'other-model' }, provider: 'copilot', model: 'other-model', effort: undefined },
+        { settings: { provider: 'claude', model: 'gpt-5' }, provider: 'claude', model: 'gpt-5', effort: undefined },
+        { settings: { provider: 'claude', model: 'opus', effort: 'low' }, provider: 'claude', model: 'opus', effort: 'low' },
+    ])('resolves create settings $settings without crossing provider/model effort defaults', async ({ settings, provider, model, effort }) => {
+        const job = await createJob(settings);
+        expect(job).toMatchObject({ provider, model });
+        expect(job.effort).toBe(effort);
+        expect(jobStore.get(owner, job.id).effort).toBe(effort);
+    });
+
     it('does not pair another provider with the Sentinel model and reports unresolved defaults', async () => {
         expect(await call({ action: 'create', kind: 'custom', name: 'X', instructions: 'Y', provider: 'claude' }))
             .toMatchObject({ code: 'invalid', error: expect.stringMatching(/provider and model/) });

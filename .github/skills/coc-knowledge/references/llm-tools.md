@@ -150,7 +150,9 @@ tool argument) and only on attended turns: scheduled-job handbacks
 PR outcome reviews, read-only turns, cron/wakeup/trigger turns, scrubber children
 and non-Sentinel chats (including job children) never get it. Each turn records
 its resolved provider/model/effort (`recordSentinelJobDefaults`) as the defaults new
-jobs inherit. Actions `list | get | create | update | pause | resume | run_now | cancel`
+jobs inherit. Omitted effort inherits when the resolved provider and model match
+the Sentinel's, including explicitly supplied matching settings; explicit effort wins.
+Actions `list | get | create | update | pause | resume | run_now | cancel`
 with `kind: custom | scrubber`; no delete. Create defaults to `enabled: false` and
 ask mode and never starts a run; scrubber writes accept only `cron`/`enabled`.
 Writes need `expectedRevision`; conflicts return `{ code: 'conflict', current }`.
