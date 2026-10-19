@@ -26,6 +26,10 @@ setInterval(async()=>{
     if (action==='newtab') window.open('/second?tab=child','_blank');
     if (action==='popup') window.open('/login?tab=popup','auth','popup,width=420,height=520');
     if (action==='download') location.href='/download';
+    if (action==='clickonce-navigation') location.href='https://fixture.test/App.application?value=a%2Fb+z&value=two&empty=';
+    if (action==='clickonce-window') window.open('https://fixture.test/App.application?value=a%2Fb+z&value=two&empty=','_blank');
+    if (action==='clickonce-popup') window.open('https://fixture.test/App.application?value=a%2Fb+z&value=two&empty=','deployment','popup,width=420,height=520');
+    if (action==='clickonce-redirect') location.href='/application-redirect';
     if (action==='permission') navigator.geolocation.getCurrentPosition(()=>report({permission:'allowed'}),()=>report({permission:'denied'}));
     if (action==='unsafe') location.href='file:///blocked.html';
     if (action==='report') report();

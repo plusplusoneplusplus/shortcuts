@@ -1,6 +1,7 @@
 import { BrowserWindow, Menu, clipboard, dialog, ipcMain, shell, type WebContents } from 'electron';
 import { defaultDataDir } from './server-controller';
-import { browserProfilePath, readBrowserEngine, writeBrowserEngine, readBrowserPageZoom, writeBrowserPageZoom } from './browser-preferences';
+import { browserProfilePath, readBrowserEngine, writeBrowserEngine, readBrowserPageZoom, writeBrowserPageZoom, readBrowserClickOnce, writeBrowserClickOnce } from './browser-preferences';
+import { activateClickOnce, ClickOnceError } from './browser-clickonce';
 import { BrowserHostManager } from './browser-host-manager';
 import { BrowserHistoryStore, sanitizeHistoryUrl } from './browser-history';
 import { ElectronBrowserHost } from './electron-browser-host';
@@ -11,6 +12,7 @@ import { toHtmlPageViewBounds } from './html-page-policy';
 import { BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL, validateBrowserCommandRequest } from './browser-control-command';
 import {
     BROWSER_ADDRESS_MENU_CHANNEL,
+    BROWSER_CLICKONCE_SET_CHANNEL,
     BROWSER_HISTORY_QUERY_CHANNEL, BROWSER_HISTORY_SUGGEST_CHANNEL, BROWSER_HISTORY_DELETE_CHANNEL, BROWSER_HISTORY_CLEAR_CHANNEL,
     BROWSER_HISTORY_RECORDING_CHANNEL, BROWSER_HISTORY_CHANGED_CHANNEL,
     BROWSER_IMPORT_COOKIES_CHANNEL, BROWSER_CLEAR_DATA_CHANNEL, BROWSER_OPEN_EXTERNAL_CHANNEL, BROWSER_PREFERENCES_CHANGED_CHANNEL,
@@ -79,6 +81,25 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     }, 60 * 60 * 1000);
     historyMaintenance.unref();
     manager = new BrowserHostManager({
+        clickOnce: {
+            enabled: () => readBrowserClickOnce(dataDir),
+            ownerCurrent: ownerId => {
+                const window = owners.get(ownerId);
+                return !!window && !window.isDestroyed() && !window.webContents.isDestroyed() && isBrowserEmbedder(window.webContents);
+            },
+            activate: url => {
+                if (process.platform !== 'win32' || process.arch !== 'x64') throw new ClickOnceError('unsupported');
+                return activateClickOnce(url, () =>
+                    (require('@plusplusoneplusplus/coc-native') as typeof import('@plusplusoneplusplus/coc-native')).loadWebView2Binary());
+            },
+            report: (ownerId, message) => {
+                const window = owners.get(ownerId);
+                if (!window || window.isDestroyed() || !isBrowserEmbedder(window.webContents)) return;
+                void dialog.showMessageBox(window, {
+                    type: 'info', title: 'ClickOnce activation', message, buttons: ['OK'], noLink: true,
+                }).catch(() => console.error('[coc-desktop] ClickOnce notification failed.'));
+            },
+        },
         richClipboard: clipboard,
         history,
         hosts: {
@@ -109,6 +130,18 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     // Every history operation requires the exact registered SPA main document.
     const historyWindow = (event: Electron.IpcMainInvokeEvent) =>
         event.senderFrame === event.sender.mainFrame && isBrowserEmbedder(event.sender) ? ownWindow(event.sender) : null;
+    ipcMain.handle(BROWSER_CLICKONCE_SET_CHANNEL, (event, enabled: unknown) => {
+        if (!historyWindow(event)) return { ok: false, reason: 'no-window' };
+        if (typeof enabled !== 'boolean') return { ok: false, reason: 'invalid' };
+        if (enabled && (process.platform !== 'win32' || process.arch !== 'x64')) return { ok: false, reason: 'unsupported-platform', message: 'ClickOnce requires Windows x64.' };
+        try {
+            writeBrowserClickOnce(dataDir, enabled);
+            for (const window of owners.values()) {
+                if (!window.isDestroyed()) window.webContents.send(BROWSER_PREFERENCES_CHANGED_CHANNEL);
+            }
+            return { ok: true };
+        } catch { return { ok: false, reason: 'storage-failed', message: 'Could not save ClickOnce preference.' }; }
+    });
     ipcMain.handle(BROWSER_ADDRESS_MENU_CHANNEL, (event, hasSelection: unknown) => {
         const window = historyWindow(event);
         if (!window) return { ok: false, reason: 'no-window' };
@@ -257,7 +290,9 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         const window = ownWindow(event.sender);
         if (!window) { throw new Error('Browser preferences require a desktop window.'); }
         wireOwner(window);
-        return manager!.preferences();
+        return manager!.preferences().then(preferences => ({ ...preferences,
+            clickOnce: { enabled: readBrowserClickOnce(dataDir), supported: process.platform === 'win32' && process.arch === 'x64' },
+        }));
     });
     ipcMain.handle(BROWSER_PREFERENCES_SET_CHANNEL, (event, engine: unknown) =>
         ownWindow(event.sender) ? manager!.select(engine) : { ok: false, reason: 'no-window' });

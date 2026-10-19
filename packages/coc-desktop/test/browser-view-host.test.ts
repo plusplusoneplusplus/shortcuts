@@ -70,6 +70,25 @@ afterEach(async () => {
 });
 
 describe('desktop history IPC', () => {
+    it('keeps ClickOnce default-off and accepts preference changes only from registered main frames', async () => {
+        const spa = owner(1), other = owner(2), foreign = owner(3, 'http://localhost:4000/foreign');
+        const preferences = await invoke(policy.BROWSER_PREFERENCES_GET_CHANNEL, spa.event);
+        expect(preferences.clickOnce.enabled).toBe(false);
+        for (const event of [foreign.event, { ...spa.event, senderFrame: {} }]) {
+            expect(invoke(policy.BROWSER_CLICKONCE_SET_CHANNEL, event, true)).toEqual({ ok: false, reason: 'no-window' });
+        }
+        expect(invoke(policy.BROWSER_CLICKONCE_SET_CHANNEL, spa.event, 'true')).toEqual({ ok: false, reason: 'invalid' });
+        const result = invoke(policy.BROWSER_CLICKONCE_SET_CHANNEL, spa.event, true);
+        if (process.platform === 'win32' && process.arch === 'x64') {
+            expect(result).toEqual({ ok: true });
+            expect((await invoke(policy.BROWSER_PREFERENCES_GET_CHANNEL, other.event)).clickOnce.enabled).toBe(true);
+            expect(other.contents.send).toHaveBeenCalledWith(policy.BROWSER_PREFERENCES_CHANGED_CHANNEL);
+        } else {
+            expect(result).toMatchObject({ ok: false, reason: 'unsupported-platform' });
+        }
+        expect([...mocks.handlers.keys()].filter(channel => /activate|launch/.test(channel))).toEqual([]);
+        expect(invoke(policy.BROWSER_CLICKONCE_SET_CHANNEL, spa.event, false)).toEqual({ ok: true });
+    });
     it('wires address-menu Copy to native copy in the requesting SPA, preserving cut and editing', () => {
         const spa = owner(1), other = owner(2), foreign = owner(3, 'http://localhost:4000/foreign');
         expect(invoke(policy.BROWSER_ADDRESS_MENU_CHANNEL, spa.event, true)).toEqual({ ok: true });

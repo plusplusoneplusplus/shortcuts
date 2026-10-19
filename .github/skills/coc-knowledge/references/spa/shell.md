@@ -167,7 +167,7 @@ SPA side: `desktopHtmlPageBridge()` adapts the `file` source and its attachment 
 
 ### Browser profiles and preferences
 
-`desktop-browser.json` stores `defaultEngine` (Electron) and `pageZoomPercent` (100%). Engine and zoom writes preserve each other. The Admin **Browser** page (`#admin/browser`, Configure group after AI Provider) hosts Desktop Preferences (Engine, Profiles & sign-ins, History groups), which uses local IPC, not workspace-server APIs, and shows a desktop-only notice on the web; the page's server-backed Browser features card holds browser control, sensitive input and HTML page tabs.
+`desktop-browser.json` stores `defaultEngine` (Electron), `pageZoomPercent` (100%) and `clickOnceEnabled` (false). Independent writes preserve other fields. The Admin **Browser** page (`#admin/browser`, Configure group after AI Provider) hosts installation-wide Desktop Preferences through local IPC, not workspace-server APIs. Engine and ClickOnce changes apply to new tabs; disabling ClickOnce also blocks pending activation. The web dashboard shows a desktop-only notice. The page's server-backed Browser features card holds browser control, sensitive input and HTML page tabs.
 Its optional history recording toggle reads committed state through a bounded history query and saves through `setRecording`; history invalidations refresh all open settings views. Pausing preserves existing suggestions. Loading, storage and operation failures are explicit, with retry and stale-query/unmount guards.
 Separate persistent `browser/electron` and `browser/webview2` profiles share sign-ins across workspaces/windows, isolating the SPA/HTML previews. Confirmed cleanup closes target-engine tabs and excludes new views.
 Electron forces its locked `session.fromPath` profile onto each guest. The returned
@@ -222,10 +222,36 @@ case-preserving `completion` URL or scheme-omitted URL for prefix matches;
 title/substring and whitespace-padded input has null completion. Both
 APIs await queued saves, filter expiry and return recording/storage-error state.
 
+### Windows ClickOnce activation
+
+`packages/coc-desktop/src/browser-clickonce.ts` validates HTTPS deployment URLs and
+download MIME `application/x-ms-application`. Both engines intercept navigation,
+redirects and new windows without adding launch visits to CoC history.
+Main validates the exact registered owner, view and source document and permits
+one in-flight activation per view. With the installation-wide preference enabled,
+recognized links dispatch directly without a CoC confirmation. Windows may show
+its own installation or trust prompts.
+
+Windows x64 activation uses the documented
+[`dfshim.dll!LaunchApplication`](https://learn.microsoft.com/en-us/visualstudio/deployment/clickonce-unmanaged-api-reference)
+in an isolated helper, without WebView2 initialization, shell interpolation or a
+local manifest. The original HTTPS activation URL/query travels unchanged through
+stdin, never argv, launch logs or persisted launch records. Redirect recognition
+retains the original URL when the engine supplies a correlated chain. URLs must
+be at most 2048 UTF-16 units, without credentials, fragments or whitespace.
+
+Browser profiles, cookies and OS-account SSO remain engine-owned. Windows deployment
+performs its own authentication; browser cookies are not transferred. Missing
+handlers, unsupported platforms, cancellation and activation failures are explicit.
+Success means Windows accepted the request, not that the application opened.
+Timeout/process failure has an unknown outcome and must not auto-retry.
+Live engine tests stub activation; `--clickonce-check` probes the system DLL/export
+without installing or launching an application.
+
 ### Browser adapters and lifecycle
 
 Electron browser tabs use sandboxed DOM `<webview>` guests; WebView2 uses a Windows x64 Rust STA helper ([native contracts](../../../../../packages/coc-native/AGENTS.md#desktop-webview2)).
-Probes create no views; failures have no fallback/automatic installation. Navigation, layout and events are engine-neutral; related tabs/popups inherit engine/profile and downloads go to the system browser.
+Probes create no views; failures have no fallback/automatic installation. Navigation, layout and events are engine-neutral; related tabs/popups inherit engine/profile. Ordinary downloads go to the system browser; opted-in Windows ClickOnce requests use the shared activation policy.
 Pages have no CoC bridge, use normal TLS and deny sensitive permissions; HTML previews stay Electron.
 WebView2 placement combines renderer-relative DIP bounds with Electron's physical screen content origin. The helper maps that origin into the parent HWND's client coordinates and DPI-scales only relative bounds, keeping pages aligned below Windows menu bars through moves, zoom and fullscreen. It raises the child HWND without activation; null bounds hide it for inactive tabs and DOM overlays.
 

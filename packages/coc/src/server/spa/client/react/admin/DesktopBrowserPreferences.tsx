@@ -131,6 +131,13 @@ export function DesktopBrowserPreferences() {
                                 ))}
                             </select>
                         </AdminRow>
+                        {preferences.clickOnce && bridge.setClickOnce && (
+                            <AdminRow name="Windows ClickOnce" hint="Off by default. Applies to new tabs. HTTPS deployment links activate directly through Windows without a CoC confirmation. Windows may show installation or trust prompts.">
+                                <AdminToggle aria-label="Windows ClickOnce" checked={preferences.clickOnce.enabled}
+                                    disabled={busy !== null || !preferences.clickOnce.supported}
+                                    onChange={enabled => { void operate('select', () => bridge.setClickOnce!(enabled), 'ClickOnce preference saved. Open a new tab to apply it.'); }} />
+                            </AdminRow>
+                        )}
                     </BrowserGroup>
                     <BrowserGroup id="browser-group-profiles" heading="Profiles & sign-ins">
                         {preferences.engines.map(engine => (

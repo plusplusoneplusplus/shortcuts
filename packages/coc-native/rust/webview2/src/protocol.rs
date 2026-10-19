@@ -69,6 +69,7 @@ pub struct Command {
     pub turn_id: Option<String>,
     pub session_id: Option<String>,
     pub enabled: Option<bool>,
+    pub click_once_enabled: Option<bool>,
 }
 
 pub const CDP_EVENTS: &[&str] = &[

@@ -193,6 +193,8 @@ describe('preload bridge', () => {
         expect(invoke).toHaveBeenCalledWith(BROWSER_PREFERENCES_SET_CHANNEL, 'webview2');
         await api.setPageZoom(125);
         expect(invoke).toHaveBeenCalledWith(BROWSER_PAGE_ZOOM_SET_CHANNEL, 125);
+        await api.setClickOnce(true);
+        expect(invoke).toHaveBeenCalledWith('coc-desktop:browser-clickonce-set', true);
         await api.importCookies('view', 'app.example.com', 'session=token');
         expect(invoke).toHaveBeenCalledWith(BROWSER_IMPORT_COOKIES_CHANNEL, 'view', 'app.example.com', 'session=token', undefined);
         await api.importCookies(null, 'app.example.com', 'session=token', 'webview2');

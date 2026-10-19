@@ -1,6 +1,7 @@
 import type { BrowserAvailability, BrowserDownloadEvent, BrowserEngine, BrowserFailureReason, BrowserNavAction, BrowserViewState } from './browser-view-policy';
 import type { BrowserImportCookie } from './browser-cookie-import';
 import type { HtmlPageBounds } from './html-page-policy';
+import type { BrowserApplicationRequest } from './browser-clickonce';
 
 /** Main-process-only events required by the bounded frame registry. */
 export const BROWSER_FRAME_CDP_EVENTS = [
@@ -22,6 +23,7 @@ export interface BrowserViewRequest {
     sessionKey: string;
     url: string;
     pageZoomPercent?: number;
+    clickOnceEnabled?: boolean;
 }
 
 /** A local HTML preview: `path` is validated by `validateHtmlPagePath` before it gets here. */
@@ -33,6 +35,7 @@ export interface FileViewRequest {
 }
 
 export interface BrowserEventSink {
+    application?(request: BrowserApplicationRequest, current: () => boolean): void;
     state(state: BrowserViewState): void;
     /** A new main document invalidates the previous document's copy identity. */
     navigationStarted?(): void;

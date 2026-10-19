@@ -39,6 +39,7 @@ import { ElectronBrowserCdp } from './electron-browser-cdp';
 import { setTimeout as delay } from 'node:timers/promises';
 import { randomUUID } from 'node:crypto';
 import { browserPopupChrome } from './browser-popup-chrome';
+import { isClickOnceRequest, validActivationUrl, type BrowserApplicationRequest } from './browser-clickonce';
 
 interface BrowserEntry {
     win: BrowserWindow;
@@ -57,6 +58,8 @@ interface BrowserEntry {
     popups: Set<BrowserWindow>;
     sink: BrowserEventSink;
     closed: boolean;
+    clickOnceEnabled: boolean;
+    applicationSources: Map<number, { generation: number; navigationUrl?: string; crashed: boolean }>;
 }
 
 const entries = new Set<BrowserEntry>();
@@ -118,10 +121,22 @@ function configureProfile(): void {
     ses.setUserAgent(browserUserAgent(ses.getUserAgent()));
     ses.setPermissionRequestHandler((_wc, permission, callback) => callback(isBrowserPermissionAllowed(permission)));
     ses.setPermissionCheckHandler((_wc, permission) => isBrowserPermissionAllowed(permission));
+    ses.webRequest.onBeforeRequest((details, callback) => {
+        const id = details.webContentsId;
+        const entry = id === undefined ? undefined : entryByContents.get(id);
+        const wc = id === undefined ? undefined : entry?.contents && entry.contents.id === id ? entry.contents : webContents.fromId(id);
+        const cancel = !!entry && !!wc && details.resourceType === 'mainFrame'
+            && interceptApplication(entry, wc, { kind: 'navigation', url: details.url });
+        callback({ cancel });
+    });
     ses.on('will-download', (event, item, wc) => {
         event.preventDefault();
         const url = item.getURL();
         const entry = wc ? entryByContents.get(wc.id) : undefined;
+        const original = item.getURLChain()[0];
+        if (entry && wc && interceptApplication(entry, wc, {
+            kind: 'download', url: validActivationUrl(original) ? original : url, deploymentUrl: url, mimeType: item.getMimeType(),
+        })) return;
         const report = (ok: boolean, error?: string) => {
             if (entry) {
                 const payload: BrowserDownloadEvent = { viewId: entry.viewId, url, ok, ...(error ? { error } : {}) };
@@ -145,14 +160,22 @@ function webPreferences(): Electron.WebPreferences {
 
 /** Navigation + `window.open` routing shared by the tab view and its pop-ups. */
 function wireNavigation(entry: BrowserEntry, wc: WebContents): void {
+    const source: { generation: number; navigationUrl?: string; crashed: boolean } = { generation: 0, crashed: false };
+    entry.applicationSources.set(wc.id, source);
+    wc.on('did-start-navigation', (_event, url, isInPlace, isMainFrame) => {
+        if (isMainFrame && !isInPlace) { source.generation++; source.navigationUrl = url; source.crashed = false; }
+    });
+    wc.on('render-process-gone', () => { source.generation++; source.crashed = true; });
     wireHistory(entry, wc);
     entryByContents.set(wc.id, entry);
     wc.once('destroyed', () => {
         if (entryByContents.get(wc.id) === entry) {
             entryByContents.delete(wc.id);
         }
+        entry.applicationSources.delete(wc.id);
     });
     wc.setWindowOpenHandler(({ url, disposition }) => {
+        if (interceptApplication(entry, wc, { kind: 'new-window', url })) return { action: 'deny' };
         const decision = classifyBrowserWindowOpen(url, disposition);
         if (decision === 'popup' && !entry.win.isDestroyed()) {
             return {
@@ -209,13 +232,29 @@ function wireNavigation(entry: BrowserEntry, wc: WebContents): void {
         });
         wireNavigation(entry, popup.webContents);
     });
-    const guard = (event: Electron.Event, url: string) => {
-        if (classifyBrowserNavigation(url) === 'deny') {
+    const guard = (event: Electron.Event, url: string, _inPlace?: boolean, isMainFrame = true) => {
+        if ((isMainFrame && interceptApplication(entry, wc, { kind: 'navigation', url }))
+            || classifyBrowserNavigation(url) === 'deny') {
             event.preventDefault();
         }
     };
     wc.on('will-navigate', guard);
-    wc.on('will-redirect', guard);
+    wc.on('will-redirect', (event, url, inPlace, isMainFrame) => {
+        if (isMainFrame && validActivationUrl(source.navigationUrl)
+            && interceptApplication(entry, wc, { kind: 'navigation', url: source.navigationUrl, deploymentUrl: url })) {
+            event.preventDefault();
+        } else guard(event, url, inPlace, isMainFrame);
+    });
+}
+
+function interceptApplication(entry: BrowserEntry, wc: WebContents, request: BrowserApplicationRequest): boolean {
+    if (!entry.clickOnceEnabled || !entry.sink.application || !isClickOnceRequest(request)) return false;
+    const source = entry.applicationSources.get(wc.id);
+    const generation = source?.generation;
+    entry.sink.application(request, () => !entry.closed && !entry.win.isDestroyed() && !wc.isDestroyed()
+        && entryByContents.get(wc.id) === entry && entry.applicationSources.get(wc.id) === source
+        && source !== undefined && !source.crashed && source.generation === generation);
+    return true;
 }
 
 /** Main and popup documents record independently; loading/state notifications never record. */
@@ -336,6 +375,9 @@ function wireView(entry: BrowserEntry): void {
 
 function load(entry: BrowserEntry, url: string): void {
     if (!entry.contents) { throw new BrowserHostError('busy', 'Browser guest is not attached yet.'); }
+    if (interceptApplication(entry, entry.contents, { kind: 'navigation', url })) return;
+    const source = entry.applicationSources.get(entry.contents.id);
+    if (source) source.generation++;
     entry.requestedUrl = url;
     entry.error = undefined;
     entry.errorCode = undefined;
@@ -356,7 +398,8 @@ function openView(sender: WebContents, request: BrowserViewRequest, sink: Browse
     if (!win) {
         throw new BrowserHostError('no-window', 'Browser window is closed.');
     }
-    const entry: BrowserEntry = { win, ownerId: sender.id, shown: false, pageZoom: request.pageZoomPercent ?? 100, viewId, requestedUrl: url, popups: new Set(), sink, closed: false };
+    const entry: BrowserEntry = { win, ownerId: sender.id, shown: false, pageZoom: request.pageZoomPercent ?? 100, viewId, requestedUrl: url, popups: new Set(), sink, closed: false,
+        clickOnceEnabled: request.clickOnceEnabled === true, applicationSources: new Map() };
     entries.add(entry);
     entry.authorization = authorizeBrowserWebview(sender.id, url, profileSession!, guest => {
         entry.contents = guest;

@@ -19,6 +19,12 @@ const cookieImportCheck = process.argv.includes('--cookie-import-check');
 const focusCheck = process.argv.includes('--focus-check');
 const layoutCheck = process.argv.includes('--layout-check');
 const zoomCheck = process.argv.includes('--zoom-check');
+const clickOnceCheck = process.argv.includes('--clickonce-check');
+const activations = [];
+if (clickOnceCheck) {
+    // Exercise real engine events and policy, but never run an application from a test.
+    require(path.join(dist, 'browser-clickonce.js')).activateClickOnce = async url => { activations.push(url); return 'accepted'; };
+}
 const execFileAsync = promisify(execFile);
 // The profile (userData/coc/browser/electron) must sit inside Electron's userData:
 // macOS sandboxes the network service to userData and the user temp dir, and a
@@ -27,7 +33,11 @@ app.setPath('userData', userData);
 const externalCalls = [];
 shell.openExternal = async url => { externalCalls.push(url); };
 let confirmation = 0;
-dialog.showMessageBox = async () => ({ response: confirmation });
+const consents = [];
+dialog.showMessageBox = async (_window, options) => {
+    if (options.title === 'Open this application?') consents.push(options);
+    return { response: confirmation };
+};
 const emit = (step, value) => console.log('E2E::' + JSON.stringify({ step, ...value }));
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const commands = new Map();
@@ -67,6 +77,7 @@ function handle(req, res) {
         }
     }
     if (url.pathname === '/redirect') { res.writeHead(302, { Location: '/second?tab=main' }); res.end(); return; }
+    if (url.pathname === '/application-redirect') { res.writeHead(302, { Location: 'https://fixture.test/App.application?value=a%2Fb+z&value=two&empty=' }); res.end(); return; }
     if (url.pathname === '/download') { res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="fixture.zip"' }); res.end('fixture'); return; }
     if (url.pathname === '/slow') { res.setHeader('Content-Type', 'text/html'); res.write('<html><head><title>Slow</title></head>'); return; }
     const title = url.pathname === '/second' ? 'Second' : url.pathname === '/login' ? 'Login' : 'Home';
@@ -121,6 +132,11 @@ app.whenReady().then(async () => {
     const pref = await call(main, 'getPreferences');
     if (engine === 'webview2' && !pref.engines.find(e => e.engine === engine)?.available) throw new Error('Required real WebView2 capability is unavailable: ' + JSON.stringify(pref));
     await call(main, 'setDefaultEngine', engine);
+    if (clickOnceCheck) {
+        if (pref.clickOnce?.enabled !== false) throw new Error('ClickOnce must default off.');
+        const result = await call(main, 'setClickOnce', true);
+        if (!result.ok) throw new Error('ClickOnce preference failed.');
+    }
     if (blankImportCheck) {
         const imported = await call(main, 'importCookies', null, 'localhost', JSON.stringify(importCookies.slice(0, 2)));
         const remaining = await call(main, 'importCookies', null, 'localhost', JSON.stringify(importCookies.slice(2)));
@@ -136,7 +152,22 @@ app.whenReady().then(async () => {
     const home = await settled(main, 'main', s => s.title === (blankClearCheck ? 'Login' : 'Home'));
     await call(main, 'setBounds', 'main', { x: 350, y: 70, width: 420, height: 320 });
     await waitFor(() => reports.get('main'), 'fixture page report');
-    if (zoomCheck) {
+    if (clickOnceCheck) {
+        for (const action of ['clickonce-navigation', 'clickonce-window', 'clickonce-popup', 'clickonce-redirect']) {
+            const count = activations.length;
+            command('main', action);
+            await waitFor(() => activations.length === count + 1, action + ' direct activation');
+            await delay(150);
+        }
+        await call(main, 'setClickOnce', false);
+        command('main', 'clickonce-navigation');
+        await delay(300);
+        if (activations.length !== 4) throw new Error('Disabled activation was dispatched.');
+        emit('clickonce', {
+            consents, activations, externalCalls, home: await state(main, 'main'),
+            newTabs: await spa('window.newTabs'), downloads: await spa('window.downloads'),
+        });
+    } else if (zoomCheck) {
         const ratio = async (key, baseline = 1, expected) => {
             reports.delete(key);
             return (await waitFor(() => {

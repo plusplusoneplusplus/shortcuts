@@ -71,6 +71,8 @@ struct View {
     host: Weak<RefCell<Host>>,
     fullscreen_window: Cell<Option<(RECT, isize)>>,
     page_zoom_percent: Cell<f64>,
+    click_once_enabled: bool,
+    activation_url: RefCell<Option<String>>,
     control_turn: RefCell<Option<String>>,
     control_chrome: Cell<Option<(HWND, HWND)>>,
     cdp_subscriptions: RefCell<HashMap<String, (ICoreWebView2DevToolsProtocolEventReceiver, i64)>>,
@@ -1278,6 +1280,8 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                             page_zoom_percent: Cell::new(
                                 command.page_zoom_percent.unwrap_or(100.0),
                             ),
+                            click_once_enabled: command.click_once_enabled == Some(true),
+                            activation_url: RefCell::new(None),
                             control_turn: RefCell::new(None),
                             control_chrome: Cell::new(None),
                             cdp_subscriptions: RefCell::new(HashMap::new()),
@@ -1485,9 +1489,29 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                 let mut url = PWSTR::null();
                 let mut navigation_id = 0;
                 args.NavigationId(&mut navigation_id)?;
-                view.history.borrow_mut().started(navigation_id);
                 args.Uri(&mut url)?;
                 let url = CoTaskMemPWSTR::from(url).to_string();
+                if view.click_once_enabled {
+                    let mut redirected = BOOL(0);
+                    args.IsRedirected(&mut redirected)?;
+                    if !redirected.as_bool() {
+                        *view.activation_url.borrow_mut() = Some(url.clone());
+                    }
+                    if crate::clickonce::deployment_url(&url) {
+                        args.SetCancel(true)?;
+                        view.history.borrow_mut().invalidate();
+                        let original = view.activation_url.borrow().clone()
+                            .filter(|value| crate::clickonce::valid_url(value))
+                            .unwrap_or_else(|| url.clone());
+                        protocol::emit(json!({ "event": "application", "viewId": view.id, "kind": "navigation", "url": original, "deploymentUrl": url }));
+                        view.push();
+                        return Ok(());
+                    }
+                }
+                view.history.borrow_mut().started(navigation_id);
+                if view.click_once_enabled {
+                    protocol::emit(json!({ "event": "document-starting", "viewId": view.id }));
+                }
                 if !allowed_url(&url, true) {
                     args.SetCancel(true)?;
                     return Ok(());
@@ -1628,9 +1652,26 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                 args.SetCancel(true)?;
                 args.SetHandled(true)?;
                 let mut url = PWSTR::null();
-                args.DownloadOperation()?.Uri(&mut url)?;
+                let operation = args.DownloadOperation()?;
+                operation.Uri(&mut url)?;
                 let url = CoTaskMemPWSTR::from(url).to_string();
                 if !view.closed.get() {
+                    if view.click_once_enabled {
+                        let mut mime = PWSTR::null();
+                        operation.MimeType(&mut mime)?;
+                        let mime = CoTaskMemPWSTR::from(mime).to_string();
+                        if crate::clickonce::deployment_download(&url, &mime) {
+                            let original = view.activation_url.borrow().clone()
+                                .filter(|value| view.history.borrow().loading()
+                                    && *view.requested.borrow() == url
+                                    && crate::clickonce::valid_url(value))
+                                .unwrap_or_else(|| url.clone());
+                            view.history.borrow_mut().invalidate();
+                            protocol::emit(json!({ "event": "application", "viewId": view.id, "kind": "download", "url": original, "deploymentUrl": url, "mimeType": mime }));
+                            view.push();
+                            return Ok(());
+                        }
+                    }
                     protocol::emit(
                         json!({ "event": "download", "viewId": view.root_id, "url": url }),
                     );
@@ -1746,6 +1787,10 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                 let mut url = PWSTR::null();
                 args.Uri(&mut url)?;
                 let url = CoTaskMemPWSTR::from(url).to_string();
+                if view.click_once_enabled && crate::clickonce::deployment_url(&url) {
+                    protocol::emit(json!({ "event": "application", "viewId": view.id, "kind": "new-window", "url": url }));
+                    return Ok(());
+                }
                 let features = args.WindowFeatures()?;
                 let mut size = BOOL(0);
                 let mut position = BOOL(0);
@@ -1783,6 +1828,7 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                     turn_id: None,
                     session_id: None,
                     enabled: None,
+                    click_once_enabled: Some(view.click_once_enabled),
                 };
                 start_controller(&callback_state, command, Some((args, deferral, view.clone())));
                 Ok(())

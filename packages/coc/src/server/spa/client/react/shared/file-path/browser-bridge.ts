@@ -6,6 +6,7 @@ export type BrowserEngine = 'electron' | 'webview2';
 export type BrowserSource = { kind: 'url'; url: string } | { kind: 'file'; path: string };
 export type BrowserOpenResult = { ok: true; engine: BrowserEngine; sourceKind?: BrowserSource['kind']; embed?: 'webview'; src?: string; partition?: string } | { ok: false; reason: string; message?: string; engine?: BrowserEngine };
 export interface BrowserPreferences {
+    clickOnce?: { enabled: boolean; supported: boolean };
     defaultEngine: BrowserEngine;
     engines: { engine: BrowserEngine; available: boolean; reason?: string; message?: string }[];
     clearing: BrowserEngine[];
@@ -103,6 +104,7 @@ export interface DesktopBrowserBridge {
     onNewTab(callback: (request: BrowserNewTabRequest) => void): () => void;
     onDownload(callback: (event: BrowserDownloadEvent) => void): () => void;
     getPreferences(): Promise<BrowserPreferences>;
+    setClickOnce?(enabled: boolean): Promise<BrowserOperationResult>;
     setPageZoom?(percent: number): Promise<BrowserOperationResult>;
     setDefaultEngine(engine: BrowserEngine): Promise<BrowserOperationResult>;
     clearData(engine: BrowserEngine): Promise<BrowserOperationResult>;
