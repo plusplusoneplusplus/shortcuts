@@ -9,8 +9,9 @@ export const jobInputSchema = z.object({
     name: z.string().trim().min(1).max(120),
     instructions: z.string().trim().min(1).max(32_000),
     provider: z.enum(['copilot', 'codex', 'claude', 'opencode']),
-    model: z.string().trim().min(1).max(200),
+    model: z.string().trim().min(1).max(200).optional(),
     effort: z.enum(['', 'low', 'medium', 'high', 'xhigh']).optional(),
+    effortTier: z.enum(['', 'very-low', 'low', 'medium', 'high']).optional(),
     mode: z.enum(['ask', 'autopilot']).default('ask'),
     cron: z.string().trim().max(200).optional(),
     enabled: z.boolean().default(true),
@@ -84,7 +85,10 @@ export class SentinelJobStore {
             const togglingSchedule = Object.keys(input).length === 1 && typeof input.enabled === 'boolean';
             const current = this.mutable(owner, id, expectedRevision, togglingSchedule);
             const { id: _, revision: _revision, runCount: _count, processId: _process, chatCreated: _chat, ...settings } = current;
-            const next = { ...this.validate({ ...settings, ...input }), id: current.id,
+            const merged: Partial<SentinelScheduledJobInput> = { ...settings, ...input };
+            // An explicit model choice without a tier replaces a stored tier.
+            if ('model' in input && !('effortTier' in input)) delete merged.effortTier;
+            const next = { ...this.validate(merged), id: current.id,
                 processId: current.processId, chatCreated: current.chatCreated, runCount: current.runCount, revision: current.revision + 1 };
             this.save(owner, next);
             return next;
@@ -163,6 +167,14 @@ export class SentinelJobStore {
         const value = parsed.data;
         if (value.cron === '') delete value.cron;
         if (value.effort === '') delete value.effort;
+        if (value.effortTier === '') delete value.effortTier;
+        // A selected tier owns model and effort, so stale explicit values cannot override it.
+        if (value.effortTier) {
+            delete value.model;
+            delete value.effort;
+        } else if (!value.model) {
+            throw new JobError('invalid', 'Invalid job settings');
+        }
         if (value.cron) {
             const error = validateScrubCron(value.cron);
             if (error) throw new JobError('invalid', error);

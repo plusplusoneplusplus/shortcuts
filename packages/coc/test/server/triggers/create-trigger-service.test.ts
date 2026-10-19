@@ -20,7 +20,7 @@ describe('shared trigger creation', () => {
         vi.clearAllMocks();
         db = new NativeDatabase(':memory:');
         ctx = { store: new TriggerStore(db), manager: { arm } as any,
-            emit, enabled: true, now: () => NOW, resolveWorkspaceId: async () => 'ws' };
+            emit, now: () => NOW, resolveWorkspaceId: async () => 'ws' };
     });
     afterEach(() => db.close());
 
@@ -32,13 +32,6 @@ describe('shared trigger creation', () => {
             action: { type: 'send-message', mode: 'autopilot', processId: 'chat' } });
         expect(arm).toHaveBeenCalledWith(trigger);
         expect(emit).toHaveBeenCalledWith({ type: 'trigger-created', trigger });
-    });
-
-    it('rejects disabled creation without writing or scheduling', async () => {
-        ctx.enabled = false;
-        await expect(createTrigger(ctx, 'ws', body)).rejects.toMatchObject({ statusCode: 403 });
-        expect(ctx.store.getAll()).toEqual([]);
-        expect(arm).not.toHaveBeenCalled();
     });
 
     it('rejects invalid requests', async () => {

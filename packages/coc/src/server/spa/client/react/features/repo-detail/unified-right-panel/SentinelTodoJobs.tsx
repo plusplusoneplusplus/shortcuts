@@ -17,8 +17,9 @@ function subscribeConfig(listener: () => void) {
     window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, listener);
     return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, listener);
 }
-const localPolicy = () => `${isFeatureEnabled('sentinelEnabled') && isFeatureEnabled('sentinelTodoJobsEnabled')}:${isFeatureEnabled('sentinelTodoScrubberEnabled')}`;
-type Policy = { jobs: boolean; scrubber: boolean };
+const localPolicy = () => [isFeatureEnabled('sentinelEnabled') && isFeatureEnabled('sentinelTodoJobsEnabled'),
+    isFeatureEnabled('sentinelTodoScrubberEnabled'), isFeatureEnabled('effortLevelsEnabled')].join(':');
+type Policy = { jobs: boolean; scrubber: boolean; effortLevels: boolean };
 function place(children: SentinelTodoScrubberProps['children'], node: ReactNode) {
     return typeof children === 'function' ? children(node) : <>{node}{children}</>;
 }
@@ -51,7 +52,8 @@ function OwnedAutomation(props: SentinelTodoScrubberProps & { client: CocClient;
                 const result = await props.client.request<RuntimeDashboardConfig>('/config/runtime', { signal: controller.signal });
                 if (!disposed && !controller.signal.aborted && run === generation) {
                     setRemote({ jobs: result.features?.sentinelEnabled === true && result.features?.sentinelTodoJobsEnabled === true,
-                        scrubber: result.features?.sentinelTodoScrubberEnabled === true });
+                        scrubber: result.features?.sentinelTodoScrubberEnabled === true,
+                        effortLevels: result.features?.effortLevelsEnabled === true });
                     setError(null);
                 }
             } catch (failure) {
@@ -67,8 +69,9 @@ function OwnedAutomation(props: SentinelTodoScrubberProps & { client: CocClient;
         window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, refresh);
         return () => { disposed = true; generation++; read?.abort(); clearInterval(timer); window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, refresh); };
     }, [props.client, props.routeKind, props.ready, retry]);
+    const [localJobs, localScrubber, localEffortLevels] = local.split(':');
     const policy = props.routeKind === 'local'
-        ? { jobs: local.startsWith('true:'), scrubber: local.endsWith(':true') } : remote;
+        ? { jobs: localJobs === 'true', scrubber: localScrubber === 'true', effortLevels: localEffortLevels === 'true' } : remote;
     if (props.ready === false && props.routeKind !== 'local') return <SentinelTodoScrubber {...props} enabledOverride={false} />;
     if (props.routeKind === 'unresolved-remote' || (props.routeKind === 'remote' && !policy)) {
         return <>{props.toolbar}{place(props.children, <p role={error ? 'alert' : 'status'} className={MUTED}>
@@ -80,15 +83,17 @@ function OwnedAutomation(props: SentinelTodoScrubberProps & { client: CocClient;
     if (!policy?.jobs) return <SentinelTodoScrubber {...props} enabledOverride={policy?.scrubber} />;
     return <SentinelTodoScrubber {...props} builtInRow enabledOverride={policy.scrubber}>
         {scrubber => place(props.children, props.ready === false ? null : <JobsList client={props.client} owner={props.owner} scrubber={scrubber}
-            baseUrl={props.baseUrl} onFollowLink={props.onFollowLink} />)}
+            baseUrl={props.baseUrl} effortLevelsEnabled={policy.effortLevels} onFollowLink={props.onFollowLink} />)}
     </SentinelTodoScrubber>;
 }
 
 type JobsProps = {
     client: CocClient; owner: SentinelTodoOwner; scrubber: ReactNode; baseUrl?: string;
+    /** The owning server's `effortLevels.enabled`, never the page's. */
+    effortLevelsEnabled: boolean;
     onFollowLink: (event: MouseEvent<HTMLAnchorElement>, key: string) => void;
 };
-function JobsList({ client, owner, scrubber, baseUrl, onFollowLink }: JobsProps) {
+function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFollowLink }: JobsProps) {
     const id = useId();
     const [open, setOpen] = useState(true);
     const [jobs, setJobs] = useState<SentinelScheduledJob[] | null>(null);
@@ -183,7 +188,7 @@ function JobsList({ client, owner, scrubber, baseUrl, onFollowLink }: JobsProps)
                 onToggle={() => void mutate(() => api.update(owner.ownerWorkspaceId, owner.processId, job.id, { enabled: !job.enabled, expectedRevision: job.revision }))} />)}
         </div>
         {editor && <SentinelTodoJobDialog key={editor === 'new' ? 'new' : editor.id} job={editor === 'new' ? undefined : editor}
-            client={client} baseUrl={baseUrl} busy={busy} error={actionError} onSave={save} onClose={() => { if (!pending.current) { setEditor(null); setActionError(null); } }} />}
+            client={client} baseUrl={baseUrl} effortLevelsEnabled={effortLevelsEnabled} busy={busy} error={actionError} onSave={save} onClose={() => { if (!pending.current) { setEditor(null); setActionError(null); } }} />}
         <Dialog open={!!deleting} title="Delete job" trapFocus onClose={() => { if (!pending.current) setDeleting(null); }} disableClose={busy}>
             <p>Delete {deleting?.name}? Its schedule and retained run history will be removed. Its chat remains available.</p>
             {actionError && <p role="alert">{actionError}</p>}
@@ -208,7 +213,7 @@ function JobRow({ job, owner, onFollowLink, disabled, onEdit, onDelete, onRun, o
             {job.mode === 'autopilot' && <span className="rounded bg-[#e8912d]/15 px-1.5 text-[#b5650f] dark:text-[#cca700]" title="Can change files and run commands">Autopilot</span>}
             {!job.enabled && <span className={MUTED}>Paused</span>}
         </div>
-        <p className={MUTED}>{job.provider} / {job.model}{job.effort && ` / ${job.effort}`} · {job.cron ? describeCron(job.cron) || job.cron : 'Manual only'}</p>
+        <p className={MUTED}>{job.provider} / {job.effortTier ? `${job.effortTier} effort tier` : job.model}{job.effort && ` / ${job.effort}`} · {job.cron ? describeCron(job.cron) || job.cron : 'Manual only'}</p>
         {job.enabled && job.nextRunAt && <p className={MUTED}>Next <time dateTime={job.nextRunAt}>{new Date(job.nextRunAt).toLocaleString()}</time></p>}
         {job.activeRun ? <div role="status" className="flex items-center gap-1"><Spinner size="sm" /> Run #{job.activeRun.runNumber} {job.activeRun.status}</div>
             : last && <p className={last.status === 'failed' || last.status === 'interrupted' ? 'text-[#c72e2e] dark:text-[#f48771]' : MUTED}>

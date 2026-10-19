@@ -195,7 +195,7 @@ Started work exposes durable review warnings without changing fulfillment.
 Operational receipts and transport recovery are described in
 [process-store.md](process-store.md#sentinel-dependency-operations).
 
-When `triggers.enabled` infrastructure is present, the same tool offers
+The same tool offers
 `list_triggers`, `create_trigger`, `edit_trigger`, `pause_trigger`, `resume_trigger`,
 `remove_trigger` and confirmed `run_trigger_now`. The owner stays bound to the
 invoking Sentinel; `getTriggerInfra().sentinelTodoTriggers` supplies the shared
@@ -264,8 +264,8 @@ state in the owning workspace to avoid duplicate submissions.
 owner conversation, upgrading a matching CI-only monitor in place. Missing/`ci`
 scope authorizes CI only; omitted/false tool arguments preserve existing authority.
 The shared `triggers/create-trigger-service.ts` validates ownership and reuses
-active/paused monitors without resetting repair history. Arming requires
-`triggers.enabled`; failures preserve PR success with a warning. Results include
+active/paused monitors without resetting repair history. Arming happens only for
+explicit `autoFix: true`; failures preserve PR success with a warning. Results include
 `autoFix: { requested, enabled, scope?, triggerId?, warning? }`.
 
 With default-off `features.sentinelPrOutcomeWake`, the exact successful submission

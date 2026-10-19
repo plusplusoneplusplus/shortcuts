@@ -27,6 +27,7 @@ test.beforeAll(async () => {
             const find = id => jobs.find(job => job.id === id);
             window.fakeClient = {
                 request: async () => ({ features: policy }),
+                agentProviders: { getEffortTiers: async () => ({ effortTiers: {}, defaults: {} }) },
                 events: { connect: () => ({ close() {} }) },
                 sentinelTodos: {
                     get: async () => ({ revision: 1, items: [item] }),

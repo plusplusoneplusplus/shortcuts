@@ -946,8 +946,11 @@ capabilities enable a collapsible Jobs list using `client.sentinelTodos.jobs`.
 Owner/endpoint remounts abort pending reads and discard late results; mutations
 retain their admission lock until the authoritative reload settles. Dialog
 drafts retain captured revisions on errors. User job history carries run timing
-and clone-qualified job/Sentinel turn links. Model catalogs use the same owner
-client; Autopilot displays a permission warning.
+and clone-qualified job/Sentinel turn links. Model catalogs and effort tiers use
+the same owner client. When the owning server's `effortLevelsEnabled` is on and the
+provider has tiers, the dialog shows the shared `EffortTierSelector` and saves only
+`effortTier`; otherwise it keeps explicit Model/Effort and clears a stored tier.
+Autopilot displays a permission warning.
 
 With Jobs enabled, `SentinelTodoScrubber` supplies the pinned built-in row only
 when the independent scrubber flag is enabled, retaining its findings context,
@@ -986,8 +989,7 @@ Tests use isolated mock clients in
 
 ### To-do triggers
 
-`SentinelTodoTriggers` is a separate section below the cards, gated by existing
-`triggers.enabled`. Its owner-qualified `client.triggers` calls use the ledger's
+`SentinelTodoTriggers` is a separate section below the cards. Its owner-qualified `client.triggers` calls use the ledger's
 workspace/process on the owning server. `sentinelTodoTriggerModel` keeps rule
 Waiting/Paused/terminal/error and delivery state separate from item/job/review
 states; rows link the canonical PR or display the saved zoned date and UTC tooltip.

@@ -38,7 +38,6 @@ interface DashboardConfig {
     vimNavigationEnabled?: boolean;
     containerMode?: boolean;
     cronEnabled?: boolean;
-    triggersEnabled?: boolean;
     dreamsEnabled?: boolean;
     excalidrawEnabled?: boolean;
     canvasEnabled?: boolean;
@@ -460,10 +459,6 @@ export function isContainerMode(): boolean {
 
 export function isCronEnabled(): boolean {
     return getConfig().cronEnabled === true;
-}
-
-export function isTriggersEnabled(): boolean {
-    return getConfig().triggersEnabled === true;
 }
 
 export function isDreamsEnabled(): boolean {

@@ -793,8 +793,7 @@ The editor uses browser-safe
 
 ### Sentinel To-do triggers
 
-`SentinelTodoTriggers` adds a separate rule section below the cards when existing
-`triggers.enabled` is on. The editor uses eligible normal items, URL/local PR
+`SentinelTodoTriggers` adds a separate rule section below the cards. The editor uses eligible normal items, URL/local PR
 selection and server preview. Rule lifecycle and pending delivery are independent
 of item/job/review states; writes use the owning client's typed trigger API and
 expected rule revision. Owner-verified task links reveal only the target row and

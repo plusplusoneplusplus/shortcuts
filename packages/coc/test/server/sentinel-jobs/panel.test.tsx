@@ -7,11 +7,20 @@ const mock = vi.hoisted(() => ({
     list: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(), start: vi.fn(), cancel: vi.fn(),
     connect: vi.fn(), request: vi.fn(), scrubGet: vi.fn(), scrubStart: vi.fn(), scrubUpdate: vi.fn(),
     refs: [] as unknown[], route: { kind: 'local' } as { kind: string; baseUrl?: string },
+    tierReads: [] as unknown[][], tiersLoading: false,
+    tiers: {} as Record<string, Record<string, { model: string; reasoningEffort: string; source: 'config' | 'default' }>>,
 }));
 vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({ useCocClient: (ref: unknown) => { mock.refs.push(ref); return client; } }));
 vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({ resolveCloneRoute: () => mock.route }));
 vi.mock('../../../src/server/spa/client/react/hooks/useProviderModels', () => ({
     useProviderModels: () => ({ models: [{ id: 'test-model', enabled: true, name: 'Test model' }], loading: false, error: null, reload: vi.fn() }),
+}));
+vi.mock('../../../src/server/spa/client/react/hooks/useProviderEffortTiers', async importOriginal => ({
+    ...await importOriginal<typeof import('../../../src/server/spa/client/react/hooks/useProviderEffortTiers')>(),
+    useProviderEffortTiers: (provider: string, baseUrl?: string, owner?: unknown) => {
+        mock.tierReads.push([provider, baseUrl, owner]);
+        return { tiers: mock.tiers[provider] ?? {}, loading: mock.tiersLoading, error: null, reload: vi.fn() };
+    },
 }));
 const client = {
     sentinelTodos: { jobs: mock, scrubber: { get: mock.scrubGet, start: mock.scrubStart, updateConfig: mock.scrubUpdate, getRun: vi.fn().mockResolvedValue({ findings: [] }) } },
@@ -48,7 +57,14 @@ beforeEach(() => {
     mock.scrubUpdate.mockReset().mockResolvedValue({});
     mock.route = { kind: 'local' };
     mock.refs.length = 0;
-    applyRuntimeConfigPatch({ sentinelEnabled: true, sentinelTodoJobsEnabled: true, sentinelTodoScrubberEnabled: false });
+    mock.tierReads.length = 0;
+    mock.tiersLoading = false;
+    mock.tiers = {
+        copilot: { low: { model: 'cp-low', reasoningEffort: 'low', source: 'config' }, medium: { model: 'cp-med', reasoningEffort: '', source: 'default' },
+            high: { model: 'cp-high', reasoningEffort: 'high', source: 'config' } },
+        codex: { medium: { model: 'cx-med', reasoningEffort: 'medium', source: 'default' } },
+    };
+    applyRuntimeConfigPatch({ sentinelEnabled: true, sentinelTodoJobsEnabled: true, sentinelTodoScrubberEnabled: false, effortLevelsEnabled: false });
 });
 afterEach(() => {
     cleanup();
@@ -127,7 +143,7 @@ describe('Sentinel To-do Jobs', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Create job' }));
         await waitFor(() => expect(mock.create).toHaveBeenCalledWith('ws-a', 'queue_sentinel', {
             name: 'Daily audit', instructions: 'Review pending work.', provider: 'copilot', model: 'test-model',
-            effort: '', mode: 'ask', cron: '', enabled: true, autoCompactThreshold: 100_000,
+            effort: '', effortTier: '', mode: 'ask', cron: '', enabled: true, autoCompactThreshold: 100_000,
         }));
         await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     });
@@ -299,5 +315,113 @@ describe('Sentinel To-do Jobs', () => {
         expect(close).toHaveBeenCalledOnce();
         await act(async () => pending.resolve({ jobs: [job()] }));
         expect(screen.queryByText('Daily review')).toBeNull();
+    });
+    describe('effort tiers', () => {
+        async function openNew() {
+            fireEvent.click(await screen.findByRole('button', { name: 'New job' }));
+            fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Daily audit' } });
+            fireEvent.change(screen.getByLabelText('Instructions'), { target: { value: 'Review pending work.' } });
+        }
+        const pickTier = (label: string) => {
+            fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+            fireEvent.click(screen.getByRole('option', { name: new RegExp(`^${label}`) }));
+        };
+
+        it('replaces Model and Effort with the shared tier selector and saves only the tier', async () => {
+            applyRuntimeConfigPatch({ effortLevelsEnabled: true });
+            view();
+            await openNew();
+            expect(screen.queryByLabelText('Model')).toBeNull();
+            expect(screen.queryByLabelText('Effort')).toBeNull();
+            expect(screen.getByTestId('effort-tier-trigger-btn')).toHaveAccessibleName('Effort tier: Medium');
+            pickTier('High');
+            fireEvent.click(screen.getByRole('button', { name: 'Create job' }));
+            await waitFor(() => expect(mock.create).toHaveBeenCalledTimes(1));
+            const input = mock.create.mock.calls[0][2];
+            expect(input).toMatchObject({ provider: 'copilot', effortTier: 'high' });
+            expect(input).not.toHaveProperty('model');
+            expect(input).not.toHaveProperty('effort');
+        });
+        it('waits for owner tiers before saving', async () => {
+            applyRuntimeConfigPatch({ effortLevelsEnabled: true });
+            mock.tiersLoading = true;
+            view();
+            await openNew();
+            expect(screen.queryByLabelText('Model')).toBeNull();
+            expect(screen.getByRole('button', { name: 'Create job' })).toBeDisabled();
+        });
+        it('resolves tiers for a changed provider and resets the selection', async () => {
+            applyRuntimeConfigPatch({ effortLevelsEnabled: true });
+            view();
+            await openNew();
+            pickTier('High');
+            fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'codex' } });
+            expect(mock.tierReads.at(-1)?.[0]).toBe('codex');
+            expect(screen.getByTestId('effort-tier-trigger-btn')).toHaveAccessibleName('Effort tier: Medium');
+            fireEvent.click(screen.getByRole('button', { name: 'Create job' }));
+            await waitFor(() => expect(mock.create).toHaveBeenCalledWith('ws-a', 'queue_sentinel',
+                expect.objectContaining({ provider: 'codex', effortTier: 'medium' })));
+        });
+        it('falls back to Model and Effort when the provider has no tiers', async () => {
+            applyRuntimeConfigPatch({ effortLevelsEnabled: true });
+            mock.tiers = {};
+            view();
+            await fillNew();
+            expect(screen.queryByTestId('effort-tier-trigger-btn')).toBeNull();
+            fireEvent.click(screen.getByRole('button', { name: 'Create job' }));
+            await waitFor(() => expect(mock.create).toHaveBeenCalledWith('ws-a', 'queue_sentinel',
+                expect.objectContaining({ model: 'test-model', effort: '', effortTier: '' })));
+        });
+        it('edits a stored tier and maps a legacy model job to its matching tier', async () => {
+            applyRuntimeConfigPatch({ effortLevelsEnabled: true });
+            mock.list.mockResolvedValue({ jobs: [job({ id: 'j1', name: 'Tiered', model: undefined, effortTier: 'low' }),
+                job({ id: 'j2', name: 'Legacy', model: 'cp-high', effort: 'high' })] });
+            view();
+            fireEvent.click(within(await screen.findByRole('article', { name: 'Tiered' })).getByRole('button', { name: 'Edit' }));
+            expect(screen.getByTestId('effort-tier-trigger-btn')).toHaveAccessibleName('Effort tier: Low');
+            fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+            fireEvent.click(within(screen.getByRole('article', { name: 'Legacy' })).getByRole('button', { name: 'Edit' }));
+            expect(screen.getByTestId('effort-tier-trigger-btn')).toHaveAccessibleName('Effort tier: High');
+            fireEvent.click(screen.getByRole('button', { name: 'Save job' }));
+            await waitFor(() => expect(mock.update).toHaveBeenCalledTimes(1));
+            const input = mock.update.mock.calls[0][3];
+            expect(input).toMatchObject({ effortTier: 'high', expectedRevision: 2 });
+            expect(input).not.toHaveProperty('model');
+        });
+        it('keeps explicit Model and Effort and clears a stored tier when tiers are disabled', async () => {
+            mock.list.mockResolvedValue({ jobs: [job({ model: undefined, effortTier: 'high' })] });
+            view();
+            fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+            expect(screen.queryByTestId('effort-tier-trigger-btn')).toBeNull();
+            expect(screen.getByRole('button', { name: 'Save job' })).toBeDisabled();
+            fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'test-model' } });
+            fireEvent.change(screen.getByLabelText('Effort'), { target: { value: 'low' } });
+            fireEvent.click(screen.getByRole('button', { name: 'Save job' }));
+            await waitFor(() => expect(mock.update).toHaveBeenCalledWith('ws-a', 'queue_sentinel', 'j1',
+                expect.objectContaining({ model: 'test-model', effort: 'low', effortTier: '' })));
+        });
+        it('uses the remote owner flag and tier source, not the page flag', async () => {
+            applyRuntimeConfigPatch({ effortLevelsEnabled: false });
+            mock.route = { kind: 'remote', baseUrl: 'https://example.invalid' };
+            mock.request.mockResolvedValue({ features: { sentinelEnabled: true, sentinelTodoJobsEnabled: true, effortLevelsEnabled: true } });
+            render(<SentinelTodoJobs owner={{ ...owner, ownerRoutingRef: 'remote:server:ws-a' }} items={[]} onFollowLink={follow} />);
+            await openNew();
+            expect(screen.getByTestId('effort-tier-trigger-btn')).toBeInTheDocument();
+            expect(mock.tierReads.at(-1)).toEqual(['copilot', 'https://example.invalid', client]);
+        });
+        it('keeps Model and Effort for a remote owner with tiers off while the page flag is on', async () => {
+            applyRuntimeConfigPatch({ effortLevelsEnabled: true });
+            mock.route = { kind: 'remote', baseUrl: 'https://example.invalid' };
+            mock.request.mockResolvedValue({ features: { sentinelEnabled: true, sentinelTodoJobsEnabled: true, effortLevelsEnabled: false } });
+            render(<SentinelTodoJobs owner={{ ...owner, ownerRoutingRef: 'remote:server:ws-a' }} items={[]} onFollowLink={follow} />);
+            await openNew();
+            expect(screen.queryByTestId('effort-tier-trigger-btn')).toBeNull();
+            expect(screen.getByLabelText('Model')).toBeInTheDocument();
+        });
+        it('shows the stored tier on the job row', async () => {
+            mock.list.mockResolvedValue({ jobs: [job({ model: undefined, effortTier: 'high' })] });
+            view();
+            expect(await screen.findByText(/copilot \/ high effort tier/)).toBeInTheDocument();
+        });
     });
 });

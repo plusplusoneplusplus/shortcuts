@@ -97,9 +97,8 @@ beforeEach(() => {
     mocks.prList.mockReset().mockResolvedValue({ pullRequests: [{ title: 'Local PR', number: 7, webUrl: preview().pr.url }], total: 1 });
     mocks.get.mockReset().mockResolvedValue({ items: [item()], revision: 1 });
     mocks.route.mockReturnValue({ kind: 'remote', baseUrl: 'https://server.example.test' });
-    applyRuntimeConfigPatch({ triggersEnabled: true });
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); applyRuntimeConfigPatch({ triggersEnabled: false }); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('Sentinel To-do Triggers', () => {
     const dated = (overrides: Partial<Trigger> = {}) => rule({
@@ -298,17 +297,12 @@ describe('Sentinel To-do Triggers', () => {
         expect(mocks.refs).toContain(owner.ownerRoutingRef);
         expect(mocks.create).not.toHaveBeenCalled();
     });
-    it('makes no requests with the existing triggers gate off, and reacts to gate changes', async () => {
+    it('loads owner rules without a runtime triggers gate, ignoring a stale triggersEnabled flag', async () => {
         applyRuntimeConfigPatch({ triggersEnabled: false });
         mount();
-        expect(mocks.list).not.toHaveBeenCalled();
-        expect(mocks.connect).not.toHaveBeenCalled();
-        expect(screen.queryByText('+ Add trigger')).toBeNull();
-        act(() => applyRuntimeConfigPatch({ triggersEnabled: true }));
-        await waitFor(() => expect(mocks.list).toHaveBeenCalledOnce());
-        act(() => applyRuntimeConfigPatch({ triggersEnabled: false }));
-        expect(screen.queryByText('+ Add trigger')).toBeNull();
-        expect(mocks.connect.mock.results[0].value.close).toHaveBeenCalled();
+        await waitFor(() => expect(mocks.list).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId));
+        expect(screen.getByRole('button', { name: '+ Add trigger' })).toBeTruthy();
+        expect(mocks.create).not.toHaveBeenCalled();
     });
     it('does not fall back to local transport for an unresolved remote owner', () => {
         mocks.route.mockReturnValue({ kind: 'unresolved-remote' });

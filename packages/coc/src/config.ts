@@ -205,10 +205,6 @@ export interface CLIConfig {
     cron?: {
         enabled?: boolean;
     };
-    /** Triggers (event → action) subsystem configuration. Enabled by default. */
-    triggers?: {
-        enabled?: boolean;
-    };
     /** Dreams review subsystem configuration. Disabled by default. */
     dreams?: {
         enabled?: boolean;
@@ -630,10 +626,6 @@ export interface ResolvedCLIConfig {
     cron: {
         enabled: boolean;
     };
-    /** Triggers (event → action) subsystem configuration. */
-    triggers: {
-        enabled: boolean;
-    };
     /** Dreams review subsystem configuration. */
     dreams: {
         enabled: boolean;
@@ -981,9 +973,6 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     cron: {
-        enabled: true,
-    },
-    triggers: {
         enabled: true,
     },
     dreams: {

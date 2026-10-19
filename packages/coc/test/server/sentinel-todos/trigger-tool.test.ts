@@ -40,7 +40,7 @@ describe('Sentinel PR-merge rule tool actions', () => {
             dateTimeEnabled: () => dateTimeEnabled });
         triggers = new SentinelTodoTriggerService({
             triggers: store, todos, owners: service, firer, fetchPr,
-            enabled: true, manager: { arm, disarm: vi.fn() },
+            manager: { arm, disarm: vi.fn() },
             dateTimeEnabled: () => dateTimeEnabled,
         });
         itemId = todos.create(owner, { title: 'Item', completionCondition: 'Complete' }, { actor: 'user' }).item.id;

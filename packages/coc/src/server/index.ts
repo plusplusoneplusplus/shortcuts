@@ -614,36 +614,33 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         cancelLegacySentinelScanCrons(new CronStore(store.getDatabase()));
     }
 
-    const triggersEnabled = resolvedConfig.triggers?.enabled ?? true;
-
     // Trigger infrastructure — generic event → action framework (CI auto-fix
-    // monitors and Sentinel To-do merge wakes). Gated by triggers.enabled (default
-    // true). Mirrors the cron infra wiring; re-arms active triggers on startup.
-    if (triggersEnabled) {
-        triggerInfra = await createTriggerInfrastructure({
-            dataDir,
-            getPrOutcomeEnabled: () => runtimeConfigService.config.features.sentinelPrOutcomeWake === true,
-            getDateTimeEnabled: () => runtimeConfigService.config.features.sentinelTodoDateTimeTriggers === true,
-            queueFacade,
-            deliveryBridge: bridge,
-            recoverPendingMessages: (workspaceId, processId) => bridge.recoverPendingMessages(workspaceId, processId),
-            store,
-            emit: (event) => {
-                try {
-                    wsServer?.broadcastProcessEvent({
-                        type: event.type,
-                        triggerId: event.trigger.id,
-                        processId: event.trigger.processId,
-                        status: event.trigger.status,
-                        workspaceId: event.trigger.workspaceId,
-                        timestamp: Date.now(),
-                    });
-                } catch { /* best-effort broadcast */ }
-            },
-            ciChecksFetcher: createCiChecksFetcher({ dataDir, store }),
-            ciLogFetcher: createCiLogFetcher({ store }),
-        });
-    }
+    // monitors and Sentinel To-do merge wakes). Always wired; individual
+    // triggers are armed only by explicit authorization. Mirrors the cron infra
+    // wiring; re-arms active triggers on startup.
+    triggerInfra = await createTriggerInfrastructure({
+        dataDir,
+        getPrOutcomeEnabled: () => runtimeConfigService.config.features.sentinelPrOutcomeWake === true,
+        getDateTimeEnabled: () => runtimeConfigService.config.features.sentinelTodoDateTimeTriggers === true,
+        queueFacade,
+        deliveryBridge: bridge,
+        recoverPendingMessages: (workspaceId, processId) => bridge.recoverPendingMessages(workspaceId, processId),
+        store,
+        emit: (event) => {
+            try {
+                wsServer?.broadcastProcessEvent({
+                    type: event.type,
+                    triggerId: event.trigger.id,
+                    processId: event.trigger.processId,
+                    status: event.trigger.status,
+                    workspaceId: event.trigger.workspaceId,
+                    timestamp: Date.now(),
+                });
+            } catch { /* best-effort broadcast */ }
+        },
+        ciChecksFetcher: createCiChecksFetcher({ dataDir, store }),
+        ciLogFetcher: createCiLogFetcher({ store }),
+    });
 
     // Cleanup infra is created after the store is ready
     let cleanupInfra: ReturnType<typeof createCleanupInfrastructure>;

@@ -120,7 +120,7 @@ function conflict(current: SentinelTodoItem) {
 
 beforeEach(() => {
     vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
-    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false, sentinelPrOutcomeWakeEnabled: false, triggersEnabled: false });
+    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false, sentinelPrOutcomeWakeEnabled: false });
     resetCloneRegistryForTests();
     dependencyEvaluate.mockReset();
     prOutcomesGet.mockReset();
@@ -141,7 +141,7 @@ beforeEach(() => {
 afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
-    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false, sentinelPrOutcomeWakeEnabled: false, triggersEnabled: false });
+    applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false, sentinelPrOutcomeWakeEnabled: false });
 });
 
 describe('UnifiedTodoTab', () => {
@@ -574,7 +574,7 @@ describe('UnifiedTodoTab', () => {
     });
 
     it('mounts the enabled scrubber once in the list column below triggers only after the ledger loads', async () => {
-        applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: true, triggersEnabled: true });
+        applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: true });
         const read = deferred<SentinelTodoLedgerResponse>();
         get.mockReturnValue(read.promise);
         scrubGet.mockResolvedValue({ config: { enabled: false, cron: '0 9 * * *', paused: false, consecutiveFailures: 0, revision: 0 }, runs: [] });
@@ -648,7 +648,8 @@ describe('UnifiedTodoTab', () => {
         }
         expect(row.textContent).not.toContain('ws-child @');
         expect(get).toHaveBeenCalledTimes(1);
-        expect(connect).toHaveBeenCalledTimes(1);
+        // One ledger subscription plus the always-wired triggers section.
+        expect(connect).toHaveBeenCalledTimes(2);
         expect(create).not.toHaveBeenCalled(); expect(update).not.toHaveBeenCalled();
     });
     it.each(['normal', 'manual'] as const)('copy-drags and attaches a %s row without ledger writes or execution', async type => {

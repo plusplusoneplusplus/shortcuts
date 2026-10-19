@@ -102,7 +102,7 @@ export class SentinelJobService {
             const context: JobTaskContext = { ...owner, jobId, runId: run.id, kind: 'run' };
             await this.deps.enqueue({
                 id: taskId, type: 'chat', priority: 'low', repoId: owner.workspaceId, processId: job.processId,
-                payload: { kind: 'chat', mode: job.mode, provider: job.provider, model: job.model,
+                payload: { kind: 'chat', mode: job.mode, provider: job.provider, ...(job.model ? { model: job.model } : {}),
                     workspaceId: owner.workspaceId,
                     processId: job.processId, relayRequestId: `sentinel-job:${run.id}`,
                     prompt: [
@@ -114,8 +114,10 @@ export class SentinelJobService {
                     ].join('\n'),
                     context: { sentinelScheduledJob: context },
                 },
-                config: { model: job.model, ...(job.effort ? { reasoningEffort: job.effort as ReasoningEffort } : {}),
-                    retryAttempts: 0, retryOnFailure: false, timeoutMs: 0 },
+                // Enqueue resolves a tier against this server's provider settings at admission.
+                config: { ...(job.effortTier ? { effortTier: job.effortTier } : { model: job.model }),
+                    ...(job.effort ? { reasoningEffort: job.effort as ReasoningEffort } : {}),
+                    retryAttempts: 0, retryOnFailure: false, timeoutMs: 0 } as CreateTaskInput['config'],
                 displayName: `[Job: ${job.name}] run #${run.runNumber}`,
             });
             const admitted = this.deps.jobs.run(owner, jobId, run.id);
@@ -158,7 +160,7 @@ export class SentinelJobService {
             const state = readAutoCompact(process.metadata);
             await this.deps.store.updateProcess(process.id, { metadata: {
                 ...process.metadata!, ...this.metadataForTask(task),
-                mode: job.mode, provider: job.provider, model: job.model,
+                mode: job.mode, provider: job.provider, model: task.config?.model ?? job.model,
                 ...(state?.thresholdTokens === job.autoCompactThreshold ? { autoCompact: state } : {}),
             } });
         }
@@ -409,7 +411,7 @@ export class SentinelJobService {
             id: job.processId!, type: 'chat', status: 'completed', startTime: this.now(),
             parentProcessId: owner.processId, customTitle: `[Job: ${job.name}]`,
             promptPreview: job.name, fullPrompt: '', conversationTurns: [], workingDirectory: workspace?.rootPath,
-            metadata: { type: 'chat', workspaceId: owner.workspaceId, mode: job.mode, provider: job.provider, model: job.model,
+            metadata: { type: 'chat', workspaceId: owner.workspaceId, mode: job.mode, provider: job.provider, ...(job.model ? { model: job.model } : {}),
                 sentinelScheduledJob: { ...owner, jobId: job.id },
                 autoCompact: { enabled: true, thresholdTokens: job.autoCompactThreshold } },
         });

@@ -27,12 +27,10 @@ import type { PrCheckRow } from '../../pull-requests/pr-derived-data';
 
 /**
  * CI auto-fix controls surfaced in the failed-checks popover (AC-05). Present
- * only when the triggers feature is enabled; the toggle arms/disarms a
+ * only when the chip wires auto-fix; the toggle arms/disarms a
  * `ci-failure` monitor for this PR and "Fix now" sends one fix message.
  */
 export interface ComposerPrChecksAutoFix {
-    /** Whether the triggers feature flag is on (controls render only when true). */
-    enabled: boolean;
     /** Whether a monitor is currently armed for this PR. */
     armed: boolean;
     ciOnly?: boolean;
@@ -240,7 +238,7 @@ export function ComposerPrChecksPopover({
     }, [onClose]);
 
     const showArchive = Boolean(onOpenArchiveSettings);
-    const showAutoFix = Boolean(autoFix?.enabled);
+    const showAutoFix = Boolean(autoFix);
     const showToggles = showAutoFix;
 
     return ReactDOM.createPortal(

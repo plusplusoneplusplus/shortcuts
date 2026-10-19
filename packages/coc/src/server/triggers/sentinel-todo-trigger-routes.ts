@@ -8,7 +8,7 @@ import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 const base = '/api/workspaces/([^/]+)/sentinel-todos/([^/]+)/triggers';
 
 export function registerSentinelTodoTriggerRoutes(
-    routes: Route[], service: SentinelTodoTriggerService, enabled: boolean,
+    routes: Route[], service: SentinelTodoTriggerService,
 ): void {
     const register = (
         method: Route['method'], suffix: string,
@@ -17,7 +17,6 @@ export function registerSentinelTodoTriggerRoutes(
     ) => routes.push({
         method, pattern: new RegExp(`^${base}${suffix}$`),
         handler: async (req, res, match) => {
-            if (!enabled) return sendError(res, 403, 'Triggers are disabled (triggers.enabled is off)');
             try {
                 const owner = { workspaceId: decodeURIComponent(match![1]), processId: decodeURIComponent(match![2]) };
                 const id = match![3] ? decodeURIComponent(match![3]) : '';

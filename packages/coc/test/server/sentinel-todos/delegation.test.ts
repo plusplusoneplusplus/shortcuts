@@ -338,7 +338,7 @@ describe('Sentinel to-do job links', () => {
                     executor: { execute: wake }, emit: vi.fn(),
                 });
                 const rules = new SentinelTodoTriggerService({
-                    triggers, todos, owners: service, firer, enabled: true,
+                    triggers, todos, owners: service, firer,
                     manager: { arm: vi.fn(), disarm: vi.fn() },
                     fetchPr: async pr => ({ status: 'open', title: 'PR', url: pr.url }),
                 });

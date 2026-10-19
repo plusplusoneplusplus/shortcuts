@@ -51,12 +51,13 @@ test.beforeAll(async () => {
                     }
                 },
                 events: { connect: () => ({ close() {} }) },
+                triggers: { listSentinelTodo: async () => [], sentinelTodoCapabilities: async () => ({ dateTime: false }) },
                 processes: { get: async (...args) => { window.reads.push(['preview', ...args]);
                     return { process: { id: args[0], workspaceId: 'child',
                         jobPreview: { excerpt: 'Recorded job result', source: 'progress', updatedAt: at } } }; } }
             };
             applyRuntimeConfigPatch({
-                sentinelTodoDependenciesEnabled: false, sentinelTodoScrubberEnabled: false, triggersEnabled: false });
+                sentinelTodoDependenciesEnabled: false, sentinelTodoScrubberEnabled: false });
             createRoot(document.getElementById('fixture')).render(<UnifiedTodoTab scopeWorkspaceId="parent"
                 chatId="sentinel" owner={{ ownerWorkspaceId: 'parent', ownerRoutingRef: null, processId: 'sentinel' }} />);
         ` },

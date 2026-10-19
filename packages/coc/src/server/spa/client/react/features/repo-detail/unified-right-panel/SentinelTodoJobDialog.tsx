@@ -1,6 +1,9 @@
 import { useId, useState } from 'react';
 import type { CocClient, SentinelScheduledJob, SentinelScheduledJobInput } from '@plusplusoneplusplus/coc-client';
 import { useProviderModels, type AgentProvider } from '../../../hooks/useProviderModels';
+import { TIER_KEYS, useProviderEffortTiers, type EffortTierKey, type LocalEffortTiersMap } from '../../../hooks/useProviderEffortTiers';
+import { resolveEffectiveTier } from '../../../utils/resolveEffortTier';
+import { EffortTierSelector } from '../../chat/EffortTierSelector';
 import { Button } from '../../../ui/Button';
 import { Dialog } from '../../../ui/Dialog';
 import { SCRUB_CRON_PRESETS, validateScrubCron } from '../../../../../../schedule/scrub-cron';
@@ -8,31 +11,50 @@ import { describeCron } from '../../../utils/cron';
 
 const INPUT = 'w-full min-w-0 rounded border border-[#e0e0e0] bg-transparent px-2 py-1 text-xs dark:border-[#3c3c3c]';
 type Draft = {
-    name: string; instructions: string; provider: AgentProvider; model: string; effort: string;
+    name: string; instructions: string; provider: AgentProvider; model: string; effort: string; effortTier: EffortTierKey | '';
     mode: 'ask' | 'autopilot'; cron: string; enabled: boolean; threshold: string;
 };
 function concreteProvider(value?: string): AgentProvider {
     return value === 'codex' || value === 'claude' || value === 'opencode' ? value : 'copilot';
 }
-export function SentinelTodoJobDialog({ job, client, baseUrl, busy, error, onSave, onClose }: {
-    job?: SentinelScheduledJob; client: CocClient; baseUrl?: string; busy: boolean; error: string | null;
+function tierKey(value?: string): EffortTierKey | '' {
+    return TIER_KEYS.find(key => key === value) ?? '';
+}
+/** Mirrors the composer: a stored tier, else the tier matching a legacy model/effort, else Medium. */
+function desiredTier(draft: Draft, tiers: LocalEffortTiersMap): EffortTierKey {
+    return draft.effortTier || TIER_KEYS.find(key => !!draft.model && tiers[key]?.model === draft.model
+        && (tiers[key]?.reasoningEffort ?? '') === draft.effort) || 'medium';
+}
+/**
+ * `effortLevelsEnabled` is the owning server's flag. With it on and tiers configured for the
+ * provider, the job stores a shared effort tier the owning server resolves at each run;
+ * otherwise it keeps the explicit model and reasoning effort.
+ */
+export function SentinelTodoJobDialog({ job, client, baseUrl, effortLevelsEnabled, busy, error, onSave, onClose }: {
+    job?: SentinelScheduledJob; client: CocClient; baseUrl?: string; effortLevelsEnabled: boolean; busy: boolean; error: string | null;
     onSave: (input: SentinelScheduledJobInput) => Promise<boolean>; onClose: () => void;
 }) {
     const id = useId();
     const [draft, setDraft] = useState<Draft>(() => ({
         name: job?.name ?? '', instructions: job?.instructions ?? '', provider: concreteProvider(job?.provider),
-        model: job?.model ?? '', effort: job?.effort ?? '', mode: job?.mode ?? 'ask',
+        model: job?.model ?? '', effort: job?.effort ?? '', effortTier: tierKey(job?.effortTier), mode: job?.mode ?? 'ask',
         cron: job?.cron ?? '', enabled: job?.enabled ?? true, threshold: String(job?.autoCompactThreshold ?? 100_000),
     }));
     const { models, loading, error: modelError, reload } = useProviderModels(draft.provider, { baseUrl, client });
+    const { tiers, loading: tiersLoading } = useProviderEffortTiers(draft.provider, baseUrl, client);
+    const hasTiers = (['low', 'medium', 'high'] as const).some(key => !!tiers[key]?.model);
+    const tierMode = effortLevelsEnabled && (tiersLoading || hasTiers);
+    const selectedTier = resolveEffectiveTier(desiredTier(draft, tiers), tiers);
+    const aiValid = tierMode ? !tiersLoading && !!tiers[selectedTier]?.model : !!draft.model.trim();
     const cronError = draft.cron.trim() ? validateScrubCron(draft.cron) : undefined;
     const threshold = Number(draft.threshold);
     const thresholdError = !Number.isSafeInteger(threshold) || threshold <= 0;
-    const valid = !!draft.name.trim() && !!draft.instructions.trim() && !!draft.model.trim() && !cronError && !thresholdError;
+    const valid = !!draft.name.trim() && !!draft.instructions.trim() && aiValid && !cronError && !thresholdError;
     const update = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft(previous => ({ ...previous, [key]: value }));
     const save = () => onSave({
         name: draft.name.trim(), instructions: draft.instructions.trim(), provider: draft.provider,
-        model: draft.model.trim(), effort: draft.effort, mode: draft.mode, cron: draft.cron.trim(),
+        // The server drops model/effort for a tier; an empty tier clears a stored one.
+        ...(tierMode ? { effortTier: selectedTier } : { model: draft.model.trim(), effort: draft.effort, effortTier: '' }), mode: draft.mode, cron: draft.cron.trim(),
         enabled: draft.enabled, autoCompactThreshold: threshold,
     });
     return <Dialog open title={job ? 'Edit job' : 'New job'} trapFocus disableClose={busy} onClose={() => { if (!busy) onClose(); }}>
@@ -47,9 +69,14 @@ export function SentinelTodoJobDialog({ job, client, baseUrl, busy, error, onSav
             <div className="grid grid-cols-2 gap-2">
                 <div><label htmlFor={`${id}-provider`}>Provider</label>
                     <select id={`${id}-provider`} className={INPUT} value={draft.provider} disabled={busy}
-                        onChange={event => setDraft(previous => ({ ...previous, provider: concreteProvider(event.target.value), model: '', effort: '' }))}>
+                        onChange={event => setDraft(previous => ({ ...previous, provider: concreteProvider(event.target.value), model: '', effort: '', effortTier: '' }))}>
                         <option value="copilot">Copilot</option><option value="codex">Codex</option><option value="claude">Claude</option><option value="opencode">OpenCode</option>
                     </select></div>
+                {tierMode ? <div><span id={`${id}-tier`}>Effort tier</span>
+                    <div role="group" aria-labelledby={`${id}-tier`}>
+                        <EffortTierSelector tiers={tiers} selectedTier={selectedTier} disabled={busy || tiersLoading}
+                            onChange={tier => update('effortTier', tier)} data-testid="sentinel-job-effort-tier" />
+                    </div></div> : <>
                 <div><label htmlFor={`${id}-model`}>Model</label>
                     <input id={`${id}-model`} className={INPUT} list={`${id}-models`} value={draft.model} required maxLength={200} disabled={busy}
                         placeholder={loading ? 'Loading models...' : 'Model ID'} onChange={event => update('model', event.target.value)} />
@@ -57,14 +84,14 @@ export function SentinelTodoJobDialog({ job, client, baseUrl, busy, error, onSav
                 <div><label htmlFor={`${id}-effort`}>Effort</label>
                     <select id={`${id}-effort`} className={INPUT} value={draft.effort} disabled={busy} onChange={event => update('effort', event.target.value)}>
                         <option value="">Provider default</option>{['low', 'medium', 'high', 'xhigh'].map(effort => <option key={effort} value={effort}>{effort}</option>)}
-                    </select></div>
+                    </select></div></>}
                 <div><label htmlFor={`${id}-mode`}>Mode</label>
                     <select id={`${id}-mode`} className={INPUT} value={draft.mode} disabled={busy}
                         onChange={event => update('mode', event.target.value === 'autopilot' ? 'autopilot' : 'ask')}>
                         <option value="ask">Ask</option><option value="autopilot">Autopilot</option>
                     </select></div>
             </div>
-            {modelError && <p role="alert" className="text-xs">Could not load models: {modelError} <Button size="sm" variant="secondary" onClick={reload}>Retry models</Button></p>}
+            {!tierMode && modelError && <p role="alert" className="text-xs">Could not load models: {modelError} <Button size="sm" variant="secondary" onClick={reload}>Retry models</Button></p>}
             {draft.mode === 'autopilot' && <p role="status" className="rounded bg-[#e8912d]/15 p-2 text-xs text-[#b5650f] dark:text-[#cca700]">Autopilot can change files and run commands without waiting for approval. Use Ask for read-only jobs.</p>}
             <label htmlFor={`${id}-preset`}>Schedule preset</label>
             <select id={`${id}-preset`} className={INPUT} value={!draft.cron ? 'manual' : draft.cron === '0 * * * *' || SCRUB_CRON_PRESETS.some(preset => preset.cron === draft.cron) ? draft.cron : 'custom'}

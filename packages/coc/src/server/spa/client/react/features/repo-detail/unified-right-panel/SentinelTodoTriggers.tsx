@@ -1,28 +1,20 @@
-import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { CocClient, SentinelTodoItem, Trigger } from '@plusplusoneplusplus/coc-client';
 import { zonedTriggerTime } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { Button } from '../../../ui/Button';
 import { Dialog } from '../../../ui/Dialog';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isTriggersEnabled } from '../../../utils/config';
 import { formatRelativeTime } from '../../../utils/format';
 import { sentinelTodoOwnerKey, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 import { SentinelTodoTriggerEditor } from './SentinelTodoTriggerEditor';
 import { eligibleTriggerItems, isTerminalTrigger, triggerError } from './sentinelTodoTriggerModel';
 import './sentinelTodoTriggers.css';
 
-function subscribeConfig(listener: () => void) {
-    window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, listener);
-    return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, listener);
-}
-
 export function SentinelTodoTriggers(props: { owner: SentinelTodoOwner; items: readonly SentinelTodoItem[]; onItemLink: (itemId: string) => void }) {
-    const enabled = useSyncExternalStore(subscribeConfig, isTriggersEnabled, isTriggersEnabled);
     const ref = props.owner.ownerRoutingRef === null ? undefined : props.owner.ownerRoutingRef ?? props.owner.ownerWorkspaceId;
     const client = useCocClient(ref);
     const route = resolveCloneRoute(ref);
-    if (!enabled) return null;
     if (route.kind === 'unresolved-remote') return <p role="status">Triggers unavailable: owning server is not connected.</p>;
     return <TriggerSection key={`${sentinelTodoOwnerKey(props.owner)}:${route.kind === 'remote' ? route.baseUrl : 'local'}`} {...props} client={client} />;
 }

@@ -808,16 +808,18 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { repoGroupAggregatedChats: true } }).repoGroupAggregatedChatsEnabled).toBe(true);
     });
 
-    it('exposes triggers as a default-on, restart-required feature', () => {
-        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'triggers.enabled');
-        expect(def, 'triggers.enabled must be an admin setting').toBeDefined();
-        expect(def!.value).toEqual({ kind: 'boolean' });
-        expect(def!.default).toBe(true);
-        expect(def!.runtime).toBe('restartRequired');
-        expect(def!.runtimeFlag).toBe('triggersEnabled');
-        expect(def!.ui?.label).toBe('Triggers (CI auto-fix)');
-        expect(def!.ui?.hint).toMatch(/enabled by default/i);
-        expect(buildRuntimeFeatureFlags({}).triggersEnabled).toBe(true);
+    it('omits the retired triggers setting from schema, Admin and runtime even in old configs', () => {
+        expect(ADMIN_SETTING_DEFINITIONS.some(d => d.key === 'triggers.enabled' || d.ui?.label === 'Triggers (CI auto-fix)')).toBe(false);
+        expect(ADMIN_EDITABLE_KEYS).not.toContain('triggers.enabled');
+        expect(CONFIG_SOURCE_KEYS).not.toContain('triggers.enabled');
+        expect(DEFAULT_CONFIG).not.toHaveProperty('triggers');
+        for (const enabled of [false, true]) {
+            const parsed = CLIConfigSchema.parse({ triggers: { enabled } } as unknown as CLIConfig);
+            const config = mergeConfig(DEFAULT_CONFIG, parsed);
+            expect(config).not.toHaveProperty('triggers');
+            expect(buildRuntimeFeatures(config)).not.toHaveProperty('triggersEnabled');
+            expect(buildRuntimeFeatureFlags(parsed)).not.toHaveProperty('triggersEnabled');
+        }
     });
 });
 
@@ -899,7 +901,6 @@ describe('feature toggle settings-tab placement', () => {
         'workItems.aiAuthoring.enabled': 'features',
         'workItems.workflow.enabled': 'features',
         'cron.enabled': 'features',
-        'triggers.enabled': 'features',
         'canvas.enabled': 'features',
         'browserControl.enabled': 'browser',
         'browserControl.framesEnabled': 'browser',

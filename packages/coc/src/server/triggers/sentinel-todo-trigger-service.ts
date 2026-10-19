@@ -42,7 +42,6 @@ export interface SentinelTodoTriggerServiceDeps {
     manager: Pick<TriggerManager, 'arm' | 'disarm'>;
     firer: OneShotFirer;
     fetchPr: PrStatusFetcher;
-    enabled: boolean;
     dateTimeEnabled?: () => boolean;
     emit?: TriggerEventEmit;
     now?: () => number;
@@ -209,7 +208,6 @@ export class SentinelTodoTriggerService {
     }
 
     private async assertOwner(owner: SentinelTodoOwner): Promise<void> {
-        if (!this.deps.enabled) throw new SentinelTodoTriggerError(403, 'Triggers are disabled (triggers.enabled is off)');
         await this.deps.owners.list(owner);
     }
 

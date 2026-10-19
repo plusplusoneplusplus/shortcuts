@@ -665,7 +665,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         key: 'features.sentinelPrOutcomeWake', default: false, runtime: 'live', runtimeFlag: 'sentinelPrOutcomeWakeEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.58, label: 'Sentinel PR outcome wake', badge: 'experimental',
-            hint: 'Review exact tracked delegated PR outcomes without granting repair or delegation authority. Requires native triggers. Disabled by default.',
+            hint: 'Review exact tracked delegated PR outcomes without granting repair or delegation authority. Disabled by default.',
             testId: 'toggle-sentinel-pr-outcome-wake-enabled',
         },
     }),
@@ -734,14 +734,6 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             group: 'infrastructure', order: 10, label: 'Cron & Wakeups', badge: 'restart',
             hint: 'Recurring follow-up crons and one-shot scheduleWakeup tool. Disabled by default — toggling requires a server restart to (de)wire infrastructure.',
             testId: 'toggle-cron-enabled',
-        },
-    }),
-    bool({
-        key: 'triggers.enabled', default: true, runtime: 'restartRequired', runtimeFlag: 'triggersEnabled',
-        ui: {
-            group: 'infrastructure', order: 11, label: 'Triggers (CI auto-fix)', badge: 'restart',
-            hint: 'Event → action triggers, including the PR-banner CI auto-fix monitor. Enabled by default — toggling requires a server restart to (de)wire infrastructure.',
-            testId: 'toggle-triggers-enabled',
         },
     }),
     // `dreams.enabled` is rendered bespoke in the admin Dreams tab

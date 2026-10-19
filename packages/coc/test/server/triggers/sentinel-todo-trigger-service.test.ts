@@ -46,10 +46,10 @@ describe('SentinelTodoTriggerService', () => {
         service = build();
     });
     afterEach(() => db.close());
-    function build(enabled = true, dateTime = false) {
+    function build(dateTime = false) {
         return new SentinelTodoTriggerService({
             triggers, todos, owners: new SentinelTodoService({ todos, store: { getProcess } }),
-            manager: { arm, disarm }, firer, fetchPr, enabled, emit, now: () => Date.parse(timestamp),
+            manager: { arm, disarm }, firer, fetchPr, emit, now: () => Date.parse(timestamp),
             dateTimeEnabled: () => dateTime,
         });
     }
@@ -63,7 +63,7 @@ describe('SentinelTodoTriggerService', () => {
         expect(await service.capabilities(owner)).toEqual({ dateTime: false });
         await expect(createDate()).rejects.toThrow('disabled');
         expect((await create()).event.monitor).toBe('pr-merged');
-        service = build(true, true);
+        service = build(true);
         expect(await service.capabilities(owner)).toEqual({ dateTime: true });
         const dated = await createDate();
         expect((await service.list(owner)).map(rule => rule.event.type).sort()).toEqual(['condition-monitor', 'date-time']);
@@ -72,7 +72,7 @@ describe('SentinelTodoTriggerService', () => {
     });
 
     it('roundtrips the selected overlap instant, edits with revision and replays creation', async () => {
-        service = build(true, true);
+        service = build(true);
         const input = { idempotencyKey: 'date-draft', instruction: 'Only review approved scope' };
         const rule = await createDate(dateEvent, input);
         expect(rule).toMatchObject({
@@ -99,14 +99,14 @@ describe('SentinelTodoTriggerService', () => {
         { ...dateEvent, firesAt: '2027-11-07T01:30:00' },
         { type: 'date-time', localTime: '2025-01-01T00:00', firesAt: '2025-01-01T00:00:00.000Z', timeZone: 'UTC' },
     ])('rejects invalid date event %j', async event => {
-        service = build(true, true);
+        service = build(true);
         await expect(createDate(event)).rejects.toMatchObject({ statusCode: 400 });
         expect(triggers.getAll()).toEqual([]);
         expect(fetchPr).not.toHaveBeenCalled();
     });
 
     it('enforces date PR-field separation, owner/item eligibility and the shared active cap', async () => {
-        service = build(true, true);
+        service = build(true);
         await expect(createDate(dateEvent, { prUrl })).rejects.toThrow('PR fields');
         const manual = todos.create(owner, { title: 'Manual', type: 'manual' }, { actor: 'user' }).item;
         await expect(createDate(dateEvent, { itemId: manual.id })).rejects.toThrow('Manual');
@@ -118,7 +118,7 @@ describe('SentinelTodoTriggerService', () => {
     });
 
     it('requires confirmation for overdue resume and preserves keyed receipts after removal', async () => {
-        service = build(true, true);
+        service = build(true);
         const rule = await createDate(dateEvent, { idempotencyKey: 'date-draft' });
         const paused = await service.setPaused(owner, rule.id, { expectedRevision: 1 }, true);
         const overdue = { ...paused, event: { type: 'date-time' as const, firesAt: '2025-01-01T00:00:00.000Z', timeZone: 'UTC' } };
@@ -133,7 +133,7 @@ describe('SentinelTodoTriggerService', () => {
         await expect(service.runNow(owner, rule.id, { expectedRevision: 4, confirmed: true })).rejects.toThrow();
     });
     it('replays an overdue keyed create but rejects a new or edited past date', async () => {
-        service = build(true, true);
+        service = build(true);
         const rule = await createDate(dateEvent, { idempotencyKey: 'date-draft' });
         service = new SentinelTodoTriggerService({
             triggers, todos, owners: new SentinelTodoService({ todos, store: { getProcess } }),
@@ -376,22 +376,6 @@ describe('SentinelTodoTriggerService', () => {
         });
         await expect(create()).rejects.toThrow('Sentinel chat not found');
     });
-
-    it.each(['list', 'preview', 'create', 'edit', 'pause', 'remove', 'run-now'] as const)(
-        'gates %s with triggers.enabled and does not call providers', async operation => {
-            const rule = await create();
-            service = build(false);
-            const input = { expectedRevision: 1 };
-            const call = operation === 'list' ? service.list(owner)
-                : operation === 'preview' ? service.preview(owner, { prUrl })
-                : operation === 'create' ? create()
-                : operation === 'edit' ? service.edit(owner, rule.id, { ...input, itemId, prUrl })
-                : operation === 'remove' ? service.remove(owner, rule.id, input)
-                : operation === 'run-now' ? service.runNow(owner, rule.id, { ...input, confirmed: true })
-                : service.setPaused(owner, rule.id, input, true);
-            await expect(call).rejects.toMatchObject({ statusCode: 403 });
-            expect(execute).not.toHaveBeenCalled();
-        });
 
     it('retires only the owner item rules inside the caller transaction and releases them after', async () => {
         const rule = await create({ idempotencyKey: 'draft-1' });

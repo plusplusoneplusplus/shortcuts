@@ -88,7 +88,6 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '/api',
     getWsPath: () => '/ws',
     getWsUrl: () => 'ws://localhost/ws',
-    isTriggersEnabled: () => false,
     isRalphEnabled: () => true,
     isRalphMultiAgentGrillEnabled: () => false,
     isCronEnabled: () => false,
