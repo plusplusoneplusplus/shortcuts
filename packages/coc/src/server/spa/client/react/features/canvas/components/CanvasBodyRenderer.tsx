@@ -64,8 +64,8 @@ export function CanvasBodyRenderer({
     // route to SvgCanvasView, and ordinary code canvases stay as source.
     const svgFenceEnabled = !kind.isCode && !kind.isExcalidraw && !kind.isExtension;
     const previewHtml = useMemo(
-        () => chatMarkdownToHtml(previewMarkdown, workspaceId, { svgFenceEnabled }),
-        [previewMarkdown, workspaceId, svgFenceEnabled],
+        () => chatMarkdownToHtml(previewMarkdown, workspaceId, { svgFenceEnabled, canvasEmbedEnabled: canvas?.type === 'markdown' }),
+        [previewMarkdown, workspaceId, svgFenceEnabled, canvas?.type],
     );
 
     const handlePreviewMouseUp = useCallback(() => {

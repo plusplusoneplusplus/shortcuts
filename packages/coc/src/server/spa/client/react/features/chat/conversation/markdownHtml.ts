@@ -53,26 +53,8 @@ export function parseCanvasEmbedLink(url: string): { canvasId: string } | null {
 }
 
 /**
- * Post-processing: convert bare `canvas://<id>` text in HTML (not already
- * inside a tag attribute) into canvas embed divs. The workspace id is
- * injected separately by `injectCanvasEmbedWorkspace` once it is known.
- */
-function rewriteBareCanvasEmbedLinks(html: string): string {
-    return html.replace(
-        /(?<!="|=')canvas:\/\/([a-z0-9][a-z0-9-]{0,127})/gi,
-        (match) => {
-            const parsed = parseCanvasEmbedLink(match);
-            if (!parsed) {
-                return match;
-            }
-            return `<div class="md-canvas-embed" data-canvas-id="${escapeAttr(parsed.canvasId)}"></div>`;
-        },
-    );
-}
-
-/**
- * Stamp the workspace id onto canvas embed placeholders. The `link`/bare-link
- * rewriters emit `data-canvas-id` only (they don't know the workspace), so this
+ * Stamp the workspace id onto canvas embed placeholders. The link renderer and
+ * bare-marker tokenizer emit `data-canvas-id` only (they don't know the workspace), so this
  * pass adds `data-ws-id` from the render context once it is available.
  */
 function injectCanvasEmbedWorkspace(html: string, wsId: string): string {
@@ -122,7 +104,7 @@ function createChatMarked(
 ): Marked {
     let mermaidBlockIndex = 0;
 
-    return new Marked({
+    const marked = new Marked({
         gfm: true,
         breaks: true,
         renderer: {
@@ -200,6 +182,24 @@ function createChatMarked(
             },
         },
     }).use(mathMarkedExtension);
+    if (canvasEmbedEnabled) {
+        // Tokenize prose only: code spans/fences and link attributes stay literal.
+        marked.use({ extensions: [{
+            name: 'canvasEmbed',
+            level: 'inline',
+            start: (source) => source.search(/canvas:\/\//i),
+            tokenizer(source) {
+                const match = source.match(/^canvas:\/\/([a-z0-9][a-z0-9-]{0,127})(?=$|[\s<>"'`*\[\](),.!?;:])/i);
+                if (!match) return;
+                const parsed = parseCanvasEmbedLink(match[0]);
+                if (parsed) return { type: 'canvasEmbed', raw: match[0], canvasId: parsed.canvasId };
+            },
+            renderer(token) {
+                return `<div class="md-canvas-embed" data-canvas-id="${escapeAttr(token.canvasId)}"></div>`;
+            },
+        }] });
+    }
+    return marked;
 }
 
 /**
@@ -272,11 +272,8 @@ export function chatMarkdownToHtml(
     if (excalidrawEnabled) {
         html = rewriteBareExcalidrawLinks(html);
     }
-    if (canvasEnabled) {
-        html = rewriteBareCanvasEmbedLinks(html);
-        if (wsId) {
-            html = injectCanvasEmbedWorkspace(html, wsId);
-        }
+    if (canvasEnabled && wsId) {
+        html = injectCanvasEmbedWorkspace(html, wsId);
     }
     return html;
 }

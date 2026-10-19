@@ -78,6 +78,11 @@ component; do not grow `CanvasPanel.tsx` back.
   markdown pipeline (a Kusto result JSON can be 10k rows); extension canvases
   only do so to show raw JSON in a history view. SVG detection runs against the
   *displayed* content, so an older revision is classified on its own body.
+- **Markdown embeds use the shared viewer.** `CanvasBodyRenderer` enables canvas
+  markers only for Markdown previews. `MarkdownView` mounts owner-routed
+  `CanvasEmbed` viewers; code examples and Edit text stay literal. Embedded
+  documents show source without expanding nested references; Kusto shows saved
+  results without running queries.
 - **SVG text is selectable.** `SvgCanvasView` renders into a shadow root and
   passes `selectableSelector: 'text, tspan, foreignObject'` to `useZoomPan`, so a
   drag starting on a label becomes a native text selection instead of a pan. The
