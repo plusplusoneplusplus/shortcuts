@@ -7,6 +7,7 @@ import { isValidWorkspaceId } from '../tasks/comments/base-comments-manager';
 import { SentinelTodoError, type SentinelTodoOwner } from '../sentinel-todos/sentinel-todo-store';
 import { JobError, jobInputSchema, type SentinelJobStore } from './job-store';
 import type { SentinelJobService } from './job-service';
+import { SentinelJobCommands } from './job-commands';
 
 const BASE = '/api/workspaces/([^/]+)/sentinel-todos/([^/]+)/jobs';
 const revision = z.number().int().positive();
@@ -23,7 +24,10 @@ export function registerSentinelJobRoutes(opts: {
     jobs: SentinelJobStore;
     service: SentinelJobService;
     onConfigChange?: () => void;
+    /** Shared with the `sentinel_jobs` tool; built from the options above when omitted. */
+    commands?: SentinelJobCommands;
 }): void {
+    const commands = opts.commands ?? new SentinelJobCommands(opts);
     const add = (method: string, suffix: string, command: (
         req: http.IncomingMessage, res: http.ServerResponse, owner: SentinelTodoOwner, match: RegExpMatchArray,
     ) => Promise<unknown>) => opts.routes.push({
@@ -54,37 +58,26 @@ export function registerSentinelJobRoutes(opts: {
         if (!result.success) { sendError(res, 400, 'Invalid job settings'); return; }
         return result.data;
     };
-    add('GET', '', async (_req, res, owner) => sendJSON(res, 200,
-        { jobs: opts.jobs.list(owner).map(job => opts.service.view(owner, job)) }));
+    add('GET', '', async (_req, res, owner) => sendJSON(res, 200, { jobs: await commands.list(owner) }));
     add('POST', '', async (req, res, owner) => {
         const input = await body(req, res, jobInputSchema);
         if (!input) return;
-        await opts.service.assertOwner(owner);
-        const job = opts.jobs.create(owner, input);
-        opts.onConfigChange?.();
-        sendJSON(res, 201, opts.service.view(owner, job));
+        sendJSON(res, 201, await commands.create(owner, input));
     });
     add('PATCH', '/([^/]+)', async (req, res, owner, match) => {
         const input = await body(req, res, updateSchema);
         if (!input) return;
-        await opts.service.assertOwner(owner);
         const { expectedRevision, ...settings } = input;
-        const job = opts.jobs.update(owner, decodeURIComponent(match[3]), settings, expectedRevision);
-        opts.onConfigChange?.();
-        sendJSON(res, 200, opts.service.view(owner, job));
+        sendJSON(res, 200, await commands.update(owner, decodeURIComponent(match[3]), settings, expectedRevision));
     });
     add('DELETE', '/([^/]+)', async (req, res, owner, match) => {
         const input = await body(req, res, deleteSchema);
         if (!input) return;
-        await opts.service.assertOwner(owner);
-        const id = decodeURIComponent(match[3]);
-        opts.jobs.delete(owner, id, input.expectedRevision);
-        opts.onConfigChange?.();
-        await opts.service.removeSnapshots(owner, id);
+        await commands.delete(owner, decodeURIComponent(match[3]), input.expectedRevision);
         sendJSON(res, 200, { deleted: true });
     });
     add('POST', '/([^/]+)/runs', async (_req, res, owner, match) =>
-        sendJSON(res, 202, await opts.service.start(owner, decodeURIComponent(match[3]))));
+        sendJSON(res, 202, await commands.start(owner, decodeURIComponent(match[3]))));
     add('POST', '/([^/]+)/runs/([^/]+)/cancel', async (_req, res, owner, match) =>
-        sendJSON(res, 200, await opts.service.cancel(owner, decodeURIComponent(match[3]), decodeURIComponent(match[4]))));
+        sendJSON(res, 200, await commands.cancel(owner, decodeURIComponent(match[3]), decodeURIComponent(match[4]))));
 }

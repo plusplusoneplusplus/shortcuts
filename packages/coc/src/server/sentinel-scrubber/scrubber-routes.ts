@@ -1,16 +1,15 @@
 import type * as http from 'node:http';
 import { z } from 'zod';
 import { sendError, sendJSON } from '../core/api-handler';
-import { nextCronTime } from '../schedule/cron-utils';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../shared/router';
 import { isValidWorkspaceId } from '../tasks/comments/base-comments-manager';
 import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import { SentinelTodoError, type SentinelTodoOwner } from '../sentinel-todos/sentinel-todo-store';
 import type { ScrubberEngine } from './scrubber-engine';
-import { validateScrubCron } from './scrubber-model';
+import { ScrubberCommands } from './scrubber-commands';
 import type { ScrubberRunService } from './scrubber-runs';
-import { ScrubberStoreError, type ScrubberStore, type ScrubRunRecord } from './scrubber-store';
+import { ScrubberStoreError, type ScrubberStore } from './scrubber-store';
 
 const BASE = '/api/workspaces/([^/]+)/sentinel-todos/([^/]+)/scrubber';
 const configSchema = z.object({
@@ -29,8 +28,11 @@ export function registerScrubberRoutes(opts: {
     /** True only when the scrubber flag is enabled. */
     getEnabled: () => boolean;
     onChange?: (owner: SentinelTodoOwner, change: { runId?: string; ledgerChanged?: boolean; configChanged?: boolean }) => void;
+    /** Shared with the `sentinel_jobs` tool; built from the options above when omitted. */
+    commands?: ScrubberCommands;
 }): void {
-    const { routes, todos, scrubber, engine, runs } = opts;
+    const { routes, todos, scrubber, engine } = opts;
+    const commands = opts.commands ?? new ScrubberCommands(opts);
     const fail = (res: http.ServerResponse, error: unknown) => {
         if (error instanceof ScrubberStoreError || error instanceof SentinelTodoError) {
             const status = { not_found: 404, conflict: 409, invalid: 400, limit: 400 }[error.code];
@@ -59,31 +61,7 @@ export function registerScrubberRoutes(opts: {
             }
         },
     });
-    const configFor = (owner: SentinelTodoOwner) => {
-        const config = scrubber.getConfig(owner);
-        const next = config.enabled && !config.paused ? nextCronTime(config.cron, new Date()) : undefined;
-        return { ...config, ...(next ? { nextRunAt: next.toISOString() } : {}) };
-    };
-    const summary = (owner: SentinelTodoOwner, run: ScrubRunRecord) => {
-        const findings = scrubber.listFindings(owner, run.id);
-        return {
-            id: run.id, trigger: run.trigger, status: run.status, createdAt: run.createdAt,
-            startedAt: run.startedAt, finishedAt: run.finishedAt, childProcessId: run.childProcessId,
-            error: run.error, skipReason: run.skipReason, itemCount: run.snapshot.length,
-            deferredCount: run.deferredItemIds.length, awaitingReviewCount: run.awaitingReviewItemIds.length,
-            counts: {
-                done: findings.filter(f => (f.state === 'applied' || f.state === 'accepted')
-                    && (f.finding.verdict === 'done' || f.finding.verdict === 'obsolete')).length,
-                proposals: findings.filter(f => f.state === 'proposed').length,
-                unverified: findings.filter(f => f.state === 'unverified').length,
-            },
-        };
-    };
-
-    add('GET', '', async (_req, res, owner) => sendJSON(res, 200, {
-        config: configFor(owner), activeRun: scrubber.activeRun(owner),
-        runs: scrubber.listRuns(owner).map(run => summary(owner, run)),
-    }));
+    add('GET', '', async (_req, res, owner) => sendJSON(res, 200, await commands.view(owner)));
     add('PUT', '/config', async (req, res, owner) => {
         const body = await parseBodyOrReject(req, res);
         if (body === null) {
@@ -92,11 +70,8 @@ export function registerScrubberRoutes(opts: {
         }
         const parsed = configSchema.safeParse(body);
         if (!parsed.success) return sendError(res, 400, 'Invalid scrubber configuration');
-        const error = validateScrubCron(parsed.data.cron);
-        if (error) return sendError(res, 400, error);
-        scrubber.putConfig(owner, parsed.data, parsed.data.expectedRevision);
-        opts.onChange?.(owner, { configChanged: true });
-        sendJSON(res, 200, configFor(owner));
+        const { expectedRevision, ...input } = parsed.data;
+        sendJSON(res, 200, await commands.putConfig(owner, input, expectedRevision));
     });
     add('POST', '/runs', async (req, res, owner) => {
         const body = await parseBodyOrReject(req, res);
@@ -106,9 +81,7 @@ export function registerScrubberRoutes(opts: {
         }
         const parsed = startSchema.safeParse(body ?? {});
         if (!parsed.success) return sendError(res, 400, 'Invalid scrub selection');
-        // Also enforce single-flight when the ledger currently has no eligible items.
-        if (scrubber.activeRun(owner)) throw new ScrubberStoreError('conflict', 'A scrub is already running for this ledger');
-        const run = await runs.start(owner, { trigger: 'manual', ...parsed.data });
+        const run = await commands.start(owner, parsed.data.itemIds);
         sendJSON(res, 202, { runId: run.id, processId: run.childProcessId });
     });
     add('GET', '/runs/([^/]+)', async (_req, res, owner, match) => {
@@ -117,7 +90,7 @@ export function registerScrubberRoutes(opts: {
         sendJSON(res, 200, { ...run, findings: scrubber.listFindings(owner, run.id) });
     });
     add('POST', '/runs/([^/]+)/cancel', async (_req, res, owner, match) => {
-        sendJSON(res, 200, await runs.cancel(owner, decodeURIComponent(match[3])));
+        sendJSON(res, 200, await commands.cancel(owner, decodeURIComponent(match[3])));
     });
     add('POST', '/runs/([^/]+)/findings/([^/]+)/(accept|dismiss|undo)', async (req, res, owner, match) => {
         const body = await parseBodyOrReject(req, res);
