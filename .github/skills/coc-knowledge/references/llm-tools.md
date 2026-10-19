@@ -717,6 +717,12 @@ There is no timeout or output cap: a run ends on return/throw or when the invoca
 the turn signal aborts, which terminates the worker, aborts in-flight inner calls and child
 runners, and reports open inner calls as `tool-failed` `aborted`. The worker is always terminated.
 
+Background callers can supply JSON `state` (parsed in the VM's realm) and opt into
+`requireJsonResult`. Strict results are encoded before leaving the worker, rejecting
+non-finite numbers, undefined values, sparse arrays, cycles, accessors and non-JSON
+objects without invoking serialization hooks. Chat callers retain normal JSON conversion;
+state and strict mode apply only to the run receiving those options.
+
 Inner calls emit `ToolEvent`s with `parentToolCallId` = the script's call id through
 `onNestedToolEvent`, bound to `BaseExecutor.buildNestedToolEventHandler(processId)`. That sink
 feeds the normal tool-event handler; when the parent id is not on the timeline (Claude/Codex

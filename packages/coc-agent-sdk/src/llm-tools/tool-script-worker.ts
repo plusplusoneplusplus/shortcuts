@@ -21,6 +21,8 @@
 export interface ToolScriptWorkerData {
     code: string;
     toolNames: string[];
+    stateJson?: string;
+    requireJsonResult?: boolean;
 }
 
 export type ToolScriptErrorCode =
@@ -67,6 +69,7 @@ const context = vm.createContext({}, { codeGeneration: { strings: false, wasm: f
 // friends behave the way script authors expect.
 const CtxPromise = vm.runInContext('Promise', context);
 const CtxJSON = vm.runInContext('JSON', context);
+const CtxObjectPrototype = vm.runInContext('Object.prototype', context);
 const ToolCallError = vm.runInContext(
     '(class ToolCallError extends Error {' +
     '  constructor(message, code, toolName) { super(message); this.name = "ToolCallError"; this.code = code; this.toolName = toolName; }' +
@@ -145,6 +148,8 @@ function makeLogger(level) {
     return (...args) => parentPort.postMessage({ type: 'log', level: level, text: args.map(formatLogArg).join(' ') });
 }
 
+// Parse inside the VM so state has the same prototypes as script-created data.
+if (workerData.stateJson !== undefined) context.state = CtxJSON.parse(workerData.stateJson);
 context.tools = tools;
 context.ToolCallError = ToolCallError;
 context.console = Object.freeze({
@@ -163,6 +168,29 @@ function toError(err) {
     return { name: 'Error', message: String(err) };
 }
 
+// Encode original values before JSON.stringify can drop fields, coerce non-finite
+// numbers or invoke serialization hooks. Use host intrinsics for the traversal.
+function encodeJsonResult(value, ancestors = new Set()) {
+    if (value === null || typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value);
+    if (typeof value === 'number' && Number.isFinite(value)) return JSON.stringify(value);
+    if (typeof value !== 'object' || value === null) throw new Error('Expected JSON values');
+    if (ancestors.has(value)) throw new Error('Cyclic result');
+    const array = Array.isArray(value);
+    const prototype = Object.getPrototypeOf(value);
+    if (!array && prototype !== CtxObjectPrototype && prototype !== null) throw new Error('Expected a JSON object');
+    if (Object.getOwnPropertySymbols(value).length) throw new Error('Symbol keys are not JSON');
+    ancestors.add(value);
+    const keys = array ? Array.from({ length: value.length }, (_, i) => String(i)) : Object.keys(value);
+    const parts = keys.map(key => {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (!descriptor || !('value' in descriptor)) throw new Error('Sparse arrays and accessors are not JSON');
+        const encoded = encodeJsonResult(descriptor.value, ancestors);
+        return array ? encoded : JSON.stringify(key) + ':' + encoded;
+    });
+    ancestors.delete(value);
+    return array ? '[' + parts.join(',') + ']' : '{' + parts.join(',') + '}';
+}
+
 async function run() {
     let value;
     try {
@@ -170,12 +198,12 @@ async function run() {
     } catch (err) {
         return parentPort.postMessage({ type: 'done', ok: false, error: toError(err) });
     }
-    if (value === undefined) {
+    if (value === undefined && !workerData.requireJsonResult) {
         return parentPort.postMessage({ type: 'done', ok: true });
     }
     let json;
     try {
-        json = CtxJSON.stringify(value);
+        json = workerData.requireJsonResult ? encodeJsonResult(value) : CtxJSON.stringify(value);
     } catch (err) {
         json = undefined;
     }

@@ -51,6 +51,69 @@ describe('runToolScript', () => {
         expect(result).toMatchObject({ ok: true, result: null, callCount: 1 });
     });
 
+    it('keeps chat JSON conversion and absent state unchanged by default', async () => {
+        const result = await run(`return { missing: undefined, number: NaN, stateType: typeof state };`);
+        expect(result).toMatchObject({ ok: true, result: { number: null, stateType: 'undefined' } });
+    });
+
+    it('provides previous state as isolated JSON in the script realm', async () => {
+        const state = { count: 2, values: [1], text: '"; throw new Error("injected"); //' };
+        const result = await run(`
+            if (!(state instanceof Object) || !(state.values instanceof Array)) throw new Error('wrong realm');
+            state.count++;
+            state.values.push(2);
+            return state;
+        `, [], { state, requireJsonResult: true });
+        expect(result).toMatchObject({ ok: true, result: { ...state, count: 3, values: [1, 2] } });
+        expect(state.count).toBe(2);
+        expect(state.values).toEqual([1]);
+    });
+
+    it('provides null state for a first background run', async () => {
+        expect(await run('return state;', [], { state: null, requireJsonResult: true }))
+            .toMatchObject({ ok: true, result: null });
+    });
+
+    it.each([
+        'undefined', 'NaN', 'Infinity', '-Infinity', '1n', 'Symbol("x")', '() => 1',
+        '({ missing: undefined })', '[undefined]', '[, 1]', '({ n: NaN })',
+        'new Date()', 'new Map()', 'new Set()', 'new (class Value {})()',
+        '({ get value() { throw new Error("must not invoke"); } })',
+        '({ toJSON() { return 1; } })', '({ [Symbol("key")]: 1 })',
+    ])('rejects original non-JSON result %s in strict mode', async expression => {
+        const result = await run('return ' + expression + ';', [], { requireJsonResult: true });
+        expect(result).toMatchObject({ ok: false, error: { code: 'UNSERIALIZABLE_RESULT' } });
+        expect(result.result).toBeUndefined();
+    });
+
+    it('rejects cycles in strict mode', async () => {
+        const result = await run('const value = {}; value.self = value; return value;', [], { requireJsonResult: true });
+        expect(result).toMatchObject({ ok: false, error: { code: 'UNSERIALIZABLE_RESULT' } });
+    });
+
+    it('encodes valid JSON without calling inherited serialization hooks', async () => {
+        const result = await run(`
+            Object.prototype.toJSON = () => { throw new Error('must not invoke'); };
+            Array.prototype.toJSON = () => { throw new Error('must not invoke'); };
+            const shared = { value: 2 };
+            const plain = Object.create(null);
+            plain.__proto__ = 'data';
+            return { plain, shared: [shared, shared], values: [null, true, 'text', 3.5] };
+        `, [], { requireJsonResult: true });
+        expect(result).toMatchObject({ ok: true, result: {
+            plain: JSON.parse('{"__proto__":"data"}'), shared: [{ value: 2 }, { value: 2 }], values: [null, true, 'text', 3.5],
+        } });
+    });
+
+    it('aborts an unresolved strict script through the existing caller signal', async () => {
+        const controller = new AbortController();
+        const pending = run('await new Promise(() => {});', [], {
+            requireJsonResult: true, state: null, signal: controller.signal,
+        });
+        setTimeout(() => controller.abort(), 100);
+        expect(await pending).toMatchObject({ ok: false, error: { code: 'ABORTED' } });
+    });
+
     it('turns a tool error into a catchable ToolCallError', async () => {
         const result = await run(`
             try { await tools.fails({}); } catch (e) {

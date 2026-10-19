@@ -48,6 +48,10 @@ export interface ToolScriptRunOptions {
     /** 1 for a top-level script. */
     depth: number;
     signal?: AbortSignal;
+    /** Optional JSON state, exposed only when supplied (background conditions). */
+    state?: unknown;
+    /** Reject lossy JSON conversion before the value leaves the worker. Default false. */
+    requireJsonResult?: boolean;
     onToolEvent?: (event: ToolEvent) => void;
 }
 
@@ -93,7 +97,12 @@ export function runToolScript(opts: ToolScriptRunOptions): Promise<ToolScriptRun
         ...opts.runtime.listTools().map(t => t.name).filter(name => name !== RUN_TOOL_SCRIPT_TOOL_NAME),
         RUN_TOOL_SCRIPT_TOOL_NAME,
     ];
-    const workerData: ToolScriptWorkerData = { code: opts.code, toolNames };
+    const workerData: ToolScriptWorkerData = {
+        code: opts.code,
+        toolNames,
+        stateJson: opts.state === undefined ? undefined : JSON.stringify(opts.state),
+        requireJsonResult: opts.requireJsonResult,
+    };
     const worker = new Worker(TOOL_SCRIPT_WORKER_SOURCE, {
         eval: true,
         workerData,
