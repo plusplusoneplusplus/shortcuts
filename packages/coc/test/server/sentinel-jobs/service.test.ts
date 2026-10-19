@@ -9,6 +9,7 @@ import { SentinelJobService, getJobTaskContext } from '../../../src/server/senti
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { createTodoTestDatabase } from '../sentinel-todos/test-db';
+import { resolveEffortTierConfig } from '../../../src/server/routes/queue-enqueue';
 
 const owner = { workspaceId: 'ws-a', processId: 'queue_parent' };
 const input = { name: 'Review', instructions: 'Check evidence', provider: 'copilot' as const, model: 'gpt' };
@@ -153,6 +154,24 @@ describe('SentinelJobService', () => {
         const call = enqueue.mock.calls[0][0] as CreateTaskInput;
         expect(call.config).toMatchObject({ reasoningEffort: effort, model: input.model });
         expect(call.config).not.toHaveProperty('effortTier');
+    });
+    it('enqueues a stored tier for owning-server resolution, never a stale model or effort', async () => {
+        const job = jobStore.create(owner, { ...input, effort: 'xhigh', effortTier: 'high' });
+        await service.start(owner, job.id);
+        const call = enqueue.mock.calls[0][0] as CreateTaskInput;
+        expect(call.config).toMatchObject({ effortTier: 'high' });
+        expect(call.config).not.toHaveProperty('model');
+        expect(call.config).not.toHaveProperty('reasoningEffort');
+        expect(call.payload).not.toHaveProperty('model');
+        expect(processes.get(call.processId!)?.metadata).not.toHaveProperty('model');
+
+        // The real enqueue preparation resolves the tier against the owner's provider settings.
+        const getEffortTiersForProvider = vi.fn(() => ({ high: { model: 'owner-high', reasoningEffort: 'high' } }));
+        resolveEffortTierConfig(call, { getEffortTiersForProvider });
+        expect(getEffortTiersForProvider).toHaveBeenCalledWith('copilot');
+        expect(call.config).toMatchObject({ model: 'owner-high', reasoningEffort: 'high', afterEffortTier: 'high' });
+        await service.guard({ ...guardTask(call), config: call.config } as QueuedTask);
+        expect(processes.get(call.processId!)?.metadata).toMatchObject({ model: 'owner-high', provider: 'copilot' });
     });
     it('allows an explicit manual run of a paused job while refusing scheduled admission', async () => {
         const job = jobStore.create(owner, { ...input, enabled: false });

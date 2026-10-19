@@ -288,7 +288,10 @@ workspace and Sentinel process; mutation methods carry the rule revision.
 
 Editing instructions/config and deletion conflict while a run or Sentinel handback
 is pending. Schedule-only `enabled` updates remain available; paused schedules still
-permit Run now. Blank `cron`/`effort` clears the optional setting. The first run creates
+permit Run now. Blank `cron`/`effort`/`effortTier` clears the optional setting.
+A job stores either an explicit `model` (with optional `effort`) or an `effortTier`;
+a tier drops stored model/effort, and a model-only patch drops a stored tier. Each run
+enqueues the tier for the owning server's normal provider tier resolution. The first run creates
 the persistent job chat before queue admission; every later run reuses it.
 
 ### To-do Scrubber

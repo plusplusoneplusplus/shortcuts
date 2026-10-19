@@ -325,7 +325,8 @@ references before editing. Paths are package-relative.
   its Admin row depends on `sentinel.enabled` and publishes `sentinelTodoJobsEnabled`.
 - Sentinel prompt jobs (`src/server/sentinel-jobs/`) require both live flags, prove
   the exact Sentinel owner and share the native ledger database. Definitions use
-  expected revisions and a ten-job owner limit. The first run persists one ordinary
+  expected revisions and a ten-job owner limit. A definition holds either an explicit
+  model/effort or an `effortTier` resolved by the enqueue path at each run; neither overrides the other. The first run persists one ordinary
   Ask/Autopilot chat; later runs retain it, including after cancellation or failure.
   Snapshot paths stay repo-scoped and read-only. Runs and handbacks use the existing
   low-priority task queue; job metadata grants compaction, never Sentinel identity.

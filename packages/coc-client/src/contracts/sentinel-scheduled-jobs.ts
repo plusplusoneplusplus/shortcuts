@@ -3,9 +3,16 @@ export interface SentinelScheduledJobInput {
   name: string;
   instructions: string;
   provider: string;
-  model: string;
+  /** Explicit model; required unless `effortTier` is set. */
+  model?: string;
   /** Reasoning effort: low, medium, high or xhigh. Empty string clears it on update. */
   effort?: string;
+  /**
+   * Shared effort tier (very-low, low, medium, high), resolved to a model and
+   * reasoning effort by the owning server at each run. When set, `model` and
+   * `effort` are dropped. Empty string clears it on update.
+   */
+  effortTier?: string;
   mode?: 'ask' | 'autopilot';
   cron?: string;
   enabled?: boolean;

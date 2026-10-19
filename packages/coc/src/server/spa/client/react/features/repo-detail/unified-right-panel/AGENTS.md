@@ -946,8 +946,11 @@ capabilities enable a collapsible Jobs list using `client.sentinelTodos.jobs`.
 Owner/endpoint remounts abort pending reads and discard late results; mutations
 retain their admission lock until the authoritative reload settles. Dialog
 drafts retain captured revisions on errors. User job history carries run timing
-and clone-qualified job/Sentinel turn links. Model catalogs use the same owner
-client; Autopilot displays a permission warning.
+and clone-qualified job/Sentinel turn links. Model catalogs and effort tiers use
+the same owner client. When the owning server's `effortLevelsEnabled` is on and the
+provider has tiers, the dialog shows the shared `EffortTierSelector` and saves only
+`effortTier`; otherwise it keeps explicit Model/Effort and clears a stored tier.
+Autopilot displays a permission warning.
 
 With Jobs enabled, `SentinelTodoScrubber` supplies the pinned built-in row only
 when the independent scrubber flag is enabled, retaining its findings context,

@@ -55,6 +55,7 @@ describe('scheduled job definitions and durable runs', () => {
         { autoCompactThreshold: 1.5 }, { cron: '* * * * *' }, { cron: 'bad' }, { unknown: true },
         { name: 'n'.repeat(121) }, { instructions: 'i'.repeat(32_001) },
         { effort: 'max' }, { effort: 'very-low' }, { effort: 'other' }, { cron: '0,30 9 1 1 *' },
+        { effortTier: 'xhigh' }, { effortTier: 'auto' }, { model: undefined }, { model: undefined, effortTier: '' },
     ])('rejects invalid input %j', patch => {
         expect(() => store.create(owner, { ...input, ...patch } as never)).toThrow();
     });
@@ -65,6 +66,33 @@ describe('scheduled job definitions and durable runs', () => {
                 instructions: 'i'.repeat(32_000), effort });
             expect(job.effort).toBe(effort || undefined);
         }
+    });
+
+    it('stores a selected effort tier without stale model or effort fields', () => {
+        for (const effortTier of ['very-low', 'low', 'medium', 'high']) {
+            const job = store.create(owner, { ...input, effort: 'high', effortTier });
+            expect(job.effortTier).toBe(effortTier);
+            expect(job).not.toHaveProperty('model');
+            expect(job).not.toHaveProperty('effort');
+        }
+        const { model: _model, ...tierOnly } = input;
+        expect(store.create({ ...owner, processId: 'queue_tiers' }, { ...tierOnly, effortTier: 'low' })).toMatchObject({ effortTier: 'low' });
+    });
+
+    it('switches edited jobs between tiers and explicit models so neither can override the other', () => {
+        const job = store.create(owner, { ...input, effort: 'low' });
+        const tiered = store.update(owner, job.id, { effortTier: 'medium' }, 1);
+        expect(tiered).toMatchObject({ effortTier: 'medium', revision: 2 });
+        expect(tiered).not.toHaveProperty('model');
+        expect(tiered).not.toHaveProperty('effort');
+        expect(store.update(owner, job.id, { name: 'renamed' }, 2)).toMatchObject({ effortTier: 'medium', name: 'renamed' });
+        expect(() => store.update(owner, job.id, { effortTier: '' }, 3)).toThrow(/Invalid/);
+        const explicit = store.update(owner, job.id, { model: 'other', effort: 'high' }, 3);
+        expect(explicit).toMatchObject({ model: 'other', effort: 'high', revision: 4 });
+        expect(explicit).not.toHaveProperty('effortTier');
+        const cleared = store.update(owner, job.id, { effortTier: 'high' }, 4);
+        expect(store.update(owner, job.id, { model: 'again', effortTier: '' }, cleared.revision)).not.toHaveProperty('effortTier');
+        expect(store.list({ ...owner, processId: 'queue_other' })).toEqual([]);
     });
 
     it('checks revisions, clears a cron and safely rejects changes during runs or handbacks', () => {

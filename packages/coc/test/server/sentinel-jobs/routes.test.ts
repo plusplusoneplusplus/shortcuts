@@ -105,6 +105,16 @@ describe('Sentinel job REST routes', () => {
         expect(cleared.body.effort).toBeUndefined();
         expect(cleared.body.cron).toBeUndefined();
     });
+    it('persists an effort tier over REST and lets an explicit model replace it', async () => {
+        const created = await request('POST', base, { ...input, effort: 'high', effortTier: 'low' });
+        expect(created.status).toBe(201);
+        expect(created.body).toMatchObject({ effortTier: 'low' });
+        expect(created.body).not.toHaveProperty('model');
+        const patched = await request('PATCH', `${base}/${created.body.id}`, { model: 'm2', effortTier: '', expectedRevision: 1 });
+        expect(patched.body).toMatchObject({ model: 'm2', revision: 2 });
+        expect(patched.body).not.toHaveProperty('effortTier');
+        expect((await request('PATCH', `${base}/${created.body.id}`, { effortTier: 'max', expectedRevision: 2 })).status).toBe(400);
+    });
     it('creates, lists, patches with revision checks, and deletes a job', async () => {
         expect((await request('GET')).body).toEqual({ jobs: [] });
         const created = await request('POST', base, input);
