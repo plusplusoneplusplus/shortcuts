@@ -534,6 +534,31 @@ export interface AutoCompactSettingsResponse {
   autoCompact: ProcessAutoCompactState;
 }
 
+/** Maximum characters in a Sentinel chat's additional instructions. */
+export const SENTINEL_ADDITIONAL_INSTRUCTIONS_MAX_CHARS = 10000;
+
+/**
+ * Per-conversation Sentinel additional instructions, persisted at
+ * `AIProcess.metadata.additionalInstructions` and written only through
+ * `PUT /processes/:id/additional-instructions`. Plain text, never copied to
+ * other chats. Saved text applies when Sentinel context is next built (first
+ * turn, fresh session or after a successful compaction).
+ */
+export interface ProcessAdditionalInstructions {
+  text: string;
+  updatedAt?: string;
+}
+
+/** Body of `PUT /processes/:id/additional-instructions`; blank text clears it. */
+export interface AdditionalInstructionsRequest {
+  text: string;
+}
+
+/** Response from the additional-instructions endpoints; cleared/missing → `text: ''`. */
+export interface AdditionalInstructionsResponse {
+  additionalInstructions: ProcessAdditionalInstructions;
+}
+
 /**
  * Response from `POST /processes/:id/prewarm`.
  *

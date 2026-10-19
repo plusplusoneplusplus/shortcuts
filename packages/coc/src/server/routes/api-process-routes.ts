@@ -5,6 +5,7 @@
  */
 
 import * as url from 'url';
+import type * as http from 'http';
 import { projectRalphGrillingMetadata } from '../ralph/grilling-state';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -54,6 +55,7 @@ import { processOperationAdmission } from '../processes/process-operation-admiss
 import { pendingMessageTask } from '../processes/queued-pending-message';
 import { cancelQueuedCompaction, compactProcess } from '../processes/compact-process';
 import { isSentinelProcess, parseAutoCompactSettings, resumeAutoCompact, saveAutoCompactSettings } from '../processes/auto-compact';
+import { ADDITIONAL_INSTRUCTIONS_METADATA_KEY, parseAdditionalInstructionsRequest, readAdditionalInstructions, saveAdditionalInstructions } from '../processes/sentinel-additional-instructions';
 import { cancelConversation } from '../processes/cancel-conversation';
 import { projectProcessBotControl, projectProcessIndexBotControl } from '../processes/bot-control-read-model';
 import { parseChatHistoryQuery, readChatHistory } from '../processes/chat-history-read-model';
@@ -587,6 +589,9 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 if ('autoCompact' in parsed.set || parsed.unset.includes('autoCompact')) {
                     return void handleAPIError(res, badRequest('Auto-compact is managed by its own endpoint'));
                 }
+                if (ADDITIONAL_INSTRUCTIONS_METADATA_KEY in parsed.set || parsed.unset.includes(ADDITIONAL_INSTRUCTIONS_METADATA_KEY)) {
+                    return void handleAPIError(res, badRequest('Additional instructions are managed by their own endpoint'));
+                }
                 if ('browserMode' in parsed.set && typeof parsed.set.browserMode !== 'boolean') {
                     return void handleAPIError(res, badRequest('browserMode must be a boolean'));
                 }
@@ -617,11 +622,15 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     botControl: existing.metadata.botControl,
                 };
             }
-            // Full metadata replacement keeps the server-owned auto-compact state.
+            // Full metadata replacement keeps server-owned auto-compact and
+            // additional-instructions state.
             if (updates.metadata !== undefined && body.metadataPatch === undefined && isRecord(updates.metadata)) {
-                const { autoCompact: _ignored, ...rest } = updates.metadata as Record<string, unknown>;
-                updates.metadata = (existing.metadata?.autoCompact !== undefined
-                    ? { ...rest, autoCompact: existing.metadata.autoCompact } : rest) as AIProcess['metadata'];
+                const next = { ...updates.metadata } as Record<string, unknown>;
+                for (const key of ['autoCompact', ADDITIONAL_INSTRUCTIONS_METADATA_KEY]) {
+                    if (existing.metadata?.[key] !== undefined) next[key] = existing.metadata[key];
+                    else delete next[key];
+                }
+                updates.metadata = next as AIProcess['metadata'];
             }
             if (body.sdkSessionId !== undefined) { updates.sdkSessionId = body.sdkSessionId; }
             if (body.conversationTurns !== undefined) { updates.conversationTurns = body.conversationTurns; }
@@ -815,6 +824,50 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const autoCompact = await resumeAutoCompact(store, proc.id, proc.metadata?.workspaceId);
             if (!autoCompact) return void handleAPIError(res, new APIError(409, 'Auto-compact is not configured for this chat.', 'AUTO_COMPACT_NOT_CONFIGURED'));
             return { autoCompact };
+        },
+    }));
+
+    // GET/PUT /api/processes/:id/additional-instructions — A Sentinel chat's
+    // saved additional instructions. Gated by the owning server's live
+    // `features.sentinelAdditionalInstructions`; the workspace query scopes the
+    // request to the owning workspace. Saving never interrupts work: the text
+    // applies when Sentinel context is next built.
+    const resolveInstructionsTarget = async (req: http.IncomingMessage, res: http.ServerResponse, rawId: string) => {
+        if (ctx.getLiveFeatureFlags?.().sentinelAdditionalInstructionsEnabled !== true) {
+            handleAPIError(res, new APIError(404, 'Sentinel additional instructions are disabled.', 'ADDITIONAL_INSTRUCTIONS_DISABLED'));
+            return undefined;
+        }
+        const proc = await resolveProcess(store, decodeURIComponent(rawId), parseQueryParams(req.url || '/').workspaceId);
+        if (!proc) {
+            handleAPIError(res, notFound('Process'));
+            return undefined;
+        }
+        if (!isSentinelProcess(proc)) {
+            handleAPIError(res, new APIError(422, 'Additional instructions are available only for Sentinel chats.', 'ADDITIONAL_INSTRUCTIONS_SENTINEL_ONLY'));
+            return undefined;
+        }
+        return proc;
+    };
+    routes.push(createRoute({
+        method: 'GET', pattern: /^\/api\/processes\/([^/]+)\/additional-instructions$/,
+        handler: async ({ req, res, match }) => {
+            const proc = await resolveInstructionsTarget(req, res, match[1]);
+            if (!proc) return;
+            return { additionalInstructions: readAdditionalInstructions(proc.metadata) };
+        },
+    }));
+    routes.push(createRoute({
+        method: 'PUT', pattern: /^\/api\/processes\/([^/]+)\/additional-instructions$/,
+        handler: async ({ req, res, match }) => {
+            const proc = await resolveInstructionsTarget(req, res, match[1]);
+            if (!proc) return;
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+            const parsed = parseAdditionalInstructionsRequest(body);
+            if (typeof parsed === 'string') return void handleAPIError(res, badRequest(parsed));
+            const additionalInstructions = await saveAdditionalInstructions(store, proc.id, proc.metadata?.workspaceId, parsed.text);
+            if (!additionalInstructions) return void handleAPIError(res, notFound('Process'));
+            return { additionalInstructions };
         },
     }));
 

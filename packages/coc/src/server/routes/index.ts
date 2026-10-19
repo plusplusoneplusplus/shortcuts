@@ -849,6 +849,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             chatProviderSwitchingEnabled: opts.runtimeConfigService!.config.features?.chatProviderSwitching === true,
             chatHistoryPagingEnabled: opts.runtimeConfigService!.config.features?.chatHistoryPaging === true,
             botManagedConversationsEnabled: opts.runtimeConfigService!.config.features?.botManagedConversations === true,
+            sentinelAdditionalInstructionsEnabled: opts.runtimeConfigService!.config.features?.sentinelAdditionalInstructions === true,
             defaultChatStyle: coerceChatStyle(opts.runtimeConfigService!.config.features?.defaultChatStyle),
         })
         : () => ({
@@ -863,6 +864,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             chatProviderSwitchingEnabled: opts.resolvedConfig?.features?.chatProviderSwitching === true,
             chatHistoryPagingEnabled: opts.resolvedConfig?.features?.chatHistoryPaging === true,
             botManagedConversationsEnabled: opts.resolvedConfig?.features?.botManagedConversations === true,
+            sentinelAdditionalInstructionsEnabled: opts.resolvedConfig?.features?.sentinelAdditionalInstructions === true,
             defaultChatStyle: coerceChatStyle(opts.resolvedConfig?.features?.defaultChatStyle),
         });
     const isKustoEnabled = (): boolean => getLiveFeatureFlags().kustoEnabled;

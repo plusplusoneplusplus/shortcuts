@@ -66,6 +66,7 @@ describe('SqliteProcessStore.forkProcess', () => {
                 workspaceId: 'ws-test',
                 stoppedChatResume: { resumable: false, reason: 'strict-resume-failed' },
                 rewindHistory: [{ previousSessionId: 'old-session' }],
+                additionalInstructions: { text: 'source-only', updatedAt: '2026-10-19T00:00:00.000Z' },
             },
         });
         await store.addProcess(source);
@@ -83,6 +84,8 @@ describe('SqliteProcessStore.forkProcess', () => {
         expect(forked.metadata?.stoppedChatResume).toBeUndefined();
         expect(forked.metadata?.rewindHistory).toBeUndefined();
         expect(forked.metadata).not.toHaveProperty('botControl');
+        expect(forked.metadata).not.toHaveProperty('additionalInstructions');
+        expect((await store.getProcess('source-1'))?.metadata?.additionalInstructions).toMatchObject({ text: 'source-only' });
         expect(forked.workingDirectory).toBe('/tmp/test');
         expect(forked.conversationTurns).toHaveLength(4);
     });

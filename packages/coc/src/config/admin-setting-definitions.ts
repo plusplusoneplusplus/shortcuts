@@ -638,6 +638,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.sentinelAdditionalInstructions', default: false, runtime: 'live', runtimeFlag: 'sentinelAdditionalInstructionsEnabled',
+        ui: {
+            tab: 'sentinel', group: 'sentinelMode', order: 32.2, label: 'Sentinel additional instructions', badge: 'experimental',
+            hint: 'Edit per-chat additional instructions from a Sentinel chat\'s information menu. Saved text is added when context is first built or after the next compaction; built-in Sentinel rules are unchanged. Disabled by default.',
+            testId: 'toggle-sentinel-additional-instructions-enabled',
+        },
+    }),
+    bool({
         key: 'features.sentinelTodoDependencies', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoDependenciesEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.55, label: 'Sentinel To-do dependencies', badge: 'experimental',

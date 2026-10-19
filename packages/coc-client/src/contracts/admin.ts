@@ -132,6 +132,7 @@ export interface AdminResolvedConfig {
     teamsMessageReaction?: boolean;
     sentinelTodoScrubber?: boolean;
     sentinelTodoJobs?: boolean;
+    sentinelAdditionalInstructions?: boolean;
     toolScripting?: boolean;
     queryPullRequestTool?: boolean;
     sentinelTodoTags?: boolean;
@@ -236,6 +237,7 @@ export interface AdminConfigUpdate {
   'features.teamsMessageReaction'?: boolean;
   'features.sentinelTodoScrubber'?: boolean;
   'features.sentinelTodoJobs'?: boolean;
+  'features.sentinelAdditionalInstructions'?: boolean;
   'features.toolScripting'?: boolean;
   'features.queryPullRequestTool'?: boolean;
   'features.sentinelTodoTags'?: boolean;
@@ -314,6 +316,7 @@ export interface RuntimeDashboardConfig {
     sentinelTodoExternalReferencesEnabled: boolean;
     sentinelTodoScrubberEnabled: boolean;
     sentinelTodoJobsEnabled: boolean;
+    sentinelAdditionalInstructionsEnabled: boolean;
     toolScriptingEnabled: boolean;
     queryPullRequestToolEnabled: boolean;
     sentinelPrOutcomeWakeEnabled: boolean;

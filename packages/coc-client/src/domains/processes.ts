@@ -12,6 +12,7 @@ import type {
   AskUserResponseResponse,
   AutoCompactSettingsRequest,
   AutoCompactSettingsResponse,
+  AdditionalInstructionsResponse,
   CompactResult,
   CreateProcessRequest,
   ProcessDetailResponse,
@@ -395,6 +396,28 @@ export class ProcessesClient {
       method: 'PUT',
       query,
       body: settings,
+    });
+  }
+
+  /** Read a Sentinel conversation's saved additional instructions (`text: ''` when unset). */
+  getAdditionalInstructions(processId: string, query?: Pick<ProcessListQuery, 'workspace'>): Promise<AdditionalInstructionsResponse> {
+    return this.transport.request<AdditionalInstructionsResponse>(`/processes/${encodePathSegment(processId)}/additional-instructions`, { query });
+  }
+
+  /**
+   * Save a Sentinel conversation's additional instructions; blank text clears
+   * them. Saving never interrupts work: the text applies when context is next
+   * built (fresh session or after a successful compaction).
+   */
+  updateAdditionalInstructions(
+    processId: string,
+    text: string,
+    query?: Pick<ProcessListQuery, 'workspace'>,
+  ): Promise<AdditionalInstructionsResponse> {
+    return this.transport.request<AdditionalInstructionsResponse>(`/processes/${encodePathSegment(processId)}/additional-instructions`, {
+      method: 'PUT',
+      query,
+      body: { text },
     });
   }
 
