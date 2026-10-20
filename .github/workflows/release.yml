@@ -429,6 +429,16 @@ jobs:
             echo "::error::No artifacts were downloaded for the release."
             exit 1
           fi
+          # GitHub replaces spaces in asset names with dots on upload, so rename
+          # first; the checksum file must name the asset the updater downloads.
+          for i in "${!files[@]}"; do
+            base="$(basename "${files[$i]}")"
+            dotted="$(dirname "${files[$i]}")/${base// /.}"
+            if [ "${files[$i]}" != "$dotted" ]; then
+              mv -- "${files[$i]}" "$dotted"
+              files[$i]="$dotted"
+            fi
+          done
           # Hash the exact installer bytes and publish a standard checksum file
           # using the asset basename so it can also be checked after download.
           for installer in "${files[@]}"; do

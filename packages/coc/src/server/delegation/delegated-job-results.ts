@@ -1,6 +1,6 @@
 import { toQueueProcessId, toTaskId, type AIProcess, type ProcessStore, type QueuedTask, type TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { onTaskTerminal } from '../messaging/chat-target';
-import { isTerminalStatus } from '../messaging/relay-answer';
+import { findRequestAnswer, findRequestFailureEvidence, findRequestTurn, isTerminalStatus } from '../messaging/relay-answer';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import type { RalphSessionCompleteEvent } from '../queue/queue-executor-bridge';
 import type { RalphSessionRecord } from '../ralph/types';
@@ -91,6 +91,10 @@ export class DelegatedJobResults {
                         if (job.grilling) await this.deps.onResult?.(grillingResultJob(job)!);
                         if (job.terminal) {
                             await this.deps.onResult?.(job);
+                            continue;
+                        }
+                        if (job.child.requestId) {
+                            if (!job.child.serverId && !job.child.sessionId) await this.restoreRequest(job);
                             continue;
                         }
                         if (job.child.sessionId && !job.child.serverId) {
@@ -337,7 +341,60 @@ export class DelegatedJobResults {
     }
 
     private isOrdinaryPending(job: DelegatedJob): boolean {
-        return !job.terminal && !job.child.sessionId && !job.child.serverId;
+        return !job.terminal && !job.child.sessionId && !job.child.serverId && !job.child.requestId;
+    }
+
+    /** Request rows settle from their own task, or from that request's turns after restart. */
+    private async restoreRequest(job: DelegatedJob): Promise<void> {
+        const requestId = job.child.requestId!;
+        const task = [
+            ...this.deps.queue.getQueued(), ...this.deps.queue.getRunning(),
+            this.deps.queue.getTask(requestId), this.deps.queue.getTask(`pending-${job.child.processId}-${requestId}`),
+            ...this.deps.queue.getHistory(),
+        ].find((candidate): candidate is QueuedTask => !!candidate && candidate.payload.relayRequestId === requestId
+            && matchesChild(job, candidate));
+        if (task) {
+            // A restored queued/running task wins over stale process status.
+            if (isTerminalStatus(task.status)) await this.recordRequest(job, task);
+            return;
+        }
+        const process = await this.childProcess(job);
+        if (this.disposed) return;
+        // Still buffered: its drained task will settle it.
+        if (process?.pendingMessages?.some(message => message.id === requestId || message.relayRequestId === requestId)) return;
+        const turns = process?.conversationTurns ?? [];
+        const start = findRequestTurn(turns, requestId);
+        if (!process || start < 0) {
+            this.deps.jobs.recordResult(job.parent.workspaceId, job.id, {
+                terminalEventId: this.terminalEventId(job), outcome: 'failed',
+                summary: 'The follow-up request is unavailable after restart.',
+                reason: 'Neither its queue task nor its conversation turn exists in the recorded workspace.',
+                links: this.links(job),
+            }, { state: 'failed', reason: 'Follow-up request unavailable during startup recovery.' });
+            return;
+        }
+        const { answer, closed } = findRequestAnswer(turns, start);
+        // Only an unclosed request is still described by the process status.
+        if (!closed && !isTerminalStatus(process.status)) return;
+        const failure = findRequestFailureEvidence(turns, start);
+        const outcome = failure ? 'failed' : answer ? 'completed'
+            : !closed && isTerminalStatus(process.status) ? process.status : 'failed';
+        await this.saveResult(job, outcome, answer?.content, failure?.interruptionReason, process.resultFilePath);
+    }
+
+    private async recordRequest(job: DelegatedJob, task: QueuedTask): Promise<void> {
+        if (!isTerminalStatus(task.status)) return;
+        if (job.terminal) {
+            await this.deps.onResult?.(job);
+            return;
+        }
+        const process = await this.childProcess(job);
+        if (this.disposed) return;
+        const turns = process?.conversationTurns ?? [];
+        const start = findRequestTurn(turns, job.child.requestId!);
+        const answer = start >= 0 ? findRequestAnswer(turns, start).answer?.content : undefined;
+        // Later turns may already exist, so never read the process's last response.
+        await this.saveResult(job, task.status, responseText(task.result) ?? answer, task.error);
     }
 
     private async recordTerminal(task: QueuedTask): Promise<void> {
@@ -358,8 +415,16 @@ export class DelegatedJobResults {
                     }
                     continue;
                 }
-                const job = this.deps.jobs.list(workspace.id).find(row =>
+                const rows = this.deps.jobs.list(workspace.id).filter(row =>
                     !row.child.sessionId && !row.child.serverId && matchesChild(row, task));
+                const requestId = task.payload.relayRequestId;
+                const request = typeof requestId === 'string'
+                    ? rows.find(row => row.child.requestId === requestId) : undefined;
+                if (request) {
+                    await this.recordRequest(request, task);
+                    continue;
+                }
+                const job = rows.find(row => !row.child.requestId);
                 if (job) await this.recordJob(job, task);
             } catch (error) {
                 console.error(`[delegated-job-results] Could not record workspace ${workspace.id}:`, error);
@@ -409,6 +474,7 @@ export class DelegatedJobResults {
     }
 
     private terminalEventId(job: DelegatedJob): string {
+        if (job.child.requestId) return `request:${job.child.workspaceId}:${job.child.processId}:${job.child.requestId}:terminal`;
         return `ordinary:${job.child.workspaceId}:${job.child.processId}:terminal`;
     }
 

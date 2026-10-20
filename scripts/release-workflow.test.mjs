@@ -179,9 +179,11 @@ function runRelease(t, artifacts, failHash = false) {
 test("release uploads matching SHA-256 sidecars for every installer and excludes internal assets", {
     skip: process.platform !== "linux",
 }, t => {
-    const installers = { "CoC-3.5.2-arm64.dmg": "mac installer", "CoC Setup 3.5.2.exe": "windows installer" };
+    // electron-builder names the Windows installer with spaces; GitHub would upload it with dots.
+    const installers = { "CoC-3.5.2-arm64.dmg": "mac installer", "CoC.Setup.3.5.2.exe": "windows installer" };
     const { dir, result } = runRelease(t, {
-        ...installers, "CoCContainer.Setup.exe": "private", "CoCContainer.dmg": "private mac",
+        "CoC-3.5.2-arm64.dmg": "mac installer", "CoC Setup 3.5.2.exe": "windows installer",
+        "CoCContainer.Setup.exe": "private", "CoCContainer.dmg": "private mac",
         "coc.node": "native", "latest.yml": "metadata", "CoC Setup 3.5.2.exe.sha256": "stale",
     });
     assert.equal(result.status, 0, result.stderr);

@@ -224,6 +224,11 @@ export interface FollowUpMessageInput {
     displayContent: string;
     /** Opaque origin request identifier; not derived from sender or message content. */
     relayRequestId?: string;
+    /**
+     * Server-assigned stable request receipt (tracked Sentinel posts). It becomes the
+     * relay request ID, pending-message ID and queue task ID so results can be recovered.
+     */
+    requestReceiptId?: string;
     /** Content with appended text-attachment context, for the executor/enqueue prompt. */
     contentWithContext?: string;
     attachments?: Attachment[];
@@ -378,7 +383,8 @@ export class ProcessMessageDeliveryService {
                 ? await this.sentinelMirror?.capture(currentProc.metadata.workspaceId, currentProc.id, input.mirrorContent ?? input.displayContent,
                     input.mirrorUploads ?? input.fileAttachmentMeta?.length ?? input.attachments?.length ?? input.images?.length ?? 0)
                 : undefined;
-            const admittedInput = mirror ? { ...input, relayRequestId: mirror.requestId } : input;
+            const admittedInput = mirror ? { ...input, relayRequestId: mirror.requestId, requestReceiptId: undefined }
+                : input.requestReceiptId ? { ...input, relayRequestId: input.requestReceiptId } : input;
             try {
                 return await this.deliverAdmitted(currentProc, admittedInput, undefined, mirror);
             } catch (error) {
@@ -570,7 +576,7 @@ export class ProcessMessageDeliveryService {
             buffered = true;
             path = 'buffered';
             const pendingMessage = {
-                id: reviewReceiptId ?? mirror?.requestId ?? this.newId(),
+                id: reviewReceiptId ?? mirror?.requestId ?? input.requestReceiptId ?? this.newId(),
                 ...requestCorrelation,
                 ...scheduling,
                 ...(input.resumeSessionId ? { resumeSessionId: input.resumeSessionId } : {}),
@@ -628,7 +634,9 @@ export class ProcessMessageDeliveryService {
                     // Terminal status (failed or resumable cancelled) or restart fallback → enqueue.
                     const enqueueWsId = (proc.metadata?.workspaceId as string) ?? undefined;
                     taskId = await (this.bridge.enqueueAdmitted ?? this.bridge.enqueue).call(this.bridge, {
-                        ...(reviewReceiptId || mirror ? { id: reviewReceiptId ?? mirror!.requestId } : isQueueProcessId(id) ? { id: toTaskId(id) } : {}),
+                        ...(reviewReceiptId || mirror || input.requestReceiptId
+                            ? { id: reviewReceiptId ?? mirror?.requestId ?? input.requestReceiptId }
+                            : isQueueProcessId(id) ? { id: toTaskId(id) } : {}),
                         processId: id,
                         type: 'chat',
                         priority: scheduling.queuePriority ?? 'normal',
@@ -676,7 +684,7 @@ export class ProcessMessageDeliveryService {
         } catch (err) {
             // taskAdded observers may throw after durable admission. Retain that
             // exact receipt rather than rolling back accepted work or replaying it.
-            const receiptId = reviewReceiptId ?? mirror?.requestId;
+            const receiptId = reviewReceiptId ?? mirror?.requestId ?? input.requestReceiptId;
             const accepted = receiptId ? this.bridge.getTask?.(receiptId) : undefined;
             if (accepted && this.isReviewTask(accepted, proc, receiptId!)) {
                 taskId = accepted.id;

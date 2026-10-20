@@ -12,6 +12,8 @@ const id = z.string().min(1);
 const parentSchema = z.object({ workspaceId: id, processId: id });
 const childSchema = z.object({
     workspaceId: id, processId: id, serverId: id.optional(), sessionId: id.optional(),
+    /** One Sentinel post-mode request into an existing chat; absent for whole-job handoffs. */
+    requestId: id.optional(),
 });
 const resultSchema = z.object({
     terminalEventId: id,

@@ -331,6 +331,8 @@ export interface CLIConfig {
         /** Read-only `query_pull_request` LLM tool (GitHub / Azure DevOps PRs). Disabled by default. */
         queryPullRequestTool?: boolean;
         sentinelPrOutcomeWake?: boolean;
+        /** Return each tracked Sentinel post-mode turn result to the Sentinel. Disabled by default. */
+        sentinelFollowUpResults?: boolean;
         sentinelTodoDateTimeTriggers?: boolean;
         sentinelDesktopMirror?: boolean;
         botManagedConversations?: boolean;
@@ -751,6 +753,8 @@ export interface ResolvedCLIConfig {
         /** Read-only `query_pull_request` LLM tool (GitHub / Azure DevOps PRs). Disabled by default. */
         queryPullRequestTool: boolean;
         sentinelPrOutcomeWake: boolean;
+        /** Return each tracked Sentinel post-mode turn result to the Sentinel. Disabled by default. */
+        sentinelFollowUpResults: boolean;
         sentinelTodoDateTimeTriggers: boolean;
         sentinelDesktopMirror: boolean;
         botManagedConversations: boolean;
@@ -1086,6 +1090,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         toolScripting: true,
         queryPullRequestTool: false,
         sentinelPrOutcomeWake: false,
+        sentinelFollowUpResults: false,
         sentinelTodoDateTimeTriggers: false,
         sentinelDesktopMirror: false,
         botManagedConversations: false,

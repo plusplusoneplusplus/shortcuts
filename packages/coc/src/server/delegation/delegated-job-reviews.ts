@@ -32,6 +32,8 @@ function reviewPrompt(job: DelegatedJob, sentinel: boolean, serverIdentity: stri
     return `${sentinel ? '' : `${SENTINEL_JOB_REVIEW_INSTRUCTIONS}\n\n`}${job.boundary === 'grill' ? 'This is the grilling milestone only. A validated goal is spec ready, awaiting explicit user implementation approval. Return pending feature work to Todo; only explicitly design-only work may finish. Do not start execution or mark implementation Done. Failed/cancelled grilling is not execution completion.\n' : ''}${SENTINEL_JOB_REVIEW_PREFIX}
 ${JSON.stringify({
         parent: job.parent, child: job.child, jobId: job.id, title: job.title,
+        // One turn of an existing chat; other turns of that chat report separately.
+        ...(job.child.requestId ? { kind: 'follow-up' } : {}),
         repository: { workspaceId: job.child.workspaceId, name: repository?.name, rootPath: repository?.rootPath },
         ...job.terminal!.result,
         links: [...new Set([buildDashboardChatReference(serverIdentity, job.child.workspaceId, job.child.processId),

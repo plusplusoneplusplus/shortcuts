@@ -511,7 +511,7 @@ export class MessagingJobNotices {
             if (!job.result && !this.deps.delegatedJobs?.list(pin.workspaceId).some(row =>
                 row.parent.workspaceId === pin.workspaceId && row.parent.processId === pin.processId
                 && row.child.workspaceId === job.workspaceId && row.child.processId === job.processId
-                && !row.child.serverId && JSON.stringify(row.messagingOrigin) === JSON.stringify(job.origin))) return 'suppress';
+                && !row.child.serverId && !row.child.requestId && JSON.stringify(row.messagingOrigin) === JSON.stringify(job.origin))) return 'suppress';
             return await this.deps.authorizeDesktopOrigin?.(job.origin,
                 job.result ? { workspaceId: job.workspaceId, processId: job.processId } : undefined) ?? 'wait';
         } catch {
@@ -525,7 +525,7 @@ export class MessagingJobNotices {
         if (!this.deps.delegatedJobs || job.result || job.taskId || taskId !== toTaskId(job.processId)) return 'send';
         for (const workspace of await this.deps.store.getWorkspaces()) {
             const delegation = this.deps.delegatedJobs.list(workspace.id).find(row =>
-                !row.child.serverId && !row.child.sessionId
+                !row.child.serverId && !row.child.sessionId && !row.child.requestId
                 && row.child.workspaceId === job.workspaceId && row.child.processId === job.processId
                 && row.messagingOrigin?.connector === job.origin.connector
                 && row.messagingOrigin.chatKey === job.origin.chatKey

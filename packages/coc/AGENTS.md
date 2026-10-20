@@ -559,7 +559,11 @@ references before editing. Paths are package-relative.
   delivery state transitions; child output cannot change routing. Operational receipts are
   wiped through the snapshot registry and excluded from export/import.
   Tool-bound local Sentinel admission and ordinary connector command handoffs reserve
-  the child ID and persist the relationship before queue execution. A queued/running
+  the child ID and persist the relationship before queue execution. Under default-off
+  `features.sentinelFollowUpResults`, Sentinel post-mode sends into non-Sentinel chats
+  reserve per-request rows (`child.requestId`, also the relay/pending/task ID) the same way;
+  only the task carrying that ID settles the row, never the chat-level create row, and
+  summaries come from that request's answer. Notices and to-do links ignore request rows. A queued/running
   first Sentinel task supplies mode/workspace only when its process is absent; stored
   processes win over queue metadata. Ralph registration identifies the session at launch
   only. Tool Ralph carries the captured connector origin into iteration 1 before registration
