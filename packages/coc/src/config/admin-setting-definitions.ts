@@ -678,6 +678,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.sentinelFollowUpResults', default: false, runtime: 'live', runtimeFlag: 'sentinelFollowUpResultsEnabled',
+        ui: {
+            tab: 'sentinel', group: 'sentinelTodos', order: 32.585, label: 'Sentinel follow-up results', badge: 'experimental',
+            hint: 'Return the result of each message a Sentinel posts into an existing local chat as a review. Disabled by default.',
+            testId: 'toggle-sentinel-follow-up-results-enabled',
+        },
+    }),
+    bool({
         key: 'features.sentinelTodoExternalReferences', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoExternalReferencesEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.59, label: 'Sentinel To-do external references', badge: 'experimental',

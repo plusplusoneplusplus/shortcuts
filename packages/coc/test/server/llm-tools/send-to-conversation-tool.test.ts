@@ -916,6 +916,7 @@ describe('createSendToConversationTool — post mode (processId provided)', () =
         expect(sendMessage).toHaveBeenCalledWith({
             processId: 'queue_existing',
             content: 'hi',
+            parentProcessId: DEFAULT_PARENT_ID,
         });
     });
 

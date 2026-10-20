@@ -543,6 +543,13 @@ lets an explicit `model` override the tier. Create-only titles are ignored in po
 Post mode applies no mode default: an omitted `mode` keeps the conversation's current mode and an
 explicit one switches it. The route-layer `processes/send-message-capability.ts` resolves it with
 `resolveFollowUpMode` (terminal Sentinel mode still wins) before `ProcessMessageDeliveryService`.
+With live, default-off `features.sentinelFollowUpResults`, a local Sentinel's post into another
+non-Sentinel queue-backed chat reserves a per-request delegated job (`request:<uuid>`,
+`child.requestId`) before delivery and returns `resultDelivery: { status: 'tracked', jobId }`.
+The request ID is the relay request, pending-message and queue task ID; a requested steer is
+queued instead so the turn has its own result. Self-posts, Sentinel targets, non-Sentinel parents
+and direct execution stay untracked. Rejected delivery settles the row as failed. That request's
+terminal result returns as an ordinary delegated review; tracked posts still reject `todoItemId`.
 
 ### Canvas tools
 

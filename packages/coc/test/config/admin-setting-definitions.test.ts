@@ -866,6 +866,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.sentinelTodoJobs': 'sentinel',
         'features.sentinelAdditionalInstructions': 'sentinel',
         'features.sentinelPrOutcomeWake': 'sentinel',
+        'features.sentinelFollowUpResults': 'sentinel',
         'features.sentinelTodoDateTimeTriggers': 'sentinel',
         'features.sentinelDesktopMirror': 'sentinel',
         // Appearance — every UI-only preference and feature toggle

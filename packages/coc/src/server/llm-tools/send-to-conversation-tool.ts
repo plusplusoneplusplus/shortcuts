@@ -162,7 +162,19 @@ export type SendMessageFn = (input: {
     model?: string;
     effort?: ReasoningEffort;
     deliveryMode?: SendToConversationDeliveryMode;
-}) => Promise<{ turnIndex: number }>;
+    /** The invoking chat; a local Sentinel parent may track this request's result. */
+    parentProcessId?: string;
+    /** Captured connector origin of the invoking turn, for result relay. */
+    messagingOrigin?: MessagingJobOrigin;
+}) => Promise<{ turnIndex: number; resultDelivery?: TrackedResultDelivery }>;
+
+/** Post mode: this request's terminal result returns to the invoking Sentinel. */
+export interface TrackedResultDelivery {
+    status: 'tracked';
+    jobId: string;
+    /** Set when the requested steer was queued instead. */
+    reason?: string;
+}
 
 /** Validate a concrete provider before an explicit create-mode selection enqueues. */
 export type ValidateSendToConversationProviderFn = (provider: ChatProvider) => Promise<void> | void;
@@ -241,7 +253,7 @@ export interface SendToConversationSuccess {
     /** Cancel only: the target's workspace, when recorded. */
     workspaceId?: string;
     /** Remote launches cannot return terminal results to the originating conversation. */
-    resultDelivery?: { status: 'unavailable'; reason: string };
+    resultDelivery?: { status: 'unavailable'; reason: string } | TrackedResultDelivery;
     /** Create mode with to-do tracking: whether the job link was saved. */
     tracking?: SendToConversationTracking;
 }
@@ -298,7 +310,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             'Returns `{ processId, openLink, turnIndex? }`; reuse openLink unchanged. Supply a short, task-specific `title` for new chats. ' +
             '`mode: "ralph"` starts execution by default; `entryPoint: "grill"` interviews, then awaits user Start approval. Returns sessionId, phase and owner. `plan` is not supported. ' +
             'Prefer `provider: "auto"` unless a provider/model was requested. ' +
-            'Remote launches return `resultDelivery.status: "unavailable"`; inspect `openLink` for results. ' +
+            '`resultDelivery.status`: "tracked" reports back later; remote "unavailable" needs `openLink`. ' +
             'Do not promise an automatic return or start a duplicate job. ' +
             'Use `{ action: "cancel", processId }` to stop local work, retaining history. ' +
             'Omit send-only fields; optional `workspaceId` asserts ownership. Returns `cancelled` and `status`; ' +
@@ -495,6 +507,8 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                     effortTier: model ? undefined : effortTier,
                     getEffortTiersForProvider: runtime?.getEffortTiersForProvider,
                     deliveryMode: args.deliveryMode,
+                    parentProcessId,
+                    messagingOrigin: runtime?.messagingOrigin?.(),
                 });
             }
 
@@ -557,8 +571,11 @@ async function postToExistingConversation(params: {
     effortTier?: SendToConversationEffortTier;
     getEffortTiersForProvider?: GetSendToConversationEffortTiersFn;
     deliveryMode?: SendToConversationDeliveryMode;
+    parentProcessId?: string;
+    messagingOrigin?: MessagingJobOrigin;
 }): Promise<SendToConversationResult> {
-    const { store, sendMessage, processId, content, mode, model, effortTier, getEffortTiersForProvider, deliveryMode } = params;
+    const { store, sendMessage, processId, content, mode, model, effortTier, getEffortTiersForProvider, deliveryMode,
+        parentProcessId, messagingOrigin } = params;
 
     if (deliveryMode !== undefined && !ALLOWED_DELIVERY_MODES.has(deliveryMode)) {
         return {
@@ -593,18 +610,21 @@ async function postToExistingConversation(params: {
         const target = await resolveProcessForTool(store, processId);
         if (!target) return { error: `Conversation '${processId}' not found; no message was sent.` };
         const openLink = buildDashboardChatReference(params.serverIdentity, target.metadata?.workspaceId, target.id);
-        const { turnIndex } = await sendMessage({
+        const { turnIndex, resultDelivery } = await sendMessage({
             processId,
             content,
             ...(mode ? { mode } : {}),
             ...(model ? { model } : {}),
             ...tierOverride,
             ...(deliveryMode ? { deliveryMode } : {}),
+            ...(parentProcessId ? { parentProcessId } : {}),
+            ...(messagingOrigin ? { messagingOrigin } : {}),
         });
         return {
             processId,
             openLink,
             turnIndex,
+            ...(resultDelivery ? { resultDelivery } : {}),
         };
     } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);

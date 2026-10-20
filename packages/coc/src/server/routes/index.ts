@@ -839,7 +839,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     // Publish the bound follow-up delivery capability so executors can offer the
     // post mode of `send_to_conversation` (posting into an existing conversation).
-    opts.setSendMessage?.(createSendMessageCapability(store, bridge));
+    // Tracked Sentinel posts reserve per-request delegated jobs like create mode.
+    opts.setSendMessage?.(createSendMessageCapability(store, bridge, {
+        jobs: delegatedJobs, ready: delegatedResultsRestored,
+        enabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelFollowUpResults === true,
+    }));
 
     // excalidrawEnabled uses a live getter via runtimeConfigService so admin
     // changes take effect without restart. cronEnabled stays startup-captured
