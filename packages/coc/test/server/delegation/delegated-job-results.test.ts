@@ -153,6 +153,23 @@ describe('ordinary delegated job result recording', () => {
         expect(persisted().terminal).toBeUndefined();
     });
 
+    it('never settles a tracked remote request from colliding local process and task IDs', async () => {
+        jobs.register({
+            id: childId, title: 'Remote search',
+            parent: { workspaceId: parentWorkspace, processId: parentId },
+            child: { workspaceId: childWorkspace, processId: childId, serverId: 'connection-alias' },
+            remote: { originServerIdentity: jobs.serverIdentity, serverIdentity: 'remote-owner',
+                requestId: 'remote-launch-1', kind: 'launch' },
+        });
+        const results = service(); enqueue();
+        await child({ status: 'completed', result: 'Local result with colliding IDs' });
+        queue.markCompleted('child', 'Local task result');
+        await flush();
+        await results.restore();
+        expect(persisted().terminal).toBeUndefined();
+        expect(persisted().remote?.serverIdentity).toBe('remote-owner');
+    });
+
     it('excludes Ralph iteration/final-check events even if a registration has no session identity', async () => {
         register(); const results = service(); enqueue(childWorkspace, { ralph: { sessionId: 'session', finalCheck: true } });
         queue.markCompleted('child', 'Step result');

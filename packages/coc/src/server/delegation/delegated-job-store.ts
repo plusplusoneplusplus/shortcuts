@@ -15,6 +15,13 @@ const childSchema = z.object({
     /** One Sentinel post-mode request into an existing chat; absent for whole-job handoffs. */
     requestId: id.optional(),
 });
+/** Durable ownership is independent of child.serverId, which only routes transport. */
+const remoteSchema = z.object({
+    originServerIdentity: z.string().min(1).max(512).refine(value => !!value.trim()),
+    serverIdentity: z.string().min(1).max(512).refine(value => !!value.trim()),
+    requestId: z.string().min(1).max(512),
+    kind: z.enum(['launch', 'follow-up', 'ralph']),
+}).strict();
 const resultSchema = z.object({
     terminalEventId: id,
     outcome: z.enum(['completed', 'failed', 'cancelled', 'capped']),
@@ -51,6 +58,7 @@ const jobSchema = z.object({
     id,
     parent: parentSchema,
     child: childSchema,
+    remote: remoteSchema.optional(),
     title: z.string().min(1).max(80),
     messagingOrigin: z.object({
         connector: z.enum(['whatsapp', 'teams']), chatKey: id, threadId: id.optional(),
@@ -61,6 +69,15 @@ const jobSchema = z.object({
     grilling: z.object({ result: resultSchema, delivery: deliverySchema }).optional(),
     boundary: z.literal('grill').optional(),
     pullRequests: z.array(pullRequestSchema).optional(),
+}).superRefine((job, context) => {
+    if (!job.remote) return; // Existing rows are never backfilled as tracked remote work.
+    const { child, remote } = job;
+    const invalidTurn = remote.kind === 'follow-up' && (child.requestId !== remote.requestId || !!child.sessionId);
+    const invalidSession = remote.kind === 'ralph' && (!child.sessionId || !!child.requestId);
+    const invalidLaunch = remote.kind === 'launch' && (!!child.requestId || !!child.sessionId);
+    if (!child.serverId || invalidTurn || invalidSession || invalidLaunch) {
+        context.addIssue({ code: 'custom', message: 'Remote delegation must identify its exact turn or whole Ralph session' });
+    }
 });
 
 export type DelegatedJobPullRequest = z.infer<typeof pullRequestSchema>;
@@ -97,6 +114,7 @@ export class DelegatedJobStore {
             || new Set(rows.map(row => row.id)).size !== rows.length) {
             throw new Error(`Invalid delegated job ownership or duplicate identity in ${workspaceId}`);
         }
+        this.validateRemoteOwnership(rows);
         const receiptIds = new Set<string>();
         for (const row of rows) {
             const outputs = row.pullRequests ?? [];
@@ -119,12 +137,14 @@ export class DelegatedJobStore {
         if (existing) {
             if (JSON.stringify(existing.parent) !== JSON.stringify(job.parent)
                 || JSON.stringify(existing.child) !== JSON.stringify(job.child)
+                || JSON.stringify(existing.remote) !== JSON.stringify(job.remote)
                 || JSON.stringify(existing.messagingOrigin) !== JSON.stringify(job.messagingOrigin)) {
                 throw new Error(`Delegated job ${job.id} already belongs to another parent or child`);
             }
             return existing;
         }
         rows.push(job);
+        this.validateRemoteOwnership(rows);
         this.save(job.parent.workspaceId, rows);
         return job;
     }
@@ -225,6 +245,25 @@ export class DelegatedJobStore {
         terminal.delivery = delivery;
         this.save(workspaceId, rows);
         return true;
+    }
+
+    private validateRemoteOwnership(rows: DelegatedJob[]): void {
+        const remoteRequests = new Set<string>();
+        const remoteSessions = new Set<string>();
+        for (const job of rows) {
+            if (!job.remote) continue;
+            if (job.remote.originServerIdentity !== this.serverIdentity) {
+                throw new Error('Remote delegation belongs to another originating server');
+            }
+            const key = JSON.stringify([job.remote.serverIdentity, job.child.workspaceId, job.remote.requestId]);
+            if (remoteRequests.has(key)) throw new Error('Duplicate remote delegation request identity');
+            remoteRequests.add(key);
+            if (job.remote.kind === 'ralph') {
+                const sessionKey = JSON.stringify([job.remote.serverIdentity, job.child.workspaceId, job.child.sessionId]);
+                if (remoteSessions.has(sessionKey)) throw new Error('Duplicate remote delegation session identity');
+                remoteSessions.add(sessionKey);
+            }
+        }
     }
 
     private save(workspaceId: string, rows: DelegatedJob[]): void {

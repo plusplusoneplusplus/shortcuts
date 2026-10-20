@@ -86,6 +86,87 @@ describe('DelegatedJobStore', () => {
         expect(rows()[0].terminal?.result.links).toHaveLength(20);
     });
 
+    const remoteJob = (originServerIdentity: string): DelegatedJobRegistration => ({
+        ...registration,
+        child: { ...registration.child, serverId: 'connection-alias' },
+        remote: { originServerIdentity, serverIdentity: 'remote-owner', requestId: 'launch-1', kind: 'launch' },
+    });
+
+    it('persists exact remote ownership and never upgrades historical rows', () => {
+        const job = remoteJob(store.serverIdentity);
+        expect(store.register(job)).toMatchObject(job);
+        expect(restart().register(job)).toMatchObject(job);
+        const historical = { ...job, id: 'untracked', remote: undefined };
+        store.register(historical);
+        expect(rows().find(row => row.id === 'untracked')?.remote).toBeUndefined();
+        expect(() => store.register({ ...historical, remote: job.remote })).toThrow('another parent or child');
+        expect(() => store.register({ ...job, remote: { ...job.remote!, serverIdentity: 'replacement-owner' } })).toThrow('another parent or child');
+    });
+
+    it('keeps equal raw workspace/process/request IDs separate on different servers', () => {
+        const job = remoteJob(store.serverIdentity);
+        store.register(job);
+        store.register({ ...job, id: 'other-server', remote: { ...job.remote!, serverIdentity: 'other-owner' } });
+        expect(rows()).toHaveLength(2);
+        expect(() => store.register({ ...job, id: 'same-server-other-alias', child: { ...job.child, serverId: 'other-alias' } }))
+            .toThrow('Duplicate remote delegation request');
+        expect(rows()).toHaveLength(2);
+    });
+
+    it('tracks two follow-ups to the same remote process independently', () => {
+        const job = remoteJob(store.serverIdentity);
+        for (const [requestId, outcome] of [['turn-1', 'completed'], ['turn-2', 'cancelled']] as const) {
+            store.register({ ...job, id: requestId, child: { ...job.child, requestId },
+                remote: { ...job.remote!, requestId, kind: 'follow-up' } });
+            store.recordResult('parent-repo', requestId, { ...result, terminalEventId: requestId, outcome });
+        }
+        expect(rows().map(row => [row.child.requestId, row.terminal?.result.outcome]))
+            .toEqual([['turn-1', 'completed'], ['turn-2', 'cancelled']]);
+    });
+
+    it('requires exact follow-up correlation and a whole-session Ralph registration', () => {
+        const job = remoteJob(store.serverIdentity);
+        const ralph: DelegatedJobRegistration = { ...job, child: { ...job.child, sessionId: 'session-1' },
+            remote: { ...job.remote!, kind: 'ralph' } };
+        for (const invalid of [
+            { ...job, child: registration.child },
+            { ...job, child: { ...job.child, requestId: 'turn-1' } },
+            { ...job, remote: { ...job.remote!, kind: 'follow-up' as const } },
+            { ...job, child: { ...job.child, requestId: 'other-turn' }, remote: { ...job.remote!, kind: 'follow-up' as const } },
+            { ...ralph, child: job.child },
+            { ...ralph, child: { ...ralph.child, requestId: 'iteration-1' } },
+        ]) expect(() => store.register(invalid)).toThrow('exact turn or whole Ralph session');
+        expect(rows()).toEqual([]);
+        store.register(ralph);
+        expect(() => store.register({ ...ralph, id: 'duplicate-session', remote: { ...ralph.remote!, requestId: 'another-launch' } }))
+            .toThrow('Duplicate remote delegation session');
+        expect(rows()).toHaveLength(1);
+    });
+
+    it('rejects foreign origin registrations and restored ledgers without changing disk', () => {
+        const job = remoteJob(store.serverIdentity);
+        expect(() => store.register({ ...job, remote: { ...job.remote!, originServerIdentity: 'foreign-origin' } }))
+            .toThrow('another originating server');
+        expect(rows()).toEqual([]);
+        const persisted = store.register(job);
+        const file = getRepoDataPath(dataDir, 'parent-repo', DELEGATED_JOBS_FILE);
+        const raw = JSON.stringify([{ ...persisted, remote: { ...persisted.remote!, originServerIdentity: 'foreign-origin' } }]);
+        fs.writeFileSync(file, raw);
+        expect(() => restart().list('parent-repo')).toThrow('another originating server');
+        expect(fs.readFileSync(file, 'utf8')).toBe(raw);
+    });
+
+    it('rejects malformed remote identities and callback routing fields', () => {
+        const job = remoteJob(store.serverIdentity);
+        for (const remote of [
+            { ...job.remote!, serverIdentity: ' ' },
+            { ...job.remote!, serverIdentity: 'x'.repeat(513) },
+            { ...job.remote!, requestId: '' },
+            { ...job.remote!, callbackUrl: 'https://untrusted.invalid' },
+        ]) expect(() => store.register({ ...job, remote })).toThrow();
+        expect(rows()).toEqual([]);
+    });
+
     it('persists queue admission and delivery without reopening settled outcomes', () => {
         store.register(registration);
         store.recordResult('parent-repo', registration.id, result);

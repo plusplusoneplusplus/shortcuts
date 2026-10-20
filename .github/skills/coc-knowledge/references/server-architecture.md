@@ -131,8 +131,15 @@ Sentinel request, including existing/native-resumed, provider-switched and post-
 turns; it never depends on stored initial prompts, summaries or child output. Non-Sentinel
 review recipients receive the same contract inline. Cancellation remains display-only.
 
-`delegation/delegated-job-store.ts` retains produced-PR receipts in the existing
-owner-workspace `delegated-jobs.json`. `recordPullRequest` requires a registered job
+`delegation/delegated-job-store.ts` owns `delegated-jobs.json` in the parent workspace.
+Optional `remote` registration metadata binds originating/destination server identities,
+request ID and launch/follow-up/Ralph kind. Follow-ups require the matching child request;
+Ralph requires a whole-session child. Reads and registration reject foreign origins and
+duplicate remote workspace/request or session identities independently of connection aliases.
+Historical rows retain their existing tracking semantics; transport admission owns proof
+of remote identity.
+
+The ledger retains produced-PR receipts. `recordPullRequest` requires a registered job
 and records exact canonical provider/host/repository/number identity with an item ID
 and immutable receipt. Repeated submissions reuse that receipt; each distinct PR
 remains separate. `triggers/sentinel-pr-outcome-service.ts` verifies the original
