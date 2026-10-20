@@ -148,8 +148,8 @@ Home/End, double-click reset; 180–560px, default 262, global
 without overwriting the stored preference, and the drawer tier hides it. Its `GitReviewToolbar` is one nonwrapping 34px row: optional
 context `header` slots (identity, classify, secondary `actions`, overflow-only
 `menuActions`, below-row content), Overview, previous/index/next, change stats,
-reviewed count with a decorative progress line, and Mark viewed (toggle only, no
-auto-advance). `git-file-review.css` container queries compact labels and move
+reviewed count with a decorative progress line, and Mark viewed. Marking the focused file advances through the current displayed
+order via existing selection handlers; unmarking and the last file stay in place. `git-file-review.css` container queries compact labels and move
 secondary actions into the accessible More menu, portaled to the body outside
 clipping ancestors. Its overlay retains the source pane's query width and tracks
 the trigger within viewport bounds; core navigation and Mark viewed stay inline.
@@ -157,7 +157,12 @@ the trigger within viewport bounds; core navigation and Mark viewed stay inline.
 patch. Owner/workspace/comparison keys isolate transient state. Range sources
 include resolved base/head SHAs in patch URLs and editor keys, preventing
 mutable-range cache reuse. Commit metadata starts collapsed. Commit/file and
-branch/file routes retain their review host and navigator.
+branch/file routes retain their review host and navigator. `useReviewFileNavigation`
+shares mark-to-next behavior with inline and pop-out PR hosts, retaining owner and
+comparison identity. Hosts supply their filtered/grouped or priority/tree display
+order before review updates. Hide-viewed retains a marked last file without wrapping;
+failed async toggles and superseded owner/selection completions cannot navigate.
+PR progress keeps its existing local update and debounced persistence lifecycle.
 
 ### Shared file diff sources
 

@@ -44,6 +44,8 @@ import { useClassification } from '../git/diff/useClassification';
 import type { ClassificationKey, DiffSource } from '../git/diff/diffSource';
 import { FileDiffPanel } from '../git/diff/FileDiffPanel';
 import { useFileDiffEngineState } from '../git/hooks/useFileDiffEngineState';
+import { useReviewFileNavigation } from '../git/diff/useReviewFileNavigation';
+import { useCloneBaseUrl } from '../../repos/cloneRouting';
 import { usePrReviewProgress } from '../git/diff/usePrReviewProgress';
 import type { ReviewProgressClientKey } from '../git/diff/reviewProgressApi';
 import { useModalJobAiSelection } from '../../shared/ModalJobAiControls';
@@ -360,10 +362,6 @@ export function PrFilesPanel({
         setLastSelectedFile(activePath || null);
     }, [activePath, progressHydrated, markVisited, setLastSelectedFile]);
 
-    const handleToggleReviewed = useCallback(() => {
-        if (activePath) toggleReviewed(activePath);
-    }, [activePath, toggleReviewed]);
-
     useEffect(() => {
         if (files.length === 0) {
             setActivePath('');
@@ -403,6 +401,17 @@ export function PrFilesPanel({
     function handleFileSelect(path: string) {
         setActivePath(path);
     }
+
+    const endpoint = useCloneBaseUrl(attachmentDestinationId ?? workspaceId);
+    const orderedPaths = showTree
+        ? treeFilePaths(tree)
+        : visibleFiles.map(file => file.path);
+    const toggleFileReviewed = useReviewFileNavigation({
+        identity: JSON.stringify([workspaceId, attachmentDestinationId, endpoint, diffSource?.cacheKey, headSha, reviewPersistence]),
+        selectedPath: activePath, paths: orderedPaths, reviewedFiles: reviewProgress.state.reviewedFiles,
+        toggleReviewed, navigate: handleFileSelect,
+    });
+    const handleToggleReviewed = () => { if (activePath) toggleFileReviewed(activePath); };
 
     // Desktop renders the shared FileDiffPanel (full review chrome); mobile
     // keeps the slim viewer so the stacked layout stays light.
@@ -889,4 +898,8 @@ function FileTreeView({
             })}
         </div>
     );
+}
+
+function treeFilePaths(nodes: FileTreeNode[]): string[] {
+    return nodes.flatMap(node => node.kind === 'folder' ? treeFilePaths(node.children) : [node.path]);
 }

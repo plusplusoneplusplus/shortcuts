@@ -47,6 +47,7 @@ export function PopOutReviewLayout({
         <div className="flex flex-1 min-h-0">
             <PopOutFilePanel
                 workspaceId={workspaceId}
+                onDisplayOrderChange={model.setDisplayedPaths}
                 files={files}
                 selectedFilePath={model.selectedFilePath}
                 onFileSelect={model.handleFileSelect}

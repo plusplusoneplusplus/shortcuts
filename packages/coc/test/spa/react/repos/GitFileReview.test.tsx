@@ -116,6 +116,65 @@ describe('compact focused Git review', () => {
     });
 });
 
+describe('mark viewed navigation', () => {
+    it('keeps the overview open when marking its selected file', () => {
+        render(<GitFileReview {...props} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Overview' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Mark viewed' }));
+        expect(screen.queryByTestId('focused-diff')).toBeNull();
+        expect(screen.getByRole('button', { name: 'Read diff' })).toBeTruthy();
+    });
+    it('follows directory display order and shares normal selection and hunk targets', () => {
+        const onSelect = vi.fn();
+        render(<GitFileReview {...props} onSelect={onSelect} />);
+        open('docs/README.md');
+        const toggle = screen.getByRole('button', { name: 'Mark viewed' });
+        toggle.focus();
+        fireEvent.click(toggle);
+        expect(onSelect).toHaveBeenLastCalledWith('src/a.ts', 'first');
+        expect(nav().querySelector('[aria-current="true"]')?.getAttribute('data-file-path')).toBe('src/a.ts');
+        expect(screen.getByTestId('focused-diff').textContent).toContain('src/a.ts');
+        expect(document.activeElement).toBe(toggle);
+        open('docs/README.md');
+        onSelect.mockClear();
+        fireEvent.click(screen.getByRole('button', { name: 'Viewed', exact: true }));
+        expect(onSelect).not.toHaveBeenCalled();
+        expect(screen.getByTestId('focused-diff').textContent).toContain('docs/README.md');
+    });
+    it.each([false, true])('does not skip or wrap with hide viewed = %s', hide => {
+        render(<GitFileReview {...props} />);
+        open('src/a.ts');
+        if (hide) fireEvent.click(screen.getByLabelText('Hide viewed'));
+        fireEvent.click(screen.getByRole('button', { name: 'Mark viewed' }));
+        expect(screen.getByTestId('focused-diff').textContent).toContain('src/z.ts');
+        fireEvent.click(screen.getByRole('button', { name: 'Mark viewed' }));
+        expect(screen.getByTestId('focused-diff').textContent).toContain('test/a.test.ts');
+        fireEvent.click(screen.getByRole('button', { name: 'Mark viewed' }));
+        expect(screen.getByTestId('focused-diff').textContent).toContain('test/a.test.ts');
+        expect(screen.getByRole('button', { name: 'Viewed', exact: true }).getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByRole('button', { name: 'Next file' })).toHaveProperty('disabled', true);
+    });
+    it('does not advance on a failed review update', async () => {
+        const onSelect = vi.fn();
+        render(<GitFileReview {...props} onSelect={onSelect} onToggleReviewed={() => Promise.reject(new Error('offline'))} />);
+        onSelect.mockClear();
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Mark viewed' })));
+        expect(onSelect).not.toHaveBeenCalled();
+        expect(screen.getByTestId('focused-diff').textContent).toContain('docs/README.md');
+    });
+    it('ignores delayed completion after switching owner/comparison', async () => {
+        let complete!: () => void;
+        const onSelect = vi.fn();
+        const view = render(<GitFileReview {...props} onSelect={onSelect} onToggleReviewed={() => new Promise<void>(resolve => { complete = resolve; })} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Mark viewed' }));
+        view.rerender(<GitFileReview {...props} attachmentDestinationId="remote:other:ws" comparisonKey="other" onSelect={onSelect} />);
+        onSelect.mockClear();
+        await act(async () => complete());
+        expect(onSelect).not.toHaveBeenCalled();
+        expect(screen.getByTestId('focused-diff').textContent).toContain('docs/README.md');
+    });
+});
+
 describe('changed-file category counts', () => {
     function expectCounts(counts: number[], selected = 'All') {
         ['All', 'Source', 'Tests', 'Docs'].forEach((label, index) => {
@@ -176,7 +235,7 @@ describe('changed-file category counts', () => {
 
 describe('single-row review toolbar', () => {
     const toolbar = () => screen.getByTestId('git-review-toolbar');
-    it('keeps navigation, stats, progress and viewed in one toolbar without auto-advancing', () => {
+    it('keeps navigation, stats, progress and viewed in one toolbar and advances on marking', () => {
         const onToggle = vi.fn();
         render(<GitFileReview {...props} reviewedFiles={new Set(['docs/README.md'])} onToggleReviewed={onToggle} />); open('src/z.ts');
         expect(screen.getAllByTestId('git-review-toolbar')).toHaveLength(1);
@@ -189,7 +248,7 @@ describe('single-row review toolbar', () => {
         expect(screen.getByTestId('git-review-progress-line').firstElementChild!.getAttribute('style')).toContain('width: 25%');
         fireEvent.click(screen.getByRole('button', { name: 'Mark viewed' }));
         expect(onToggle).toHaveBeenCalledWith('src/z.ts');
-        expect(screen.getByTestId('focused-diff').textContent).toContain('src/z.ts');
+        expect(screen.getByTestId('focused-diff').textContent).toContain('test/a.test.ts');
     });
     it('steps files with previous/next and disables at the ends', () => {
         render(<GitFileReview {...props} />);

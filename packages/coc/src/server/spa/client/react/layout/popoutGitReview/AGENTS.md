@@ -14,7 +14,8 @@ here.
 - `usePopOutReviewLifecycle.ts` — broadcast-channel open/close/restore plus the
   dynamic `document.title`.
 - `usePopOutReviewModel.ts` — selected file, hunk target, priority sort,
-  classification-driven prev/next navigation, and the last-selected-file sync.
+  classification-driven prev/next navigation, mark-to-next navigation through the
+  rail’s reported display order, and the last-selected-file sync.
   `popOutDiffPanelProps` builds the `FileDiffPanel` props every review type
   shares.
 - `useFileCommentMap.ts` — maps diff-comment storage keys onto file paths.

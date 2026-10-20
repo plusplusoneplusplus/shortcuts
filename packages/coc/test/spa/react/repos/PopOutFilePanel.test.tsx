@@ -10,10 +10,12 @@ import React from 'react';
 import { PopOutFilePanel } from '../../../../src/server/spa/client/react/features/git/diff/PopOutFilePanel';
 import type { FileBadgeInfo, FileChange } from '../../../../src/server/spa/client/react/features/git/diff/FileTree';
 
+let viewMode: 'tree' | 'flat' = 'tree';
+
 // Mock useFilesViewMode
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useFilesViewMode', () => ({
     useFilesViewMode: () => ({
-        mode: 'tree' as const,
+        mode: viewMode,
         setMode: vi.fn(),
     }),
 }));
@@ -37,7 +39,24 @@ const SAMPLE_FILES: FileChange[] = [
 
 describe('PopOutFilePanel', () => {
     beforeEach(() => {
+        viewMode = 'tree';
         try { localStorage.clear(); } catch { /* ignore */ }
+    });
+
+    it.each(['tree', 'flat'] as const)('publishes %s order from the same files used by the rail', mode => {
+        viewMode = mode;
+        const order = vi.fn();
+        const files = ['src/a.ts', 'root.ts', 'src/b.ts'].map(path => ({ path, status: 'M' }));
+        const view = render(<PopOutFilePanel workspaceId="ws1" files={files} selectedFilePath="src/a.ts" onFileSelect={vi.fn()} onDisplayOrderChange={order} />);
+        expect(order).toHaveBeenLastCalledWith(mode === 'tree' ? ['src/a.ts', 'src/b.ts', 'root.ts'] : ['src/a.ts', 'root.ts', 'src/b.ts']);
+        view.rerender(<PopOutFilePanel workspaceId="ws1" files={files} selectedFilePath="src/a.ts" onFileSelect={vi.fn()} onDisplayOrderChange={order}
+            prioritySort getFileBadge={path => ({ category: path === 'root.ts' ? 'logic' : 'mechanical', intensity: 'high' })} />);
+        const published = order.mock.calls.at(-1)![0];
+        const prefix = mode === 'tree' ? 'popout-file-' : 'popout-flat-file-row-';
+        const rows = view.container.querySelectorAll(`[data-testid^="${prefix}"]`);
+        const rendered = Array.from(rows).map(row => row.getAttribute('data-testid')!.slice(prefix.length)).filter(path => files.some(file => file.path === path));
+        expect(published).toEqual(rendered);
+        expect(published[0]).toBe('root.ts');
     });
 
     it('renders file count', () => {

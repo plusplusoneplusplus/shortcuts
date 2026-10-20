@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useReviewFileNavigation } from '../../features/git/diff/useReviewFileNavigation';
 import { pickPriorityFile } from '../../features/git/diff/prPopoutPriority';
 import { HUNK_CATEGORIES } from '../../features/pull-requests/classification-types';
 import type { HunkCategory } from '../../features/pull-requests/classification-types';
@@ -37,6 +38,8 @@ export interface PopOutPriorityNav {
 
 export interface PopOutReviewModel {
     selectedFilePath: string | null;
+    setDisplayedPaths: (paths: string[]) => void;
+    handleToggleReviewed: (path: string) => void;
     hunkTarget: PopOutHunkTarget;
     prioritySort: boolean;
     /** True once classification results are available for this review. */
@@ -61,6 +64,7 @@ export function usePopOutReviewModel({
 }: UsePopOutReviewModelOptions): PopOutReviewModel {
     const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
     const [hunkTarget, setHunkTarget] = useState<PopOutHunkTarget>(undefined);
+    const [displayedPaths, setDisplayedPaths] = useState<string[] | null>(null);
     const [prioritySort, setPrioritySort] = useState(false);
     const { classificationEnabled, onDiffEngineChange } = useFileDiffEngineState(
         selectedFilePath ? `${diffIdentity}\u0000${selectedFilePath}` : null,
@@ -144,7 +148,15 @@ export function usePopOutReviewModel({
         setLastSelectedFile?.(selectedFilePath);
     }, [selectedFilePath, setLastSelectedFile]);
 
+    const handleToggleReviewed = useReviewFileNavigation({
+        identity: diffIdentity, selectedPath: selectedFilePath,
+        paths: displayedPaths ?? files.map(file => file.path),
+        reviewedFiles: progress?.state.reviewedFiles ?? new Set<string>(),
+        toggleReviewed: path => progress?.toggleReviewed(path), navigate: handleNavigateToFile,
+    });
+
     return {
+        setDisplayedPaths, handleToggleReviewed,
         selectedFilePath,
         hunkTarget,
         prioritySort,
@@ -191,7 +203,7 @@ export function popOutDiffPanelProps(
         onBack: model.handleBack,
         backLabel: 'All files',
         isReviewed: progress ? progress.isReviewed(filePath) : undefined,
-        onToggleReviewed: progress ? () => progress.toggleReviewed(filePath) : undefined,
+        onToggleReviewed: progress ? () => model.handleToggleReviewed(filePath) : undefined,
         getHunkClassification: model.classifyReady ? classification?.getHunkClassification : undefined,
         hunkActiveFilters: model.classifyReady ? classification?.state.activeFilters : undefined,
     };
