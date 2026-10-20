@@ -373,7 +373,7 @@ let checkingForUpdate = false;
 /** One updater for every native window; installers launch before the normal quit drain. */
 function getUpdateCoordinator(): UpdateCoordinator {
     if (updateCoordinator) return updateCoordinator;
-    const dialogs = createUpdateDialogs(options => dialog.showMessageBox(options));
+    const dialogs = createUpdateDialogs(options => dialog.showMessageBox(options), url => shell.openExternal(url));
     updateCoordinator = new UpdateCoordinator({
         downloadOptions: { tempDir: app.getPath('temp') },
         setProgress: fraction => {
@@ -420,7 +420,7 @@ function getUpdateCoordinator(): UpdateCoordinator {
         },
         quit: () => app.quit(),
         promptError: dialogs.promptError,
-        openBrowser: url => shell.openExternal(url),
+        openBrowser: dialogs.openDownload,
     });
     return updateCoordinator;
 }
@@ -435,9 +435,9 @@ async function recoverUpdateThenCheck(): Promise<void> {
         const status = await recoverPendingUpdate(pendingUpdateFile(), { currentVersion: app.getVersion() });
         if (status.state === 'installing') return;
         if (status.state === 'failed') {
-            const dialogs = createUpdateDialogs(options => dialog.showMessageBox(options));
+            const dialogs = createUpdateDialogs(options => dialog.showMessageBox(options), url => shell.openExternal(url));
             if (await dialogs.promptError(status.reason)) {
-                await shell.openExternal(pickDownloadUrl(status.release, process.platform));
+                await dialogs.openDownload(pickDownloadUrl(status.release, process.platform));
             }
             return;
         }
@@ -489,36 +489,14 @@ async function runUpdateCheck(auto: boolean): Promise<void> {
 }
 
 /**
- * Render an {@link UpdatePrompt} as a native dialog and act on the choice. Maps
- * the chosen button by its label (not index) so the platform-specific button
- * sets in `formatUpdatePrompt` stay decoupled from this handler.
+ * Keep browser downloads independent of coordinator creation and automatic installs.
  */
 async function promptForUpdate(prompt: UpdatePrompt, release: ReleaseInfo): Promise<void> {
-    const { response } = await dialog.showMessageBox({
-        type: 'info',
-        title: prompt.title,
-        message: prompt.message,
-        detail: prompt.detail,
-        buttons: prompt.buttons,
-        defaultId: 0,
-        cancelId: prompt.buttons.length - 1,
-        noLink: true,
+    const dialogs = createUpdateDialogs(options => dialog.showMessageBox(options), url => shell.openExternal(url));
+    await dialogs.promptUpdate(prompt, {
+        startUpdate: () => getUpdateCoordinator().start(release),
+        skipVersion: version => setSkippedVersion(defaultDataDir(), version),
     });
-    const choice = prompt.buttons[response];
-    switch (choice) {
-        case 'Update':
-            await getUpdateCoordinator().start(release);
-            break;
-        case 'Download':
-            await shell.openExternal(prompt.downloadUrl);
-            break;
-        case 'Skip This Version':
-            setSkippedVersion(defaultDataDir(), prompt.version);
-            break;
-        default:
-            // "Later" (or dialog dismissed): do nothing; re-prompt next launch.
-            break;
-    }
 }
 
 /** Surface a fatal startup error in the (re-shown) splash window. */

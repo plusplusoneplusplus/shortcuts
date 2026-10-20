@@ -1,7 +1,7 @@
 /**
  * Electron-free release checks, channel preferences and native dialog content.
  * Download verification and installation live in the update-install modules;
- * pickDownloadUrl supplies the browser fallback for unsigned installers.
+ * pickDownloadUrl supplies the independent browser installer download.
  */
 
 import * as fs from 'fs';
@@ -209,22 +209,30 @@ export function isNewerVersion(latest: string, current: string): boolean {
 
 /**
  * Choose the best download URL for a release on the given platform:
- *   - macOS  → the `.dmg` (preferring an arm64 build when several exist),
- *   - Windows → the `.exe` installer,
+ *   - macOS  → a compatible CoC `.dmg`,
+ *   - Windows → a compatible CoC `.exe` installer,
  * falling back to the release page when no matching asset is attached (e.g. a
  * release whose binaries are still uploading, or a platform with no asset).
  */
-export function pickDownloadUrl(release: ReleaseInfo, platform: NodeJS.Platform): string {
+export function pickDownloadUrl(
+    release: ReleaseInfo,
+    platform: NodeJS.Platform,
+    arch: string = process.arch,
+): string {
     const byName = (pred: (name: string) => boolean): ReleaseAsset | undefined =>
         release.assets.find((a) => pred(a.name.toLowerCase()));
-    if (platform === 'darwin') {
-        const arm = byName((n) => n.endsWith('.dmg') && n.includes('arm64'));
-        const dmg = arm ?? byName((n) => n.endsWith('.dmg'));
+    if (platform === 'darwin' && (arch === 'arm64' || arch === 'x64')) {
+        const compatible = (n: string) => n.startsWith('coc-') && n.endsWith('.dmg')
+            && (arch === 'arm64' ? !/x64|x86_64/.test(n) : !n.includes('arm64'));
+        const dmg = byName((n) => compatible(n) && n.includes(arch)) ?? byName(compatible);
         if (dmg) {
             return dmg.url;
         }
-    } else if (platform === 'win32') {
-        const exe = byName((n) => n.startsWith('coc.setup.') && n.endsWith('.exe'));
+    } else if (platform === 'win32' && (arch === 'x64' || arch === 'arm64' || arch === 'ia32')) {
+        const compatible = (n: string) => n.startsWith('coc.setup.') && n.endsWith('.exe')
+            && (arch === 'x64' ? !/arm64|ia32/.test(n)
+                : n.includes(arch) && !n.includes('x64'));
+        const exe = byName((n) => compatible(n) && n.includes(arch)) ?? byName(compatible);
         if (exe) {
             return exe.url;
         }
@@ -247,11 +255,14 @@ export interface UpdatePrompt {
     downloadUrl: string;
 }
 
+export const DOWNLOAD_INSTALLER_LABEL = 'Download installer in browser';
+
 /** Build the initial opt-in dialog; checking a release never downloads it. */
 export function formatUpdatePrompt(
     release: ReleaseInfo,
     currentVersion: string,
     platform: NodeJS.Platform,
+    arch: string = process.arch,
 ): UpdatePrompt {
     const supported = platform === 'darwin' || platform === 'win32';
     return {
@@ -259,10 +270,11 @@ export function formatUpdatePrompt(
         title: 'Update Available',
         message: `CoC ${release.version} is available — you have ${normalizeVersion(currentVersion)}.`,
         detail: supported
-            ? 'Click Update to download and verify the new version. You can choose when to restart and install it.'
-            : 'Click Download to get the latest release.',
-        buttons: [supported ? 'Update' : 'Download', 'Skip This Version', 'Later'],
-        downloadUrl: pickDownloadUrl(release, platform),
+            ? 'Click Update to download and verify the new version. You can choose when to restart and install it.\n\n'
+                + 'Or download the installer in your system browser and install it yourself. This does not start an in-app update.'
+            : 'Download the release in your system browser and install it yourself.',
+        buttons: [...(supported ? ['Update'] : []), DOWNLOAD_INSTALLER_LABEL, 'Skip This Version', 'Later'],
+        downloadUrl: pickDownloadUrl(release, platform, arch),
     };
 }
 
@@ -371,6 +383,8 @@ export interface UpdateCheckOptions {
     currentVersion: string;
     /** Target platform; defaults to `process.platform`. */
     platform?: NodeJS.Platform;
+    /** Target architecture; defaults to `process.arch`. */
+    arch?: string;
     /** Fetch implementation; defaults to global `fetch` when omitted. */
     fetchFn?: typeof fetch;
     /** Releases list endpoint; defaults to {@link RELEASES_LIST_API}. */
@@ -433,7 +447,7 @@ export async function checkForUpdate(opts: UpdateCheckOptions): Promise<UpdateCh
         return {
             reason: 'newer',
             release,
-            prompt: formatUpdatePrompt(release, opts.currentVersion, platform),
+            prompt: formatUpdatePrompt(release, opts.currentVersion, platform, opts.arch),
         };
     } catch {
         return miss('error');
