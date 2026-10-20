@@ -107,6 +107,25 @@ describe('createWebSocketInfrastructure', () => {
     });
 
     describe('store process change wiring', () => {
+        it('revokes background work synchronously before broadcasting every lifecycle event', () => {
+            const sequence: string[] = [];
+            const changed = vi.fn(() => { sequence.push('revoke'); });
+            const ws = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager,
+                undefined, undefined, () => false, undefined, undefined, changed);
+            vi.spyOn(ws, 'broadcastProcessEvent').mockImplementation(() => { sequence.push('broadcast'); });
+            const process = { id: 'owner', status: 'cancelled', output: [], metadata: {} };
+            for (const event of [
+                { type: 'process-updated', process },
+                { type: 'process-removed', process },
+                { type: 'processes-cleared' },
+            ]) {
+                sequence.length = 0;
+                store.onProcessChange(event);
+                expect(sequence[0]).toBe('revoke');
+                expect(changed).toHaveBeenLastCalledWith(event);
+            }
+        });
+
         it('passes the removed process to host-owned state cleanup', () => {
             const removed = vi.fn();
             const ws = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager,

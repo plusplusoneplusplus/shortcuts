@@ -374,13 +374,29 @@ references before editing. Paths are package-relative.
   evaluations through the evaluator/runner signal; revocations preserve failure
   counts and baselines, while deadline expiry counts as a failure. Replacement
   timers wait for the cancelled run's overlap guard to release. Trigger infrastructure
-  composes the evaluator/firer with one shared gate requiring a runner, both live flags
-  and a live infrastructure instance. Before and after running it checks the exact
+  composes the evaluator/firer with one shared gate requiring an injected runner, both
+  live flags and an undisposed infrastructure instance. Missing injection defaults to
+  denied authoring/execution. Before and after running it checks the exact
   Sentinel, eligible item and current rule revision/source/state. Revocation aborts
   without recording a result or failure. Disposal closes delivery admission before
   cancelling execution. Server configuration refreshes script timers when the flag
-  conjunction changes. Composition supplies owner-resolved tools and owner-lifecycle
-  cancellation; missing runner injection keeps production authoring/execution disabled.
+  conjunction changes. `server/index.ts` holds restored script rules behind
+  `scriptConditionRuntimeReady` until routes/runtime services, the WebSocket lifecycle
+  handler and HTTP listening are ready, then opens the gate and refreshes the manager.
+  Production calls `MultiRepoQueueRouter.runScriptCondition` → owner bridge
+  `CLITaskExecutor` → `ExecutorRegistry` → `ChatBaseExecutor.runScriptCondition`.
+  Validate the exact owner and resolve workspace/working directory; the current active
+  provider (fallback: executor provider) controls Codex nested-script omission.
+  Reuse shared helper dependencies for the full owner-bound CoC tool list, not the
+  chat-scriptable subset; omit attended-only `sentinel_jobs` and write-only
+  `create_pull_request`. Supply no provider approval callback. Provider-native/MCP
+  shell handlers are outside `CocToolRuntime` and fail as catchable `ToolCallError`,
+  never model-call emulation.
+  `createWebSocketInfrastructure` synchronously forwards every ProcessStore lifecycle
+  event to `infra.onProcessChange` before broadcasting. Disarm affected script rules
+  on owner cancellation/cancelling, type/mode/workspace mismatch, deletion or clear;
+  cancellation reaches runtime assembly and running VM tools. Unrelated owners,
+  ordinary title/running-status updates and unidentified bulk updates do not revoke.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated

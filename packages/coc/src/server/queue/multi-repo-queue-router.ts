@@ -475,6 +475,21 @@ export class MultiRepoQueueRouter extends EventEmitter {
         return action(this.getOrCreateBridge(rootPath));
     }
 
+    readonly runScriptCondition: import('../triggers/script-condition-evaluator').ScriptConditionRunner =
+        async (trigger, state, signal) => {
+            signal?.throwIfAborted();
+            const owner = await this.store.getProcess(trigger.processId, trigger.workspaceId);
+            if (owner?.metadata?.workspaceId !== trigger.workspaceId) {
+                throw new Error('Script condition owner workspace is unavailable');
+            }
+            const rootPath = await this.resolveRootPathForProcess(trigger.processId);
+            signal?.throwIfAborted();
+            if (!rootPath) throw new Error('Script condition owner workspace path is unavailable');
+            const bridge = this.getOrCreateBridge(rootPath);
+            if (!bridge.runScriptCondition) throw new Error('Script condition owner runtime is unavailable');
+            return bridge.runScriptCondition(trigger, state, signal);
+        };
+
     /** Recover buffered results on the original parent's queue, independent of topic selection. */
     async recoverPendingMessages(workspaceId: string, processId: string): Promise<void> {
         const proc = await this.store.getProcess(processId);

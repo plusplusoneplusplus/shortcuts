@@ -45,6 +45,8 @@ import { SentinelPrOutcomeService } from '../triggers/sentinel-pr-outcome-servic
 // ============================================================================
 
 export interface TriggerInfrastructure {
+    /** Synchronous revocation before a process mutation can admit more tool work. */
+    onProcessChange: NonNullable<ProcessStore['onProcessChange']>;
     triggerStore: TriggerStore;
     triggerManager: TriggerManager;
     sentinelTodoFirer: SentinelTodoTriggerFirer;
@@ -308,6 +310,22 @@ export async function createTriggerInfrastructure(
         );
     }
 
+    const onProcessChange: TriggerInfrastructure['onProcessChange'] = event => {
+        if (disposed || (!event.process && event.type !== 'processes-cleared')) return;
+        const triggers = event.process ? triggerStore.getByProcess(event.process.id) : triggerStore.getAll();
+        for (const trigger of triggers) {
+            if (trigger.event.type !== 'script-condition') continue;
+            const process = event.process;
+            if (process && process.id !== trigger.processId) continue;
+            if (event.type === 'process-removed' || event.type === 'processes-cleared'
+                || ((event.type === 'process-updated' || event.type === 'process-added') && process && (process.type !== 'chat'
+                    || process.metadata?.workspaceId !== trigger.workspaceId
+                    || process.metadata.mode !== 'sentinel'
+                    || process.status === 'cancelled' || process.status === 'cancelling'))) {
+                triggerManager.disarm(trigger.id);
+            }
+        }
+    };
     const dispose = () => {
         disposed = true;
         triggerManager.shutdownAll();
@@ -317,7 +335,7 @@ export async function createTriggerInfrastructure(
     };
 
     return {
-        triggerStore, triggerManager, sentinelTodoFirer, sentinelTodoTriggers, sentinelPrOutcomes, timerRegistry, emit, dispose,
+        triggerStore, triggerManager, sentinelTodoFirer, sentinelTodoTriggers, sentinelPrOutcomes, timerRegistry, emit, dispose, onProcessChange,
         createTrigger: (workspaceId, body, reuseCiMonitor) => createTrigger({
             store: triggerStore, manager: triggerManager, emit,
             resolveWorkspaceId, now: options.now,

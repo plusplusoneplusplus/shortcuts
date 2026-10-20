@@ -171,11 +171,20 @@ selecting the Sentinel tool's event schemas. Typed coc-client contracts carry sc
 authoring, evaluation state and repeating delivery receipts.
 `createTriggerInfrastructure` composes the script evaluator and repeating firer
 under one gate requiring an injected owner runner, both live flags and an undisposed
-infrastructure instance. Admission checks exact Sentinel ownership, eligible item
+infrastructure instance; missing runner injection denies authoring/execution.
+Admission checks exact Sentinel ownership, eligible item
 and rule revision/source/state before and after runtime execution. Revocation aborts
 without advancing baseline or failures. Server configuration refreshes script timers
-on changes to the combined flags. Composition supplies owner tools and lifecycle
-cancellation; missing runner injection keeps production authoring/execution disabled.
+on changes to the combined flags.
+
+`server/index.ts` supplies the production runner and holds restored script rules
+behind `scriptConditionRuntimeReady` until routes/runtime services, the WebSocket
+lifecycle handler and HTTP listening are ready, then opens the gate and refreshes
+the manager. Calls follow `MultiRepoQueueRouter.runScriptCondition` → owning
+`CLITaskExecutor` bridge → `ExecutorRegistry` → `ChatBaseExecutor.runScriptCondition`.
+The executor validates the exact Sentinel owner and resolves workspace/working
+directory; its shared helper dependencies supply the owner-bound runtime through
+`runScriptConditionWithOwnerTools`. See [tool assembly](llm-tools.md#chat-tool-assembly).
 
 `triggers/script-condition-result.ts` supplies canonical result encoding and SHA-256
 hashing for script conditions. Object keys sort lexically at every level, array order
@@ -208,6 +217,13 @@ cannot persist failures, baselines or wakes. The runner's internal deadline rema
 a script failure because it does not abort the manager's admission signal.
 Infrastructure disposal closes the shared execution/delivery gate before cancelling
 the manager, preventing delayed queue admission after shutdown.
+
+`createWebSocketInfrastructure` synchronously forwards every ProcessStore lifecycle
+event to `infra.onProcessChange` before WebSocket broadcasting. The callback
+disarms affected script rules on owner cancellation/cancelling, type/mode/workspace
+mismatch, deletion or clear, aborting runtime assembly and running VM tools.
+Unrelated owners, ordinary title/running-status updates and unidentified bulk
+`process-updated` events do not revoke execution.
 
 `triggers/sentinel-todo-trigger-firer.ts` commits one-shot PR/date decisions using
 the trigger and to-do stores' shared database writer. It checks the rule revision

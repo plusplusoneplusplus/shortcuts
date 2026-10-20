@@ -765,12 +765,28 @@ session approvals. The script engine turns
 that result into `ToolCallError`, including for gated tools called by nested scripts.
 Ungated tools and workspace preferences retain their normal behavior. Ordinary
 bundles retain their existing interactive and noninteractive approval policies.
-`runScriptConditionWithOwnerTools` builds that context from supplied owner-bound
-capabilities, including Memory V2, and creates a per-run runtime from its full CoC
-tool list without the ordinary chat scriptable subset filter. It disposes both
-resources on success, failure or cancellation and starts no provider session.
-Synthetic nesting requires an enabled, ungated owner script tool. Callers validate
-the owner, live flags and rule revision, resolve capabilities and abort revocations.
+
+Production routes through `MultiRepoQueueRouter.runScriptCondition`, the owning
+`CLITaskExecutor` bridge and `ExecutorRegistry` to `ChatBaseExecutor.runScriptCondition`.
+The executor validates the exact Sentinel owner, resolves workspace/working
+directory and reuses shared helper dependencies for `runScriptConditionWithOwnerTools`.
+The owner's current active provider (fallback: executor provider) controls Codex
+nested-script omission. Startup readiness and lifecycle revocation belong to
+[trigger infrastructure](server-architecture.md#sentinel-to-do-trigger-firing).
+
+`runScriptConditionWithOwnerTools` builds the shared context, including Memory V2,
+and creates a per-run runtime from the full resolved CoC tool list, not the
+ordinary chat-scriptable subset. Background assembly omits `ask_user` and
+attended-only `sentinel_jobs` and does not add write-only `create_pull_request`.
+It opens no provider session and passes no provider approval callback. Synthetic
+nesting requires an enabled, ungated owner script tool; children inherit this policy.
+Context/memory and runtime disposal cover success, failure and cancellation;
+the script runner retains its trigger-only 60-second abort deadline.
+
+Provider-native/MCP shell handlers are outside the existing `CocToolRuntime`
+contract. Calls to unavailable tools raise catchable `ToolCallError`; model calls
+never emulate them. Callers recheck live flags and owner/item/rule eligibility
+before and after execution, and abort assembly and running tools on revocation.
 
 Some addons emit a prompt `suffix` wrapped in a named XML-style tag via `tagGuidanceSuffix()`
 from `prompt-tags.ts`, so aggregated `toolGuidance` is self-delimiting. Most addons emit
