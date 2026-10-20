@@ -39,7 +39,7 @@ import { BrowserToolStateStore } from '../llm-tools/browser-tools';
 import { createSendMessageCapability } from '../processes/send-message-capability';
 import { DelegatedJobStore } from '../delegation/delegated-job-store';
 import { RemoteDelegationRequestStore } from '../delegation/remote-delegation-request-store';
-import { registerRemoteDelegationProofRoutes, registerRemoteDelegationFollowUpRoutes } from '../delegation/remote-delegation-routes';
+import { registerRemoteDelegationProofRoutes, registerRemoteDelegationRoutes } from '../delegation/remote-delegation-routes';
 import { RemoteDelegationAdmissionStore } from '../delegation/remote-delegation-admission-store';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { DelegatedJobResults } from '../delegation/delegated-job-results';
@@ -158,6 +158,7 @@ import { registerRalphLaunchRoutes } from './ralph-launch-routes';
 import { registerRalphGrillingApprovalRoutes } from './ralph-grilling-approval-routes';
 import { prepareRalphGrilling } from '../ralph/grilling-state';
 import { launchRalphSession, type LaunchRalphFn, type RalphLaunchDeps } from '../ralph/ralph-launch-service';
+import { createRemoteDelegationLaunch } from '../delegation/remote-delegation-launch';
 import { registerRalphResumeRoutes } from './ralph-resume-routes';
 import { registerRalphInputRoutes } from './ralph-input-routes';
 import { registerRalphSubmitRoutes } from './ralph-submit-routes';
@@ -947,9 +948,16 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // Local + remote repo directory behind `list_workspaces`, `send_to_conversation`
     // name / remote clone-key targets, and messaging `list remotes`.
     const workspaceDirectory = createWorkspaceDirectory({ store, dataDir, remoteServers: remoteServerRuntime });
-    registerRemoteDelegationFollowUpRoutes(routes, {
+    registerRemoteDelegationRoutes(routes, {
         admissions: new RemoteDelegationAdmissionStore(dataDir), remotes: remoteServerRuntime, store,
         delivery: new ProcessMessageDeliveryService({ store, bridge }),
+        launch: createRemoteDelegationLaunch({
+            queue: { bridge, store, dataDir, state: queueGlobalState, globalWorkspaceRootPath,
+                getDefaultProvider: concreteDefaultProvider, resolveDefaultProvider, isAutoProviderRoutingActive,
+                getEffortTiersForProvider, validateProvider: validateSendToConversationProvider,
+                browserControlEnabled: () => getLiveFeatureFlags().browserControlEnabled },
+            getRalphEnabled,
+        }),
     });
     // Connectors register their completion/result transports below.
     opts.setSendToConversationRuntime?.({

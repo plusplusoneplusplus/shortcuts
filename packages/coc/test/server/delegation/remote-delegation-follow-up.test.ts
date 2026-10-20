@@ -15,7 +15,7 @@ import { RemoteDelegationRequestStore } from '../../../src/server/delegation/rem
 import { captureRemoteDelegationIntent, type RemoteDelegationIntent } from '../../../src/server/delegation/remote-delegation-admission';
 import type { RemoteDelegationClaim } from '../../../src/server/delegation/remote-delegation-auth';
 import { REMOTE_DELEGATION_FOLLOW_UP_PATH, REMOTE_DELEGATION_RECEIPT_PATH,
-    registerRemoteDelegationFollowUpRoutes, registerRemoteDelegationProofRoutes } from '../../../src/server/delegation/remote-delegation-routes';
+    registerRemoteDelegationRoutes, registerRemoteDelegationProofRoutes } from '../../../src/server/delegation/remote-delegation-routes';
 import { createRouter, sendJson, type Route } from '../../../src/server/shared/router';
 import type { RemoteServerWithRuntime } from '../../../src/server/servers/remote-server-types';
 
@@ -50,7 +50,7 @@ describe('authenticated destination follow-up HTTP admission', () => {
         delivery = new ProcessMessageDeliveryService({ store, bridge });
         admissions = new RemoteDelegationAdmissionStore(destinationDir());
         destinationRoutes.splice(0);
-        registerRemoteDelegationFollowUpRoutes(destinationRoutes, {
+        registerRemoteDelegationRoutes(destinationRoutes, {
             admissions, store, delivery, remotes: { list: () => remotes },
         });
     }

@@ -8,7 +8,10 @@ import type { RemoteDelegationAdmissionStore, RemoteDelegationAdmission } from '
 import { emitDeliveryEvents, RemoteFollowUpRejectedError, type ProcessMessageDeliveryService } from '../processes/process-message-delivery-service';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { RemoteServerSource } from '../servers/workspace-directory';
+import { remoteChatLaunchBody, remoteRalphLaunchBody } from './remote-delegation-launch';
+import type { RemoteDelegationDispatch, RemoteDelegationFindChild } from './remote-delegation-admission';
 
+export const REMOTE_DELEGATION_LAUNCH_PATH = '/api/remote-delegations/launch';
 export const REMOTE_DELEGATION_FOLLOW_UP_PATH = '/api/remote-delegations/follow-up';
 export const REMOTE_DELEGATION_RECEIPT_PATH = '/api/remote-delegations/receipt';
 const followUpBody = z.object({
@@ -26,12 +29,30 @@ function publicReceipt(row: RemoteDelegationAdmission) {
 }
 
 /** No capability is advertised until the complete result lifecycle is composed. */
-export function registerRemoteDelegationFollowUpRoutes(routes: Route[], options: {
+export function registerRemoteDelegationRoutes(routes: Route[], options: {
     admissions: RemoteDelegationAdmissionStore; remotes: RemoteServerSource;
     delivery: ProcessMessageDeliveryService; store: ProcessStore;
+    launch?: { dispatch: RemoteDelegationDispatch; findChild: RemoteDelegationFindChild };
     fetchImpl?: typeof fetch;
 }): void {
     const gateway = new RemoteDelegationAdmissionService(options.admissions, { remotes: options.remotes, fetchImpl: options.fetchImpl });
+    if (options.launch) routes.push({
+        method: 'POST', pattern: REMOTE_DELEGATION_LAUNCH_PATH,
+        handler: async (req, res) => {
+            res.setHeader('Cache-Control', 'no-store');
+            let body: { claim: z.infer<typeof remoteDelegationClaimSchema>; intent: unknown };
+            try {
+                body = z.object({ claim: remoteDelegationClaimSchema, intent: z.unknown() }).strict()
+                    .parse(await readJsonBody(req, 1_065_000));
+                const { intent } = captureRemoteDelegationIntent(body.intent);
+                if (body.claim.kind !== intent.kind || !['launch', 'ralph'].includes(intent.kind)) throw new Error();
+                (intent.kind === 'launch' ? remoteChatLaunchBody : remoteRalphLaunchBody).parse(intent.body);
+            } catch { send400(res, 'Invalid remote launch admission.'); return; }
+            try {
+                sendJson(res, publicReceipt(await gateway.admit(body.claim, body.intent, options.launch!.dispatch)), 202);
+            } catch { sendError(res, 503, 'Remote launch admission is unavailable; reconcile before any further action.'); }
+        },
+    });
     routes.push({
         method: 'POST', pattern: REMOTE_DELEGATION_FOLLOW_UP_PATH,
         handler: async (req, res) => {
@@ -68,10 +89,11 @@ export function registerRemoteDelegationFollowUpRoutes(routes: Route[], options:
             let claim: z.infer<typeof remoteDelegationClaimSchema>;
             try {
                 claim = remoteDelegationClaimSchema.parse(await readJsonBody(req, 16_384));
-                if (claim.kind !== 'follow-up') throw new Error();
-            } catch { send400(res, 'Invalid remote follow-up receipt request.'); return; }
+                if (claim.kind !== 'follow-up' && !options.launch) throw new Error();
+            } catch { send400(res, 'Invalid remote admission receipt request.'); return; }
             try {
                 const receipt = await gateway.reconcile(claim, async row => {
+                    if (row.kind !== 'follow-up') return options.launch!.findChild(row);
                     const found = await options.delivery.findRemoteFollowUpReceipt(
                         row.destination.workspaceId, row.targetProcessId!, row.executionId);
                     return found ? { processId: row.targetProcessId! } : undefined;

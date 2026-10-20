@@ -134,8 +134,12 @@ references before editing. Paths are package-relative.
   origin proofs cannot create missing destination claims. Keep domain authorization in the
   execution adapter. Authenticated destination follow-up admission uses the queued message
   service with exact workspace/process ownership and the active provider/session binding.
-  Receipt reconciliation repairs acceptance from durable task/pending/turn evidence only;
-  it never sends work. Launch/Ralph adapters and terminal transfer await composition;
+  Destination chat/Ralph launches reuse queue preparation and native Ralph admission with
+  destination-owned task/session IDs and registered workspace roots. Reject caller paths,
+  parent/connector context and worktrees; preserve queue pauses, provider/Auto/tier policy
+  and `ralph.enabled`. Receipt reconciliation repairs acceptance from exact task/process
+  evidence for launches and task/pending/turn evidence for follow-ups; a prepared Ralph
+  journal alone proves no admission. It never sends work. Terminal transfer awaits composition;
   remote tools retain unavailable automatic result return and advertise no tracking capability.
   AI reuses generated job/artifact links unchanged; the existing SPA resolver verifies
   visible ownership and fails unavailable without local fallback. Explicit `source: dashboard`

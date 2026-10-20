@@ -168,6 +168,14 @@ execution ID, preserves active provider/strict session resumption, and rechecks 
 owner/visibility during queue routing. Sentinel/Ralph targets are excluded. No desktop
 mirror or caller-selected connector/correlation fields enter this path.
 
+`delegation/remote-delegation-launch.ts` admits ordinary Ask/Autopilot chats and native
+Ralph interviews/execution through the shared queue preparation and Ralph launch services.
+Strict bodies accept content/goal, AI selection and title/priority, excluding caller paths,
+parent/connector context and worktrees. Registered destination workspaces supply execution
+roots; queue pauses, provider/tier/Auto policy and `ralph.enabled` remain authoritative.
+The destination execution ID owns the task and deterministic whole-session Ralph identity.
+Workspace roots are rechecked after asynchronous policy resolution before queue admission.
+
 `delegation/remote-delegation-admission.ts` provides the destination gateway.
 It captures the exact versioned JSON execution envelope, hashes all keys
 canonically, checks kind/workspace/target/digest, then verifies the origin proof. The
@@ -180,11 +188,13 @@ Intent capture caps bytes, depth and node count; domain authorization remains se
 IDs remain independent of colliding origin IDs. Durable `dispatching` claims admit one
 adapter call. Duplicate/uncertain/crash-window claims only reconcile; accepted origin
 proofs cannot create missing destination claims. Immutable accepted children enforce
-exact follow-up targets and whole Ralph sessions. Authenticated follow-up receipt reads
-repair uncertain/dispatching acceptance from exact queue, pending-message or user-turn
-evidence without enqueueing. Wire receipts exclude destination execution IDs and private
-tokens. Snapshot/wipe policy matches origin reservations. Launch/Ralph adapters, terminal
-transfer and recovery scheduling await composition. Runtime tools retain untracked
+exact follow-up targets and whole Ralph sessions. Authenticated receipt reads repair
+uncertain/dispatching acceptance from exact queue/process evidence for launches and
+queue/pending/user-turn evidence for follow-ups, without enqueueing. Conflicting owners,
+task kinds or Ralph sessions fail closed; prepared Ralph journals alone cannot prove admission.
+Wire receipts exclude standalone execution bookkeeping and private tokens. Snapshot/wipe
+policy matches origin reservations. Terminal transfer and recovery scheduling await composition.
+Runtime tools retain untracked
 dispatch and unavailable result return; no tracking capability is advertised.
 
 ### Delegated PR receipts
