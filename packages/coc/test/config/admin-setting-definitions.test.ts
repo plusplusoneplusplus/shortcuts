@@ -735,18 +735,23 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatures(resolved)).not.toHaveProperty('railGitSummaryEnabled');
     });
 
-    it('exposes the Desktop Admin machine selector as a default-off experimental feature', () => {
+    it('enables the experimental Desktop Admin machine selector by default with an explicit false opt-out', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.adminMachineSwitch');
         expect(def, 'features.adminMachineSwitch must be an admin setting').toBeDefined();
         expect(def!.value).toEqual({ kind: 'boolean' });
-        expect(def!.default).toBe(false);
+        expect(def!.default).toBe(true);
+        expect(def!.absentFallback).toBeUndefined();
         expect(def!.runtime).toBe('live');
         expect(def!.runtimeFlag).toBe('adminMachineSwitchEnabled');
         expect(def!.ui!.badge).toBe('experimental');
-        expect(def!.ui!.hint).toMatch(/disabled by default/i);
-        expect(DEFAULT_CONFIG.features.adminMachineSwitch).toBe(false);
-        expect(buildRuntimeFeatureFlags({}).adminMachineSwitchEnabled).toBe(false);
+        expect(def!.ui!.hint).toMatch(/enabled by default/i);
+        expect(def!.ui!.hint).not.toMatch(/disabled by default/i);
+        expect(DEFAULT_CONFIG.features.adminMachineSwitch).toBe(true);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).adminMachineSwitchEnabled).toBe(true);
+        expect(buildRuntimeFeatureFlags({}).adminMachineSwitchEnabled).toBe(true);
+        expect(buildRuntimeFeatureFlags({ features: {} }).adminMachineSwitchEnabled).toBe(true);
         expect(buildRuntimeFeatureFlags({ features: { adminMachineSwitch: true } }).adminMachineSwitchEnabled).toBe(true);
+        expect(buildRuntimeFeatureFlags({ features: { adminMachineSwitch: false } }).adminMachineSwitchEnabled).toBe(false);
     });
 
     it('exposes the collapsed-rail Admin and quota shortcuts as a default-on Appearance setting', () => {

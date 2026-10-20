@@ -1513,7 +1513,7 @@ timeout: 300
                     "enabled": false,
                   },
                   "features": {
-                    "adminMachineSwitch": false,
+                    "adminMachineSwitch": true,
                     "arxivPaperIngest": false,
                     "autoAgentProviderRouting": false,
                     "autoMemoryPromotion": true,

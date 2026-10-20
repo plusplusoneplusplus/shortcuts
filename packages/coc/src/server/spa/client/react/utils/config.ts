@@ -619,9 +619,9 @@ export function isRailManualRefreshEnabled(): boolean {
     return getConfig().railManualRefreshEnabled !== false;
 }
 
-/** Returns true when Desktop Admin may target a registered remote server (`features.adminMachineSwitch`). */
+/** Returns true when Desktop Admin may target a registered remote server (`features.adminMachineSwitch`); on unless the server says off. */
 export function isAdminMachineSwitchEnabled(): boolean {
-    return getConfig().adminMachineSwitchEnabled === true;
+    return getConfig().adminMachineSwitchEnabled !== false;
 }
 
 /** Returns true when the collapsed workspace rail mirrors Admin and quota (`features.railStatusActions`). */

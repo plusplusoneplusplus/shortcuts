@@ -68,7 +68,8 @@ beforeEach(() => {
         const result = await handler(url, init);
         return result instanceof Response ? result : json(result);
     }));
-    (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', hostname: 'desk', adminMachineSwitchEnabled: true };
+    // No adminMachineSwitchEnabled: the suite runs on the shipped default (on).
+    (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', hostname: 'desk' };
     (window as any).cocDesktop = { isDesktop: true };
     resetSpaCocClientForTests();
 });
@@ -196,8 +197,25 @@ describe('AC-01 selection and lifecycle', () => {
         expect(window.location.hash).toBe(hash);
     });
 
-    it('is inert with the flag off: no selector and page-origin transport', async () => {
-        (window as any).__DASHBOARD_CONFIG__.adminMachineSwitchEnabled = false;
+    it('is on by default when the connected server omits the flag', async () => {
+        render(<Shell><ConfigProbe /></Shell>);
+        expect(await screen.findByTestId('admin-machine-selector')).toBeTruthy();
+        await waitFor(() => expect(calls.some(c => c.url === '/api/servers')).toBe(true));
+    });
+
+    it.each([
+        ['flat', { adminMachineSwitchEnabled: false }],
+        ['runtime features', { features: { adminMachineSwitchEnabled: false } }],
+    ])('is inert with an explicit false (%s): no selector and page-origin transport', async (_shape, flag) => {
+        Object.assign((window as any).__DASHBOARD_CONFIG__, flag);
+        render(<Shell><ConfigProbe /></Shell>);
+        expect(await screen.findByText('local|local')).toBeTruthy();
+        expect(screen.queryByTestId('admin-machine-selector')).toBeNull();
+        expect(calls.some(c => c.url === '/api/servers')).toBe(false);
+    });
+
+    it('stays off when the connected server is a container', async () => {
+        (window as any).__DASHBOARD_CONFIG__.containerMode = true;
         render(<Shell><ConfigProbe /></Shell>);
         expect(await screen.findByText('local|local')).toBeTruthy();
         expect(screen.queryByTestId('admin-machine-selector')).toBeNull();

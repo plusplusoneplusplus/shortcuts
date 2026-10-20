@@ -132,9 +132,9 @@ sections are reached with `selectOption('settings:appearance')`.
 
 ### Admin machine target
 
-With `features.adminMachineSwitch` (default off) in the desktop shell, outside
-container mode, `AdminDialog` wraps `AdminPanel` in `AdminTargetProvider` +
-`AdminTargetGate` (`admin/adminTarget.tsx`). The flag is read once per open from
+With `features.adminMachineSwitch` (default on; an explicit false opts out) in
+the desktop shell, outside container mode, `AdminDialog` wraps `AdminPanel` in
+`AdminTargetProvider` + `AdminTargetGate` (`admin/adminTarget.tsx`). The flag is read once per open from
 the connected server. A "Configure machine" `<select>` in the Admin top bar lists
 the connected server first, then the connected server's registry
 (`servers.list()`, never the target's). Rows show credential-free connection

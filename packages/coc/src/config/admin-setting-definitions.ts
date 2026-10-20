@@ -1089,10 +1089,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.adminMachineSwitch', default: false, runtime: 'live', runtimeFlag: 'adminMachineSwitchEnabled',
+        key: 'features.adminMachineSwitch', default: true, runtime: 'live', runtimeFlag: 'adminMachineSwitchEnabled',
         ui: {
             group: 'dashboard', order: 68, label: 'Configure another machine from Admin', badge: 'experimental',
-            hint: 'Adds a "Configure machine" selector to the CoC Desktop Admin dialog, so server-owned Admin pages can target a registered remote server. Workspaces, chats and the desktop connection are unchanged. Disabled by default.',
+            hint: 'Adds a "Configure machine" selector to the CoC Desktop Admin dialog, so server-owned Admin pages can target a registered remote server. Workspaces, chats and the desktop connection are unchanged. Enabled by default.',
             testId: 'toggle-admin-machine-switch-enabled',
         },
     }),
