@@ -334,8 +334,10 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
                 )}
                 <div className="relative flex-1 min-h-0">
                     <div ref={hostRef} className="absolute inset-0" data-testid={`${testId}-host`} />
-                    {diffSelectionDragSource && (
+                    {(diffSelectionDragSource || onAddComment) && (
                         <MonacoDiffSelectionAttachPill
+                            workspaceId={workspaceId}
+                            onAddComment={onAddComment}
                             editor={editor}
                             source={diffSelectionDragSource}
                             modelsVersion={modelsVersion}

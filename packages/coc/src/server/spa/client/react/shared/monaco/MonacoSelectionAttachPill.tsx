@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { editor as MonacoEditor, Selection } from 'monaco-editor';
 import { attachSelectionToChat } from '../../features/chat/activeChatAttach';
 import type { SessionContextAttachmentDragPayload } from '../../features/chat/sessionContextDrag';
@@ -9,36 +9,52 @@ export interface MonacoSelectionAttachPillProps {
     workspaceId: string;
     /** Concrete owner route, independent of the payload's server workspace ID. */
     destinationId?: string;
-    buildPayload: (selection: Selection, model: MonacoEditor.ITextModel) => SessionContextAttachmentDragPayload | null;
+    onComment?: (selection: Selection, model: MonacoEditor.ITextModel, position: { top: number; left: number }) => void;
+    buildPayload?: (selection: Selection, model: MonacoEditor.ITextModel) => SessionContextAttachmentDragPayload | null;
 }
 
 /** Overlay coordinates are relative to the editor's positioned wrapper. */
-export function MonacoSelectionAttachPill({ editor, workspaceId, destinationId = workspaceId, buildPayload }: MonacoSelectionAttachPillProps) {
-    const buttonRef = useRef<HTMLButtonElement>(null);
-    const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+export function MonacoSelectionAttachPill({ editor, workspaceId, destinationId = workspaceId, buildPayload, onComment }: MonacoSelectionAttachPillProps) {
+    const actionsRef = useRef<HTMLDivElement>(null);
+    const [size, setSize] = useState({ width: 0, height: 0 });
+    const [position, setPosition] = useState<{ left: number; top: number; maxWidth: number } | null>(null);
     const dismissRef = useRef<() => void>(() => {});
-    const enabled = isSessionContextAttachmentsEnabled();
+    const enabled = isSessionContextAttachmentsEnabled() && !!buildPayload;
+    const visible = !!position;
+    useLayoutEffect(() => {
+        const node = actionsRef.current;
+        if (!node) return;
+        const measure = () => {
+            const { width, height } = node.getBoundingClientRect();
+            setSize(previous => previous.width === width && previous.height === height ? previous : { width, height });
+        };
+        measure();
+        if (typeof ResizeObserver === 'undefined') return;
+        const observer = new ResizeObserver(measure);
+        observer.observe(node);
+        return () => observer.disconnect();
+    }, [visible, enabled, onComment]);
 
     useEffect(() => {
         setPosition(null);
-        if (!enabled || !editor || !workspaceId) return;
+        if ((!enabled && !onComment) || !editor || !workspaceId) return;
         let dismissed = false;
         const update = () => {
             const selection = editor.getSelection();
             const model = editor.getModel();
-            if (dismissed || (!editor.hasWidgetFocus() && document.activeElement !== buttonRef.current) || !selection || selection.isEmpty() || !model
-                || !buildPayload(selection, model)) {
+            if (dismissed || (!editor.hasWidgetFocus() && !actionsRef.current?.contains(document.activeElement)) || !selection || selection.isEmpty() || !model
+                || (!onComment && !buildPayload?.(selection, model))) {
                 setPosition(null);
                 return;
             }
             const end = editor.getScrolledVisiblePosition(selection.getEndPosition());
             const layout = editor.getLayoutInfo();
-            if (!end || end.top < 0 || end.top + end.height + 28 > layout.height
+            if (!end || end.top < 0 || end.top + end.height + (size.height || 28) + 2 > layout.height
                 || end.left < 0 || end.left > layout.contentLeft + layout.contentWidth) {
                 setPosition(null);
                 return;
             }
-            setPosition({ left: Math.max(layout.contentLeft, Math.min(end.left, layout.width - 150)), top: end.top + end.height + 2 });
+            setPosition({ left: Math.max(layout.contentLeft, Math.min(end.left, layout.width - (size.width || (onComment ? 230 : 150)) - 8)), top: end.top + end.height + 2, maxWidth: Math.max(0, layout.width - layout.contentLeft - 8) });
         };
         const listeners = [
             editor.onDidChangeCursorSelection(() => { dismissed = false; update(); }),
@@ -49,7 +65,7 @@ export function MonacoSelectionAttachPill({ editor, workspaceId, destinationId =
             editor.onDidBlurEditorWidget(() => {
                 // Monaco's blur fires before the browser moves focus to the button.
                 queueMicrotask(() => {
-                    if (document.activeElement !== buttonRef.current) setPosition(null);
+                    if (!actionsRef.current?.contains(document.activeElement)) setPosition(null);
                 });
             }),
         ];
@@ -59,26 +75,38 @@ export function MonacoSelectionAttachPill({ editor, workspaceId, destinationId =
         dismissRef.current = dismiss;
         update();
         return () => { listeners.forEach(listener => listener.dispose()); dismissRef.current = () => {}; };
-    }, [editor, workspaceId, destinationId, buildPayload, enabled]);
+    }, [editor, workspaceId, destinationId, buildPayload, enabled, onComment, size]);
 
-    if (!enabled || !position) return null;
+    if ((!enabled && !onComment) || !position) return null;
+    const buttonClass = "px-2 py-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500";
     return (
-        <button
-            ref={buttonRef}
-            type="button"
-            className="pointer-events-auto absolute z-20 rounded-full border border-gray-300 bg-white px-2 py-1 text-xs text-gray-800 shadow dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+        <div
+            ref={actionsRef}
+            role="group"
+            aria-label="Selection actions"
+            className="pointer-events-auto absolute z-20 flex flex-wrap w-max rounded-full border border-gray-300 bg-white text-xs text-gray-800 shadow dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
             style={position}
-            onMouseDown={event => { event.preventDefault(); event.stopPropagation(); }}
-            onBlur={() => setPosition(null)}
-            onClick={() => {
+            onPointerDownCapture={event => { event.preventDefault(); event.stopPropagation(); }}
+            onMouseDownCapture={event => { event.preventDefault(); event.stopPropagation(); }}
+            onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setPosition(null); }}
+        >
+            {onComment && <button type="button" className={buttonClass} onClick={event => {
                 const selection = editor?.getSelection();
                 const model = editor?.getModel();
                 if (!selection || selection.isEmpty() || !model) return;
-                const payload = buildPayload(selection, model);
+                const rect = event.currentTarget.getBoundingClientRect();
+                dismissRef.current();
+                onComment(selection, model, { top: rect.bottom + 4, left: rect.left });
+            }}>Comment</button>}
+            {enabled && <button type="button" className={buttonClass} onClick={() => {
+                const selection = editor?.getSelection();
+                const model = editor?.getModel();
+                if (!selection || selection.isEmpty() || !model) return;
+                const payload = buildPayload?.(selection, model);
                 if (!payload) return;
                 dismissRef.current();
                 attachSelectionToChat(destinationId, payload);
-            }}
-        >Attach as context</button>
+            }}>Attach as context</button>}
+        </div>
     );
 }

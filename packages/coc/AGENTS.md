@@ -1176,7 +1176,10 @@ references before editing. Paths are package-relative.
   lists are keyed by workspace and diff source; comparison changes close pickers.
 - Repository file previews opt into `MonacoSelectionAttachPill`; diff viewers use
   side-local `MonacoDiffSelectionAttachPill` portals and the existing diff-selection
-  builder. Git hosts forward their concrete source clone through the detail pane
+  builder. Diff Comment actions follow `onAddComment` independently of attachment
+  flags, preserving side-local ranges and the host’s existing comment persistence.
+  Keep keyboard focus within the shared action group and clamp its measured size.
+  Git hosts forward their concrete source clone through the detail pane
   to both file-diff and working-tree pills. Inline PR tabs forward the same owner
   through PullRequestsTab, PullRequestDetail and PrFilesPanel; group hosts derive the member clone
   key from the group server. Keep payloads scoped to the raw owner workspace,
