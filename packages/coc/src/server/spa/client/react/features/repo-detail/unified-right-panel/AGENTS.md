@@ -989,24 +989,30 @@ Tests use isolated mock clients in
 
 ### To-do triggers
 
-`SentinelTodoTriggers` is a separate section below the cards. Its owner-qualified `client.triggers` calls use the ledger's
-workspace/process on the owning server. `sentinelTodoTriggerModel` keeps rule
-Waiting/Paused/terminal/error and delivery state separate from item/job/review
-states; rows link the canonical PR or display the saved zoned date and UTC tooltip.
-Item navigation expands
-and focuses only the target and its containing Normal/Manual Done/Archived
-sections, preserving other expansion state. Missing targets retain unavailable
-feedback; owner changes isolate row state and cancel pending highlights.
+`SentinelTodoTriggers` lists intact, nondelegated To-do bindings through the ledger
+owner's typed `client.triggers` API. Rule status and delivery stay separate from
+item/job/review states. Rows link the canonical PR, show a zoned date with UTC
+tooltip, or display a script's interval, last run/error and paused state.
+Script source is escaped, read-only text in a bounded disclosure; script rows
+never enter the PR/date editor or expose stored result payloads.
+
+The owner's `sentinelTodoCapabilities` controls date visibility and script
+execution, independently of page-origin flags. Disabled/unavailable script
+execution retains rows, source, Pause and Remove; Resume and Run now fail closed.
+Refreshes close script run confirmations when admission disappears. Owner changes
+isolate async reads and dialogs. Lifecycle writes carry saved revisions.
+Confirmed script Run now evaluates once, establishes a silent first baseline and
+wakes only on change; it neither consumes nor resumes a paused rule. Pending
+delivery and in-flight evaluation disable another script run.
+
 `SentinelTodoTriggerEditor` selects eligible normal items, PR URL/local picker or
-one-time date/time, and optional guidance. Date mode and rows require the owning
-client's `sentinelTodoCapabilities` result, never the page-origin flag. Default-off
-`features.sentinelTodoDateTimeTriggers` gates date authoring and arming on that server.
-Shared coc-client helpers validate local date/time and IANA zone, expose both DST
-overlap offsets and preview the exact UTC instant. Dialogs trap keyboard focus.
-Lifecycle writes carry revisions; Run now and overdue resume require confirmation.
-Clearing retains dedupe receipts; removed pending date rules suppress delivery.
+one-time date/time, and optional guidance. Shared coc-client helpers validate
+local date/time and IANA zone, expose DST overlap offsets and preview UTC.
+Dialogs trap focus; one-shot Run now and overdue resume require confirmation.
+Item links reveal only the target and its containing groups, preserving unrelated
+expansion; missing targets retain unavailable feedback. Clearing retains receipts.
 Rules never expire, mark items Done, launch jobs directly or grant authorization.
-`triggers-panel.test.tsx` covers states, controls and ownership.
+`triggers-panel.test.tsx` covers presentation, lifecycle, capabilities and ownership.
 
 ### To-do excursions
 
