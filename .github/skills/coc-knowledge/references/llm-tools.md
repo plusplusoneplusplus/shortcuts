@@ -410,7 +410,10 @@ or a repo name matched case-insensitively over the workspace directory (exact na
 that server's own `POST /api/queue` (Ralph: `POST /api/ralph-launch`, which accepts `title`) at its
 effective URL via `WorkspaceDirectory.startRemoteChat`. Health reads bracket admission,
 pin installation identity separately from the registry alias, and reject changed endpoints
-or owners. Missing identity fails before POST; post-admission uncertainty prohibits duplicate dispatch.
+or owners. Admission errors expose `dispatchState`: `not-started` before POST, `rejected`
+for definitive 4xx rejection, or `uncertain` after timeouts, lost/invalid replies, HTTP 408/5xx,
+or post-admission ownership changes. Uncertain admission requires reconciliation without
+duplicate dispatch. Public POST errors include safe HTTP status, not private transport details.
 Native grilling first verifies version-1
 `/api/ralph-launch/capabilities`; unsupported targets fail before admission, and uncertain POST
 acceptance reports inspection/recovery without duplicate dispatch. There is no local fallback for offline or

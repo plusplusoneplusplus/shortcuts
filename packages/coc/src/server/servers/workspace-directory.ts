@@ -81,6 +81,16 @@ export interface RemoteChatResult {
     sessionId?: string;
 }
 
+export type RemoteChatDispatchState = 'not-started' | 'rejected' | 'uncertain';
+
+/** Admission errors never imply that retrying execution is safe. */
+export class RemoteChatAdmissionError extends Error {
+    constructor(message: string, readonly dispatchState: RemoteChatDispatchState) {
+        super(message);
+        this.name = 'RemoteChatAdmissionError';
+    }
+}
+
 /** One chat of a remote repo, as returned by the remote's `GET /api/processes`. */
 export interface RemoteChatSummary {
     id: string;
@@ -183,7 +193,6 @@ interface RawWorkspace {
 const DEFAULT_LIST_TIMEOUT_MS = 4_000;
 const DEFAULT_START_TIMEOUT_MS = 15_000;
 
-/** The remote answered with a non-2xx status. */
 // Last-known remote entries per server id, served while a server is unreachable.
 // Module-level so per-turn local-only directories never allocate a handle.
 let sharedLastKnown: CacheHandle<WorkspaceDirectoryEntry[]> | undefined;
@@ -192,6 +201,7 @@ function getSharedLastKnownCache(): CacheHandle<WorkspaceDirectoryEntry[]> {
     return sharedLastKnown;
 }
 
+/** The remote answered with a non-2xx status; a server error can follow admission. */
 class RemoteRejectedError extends Error {
     constructor(message: string, readonly status: number) { super(message); }
 }
@@ -206,6 +216,16 @@ export class RemoteServerOfflineError extends Error {
 
 function serverName(server: RemoteServerWithRuntime): string {
     return server.label || server.id;
+}
+
+function isRemoteId(value: unknown): value is string {
+    if (typeof value !== 'string' || !value.trim() || value.length > 512) return false;
+    try {
+        encodeURIComponent(value);
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): WorkspaceDirectory {
@@ -430,47 +450,54 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
         async startRemoteChat(request) {
             const server = options.remoteServers?.list().find(s => s.id === request.serverId);
             if (!server) {
-                throw new Error(`Remote server '${request.serverId}' is not registered. Call list_workspaces to see available repos.`);
+                throw new RemoteChatAdmissionError(`Remote server '${request.serverId}' is not registered. Call list_workspaces to see available repos.`, 'not-started');
             }
             const label = serverName(server);
             if (!server.effectiveUrl) {
-                throw new Error(`Remote server "${label}" is offline (no reachable endpoint). The chat was not started.`);
+                throw new RemoteChatAdmissionError(`Remote server "${label}" is offline (no reachable endpoint). The chat was not started.`, 'not-started');
             }
             const target = { effectiveUrl: server.effectiveUrl, serverIdentity: server.serverIdentity };
             let serverIdentity: string;
             try {
                 const health = await requestJson(`${target.effectiveUrl}/api/health`, listTimeoutMs);
                 assertCurrentTarget(server.id, target);
-                if (typeof health?.serverIdentity !== 'string' || !health.serverIdentity.trim()
+                if (!isRemoteId(health?.serverIdentity)
                     || (target.serverIdentity && health.serverIdentity !== target.serverIdentity)) {
                     throw new Error('Server identity unavailable or replaced');
                 }
                 serverIdentity = health.serverIdentity;
             } catch {
-                throw new Error('Remote owning server identity unavailable or replaced. The chat was not started.');
+                throw new RemoteChatAdmissionError('Remote owning server identity unavailable or replaced. The chat was not started.', 'not-started');
             }
             const grilling = request.kind === 'ralph' && request.body.entryPoint === 'grill';
             if (grilling) {
                 try {
-                    const capabilities = await requestJson(`${server.effectiveUrl}/api/ralph-launch/capabilities`, listTimeoutMs);
+                    const capabilities = await requestJson(`${target.effectiveUrl}/api/ralph-launch/capabilities`, listTimeoutMs);
                     if (capabilities?.version !== 1 || capabilities?.grilling !== true) {
                         throw new Error('Native Ralph grilling is unsupported or disabled');
                     }
-                } catch (error) {
-                    throw new Error(`Remote server "${label}" cannot admit native Ralph grilling: ${error instanceof Error ? error.message : String(error)}. No launch was attempted.`);
+                } catch {
+                    throw new RemoteChatAdmissionError(`Remote server "${label}" cannot admit native Ralph grilling. No launch was attempted.`, 'not-started');
                 }
             }
-            assertCurrentTarget(server.id, target);
+            try {
+                assertCurrentTarget(server.id, target);
+            } catch {
+                throw new RemoteChatAdmissionError('Remote destination changed before admission. The chat was not started.', 'not-started');
+            }
             const path = request.kind === 'ralph' ? '/api/ralph-launch' : '/api/queue';
             let body: any;
             try {
-                body = await requestJson(`${server.effectiveUrl}${path}`, startTimeoutMs, { method: 'POST', body: request.body });
+                body = await requestJson(`${target.effectiveUrl}${path}`, startTimeoutMs, { method: 'POST', body: request.body });
             } catch (err) {
-                const reason = err instanceof Error ? err.message : String(err);
-                const prefix = err instanceof RemoteRejectedError ? `Remote server "${label}" rejected the request` : `Remote server "${label}" is unreachable`;
-                throw new Error(grilling && !(err instanceof RemoteRejectedError)
-                    ? `${prefix}: ${reason}. Admission is uncertain; inspect the remote chat list before retrying. Do not launch a duplicate job.`
-                    : `${prefix}: ${reason}. The chat was not started.`);
+                // A timeout, lost response or server-side error may follow durable
+                // admission. Only a definitive client rejection proves non-admission.
+                // Do not expose fetch errors (which may contain private endpoints).
+                const rejected = err instanceof RemoteRejectedError && err.status >= 400 && err.status < 500 && err.status !== 408;
+                throw new RemoteChatAdmissionError(rejected
+                    ? `Remote server "${label}" rejected the request (HTTP ${err.status}). The chat was not started.`
+                    : `Remote server "${label}" did not confirm admission. Admission is uncertain; inspect the remote chat list before retrying. Do not launch a duplicate job.`,
+                rejected ? 'rejected' : 'uncertain');
             }
             // A transport change during admission must not publish a guessed owner.
             try {
@@ -479,21 +506,20 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
                 assertCurrentTarget(server.id, target);
                 if (after?.serverIdentity !== serverIdentity) throw new Error('Server identity changed');
             } catch {
-                throw new Error('Remote job admission is uncertain: owning server unavailable or replaced. Do not launch a duplicate job.');
+                throw new RemoteChatAdmissionError('Remote job admission is uncertain: owning server unavailable or replaced. Do not launch a duplicate job.', 'uncertain');
             }
             if (request.kind === 'ralph') {
-                if (typeof body?.processId !== 'string') {
-                    throw new Error(`Remote server "${label}" returned no processId for the Ralph launch.`
-                        + (grilling ? ' Acceptance is uncertain; inspect the remote chat list, do not relaunch.' : ''));
+                if (!isRemoteId(body?.processId) || (body.sessionId !== undefined && !isRemoteId(body.sessionId))) {
+                    throw new RemoteChatAdmissionError(`Remote server "${label}" returned invalid Ralph admission identities. Admission is uncertain; inspect the remote chat list. Do not launch a duplicate job.`, 'uncertain');
                 }
                 if (grilling && (body.phase !== 'grilling' || typeof body.sessionId !== 'string')) {
-                    throw new Error(`Remote server "${label}" did not confirm native grilling admission. Acceptance is uncertain; inspect the remote chat list, do not relaunch.`);
+                    throw new RemoteChatAdmissionError(`Remote server "${label}" did not confirm native grilling admission. Admission is uncertain; inspect the remote chat list. Do not launch a duplicate job.`, 'uncertain');
                 }
                 return { serverIdentity, processId: body.processId, ...(typeof body.sessionId === 'string' ? { sessionId: body.sessionId } : {}) };
             }
             const taskId = body?.task?.id;
-            if (typeof taskId !== 'string' || !taskId) {
-                throw new Error(`Remote server "${label}" returned no task id for the new chat.`);
+            if (!isRemoteId(taskId) || !isRemoteId(toQueueProcessId(taskId))) {
+                throw new RemoteChatAdmissionError(`Remote server "${label}" returned an invalid task identity. Admission is uncertain; inspect the remote chat list. Do not launch a duplicate job.`, 'uncertain');
             }
             return { serverIdentity, processId: toQueueProcessId(taskId) };
         },

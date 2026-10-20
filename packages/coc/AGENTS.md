@@ -115,7 +115,10 @@ references before editing. Paths are package-relative.
   replies and delegated-result evidence use the same identity-only builder in
   `src/server/shared/chat-reference.ts`. Server composition supplies installation identity;
   remote admission verifies the owning server through health reads around its single
-  POST. Never substitute a transport alias, endpoint or viewer's server identity.
+  POST. Admission errors expose `dispatchState` (`not-started`, `rejected`, `uncertain`);
+  timeouts, lost/invalid replies and HTTP 408/5xx remain uncertain and prohibit blind
+  resubmission. Public POST errors omit private transport details. Never substitute
+  a transport alias, endpoint or viewer's server identity.
   AI reuses generated job/artifact links unchanged; the existing SPA resolver verifies
   visible ownership and fails unavailable without local fallback. Explicit `source: dashboard`
   reads the invoking workspace's dashboard relay through a late-bound runtime getter,

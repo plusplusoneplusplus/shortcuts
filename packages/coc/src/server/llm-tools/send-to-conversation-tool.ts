@@ -49,6 +49,8 @@ import type { ConversationCancellationResult } from '../processes/cancel-convers
 import {
     createWorkspaceDirectory,
     parseRemoteCloneKey,
+    RemoteChatAdmissionError,
+    type RemoteChatDispatchState,
     type WorkspaceDirectory,
 } from '../servers/workspace-directory';
 
@@ -261,6 +263,8 @@ export interface SendToConversationSuccess {
 export interface SendToConversationError {
     error: string;
     code?: string;
+    /** Remote admission only; uncertain execution must be reconciled, never resubmitted blindly. */
+    dispatchState?: RemoteChatDispatchState;
 }
 
 export type SendToConversationResult = SendToConversationSuccess | SendToConversationError;
@@ -1106,7 +1110,10 @@ async function createRemoteConversation(params: {
                 owner: { workspaceId: target.workspaceId, serverId: target.serverId } } : {}),
         };
     } catch (err) {
-        return { error: err instanceof Error ? err.message : String(err) };
+        return {
+            error: err instanceof Error ? err.message : String(err),
+            ...(err instanceof RemoteChatAdmissionError ? { dispatchState: err.dispatchState } : {}),
+        };
     }
 }
 

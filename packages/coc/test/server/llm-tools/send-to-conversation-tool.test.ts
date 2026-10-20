@@ -1374,9 +1374,92 @@ describe('createSendToConversationTool — remote create over HTTP (real directo
 
         const result = await tool.handler({ content: 'hi', workspaceId: 'remote:srv-1:w1' }, invocationStub);
 
-        expect(result).toEqual({ error: 'Remote server "vm" rejected the request: Unknown workspace. The chat was not started.' });
+        expect(result).toEqual({ error: 'Remote server "vm" rejected the request (HTTP 400). The chat was not started.', dispatchState: 'rejected' });
         expect(enqueueChat).not.toHaveBeenCalled();
     });
+});
+
+describe('remote admission uncertainty never retries execution', () => {
+    const modes = [
+        { mode: 'ask' as const },
+        { mode: 'ralph' as const },
+        { mode: 'ralph' as const, entryPoint: 'grill' as const },
+    ];
+
+    function fixture(admit: (init: RequestInit) => Promise<Response>, options?: { startTimeoutMs?: number }) {
+        const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+            if (url.endsWith('/api/health')) return new Response(JSON.stringify({ serverIdentity: 'remote-installation' }));
+            if (url.endsWith('/capabilities')) return new Response(JSON.stringify({ version: 1, grilling: true }));
+            if (init?.method === 'POST') return admit(init);
+            throw new Error(`Unexpected request: ${url}`);
+        });
+        const workspaceDirectory = createWorkspaceDirectory({ store: makeStore(),
+            remoteServers: { list: () => [{ id: 'srv-1', label: 'vm', kind: 'url',
+                effectiveUrl: 'http://private-target:4000', serverIdentity: 'remote-installation' } as any] },
+            fetchImpl: fetchImpl as typeof fetch, ...options });
+        const { tool, enqueueChat } = makeTool({ runtime: { workspaceDirectory } });
+        return { fetchImpl, enqueueChat, call: (args: typeof modes[number]) => tool.handler({
+            content: 'Work', workspaceId: 'remote:srv-1:destination', provider: 'copilot', ...args,
+        }, invocationStub) };
+    }
+
+    for (const mode of modes) {
+        describe(`${mode.mode} ${mode.entryPoint ?? 'execute'}`, () => {
+            it.each(['disconnect', 'body-disconnect', 'invalid-json', 'missing-id', 'empty-id', 'oversized-id', 'invalid-unicode',
+                ...(mode.mode === 'ralph' ? ['invalid-session'] : [])])(
+                'reports %s after POST as uncertain, with no local fallback or duplicate', async failure => {
+                    const h = fixture(async () => {
+                        if (failure === 'disconnect') throw new Error('failed to fetch http://private-target:4000/?token=private-token');
+                        if (failure === 'body-disconnect') return { ok: true, text: async () => { throw new Error('private response failure'); } } as unknown as Response;
+                        if (failure === 'invalid-json') return new Response('{broken');
+                        const id = failure === 'empty-id' ? ' ' : failure === 'oversized-id' ? 'x'.repeat(513)
+                            : failure === 'invalid-unicode' ? '\ud800' : 'child';
+                        return new Response(JSON.stringify(failure === 'missing-id' ? {} : mode.mode === 'ralph'
+                            ? { processId: id, sessionId: failure === 'invalid-session' ? 123 : 'session', phase: 'grilling' }
+                            : { task: { id } }));
+                    });
+                    const result = await h.call(mode);
+                    expect(result).toMatchObject({ dispatchState: 'uncertain', error: expect.stringContaining('Do not launch a duplicate job') });
+                    expect(result).not.toHaveProperty('openLink');
+                    expect(JSON.stringify(result)).not.toMatch(/private-target|private-token|private response|not started/);
+                    expect(h.fetchImpl.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+                    expect(h.enqueueChat).not.toHaveBeenCalled();
+                });
+
+            it.each([400, 401, 403, 404, 409, 422, 429, 408, 500, 502, 503, 504])(
+                'classifies HTTP %i without assuming a server failure proves non-admission', async status => {
+                    const h = fixture(async () => new Response(JSON.stringify({ error: 'private error http://private-target/?token=private-token' }), { status }));
+                    const uncertain = status === 408 || status >= 500;
+                    const result = await h.call(mode);
+                    expect(result).toMatchObject({ dispatchState: uncertain ? 'uncertain' : 'rejected' });
+                    expect((result as any).error).toContain(uncertain ? 'Do not launch a duplicate job' : `HTTP ${status}`);
+                    expect(JSON.stringify(result)).not.toMatch(/private-target|private-token/);
+                    expect(h.fetchImpl.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+                    expect(h.enqueueChat).not.toHaveBeenCalled();
+                });
+
+            it.each(['headers', 'body'])('aborts a timeout waiting for %s and retains uncertain admission', async stage => {
+                vi.useFakeTimers();
+                try {
+                    let signal: AbortSignal | undefined;
+                    const h = fixture(async init => {
+                        signal = init.signal as AbortSignal;
+                        if (stage === 'headers') return new Promise<Response>(() => {});
+                        return { ok: true, text: () => new Promise<string>(() => {}) } as Response;
+                    }, { startTimeoutMs: 50 });
+                    const pending = h.call(mode);
+                    await vi.advanceTimersByTimeAsync(50);
+                    expect(await pending).toMatchObject({ dispatchState: 'uncertain', error: expect.stringContaining('Do not launch a duplicate job') });
+                    expect(signal?.aborted).toBe(true);
+                    expect(h.fetchImpl.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+                    expect(h.enqueueChat).not.toHaveBeenCalled();
+                    expect(vi.getTimerCount()).toBe(0);
+                } finally {
+                    vi.useRealTimers();
+                }
+            });
+        });
+    }
 });
 
 describe('createSendToConversationTool — messaging completion notices', () => {
@@ -1703,6 +1786,7 @@ describe('durable job link ownership at admission', () => {
             expect(result).toHaveProperty('error');
             expect(result).not.toHaveProperty('openLink');
             expect(posts).toBe(state.endsWith('after-post') ? 1 : 0);
+            expect(result).toHaveProperty('dispatchState', posts ? 'uncertain' : 'not-started');
             if (posts) expect((result as any).error).toContain('Do not launch a duplicate job');
             expect(JSON.stringify(result)).not.toContain('private transport failure');
             expect(enqueueChat).not.toHaveBeenCalled();
