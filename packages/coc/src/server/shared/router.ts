@@ -262,12 +262,20 @@ export function serveStaticFile(filePath: string, res: http.ServerResponse): boo
 
 /**
  * Read the full request body and parse as JSON.
- * Rejects on invalid JSON.
+ * Rejects on invalid JSON or an optional cumulative byte limit, draining excess input.
  */
-export async function readJsonBody<T = unknown>(req: http.IncomingMessage): Promise<T> {
+export async function readJsonBody<T = unknown>(req: http.IncomingMessage, maxBytes = Infinity): Promise<T> {
     return new Promise<T>((resolve, reject) => {
         const chunks: Buffer[] = [];
-        req.on('data', (chunk: Buffer) => chunks.push(chunk));
+        let size = 0;
+        req.on('data', (chunk: Buffer) => {
+            size += chunk.length;
+            if (size > maxBytes) {
+                reject(new Error('JSON body exceeds size limit'));
+                return;
+            }
+            chunks.push(chunk);
+        });
         req.on('end', () => {
             try {
                 const body = Buffer.concat(chunks).toString('utf-8');

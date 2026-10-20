@@ -1,9 +1,10 @@
 import * as fs from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { getRepoDataPath } from '../paths';
 import { atomicWriteJsonUnique } from '../shared/fs-utils';
 import { DelegatedJobStore, type DelegatedJob } from './delegated-job-store';
+import { remoteDelegationClaimSchema, sameRemoteDelegationBinding, type RemoteDelegationProof } from './remote-delegation-auth';
 
 export const REMOTE_DELEGATION_REQUESTS_FILE = 'remote-delegation-requests.json';
 const id = z.string().min(1).max(512).refine(value => !!value.trim());
@@ -24,6 +25,8 @@ const requestSchema = z.object({
     targetProcessId: id.optional(),
     /** SHA-256 of the exact execution request; prompt text is not stored here. */
     intentDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    /** Private per-request credential; absent historical reservations cannot prove origin. */
+    proofToken: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     title: z.string().min(1).max(80),
     messagingOrigin: z.object({
         connector: z.enum(['whatsapp', 'teams']), chatKey: id, threadId: id.optional(),
@@ -45,7 +48,7 @@ const requestSchema = z.object({
 
 export type RemoteDelegationRequest = z.infer<typeof requestSchema>;
 export type RemoteDelegationReservation = Omit<RemoteDelegationRequest,
-    'requestId' | 'originServerIdentity' | 'createdAt' | 'admission'> & { requestId?: string };
+    'requestId' | 'originServerIdentity' | 'createdAt' | 'admission' | 'proofToken'> & { requestId?: string };
 
 /**
  * Origin-owned admission journal, separate from terminal-result delivery.
@@ -72,7 +75,8 @@ export class RemoteDelegationRequestStore {
     }
 
     reserve(input: RemoteDelegationReservation): RemoteDelegationRequest {
-        const request = requestSchema.parse({ ...input, requestId: input.requestId === undefined ? randomUUID() : input.requestId,
+        const request = requestSchema.parse({ ...input, proofToken: randomBytes(32).toString('hex'),
+            requestId: input.requestId === undefined ? randomUUID() : input.requestId,
             originServerIdentity: this.jobs.serverIdentity, createdAt: new Date().toISOString(), admission: { state: 'reserved' } });
         const rows = this.list(request.parent.workspaceId);
         const existing = rows.find(row => row.requestId === request.requestId);
@@ -87,6 +91,24 @@ export class RemoteDelegationRequestStore {
         rows.push(request);
         this.save(request.parent.workspaceId, rows);
         return request;
+    }
+
+    /** Read-only proof, available after the durable dispatch claim, including recovery. */
+    proveOrigin(input: unknown): RemoteDelegationProof | undefined {
+        const parsed = remoteDelegationClaimSchema.safeParse(input);
+        if (!parsed.success) return undefined;
+        const claim = parsed.data;
+        const request = this.list(claim.parent.workspaceId).find(row => row.requestId === claim.requestId);
+        if (!request?.proofToken || !timingSafeEqual(Buffer.from(request.proofToken, 'hex'), Buffer.from(claim.proofToken, 'hex'))
+            || request.admission.state === 'reserved' || request.admission.state === 'rejected') return undefined;
+        const proof: RemoteDelegationProof = {
+            version: 1, requestId: request.requestId, originServerIdentity: request.originServerIdentity,
+            parent: request.parent,
+            destination: { serverIdentity: request.destination.serverIdentity, workspaceId: request.destination.workspaceId },
+            kind: request.kind, ...(request.targetProcessId ? { targetProcessId: request.targetProcessId } : {}),
+            intentDigest: request.intentDigest, admission: request.admission.state,
+        };
+        return sameRemoteDelegationBinding(claim, proof) ? proof : undefined;
     }
 
     /** The only transition that permits one execution POST. False means do not send. */
@@ -163,6 +185,6 @@ export class RemoteDelegationRequestStore {
     }
 
     private save(workspaceId: string, rows: RemoteDelegationRequest[]): void {
-        atomicWriteJsonUnique(getRepoDataPath(this.dataDir, workspaceId, REMOTE_DELEGATION_REQUESTS_FILE), z.array(requestSchema).parse(rows));
+        atomicWriteJsonUnique(getRepoDataPath(this.dataDir, workspaceId, REMOTE_DELEGATION_REQUESTS_FILE), z.array(requestSchema).parse(rows), 0o600);
     }
 }

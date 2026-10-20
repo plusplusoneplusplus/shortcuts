@@ -762,6 +762,7 @@ Streams belong to the owning server/clone. SSE framing preserves split UTF-8 and
 | POST | `/api/servers/:id/connect` | Connect (DevTunnel) |
 | POST | `/api/servers/:id/disconnect` | Disconnect |
 | POST | `/api/servers/cherry-pick-transfer` | Export/apply oldest-first commit(s) across selected server/workspace pair; omitted/local server means current, remote must be online/registered. Propagate dirty/conflict/counts; omit effective URLs/local paths |
+| POST | `/api/remote-delegations/proof` | Private, read-only origin reservation proof after durable dispatch; exact owner/request/digest/token binding, 16 KiB body limit, no-store. Invalid body → 400, unavailable proof → 403, storage failure → 503. Does not dispatch work or advertise tracked execution support; [admission contract](server-architecture.md#remote-delegation-admission) |
 
 ## Sync
 

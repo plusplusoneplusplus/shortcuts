@@ -139,16 +139,33 @@ duplicate remote workspace/request or session identities independently of connec
 Historical rows retain their existing tracking semantics; transport admission owns proof
 of remote identity.
 
+### Remote delegation admission
+
 `delegation/remote-delegation-request-store.ts` provides origin-side admission
 reservations in `repos/<parentWorkspaceId>/remote-delegation-requests.json`.
 It captures the parent, destination identity and connection hint, request kind,
-exact follow-up target, request digest and connector origin before a child exists.
-A durable dispatch claim permits one execution attempt; claimed or uncertain
-requests require receipt reconciliation, including after restart. Verified acceptance
-persists before idempotent delegated-job registration so recovery can repair a
-failed second write. These machine-local receipts are excluded from snapshots and
-cleared with delegated jobs. The store is not wired to remote execution; receipt
-authentication, admission gating and recovery scheduling belong to the transport.
+exact follow-up target, request digest, connector origin and private random proof
+token before a child exists. Atomic publication requests file mode `0600`.
+A durable dispatch claim permits one execution attempt; claimed or uncertain requests
+require receipt reconciliation. Verified acceptance persists before idempotent
+delegated-job registration. Machine-local receipts are excluded from snapshots and
+cleared with delegated jobs.
+
+`delegation/remote-delegation-auth.ts` verifies origin reservations through an online
+registered reciprocal relationship. Health identity checks bracket the origin's
+`POST /api/remote-delegations/proof`; endpoint/registry changes, redirects, timeout,
+cancellation and mismatching bindings reject. Proof binds both servers/workspaces,
+parent, request, kind, follow-up target and execution digest. The private token travels
+only in the POST body; proof replies omit it, connector data and routing aliases.
+Reads are bounded and never authorize execution replay.
+
+`delegation/remote-delegation-routes.ts` exposes read-only proof after a durable dispatch
+claim, including uncertain/accepted recovery states; reserved, rejected and tokenless
+rows cannot prove origin. Recovery proof is independent of admission flags. Remote
+execution, digest validation against submitted work, destination deduplication, receipt
+transfer and recovery scheduling remain transport integration responsibilities.
+
+### Delegated PR receipts
 
 The ledger retains produced-PR receipts. `recordPullRequest` requires a registered job
 and records exact canonical provider/host/repository/number identity with an item ID

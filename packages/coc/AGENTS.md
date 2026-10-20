@@ -125,6 +125,8 @@ references before editing. Paths are package-relative.
   timeouts, lost/invalid replies and HTTP 408/5xx remain uncertain and prohibit blind
   resubmission. Public POST errors omit private transport details. Never substitute
   a transport alias, endpoint or viewer's server identity.
+  Remote reservation proof tokens stay server-side. Verify the exact owner/request/digest
+  through a registered reciprocal connection; proof reads never authorize execution replay.
   AI reuses generated job/artifact links unchanged; the existing SPA resolver verifies
   visible ownership and fails unavailable without local fallback. Explicit `source: dashboard`
   reads the invoking workspace's dashboard relay through a late-bound runtime getter,

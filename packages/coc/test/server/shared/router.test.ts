@@ -8,6 +8,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { PassThrough } from 'node:stream';
 import {
     createRouter,
     serveStaticFile,
@@ -650,6 +651,24 @@ describe('Body parsers', () => {
         });
         expect(res.status).toBe(200);
         expect(JSON.parse(res.body)).toEqual({ received: 42 });
+    });
+
+    it('bounds cumulative UTF-8 JSON bytes across chunks while draining excess data', async () => {
+        const stream = new PassThrough();
+        const result = readJsonBody(stream as http.IncomingMessage, 10);
+        const rejected = expect(result).rejects.toThrow('JSON body exceeds size limit');
+        stream.write('{"x":"');
+        stream.write('ééé');
+        await rejected;
+        stream.end('"}');
+        expect(stream.readableFlowing).toBe(true);
+    });
+
+    it('accepts JSON exactly at the byte limit', async () => {
+        const stream = new PassThrough();
+        const result = readJsonBody(stream as http.IncomingMessage, 2);
+        stream.end('{}');
+        await expect(result).resolves.toEqual({});
     });
 
     it('readBody returns raw string', async () => {

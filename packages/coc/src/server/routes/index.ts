@@ -38,6 +38,8 @@ import { coerceChatStyle } from '../executors/chat-style-prompt';
 import { BrowserToolStateStore } from '../llm-tools/browser-tools';
 import { createSendMessageCapability } from '../processes/send-message-capability';
 import { DelegatedJobStore } from '../delegation/delegated-job-store';
+import { RemoteDelegationRequestStore } from '../delegation/remote-delegation-request-store';
+import { registerRemoteDelegationProofRoutes } from '../delegation/remote-delegation-routes';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { DelegatedJobResults } from '../delegation/delegated-job-results';
 import { DelegatedJobReviews } from '../delegation/delegated-job-reviews';
@@ -535,6 +537,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // `POST /api/queue` uses: provider/effort defaults resolution, then route +
     // enqueue via the per-repo queue manager.
     const delegatedJobs = new DelegatedJobStore(dataDir);
+    const remoteDelegationRequests = new RemoteDelegationRequestStore(dataDir, delegatedJobs);
+    registerRemoteDelegationProofRoutes(routes, remoteDelegationRequests);
     // Sentinel to-do ledger: always available for Sentinel bookkeeping, never job control.
     // Production borrows the process-store connection; stub stores use native
     // in-memory SQLite, like the queue infrastructure.
