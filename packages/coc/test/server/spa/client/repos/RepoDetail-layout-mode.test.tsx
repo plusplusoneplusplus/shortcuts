@@ -444,7 +444,7 @@ describe('RepoDetail — layout mode chat tab mounting', () => {
     });
 });
 
-describe('RepoDetail — git tab redirect does not clobber a remembered git tab (AC-01)', () => {
+describe('RepoDetail — hidden sub-tab falls back to the workspace', () => {
     beforeEach(() => {
         mockDispatch.mockClear();
         mockQueueDispatch.mockClear();
@@ -453,86 +453,36 @@ describe('RepoDetail — git tab redirect does not clobber a remembered git tab 
         location.hash = '';
     });
 
-    // Regression: while git info is still loading, the preliminary gitInfo can
-    // report isGitRepo:false for a real git repo. The redirect must WAIT for the
-    // load to finish, or it clobbers the restored 'git' tab back to 'chats' — the
-    // flaky in-session reset this feature exists to fix.
-    it('does NOT redirect away from git while git info is still loading', () => {
-        mockActiveRepoSubTab = 'git';
-        const repo = {
+    function repoWith(gitInfoLoading: boolean, isGitRepo: boolean) {
+        return {
             workspace: { id: 'ws-1', rootPath: '/repo', name: 'test-repo', color: '#ccc', remoteUrl: null },
-            gitInfo: { isGitRepo: false }, // preliminary/stale value during load
-            gitInfoLoading: true,
+            gitInfo: { isGitRepo },
+            gitInfoLoading,
             taskCount: 0,
         } as any;
-        renderDetail(repo);
+    }
 
-        expect(gitTabRedirectCalls().length).toBe(0);
-    });
-
-    it('does NOT redirect away from pull-requests while git info is still loading', () => {
-        mockActiveRepoSubTab = 'pull-requests';
-        const repo = {
-            workspace: { id: 'ws-1', rootPath: '/repo', name: 'test-repo', color: '#ccc', remoteUrl: null },
-            gitInfo: { isGitRepo: false },
-            gitInfoLoading: true,
-            taskCount: 0,
-        } as any;
-        renderDetail(repo);
-
-        expect(gitTabRedirectCalls().length).toBe(0);
-    });
-
-    it('DOES redirect away from git once git info has loaded and the repo is not a git repo', () => {
-        mockActiveRepoSubTab = 'git';
-        const repo = {
-            workspace: { id: 'ws-1', rootPath: '/repo', name: 'test-repo', color: '#ccc', remoteUrl: null },
-            gitInfo: { isGitRepo: false },
-            gitInfoLoading: false,
-            taskCount: 0,
-        } as any;
-        renderDetail(repo);
+    // Regression: a `/git/...` route (Git now lives in the right panel) used to
+    // wait for git info before redirecting. A slow or stuck git-info load left
+    // the whole workspace blank with only the right panel showing.
+    it.each([
+        ['git', true, false],
+        ['git', false, true],
+        ['git', false, false],
+        ['notes', true, false],
+        ['notes', false, true],
+    ] as const)('redirects hidden %s to the workspace (gitInfoLoading=%s, isGitRepo=%s)', (tab, loading, isGitRepo) => {
+        mockActiveRepoSubTab = tab;
+        renderDetail(repoWith(loading, isGitRepo));
 
         expect(gitTabRedirectCalls().length).toBeGreaterThan(0);
     });
 
-    it('displays Workspace for a retired git sub-tab while preserving route memory)', () => {
-        mockActiveRepoSubTab = 'git';
-        const repo = {
-            workspace: { id: 'ws-1', rootPath: '/repo', name: 'test-repo', color: '#ccc', remoteUrl: null },
-            gitInfo: { isGitRepo: true },
-            gitInfoLoading: false,
-            taskCount: 0,
-        } as any;
-        renderDetail(repo);
+    it('keeps a visible sub-tab while git info is still loading', () => {
+        mockActiveRepoSubTab = 'activity';
+        renderDetail(repoWith(true, false));
 
-        expect(gitTabRedirectCalls().length).toBeGreaterThan(0);
-    });
-
-    it('does NOT redirect away from a feature-gated tab while capabilities are still loading', () => {
-        mockActiveRepoSubTab = 'notes';
-        const repo = {
-            workspace: { id: 'ws-1', rootPath: '/repo', name: 'test-repo', color: '#ccc', remoteUrl: null },
-            gitInfo: { isGitRepo: false },
-            gitInfoLoading: true,
-            taskCount: 0,
-        } as any;
-        renderDetail(repo);
-
-        expect(gitTabRedirectCalls().length).toBe(0);
-    });
-
-    it('redirects a genuinely unavailable feature-gated remembered tab after capabilities resolve', () => {
-        mockActiveRepoSubTab = 'notes';
-        const repo = {
-            workspace: { id: 'ws-1', rootPath: '/repo', name: 'test-repo', color: '#ccc', remoteUrl: null },
-            gitInfo: { isGitRepo: true },
-            gitInfoLoading: false,
-            taskCount: 0,
-        } as any;
-        renderDetail(repo);
-
-        expect(gitTabRedirectCalls().length).toBeGreaterThan(0);
+        expect(gitTabRedirectCalls()).toHaveLength(0);
     });
 });
 

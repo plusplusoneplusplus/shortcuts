@@ -231,14 +231,15 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
         schedulesInScheduledSlideEnabled,
     }), [isGitRepo, terminalEnabled, workflowsEnabled, dreamsEnabled, showPlanDepTab, schedulesInScheduledSlideEnabled]);
 
-    // Redirect only after the capability set for this workspace has resolved.
-    // Route memory is kept separately in AppContext, so this display fallback
-    // does not erase the remembered deep route if the capability returns later.
+    // A hidden sub-tab (e.g. a `/git/...` route, now owned by the right panel)
+    // renders nothing, so fall back to the workspace at once. Don't wait for git
+    // info: no visible tab depends on it, and a slow or stuck load would leave
+    // the page blank. Route memory lives in AppContext, so the remembered deep
+    // route survives this display fallback.
     useEffect(() => {
-        if (repo.gitInfoLoading) return;
         if (isRepoSubTabVisible(activeSubTab, visibleSubTabs)) return;
         dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
-    }, [activeSubTab, visibleSubTabs, repo.gitInfoLoading, dispatch]);
+    }, [activeSubTab, visibleSubTabs, dispatch]);
 
 
     const repoWikis = useMemo(() =>
