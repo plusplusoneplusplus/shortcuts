@@ -149,11 +149,20 @@ the identity of the entire delegated session.
 `triggers/sentinel-todo-trigger-service.ts` owns authoring for normal eligible items,
 using exact owner checks, optimistic revisions and owner-scoped creation receipts.
 PR rules need no setting; date rules require default-off live
-`features.sentinelTodoDateTimeTriggers`. Both share the active cap and never expire.
+`features.sentinelTodoDateTimeTriggers`. Rules share the active cap and never expire.
 PR authoring preflights canonical provider URLs. Date authoring validates future
 UTC `firesAt`, IANA `timeZone` and matching `localTime` through coc-client's
 `dateTimeCandidates`; gaps reject and overlaps require an explicit instant.
 Only the absolute instant and display zone persist in the existing JSON event.
+
+Script authoring requires an injected live conjunction of script-trigger and
+tool-scripting flags. Intervals have a five-minute floor and 15-minute default;
+ten active/paused script rules are allowed per exact owner. Source/interval edits
+bump script revision and clear the baseline/errors; guidance-only edits preserve
+evaluation state. Script edits and lifecycle changes revoke saved notices and
+disarm execution. Resume resets failures/errors while retaining the baseline.
+Removal retains dedupe receipts without retrying delivery. Script Run now rejects
+until repeating manual execution is wired; production authoring remains disabled.
 
 `triggers/script-condition-result.ts` supplies canonical result encoding and SHA-256
 hashing for script conditions. Object keys sort lexically at every level, array order
@@ -208,8 +217,8 @@ its immutable prompt through the same delivery path, including while paused;
 manual resume or source revision changes revoke admission. Error text is escaped
 untrusted JSON and grants no authority to resume or act. The manager must commit
 this pause before saving the failed event, disarm evaluation timers and retain
-pending-notice retries. Manual resume resets and production wiring remain caller
-responsibilities.
+pending-notice retries. The authoring service resets failures on manual resume;
+production admission and manual script execution require separate wiring.
 
 `QueueActionExecutor` sends bound wakes through `ProcessMessageDeliveryService.deliverOnce`,
 which serializes owner checks and dedupe with human follow-ups and buffer draining.

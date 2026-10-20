@@ -318,6 +318,10 @@ export function isTriggerExpired(trigger: Pick<Trigger, 'expiresAt'>, nowMs: num
 /** Default PR-merge watch cadence (5 min). */
 export const DEFAULT_PR_MERGE_POLL_INTERVAL_MS = 5 * 60_000;
 
+export const MIN_SCRIPT_CONDITION_INTERVAL_MS = 5 * 60_000;
+export const DEFAULT_SCRIPT_CONDITION_INTERVAL_MS = 15 * 60_000;
+export const MAX_SCRIPT_CONDITIONS_PER_OWNER = 10;
+
 /** Maximum backoff for a PR-merge watch after read/login errors (30 min). */
 export const MAX_PR_MERGE_BACKOFF_MS = 30 * 60_000;
 

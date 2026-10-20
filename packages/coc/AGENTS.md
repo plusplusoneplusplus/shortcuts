@@ -311,8 +311,15 @@ references before editing. Paths are package-relative.
   scheduler for receipt reconciliation/retries. Trigger code never writes item
   status or launches a job; external PR metadata is data, not instructions.
   `SentinelTodoTriggerService` owns rule authoring with expected revisions,
-  eligibility and shared-cap checks. Trigger infrastructure is always wired;
-  rules never expire and require no additional approval gate. Clearing rules hides their
+  eligibility and shared-cap checks. Script authoring requires an injected live
+  conjunction of both script flags, a five-minute minimum (15-minute default)
+  and at most ten active/paused script rules per exact owner. Source or interval
+  edits bump script revision and clear baseline/errors; guidance-only edits
+  preserve evaluation state. Script edits and lifecycle changes revoke saved
+  notices and disarm active evaluation. Resume resets failures/errors, not the
+  baseline; remove retains dedupe receipts without retrying delivery. Script
+  Run now rejects until repeating manual execution is wired. Trigger infrastructure
+  is always wired; rules never expire and require no additional approval gate. Clearing rules hides their
   presentation while preserving delivery and keyed authoring receipts; retries
   must not duplicate wakes or revive removed rules.
   Sentinel tool actions use late-bound `getTriggerInfra().sentinelTodoTriggers`;
@@ -356,8 +363,8 @@ references before editing. Paths are package-relative.
   counts and baselines, while deadline expiry counts as a failure. Replacement
   timers wait for the cancelled run's overlap guard to release. Callers must
   disarm on edits, pause/removal or owner revocation and wire live refresh.
-  Owner/tool admission, manual resume resets and production wiring remain caller
-  responsibilities.
+  Owner/tool admission, script manual execution and production wiring remain
+  caller responsibilities.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated
