@@ -169,7 +169,13 @@ Create-and-run records a silent first baseline and creation replays never rerun 
 Owner-qualified capabilities return `dateTime` and `scriptCondition`, independently
 selecting the Sentinel tool's event schemas. Typed coc-client contracts carry script
 authoring, evaluation state and repeating delivery receipts.
-Production authoring remains disabled until owner/runtime admission is wired.
+`createTriggerInfrastructure` composes the script evaluator and repeating firer
+under one gate requiring an injected owner runner, both live flags and an undisposed
+infrastructure instance. Admission checks exact Sentinel ownership, eligible item
+and rule revision/source/state before and after runtime execution. Revocation aborts
+without advancing baseline or failures. Server configuration refreshes script timers
+on changes to the combined flags. Composition supplies owner tools and lifecycle
+cancellation; missing runner injection keeps production authoring/execution disabled.
 
 `triggers/script-condition-result.ts` supplies canonical result encoding and SHA-256
 hashing for script conditions. Object keys sort lexically at every level, array order
@@ -200,7 +206,8 @@ pause/removal and owner revocation. Replacement timer arms wait until the cancel
 run releases its overlap guard and reload the persisted rule. Cancelled outcomes
 cannot persist failures, baselines or wakes. The runner's internal deadline remains
 a script failure because it does not abort the manager's admission signal.
-Production owner/tool admission and lifecycle subscriptions require separate wiring.
+Infrastructure disposal closes the shared execution/delivery gate before cancelling
+the manager, preventing delayed queue admission after shutdown.
 
 `triggers/sentinel-todo-trigger-firer.ts` commits one-shot PR/date decisions using
 the trigger and to-do stores' shared database writer. It checks the rule revision
@@ -224,15 +231,14 @@ Promoted predecessors recheck admission too. Guarded delivery requires admitted
 routing; rejection retains the pending receipt without restoring a stopped owner.
 Retries preserve the saved prompt and do not mark edited rules delivered. The wake
 contains bounded top-level changed-field names and escaped untrusted JSON.
-The production manager must call this path before persisting a changed
+The infrastructure-wired manager uses this path before persisting a changed
 baseline. `pauseScriptCondition` atomically commits the fifth failure, paused
 status and a notice receipt unique to that pause episode. Retries/restarts reuse
 its immutable prompt through the same delivery path, including while paused;
 manual resume or source revision changes revoke admission. Error text is escaped
 untrusted JSON and grants no authority to resume or act. The manager must commit
 this pause before saving the failed event, disarm evaluation timers and retain
-pending-notice retries. The authoring service resets failures on manual resume;
-production admission requires separate wiring.
+pending-notice retries. The authoring service resets failures on manual resume.
 
 `QueueActionExecutor` sends bound wakes through `ProcessMessageDeliveryService.deliverOnce`,
 which serializes owner checks and dedupe with human follow-ups and buffer draining.

@@ -373,10 +373,14 @@ references before editing. Paths are package-relative.
   deleting rows. Manager disarm, live refresh and shutdown abort active script
   evaluations through the evaluator/runner signal; revocations preserve failure
   counts and baselines, while deadline expiry counts as a failure. Replacement
-  timers wait for the cancelled run's overlap guard to release. Callers must
-  disarm on edits, pause/removal or owner revocation and wire live refresh.
-  Owner/tool admission and production wiring remain
-  caller responsibilities.
+  timers wait for the cancelled run's overlap guard to release. Trigger infrastructure
+  composes the evaluator/firer with one shared gate requiring a runner, both live flags
+  and a live infrastructure instance. Before and after running it checks the exact
+  Sentinel, eligible item and current rule revision/source/state. Revocation aborts
+  without recording a result or failure. Disposal closes delivery admission before
+  cancelling execution. Server configuration refreshes script timers when the flag
+  conjunction changes. Composition supplies owner-resolved tools and owner-lifecycle
+  cancellation; missing runner injection keeps production authoring/execution disabled.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated

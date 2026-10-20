@@ -624,6 +624,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         dataDir,
         getPrOutcomeEnabled: () => runtimeConfigService.config.features.sentinelPrOutcomeWake === true,
         getDateTimeEnabled: () => runtimeConfigService.config.features.sentinelTodoDateTimeTriggers === true,
+        getScriptConditionsEnabled: () => runtimeConfigService.config.features.sentinelTodoScriptTriggers === true
+            && runtimeConfigService.config.features.toolScripting === true,
         queueFacade,
         deliveryBridge: bridge,
         recoverPendingMessages: (workspaceId, processId) => bridge.recoverPendingMessages(workspaceId, processId),
@@ -766,11 +768,17 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     let prevMyLifeEnabled = runtimeConfigService.config.myLife?.enabled ?? false;
     let prevPrOutcomeEnabled = runtimeConfigService.config.features.sentinelPrOutcomeWake;
     let prevDateTimeEnabled = runtimeConfigService.config.features.sentinelTodoDateTimeTriggers;
+    let prevScriptConditionsEnabled = runtimeConfigService.config.features.sentinelTodoScriptTriggers === true
+        && runtimeConfigService.config.features.toolScripting === true;
     runtimeConfigService.onChange((snapshot) => {
         const nextPrOutcomeEnabled = snapshot.config.features.sentinelPrOutcomeWake;
         const nextDateTimeEnabled = snapshot.config.features.sentinelTodoDateTimeTriggers;
         if (nextDateTimeEnabled !== prevDateTimeEnabled) triggerInfra?.triggerManager.refreshDateTime();
         prevDateTimeEnabled = nextDateTimeEnabled;
+        const nextScriptConditionsEnabled = snapshot.config.features.sentinelTodoScriptTriggers === true
+            && snapshot.config.features.toolScripting === true;
+        if (nextScriptConditionsEnabled !== prevScriptConditionsEnabled) triggerInfra?.triggerManager.refreshScriptConditions();
+        prevScriptConditionsEnabled = nextScriptConditionsEnabled;
         if (nextPrOutcomeEnabled !== prevPrOutcomeEnabled) {
             if (nextPrOutcomeEnabled) void triggerInfra?.sentinelPrOutcomes.restore()
                 .then(() => triggerInfra?.triggerManager.armAll())
