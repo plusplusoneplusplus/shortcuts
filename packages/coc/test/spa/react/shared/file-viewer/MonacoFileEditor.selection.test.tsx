@@ -74,7 +74,9 @@ describe.each([['shared', MonacoFileEditor], ['explorer shim', ExplorerEditor]] 
         await mount(Component, context);
         expect(screen.queryByRole('button')).toBeNull(); select();
         const pill = screen.getByRole('button', { name: 'Attach as context' });
-        expect(pill.style.top).toBe('80px'); expect(pill.style.left).toBe('120px');
+        const actions = screen.getByRole('group', { name: 'Selection actions' });
+        expect(actions.contains(pill)).toBe(true);
+        expect(actions.style.top).toBe('80px'); expect(actions.style.left).toBe('120px');
         expect(fireEvent.mouseDown(pill)).toBe(false); fireEvent.click(pill);
         expect(stub.route).toHaveBeenCalledWith('repo-A', expect.objectContaining({ sourceWorkspaceId: 'repo-A',
             filePath: 'src/status.rs', range: { start: 24, end: 35 }, snippet: 'unsaved text\nmore' }));
