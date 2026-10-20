@@ -39,7 +39,8 @@ import { BrowserToolStateStore } from '../llm-tools/browser-tools';
 import { createSendMessageCapability } from '../processes/send-message-capability';
 import { DelegatedJobStore } from '../delegation/delegated-job-store';
 import { RemoteDelegationRequestStore } from '../delegation/remote-delegation-request-store';
-import { registerRemoteDelegationProofRoutes } from '../delegation/remote-delegation-routes';
+import { registerRemoteDelegationProofRoutes, registerRemoteDelegationFollowUpRoutes } from '../delegation/remote-delegation-routes';
+import { RemoteDelegationAdmissionStore } from '../delegation/remote-delegation-admission-store';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { DelegatedJobResults } from '../delegation/delegated-job-results';
 import { DelegatedJobReviews } from '../delegation/delegated-job-reviews';
@@ -946,6 +947,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // Local + remote repo directory behind `list_workspaces`, `send_to_conversation`
     // name / remote clone-key targets, and messaging `list remotes`.
     const workspaceDirectory = createWorkspaceDirectory({ store, dataDir, remoteServers: remoteServerRuntime });
+    registerRemoteDelegationFollowUpRoutes(routes, {
+        admissions: new RemoteDelegationAdmissionStore(dataDir), remotes: remoteServerRuntime, store,
+        delivery: new ProcessMessageDeliveryService({ store, bridge }),
+    });
     // Connectors register their completion/result transports below.
     opts.setSendToConversationRuntime?.({
         serverIdentity: getOrCreateServerIdentity(dataDir),

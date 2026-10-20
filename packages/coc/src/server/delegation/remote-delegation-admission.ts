@@ -72,6 +72,8 @@ export type RemoteDelegationDispatch = (input: {
     executionId: string;
 }) => Promise<
     { state: 'accepted'; child: RemoteDelegationChild } | { state: 'rejected' }>;
+/** Inspect durable domain records only. This callback must never enqueue or execute. */
+export type RemoteDelegationFindChild = (receipt: RemoteDelegationAdmission) => Promise<RemoteDelegationChild | undefined>;
 
 /** Authenticated destination gateway; execution adapters are supplied by route composition. */
 export class RemoteDelegationAdmissionService {
@@ -103,12 +105,23 @@ export class RemoteDelegationAdmissionService {
         }
     }
 
-    /** Repeatable authenticated receipt read. It never invokes an execution adapter. */
-    async reconcile(input: unknown): Promise<RemoteDelegationAdmission | undefined> {
+    /** Authenticated receipt reconciliation; only durable domain evidence can repair acceptance. */
+    async reconcile(input: unknown, findChild?: RemoteDelegationFindChild): Promise<RemoteDelegationAdmission | undefined> {
         const proof = await this.verify(input);
         this.options.signal?.throwIfAborted();
-        try { return this.store.get(proof); }
-        catch { throw new Error('Destination admission receipt is unavailable'); }
+        try {
+            const receipt = this.store.get(proof);
+            if (receipt && (receipt.admission.state === 'dispatching' || receipt.admission.state === 'uncertain') && findChild) {
+                const child = await findChild(receipt);
+                this.options.signal?.throwIfAborted();
+                if (child) return this.store.accept(proof, child);
+            }
+            return receipt;
+        }
+        catch {
+            this.options.signal?.throwIfAborted();
+            throw new Error('Destination admission receipt is unavailable');
+        }
     }
 
     private verify(input: unknown) {

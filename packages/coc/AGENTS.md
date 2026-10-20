@@ -132,8 +132,11 @@ references before editing. Paths are package-relative.
   execution ID, not the origin's raw request ID. Destination claims qualify origin server,
   parent workspace and request; duplicate or crash-window claims only reconcile. Accepted
   origin proofs cannot create missing destination claims. Keep domain authorization in the
-  execution adapter. This gateway awaits route composition; remote tools retain unavailable
-  automatic result return.
+  execution adapter. Authenticated destination follow-up admission uses the queued message
+  service with exact workspace/process ownership and the active provider/session binding.
+  Receipt reconciliation repairs acceptance from durable task/pending/turn evidence only;
+  it never sends work. Launch/Ralph adapters and terminal transfer await composition;
+  remote tools retain unavailable automatic result return and advertise no tracking capability.
   AI reuses generated job/artifact links unchanged; the existing SPA resolver verifies
   visible ownership and fails unavailable without local fallback. Explicit `source: dashboard`
   reads the invoking workspace's dashboard relay through a late-bound runtime getter,

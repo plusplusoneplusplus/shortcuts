@@ -763,6 +763,8 @@ Streams belong to the owning server/clone. SSE framing preserves split UTF-8 and
 | POST | `/api/servers/:id/disconnect` | Disconnect |
 | POST | `/api/servers/cherry-pick-transfer` | Export/apply oldest-first commit(s) across selected server/workspace pair; omitted/local server means current, remote must be online/registered. Propagate dirty/conflict/counts; omit effective URLs/local paths |
 | POST | `/api/remote-delegations/proof` | Private, read-only origin reservation proof after durable dispatch; exact owner/request/digest/token binding, 16 KiB body limit, no-store. Invalid body → 400, unavailable proof → 403, storage failure → 503. Does not dispatch work or advertise tracked execution support; [admission contract](server-architecture.md#remote-delegation-admission) |
+| POST | `/api/remote-delegations/follow-up` | Authenticated exact-owner queued admission `{ claim, intent }`; strict content/mode/model/effort body, destination-owned correlation, no steering/provider switch. Durable accepted/rejected/uncertain/dispatching receipt → 202; malformed body → 400, unavailable admission → 503. No tracking capability advertised |
+| POST | `/api/remote-delegations/receipt` | Private authenticated follow-up claim read, 16 KiB limit; repairs acceptance from durable domain evidence without executing. No-store; missing receipt → 404, invalid/unsupported kind → 400, unavailable proof/storage → 503 |
 
 ## Sync
 

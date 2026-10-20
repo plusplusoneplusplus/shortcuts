@@ -161,11 +161,15 @@ Reads are bounded and never authorize execution replay.
 
 `delegation/remote-delegation-routes.ts` exposes read-only proof after a durable dispatch
 claim, including uncertain/accepted recovery states; reserved, rejected and tokenless
-rows cannot prove origin. Recovery proof is independent of admission flags. Remote
-launch/follow-up routes retain untracked dispatch and unavailable result return.
+rows cannot prove origin. Recovery proof is independent of admission flags. Destination
+follow-up admission accepts a strict scalar message body through the authenticated gateway.
+`ProcessMessageDeliveryService.deliverRemoteFollowUpOnce` queues with the destination
+execution ID, preserves active provider/strict session resumption, and rechecks exact
+owner/visibility during queue routing. Sentinel/Ralph targets are excluded. No desktop
+mirror or caller-selected connector/correlation fields enter this path.
 
-`delegation/remote-delegation-admission.ts` provides a destination gateway, pending route
-composition. It captures the exact versioned JSON execution envelope, hashes all keys
+`delegation/remote-delegation-admission.ts` provides the destination gateway.
+It captures the exact versioned JSON execution envelope, hashes all keys
 canonically, checks kind/workspace/target/digest, then verifies the origin proof. The
 domain adapter receives that captured body and a destination-local execution ID.
 Intent capture caps bytes, depth and node count; domain authorization remains separate.
@@ -176,9 +180,12 @@ Intent capture caps bytes, depth and node count; domain authorization remains se
 IDs remain independent of colliding origin IDs. Durable `dispatching` claims admit one
 adapter call. Duplicate/uncertain/crash-window claims only reconcile; accepted origin
 proofs cannot create missing destination claims. Immutable accepted children enforce
-exact follow-up targets and whole Ralph sessions. Authenticated reconciliation reads
-receipts without execution. Snapshot/wipe policy matches origin reservations.
-Runtime adapters, receipt-transfer routes and recovery scheduling remain integration work.
+exact follow-up targets and whole Ralph sessions. Authenticated follow-up receipt reads
+repair uncertain/dispatching acceptance from exact queue, pending-message or user-turn
+evidence without enqueueing. Wire receipts exclude destination execution IDs and private
+tokens. Snapshot/wipe policy matches origin reservations. Launch/Ralph adapters, terminal
+transfer and recovery scheduling await composition. Runtime tools retain untracked
+dispatch and unavailable result return; no tracking capability is advertised.
 
 ### Delegated PR receipts
 
