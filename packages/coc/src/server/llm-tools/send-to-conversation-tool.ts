@@ -18,7 +18,9 @@
  *   - `processId` provided → **post mode**: post `content` as a follow-up
  *     message into that existing conversation, wrapping the same delivery path
  *     `POST /api/processes/:id/message` uses (via the injected `sendMessage`
- *     capability). Returns the appended user-turn index. An omitted `mode`
+ *     capability). An explicit remote workspace clone key uses the destination's
+ *     same REST delivery path, without local fallback. Returns the user-turn index
+ *     (-1 while buffered). An omitted `mode`
  *     keeps the conversation's current mode (create mode defaults to `ask`,
  *     or `autopilot` when called from a sentinel chat).
  *   - `action: "cancel"` with `processId` stops local queued/running work through
@@ -87,6 +89,7 @@ export interface SendToConversationArgs {
      * Create mode: target workspace/repo — a local ID, a remote clone key
      * `remote:<serverId>:<workspaceId>`, or a repo name (`name@server`).
      * Defaults to the caller's workspace.
+     * Post mode: use an explicit remote clone key with the destination's raw processId.
      */
     workspaceId?: string;
     /** `autopilot` | `ask` (default), or create-only `ralph` (launch a Ralph session with `content` as the goal). */
@@ -254,7 +257,7 @@ export interface SendToConversationSuccess {
     status?: ConversationCancellationResult['status'];
     /** Cancel only: the target's workspace, when recorded. */
     workspaceId?: string;
-    /** Remote launches cannot return terminal results to the originating conversation. */
+    /** Remote sends report unavailable until automatic result return is supported. */
     resultDelivery?: { status: 'unavailable'; reason: string } | TrackedResultDelivery;
     /** Create mode with to-do tracking: whether the job link was saved. */
     tracking?: SendToConversationTracking;
@@ -310,7 +313,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
 
     const tool = defineTool<SendToConversationArgs>('send_to_conversation', {
         description:
-            'With `processId`, post to an existing local chat; without it, create a separate fire-and-forget chat. ' +
+            'With `processId`, post to an existing chat; without it, create a separate fire-and-forget chat. Remote post requires remote workspaceId. ' +
             'Returns `{ processId, openLink, turnIndex? }`; reuse openLink unchanged. Supply a short, task-specific `title` for new chats. ' +
             '`mode: "ralph"` starts execution by default; `entryPoint: "grill"` interviews, then awaits user Start approval. Returns sessionId, phase and owner. `plan` is not supported. ' +
             'Prefer `provider: "auto"` unless a provider/model was requested. ' +
@@ -318,7 +321,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             'Do not promise an automatic return or start a duplicate job. ' +
             'Use `{ action: "cancel", processId }` to stop local work, retaining history. ' +
             'Omit send-only fields; optional `workspaceId` asserts ownership. Returns `cancelled` and `status`; ' +
-            '`cancelled: false` means already terminal. Unknown IDs and failures return errors.' +
+            '`cancelled: false` means already terminal. Failures return errors.' +
             (todoTracking ? TODO_TRACKING_DESCRIPTION : ''),
         parameters: {
             type: 'object',
@@ -337,12 +340,12 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 processId: {
                     type: 'string',
                     description:
-                        'Local chat to post to or cancel, including queue_<taskId>. Omit to create.',
+                        'Exact chat process ID, including queue_<taskId>. Remote post also requires remote workspaceId. Cancel is local only. Omit to create.',
                 },
                 workspaceId: {
                     type: 'string',
-                    description: 'New-chat target: ID from `list_workspaces`, remote:<serverId>:<workspaceId>, repo name, or name@server. ' +
-                        'Default: current workspace. Cancel: optional local owner ID.',
+                    description: 'Create: ID from list_workspaces, remote:<serverId>:<workspaceId>, repo name, or name@server; default current repo. ' +
+                        'Remote post: required clone key. Cancel: optional local owner ID.',
                 },
                 mode: {
                     type: 'string',
@@ -488,8 +491,8 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 if (targetProcessId.startsWith('remote:')) {
                     return {
                         error:
-                            'Posting into a conversation on a remote CoC server is not supported yet. ' +
-                            'Post mode only accepts local conversation processIds.',
+                            'Remote processId prefixes are ambiguous. Use the exact remote processId and ' +
+                            'workspaceId: remote:<serverId>:<workspaceId> from list_workspaces.',
                     };
                 }
                 if (args.mode === 'ralph') {
@@ -498,6 +501,37 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                             "Invalid mode: 'ralph' only applies when creating a new conversation. " +
                             'Omit `processId` to launch a Ralph session, or post with `ask` / `autopilot`.',
                     };
+                }
+                const postWorkspaceId = typeof args.workspaceId === 'string' ? args.workspaceId.trim() : undefined;
+                if (args.workspaceId !== undefined && (!postWorkspaceId || (!postWorkspaceId.startsWith('remote:') && postWorkspaceId.includes('@')))) {
+                    return { error: 'Post workspaceId must be an exact workspace ID or remote clone key; repo names are create-only. No follow-up was sent.' };
+                }
+                if (postWorkspaceId?.startsWith('remote:')) {
+                    const target = parseRemoteCloneKey(postWorkspaceId);
+                    if (!target) return { error: 'Invalid remote workspace clone key. No follow-up was sent.', dispatchState: 'not-started' };
+                    if (args.deliveryMode !== undefined && !ALLOWED_DELIVERY_MODES.has(args.deliveryMode)) {
+                        return { error: `Invalid deliveryMode: '${String(args.deliveryMode)}'.`, dispatchState: 'not-started' };
+                    }
+                    if (!directory.postRemoteChat) return { error: 'Remote follow-up transport is unavailable. No follow-up was sent.', dispatchState: 'not-started' };
+                    try {
+                        const result = await directory.postRemoteChat({
+                            ...target, processId: targetProcessId, content,
+                            ...(args.mode ? { mode: args.mode } : {}),
+                            ...(model ? { model } : {}),
+                            ...(!model && effortTier ? { effortTier } : {}),
+                            ...(args.deliveryMode ? { deliveryMode: args.deliveryMode } : {}),
+                        });
+                        return {
+                            processId: result.processId,
+                            turnIndex: result.turnIndex,
+                            openLink: buildDashboardChatReference(result.serverIdentity, target.workspaceId, result.processId),
+                            resultDelivery: { status: 'unavailable', reason: 'The remote follow-up was admitted, but automatic result return to the originating conversation '
+                                + '(including WhatsApp/Teams) is unavailable. Use openLink to inspect its outcome; do not send a duplicate follow-up.' },
+                        };
+                    } catch (error) {
+                        return { error: error instanceof RemoteChatAdmissionError ? error.message : 'Remote follow-up failed. Inspect the remote chat before retrying; do not send a duplicate follow-up.',
+                            ...(error instanceof RemoteChatAdmissionError ? { dispatchState: error.dispatchState } : {}) };
+                    }
                 }
                 return postToExistingConversation({
                     serverIdentity: runtime?.serverIdentity,

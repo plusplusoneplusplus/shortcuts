@@ -1312,11 +1312,20 @@ describe('createSendToConversationTool — workspace targets (names, remote clon
         expect(enqueueChat).not.toHaveBeenCalled();
     });
 
-    it('rejects post mode with a remote clone-key processId as not supported yet', async () => {
+    it('fails without local fallback when the directory has no remote post capability', async () => {
+        const sendMessage = vi.fn();
+        const { tool, enqueueChat } = makeTargetTool({ sendMessage });
+        const result = await tool.handler({ content: 'x', processId: 'queue_target', workspaceId: 'remote:srv-1:w-api' }, invocationStub);
+        expect(result).toMatchObject({ dispatchState: 'not-started', error: expect.stringContaining('transport is unavailable') });
+        expect(sendMessage).not.toHaveBeenCalled();
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('requires explicit remote workspace ownership instead of a remote-prefixed processId', async () => {
         const sendMessage = vi.fn();
         const { tool } = makeTargetTool({ sendMessage });
         const result = await tool.handler({ content: 'x', processId: 'remote:srv-1:queue_abc' }, invocationStub);
-        expect('error' in result && result.error).toMatch(/not supported yet/);
+        expect('error' in result && result.error).toMatch(/exact remote processId/);
         expect(sendMessage).not.toHaveBeenCalled();
     });
 });
@@ -1376,6 +1385,211 @@ describe('createSendToConversationTool — remote create over HTTP (real directo
 
         expect(result).toEqual({ error: 'Remote server "vm" rejected the request (HTTP 400). The chat was not started.', dispatchState: 'rejected' });
         expect(enqueueChat).not.toHaveBeenCalled();
+    });
+});
+
+describe('remote follow-up transport (real directory, isolated HTTP fixtures)', () => {
+    function fixture(options: {
+        remote?: boolean; knownIdentity?: string; startTimeoutMs?: number;
+        detail?: (proc: any) => unknown;
+        tiers?: unknown;
+        respond?: (url: string, init: RequestInit | undefined, next: () => Response) => Promise<Response>;
+    } = {}) {
+        const server = { id: 'alias', label: 'remote', kind: 'url', effectiveUrl: 'http://private-destination:4000',
+            serverIdentity: options.knownIdentity ?? 'destination-owner' } as any;
+        const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+            const next = () => {
+                if (url.endsWith('/api/health')) return Response.json({ serverIdentity: 'destination-owner' });
+                if (url.includes('/effort-tiers')) return Response.json(options.tiers ?? { provider: 'codex', effortTiers: {
+                    high: { model: 'gpt-5.5', reasoningEffort: 'xhigh' },
+                } });
+                if (init?.method === 'POST') return Response.json({ processId: 'queue_target', turnIndex: 7 }, { status: 202 });
+                const proc = { id: 'queue_target', type: 'chat', metadata: { workspaceId: 'ws-1', provider: 'copilot', mode: 'ask' },
+                    activeProviderSession: { provider: 'codex', segmentId: 'segment', firstTurnIndex: 0 } };
+                return Response.json({ process: options.detail ? options.detail(proc) : proc });
+            };
+            return options.respond ? options.respond(url, init, next) : next();
+        });
+        const store = makeStore(['ws-1'], { queue_target: { id: 'queue_target' } });
+        const workspaceDirectory = createWorkspaceDirectory({ store,
+            remoteServers: { list: () => options.remote === false ? [] : [server] },
+            fetchImpl: fetchImpl as typeof fetch, startTimeoutMs: options.startTimeoutMs });
+        const sendMessage = vi.fn();
+        const getEffortTiersForProvider = vi.fn(() => { throw new Error('Origin tiers must not be used'); });
+        const messagingOrigin = vi.fn(() => ({ connector: 'teams' as const, chatKey: 'private-origin', threadId: 'thread' }));
+        const { tool, enqueueChat } = makeTool({ sendMessage, runtime: {
+            workspaceDirectory, getEffortTiersForProvider, messagingOrigin,
+        } });
+        const call = (args: Record<string, unknown> = {}) => tool.handler({ content: 'Continue authorized work',
+            processId: 'queue_target', workspaceId: 'remote:alias:ws-1', ...args }, invocationStub);
+        const posts = () => fetchImpl.mock.calls.filter(([, init]) => init?.method === 'POST');
+        const assertNoLocal = () => {
+            expect(sendMessage).not.toHaveBeenCalled();
+            expect(enqueueChat).not.toHaveBeenCalled();
+            expect(getEffortTiersForProvider).not.toHaveBeenCalled();
+            expect(messagingOrigin).not.toHaveBeenCalled();
+        };
+        return { server, fetchImpl, store, call, posts, assertNoLocal };
+    }
+
+    it.each(['enqueue', 'immediate', 'steer', undefined] as const)('posts one owner-scoped %s follow-up without local/connector leakage', async deliveryMode => {
+        const h = fixture();
+        const result = asSuccess(await h.call({ deliveryMode, provider: 'claude', title: 'Ignored', priority: 'high' }));
+        expect(result).toMatchObject({ processId: 'queue_target', turnIndex: 7,
+            openLink: '#chat-references/destination-owner/ws-1/queue_target', resultDelivery: { status: 'unavailable' } });
+        expect(result.resultDelivery).toHaveProperty('reason', expect.stringContaining('do not send a duplicate follow-up'));
+        expect(h.posts()).toHaveLength(1);
+        const [url, init] = h.posts()[0];
+        expect(url).toBe('http://private-destination:4000/api/processes/queue_target/message?workspace=ws-1');
+        expect(JSON.parse(init!.body as string)).toEqual({ content: 'Continue authorized work',
+            deliveryMode: deliveryMode === 'steer' ? 'immediate' : deliveryMode ?? 'enqueue' });
+        expect(h.fetchImpl.mock.calls.map(([url]) => url)).toContain(
+            'http://private-destination:4000/api/processes/queue_target?workspace=ws-1&exclude=conversation%2CtoolCalls');
+        expect(h.store.getProcess).not.toHaveBeenCalled();
+        h.assertNoLocal();
+    });
+
+    it('trims the explicit remote clone key before choosing transport', async () => {
+        const h = fixture();
+        asSuccess(await h.call({ workspaceId: '  remote:alias:ws-1  ' }));
+        expect(h.posts()).toHaveLength(1);
+        h.assertNoLocal();
+    });
+
+    it('resolves effort against the destination active binding and configured tiers', async () => {
+        const h = fixture();
+        asSuccess(await h.call({ effortTier: 'high', mode: 'autopilot', provider: 'claude' }));
+        expect(h.fetchImpl.mock.calls.map(([url]) => url)).toContain('http://private-destination:4000/api/agent-providers/codex/effort-tiers');
+        expect(JSON.parse(h.posts()[0][1]!.body as string)).toEqual({ content: 'Continue authorized work', mode: 'autopilot',
+            model: 'gpt-5.5', reasoningEffort: 'xhigh', deliveryMode: 'enqueue' });
+        h.assertNoLocal();
+    });
+
+    it('lets an explicit model win over a tier without inheriting origin effort', async () => {
+        const h = fixture();
+        asSuccess(await h.call({ model: 'gpt-5.5', effortTier: 'high' }));
+        expect(h.fetchImpl.mock.calls.map(([url]) => url).some(url => url.includes('effort-tiers'))).toBe(false);
+        expect(JSON.parse(h.posts()[0][1]!.body as string)).toEqual({ content: 'Continue authorized work', model: 'gpt-5.5', deliveryMode: 'enqueue' });
+        h.assertNoLocal();
+    });
+
+    it.each([
+        { name: 'unknown remote', options: { remote: false } },
+        { name: 'replaced remote identity', options: { knownIdentity: 'other-owner' } },
+        { name: 'wrong workspace despite raw-ID collision', options: { detail: (p: any) => ({ ...p, metadata: { ...p.metadata, workspaceId: 'foreign' } }) } },
+        { name: 'wrong process', options: { detail: (p: any) => ({ ...p, id: 'other' }) } },
+        { name: 'non-chat process', options: { detail: (p: any) => ({ ...p, type: 'workflow' }) } },
+        { name: 'archived target', options: { detail: (p: any) => ({ ...p, archived: true }) } },
+        { name: 'missing process', options: { detail: () => undefined } },
+        { name: 'incompatible explicit model', options: {}, args: { model: 'claude-sonnet-4-6' } },
+        { name: 'missing tier', options: { tiers: { provider: 'codex', effortTiers: {} } }, args: { effortTier: 'high' } },
+        { name: 'wrong tier provider', options: { tiers: { provider: 'copilot', effortTiers: { high: { model: 'gpt-5.5' } } } }, args: { effortTier: 'high' } },
+        { name: 'incompatible tier model', options: { tiers: { provider: 'codex', effortTiers: { high: { model: 'claude-sonnet-4-6' } } } }, args: { effortTier: 'high' } },
+        { name: 'invalid tier effort', options: { tiers: { provider: 'codex', effortTiers: { high: { model: 'gpt-5.5', reasoningEffort: 'ultra' } } } }, args: { effortTier: 'high' } },
+        { name: 'unknown provider for tier', options: { detail: (p: any) => ({ ...p, activeProviderSession: undefined, metadata: { ...p.metadata, provider: undefined } }) }, args: { effortTier: 'high' } },
+        { name: 'invalid delivery', options: {}, args: { deliveryMode: 'unknown' } },
+        { name: 'malformed remote clone key', options: {}, args: { workspaceId: 'remote:alias:' } },
+        { name: 'invalid encoded remote key', options: {}, args: { workspaceId: 'remote:alias:%ZZ' } },
+        { name: 'create-only qualified repo name', options: {}, args: { workspaceId: 'repo@remote' } },
+        { name: 'nonstring workspace', options: {}, args: { workspaceId: 42 } },
+        { name: 'oversized process', options: {}, args: { processId: 'x'.repeat(513) } },
+        { name: 'unencodable process', options: {}, args: { processId: '\ud800' } },
+        { name: 'ambiguous process prefix', options: {}, args: { processId: 'remote:alias:queue_target' } },
+        { name: 'Ralph post', options: {}, args: { mode: 'ralph' } },
+        { name: 'tracked To-do post', options: {}, args: { todoItemId: 'todo' } },
+    ])('refuses $name before sending, with no local fallback', async ({ options, args }) => {
+        const h = fixture(options);
+        expect(await h.call(args)).toHaveProperty('error');
+        expect(h.posts()).toHaveLength(0);
+        h.assertNoLocal();
+    });
+
+    it.each([400, 401, 403, 404, 409, 410, 422, 429, 408, 500, 502, 503])('classifies HTTP %i with a single POST and no private error text', async status => {
+        const h = fixture({ respond: async (_url, init, next) => init?.method === 'POST'
+            ? Response.json({ error: 'http://private-destination token=secret' }, { status }) : next() });
+        const result = await h.call();
+        expect(result).toMatchObject({ dispatchState: status === 408 || status >= 500 ? 'uncertain' : 'rejected' });
+        expect(h.posts()).toHaveLength(1);
+        expect(JSON.stringify(result)).not.toMatch(/private-destination|secret/);
+        h.assertNoLocal();
+    });
+
+    it.each(['disconnect', 'body-disconnect', 'invalid-json', 'missing-process', 'wrong-process', 'missing-turn', 'negative-turn', 'fractional-turn', 'unsafe-turn'])('%s after POST is uncertain and never resubmitted', async failure => {
+        const h = fixture({ respond: async (_url, init, next) => {
+            if (init?.method !== 'POST') return next();
+            if (failure === 'disconnect') throw new Error('private-destination secret');
+            if (failure === 'body-disconnect') return { ok: true, text: async () => { throw new Error('secret'); } } as unknown as Response;
+            if (failure === 'invalid-json') return new Response('{bad');
+            return Response.json({ ...(failure === 'missing-process' ? {} : { processId: failure === 'wrong-process' ? 'other' : 'queue_target' }),
+                ...(failure === 'missing-turn' ? {} : { turnIndex: failure === 'negative-turn' ? -2 : failure === 'fractional-turn' ? 0.5 : failure === 'unsafe-turn' ? Number.MAX_SAFE_INTEGER + 1 : 7 }) });
+        } });
+        const result = await h.call();
+        expect(result).toMatchObject({ dispatchState: 'uncertain', error: expect.stringContaining('Do not send a duplicate follow-up') });
+        expect(result).not.toHaveProperty('openLink');
+        expect(JSON.stringify(result)).not.toMatch(/private-destination|secret/);
+        expect(h.posts()).toHaveLength(1);
+        h.assertNoLocal();
+    });
+
+    it.each(['headers', 'body'])('bounds %s timeout, aborts transport, and clears its timer', async stage => {
+        vi.useFakeTimers();
+        try {
+            let signal: AbortSignal | undefined;
+            const h = fixture({ startTimeoutMs: 50, respond: async (_url, init, next) => {
+                if (init?.method !== 'POST') return next();
+                signal = init.signal as AbortSignal;
+                return stage === 'headers' ? new Promise<Response>(() => {})
+                    : { ok: true, text: () => new Promise<string>(() => {}) } as Response;
+            } });
+            const pending = h.call();
+            await vi.advanceTimersByTimeAsync(50);
+            expect(await pending).toMatchObject({ dispatchState: 'uncertain' });
+            expect(signal?.aborted).toBe(true);
+            expect(vi.getTimerCount()).toBe(0);
+            expect(h.posts()).toHaveLength(1);
+            h.assertNoLocal();
+        } finally { vi.useRealTimers(); }
+    });
+
+    it.each(['preflight', 'post'])('rejects a changed endpoint at %s without publishing guessed ownership', async phase => {
+        let h: ReturnType<typeof fixture>;
+        h = fixture({ respond: async (url, init, next) => {
+            const response = next();
+            if ((phase === 'preflight' && url.includes('?workspace=')) || (phase === 'post' && init?.method === 'POST')) {
+                h.server.effectiveUrl = 'http://replacement:4000';
+            }
+            return response;
+        } });
+        expect(await h.call()).toMatchObject({ dispatchState: phase === 'preflight' ? 'not-started' : 'uncertain' });
+        expect(h.posts()).toHaveLength(phase === 'preflight' ? 0 : 1);
+        expect(h.fetchImpl.mock.calls.some(([url]) => url.includes('replacement'))).toBe(false);
+        h.assertNoLocal();
+    });
+
+    it.each(['preflight', 'post'])('rejects health ownership change at %s', async phase => {
+        let healthCount = 0;
+        const h = fixture({ respond: async (url, _init, next) => {
+            if (url.endsWith('/health') && ++healthCount === (phase === 'preflight' ? 2 : 3)) {
+                return Response.json({ serverIdentity: 'replacement-owner' });
+            }
+            return next();
+        } });
+        expect(await h.call()).toMatchObject({ dispatchState: phase === 'preflight' ? 'not-started' : 'uncertain' });
+        expect(h.posts()).toHaveLength(phase === 'preflight' ? 0 : 1);
+        h.assertNoLocal();
+    });
+
+    it('encodes workspace/process segments independently and keeps the verified owner in links', async () => {
+        const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => url.endsWith('/health')
+            ? Response.json({ serverIdentity: 'owner/remote' }) : init?.method === 'POST'
+                ? Response.json({ processId: 'p/#?', turnIndex: 0 })
+                : Response.json({ process: { id: 'p/#?', type: 'chat', metadata: { workspaceId: 'ws/#?' } } }));
+        const directory = createWorkspaceDirectory({ store: makeStore(),
+            remoteServers: { list: () => [{ id: 'alias', effectiveUrl: 'http://remote' } as any] }, fetchImpl: fetchImpl as typeof fetch });
+        const { tool } = makeTool({ runtime: { workspaceDirectory: directory } });
+        const result = asSuccess(await tool.handler({ content: 'follow-up', processId: 'p/#?', workspaceId: 'remote:alias:ws%2F%23%3F' }, invocationStub));
+        expect(result.openLink).toBe('#chat-references/owner%2Fremote/ws%2F%23%3F/p%2F%23%3F');
+        expect(fetchImpl.mock.calls.find(([, init]) => init?.method === 'POST')?.[0]).toBe('http://remote/api/processes/p%2F%23%3F/message?workspace=ws%2F%23%3F');
     });
 });
 

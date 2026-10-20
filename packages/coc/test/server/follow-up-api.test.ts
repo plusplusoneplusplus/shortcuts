@@ -24,6 +24,7 @@ import {
 } from '../../src/server/tasks/task-types';
 import { setServerLogger } from '../../src/server/logging/server-logger';
 import { clearLogBuffer, getLogHistory } from '../../src/server/logging/server-log-capture';
+import { createWorkspaceDirectory } from '../../src/server/servers/workspace-directory';
 
 // ============================================================================
 // Helpers
@@ -137,6 +138,50 @@ describe('POST /api/processes/:id/message', () => {
     // ========================================================================
     // Success path
     // ========================================================================
+
+    it('admits two remote directory follow-ups through the real scoped route and preserves destination mode/provider', async () => {
+        await store.addProcess({
+            id: 'remote-child', type: 'chat', status: 'running', startTime: new Date(),
+            promptPreview: '', fullPrompt: '', sdkSessionId: 'destination-session',
+            metadata: { type: 'chat', workspaceId: 'destination', provider: 'copilot', mode: 'sentinel' },
+            activeProviderSession: { provider: 'codex', sessionId: 'destination-session', segmentId: 'codex-segment', firstTurnIndex: 0 },
+            conversationTurns: [],
+        });
+        const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => url.endsWith('/api/health')
+            ? Response.json({ serverIdentity: 'destination-owner' }) : fetch(url, init));
+        const directory = createWorkspaceDirectory({ store,
+            remoteServers: { list: () => [{ id: 'connection', kind: 'url', effectiveUrl: baseUrl, serverIdentity: 'destination-owner' } as any] },
+            fetchImpl: fetchImpl as typeof fetch });
+        const input = { serverId: 'connection', workspaceId: 'destination', processId: 'remote-child',
+            mode: 'autopilot' as const, deliveryMode: 'enqueue' as const };
+        const first = await directory.postRemoteChat!({ ...input, content: 'First requested turn' });
+        const second = await directory.postRemoteChat!({ ...input, content: 'Second requested turn' });
+        expect(first).toEqual({ serverIdentity: 'destination-owner', processId: 'remote-child', turnIndex: -1 });
+        expect(second.turnIndex).toBe(-1);
+        const proc = await store.getProcess('remote-child', 'destination');
+        expect(proc?.pendingMessages?.map(message => message.content)).toEqual(['First requested turn', 'Second requested turn']);
+        expect(new Set(proc?.pendingMessages?.map(message => message.id)).size).toBe(2);
+        expect(proc?.pendingMessages?.every(message => message.mode === 'sentinel' && message.provider === 'codex')).toBe(true);
+        expect(proc?.conversationTurns).toHaveLength(0);
+        expect(mockBridge.enqueue).not.toHaveBeenCalled();
+        expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(2);
+    });
+
+    it('does not post to a colliding remote process in another workspace', async () => {
+        await store.addProcess({ id: 'remote-child', type: 'chat', status: 'completed', startTime: new Date(),
+            promptPreview: '', fullPrompt: '', sdkSessionId: 'destination-session',
+            metadata: { type: 'chat', workspaceId: 'other-workspace', provider: 'codex' }, conversationTurns: [] });
+        const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => url.endsWith('/api/health')
+            ? Response.json({ serverIdentity: 'destination-owner' }) : fetch(url, init));
+        const directory = createWorkspaceDirectory({ store,
+            remoteServers: { list: () => [{ id: 'connection', kind: 'url', effectiveUrl: baseUrl } as any] },
+            fetchImpl: fetchImpl as typeof fetch });
+        await expect(directory.postRemoteChat!({ serverId: 'connection', workspaceId: 'destination', processId: 'remote-child',
+            content: 'Do not send elsewhere' })).rejects.toMatchObject({ dispatchState: 'not-started' });
+        expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+        expect((await store.getProcess('remote-child'))?.conversationTurns).toHaveLength(0);
+        expect(mockBridge.enqueue).not.toHaveBeenCalled();
+    });
 
     describe('success path', () => {
         it('should return 202 with processId and turnIndex for valid follow-up', async () => {

@@ -429,7 +429,17 @@ Successful remote queue and Ralph launches also return `resultDelivery: { status
 reason }`: existing transport launches jobs but cannot return terminal results to the originating
 Sentinel or its WhatsApp/Teams chat. Tool guidance directs the AI to inspect the link, avoid
 promising automatic return, and avoid launching a duplicate job. Local responses omit this field.
-Post mode with a `remote:` processId is rejected as not supported yet.
+Remote post mode uses the destination's exact raw `processId` and an explicit
+`workspaceId: remote:<serverId>:<workspaceId>` clone key. `WorkspaceDirectory.postRemoteChat`
+verifies health identity and exact chat/workspace metadata before one scoped
+`POST /api/processes/:id/message?workspace=...`, then verifies the acknowledgment's owner.
+Remote-prefixed process IDs are ambiguous and rejected; repo names are create-only.
+The destination preserves its current provider and mode rules. Explicit effort tiers read
+that active provider's remote `/api/agent-providers/:provider/effort-tiers` mapping;
+explicit models win, and origin defaults/origins never travel. `steer` maps to `immediate`;
+`enqueue` is the default. Buffered admission retains `turnIndex: -1`. Remote post responses
+also report unavailable automatic result return. Admission errors use the same dispatch
+states and never retry a message after an uncertain response.
 
 When the invoking turn came from WhatsApp/Teams, local create mode records the
 turn's origin (`{ connector, chatKey, threadId? }`, from the per-turn `runtime.messagingOrigin` the

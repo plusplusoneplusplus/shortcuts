@@ -19,10 +19,11 @@
 
 import type { ChatProvider } from '../tasks/task-types';
 import type { ProcessIndexEntry, ProcessStore } from '@plusplusoneplusplus/forge';
-import { toQueueProcessId } from '@plusplusoneplusplus/forge';
+import { resolveModelForProvider, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import { createCache, type CacheHandle } from '../cache';
 import { isRepoGroupWorkspaceId, readRepoGroup } from '../workspaces/repo-group-workspace';
 import type { RemoteServerKind, RemoteServerWithRuntime } from './remote-server-types';
+import { resolveRecordedProvider } from '../processes/active-provider-session';
 
 // ============================================================================
 // Types
@@ -81,6 +82,25 @@ export interface RemoteChatResult {
     sessionId?: string;
 }
 
+export interface RemoteChatPostRequest {
+    serverId: string;
+    workspaceId: string;
+    /** Exact process ID on the destination; never a connection-qualified ID. */
+    processId: string;
+    content: string;
+    mode?: 'ask' | 'autopilot';
+    model?: string;
+    effortTier?: 'very-low' | 'low' | 'medium' | 'high';
+    deliveryMode?: 'immediate' | 'enqueue' | 'steer';
+}
+
+export interface RemoteChatPostResult {
+    serverIdentity: string;
+    processId: string;
+    /** -1 means buffered; the destination appends the user turn when it drains. */
+    turnIndex: number;
+}
+
 export type RemoteChatDispatchState = 'not-started' | 'rejected' | 'uncertain';
 
 /** Admission errors never imply that retrying execution is safe. */
@@ -126,6 +146,8 @@ export interface WorkspaceDirectory {
     }): Promise<{ entries: ProcessIndexEntry[]; total: number; target: RemoteChatReadTarget }>;
     /** Start a chat on a remote server. Throws an Error with a model-facing message. */
     startRemoteChat(request: RemoteChatRequest): Promise<RemoteChatResult>;
+    /** One follow-up through the destination's existing message-delivery API. */
+    postRemoteChat?(request: RemoteChatPostRequest): Promise<RemoteChatPostResult>;
 }
 
 /** The slice of `RemoteServerRuntimeService` the directory needs. */
@@ -522,6 +544,90 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
                 throw new RemoteChatAdmissionError(`Remote server "${label}" returned an invalid task identity. Admission is uncertain; inspect the remote chat list. Do not launch a duplicate job.`, 'uncertain');
             }
             return { serverIdentity, processId: toQueueProcessId(taskId) };
+        },
+
+        async postRemoteChat(request) {
+            const server = options.remoteServers?.list().find(s => s.id === request.serverId);
+            if (!server?.effectiveUrl) {
+                throw new RemoteChatAdmissionError('Remote server is unregistered or offline. No follow-up was sent.', 'not-started');
+            }
+            if (![request.workspaceId, request.processId].every(isRemoteId)) {
+                throw new RemoteChatAdmissionError('An exact remote workspace and process identity are required. No follow-up was sent.', 'not-started');
+            }
+            const target = { effectiveUrl: server.effectiveUrl, serverIdentity: server.serverIdentity };
+            const query = new URLSearchParams({ workspace: request.workspaceId });
+            const processPath = `/api/processes/${encodeURIComponent(request.processId)}`;
+            let serverIdentity: string;
+            let model = request.model;
+            let reasoningEffort: string | undefined;
+            try {
+                const health = await requestJson(`${target.effectiveUrl}/api/health`, listTimeoutMs);
+                assertCurrentTarget(server.id, target);
+                if (!isRemoteId(health?.serverIdentity)
+                    || (target.serverIdentity && health.serverIdentity !== target.serverIdentity)) {
+                    throw new Error('Remote owner unavailable or replaced');
+                }
+                serverIdentity = health.serverIdentity;
+                const detailQuery = new URLSearchParams(query);
+                detailQuery.set('exclude', 'conversation,toolCalls');
+                const detail = await requestJson(`${target.effectiveUrl}${processPath}?${detailQuery}`, listTimeoutMs);
+                assertCurrentTarget(server.id, target);
+                const proc = detail?.process;
+                if (!proc || proc.id !== request.processId || proc.metadata?.workspaceId !== request.workspaceId
+                    || proc.type !== 'chat' || proc.archived) {
+                    throw new Error('Exact remote chat owner unavailable');
+                }
+                const provider = resolveRecordedProvider(proc);
+                if ((model || request.effortTier) && !provider) throw new Error('Remote provider unavailable');
+                if (!model && request.effortTier) {
+                    // Read the owning server's configured mapping, never origin defaults.
+                    const tiers = await requestJson(`${target.effectiveUrl}/api/agent-providers/${provider}/effort-tiers`, listTimeoutMs);
+                    assertCurrentTarget(server.id, target);
+                    const tier = tiers?.effortTiers?.[request.effortTier];
+                    if (tiers?.provider !== provider || !isRemoteId(tier?.model)
+                        || (tier.reasoningEffort !== undefined && !['low', 'medium', 'high', 'xhigh'].includes(tier.reasoningEffort))) {
+                        throw new Error('Remote effort tier unavailable');
+                    }
+                    model = tier.model;
+                    reasoningEffort = tier.reasoningEffort;
+                }
+                if (model && resolveModelForProvider(provider!, model).coerced) throw new Error('Incompatible remote model');
+                const before = await requestJson(`${target.effectiveUrl}/api/health`, listTimeoutMs);
+                assertCurrentTarget(server.id, target);
+                if (before?.serverIdentity !== serverIdentity) throw new Error('Remote owner changed');
+            } catch {
+                throw new RemoteChatAdmissionError('Remote chat ownership or follow-up settings could not be verified. No follow-up was sent.', 'not-started');
+            }
+            let body: any;
+            try {
+                body = await requestJson(`${target.effectiveUrl}${processPath}/message?${query}`, startTimeoutMs, {
+                    method: 'POST', body: {
+                        content: request.content,
+                        ...(request.mode ? { mode: request.mode } : {}),
+                        ...(model ? { model } : {}),
+                        ...(reasoningEffort ? { reasoningEffort } : {}),
+                        deliveryMode: request.deliveryMode === 'steer' ? 'immediate' : request.deliveryMode ?? 'enqueue',
+                    },
+                });
+            } catch (err) {
+                const rejected = err instanceof RemoteRejectedError && err.status >= 400 && err.status < 500 && err.status !== 408;
+                throw new RemoteChatAdmissionError(rejected
+                    ? `Remote server rejected the follow-up (HTTP ${err.status}). No follow-up was admitted.`
+                    : 'Remote follow-up admission is uncertain. Inspect the remote chat before retrying. Do not send a duplicate follow-up.',
+                rejected ? 'rejected' : 'uncertain');
+            }
+            try {
+                assertCurrentTarget(server.id, target);
+                const after = await requestJson(`${target.effectiveUrl}/api/health`, listTimeoutMs);
+                assertCurrentTarget(server.id, target);
+                if (after?.serverIdentity !== serverIdentity || body?.processId !== request.processId
+                    || !Number.isSafeInteger(body?.turnIndex) || body.turnIndex < -1) {
+                    throw new Error('Invalid follow-up acknowledgment');
+                }
+            } catch {
+                throw new RemoteChatAdmissionError('Remote follow-up admission is uncertain: owner or acknowledgment unavailable. Do not send a duplicate follow-up.', 'uncertain');
+            }
+            return { serverIdentity, processId: request.processId, turnIndex: body.turnIndex };
         },
     };
 }
