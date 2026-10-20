@@ -19,6 +19,7 @@ import { useWorkspaceRemoval } from './useWorkspaceRemoval';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import { Dialog } from '../../ui/Dialog';
 import { ToastContainer, useToast } from '../../ui/Toast';
+import { WorkspaceCloneLabel, getWorkspaceCloneLabel } from './WorkspaceCloneLabel';
 import { getHostname } from '../../utils/config';
 import type { RepoData } from '../../repos/repoGrouping';
 import type { RepoSubTab } from '../../types/dashboard';
@@ -30,7 +31,7 @@ export interface WorkspaceTabsClusterProps {
 
 function Chevron() {
     return (
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <svg className="shrink-0" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M6 9l6 6 6-6" />
         </svg>
     );
@@ -259,12 +260,13 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
                     onClick={() => setCloneOpen(o => !o)}
                     aria-haspopup="menu"
                     aria-expanded={cloneOpen}
-                    title={ws.name}
-                    className="relative inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#2a2a2a] text-[13px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:border-[#0078d4] dark:hover:border-[#0078d4] transition-colors"
+                    title={getWorkspaceCloneLabel(repo)}
+                    aria-label={getWorkspaceCloneLabel(repo)}
+                    className="group/identity relative inline-flex items-center min-w-0 max-w-[300px] gap-1.5 h-[26px] px-2.5 rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#2a2a2a] text-[13px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:border-[#0078d4] dark:hover:border-[#0078d4] transition-colors"
                 >
                     <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ background: cloneStatusColor(cloneStatus[cloneId], remoteColor) }} aria-hidden />
-                    <span className="max-w-[160px] truncate">{ws.name}</span>
-                    {clones.length > 1 && <span className="text-[11px] text-[#848484] dark:text-[#777]">· {clones.length}</span>}
+                    <WorkspaceCloneLabel repo={repo} />
+                    {clones.length > 1 && <span className="shrink-0 text-[11px] text-[#848484] dark:text-[#777]">· {clones.length}</span>}
                     {cloneUnreadTotal > 0 && (
                         <span
                             className={`absolute -top-0.5 -right-0.5 ${unreadBadgeClass}`}

@@ -36,6 +36,7 @@ import { computeCloneStatusMap } from './shellModel';
 import { resolvePinnedScopes, type ResolvedPinnedScope } from './pinnedScopes';
 import { usePinnedScopes } from './usePinnedScopes';
 import { useShellNavigation } from './useShellNavigation';
+import { WorkspaceCloneLabel, getWorkspaceCloneLabel } from './WorkspaceCloneLabel';
 import { WorkspaceIdentityChip } from './WorkspaceIdentityChip';
 
 export interface ScopeSlideSwitcherProps {
@@ -346,6 +347,8 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
 
     const renderPinSegment = (pin: ResolvedPinnedScope, index: number) => {
         const active = activeScope === pin.id;
+        const selectedClone = active && pin.ref.kind === 'repo' ? repo : undefined;
+        const label = selectedClone ? getWorkspaceCloneLabel(selectedClone, pin.label) : pin.label;
         const accent = SCOPE_ACCENTS[pin.ref.kind === 'group' ? 'group' : 'workspace'];
         return (
             <button
@@ -362,10 +365,10 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                 data-scope="pin"
                 data-pin-id={pin.id}
                 data-pin-kind={pin.ref.kind}
-                aria-label={pin.label}
+                aria-label={label}
                 // Pop-out and unpin moved off the pill into its context menu, so
                 // the tooltip is the only hint left that the pill has actions.
-                title={`${pin.label} — right-click for options`}
+                title={`${label} — right-click for options`}
                 onClick={() => selectClone(pin.targetId)}
                 onContextMenu={e => openScopeMenu(e, pin.workspaceId, pin.label, pinMenuContext(pin, index))}
                 // Keyboard parity for the menu: without this a focused pin has no
@@ -380,7 +383,7 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                         pinMenuContext(pin, index),
                     );
                 }}
-                className={segmentClass(active) + ' group max-w-[170px]'}
+                className={segmentClass(active) + ' group group/identity relative ' + (selectedClone ? 'max-w-[280px]' : 'max-w-[170px]')}
                 style={active ? { color: accent } : undefined}
             >
                 {pin.ref.kind === 'group' ? (
@@ -388,10 +391,9 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                 ) : (
                     <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ background: pin.color }} aria-hidden />
                 )}
-                {/* Narrow windows drop the label to icon-only (below `xl`) before
-                    the whole pin strip goes (below `lg`) — a pin without its name
-                    is still a usable target, a missing pin is not. */}
-                <span className="hidden xl:inline truncate">{pin.label}</span>
+                {/* Inactive pins collapse below xl; the active clone retains its
+                    machine identity while the pin strip is visible (lg and up). */}
+                {selectedClone ? <WorkspaceCloneLabel repo={selectedClone} name={pin.label} /> : <span className="hidden xl:inline truncate">{pin.label}</span>}
                 {(pin.unseen > 0 || pin.partial) && (
                     <span
                         data-testid="scope-pin-unseen-badge"

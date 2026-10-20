@@ -629,3 +629,26 @@ describe('pinned segments — pinning from the picker', () => {
         expect(pinSegment(AI_GROUP_PIN)!.getAttribute('data-pin-kind')).toBe('group');
     });
 });
+
+
+describe('active pinned machine identity', () => {
+    it('follows the selected clone while inactive mixed clusters retain their group label', async () => {
+        const local = mockRepos[0];
+        const remote = { ...local, workspace: { ...local.workspace, baseUrl: 'https://ubuntu.example',
+            remote: { serverId: 'ubuntu', serverLabel: 'ubuntu-arm', connection: 'online' },
+        } };
+        mockRepos = [...mockRepos, remote];
+        mockAppState.selectedRepoId = 'remote:ubuntu:a';
+        const { rerender } = render(<ScopeSlideSwitcher repo={remote} repos={mockRepos} />);
+        await waitFor(() => expect(pinSegment(SHORTCUTS_PIN)?.getAttribute('aria-label')).toBe('shortcuts / ubuntu-arm'));
+        expect(screen.getByTestId('workspace-machine-name').textContent).toBe('ubuntu-arm');
+        expect(screen.getByTestId('remote-chip').getAttribute('data-identity-suppressed')).toBe('true');
+        mockAppState.selectedRepoId = 'a';
+        rerender(<ScopeSlideSwitcher repo={local} repos={mockRepos} />);
+        expect(pinSegment(SHORTCUTS_PIN)!.getAttribute('aria-label')).toBe('shortcuts / Local');
+        mockAppState.selectedRepoId = 'c';
+        rerender(<ScopeSlideSwitcher repo={mockRepos[2]} repos={mockRepos} />);
+        expect(pinSegment(SHORTCUTS_PIN)!.getAttribute('aria-label')).toBe('shortcuts');
+        expect(pinSegment(AI_GROUP_PIN)!.textContent).not.toContain('ubuntu-arm');
+    });
+});

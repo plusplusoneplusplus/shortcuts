@@ -882,3 +882,51 @@ describe('WorkspaceIdentityChip picker layout', () => {
         expect(screen.getByTestId('remote-search-input').getAttribute('placeholder')).toBe('Search remotes and groups');
     });
 });
+
+
+describe('workspace chip selected machine identity', () => {
+    it('keeps the repository cluster name while switching its concrete owner', async () => {
+        const local = repo('shared', 'shortcuts', SHORTCUTS);
+        const remote = remoteRepo('shared', 'shortcuts-2', SHORTCUTS, 'online');
+        Object.assign(remote.workspace, { baseUrl: 'https://devbox.example' });
+        const repos = [local, remote];
+        const { rerender } = render(<WorkspaceIdentityChip repo={remote} repos={repos} />);
+        await waitFor(() => expect(screen.getByTestId('remote-chip').getAttribute('aria-label')).toBe('shortcuts / devbox'));
+        expect(screen.getByTestId('workspace-machine-name').textContent).toBe('devbox');
+        expect(screen.getByTestId('clone-count-badge').textContent).toContain('2');
+        rerender(<WorkspaceIdentityChip repo={local} repos={repos} />);
+        expect(screen.getByTestId('remote-chip').getAttribute('aria-label')).toBe('shortcuts / Local');
+        expect(screen.getByTestId('remote-chip').getAttribute('title')).toBe('shortcuts / Local');
+        rerender(<WorkspaceIdentityChip repo={remote} repos={repos} groupIdentity={{ id: 'group-mixed', name: 'Mixed group' }} />);
+        expect(screen.getByTestId('remote-chip').getAttribute('aria-label')).toBe('Mixed group');
+        expect(screen.queryByTestId('workspace-machine-name')).toBeNull();
+        expect(screen.queryByTestId('clone-count-badge')).toBeNull();
+    });
+
+    it('uses the same owner for switch-back accessibility without changing navigation', async () => {
+        const remote = remoteRepo('shared', 'shortcuts', SHORTCUTS, 'offline');
+        Object.assign(remote.workspace, { baseUrl: 'https://devbox.example' });
+        const back = vi.fn();
+        render(<WorkspaceIdentityChip repo={remote} repos={[remote]} onSwitchBack={back} />);
+        const chip = screen.getByTestId('remote-chip');
+        await waitFor(() => expect(chip.getAttribute('aria-label')).toBe('Switch to shortcuts / devbox'));
+        fireEvent.click(chip);
+        expect(back).toHaveBeenCalledOnce();
+        fireEvent.click(screen.getByTestId('remote-chip-chevron'));
+        expect(screen.getByTestId('remote-dropdown')).toBeTruthy();
+    });
+
+    it('retains remote identity without a usable transport or display name', async () => {
+        const remote = remoteRepo('shared', 'shortcuts', SHORTCUTS, 'offline');
+        Object.assign(remote.workspace.remote, { serverLabel: undefined });
+        render(<WorkspaceIdentityChip repo={remote} repos={[remote]} />);
+        await waitFor(() => expect(screen.getByTestId('remote-chip').getAttribute('aria-label')).toBe('shortcuts / srv-1'));
+        expect(screen.getByTestId('workspace-machine-name').textContent).toBe('srv-1');
+    });
+
+    it('does not guess a machine when no concrete repository is selected', async () => {
+        render(<WorkspaceIdentityChip repos={[repo('a', 'shortcuts', SHORTCUTS)]} />);
+        await waitFor(() => expect(screen.getByTestId('remote-chip')).toBeTruthy());
+        expect(screen.queryByTestId('workspace-machine-name')).toBeNull();
+    });
+});
