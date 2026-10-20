@@ -127,6 +127,13 @@ references before editing. Paths are package-relative.
   a transport alias, endpoint or viewer's server identity.
   Remote reservation proof tokens stay server-side. Verify the exact owner/request/digest
   through a registered reciprocal connection; proof reads never authorize execution replay.
+  The destination admission gateway hashes and captures the exact JSON execution envelope
+  before proof I/O. Its domain adapter uses that captured body and the persisted destination
+  execution ID, not the origin's raw request ID. Destination claims qualify origin server,
+  parent workspace and request; duplicate or crash-window claims only reconcile. Accepted
+  origin proofs cannot create missing destination claims. Keep domain authorization in the
+  execution adapter. This gateway awaits route composition; remote tools retain unavailable
+  automatic result return.
   AI reuses generated job/artifact links unchanged; the existing SPA resolver verifies
   visible ownership and fails unavailable without local fallback. Explicit `source: dashboard`
   reads the invoking workspace's dashboard relay through a late-bound runtime getter,

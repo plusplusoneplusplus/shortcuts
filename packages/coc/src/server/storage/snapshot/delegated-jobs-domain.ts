@@ -4,13 +4,15 @@ import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { DELEGATED_JOBS_FILE } from '../../delegation/delegated-job-store';
 import { REMOTE_DELEGATION_REQUESTS_FILE } from '../../delegation/remote-delegation-request-store';
+import { REMOTE_DELEGATION_ADMISSIONS_FILE } from '../../delegation/remote-delegation-admission-store';
 import { SENTINEL_MIRROR_OUTBOX_FILE } from '../../messaging/sentinel-mirror-outbox';
 import { EMPTY_COLLECT_RESULT, type StorageSnapshotDomain } from './types';
 import { getErrorMessage, listRepoFiles } from './snapshot-fs';
 
 /** Operational delivery receipts stay machine-local and are cleared with server data. */
 export function createDelegatedJobsDomain(): StorageSnapshotDomain<string[]> {
-    return createMachineLocalRepoFileDomain('delegated-jobs', DELEGATED_JOBS_FILE, REMOTE_DELEGATION_REQUESTS_FILE);
+    return createMachineLocalRepoFileDomain('delegated-jobs', DELEGATED_JOBS_FILE,
+        REMOTE_DELEGATION_REQUESTS_FILE, REMOTE_DELEGATION_ADMISSIONS_FILE);
 }
 
 /** Sentinel to-do ledgers are keyed by local chat IDs, so they follow the same policy. */

@@ -162,8 +162,23 @@ Reads are bounded and never authorize execution replay.
 `delegation/remote-delegation-routes.ts` exposes read-only proof after a durable dispatch
 claim, including uncertain/accepted recovery states; reserved, rejected and tokenless
 rows cannot prove origin. Recovery proof is independent of admission flags. Remote
-execution, digest validation against submitted work, destination deduplication, receipt
-transfer and recovery scheduling remain transport integration responsibilities.
+launch/follow-up routes retain untracked dispatch and unavailable result return.
+
+`delegation/remote-delegation-admission.ts` provides a destination gateway, pending route
+composition. It captures the exact versioned JSON execution envelope, hashes all keys
+canonically, checks kind/workspace/target/digest, then verifies the origin proof. The
+domain adapter receives that captured body and a destination-local execution ID.
+Intent capture caps bytes, depth and node count; domain authorization remains separate.
+
+`delegation/remote-delegation-admission-store.ts` persists destination-owned receipts in
+`repos/<destinationWorkspaceId>/remote-delegation-admissions.json` with requested mode
+`0600`. Keys qualify origin server, parent workspace and request; destination execution
+IDs remain independent of colliding origin IDs. Durable `dispatching` claims admit one
+adapter call. Duplicate/uncertain/crash-window claims only reconcile; accepted origin
+proofs cannot create missing destination claims. Immutable accepted children enforce
+exact follow-up targets and whole Ralph sessions. Authenticated reconciliation reads
+receipts without execution. Snapshot/wipe policy matches origin reservations.
+Runtime adapters, receipt-transfer routes and recovery scheduling remain integration work.
 
 ### Delegated PR receipts
 

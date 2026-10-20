@@ -3,7 +3,7 @@ import type { RemoteServerSource } from '../servers/workspace-directory';
 import { isValidWorkspaceId } from '../tasks/comments/base-comments-manager';
 
 const id = z.string().min(1).max(512).refine(value => !!value.trim());
-const bindingSchema = z.object({
+export const remoteDelegationBindingSchema = z.object({
     version: z.literal(1),
     requestId: z.uuid(),
     originServerIdentity: id,
@@ -13,9 +13,10 @@ const bindingSchema = z.object({
     targetProcessId: id.optional(),
     intentDigest: z.string().regex(/^[a-f0-9]{64}$/),
 }).strict();
+export type RemoteDelegationBinding = z.infer<typeof remoteDelegationBindingSchema>;
 
 /** Private wire credential: never include in tool replies, query strings or logs. */
-export const remoteDelegationClaimSchema = bindingSchema.extend({
+export const remoteDelegationClaimSchema = remoteDelegationBindingSchema.extend({
     proofToken: z.string().regex(/^[a-f0-9]{64}$/),
 }).superRefine((claim, context) => {
     if ((claim.kind === 'follow-up') !== !!claim.targetProcessId) {
@@ -23,15 +24,14 @@ export const remoteDelegationClaimSchema = bindingSchema.extend({
     }
 });
 export type RemoteDelegationClaim = z.infer<typeof remoteDelegationClaimSchema>;
-export const remoteDelegationProofSchema = bindingSchema.extend({
+export const remoteDelegationProofSchema = remoteDelegationBindingSchema.extend({
     admission: z.enum(['dispatching', 'uncertain', 'accepted']),
 });
 export type RemoteDelegationProof = z.infer<typeof remoteDelegationProofSchema>;
 export const REMOTE_DELEGATION_PROOF_PATH = '/api/remote-delegations/proof';
 
 /** Compare explicit fields so JSON property order cannot change correlation. */
-export function sameRemoteDelegationBinding(a: RemoteDelegationProof | RemoteDelegationClaim,
-    b: RemoteDelegationProof | RemoteDelegationClaim): boolean {
+export function sameRemoteDelegationBinding(a: RemoteDelegationBinding, b: RemoteDelegationBinding): boolean {
     return a.version === b.version && a.requestId === b.requestId
         && a.originServerIdentity === b.originServerIdentity
         && a.parent.workspaceId === b.parent.workspaceId && a.parent.processId === b.parent.processId
