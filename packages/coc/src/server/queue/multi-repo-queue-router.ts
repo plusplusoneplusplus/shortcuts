@@ -556,7 +556,8 @@ export class MultiRepoQueueRouter extends EventEmitter {
         return this.enqueueAdmitted(input);
     }
 
-    async enqueueAdmitted(input: CreateTaskInput): Promise<string> {
+    async enqueueAdmitted(input: CreateTaskInput,
+        validateAdmission?: (process: import('@plusplusoneplusplus/forge').AIProcess | undefined) => void): Promise<string> {
         let rootPath = (input.payload as any)?.workingDirectory as string | undefined;
 
         if (!rootPath) {
@@ -582,6 +583,7 @@ export class MultiRepoQueueRouter extends EventEmitter {
         const processId = input.processId ?? input.payload.processId;
         if (typeof processId === 'string') {
             const proc = await this.store.getProcess(processId);
+            validateAdmission?.(proc);
             const context = input.payload.context;
             const stoppedPrReview = typeof context === 'object' && context !== null
                 && 'sentinelPrOutcomeReview' in context && context.sentinelPrOutcomeReview === true
@@ -593,9 +595,13 @@ export class MultiRepoQueueRouter extends EventEmitter {
                 if (stoppedPrReview) pending.payload.context = { ...message.context, sentinelPrOutcomeStopped: true };
                 if (pending.id === input.id) break;
                 if (!queueManager.getTask(pending.id!)) {
+                    validateAdmission?.(proc);
                     queueManager.enqueue({ ...pending, repoId: input.repoId });
                 }
             }
+            validateAdmission?.(proc);
+        } else if (validateAdmission) {
+            throw new Error('Guarded queue admission requires a process identity');
         }
         return queueManager.enqueue(input);
     }

@@ -18,7 +18,7 @@
  * follow-up delivery specifics. Those live in the injected evaluator/executor.
  */
 
-import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
+import { getLogger, LogCategory, type AIProcess } from '@plusplusoneplusplus/forge';
 import { randomUUID } from 'crypto';
 import type { ScheduleTimerRegistry } from '../schedule/schedule-timer-registry';
 import { PeriodicEntryScheduler } from '../schedule/periodic-entry-scheduler';
@@ -102,7 +102,9 @@ export interface EventEvaluator {
  * through {@link TriggerManager.onActionComplete}.
  */
 export interface ActionExecutor {
-    execute(trigger: Trigger, action: TriggerAction, prompt: string): Promise<void>;
+    /** Recheck unattended admission synchronously at the final buffer/queue write. */
+    execute(trigger: Trigger, action: TriggerAction, prompt: string,
+        validateAdmission?: (process: AIProcess | undefined) => void): Promise<void>;
 }
 
 /**

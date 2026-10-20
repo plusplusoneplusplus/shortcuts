@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { getLogger, LogCategory, type ProcessStore } from '@plusplusoneplusplus/forge';
+import { getLogger, LogCategory, type AIProcess, type ProcessStore } from '@plusplusoneplusplus/forge';
 import type { SentinelTodoItem, SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
 import type { ActionExecutor, OneShotFirer, TriggerEventEmit } from './trigger-manager';
 import { OneShotFireConflictError } from './trigger-manager';
@@ -197,7 +197,7 @@ export class SentinelTodoTriggerFirer implements OneShotFirer {
         if (committed.event.type === 'script-condition') {
             const process = await this.deps.processes.getProcess(committed.processId, committed.workspaceId);
             const current = this.deps.triggers.getById(triggerId);
-            if (!current || current.revision !== committed.revision
+            if (!current || current.event.type !== 'script-condition' || current.revision !== committed.revision
                 || current.delivery?.deliveryId !== committed.delivery.deliveryId
                 || current.delivery.state !== 'pending' || !this.canRetryDelivery(current)) return;
             const item = this.deps.todos.get({ workspaceId: current.workspaceId, processId: current.processId })
@@ -235,7 +235,12 @@ export class SentinelTodoTriggerFirer implements OneShotFirer {
             committed.action = { ...current.action, prompt: buildSentinelPrOutcomeReviewPrompt(current, item!) };
         }
         try {
-            await this.deps.executor.execute(committed, committed.action, committed.action.prompt);
+            if (committed.event.type === 'script-condition') {
+                await this.deps.executor.execute(committed, committed.action, committed.action.prompt,
+                    process => this.validateScriptDelivery(committed, process));
+            } else {
+                await this.deps.executor.execute(committed, committed.action, committed.action.prompt);
+            }
         } catch (error) {
             if (committed.binding.delegatedPr && error instanceof ReviewDeliveryRejectedError) {
                 this.failOutcome(committed, error.message);
@@ -247,6 +252,21 @@ export class SentinelTodoTriggerFirer implements OneShotFirer {
         }
 
         this.updateDelivery(committed);
+    }
+
+    private validateScriptDelivery(committed: Trigger, process: AIProcess | undefined): void {
+        const current = this.deps.triggers.getById(committed.id);
+        const item = current?.binding && this.deps.todos.get({
+            workspaceId: current.workspaceId, processId: current.processId,
+        }).items.find(item => item.id === current.binding?.itemId);
+        if (!current || current.event.type !== 'script-condition' || current.revision !== committed.revision
+            || current.workspaceId !== committed.workspaceId || current.processId !== committed.processId
+            || current.delivery?.deliveryId !== committed.delivery?.deliveryId
+            || current.delivery?.state !== 'pending' || !this.canRetryDelivery(current) || skipReason(item)
+            || process?.id !== current.processId || process.metadata?.workspaceId !== current.workspaceId
+            || process.metadata.mode !== 'sentinel' || process.status === 'cancelled' || process.status === 'cancelling') {
+            throw new ReviewDeliveryRejectedError('Script wake admission was revoked');
+        }
     }
 
     canRetryDelivery(trigger: Trigger): boolean {

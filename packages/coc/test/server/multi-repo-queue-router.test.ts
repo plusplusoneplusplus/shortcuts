@@ -64,6 +64,50 @@ describe('MultiRepoQueueRouter', () => {
         sdkMocks.resetAll();
     });
 
+    it('revalidates admitted work after asynchronous workspace routing', async () => {
+        const { bridge, registry, store } = createBridge();
+        let enabled = true;
+        store.getWorkspaces = vi.fn(async () => {
+            enabled = false;
+            return [{ id: 'ws-owner', name: 'Owner', rootPath: process.cwd() }];
+        });
+        await store.addProcess({ id: 'owner', type: 'chat', status: 'completed', startTime: new Date(),
+            promptPreview: '', metadata: { workspaceId: 'ws-owner', mode: 'sentinel' } });
+        const validate = vi.fn(() => { if (!enabled) throw new Error('Admission revoked'); });
+        try {
+            await expect(bridge.enqueueAdmitted({
+                id: 'wake', processId: 'owner', type: 'chat', priority: 'normal',
+                payload: { kind: 'chat', workspaceId: 'ws-owner', processId: 'owner' }, config: {},
+            }, validate)).rejects.toThrow('Admission revoked');
+            expect(validate).toHaveBeenCalledOnce();
+            expect(Array.from(registry.getAllQueues().values()).flatMap(queue => queue.getAll())).toEqual([]);
+        } finally { bridge.dispose(); }
+    });
+
+    it.each([1, 2])('revalidates after promoting a predecessor with %i pending messages', async count => {
+        const { bridge, registry, store } = createBridge();
+        const root = process.cwd();
+        await store.addProcess({ id: 'owner', type: 'chat', status: 'completed', startTime: new Date(),
+            promptPreview: '', workingDirectory: root, metadata: { workspaceId: 'ws-owner', mode: 'sentinel' } });
+        for (const id of ['earlier-human', 'later-human'].slice(0, count)) {
+            await store.appendPendingMessage('owner', { id, content: id, createdAt: new Date().toISOString() });
+        }
+        bridge.getOrCreateBridge(root);
+        const queue = registry.getQueueForRepo(root);
+        let enabled = true;
+        queue.on('taskAdded', () => { enabled = false; });
+        const validate = vi.fn(() => { if (!enabled) throw new Error('Admission revoked'); });
+        try {
+            await expect(bridge.enqueueAdmitted({
+                id: 'wake', processId: 'owner', type: 'chat', priority: 'normal',
+                payload: { kind: 'chat', workingDirectory: root, workspaceId: 'ws-owner', processId: 'owner' }, config: {},
+            }, validate)).rejects.toThrow('Admission revoked');
+            expect(queue.getAll()).toHaveLength(1);
+            expect(queue.getAll()[0].payload.prompt).toBe('earlier-human');
+            expect(validate).toHaveBeenCalledTimes(3);
+        } finally { bridge.dispose(); }
+    });
+
     it('materializes a registered dependency target lazily without admitting work or using the parent queue', async () => {
         const { bridge, registry, store } = createBridge();
         const parentRoot = path.join(process.cwd(), 'parent-fixture');

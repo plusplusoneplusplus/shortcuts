@@ -216,10 +216,15 @@ result, immutable prompt and `script-condition:<ruleId>:<resultHash>` receipt. I
 retains active/paused status and holds newer results while a delivery is pending.
 Paused changed-result wakes require explicit manual admission; pending retries survive
 restart without resuming evaluation and stop timers after acknowledgement.
-Delivery checks live flags, source revision, owner and current item eligibility;
-retries preserve the saved prompt and do not mark edited rules delivered. The wake
-contains bounded top-level changed-field names and escaped JSON marked as untrusted
-data. The production manager must call this path before persisting a changed
+Delivery carries a synchronous admission guard through `ActionExecutor` and
+`deliverOnce`, under the shared process lock. It checks fresh owner state after
+mode resolution and checks live flags, revision and item eligibility immediately
+before buffering or the final queue write after asynchronous owner routing.
+Promoted predecessors recheck admission too. Guarded delivery requires admitted
+routing; rejection retains the pending receipt without restoring a stopped owner.
+Retries preserve the saved prompt and do not mark edited rules delivered. The wake
+contains bounded top-level changed-field names and escaped untrusted JSON.
+The production manager must call this path before persisting a changed
 baseline. `pauseScriptCondition` atomically commits the fifth failure, paused
 status and a notice receipt unique to that pause episode. Retries/restarts reuse
 its immutable prompt through the same delivery path, including while paused;

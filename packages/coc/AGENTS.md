@@ -354,7 +354,12 @@ references before editing. Paths are package-relative.
   evaluated event and immutable untrusted-data wake together, using rule/result-hash
   receipts through the shared message admission service. It retains the rule's
   active/paused status, blocks result replacement during pending delivery, and rechecks live
-  flags, owner/item eligibility and revisions before admission. Pending retries
+  flags, owner/item eligibility and revisions before admission. Its synchronous
+  guard travels through `ActionExecutor` and `deliverOnce` under the shared process
+  lock, checks fresh owner state after mode resolution, and runs at the final
+  owner-queue write after asynchronous routing. Buffer writes and promoted
+  predecessors also recheck admission. Guarded delivery requires admitted routing;
+  rejection preserves stopped owner state and the pending receipt. Pending retries
   reuse the saved prompt; script revisions revoke stale deliveries.
   `pauseScriptCondition` atomically commits the fifth failure, paused status and
   one immutable notice with a persisted receipt unique to that pause episode.
