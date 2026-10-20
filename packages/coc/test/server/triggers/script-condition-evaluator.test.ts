@@ -90,6 +90,33 @@ describe('ScriptConditionEvaluator', () => {
         expect(run).not.toHaveBeenCalled();
     });
 
+    it('evaluates a paused rule only with explicit manual admission and preserves the pause', async () => {
+        const trigger = { ...rule({ ...baseline(1), paused: true, consecutiveFailures: 5,
+            lastError: { message: 'Failed', at: '2026-01-01T00:00:00Z' } }), status: 'paused' as const };
+        const original = structuredClone(trigger);
+        const run = vi.fn().mockResolvedValue(2);
+        const outcome = await new ScriptConditionEvaluator(run).evaluate(trigger, { manualScript: true });
+        expect(outcome).toMatchObject({ fire: true, event: { ...baseline(2), paused: true, consecutiveFailures: 0 } });
+        expect(outcome.event.lastError).toBeUndefined();
+        expect(trigger).toEqual(original);
+        expect(run).toHaveBeenCalledOnce();
+    });
+
+    it.each(['disarmed', 'expired'] as const)('manual admission cannot bypass %s status', async status => {
+        const run = vi.fn();
+        const trigger = { ...rule({ paused: true }), status };
+        expect(await new ScriptConditionEvaluator(run).evaluate(trigger, { manualScript: true }))
+            .toEqual({ fire: false, event: trigger.event });
+        expect(run).not.toHaveBeenCalled();
+    });
+
+    it('does not implicitly resume a manually evaluated paused rule on failure', async () => {
+        const trigger = { ...rule({ ...baseline(1), paused: true }), status: 'paused' as const };
+        const outcome = await new ScriptConditionEvaluator(async () => { throw new Error('Failure'); })
+            .evaluate(trigger, { manualScript: true });
+        expect(outcome).toMatchObject({ fire: false, event: { ...baseline(1), paused: true, consecutiveFailures: 1 } });
+    });
+
     it.each([undefined, NaN, { invalid: undefined }, 'x'.repeat(16_384)])('records invalid or oversized result as one failure without advancing the baseline', async value => {
         const trigger = rule(baseline({ valid: true }));
         const original = structuredClone(trigger);

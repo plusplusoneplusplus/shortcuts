@@ -5,7 +5,7 @@ import { dateTimeCandidates } from '@plusplusoneplusplus/coc-client';
 import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import type { SentinelTodoOwner, SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
 import type { TriggerManager, TriggerEventEmit, OneShotFirer } from './trigger-manager';
-import { OneShotFireConflictError } from './trigger-manager';
+import { OneShotFireConflictError, ScriptConditionRunConflictError } from './trigger-manager';
 import type { TriggerStore } from './trigger-store';
 import { parsePullRequestUrl, type PrStatusFetcher, type PrStatusSnapshot } from './pr-status-fetcher';
 import {
@@ -50,7 +50,7 @@ export interface SentinelTodoTriggerServiceDeps {
     triggers: TriggerStore;
     todos: SentinelTodoStore;
     owners: Pick<SentinelTodoService, 'list'>;
-    manager: Pick<TriggerManager, 'arm' | 'disarm'>;
+    manager: Pick<TriggerManager, 'arm' | 'disarm'> & Partial<Pick<TriggerManager, 'runScriptNow'>>;
     firer: OneShotFirer;
     fetchPr: PrStatusFetcher;
     dateTimeEnabled?: () => boolean;
@@ -91,7 +91,7 @@ export class SentinelTodoTriggerService {
         if (body.event?.type === 'date-time') this.assertDateTimeEnabled();
         if (body.event?.type === 'script-condition') {
             this.assertScriptConditionsEnabled();
-            if (body.runNow) throw new SentinelTodoTriggerError(503, 'Script Run now is unavailable');
+            if (body.runNow) this.requireScriptRunNow();
         }
         if (body.runNow && !body.confirmed) throw new SentinelTodoTriggerError(400, 'Run now requires confirmation');
         const replay = this.findCreation(owner, body.idempotencyKey);
@@ -130,7 +130,12 @@ export class SentinelTodoTriggerService {
             throw error;
         }
         this.emit('trigger-created', trigger);
-        if (body.runNow) await this.deps.firer.fire(trigger.id, 'run-now');
+        if (body.runNow) {
+            if (trigger.event.type === 'script-condition') {
+                return this.runNow(owner, trigger.id, { expectedRevision: trigger.revision, confirmed: true });
+            }
+            await this.deps.firer.fire(trigger.id, 'run-now');
+        }
         return this.deps.triggers.getById(trigger.id)!;
     }
 
@@ -231,7 +236,16 @@ export class SentinelTodoTriggerService {
         const current = this.requireMutable(owner, triggerId, body.expectedRevision);
         if (current.event.type === 'script-condition') {
             this.assertScriptConditionsEnabled();
-            throw new SentinelTodoTriggerError(503, 'Script Run now is unavailable');
+            this.assertEligible(owner, current.binding!.itemId);
+            const run = this.requireScriptRunNow();
+            try { await run(triggerId, body.expectedRevision); }
+            catch (error) {
+                if (error instanceof ScriptConditionRunConflictError) {
+                    throw new SentinelTodoTriggerError(409, error.message, this.deps.triggers.getById(triggerId) ?? undefined);
+                }
+                throw error;
+            }
+            return this.deps.triggers.getById(triggerId)!;
         }
         try { await this.deps.firer.fire(triggerId, 'run-now', body.expectedRevision); }
         catch (error) {
@@ -345,6 +359,11 @@ export class SentinelTodoTriggerService {
     }
     private assertScriptConditionsEnabled(): void {
         if (this.deps.scriptConditionsEnabled?.() !== true) throw new SentinelTodoTriggerError(403, 'Script conditions are disabled');
+    }
+    private requireScriptRunNow(): NonNullable<SentinelTodoTriggerServiceDeps['manager']['runScriptNow']> {
+        const run = this.deps.manager.runScriptNow;
+        if (!run) throw new SentinelTodoTriggerError(503, 'Script Run now is unavailable');
+        return run.bind(this.deps.manager);
     }
     private assertAuthoringTime(event: TriggerEvent): void {
         if (event.type === 'script-condition') {

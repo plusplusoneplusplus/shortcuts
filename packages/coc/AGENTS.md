@@ -318,7 +318,9 @@ references before editing. Paths are package-relative.
   preserve evaluation state. Script edits and lifecycle changes revoke saved
   notices and disarm active evaluation. Resume resets failures/errors, not the
   baseline; remove retains dedupe receipts without retrying delivery. Script
-  Run now rejects until repeating manual execution is wired. Trigger infrastructure
+  Run now uses the repeating evaluator and requires confirmation/revision admission;
+  pending deliveries and overlapping runs reject. Paused rules run once without
+  resuming, including changed-result wakes and failure recovery. Trigger infrastructure
   is always wired; rules never expire and require no additional approval gate. Clearing rules hides their
   presentation while preserving delivery and keyed authoring receipts; retries
   must not duplicate wakes or revive removed rules.
@@ -345,8 +347,8 @@ references before editing. Paths are package-relative.
   and abort on revocation. Provider sessions are not started by this adapter.
   `SentinelTodoTriggerFirer.fireScriptResult` commits a changed
   evaluated event and immutable untrusted-data wake together, using rule/result-hash
-  receipts through the shared message admission service. It retains active status
-  and cadence, blocks result replacement during pending delivery, and rechecks live
+  receipts through the shared message admission service. It retains the rule's
+  active/paused status, blocks result replacement during pending delivery, and rechecks live
   flags, owner/item eligibility and revisions before admission. Pending retries
   reuse the saved prompt; script revisions revoke stale deliveries.
   `pauseScriptCondition` atomically commits the fifth failure, paused status and
@@ -363,7 +365,7 @@ references before editing. Paths are package-relative.
   counts and baselines, while deadline expiry counts as a failure. Replacement
   timers wait for the cancelled run's overlap guard to release. Callers must
   disarm on edits, pause/removal or owner revocation and wire live refresh.
-  Owner/tool admission, script manual execution and production wiring remain
+  Owner/tool admission and production wiring remain
   caller responsibilities.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in

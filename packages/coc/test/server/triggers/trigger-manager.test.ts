@@ -753,6 +753,24 @@ describe('script-condition repeating scheduler', () => {
     }
     async function tick(h: ReturnType<typeof setup>) { h.timer._fire('trigger_1'); await flush(); }
 
+    it.each(['flag', 'binding', 'removed', 'delegated', 'terminal', 'revision', 'shutdown'] as const)(
+        'rejects direct script Run now admission for %s', async reason => {
+            const evaluator = fakeEvaluator({ fire: false, event: scriptEvent() });
+            const h = setup(evaluator, () => reason !== 'flag');
+            const trigger = rule();
+            if (reason === 'binding') trigger.binding = undefined;
+            if (reason === 'removed') trigger.binding!.removedAt = new Date(BASE).toISOString();
+            if (reason === 'delegated') trigger.binding!.delegatedPr = { jobId: 'job', receiptId: 'receipt' };
+            if (reason === 'terminal') trigger.status = 'disarmed';
+            h.store.update(trigger);
+            if (reason === 'shutdown') h.manager.shutdownAll();
+            await expect(h.manager.runScriptNow(trigger.id, reason === 'revision' ? 99 : 1)).rejects.toThrow();
+            expect(evaluator.evaluate).not.toHaveBeenCalled();
+            expect(h.firer.fireScriptResult).not.toHaveBeenCalled();
+            h.manager.shutdownAll();
+        },
+    );
+
     it('stores silent baselines and uses script cadence without invoking an action', async () => {
         const event = scriptEvent({ lastResult: '1', lastResultHash: 'one' });
         const h = setup(fakeEvaluator({ fire: false, event, changed: true }));

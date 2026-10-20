@@ -385,6 +385,41 @@ describe('SentinelTodoTriggerFirer', () => {
         });
         const fire = () => firer.fireScriptResult(rule.id, next, triggers.getById(rule.id)!.revision);
 
+        it('requires explicit manual admission for a paused changed result and retains paused state', async () => {
+            rule = { ...rule, status: 'paused', nextTickAt: null,
+                event: { ...rule.event as ScriptConditionEvent, paused: true } };
+            next = { ...next, paused: true };
+            triggers.update(rule);
+            await fire();
+            expect(execute).not.toHaveBeenCalled();
+            await firer.fireScriptResult(rule.id, next, rule.revision, true);
+            expect(triggers.getById(rule.id)).toMatchObject({ status: 'paused', nextTickAt: null,
+                event: next, delivery: { reason: 'script-changed', state: 'delivered' } });
+            expect(execute).toHaveBeenCalledOnce();
+        });
+
+        it.each(['resume', 'edit', 'remove', 'done', 'gate', 'owner'] as const)(
+            'rechecks manual paused wake admission after lookup races with %s', async race => {
+                rule = { ...rule, status: 'paused', nextTickAt: null,
+                    event: { ...rule.event as ScriptConditionEvent, paused: true } };
+                next = { ...next, paused: true };
+                triggers.update(rule);
+                getProcess.mockImplementationOnce(async () => {
+                    if (race === 'resume') triggers.update({ ...rule, status: 'active', revision: 2,
+                        event: { ...rule.event as ScriptConditionEvent, paused: false } });
+                    if (race === 'edit') triggers.update({ ...rule, revision: 2 });
+                    if (race === 'remove') triggers.delete(rule.id);
+                    if (race === 'done') todos.update(owner, rule.binding!.itemId, 1, { status: 'done' }, 'user');
+                    if (race === 'gate') enabled = false;
+                    if (race === 'owner') return undefined;
+                    return process;
+                });
+                await firer.fireScriptResult(rule.id, next, rule.revision, true);
+                expect(execute).not.toHaveBeenCalled();
+                expect(triggers.getById(rule.id)?.delivery).toBeUndefined();
+            },
+        );
+
         it('polls a real evaluator and firer through baseline, repeated changes, retry and automatic pause', async () => {
             const baseline = { ...(rule.event as ScriptConditionEvent) };
             delete baseline.lastResult;

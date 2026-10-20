@@ -85,6 +85,7 @@ export interface EvaluationOutcome {
 
 export interface EvaluationOptions {
     manualCi?: boolean;
+    manualScript?: boolean;
     refreshOutcome?: boolean;
     /** Cancels background script execution when admission is revoked. */
     signal?: AbortSignal;
@@ -119,11 +120,12 @@ export interface OneShotFirer {
 export interface ScriptConditionFirer {
     deliverPending(triggerId: string): Promise<void>;
     canRetryDelivery(trigger: Trigger): boolean;
-    fireScriptResult(triggerId: string, event: ScriptConditionEvent, expectedRevision: number): Promise<void>;
+    fireScriptResult(triggerId: string, event: ScriptConditionEvent, expectedRevision: number, manual?: boolean): Promise<void>;
     pauseScriptCondition(triggerId: string, event: ScriptConditionEvent, expectedRevision: number): Promise<void>;
 }
 
 export class OneShotFireConflictError extends Error {}
+export class ScriptConditionRunConflictError extends Error {}
 
 export type TriggerEventEmit = (event: TriggerChangeEvent) => void;
 
@@ -246,12 +248,12 @@ export class TriggerManager {
         }
     }
 
-    private eventAllowed(trigger: Trigger): boolean {
+    private eventAllowed(trigger: Trigger, manualScript = false): boolean {
         if (trigger.event.type === 'script-condition') {
             return this.deps.scriptConditionsEnabled?.() === true && !!this.deps.scriptConditionFirer
                 && trigger.binding?.kind === 'sentinel-todo' && !trigger.binding.removedAt
                 && !trigger.binding.delegatedPr && !trigger.outcome
-                && (!trigger.event.paused || this.canRetryScriptDelivery(trigger));
+                && (!trigger.event.paused || manualScript && trigger.status === 'paused' || this.canRetryScriptDelivery(trigger));
         }
         return trigger.event.type !== 'date-time' || this.deps.dateTimeEnabled?.() === true;
     }
@@ -375,7 +377,23 @@ export class TriggerManager {
         await this.onTick(triggerId, true);
     }
 
-    private async onTick(triggerId: string, manualCi = false): Promise<void> {
+    /** Evaluate once without resuming a paused rule or bypassing repeating delivery. */
+    async runScriptNow(triggerId: string, expectedRevision: number): Promise<void> {
+        const trigger = this.deps.store.getById(triggerId);
+        if (this.stopped || this.ticking.has(triggerId) || !trigger
+            || trigger.revision !== expectedRevision || trigger.event.type !== 'script-condition'
+            || !['active', 'paused'].includes(trigger.status) || !this.eventAllowed(trigger, true)) {
+            throw new ScriptConditionRunConflictError('Script rule changed or evaluation is unavailable');
+        }
+        if (trigger.delivery?.state === 'pending') {
+            throw new ScriptConditionRunConflictError('Pending wake delivery must complete before Run now');
+        }
+        if (!this.deps.resolveEvaluator(trigger.event)) throw new Error('Script evaluator is unavailable');
+        this.scheduler.disarm(triggerId);
+        await this.onTick(triggerId, false, true);
+    }
+
+    private async onTick(triggerId: string, manualCi = false, manualScript = false): Promise<void> {
         if (this.ticking.has(triggerId)) return;
         this.ticking.add(triggerId);
         try {
@@ -396,7 +414,7 @@ export class TriggerManager {
                 if (!this.stopped && this.dependencyPolling?.entries().some(current => current.id === entry.id)) this.scheduler.reschedule(entry);
                 return;
             }
-            await this.evaluateTick(triggerId, manualCi);
+            await this.evaluateTick(triggerId, manualCi, manualScript);
         }
         finally {
             this.ticking.delete(triggerId);
@@ -407,7 +425,7 @@ export class TriggerManager {
         }
     }
 
-    private async evaluateTick(triggerId: string, manualCi: boolean): Promise<void> {
+    private async evaluateTick(triggerId: string, manualCi: boolean, manualScript: boolean): Promise<void> {
         if (this.stopped) return;
         const logger = getLogger();
         const trigger = this.deps.store.getById(triggerId);
@@ -415,12 +433,12 @@ export class TriggerManager {
             logger.warn(LogCategory.AI, `[TriggerManager] Tick for unknown trigger ${triggerId}`);
             return;
         }
-        if (!this.eventAllowed(trigger)) return;
+        if (!this.eventAllowed(trigger, manualScript)) return;
         if (trigger.delivery?.state === 'pending') {
             await this.retryDelivery(triggerId);
             return;
         }
-        if (trigger.status !== 'active' && !(manualCi && trigger.status === 'paused') && !hasPendingRepair(trigger)) return;
+        if (trigger.status !== 'active' && !((manualCi || manualScript) && trigger.status === 'paused') && !hasPendingRepair(trigger)) return;
         if (trigger.event.type === 'date-time') {
             if (Date.parse(trigger.event.firesAt) > this.now()) {
                 // Capped timers and backward clock changes must not fire early.
@@ -464,10 +482,13 @@ export class TriggerManager {
         const scriptRun = trigger.event.type === 'script-condition' ? new AbortController() : undefined;
         if (scriptRun) this.scriptRuns.set(triggerId, scriptRun);
         try {
-            outcome = await evaluator.evaluate(trigger, scriptRun ? { signal: scriptRun.signal }
+            outcome = await evaluator.evaluate(trigger, scriptRun ? { signal: scriptRun.signal, ...(manualScript ? { manualScript: true } : {}) }
                 : manualCi ? { manualCi: true } : undefined);
         } catch (err) {
-            if (scriptRun?.signal.aborted) return;
+            if (scriptRun?.signal.aborted) {
+                if (manualScript) throw new ScriptConditionRunConflictError('Script run admission revoked');
+                return;
+            }
             logger.warn(LogCategory.AI, `[TriggerManager] Evaluator error for ${triggerId}: ${err instanceof Error ? err.message : String(err)}`);
             const current = this.deps.store.getById(triggerId);
             if (current?.event.monitor === 'ci-failure') {
@@ -476,7 +497,7 @@ export class TriggerManager {
                 this.emit({ type: 'trigger-updated', trigger: current });
             }
             if (current?.status === 'active') this.reschedule(current);
-            if (manualCi) throw err;
+            if (manualCi || manualScript) throw err;
             return;
         } finally {
             if (scriptRun) this.scriptRuns.delete(triggerId);
@@ -484,19 +505,29 @@ export class TriggerManager {
 
         // Re-read in case state changed during the async evaluate (e.g. the
         // in-flight action completed and cleared the guard).
-        if (this.stopped || scriptRun?.signal.aborted) return;
+        if (this.stopped || scriptRun?.signal.aborted) {
+            if (manualScript) throw new ScriptConditionRunConflictError('Script run admission revoked');
+            return;
+        }
         const current = this.deps.store.getById(triggerId);
-        if (!current || (current.status !== 'active' && !(manualCi && current.status === 'paused') && !hasPendingRepair(current))) return;
+        if (!current || (current.status !== 'active' && !((manualCi || manualScript) && current.status === 'paused') && !hasPendingRepair(current))) {
+            if (manualScript) throw new ScriptConditionRunConflictError('Script rule changed before Run now completed');
+            return;
+        }
         if (current.revision !== trigger.revision) {
             // Edited while evaluating (e.g. a new PR): the outcome is stale.
             this.reschedule(current);
+            if (manualScript) throw new ScriptConditionRunConflictError('Script rule changed before Run now completed');
             return;
         }
-        if (!this.eventAllowed(current)) return;
+        if (!this.eventAllowed(current, manualScript)) {
+            if (manualScript) throw new ScriptConditionRunConflictError('Script run admission revoked');
+            return;
+        }
         current.lastTickAt = new Date(this.now()).toISOString();
 
         if (current.event.type === 'script-condition') {
-            await this.applyScriptOutcome(current, outcome);
+            await this.applyScriptOutcome(current, outcome, manualScript);
             return;
         }
 
@@ -624,25 +655,32 @@ export class TriggerManager {
     // Internal: state transitions
     // ========================================================================
 
-    private async applyScriptOutcome(trigger: Trigger, outcome: EvaluationOutcome): Promise<void> {
+    private async applyScriptOutcome(trigger: Trigger, outcome: EvaluationOutcome, manualScript = false): Promise<void> {
         if (outcome.event.type !== 'script-condition') throw new Error('Script evaluator returned a different event kind');
         const event = outcome.event;
         // The firer must see the previous baseline/fourth failure, never an advanced event.
-        if (outcome.fire || event.paused) {
+        const autoPause = event.paused && trigger.status === 'active';
+        if (outcome.fire || autoPause) {
             this.deps.store.update(trigger);
             let decisionFailed = false;
             try {
                 const firer = this.deps.scriptConditionFirer!;
-                if (event.paused) await firer.pauseScriptCondition(trigger.id, event, trigger.revision);
+                if (autoPause) await firer.pauseScriptCondition(trigger.id, event, trigger.revision);
+                else if (manualScript) await firer.fireScriptResult(trigger.id, event, trigger.revision, true);
                 else await firer.fireScriptResult(trigger.id, event, trigger.revision);
             } catch (error) {
                 decisionFailed = true;
                 getLogger().error(LogCategory.AI, `[TriggerManager] Script decision failed for ${trigger.id}: ${String(error)}`);
+                if (manualScript) {
+                    const current = this.deps.store.getById(trigger.id);
+                    if (current) this.reschedule(current);
+                    throw error;
+                }
             }
             const current = this.deps.store.getById(trigger.id);
             if (!current || this.stopped) return;
             // An ineligible owner/item cannot receive the pause notice; still stop failed runs.
-            if (event.paused && !decisionFailed && current.revision === trigger.revision && this.eventAllowed(current)) {
+            if (autoPause && !decisionFailed && current.revision === trigger.revision && this.eventAllowed(current)) {
                 current.event = event;
                 current.status = 'paused';
                 current.nextTickAt = null;
@@ -725,7 +763,13 @@ export class TriggerManager {
         const current = this.deps.store.getById(triggerId);
         if (current && (this.canRetryDelivery(current) || current.event.type === 'script-condition'
             && current.status === 'active' && this.eventAllowed(current))) this.reschedule(current);
-        else this.disarm(triggerId);
+        else {
+            if (current?.event.type === 'script-condition' && current.status === 'paused') {
+                current.nextTickAt = null;
+                this.deps.store.update(current);
+            }
+            this.disarm(triggerId);
+        }
     }
 
     /**

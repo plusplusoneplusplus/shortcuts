@@ -19,7 +19,8 @@ export class ScriptConditionEvaluator implements EventEvaluator {
         }
         const signal = options?.signal;
         signal?.throwIfAborted();
-        if (trigger.status !== 'active' || event.paused) return { fire: false, event };
+        const manual = options?.manualScript === true && trigger.status === 'paused' && event.paused;
+        if (!manual && (trigger.status !== 'active' || event.paused)) return { fire: false, event };
 
         try {
             const state: unknown = event.lastResult === undefined ? null : JSON.parse(event.lastResult);
@@ -43,7 +44,7 @@ export class ScriptConditionEvaluator implements EventEvaluator {
                     ...event,
                     consecutiveFailures,
                     lastError: { message: errorMessage(error), at: new Date(this.now()).toISOString() },
-                    paused: consecutiveFailures >= 5,
+                    paused: event.paused || consecutiveFailures >= 5,
                 },
                 changed: true,
             };

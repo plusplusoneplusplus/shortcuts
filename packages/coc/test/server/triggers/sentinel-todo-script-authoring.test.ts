@@ -9,6 +9,9 @@ import {
     type SentinelTodoTriggerServiceDeps,
 } from '../../../src/server/triggers/sentinel-todo-trigger-service';
 import { SentinelTodoTriggerFirer } from '../../../src/server/triggers/sentinel-todo-trigger-firer';
+import { TriggerManager } from '../../../src/server/triggers/trigger-manager';
+import { ScriptConditionEvaluator } from '../../../src/server/triggers/script-condition-evaluator';
+import { ScheduleTimerRegistry } from '../../../src/server/schedule/schedule-timer-registry';
 import {
     DEFAULT_SCRIPT_CONDITION_INTERVAL_MS, MAX_ACTIVE_TRIGGERS, MAX_SCRIPT_CONDITIONS_PER_OWNER,
     MIN_SCRIPT_CONDITION_INTERVAL_MS, type ScriptConditionEvent, type Trigger,
@@ -39,6 +42,7 @@ describe('Sentinel To-do script authoring', () => {
     const disarm = vi.fn();
     const emit = vi.fn();
     const enabled = () => scriptTriggersEnabled && toolScriptingEnabled;
+    const managers: TriggerManager[] = [];
 
     beforeEach(() => {
         vi.resetAllMocks();
@@ -57,7 +61,36 @@ describe('Sentinel To-do script authoring', () => {
         });
         service = build();
     });
-    afterEach(() => db.close());
+    afterEach(() => {
+        for (const manager of managers.splice(0)) manager.shutdownAll();
+        db.close();
+    });
+
+    function enableRunNow() {
+        const run = vi.fn().mockResolvedValue({ ready: false });
+        const timers = new Map<string, () => void>();
+        const timerRegistry = new ScheduleTimerRegistry();
+        vi.spyOn(timerRegistry, 'set').mockImplementation((id, callback) => {
+            timers.set(id, callback);
+            return { wasCapped: false };
+        });
+        vi.spyOn(timerRegistry, 'cancel').mockImplementation(id => { timers.delete(id); });
+        vi.spyOn(timerRegistry, 'has').mockImplementation(id => timers.has(id));
+        vi.spyOn(timerRegistry, 'clear').mockImplementation(() => timers.clear());
+        const evaluator = new ScriptConditionEvaluator(run, () => Date.parse(timestamp));
+        const manager = new TriggerManager({
+            store: triggers, scriptConditionFirer: firer, scriptConditionsEnabled: enabled,
+            resolveEvaluator: () => evaluator, oneShotFirer: firer,
+            actionExecutor: { execute: vi.fn() }, now: () => Date.parse(timestamp),
+            timerRegistry,
+        });
+        managers.push(manager);
+        service = build({ manager });
+        return { manager, run, timers };
+    }
+    function runNow(rule: Trigger, extra = {}) {
+        return service.runNow(owner, rule.id, { expectedRevision: rule.revision, confirmed: true, ...extra });
+    }
 
     function build(overrides: Partial<SentinelTodoTriggerServiceDeps> = {}) {
         return new SentinelTodoTriggerService({
@@ -390,6 +423,175 @@ describe('Sentinel To-do script authoring', () => {
         expect(triggers.getAll()).toEqual([rule]);
         expect(fire).not.toHaveBeenCalled();
         expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('runs create-and-run once silently and preserves idempotent creation replay', async () => {
+        const { run, timers } = enableRunNow();
+        const fire = vi.spyOn(firer, 'fire');
+        const rule = await create({}, { runNow: true, confirmed: true, idempotencyKey: 'creation' });
+        expect(rule).toMatchObject({ status: 'active', lastTickAt: timestamp,
+            event: { lastResult: '{"ready":false}', consecutiveFailures: 0 } });
+        expect(timers.has(rule.id)).toBe(true);
+        expect(await create({}, { runNow: true, confirmed: true, idempotencyKey: 'creation' })).toEqual(rule);
+        expect(run).toHaveBeenCalledOnce();
+        expect(execute).not.toHaveBeenCalled();
+        expect(fire).not.toHaveBeenCalled();
+    });
+
+    it('uses whole-result changes for repeated immediate runs without touching the item', async () => {
+        const { run } = enableRunNow();
+        const before = todos.get(owner);
+        let rule = await runNow(await create());
+        rule = await runNow(rule);
+        expect(execute).not.toHaveBeenCalled();
+        run.mockResolvedValueOnce({ ready: true });
+        rule = await runNow(rule);
+        expect(rule).toMatchObject({ status: 'active', delivery: { reason: 'script-changed', state: 'delivered' } });
+        expect(rule.outcome).toBeUndefined();
+        expect(execute).toHaveBeenCalledOnce();
+        await runNow(rule);
+        expect(execute).toHaveBeenCalledTimes(2);
+        expect(todos.get(owner)).toEqual(before);
+    });
+
+    it.each([false, true])('runs a paused rule once without resuming (baseline exists: %s)', async hasBaseline => {
+        const { run, timers } = enableRunNow();
+        let rule = await create();
+        if (hasBaseline) rule = await runNow(rule);
+        rule = await service.setPaused(owner, rule.id, { expectedRevision: rule.revision }, true);
+        run.mockResolvedValue({ ready: true });
+        const fire = vi.spyOn(firer, 'fire');
+        rule = await runNow(rule);
+        expect(rule).toMatchObject({ status: 'paused', nextTickAt: null, lastTickAt: timestamp,
+            event: { paused: true, consecutiveFailures: 0, lastResult: '{"ready":true}' } });
+        expect(timers.has(rule.id)).toBe(false);
+        expect(execute).toHaveBeenCalledTimes(hasBaseline ? 1 : 0);
+        if (hasBaseline) expect(rule.action.prompt).toContain('The rule remains paused.');
+        await runNow(rule);
+        expect(execute).toHaveBeenCalledTimes(hasBaseline ? 1 : 0);
+        expect(fire).not.toHaveBeenCalled();
+    });
+
+    it('records immediate errors, pauses on the fifth, and does not send another pause notice on paused retries', async () => {
+        const { run, timers } = enableRunNow();
+        let rule = await runNow(await create());
+        const baseline = rule.event;
+        run.mockRejectedValue(new Error('Script failed'));
+        for (let n = 1; n <= 5; n++) {
+            rule = await runNow(rule);
+            expect(rule).toMatchObject({ event: { consecutiveFailures: n, lastError: { message: 'Script failed' },
+                lastResult: (baseline as ScriptConditionEvent).lastResult } });
+        }
+        expect(rule.status).toBe('paused');
+        expect(execute).toHaveBeenCalledOnce();
+        rule = await runNow(rule);
+        expect(rule).toMatchObject({ status: 'paused', nextTickAt: null, event: { paused: true, consecutiveFailures: 6 } });
+        expect(execute).toHaveBeenCalledOnce();
+        run.mockResolvedValue({ ready: false });
+        rule = await runNow(rule);
+        expect(rule).toMatchObject({ status: 'paused', event: { paused: true, consecutiveFailures: 0 } });
+        expect((rule.event as ScriptConditionEvent).lastError).toBeUndefined();
+        expect(timers.has(rule.id)).toBe(false);
+    });
+
+    it('keeps a manually paused rule paused when its first immediate run fails', async () => {
+        const { run, timers } = enableRunNow();
+        let rule = await create();
+        rule = await service.setPaused(owner, rule.id, { expectedRevision: rule.revision }, true);
+        run.mockRejectedValue(new Error('Failure'));
+        rule = await runNow(rule);
+        expect(rule).toMatchObject({ status: 'paused', event: { paused: true, consecutiveFailures: 1 } });
+        expect(timers.has(rule.id)).toBe(false);
+        expect(execute).not.toHaveBeenCalled();
+    });
+
+    it.each(['script-flag', 'tool-flag', 'confirmation', 'revision', 'item'] as const)(
+        'rejects immediate execution before launching for %s', async reason => {
+            const { run } = enableRunNow();
+            const rule = await create();
+            if (reason === 'script-flag') scriptTriggersEnabled = false;
+            if (reason === 'tool-flag') toolScriptingEnabled = false;
+            if (reason === 'item') {
+                const item = todos.get(owner).items[0];
+                todos.update(owner, itemId, item.revision, { status: 'done' }, 'user');
+            }
+            await expect(runNow(rule, reason === 'confirmation' ? { confirmed: false }
+                : reason === 'revision' ? { expectedRevision: 99 } : {})).rejects.toMatchObject({
+                statusCode: reason.endsWith('flag') ? 403 : reason === 'confirmation' ? 400 : 409,
+            });
+            expect(run).not.toHaveBeenCalled();
+        },
+    );
+
+    it.each(['edit', 'pause', 'flag', 'shutdown'] as const)(
+        'discards a manual run revoked during execution by %s', async reason => {
+            const { manager, run } = enableRunNow();
+            const rule = await create();
+            let release!: (value: unknown) => void;
+            let started!: () => void;
+            const running = new Promise<void>(resolve => { started = resolve; });
+            run.mockImplementationOnce(async () => {
+                started();
+                return new Promise(resolve => { release = resolve; });
+            });
+            const result = runNow(rule);
+            const rejected = expect(result).rejects.toMatchObject({ statusCode: 409 });
+            await running;
+            if (reason === 'edit') await edit(rule, { script: 'return 2;' });
+            if (reason === 'pause') await service.setPaused(owner, rule.id, { expectedRevision: 1 }, true);
+            if (reason === 'flag') { scriptTriggersEnabled = false; manager.refreshScriptConditions(); }
+            if (reason === 'shutdown') manager.shutdownAll();
+            release({ ready: true });
+            await rejected;
+            expect(triggers.getById(rule.id)).toMatchObject({ lastTickAt: null,
+                event: { consecutiveFailures: 0 } });
+            expect((triggers.getById(rule.id)!.event as ScriptConditionEvent).lastResult).toBeUndefined();
+            expect(execute).not.toHaveBeenCalled();
+        },
+    );
+
+    it('rejects overlapping manual runs and a background tick cannot evaluate concurrently', async () => {
+        const { run, timers } = enableRunNow();
+        const rule = await create();
+        const tick = timers.get(rule.id)!;
+        let release!: (value: unknown) => void;
+        let started!: () => void;
+        const running = new Promise<void>(resolve => { started = resolve; });
+        run.mockImplementationOnce(async () => {
+            started();
+            return new Promise(resolve => { release = resolve; });
+        });
+        const result = runNow(rule);
+        await running;
+        await expect(runNow(rule)).rejects.toMatchObject({ statusCode: 409 });
+        tick();
+        expect(run).toHaveBeenCalledOnce();
+        release(null);
+        await result;
+        expect(timers.has(rule.id)).toBe(true);
+    });
+
+    it('retains a failed paused wake for restart retries without resuming evaluation', async () => {
+        const { manager, run, timers } = enableRunNow();
+        let rule = await runNow(await create());
+        rule = await service.setPaused(owner, rule.id, { expectedRevision: rule.revision }, true);
+        run.mockResolvedValue({ ready: true });
+        execute.mockRejectedValueOnce(new Error('Queue unavailable'));
+        await expect(runNow(rule)).rejects.toThrow('Queue unavailable');
+        rule = triggers.getById(rule.id)!;
+        const receipt = rule.delivery!.deliveryId;
+        expect(rule).toMatchObject({ status: 'paused', event: { paused: true },
+            delivery: { reason: 'script-changed', state: 'pending' } });
+        await expect(runNow(rule)).rejects.toMatchObject({ statusCode: 409 });
+        manager.shutdownAll();
+        const replacement = enableRunNow();
+        await replacement.manager.reconcilePendingDeliveries();
+        expect(triggers.getById(rule.id)).toMatchObject({ status: 'paused', nextTickAt: null,
+            delivery: { deliveryId: receipt, state: 'delivered' } });
+        expect(replacement.run).not.toHaveBeenCalled();
+        expect(replacement.timers.has(rule.id)).toBe(false);
+        expect(timers.has(rule.id)).toBe(false);
+        expect(execute).toHaveBeenCalledTimes(2);
     });
 
     it('rolls back script creation when arming fails', async () => {

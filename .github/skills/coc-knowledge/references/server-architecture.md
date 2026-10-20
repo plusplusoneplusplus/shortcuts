@@ -161,8 +161,12 @@ ten active/paused script rules are allowed per exact owner. Source/interval edit
 bump script revision and clear the baseline/errors; guidance-only edits preserve
 evaluation state. Script edits and lifecycle changes revoke saved notices and
 disarm execution. Resume resets failures/errors while retaining the baseline.
-Removal retains dedupe receipts without retrying delivery. Script Run now rejects
-until repeating manual execution is wired; production authoring remains disabled.
+Removal retains dedupe receipts without retrying delivery. Confirmed script Run now
+uses `TriggerManager.runScriptNow` with revision admission and the repeating evaluator;
+pending receipts and overlapping runs reject. Paused rules evaluate once without
+resuming; success resets errors, and failure retains the pause without another notice.
+Create-and-run records a silent first baseline and creation replays never rerun it.
+Production authoring remains disabled until owner/runtime admission is wired.
 
 `triggers/script-condition-result.ts` supplies canonical result encoding and SHA-256
 hashing for script conditions. Object keys sort lexically at every level, array order
@@ -206,7 +210,9 @@ dedupe receipts. A date wake grants no new authorization.
 
 `SentinelTodoTriggerFirer.fireScriptResult` atomically commits an evaluated changed
 result, immutable prompt and `script-condition:<ruleId>:<resultHash>` receipt. It
-retains active status/cadence and holds newer results while a delivery is pending.
+retains active/paused status and holds newer results while a delivery is pending.
+Paused changed-result wakes require explicit manual admission; pending retries survive
+restart without resuming evaluation and stop timers after acknowledgement.
 Delivery checks live flags, source revision, owner and current item eligibility;
 retries preserve the saved prompt and do not mark edited rules delivered. The wake
 contains bounded top-level changed-field names and escaped JSON marked as untrusted
@@ -218,7 +224,7 @@ manual resume or source revision changes revoke admission. Error text is escaped
 untrusted JSON and grants no authority to resume or act. The manager must commit
 this pause before saving the failed event, disarm evaluation timers and retain
 pending-notice retries. The authoring service resets failures on manual resume;
-production admission and manual script execution require separate wiring.
+production admission requires separate wiring.
 
 `QueueActionExecutor` sends bound wakes through `ProcessMessageDeliveryService.deliverOnce`,
 which serializes owner checks and dedupe with human follow-ups and buffer draining.
