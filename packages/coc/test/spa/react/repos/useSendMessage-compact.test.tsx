@@ -34,7 +34,7 @@ import { useSendMessage } from '../../../../src/server/spa/client/react/features
 import type { UseSendMessageOptions } from '../../../../src/server/spa/client/react/features/chat/hooks/useSendMessage';
 import { ChatPreferencesProvider } from '../../../../src/server/spa/client/react/contexts/ChatPreferencesContext';
 import { parseSlashCommands, META_COMMANDS } from '../../../../src/server/spa/client/react/features/chat/slash-command-parser';
-import { CocApiError } from '@plusplusoneplusplus/coc-client';
+import { CocApiError, CocClient } from '@plusplusoneplusplus/coc-client';
 
 const WORKSPACE = 'ws-test';
 const PROCESS = 'proc-1';
@@ -303,5 +303,88 @@ describe('useSendMessage — /compact interception', () => {
             await result.current.sendFollowUp('a normal follow-up');
         });
         expect(sendSpy).toHaveBeenCalledTimes(1);
+    });
+});
+
+
+describe('useSendMessage — Compact now', () => {
+    it('uses the shared lifecycle and exact owner without touching composer drafts or attachments', async () => {
+        let resolve!: (value: any) => void;
+        compactSpy.mockReturnValue(new Promise(done => { resolve = done; }));
+        const compactClient = new CocClient({ baseUrl: 'https://group-owner.test' });
+        const ownerCompact = vi.spyOn(compactClient.processes, 'compact').mockImplementation(compactSpy);
+        const options = makeOptions({ compactClient, workspaceId: 'remote:server:group', owningWorkspaceId: 'raw-group',
+            followUpInputRef: { current: 'unfinished draft' }, setCompacting: vi.fn(),
+            sourceSelectionId: 'remote:server:group', images: ['data:image/png;base64,draft'] });
+        const { result } = renderHook(() => useSendMessage(options), { wrapper });
+        let pending!: Promise<void>;
+        await act(async () => {
+            pending = result.current.compactNow();
+            await result.current.compactNow();
+            await result.current.sendFollowUp('/compact');
+        });
+        expect(getClientSpy).not.toHaveBeenCalled();
+        expect(ownerCompact).toHaveBeenCalledExactlyOnceWith(PROCESS, undefined, { workspace: 'raw-group' });
+        expect(options.setCompacting).toHaveBeenCalledWith(true, undefined);
+        expect(options.followUpInputRef.current).toBe('unfinished draft');
+        expect(options.setFollowUpInput).not.toHaveBeenCalled();
+        expect(options.clearImages).not.toHaveBeenCalled();
+        expect(options.clearPaste).not.toHaveBeenCalled();
+        expect(options.setTurnsAndRef).not.toHaveBeenCalled();
+        expect(sendSpy).not.toHaveBeenCalled();
+        await act(async () => { resolve({ state: 'queued' }); await pending; });
+        expect(options.notifyCompact).toHaveBeenCalledWith('Compaction queued.', 'success');
+        expect(options.refreshConversation).toHaveBeenCalledWith(PROCESS);
+        expect(options.setCompacting).toHaveBeenLastCalledWith(false);
+    });
+
+    it.each([
+        { inputDisabled: true }, { sending: true }, { isActiveGeneration: true },
+        { compactDisabled: true }, { processId: null },
+    ])('rejects unavailable action: %j', async overrides => {
+        const { result } = renderHook(() => useSendMessage(makeOptions(overrides)), { wrapper });
+        await act(async () => { await result.current.compactNow(); });
+        expect(compactSpy).not.toHaveBeenCalled();
+    });
+
+    it('shows runtime support errors through the existing toast and clears loading', async () => {
+        compactSpy.mockRejectedValue(new Error('Runtime does not support compaction'));
+        const options = makeOptions({ setCompacting: vi.fn() });
+        const { result } = renderHook(() => useSendMessage(options), { wrapper });
+        await act(async () => { await result.current.compactNow(); });
+        expect(options.notifyCompact).toHaveBeenCalledWith('Runtime does not support compaction', 'error');
+        expect(options.setCompacting).toHaveBeenLastCalledWith(false);
+    });
+});
+
+
+describe('manual compaction ownership', () => {
+    it('rejects an unresolved remote without falling back to the local server', async () => {
+        const options = makeOptions({ workspaceId: 'remote:missing:ws-other' });
+        const { result } = renderHook(() => useSendMessage(options), { wrapper });
+        await act(async () => { await result.current.compactNow(); });
+        expect(compactSpy).not.toHaveBeenCalled();
+        expect(options.notifyCompact).toHaveBeenCalledWith(expect.stringContaining('owning server is unavailable'), 'error');
+    });
+
+    it('ignores old results and retained actions after switching the conversation owner', async () => {
+        let resolve!: (value: any) => void;
+        compactSpy.mockReturnValueOnce(new Promise(done => { resolve = done; }));
+        const oldOptions = makeOptions({ setCompacting: vi.fn() });
+        const newOptions = makeOptions({ workspaceId: 'ws-other', processId: 'proc-other', setCompacting: vi.fn() });
+        const { result, rerender } = renderHook(options => useSendMessage(options), { initialProps: oldOptions, wrapper });
+        const oldAction = result.current.compactNow;
+        let pending!: Promise<void>;
+        await act(async () => { pending = oldAction(); });
+        rerender(newOptions);
+        await act(async () => { resolve({ success: true }); await pending; await oldAction(); });
+        expect(oldOptions.notifyCompact).not.toHaveBeenCalled();
+        expect(oldOptions.refreshConversation).not.toHaveBeenCalled();
+        expect(oldOptions.setCompacting).toHaveBeenCalledTimes(1);
+        compactSpy.mockResolvedValue({ success: true });
+        await act(async () => { await result.current.compactNow(); });
+        expect(compactSpy).toHaveBeenCalledTimes(2);
+        expect(compactSpy).toHaveBeenLastCalledWith('proc-other', undefined, { workspace: 'ws-other' });
+        expect(newOptions.setCompacting).toHaveBeenLastCalledWith(false);
     });
 });
