@@ -222,15 +222,16 @@ Started work exposes durable review warnings without changing fulfillment.
 Operational receipts and transport recovery are described in
 [process-store.md](process-store.md#sentinel-dependency-operations).
 
-The same tool offers
-`list_triggers`, `create_trigger`, `edit_trigger`, `pause_trigger`, `resume_trigger`,
-`remove_trigger` and confirmed `run_trigger_now`. The owner stays bound to the
-invoking Sentinel; `getTriggerInfra().sentinelTodoTriggers` supplies the shared
-rule service to first turns and follow-ups. Creation arms a normal eligible item's
-PR URL immediately with optional instruction, without expiry or another approval
-gate. Creation uses a stable `idempotencyKey` across retries; rule mutations use
-its `expectedRevision`. Merge wakes the Sentinel once,
-never launches or changes item status; manual-copy/conversion bypasses remain prohibited.
+The tool exposes `list_triggers`, `create_trigger`, `edit_trigger`, `pause_trigger`,
+`resume_trigger`, `remove_trigger` and confirmed `run_trigger_now`, bound to the
+invoking Sentinel through `getTriggerInfra().sentinelTodoTriggers`. Creation uses
+`idempotencyKey`; mutations use rule `expectedRevision`. PR URLs arm one-shot
+wakes. Independently gated event schemas accept date rules or
+`{ type: 'script-condition', script, intervalMs? }`. Script guidance covers previous
+state, silent baseline, repeating changes, unattended tool denial and paused Run now.
+Shared service admission rechecks live flags; disabled scripts remain listable,
+pausable and removable. Rules never launch jobs or change item status; manual
+items and native verdict-only tools cannot author executable rules.
 
 With default-off `features.sentinelTodoTags`, `list` includes the parent-owned
 `tagLibrary`; `list_tags`, `create_tag`, `update_tag`, confirmed `delete_tag` and

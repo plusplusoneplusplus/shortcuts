@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { z } from 'zod';
-import { dateTimeCandidates } from '@plusplusoneplusplus/coc-client';
+import { dateTimeCandidates, type SentinelTodoTriggerCapabilities } from '@plusplusoneplusplus/coc-client';
 import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import type { SentinelTodoOwner, SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
 import type { TriggerManager, TriggerEventEmit, OneShotFirer } from './trigger-manager';
@@ -66,9 +66,11 @@ export class SentinelTodoTriggerService {
 
     isDateTimeEnabled(): boolean { return this.deps.dateTimeEnabled?.() === true; }
 
-    async capabilities(owner: SentinelTodoOwner): Promise<{ dateTime: boolean }> {
+    isScriptConditionEnabled(): boolean { return this.deps.scriptConditionsEnabled?.() === true; }
+
+    async capabilities(owner: SentinelTodoOwner): Promise<SentinelTodoTriggerCapabilities> {
         await this.assertOwner(owner);
-        return { dateTime: this.isDateTimeEnabled() };
+        return { dateTime: this.isDateTimeEnabled(), scriptCondition: this.isScriptConditionEnabled() };
     }
 
     async list(owner: SentinelTodoOwner): Promise<Trigger[]> {
@@ -358,7 +360,7 @@ export class SentinelTodoTriggerService {
         if (!this.deps.dateTimeEnabled?.()) throw new SentinelTodoTriggerError(403, 'Date/time triggers are disabled');
     }
     private assertScriptConditionsEnabled(): void {
-        if (this.deps.scriptConditionsEnabled?.() !== true) throw new SentinelTodoTriggerError(403, 'Script conditions are disabled');
+        if (!this.isScriptConditionEnabled()) throw new SentinelTodoTriggerError(403, 'Script conditions are disabled');
     }
     private requireScriptRunNow(): NonNullable<SentinelTodoTriggerServiceDeps['manager']['runScriptNow']> {
         const run = this.deps.manager.runScriptNow;

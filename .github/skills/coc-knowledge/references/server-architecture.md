@@ -166,6 +166,9 @@ uses `TriggerManager.runScriptNow` with revision admission and the repeating eva
 pending receipts and overlapping runs reject. Paused rules evaluate once without
 resuming; success resets errors, and failure retains the pause without another notice.
 Create-and-run records a silent first baseline and creation replays never rerun it.
+Owner-qualified capabilities return `dateTime` and `scriptCondition`, independently
+selecting the Sentinel tool's event schemas. Typed coc-client contracts carry script
+authoring, evaluation state and repeating delivery receipts.
 Production authoring remains disabled until owner/runtime admission is wired.
 
 `triggers/script-condition-result.ts` supplies canonical result encoding and SHA-256

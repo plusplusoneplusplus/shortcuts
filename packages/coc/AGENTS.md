@@ -325,7 +325,12 @@ references before editing. Paths are package-relative.
   presentation while preserving delivery and keyed authoring receipts; retries
   must not duplicate wakes or revive removed rules.
   Sentinel tool actions use late-bound `getTriggerInfra().sentinelTodoTriggers`;
-  the rule owner is the invoking chat, never a tool argument.
+  the rule owner is the invoking chat, never a tool argument. Tool event schemas
+  independently expose date and script variants through live service capabilities.
+  Owner-qualified REST capabilities return `dateTime` and `scriptCondition`;
+  coc-client contracts include script input, evaluation state and delivery receipts.
+  Already-built tools recheck authoring gates through the shared service; script
+  list/pause/remove remain available with execution disabled.
   `triggers/script-condition-result.ts` canonicalizes script result JSON with
   recursive lexical key ordering, a 16 KiB UTF-8 cap and SHA-256 hashing. It rejects
   non-JSON values; runner-side JSON normalization must not bypass this validation.

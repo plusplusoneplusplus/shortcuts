@@ -60,11 +60,11 @@ describe('SentinelTodoTriggerService', () => {
     }
 
     it('defaults date authoring off without affecting PR rules; reports owner-qualified capabilities', async () => {
-        expect(await service.capabilities(owner)).toEqual({ dateTime: false });
+        expect(await service.capabilities(owner)).toEqual({ dateTime: false, scriptCondition: false });
         await expect(createDate()).rejects.toThrow('disabled');
         expect((await create()).event.monitor).toBe('pr-merged');
         service = build(true);
-        expect(await service.capabilities(owner)).toEqual({ dateTime: true });
+        expect(await service.capabilities(owner)).toEqual({ dateTime: true, scriptCondition: false });
         const dated = await createDate();
         expect((await service.list(owner)).map(rule => rule.event.type).sort()).toEqual(['condition-monitor', 'date-time']);
         expect(triggers.getById(dated.id)?.event).toEqual(dated.event);
