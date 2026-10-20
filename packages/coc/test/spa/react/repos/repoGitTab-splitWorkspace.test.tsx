@@ -198,6 +198,63 @@ describe('RepoGitTab — member selector', () => {
     });
 });
 
+describe('RepoGitTab — slash search ownership', () => {
+    it.each([
+        { key: '/' },
+        { key: '/', ctrlKey: true },
+        { key: '/', metaKey: true },
+        { key: '/', altKey: true },
+        { key: '/', shiftKey: true, code: 'Digit7' },
+        { key: 'r' },
+    ])('leaves native Monaco input and commands untouched: %j', async options => {
+        await renderTab({
+            repositorySelector: <div className="monaco-editor">
+                <div className="native-edit-context" tabIndex={0} data-testid="native-input" />
+            </div>,
+        });
+        const input = screen.getByTestId('native-input');
+        input.focus();
+        const reads = client.git.listCommits.mock.calls.length;
+        const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...options });
+
+        fireEvent(input, event);
+
+        expect(event.defaultPrevented).toBe(false);
+        expect(document.activeElement).toBe(input);
+        expect(screen.queryByTestId('git-search-input')).toBeNull();
+        expect(client.git.listCommits).toHaveBeenCalledTimes(reads);
+    });
+
+    it.each([
+        { ctrlKey: true },
+        { metaKey: true },
+        { altKey: true },
+        { isComposing: true },
+        { keyCode: 229 },
+    ])('leaves modified and composing slash outside editors untouched: %j', async options => {
+        await renderTab({});
+        const event = new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true, ...options });
+
+        fireEvent(screen.getByTestId('stub-commit-select'), event);
+
+        expect(event.defaultPrevented).toBe(false);
+        expect(screen.queryByTestId('git-search-input')).toBeNull();
+    });
+
+    it.each([
+        { key: '/', code: 'Slash' },
+        { key: '/', code: 'Digit7', shiftKey: true },
+    ])('still reveals and focuses search from panel chrome: %j', async options => {
+        await renderTab({});
+        const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...options });
+
+        fireEvent(screen.getByTestId('stub-commit-select'), event);
+
+        expect(event.defaultPrevented).toBe(true);
+        await waitFor(() => expect(screen.getByTestId('git-search-input')).toHaveFocus());
+    });
+});
+
 describe('RepoGitTab — split-workspace layout', () => {
     it('forwards mounted owners to nested review openers and its direct commit opener', async () => {
         client.git.getBranchRange.mockResolvedValue({

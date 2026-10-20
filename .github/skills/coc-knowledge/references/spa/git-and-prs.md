@@ -201,8 +201,12 @@ Recoverable failures retry with a fresh content request and editor mount, keyed 
 workspace, source identity, file, and attempt. Classic retains the patch request and
 comment context, including full-context and truncation controls during fallback.
 User-selected Classic and patch-only sources render without a fallback reason.
-Monaco supplies find, syntax, overview markers, unified/split layout, and hunk navigation while full-context
-and truncation controls stay specific to Classic.
+Monaco supplies find, syntax, markers, layouts and hunk navigation; Classic owns
+full-context and truncation controls. `isEditableTarget` in
+`hooks/useScopedFindShortcut.ts` recognizes `.monaco-editor` descendants, including
+native EditContext divs and textarea inputs on both diff sides. Explorer and Git
+slash-search handlers yield to these surfaces, form fields, rich text, composition
+and handled events; only unmodified `/` outside text entry activates search.
 
 Selection pills receive a concrete attachment destination separately from the
 raw payload workspace id. RepoDetail passes its source clone identity through
