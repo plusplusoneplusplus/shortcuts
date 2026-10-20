@@ -1698,6 +1698,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const ralphMultiAgentGrillEnabled = isRalphMultiAgentGrillEnabled();
 
     const { sendFollowUp, closeFollowUpStream, onSendComplete } = useSendMessage({
+        sourceSelectionId,
         processId,
         taskId,
         inputDisabled,

@@ -5,7 +5,7 @@
  * live member's root path via `SendMessageOptions.additionalDirectories` so
  * autopilot can read/edit member repos without permission friction, and tells
  * the model which repos are in the group by appending a member listing to the
- * outgoing prompt: each member's name, absolute local path, a `[read-only]`
+ * outgoing prompt: each member's name, workspace ID, absolute local path, a `[read-only]`
  * access marker, and - when the membership
  * carries one — its description. Stale members (workspace removed or path
  * missing on disk) are silently skipped.
@@ -44,7 +44,7 @@ import { buildRepoGroupAccessPolicy } from './repo-group-access-policy';
 export const REPO_GROUP_CONTEXT_TAG = 'repo_group_context';
 
 export interface RepoGroupChatContext {
-    /** Tagged prompt section listing each live member's name, absolute path, and description. */
+    /** Tagged prompt section mapping live member IDs to names, roots and descriptions. */
     promptBlock: string;
     /** Live member root paths, in membership order. */
     additionalDirectories: string[];
@@ -74,7 +74,7 @@ export async function resolveRepoGroupChatContext(
     if (live.length === 0) return undefined;
     const listing = live
         .map(m => {
-            const line = `- ${m.name} [${m.readOnly ? 'read-only' : 'read-write'}]: ${m.rootPath}`;
+            const line = `- ${m.name} [${m.readOnly ? 'read-only' : 'read-write'}]: ${m.rootPath} [workspace_id=${m.workspaceId}]`;
             const description = typeof m.description === 'string' ? m.description.trim() : '';
             return description ? `${line} — ${description}` : line;
         })

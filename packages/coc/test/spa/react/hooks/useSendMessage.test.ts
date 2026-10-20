@@ -4,11 +4,14 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import { createElement, type ReactNode } from 'react';
 import { useSendMessage } from '../../../../src/server/spa/client/react/features/chat/hooks/useSendMessage';
 import type { UseSendMessageOptions } from '../../../../src/server/spa/client/react/features/chat/hooks/useSendMessage';
 import type { AttachmentPayload } from '../../../../src/server/spa/client/react/types/attachments';
 import { registerCloneBaseUrls, setActiveCloneForRouting } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 import type { AttachedSentinelTodoContextItem } from '../../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext';
+import { parseAttachedSessionContextBlocks, type AttachedGitCommitContextItem } from '../../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext';
+import { WorkspaceOwnerContext } from '../../../../src/server/spa/client/react/repos/workspaceOwnerContext';
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
@@ -83,6 +86,41 @@ function makeOptions(overrides: Partial<UseSendMessageOptions> = {}): UseSendMes
 }
 
 describe('useSendMessage', () => {
+    it.each([false, true])('sends a group-owned follow-up retaining its member commit source (remote=%s)', async remote => {
+        const workspaceId = 'group-team';
+        const memberId = 'ws-member';
+        const sourceSelectionId = remote ? `remote:server-a:${workspaceId}` : workspaceId;
+        const sourceRoutingRef = remote ? `remote:server-a:${memberId}` : null;
+        registerCloneBaseUrls(['server-a', 'server-b'].flatMap(serverId =>
+            [workspaceId, memberId].map(id => ({
+                workspaceId: id, serverId, baseUrl: serverId === 'server-a' ? 'https://a.example' : 'https://b.example',
+            }))));
+        setActiveCloneForRouting(`remote:server-b:${workspaceId}`);
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const item: AttachedGitCommitContextItem = {
+            kind: 'commit', id: 'ctx-commit', sourceWorkspaceId: memberId, sourceRoutingRef,
+            commitHash: 'abcdef1234567890', shortHash: 'abcdef1', label: 'Commit abcdef1', preview: '',
+        };
+        const opts = makeOptions({
+            workspaceId, sourceSelectionId, sessionContextAttachmentsEnabled: true,
+            conversationRetrievalAvailable: false, getAttachedContext: () => [item], clearAttachedContext: vi.fn(),
+        });
+        opts.followUpInputRef.current = 'Review the source';
+        const wrapper = ({ children }: { children: ReactNode }) => createElement(WorkspaceOwnerContext.Provider, {
+            value: { workspaceId, selectionId: sourceSelectionId, baseUrl: remote ? 'https://a.example' : undefined },
+        }, children);
+        const { result } = renderHook(() => useSendMessage(opts), { wrapper });
+        await act(async () => { await result.current.sendFollowUp(); });
+        expect(opts.setError).not.toHaveBeenCalledWith(expect.any(String));
+        expect(String(fetchMock.mock.calls[0][0])).toMatch(remote ? /^https:\/\/a.example\// : /^\/api\//);
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(parseAttachedSessionContextBlocks(body.content).pointerContexts[0]).toMatchObject({
+            sourceWorkspaceId: memberId, sourceRoutingRef, commitHash: item.commitHash,
+        });
+        expect(new URL(String(fetchMock.mock.calls[0][0]), 'https://page.example').searchParams.get('workspace')).toBe(workspaceId);
+        expect(opts.clearAttachedContext).toHaveBeenCalled();
+    });
+
     const todoOwner = { ownerWorkspaceId: 'workspace-a', ownerRoutingRef: null, processId: 'pid-1' };
     const todoChip: AttachedSentinelTodoContextItem = {
         kind: 'sentinel-todo', id: 'context-1', sourceWorkspaceId: 'workspace-a', sourceRoutingRef: null,

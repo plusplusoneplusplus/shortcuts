@@ -19,6 +19,8 @@ import {
     writeSessionContextDragBundle,
 } from '../../chat/sessionContextDrag';
 import type { GitCommitItem } from './commitListTypes';
+import { useCommitContextOwner } from '../../chat/gitCommitContext';
+import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 
 /** Reorder drag props applied to the row wrapper (drop target side). */
 export interface CommitReorderDropProps {
@@ -41,11 +43,14 @@ export function useCommitListDragController(options: {
     commits: GitCommitItem[];
     selectedHashes?: ReadonlySet<string>;
     workspaceId?: string;
+    sourceSelectionId?: string;
+    sourceWorkspaceName?: string;
     unpushedCount: number;
     sessionContextDragEnabled: boolean;
     onReorder?: (newOrder: GitCommitItem[]) => void;
 }): CommitListDragController {
-    const { commits, selectedHashes, workspaceId, unpushedCount, sessionContextDragEnabled, onReorder } = options;
+    const { commits, selectedHashes, workspaceId, sourceSelectionId, sourceWorkspaceName, unpushedCount, sessionContextDragEnabled, onReorder } = options;
+    const sourceRoutingRef = useCommitContextOwner(workspaceId, sourceSelectionId);
 
     // Drag-and-drop reorder state
     const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -53,8 +58,13 @@ export function useCommitListDragController(options: {
 
     const buildContextPayload = useCallback((commit: GitCommitItem): GitCommitContextDragPayload | null => {
         if (!(sessionContextDragEnabled && workspaceId)) return null;
-        return createGitCommitContextDragPayload(commit, { activeWorkspaceId: workspaceId });
-    }, [sessionContextDragEnabled, workspaceId]);
+        if (sourceRoutingRef === undefined && resolveCloneRoute(workspaceId).kind !== 'local') return null;
+        return createGitCommitContextDragPayload(commit, {
+            activeWorkspaceId: workspaceId,
+            sourceRoutingRef,
+            sourceWorkspaceName,
+        });
+    }, [sessionContextDragEnabled, workspaceId, sourceRoutingRef, sourceWorkspaceName]);
 
     // --- Session-context drag -------------------------------------------------
 
@@ -67,13 +77,13 @@ export function useCommitListDragController(options: {
         if (selectedHashes && selectedHashes.size > 1 && selectedHashes.has(draggedHash)) {
             const selectedPayloads = commits
                 .filter(c => c.hash !== draggedHash && selectedHashes.has(c.hash))
-                .map(c => createGitCommitContextDragPayload(c, { activeWorkspaceId: workspaceId }))
+                .map(buildContextPayload)
                 .filter((p): p is GitCommitContextDragPayload => p !== null);
             writeSessionContextDragBundle(e.dataTransfer, [sessionContextPayload, ...selectedPayloads]);
             return;
         }
         writePointerContextDragData(e.dataTransfer, sessionContextPayload);
-    }, [selectedHashes, commits, workspaceId]);
+    }, [selectedHashes, commits, buildContextPayload]);
 
     // --- Reorder drag ---------------------------------------------------------
 

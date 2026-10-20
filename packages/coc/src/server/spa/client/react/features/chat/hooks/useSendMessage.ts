@@ -15,6 +15,7 @@ import { parseRemoteCloneKey } from '../../../repos/cloneIdentity';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { useWorkspaceOwner } from '../../../repos/workspaceOwnerContext';
 import { validateSessionContextAttachmentsForSend } from '../sessionContextDrop';
+import { useCommitContextOwner } from '../gitCommitContext';
 import type { MetaCommand } from '../slash-command-parser';
 import type { RalphGrillSetup } from '../../../../../../ralph/grill-planning';
 import { getSentinelTodoContextClient, resolveSentinelTodoContext } from '../sentinelTodoContext';
@@ -105,6 +106,7 @@ export interface UseSendMessageOptions {
     workspaceId?: string;
     /** Canonical owner from loaded process metadata; routing still uses the selection workspace. */
     owningWorkspaceId?: string;
+    sourceSelectionId?: string;
     /** Owner-qualified client draft identity, separate from the process id on the wire. */
     draftKey?: string;
     /** Feature flag state for session-context attachments. Required before sending session pointers. */
@@ -171,6 +173,7 @@ export function useSendMessage({
     chatStyle,
     workspaceId,
     owningWorkspaceId: messageOwnerWorkspaceId,
+    sourceSelectionId,
     draftKey = taskId,
     sessionContextAttachmentsEnabled = false,
     conversationRetrievalAvailable,
@@ -193,6 +196,7 @@ export function useSendMessage({
     // double-click race that a React state flag would lose between renders.
     const compactingRef = useRef(false);
     const scopedOwner = useWorkspaceOwner(workspaceId);
+    const commitContextOwner = useCommitContextOwner(workspaceId, sourceSelectionId);
     const scopedClient = useCocClient(workspaceId);
     const getMessageClient = useCallback(() => scopedOwner
         ? scopedClient : getCocClientForWorkspace(workspaceId), [scopedOwner, scopedClient, workspaceId]);
@@ -336,6 +340,7 @@ export function useSendMessage({
         const sessionContextSendError = validateSessionContextAttachmentsForSend({
             featureEnabled: sessionContextAttachmentsEnabled,
             activeWorkspaceId: workspaceId,
+            activeRoutingRef: commitContextOwner,
             currentProcessId: processId,
             items: contextItems,
             canRetrieveConversations: conversationRetrievalAvailable,
@@ -576,7 +581,7 @@ export function useSendMessage({
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             void refreshConversation(processId);
         }
-    }, [processId, taskId, draftKey, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, providerOverride, activeProvider, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, messageOwnerWorkspaceId, compactConversation, scopedOwner, getMessageClient, sentinelTodoOwner, todoSendOwnerKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, draftKey, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, providerOverride, activeProvider, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, messageOwnerWorkspaceId, commitContextOwner, compactConversation, scopedOwner, getMessageClient, sentinelTodoOwner, todoSendOwnerKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, closeFollowUpStream, onSendComplete };
 }

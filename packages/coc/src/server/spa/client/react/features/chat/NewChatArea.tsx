@@ -87,6 +87,7 @@ import type { RalphGrillSetup } from '../../../../../ralph/grill-planning';
 import { RalphGrillSetupPanel } from './RalphGrillSetupPanel';
 import { AttachedContextPreviews } from '../../ui/AttachedContextPreviews';
 import { formatAttachedContext, useAttachedContext } from './hooks/useAttachedContext';
+import { useCommitContextOwner } from './gitCommitContext';
 import type { AttachmentPayload } from '../../types/attachments';
 import {
     buildFilePathInsertion,
@@ -106,6 +107,7 @@ import { findComposerEditable, textOffsetFromPoint } from './filePathDropCaret';
 import {
     DIFF_SELECTION_CONTEXT_DRAG_KIND,
     FILE_SELECTION_CONTEXT_KIND,
+    GIT_COMMIT_CONTEXT_DRAG_KIND,
     RALPH_SESSION_CONTEXT_DRAG_KIND,
     SESSION_CONTEXT_DRAG_KIND,
     type SessionContextAttachmentDragPayload,
@@ -378,6 +380,7 @@ export function InitialChatComposer({
 
     // AC-07: skills + per-repo chat preferences load from the selected clone's server.
     const cloneClient = useCocClient(workspaceId);
+    const commitContextOwner = useCommitContextOwner(workspaceId, sourceSelectionId);
     // AC-07: the owning clone's remote baseUrl (undefined for a local clone) —
     // threaded into the provider/model/effort hooks so their reads AND their
     // server-scoped config-cache entries route to the clone, never the local origin.
@@ -901,6 +904,7 @@ export function InitialChatComposer({
         const sessionContextSendError = validateSessionContextAttachmentsForSend({
             featureEnabled: sessionContextAttachmentsEnabled,
             activeWorkspaceId: workspaceId,
+            activeRoutingRef: commitContextOwner,
             currentProcessId: null,
             items: contextItems,
             canRetrieveConversations,
@@ -1049,6 +1053,7 @@ export function InitialChatComposer({
             payload: null,
             featureEnabled: sessionContextAttachmentsEnabled,
             activeWorkspaceId: workspaceId,
+            activeRoutingRef: commitContextOwner,
             currentProcessId: null,
             existingItems: attachedContext.getItems(),
             canRetrieveConversations,
@@ -1144,6 +1149,7 @@ export function InitialChatComposer({
             payload: readSessionContextDropPayload(e.dataTransfer),
             featureEnabled: sessionContextAttachmentsEnabled,
             activeWorkspaceId: workspaceId,
+            activeRoutingRef: commitContextOwner,
             currentProcessId: null,
             existingItems: attachedContext.getItems(),
             canRetrieveConversations,
@@ -1189,16 +1195,13 @@ export function InitialChatComposer({
         let nextError: string | null = null;
         let attachedAny = false;
         let focusSelectionInput = false;
-        // A multi-select bundle (AC-02) merges several items in one synchronous
-        // pass, but `attachedContext.getItems()` reflects `itemsRef.current`,
-        // which does not update until the next render. Track keys added in this
-        // pass so a duplicate carried within the same batch is skipped instead of
-        // being added twice (AC-03 dedupe).
+        // Skip repeated entries in one bundle without showing duplicate feedback.
         const seenThisPass = new Set<string>();
         for (const seed of pendingSeedContext) {
             const { payload, destinationId } = seed;
             // A composer can change clone while capability resolution is pending.
-            if (destinationId !== newChatSeedDestinationId || payload.sourceWorkspaceId !== workspaceId) continue;
+            if (destinationId !== newChatSeedDestinationId
+                || (payload.kind !== GIT_COMMIT_CONTEXT_DRAG_KIND && payload.sourceWorkspaceId !== workspaceId)) continue;
             const requiresRetrieval = payload.kind === SESSION_CONTEXT_DRAG_KIND
                 || payload.kind === RALPH_SESSION_CONTEXT_DRAG_KIND;
             if (requiresRetrieval && canRetrieveConversations === null) {
@@ -1216,6 +1219,7 @@ export function InitialChatComposer({
                 payload,
                 featureEnabled: sessionContextAttachmentsEnabled,
                 activeWorkspaceId: workspaceId,
+                activeRoutingRef: commitContextOwner,
                 currentProcessId: null,
                 existingItems: attachedContext.getItems(),
                 canRetrieveConversations,

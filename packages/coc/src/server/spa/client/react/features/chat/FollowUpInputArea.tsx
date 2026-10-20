@@ -59,6 +59,7 @@ import type { ChatAttachment } from '../../types/attachments';
 import { getPrewarmDebounceMs, isForEachEnabled, isRalphEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
 import { SENTINEL_TODO_CONTEXT_DRAG_KIND, type SessionContextAttachmentDragPayload } from './sessionContextDrag';
 import { resolveSentinelTodoContext, sentinelTodoContextScopeError } from './sentinelTodoContext';
+import { useCommitContextOwner } from './gitCommitContext';
 import { sentinelTodoOwnerKey, type SentinelTodoOwner } from '../repo-detail/unified-right-panel/sentinelTodoPanelModel';
 import {
     buildFilePathInsertion,
@@ -416,6 +417,7 @@ export function FollowUpInputArea({
     const sessionContextDragDepthRef = useRef(0);
     const rootRef = useRef<HTMLDivElement>(null);
     const activeWorkspaceId = workspaceId ?? task?.metadata?.workspaceId ?? task?.workspaceId ?? task?.payload?.workspaceId;
+    const commitContextOwner = useCommitContextOwner(activeWorkspaceId, attachmentDestinationId);
     const activeProcessId = currentProcessId ?? task?.processId ?? task?.id ?? null;
     const browserWorkspaceId = browserOwner?.workspaceId ?? activeWorkspaceId;
     const browserRoutingRef = browserOwner?.routingRef ?? activeWorkspaceId;
@@ -807,6 +809,7 @@ export function FollowUpInputArea({
             payload: null,
             featureEnabled: sessionContextAttachmentsEnabled,
             activeWorkspaceId,
+            activeRoutingRef: commitContextOwner,
             currentProcessId: activeProcessId,
             existingItems: getAttachedContext?.() ?? attachedContext ?? [],
             canRetrieveConversations,
@@ -904,6 +907,7 @@ export function FollowUpInputArea({
             payload: readSessionContextDropPayload(e.dataTransfer),
             featureEnabled: sessionContextAttachmentsEnabled,
             activeWorkspaceId,
+            activeRoutingRef: commitContextOwner,
             currentProcessId: activeProcessId,
             existingItems: getAttachedContext?.() ?? attachedContext ?? [],
             canRetrieveConversations,
@@ -926,6 +930,7 @@ export function FollowUpInputArea({
         const validation = validateSessionContextDrop({
             payload, featureEnabled: sessionContextAttachmentsEnabled,
             activeWorkspaceId, currentProcessId: activeProcessId,
+            activeRoutingRef: commitContextOwner,
             existingItems: getAttachedContext?.() ?? attachedContext ?? [], canRetrieveConversations, sentinelTodoOwner,
         });
         if (!validation.ok) setSessionContextDropError(validation.error);
@@ -983,6 +988,7 @@ export function FollowUpInputArea({
             payload,
             featureEnabled: sessionContextAttachmentsEnabled,
             activeWorkspaceId,
+            activeRoutingRef: commitContextOwner,
             currentProcessId: activeProcessId,
             existingItems: getAttachedContext?.() ?? attachedContext ?? [],
             canRetrieveConversations,

@@ -1,8 +1,8 @@
 /**
  * AC-03 — dispatch-time chat context for repo-group workspaces.
  *
- * The resolver builds the appended prompt block (member name + absolute path
- * only) and the matching `additionalDirectories` list from LIVE members only;
+ * The resolver maps member workspace IDs to names and absolute roots in the
+ * prompt block and builds `additionalDirectories` from LIVE members only;
  * stale members (workspace removed / path missing) are silently skipped.
  *
  * `shouldInjectRepoGroupContext` then decides whether the block rides THIS
@@ -97,18 +97,19 @@ describe('repo-group-chat-context', () => {
         expect(ctx!.promptBlock).toBe(
             `<${REPO_GROUP_CONTEXT_TAG}>\n` +
             'Repo group "My Team" members:\n' +
-            `- Repo A [read-write]: ${repoA}\n` +
-            `- Repo B [read-write]: ${repoB}\n` +
+            `- Repo A [read-write]: ${repoA} [workspace_id=ws-v2-aaa]\n` +
+            `- Repo B [read-write]: ${repoB} [workspace_id=ws-v2-bbb]\n` +
             `</${REPO_GROUP_CONTEXT_TAG}>`,
         );
     });
 
-    it('lists name and absolute path only — no origin/branch metadata', async () => {
+    it('maps stable workspace IDs to member roots without origin/branch metadata', async () => {
         const ws = await createRepoGroup(tmpDir, store, { name: 'G', members: ['ws-v2-aaa'] });
         const ctx = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
         const body = ctx!.promptBlock;
         expect(body).not.toMatch(/origin|branch/i);
         expect(body).toContain(`- Repo A [read-write]: ${repoA}`);
+        expect(body).toContain('[workspace_id=ws-v2-aaa]');
     });
 
     it('appends the membership description to the member line', async () => {
@@ -123,8 +124,8 @@ describe('repo-group-chat-context', () => {
         expect(ctx!.promptBlock).toBe(
             `<${REPO_GROUP_CONTEXT_TAG}>\n` +
             'Repo group "My Team" members:\n' +
-            `- Repo A [read-write]: ${repoA} — the API server\n` +
-            `- Repo B [read-write]: ${repoB} — the web client\n` +
+            `- Repo A [read-write]: ${repoA} [workspace_id=ws-v2-aaa] — the API server\n` +
+            `- Repo B [read-write]: ${repoB} [workspace_id=ws-v2-bbb] — the web client\n` +
             `</${REPO_GROUP_CONTEXT_TAG}>`,
         );
     });
@@ -138,9 +139,9 @@ describe('repo-group-chat-context', () => {
 
         const ctx = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
 
-        expect(ctx!.promptBlock).toContain(`- Repo A [read-write]: ${repoA}\n`);
-        expect(ctx!.promptBlock).not.toContain(`- Repo A [read-write]: ${repoA} —`);
-        expect(ctx!.promptBlock).toContain(`- Repo B [read-write]: ${repoB} — the web client`);
+        expect(ctx!.promptBlock).toContain(`- Repo A [read-write]: ${repoA} [workspace_id=ws-v2-aaa]\n`);
+        expect(ctx!.promptBlock).not.toContain('[workspace_id=ws-v2-aaa] —');
+        expect(ctx!.promptBlock).toContain(`- Repo B [read-write]: ${repoB} [workspace_id=ws-v2-bbb] — the web client`);
     });
 
     it('produces a byte-identical block to the no-descriptions form when every description is blank', async () => {
@@ -158,8 +159,8 @@ describe('repo-group-chat-context', () => {
         expect(plainCtx!.promptBlock).toBe(
             `<${REPO_GROUP_CONTEXT_TAG}>\n` +
             'Repo group "Same" members:\n' +
-            `- Repo A [read-write]: ${repoA}\n` +
-            `- Repo B [read-write]: ${repoB}\n` +
+            `- Repo A [read-write]: ${repoA} [workspace_id=ws-v2-aaa]\n` +
+            `- Repo B [read-write]: ${repoB} [workspace_id=ws-v2-bbb]\n` +
             `</${REPO_GROUP_CONTEXT_TAG}>`,
         );
     });

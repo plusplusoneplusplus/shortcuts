@@ -42,7 +42,7 @@ function getPointerContextMeta(item: AttachedPointerContextItem): string {
         return [item.title, item.status, item.type, item.workItemId].filter(Boolean).join(' · ');
     }
     if (item.kind === 'commit') {
-        return [item.subject, item.commitHash !== item.shortHash ? shortenSessionProcessId(item.commitHash) : ''].filter(Boolean).join(' · ');
+        return [item.sourceWorkspaceName, item.sourceRoutingRef ?? item.sourceWorkspaceId, item.subject, item.commitHash !== item.shortHash ? shortenSessionProcessId(item.commitHash) : ''].filter(Boolean).join(' · ');
     }
     if (item.kind === 'range') {
         return [

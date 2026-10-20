@@ -93,6 +93,8 @@ export interface SentinelTodoContextDragPayload extends BasePointerContextDragPa
 
 export interface GitCommitContextDragPayload extends BasePointerContextDragPayload {
     kind: typeof GIT_COMMIT_CONTEXT_DRAG_KIND;
+    sourceRoutingRef?: string | null;
+    sourceWorkspaceName?: string;
     commitHash: string;
     shortHash: string;
     subject?: string;
@@ -190,6 +192,8 @@ export interface CreateRalphSessionContextDragPayloadOptions {
 
 export interface CreatePointerContextDragPayloadOptions {
     activeWorkspaceId?: string | null;
+    sourceRoutingRef?: string | null;
+    sourceWorkspaceName?: string;
 }
 
 type DragDataTransfer = {
@@ -591,11 +595,14 @@ export function createGitCommitContextDragPayload(
     const shortHash = safeOptionalDisplayText(stringFrom(record, [['shortHash'], ['shortId']])) ?? shortenCommitHash(commitHash);
     const subject = safeOptionalDisplayText(stringFrom(record, [['subject'], ['message'], ['title']]));
     const label = `Commit ${shortHash}`;
+    const sourceWorkspaceName = safeOptionalDisplayText(options.sourceWorkspaceName ?? null);
 
     return {
         kind: GIT_COMMIT_CONTEXT_DRAG_KIND,
         version: 1,
         sourceWorkspaceId,
+        sourceRoutingRef: options.sourceRoutingRef ?? null,
+        ...(sourceWorkspaceName ? { sourceWorkspaceName } : {}),
         commitHash,
         shortHash,
         label,

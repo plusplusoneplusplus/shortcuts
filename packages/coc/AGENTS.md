@@ -140,6 +140,9 @@ references before editing. Paths are package-relative.
   resolve tiers on the destination server after provider selection. Post/cancel have no default tier.
 - Remote group selection uses a server-qualified clone key; decode the raw
   group id at the owning API. Groups are page/queue scope; Git uses a member.
+  Commit attachments retain the member ID and concrete source clone through
+  drop, send and persisted pointers. Cross-workspace retrieval stays on that server;
+  group context maps member IDs to roots, never the group cwd.
   Names are not keys; refresh live membership and preserve search failure states.
 - Previews carry resolved workspace/member and clone route through
   operations/caches. Probe group members in order; sibling-relative paths must land

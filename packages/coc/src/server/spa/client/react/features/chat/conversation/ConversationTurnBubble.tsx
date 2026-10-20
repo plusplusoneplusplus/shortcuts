@@ -334,6 +334,8 @@ function getPointerContextDetailRows(context: ParsedPointerContextBlock): Array<
         );
     } else if (context.kind === 'commit') {
         rows.push(
+            ['Source owner', context.sourceRoutingRef ?? 'Page-origin server'],
+            ['Source repository', context.sourceWorkspaceName],
             ['Commit hash', context.commitHash],
             ['Short hash', context.shortHash],
         );
