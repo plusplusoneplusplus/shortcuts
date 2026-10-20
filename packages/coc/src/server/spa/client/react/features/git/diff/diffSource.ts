@@ -67,6 +67,8 @@ export function getGitReviewClient(workspaceId: string, routingTarget?: string |
 }
 
 export interface DiffSource {
+    /** Immutable sides for whole-file context dragged from the changed-files navigator. */
+    readonly fileContextRefs?: { baseRef: string; headRef: string };
     readonly routingTarget?: string | null;
     /** Human-readable label, e.g. "Commit abc1234" or "Branch diff". */
     readonly label: string;
@@ -205,6 +207,7 @@ export function createCommitDiffSource(
         classificationKey: { type: 'commit', repoId: workspaceId, identifier: hash },
 
         diffSelectionRef: { type: 'commit', commitHash: hash },
+        fileContextRefs: { baseRef: `${hash}^`, headRef: hash },
     };
 }
 
@@ -218,7 +221,7 @@ export function createBranchRangeDiffSource(
         /** Resolved revision identity prevents mutable range cache reuse. */
         revision?: string;
         /** Resolved range refs; enables dragging diff selections into chat. */
-        range?: { baseRef: string; headRef: string };
+        range?: { baseRef: string; headRef: string; mergeBase?: string; baseSha?: string; headSha?: string };
     },
 ): DiffSource {
     const baseMode = options?.baseMode ?? 'default-branch';
@@ -227,6 +230,7 @@ export function createBranchRangeDiffSource(
     return {
         routingTarget: options?.routingTarget,
         supportsWorkingCopyLanguage: true,
+        ...(range ? { fileContextRefs: { baseRef: range.mergeBase ?? range.baseSha ?? range.baseRef, headRef: range.headSha ?? range.headRef } } : {}),
         ...(range ? { diffSelectionRef: { type: 'range' as const, baseRef: range.baseRef, headRef: range.headRef } } : {}),
 
         label: baseMode === 'upstream' ? 'Unpushed diff' : 'Branch diff',

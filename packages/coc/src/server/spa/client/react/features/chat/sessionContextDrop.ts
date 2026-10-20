@@ -10,6 +10,7 @@ import {
     FILE_PATH_DRAG_KIND,
     FILE_SELECTION_CONTEXT_KIND,
     GIT_COMMIT_CONTEXT_DRAG_KIND,
+    GIT_FILE_CONTEXT_DRAG_KIND,
     GIT_RANGE_CONTEXT_DRAG_KIND,
     POINTER_CONTEXT_DRAG_MIME,
     PULL_REQUEST_CONTEXT_DRAG_KIND,
@@ -37,6 +38,7 @@ import {
     type SentinelTodoContextDragPayload,
 } from './sessionContextDrag';
 import { sentinelTodoContextScopeError } from './sentinelTodoContext';
+import { createGitFileContextPayload, gitFileContextKey, gitFileContextScopeError } from './gitFileContext';
 import { gitCommitContextKey, gitCommitContextScopeError } from './gitCommitContext';
 import type { SentinelTodoOwner } from '../repo-detail/unified-right-panel/sentinelTodoPanelModel';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
@@ -85,6 +87,7 @@ type AttachedLogicalContextItem =
     | AttachedLogicalSessionContextItem
     | Extract<AttachedContextItem, { kind: 'sentinel-todo' }>
     | Extract<AttachedContextItem, { kind: 'work-item' }>
+    | Extract<AttachedContextItem, { kind: 'git-file' }>
     | Extract<AttachedContextItem, { kind: 'commit' }>
     | Extract<AttachedContextItem, { kind: 'range' }>
     | Extract<AttachedContextItem, { kind: 'pull-request' }>
@@ -99,6 +102,7 @@ function isLogicalContextItem(item: AttachedContextItem): item is AttachedLogica
     return isLogicalSessionContextItem(item)
         || item.kind === 'sentinel-todo'
         || item.kind === 'work-item'
+        || item.kind === 'git-file'
         || item.kind === 'commit'
         || item.kind === 'range'
         || item.kind === 'pull-request'
@@ -344,6 +348,7 @@ function normalizePullRequestContextPayload(record: Partial<PullRequestContextDr
 
 function normalizePointerContextPayload(value: unknown): PointerContextDragPayload | null {
     if (!value || typeof value !== 'object') return null;
+    if ((value as { kind?: unknown }).kind === GIT_FILE_CONTEXT_DRAG_KIND) return createGitFileContextPayload(value);
     const record = value as Partial<PointerContextDragPayload>;
     const sourceWorkspaceId = normalizePointerId(record.sourceWorkspaceId);
     const label = normalizeOptionalDisplayText(record.label);
@@ -646,6 +651,7 @@ function payloadIncludesProcess(payload: SessionContextAttachmentDragPayload, pr
 }
 
 export function getPayloadLogicalKey(payload: SessionContextAttachmentDragPayload): string {
+    if (payload.kind === GIT_FILE_CONTEXT_DRAG_KIND) return gitFileContextKey(payload);
     if (payload.kind === SENTINEL_TODO_CONTEXT_DRAG_KIND) {
         return `sentinel-todo\0${payload.sourceRoutingRef ?? ''}\0${payload.sourceWorkspaceId}\0${payload.sourceProcessId}\0${payload.todoItemId}`;
     }
@@ -689,6 +695,7 @@ function fileSelectionLogicalKey(source: { sourceWorkspaceId: string; filePath: 
 }
 
 function getItemLogicalKey(item: AttachedLogicalContextItem): string {
+    if (item.kind === 'git-file') return gitFileContextKey(item);
     if (item.kind === 'sentinel-todo') {
         return `sentinel-todo\0${item.sourceRoutingRef ?? ''}\0${item.sourceWorkspaceId}\0${item.sourceProcessId}\0${item.todoItemId}`;
     }
@@ -704,6 +711,7 @@ function getItemLogicalKey(item: AttachedLogicalContextItem): string {
 }
 
 function duplicateErrorForPayload(payload: SessionContextAttachmentDragPayload): string {
+    if (payload.kind === GIT_FILE_CONTEXT_DRAG_KIND) return 'This file revision is already attached to the message.';
     if (payload.kind === SENTINEL_TODO_CONTEXT_DRAG_KIND) return 'This to-do is already attached to the message.';
     if (payload.kind === RALPH_SESSION_CONTEXT_DRAG_KIND) return 'This Ralph session is already attached to the message.';
     if (payload.kind === WORK_ITEM_CONTEXT_DRAG_KIND) return 'This work item is already attached to the message.';
@@ -716,6 +724,7 @@ function duplicateErrorForPayload(payload: SessionContextAttachmentDragPayload):
 }
 
 function duplicateErrorForItem(item: AttachedLogicalContextItem): string {
+    if (item.kind === 'git-file') return 'This file revision is already attached to the message.';
     if (item.kind === 'sentinel-todo') return 'This to-do is already attached to the message.';
     if (item.kind === 'ralph-session') return 'This Ralph session is already attached to the message.';
     if (item.kind === 'work-item') return 'This work item is already attached to the message.';
@@ -763,12 +772,17 @@ export function validateSessionContextDrop(options: {
     if (!options.activeWorkspaceId) {
         return { ok: false, error: 'Open a workspace before attaching context.' };
     }
+    if (options.payload.kind === GIT_FILE_CONTEXT_DRAG_KIND) {
+        const error = gitFileContextScopeError(options.payload, options.activeRoutingRef === undefined ? options.activeWorkspaceId : options.activeRoutingRef);
+        if (error) return { ok: false, error };
+    }
     if (options.payload.kind === GIT_COMMIT_CONTEXT_DRAG_KIND) {
         const error = gitCommitContextScopeError(options.payload, options.activeRoutingRef === undefined ? options.activeWorkspaceId : options.activeRoutingRef);
         if (error) return { ok: false, error };
     }
     // Snippets are self-contained; commits retain a server-bound source repo.
     if (options.payload.kind !== SENTINEL_TODO_CONTEXT_DRAG_KIND
+        && options.payload.kind !== GIT_FILE_CONTEXT_DRAG_KIND
         && options.payload.kind !== GIT_COMMIT_CONTEXT_DRAG_KIND
         && !carriesOwnSnippet(options.payload) && options.payload.sourceWorkspaceId !== options.activeWorkspaceId) {
         return { ok: false, error: 'Only context from the active workspace can be attached.' };
@@ -824,11 +838,12 @@ export function validateSessionContextAttachmentsForSend(options: {
         return 'Open a workspace before attaching context.';
     }
     for (const item of contextItems) {
-        if (item.kind !== 'commit') continue;
-        const error = gitCommitContextScopeError(item, options.activeRoutingRef === undefined ? options.activeWorkspaceId : options.activeRoutingRef);
+        if (item.kind !== 'commit' && item.kind !== 'git-file') continue;
+        const scopeError = item.kind === 'git-file' ? gitFileContextScopeError : gitCommitContextScopeError;
+        const error = scopeError(item, options.activeRoutingRef === undefined ? options.activeWorkspaceId : options.activeRoutingRef);
         if (error) return error;
     }
-    if (contextItems.some(item => item.kind !== 'commit' && item.kind !== 'sentinel-todo' && item.kind !== 'diff-selection' && item.kind !== 'file-selection' && item.sourceWorkspaceId !== options.activeWorkspaceId)) {
+    if (contextItems.some(item => item.kind !== 'git-file' && item.kind !== 'commit' && item.kind !== 'sentinel-todo' && item.kind !== 'diff-selection' && item.kind !== 'file-selection' && item.sourceWorkspaceId !== options.activeWorkspaceId)) {
         return 'Only context from the active workspace can be attached.';
     }
     const selfAttachedItem = getSessionContextItems(options.items).find(item =>

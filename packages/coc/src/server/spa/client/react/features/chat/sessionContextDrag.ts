@@ -22,6 +22,7 @@ export const FILE_PATH_DRAG_MIME = 'application/vnd.coc.file-path+json';
 export const FILE_PATH_DRAG_KIND = 'coc.file-path';
 export const WORK_ITEM_CONTEXT_DRAG_KIND = 'coc.work-item-context';
 export const SENTINEL_TODO_CONTEXT_DRAG_KIND = 'coc.sentinel-todo-context';
+export const GIT_FILE_CONTEXT_DRAG_KIND = 'coc.git-file-context';
 export const GIT_COMMIT_CONTEXT_DRAG_KIND = 'coc.git-commit-context';
 export const GIT_RANGE_CONTEXT_DRAG_KIND = 'coc.git-range-context';
 export const PULL_REQUEST_CONTEXT_DRAG_KIND = 'coc.pull-request-context';
@@ -89,6 +90,15 @@ export interface SentinelTodoContextDragPayload extends BasePointerContextDragPa
     sourceRoutingRef: string | null;
     sourceProcessId: string;
     todoItemId: string;
+}
+
+/** Whole-file reference to an immutable reviewed Git snapshot, never disk content. */
+export interface GitFileContextDragPayload extends BasePointerContextDragPayload {
+    kind: typeof GIT_FILE_CONTEXT_DRAG_KIND;
+    sourceRoutingRef: string | null;
+    filePath: string;
+    revision: string;
+    side: 'base' | 'head';
 }
 
 export interface GitCommitContextDragPayload extends BasePointerContextDragPayload {
@@ -168,6 +178,7 @@ export interface FileSelectionContextPayload {
 }
 
 export type PointerContextDragPayload =
+    | GitFileContextDragPayload
     | SentinelTodoContextDragPayload
     | WorkItemContextDragPayload
     | GitCommitContextDragPayload

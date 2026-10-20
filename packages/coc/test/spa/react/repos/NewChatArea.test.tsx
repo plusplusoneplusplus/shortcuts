@@ -3252,3 +3252,58 @@ describe('NewChatArea — Explorer file-path drops (AC-02/AC-03)', () => {
         expect(screen.queryByTestId('session-context-drop-hint')).toBeNull();
     });
 });
+
+// Use the real changed-files producer and its actual DataTransfer with the initial composer.
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel', () => ({ FileDiffPanel: () => null }));
+import { GitFileReview } from '../../../../src/server/spa/client/react/features/git/diff/GitFileReview';
+import { createCommitDiffSource } from '../../../../src/server/spa/client/react/features/git/diff/diffSource';
+import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
+import { parseAttachedSessionContextBlocks } from '../../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext';
+
+describe('Changed-files sidebar → initial chat', () => {
+    it.each([false, true])('attaches and sends a reviewed member file (remote=%s)', async remote => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        const hash = 'a'.repeat(40);
+        const owner = remote ? buildRemoteCloneKey('file-server', 'ws-member') : 'ws-member';
+        const destination = remote ? buildRemoteCloneKey('file-server', 'ws-1') : 'ws-1';
+        if (remote) registerCloneBaseUrls(['ws-member', 'ws-1'].map(workspaceId => ({ workspaceId, serverId: 'file-server', baseUrl: 'https://files.example' })));
+        await act(async () => { render(<>
+            <GitFileReview workspaceId="ws-member" attachmentDestinationId={owner} comparisonKey={hash}
+                files={[{ path: 'src/index.ts', status: 'M' }]}
+                source={createCommitDiffSource('ws-member', hash, { routingTarget: remote ? owner : null })} />
+            <NewChatArea workspaceId="ws-1" sourceSelectionId={destination} />
+        </>); });
+        const store = new Map<string, string>();
+        const dataTransfer = {
+            effectAllowed: 'none', dropEffect: 'none',
+            setData: (key: string, value: string) => store.set(key, value),
+            getData: (key: string) => store.get(key) ?? '',
+            get types() { return [...store.keys()]; },
+        };
+        fireEvent.dragStart(document.querySelector('[data-file-path="src/index.ts"]')!, { dataTransfer });
+        expect(dataTransfer.effectAllowed).toBe('copy');
+        const target = screen.getByTestId('chat-input-stack');
+        fireEvent.dragOver(target, { dataTransfer });
+        expect(dataTransfer.dropEffect).toBe('copy');
+        expect(screen.getByTestId('session-context-drop-hint')).toBeTruthy();
+        fireEvent.drop(target, { dataTransfer });
+        expect(await screen.findByTestId('attached-git-file-context-chip')).toBeTruthy();
+        fireEvent.drop(target, { dataTransfer });
+        expect(screen.getAllByTestId('attached-git-file-context-chip')).toHaveLength(1);
+        expect(screen.getByTestId('new-chat-session-context-error').textContent).toContain('already attached');
+        // Remove/re-drop clears the duplicate error and preserves normal removable chips.
+        fireEvent.click(screen.getByTestId('attached-context-remove'));
+        expect(screen.queryByTestId('attached-git-file-context-chip')).toBeNull();
+        fireEvent.drop(target, { dataTransfer });
+        fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'Explain this file' } });
+        fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+        await waitFor(() => expect(mockEnqueueTask).toHaveBeenCalled());
+        const prompt = mockEnqueueTask.mock.calls.at(-1)![0].payload.prompt;
+        expect(parseAttachedSessionContextBlocks(prompt).pointerContexts[0]).toMatchObject({
+            kind: 'git-file', sourceWorkspaceId: 'ws-member', sourceRoutingRef: remote ? owner : null,
+            filePath: 'src/index.ts', revision: hash, side: 'head',
+        });
+        expect(prompt).toContain('Read the entire file at the exact revision and path');
+        expect(mockEnqueueBaseUrls.at(-1)).toBe(remote ? 'https://files.example' : undefined);
+    });
+});
