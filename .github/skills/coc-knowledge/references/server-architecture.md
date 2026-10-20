@@ -139,6 +139,17 @@ duplicate remote workspace/request or session identities independently of connec
 Historical rows retain their existing tracking semantics; transport admission owns proof
 of remote identity.
 
+`delegation/remote-delegation-request-store.ts` provides origin-side admission
+reservations in `repos/<parentWorkspaceId>/remote-delegation-requests.json`.
+It captures the parent, destination identity and connection hint, request kind,
+exact follow-up target, request digest and connector origin before a child exists.
+A durable dispatch claim permits one execution attempt; claimed or uncertain
+requests require receipt reconciliation, including after restart. Verified acceptance
+persists before idempotent delegated-job registration so recovery can repair a
+failed second write. These machine-local receipts are excluded from snapshots and
+cleared with delegated jobs. The store is not wired to remote execution; receipt
+authentication, admission gating and recovery scheduling belong to the transport.
+
 The ledger retains produced-PR receipts. `recordPullRequest` requires a registered job
 and records exact canonical provider/host/repository/number identity with an item ID
 and immutable receipt. Repeated submissions reuse that receipt; each distinct PR

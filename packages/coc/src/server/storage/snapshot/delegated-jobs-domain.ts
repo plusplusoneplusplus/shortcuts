@@ -3,13 +3,14 @@ import * as path from 'node:path';
 import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { DELEGATED_JOBS_FILE } from '../../delegation/delegated-job-store';
+import { REMOTE_DELEGATION_REQUESTS_FILE } from '../../delegation/remote-delegation-request-store';
 import { SENTINEL_MIRROR_OUTBOX_FILE } from '../../messaging/sentinel-mirror-outbox';
 import { EMPTY_COLLECT_RESULT, type StorageSnapshotDomain } from './types';
 import { getErrorMessage, listRepoFiles } from './snapshot-fs';
 
 /** Operational delivery receipts stay machine-local and are cleared with server data. */
 export function createDelegatedJobsDomain(): StorageSnapshotDomain<string[]> {
-    return createMachineLocalRepoFileDomain('delegated-jobs', DELEGATED_JOBS_FILE);
+    return createMachineLocalRepoFileDomain('delegated-jobs', DELEGATED_JOBS_FILE, REMOTE_DELEGATION_REQUESTS_FILE);
 }
 
 /** Sentinel to-do ledgers are keyed by local chat IDs, so they follow the same policy. */
@@ -99,14 +100,14 @@ function withLedgerDb(ctx: { dataDir: string; store: unknown }, requiredTables: 
     } finally { db.close(); }
 }
 
-function createMachineLocalRepoFileDomain(id: string, filename: string): StorageSnapshotDomain<string[]> {
+function createMachineLocalRepoFileDomain(id: string, ...filenames: string[]): StorageSnapshotDomain<string[]> {
     return {
         id,
         collect: () => EMPTY_COLLECT_RESULT,
         restoreReplace() { /* Importing could attach records to unrelated chats. */ },
         restoreMerge() { /* Not portable conversation data. */ },
         planWipe(ctx) {
-            return { plan: listRepoFiles(ctx.dataDir, filename), counts: {}, errors: [] };
+            return { plan: filenames.flatMap(filename => listRepoFiles(ctx.dataDir, filename)), counts: {}, errors: [] };
         },
         executeWipe(_ctx, files, result) {
             for (const file of files ?? []) {
