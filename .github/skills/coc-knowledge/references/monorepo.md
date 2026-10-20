@@ -310,10 +310,19 @@ for a nonempty list. Attached or absent servers bypass the check. Invalid or
 unavailable queue data rejects restart; cancellation retains verified bytes.
 `main.ts` shares one coordinator across windows and connects platform helpers,
 normal quit, window progress bars and the native menu. `update-ui.ts` supplies
-injected native Restart/Later, running-count confirmation and browser-fallback
-dialogs. The initial Update button explicitly starts the download; Skip, Later
-and channel selection retain their check semantics. Downloading disables the
-menu action and displays progress. A retained download exposes Restart to update
+injected native release, Restart/Later, running-count confirmation and failure
+dialogs.
+
+Release and retained-download dialogs offer an independent system-browser
+download through `shell.openExternal`, also available after automatic-update failures.
+`pickDownloadUrl` resolves the selected channel's release asset by platform and
+architecture, excluding container installers, with the same release page as fallback;
+manual downloads require no checksum or updater availability. `update-ui.ts` validates
+HTTP(S) URLs with `validateBrowserUrl` and displays browser-opening failures.
+
+Only Update starts the automatic download; Skip, Later and channel selection retain
+their check semantics. Native dialogs own keyboard access, theme and layout.
+Downloading disables the menu action and displays progress. A retained download exposes Restart to update
 and bypasses release fetching when reopened, including offline.
 `update-recovery.ts` writes `<userData>/pending-update.json` (release, download
 directory, macOS staging) before helper launch and removes it if launch fails.

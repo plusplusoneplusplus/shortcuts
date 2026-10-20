@@ -19,6 +19,7 @@ import {
     selectCandidate,
     pickDownloadUrl,
     formatUpdatePrompt,
+    DOWNLOAD_INSTALLER_LABEL,
     getSkippedVersion,
     setSkippedVersion,
     getUpdateChannel,
@@ -315,17 +316,17 @@ describe('pickDownloadUrl', () => {
                 { name: 'CoC-3.4.6-arm64.dmg', url: 'https://e/arm64.dmg' },
             ],
         });
-        expect(pickDownloadUrl(r, 'darwin')).toBe('https://e/arm64.dmg');
+        expect(pickDownloadUrl(r, 'darwin', 'arm64')).toBe('https://e/arm64.dmg');
     });
 
     it('falls back to any dmg on macOS when no arm64 build exists', () => {
         const r = release({ assets: [{ name: 'CoC-3.4.6.dmg', url: 'https://e/any.dmg' }] });
-        expect(pickDownloadUrl(r, 'darwin')).toBe('https://e/any.dmg');
+        expect(pickDownloadUrl(r, 'darwin', 'arm64')).toBe('https://e/any.dmg');
     });
 
     it('picks the .exe on Windows', () => {
         const r = release({ assets: [{ name: 'CoC.Setup.3.4.6.exe', url: 'https://e/setup.exe' }] });
-        expect(pickDownloadUrl(r, 'win32')).toBe('https://e/setup.exe');
+        expect(pickDownloadUrl(r, 'win32', 'x64')).toBe('https://e/setup.exe');
     });
 
     it('does not select the CoCContainer installer for CoC updates', () => {
@@ -335,7 +336,35 @@ describe('pickDownloadUrl', () => {
                 { name: 'CoC.Setup.3.4.6.exe', url: 'https://e/coc.exe' },
             ],
         });
-        expect(pickDownloadUrl(r, 'win32')).toBe('https://e/coc.exe');
+        expect(pickDownloadUrl(r, 'win32', 'x64')).toBe('https://e/coc.exe');
+    });
+
+    it.each([
+        ['darwin', 'arm64', 'CoC-3.4.6-arm64.dmg'],
+        ['darwin', 'x64', 'CoC-3.4.6-x64.dmg'],
+        ['win32', 'x64', 'CoC.Setup.3.4.6.exe'],
+        ['win32', 'arm64', 'CoC.Setup.3.4.6-arm64.exe'],
+        ['win32', 'ia32', 'CoC.Setup.3.4.6-ia32.exe'],
+    ] as const)('matches the browser installer to %s/%s without a checksum', (platform, arch, name) => {
+        const names = [
+            'CoCContainer-3.4.6-arm64.dmg', 'CoCContainer.Setup.3.4.6.exe',
+            'CoC-3.4.6-arm64.dmg', 'CoC-3.4.6-x64.dmg', 'CoC.Setup.3.4.6-arm64.exe',
+            'CoC.Setup.3.4.6-ia32.exe', 'CoC.Setup.3.4.6.exe',
+        ];
+        const r = release({ assets: names.map(name => ({ name, url: `https://example.com/${name}` })) });
+        expect(pickDownloadUrl(r, platform, arch)).toBe(`https://example.com/${name}`);
+    });
+
+    it.each([
+        ['darwin', 'x64', 'CoC-3.4.6-arm64.dmg'],
+        ['darwin', 'arm64', 'CoC-3.4.6-x64.dmg'],
+        ['win32', 'x64', 'CoC.Setup.3.4.6-arm64.exe'],
+        ['win32', 'arm64', 'CoC.Setup.3.4.6.exe'],
+        ['darwin', 'arm64', 'CoCContainer-3.4.6-arm64.dmg'],
+        ['linux', 'x64', 'CoC.Setup.3.4.6.exe'],
+    ] as const)('uses the selected release page for incompatible %s/%s assets', (platform, arch, name) => {
+        const r = release({ assets: [{ name, url: 'https://example.com/incompatible' }] });
+        expect(pickDownloadUrl(r, platform, arch)).toBe(r.htmlUrl);
     });
 
     it('falls back to the release page when no matching asset exists', () => {
@@ -352,14 +381,16 @@ describe('formatUpdatePrompt', () => {
         expect(p.version).toBe('3.4.6');
         expect(p.message).toContain('3.4.6');
         expect(p.message).toContain('3.4.2');
-        expect(p.buttons).toEqual(['Update', 'Skip This Version', 'Later']);
+        expect(p.buttons).toEqual(['Update', DOWNLOAD_INSTALLER_LABEL, 'Skip This Version', 'Later']);
         expect(p.detail).toContain('download and verify');
         expect(p.detail).toContain('choose when to restart');
+        expect(p.detail).toContain('system browser');
+        expect(p.detail).toContain('does not start an in-app update');
     });
 
     it('Windows prompt offers an explicit verified download', () => {
         const p = formatUpdatePrompt(release(), '3.4.2', 'win32');
-        expect(p.buttons).toEqual(['Update', 'Skip This Version', 'Later']);
+        expect(p.buttons).toEqual(['Update', DOWNLOAD_INSTALLER_LABEL, 'Skip This Version', 'Later']);
         expect(p.detail).toContain('download and verify');
     });
 
@@ -373,9 +404,15 @@ describe('formatUpdatePrompt', () => {
             assets: [{ name: 'CoC.Setup.3.4.6.exe', url: 'https://e/setup.exe' }],
             htmlUrl: 'https://e/page',
         });
-        expect(formatUpdatePrompt(r, '3.4.2', 'win32').downloadUrl).toBe('https://e/setup.exe');
+        expect(formatUpdatePrompt(r, '3.4.2', 'win32', 'x64').downloadUrl).toBe('https://e/setup.exe');
         // No mac asset → mac prompt falls back to the release page.
         expect(formatUpdatePrompt(r, '3.4.2', 'darwin').downloadUrl).toBe('https://e/page');
+    });
+
+    it('offers only browser download, Skip and Later on unsupported automatic-update platforms', () => {
+        const p = formatUpdatePrompt(release(), '3.4.2', 'linux', 'x64');
+        expect(p.buttons).toEqual([DOWNLOAD_INSTALLER_LABEL, 'Skip This Version', 'Later']);
+        expect(p.detail).toContain('install it yourself');
     });
 });
 
@@ -489,6 +526,18 @@ describe('update-channel persistence', () => {
 });
 
 describe('checkForUpdate', () => {
+    it.each(['stable', 'prerelease'] as const)('keeps the browser download on the selected %s channel', async channel => {
+        const result = await checkForUpdate({
+            currentVersion: '3.4.2', platform: 'darwin', arch: 'arm64', channel,
+            fetchFn: fakeFetch([ghPrePayload(), ghPayload()]),
+        });
+        expect(result.reason).toBe('newer');
+        const version = channel === 'stable' ? '3.4.6' : '3.4.8-alpha.1';
+        expect(result.release!.version).toBe(version);
+        expect(result.prompt!.downloadUrl).toBe(`https://example.com/CoC-${version}-arm64.dmg`);
+        expect(result.prompt!.buttons).toContain(DOWNLOAD_INSTALLER_LABEL);
+    });
+
     it('reports a newer stable release with a platform-specific prompt', async () => {
         const result = await checkForUpdate({
             currentVersion: '3.4.2',

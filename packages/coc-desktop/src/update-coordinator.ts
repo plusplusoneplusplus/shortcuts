@@ -100,7 +100,9 @@ export class UpdateCoordinator {
                 return;
             }
             if (await opts.promptError(reason)) {
-                await opts.openBrowser(pickDownloadUrl(release, opts.downloadOptions.platform ?? process.platform));
+                await opts.openBrowser(pickDownloadUrl(
+                    release, opts.downloadOptions.platform ?? process.platform, opts.downloadOptions.arch,
+                ));
             }
         }
     }
