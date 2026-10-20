@@ -22,6 +22,7 @@ export const FILE_PATH_DRAG_MIME = 'application/vnd.coc.file-path+json';
 export const FILE_PATH_DRAG_KIND = 'coc.file-path';
 export const WORK_ITEM_CONTEXT_DRAG_KIND = 'coc.work-item-context';
 export const SENTINEL_TODO_CONTEXT_DRAG_KIND = 'coc.sentinel-todo-context';
+export const GIT_FILE_CONTEXT_DRAG_KIND = 'coc.git-file-context';
 export const GIT_COMMIT_CONTEXT_DRAG_KIND = 'coc.git-commit-context';
 export const GIT_RANGE_CONTEXT_DRAG_KIND = 'coc.git-range-context';
 export const PULL_REQUEST_CONTEXT_DRAG_KIND = 'coc.pull-request-context';
@@ -91,8 +92,19 @@ export interface SentinelTodoContextDragPayload extends BasePointerContextDragPa
     todoItemId: string;
 }
 
+/** Whole-file reference to an immutable reviewed Git snapshot, never disk content. */
+export interface GitFileContextDragPayload extends BasePointerContextDragPayload {
+    kind: typeof GIT_FILE_CONTEXT_DRAG_KIND;
+    sourceRoutingRef: string | null;
+    filePath: string;
+    revision: string;
+    side: 'base' | 'head';
+}
+
 export interface GitCommitContextDragPayload extends BasePointerContextDragPayload {
     kind: typeof GIT_COMMIT_CONTEXT_DRAG_KIND;
+    sourceRoutingRef?: string | null;
+    sourceWorkspaceName?: string;
     commitHash: string;
     shortHash: string;
     subject?: string;
@@ -166,6 +178,7 @@ export interface FileSelectionContextPayload {
 }
 
 export type PointerContextDragPayload =
+    | GitFileContextDragPayload
     | SentinelTodoContextDragPayload
     | WorkItemContextDragPayload
     | GitCommitContextDragPayload
@@ -190,6 +203,8 @@ export interface CreateRalphSessionContextDragPayloadOptions {
 
 export interface CreatePointerContextDragPayloadOptions {
     activeWorkspaceId?: string | null;
+    sourceRoutingRef?: string | null;
+    sourceWorkspaceName?: string;
 }
 
 type DragDataTransfer = {
@@ -591,11 +606,14 @@ export function createGitCommitContextDragPayload(
     const shortHash = safeOptionalDisplayText(stringFrom(record, [['shortHash'], ['shortId']])) ?? shortenCommitHash(commitHash);
     const subject = safeOptionalDisplayText(stringFrom(record, [['subject'], ['message'], ['title']]));
     const label = `Commit ${shortHash}`;
+    const sourceWorkspaceName = safeOptionalDisplayText(options.sourceWorkspaceName ?? null);
 
     return {
         kind: GIT_COMMIT_CONTEXT_DRAG_KIND,
         version: 1,
         sourceWorkspaceId,
+        sourceRoutingRef: options.sourceRoutingRef ?? null,
+        ...(sourceWorkspaceName ? { sourceWorkspaceName } : {}),
         commitHash,
         shortHash,
         label,

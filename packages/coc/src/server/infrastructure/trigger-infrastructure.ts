@@ -1,6 +1,6 @@
 /**
  * Creates and wires up the trigger-related objects (`TriggerStore`,
- * `TriggerManager`, the `ci-failure` and `pr-merged` evaluators, the queue-backed
+ * `TriggerManager`, the CI/PR and optional script evaluators, the queue-backed
  * `QueueActionExecutor`, and a dedicated `ScheduleTimerRegistry`) used by the
  * execution server.
  *
@@ -23,10 +23,11 @@ import type { TriggerEventEmit } from '../triggers/trigger-manager';
 import { CiFailureEvaluator } from '../triggers/ci-failure-evaluator';
 import type { CiChecksFetcher, CiLogFetcher } from '../triggers/ci-failure-evaluator';
 import { PrMergedEvaluator } from '../triggers/pr-merged-evaluator';
+import { ScriptConditionEvaluator, type ScriptConditionRunner } from '../triggers/script-condition-evaluator';
 import { createPrStatusFetcher, type PrStatusFetcher } from '../triggers/pr-status-fetcher';
 import { QueueActionExecutor } from '../triggers/queue-action-executor';
 import { ScheduleTimerRegistry } from '../schedule/schedule-timer-registry';
-import type { TriggerEvent } from '../triggers/trigger-types';
+import type { Trigger, TriggerEvent } from '../triggers/trigger-types';
 import type { QueueExecutorBridge } from '../core/api-handler';
 import { ProcessMessageDeliveryService } from '../processes/process-message-delivery-service';
 import { SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
@@ -44,6 +45,8 @@ import { SentinelPrOutcomeService } from '../triggers/sentinel-pr-outcome-servic
 // ============================================================================
 
 export interface TriggerInfrastructure {
+    /** Synchronous revocation before a process mutation can admit more tool work. */
+    onProcessChange: NonNullable<ProcessStore['onProcessChange']>;
     triggerStore: TriggerStore;
     triggerManager: TriggerManager;
     sentinelTodoFirer: SentinelTodoTriggerFirer;
@@ -91,6 +94,10 @@ export interface TriggerInfrastructureOptions {
     now?: () => number;
     getPrOutcomeEnabled?: () => boolean;
     getDateTimeEnabled?: () => boolean;
+    /** Live conjunction of the script-trigger and tool-scripting flags. */
+    getScriptConditionsEnabled?: () => boolean;
+    /** Resolves and runs the exact owner's unattended tool runtime on every invocation. */
+    runScriptCondition?: ScriptConditionRunner;
 }
 
 // ============================================================================
@@ -126,8 +133,11 @@ export async function createTriggerInfrastructure(
 
     const triggerStore = new TriggerStore(db);
     const timerRegistry = new ScheduleTimerRegistry();
+    const { runScriptCondition } = options;
+    let disposed = false;
+    const scriptConditionsEnabled = () => !disposed && !!runScriptCondition
+        && options.getScriptConditionsEnabled?.() === true;
 
-    // Evaluators: the CI-failure monitor and the Sentinel To-do PR-merge watch.
     const ciFailureEvaluator = new CiFailureEvaluator(ciChecksFetcher, ciLogFetcher);
     const prMergedEvaluator = new PrMergedEvaluator(
         options.prStatusFetcher ?? createPrStatusFetcher({ dataDir }), now);
@@ -152,22 +162,60 @@ export async function createTriggerInfrastructure(
         triggers: triggerStore, todos, processes: store,
         executor: actionExecutor, emit, now,
         dateTimeEnabled: options.getDateTimeEnabled,
+        scriptConditionsEnabled,
         onPendingDelivery: trigger => triggerManager.schedulePendingDelivery(trigger),
         outcomeCanDeliver: trigger => sentinelPrOutcomes.canDeliver(trigger),
         validateOutcome: trigger => sentinelPrOutcomes.validate(trigger),
         withOutcomeAdmission: (trigger, run) => sentinelPrOutcomes.withAdmission(
             { workspaceId: trigger.workspaceId, processId: trigger.processId }, trigger.binding!.itemId, run),
     });
+    const assertScriptAdmission = async (trigger: Trigger, signal?: AbortSignal) => {
+        signal?.throwIfAborted();
+        const process = await store.getProcess(trigger.processId, trigger.workspaceId);
+        signal?.throwIfAborted();
+        const current = triggerStore.getById(trigger.id);
+        const item = current?.binding && todos.get({
+            workspaceId: current.workspaceId, processId: current.processId,
+        }).items.find(item => item.id === current.binding?.itemId);
+        if (!scriptConditionsEnabled() || !current || current.revision !== trigger.revision
+            || current.event.type !== 'script-condition' || trigger.event.type !== 'script-condition'
+            || current.event.scriptRevision !== trigger.event.scriptRevision
+            || current.event.script !== trigger.event.script || current.event.intervalMs !== trigger.event.intervalMs
+            || current.status !== trigger.status || current.event.paused !== trigger.event.paused
+            || current.workspaceId !== trigger.workspaceId || current.processId !== trigger.processId
+            || current.action.processId !== current.processId || current.binding?.kind !== 'sentinel-todo'
+            || current.binding.removedAt || current.binding.delegatedPr || current.outcome
+            || !item || item.type !== 'normal' || item.status === 'done' || item.archived
+            || process?.id !== current.processId || process.type !== 'chat'
+            || process.metadata?.workspaceId !== current.workspaceId || process.metadata.mode !== 'sentinel'
+            || process.status === 'cancelled' || process.status === 'cancelling') {
+            triggerManager.disarm(trigger.id);
+            signal?.throwIfAborted();
+            throw new Error('Script condition admission revoked');
+        }
+    };
+    const scriptConditionEvaluator = runScriptCondition && new ScriptConditionEvaluator(async (trigger, state, signal) => {
+        await assertScriptAdmission(trigger, signal);
+        try {
+            return await runScriptCondition(trigger, state, signal);
+        } finally {
+            // Revocation must suppress late successes and failures, not advance the baseline or backoff.
+            await assertScriptAdmission(trigger, signal);
+        }
+    }, now);
     const triggerManager: TriggerManager = new TriggerManager({
         store: triggerStore,
         timerRegistry,
         resolveEvaluator: (event: TriggerEvent) => {
+            if (event.type === 'script-condition') return scriptConditionEvaluator;
             if (event.type !== 'condition-monitor') return undefined;
             return event.monitor === 'ci-failure' ? ciFailureEvaluator : prMergedEvaluator;
         },
         actionExecutor,
         oneShotFirer: sentinelTodoFirer,
         dateTimeEnabled: options.getDateTimeEnabled,
+        scriptConditionsEnabled,
+        scriptConditionFirer: sentinelTodoFirer,
         emit,
         ...(now ? { now } : {}),
     });
@@ -177,6 +225,7 @@ export async function createTriggerInfrastructure(
         manager: triggerManager, firer: sentinelTodoFirer,
         fetchPr: options.prStatusFetcher ?? createPrStatusFetcher({ dataDir }), emit, now,
         dateTimeEnabled: options.getDateTimeEnabled,
+        scriptConditionsEnabled,
     });
     const sentinelPrOutcomes: SentinelPrOutcomeService = new SentinelPrOutcomeService({
         jobs: new DelegatedJobStore(dataDir), dataDir, processes: store, owners,
@@ -228,6 +277,7 @@ export async function createTriggerInfrastructure(
     for (const trigger of triggerStore.getAll()) {
         if (!trigger.binding || trigger.delivery?.state !== 'delivered') continue;
         if (trigger.event.type === 'date-time' && !options.getDateTimeEnabled?.()) continue;
+        if (trigger.event.type === 'script-condition' && !scriptConditionsEnabled()) continue;
         try {
             await options.recoverPendingMessages?.(trigger.workspaceId, trigger.processId);
         } catch (error) {
@@ -260,7 +310,24 @@ export async function createTriggerInfrastructure(
         );
     }
 
+    const onProcessChange: TriggerInfrastructure['onProcessChange'] = event => {
+        if (disposed || (!event.process && event.type !== 'processes-cleared')) return;
+        const triggers = event.process ? triggerStore.getByProcess(event.process.id) : triggerStore.getAll();
+        for (const trigger of triggers) {
+            if (trigger.event.type !== 'script-condition') continue;
+            const process = event.process;
+            if (process && process.id !== trigger.processId) continue;
+            if (event.type === 'process-removed' || event.type === 'processes-cleared'
+                || ((event.type === 'process-updated' || event.type === 'process-added') && process && (process.type !== 'chat'
+                    || process.metadata?.workspaceId !== trigger.workspaceId
+                    || process.metadata.mode !== 'sentinel'
+                    || process.status === 'cancelled' || process.status === 'cancelling'))) {
+                triggerManager.disarm(trigger.id);
+            }
+        }
+    };
     const dispose = () => {
+        disposed = true;
         triggerManager.shutdownAll();
         if (ownsDb) {
             try { db.close(); } catch { /* already closed */ }
@@ -268,7 +335,7 @@ export async function createTriggerInfrastructure(
     };
 
     return {
-        triggerStore, triggerManager, sentinelTodoFirer, sentinelTodoTriggers, sentinelPrOutcomes, timerRegistry, emit, dispose,
+        triggerStore, triggerManager, sentinelTodoFirer, sentinelTodoTriggers, sentinelPrOutcomes, timerRegistry, emit, dispose, onProcessChange,
         createTrigger: (workspaceId, body, reuseCiMonitor) => createTrigger({
             store: triggerStore, manager: triggerManager, emit,
             resolveWorkspaceId, now: options.now,

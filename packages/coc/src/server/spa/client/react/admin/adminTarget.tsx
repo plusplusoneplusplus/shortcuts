@@ -1,7 +1,8 @@
 /**
  * adminTarget — the machine whose server-owned settings Desktop Admin edits.
  *
- * Behind `features.adminMachineSwitch` (desktop shell, non-container only),
+ * Gated by `features.adminMachineSwitch` (on by default; an explicit false
+ * opts out) in the desktop shell outside container mode,
  * `AdminTargetProvider` keeps an in-memory selection that starts on the
  * connected server every time the Admin dialog mounts. Server-owned Admin
  * code reads its transport from `useAdminServer()`; each selection gets its
@@ -10,7 +11,7 @@
  * `AdminTargetGate` remounts the Admin content per selection, so drafts,
  * polling and subscriptions never cross machines.
  *
- * Without the provider (flag off, browser dashboard, container mode)
+ * Without the provider (flag set false, browser dashboard, container mode)
  * `useAdminServer()` returns the page-origin defaults, byte-for-byte the
  * previous behavior. Nothing here persists the selection or mutates the
  * shared SPA client.

@@ -404,8 +404,9 @@ export class ProcessMessageDeliveryService {
         processId: string,
         receiptId: string,
         input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource'> & { respectQueueBarriers?: boolean },
+        validateAdmission?: (process: AIProcess | undefined) => void,
     ): Promise<DeliveryResult> {
-        return this.deliverReceipt(workspaceId, processId, receiptId, input, 'review');
+        return this.deliverReceipt(workspaceId, processId, receiptId, input, 'review', validateAdmission);
     }
 
     /** Caller validates the PR binding and holds its PR-qualified writer receipt. */
@@ -428,6 +429,7 @@ export class ProcessMessageDeliveryService {
         workspaceId: string, processId: string, receiptId: string,
         input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource'> & { respectQueueBarriers?: boolean },
         kind: 'review' | 'pr-repair' | 'pr-outcome',
+        validateAdmission?: (process: AIProcess | undefined) => void,
     ): Promise<DeliveryResult> {
         const prRepair = kind === 'pr-repair';
         const prOutcome = kind === 'pr-outcome';
@@ -441,8 +443,11 @@ export class ProcessMessageDeliveryService {
         if (!this.bridge.enqueue || !this.bridge.getTask) {
             throw new ReviewDeliveryRejectedError('Durable review delivery requires queue admission and lookup');
         }
+        if (validateAdmission && !this.bridge.enqueueAdmitted) {
+            throw new ReviewDeliveryRejectedError('Guarded delivery requires admitted queue routing');
+        }
         return this.admission.runExclusive(processId, async () => {
-            const proc = await this.store.getProcess(processId, workspaceId);
+            let proc = await this.store.getProcess(processId, workspaceId);
             if (!proc || proc.metadata?.workspaceId !== workspaceId) {
                 throw new ReviewDeliveryRejectedError('Review parent is unavailable in its originating workspace');
             }
@@ -452,6 +457,7 @@ export class ProcessMessageDeliveryService {
             )) {
                 throw new ReviewDeliveryRejectedError('Sentinel wake requires its owning chat and delivery identity');
             }
+            validateAdmission?.(proc);
             const pending = proc.pendingMessages?.find(message => message.relayRequestId === receiptId
                 || (input.turnSource && message.context?.deliveryId === receiptId));
             const turn = proc.conversationTurns?.find(message => message.role === 'user'
@@ -491,13 +497,19 @@ export class ProcessMessageDeliveryService {
             const stoppedReview = prOutcome && (proc.status === 'cancelled'
                 || (typeof activeContext === 'object' && activeContext !== null
                     && 'sentinelPrOutcomeStopped' in activeContext && activeContext.sentinelPrOutcomeStopped === true));
+            const mode = prRepair ? 'autopilot' : await resolveFollowUpMode(this.store, processId);
+            if (validateAdmission) {
+                proc = await this.store.getProcess(processId, workspaceId);
+                validateAdmission(proc);
+                if (!proc) throw new ReviewDeliveryRejectedError('Review parent is unavailable');
+            }
             return this.deliverAdmitted(proc, {
                 ...input, relayRequestId: receiptId, deliveryMode: 'enqueue', pasteExternalized: false,
-                mode: prRepair ? 'autopilot' : await resolveFollowUpMode(this.store, processId),
+                mode,
                 ...(prOutcome ? { sentinelPrOutcomeReview: true as const } : {}),
                 ...(stoppedReview ? { sentinelPrOutcomeStopped: true as const } : {}),
             }, receiptId, undefined, prRepair ? { queuePriority: 'high', respectQueueBarriers: true }
-                : prOutcome || input.respectQueueBarriers ? { respectQueueBarriers: true } : {});
+                : prOutcome || input.respectQueueBarriers ? { respectQueueBarriers: true } : {}, validateAdmission);
         });
     }
 
@@ -537,7 +549,8 @@ export class ProcessMessageDeliveryService {
             && task.payload.relayRequestId === receiptId;
     }
 
-    private async deliverAdmitted(proc: AIProcess, input: FollowUpMessageInput, reviewReceiptId?: string, mirror?: SentinelMirrorEntry, scheduling: Pick<PendingMessage, 'queuePriority' | 'respectQueueBarriers'> = {}): Promise<DeliveryResult> {
+    private async deliverAdmitted(proc: AIProcess, input: FollowUpMessageInput, reviewReceiptId?: string, mirror?: SentinelMirrorEntry, scheduling: Pick<PendingMessage, 'queuePriority' | 'respectQueueBarriers'> = {},
+        validateAdmission?: (process: AIProcess | undefined) => void): Promise<DeliveryResult> {
         const id = proc.id;
         const priorStatus = proc.status;
         const compactionPending = !!this.bridge.findCompactionTask?.(id)
@@ -573,6 +586,7 @@ export class ProcessMessageDeliveryService {
         // [user, assistant, user, assistant] ordering. The append is atomic so
         // concurrent follow-ups cannot lose each other's pending messages.
         const bufferAsPendingMessage = async () => {
+            validateAdmission?.(proc);
             buffered = true;
             path = 'buffered';
             const pendingMessage = {
@@ -670,7 +684,7 @@ export class ProcessMessageDeliveryService {
                         config: { ...(input.effort ? { reasoningEffort: input.effort } : {}),
                             ...(scheduling.respectQueueBarriers ? { respectQueueBarriers: true } : {}) },
                         displayName,
-                    });
+                    }, ...(validateAdmission ? [validateAdmission] as const : []));
                     if (mirror) this.sentinelMirror!.accepted(mirror);
                     path = 'enqueued';
                 }
@@ -693,6 +707,7 @@ export class ProcessMessageDeliveryService {
                 // Pending-message observers can fail after the canonical append, too.
                 path = 'buffered';
             } else {
+                if (err instanceof ReviewDeliveryRejectedError) throw err;
                 await this.store.updateProcess(id, { status: priorStatus as AIProcessStatus }).catch(() => {});
                 throw new FollowUpDeliveryError(err);
             }

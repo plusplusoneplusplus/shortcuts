@@ -41,6 +41,7 @@ const { mockState } = vi.hoisted(() => ({
         defaultChatStyle: 'default' as string,
         prItems: [] as PrStatusCardItem[],
         sessionContextAttachmentsEnabled: false,
+        compactNow: vi.fn().mockResolvedValue(undefined),
         sendFollowUp: vi.fn().mockResolvedValue(undefined),
         modelLookups: vi.fn(),
         closeFollowUpStream: vi.fn(),
@@ -167,6 +168,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useSendMess
         // Capture setSessionExpired for session expiry tests
         (globalThis as any).__useSendMessage_opts = opts;
         return {
+            compactNow: mockState.compactNow,
             sendFollowUp: mockState.sendFollowUp,
             closeFollowUpStream: mockState.closeFollowUpStream,
             onSendComplete: mockState.onSendComplete,
@@ -411,6 +413,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/ImplementPlanCard
 
 import { ChatDetail } from '../../../../src/server/spa/client/react/features/chat/ChatDetail';
 import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
+import { getCocClientFor } from '../../../../src/server/spa/client/react/api/cocClient';
 import { WorkspaceOwnerContext } from '../../../../src/server/spa/client/react/repos/workspaceOwnerContext';
 
 // ── Provider wrapper ───────────────────────────────────────────────────────
@@ -544,6 +547,7 @@ beforeEach(() => {
     mockState.sseOptions = undefined;
     resetActiveChatAttach();
     // Reset mock state
+    mockState.compactNow.mockReset().mockResolvedValue(undefined);
     mockState.sendFollowUp.mockReset().mockResolvedValue(undefined);
     mockState.modelLookups.mockReset();
     mockState.closeFollowUpStream.mockReset();
@@ -4029,5 +4033,42 @@ describe('ChatDetail — per-conversation chat style', () => {
 
         await waitFor(() => expect(selectorStyle()).toBe('structured'));
         expect(selectorStyle()).toBe('structured');
+    });
+});
+
+
+describe('ChatDetail context-popover manual compaction', () => {
+    it.each([
+        { provider: 'copilot', state: 'completed', readOnly: false, disabled: false },
+        { provider: 'claude', state: 'completed', readOnly: false, disabled: false },
+        { provider: 'codex', state: 'completed', readOnly: false, disabled: false },
+        { provider: 'opencode', state: 'completed', readOnly: false, disabled: true },
+        { provider: 'copilot', state: 'queued', readOnly: false, disabled: true },
+        { provider: 'copilot', state: 'running', readOnly: false, disabled: true },
+        { provider: 'copilot', state: 'completed', readOnly: true, disabled: true },
+    ])('uses shared action and restrictions: %j', async ({ provider, state, readOnly, disabled }) => {
+        const owner = { workspaceId: 'ws-member', selectionId: 'remote:owner:ws-member', baseUrl: 'https://owner.example.test' };
+        setupStandardFetch(makeTask(), makeProcess({
+            currentTokens: 150_000, tokenLimit: 922_000,
+            metadata: { mode: 'sentinel', sessionId: 'session', provider, compaction: { state } },
+        }));
+        render(<Wrap><WorkspaceOwnerContext.Provider value={owner}>
+            <ChatDetail taskId="task-1" workspaceId="ws-member" sourceSelectionId={owner.selectionId} readOnly={readOnly} />
+        </WorkspaceOwnerContext.Provider></Wrap>);
+        if (readOnly) {
+            await waitFor(() => expect((globalThis as any).__useSendMessage_opts.compactDisabled).toBe(true));
+            expect(screen.queryByRole('button', { name: 'Compact now' })).toBeNull();
+            return;
+        }
+        await waitFor(() => expect(screen.getAllByRole('button', { name: /Context window/ }).length).toBeGreaterThan(0));
+        fireEvent.click(screen.getAllByRole('button', { name: /Context window/ })[0]);
+        const button = await screen.findByRole('button', { name: 'Compact now' }) as HTMLButtonElement;
+        expect(button.disabled).toBe(disabled);
+        const options = (globalThis as any).__useSendMessage_opts;
+        expect(options.compactClient).toBe(getCocClientFor(owner.baseUrl));
+        expect(options.owningWorkspaceId).toBe(owner.workspaceId);
+        fireEvent.click(button);
+        expect(mockState.compactNow).toHaveBeenCalledTimes(disabled ? 0 : 1);
+        expect(mockState.sendFollowUp).not.toHaveBeenCalled();
     });
 });

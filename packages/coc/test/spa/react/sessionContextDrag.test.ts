@@ -161,6 +161,7 @@ describe('sessionContextDrag', () => {
             kind: GIT_COMMIT_CONTEXT_DRAG_KIND,
             version: 1,
             sourceWorkspaceId: 'ws-1',
+            sourceRoutingRef: null,
             commitHash: 'abcdef1234567890',
             shortHash: 'abcdef1',
             label: 'Commit abcdef1',

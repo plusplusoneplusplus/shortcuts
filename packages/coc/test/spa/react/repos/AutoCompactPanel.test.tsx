@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { CocClient, type ProcessAutoCompactState } from '@plusplusoneplusplus/coc-client';
 import { ComposerMetaStrip } from '../../../../src/server/spa/client/react/features/chat/ComposerMetaStrip';
 import { ContextWindowIndicator } from '../../../../src/server/spa/client/react/ui/ContextWindowIndicator';
-import { deriveAutoCompactStatus, describeAutoCompact, parseThresholdInput, useSentinelAutoCompact } from '../../../../src/server/spa/client/react/features/chat/AutoCompactPanel';
+import { deriveAutoCompactStatus, describeAutoCompact, parseThresholdInput, useSentinelAutoCompact, type AutoCompactPanelProps } from '../../../../src/server/spa/client/react/features/chat/AutoCompactPanel';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
@@ -24,7 +24,8 @@ function deferred() {
 }
 
 function Harness({ client, isSentinel = true, initial, compaction, processId = 'queue_s', workspaceId = 'ws-remote',
-    tokenLimit = 922_000, onCancel = vi.fn(async () => {}), renderer = 'composer', onState }: {
+    tokenLimit = 922_000, onCancel = vi.fn(async () => {}), renderer = 'composer', onState, manualCompact }: {
+    manualCompact?: AutoCompactPanelProps['manualCompact'];
     client: CocClient;
     isSentinel?: boolean;
     initial?: ProcessAutoCompactState;
@@ -38,7 +39,7 @@ function Harness({ client, isSentinel = true, initial, compaction, processId = '
 }) {
     const [state, setState] = useState(initial);
     const autoCompact = useSentinelAutoCompact({
-        isSentinel, processId, workspaceId, client, metadata: { autoCompact: state, compaction },
+        manualCompact, isSentinel, processId, workspaceId, client, metadata: { autoCompact: state, compaction },
         usedTokens: 720_000, tokenLimit,
         onState: value => { setState(value); onState?.(value); }, onCancelQueued: onCancel,
     });
@@ -448,5 +449,37 @@ describe('approved Sentinel auto-compact popover', () => {
         }));
         expect(result.current?.status).toBe('off');
         expect(result.current?.thresholdTokens).toBe(700_000);
+    });
+});
+
+
+describe('Compact now in the context popover', () => {
+    it.each(['composer', 'indicator'] as const)('shares the inline action without changing auto settings in %s', async renderer => {
+        const client = makeClient();
+        const onCompact = vi.fn(async () => {});
+        render(<Harness client={client} renderer={renderer} manualCompact={{ onCompact, disabled: false, pending: false }} />);
+        openPopover();
+        const button = screen.getByRole('button', { name: 'Compact now' });
+        expect(button.title).toBe('Compact now');
+        expect(button.parentElement).toBe(screen.getByTestId('auto-compact-row'));
+        expect(button.previousElementSibling?.contains(input())).toBe(true);
+        expect(button.className).toContain('h-5 w-5');
+        await act(async () => { fireEvent.click(button); });
+        expect(onCompact).toHaveBeenCalledOnce();
+        expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('false');
+        expect(input().value).toBe('700');
+        expect(client.processes.updateAutoCompact).not.toHaveBeenCalled();
+        expect(client.processes.resumeAutoCompact).not.toHaveBeenCalled();
+    });
+
+    it.each([{ disabled: true, pending: false }, { disabled: false, pending: true }])('blocks unavailable or pending actions: %j', async state => {
+        const onCompact = vi.fn(async () => {});
+        render(<Harness client={makeClient()} manualCompact={{ onCompact, ...state }} />);
+        openPopover();
+        const button = screen.getByRole('button', { name: 'Compact now' }) as HTMLButtonElement;
+        expect(button.disabled).toBe(true);
+        expect(button.getAttribute('aria-busy')).toBe(state.pending ? 'true' : null);
+        fireEvent.click(button);
+        expect(onCompact).not.toHaveBeenCalled();
     });
 });

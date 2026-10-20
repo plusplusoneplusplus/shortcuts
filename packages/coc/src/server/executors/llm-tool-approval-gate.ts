@@ -21,6 +21,7 @@ export const LLM_TOOL_APPROVAL_ARGS_CAP = 16 * 1024;
 
 /** What the model gets back when the call is not allowed. */
 export const LLM_TOOL_DENIED_MESSAGE = 'User denied this tool call.';
+export const LLM_TOOL_UNATTENDED_DENIED_MESSAGE = 'Approval-required tools cannot run in a background script.';
 
 /**
  * How a gated call was settled. `approve-session` covers both a fresh
@@ -43,11 +44,14 @@ export interface LlmToolApprovalGateInput {
     approvalRequired: readonly string[];
     /**
      * Whether a human can answer this turn. Checked at call time; a
-     * non-interactive turn (cron, wakeup, Ralph, workflows) auto-allows.
+     * non-interactive turn (cron, wakeup, Ralph, workflows) auto-allows
+     * unless denyApprovals is set.
      */
     isInteractive: () => boolean;
     /** The turn's approval prompt. Absent → nobody to ask → auto-allow. */
     getAskApproval: () => LlmToolAskApprovalFn | undefined;
+    /** Deny every gated call without consulting prompts or saved session approvals. */
+    denyApprovals?: boolean;
     /** Overridable for tests. Defaults to the process-wide store. */
     approvals?: DangerousCommandSessionApprovals;
     /** Called once per gated call with how it was settled. */
@@ -104,6 +108,15 @@ export function applyLlmToolApprovalGate(tools: Tool<any>[], input: LlmToolAppro
                 ...(invocation?.toolCallId ? { toolCallId: invocation.toolCallId } : {}),
                 outcome,
             });
+
+            if (input.denyApprovals) {
+                report('deny');
+                return {
+                    textResultForLlm: LLM_TOOL_UNATTENDED_DENIED_MESSAGE,
+                    resultType: 'denied',
+                    error: LLM_TOOL_UNATTENDED_DENIED_MESSAGE,
+                };
+            }
 
             const askApproval = input.isInteractive() ? input.getAskApproval() : undefined;
             if (!askApproval) {

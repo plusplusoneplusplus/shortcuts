@@ -26,6 +26,7 @@ import type { ITaskExecutor } from './executor-types';
 import type { ChatModeExecutorOptions } from './chat-base-executor';
 import type { DreamRuntime, ExecutorRuntimeCapabilities, LifecycleRuntime } from './executor-runtime-contracts';
 import type { QueueRuntimeConfig } from '../queue/queue-runtime-config';
+import type { ScriptConditionRunner } from '../triggers/script-condition-evaluator';
 
 export interface ExecutorRegistryOptions {
     approvePermissions: boolean;
@@ -147,6 +148,9 @@ export class ExecutorRegistry {
         });
         this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, options.provider, lifecycleRuntime);
     }
+
+    readonly runScriptCondition: ScriptConditionRunner = (trigger, state, signal) =>
+        this.chatExecutor.runScriptCondition(trigger, state, signal);
 
     /** Dispatch a task to the appropriate executor based on its type and payload. */
     async dispatch(task: QueuedTask, prompt: string): Promise<unknown> {

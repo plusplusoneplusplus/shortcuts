@@ -208,6 +208,34 @@ describe('RuntimeConfigService', () => {
     // ── updateConfig ─────────────────────────────────────────────────────
 
     describe('updateConfig', () => {
+        it('persists the default-off script-trigger flag live without changing tool scripting or another server', async () => {
+            const svc = new RuntimeConfigService({ configPath });
+            const otherOwner = new RuntimeConfigService({ fileConfig: {} });
+            const runtime = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features;
+            expect(runtime().sentinelTodoScriptTriggersEnabled).toBe(false);
+            expect(svc.sources['features.sentinelTodoScriptTriggers']).toBe('default');
+            const changed = vi.fn();
+            svc.onChange(changed);
+
+            const enabled = await svc.updateConfig({ 'features.sentinelTodoScriptTriggers': true });
+            expect(enabled.effects).toEqual([{
+                field: 'features.sentinelTodoScriptTriggers', runtime: 'live', requiresRestart: false,
+            }]);
+            expect(enabled.sources['features.sentinelTodoScriptTriggers']).toBe('file');
+            expect(runtime().sentinelTodoScriptTriggersEnabled).toBe(true);
+            expect(new RuntimeConfigService({ configPath }).config.features.sentinelTodoScriptTriggers).toBe(true);
+            expect(otherOwner.config.features.sentinelTodoScriptTriggers).toBe(false);
+            expect(svc.config.sentinel.enabled).toBe(false);
+
+            // The two saved switches are independent; execution must require both.
+            await svc.updateConfig({ 'features.toolScripting': false });
+            expect(runtime()).toMatchObject({ sentinelTodoScriptTriggersEnabled: true, toolScriptingEnabled: false });
+            await svc.updateConfig({ 'features.sentinelTodoScriptTriggers': false });
+            expect(runtime().sentinelTodoScriptTriggersEnabled).toBe(false);
+            expect(new RuntimeConfigService({ configPath }).config.features.sentinelTodoScriptTriggers).toBe(false);
+            expect(changed).toHaveBeenCalledTimes(3);
+        });
+
         it('persists live To-do jobs opt-in and opt-out on its owning server only', async () => {
             const svc = new RuntimeConfigService({ configPath });
             const otherOwner = new RuntimeConfigService({ fileConfig: {} });

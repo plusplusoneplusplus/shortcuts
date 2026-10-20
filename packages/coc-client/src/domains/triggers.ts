@@ -8,6 +8,7 @@ import type {
   CreateSentinelTodoTriggerRequest,
   EditSentinelTodoTriggerRequest,
   PrTriggerPreview,
+  SentinelTodoTriggerCapabilities,
 } from '../contracts';
 import type { RequestAdapter } from '../types';
 import { encodePathSegment } from '../url';
@@ -84,7 +85,7 @@ export class TriggersClient {
     return result.triggers;
   }
 
-  sentinelTodoCapabilities(workspaceId: string, processId: string): Promise<{ dateTime: boolean }> {
+  sentinelTodoCapabilities(workspaceId: string, processId: string): Promise<SentinelTodoTriggerCapabilities> {
     return this.transport.request(sentinelPath(workspaceId, processId, '/capabilities'));
   }
 

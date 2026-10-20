@@ -1655,17 +1655,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         await client.processes.cancelCompaction(processId, owningWorkspaceId ? { workspace: owningWorkspaceId } : undefined);
         await refreshConversation(processId);
     }, [client, processId, owningWorkspaceId, refreshConversation]);
-    const contextAutoCompact = useSentinelAutoCompact({
-        isSentinel: resolveLoadedTaskMode(task) === 'sentinel' || metadataProcess?.metadata?.mode === 'sentinel',
-        processId,
-        workspaceId: owningWorkspaceId,
-        client,
-        metadata: metadataProcess?.metadata,
-        usedTokens: sessionCurrentTokens,
-        tokenLimit: sessionTokenLimit,
-        onState: handleAutoCompactState,
-        onCancelQueued: cancelQueuedAutoCompaction,
-    });
+
 
     // When a task transitions out of `queued` (via WebSocket or polling), force
     // a one-shot conversation refresh. Without this hook, a fast `queued →
@@ -1697,7 +1687,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         : effortOverride);
     const ralphMultiAgentGrillEnabled = isRalphMultiAgentGrillEnabled();
 
-    const { sendFollowUp, closeFollowUpStream, onSendComplete } = useSendMessage({
+    const { sendFollowUp, compactNow, closeFollowUpStream, onSendComplete } = useSendMessage({
+        sourceSelectionId,
         processId,
         taskId,
         inputDisabled,
@@ -1746,10 +1737,29 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         onPromotedToRalph: () => setSelectedModeFromUser('ask'),
         // `/compact` surfaces its result (or error) as a transient toast; the
         // displayed transcript is never rewritten.
+        compactClient: client,
+        compactDisabled: !historyOwnerAvailable || readOnly || isCompacting || compactionQueued || conversationProvider === 'opencode',
         notifyCompact: addToast,
         // Drive the synthetic in-progress compaction bubble + duplicate-send
         // block from the compaction lifecycle (AC-02).
         setCompacting: handleCompactingChange,
+    });
+
+    const contextAutoCompact = useSentinelAutoCompact({
+        isSentinel: resolveLoadedTaskMode(task) === 'sentinel' || metadataProcess?.metadata?.mode === 'sentinel',
+        processId,
+        workspaceId: owningWorkspaceId,
+        client,
+        metadata: metadataProcess?.metadata,
+        usedTokens: sessionCurrentTokens,
+        tokenLimit: sessionTokenLimit,
+        manualCompact: {
+            onCompact: compactNow,
+            disabled: !historyOwnerAvailable || readOnly || !processId || inputDisabled || sending || isActiveGeneration || isCompacting || compactionQueued || conversationProvider === 'opencode',
+            pending: isCompacting,
+        },
+        onState: handleAutoCompactState,
+        onCancelQueued: cancelQueuedAutoCompaction,
     });
 
     const sendFollowUpWithPrefix = useCallback(async (overrideContent?: string, deliveryMode?: any) => {

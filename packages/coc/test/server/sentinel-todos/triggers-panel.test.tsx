@@ -143,8 +143,201 @@ describe('Sentinel To-do Triggers', () => {
         await screen.findByText('PR example/repo#7');
         expect(screen.getByRole('alert').textContent).toContain('Owner capability unavailable');
         expect(screen.queryByTestId('sentinel-trigger-dated')).toBeNull();
-        fireEvent.click(screen.getByRole('button', { name: 'Retry date/time availability' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Retry trigger availability' }));
         await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    });
+
+    describe('Sentinel To-do script rules', () => {
+        function scriptRule(overrides: Partial<Trigger> = {}): Trigger {
+            return rule({
+                event: { type: 'script-condition', script: 'return { ci: await tools.query_pull_request({}) };',
+                    scriptRevision: 2, intervalMs: 900_000, consecutiveFailures: 0, paused: false },
+                ...overrides,
+            });
+        }
+        async function mountScript(trigger = scriptRule(), enabled = true) {
+            mocks.capabilities.mockResolvedValue({ dateTime: false, scriptCondition: enabled });
+            mocks.list.mockResolvedValue([trigger]);
+            const rendered = mount();
+            const row = await screen.findByTestId('sentinel-trigger-rule-1');
+            return { ...rendered, row };
+        }
+
+        it('shows interval, last run, item navigation and read-only source without a PR editor', async () => {
+            const trigger = scriptRule();
+            const { row, onItemLink } = await mountScript(trigger);
+            expect(within(row).getByText('Script condition · Every 15 min')).toBeTruthy();
+            expect(within(row).getByText(/Last run:/).querySelector('time')?.dateTime).toBe(iso);
+            const source = within(row).getByText('Script source (read-only)');
+            expect(source.closest('details')?.open).toBe(false);
+            fireEvent.click(source);
+            expect(source.closest('details')?.open).toBe(true);
+            expect(row.querySelector('pre code')?.textContent).toBe(trigger.event.type === 'script-condition' ? trigger.event.script : '');
+            expect(row.querySelector('textarea')).toBeNull();
+            fireEvent.click(within(row).getByRole('link', { name: /Follow-up work/ }));
+            expect(onItemLink).toHaveBeenCalledWith('item-1');
+            fireEvent.click(within(row).getByLabelText('Actions for script condition'));
+            expect(within(row).queryByRole('button', { name: 'Edit' })).toBeNull();
+            expect(mocks.preview).not.toHaveBeenCalled();
+            expect(mocks.refs).toContain(owner.ownerRoutingRef);
+            expect(mocks.capabilities).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId);
+        });
+
+        it('renders script source and failures as escaped text and shows automatic pause diagnostics', async () => {
+            const source = '<img src=x onerror=alert(1)>; return "<script>untrusted</script>";';
+            const message = '<svg onload=alert(1)> Provider error';
+            const trigger = scriptRule();
+            if (trigger.event.type !== 'script-condition') throw new Error('fixture');
+            const { row } = await mountScript({ ...trigger, status: 'paused', event: { ...trigger.event,
+                script: source, paused: true, consecutiveFailures: 5, lastError: { message, at: iso } } });
+            expect(within(row).getByText('Paused', { exact: true })).toBeTruthy();
+            expect(row.textContent).toContain(`Last error: ${message}`);
+            expect(row.textContent).toContain('Consecutive failures: 5');
+            expect(row.querySelector('pre code')?.textContent).toBe(source);
+            expect(row.querySelector('img, svg, script')).toBeNull();
+        });
+
+        it('shows never-run and running states without displaying stored result payloads', async () => {
+            const trigger = scriptRule();
+            if (trigger.event.type !== 'script-condition') throw new Error('fixture');
+            const { row } = await mountScript({ ...trigger, lastTickAt: null, inFlight: true,
+                event: { ...trigger.event, lastResult: '"private-result-not-for-panel"', lastResultHash: 'hash' } });
+            expect(row.textContent).toContain('Last run: Not run yet · Running');
+            expect(row.textContent).not.toContain('private-result-not-for-panel');
+            fireEvent.click(within(row).getByLabelText('Actions for script condition'));
+            expect(within(row).getByRole('button', { name: 'Run now' }).hasAttribute('disabled')).toBe(true);
+        });
+
+        it.each(['active', 'paused'] as const)('runs a %s rule only after confirming non-consuming change semantics', async status => {
+            await mountScript(scriptRule({ status }));
+            fireEvent.click(screen.getByLabelText('Actions for script condition'));
+            fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
+            const dialog = screen.getByRole('dialog', { name: 'Run trigger now' });
+            expect(dialog.textContent).toContain('first result sets a silent baseline');
+            expect(dialog.textContent).toContain('only a changed result wakes Sentinel');
+            expect(dialog.textContent).toContain('rule is not consumed');
+            expect(dialog.textContent).toContain(status === 'paused' ? 'It remains paused.' : 'It keeps running on its interval.');
+            expect(dialog.textContent).not.toContain('uses up the rule');
+            expect(mocks.runNow).not.toHaveBeenCalled();
+            fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm run now' }));
+            await waitFor(() => expect(mocks.runNow).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId, 'rule-1', 4));
+            expect(mocks.resume).not.toHaveBeenCalled();
+            expect(mocks.edit).not.toHaveBeenCalled();
+        });
+
+        it.each(['Pause', 'Resume', 'Remove'] as const)('routes %s through the exact owner and saved revision', async action => {
+            await mountScript(scriptRule({ status: action === 'Resume' ? 'paused' : 'active' }));
+            fireEvent.click(screen.getByLabelText('Actions for script condition'));
+            fireEvent.click(screen.getByRole('button', { name: action }));
+            const mutation = action === 'Pause' ? mocks.pause : action === 'Resume' ? mocks.resume : mocks.remove;
+            await waitFor(() => expect(mutation).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId, 'rule-1', 4));
+            expect(screen.queryByRole('dialog')).toBeNull();
+        });
+
+        it.each(['active', 'paused'] as const)('retains %s rules with execution disabled but permits safe lifecycle actions', async status => {
+            const { row } = await mountScript(scriptRule({ status }), false);
+            expect(row.textContent).toContain('Script execution disabled on the owning server. Rules are retained.');
+            expect(within(row).getByText('Script source (read-only)')).toBeTruthy();
+            fireEvent.click(screen.getByLabelText('Actions for script condition'));
+            expect(screen.getByRole('button', { name: 'Run now' }).hasAttribute('disabled')).toBe(true);
+            if (status === 'paused') {
+                const resume = screen.getByRole('button', { name: 'Resume' });
+                expect(resume.hasAttribute('disabled')).toBe(true);
+                fireEvent.click(resume);
+                expect(mocks.resume).not.toHaveBeenCalled();
+            } else {
+                fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+                await waitFor(() => expect(mocks.pause).toHaveBeenCalledOnce());
+            }
+            fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+            await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId, 'rule-1', 4));
+            expect(mocks.runNow).not.toHaveBeenCalled();
+        });
+
+        it('fails closed on missing owner capability without hiding rules or relying on the page flag', async () => {
+            applyRuntimeConfigPatch({ sentinelTodoScriptTriggersEnabled: true });
+            mocks.capabilities.mockRejectedValue(new Error('Owning server unavailable'));
+            mocks.list.mockResolvedValue([scriptRule()]);
+            mount();
+            await screen.findByTestId('sentinel-trigger-rule-1');
+            expect(screen.getByRole('alert').textContent).toContain('Owning server unavailable');
+            fireEvent.click(screen.getByLabelText('Actions for script condition'));
+            expect(screen.getByRole('button', { name: 'Run now' }).hasAttribute('disabled')).toBe(true);
+            expect(screen.getByRole('button', { name: 'Remove' }).hasAttribute('disabled')).toBe(false);
+            mocks.capabilities.mockResolvedValue({ dateTime: false, scriptCondition: true });
+            fireEvent.click(screen.getByRole('button', { name: 'Retry trigger availability' }));
+            await waitFor(() => expect(screen.getByRole('button', { name: 'Run now' }).hasAttribute('disabled')).toBe(false));
+            applyRuntimeConfigPatch({ sentinelTodoScriptTriggersEnabled: false });
+        });
+
+        it('closes pending Run now when the owning server disables scripts and re-enables controls on recovery', async () => {
+            await mountScript();
+            fireEvent.click(screen.getByLabelText('Actions for script condition'));
+            fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
+            mocks.capabilities.mockResolvedValue({ dateTime: true, scriptCondition: false });
+            act(() => mocks.connect.mock.calls[0][0].onMessage({ type: 'trigger-updated' }));
+            await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+            expect(screen.getByRole('button', { name: 'Run now' }).hasAttribute('disabled')).toBe(true);
+            expect(mocks.runNow).not.toHaveBeenCalled();
+            mocks.capabilities.mockResolvedValue({ dateTime: false, scriptCondition: true });
+            act(() => mocks.connect.mock.calls[0][0].onMessage({ type: 'trigger-updated' }));
+            await waitFor(() => expect(screen.getByRole('button', { name: 'Run now' }).hasAttribute('disabled')).toBe(false));
+        });
+
+        it('shows repeating pending delivery independently of terminal state and prevents another run', async () => {
+            const { row } = await mountScript(scriptRule({
+                delivery: { deliveryId: 'receipt', firedAt: iso, reason: 'script-changed', state: 'pending',
+                    resultHash: 'hash', scriptRevision: 2 }, outcomeReason: 'Queue unavailable',
+            }));
+            expect(within(row).getByText('Waiting', { exact: true })).toBeTruthy();
+            expect(row.textContent).toContain('Delivery pending');
+            expect(row.textContent).toContain('Error · delivery retrying');
+            fireEvent.click(screen.getByLabelText('Actions for script condition'));
+            expect(screen.getByRole('button', { name: 'Run now' }).hasAttribute('disabled')).toBe(true);
+            expect(screen.getByRole('button', { name: 'Pause' }).hasAttribute('disabled')).toBe(false);
+            expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull();
+        });
+
+        it('retains Run now conflicts and requires refresh rather than replaying a stale revision', async () => {
+            mocks.runNow.mockRejectedValueOnce(Object.assign(new Error('Rule revision conflict'), { status: 409 }));
+            await mountScript();
+            fireEvent.click(screen.getByLabelText('Actions for script condition'));
+            fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Confirm run now' }));
+            await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm run now' }).hasAttribute('disabled')).toBe(true));
+            expect(mocks.runNow).toHaveBeenCalledOnce();
+            fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Refresh rules' }));
+            await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+            expect(mocks.runNow).toHaveBeenCalledOnce();
+        });
+
+        it('ignores stale owner capabilities and rows after switching Sentinel owners', async () => {
+            const pending = deferred<{ dateTime: boolean; scriptCondition: boolean }>();
+            mocks.capabilities.mockReturnValueOnce(pending.promise).mockResolvedValue({ dateTime: false, scriptCondition: false });
+            mocks.list.mockResolvedValueOnce([scriptRule()]).mockResolvedValue([]);
+            const rendered = mount();
+            await waitFor(() => expect(mocks.capabilities).toHaveBeenCalledOnce());
+            rendered.rerender(<SentinelTodoTriggers owner={{ ...owner, processId: 'other-sentinel' }} items={[item()]} onItemLink={vi.fn()} />);
+            await waitFor(() => expect(mocks.capabilities).toHaveBeenCalledTimes(2));
+            await act(async () => pending.resolve({ dateTime: false, scriptCondition: true }));
+            expect(screen.queryByTestId('sentinel-trigger-rule-1')).toBeNull();
+            expect(mocks.list).toHaveBeenLastCalledWith(owner.ownerWorkspaceId, 'other-sentinel');
+        });
+
+        it('filters foreign, unbound and delegated scripts without counting invisible rows', async () => {
+            const trigger = scriptRule();
+            mocks.capabilities.mockResolvedValue({ dateTime: false, scriptCondition: true });
+            mocks.list.mockResolvedValue([
+                trigger, scriptRule({ id: 'foreign', workspaceId: 'another-workspace' }),
+                scriptRule({ id: 'foreign-process', processId: 'another-process' }),
+                scriptRule({ id: 'unbound', binding: undefined }),
+                scriptRule({ id: 'delegated', binding: { ...trigger.binding!, delegatedPr: { jobId: 'job', receiptId: 'receipt' } } }),
+            ]);
+            mount();
+            await screen.findByTestId('sentinel-trigger-rule-1');
+            expect(screen.getByRole('button', { name: /Triggers \(1\)/ })).toBeTruthy();
+            expect(screen.getAllByTestId(/^sentinel-trigger-/)).toHaveLength(1);
+        });
     });
     it('closes date authoring when the owner capability turns off', async () => {
         await dateEditor();

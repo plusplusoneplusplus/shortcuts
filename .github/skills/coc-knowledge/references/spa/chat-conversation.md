@@ -95,6 +95,13 @@ the admission boundary. Owning-server socket updates refresh state across tabs a
 completion refreshes the transcript, failure stays visible, and queued state preserves the
 active turn's streaming placeholder. Compact and Cancel route through the workspace client.
 
+Both Sentinel context popovers share `AutoCompactPanel`. Its manual action calls
+`useSendMessage.compactNow`, sharing `/compact` execution, duplicate admission, loading
+and toast handling while preserving composer drafts and automatic settings. `ChatDetail`
+supplies the exact owner client and raw workspace. Busy, read-only, unresolved-owner,
+queued/running compaction and OpenCode states disable the action; runtime support errors
+use the shared toast. Owner changes revoke retained actions and delayed results.
+
 User turns render through the same escape-at-generation `chatMarkdownToHtml` pipeline as
 assistant turns (`breaks: true`, `linkifyFilePaths` skips code spans/blocks, raw HTML
 escaped and never injected); the raw toggle shows literal source. Local markdown anchors

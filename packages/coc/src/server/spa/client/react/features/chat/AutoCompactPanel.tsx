@@ -76,6 +76,7 @@ export interface AutoCompactPanelProps {
     actionError?: string;
     configurationError?: boolean;
     actionPending?: boolean;
+    manualCompact?: { onCompact: () => Promise<void>; disabled: boolean; pending: boolean };
     onDraftChange: (draft: { enabled?: boolean; threshold?: string }) => void;
     onSave: () => void;
     onCancelQueued: () => void;
@@ -107,15 +108,15 @@ export function AutoCompactPanel(props: AutoCompactPanelProps) {
     return (
         <section aria-label="Auto-compact for this Sentinel chat" data-testid="auto-compact-panel"
             className="mt-2 pt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]">
-            <div className="flex items-center gap-2" data-testid="auto-compact-row">
+            <div className="flex min-w-0 items-center gap-1.5" data-testid="auto-compact-row">
                 <button type="button" role="switch" aria-checked={draftEnabled} aria-label="Auto-compact"
                     data-testid="auto-compact-switch" onClick={() => props.onDraftChange({ enabled: !draftEnabled })}
                     className={cn('relative inline-flex h-4 w-7 flex-shrink-0 items-center rounded-full transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#0078d4]',
                         draftEnabled ? 'bg-[#0078d4] dark:bg-[#3794ff]' : 'bg-[#c8c8c8] dark:bg-[#5a5a5a]')}>
                     <span aria-hidden="true" className={cn('inline-block h-3 w-3 rounded-full bg-white transition-transform', draftEnabled ? 'translate-x-3.5' : 'translate-x-0.5')} />
                 </button>
-                <label htmlFor={`${id}-input`} className="whitespace-nowrap">Auto-compact at</label>
-                <span className={cn('inline-flex items-center rounded border bg-white dark:bg-[#252526]', !draftEnabled && 'opacity-60',
+                <label htmlFor={`${id}-input`} className="min-w-0">Auto-compact at</label>
+                <span className={cn('inline-flex flex-shrink-0 items-center rounded border bg-white dark:bg-[#252526]', !draftEnabled && 'opacity-60',
                     invalid ? 'border-[#f14c4c]' : 'border-[#c8c8c8] dark:border-[#3c3c3c]')}>
                     <input id={`${id}-input`} type="text" inputMode="decimal" value={draftThreshold} disabled={!draftEnabled}
                         aria-label="Auto-compact threshold in k tokens" aria-invalid={invalid || undefined} aria-describedby={`${id}-status`}
@@ -126,6 +127,15 @@ export function AutoCompactPanel(props: AutoCompactPanelProps) {
                         className="w-12 min-w-0 px-1 py-0.5 bg-transparent text-right tabular-nums focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#0078d4]" />
                     <span aria-hidden="true" className="pr-1 text-[#848484] dark:text-[#999999]">k</span>
                 </span>
+                {props.manualCompact && <button type="button" title="Compact now" aria-label="Compact now"
+                    aria-busy={props.manualCompact.pending || undefined} disabled={props.manualCompact.disabled || props.manualCompact.pending}
+                    onClick={() => { void props.manualCompact?.onCompact(); }}
+                    className="inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded hover:bg-black/10 dark:hover:bg-white/10 disabled:opacity-40 focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#0078d4]">
+                    <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"
+                        className={props.manualCompact.pending ? 'animate-spin' : undefined}>
+                        {props.manualCompact.pending ? <path d="M13 8a5 5 0 1 1-5-5" /> : <path d="M1 3l4 5-4 5M15 3l-4 5 4 5M5 8h6" />}
+                    </svg>
+                </button>}
             </div>
             <div id={`${id}-status`} role="status" aria-live="polite" data-testid="auto-compact-status" data-status={status}
                 className={cn('mt-1 min-h-[1em] flex items-baseline gap-2', error ? 'text-[#f14c4c] dark:text-[#f48771]' : 'text-[#848484] dark:text-[#999999]')}>
@@ -153,7 +163,7 @@ interface PanelSession {
     actionPending: boolean;
 }
 
-export function useSentinelAutoCompact({ isSentinel, processId, workspaceId, client, metadata, usedTokens, tokenLimit, onState, onCancelQueued }: {
+export function useSentinelAutoCompact({ isSentinel, processId, workspaceId, client, metadata, usedTokens, tokenLimit, onState, onCancelQueued, manualCompact }: {
     isSentinel: boolean;
     processId: string | null | undefined;
     workspaceId: string | undefined;
@@ -161,6 +171,7 @@ export function useSentinelAutoCompact({ isSentinel, processId, workspaceId, cli
     metadata: { autoCompact?: ProcessAutoCompactState; compaction?: CompactionRecord } | undefined;
     usedTokens: number | undefined;
     tokenLimit: number | undefined;
+    manualCompact?: AutoCompactPanelProps['manualCompact'];
     onState: (state: ProcessAutoCompactState) => void;
     onCancelQueued: () => Promise<void>;
 }): ContextAutoCompact | undefined {
@@ -242,7 +253,7 @@ export function useSentinelAutoCompact({ isSentinel, processId, workspaceId, cli
         status,
         thresholdTokens: state?.thresholdTokens ?? AUTO_COMPACT_THRESHOLD_DEFAULT,
         label: `${STATUS_LABEL[status]}${status !== 'off' ? ` at ${formatThresholdInput(state?.thresholdTokens ?? AUTO_COMPACT_THRESHOLD_DEFAULT)}k tokens` : ''}`,
-        panel: <AutoCompactPanel state={state} status={status} tokenLimit={limit} usedTokens={usage}
+        panel: <AutoCompactPanel manualCompact={manualCompact} state={state} status={status} tokenLimit={limit} usedTokens={usage}
             draftEnabled={current.enabled} draftThreshold={current.threshold} dirty={dirty()} saveState={session.saveState}
             actionError={session.actionError} actionPending={session.actionPending} configurationError={!!metadata?.autoCompact && !state}
             onDraftChange={change => {

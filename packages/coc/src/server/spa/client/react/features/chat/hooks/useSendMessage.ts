@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { clearDraft } from './useDraftStore';
 import { useChatPrefs } from '../../../contexts/ChatPreferencesContext';
 import { CLIENT_PASTE_THRESHOLD } from './useTextPaste';
@@ -8,13 +8,14 @@ import type { ClientConversationTurn } from '../../../types/dashboard';
 import type { ChatMode } from '../../../repos/modeConfig';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 import type { AttachmentPayload, ChatAttachment } from '../../../types/attachments';
-import { CocApiError, type ChatProviderId, type ChatStyle, type ProcessMessageRequest } from '@plusplusoneplusplus/coc-client';
+import { CocApiError, type CocClient, type ChatProviderId, type ChatStyle, type ProcessMessageRequest } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { getCocClientForWorkspace, resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { parseRemoteCloneKey } from '../../../repos/cloneIdentity';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { useWorkspaceOwner } from '../../../repos/workspaceOwnerContext';
 import { validateSessionContextAttachmentsForSend } from '../sessionContextDrop';
+import { useCommitContextOwner } from '../gitCommitContext';
 import type { MetaCommand } from '../slash-command-parser';
 import type { RalphGrillSetup } from '../../../../../../ralph/grill-planning';
 import { getSentinelTodoContextClient, resolveSentinelTodoContext } from '../sentinelTodoContext';
@@ -105,6 +106,7 @@ export interface UseSendMessageOptions {
     workspaceId?: string;
     /** Canonical owner from loaded process metadata; routing still uses the selection workspace. */
     owningWorkspaceId?: string;
+    sourceSelectionId?: string;
     /** Owner-qualified client draft identity, separate from the process id on the wire. */
     draftKey?: string;
     /** Feature flag state for session-context attachments. Required before sending session pointers. */
@@ -134,6 +136,10 @@ export interface UseSendMessageOptions {
      * starts, and `false` when it settles (success or failure).
      */
     setCompacting?: (running: boolean, customInstructions?: string) => void;
+    /** Exact hydrated owner client for manual compaction, including explicit remote endpoints. */
+    compactClient?: CocClient;
+    /** Additional admission gate for the context-popover action. */
+    compactDisabled?: boolean;
 }
 
 export function useSendMessage({
@@ -171,16 +177,20 @@ export function useSendMessage({
     chatStyle,
     workspaceId,
     owningWorkspaceId: messageOwnerWorkspaceId,
+    sourceSelectionId,
     draftKey = taskId,
     sessionContextAttachmentsEnabled = false,
     conversationRetrievalAvailable,
     sentinelTodoOwner,
     ralphGrillSetup,
     onPromotedToRalph,
+    compactClient,
+    compactDisabled,
     notifyCompact,
     setCompacting,
 }: UseSendMessageOptions): {
     sendFollowUp: (overrideContent?: string, deliveryMode?: DeliveryMode, options?: SendFollowUpOptions) => Promise<void>;
+    compactNow: () => Promise<void>;
     closeFollowUpStream: () => void;
     onSendComplete: () => void;
 } {
@@ -191,11 +201,19 @@ export function useSendMessage({
     // conversation is not idle while it runs, so any concurrent send (a second
     // `/compact` or a normal follow-up) must be dropped. A ref closes the
     // double-click race that a React state flag would lose between renders.
-    const compactingRef = useRef(false);
     const scopedOwner = useWorkspaceOwner(workspaceId);
+    const commitContextOwner = useCommitContextOwner(workspaceId, sourceSelectionId);
     const scopedClient = useCocClient(workspaceId);
     const getMessageClient = useCallback(() => scopedOwner
         ? scopedClient : getCocClientForWorkspace(workspaceId), [scopedOwner, scopedClient, workspaceId]);
+    const compactingRef = useMemo(() => ({ current: false }),
+        [processId, workspaceId, messageOwnerWorkspaceId, compactClient, getMessageClient]);
+    const activeCompactionOwner = useRef<typeof compactingRef>();
+    activeCompactionOwner.current = compactingRef;
+    useEffect(() => {
+        activeCompactionOwner.current = compactingRef;
+        return () => { if (activeCompactionOwner.current === compactingRef) activeCompactionOwner.current = undefined; };
+    }, [compactingRef]);
     const resolvingTodosRef = useRef(false);
     const todoSendOwnerKey = sentinelTodoOwner ? sentinelTodoOwnerKey(sentinelTodoOwner) : '';
     const todoSendOwnerRef = useRef(todoSendOwnerKey);
@@ -284,17 +302,24 @@ export function useSendMessage({
      * — the toast is no longer the only visible completion signal.
      */
     const compactConversation = useCallback(async (pid: string, customInstructions: string | undefined) => {
+        if (activeCompactionOwner.current !== compactingRef || compactingRef.current) return;
+        if (!compactClient && !scopedOwner && resolveCloneRoute(workspaceId).kind === 'unresolved-remote') {
+            notifyCompact?.('The owning server is unavailable. Reconnect it before compacting this conversation.', 'error');
+            return;
+        }
         // Mark in-progress BEFORE the (blocking) POST so the chat renders the
         // synthetic compaction bubble and suppresses the empty assistant
         // placeholder while compaction runs (AC-02).
         compactingRef.current = true;
         setCompacting?.(true, customInstructions);
         try {
-            const result = await getMessageClient().processes.compact(
+            const result = await (compactClient ?? getMessageClient()).processes.compact(
                 pid,
                 customInstructions,
-                workspaceId ? { workspace: workspaceId } : undefined,
+                (scopedOwner?.workspaceId ?? messageOwnerWorkspaceId ?? workspaceId)
+                    ? { workspace: scopedOwner?.workspaceId ?? messageOwnerWorkspaceId ?? workspaceId } : undefined,
             );
+            if (activeCompactionOwner.current !== compactingRef) return;
             if (result.state === 'queued' || result.state === 'running') {
                 notifyCompact?.(result.state === 'queued' ? 'Compaction queued.' : 'Compaction already running.', 'success');
                 await refreshConversation(pid);
@@ -315,15 +340,20 @@ export function useSendMessage({
                 // ignore — the turn is persisted and will appear on next load
             }
         } catch (err: any) {
-            notifyCompact?.(getSpaCocClientErrorMessage(err, 'Failed to compact the conversation.'), 'error');
+            if (activeCompactionOwner.current === compactingRef) notifyCompact?.(getSpaCocClientErrorMessage(err, 'Failed to compact the conversation.'), 'error');
         } finally {
             // Clear the in-progress state on both paths. On success the refresh
             // above has already landed the persisted result turn, so there is no
             // gap where neither the bubble nor the result turn is visible.
             compactingRef.current = false;
-            setCompacting?.(false);
+            if (activeCompactionOwner.current === compactingRef) setCompacting?.(false);
         }
-    }, [workspaceId, getMessageClient, notifyCompact, refreshConversation, setCompacting]);
+    }, [workspaceId, scopedOwner, messageOwnerWorkspaceId, compactClient, compactingRef, getMessageClient, notifyCompact, refreshConversation, setCompacting]);
+
+    const compactNow = useCallback(async () => {
+        if (!processId || inputDisabled || sending || isActiveGeneration || compactDisabled || compactingRef.current) return;
+        await compactConversation(processId, undefined);
+    }, [processId, inputDisabled, sending, isActiveGeneration, compactDisabled, compactConversation]);
 
     const sendFollowUp = useCallback(async (overrideContent?: string, deliveryMode: DeliveryMode = 'enqueue', options: SendFollowUpOptions = {}) => {
         if (resolvingTodosRef.current) return;
@@ -336,6 +366,7 @@ export function useSendMessage({
         const sessionContextSendError = validateSessionContextAttachmentsForSend({
             featureEnabled: sessionContextAttachmentsEnabled,
             activeWorkspaceId: workspaceId,
+            activeRoutingRef: commitContextOwner,
             currentProcessId: processId,
             items: contextItems,
             canRetrieveConversations: conversationRetrievalAvailable,
@@ -576,7 +607,7 @@ export function useSendMessage({
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             void refreshConversation(processId);
         }
-    }, [processId, taskId, draftKey, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, providerOverride, activeProvider, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, messageOwnerWorkspaceId, compactConversation, scopedOwner, getMessageClient, sentinelTodoOwner, todoSendOwnerKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, draftKey, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, providerOverride, activeProvider, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, messageOwnerWorkspaceId, commitContextOwner, compactConversation, scopedOwner, getMessageClient, sentinelTodoOwner, todoSendOwnerKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    return { sendFollowUp, closeFollowUpStream, onSendComplete };
+    return { sendFollowUp, compactNow, closeFollowUpStream, onSendComplete };
 }

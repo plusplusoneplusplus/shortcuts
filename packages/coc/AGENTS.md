@@ -53,7 +53,7 @@ references before editing. Paths are package-relative.
   use `getCocClientForWorkspace`, `useCocClient(ref)`, or the clone-routed helpers.
   Unresolved remote selections never fall through locally. Server-owned Admin code
   uses `useAdminServer()` (`admin/adminTarget.tsx`), never `getSpaCocClient()`, so
-  the default-off Desktop machine switch can target a registered remote.
+  the Desktop machine switch (default on) can target a registered remote.
   ChatDetail owner WebSocket refreshes coalesce matching notifications per microtask
   batch; preserve later refreshes and discard scheduled work on effect cleanup.
   Dashboard discovery uses `ProcessWebSocketServer.dashboardDiscovery` for targeted,
@@ -140,6 +140,9 @@ references before editing. Paths are package-relative.
   resolve tiers on the destination server after provider selection. Post/cancel have no default tier.
 - Remote group selection uses a server-qualified clone key; decode the raw
   group id at the owning API. Groups are page/queue scope; Git uses a member.
+  Commit attachments retain the member ID and concrete source clone through
+  drop, send and persisted pointers. Cross-workspace retrieval stays on that server;
+  group context maps member IDs to roots, never the group cwd.
   Names are not keys; refresh live membership and preserve search failure states.
 - Previews carry resolved workspace/member and clone route through
   operations/caches. Probe group members in order; sibling-relative paths must land
@@ -308,12 +311,92 @@ references before editing. Paths are package-relative.
   scheduler for receipt reconciliation/retries. Trigger code never writes item
   status or launches a job; external PR metadata is data, not instructions.
   `SentinelTodoTriggerService` owns rule authoring with expected revisions,
-  eligibility and shared-cap checks. Trigger infrastructure is always wired;
-  rules never expire and require no additional approval gate. Clearing rules hides their
+  eligibility and shared-cap checks. Script authoring requires an injected live
+  conjunction of both script flags, a five-minute minimum (15-minute default)
+  and at most ten active/paused script rules per exact owner. Source or interval
+  edits bump script revision and clear baseline/errors; guidance-only edits
+  preserve evaluation state. Script edits and lifecycle changes revoke saved
+  notices and disarm active evaluation. Resume resets failures/errors, not the
+  baseline; remove retains dedupe receipts without retrying delivery. Script
+  Run now uses the repeating evaluator and requires confirmation/revision admission;
+  pending deliveries and overlapping runs reject. Paused rules run once without
+  resuming, including changed-result wakes and failure recovery. Trigger infrastructure
+  is always wired; rules never expire and require no additional approval gate. Clearing rules hides their
   presentation while preserving delivery and keyed authoring receipts; retries
   must not duplicate wakes or revive removed rules.
   Sentinel tool actions use late-bound `getTriggerInfra().sentinelTodoTriggers`;
-  the rule owner is the invoking chat, never a tool argument.
+  the rule owner is the invoking chat, never a tool argument. Tool event schemas
+  independently expose date and script variants through live service capabilities.
+  Owner-qualified REST capabilities return `dateTime` and `scriptCondition`;
+  coc-client contracts include script input, evaluation state and delivery receipts.
+  Already-built tools recheck authoring gates through the shared service; script
+  list/pause/remove remain available with execution disabled.
+  `triggers/script-condition-result.ts` canonicalizes script result JSON with
+  recursive lexical key ordering, a 16 KiB UTF-8 cap and SHA-256 hashing. It rejects
+  non-JSON values; runner-side JSON normalization must not bypass this validation.
+  `ScriptConditionEvaluator` computes a first-run baseline and repeating whole-result
+  changes through an injected runner, without mutating the input rule. Its event
+  stores source/revision, cadence, canonical result/hash and failure/pause fields.
+  Failures preserve the baseline, record bounded error text and pause the event at
+  five consecutive failures; success clears errors and resets the count. Its poll
+  delay helper doubles cadence per failure, capped at one hour without shortening
+  longer intervals. `runScriptCondition` passes state and strict JSON validation
+  to the shared script engine with a trigger-only 60-second abort deadline. Abort
+  terminates workers and cancels inner calls; the caller disposes its owner-resolved
+  unattended runtime. `runScriptConditionWithOwnerTools` assembles the supplied
+  owner-bound capabilities through the shared chat context, including Memory V2,
+  and disposes its context/runtime after every outcome. It uses the full resolved
+  CoC list, omits questions and denies approval-gated handlers. Nested scripts
+  require the owner's script tool to survive filtering and require no approval;
+  children inherit that policy. Callers validate owner, live flags and revision
+  and abort on revocation. Provider sessions are not started by this adapter.
+  `SentinelTodoTriggerFirer.fireScriptResult` commits a changed
+  evaluated event and immutable untrusted-data wake together, using rule/result-hash
+  receipts through the shared message admission service. It retains the rule's
+  active/paused status, blocks result replacement during pending delivery, and rechecks live
+  flags, owner/item eligibility and revisions before admission. Its synchronous
+  guard travels through `ActionExecutor` and `deliverOnce` under the shared process
+  lock, checks fresh owner state after mode resolution, and runs at the final
+  owner-queue write after asynchronous routing. Buffer writes and promoted
+  predecessors also recheck admission. Guarded delivery requires admitted routing;
+  rejection preserves stopped owner state and the pending receipt. Pending retries
+  reuse the saved prompt; script revisions revoke stale deliveries.
+  `pauseScriptCondition` atomically commits the fifth failure, paused status and
+  one immutable notice with a persisted receipt unique to that pause episode.
+  Paused notices retry while the rule remains paused and eligible; errors are
+  untrusted JSON and grant no authority to resume. `TriggerManager` requires an
+  injected script firer and live combined flags, uses script cadence/backoff and
+  routes repeating decisions before baseline persistence. Pending receipts retry
+  before another evaluation; acknowledged result wakes resume polling, while
+  acknowledged pause notices stop timers. Ineligible pause recipients still leave
+  the rule paused. `refreshScriptConditions` reconciles live timer gates without
+  deleting rows. Manager disarm, live refresh and shutdown abort active script
+  evaluations through the evaluator/runner signal; revocations preserve failure
+  counts and baselines, while deadline expiry counts as a failure. Replacement
+  timers wait for the cancelled run's overlap guard to release. Trigger infrastructure
+  composes the evaluator/firer with one shared gate requiring an injected runner, both
+  live flags and an undisposed infrastructure instance. Missing injection defaults to
+  denied authoring/execution. Before and after running it checks the exact
+  Sentinel, eligible item and current rule revision/source/state. Revocation aborts
+  without recording a result or failure. Disposal closes delivery admission before
+  cancelling execution. Server configuration refreshes script timers when the flag
+  conjunction changes. `server/index.ts` holds restored script rules behind
+  `scriptConditionRuntimeReady` until routes/runtime services, the WebSocket lifecycle
+  handler and HTTP listening are ready, then opens the gate and refreshes the manager.
+  Production calls `MultiRepoQueueRouter.runScriptCondition` → owner bridge
+  `CLITaskExecutor` → `ExecutorRegistry` → `ChatBaseExecutor.runScriptCondition`.
+  Validate the exact owner and resolve workspace/working directory; the current active
+  provider (fallback: executor provider) controls Codex nested-script omission.
+  Reuse shared helper dependencies for the full owner-bound CoC tool list, not the
+  chat-scriptable subset; omit attended-only `sentinel_jobs` and write-only
+  `create_pull_request`. Supply no provider approval callback. Provider-native/MCP
+  shell handlers are outside `CocToolRuntime` and fail as catchable `ToolCallError`,
+  never model-call emulation.
+  `createWebSocketInfrastructure` synchronously forwards every ProcessStore lifecycle
+  event to `infra.onProcessChange` before broadcasting. Disarm affected script rules
+  on owner cancellation/cancelling, type/mode/workspace mismatch, deletion or clear;
+  cancellation reaches runtime assembly and running VM tools. Unrelated owners,
+  ordinary title/running-status updates and unidentified bulk updates do not revoke.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated
@@ -330,6 +413,9 @@ references before editing. Paths are package-relative.
   affect only its registry keys. Shared triggers and messaging settings keep their own tabs.
   `features.sentinelTodoJobs` is live, experimental and default-off in `sentinelTodos`;
   its Admin row depends on `sentinel.enabled` and publishes `sentinelTodoJobsEnabled`.
+  `features.sentinelTodoScriptTriggers` is a separate live default-off switch in
+  that group, publishing `sentinelTodoScriptTriggersEnabled`; execution must also
+  require live `features.toolScripting`. Keep both saved switches independent.
 - Sentinel prompt jobs (`src/server/sentinel-jobs/`) require both live flags, prove
   the exact Sentinel owner and share the native ledger database. Definitions use
   expected revisions and a ten-job owner limit. A definition holds either an explicit
@@ -685,6 +771,10 @@ references before editing. Paths are package-relative.
   additional responses for this display.
 - Keep tools mode-invariant; gate call-time behavior and unattended `ask_user`.
   Preserve explicit PR-write/final-check/grill exceptions.
+  Background script contexts and bundles set `unattendedScript`: omit questions
+  and deny configured approval-gated tools before consulting prompts or session approvals.
+  Owner resolution and native/provider permission denial remain caller responsibilities;
+  synthetic nested `run_tool_script` calls obey the inherited engine nesting policy.
   Codex discovery uses filtered tools; Copilot context tier uses billing metadata.
 - Fresh session objects per turn; never cache sessions or add `sendFollowUp`.
   Only supported provider client processes may stay warm.
@@ -1086,7 +1176,10 @@ references before editing. Paths are package-relative.
   lists are keyed by workspace and diff source; comparison changes close pickers.
 - Repository file previews opt into `MonacoSelectionAttachPill`; diff viewers use
   side-local `MonacoDiffSelectionAttachPill` portals and the existing diff-selection
-  builder. Git hosts forward their concrete source clone through the detail pane
+  builder. Diff Comment actions follow `onAddComment` independently of attachment
+  flags, preserving side-local ranges and the host’s existing comment persistence.
+  Keep keyboard focus within the shared action group and clamp its measured size.
+  Git hosts forward their concrete source clone through the detail pane
   to both file-diff and working-tree pills. Inline PR tabs forward the same owner
   through PullRequestsTab, PullRequestDetail and PrFilesPanel; group hosts derive the member clone
   key from the group server. Keep payloads scoped to the raw owner workspace,

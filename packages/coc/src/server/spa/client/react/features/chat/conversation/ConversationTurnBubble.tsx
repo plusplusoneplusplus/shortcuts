@@ -309,6 +309,7 @@ function formatContextCount(count: number, singular: string, plural: string): st
 }
 
 function getPointerContextKindLabel(kind: ParsedPointerContextBlock['kind']): string {
+    if (kind === 'git-file') return 'File';
     if (kind === 'sentinel-todo') return 'To-do';
     if (kind === 'work-item') return 'Work Item';
     if (kind === 'commit') return 'Commit';
@@ -322,7 +323,10 @@ function getPointerContextDetailRows(context: ParsedPointerContextBlock): Array<
         ['Label', context.label],
         ['Workspace ID', context.sourceWorkspaceId],
     ];
-    if (context.kind === 'sentinel-todo') {
+    if (context.kind === 'git-file') {
+        rows.push(['Source owner', context.sourceRoutingRef ?? 'Page-origin server'],
+            ['File', context.filePath], ['Revision', context.revision], ['Side', context.side]);
+    } else if (context.kind === 'sentinel-todo') {
         rows.push(['To-do ID', context.todoItemId], ['Sentinel ID', context.sourceProcessId],
             ['Status', context.status], ['Type', context.type]);
     } else if (context.kind === 'work-item') {
@@ -334,6 +338,8 @@ function getPointerContextDetailRows(context: ParsedPointerContextBlock): Array<
         );
     } else if (context.kind === 'commit') {
         rows.push(
+            ['Source owner', context.sourceRoutingRef ?? 'Page-origin server'],
+            ['Source repository', context.sourceWorkspaceName],
             ['Commit hash', context.commitHash],
             ['Short hash', context.shortHash],
         );
@@ -357,6 +363,7 @@ function getPointerContextDetailRows(context: ParsedPointerContextBlock): Array<
 }
 
 function getPointerContextSummaryMeta(context: ParsedPointerContextBlock): string {
+    if (context.kind === 'git-file') return `${context.revision ?? ''} · ${context.side ?? ''}`;
     if (context.kind === 'sentinel-todo') return [context.status, context.type, context.todoItemId].filter(Boolean).join(' · ');
     if (context.kind === 'work-item') return [context.status, context.type, context.workItemId].filter(Boolean).join(' · ');
     if (context.kind === 'commit') return context.shortHash || (context.commitHash ? shortenSessionProcessId(context.commitHash) : '');

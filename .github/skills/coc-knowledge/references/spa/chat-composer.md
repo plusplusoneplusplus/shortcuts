@@ -268,18 +268,26 @@ tracking. Missing items and unavailable owners surface inline errors.
 
 ### Session-context attachments
 
-With `features.sessionContextAttachments` enabled, same-workspace chat/process rows, Ralph
+With `features.sessionContextAttachments` enabled, chat/process rows, Ralph
 session group rows, Work Item list and hierarchy rows, Git commit rows, branch range
-headers, and Pull Request rows become copy-drag context sources. `NewChatArea`,
+headers, Git review changed-file rows, and Pull Request rows become copy-drag context sources. `NewChatArea`,
 `FollowUpInputArea`, and the desktop repo header Queue Task / Ask buttons accept them.
 
-Drops validate same-workspace, duplicate, self-drop/current-child for session-backed
-pointers, and a shared three-logical-attachment cap before adding removable chips through
-`AttachedContextPreviews`. `get_conversation` tool availability is required only for
-single-session and Ralph pointers. Send paths re-check the same constraints before
-formatting attached source IDs, so stale capability state cannot send unusable pointers. Git
-commit row *body* drags are copy-only; the unpushed-commit reorder path stays isolated to
-the row's grab handle. The review-chat drop target that rebinds an existing chat is in
+Drops and sends enforce a shared three-item cap, feature gating, exact-source
+duplicates and session self/current-child checks. Sessions, Ralph sessions, Work
+Items, ranges and PRs retain same-workspace checks; To-dos require their Sentinel
+owner. File/diff snippets are self-contained. Commit and whole-file pointers permit another
+workspace on the same concrete server, including a group's member repositories;
+unresolved or mismatched servers fail closed. Only session/Ralph pointers require
+`get_conversation`. `AttachedContextPreviews` retains removable chips and shows
+commit source repository names (with workspace-ID fallback) and clone ownership.
+
+Commit row body drags are copy-only; reorder remains on the grab handle.
+`RepoGitTab.sourceSelectionId` reaches `useCommitListDragController` through the
+list pane. Each commit retains its member workspace and `sourceRoutingRef`;
+`WorkspaceOwnerContext` overrides global routing for colliding IDs. Initial and
+follow-up composers revalidate that owner before serialization, and duplicate
+keys include server, workspace and hash. The review-chat rebind target is in
 [chat.md](chat.md).
 
 Repository `PreviewPane` hosts opt into the shared Monaco editor's
@@ -337,7 +345,7 @@ diff-selection shape using live model text and computed line changes.
 
 Pointer attachments emit blocks: `<attached_session_context>` for single
 sessions, `<attached_ralph_session_context>` for Ralph groups, and
-`<attached_pointer_context>` for Work Item, commit, range, and PR references. Pointer blocks
+`<attached_pointer_context>` for Work Item, whole-file, commit, range, and PR references. Pointer blocks
 store the source workspace ID and stable identifiers (work item ID/number, commit hash,
 base/head refs, PR ID/number) plus safe labels, titles/statuses, and summary counts. They
 never store work item bodies, diffs, PR descriptions, file contents, or latest-turn
@@ -345,6 +353,19 @@ previews. The Ralph block stores workspace ID, session ID, phase/status, title, 
 activity, process/iteration counts, and ordered child process IDs. Single-session drag
 payloads title themselves from custom title/title/displayName, then prompt preview or prompt
 metadata, then process ID — never `lastMessagePreview`.
+
+Commit and whole-file blocks persist the concrete clone in `source_routing_ref`
+(absent for page-origin sources). Retrieval uses the source workspace; the
+`repo_group_context` member listing maps workspace IDs to roots. Persisted-card
+parsing retains that owner. Drops embed references without fetching content.
+
+`GitFileReview` uses `DiffSource.fileContextRefs` to attach `git-file` pointers
+with exact path, immutable revision and side. Commit deletions use the first
+parent; range deletions use the merge base. Other files use the reviewed head
+and rename destination. Unknown owners and mutable refs disable dragging.
+`gitFileContext` validates payloads and deduplicates by server/repository/revision/path.
+Instructions require whole-file Git retrieval and prohibit working-tree or
+repository substitution; Explorer `FILE_PATH` drops retain plain-text insertion.
 
 `ConversationTurnBubble` parses persisted blocks on user turns and renders collapsed cards
 showing pointer metadata plus a raw-block copy affordance; raw mode exposes the exact

@@ -43,6 +43,7 @@ export function createWebSocketInfrastructure(
     botManagedConversationsEnabled: () => boolean = () => false,
     onProcessModeChanged?: (process: AIProcess) => void,
     onProcessRemoved?: (process: AIProcess) => void,
+    onProcessChange?: ProcessStore['onProcessChange'],
 ): ProcessWebSocketServer {
     const wsServer = new ProcessWebSocketServer();
     wsServer.attachConnectionHandler();
@@ -70,6 +71,7 @@ export function createWebSocketInfrastructure(
     const processModeSnapshots = new Map<string, string>();
     const processControlSnapshots = new Map<string, string>();
     store.onProcessChange = (event) => {
+        onProcessChange?.(event);
         const enabled = botManagedConversationsEnabled();
         let controlChanged = false;
         let modeChanged = false;

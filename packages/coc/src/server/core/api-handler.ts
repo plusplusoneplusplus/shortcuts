@@ -13,7 +13,7 @@ import * as http from 'http';
 import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
-import type { ProcessStore, ProcessFilter, AIProcessStatus, AIProcessType, TurnSource } from '@plusplusoneplusplus/forge';
+import type { AIProcess, ProcessStore, ProcessFilter, AIProcessStatus, AIProcessType, TurnSource } from '@plusplusoneplusplus/forge';
 import { GitOpsStore, SqliteProcessStore, initializeDatabase, execGitAsync, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
 import { loadNativeGit, NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type { Attachment, CreateTaskInput } from '@plusplusoneplusplus/forge';
@@ -47,8 +47,8 @@ export interface QueueExecutorBridge {
     isSessionAlive(processId: string): Promise<boolean>;
     /** Enqueue a task through the scheduler. When present, follow-ups are routed through the queue. */
     enqueue?(input: CreateTaskInput): Promise<string>;
-    /** Internal queue write when the caller already owns process admission. */
-    enqueueAdmitted?(input: CreateTaskInput): Promise<string>;
+    /** Internal queue write; revalidate after async routing, before any queue mutation. */
+    enqueueAdmitted?(input: CreateTaskInput, validateAdmission?: (process: AIProcess | undefined) => void): Promise<string>;
     /** Find a task by its processId. Used for steering (running tasks) and follow-up routing. */
     findTaskByProcessId?(processId: string): { id: string; type: string; status: string } | undefined;
     /** Locate the durable queued/running compaction for a conversation. */

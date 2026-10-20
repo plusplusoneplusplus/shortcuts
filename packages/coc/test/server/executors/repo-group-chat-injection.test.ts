@@ -107,8 +107,8 @@ describe('repo-group chat context injection (AC-03)', () => {
         return (
             `<${REPO_GROUP_CONTEXT_TAG}>\n` +
             'Repo group "My Team" members:\n' +
-            `- Repo A [read-write]: ${repoA}\n` +
-            `- Repo B [read-write]: ${repoB}\n` +
+            `- Repo A [read-write]: ${repoA} [workspace_id=ws-v2-aaa]\n` +
+            `- Repo B [read-write]: ${repoB} [workspace_id=ws-v2-bbb]\n` +
             `</${REPO_GROUP_CONTEXT_TAG}>`
         );
     }

@@ -222,15 +222,16 @@ Started work exposes durable review warnings without changing fulfillment.
 Operational receipts and transport recovery are described in
 [process-store.md](process-store.md#sentinel-dependency-operations).
 
-The same tool offers
-`list_triggers`, `create_trigger`, `edit_trigger`, `pause_trigger`, `resume_trigger`,
-`remove_trigger` and confirmed `run_trigger_now`. The owner stays bound to the
-invoking Sentinel; `getTriggerInfra().sentinelTodoTriggers` supplies the shared
-rule service to first turns and follow-ups. Creation arms a normal eligible item's
-PR URL immediately with optional instruction, without expiry or another approval
-gate. Creation uses a stable `idempotencyKey` across retries; rule mutations use
-its `expectedRevision`. Merge wakes the Sentinel once,
-never launches or changes item status; manual-copy/conversion bypasses remain prohibited.
+The tool exposes `list_triggers`, `create_trigger`, `edit_trigger`, `pause_trigger`,
+`resume_trigger`, `remove_trigger` and confirmed `run_trigger_now`, bound to the
+invoking Sentinel through `getTriggerInfra().sentinelTodoTriggers`. Creation uses
+`idempotencyKey`; mutations use rule `expectedRevision`. PR URLs arm one-shot
+wakes. Independently gated event schemas accept date rules or
+`{ type: 'script-condition', script, intervalMs? }`. Script guidance covers previous
+state, silent baseline, repeating changes, unattended tool denial and paused Run now.
+Shared service admission rechecks live flags; disabled scripts remain listable,
+pausable and removable. Rules never launch jobs or change item status; manual
+items and native verdict-only tools cannot author executable rules.
 
 With default-off `features.sentinelTodoTags`, `list` includes the parent-owned
 `tagLibrary`; `list_tags`, `create_tag`, `update_tag`, confirmed `delete_tag` and
@@ -717,6 +718,18 @@ There is no timeout or output cap: a run ends on return/throw or when the invoca
 the turn signal aborts, which terminates the worker, aborts in-flight inner calls and child
 runners, and reports open inner calls as `tool-failed` `aborted`. The worker is always terminated.
 
+Background callers can supply JSON `state` (parsed in the VM's realm) and opt into
+`requireJsonResult`. Strict results are encoded before leaving the worker, rejecting
+non-finite numbers, undefined values, sparse arrays, cycles, accessors and non-JSON
+objects without invoking serialization hooks. Chat callers retain normal JSON conversion;
+state and strict mode apply only to the run receiving those options.
+
+The `allowNestedScripts` policy is inherited by child runners: false rejects synthetic
+`run_tool_script` calls with `ToolCallError` before starting a child, even when the
+runtime contains a handler for that name. Its SDK default is true for chat.
+`runScriptCondition` defaults it to false; the owner-resolved background caller
+may enable it only when `run_tool_script` is enabled and requires no approval.
+
 Inner calls emit `ToolEvent`s with `parentToolCallId` = the script's call id through
 `onNestedToolEvent`, bound to `BaseExecutor.buildNestedToolEventHandler(processId)`. That sink
 feeds the normal tool-event handler; when the parent id is not on the timeline (Claude/Codex
@@ -741,9 +754,39 @@ browser-only bundles, scrubber turns and PR-outcome-review turns.
 to the current mode, apply `applyLlmToolPreferences()` from `prompt-builder.ts` (effective
 disabled list plus context exclusions), then `applyLlmToolApprovalGate()`. `run_tool_script` is
 built last over that final list filtered by `isScriptableLlmTool`, so scripts reach only tools
-the turn already offers and gated tools still ask; the script tool is itself gateable. Its
+the turn already offers with the same approval policy; the script tool is itself gateable. Its
 callable list excludes mode-specific tools such as `create_pull_request`, keeping the tool block
 identical across ask, autopilot and follow-ups.
+
+`ChatTurnContextInput.unattendedScript` propagates to the tool bundle, omits
+ask-user construction and sets the approval gate's `denyApprovals` policy. Gated
+handlers return a denied result before consulting interactive wiring or saved
+session approvals. The script engine turns
+that result into `ToolCallError`, including for gated tools called by nested scripts.
+Ungated tools and workspace preferences retain their normal behavior. Ordinary
+bundles retain their existing interactive and noninteractive approval policies.
+
+Production routes through `MultiRepoQueueRouter.runScriptCondition`, the owning
+`CLITaskExecutor` bridge and `ExecutorRegistry` to `ChatBaseExecutor.runScriptCondition`.
+The executor validates the exact Sentinel owner, resolves workspace/working
+directory and reuses shared helper dependencies for `runScriptConditionWithOwnerTools`.
+The owner's current active provider (fallback: executor provider) controls Codex
+nested-script omission. Startup readiness and lifecycle revocation belong to
+[trigger infrastructure](server-architecture.md#sentinel-to-do-trigger-firing).
+
+`runScriptConditionWithOwnerTools` builds the shared context, including Memory V2,
+and creates a per-run runtime from the full resolved CoC tool list, not the
+ordinary chat-scriptable subset. Background assembly omits `ask_user` and
+attended-only `sentinel_jobs` and does not add write-only `create_pull_request`.
+It opens no provider session and passes no provider approval callback. Synthetic
+nesting requires an enabled, ungated owner script tool; children inherit this policy.
+Context/memory and runtime disposal cover success, failure and cancellation;
+the script runner retains its trigger-only 60-second abort deadline.
+
+Provider-native/MCP shell handlers are outside the existing `CocToolRuntime`
+contract. Calls to unavailable tools raise catchable `ToolCallError`; model calls
+never emulate them. Callers recheck live flags and owner/item/rule eligibility
+before and after execution, and abort assembly and running tools on revocation.
 
 Some addons emit a prompt `suffix` wrapped in a named XML-style tag via `tagGuidanceSuffix()`
 from `prompt-tags.ts`, so aggregated `toolGuidance` is self-delimiting. Most addons emit

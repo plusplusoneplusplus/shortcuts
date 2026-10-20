@@ -5,7 +5,7 @@
  *
  * This is intentionally shaped as a small, extensible abstraction:
  *  - `event` is a discriminated union of server-side condition monitors for
- *    CI failures and PR merges, plus absolute one-time Sentinel date events.
+ *    CI failures and PR merges, absolute Sentinel dates and script conditions.
  *  - `action` is a discriminated union with one variant: `send-message`.
  *
  * The framework reuses existing plumbing rather than inventing new plumbing:
@@ -21,7 +21,7 @@
 /**
  * Lifecycle status of a trigger.
  * - `active`   — armed; the manager evaluates its event on each tick.
- * - `paused`   — temporarily disabled (manual toggle); timer disarmed.
+ * - `paused`   — temporarily disabled (manual or automatic pause); timer disarmed.
  * - `disarmed` — terminally stopped (PR merged/closed or manual delete).
  * - `expired`  — terminally stopped because the TTL elapsed.
  */
@@ -83,13 +83,6 @@ export interface ConditionMonitorEvent {
 }
 
 /**
- * Designed-for, NOT built this iteration. Declared so the union is open for
- * extension without reworking the framework.
- */
-// export interface ScheduleEvent { type: 'schedule'; cron: string; }
-// export interface IntervalEvent { type: 'interval'; intervalMs: number; }
-
-/**
  * A provider-qualified pull request, watched by URL with this server's own
  * credentials (no clone or workspace needed). `workspaceId`/`originId` are
  * recorded only when the PR was picked from a local workspace.
@@ -139,7 +132,25 @@ export interface DateTimeTriggerEvent {
     timeZone: string;
 }
 
-export type TriggerEvent = ConditionMonitorEvent | PrMergedMonitorEvent | DateTimeTriggerEvent;
+/** Repeating Sentinel To-do condition, evaluated against the previous JSON result. */
+export interface ScriptConditionEvent {
+    type: 'script-condition';
+    monitor?: never;
+    /** Body of an async JavaScript function receiving tools and state. */
+    script: string;
+    /** Incremented when source or interval changes; baseline resets with it. */
+    scriptRevision: number;
+    intervalMs: number;
+    /** Canonical JSON text; absence means the first run has not succeeded. */
+    lastResult?: string;
+    lastResultHash?: string;
+    consecutiveFailures: number;
+    lastError?: { message: string; at: string };
+    /** Mirrors the script rule's disabled state, including automatic failure pauses. */
+    paused: boolean;
+}
+
+export type TriggerEvent = ConditionMonitorEvent | PrMergedMonitorEvent | DateTimeTriggerEvent | ScriptConditionEvent;
 
 // ============================================================================
 // Action (discriminated union — only `send-message` built this iteration)
@@ -167,11 +178,11 @@ export interface SendMessageAction {
 export type TriggerAction = SendMessageAction;
 
 // ============================================================================
-// Sentinel To-do binding (one-shot wake rules)
+// Sentinel To-do binding
 // ============================================================================
 
 /**
- * Binds a one-shot trigger to an item of its owning Sentinel's to-do ledger.
+ * Binds a trigger to an item of its owning Sentinel's to-do ledger.
  * The Sentinel chat is `trigger.processId`; the trigger never writes the item.
  */
 export interface SentinelTodoTriggerBinding {
@@ -196,14 +207,17 @@ export interface SentinelTodoTriggerBinding {
 export type TriggerOutcome = 'fired' | 'closed-unmerged' | 'skipped' | 'error';
 
 /**
- * Durable record of a wake message. Saved with the terminal outcome before any
- * queue work, so a crash between fire and enqueue is re-delivered once at
- * startup; `deliveryId` rides on the queued/buffered message for dedupe.
+ * Durable record of a wake message, saved before queue work with the one-shot
+ * outcome or repeating result. Recovery replays pending wakes; `deliveryId`
+ * rides on queued/buffered messages and persisted turns for dedupe.
  */
 export interface TriggerDelivery {
     deliveryId: string;
     firedAt: string;
-    reason: 'merged' | 'closed' | 'run-now' | 'due';
+    reason: 'merged' | 'closed' | 'run-now' | 'due' | 'script-changed' | 'script-paused';
+    /** Script wake admission is bound to this exact result and source revision. */
+    resultHash?: string;
+    scriptRevision?: number;
     state: 'pending' | 'delivered' | 'failed';
     deliveredAt?: string;
     /** Item revision captured when the fire committed. */
@@ -270,7 +284,7 @@ export interface Trigger {
     outcome?: TriggerOutcome;
     outcomeReason?: string;
 
-    /** Durable wake-message delivery (one-shot rules only). */
+    /** Durable wake-message delivery; repeating rules retain their latest receipt. */
     delivery?: TriggerDelivery;
 }
 
@@ -303,6 +317,10 @@ export function isTriggerExpired(trigger: Pick<Trigger, 'expiresAt'>, nowMs: num
 
 /** Default PR-merge watch cadence (5 min). */
 export const DEFAULT_PR_MERGE_POLL_INTERVAL_MS = 5 * 60_000;
+
+export const MIN_SCRIPT_CONDITION_INTERVAL_MS = 5 * 60_000;
+export const DEFAULT_SCRIPT_CONDITION_INTERVAL_MS = 15 * 60_000;
+export const MAX_SCRIPT_CONDITIONS_PER_OWNER = 10;
 
 /** Maximum backoff for a PR-merge watch after read/login errors (30 min). */
 export const MAX_PR_MERGE_BACKOFF_MS = 30 * 60_000;

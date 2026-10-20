@@ -475,6 +475,21 @@ export class MultiRepoQueueRouter extends EventEmitter {
         return action(this.getOrCreateBridge(rootPath));
     }
 
+    readonly runScriptCondition: import('../triggers/script-condition-evaluator').ScriptConditionRunner =
+        async (trigger, state, signal) => {
+            signal?.throwIfAborted();
+            const owner = await this.store.getProcess(trigger.processId, trigger.workspaceId);
+            if (owner?.metadata?.workspaceId !== trigger.workspaceId) {
+                throw new Error('Script condition owner workspace is unavailable');
+            }
+            const rootPath = await this.resolveRootPathForProcess(trigger.processId);
+            signal?.throwIfAborted();
+            if (!rootPath) throw new Error('Script condition owner workspace path is unavailable');
+            const bridge = this.getOrCreateBridge(rootPath);
+            if (!bridge.runScriptCondition) throw new Error('Script condition owner runtime is unavailable');
+            return bridge.runScriptCondition(trigger, state, signal);
+        };
+
     /** Recover buffered results on the original parent's queue, independent of topic selection. */
     async recoverPendingMessages(workspaceId: string, processId: string): Promise<void> {
         const proc = await this.store.getProcess(processId);
@@ -556,7 +571,8 @@ export class MultiRepoQueueRouter extends EventEmitter {
         return this.enqueueAdmitted(input);
     }
 
-    async enqueueAdmitted(input: CreateTaskInput): Promise<string> {
+    async enqueueAdmitted(input: CreateTaskInput,
+        validateAdmission?: (process: import('@plusplusoneplusplus/forge').AIProcess | undefined) => void): Promise<string> {
         let rootPath = (input.payload as any)?.workingDirectory as string | undefined;
 
         if (!rootPath) {
@@ -582,6 +598,7 @@ export class MultiRepoQueueRouter extends EventEmitter {
         const processId = input.processId ?? input.payload.processId;
         if (typeof processId === 'string') {
             const proc = await this.store.getProcess(processId);
+            validateAdmission?.(proc);
             const context = input.payload.context;
             const stoppedPrReview = typeof context === 'object' && context !== null
                 && 'sentinelPrOutcomeReview' in context && context.sentinelPrOutcomeReview === true
@@ -593,9 +610,13 @@ export class MultiRepoQueueRouter extends EventEmitter {
                 if (stoppedPrReview) pending.payload.context = { ...message.context, sentinelPrOutcomeStopped: true };
                 if (pending.id === input.id) break;
                 if (!queueManager.getTask(pending.id!)) {
+                    validateAdmission?.(proc);
                     queueManager.enqueue({ ...pending, repoId: input.repoId });
                 }
             }
+            validateAdmission?.(proc);
+        } else if (validateAdmission) {
+            throw new Error('Guarded queue admission requires a process identity');
         }
         return queueManager.enqueue(input);
     }

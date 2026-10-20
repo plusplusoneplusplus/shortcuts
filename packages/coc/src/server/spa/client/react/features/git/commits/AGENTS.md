@@ -77,7 +77,9 @@ split so that a change to one interaction mode cannot silently alter another:
   (`writePointerContextDragData` / `writeSessionContextDragBundle`). A context
   drag passing over the list cannot become a reorder preview because
   `dragIndex` is set only by `handleReorderDragStart`. Reorder drops outside
-  the unpushed range are rejected.
+  the unpushed range are rejected. Context payloads keep the raw member workspace
+  and `sourceRoutingRef` from the concrete `sourceSelectionId` or subtree owner
+  on every bundled commit; an unresolved remote source cannot become local.
 - **Stale file loads.** Commit hashes are not unique across repos, so every
   `listCommitFiles` request carries a generation that bumps on workspace
   change; a response arriving after a repo switch is discarded and the cache is

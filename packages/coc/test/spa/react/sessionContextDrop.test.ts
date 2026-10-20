@@ -310,9 +310,22 @@ describe('sessionContextDrop', () => {
         expect(result).toEqual({ ok: false, error: 'Only context from the active workspace can be attached.' });
     });
 
-    it('rejects cross-workspace pointer drops', () => {
-        const result = validate(makeWorkItemPayload({ sourceWorkspaceId: 'ws-other' }));
+    it.each([
+        makeWorkItemPayload({ sourceWorkspaceId: 'ws-other' }),
+        makeRangePayload({ sourceWorkspaceId: 'ws-other' }),
+        makePullRequestPayload({ sourceWorkspaceId: 'ws-other' }),
+    ])('rejects unrelated cross-workspace pointer drops ($kind)', payload => {
+        const result = validate(payload);
         expect(result).toEqual({ ok: false, error: 'Only context from the active workspace can be attached.' });
+    });
+
+    it.each([
+        makeSessionItem({ sourceWorkspaceId: 'ws-other' }),
+        makeRalphItem({ sourceWorkspaceId: 'ws-other' }),
+        makeWorkItem({ sourceWorkspaceId: 'ws-other' }),
+        makePullRequestItem({ sourceWorkspaceId: 'ws-other' }),
+    ])('keeps unrelated pointer send restrictions ($kind)', item => {
+        expect(validateForSend({ items: [item] })).toBe('Only context from the active workspace can be attached.');
     });
 
     it('rejects duplicate source sessions', () => {

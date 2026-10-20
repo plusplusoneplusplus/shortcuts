@@ -51,7 +51,8 @@ refresh, and the two layouts. Everything else lives here.
   the pure `reconcileSelectionAfterRefresh`. `changed: false` means "leave the
   view alone" — distinct from `next: null`, which clears it.
 - **Selection attachment ownership.** `RepoGitTab.sourceSelectionId` identifies
-  the concrete source clone. The detail pane forwards it as
+  the concrete source clone. The list pane forwards it through `CommitList` to
+  commit drag payloads. The detail pane forwards it as
   `attachmentDestinationId` to file-diff, working-tree, commit and branch-range
   viewers; their payloads retain the raw workspace id. Inline review chats forward
   that owner as `sourceSelectionId` through every placement. Git review openers serialize

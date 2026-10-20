@@ -752,6 +752,10 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repo
 
     const listPane = (
         <RepoGitListPane
+            sourceSelectionId={sourceSelectionId}
+            sourceWorkspaceName={reposList
+                ? findRepoBySelectionId(reposList, sourceSelectionId ?? workspaceId)?.workspace?.name
+                : sourceSelectionId?.startsWith('remote:') ? undefined : sourceWorkspace?.name}
             workspaceId={workspaceId}
             isSplitWorkspace={isSplitWorkspace}
             headerHoisted={headerHoisted}

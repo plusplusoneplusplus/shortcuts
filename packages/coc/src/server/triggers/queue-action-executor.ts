@@ -19,7 +19,7 @@
  */
 
 import * as crypto from 'crypto';
-import type { ProcessStore, TaskQueueManager, PendingMessage } from '@plusplusoneplusplus/forge';
+import type { AIProcess, ProcessStore, TaskQueueManager, PendingMessage } from '@plusplusoneplusplus/forge';
 import { toTaskId, isQueueProcessId, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import type { ActionExecutor } from './trigger-manager';
 import type { Trigger, TriggerAction } from './trigger-types';
@@ -57,12 +57,16 @@ export class QueueActionExecutor implements ActionExecutor {
         this.deps = deps;
     }
 
-    async execute(trigger: Trigger, action: TriggerAction, prompt: string): Promise<void> {
+    async execute(trigger: Trigger, action: TriggerAction, prompt: string,
+        validateAdmission?: (process: AIProcess | undefined) => void): Promise<void> {
         if (!this.deps.queueManager) {
             throw new Error('TaskQueueManager not available');
         }
 
         const processId = action.processId;
+        if (trigger.event.type === 'script-condition' && (!trigger.binding || !validateAdmission)) {
+            throw new ReviewDeliveryRejectedError('Script wakes require live owner and rule admission');
+        }
         if (!trigger.binding && trigger.event.monitor === 'ci-failure') {
             if (await this.deps.resolveWorkspaceId(processId) !== trigger.workspaceId) {
                 throw new Error('PR repair owner workspace is missing or changed');
@@ -91,11 +95,15 @@ export class QueueActionExecutor implements ActionExecutor {
                 ? this.deps.messageDelivery.deliverSentinelPrOutcomeOnce
                 : this.deps.messageDelivery.deliverOnce;
             if (!deliver) throw new ReviewDeliveryRejectedError('Native PR outcome admission is unavailable');
-            const result = await deliver.call(this.deps.messageDelivery,
-                trigger.workspaceId, processId, trigger.delivery.deliveryId, {
-                    content: prompt, displayContent: prompt,
-                    turnSource: { source: 'trigger', triggerId: trigger.id, deliveryId: trigger.delivery.deliveryId },
-                });
+            const input = {
+                content: prompt, displayContent: prompt,
+                turnSource: { source: 'trigger' as const, triggerId: trigger.id, deliveryId: trigger.delivery.deliveryId },
+            };
+            const result = trigger.event.type === 'script-condition'
+                ? await this.deps.messageDelivery.deliverOnce(
+                    trigger.workspaceId, processId, trigger.delivery.deliveryId, input, validateAdmission)
+                : await deliver.call(this.deps.messageDelivery,
+                    trigger.workspaceId, processId, trigger.delivery.deliveryId, input);
             emitDeliveryEvents(this.deps.processStore, processId, result.events);
             if (result.path === 'buffered') {
                 await this.deps.recoverPendingMessages?.(trigger.workspaceId, processId);

@@ -1,9 +1,17 @@
 import fs from 'node:fs';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
+import { TriggerStore } from '../../src/server/triggers/trigger-store';
+import { SentinelTodoStore } from '../../src/server/sentinel-todos/sentinel-todo-store';
+import { SentinelTodoTriggerFirer } from '../../src/server/triggers/sentinel-todo-trigger-firer';
+import { QueueActionExecutor } from '../../src/server/triggers/queue-action-executor';
+import { canonicalizeScriptConditionResult } from '../../src/server/triggers/script-condition-result';
+import type { ScriptConditionEvent, Trigger } from '../../src/server/triggers/trigger-types';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SqliteProcessStore, TaskQueueManager, RepoQueueRegistry, type CreateTaskInput } from '@plusplusoneplusplus/forge';
-import { ProcessMessageDeliveryService } from '../../src/server/processes/process-message-delivery-service';
+import { ProcessMessageDeliveryService, ReviewDeliveryRejectedError } from '../../src/server/processes/process-message-delivery-service';
+import { processOperationAdmission } from '../../src/server/processes/process-operation-admission';
 import type { QueueExecutorBridge } from '../../src/server/core/api-handler';
 import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
@@ -67,6 +75,227 @@ describe('durable review admission', () => {
             ...review, turnSource: { source: 'trigger', triggerId: 'pr-watch', deliveryId: id },
         });
     }
+
+    it.each(['result', 'pause'] as const)('deduplicates script %s wakes after lost acknowledgement and SQLite restart', async kind => {
+        bridge.enqueueAdmitted = async (input, validate) => {
+            validate?.(await store.getProcess(processId, workspaceId));
+            return bridge.enqueue!(input);
+        };
+        let triggerDb = new NativeDatabase(path.join(directory, 'triggers.db'));
+        let triggers = new TriggerStore(triggerDb);
+        let todos = new SentinelTodoStore(triggerDb);
+        const owner = { workspaceId, processId };
+        const item = todos.create(owner, { title: 'Watch PR' }, { actor: 'user' }).item;
+        const result = (value: unknown) => {
+            const encoded = canonicalizeScriptConditionResult(value);
+            return { lastResult: encoded.canonicalJson, lastResultHash: encoded.hash };
+        };
+        const rule: Trigger = {
+            id: 'script-rule', ...owner, status: 'active', revision: 1,
+            createdAt: new Date().toISOString(), expiresAt: null, lastTickAt: null, nextTickAt: null, inFlight: false,
+            binding: { kind: 'sentinel-todo', itemId: item.id, armedBy: 'sentinel', armedAt: new Date().toISOString() },
+            event: { type: 'script-condition', script: 'return state;', scriptRevision: 1, intervalMs: 300_000,
+                consecutiveFailures: kind === 'pause' ? 4 : 0, paused: false, ...result({ state: 'open' }) },
+            action: { type: 'send-message', processId, mode: 'inherit', prompt: '' },
+        };
+        triggers.insert(rule);
+        let failAfterAdmission = true;
+        const createFirer = () => {
+            const executor = new QueueActionExecutor({
+                processStore: store, queueManager: queue, resolveWorkspaceId: async () => workspaceId,
+                messageDelivery: service,
+            });
+            return new SentinelTodoTriggerFirer({
+                triggers, todos, processes: store, scriptConditionsEnabled: () => true, emit: () => {},
+                executor: { async execute(...args) {
+                    await executor.execute(...args);
+                    if (failAfterAdmission) throw new Error('Lost delivery acknowledgement');
+                } },
+            });
+        };
+        let firer = createFirer();
+        const fire = async (state: string) => {
+            const current = triggers.getById(rule.id)!;
+            if (kind === 'pause') {
+                await firer.pauseScriptCondition(rule.id, { ...current.event as ScriptConditionEvent,
+                    consecutiveFailures: 5, paused: true, lastError: { message: 'Script failed', at: new Date().toISOString() },
+                }, current.revision);
+            } else {
+                await firer.fireScriptResult(rule.id,
+                    { ...current.event as ScriptConditionEvent, ...result({ state }) }, current.revision);
+            }
+        };
+        try {
+            await expect(fire('approved')).rejects.toThrow('acknowledgement');
+            const receipt = triggers.getById(rule.id)!.delivery!.deliveryId;
+            expect(queue.getAll()).toHaveLength(1);
+            expect(triggers.getById(rule.id)!.delivery!.state).toBe('pending');
+            triggerDb.close();
+            restart(true);
+            triggerDb = new NativeDatabase(path.join(directory, 'triggers.db'));
+            triggers = new TriggerStore(triggerDb);
+            todos = new SentinelTodoStore(triggerDb);
+            failAfterAdmission = false;
+            firer = createFirer();
+            await firer.deliverPending(rule.id);
+            expect(queue.getAll()).toHaveLength(0);
+            expect(triggers.getById(rule.id)!.delivery).toMatchObject({ state: 'delivered', deliveryId: receipt });
+            expect((await store.getProcess(processId))!.conversationTurns).toHaveLength(1);
+            await store.updateProcess(processId, { status: 'completed' });
+            if (kind === 'pause') {
+                const paused = triggers.getById(rule.id)!;
+                expect(paused.status).toBe('paused');
+                triggers.update({ ...paused, status: 'active', revision: paused.revision + 1,
+                    event: { ...paused.event as ScriptConditionEvent, paused: false, consecutiveFailures: 4 } });
+            }
+            await fire('merged');
+            expect((await store.getProcess(processId))!.conversationTurns).toHaveLength(2);
+            await fire('approved');
+            expect((await store.getProcess(processId))!.conversationTurns).toHaveLength(2);
+            expect(triggers.getById(rule.id)!.status).toBe(kind === 'pause' ? 'paused' : 'active');
+            expect(todos.get(owner).items[0].status).toBe(item.status);
+        } finally { triggerDb.close(); }
+    });
+
+    describe.each(['result', 'pause'] as const)('live script %s delivery admission', kind => {
+        it.each(['gate', 'edit', 'remove', 'done', 'archived', 'manual', 'missing-item',
+            'workspace', 'owner', 'stopped', 'missing-owner'] as const)(
+            'rejects %s revocation during asynchronous owner queue routing', async race => {
+                const registry = new RepoQueueRegistry();
+                const router = new MultiRepoQueueRouter(registry, store, { autoStart: false });
+                const queues = router.createAggregateQueueFacade();
+                const triggerDb = new NativeDatabase(':memory:');
+                const triggers = new TriggerStore(triggerDb);
+                const todos = new SentinelTodoStore(triggerDb);
+                const owner = { workspaceId, processId };
+                const item = todos.create(owner, { title: 'Watch PR' }, { actor: 'user' }).item;
+                const encoded = canonicalizeScriptConditionResult({ state: 'approved' });
+                const rule: Trigger = {
+                    id: 'script-rule', ...owner, status: kind === 'pause' ? 'paused' : 'active', revision: 2,
+                    createdAt: new Date().toISOString(), expiresAt: null, lastTickAt: null, nextTickAt: null, inFlight: false,
+                    binding: { kind: 'sentinel-todo', itemId: item.id, armedBy: 'sentinel', armedAt: new Date().toISOString() },
+                    event: { type: 'script-condition', script: 'return state;', scriptRevision: 1, intervalMs: 300_000,
+                        consecutiveFailures: kind === 'pause' ? 5 : 0, paused: kind === 'pause',
+                        lastResult: encoded.canonicalJson, lastResultHash: encoded.hash },
+                    action: { type: 'send-message', processId, mode: 'inherit', prompt: 'Saved untrusted result' },
+                    delivery: { deliveryId: 'script-receipt', firedAt: new Date().toISOString(), state: 'pending',
+                        reason: kind === 'pause' ? 'script-paused' : 'script-changed', itemRevision: item.revision,
+                        scriptRevision: 1, resultHash: encoded.hash },
+                };
+                triggers.insert(rule);
+                let enabled = true;
+                let routing = false;
+                let revoke = true;
+                const getProcess = store.getProcess.bind(store);
+                const admitted = router.enqueueAdmitted.bind(router);
+                vi.spyOn(router, 'enqueueAdmitted').mockImplementation(async (...args) => {
+                    routing = true;
+                    return admitted(...args);
+                });
+                vi.spyOn(store, 'getProcess').mockImplementation(async (...args) => {
+                    if (routing && revoke) {
+                        routing = false;
+                        revoke = false;
+                        if (race === 'gate') enabled = false;
+                        if (race === 'edit') triggers.update({ ...rule, revision: rule.revision + 1 });
+                        if (race === 'remove') triggers.update({ ...rule, binding: { ...rule.binding!, removedAt: new Date().toISOString() } });
+                        if (race === 'done') todos.update(owner, item.id, item.revision, { status: 'done' }, 'user');
+                        if (race === 'archived') todos.update(owner, item.id, item.revision, { archived: true }, 'user');
+                        if (race === 'manual') {
+                            const manual = todos.create(owner, { title: 'Manual', type: 'manual' }, { actor: 'user' }).item;
+                            triggers.update({ ...rule, binding: { ...rule.binding!, itemId: manual.id } });
+                        }
+                        if (race === 'missing-item') triggers.update({ ...rule, binding: { ...rule.binding!, itemId: 'missing' } });
+                        if (race === 'workspace') await store.updateProcess(processId, { metadata: { workspaceId: 'foreign', mode: 'sentinel' } });
+                        if (race === 'owner') await store.updateProcess(processId, { metadata: { workspaceId, mode: 'ask' } });
+                        if (race === 'stopped') await store.updateProcess(processId, { status: 'cancelled' });
+                        if (race === 'missing-owner') return undefined;
+                    }
+                    return getProcess(...args);
+                });
+                const delivery = new ProcessMessageDeliveryService({
+                    store, bridge: router, listTasks: () => queues.getAll(),
+                });
+                const firer = new SentinelTodoTriggerFirer({
+                    triggers, todos, processes: store, scriptConditionsEnabled: () => enabled, emit: () => {},
+                    executor: new QueueActionExecutor({
+                        processStore: store, queueManager: queues,
+                        resolveWorkspaceId: async () => workspaceId, messageDelivery: delivery,
+                    }),
+                });
+                try {
+                    await expect(firer.deliverPending(rule.id)).rejects.toThrow('admission was revoked');
+                    expect(queues.getAll()).toEqual([]);
+                    const proc = await getProcess(processId);
+                    expect(proc?.conversationTurns ?? []).toEqual([]);
+                    expect(proc?.pendingMessages ?? []).toEqual([]);
+                    if (race === 'stopped') expect(proc?.status).toBe('cancelled');
+                    expect(triggers.getById(rule.id)?.delivery?.state).toBe('pending');
+                    expect(triggers.getById(rule.id)?.event).toEqual(rule.event);
+                    if (race === 'gate') {
+                        enabled = true;
+                        await firer.deliverPending(rule.id);
+                        await firer.deliverPending(rule.id);
+                        expect(queues.getAll()).toHaveLength(1);
+                        expect(triggers.getById(rule.id)?.delivery?.state).toBe('delivered');
+                        expect((await getProcess(processId))?.conversationTurns).toHaveLength(1);
+                    }
+                } finally {
+                    vi.restoreAllMocks();
+                    router.dispose();
+                    triggerDb.close();
+                }
+            },
+        );
+    });
+
+    it.each(['waiting', 'mode', 'buffer'] as const)('revalidates guarded wakes after %s admission waits', async boundary => {
+        let enabled = true;
+        const validate = vi.fn((proc: Awaited<ReturnType<typeof store.getProcess>>) => {
+            if (!enabled || proc?.metadata?.mode !== 'sentinel') throw new ReviewDeliveryRejectedError('Revoked');
+        });
+        bridge.enqueueAdmitted = async (input, guard) => {
+            guard?.(await store.getProcess(processId, workspaceId));
+            return bridge.enqueue!(input);
+        };
+        const getProcess = store.getProcess.bind(store);
+        let reads = 0;
+        const spy = vi.spyOn(store, 'getProcess').mockImplementation(async (...args) => {
+            if (++reads === (boundary === 'mode' ? 2 : 3)) enabled = false;
+            return getProcess(...args);
+        });
+        let release!: () => void;
+        let entered!: () => void;
+        const ready = new Promise<void>(resolve => { entered = resolve; });
+        const held = boundary === 'waiting'
+            ? processOperationAdmission.runExclusive(processId, () => {
+                entered();
+                return new Promise<void>(resolve => { release = resolve; });
+            })
+            : undefined;
+        if (boundary === 'buffer') await store.updateProcess(processId, { status: 'running' });
+        try {
+            if (held) await ready;
+            const pending = service.deliverOnce(workspaceId, processId, wakeSource.deliveryId,
+                { ...review, turnSource: wakeSource }, validate);
+            if (held) { enabled = false; release(); }
+            await expect(pending).rejects.toThrow('Revoked');
+            expect(queue.getAll()).toEqual([]);
+            expect((await getProcess(processId))?.conversationTurns ?? []).toEqual([]);
+            expect((await getProcess(processId))?.pendingMessages ?? []).toEqual([]);
+        } finally {
+            spy.mockRestore();
+            await held;
+        }
+    });
+
+    it('rejects guarded delivery without admitted routing rather than silently dropping its guard', async () => {
+        const validate = vi.fn();
+        await expect(service.deliverOnce(workspaceId, processId, wakeSource.deliveryId,
+            { ...review, turnSource: wakeSource }, validate)).rejects.toThrow('admitted queue routing');
+        expect(queue.getAll()).toEqual([]);
+        expect(validate).not.toHaveBeenCalled();
+    });
 
     it('serializes PR repair receipts with human delivery in an ordinary owner chat', async () => {
         await store.updateProcess(processId, { metadata: { workspaceId, mode: 'ask', provider: 'copilot' } });

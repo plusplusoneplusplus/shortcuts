@@ -244,6 +244,11 @@ diverged elsewhere (unsaved explorer edit) is never written; features stay off.
 
 Both surfaces portal `CommentCard` through `MonacoDiffCommentLayer`, with placement
 and selection conversion owned by `monacoCommentThreads` and `diffCoords`.
+`MonacoDiffSelectionAttachPill` uses the shared Monaco selection action group
+for comment authoring and chat attachment. Comment support follows `onAddComment`,
+independently of attachment configuration or source availability; it converts the
+side-local live range through `diffCoords` into the host’s existing comment editor.
+The host retains the source’s concrete server route and raw member workspace.
 `FileDiffPanel` uses each source's existing comment refs for CRUD, replies, and AI
 actions; sidebar navigation reveals and expands the editor thread. Each inline card's Copy
 resolve prompt action copies that one comment through `utils/diffCommentPrompt.ts`

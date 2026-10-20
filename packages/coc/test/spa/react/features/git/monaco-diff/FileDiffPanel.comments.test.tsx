@@ -4,10 +4,12 @@ import type { DiffComment, DiffCommentContext, DiffCommentSelection } from '../.
 import type { UpdateDiffCommentRequest } from '../../../../../../src/server/spa/client/react/features/git/hooks/useDiffComments';
 import type { DiffSource } from '../../../../../../src/server/spa/client/react/features/git/diff/diffSource';
 import type { DiffEditorFactory } from '../../../../../../src/server/spa/client/react/features/git/diff/monacoDiffEditorAdapter';
-import { createFakeDiffEditor, type FakeDiffEditor } from './fakeDiffEditorAdapter';
+import { createFakeDiffEditor, createFakeSelectionEditors, type FakeDiffEditor } from './fakeDiffEditorAdapter';
 
 const transport = vi.hoisted(() => ({
     client: {} as Record<string, unknown>,
+    ownerClient: null as Record<string, unknown> | null,
+    route: vi.fn(),
     patch: vi.fn(),
     delete: vi.fn(),
     queueDispatch: vi.fn(),
@@ -15,12 +17,13 @@ const transport = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
-    getCocClientForWorkspace: () => transport.client,
+    getCocClientForWorkspace: (target: string) => { transport.route(target); return target?.startsWith('remote:') && transport.ownerClient ? transport.ownerClient : transport.client; },
     lookupCloneBaseUrl: () => undefined,
     resolveCloneRoute: () => ({ kind: 'local' }),
 }));
 vi.mock('../../../../../../src/server/spa/client/react/repos/cloneRouting', () => ({
     useCocClient: () => transport.client,
+    useCloneBaseUrl: () => undefined,
 }));
 vi.mock('../../../../../../src/server/spa/client/react/utils/diffCommentApi', () => ({
     computeStorageKey: vi.fn(async () => 'storage-key'),
@@ -62,6 +65,7 @@ vi.mock('../../../../../../src/server/spa/client/react/features/language-servers
     getLanguageDocumentStore: () => languageStore,
 }));
 
+import { GitFileReview } from '../../../../../../src/server/spa/client/react/features/git/diff/GitFileReview';
 import { FileDiffPanel } from '../../../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel';
 import { computeDiffLines } from '../../../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 import { createCommitDiffSource, createBranchRangeDiffSource, createPrDiffSource } from '../../../../../../src/server/spa/client/react/features/git/diff/diffSource';
@@ -116,8 +120,12 @@ let languageStore: LanguageDocumentStore;
 const fake = () => fakes[fakes.length - 1];
 const zoneOf = (id: string) => [...fake().zones.values()].find(z => z.domNode.querySelector(`[data-comment-id="${id}"]`))!;
 const cardOf = (id: string) => within(zoneOf(id).domNode).getByTestId(`comment-card-${id}`);
-const createEditor: DiffEditorFactory = async (_host, options) => {
+const selectionSides = new Map<FakeDiffEditor, ReturnType<typeof createFakeSelectionEditors>>();
+const createEditor: DiffEditorFactory = async (host, options) => {
     const editor = createFakeDiffEditor(options);
+    const sides = createFakeSelectionEditors(editor);
+    selectionSides.set(editor, sides);
+    host.append(sides.original.host, sides.modified.host);
     fakes.push(editor);
     return editor.adapter;
 };
@@ -165,6 +173,8 @@ async function toggleEngine(engine: 'legacy' | 'monaco') {
 beforeEach(() => {
     vi.clearAllMocks();
     stored = [];
+    selectionSides.clear();
+    transport.ownerClient = null;
     fakes = [];
     languageClient = new FakeClient();
     languageStore = new LanguageDocumentStore({ workspaceId: 'ws-a', client: languageClient.asClient() });
@@ -638,4 +648,41 @@ it('leaves an ineligible branch head synthetic without registering a language do
     expect(languageStore.documentCount).toBe(0);
     expect(fake().models[0].modified.uri).toMatch(/^coc-diff-ref:/);
     expect(fake().languageMounts).toEqual([]);
+});
+
+it.each([
+    ['unified', 'original'], ['unified', 'modified'],
+    ['split', 'original'], ['split', 'modified'],
+] as const)('persists a floating %s %s comment through the group member review host on its own server', async (mode, side) => {
+    localStorage.setItem('coc-diff-view-mode', mode);
+    const destination = 'remote:owner:ws-a';
+    const source = createCommitDiffSource('ws-a', 'abc123', { files: [PATH], routingTarget: destination });
+    const ownerCreate = vi.fn(createComment);
+    transport.ownerClient = { ...transport.client, git: { ...(transport.client.git as object), createDiffComment: ownerCreate } };
+    const wrongCreate = vi.fn(() => { throw new Error('wrong server'); });
+    (transport.client.git as Record<string, unknown>).createDiffComment = wrongCreate;
+    await act(async () => { render(
+        <UnifiedPanelHostProvider host={{ workspaceId: 'remote:owner:group', chatId: 'group-chat' }}>
+            <GitFileReview workspaceId="ws-a" attachmentDestinationId={destination} comparisonKey="abc123"
+                source={source} files={[{ path: PATH, status: 'M' }]} createDiffEditor={createEditor} />
+        </UnifiedPanelHostProvider>,
+    ); });
+    act(() => fake().finishDiff(CHANGES));
+    const selected = selectionSides.get(fake())![side];
+    selected.data.snippet = side === 'original' ? 'b' : 'B';
+    selected.selection.endColumn = 2;
+    act(() => { selected.data.empty = false; selected.data.focused = true; selected.events.selection(); });
+    fireEvent.click(screen.getByRole('button', { name: 'Comment', exact: true }));
+    expect(screen.getByTestId('comment-textarea')).toBeTruthy();
+    await submit('member review note');
+    expect(ownerCreate).toHaveBeenCalledWith('ws-a', expect.objectContaining({
+        context: source.commentContext(PATH), selectedText: side === 'original' ? 'b' : 'B',
+        comment: 'member review note', selection: expect.objectContaining({
+            side: side === 'original' ? 'removed' : 'added', startColumn: 0, endColumn: 1,
+            ...(side === 'original' ? { oldLineStart: 2, oldLineEnd: 2 } : { newLineStart: 2, newLineEnd: 2 }),
+        }),
+    }));
+    expect(wrongCreate).not.toHaveBeenCalled();
+    expect(transport.route).toHaveBeenCalledWith(destination);
+    expect(cardOf('created-0').textContent).toContain('member review note');
 });

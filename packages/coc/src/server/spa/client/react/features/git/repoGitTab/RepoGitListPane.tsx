@@ -23,6 +23,8 @@ import type { GitRepoStateInfo } from './types';
 
 export interface RepoGitListPaneProps {
     workspaceId: string;
+    sourceSelectionId?: string;
+    sourceWorkspaceName?: string;
     /** Split-workspace mode uses the compact skin and drops the width/hide logic. */
     isSplitWorkspace: boolean;
     /** True when the toolbar is portaled into the split panel's section header. */
@@ -155,6 +157,8 @@ export function RepoGitListPane(props: RepoGitListPaneProps) {
         </div>
     ) : (
         <CommitList
+            sourceSelectionId={props.sourceSelectionId}
+            sourceWorkspaceName={props.sourceWorkspaceName}
             title="History"
             commits={pendingReorder || commits}
             unpushedCount={searchQuery ? 0 : unpushedCount}

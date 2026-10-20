@@ -114,6 +114,7 @@ export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     initialDelayMs?: number;
 }
 export interface QueueExecutorBridge {
+    runScriptCondition?: import('../triggers/script-condition-evaluator').ScriptConditionRunner;
     /** Recover the head of an idle conversation's durable buffer through its queue. */
     recoverPendingMessages?(workspaceId: string, processId: string): Promise<void>;
     executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string, options?: FollowUpTurnOptions): Promise<void>;
@@ -275,6 +276,9 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             runtime: this.runtime,
         });
     }
+
+    readonly runScriptCondition: import('../triggers/script-condition-evaluator').ScriptConditionRunner =
+        (trigger, state, signal) => this.executors.runScriptCondition(trigger, state, signal);
 
     setQueueManager(qm: TaskQueueManager): void {
         this.queueManager = qm;

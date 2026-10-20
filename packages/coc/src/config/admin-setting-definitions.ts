@@ -670,6 +670,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.sentinelTodoScriptTriggers', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoScriptTriggersEnabled',
+        ui: {
+            tab: 'sentinel', group: 'sentinelTodos', order: 32.575, label: 'To-do script triggers', badge: 'experimental',
+            hint: 'Allow background JavaScript conditions to wake their owning Sentinel when results change. Requires tool scripting. Disabling either flag stops evaluation and retains rules.',
+            testId: 'toggle-sentinel-todo-script-triggers',
+        },
+    }),
+    bool({
         key: 'features.sentinelPrOutcomeWake', default: false, runtime: 'live', runtimeFlag: 'sentinelPrOutcomeWakeEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.58, label: 'Sentinel PR outcome wake', badge: 'experimental',
@@ -1081,10 +1089,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.adminMachineSwitch', default: false, runtime: 'live', runtimeFlag: 'adminMachineSwitchEnabled',
+        key: 'features.adminMachineSwitch', default: true, runtime: 'live', runtimeFlag: 'adminMachineSwitchEnabled',
         ui: {
             group: 'dashboard', order: 68, label: 'Configure another machine from Admin', badge: 'experimental',
-            hint: 'Adds a "Configure machine" selector to the CoC Desktop Admin dialog, so server-owned Admin pages can target a registered remote server. Workspaces, chats and the desktop connection are unchanged. Disabled by default.',
+            hint: 'Adds a "Configure machine" selector to the CoC Desktop Admin dialog, so server-owned Admin pages can target a registered remote server. Workspaces, chats and the desktop connection are unchanged. Enabled by default.',
             testId: 'toggle-admin-machine-switch-enabled',
         },
     }),

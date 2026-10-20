@@ -61,6 +61,11 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getCocClientFor: () => ({
+        processes: { patchMetadata: mockPatchMetadata },
+        sentinelTodos: { get: mockGetSentinelTodos },
+        preferences: { getLlmToolsConfig: mockGetLlmToolsConfig },
+    }),
     getSpaCocClient: () => ({
         processes: { patchMetadata: mockPatchMetadata },
         sentinelTodos: { get: mockGetSentinelTodos },
@@ -81,6 +86,7 @@ import {
     FILE_PATH_DRAG_KIND,
     FILE_PATH_DRAG_MIME,
     POINTER_CONTEXT_DRAG_MIME,
+    createGitCommitContextDragPayload,
     RALPH_SESSION_CONTEXT_DRAG_KIND,
     RALPH_SESSION_CONTEXT_DRAG_MIME,
     SESSION_CONTEXT_DRAG_KIND,
@@ -91,8 +97,10 @@ import {
 import { createSentinelTodoContextPayload } from '../../../../src/server/spa/client/react/features/chat/sentinelTodoContext';
 import { useAttachedContext } from '../../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext';
 import { attachSelectionToChat, resetActiveChatAttach } from '../../../../src/server/spa/client/react/features/chat/activeChatAttach';
+import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 afterEach(() => {
+    resetCloneRegistryForTests();
     delete (window as any).cocDesktop;
     vi.restoreAllMocks();
 });
@@ -471,6 +479,31 @@ describe('FollowUpInputArea — dismiss suggestions', () => {
 });
 
 describe('FollowUpInputArea — session context drops', () => {
+    it.each([false, true])('attaches a concrete member commit to a group-owned follow-up composer (remote=%s)', async remote => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        const workspaceId = 'group-team';
+        const memberId = 'ws-member';
+        const owner = remote ? `remote:server-a:${workspaceId}` : workspaceId;
+        const sourceRoutingRef = remote ? `remote:server-a:${memberId}` : null;
+        if (remote) registerCloneBaseUrls([workspaceId, memberId].map(id => ({
+            workspaceId: id, serverId: 'server-a', baseUrl: 'https://a.example',
+        })));
+        const onAttachSessionContext = vi.fn();
+        render(<FollowUpInputArea {...makeProps({
+            workspaceId, attachmentDestinationId: owner, canRetrieveConversations: false, onAttachSessionContext,
+        })} />);
+        const payload = createGitCommitContextDragPayload({ hash: 'abcdef1234567890' }, {
+            activeWorkspaceId: memberId, sourceRoutingRef,
+        });
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), {
+            dataTransfer: makeSessionDataTransfer(payload, POINTER_CONTEXT_DRAG_MIME),
+        });
+        expect(onAttachSessionContext).toHaveBeenCalledWith(expect.objectContaining({
+            sourceWorkspaceId: memberId, sourceRoutingRef, commitHash: 'abcdef1234567890',
+        }));
+        expect(screen.queryByTestId('follow-up-session-context-error')).toBeNull();
+    });
+
     const todoOwner = { ownerWorkspaceId: 'ws-1', ownerRoutingRef: null, processId: 'current-process' };
     const todoPayload = createSentinelTodoContextPayload(todoOwner, { id: 'todo-1', title: 'Dragged title' });
     function TodoComposer({ owner = todoOwner, ...overrides }: Partial<FollowUpInputAreaProps> & { owner?: typeof todoOwner }) {

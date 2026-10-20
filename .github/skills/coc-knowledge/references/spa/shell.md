@@ -824,14 +824,18 @@ The editor uses browser-safe
 
 ### Sentinel To-do triggers
 
-`SentinelTodoTriggers` adds a separate rule section below the cards. The editor uses eligible normal items, URL/local PR
-selection and server preview. Rule lifecycle and pending delivery are independent
-of item/job/review states; writes use the owning client's typed trigger API and
-expected rule revision. Owner-verified task links reveal only the target row and
-its containing groups; unrelated expansion state and lazy history previews stay
-unchanged. Owner changes isolate row state and cancel delayed focus/highlights.
-Run now confirms a one-shot Sentinel wake, never a direct
-job launch; terminal Clear preserves durable delivery receipts.
+`SentinelTodoTriggers` lists owner-bound, nondelegated rules below the cards.
+PR/date authoring uses eligible normal items and owner-server capabilities.
+Script rows show interval, last run/error, pause and escaped read-only source;
+they never open the PR editor. Disabled/unavailable owner script capability
+retains rows and safe lifecycle actions while blocking Resume/Run now.
+Confirmed script Run now evaluates without consuming or resuming the rule;
+PR/date Run now confirms a one-shot wake. Neither launches jobs directly.
+
+Lifecycle and pending delivery stay separate from item/job/review state; typed
+writes carry owner identity and saved revisions. Owner changes isolate async
+reads and dialogs. Item links reveal only the target and its containing groups,
+preserving unrelated expansion and lazy previews. Terminal Clear retains receipts.
 
 Ctrl/Cmd+F focuses the Explorer file filter only while focus is inside the
 visible Explorer navigator column. Content tabs keep their own find behavior,

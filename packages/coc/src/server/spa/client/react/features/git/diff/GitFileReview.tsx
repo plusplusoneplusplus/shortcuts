@@ -6,6 +6,10 @@ import { STATUS_LABELS } from './FileTree';
 import { filterReviewFiles, groupReviewFiles, reviewFileKind, reviewFileParts, reviewFileStatus, type ReviewFileKind } from './gitReviewFiles';
 import { GitReviewToolbar, type GitReviewHeader } from './GitReviewToolbar';
 import './git-file-review.css';
+import { useCommitContextOwner } from '../../chat/gitCommitContext';
+import { createGitFileContextPayload } from '../../chat/gitFileContext';
+import { GIT_FILE_CONTEXT_DRAG_KIND, writePointerContextDragData } from '../../chat/sessionContextDrag';
+import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
 import { useCloneBaseUrl } from '../../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
@@ -39,6 +43,8 @@ export function GitFileReview(props: Props) {
 }
 function ReviewBody({ files, selectedPath, onSelect, loading, error, onRetry, reviewedFiles, onToggleReviewed,
     comparisonKey: _comparisonKey, header, initialHunkTarget, ...panel }: Props) {
+    const sourceOwner = useCommitContextOwner(panel.workspaceId, panel.attachmentDestinationId);
+    const contextEnabled = isSessionContextAttachmentsEnabled();
     const [query, setQuery] = useState('');
     const [kind, setKind] = useState<ReviewFileKind>('all');
     const [status, setStatus] = useState('all');
@@ -120,9 +126,25 @@ function ReviewBody({ files, selectedPath, onSelect, loading, error, onRetry, re
     function row(file: GitFileChange, scan = false) {
         const { name, directory } = reviewFileParts(file.path);
         const code = reviewFileStatus(file.status);
+        const side = code === 'D' ? 'base' : 'head';
+        const refs = panel.source.fileContextRefs;
+        const routingRef = sourceOwner === undefined ? panel.source.routingTarget : sourceOwner;
+        const ownerKnown = routingRef !== undefined || resolveCloneRoute(panel.workspaceId).kind === 'local';
+        const payload = contextEnabled && ownerKnown && refs ? createGitFileContextPayload({
+            kind: GIT_FILE_CONTEXT_DRAG_KIND, version: 1,
+            sourceWorkspaceId: panel.workspaceId,
+            sourceRoutingRef: routingRef ?? null,
+            filePath: side === 'base' ? file.oldPath ?? file.path : file.path,
+            revision: side === 'base' ? refs.baseRef : refs.headRef,
+            side,
+        }) : null;
         return <button type="button" key={file.path} className={`git-review-file${selected?.path === file.path && !scan ? ' selected' : ''}`}
             aria-current={selected?.path === file.path && !scan ? 'true' : undefined} title={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
             aria-label={`${file.path}, ${STATUS_LABELS[code] ?? file.status}${viewed.has(file.path) ? ", viewed" : ""}`}
+            draggable={!!payload}
+            data-session-context-source={payload ? 'true' : undefined}
+            data-session-context-kind={payload ? 'git-file' : undefined}
+            onDragStart={payload ? event => writePointerContextDragData(event.dataTransfer, payload) : undefined}
             onClick={() => select(file.path)} data-file-path={file.path}>
             <span className={`git-review-status status-${code}`} title={STATUS_LABELS[code] ?? file.status}>{code}</span>
             <span className="git-review-file-name"><strong>{name}</strong><small>{file.oldPath ? `${file.oldPath} → ${directory}` : directory}</small></span>

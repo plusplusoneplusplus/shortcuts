@@ -334,6 +334,8 @@ export interface CLIConfig {
         /** Return each tracked Sentinel post-mode turn result to the Sentinel. Disabled by default. */
         sentinelFollowUpResults?: boolean;
         sentinelTodoDateTimeTriggers?: boolean;
+        /** Background Sentinel To-do script conditions; also require toolScripting. Default off. */
+        sentinelTodoScriptTriggers?: boolean;
         sentinelDesktopMirror?: boolean;
         botManagedConversations?: boolean;
         /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Disabled by default. */
@@ -354,7 +356,7 @@ export interface CLIConfig {
         chatFolders?: boolean;
         /** Manual sidebar data refresh on the collapsed workspace rail. Enabled by default. */
         railManualRefresh?: boolean;
-        /** Desktop Admin selector for configuring a registered remote CoC server. Disabled by default. */
+        /** Desktop Admin selector for configuring a registered remote CoC server. Enabled by default. */
         adminMachineSwitch?: boolean;
         /** Admin and provider-quota shortcuts on the collapsed workspace rail. Enabled by default. */
         railStatusActions?: boolean;
@@ -756,6 +758,7 @@ export interface ResolvedCLIConfig {
         /** Return each tracked Sentinel post-mode turn result to the Sentinel. Disabled by default. */
         sentinelFollowUpResults: boolean;
         sentinelTodoDateTimeTriggers: boolean;
+        sentinelTodoScriptTriggers: boolean;
         sentinelDesktopMirror: boolean;
         botManagedConversations: boolean;
         /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Enabled by default. */
@@ -775,7 +778,7 @@ export interface ResolvedCLIConfig {
         chatFolders: boolean;
         /** Manual sidebar data refresh on the collapsed workspace rail. Disabled by default. */
         railManualRefresh: boolean;
-        /** Desktop Admin selector for configuring a registered remote CoC server. Disabled by default. */
+        /** Desktop Admin selector for configuring a registered remote CoC server. Enabled by default. */
         adminMachineSwitch: boolean;
         /** Admin and provider-quota shortcuts on the collapsed workspace rail. Disabled by default. */
         railStatusActions: boolean;
@@ -1092,6 +1095,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         sentinelPrOutcomeWake: false,
         sentinelFollowUpResults: false,
         sentinelTodoDateTimeTriggers: false,
+        sentinelTodoScriptTriggers: false,
         sentinelDesktopMirror: false,
         botManagedConversations: false,
         quickAskSidenotes: true,
@@ -1103,7 +1107,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         schedulesInScheduledSlide: true,
         chatFolders: false,
         railManualRefresh: true,
-        adminMachineSwitch: false,
+        adminMachineSwitch: true,
         railStatusActions: true,
         schedulerDelayHint: true,
         composerWordHint: true,

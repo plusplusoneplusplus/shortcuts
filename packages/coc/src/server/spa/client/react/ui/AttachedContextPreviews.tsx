@@ -17,10 +17,11 @@ function formatCount(count: number, singular: string, plural: string): string {
 }
 
 function isPointerContextItem(item: AttachedContextItem): item is AttachedPointerContextItem {
-    return item.kind === 'sentinel-todo' || item.kind === 'work-item' || item.kind === 'commit' || item.kind === 'range' || item.kind === 'pull-request';
+    return item.kind === 'git-file' || item.kind === 'sentinel-todo' || item.kind === 'work-item' || item.kind === 'commit' || item.kind === 'range' || item.kind === 'pull-request';
 }
 
 function getPointerContextLabel(item: AttachedPointerContextItem): string {
+    if (item.kind === 'git-file') return 'File';
     if (item.kind === 'sentinel-todo') return 'To-do';
     if (item.kind === 'work-item') return 'Work Item';
     if (item.kind === 'commit') return 'Commit';
@@ -29,6 +30,7 @@ function getPointerContextLabel(item: AttachedPointerContextItem): string {
 }
 
 function getPointerContextIcon(item: AttachedPointerContextItem): string {
+    if (item.kind === 'git-file') return '▤';
     if (item.kind === 'sentinel-todo') return '#';
     if (item.kind === 'work-item') return '▣';
     if (item.kind === 'commit') return '◇';
@@ -37,12 +39,13 @@ function getPointerContextIcon(item: AttachedPointerContextItem): string {
 }
 
 function getPointerContextMeta(item: AttachedPointerContextItem): string {
+    if (item.kind === 'git-file') return `${item.sourceRoutingRef ?? item.sourceWorkspaceId} · ${item.side}`;
     if (item.kind === 'sentinel-todo') return item.todoItemId;
     if (item.kind === 'work-item') {
         return [item.title, item.status, item.type, item.workItemId].filter(Boolean).join(' · ');
     }
     if (item.kind === 'commit') {
-        return [item.subject, item.commitHash !== item.shortHash ? shortenSessionProcessId(item.commitHash) : ''].filter(Boolean).join(' · ');
+        return [item.sourceWorkspaceName, item.sourceRoutingRef ?? item.sourceWorkspaceId, item.subject, item.commitHash !== item.shortHash ? shortenSessionProcessId(item.commitHash) : ''].filter(Boolean).join(' · ');
     }
     if (item.kind === 'range') {
         return [

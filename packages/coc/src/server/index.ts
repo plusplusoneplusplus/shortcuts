@@ -305,6 +305,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Forward declaration — trigger infra is created after queue infra
     let triggerInfra: TriggerInfrastructure | undefined;
+    let scriptConditionRuntimeReady = false;
 
     // Forward declaration — turn-performance infra is created after queue infra;
     // executors read the store lazily through the getter passed to the bridge.
@@ -624,6 +625,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         dataDir,
         getPrOutcomeEnabled: () => runtimeConfigService.config.features.sentinelPrOutcomeWake === true,
         getDateTimeEnabled: () => runtimeConfigService.config.features.sentinelTodoDateTimeTriggers === true,
+        getScriptConditionsEnabled: () => scriptConditionRuntimeReady
+            && runtimeConfigService.config.features.sentinelTodoScriptTriggers === true
+            && runtimeConfigService.config.features.toolScripting === true,
+        runScriptCondition: (trigger, state, signal) => bridge.runScriptCondition(trigger, state, signal),
         queueFacade,
         deliveryBridge: bridge,
         recoverPendingMessages: (workspaceId, processId) => bridge.recoverPendingMessages(workspaceId, processId),
@@ -766,11 +771,17 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     let prevMyLifeEnabled = runtimeConfigService.config.myLife?.enabled ?? false;
     let prevPrOutcomeEnabled = runtimeConfigService.config.features.sentinelPrOutcomeWake;
     let prevDateTimeEnabled = runtimeConfigService.config.features.sentinelTodoDateTimeTriggers;
+    let prevScriptConditionsEnabled = runtimeConfigService.config.features.sentinelTodoScriptTriggers === true
+        && runtimeConfigService.config.features.toolScripting === true;
     runtimeConfigService.onChange((snapshot) => {
         const nextPrOutcomeEnabled = snapshot.config.features.sentinelPrOutcomeWake;
         const nextDateTimeEnabled = snapshot.config.features.sentinelTodoDateTimeTriggers;
         if (nextDateTimeEnabled !== prevDateTimeEnabled) triggerInfra?.triggerManager.refreshDateTime();
         prevDateTimeEnabled = nextDateTimeEnabled;
+        const nextScriptConditionsEnabled = snapshot.config.features.sentinelTodoScriptTriggers === true
+            && snapshot.config.features.toolScripting === true;
+        if (nextScriptConditionsEnabled !== prevScriptConditionsEnabled) triggerInfra?.triggerManager.refreshScriptConditions();
+        prevScriptConditionsEnabled = nextScriptConditionsEnabled;
         if (nextPrOutcomeEnabled !== prevPrOutcomeEnabled) {
             if (nextPrOutcomeEnabled) void triggerInfra?.sentinelPrOutcomes.restore()
                 .then(() => triggerInfra?.triggerManager.armAll())
@@ -992,6 +1003,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             const workspaceId = process.metadata?.workspaceId;
             if (typeof workspaceId === 'string') browserState?.delete(workspaceId, process.id);
         },
+        event => triggerInfra?.onProcessChange(event),
     );
     wsServer.browserControl.setEnabledGetter(() => runtimeConfigService.config.browserControl.enabled);
     wsServer.browserControl.setFramesEnabledGetter(() => runtimeConfigService.config.browserControl.framesEnabled === true);
@@ -1018,6 +1030,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         });
     }
     activateQueueProcessing();
+    scriptConditionRuntimeReady = true;
+    triggerInfra.triggerManager.refreshScriptConditions();
     // Say which native search capabilities are active. All are required and
     // were validated before composition; reporting them separately is what
     // exposes stale packaging.

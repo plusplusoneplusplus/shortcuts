@@ -37,6 +37,8 @@ import { processOperationAdmission } from '../processes/process-operation-admiss
 
 export interface ChatTurnContextInput {
     sentinelPrOutcomeReview?: boolean;
+    /** Background scripts omit questions and automatically deny approval-gated tools. */
+    unattendedScript?: boolean;
     dataDir?: string;
     store: ProcessStore;
     workspaceId?: string;
@@ -195,6 +197,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
 
     const toolBundle = buildChatToolBundle({
         sentinelPrOutcomeReview: input.sentinelPrOutcomeReview,
+        unattendedScript: input.unattendedScript,
         dataDir: input.dataDir,
         store: input.store,
         workspaceId: input.workspaceId,

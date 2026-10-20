@@ -236,3 +236,34 @@ export function inertLanguageContext(uri: string): DiffLanguageMountContext {
     };
     return { editor, monaco, model } as unknown as DiffLanguageMountContext;
 }
+
+/** Side-local selection editors for selection action portal tests. */
+export function createFakeSelectionEditors(fake: FakeDiffEditor) {
+    const sides = Object.fromEntries(['original', 'modified'].map(side => {
+        const host = document.createElement('div');
+        const buffer = document.createElement('textarea');
+        host.append(buffer);
+        const events: Record<string, () => void> = {};
+        const disposals: ReturnType<typeof vi.fn>[] = [];
+        const data = { empty: true, focused: false, snippet: side === 'original' ? 'old' : 'unsaved', top: 40, left: 90, width: 400 };
+        const listen = (name: string, cb: () => void) => { events[name] = cb; const dispose = vi.fn(); disposals.push(dispose); return { dispose }; };
+        const selection = { startLineNumber: 2, startColumn: 1, endLineNumber: 2, endColumn: 4,
+            isEmpty: () => data.empty, getEndPosition: () => ({ lineNumber: selection.endLineNumber, column: selection.endColumn }) };
+        const editor = {
+            getDomNode: () => host, getSelection: () => selection,
+            getModel: () => ({ getValueInRange: () => data.snippet }), hasWidgetFocus: () => data.focused,
+            hasTextFocus: () => document.activeElement === buffer,
+            getScrolledVisiblePosition: () => ({ top: data.top, left: data.left, height: 20 }),
+            getLayoutInfo: () => ({ width: data.width, height: 300, contentLeft: 40, contentWidth: 350 }),
+            onDidChangeCursorSelection: (cb: () => void) => listen('selection', cb),
+            onDidScrollChange: (cb: () => void) => listen('scroll', cb),
+            onDidLayoutChange: (cb: () => void) => listen('layout', cb),
+            onDidChangeModel: (cb: () => void) => listen('model', cb),
+            onDidBlurEditorWidget: (cb: () => void) => listen('blur', cb),
+            onDidFocusEditorWidget: (cb: () => void) => listen('focus', cb),
+        };
+        return [side, { host, buffer, events, data, selection, editor, disposals }];
+    }));
+    fake.adapter.getSelectionEditor = side => sides[side].editor as any;
+    return sides;
+}

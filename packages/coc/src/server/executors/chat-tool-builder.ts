@@ -115,6 +115,8 @@ export interface ChatToolBundleOptions {
      */
     scrubFindings?: Tool<any>;
     excludeTools?: string[];
+    /** Background scripts omit ask_user and deny gated tools, including saved approvals. */
+    unattendedScript?: boolean;
     /** Told how each approval-gated LLM tool call was settled (timeline badge). */
     onLlmToolApprovalDecision?: (record: LlmToolApprovalRecord) => void;
     /** False leaves out `run_tool_script` (browser-only bundles, Codex code mode). */
@@ -150,7 +152,7 @@ export interface ChatToolBundle {
 export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBundle {
     if (options.scrubFindings && !options.sentinelPrOutcomeReview) {
         // Approval handles stay wired for the dangerous-command guard; the tool is not offered.
-        const askUser = options.askUser ? buildAskUserAddon(options.askUser.enabled, options.askUser.deps) : undefined;
+        const askUser = options.askUser && !options.unattendedScript ? buildAskUserAddon(options.askUser.enabled, options.askUser.deps) : undefined;
         return { tools: [options.scrubFindings], toolGuidance: '', askUser };
     }
     const addons: ToolAddon[] = [];
@@ -195,7 +197,7 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         ));
     }
 
-    const askUser = options.askUser
+    const askUser = options.askUser && !options.unattendedScript
         ? buildAskUserAddon(options.askUser.enabled, options.askUser.deps)
         : undefined;
     if (askUser) {
@@ -288,6 +290,7 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
     const approvalGate = {
         processId: options.processId,
         approvalRequired,
+        denyApprovals: options.unattendedScript,
         // Same signal ask_user uses: unset means a person is watching.
         isInteractive: () => askUserDeps?.isInteractive?.() !== false,
         // No ask-user wiring (workflows, unattended paths) → nobody to ask.
@@ -298,7 +301,7 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         ? enabledTools.filter(tool => reviewTools.has(tool.name)) : enabledTools, approvalGate);
 
     // Built last, over the filtered and gated list: a script reaches only the
-    // tools this turn already offers, and gated tools still ask the user.
+    // tools this turn already offers, with the same approval policy.
     if (options.includeToolScripting !== false && !options.sentinelPrOutcomeReview
         && isToolScriptingEnabled(options)
         && filterDisabledLlmTools([{ name: 'run_tool_script' }], disabledWithContextExclusions).length > 0) {

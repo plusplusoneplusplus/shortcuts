@@ -62,6 +62,8 @@ export interface CommitListProps {
     onFileSelect?: (hash: string, filePath: string) => void;
     onCommitContextMenu?: (e: React.MouseEvent, commitHash: string) => void;
     workspaceId?: string;
+    sourceSelectionId?: string;
+    sourceWorkspaceName?: string;
     loading?: boolean;
     defaultCollapsed?: boolean;
     showEmpty?: boolean;
@@ -85,7 +87,7 @@ export interface CommitListProps {
     onDoubleClick?: (commit: GitCommitItem) => void;
 }
 
-export function CommitList({ title, commits, selectedHash, selectedHashes, onMultiSelect, selectedFile, initialExpandedHash, onSelect, onFileSelect, onCommitContextMenu, workspaceId, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0, reorderable = false, onReorder, repoRoot, isMobileSelecting = false, onMobileSelectingChange, onSwipeAction, classifiedHashes, onDoubleClick }: CommitListProps) {
+export function CommitList({ title, commits, selectedHash, selectedHashes, onMultiSelect, selectedFile, initialExpandedHash, onSelect, onFileSelect, onCommitContextMenu, workspaceId, sourceSelectionId, sourceWorkspaceName, loading, defaultCollapsed = false, showEmpty = false, emptyMessage, unpushedCount = 0, reorderable = false, onReorder, repoRoot, isMobileSelecting = false, onMobileSelectingChange, onSwipeAction, classifiedHashes, onDoubleClick }: CommitListProps) {
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
     const listRef = useRef<HTMLDivElement>(null);
     const [anchorHash, setAnchorHash] = useState<string | null>(null);
@@ -117,6 +119,8 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
         commits,
         selectedHashes,
         workspaceId,
+        sourceSelectionId,
+        sourceWorkspaceName,
         unpushedCount,
         sessionContextDragEnabled,
         onReorder,

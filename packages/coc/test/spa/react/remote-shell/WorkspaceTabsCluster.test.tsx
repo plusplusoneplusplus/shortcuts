@@ -300,3 +300,56 @@ describe('WorkspaceTabsCluster remove menu (AC-02)', () => {
         expect(screen.queryByTestId('clone-remove-active-work')).toBeNull();
     });
 });
+
+
+describe('selected clone machine identity', () => {
+    it('follows exact clone ownership when identical workspace IDs switch servers', async () => {
+        const local = repo('shared', 'shortcuts');
+        const remote = (serverId: string, serverLabel: string) => ({
+            ...local,
+            workspace: { ...local.workspace, baseUrl: `https://${serverId}.example`, remote: { serverId, serverLabel, connection: 'online' } },
+        });
+        const ubuntu = remote('ubuntu', 'ubuntu-arm');
+        const other = remote('other', 'other-machine');
+        const repos = [local, other, ubuntu];
+        mockUnseenCounts = { shared: 5, 'remote:ubuntu:shared': 16 };
+        const { rerender } = render(<WorkspaceTabsCluster repo={ubuntu} repos={repos} />);
+        const trigger = () => screen.getByTestId('clone-switch');
+        await waitFor(() => expect(trigger().getAttribute('aria-label')).toBe('shortcuts / ubuntu-arm'));
+        expect(screen.getByTestId('workspace-machine-name').textContent).toBe('ubuntu-arm');
+        expect(screen.getByTestId('clone-switch-unseen-badge').textContent).toBe('21');
+        expect(trigger().textContent).toContain('· 3');
+        fireEvent.click(trigger());
+        fireEvent.click(screen.getAllByTestId('clone-popover-item')[0]);
+        expect(mockSelectClone).toHaveBeenCalledWith('shared');
+        rerender(<WorkspaceTabsCluster repo={local} repos={repos} />);
+        expect(trigger().getAttribute('aria-label')).toBe('shortcuts / Local');
+        rerender(<WorkspaceTabsCluster repo={other} repos={repos} />);
+        expect(trigger().getAttribute('title')).toBe('shortcuts / other-machine');
+        expect(screen.getByTestId('workspace-machine-name').textContent).toBe('other-machine');
+    });
+
+    it('bounds long labels while preserving full accessible identity and focus help', async () => {
+        const name = 'very-long-repository-'.repeat(20);
+        const machine = 'very-long-machine-'.repeat(20);
+        const selected = { ...repo('long', name), workspace: {
+            ...repo('long', name).workspace, baseUrl: 'https://long.example', remote: { serverId: 'long', serverLabel: machine },
+        } };
+        render(<WorkspaceTabsCluster repo={selected} repos={[selected]} />);
+        const trigger = screen.getByTestId('clone-switch');
+        await waitFor(() => expect(trigger.getAttribute('aria-label')).toBe(`${name} / ${machine}`));
+        expect(trigger.className).toContain('max-w-');
+        expect(screen.getByTestId('workspace-clone-label').className).toContain('min-w-0');
+        expect(screen.getByTestId('workspace-repo-name').className).toContain('truncate');
+        const machineNode = screen.getByTestId('workspace-machine-name');
+        expect(machineNode.className).toContain('shrink-0');
+        expect(machineNode.className).toContain('max-w-[60%]');
+        expect(machineNode.className).toContain('truncate');
+        const tooltip = screen.getByRole('tooltip', { hidden: true });
+        expect(tooltip.textContent).toBe(`${name} / ${machine}`);
+        expect(tooltip.className).toContain('group-hover/identity:block');
+        expect(tooltip.className).toContain('group-focus-visible/identity:block');
+        trigger.focus();
+        expect(document.activeElement).toBe(trigger);
+    });
+});

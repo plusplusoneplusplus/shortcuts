@@ -14,6 +14,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type { RepoData } from '../../repos/repoGrouping';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
+import { WorkspaceCloneLabel, getWorkspaceCloneLabel } from './WorkspaceCloneLabel';
 import { RemoteProviderBadge } from './RemoteProviderBadge';
 import { RemoteServerBadge } from './RemoteServerBadge';
 import { useDropdownPopover } from './useDropdownPopover';
@@ -249,9 +250,10 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
     const displayName = groupIdentity
         ? groupIdentity.name
         : (activeSummary?.name ?? (repo?.workspace.name ?? 'Select repository'));
+    const identityLabel = !groupIdentity && repo ? getWorkspaceCloneLabel(repo, displayName) : displayName;
     const chipTitle = groupIdentity
         ? groupIdentity.name
-        : (activeGroup?.label ?? (repo?.workspace.name ?? 'Select repository'));
+        : (!repo ? (activeGroup?.label ?? displayName) : identityLabel);
     // The dot + provider badge + name + `⧉N` cluster, shared by the single-button
     // (workspace active) and split (virtual scope active) layouts.
     //
@@ -272,11 +274,11 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
                     className="hidden xl:inline-flex items-center text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#848484] dark:text-[#777]"
                 />
             )}
-            <span className="truncate">{displayName}</span>
+            {!groupIdentity && repo ? <WorkspaceCloneLabel repo={repo} name={displayName} /> : <span className="truncate">{displayName}</span>}
             {groupIdentity && ((groupIdentity.unread ?? 0) > 0 || groupIdentity.partial) &&
                 <UnseenBadge count={groupIdentity.unread ?? 0} partial={groupIdentity.partial} testId="group-scope-unseen-badge" />}
             {!groupIdentity && activeSummary && activeSummary.cloneCount > 1 && (
-                <CloneCountBadge count={activeSummary.cloneCount} className="hidden lg:inline-flex" />
+                <CloneCountBadge count={activeSummary.cloneCount} className="hidden lg:inline-flex shrink-0" />
             )}
         </>
     );
@@ -303,15 +305,15 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
             ) : onSwitchBack ? (
                 // Inactive workspace under a virtual scope: identity body switches
                 // back to this workspace, chevron opens the picker. (AC-02)
-                <div className="relative inline-flex items-center rounded-md text-[12.5px] font-semibold text-[#1f2328] dark:text-[#cccccc] max-w-[190px]">
+                <div className="relative inline-flex items-center rounded-md text-[12.5px] font-semibold text-[#1f2328] dark:text-[#cccccc] max-w-[280px]">
                     <button
                         data-testid="remote-chip"
                         data-remote-key={activeGroupKey ?? ''}
                         data-repo-group-id={groupIdentity?.id}
                         title={`Switch to ${chipTitle}`}
-                        aria-label={`Switch to ${displayName}`}
+                        aria-label={`Switch to ${identityLabel}`}
                         onClick={onSwitchBack}
-                        className="relative inline-flex items-center gap-1.5 h-[26px] pl-2 pr-1 rounded-l-md min-w-0 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                        className="group/identity relative inline-flex items-center min-w-0 gap-1.5 h-[26px] pl-2 pr-1 rounded-l-md hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
                     >
                         {identityInner}
                     </button>
@@ -337,8 +339,9 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
                     aria-haspopup="menu"
                     aria-expanded={open}
                     title={chipTitle}
+                    aria-label={identityLabel}
                     onClick={toggle}
-                    className="relative inline-flex items-center gap-1.5 h-[26px] px-2 rounded-md text-[12.5px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] max-w-[190px]"
+                    className="group/identity relative inline-flex items-center min-w-0 gap-1.5 h-[26px] px-2 rounded-md text-[12.5px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] max-w-[280px]"
                 >
                     {identityInner}
                     <Chevron />
