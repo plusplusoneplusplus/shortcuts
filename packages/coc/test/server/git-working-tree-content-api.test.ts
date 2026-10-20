@@ -20,7 +20,11 @@ import { createMockProcessStore } from './helpers/mock-process-store';
 
 function get(url: string): Promise<{ status: number; json: () => any }> {
     return new Promise((resolve, reject) => {
-        http.get(url, (res) => {
+        // `agent: false` opens a fresh connection per request. Synchronous git
+        // calls can block the event loop past the server's 5s keep-alive
+        // timeout; a pooled socket reused right after that block gets closed
+        // under the request and fails with ECONNRESET (seen on Windows CI).
+        http.get(url, { agent: false }, (res) => {
             const chunks: Buffer[] = [];
             res.on('data', (c) => chunks.push(c));
             res.on('end', () => {
