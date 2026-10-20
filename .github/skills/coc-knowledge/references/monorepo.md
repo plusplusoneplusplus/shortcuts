@@ -409,7 +409,9 @@ dispatch for an existing tag. It copies tag semver into the desktop manifest for
 packaging. Stable releases are drafts; prereleases are published as prereleases.
 Public downloads are CoC macOS DMG and Windows NSIS installers with mandatory
 `<installer>.sha256` sidecars computed from the installer bytes in the release
-job. Sidecars use standard SHA-256 output with asset basenames. CoCContainer
+job. The job first replaces spaces in installer names with dots (GitHub's upload
+naming), so sidecars name the exact asset the updater downloads; they use
+standard SHA-256 output with asset basenames. CoCContainer
 installers and loose native binaries are excluded.
 
 Release CI audits dependencies and builds/tests native artifacts for Linux,
