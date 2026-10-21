@@ -21,6 +21,8 @@ interface Pending {
     richPasteEnabled: boolean;
     cancel(): void;
     finish(error?: unknown, result?: BrowserCommandResult): void;
+    /** Pauses (`true`) or resumes the 60s timer while a background action waits on the Switch back notice. */
+    wait(waiting: boolean): void;
 }
 
 /** Targeted messages never enter the global broadcast/container event channel. */
@@ -153,6 +155,14 @@ export class BrowserControlRelay implements BrowserControlRuntime {
         }
     }
 
+    /** A background action waits for the user's Switch back, which does not count toward the 60s limit. */
+    waiting(client: BrowserRelayClient, id: unknown, waiting: unknown): void {
+        if (typeof id !== 'string' || typeof waiting !== 'boolean') return;
+        const pending = this.pending.get(id);
+        if (!pending || pending.client !== client || waiting && !this.getBackgroundEnabled()) return;
+        pending.wait(waiting);
+    }
+
     execute(workspaceId: string, processId: string, command: BrowserCommand, selectedTab?: string, signal?: AbortSignal, controllingTurnId?: string): Promise<BrowserCommandResult> {
         if (!this.getEnabled()) return Promise.reject(new Error('Browser control is disabled'));
         this.syncPolicies();
@@ -189,11 +199,25 @@ export class BrowserControlRelay implements BrowserControlRuntime {
                 cancel();
                 finish(signal?.reason ?? new Error('Browser command cancelled'));
             };
-            const timer = setTimeout(() => {
-                cancel();
-                finish(new Error('Browser command timed out after 60s'));
-            }, 60_000);
-            timer.unref();
+            let remaining = 60_000;
+            let started = Date.now();
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const startTimer = () => {
+                started = Date.now();
+                timer = setTimeout(() => {
+                    cancel();
+                    finish(new Error('Browser command timed out after 60s'));
+                }, remaining);
+                timer.unref();
+            };
+            const wait = (waiting: boolean) => {
+                if (waiting === (timer === undefined)) return;
+                if (!waiting) return startTimer();
+                clearTimeout(timer);
+                timer = undefined;
+                remaining = Math.max(0, remaining - (Date.now() - started));
+            };
+            startTimer();
             const finish = (error?: unknown, result?: BrowserCommandResult) => {
                 if (!this.pending.delete(id)) return;
                 clearTimeout(timer);
@@ -204,7 +228,7 @@ export class BrowserControlRelay implements BrowserControlRuntime {
                     reject(new Error('Unsupported desktop capability: browser frame control requires frame-aware results'));
                 } else resolve(result!);
             };
-            this.pending.set(id, { client, workspaceId, framesEnabled, richPasteEnabled, cancel, finish });
+            this.pending.set(id, { client, workspaceId, framesEnabled, richPasteEnabled, cancel, finish, wait });
             signal?.addEventListener('abort', abort, { once: true });
             try { client.send(JSON.stringify({ type: 'browser-command', request: { id, turnId, workspaceId, processId, command, selectedTab, framesEnabled, ...(richPasteEnabled ? { richPasteEnabled: true } : {}) } })); }
             catch (error) { finish(error); }

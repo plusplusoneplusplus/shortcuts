@@ -182,6 +182,46 @@ describe('browser control relay', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
+    it('excludes Switch back notice waits from the 60s limit, only for the owning socket with background control on', async () => {
+        vi.useFakeTimers();
+        const relay = enabled(), win = client('win'), other = client('other');
+        let background = true;
+        relay.setBackgroundEnabledGetter(() => background);
+        relay.advertise(win, 'b', true, ['a']);
+        const call = relay.execute('a', 'p', { action: 'click', ref: 'e1' });
+        const assertion = expect(call).rejects.toThrow('timed out after 60s');
+        const id = request(win).id;
+        await vi.advanceTimersByTimeAsync(20_000);
+        relay.waiting(other, id, true);
+        relay.waiting(win, id, 'yes');
+        relay.waiting(win, 'missing', true);
+        relay.waiting(win, id, true);
+        relay.waiting(win, id, true);
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        expect(win.send.mock.calls.some(([data]) => JSON.parse(data).type === 'browser-command-cancel')).toBe(false);
+        relay.waiting(win, id, false);
+        relay.waiting(win, id, false);
+        await vi.advanceTimersByTimeAsync(39_999);
+        expect(win.send.mock.calls.some(([data]) => JSON.parse(data).type === 'browser-command-cancel')).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        await assertion;
+        expect(vi.getTimerCount()).toBe(0);
+
+        // A reply still settles a waiting call, and waiting is ignored with background control off.
+        const waited = relay.execute('a', 'q', { action: 'tabs' });
+        const waitedId = request(win).id;
+        relay.waiting(win, waitedId, true);
+        relay.reply(win, { id: waitedId, ok: true, result: { tabs: [] } });
+        await expect(waited).resolves.toEqual({ tabs: [] });
+        background = false;
+        relay.advertise(win, 'a', true);
+        const foreground = relay.execute('a', 'p', { action: 'read' });
+        const foregroundAssertion = expect(foreground).rejects.toThrow('timed out after 60s');
+        relay.waiting(win, request(win).id, true);
+        await vi.advanceTimersByTimeAsync(60_000);
+        await foregroundAssertion;
+    });
+
     it('forwards abort, handles pre-abort and allows an admitted call to finish after disable', async () => {
         const relay = enabled(), a = client('a'), controller = new AbortController();
         relay.advertise(a, 'w', true);
@@ -325,6 +365,10 @@ describe('real existing WebSocket protocol', () => {
             ws.send(JSON.stringify({ type: 'browser-capability', workspaceId: 'x', focused: true, background: ['w'] }));
             await pong();
             await expect(sockets.browserControl.execute('w', 'p', { action: 'tabs' })).resolves.toEqual({ tabs: [] });
+            const waiting = vi.spyOn(sockets.browserControl, 'waiting');
+            ws.send(JSON.stringify({ type: 'browser-command-waiting', id: 'call', waiting: true }));
+            await pong();
+            expect(waiting).toHaveBeenCalledWith(expect.anything(), 'call', true);
             ws.removeAllListeners('message');
             const inflight = sockets.browserControl.execute('w', 'p', { action: 'tabs' });
             ws.close();
