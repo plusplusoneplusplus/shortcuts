@@ -89,6 +89,8 @@ describe('sentinel_jobs tool schema', () => {
         expect(props.action.enum).not.toContain('delete');
         for (const key of ['owner', 'workspaceId', 'processId', 'serverId']) expect(props).not.toHaveProperty(key);
         expect(tool.description).toMatch(/never permission/);
+        expect(props.gateScript).toMatchObject({ type: 'string' });
+        expect(tool.description).toMatch(/gateScript.*needs\s+`cron`/s);
     });
 });
 
@@ -159,6 +161,23 @@ describe('custom jobs', () => {
         expect(await call({ action: 'create', kind: 'custom', name: 'X', instructions: 'Y', mode: 'yolo' })).toMatchObject({ code: 'invalid' });
         for (let i = 0; i < 10; i++) await createJob({ name: `Job ${i}` });
         expect(await call({ action: 'create', kind: 'custom', name: 'Eleventh', instructions: 'Y' })).toMatchObject({ code: 'limit' });
+    });
+
+    it('sets, keeps and clears a cron-bound gate script, rejecting one without a cron', async () => {
+        const gateScript = 'return state ?? { items: [1] };';
+        expect(await call({ action: 'create', kind: 'custom', name: 'X', instructions: 'Y', gateScript }))
+            .toMatchObject({ code: 'invalid', error: expect.stringMatching(/needs a cron/) });
+        const job = await createJob({ cron: '0 9 * * *', gateScript });
+        expect(job).toMatchObject({ gateScript, gateConsecutiveFailures: 0, gatePaused: false });
+        expect(await call({ action: 'update', kind: 'custom', jobId: job.id, expectedRevision: 1, cron: '' }))
+            .toMatchObject({ code: 'invalid', error: expect.stringMatching(/needs a cron/) });
+        const renamed = (await call({ action: 'update', kind: 'custom', jobId: job.id, expectedRevision: 1, name: 'Gated' })).job;
+        expect(renamed).toMatchObject({ name: 'Gated', gateScript, revision: 2 });
+        const cleared = (await call({ action: 'update', kind: 'custom', jobId: job.id, expectedRevision: 2, gateScript: '' })).job;
+        expect(cleared.gateScript).toBeUndefined();
+        expect(await call({ action: 'update', kind: 'scrubber', expectedRevision: 0, gateScript }))
+            .toMatchObject({ code: 'invalid', error: expect.stringMatching(/gateScript/) });
+        expect(enqueue).not.toHaveBeenCalled();
     });
 
     it('runs now, blocks overlap and edits during a run, allows pause, and cancels', async () => {

@@ -18,6 +18,13 @@ export interface SentinelScheduledJobInput {
   enabled?: boolean;
   /** Absolute context-token threshold, not a percentage. */
   autoCompactThreshold?: number;
+  /**
+   * Optional gate: the body of an async JS function receiving `tools` and
+   * `state` (the previous result). Each cron tick runs it first; a non-empty
+   * JSON result starts a run with that result in the prompt. Needs `cron`.
+   * Empty string clears it on update.
+   */
+  gateScript?: string;
 }
 
 export interface SentinelScheduledJobRun {
@@ -41,6 +48,12 @@ export interface SentinelScheduledJob extends Omit<SentinelScheduledJobInput, 'm
   mode: 'ask' | 'autopilot';
   enabled: boolean;
   autoCompactThreshold: number;
+  /** Canonical JSON of the gate's last successful result. */
+  gateLastResult?: string;
+  gateConsecutiveFailures: number;
+  gateLastError?: { message: string; at: string };
+  /** Set after five gate failures in a row; scheduled ticks skip until resumed. */
+  gatePaused: boolean;
   revision: number;
   processId?: string;
   nextRunAt?: string;

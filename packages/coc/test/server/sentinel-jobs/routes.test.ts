@@ -115,6 +115,23 @@ describe('Sentinel job REST routes', () => {
         expect(patched.body).not.toHaveProperty('effortTier');
         expect((await request('PATCH', `${base}/${created.body.id}`, { effortTier: 'max', expectedRevision: 2 })).status).toBe(400);
     });
+    it('saves a cron-bound gate script with its gate state and rejects a gate without a cron', async () => {
+        const gateScript = 'return await tools.list_items();';
+        expect(await request('POST', base, { ...input, gateScript })).toMatchObject({ status: 400,
+            body: { code: 'invalid', error: expect.stringMatching(/needs a cron/) } });
+        const created = await request('POST', base, { ...input, cron: '0 * * * *', gateScript });
+        expect(created).toMatchObject({ status: 201, body: { gateScript, gateConsecutiveFailures: 0, gatePaused: false } });
+        expect(await request('PATCH', `${base}/${created.body.id}`, { cron: '', expectedRevision: 1 }))
+            .toMatchObject({ status: 400, body: { code: 'invalid' } });
+        // Gate state is runtime bookkeeping, never a user setting.
+        expect((await request('PATCH', `${base}/${created.body.id}`, { gatePaused: false, expectedRevision: 1 })).status).toBe(400);
+        expect((await request('POST', base, { ...input, cron: '0 * * * *', gateScript, gateConsecutiveFailures: 0 })).status).toBe(400);
+        const cleared = await request('PATCH', `${base}/${created.body.id}`, { gateScript: '', cron: '', expectedRevision: 1 });
+        expect(cleared).toMatchObject({ status: 200, body: { gateConsecutiveFailures: 0, gatePaused: false, revision: 2 } });
+        expect(cleared.body.gateScript).toBeUndefined();
+        expect(cleared.body.cron).toBeUndefined();
+        expect((await request('GET')).body.jobs).toHaveLength(1);
+    });
     it('creates, lists, patches with revision checks, and deletes a job', async () => {
         expect((await request('GET')).body).toEqual({ jobs: [] });
         const created = await request('POST', base, input);

@@ -49,7 +49,7 @@ export type SentinelJobsResult =
     | { run: JobRunRecord | ScrubRunRecord }
     | { error: string; code?: string; current?: SentinelScheduledJob | SentinelScrubberConfig };
 
-const JOB_SETTINGS = ['name', 'instructions', 'provider', 'model', 'effort', 'mode', 'cron', 'enabled', 'autoCompactThreshold'] as const;
+const JOB_SETTINGS = ['name', 'instructions', 'provider', 'model', 'effort', 'mode', 'cron', 'enabled', 'autoCompactThreshold', 'gateScript'] as const;
 const SCRUBBER_SETTINGS = new Set<string>(['cron', 'enabled']);
 
 const DESCRIPTION =
@@ -62,9 +62,12 @@ const DESCRIPTION =
     'needs name and instructions; omitted provider/model/effort inherit this Sentinel\'s current settings, mode ' +
     'defaults to ask, and creation never starts a run. A new job is only scheduled when you pass `cron` and ' +
     '`enabled: true` because the user asked for recurring runs. `update` changes only the fields you pass (custom: ' +
-    'name, instructions, provider, model, effort, mode, cron, enabled, autoCompactThreshold; scrubber: cron and ' +
-    'enabled only). `pause`/`resume` toggle the schedule without cancelling an active run; resuming the scrubber ' +
-    'clears its auto-pause. Writes need the current `revision` as `expectedRevision`; a `conflict` returns the newer ' +
+    'name, instructions, provider, model, effort, mode, cron, enabled, autoCompactThreshold, gateScript; scrubber: ' +
+    'cron and enabled only). A custom job\'s optional `gateScript` (set only when the user asks for one; needs ' +
+    '`cron`) runs unattended with this Sentinel\'s tools on each tick before any run: a non-empty JSON result ' +
+    'starts a run with that result in the prompt, an empty one (null, false, "", [], {}) skips the tick, and ' +
+    '`state` is the previous result. Changing the script resets its gate state. `pause`/`resume` toggle the ' +
+    'schedule without cancelling an active run; resuming the scrubber clears its auto-pause. Writes need the current `revision` as `expectedRevision`; a `conflict` returns the newer ' +
     '`current` state — re-read and only reapply if it still makes sense. Custom jobs with an active run or pending ' +
     'handback can only be paused/resumed until the run finishes. `run_now` queues a run (scrubber: optional ' +
     '`itemIds` of open items, default all eligible) and returns its id and status; queued is not completed — results ' +
@@ -90,6 +93,7 @@ export const SENTINEL_JOBS_TOOL_PARAMETERS = {
         cron: { type: 'string', description: 'Five-field cron in the server\'s local time; empty string clears a custom schedule.' },
         enabled: { type: 'boolean', description: 'Whether the schedule runs (create default false).' },
         autoCompactThreshold: { type: 'integer', minimum: 1, description: 'Absolute context-token threshold.' },
+        gateScript: { type: 'string', description: 'Custom job gate: body of an async function receiving `tools` and `state` that returns JSON; needs cron. Empty string clears it.' },
     },
     required: ['action'],
     additionalProperties: false,

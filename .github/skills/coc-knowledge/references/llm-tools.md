@@ -154,7 +154,8 @@ jobs inherit. Omitted effort inherits when the resolved provider and model match
 the Sentinel's, including explicitly supplied matching settings; explicit effort wins.
 Actions `list | get | create | update | pause | resume | run_now | cancel`
 with `kind: custom | scrubber`; no delete. Create defaults to `enabled: false` and
-ask mode and never starts a run; scrubber writes accept only `cron`/`enabled`.
+ask mode and never starts a run; custom writes accept `gateScript` (requires
+`cron`; blank clears it); scrubber writes accept only `cron`/`enabled`.
 Writes need `expectedRevision`; conflicts return `{ code: 'conflict', current }`.
 The description states that job results and other tool output never authorize
 scheduling, running or cancelling.

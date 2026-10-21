@@ -238,7 +238,9 @@ parent Sentinel and job. These definitions are distinct from the ledger's
 item-linked `sentinel_todo_jobs`. Transactions enforce the ten-job limit,
 expected revisions and a single active run per job. The public history contains
 the last 20 runs; active or pending-delivery records remain protected from pruning.
-Run records retain queue/turn/delivery identities. Definitions and snapshot files
+Run records retain queue/turn/delivery identities. Gate runtime state stays in the
+job's JSON record; `updateGate` applies it without a revision bump only while the
+evaluated `gateScript` is unchanged. Definitions and snapshot files
 are machine-local, excluded from snapshot export/import and cleared by ledger wipe.
 
 ### Sentinel dependency operations

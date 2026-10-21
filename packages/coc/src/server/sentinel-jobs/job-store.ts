@@ -16,9 +16,13 @@ export const jobInputSchema = z.object({
     cron: z.string().trim().max(200).optional(),
     enabled: z.boolean().default(true),
     autoCompactThreshold: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(100_000),
+    gateScript: z.string().max(32_000).optional(),
 }).strict();
 
 export type JobRecord = Omit<SentinelScheduledJob, 'runs' | 'activeRun' | 'nextRunAt'> & { runCount: number; chatCreated?: boolean };
+/** Runtime gate bookkeeping; ticks write it without a revision bump, user edits never set it. */
+export type JobGateState = Pick<JobRecord, 'gateLastResult' | 'gateConsecutiveFailures' | 'gateLastError' | 'gatePaused'>;
+const FRESH_GATE: JobGateState = { gateConsecutiveFailures: 0, gatePaused: false };
 export interface JobRunRecord extends SentinelScheduledJobRun {
     taskId?: string;
     handbackTaskId?: string;
@@ -73,7 +77,7 @@ export class SentinelJobStore {
         return this.db.transaction(() => {
             const parsed = this.validate(input);
             if (this.list(owner).length >= 10) throw new JobError('limit', 'A Sentinel can have at most 10 user jobs');
-            const job: JobRecord = { ...parsed, id: randomUUID(), revision: 1, runCount: 0 };
+            const job: JobRecord = { ...parsed, ...FRESH_GATE, id: randomUUID(), revision: 1, runCount: 0 };
             this.db.prepare('INSERT INTO sentinel_scheduled_jobs VALUES (?, ?, ?, ?)')
                 .run(owner.workspaceId, owner.processId, job.id, JSON.stringify(job));
             return job;
@@ -84,11 +88,16 @@ export class SentinelJobStore {
         return this.db.transaction(() => {
             const togglingSchedule = Object.keys(input).length === 1 && typeof input.enabled === 'boolean';
             const current = this.mutable(owner, id, expectedRevision, togglingSchedule);
-            const { id: _, revision: _revision, runCount: _count, processId: _process, chatCreated: _chat, ...settings } = current;
+            const { id: _, revision: _revision, runCount: _count, processId: _process, chatCreated: _chat,
+                gateLastResult, gateConsecutiveFailures, gateLastError, gatePaused, ...settings } = current;
             const merged: Partial<SentinelScheduledJobInput> = { ...settings, ...input };
             // An explicit model choice without a tier replaces a stored tier.
             if ('model' in input && !('effortTier' in input)) delete merged.effortTier;
-            const next = { ...this.validate(merged), id: current.id,
+            const parsed = this.validate(merged);
+            // Gate state belongs to one script; a changed or cleared script starts fresh.
+            const gate = parsed.gateScript === current.gateScript
+                ? { gateLastResult, gateConsecutiveFailures, gateLastError, gatePaused } : FRESH_GATE;
+            const next = { ...parsed, ...gate, id: current.id,
                 processId: current.processId, chatCreated: current.chatCreated, runCount: current.runCount, revision: current.revision + 1 };
             this.save(owner, next);
             return next;
@@ -135,6 +144,18 @@ export class SentinelJobStore {
         })();
     }
 
+    /** Applies gate bookkeeping only while `script` is still the job's gate; otherwise returns undefined. */
+    updateGate(owner: SentinelTodoOwner, id: string, script: string,
+        next: (job: JobRecord) => Partial<JobGateState>): JobRecord | undefined {
+        return this.db.transaction(() => {
+            const job = this.get(owner, id);
+            if (!script || job.gateScript !== script) return undefined;
+            const updated = { ...job, ...next(job) };
+            this.save(owner, updated);
+            return updated;
+        })();
+    }
+
     markChatCreated(owner: SentinelTodoOwner, id: string): void {
         this.db.transaction(() => this.save(owner, { ...this.get(owner, id), chatCreated: true }))();
     }
@@ -168,6 +189,7 @@ export class SentinelJobStore {
         if (value.cron === '') delete value.cron;
         if (value.effort === '') delete value.effort;
         if (value.effortTier === '') delete value.effortTier;
+        if (!value.gateScript?.trim()) delete value.gateScript;
         // A selected tier owns model and effort, so stale explicit values cannot override it.
         if (value.effortTier) {
             delete value.model;
@@ -179,6 +201,7 @@ export class SentinelJobStore {
             const error = validateScrubCron(value.cron);
             if (error) throw new JobError('invalid', error);
         }
+        if (value.gateScript && !value.cron) throw new JobError('invalid', 'A gate script needs a cron schedule');
         return value;
     }
 
