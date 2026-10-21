@@ -6,14 +6,17 @@ export interface BrowserRelayClient {
     send(data: string): void;
 }
 
+/** One socket serves its selected workspace plus, with background control on, workspaces it retains for active turns. */
 interface Capability {
     client: BrowserRelayClient;
-    workspaceId: string;
+    workspaceId: string | null;
+    background: Set<string>;
     focused: number;
 }
 
 interface Pending {
     client: BrowserRelayClient;
+    workspaceId: string;
     framesEnabled: boolean;
     richPasteEnabled: boolean;
     cancel(): void;
@@ -25,11 +28,12 @@ export class BrowserControlRelay implements BrowserControlRuntime {
     private enabled = () => false;
     private framesEnabled = () => false;
     private richPasteEnabled = () => false;
+    private backgroundEnabled = () => false;
     private sequence = 0;
     private readonly clients = new Map<string, Capability>();
     private readonly pending = new Map<string, Pending>();
     private readonly turns = new WeakMap<AbortSignal, string>();
-    private readonly activeTurns = new Map<string, { turnId: string; clients: Set<BrowserRelayClient> }>();
+    private readonly activeTurns = new Map<string, { workspaceId: string; turnId: string; clients: Set<BrowserRelayClient> }>();
 
     finishProcess(workspaceId: string, processId: string): void {
         const key = JSON.stringify([workspaceId, processId]);
@@ -46,6 +50,27 @@ export class BrowserControlRelay implements BrowserControlRuntime {
     getEnabled(): boolean { return this.enabled(); }
     getFramesEnabled(): boolean { return this.getEnabled() && this.framesEnabled() === true; }
     getRichPasteEnabled(): boolean { return this.getFramesEnabled() && this.richPasteEnabled() === true; }
+    getBackgroundEnabled(): boolean { return this.getEnabled() && this.backgroundEnabled() === true; }
+    setBackgroundEnabledGetter(getEnabled: () => boolean): void {
+        this.backgroundEnabled = getEnabled;
+        this.syncBackgroundPolicy();
+    }
+    /** Re-applies every live policy; call on runtime config change. */
+    syncPolicies(): void {
+        this.syncBackgroundPolicy();
+        this.syncFramesPolicy();
+    }
+    /** With background control off, sockets serve only their selected workspace. */
+    syncBackgroundPolicy(): void {
+        if (this.getBackgroundEnabled()) return;
+        for (const capability of [...this.clients.values()]) {
+            if (!capability.background.size) continue;
+            const dropped = capability.background;
+            capability.background = new Set();
+            if (!capability.workspaceId) this.clients.delete(capability.client.id);
+            this.drop(capability.client, dropped);
+        }
+    }
     setRichPasteEnabledGetter(getEnabled: () => boolean): void {
         this.richPasteEnabled = getEnabled;
         this.syncFramesPolicy();
@@ -66,29 +91,54 @@ export class BrowserControlRelay implements BrowserControlRuntime {
         }
     }
 
-    advertise(client: BrowserRelayClient, workspaceId: unknown, focused: unknown): void {
+    advertise(client: BrowserRelayClient, workspaceId: unknown, focused: unknown, background?: unknown): void {
         if (typeof workspaceId !== 'string' || !workspaceId || typeof focused !== 'boolean') return;
         const old = this.clients.get(client.id);
-        if (old && old.workspaceId !== workspaceId) this.disconnect(client);
-        this.clients.set(client.id, {
-            client, workspaceId,
-            focused: focused ? ++this.sequence : old?.focused ?? 0,
-        });
+        this.serve(client, workspaceId, this.retained(background, workspaceId), focused ? ++this.sequence : old?.focused ?? 0);
+    }
+
+    /** Clears the selected workspace; background control may keep retained workspaces served. */
+    clear(client: BrowserRelayClient, background?: unknown): void {
+        const retained = this.retained(background, null);
+        if (!retained.size) return this.disconnect(client);
+        this.serve(client, null, retained, this.clients.get(client.id)?.focused ?? 0);
     }
 
     disconnect(client: BrowserRelayClient): void {
+        const old = this.clients.get(client.id);
         this.clients.delete(client.id);
+        this.drop(client, old ? served(old) : null);
+    }
+
+    private retained(background: unknown, workspaceId: string | null): Set<string> {
+        if (!this.getBackgroundEnabled() || !Array.isArray(background)) return new Set();
+        return new Set(background.filter((id): id is string => typeof id === 'string' && !!id && id.length <= 512 && id !== workspaceId).slice(0, 64));
+    }
+
+    private serve(client: BrowserRelayClient, workspaceId: string | null, background: Set<string>, focused: number): void {
+        const old = this.clients.get(client.id);
+        this.clients.set(client.id, { client, workspaceId, background, focused });
+        if (!old) return;
+        const dropped = new Set([...served(old)].filter(id => id !== workspaceId && !background.has(id)));
+        if (dropped.size) this.drop(client, dropped);
+    }
+
+    /** Rejects the socket's pending calls and turn routes for the given workspaces (all when null). */
+    private drop(client: BrowserRelayClient, workspaces: Set<string> | null): void {
         for (const [key, turn] of this.activeTurns) {
+            if (workspaces && !workspaces.has(turn.workspaceId)) continue;
             turn.clients.delete(client);
             if (!turn.clients.size) this.activeTurns.delete(key);
         }
         for (const pending of [...this.pending.values()]) {
-            if (pending.client === client) pending.finish(new Error('CoC desktop window disconnected during browser command'));
+            if (pending.client === client && (!workspaces || workspaces.has(pending.workspaceId))) {
+                pending.finish(new Error('CoC desktop window disconnected during browser command'));
+            }
         }
     }
 
     reply(client: BrowserRelayClient, reply: unknown): void {
-        this.syncFramesPolicy();
+        this.syncPolicies();
         if (!reply || typeof reply !== 'object') return;
         const value = reply as { id?: unknown; ok?: unknown; result?: unknown; error?: unknown };
         if (typeof value.id !== 'string') return;
@@ -105,7 +155,7 @@ export class BrowserControlRelay implements BrowserControlRuntime {
 
     execute(workspaceId: string, processId: string, command: BrowserCommand, selectedTab?: string, signal?: AbortSignal, controllingTurnId?: string): Promise<BrowserCommandResult> {
         if (!this.getEnabled()) return Promise.reject(new Error('Browser control is disabled'));
-        this.syncFramesPolicy();
+        this.syncPolicies();
         const framesEnabled = this.getFramesEnabled();
         const richPasteEnabled = command.action === 'paste_html' && this.getRichPasteEnabled();
         if (command.action === 'paste_html' && !richPasteEnabled) return Promise.reject(new Error('Browser rich paste is disabled'));
@@ -113,8 +163,9 @@ export class BrowserControlRelay implements BrowserControlRuntime {
             return Promise.reject(new Error('Browser frame control is disabled'));
         }
         if (signal?.aborted) return Promise.reject(signal.reason);
-        const selected = [...this.clients.values()].filter(client => client.workspaceId === workspaceId)
-            .sort((a, b) => b.focused - a.focused)[0];
+        // A window showing the workspace wins over one keeping it in the background.
+        const selected = [...this.clients.values()].filter(client => client.workspaceId === workspaceId || client.background.has(workspaceId))
+            .sort((a, b) => Number(b.workspaceId === workspaceId) - Number(a.workspaceId === workspaceId) || b.focused - a.focused)[0];
         if (!selected) return Promise.reject(new Error('No CoC desktop window is open for this workspace'));
         const client = selected.client;
         const id = randomUUID();
@@ -126,7 +177,7 @@ export class BrowserControlRelay implements BrowserControlRuntime {
         const turnKey = JSON.stringify([workspaceId, processId]);
         const previous = this.activeTurns.get(turnKey);
         if (previous && previous.turnId !== turnId) this.finishProcess(workspaceId, processId);
-        const turn = this.activeTurns.get(turnKey) ?? { turnId, clients: new Set<BrowserRelayClient>() };
+        const turn = this.activeTurns.get(turnKey) ?? { workspaceId, turnId, clients: new Set<BrowserRelayClient>() };
         turn.clients.add(client);
         this.activeTurns.set(turnKey, turn);
         return new Promise((resolve, reject) => {
@@ -153,12 +204,16 @@ export class BrowserControlRelay implements BrowserControlRuntime {
                     reject(new Error('Unsupported desktop capability: browser frame control requires frame-aware results'));
                 } else resolve(result!);
             };
-            this.pending.set(id, { client, framesEnabled, richPasteEnabled, cancel, finish });
+            this.pending.set(id, { client, workspaceId, framesEnabled, richPasteEnabled, cancel, finish });
             signal?.addEventListener('abort', abort, { once: true });
             try { client.send(JSON.stringify({ type: 'browser-command', request: { id, turnId, workspaceId, processId, command, selectedTab, framesEnabled, ...(richPasteEnabled ? { richPasteEnabled: true } : {}) } })); }
             catch (error) { finish(error); }
         });
     }
+}
+
+function served(capability: Capability): Set<string> {
+    return new Set([...(capability.workspaceId ? [capability.workspaceId] : []), ...capability.background]);
 }
 
 function isResult(value: unknown): value is BrowserCommandResult {

@@ -340,9 +340,11 @@ describe('registerAllRoutes', () => {
             let enabled = () => false;
             let framesEnabled = () => false;
             let richPasteEnabled = () => false;
+            let backgroundEnabled = () => false;
             const broker = { setEnabledGetter: (get: () => boolean) => { enabled = get; },
                 setFramesEnabledGetter: (get: () => boolean) => { framesEnabled = get; },
                 setRichPasteEnabledGetter: (get: () => boolean) => { richPasteEnabled = get; },
+                setBackgroundEnabledGetter: (get: () => boolean) => { backgroundEnabled = get; },
                 getEnabled: () => enabled(), execute: vi.fn() };
             socket = { ...makeWsServer(), browserControl: broker };
             expect(getRuntime()).toBe(broker);
@@ -355,6 +357,9 @@ describe('registerAllRoutes', () => {
             expect(richPasteEnabled()).toBe(false);
             (opts.runtimeConfigService!.config as any).browserControl.richPasteEnabled = true;
             expect(richPasteEnabled()).toBe(true);
+            expect(backgroundEnabled()).toBe(false);
+            (opts.runtimeConfigService!.config as any).browserControl.backgroundEnabled = true;
+            expect(backgroundEnabled()).toBe(true);
             expect(getRuntime()).toBe(broker);
         } finally {
             composition.whatsappMessagingManager.dispose();

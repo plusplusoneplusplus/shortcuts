@@ -899,6 +899,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         browserControl?.setRichPasteEnabledGetter(() => (
             opts.runtimeConfigService?.config ?? opts.resolvedConfig
         )?.browserControl?.richPasteEnabled === true);
+        browserControl?.setBackgroundEnabledGetter(() => (
+            opts.runtimeConfigService?.config ?? opts.resolvedConfig
+        )?.browserControl?.backgroundEnabled === true);
         return browserControl;
     }, new BrowserToolStateStore(dataDir));
     // Async extension-canvas capabilities + host.complete. Live (admin toggle
