@@ -368,7 +368,7 @@ references before editing. Paths are package-relative.
   coc-client contracts include script input, evaluation state and delivery receipts.
   Already-built tools recheck authoring gates through the shared service; script
   list/pause/remove remain available with execution disabled.
-  `triggers/script-condition-result.ts` canonicalizes script result JSON with
+  `sentinel-jobs/job-gate-result.ts` canonicalizes script result JSON with
   recursive lexical key ordering, a 16 KiB UTF-8 cap and SHA-256 hashing. It rejects
   non-JSON values; runner-side JSON normalization must not bypass this validation.
   `ScriptConditionEvaluator` computes a first-run baseline and repeating whole-result
@@ -380,7 +380,7 @@ references before editing. Paths are package-relative.
   longer intervals. `runScriptCondition` passes state and strict JSON validation
   to the shared script engine with a trigger-only 60-second abort deadline. Abort
   terminates workers and cancels inner calls; the caller disposes its owner-resolved
-  unattended runtime. `runScriptConditionWithOwnerTools` assembles the supplied
+  unattended runtime. `runJobGateWithOwnerTools` assembles the supplied
   owner-bound capabilities through the shared chat context, including Memory V2,
   and disposes its context/runtime after every outcome. It uses the full resolved
   CoC list, omits questions and denies approval-gated handlers. Nested scripts

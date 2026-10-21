@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { getScriptConditionPollDelay, ScriptConditionEvaluator } from '../../../src/server/triggers/script-condition-evaluator';
-import { canonicalizeScriptConditionResult } from '../../../src/server/triggers/script-condition-result';
+import { canonicalizeJobGateResult } from '../../../src/server/sentinel-jobs/job-gate-result';
 import type { ScriptConditionEvent, Trigger } from '../../../src/server/triggers/trigger-types';
 
 function rule(overrides: Partial<ScriptConditionEvent> = {}): Trigger {
@@ -18,7 +18,7 @@ function rule(overrides: Partial<ScriptConditionEvent> = {}): Trigger {
 }
 
 function baseline(value: unknown): Partial<ScriptConditionEvent> {
-    const result = canonicalizeScriptConditionResult(value);
+    const result = canonicalizeJobGateResult(value);
     return { lastResult: result.canonicalJson, lastResultHash: result.hash };
 }
 

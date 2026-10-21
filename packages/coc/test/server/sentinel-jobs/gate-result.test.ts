@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
-    canonicalizeScriptConditionResult as canonicalize,
-    MAX_SCRIPT_CONDITION_RESULT_BYTES,
-} from '../../../src/server/triggers/script-condition-result';
+    canonicalizeJobGateResult as canonicalize,
+    MAX_JOB_GATE_RESULT_BYTES,
+} from '../../../src/server/sentinel-jobs/job-gate-result';
 
-describe('canonicalizeScriptConditionResult', () => {
+describe('canonicalizeJobGateResult', () => {
     it.each([null, true, false, 0, -12.5, 'hello', [], {}])('accepts JSON value %j', value => {
         const result = canonicalize(value);
         expect(JSON.parse(result.canonicalJson)).toEqual(value);
@@ -38,16 +38,16 @@ describe('canonicalizeScriptConditionResult', () => {
     });
 
     it('accepts exactly 16 KiB and rejects larger canonical JSON', () => {
-        const value = 'x'.repeat(MAX_SCRIPT_CONDITION_RESULT_BYTES - 2);
-        expect(Buffer.byteLength(canonicalize(value).canonicalJson)).toBe(MAX_SCRIPT_CONDITION_RESULT_BYTES);
+        const value = 'x'.repeat(MAX_JOB_GATE_RESULT_BYTES - 2);
+        expect(Buffer.byteLength(canonicalize(value).canonicalJson)).toBe(MAX_JOB_GATE_RESULT_BYTES);
         expect(() => canonicalize(value + 'x')).toThrow('exceeds');
     });
 
     it('counts UTF-8 and JSON escaping in the stored size', () => {
-        const multibyte = 'é'.repeat((MAX_SCRIPT_CONDITION_RESULT_BYTES - 2) / 2);
-        expect(Buffer.byteLength(canonicalize(multibyte).canonicalJson)).toBe(MAX_SCRIPT_CONDITION_RESULT_BYTES);
+        const multibyte = 'é'.repeat((MAX_JOB_GATE_RESULT_BYTES - 2) / 2);
+        expect(Buffer.byteLength(canonicalize(multibyte).canonicalJson)).toBe(MAX_JOB_GATE_RESULT_BYTES);
         expect(() => canonicalize(multibyte + 'é')).toThrow('exceeds');
-        expect(() => canonicalize('\n'.repeat(MAX_SCRIPT_CONDITION_RESULT_BYTES / 2))).toThrow('exceeds');
+        expect(() => canonicalize('\n'.repeat(MAX_JOB_GATE_RESULT_BYTES / 2))).toThrow('exceeds');
     });
 
     it.each([undefined, NaN, Infinity, -Infinity, 1n, Symbol('x'), () => 1,

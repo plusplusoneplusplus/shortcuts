@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 
 /** Maximum stored result size, measured as UTF-8 canonical JSON. */
-export const MAX_SCRIPT_CONDITION_RESULT_BYTES = 16 * 1024;
+export const MAX_JOB_GATE_RESULT_BYTES = 16 * 1024;
 
-export interface ScriptConditionResult {
+export interface JobGateResult {
     canonicalJson: string;
     hash: string;
 }
@@ -12,15 +12,15 @@ export interface ScriptConditionResult {
  * Encode JSON values without invoking toJSON or silently dropping invalid values.
  * Object keys sort lexically at every level; array order remains significant.
  */
-export function canonicalizeScriptConditionResult(value: unknown): ScriptConditionResult {
+export function canonicalizeJobGateResult(value: unknown): JobGateResult {
     const parts: string[] = [];
     const ancestors = new Set<object>();
     let bytes = 0;
 
     function append(text: string): void {
         bytes += Buffer.byteLength(text, 'utf8');
-        if (bytes > MAX_SCRIPT_CONDITION_RESULT_BYTES) {
-            throw new Error(`Script result exceeds ${MAX_SCRIPT_CONDITION_RESULT_BYTES} bytes of canonical JSON`);
+        if (bytes > MAX_JOB_GATE_RESULT_BYTES) {
+            throw new Error(`Script result exceeds ${MAX_JOB_GATE_RESULT_BYTES} bytes of canonical JSON`);
         }
         parts.push(text);
     }

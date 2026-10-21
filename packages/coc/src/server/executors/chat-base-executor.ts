@@ -86,7 +86,7 @@ import type { SystemOneAddonDeps } from './prompt-builder';
 import type { CreatePullRequestToolDeps } from '../llm-tools/create-pull-request-tool';
 import { readAutomationTurnSource } from '../processes/automation-turn-source';
 import type { ScriptConditionRunner } from '../triggers/script-condition-evaluator';
-import { runScriptConditionWithOwnerTools } from '../triggers/script-condition-owner-runner';
+import { runJobGateWithOwnerTools } from '../sentinel-jobs/job-gate-owner-runner';
 /** Log prefix for every line this executor writes. */
 const CHAT_EXECUTOR_LOG_LABEL = '[ChatModeExecutor]';
 
@@ -396,7 +396,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         const provider = resolveRecordedProvider(owner) ?? this.provider;
         const workingDirectory = owner.workingDirectory ?? this.defaultWorkingDirectory;
         const cron = this.buildCronToolDeps(owner.id);
-        return runScriptConditionWithOwnerTools({
+        return runJobGateWithOwnerTools({
             code: trigger.event.script, state, signal,
             ownerTools: {
                 dataDir: this.dataDir, store: this.store,

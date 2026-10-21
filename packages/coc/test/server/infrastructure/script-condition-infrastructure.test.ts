@@ -9,7 +9,7 @@ import {
     type TriggerInfrastructureOptions,
 } from '../../../src/server/infrastructure/trigger-infrastructure';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
-import { runScriptConditionWithOwnerTools } from '../../../src/server/triggers/script-condition-owner-runner';
+import { runJobGateWithOwnerTools } from '../../../src/server/sentinel-jobs/job-gate-owner-runner';
 import type { ScriptConditionRunner } from '../../../src/server/triggers/script-condition-evaluator';
 import type { Trigger } from '../../../src/server/triggers/trigger-types';
 
@@ -369,7 +369,7 @@ describe('script-condition trigger infrastructure', () => {
         await build({
             runScriptCondition: async (trigger, state, signal) => {
                 if (trigger.event.type !== 'script-condition') throw new Error('Expected script');
-                return runScriptConditionWithOwnerTools({
+                return runJobGateWithOwnerTools({
                     ownerTools: { dataDir, store, workspaceId: trigger.workspaceId, processId: trigger.processId },
                     code: trigger.event.script, state, signal,
                 });

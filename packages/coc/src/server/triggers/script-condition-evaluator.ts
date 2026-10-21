@@ -1,6 +1,6 @@
 import type { EvaluationOptions, EvaluationOutcome, EventEvaluator } from './trigger-manager';
 import type { ScriptConditionEvent, Trigger } from './trigger-types';
-import { canonicalizeScriptConditionResult } from './script-condition-result';
+import { canonicalizeJobGateResult } from '../sentinel-jobs/job-gate-result';
 
 /** The owner-scoped runtime supplies tools, strict JSON validation and cancellation. */
 export type ScriptConditionRunner = (trigger: Trigger, state: unknown, signal?: AbortSignal) => Promise<unknown>;
@@ -26,7 +26,7 @@ export class ScriptConditionEvaluator implements EventEvaluator {
             const state: unknown = event.lastResult === undefined ? null : JSON.parse(event.lastResult);
             const value = await this.run(trigger, state, signal);
             signal?.throwIfAborted();
-            const result = canonicalizeScriptConditionResult(value);
+            const result = canonicalizeJobGateResult(value);
             const changed = result.hash !== event.lastResultHash;
             const { lastError: _cleared, ...rest } = event;
             return {

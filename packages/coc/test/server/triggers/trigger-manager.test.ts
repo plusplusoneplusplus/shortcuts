@@ -13,7 +13,7 @@ import { CocToolRuntime, defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import { TriggerStore } from '../../../src/server/triggers/trigger-store';
 import { TriggerManager } from '../../../src/server/triggers/trigger-manager';
 import { ScriptConditionEvaluator } from '../../../src/server/triggers/script-condition-evaluator';
-import { runScriptCondition } from '../../../src/server/triggers/script-condition-runner';
+import { runJobGate } from '../../../src/server/sentinel-jobs/job-gate-runner';
 import type {
     EvaluationOutcome,
     EventEvaluator,
@@ -1020,7 +1020,7 @@ describe('script-condition repeating scheduler', () => {
         const evaluator = new ScriptConditionEvaluator(async (trigger, state, signal) => {
             try {
                 if (trigger.event.type !== 'script-condition') throw new Error('Expected script rule');
-                return await runScriptCondition({ code: trigger.event.script, state, runtime, signal });
+                return await runJobGate({ code: trigger.event.script, state, runtime, signal });
             } finally { finished(); }
         });
         const h = setup(evaluator);

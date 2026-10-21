@@ -4,7 +4,7 @@ import type { AIProcess } from '@plusplusoneplusplus/forge';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { TriggerStore } from '../../../src/server/triggers/trigger-store';
 import { SentinelTodoTriggerFirer } from '../../../src/server/triggers/sentinel-todo-trigger-firer';
-import { canonicalizeScriptConditionResult } from '../../../src/server/triggers/script-condition-result';
+import { canonicalizeJobGateResult } from '../../../src/server/sentinel-jobs/job-gate-result';
 import type { ScriptConditionEvent, Trigger } from '../../../src/server/triggers/trigger-types';
 import { TriggerManager } from '../../../src/server/triggers/trigger-manager';
 import { ScriptConditionEvaluator } from '../../../src/server/triggers/script-condition-evaluator';
@@ -365,7 +365,7 @@ describe('SentinelTodoTriggerFirer', () => {
         let enabled: boolean;
         let next: ScriptConditionEvent;
         const canonical = (value: unknown) => {
-            const { canonicalJson, hash } = canonicalizeScriptConditionResult(value);
+            const { canonicalJson, hash } = canonicalizeJobGateResult(value);
             return { lastResult: canonicalJson, lastResultHash: hash };
         };
         const makeFirer = () => new SentinelTodoTriggerFirer({

@@ -4,7 +4,7 @@ import { TriggerStore } from '../../src/server/triggers/trigger-store';
 import { SentinelTodoStore } from '../../src/server/sentinel-todos/sentinel-todo-store';
 import { SentinelTodoTriggerFirer } from '../../src/server/triggers/sentinel-todo-trigger-firer';
 import { QueueActionExecutor } from '../../src/server/triggers/queue-action-executor';
-import { canonicalizeScriptConditionResult } from '../../src/server/triggers/script-condition-result';
+import { canonicalizeJobGateResult } from '../../src/server/sentinel-jobs/job-gate-result';
 import type { ScriptConditionEvent, Trigger } from '../../src/server/triggers/trigger-types';
 import os from 'node:os';
 import path from 'node:path';
@@ -87,7 +87,7 @@ describe('durable review admission', () => {
         const owner = { workspaceId, processId };
         const item = todos.create(owner, { title: 'Watch PR' }, { actor: 'user' }).item;
         const result = (value: unknown) => {
-            const encoded = canonicalizeScriptConditionResult(value);
+            const encoded = canonicalizeJobGateResult(value);
             return { lastResult: encoded.canonicalJson, lastResultHash: encoded.hash };
         };
         const rule: Trigger = {
@@ -169,7 +169,7 @@ describe('durable review admission', () => {
                 const todos = new SentinelTodoStore(triggerDb);
                 const owner = { workspaceId, processId };
                 const item = todos.create(owner, { title: 'Watch PR' }, { actor: 'user' }).item;
-                const encoded = canonicalizeScriptConditionResult({ state: 'approved' });
+                const encoded = canonicalizeJobGateResult({ state: 'approved' });
                 const rule: Trigger = {
                     id: 'script-rule', ...owner, status: kind === 'pause' ? 'paused' : 'active', revision: 2,
                     createdAt: new Date().toISOString(), expiresAt: null, lastTickAt: null, nextTickAt: null, inFlight: false,

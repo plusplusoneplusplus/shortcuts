@@ -5,7 +5,7 @@ import type { ActionExecutor, OneShotFirer, TriggerEventEmit } from './trigger-m
 import { OneShotFireConflictError } from './trigger-manager';
 import type { TriggerStore } from './trigger-store';
 import type { ScriptConditionEvent, Trigger, TriggerDelivery } from './trigger-types';
-import { canonicalizeScriptConditionResult } from './script-condition-result';
+import { canonicalizeJobGateResult } from '../sentinel-jobs/job-gate-result';
 import { ReviewDeliveryRejectedError } from '../processes/process-message-delivery-service';
 
 export interface SentinelTodoTriggerFirerDeps {
@@ -42,7 +42,7 @@ export class SentinelTodoTriggerFirer implements OneShotFirer {
             || event.script !== initial.event.script || event.intervalMs !== initial.event.intervalMs
             || event.paused !== initial.event.paused || event.consecutiveFailures !== 0 || event.lastError
             || event.lastResult === undefined || initial.event.lastResultHash === undefined) return;
-        const result = canonicalizeScriptConditionResult(JSON.parse(event.lastResult));
+        const result = canonicalizeJobGateResult(JSON.parse(event.lastResult));
         if (result.canonicalJson !== event.lastResult || result.hash !== event.lastResultHash) {
             throw new Error('Script wake requires a canonical result and matching hash');
         }

@@ -264,9 +264,9 @@ the manager. Calls follow `MultiRepoQueueRouter.runScriptCondition` → owning
 `CLITaskExecutor` bridge → `ExecutorRegistry` → `ChatBaseExecutor.runScriptCondition`.
 The executor validates the exact Sentinel owner and resolves workspace/working
 directory; its shared helper dependencies supply the owner-bound runtime through
-`runScriptConditionWithOwnerTools`. See [tool assembly](llm-tools.md#chat-tool-assembly).
+`runJobGateWithOwnerTools`. See [tool assembly](llm-tools.md#chat-tool-assembly).
 
-`triggers/script-condition-result.ts` supplies canonical result encoding and SHA-256
+`sentinel-jobs/job-gate-result.ts` supplies canonical result encoding and SHA-256
 hashing for script conditions. Object keys sort lexically at every level, array order
 is significant and encoded UTF-8 JSON is capped at 16 KiB. Non-JSON values reject
 without invoking serialization hooks. Validation must precede any runner conversion
@@ -283,7 +283,7 @@ baseline state, record a timestamped error (500 characters maximum) and pause th
 event at five consecutive failures. Success clears errors and resets the failure
 count, including unchanged results. `getScriptConditionPollDelay` doubles cadence
 per failure, capped at one hour without shortening longer configured intervals.
-`script-condition-runner.ts` passes state and strict JSON validation to `runToolScript`
+`sentinel-jobs/job-gate-runner.ts` passes state and strict JSON validation to `runToolScript`
 with a trigger-only 60-second abort deadline. The engine terminates workers and aborts
 in-flight tool calls on cancellation; the wrapper preserves the cancellation reason
 and clears its deadline timer on every outcome. The caller owns and disposes the

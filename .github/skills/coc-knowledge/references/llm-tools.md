@@ -800,12 +800,12 @@ bundles retain their existing interactive and noninteractive approval policies.
 Production routes through `MultiRepoQueueRouter.runScriptCondition`, the owning
 `CLITaskExecutor` bridge and `ExecutorRegistry` to `ChatBaseExecutor.runScriptCondition`.
 The executor validates the exact Sentinel owner, resolves workspace/working
-directory and reuses shared helper dependencies for `runScriptConditionWithOwnerTools`.
+directory and reuses shared helper dependencies for `runJobGateWithOwnerTools`.
 The owner's current active provider (fallback: executor provider) controls Codex
 nested-script omission. Startup readiness and lifecycle revocation belong to
 [trigger infrastructure](server-architecture.md#sentinel-to-do-trigger-firing).
 
-`runScriptConditionWithOwnerTools` builds the shared context, including Memory V2,
+`runJobGateWithOwnerTools` builds the shared context, including Memory V2,
 and creates a per-run runtime from the full resolved CoC tool list, not the
 ordinary chat-scriptable subset. Background assembly omits `ask_user` and
 attended-only `sentinel_jobs` and does not add write-only `create_pull_request`.
