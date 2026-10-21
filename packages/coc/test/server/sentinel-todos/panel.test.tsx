@@ -1121,7 +1121,7 @@ describe('UnifiedTodoTab', () => {
             const updatedAt = '2026-10-09T11:55:00.000Z';
             get.mockResolvedValue(ledger([item({ createdAt, updatedAt })]));
             render(<UnifiedTodoTab owner={OWNER} />);
-            // List cards show only Updated, in a muted meta row that wraps in narrow panes.
+            // List cards show Updated in muted, wrapping header metadata.
             const updated = await screen.findByTestId('sentinel-todo-updated-i1');
             const meta = screen.getByTestId('sentinel-todo-meta-i1');
             expect(meta.contains(updated)).toBe(true);
@@ -1595,18 +1595,47 @@ describe('UnifiedTodoTab', () => {
     });
 
     describe('compact rows', () => {
-        it('puts the repo and Updated time on a meta line below the title', async () => {
-            get.mockResolvedValue(ledger([item({ targetRepo: { workspaceId: 'ws-web', label: 'web-app' } })]));
+        it.each([
+            { width: 900, targetRepo: { workspaceId: 'ws-web', label: 'web-app' } },
+            { width: 320, targetRepo: { workspaceId: 'ws-long-' + 'x'.repeat(120) } },
+            { width: 320, targetRepo: undefined },
+        ])('keeps muted repo/Updated metadata in the wrapping header with its menu (width=$width, repo=$targetRepo)', async ({ width, targetRepo }) => {
+            vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(width);
+            const title = 'Readable title ' + 'identifier'.repeat(15);
+            get.mockResolvedValue(ledger([item({ title, targetRepo })]));
             render(<UnifiedTodoTab owner={OWNER} />);
             const row = await screen.findByTestId('sentinel-todo-row-i1');
             const toggle = within(row).getByRole('button', { pressed: false });
             const meta = within(row).getByTestId('sentinel-todo-meta-i1');
+            const header = toggle.parentElement!;
+            expect(meta.parentElement).toBe(header);
+            expect(header.classList.contains('flex-wrap')).toBe(true);
+            expect(header.classList.contains('min-w-0')).toBe(true);
+            expect(meta.classList.contains('ml-auto')).toBe(true);
+            expect(meta.classList.contains('flex-wrap')).toBe(true);
+            expect(meta.className).toContain('dark:text-[#9d9d9d]');
             expect(toggle.contains(meta)).toBe(false);
-            expect(toggle.textContent).not.toContain('web-app');
-            const repo = within(meta).getByTestId('sentinel-todo-repo-i1');
-            expect(repo.textContent).toBe('web-app');
-            expect(repo.getAttribute('title')).toBe('ws-web');
+            expect(toggle.title).toBe(title);
+            expect(within(toggle).getByText(title).className).toContain('overflow-wrap:anywhere');
+            expect(within(toggle).getByText(title).className).not.toContain('truncate');
+            const repo = within(meta).queryByTestId('sentinel-todo-repo-i1');
+            if (targetRepo) {
+                expect(repo?.textContent).toBe(targetRepo.label ?? targetRepo.workspaceId);
+                expect(repo?.getAttribute('title')).toBe(targetRepo.workspaceId);
+            } else expect(repo).toBeNull();
             expect(within(meta).getByTestId('sentinel-todo-updated-i1')).toBeTruthy();
+            expect(within(row).getAllByTestId('sentinel-todo-meta-i1')).toHaveLength(1);
+            const menu = within(row).getByRole('button', { name: 'More actions' });
+            expect(header.parentElement?.contains(menu)).toBe(true);
+            expect(toggle.contains(menu)).toBe(false);
+            expect(menu.getAttribute('aria-haspopup')).toBe('menu');
+            fireEvent.click(menu);
+            expect(screen.getByRole('menuitemradio', { name: 'To do', checked: true })).toBeTruthy();
+            expect(screen.getByRole('menuitemradio', { name: 'Regular', checked: true })).toBeTruthy();
+            expect(toggle.getAttribute('aria-pressed')).toBe('false');
+            fireEvent.keyDown(menu, { key: 'Escape' });
+            expect(document.activeElement).toBe(menu);
+            expect(update).not.toHaveBeenCalled();
         });
 
         it('previews a Needs attention reason in the list and shows it once in details', async () => {

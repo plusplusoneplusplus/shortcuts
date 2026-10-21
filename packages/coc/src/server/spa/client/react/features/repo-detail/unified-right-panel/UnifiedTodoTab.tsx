@@ -941,21 +941,23 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
         {high && <span aria-hidden="true" data-testid={`sentinel-todo-priority-band-${item.id}`}
             className="pointer-events-none absolute inset-y-0 left-0 w-1 rounded-l-[3px] bg-[#e51400] dark:bg-[#f14c4c]" />}
         <div className="flex items-start gap-1 px-1.5 pt-1 pb-0.5">
-            <button type="button" aria-pressed={selected} data-todo-select={item.id} onClick={onSelect} title={item.title}
-                className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4]">
-                <StatusBadge status={sentinelTodoDisplayStatus(item)} />
-                {high && <HighPriorityBadge itemId={item.id} />}
-                <span className={cn('min-w-0 flex-1 basis-[8rem] break-words [overflow-wrap:anywhere] font-medium', item.archived && 'line-through opacity-70')}>{item.title}</span>
-                {sentinelTodoType(item) === 'manual' && <span className={MUTED}>Tracking only</span>}
-            </button>
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+                <button type="button" aria-pressed={selected} data-todo-select={item.id} onClick={onSelect} title={item.title}
+                    className="flex min-w-0 flex-1 basis-[8rem] flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4]">
+                    <StatusBadge status={sentinelTodoDisplayStatus(item)} />
+                    {high && <HighPriorityBadge itemId={item.id} />}
+                    <span className={cn('min-w-0 flex-1 basis-[8rem] break-words [overflow-wrap:anywhere] font-medium', item.archived && 'line-through opacity-70')}>{item.title}</span>
+                    {sentinelTodoType(item) === 'manual' && <span className={MUTED}>Tracking only</span>}
+                </button>
+                <div className={cn('ml-auto flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px]', MUTED)} data-testid={`sentinel-todo-meta-${item.id}`}>
+                    {item.targetRepo && <span className="min-w-0 max-w-full break-words [overflow-wrap:anywhere]" title={item.targetRepo.workspaceId}
+                        data-testid={`sentinel-todo-repo-${item.id}`}>{item.targetRepo.label ?? item.targetRepo.workspaceId}</span>}
+                    <TodoTime label="Updated" iso={item.updatedAt} testId={`sentinel-todo-updated-${item.id}`} />
+                </div>
+            </div>
             <TodoCardMenu owner={owner} item={item} onAttach={canAttach ? attach : undefined} disabled={menuDisabled || mutationPending} onAction={onMenuAction} />
         </div>
         {tagLibrary && item.tagIds?.length ? <div className="px-1.5 pb-1"><SentinelTodoTagChips item={item} library={tagLibrary} /></div> : null}
-        <div className={cn('flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1.5 pb-1 text-[11px]', MUTED)} data-testid={`sentinel-todo-meta-${item.id}`}>
-            {item.targetRepo && <span className="min-w-0 max-w-full break-words" title={item.targetRepo.workspaceId}
-                data-testid={`sentinel-todo-repo-${item.id}`}>{item.targetRepo.label ?? item.targetRepo.workspaceId}</span>}
-            <TodoTime label="Updated" iso={item.updatedAt} testId={`sentinel-todo-updated-${item.id}`} />
-        </div>
         {(item.jobs.length > 0 || reasonPreview) && <div className="min-w-0 px-1.5 pb-1">
             <TodoJobs item={item} owner={owner} currentWorkspaceId={currentWorkspaceId} onFollowLink={onFollowLink} reasonPreview={reasonPreview} />
         </div>}
