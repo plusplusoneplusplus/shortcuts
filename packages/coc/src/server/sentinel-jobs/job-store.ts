@@ -128,15 +128,21 @@ export class SentinelJobStore {
         return JSON.parse(row.record);
     }
 
-    createRun(owner: SentinelTodoOwner, id: string, trigger: JobRunRecord['trigger'], processId: string, now: string): JobRunRecord {
+    /**
+     * Claims single-flight, or records a skip: an active run always wins as `overlap` over a gate `skip`.
+     * Only a claimed run adopts `processId` as the job chat.
+     */
+    createRun(owner: SentinelTodoOwner, id: string, trigger: JobRunRecord['trigger'], processId: string | undefined, now: string,
+        skip?: Exclude<JobRunRecord['skipReason'], 'overlap' | undefined>): JobRunRecord {
         return this.db.transaction(() => {
             const job = this.get(owner, id);
             const overlap = this.runs(owner, id).some(active);
             if (overlap && trigger === 'manual') throw new JobError('conflict', 'This job already has an active run');
+            const skipReason = overlap ? 'overlap' as const : skip;
             const run: JobRunRecord = { id: randomUUID(), runNumber: job.runCount + 1, trigger,
-                status: overlap ? 'skipped' : 'queued', createdAt: now,
-                ...(overlap ? { skipReason: 'overlap' as const, finishedAt: now, durationMs: 0 } : {}) };
-            this.save(owner, { ...job, processId: job.processId ?? processId, runCount: run.runNumber });
+                status: skipReason ? 'skipped' : 'queued', createdAt: now,
+                ...(skipReason ? { skipReason, finishedAt: now, durationMs: 0 } : {}) };
+            this.save(owner, { ...job, processId: skipReason ? job.processId : job.processId ?? processId, runCount: run.runNumber });
             this.db.prepare('INSERT INTO sentinel_scheduled_job_runs VALUES (?, ?, ?, ?, ?, ?, ?)')
                 .run(owner.workspaceId, owner.processId, id, run.id, run.status, run.runNumber, JSON.stringify(run));
             this.prune(owner, id);

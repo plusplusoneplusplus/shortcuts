@@ -209,6 +209,9 @@ timer registry's delay cap rather than firing early.
 `validateScrubCron` for owner/job timers. Both live Sentinel/jobs gates must be on.
 Schedules use server local time and arm future dates without catch-up. Each tick
 re-arms independently of completion; an active job records a skipped overlap.
+Ticks call `SentinelJobService.tick`; a gated job checks overlap and its paused
+gate before running the gate script, then records `gate-empty` or starts a run with
+the result inline (see [gate runtime](server-architecture.md#sentinel-job-gate-runtime)).
 Multiple selected minutes are rejected even for dates beyond the validation horizon.
 
 `SentinelJobService` queues each run at low priority into one persistent Ask/Autopilot

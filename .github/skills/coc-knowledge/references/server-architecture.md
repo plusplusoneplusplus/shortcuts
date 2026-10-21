@@ -275,8 +275,12 @@ Calls follow `MultiRepoQueueRouter.runJobGate` → owning `CLITaskExecutor` brid
 `{ workspaceId, processId, code, state, signal }` request. The executor validates the
 exact Sentinel owner and resolves workspace/working directory; its shared helper
 dependencies supply the owner-bound unattended runtime through
-`runJobGateWithOwnerTools`, which disposes it after every outcome. Callers own live
-flag and job-revision checks and abort the signal on revocation or shutdown. See
+`runJobGateWithOwnerTools`, which disposes it after every outcome.
+`SentinelJobService` is the caller: `routes/index.ts` injects `bridge.runJobGate` and
+the live `features.toolScripting` flag. The service keeps one in-flight gate per
+owner/job, re-checks flags, owner and job revision before saving any outcome, and
+aborts the signal on `cancelGate` (edit/delete), `invalidate()` and `shutdown()`;
+a cancelled gate never counts as a failure. See
 [tool assembly](llm-tools.md#chat-tool-assembly).
 
 ### Delegated PR outcome reviews

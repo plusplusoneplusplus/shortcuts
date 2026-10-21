@@ -94,7 +94,7 @@ import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduc
 export interface FollowUpTurnOptions {
     /** Native scheduled-job admission, checked by the lifecycle runner. Jobs have no run deadlines. */
     sentinelScheduledJob?: boolean;
-    /** A scheduled-job handback into its Sentinel; such turns never get `sentinel_jobs`. */
+    /** A scheduled-job handback or gate notice into its Sentinel; such turns never get `sentinel_jobs`. */
     sentinelJobHandback?: boolean;
     /** Trusted native admission marker; never derived from prompt text or process metadata. */
     sentinelPrOutcomeReview?: boolean;

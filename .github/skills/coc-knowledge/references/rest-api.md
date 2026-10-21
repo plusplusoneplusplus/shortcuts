@@ -292,7 +292,8 @@ is pending. Schedule-only `enabled` updates remain available; paused schedules s
 permit Run now. Blank `cron`/`effort`/`effortTier`/`gateScript` clears the optional setting.
 A `gateScript` requires `cron`. Gate state fields (`gateLastResult`,
 `gateConsecutiveFailures`, `gateLastError`, `gatePaused`) are read-only and reset when
-the script changes.
+the script changes. Run `skipReason` is `overlap`, `gate-empty` or `gate-unavailable`
+(`features.toolScripting` off at the tick); Run now never runs the gate.
 A job stores either an explicit `model` (with optional `effort`) or an `effortTier`;
 a tier drops stored model/effort, and a model-only patch drops a stored tier. Each run
 enqueues the tier for the owning server's normal provider tier resolution. The first run creates

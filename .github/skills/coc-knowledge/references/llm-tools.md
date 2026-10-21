@@ -145,8 +145,8 @@ re-check owner and flags on every call. The tool gates every action through
 scrubber REST commands retain their independent feature gate.
 `ChatBaseExecutor.buildSentinelJobsDeps`
 binds the tool to the invoking Sentinel chat (`workspaceId`, `processId`; never a
-tool argument) and only on attended turns: scheduled-job handbacks
-(`FollowUpTurnOptions.sentinelJobHandback`, set by the lifecycle runner),
+tool argument) and only on attended turns: scheduled-job handbacks and gate-paused
+notices (`FollowUpTurnOptions.sentinelJobHandback`, set by the lifecycle runner),
 PR outcome reviews, read-only turns, cron/wakeup/trigger turns, scrubber children
 and non-Sentinel chats (including job children) never get it. Each turn records
 its resolved provider/model/effort (`recordSentinelJobDefaults`) as the defaults new

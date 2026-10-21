@@ -44,6 +44,7 @@ export class SentinelJobCommands {
         expectedRevision: number): Promise<SentinelScheduledJob> {
         await this.deps.service.assertOwner(owner);
         const job = this.deps.jobs.update(owner, id, settings, expectedRevision);
+        this.deps.service.cancelGate(owner, id);
         this.deps.onConfigChange?.();
         return this.deps.service.view(owner, job);
     }
@@ -51,6 +52,7 @@ export class SentinelJobCommands {
     async delete(owner: SentinelTodoOwner, id: string, expectedRevision: number): Promise<void> {
         await this.deps.service.assertOwner(owner);
         this.deps.jobs.delete(owner, id, expectedRevision);
+        this.deps.service.cancelGate(owner, id);
         this.deps.onConfigChange?.();
         await this.deps.service.removeSnapshots(owner, id);
     }

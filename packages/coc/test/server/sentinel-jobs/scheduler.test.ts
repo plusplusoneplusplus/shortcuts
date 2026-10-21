@@ -14,7 +14,7 @@ let jobs: SentinelJobStore;
 let scheduler: SentinelJobScheduler;
 let enabled: boolean;
 let exists: boolean;
-const start = vi.fn();
+const tick = vi.fn();
 const assertOwner = vi.fn();
 const settle = () => vi.advanceTimersByTimeAsync(0);
 
@@ -27,9 +27,9 @@ beforeEach(() => {
     jobs = new SentinelJobStore(fixture.db);
     enabled = true;
     exists = true;
-    start.mockReset().mockResolvedValue({});
+    tick.mockReset().mockResolvedValue({});
     assertOwner.mockReset().mockImplementation(async () => { if (!exists) throw new Error('Missing owner'); });
-    scheduler = new SentinelJobScheduler({ jobs, service: { assertOwner, start }, getEnabled: () => enabled });
+    scheduler = new SentinelJobScheduler({ jobs, service: { assertOwner, tick }, getEnabled: () => enabled });
 });
 afterEach(() => {
     scheduler.dispose();
@@ -44,9 +44,9 @@ describe('SentinelJobScheduler', () => {
         await settle();
         // Next hourly boundary from 10:30 is 11:00 — nothing fires immediately or on an earlier replay.
         await vi.advanceTimersByTimeAsync(29 * 60_000);
-        expect(start).not.toHaveBeenCalled();
+        expect(tick).not.toHaveBeenCalled();
         await vi.advanceTimersByTimeAsync(60_000);
-        expect(start).toHaveBeenCalledExactlyOnceWith(owner, job.id, 'schedule', expect.any(Function));
+        expect(tick).toHaveBeenCalledExactlyOnceWith(owner, job.id, expect.any(Function));
     });
 
     it('arms only enabled jobs with a cron and keeps independent jobs on independent timers', async () => {
@@ -57,8 +57,8 @@ describe('SentinelJobScheduler', () => {
         scheduler.refreshAll();
         await settle();
         await vi.advanceTimersByTimeAsync(30 * 60_000);
-        expect(start).toHaveBeenCalledTimes(2);
-        expect(start.mock.calls.map(call => [call[0], call[1]]).sort((a, b) => a[0].workspaceId.localeCompare(b[0].workspaceId)))
+        expect(tick).toHaveBeenCalledTimes(2);
+        expect(tick.mock.calls.map(call => [call[0], call[1]]).sort((a, b) => a[0].workspaceId.localeCompare(b[0].workspaceId)))
             .toEqual([[owner, withCron.id], [other, otherJob.id]]);
     });
 
@@ -71,9 +71,9 @@ describe('SentinelJobScheduler', () => {
         await settle();
         await vi.advanceTimersByTimeAsync(30 * 60_000);
         // Old boundary (11:00) must not fire; only the new 11:15 boundary does.
-        expect(start).not.toHaveBeenCalled();
+        expect(tick).not.toHaveBeenCalled();
         await vi.advanceTimersByTimeAsync(15 * 60_000);
-        expect(start).toHaveBeenCalledOnce();
+        expect(tick).toHaveBeenCalledOnce();
     });
 
     it('disposes cleanly: clears timers, stops future arming, and tolerates refreshAll after disposal', async () => {
@@ -83,7 +83,7 @@ describe('SentinelJobScheduler', () => {
         expect(vi.getTimerCount()).toBe(1);
         scheduler.dispose();
         await vi.advanceTimersByTimeAsync(60 * 60_000);
-        expect(start).not.toHaveBeenCalled();
+        expect(tick).not.toHaveBeenCalled();
         scheduler.refreshAll();
         await settle();
         expect(vi.getTimerCount()).toBe(0);
@@ -98,10 +98,10 @@ describe('SentinelJobScheduler', () => {
             jobs.patchRun(owner, job.id, run.id, { status: 'failed' }, ['queued', 'running']);
         }
         await vi.advanceTimersByTimeAsync(30 * 60_000);
-        expect(start).toHaveBeenCalledTimes(1);
+        expect(tick).toHaveBeenCalledTimes(1);
         expect(jobs.get(owner, job.id).enabled).toBe(true);
         await vi.advanceTimersByTimeAsync(60 * 60_000);
-        expect(start).toHaveBeenCalledTimes(2);
+        expect(tick).toHaveBeenCalledTimes(2);
     });
 
     it('re-arms independently of run completion, so an overlap tick still fires on schedule', async () => {
@@ -111,9 +111,9 @@ describe('SentinelJobScheduler', () => {
         // Simulate a still-running run at the moment the next tick fires.
         jobs.createRun(owner, job.id, 'manual', 'queue_x', new Date().toISOString());
         await vi.advanceTimersByTimeAsync(30 * 60_000);
-        expect(start).toHaveBeenCalledTimes(1);
+        expect(tick).toHaveBeenCalledTimes(1);
         await vi.advanceTimersByTimeAsync(60 * 60_000);
-        expect(start).toHaveBeenCalledTimes(2);
+        expect(tick).toHaveBeenCalledTimes(2);
     });
 
     it('rechecks live owner and enabled flag at the tick, without rearming after owner removal', async () => {
@@ -124,17 +124,17 @@ describe('SentinelJobScheduler', () => {
         const error = vi.spyOn(console, 'error').mockImplementation(() => {});
         // The already-armed tick still fires once; the owner is only rechecked on (re-)arm.
         await vi.advanceTimersByTimeAsync(30 * 60_000);
-        expect(start).toHaveBeenCalledOnce();
+        expect(tick).toHaveBeenCalledOnce();
         // Re-arm after that tick sees the missing owner and gives up — no further timer.
         expect(vi.getTimerCount()).toBe(0);
         await vi.advanceTimersByTimeAsync(60 * 60_000);
-        expect(start).toHaveBeenCalledOnce();
+        expect(tick).toHaveBeenCalledOnce();
         exists = true;
         scheduler.refreshAll();
         await settle();
         enabled = false;
         await vi.advanceTimersByTimeAsync(60 * 60_000);
-        expect(start).toHaveBeenCalledOnce();
+        expect(tick).toHaveBeenCalledOnce();
         expect(vi.getTimerCount()).toBe(0);
         error.mockRestore();
     });
@@ -145,7 +145,7 @@ describe('SentinelJobScheduler', () => {
         scheduler.refreshAll();
         await settle();
         await vi.advanceTimersByTimeAsync(2 * 60 * 60_000);
-        expect(start).not.toHaveBeenCalled();
+        expect(tick).not.toHaveBeenCalled();
         expect(vi.getTimerCount()).toBe(0);
     });
 });

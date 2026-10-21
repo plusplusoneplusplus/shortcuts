@@ -11,7 +11,7 @@ export class SentinelJobScheduler {
     private disposed = false;
     constructor(private readonly deps: {
         jobs: SentinelJobStore;
-        service: Pick<SentinelJobService, 'assertOwner' | 'start'>;
+        service: Pick<SentinelJobService, 'assertOwner' | 'tick'>;
         getEnabled: () => boolean;
         now?: () => Date;
     }) {}
@@ -49,7 +49,7 @@ export class SentinelJobScheduler {
             }
             // Re-arm independently of run completion, so overlaps remain observable.
             void this.arm(owner, id, generation);
-            void this.deps.service.start(owner, id, 'schedule', () => this.current(generation)
+            void this.deps.service.tick(owner, id, () => this.current(generation)
                 && this.deps.jobs.get(owner, id).revision === job.revision).catch(error =>
                 console.error('[sentinel-jobs] Scheduled job admission failed:', error));
         }, next.getTime() - now.getTime());

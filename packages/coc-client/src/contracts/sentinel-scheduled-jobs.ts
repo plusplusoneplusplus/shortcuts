@@ -40,7 +40,12 @@ export interface SentinelScheduledJobRun {
   jobTurnHref?: string;
   sentinelFollowUpHref?: string;
   error?: string;
-  skipReason?: 'overlap';
+  /**
+   * Why a tick started no run: `overlap` (a run was active), `gate-empty`
+   * (the gate returned null, false, "", [] or {}) or `gate-unavailable`
+   * (`features.toolScripting` was off, so the gate could not run).
+   */
+  skipReason?: 'overlap' | 'gate-empty' | 'gate-unavailable';
 }
 
 export interface SentinelScheduledJob extends Omit<SentinelScheduledJobInput, 'mode' | 'enabled' | 'autoCompactThreshold'> {

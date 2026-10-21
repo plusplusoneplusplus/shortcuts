@@ -377,8 +377,9 @@ references before editing. Paths are package-relative.
   chat-scriptable subset; omit attended-only `sentinel_jobs` and write-only
   `create_pull_request`. Supply no provider approval callback. Provider-native/MCP
   shell handlers are outside `CocToolRuntime` and fail as catchable `ToolCallError`,
-  never model-call emulation. Callers own live-flag/job-revision checks and abort the
-  signal on revocation.
+  never model-call emulation. `SentinelJobService` owns live-flag/job-revision checks
+  and aborts the signal on edit, revocation and shutdown; `routes/index.ts` injects
+  `bridge.runJobGate` and the live `features.toolScripting` flag.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated
@@ -403,7 +404,15 @@ references before editing. Paths are package-relative.
   `gateConsecutiveFailures`, `gateLastError`, `gatePaused`) lives in the job record,
   is never a user setting, and resets when the script changes or clears;
   `updateGate` writes it without a revision bump only while the evaluated script is
-  still current. The first run persists one ordinary
+  still current. Scheduled ticks use `SentinelJobService.tick`: an active run records
+  an `overlap` skip before any gate runs, a paused gate skips silently and
+  `features.toolScripting` off records `gate-unavailable`. The gate receives the
+  parsed `gateLastResult` as `state`; an empty result (`null`, `false`, `""`, `[]`,
+  `{}`) records `gate-empty`, anything else starts the run with the canonical JSON
+  fenced after the instructions. Five consecutive failures pause the gate and queue
+  one `notice` Sentinel turn that, like handbacks, never gets `sentinel_jobs`. Edits
+  and deletes (`cancelGate`), owner/flag invalidation and shutdown abort in-flight
+  gates without counting a failure. Run now (`start`) never runs the gate. The first run persists one ordinary
   Ask/Autopilot chat; later runs retain it, including after cancellation or failure.
   Snapshot paths stay repo-scoped and read-only. Runs and handbacks use the existing
   low-priority task queue; job metadata grants compaction, never Sentinel identity.

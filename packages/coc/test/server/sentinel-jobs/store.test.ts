@@ -175,6 +175,12 @@ describe('scheduled job definitions and durable runs', () => {
         expect(() => store.createRun(owner, a.id, 'manual', 'queue_a', at)).toThrow(/active/);
         expect(store.createRun(owner, a.id, 'schedule', 'queue_a', at)).toMatchObject({ status: 'skipped', skipReason: 'overlap', runNumber: 2 });
         expect(store.createRun(owner, b.id, 'manual', 'queue_b', at).status).toBe('queued');
+        // An active run outranks a gate skip; a gate skip never adopts a job chat id.
+        expect(store.createRun(owner, a.id, 'schedule', undefined, at, 'gate-empty')).toMatchObject({ skipReason: 'overlap' });
+        const c = store.create(owner, input);
+        expect(store.createRun(owner, c.id, 'schedule', 'queue_c', at, 'gate-unavailable'))
+            .toMatchObject({ status: 'skipped', skipReason: 'gate-unavailable', runNumber: 1, durationMs: 0 });
+        expect(store.get(owner, c.id).processId).toBeUndefined();
         store.patchRun(owner, a.id, run.id, { status: 'cancelled' }, ['queued']);
         expect(store.patchRun(owner, a.id, run.id, { status: 'completed' }, ['running'])).toBeUndefined();
         expect(store.run(owner, a.id, run.id).status).toBe('cancelled');

@@ -10,6 +10,8 @@ import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-servic
 import { SentinelTodoError, type SentinelTodoOwner } from '../sentinel-todos/sentinel-todo-store';
 import { JobError, SentinelJobStore, type JobRecord, type JobRunRecord } from './job-store';
 import { getJobTaskContext, type JobTaskContext } from './job-metadata';
+import type { JobGateOwnerRunner } from './job-gate-owner-runner';
+import { canonicalizeJobGateResult } from './job-gate-result';
 export { getJobTaskContext } from './job-metadata';
 
 export interface JobServiceDeps {
@@ -18,6 +20,10 @@ export interface JobServiceDeps {
     todos: Pick<SentinelTodoService, 'list' | 'assertOwner'>;
     store: ProcessStore;
     getEnabled: () => boolean;
+    /** Live `features.toolScripting`; gated jobs skip their ticks while it is off. */
+    getGateEnabled?: () => boolean;
+    /** Owner-scoped gate runtime (no provider turn); required for gated ticks to run. */
+    runGate?: JobGateOwnerRunner;
     enqueue: (input: CreateTaskInput) => Promise<string>;
     cancelTask: (id: string) => boolean | Promise<boolean>;
     getTask: (id: string) => (Pick<QueuedTask, 'status'> & Partial<Pick<QueuedTask, 'payload'>>) | undefined;
@@ -26,6 +32,9 @@ export interface JobServiceDeps {
 }
 
 const ACTIVE = ['queued', 'running'] as const;
+/** Consecutive gate failures that pause a gate until the user resumes it. */
+export const GATE_FAILURE_LIMIT = 5;
+const EMPTY_GATE_RESULTS = new Set(['null', 'false', '""', '[]', '{}']);
 const pending = (run: JobRunRecord) => run.handbackState === 'pending' || run.handbackState === 'queued';
 const href = (owner: SentinelTodoOwner, processId: string, turnIndex = 0) =>
     `#repos/${owner.workspaceId}/chats/${encodeURIComponent(processId)}?turn=${turnIndex}`;
@@ -34,6 +43,8 @@ const href = (owner: SentinelTodoOwner, processId: string, turnIndex = 0) =>
 export class SentinelJobService {
     private disposed = false;
     private readonly admissions = new Set<Promise<unknown>>();
+    /** In-flight scheduled gates; aborting one cancels it without counting a failure. */
+    private readonly gates = new Map<string, AbortController>();
     private detach?: () => void;
 
     constructor(readonly deps: JobServiceDeps) {}
@@ -61,14 +72,113 @@ export class SentinelJobService {
             ...(next ? { nextRunAt: next.toISOString() } : {}) };
     }
 
-    async start(owner: SentinelTodoOwner, jobId: string, trigger: JobRunRecord['trigger'] = 'manual',
-        scheduleCurrent?: () => boolean): Promise<JobRunRecord> {
-        const operation = this.startRun(owner, jobId, trigger, scheduleCurrent);
-        return this.track(operation);
+    /** Run now: always starts directly, without the gate or its state. */
+    async start(owner: SentinelTodoOwner, jobId: string): Promise<JobRunRecord> {
+        return this.track(this.startRun(owner, jobId, 'manual'));
+    }
+
+    /**
+     * Scheduled admission. A gated job checks overlap and pause before its gate
+     * runs; only a non-empty gate result starts a run. Returns undefined when the
+     * tick ended without a run record (paused, failed or cancelled gate).
+     */
+    async tick(owner: SentinelTodoOwner, jobId: string, scheduleCurrent?: () => boolean): Promise<JobRunRecord | undefined> {
+        return this.track(this.tickRun(owner, jobId, scheduleCurrent));
+    }
+
+    /** Cancels a job's in-flight scheduled gate after an edit or delete. */
+    cancelGate(owner: SentinelTodoOwner, jobId: string): void {
+        this.gates.get(gateKey(owner, jobId))?.abort(new JobError('conflict', 'Job changed during its gate'));
+    }
+
+    private async tickRun(owner: SentinelTodoOwner, jobId: string, scheduleCurrent?: () => boolean): Promise<JobRunRecord | undefined> {
+        await this.assertOwner(owner);
+        if (scheduleCurrent?.() === false) throw new JobError('conflict', 'Job schedule changed during admission');
+        const job = this.deps.jobs.get(owner, jobId);
+        const script = job.gateScript;
+        // The overlap skip comes before the gate, so a busy job never evaluates its script.
+        if (!script || !job.enabled || this.deps.jobs.runs(owner, jobId).some(run => ACTIVE.includes(run.status as typeof ACTIVE[number]))) {
+            return this.startRun(owner, jobId, 'schedule', scheduleCurrent);
+        }
+        if (job.gatePaused || this.gates.has(gateKey(owner, jobId))) return undefined;
+        if (!this.gateEnabled()) return this.skip(owner, jobId, 'gate-unavailable');
+        const controller = new AbortController();
+        this.gates.set(gateKey(owner, jobId), controller);
+        let result: string;
+        try {
+            if (!this.deps.runGate) throw new Error('Gate script runtime is unavailable');
+            result = canonicalizeJobGateResult(await this.deps.runGate({
+                workspaceId: owner.workspaceId, processId: owner.processId, code: script,
+                state: job.gateLastResult === undefined ? null : JSON.parse(job.gateLastResult), signal: controller.signal,
+            }));
+        } catch (error) {
+            if (await this.gateLive(owner, controller.signal, scheduleCurrent)) await this.gateFailed(owner, jobId, script, message(error));
+            return undefined;
+        } finally {
+            if (this.gates.get(gateKey(owner, jobId)) === controller) this.gates.delete(gateKey(owner, jobId));
+        }
+        if (!(await this.gateLive(owner, controller.signal, scheduleCurrent))) return undefined;
+        const saved = this.deps.jobs.updateGate(owner, jobId, script, () => ({
+            gateLastResult: result, gateConsecutiveFailures: 0, gateLastError: undefined,
+        }));
+        if (!saved) return undefined;
+        this.changed(owner);
+        if (EMPTY_GATE_RESULTS.has(result)) return this.skip(owner, jobId, 'gate-empty');
+        return this.startRun(owner, jobId, 'schedule', scheduleCurrent, result);
+    }
+
+    /** A gate outcome counts only while its tick is live; revocation, edits, the flag and shutdown cancel it. */
+    private async gateLive(owner: SentinelTodoOwner, signal: AbortSignal, scheduleCurrent?: () => boolean): Promise<boolean> {
+        try {
+            if (signal.aborted || this.disposed || !this.gateEnabled() || scheduleCurrent?.() === false) return false;
+            await this.assertOwner(owner);
+            return !signal.aborted && this.gateEnabled() && scheduleCurrent?.() !== false;
+        } catch { return false; }
+    }
+
+    private async gateFailed(owner: SentinelTodoOwner, jobId: string, script: string, error: string): Promise<void> {
+        let paused = false;
+        const job = this.deps.jobs.updateGate(owner, jobId, script, current => {
+            const failures = current.gateConsecutiveFailures + 1;
+            paused = !current.gatePaused && failures >= GATE_FAILURE_LIMIT;
+            return { gateConsecutiveFailures: failures, gateLastError: { message: error.slice(0, 2_000), at: this.now().toISOString() },
+                ...(paused ? { gatePaused: true } : {}) };
+        });
+        if (!job) return;
+        this.changed(owner);
+        if (!paused) return;
+        try { await this.gateNotice(owner, job); }
+        catch (noticeError) { console.error('[sentinel-jobs] Could not queue gate-paused notice:', noticeError); }
+    }
+
+    /** One Sentinel notice per pause. Like handbacks, the turn gets no job-management tools. */
+    private async gateNotice(owner: SentinelTodoOwner, job: JobRecord): Promise<void> {
+        const target = await this.sentinelTarget(owner);
+        if (!target) return;
+        const taskId = randomUUID();
+        const context: JobTaskContext = { ...owner, jobId: job.id, kind: 'notice' };
+        await this.deps.enqueue({
+            id: taskId, type: 'chat', priority: 'low', repoId: owner.workspaceId, processId: owner.processId,
+            payload: { kind: 'chat', mode: 'sentinel', workspaceId: owner.workspaceId, processId: owner.processId,
+                provider: target.provider,
+                prompt: `[Job: ${job.name}] gate script paused after ${GATE_FAILURE_LIMIT} consecutive failures. `
+                    + `Last error: ${job.gateLastError?.message ?? 'unknown'}\n\n`
+                    + 'Scheduled ticks will not run the gate or start runs until the user resumes the gate. '
+                    + 'This notice is informational: it grants no authority to edit, test or resume the gate script.',
+                relayRequestId: `sentinel-job-gate-notice:${taskId}`, context: { sentinelScheduledJob: context } },
+            config: { retryAttempts: 0, retryOnFailure: false }, displayName: `[Job: ${job.name}] gate paused`,
+        });
+        if (this.disposed || !this.deps.getEnabled()) await this.deps.cancelTask(taskId);
+    }
+
+    private skip(owner: SentinelTodoOwner, jobId: string, reason: 'gate-empty' | 'gate-unavailable'): JobRunRecord {
+        const run = this.deps.jobs.createRun(owner, jobId, 'schedule', undefined, this.now().toISOString(), reason);
+        this.changed(owner);
+        return run;
     }
 
     private async startRun(owner: SentinelTodoOwner, jobId: string, trigger: JobRunRecord['trigger'],
-        scheduleCurrent?: () => boolean): Promise<JobRunRecord> {
+        scheduleCurrent?: () => boolean, gateResult?: string): Promise<JobRunRecord> {
         await this.assertOwner(owner);
         if (scheduleCurrent?.() === false) throw new JobError('conflict', 'Job schedule changed during admission');
         let job = this.deps.jobs.get(owner, jobId);
@@ -107,6 +217,7 @@ export class SentinelJobService {
                     processId: job.processId, relayRequestId: `sentinel-job:${run.id}`,
                     prompt: [
                         job.instructions, '',
+                        ...(gateResult === undefined ? [] : ['Gate script result (JSON):', fenced(gateResult), '']),
                         `Fresh read-only Sentinel to-do snapshot: ${snapshotPath}`,
                         'Read that file for this run; never modify the snapshot or the Sentinel ledger.',
                         'You are a job chat, not the owning Sentinel. You have no ledger-writing authority.',
@@ -137,11 +248,17 @@ export class SentinelJobService {
         if (!context) return;
         await this.assertOwner(context);
         const job = this.deps.jobs.get(context, context.jobId);
-        const run = this.deps.jobs.run(context, context.jobId, context.runId);
         if (task.repoId !== context.workspaceId || task.payload.workspaceId !== context.workspaceId) {
             throw new JobError('conflict', 'Job task workspace does not match its owner');
         }
         const target = task.processId ?? task.payload.processId ?? toQueueProcessId(task.id);
+        if (context.kind === 'notice') {
+            if (!job.gatePaused || target !== context.processId || task.payload.mode !== 'sentinel') {
+                throw new JobError('conflict', 'Job gate notice is no longer current');
+            }
+            return;
+        }
+        const run = this.deps.jobs.run(context, context.jobId, context.runId);
         if (context.kind === 'handback') {
             if (run.handbackTaskId !== task.id || run.handbackState !== 'queued'
                 || target !== context.processId || task.payload.mode !== 'sentinel') {
@@ -250,6 +367,7 @@ export class SentinelJobService {
     /** Live flag/owner invalidation cancels queued/running work and revokes undelivered handbacks. */
     async invalidate(): Promise<void> {
         if (this.disposed) return;
+        if (!this.gateEnabled()) this.abortGates('Tool scripting was turned off');
         return this.track(this.invalidateOwners());
     }
 
@@ -257,6 +375,7 @@ export class SentinelJobService {
         for (const { owner, job } of this.deps.jobs.all()) {
             try { await this.assertOwner(owner); continue; }
             catch (error) { if (!ownerUnavailable(error)) throw error; }
+            this.gates.get(gateKey(owner, job.id))?.abort(new JobError('not_found', 'Sentinel jobs or their owner became unavailable'));
             for (const run of this.deps.jobs.runs(owner, job.id)) {
                 if (pending(run)) {
                     this.deps.jobs.patchRun(owner, job.id, run.id, { handbackState: 'suppressed' });
@@ -274,6 +393,7 @@ export class SentinelJobService {
         if (this.disposed) return;
         this.disposed = true;
         this.detach?.();
+        this.abortGates('Server stopped');
         await Promise.allSettled([...this.admissions]);
         for (const { owner, job } of this.deps.jobs.all()) for (const run of this.deps.jobs.runs(owner, job.id)) {
             if (ACTIVE.includes(run.status as typeof ACTIVE[number])) {
@@ -292,6 +412,7 @@ export class SentinelJobService {
 
     private async terminal(task: QueuedTask, status: 'completed' | 'failed' | 'cancelled', detail?: unknown): Promise<void> {
         const context = getJobTaskContext(task)!;
+        if (context.kind === 'notice') return;
         let run: JobRunRecord;
         try { run = this.deps.jobs.run(context, context.jobId, context.runId); }
         catch (error) {
@@ -351,11 +472,8 @@ export class SentinelJobService {
             this.deps.jobs.patchRun(owner, job.id, run.id, { handbackState: this.disposed ? 'pending' : 'suppressed' });
             return;
         }
-        const sentinel = await this.deps.store.getProcess(owner.processId, owner.workspaceId);
-        const parentTask = !sentinel && isQueueProcessId(owner.processId) ? this.deps.getTask(toTaskId(owner.processId)) : undefined;
-        const queuedSentinel = parentTask && ACTIVE.includes(parentTask.status as typeof ACTIVE[number])
-            && parentTask.payload?.mode === 'sentinel' && parentTask.payload.workspaceId === owner.workspaceId;
-        if (!sentinel && !queuedSentinel) {
+        const target = await this.sentinelTarget(owner);
+        if (!target) {
             this.deps.jobs.patchRun(owner, job.id, run.id, { handbackState: this.disposed ? 'pending' : 'suppressed' }); return;
         }
         const taskId = run.handbackTaskId ?? randomUUID();
@@ -368,7 +486,7 @@ export class SentinelJobService {
         await this.deps.enqueue({
             id: taskId, type: 'chat', priority: 'low', repoId: owner.workspaceId, processId: owner.processId,
             payload: { kind: 'chat', mode: 'sentinel', workspaceId: owner.workspaceId, processId: owner.processId,
-                provider: sentinel?.metadata?.provider ?? parentTask?.payload?.provider,
+                provider: target.provider,
                 prompt: text + (run.jobTurnHref ? `\n\n[Job turn](${run.jobTurnHref})` : ''),
                 relayRequestId: `sentinel-job-handback:${run.id}`, context: { sentinelScheduledJob: context } },
             config: { retryAttempts: 0, retryOnFailure: false }, displayName: `[Job: ${job.name}] handback #${run.runNumber}`,
@@ -376,6 +494,16 @@ export class SentinelJobService {
         // Revocation can race asynchronous queue admission.
         const current = this.deps.jobs.run(owner, job.id, run.id);
         if (this.disposed || !this.deps.getEnabled() || current.handbackState !== 'queued') await this.deps.cancelTask(taskId);
+    }
+
+    /** The owning Sentinel's chat, or its still-queued first task; undefined when no Sentinel can take a turn. */
+    private async sentinelTarget(owner: SentinelTodoOwner) {
+        const sentinel = await this.deps.store.getProcess(owner.processId, owner.workspaceId);
+        const parentTask = !sentinel && isQueueProcessId(owner.processId) ? this.deps.getTask(toTaskId(owner.processId)) : undefined;
+        const queuedSentinel = parentTask && ACTIVE.includes(parentTask.status as typeof ACTIVE[number])
+            && parentTask.payload?.mode === 'sentinel' && parentTask.payload.workspaceId === owner.workspaceId;
+        if (!sentinel && !queuedSentinel) return undefined;
+        return { provider: sentinel?.metadata?.provider ?? parentTask?.payload?.provider };
     }
 
     private snapshotPath(owner: SentinelTodoOwner, id: string, runId: string): string {
@@ -417,6 +545,10 @@ export class SentinelJobService {
         });
         this.deps.jobs.markChatCreated(owner, job.id);
     }
+    private abortGates(reason: string): void {
+        for (const controller of this.gates.values()) controller.abort(new JobError('conflict', reason));
+    }
+    private gateEnabled(): boolean { return this.deps.getGateEnabled?.() === true; }
     private changed(owner: SentinelTodoOwner): void { this.deps.onChange?.(owner); }
     private now(): Date { return this.deps.now?.() ?? new Date(); }
     private track<T>(operation: Promise<T>): Promise<T> {
@@ -424,6 +556,16 @@ export class SentinelJobService {
         void operation.finally(() => this.admissions.delete(operation)).catch(() => {});
         return operation;
     }
+}
+
+function gateKey(owner: SentinelTodoOwner, jobId: string): string {
+    return JSON.stringify([owner.workspaceId, owner.processId, jobId]);
+}
+
+/** Fences canonical JSON with a backtick run longer than any inside it. */
+function fenced(json: string): string {
+    const fence = '`'.repeat(Math.max(3, ...(json.match(/`+/g) ?? []).map(run => run.length + 1)));
+    return `${fence}json\n${json}\n${fence}`;
 }
 
 function message(error: unknown): string {

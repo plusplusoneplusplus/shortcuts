@@ -711,6 +711,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const scheduledJobs = new SentinelJobStore(todoDb);
     const scheduledJobService = new SentinelJobService({
         jobs: scheduledJobs, todos: sentinelTodos, dataDir, store, getEnabled: getJobsEnabled,
+        getGateEnabled: () => ((opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.toolScripting
+            ?? DEFAULT_CONFIG.features.toolScripting) === true,
+        runGate: request => bridge.runJobGate(request),
         enqueue: input => enqueueWithResolvedDefaults(input),
         getTask: id => bridge.getTask(id),
         cancelTask: id => {

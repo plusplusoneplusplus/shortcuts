@@ -326,6 +326,42 @@ describe('registerAllRoutes', () => {
             store.close();
         }
     });
+    it('wires gated job ticks to the owner gate runtime and the live tool-scripting flag', async () => {
+        const store = new SqliteProcessStore({ dbPath: path.join(tmpDir, 'processes.db') });
+        const owner = { workspaceId: 'ws-gate', processId: 'queue_gate_owner' };
+        await store.registerWorkspace({ id: owner.workspaceId, name: 'Gate', rootPath: tmpDir });
+        await store.addProcess({ id: owner.processId, type: 'chat', status: 'completed', startTime: new Date(),
+            promptPreview: 'Sentinel', metadata: { ...owner, mode: 'sentinel', provider: 'copilot' } });
+        const jobs = new SentinelJobStore(store.getDatabase());
+        const job = jobs.create(owner, { name: 'Watch', instructions: 'Read evidence', provider: 'copilot',
+            model: 'model', cron: '0 * * * *', gateScript: 'return state;' });
+        const bridge = makeBridge();
+        bridge.registry = new EventEmitter();
+        bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => input.id!);
+        bridge.getTask = vi.fn();
+        bridge.findExecutorForTask = vi.fn().mockReturnValue({ cancelTask: vi.fn() });
+        bridge.runJobGate = vi.fn(async () => []);
+        let getJobs!: () => SentinelJobService | undefined;
+        const opts = makeOpts({ store, bridge, dataDir: tmpDir, setSentinelScheduledJobs: get => { getJobs = get; } });
+        const config = opts.runtimeConfigService!.config as any;
+        config.sentinel = { enabled: true };
+        config.features.sentinelTodoJobs = true;
+        const composition = registerAllRoutes([], opts);
+        try {
+            await composition.scrubberReady;
+            expect(await getJobs()!.tick(owner, job.id)).toMatchObject({ status: 'skipped', skipReason: 'gate-empty' });
+            expect(bridge.runJobGate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+                ...owner, code: 'return state;', state: null }));
+            config.features.toolScripting = false;
+            expect(await getJobs()!.tick(owner, job.id)).toMatchObject({ status: 'skipped', skipReason: 'gate-unavailable' });
+            expect(bridge.runJobGate).toHaveBeenCalledOnce();
+        } finally {
+            await composition.sentinelJobsShutdown();
+            composition.whatsappMessagingManager.dispose();
+            store.close();
+        }
+    });
+
     it('publishes browser state before the socket exists and resolves the live broker later', async () => {
         let socket: any;
         let getRuntime!: Parameters<NonNullable<RegisterRoutesOptions['setBrowserControl']>>[0];

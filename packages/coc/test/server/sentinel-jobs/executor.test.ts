@@ -181,7 +181,8 @@ describe('sentinel_jobs executor wiring', () => {
         expect(jobsTool(await followUp(makeCommands(), undefined, 'queue_parent', 'ws-1', 'sentinel', { source }))).toBeUndefined();
     });
 
-    it.each([['handback', { sentinelJobHandback: true }], ['run', { sentinelScheduledJob: true }]] as const)(
+    it.each([['handback', { sentinelJobHandback: true }], ['notice', { sentinelJobHandback: true }],
+        ['run', { sentinelScheduledJob: true }]] as const)(
         'marks scheduled-job %s follow-ups for the executor', async (kind, expected) => {
             const store = createMockProcessStore();
             await store.addProcess(makeProcess('queue_parent', 'sentinel'));
