@@ -10,6 +10,7 @@ import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue
 import { SqliteQueuePersistence } from '../../../src/server/queue/sqlite-queue-persistence';
 import { ProcessMessageDeliveryService } from '../../../src/server/processes/process-message-delivery-service';
 import { RemoteDelegationAdmissionStore } from '../../../src/server/delegation/remote-delegation-admission-store';
+import { RemoteDelegationResults } from '../../../src/server/delegation/remote-delegation-results';
 import { RemoteDelegationRequestStore } from '../../../src/server/delegation/remote-delegation-request-store';
 import { captureRemoteDelegationIntent, type RemoteDelegationIntent } from '../../../src/server/delegation/remote-delegation-admission';
 import type { RemoteDelegationClaim } from '../../../src/server/delegation/remote-delegation-auth';
@@ -35,6 +36,7 @@ describe('authenticated destination launch HTTP admission', () => {
     let persistence: SqliteQueuePersistence;
     let requests: RemoteDelegationRequestStore;
     let admissions: RemoteDelegationAdmissionStore;
+    let results: RemoteDelegationResults | undefined;
     let remotes: RemoteServerWithRuntime[];
     let destinationUrl: string;
     let ralphEnabled: boolean;
@@ -47,7 +49,7 @@ describe('authenticated destination launch HTTP admission', () => {
     const queues = () => bridge.createAggregateQueueFacade().getAll();
     const row = (claim: RemoteDelegationClaim) => admissions.get(claim)!;
 
-    function openDestination() {
+    function openDestination(captureResults = false) {
         store = new SqliteProcessStore({ dbPath: path.join(destinationDir(), 'processes.db') });
         bridge = new MultiRepoQueueRouter(new RepoQueueRegistry(), store,
             { autoStart: false, aiService: createMockSDKService().service });
@@ -55,20 +57,25 @@ describe('authenticated destination launch HTTP admission', () => {
         persistence = new SqliteQueuePersistence(bridge, store.getDatabase(), { restartPolicy: 'fail' });
         persistence.restore();
         admissions = new RemoteDelegationAdmissionStore(destinationDir());
+        const launchDomain = createRemoteDelegationLaunch({ queue: {
+            bridge, store, dataDir: destinationDir(), globalWorkspaceRootPath: '/never-use-fallback',
+            state: { globalPaused: true, globalAutopilotPaused: false, resumeInProgress: new Set() },
+            getDefaultProvider: () => 'copilot', validateProvider,
+            getEffortTiersForProvider: () => ({ high: { model: 'gpt-5', reasoningEffort: 'high' } }) as any,
+            isAutoProviderRoutingActive: () => false,
+        }, getRalphEnabled: () => ralphEnabled });
+        results = captureResults ? new RemoteDelegationResults({ admissions, store, dataDir: destinationDir(),
+            queue: bridge.createAggregateQueueFacade(), sessions: new RalphSessionStore({ dataDir: destinationDir() }),
+            findChild: launchDomain.findChild }) : undefined;
         routes.splice(0);
         registerRemoteDelegationRoutes(routes, {
             admissions, store, remotes: { list: () => remotes },
             delivery: new ProcessMessageDeliveryService({ store, bridge }),
-            launch: createRemoteDelegationLaunch({ queue: {
-                bridge, store, dataDir: destinationDir(), globalWorkspaceRootPath: '/never-use-fallback',
-                state: { globalPaused: true, globalAutopilotPaused: false, resumeInProgress: new Set() },
-                getDefaultProvider: () => 'copilot', validateProvider,
-                getEffortTiersForProvider: () => ({ high: { model: 'gpt-5', reasoningEffort: 'high' } }) as any,
-                isAutoProviderRoutingActive: () => false,
-            }, getRalphEnabled: () => ralphEnabled }),
+            launch: launchDomain,
+            ...(results ? { results: { ready: results.restore(), capture: () => results!.restore() } } : {}),
         });
     }
-    function closeDestination() { persistence.dispose(); bridge.dispose(); store.close(); }
+    function closeDestination() { results?.dispose(); persistence.dispose(); bridge.dispose(); store.close(); }
     async function listen(list: Route[]) {
         const server = http.createServer(createRouter({ routes: list, spaHtml: '' }));
         servers.push(server);
@@ -129,6 +136,7 @@ describe('authenticated destination launch HTTP admission', () => {
         expect(queues()).toHaveLength(1);
         expect(queues()[0]).toMatchObject({ id: executionId, type: 'chat', displayName: 'Inspect goal',
             payload: { workspaceId, mode: 'ask', provider: 'copilot', workingDirectory: repo(), customTitle: 'Inspect goal' } });
+        expect(queues()[0].payload.relayRequestId).toBe(executionId);
         expect(queues()[0].payload.context).toBeUndefined();
         expect(bridge.registry.getQueueForRepo(repo()).getStats().isPaused).toBe(true);
         expect(validateProvider).toHaveBeenCalledWith('copilot');
@@ -136,6 +144,28 @@ describe('authenticated destination launch HTTP admission', () => {
         expect((await reconcile(claim)).body).toEqual(response.body);
         expect(queues()).toHaveLength(1);
     });
+
+    it.each(['completed', 'failed', 'cancelled'] as const)(
+        'captures a private %s result from HTTP-admitted work and retains it through native-store restart', async outcome => {
+            closeDestination(); openDestination(true);
+            const claim = reserve(); const accepted = await admit(claim);
+            const executionId = row(claim).executionId;
+            const manager = bridge.registry.getQueueForRepo(repo());
+            manager.markStarted(executionId);
+            if (outcome === 'completed') manager.markCompleted(executionId, 'Exact result');
+            if (outcome === 'failed') manager.markFailed(executionId, new Error('Execution failed'));
+            if (outcome === 'cancelled') manager.cancelTask(executionId);
+            await results!.restore();
+            const terminal = row(claim).terminal;
+            expect(terminal?.result.outcome).toBe(outcome);
+            expect(terminal?.result.links[0]).toBe(`#chat-references/${admissions.serverIdentity}/${workspaceId}/${toQueueProcessId(executionId)}`);
+            closeDestination(); openDestination(true); await results!.restore();
+            expect(row(claim).terminal).toEqual(terminal);
+            const enqueue = vi.spyOn(bridge, 'enqueue');
+            expect(await admit(claim)).toMatchObject(accepted);
+            expect((await reconcile(claim)).body).toHaveProperty('terminal', terminal);
+            expect(enqueue).not.toHaveBeenCalled();
+        });
 
     it.each(['grill', 'execute'] as const)('uses native Ralph %s with destination-owned whole-session identity', async entryPoint => {
         const intent = ralph(entryPoint);

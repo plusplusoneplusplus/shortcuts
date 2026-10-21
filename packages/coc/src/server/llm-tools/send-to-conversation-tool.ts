@@ -120,6 +120,7 @@ export interface SendToConversationArgs {
 
 /** A job admitted by create mode, as linked to a Sentinel to-do item. */
 export interface SendToConversationAdmittedJob {
+    remote?: { serverIdentity: string; requestId: string };
     processId: string;
     /** Execution workspace on its own server (local ID, or the remote server's ID). */
     workspaceId: string;
@@ -175,6 +176,7 @@ export type SendMessageFn = (input: {
 
 /** Post mode: this request's terminal result returns to the invoking Sentinel. */
 export interface TrackedResultDelivery {
+    remote?: { serverIdentity: string; requestId: string };
     status: 'tracked';
     jobId: string;
     /** Set when the requested steer was queued instead. */
@@ -188,6 +190,7 @@ export type ValidateSendToConversationProviderFn = (provider: ChatProvider) => P
 export type GetSendToConversationEffortTiersFn = (provider: ChatProvider) => StoredEffortTiersMap | undefined;
 
 export interface SendToConversationRuntimeOptions {
+    getRemoteResultsEnabled?: () => boolean;
     /** Installation identity supplied by server composition, never a transport alias. */
     serverIdentity?: string;
     /** Read-only discovery is late-bound because WebSocket infrastructure starts after routes. */
@@ -520,12 +523,18 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                             ...(model ? { model } : {}),
                             ...(!model && effortTier ? { effortTier } : {}),
                             ...(args.deliveryMode ? { deliveryMode: args.deliveryMode } : {}),
+                            ...(runtime?.getRemoteResultsEnabled && parentProcessId && callerWorkspaceId ? { resultOrigin: {
+                                parent: { workspaceId: callerWorkspaceId, processId: parentProcessId },
+                                title: 'Remote follow-up',
+                                requestId: grillingAdmissionId(parentProcessId, callerWorkspaceId, invocation.toolCallId),
+                                ...(runtime.getRemoteResultsEnabled() ? { messagingOrigin: runtime.messagingOrigin?.() } : {}),
+                            } } : {}),
                         });
                         return {
                             processId: result.processId,
                             turnIndex: result.turnIndex,
                             openLink: buildDashboardChatReference(result.serverIdentity, target.workspaceId, result.processId),
-                            resultDelivery: { status: 'unavailable', reason: 'The remote follow-up was admitted, but automatic result return to the originating conversation '
+                            resultDelivery: result.resultDelivery ?? { status: 'unavailable', reason: 'The remote follow-up was admitted, but automatic result return to the originating conversation '
                                 + '(including WhatsApp/Teams) is unavailable. Use openLink to inspect its outcome; do not send a duplicate follow-up.' },
                         };
                     } catch (error) {
@@ -586,6 +595,10 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 getEffortTiersForProvider: runtime?.getEffortTiersForProvider,
                 messagingOrigin: runtime?.messagingOrigin,
                 trackMessagingJob: runtime?.trackMessagingJob,
+                remoteRequestId: runtime?.getRemoteResultsEnabled
+                    ? grillingAdmissionId(parentProcessId ?? invocation.sessionId, callerWorkspaceId, invocation.toolCallId) : undefined,
+                remoteResultsAvailable: runtime?.getRemoteResultsEnabled !== undefined,
+                remoteResultsEnabled: runtime?.getRemoteResultsEnabled?.() === true,
                 track: todoTracking && todoItemId ? job => todoTracking.link(todoItemId, job) : undefined,
             });
         },
@@ -692,6 +705,9 @@ async function resolveDefaultCreateMode(
 }
 
 async function createNewConversation(params: {
+    remoteResultsAvailable?: boolean;
+    remoteResultsEnabled?: boolean;
+    remoteRequestId?: string;
     serverIdentity?: string;
     trackedAdmission?: SentinelTodoTrackedAdmission;
     dependencyBound?: boolean;
@@ -770,6 +786,11 @@ async function createNewConversation(params: {
         return withTracking(await createRemoteConversation({
             directory, target, content, mode, title, priority, model,
             explicitProvider, effortTier, store, parentProcessId, entryPoint: args.entryPoint, requestId: params.requestId,
+            resultOrigin: params.remoteResultsAvailable && parentProcessId && callerWorkspaceId ? {
+                parent: { workspaceId: callerWorkspaceId, processId: parentProcessId },
+                title: title ?? 'Remote delegated work', requestId: params.remoteRequestId,
+                ...(params.remoteResultsEnabled ? { messagingOrigin: params.messagingOrigin?.() } : {}),
+            } : undefined,
         }), track, { kind: 'remote', workspaceId: target.workspaceId, serverId: target.serverId, title });
     }
     const requestedWorkspaceId = target.workspaceId;
@@ -928,6 +949,8 @@ async function withTracking(
             processId: result.processId,
             openLink: result.openLink,
             ...(result.sessionId ? { sessionId: result.sessionId } : {}),
+            ...(result.resultDelivery?.status === 'tracked' && result.resultDelivery.remote
+                ? { remote: result.resultDelivery.remote } : {}),
         });
     } catch (err) {
         tracking = { status: 'failed', error: err instanceof Error ? err.message : String(err) };
@@ -1060,6 +1083,7 @@ async function resolveCreateTarget(params: {
  * own model/effort inheritance. The local parent's spawn link stays local.
  */
 async function createRemoteConversation(params: {
+    resultOrigin?: import('../delegation/remote-delegation-return').RemoteResultOrigin;
     requestId?: string;
     entryPoint?: 'grill' | 'execute';
     directory: WorkspaceDirectory;
@@ -1130,11 +1154,12 @@ async function createRemoteConversation(params: {
             serverId: target.serverId,
             kind: mode === 'ralph' ? 'ralph' : 'queue',
             body,
+            ...(params.resultOrigin ? { resultOrigin: params.resultOrigin } : {}),
         });
         return {
             processId: result.processId,
             openLink: buildDashboardChatReference(result.serverIdentity, target.workspaceId, result.processId),
-            resultDelivery: {
+            resultDelivery: result.resultDelivery ?? {
                 status: 'unavailable',
                 reason: 'The remote job was started, but automatic result return to the originating conversation '
                     + '(including WhatsApp/Teams) is unavailable. Use openLink to inspect its outcome; do not launch a duplicate job.',

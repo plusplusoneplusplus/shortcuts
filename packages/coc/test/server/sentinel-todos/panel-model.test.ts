@@ -271,6 +271,26 @@ describe('job and review labels', () => {
         expect(sentinelTodoReviewLabel(job({ state: 'failed', review: { state: 'failed', reason: 'chat gone' } })))
             .toBe('Review failed: chat gone');
     });
+
+    it.each([
+        ['pending', 'Result delivery pending'],
+        ['failed', 'Result delivery failed: Owner offline'],
+        ['received', 'Result received · Assessment pending'],
+    ] as const)('labels remote %s receipt separately from execution and ignores untracked metadata', (state, label) => {
+        const execution = { state: 'unknown' as const, delivery: { state, reason: 'Owner offline' } };
+        const tracked = job(execution, { kind: 'remote', serverId: 'remote-host',
+            remote: { serverIdentity: 'remote-identity', requestId: 'request-first' } });
+        expect(sentinelTodoReviewLabel(tracked)).toBe(label);
+        expect(sentinelTodoReviewLabel(job(execution, { kind: 'remote', serverId: 'remote-host' }))).toBeNull();
+        expect(sentinelTodoDisplayStatus(item({ status: 'todo', jobs: [tracked] }))).toBe('todo');
+    });
+
+    it.each(['reviewed', 'superseded'] as const)('retains remote failure visibility with %s assessment', assessment => {
+        const tracked = job({ state: 'completed', review: { state: 'failed', reason: 'Parent unavailable', assessment } },
+            { kind: 'remote', serverId: 'remote-host', remote: { serverIdentity: 'remote-identity', requestId: 'request-first' } });
+        expect(sentinelTodoReviewLabel(tracked)).toBe(`Result delivery failed: Parent unavailable · ${assessment === 'reviewed' ? 'Reviewed' : 'User verdict retained'}`);
+        expect(sentinelTodoDisplayStatus(item({ status: 'todo', jobs: [tracked] }))).toBe('todo');
+    });
 });
 
 describe('To-do tab descriptor', () => {

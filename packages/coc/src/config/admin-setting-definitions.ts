@@ -694,6 +694,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.sentinelRemoteResults', default: false, runtime: 'live', runtimeFlag: 'sentinelRemoteResultsEnabled',
+        ui: {
+            tab: 'sentinel', group: 'sentinelTodos', order: 32.587, label: 'Sentinel remote results', badge: 'experimental',
+            hint: 'Track new remote launches and follow-ups and queue their results in the originating Sentinel. Requires compatible authenticated remote support. Recovery continues when disabled.',
+            testId: 'toggle-sentinel-remote-results-enabled',
+        },
+    }),
+    bool({
         key: 'features.sentinelTodoExternalReferences', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoExternalReferencesEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.59, label: 'Sentinel To-do external references', badge: 'experimental',

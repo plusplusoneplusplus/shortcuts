@@ -1,30 +1,18 @@
-import type { DashboardWorkspaceTarget } from '@plusplusoneplusplus/coc-client';
+import { isDashboardArtifactPath, parseDashboardChatReference } from '../../../../../shared/chat-reference';
+import type { DashboardChatReference } from '../../../../../shared/chat-reference';
 import { getCocClientFor } from '../../api/cocClient';
-import { decodeSegment, encodeSegment, repoHashBase } from '../../layout/routePath';
+import { encodeSegment, repoHashBase } from '../../layout/routePath';
 import { getDashboardTopology } from './topology';
 
-export interface DashboardChatReference extends DashboardWorkspaceTarget {
-    processId: string;
-}
+export { parseDashboardChatReference };
+export type { DashboardChatReference };
 
 const isId = (value: unknown): value is string =>
     typeof value === 'string' && value.trim().length > 0 && value.length <= 512;
 const valid = (reference: DashboardChatReference) => reference && isId(reference.serverIdentity)
-    && isId(reference.workspaceId) && isId(reference.processId);
+    && isId(reference.workspaceId) && isId(reference.processId)
+    && (reference.artifactPath === undefined || isDashboardArtifactPath(reference.artifactPath));
 const unavailable = () => new Error('Referenced chat unavailable. Reconnect its server and try again.');
-
-/** Durable links contain identity only; aliases and transport endpoints are resolved on open. */
-export function parseDashboardChatReference(hash: string): DashboardChatReference | null {
-    const parts = hash.split('/');
-    if (parts.length !== 4 || parts[0] !== '#chat-references' || hash.includes('?')) return null;
-    try {
-        const [serverIdentity, workspaceId, processId] = parts.slice(1).map(decodeSegment);
-        const reference = { serverIdentity, workspaceId, processId };
-        return valid(reference) ? reference : null;
-    } catch {
-        return null;
-    }
-}
 
 /**
  * Resolve and verify one exact chat without changing selection or ledger state.
@@ -35,10 +23,11 @@ export async function resolveDashboardChatReference(reference: DashboardChatRefe
     workspaceId: string;
     processId: string;
     href: string;
+    artifactPath?: string;
 }> {
     signal.throwIfAborted();
     if (!valid(reference)) throw unavailable();
-    const { serverIdentity, workspaceId, processId } = reference;
+    const { serverIdentity, workspaceId, processId, artifactPath } = reference;
     const snapshot = getDashboardTopology();
     const route = snapshot.routes.find(({ row }) => row.online
         && row.serverIdentity === serverIdentity && row.workspaceId === workspaceId);
@@ -62,9 +51,21 @@ export async function resolveDashboardChatReference(reference: DashboardChatRefe
         current();
         if (result?.process?.id !== processId || result.process.metadata?.workspaceId !== workspaceId
             || result.process.type !== 'chat') throw unavailable();
+        if (artifactPath !== undefined) {
+            // Reuse the guarded, realpath-checked file resolution route; never read arbitrary bytes here.
+            const preview = await client.request<{ type: string; path: string; resolvedWorkspaceId: string }>(
+                `/workspaces/${encodeURIComponent(workspaceId)}/files/preview`,
+                { query: { path: artifactPath, resolve: true }, signal },
+            );
+            current();
+            if (preview.type !== 'file' || preview.resolvedWorkspaceId !== workspaceId
+                || typeof preview.path !== 'string'
+                || preview.path.replace(/\\/g, '/') !== artifactPath.replace(/\\/g, '/')) throw unavailable();
+        }
         // Detect endpoint replacement during the process read, including cached offline attachments.
         await verify();
         return { selectionId: route.selectionId, workspaceId, processId,
+            ...(artifactPath === undefined ? {} : { artifactPath }),
             href: `${repoHashBase(route.selectionId)}/chats/${encodeSegment(processId)}` };
     } catch {
         signal.throwIfAborted();

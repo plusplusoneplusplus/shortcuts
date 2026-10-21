@@ -8,6 +8,8 @@
  */
 
 import { RepoQueueRegistry, SqliteProcessStore } from '@plusplusoneplusplus/forge';
+import { DelegatedJobStore } from '../delegation/delegated-job-store';
+import { delegatedReviewReceipt } from '../delegation/delegated-job-reviews';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { initializeDatabase } from '@plusplusoneplusplus/forge';
@@ -18,6 +20,7 @@ import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { ExecutionServerOptions } from '../types';
 import type { ExecutorRuntimeCapabilities } from '../executors/executor-runtime-contracts';
 import type { QueueRuntimeConfig } from '../queue/queue-runtime-config';
+import { RemoteDelegationAdmissionStore } from '../delegation/remote-delegation-admission-store';
 
 // ============================================================================
 // Types
@@ -150,8 +153,21 @@ export function createQueueInfrastructure(
         runtime,
     });
 
+    let remoteAdmissions: RemoteDelegationAdmissionStore | undefined;
     const queuePersistence = new SqliteQueuePersistence(bridge, db, {
         restartPolicy: options.queue?.restartPolicy,
+        getRetainedTerminalTaskIds: workspaceId => {
+            remoteAdmissions ??= new RemoteDelegationAdmissionStore(dataDir);
+            return new Set([...remoteAdmissions.list(workspaceId)
+                .filter(row => row.admission.state !== 'rejected' && !row.terminal)
+                .flatMap(row => [
+                    row.executionId,
+                    ...(row.kind === 'follow-up' ? [`pending-${row.targetProcessId}-${row.executionId}`] : []),
+                ]), ...new DelegatedJobStore(dataDir).list(workspaceId).flatMap(job => {
+                    if (!job.remote || !job.terminal || !['pending', 'queued'].includes(job.terminal.delivery.state)) return [];
+                    return [delegatedReviewReceipt(job)];
+                })]);
+        },
     });
     queuePersistence.restore();
     bridge.restorePrMergeWatchers();

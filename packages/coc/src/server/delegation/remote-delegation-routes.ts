@@ -25,7 +25,7 @@ const followUpBody = z.object({
 function publicReceipt(row: RemoteDelegationAdmission) {
     return { version: row.version, requestId: row.requestId, originServerIdentity: row.originServerIdentity,
         parent: row.parent, destination: row.destination, kind: row.kind, targetProcessId: row.targetProcessId,
-        intentDigest: row.intentDigest, admission: row.admission };
+        intentDigest: row.intentDigest, admission: row.admission, ...(row.terminal ? { terminal: row.terminal } : {}) };
 }
 
 /** No capability is advertised until the complete result lifecycle is composed. */
@@ -33,9 +33,21 @@ export function registerRemoteDelegationRoutes(routes: Route[], options: {
     admissions: RemoteDelegationAdmissionStore; remotes: RemoteServerSource;
     delivery: ProcessMessageDeliveryService; store: ProcessStore;
     launch?: { dispatch: RemoteDelegationDispatch; findChild: RemoteDelegationFindChild };
+    results?: { ready: Promise<void>; capture: () => Promise<void> };
     fetchImpl?: typeof fetch;
 }): void {
     const gateway = new RemoteDelegationAdmissionService(options.admissions, { remotes: options.remotes, fetchImpl: options.fetchImpl });
+    if (options.results && options.launch) routes.push({
+        method: 'GET', pattern: '/api/remote-delegations/capabilities',
+        handler: (_req, res) => {
+            res.setHeader('Cache-Control', 'no-store');
+            sendJson(res, { version: 1, results: true, serverIdentity: options.admissions.serverIdentity });
+        },
+    });
+    const capture = async () => {
+        try { await options.results?.capture(); }
+        catch { console.error('[remote-delegation-results] Could not capture admitted result.'); }
+    };
     if (options.launch) routes.push({
         method: 'POST', pattern: REMOTE_DELEGATION_LAUNCH_PATH,
         handler: async (req, res) => {
@@ -49,7 +61,10 @@ export function registerRemoteDelegationRoutes(routes: Route[], options: {
                 (intent.kind === 'launch' ? remoteChatLaunchBody : remoteRalphLaunchBody).parse(intent.body);
             } catch { send400(res, 'Invalid remote launch admission.'); return; }
             try {
-                sendJson(res, publicReceipt(await gateway.admit(body.claim, body.intent, options.launch!.dispatch)), 202);
+                await options.results?.ready;
+                const receipt = await gateway.admit(body.claim, body.intent, options.launch!.dispatch);
+                await capture();
+                sendJson(res, publicReceipt(options.admissions.get(receipt) ?? receipt), 202);
             } catch { sendError(res, 503, 'Remote launch admission is unavailable; reconcile before any further action.'); }
         },
     });
@@ -66,6 +81,7 @@ export function registerRemoteDelegationRoutes(routes: Route[], options: {
                 followUpBody.parse(intent.body);
             } catch { send400(res, 'Invalid remote follow-up admission.'); return; }
             try {
+                await options.results?.ready;
                 const receipt = await gateway.admit(body.claim, body.intent, async ({ binding, intent, executionId }) => {
                     try {
                         const result = await options.delivery.deliverRemoteFollowUpOnce(
@@ -78,7 +94,8 @@ export function registerRemoteDelegationRoutes(routes: Route[], options: {
                         throw error;
                     }
                 });
-                sendJson(res, publicReceipt(receipt), 202);
+                await capture();
+                sendJson(res, publicReceipt(options.admissions.get(receipt) ?? receipt), 202);
             } catch { sendError(res, 503, 'Remote follow-up admission is unavailable; reconcile before any further action.'); }
         },
     });
@@ -92,6 +109,7 @@ export function registerRemoteDelegationRoutes(routes: Route[], options: {
                 if (claim.kind !== 'follow-up' && !options.launch) throw new Error();
             } catch { send400(res, 'Invalid remote admission receipt request.'); return; }
             try {
+                await options.results?.ready;
                 const receipt = await gateway.reconcile(claim, async row => {
                     if (row.kind !== 'follow-up') return options.launch!.findChild(row);
                     const found = await options.delivery.findRemoteFollowUpReceipt(
@@ -99,7 +117,8 @@ export function registerRemoteDelegationRoutes(routes: Route[], options: {
                     return found ? { processId: row.targetProcessId! } : undefined;
                 });
                 if (!receipt) { sendError(res, 404, 'Remote admission receipt is unavailable.'); return; }
-                sendJson(res, publicReceipt(receipt));
+                await capture();
+                sendJson(res, publicReceipt(options.admissions.get(receipt) ?? receipt));
             } catch { sendError(res, 503, 'Remote admission receipt is unavailable.'); }
         },
     });

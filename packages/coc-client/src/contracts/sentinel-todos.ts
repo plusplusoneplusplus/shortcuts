@@ -57,7 +57,7 @@ export interface SentinelTodoOutcome {
   recordedBy: SentinelTodoActor;
 }
 
-export type SentinelTodoJobExecution =
+export type SentinelTodoJobExecution = (
   | { state: 'queued' | 'running' | 'unknown' | 'unavailable' }
   | {
     state: 'completed' | 'failed' | 'cancelled' | 'capped';
@@ -70,12 +70,18 @@ export type SentinelTodoJobExecution =
       terminalEventId?: string;
       reason?: string;
     };
-  };
+  }
+) & {
+  /** Registered remote result receipt, distinct from parent assessment delivery. */
+  delivery?: { state: 'pending' | 'failed' | 'received'; reason?: string };
+};
 
 export interface SentinelTodoJobLink {
   processId: string;
   workspaceId: string;
   serverId?: string;
+  /** Exact registered result request, independent of the server's routing alias. */
+  remote?: { serverIdentity: string; requestId: string };
   kind: 'local' | 'remote' | 'ralph';
   sessionId?: string;
   openLink: string;

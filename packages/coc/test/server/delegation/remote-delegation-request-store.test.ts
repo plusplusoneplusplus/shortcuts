@@ -79,6 +79,28 @@ describe('RemoteDelegationRequestStore', () => {
         expect(restart().list(workspaceId)).toHaveLength(1);
     });
 
+    it('publishes reservation and dispatch claim atomically, with no restart replay permission', () => {
+        const requestId = randomUUID();
+        const first = requests.reserveDispatch({ ...reservation, requestId });
+        expect(first.execute).toBe(true);
+        expect(restart().list(workspaceId)[0].admission.state).toBe('dispatching');
+        expect(restart().reserveDispatch({ ...reservation, requestId }).execute).toBe(false);
+        expect(requests.beginDispatch(workspaceId, requestId)).toBe(false);
+        expect(jobs.list(workspaceId)).toEqual([]);
+    });
+
+    it('never grants execution when atomic claim publication fails and diagnoses an interrupted reservation', () => {
+        vi.mocked(fs.renameSync).mockImplementationOnce(() => { throw new Error('disk full'); });
+        expect(() => requests.reserveDispatch(reservation)).toThrow('disk full');
+        expect(restart().list(workspaceId)).toEqual([]);
+        const reserved = requests.reserve(reservation);
+        restart().rejectReserved(workspaceId, reserved.requestId);
+        expect(requests.list(workspaceId)[0].admission).toEqual({
+            state: 'rejected', reason: 'Origin stopped before dispatch; no remote work was sent.',
+        });
+        expect(requests.beginDispatch(workspaceId, reserved.requestId)).toBe(false);
+    });
+
     it('persists the dispatch claim before permission to send and never grants a second attempt', () => {
         const request = requests.reserve(reservation);
         const failedWrite = vi.mocked(fs.renameSync).mockImplementationOnce(() => { throw new Error('disk full'); });

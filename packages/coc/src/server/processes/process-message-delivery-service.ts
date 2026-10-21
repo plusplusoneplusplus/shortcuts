@@ -215,6 +215,8 @@ export function isIdleForProviderSwitch(
  * fields plus the content/attachment values the route computed from the body.
  */
 export interface FollowUpMessageInput {
+    /** Server-owned remote result assessment; persists its owner guard through buffering. */
+    sentinelRemoteResultReview?: boolean;
     /** Assigned by trusted dashboard HTTP paths only, never copied from a request body. */
     origin?: 'desktop';
     mirrorContent?: string;
@@ -488,7 +490,7 @@ export class ProcessMessageDeliveryService {
         workspaceId: string,
         processId: string,
         receiptId: string,
-        input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource'> & { respectQueueBarriers?: boolean },
+        input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource' | 'sentinelRemoteResultReview'> & { respectQueueBarriers?: boolean },
         validateAdmission?: (process: AIProcess | undefined) => void,
     ): Promise<DeliveryResult> {
         return this.deliverReceipt(workspaceId, processId, receiptId, input, 'review', validateAdmission);
@@ -512,7 +514,7 @@ export class ProcessMessageDeliveryService {
 
     private async deliverReceipt(
         workspaceId: string, processId: string, receiptId: string,
-        input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource'> & { respectQueueBarriers?: boolean },
+        input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource' | 'sentinelRemoteResultReview'> & { respectQueueBarriers?: boolean },
         kind: 'review' | 'pr-repair' | 'pr-outcome',
         validateAdmission?: (process: AIProcess | undefined) => void,
     ): Promise<DeliveryResult> {
@@ -646,10 +648,13 @@ export class ProcessMessageDeliveryService {
         const requestCorrelation = input.relayRequestId !== undefined
             ? { relayRequestId: input.relayRequestId }
             : {};
-        const reviewContext = input.sentinelPrOutcomeReview ? {
-            sentinelPrOutcomeReview: true,
-            ...(input.sentinelPrOutcomeStopped ? { sentinelPrOutcomeStopped: true } : {}),
-        } : {};
+        const reviewContext = {
+            ...(input.sentinelRemoteResultReview ? { sentinelRemoteResultReview: true } : {}),
+            ...(input.sentinelPrOutcomeReview ? {
+                sentinelPrOutcomeReview: true,
+                ...(input.sentinelPrOutcomeStopped ? { sentinelPrOutcomeStopped: true } : {}),
+            } : {}),
+        };
 
         // Turn index this message will occupy — the cutoff a reconstructed
         // continuation quotes history strictly before. Captured before the
@@ -691,7 +696,7 @@ export class ProcessMessageDeliveryService {
                 ...(input.imageTempDir ? { imageTempDir: input.imageTempDir } : {}),
                 ...(input.fileAttachmentMeta ? { fileAttachmentMeta: input.fileAttachmentMeta } : {}),
                 ...(input.selectedSkillNames && input.selectedSkillNames.length > 0 ? { skillNames: input.selectedSkillNames } : {}),
-                ...(input.turnSource ? { context: { ...input.turnSource, ...reviewContext } } : {}),
+                ...(input.turnSource || input.sentinelRemoteResultReview ? { context: { ...input.turnSource, ...reviewContext } } : {}),
                 createdAt: this.now().toISOString(),
             };
             await this.store.appendPendingMessage(id, pendingMessage);
@@ -752,7 +757,7 @@ export class ProcessMessageDeliveryService {
                             workingDirectory: proc.workingDirectory,
                             ...(enqueueWsId ? { workspaceId: enqueueWsId } : {}),
                             readonly: input.sentinelPrOutcomeReview ? true : (proc as { payload?: { readonly?: boolean } }).payload?.readonly,
-                            ...(input.turnSource || input.selectedSkillNames?.length ? { context: {
+                            ...(input.turnSource || input.sentinelRemoteResultReview || input.selectedSkillNames?.length ? { context: {
                                 ...input.turnSource,
                                 ...reviewContext,
                                 ...(input.selectedSkillNames?.length ? { skills: input.selectedSkillNames } : {}),

@@ -54,7 +54,10 @@ export class DelegatedJobResults {
     private disposed = false;
 
     constructor(private readonly deps: {
-        jobs: DelegatedJobStore;
+        jobs: Pick<DelegatedJobStore, 'list' | 'recordResult' | 'serverIdentity'>;
+        /** Remote return captures whole sessions only, without a spec-ready milestone. */
+        wholeSessionOnly?: boolean;
+        getRetainedTask?: (workspaceId: string, taskId: string) => QueuedTask | undefined;
         dataDir?: string;
         store: Pick<ProcessStore, 'getWorkspaces' | 'getProcess'> & Partial<Pick<ProcessStore, 'updateProcess'>>;
         queue: Pick<ScheduleQueueEventBus, 'on' | 'off' | 'getTask'> & Pick<TaskQueueManager, 'getHistory' | 'getQueued' | 'getRunning'>;
@@ -320,6 +323,7 @@ export class DelegatedJobResults {
     }
 
     private async recordGrilling(job: DelegatedJob, process?: AIProcess, status?: string): Promise<void> {
+        if (this.deps.wholeSessionOnly) return;
         if (!this.deps.dataDir || !job.child.sessionId) return;
         const grilling = new RalphGrillingStore(this.deps.dataDir);
         const state = process && this.deps.store.updateProcess
@@ -350,6 +354,8 @@ export class DelegatedJobResults {
         const task = [
             ...this.deps.queue.getQueued(), ...this.deps.queue.getRunning(),
             this.deps.queue.getTask(requestId), this.deps.queue.getTask(`pending-${job.child.processId}-${requestId}`),
+            this.deps.getRetainedTask?.(job.child.workspaceId, requestId),
+            this.deps.getRetainedTask?.(job.child.workspaceId, `pending-${job.child.processId}-${requestId}`),
             ...this.deps.queue.getHistory(),
         ].find((candidate): candidate is QueuedTask => !!candidate && candidate.payload.relayRequestId === requestId
             && matchesChild(job, candidate));

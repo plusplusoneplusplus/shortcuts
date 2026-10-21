@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { parseDashboardChatReference, resolveDashboardChatReference } from '../shared/dashboard-discovery/chat-reference';
 import { getDashboardTopology, subscribeDashboardTopology } from '../shared/dashboard-discovery/topology';
+import { openUnifiedPanelTab } from '../features/repo-detail/unified-right-panel/unifiedPanelOpen';
+import { WORKSPACE_PREVIEW_PREFIX } from '../shared/file-viewer/workspacePreview';
 
 /** Hold direct links outside workspace rendering until their exact destination is verified. */
 export function DashboardChatReferenceRoute({ hash }: { hash: string }) {
@@ -39,6 +41,14 @@ export function DashboardChatReferenceRoute({ hash }: { hash: string }) {
             void resolveDashboardChatReference(reference, current.signal).then(result => {
                 if (stopped || current.signal.aborted || location.hash !== hash) return;
                 stop();
+                if (result.artifactPath !== undefined) {
+                    openUnifiedPanelTab(result.workspaceId, {
+                        kind: 'file', ownerWorkspaceId: result.workspaceId,
+                        ownerRoutingRef: result.selectionId === result.workspaceId ? null : result.selectionId,
+                        chatId: result.processId, resourceId: WORKSPACE_PREVIEW_PREFIX + result.artifactPath,
+                        label: result.artifactPath.replace(/\\/g, '/').split('/').pop() || 'Artifact',
+                    });
+                }
                 window.history.replaceState(null, '', result.href);
                 window.dispatchEvent(new HashChangeEvent('hashchange'));
             }, () => {
@@ -60,8 +70,8 @@ export function DashboardChatReferenceRoute({ hash }: { hash: string }) {
     }, [hash, attempt]);
 
     return <div role="status" aria-live="polite">
-        {checking ? 'Checking referenced chat…' : <>
-            <p>Referenced chat unavailable. Reconnect its server and try again.</p>
+        {checking ? 'Checking referenced chat or artifact…' : <>
+            <p>Referenced chat or artifact unavailable. Reconnect its server and try again.</p>
             <button type="button" onClick={() => setAttempt(value => value + 1)}>Retry</button>
         </>}
     </div>;

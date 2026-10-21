@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getRepoDataPath } from '../paths';
 import { getOrCreateServerIdentity } from '../servers/server-identity';
 import { atomicWriteJsonUnique } from '../shared/fs-utils';
+import { delegatedJobResultSchema, MAX_RESULT_SUMMARY, type DelegatedJobResult } from './delegated-job-store';
 import {
     remoteDelegationBindingSchema, remoteDelegationProofSchema, sameRemoteDelegationBinding,
     type RemoteDelegationBinding, type RemoteDelegationProof,
@@ -11,6 +12,8 @@ import {
 
 export const REMOTE_DELEGATION_ADMISSIONS_FILE = 'remote-delegation-admissions.json';
 const id = z.string().min(1).max(512).refine(value => !!value.trim());
+const terminalEventId = (binding: RemoteDelegationBinding) =>
+    `remote:${JSON.stringify([binding.originServerIdentity, binding.parent.workspaceId, binding.requestId])}:terminal`;
 const childSchema = z.object({ processId: id, sessionId: id.optional() }).strict();
 const admissionSchema = z.discriminatedUnion('state', [
     z.object({ state: z.literal('dispatching') }).strict(),
@@ -21,7 +24,15 @@ const admissionSchema = z.discriminatedUnion('state', [
 const receiptSchema = remoteDelegationBindingSchema.extend({
     /** Destination-local task/relay identity, independent of colliding origin request IDs. */
     executionId: z.uuid(), createdAt: z.iso.datetime(), admission: admissionSchema,
+    terminal: z.object({ result: delegatedJobResultSchema, recordedAt: z.iso.datetime() }).strict().optional(),
 }).superRefine((row, context) => {
+    if (row.terminal && row.admission.state !== 'accepted') {
+        context.addIssue({ code: 'custom', message: 'Only accepted execution can return a result' });
+    }
+    if (row.terminal && (row.terminal.result.terminalEventId !== terminalEventId(row)
+        || (row.terminal.result.outcome === 'capped' && row.kind !== 'ralph'))) {
+        context.addIssue({ code: 'custom', message: 'Terminal outcome must match the registered request' });
+    }
     if ((row.kind === 'follow-up') !== !!row.targetProcessId) {
         context.addIssue({ code: 'custom', message: 'Only follow-ups require an exact target' });
     }
@@ -106,6 +117,25 @@ export class RemoteDelegationAdmissionStore {
         rows[rows.indexOf(row)] = next;
         this.save(binding.destination.workspaceId, rows);
         return next;
+    }
+
+    /** First terminal outcome wins. Persistence never grants another execution attempt. */
+    recordResult(input: RemoteDelegationBinding, result: DelegatedJobResult): boolean {
+        const binding = this.binding(input);
+        const rows = this.list(binding.destination.workspaceId);
+        const row = this.require(rows, binding);
+        if (row.admission.state !== 'accepted') throw new Error('Remote execution is not accepted');
+        if (row.terminal) return false;
+        row.terminal = { recordedAt: new Date().toISOString(), result: delegatedJobResultSchema.parse({
+            ...result,
+            // The event identity binds the origin's exact request, independent of raw child IDs.
+            terminalEventId: terminalEventId(binding),
+            summary: result.summary.slice(0, MAX_RESULT_SUMMARY),
+            ...(result.reason !== undefined ? { reason: result.reason.slice(0, 2_000) } : {}),
+            links: result.links.slice(0, 20),
+        }) };
+        this.save(binding.destination.workspaceId, rows);
+        return true;
     }
 
     private binding(input: RemoteDelegationBinding): RemoteDelegationBinding {

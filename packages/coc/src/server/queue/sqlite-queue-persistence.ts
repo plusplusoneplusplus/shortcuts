@@ -8,7 +8,7 @@
  * - No full-file rewrite — only the affected row(s) are upserted/deleted.
  * - No image blob externalisation — images stay inline in the payload JSON.
  * - History IS persisted — completed/failed/cancelled tasks are kept in SQLite
- *   and cleaned up on restart (served from the process store instead).
+ *   and cleaned up on restart, except evidence for pending remote results.
  */
 
 import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
@@ -39,6 +39,8 @@ function isPauseMarker(item: QueueItem | undefined): item is PauseMarker {
 export interface SqliteQueuePersistenceOptions {
     /** Policy for tasks that were running when the server last stopped (default: 'requeue-if-retriable'). */
     restartPolicy?: RestartPolicy;
+    /** Exact destination task IDs (including buffered aliases) still needed for remote results. */
+    getRetainedTerminalTaskIds?: (workspaceId: string) => ReadonlySet<string>;
 }
 
 /** Shape of the bridge's augmented queueChange event. */
@@ -56,6 +58,7 @@ export class SqliteQueuePersistence {
     private readonly store: SqliteQueueStore;
     private readonly db: NativeDatabase;
     private readonly restartPolicy: RestartPolicy;
+    private readonly getRetainedTerminalTaskIds?: SqliteQueuePersistenceOptions['getRetainedTerminalTaskIds'];
 
     /** Maps repoId → rootPath (persisted in queue_repo_paths table). */
     private readonly repoIdToPath = new Map<string, string>();
@@ -71,6 +74,7 @@ export class SqliteQueuePersistence {
         this.db = db;
         this.store = new SqliteQueueStore(db);
         this.restartPolicy = options?.restartPolicy ?? 'requeue-if-retriable';
+        this.getRetainedTerminalTaskIds = options?.getRetainedTerminalTaskIds;
 
         this.ensureRepoPathsTable();
 
@@ -91,7 +95,7 @@ export class SqliteQueuePersistence {
 
     /**
      * Restore persisted queue state from SQLite.
-     * Synchronous — no file I/O, no debounce.
+     * Synchronous; retention policy may consult workspace admission files.
      */
     restore(): void {
         // 1. Load repo path mappings
@@ -223,18 +227,38 @@ export class SqliteQueuePersistence {
             );
         }
 
-        // 4. Clean up terminal tasks (completed/failed/cancelled) from queue_tasks.
-        // History is now served from the process store; these rows are no longer
-        // restored into in-memory history and would otherwise be orphaned.
+        // Keep exact remote request evidence on disk, independently of capped history.
         const terminalTasks = this.store.getQueueTasks(undefined, ['completed', 'failed', 'cancelled']);
+        const retainedByWorkspace = new Map<string, ReadonlySet<string> | undefined>();
+        let cleaned = 0;
         for (const task of terminalTasks) {
+            const workspaceId = task.repoId ?? '';
+            if (!retainedByWorkspace.has(workspaceId)) {
+                try {
+                    retainedByWorkspace.set(workspaceId, this.retainedTerminalTaskIds(workspaceId));
+                } catch {
+                    // An unreadable ledger cannot authorize deleting its execution evidence.
+                    retainedByWorkspace.set(workspaceId, undefined);
+                    console.error('[SqliteQueuePersistence] Could not read remote terminal retention policy.');
+                }
+            }
+            const retained = retainedByWorkspace.get(workspaceId);
+            if (!retained || retained.has(task.id)) continue;
             this.store.removeQueueTask(task.id);
+            cleaned++;
         }
-        if (terminalTasks.length > 0) {
+        if (cleaned > 0) {
             process.stderr.write(
-                `[SqliteQueuePersistence] Cleaned up ${terminalTasks.length} terminal task(s) from queue_tasks\n`
+                `[SqliteQueuePersistence] Cleaned up ${cleaned} terminal task(s) from queue_tasks\n`
             );
         }
+    }
+
+    /** Read exact pending remote evidence without rehydrating queue history. */
+    getRetainedTerminalTask(workspaceId: string, taskId: string): QueuedTask | undefined {
+        if (!this.retainedTerminalTaskIds(workspaceId).has(taskId)) return undefined;
+        return this.store.getQueueTasks(workspaceId, ['completed', 'failed', 'cancelled'])
+            .find(task => task.id === taskId);
     }
 
     /**
@@ -297,7 +321,7 @@ export class SqliteQueuePersistence {
                 break;
 
             case 'removed':
-                // Persist the task's final state (completed/failed/cancelled) for history restoration.
+                // Persist the task's final state for terminal result recovery.
                 // Only persist terminal statuses — delete non-terminal removals (dequeue, removeTask).
                 if (task && isTerminalStatus(task.status)) {
                     this.store.upsertQueueTask(task);
@@ -393,6 +417,10 @@ export class SqliteQueuePersistence {
     // Private — restore helpers
     // ========================================================================
 
+    private retainedTerminalTaskIds(workspaceId: string): ReadonlySet<string> {
+        return this.getRetainedTerminalTaskIds?.(workspaceId) ?? new Set<string>();
+    }
+
     private restoreRunningTask(task: QueuedTask, queueManager: TaskQueueManager, repoId: string): number {
         if (task.payload.kind === 'compact') {
             // Provider mutation may already have succeeded. Never replay an interrupted compaction.
@@ -431,7 +459,7 @@ export class SqliteQueuePersistence {
                         throw new Error('Restart chat workspace or admission identity mismatch');
                     }
                     if (['cancelling', 'cancelled'].includes(existing.status)) {
-                        this.store.removeQueueTask(task.id);
+                        this.settleInterruptedTask(task, 'cancelled');
                         return 0;
                     }
                     const firstUser = this.db.prepare(
@@ -471,8 +499,25 @@ export class SqliteQueuePersistence {
             return 1;
         } else {
             // policy === 'fail' or not retriable — remove from queue
-            this.store.removeQueueTask(task.id);
+            this.settleInterruptedTask(task, 'failed');
             return 0;
+        }
+    }
+
+    private settleInterruptedTask(task: QueuedTask, status: 'failed' | 'cancelled'): void {
+        let retained = true;
+        try {
+            retained = this.retainedTerminalTaskIds(task.repoId ?? '').has(task.id);
+        } catch {
+            console.error('[SqliteQueuePersistence] Could not read remote terminal retention policy.');
+        }
+        if (retained) {
+            this.store.upsertQueueTask({
+                ...task, status, completedAt: Date.now(),
+                error: status === 'cancelled' ? 'Task cancelled before server restart' : 'Task interrupted by server restart',
+            });
+        } else {
+            this.store.removeQueueTask(task.id);
         }
     }
 }

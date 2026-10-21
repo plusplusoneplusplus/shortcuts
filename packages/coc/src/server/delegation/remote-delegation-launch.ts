@@ -32,6 +32,7 @@ class RemoteLaunchRejectedError extends Error {}
 export function createRemoteDelegationLaunch(options: {
     queue: QueueRouteContext & { store: NonNullable<QueueRouteContext['store']>; dataDir: string };
     getRalphEnabled: () => boolean;
+    getRetainedTask?: (workspaceId: string, taskId: string) => import('@plusplusoneplusplus/forge').QueuedTask | undefined;
 }): { dispatch: RemoteDelegationDispatch; findChild: RemoteDelegationFindChild } {
     const { queue } = options;
     const workspace = async (workspaceId: string) => {
@@ -64,6 +65,7 @@ export function createRemoteDelegationLaunch(options: {
                     const task = validateAndParseTask({ type: 'chat', priority: body.priority,
                         displayName: body.title, config: body.config, payload: {
                             kind: 'chat', workspaceId: owner.id, prompt: body.content, mode: body.mode ?? 'ask',
+                            relayRequestId: executionId,
                             ...(body.provider ? { provider: body.provider } : {}),
                             ...(body.title ? { customTitle: body.title } : {}),
                             ...(body.autoProviderRouting ? { context: { autoProviderRouting: { requested: true } } } : {}),
@@ -97,7 +99,7 @@ export function createRemoteDelegationLaunch(options: {
             if (row.kind !== 'launch' && row.kind !== 'ralph') return undefined;
             const processId = toQueueProcessId(row.executionId);
             const sessionId = row.kind === 'ralph' ? `ralph-approved-${row.executionId}` : undefined;
-            const task = queue.bridge.getTask(row.executionId);
+            const task = queue.bridge.getTask(row.executionId) ?? options.getRetainedTask?.(row.destination.workspaceId, row.executionId);
             const process = await queue.store.getProcess(processId);
             const followUp = task?.processId ?? task?.payload.processId;
             // Any conflicting evidence fails closed, even when another record matches.

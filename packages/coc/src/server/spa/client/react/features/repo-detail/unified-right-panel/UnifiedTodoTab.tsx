@@ -1156,8 +1156,8 @@ function TodoJobs({ item, owner, currentWorkspaceId, expanded = false, onFollowL
         {shownJobs.map(job => {
             const review = sentinelTodoReviewLabel(job);
             const executionLabel = sentinelTodoJobStateLabel(job);
-            const jobLink = `${item.id}|job:${job.serverId ?? ''}:${job.processId}`;
-            return <li key={`${job.serverId ?? ''}:${job.processId}`} className={cn('flex w-full min-w-0 max-w-full flex-wrap items-center gap-1',
+            const jobLink = `${item.id}|job:${job.serverId ?? ''}:${job.processId}${job.remote ? `:${job.remote.requestId}` : ''}`;
+            return <li key={jobLink} className={cn('flex w-full min-w-0 max-w-full flex-wrap items-center gap-1',
                 expanded && 'text-left [overflow-wrap:anywhere]')}>
                 <SentinelTodoJobPreview key={`${sentinelTodoOwnerKey(owner)}:${job.workspaceId}:${job.serverId ?? ''}:${job.processId}:${job.sessionId ?? ''}`}
                     job={job} owner={owner} itemTitle={expanded ? undefined : item.title} linkKey={jobLink} onFollowLink={onFollowLink}
@@ -1165,7 +1165,7 @@ function TodoJobs({ item, owner, currentWorkspaceId, expanded = false, onFollowL
                     <ChatStatusPill status={job.execution.state} label={executionLabel} showDuration={false}
                         aria-label={`Job execution: ${executionLabel}`} data-testid="sentinel-todo-job-execution"
                         className="shrink-0 !h-[18px] !px-1.5" />
-                    {review && <span className={cn(MUTED, 'max-w-full break-words [overflow-wrap:anywhere]')} aria-label={`Job review: ${review}`}>· {review}</span>}
+                    {review && <span className={cn(MUTED, 'min-w-0 max-w-full break-words [overflow-wrap:anywhere]')} title={review} aria-label={`Job review: ${review}`}>· {review}</span>}
                     {reasonPreview}
                 </SentinelTodoJobPreview>
             </li>;

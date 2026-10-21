@@ -1389,6 +1389,65 @@ describe('createSendToConversationTool — remote create over HTTP (real directo
 });
 
 describe('remote follow-up transport (real directory, isolated HTTP fixtures)', () => {
+    it('reports unsupported result return without hiding a successful untracked remote launch', async () => {
+        const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => Response.json(
+            url.endsWith('/api/health') ? { serverIdentity: 'destination-owner' } : { task: { id: 'admitted' } }));
+        const dispatch = vi.fn(async () => ({ unavailable: {
+            status: 'unavailable' as const, code: 'unsupported' as const, reason: 'Authenticated remote results are unsupported.',
+        } }));
+        const directory = createWorkspaceDirectory({ store: makeStore(),
+            remoteServers: { list: () => [{ id: 'alias', kind: 'url', url: 'http://fixture.test', effectiveUrl: 'http://fixture.test',
+                serverIdentity: 'destination-owner', status: 'online', addedAt: 1, updatedAt: 1 }] },
+            fetchImpl: fetchImpl as typeof fetch, remoteResults: { dispatch } });
+        const { tool, enqueueChat } = makeTool({ runtime: { workspaceDirectory: directory, getRemoteResultsEnabled: () => true } });
+        const result = asSuccess(await tool.handler({ content: 'Inspect', workspaceId: 'remote:alias:ws-1' }, invocationStub));
+        expect(result).toMatchObject({ processId: 'queue_admitted', resultDelivery: { status: 'unavailable', code: 'unsupported' } });
+        expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('routes a valid remote raw ID before local lookup, including colliding workspace/process IDs', async () => {
+        const postRemoteChat = vi.fn(async () => ({ serverIdentity: 'remote-owner', processId: 'queue_target', turnIndex: 2,
+            resultDelivery: { status: 'tracked' as const, jobId: 'remote-request' } }));
+        const store = makeStore(['ws-1']);
+        vi.mocked(store.getProcess).mockRejectedValue(new Error('Chat not found on origin'));
+        const sendMessage = vi.fn();
+        const enqueueChat = vi.fn();
+        const { tool } = createSendToConversationTool({ store, workspaceId: 'ws-1', parentProcessId: DEFAULT_PARENT_ID,
+            enqueueChat, sendMessage, runtime: { serverIdentity: 'origin-owner', getRemoteResultsEnabled: () => true,
+                workspaceDirectory: { list: vi.fn(), listRemoteChats: vi.fn(), startRemoteChat: vi.fn(), postRemoteChat } } });
+        const result = asSuccess(await tool.handler({ content: 'Follow up', processId: 'queue_target',
+            workspaceId: 'remote:alias:ws-1' }, invocationStub));
+        expect(result).toMatchObject({ openLink: '#chat-references/remote-owner/ws-1/queue_target', resultDelivery: { status: 'tracked' } });
+        expect(postRemoteChat).toHaveBeenCalledWith(expect.objectContaining({
+            serverId: 'alias', workspaceId: 'ws-1', processId: 'queue_target',
+            resultOrigin: expect.objectContaining({ parent: { workspaceId: 'ws-1', processId: DEFAULT_PARENT_ID } }),
+        }));
+        expect(store.getProcess).not.toHaveBeenCalled();
+        expect(sendMessage).not.toHaveBeenCalled();
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it.each(['queue', 'ralph'] as const)('uses compatible tracked %s admission once with private origin context outside the execution intent', async kind => {
+        const dispatch = vi.fn(async () => ({ serverIdentity: 'destination-owner', processId: 'queue_remote',
+            turnIndex: -1, resultDelivery: { status: 'tracked' as const, jobId: 'remote-job' } }));
+        const fetchImpl = vi.fn(async () => Response.json({ serverIdentity: 'destination-owner' }));
+        const directory = createWorkspaceDirectory({ store: makeStore(),
+            remoteServers: { list: () => [{ id: 'alias', label: 'Remote', kind: 'url', effectiveUrl: 'http://fixture.test',
+                url: 'http://fixture.test', serverIdentity: 'destination-owner', status: 'online', addedAt: 1, updatedAt: 1 }] },
+            fetchImpl: fetchImpl as typeof fetch, remoteResults: { dispatch } });
+        const result = await directory.startRemoteChat({ serverId: 'alias', kind,
+            body: kind === 'ralph' ? { workspaceId: 'ws-1', goalSpec: 'Goal', provider: 'copilot', config: { effortTier: 'medium' } }
+                : { type: 'chat', workspaceId: 'ws-1', priority: 'normal', payload: { kind: 'chat', workspaceId: 'ws-1', prompt: 'Goal', mode: 'ask' }, config: {} },
+            resultOrigin: { parent: { workspaceId: 'ws-1', processId: DEFAULT_PARENT_ID }, title: 'Remote task',
+                messagingOrigin: { connector: 'teams', chatKey: 'origin-chat' } } });
+        expect(result.resultDelivery).toEqual({ status: 'tracked', jobId: 'remote-job' });
+        expect(dispatch).toHaveBeenCalledOnce();
+        expect(dispatch.mock.calls[0][1]).toMatchObject({ version: 1, workspaceId: 'ws-1', kind: kind === 'queue' ? 'launch' : 'ralph' });
+        expect(JSON.stringify(dispatch.mock.calls[0][1])).not.toContain('messagingOrigin');
+        expect(fetchImpl.mock.calls.every(([, init]) => !init || init.method !== 'POST')).toBe(true);
+    });
+
     function fixture(options: {
         remote?: boolean; knownIdentity?: string; startTimeoutMs?: number;
         detail?: (proc: any) => unknown;

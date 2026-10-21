@@ -99,6 +99,44 @@ describe('destination remote delegation admission', () => {
         expect(restart().accept(proof, { processId: 'child' }).admission.state).toBe('accepted');
     });
 
+    const result = () => ({ terminalEventId: 'caller-event', outcome: 'completed' as const,
+        summary: 'x'.repeat(10_000), reason: 'r'.repeat(3_000), links: ['#chat-reference'] });
+
+    it('bounds and persists the first terminal result under the exact origin request', () => {
+        store.claim(proof); store.accept(proof, { processId: 'child' });
+        expect(store.recordResult(proof, result())).toBe(true);
+        const terminal = restart().get(proof)!.terminal!;
+        expect(terminal.result.summary).toHaveLength(8_000);
+        expect(terminal.result.reason).toHaveLength(2_000);
+        expect(terminal.result.terminalEventId).toContain(JSON.stringify([proof.originServerIdentity, proof.parent.workspaceId, proof.requestId]));
+        expect(restart().recordResult(proof, { ...result(), outcome: 'failed', summary: 'Conflicting late result' })).toBe(false);
+        expect(restart().get(proof)!.terminal).toEqual(terminal);
+        expect(restart().claim(proof).execute).toBe(false);
+    });
+
+    it('keeps a failed terminal publication recoverable and never grants execution replay', () => {
+        store.claim(proof); store.accept(proof, { processId: 'child' });
+        vi.mocked(fs.renameSync).mockImplementationOnce(() => { throw new Error('disk full'); });
+        expect(() => store.recordResult(proof, result())).toThrow('disk full');
+        expect(restart().get(proof)!.terminal).toBeUndefined();
+        expect(restart().claim(proof).execute).toBe(false);
+        expect(restart().recordResult(proof, result())).toBe(true);
+    });
+
+    it.each(['dispatching', 'uncertain', 'rejected'] as const)('does not invent an outcome for %s admission', state => {
+        store.claim(proof);
+        if (state !== 'dispatching') store.settle(proof, state);
+        expect(() => store.recordResult(proof, result())).toThrow('not accepted');
+        expect(restart().get(proof)!.terminal).toBeUndefined();
+    });
+
+    it('rejects a result with reassigned request ownership or malformed outcome', () => {
+        store.claim(proof); store.accept(proof, { processId: 'child' });
+        expect(() => store.recordResult({ ...proof, parent: { ...proof.parent, processId: 'other-parent' } }, result())).toThrow();
+        expect(() => store.recordResult(proof, { ...result(), outcome: 'running' as any })).toThrow();
+        expect(restart().get(proof)!.terminal).toBeUndefined();
+    });
+
     it('keeps colliding origin IDs separate by installation and parent workspace', () => {
         const second = { ...proof, originServerIdentity: 'second-origin' };
         const third = { ...proof, parent: { ...proof.parent, workspaceId: 'second-origin-repo' } };

@@ -435,6 +435,50 @@ describe('UnifiedTodoTab', () => {
         expect(update).not.toHaveBeenCalled();
     });
 
+    it.each([
+        { state: 'pending' as const, label: 'Result delivery pending' },
+        { state: 'queued' as const, label: 'Assessment queued · Assessment pending' },
+        { state: 'delivered' as const, label: 'Result delivered · Assessment pending' },
+        { state: 'failed' as const, label: `Result delivery failed: ${'Owner unavailable:'.repeat(30)} · Assessment pending` },
+    ])('shows accessible remote $state delivery in the existing narrow metadata row', async ({ state, label }) => {
+        const tracked = item({ status: 'in_progress', jobs: [{
+            processId: 'remote-child', workspaceId: 'ws-child', serverId: 'host', kind: 'remote',
+            remote: { serverIdentity: 'remote-identity', requestId: 'request-first' },
+            openLink: '#repos/ws-child/chats/remote-child', title: 'Remote work', linkedAt: item().createdAt,
+            execution: state === 'pending' ? { state: 'unknown', delivery: { state: 'pending' } }
+                : { state: 'completed', review: { state, assessment: 'pending',
+                    ...(state === 'failed' ? { reason: 'Owner unavailable:'.repeat(30) } : {}) } },
+        }] });
+        get.mockResolvedValue(ledger([tracked]));
+        render(<div style={{ width: 220 }}><UnifiedTodoTab owner={OWNER} /></div>);
+        const card = await screen.findByTestId('sentinel-todo-row-i1');
+        const metadata = within(card).getByTestId('sentinel-todo-job-metadata');
+        const delivery = within(metadata).getByLabelText(`Job review: ${label}`);
+        expect(delivery.getAttribute('title')).toBe(label);
+        expect(delivery.className).toContain('min-w-0');
+        expect(delivery.className).toContain('[overflow-wrap:anywhere]');
+        expect(metadata.className).toContain('flex-wrap');
+        expect(metadata.className).not.toContain('overflow-hidden');
+        expect(within(card).queryByTestId('sentinel-todo-status-done')).toBeNull();
+        expect(create).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it('keeps remote delivery failure visible beside a retained user verdict', async () => {
+        get.mockResolvedValue(ledger([item({ status: 'todo', jobs: [{
+            processId: 'remote-child', workspaceId: 'ws-child', serverId: 'host', kind: 'remote',
+            remote: { serverIdentity: 'remote-identity', requestId: 'request-first' },
+            openLink: '#', linkedAt: item().createdAt,
+            execution: { state: 'completed', review: { state: 'failed', reason: 'Parent unavailable', assessment: 'superseded' } },
+        }] })]));
+        render(<div style={{ width: 220 }}><UnifiedTodoTab owner={OWNER} /></div>);
+        const card = await screen.findByTestId('sentinel-todo-row-i1');
+        expect(within(card).getByLabelText('Job review: Result delivery failed: Parent unavailable · User verdict retained')).toBeTruthy();
+        expect(within(card).getByTestId('sentinel-todo-status-todo')).toBeTruthy();
+        expect(within(card).queryByTestId('sentinel-todo-status-needs_attention')).toBeNull();
+        expect(update).not.toHaveBeenCalled();
+    });
+
     it('left-aligns full job history with bounded wrapping rows without changing compact metadata or job semantics', async () => {
         const tracked = item({ title: 'Fixture tracked work', jobs: [
             { processId: 'earlier', workspaceId: 'ws-child', kind: 'local', title: 'Fixture earlier job',

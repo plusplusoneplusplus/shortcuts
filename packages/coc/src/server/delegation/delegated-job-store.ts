@@ -21,14 +21,19 @@ const remoteSchema = z.object({
     serverIdentity: z.string().min(1).max(512).refine(value => !!value.trim()),
     requestId: z.string().min(1).max(512),
     kind: z.enum(['launch', 'follow-up', 'ralph']),
+    delivery: z.object({
+        state: z.enum(['pending', 'failed', 'received']),
+        reason: z.string().max(2_000).optional(),
+    }).strict().optional(),
 }).strict();
-const resultSchema = z.object({
+export const delegatedJobResultSchema = z.object({
     terminalEventId: id,
     outcome: z.enum(['completed', 'failed', 'cancelled', 'capped']),
     reason: z.string().max(2_000).optional(),
     summary: z.string().max(MAX_RESULT_SUMMARY),
     links: z.array(z.string().min(1).max(2_000)).max(20),
 });
+const resultSchema = delegatedJobResultSchema;
 const deliverySchema = z.discriminatedUnion('state', [
     z.object({ state: z.literal('pending') }),
     z.object({ state: z.literal('queued'), receiptId: id }),
@@ -137,7 +142,8 @@ export class DelegatedJobStore {
         if (existing) {
             if (JSON.stringify(existing.parent) !== JSON.stringify(job.parent)
                 || JSON.stringify(existing.child) !== JSON.stringify(job.child)
-                || JSON.stringify(existing.remote) !== JSON.stringify(job.remote)
+                || JSON.stringify(existing.remote && { ...existing.remote, delivery: undefined })
+                    !== JSON.stringify(job.remote && { ...job.remote, delivery: undefined })
                 || JSON.stringify(existing.messagingOrigin) !== JSON.stringify(job.messagingOrigin)) {
                 throw new Error(`Delegated job ${job.id} already belongs to another parent or child`);
             }
@@ -220,6 +226,16 @@ export class DelegatedJobStore {
         };
         this.save(workspaceId, rows);
         return true;
+    }
+
+    /** Transport failures may recover, but a received result cannot become undelivered. */
+    updateRemoteDelivery(workspaceId: string, jobId: string, delivery: NonNullable<NonNullable<DelegatedJob['remote']>['delivery']>): void {
+        const rows = this.list(workspaceId);
+        const job = rows.find(row => row.id === jobId);
+        if (!job?.remote) throw new Error('Remote delegation is not registered');
+        if (job.remote.delivery?.state === 'received' && delivery.state !== 'received') return;
+        job.remote.delivery = remoteSchema.shape.delivery.parse(delivery);
+        this.save(workspaceId, rows);
     }
 
     /** Conditional transitions prevent stale workers from reopening settled results. */

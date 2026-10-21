@@ -1,3 +1,5 @@
+import { remoteChatLaunchBody, remoteRalphLaunchBody } from '../delegation/remote-delegation-launch';
+
 /**
  * Workspace directory — one listing of the repos and repo groups this server
  * can reach: its own registry plus every registered remote CoC server's.
@@ -72,6 +74,7 @@ export interface RemoteChatRequest {
     /** `queue` → `POST /api/queue`; `ralph` → `POST /api/ralph-launch`. */
     kind: 'queue' | 'ralph';
     body: Record<string, unknown>;
+    resultOrigin?: import('../delegation/remote-delegation-return').RemoteResultOrigin;
 }
 
 export interface RemoteChatResult {
@@ -80,6 +83,7 @@ export interface RemoteChatResult {
     processId: string;
     /** Ralph only. */
     sessionId?: string;
+    resultDelivery?: import('../llm-tools/send-to-conversation-tool').TrackedResultDelivery | import('../delegation/remote-delegation-return').UnavailableRemoteResult;
 }
 
 export interface RemoteChatPostRequest {
@@ -92,6 +96,7 @@ export interface RemoteChatPostRequest {
     model?: string;
     effortTier?: 'very-low' | 'low' | 'medium' | 'high';
     deliveryMode?: 'immediate' | 'enqueue' | 'steer';
+    resultOrigin?: import('../delegation/remote-delegation-return').RemoteResultOrigin;
 }
 
 export interface RemoteChatPostResult {
@@ -99,6 +104,7 @@ export interface RemoteChatPostResult {
     processId: string;
     /** -1 means buffered; the destination appends the user turn when it drains. */
     turnIndex: number;
+    resultDelivery?: import('../llm-tools/send-to-conversation-tool').TrackedResultDelivery | import('../delegation/remote-delegation-return').UnavailableRemoteResult;
 }
 
 export type RemoteChatDispatchState = 'not-started' | 'rejected' | 'uncertain';
@@ -166,6 +172,7 @@ export interface WorkspaceDirectoryOptions {
     fetchImpl?: typeof fetch;
     /** Override the shared last-known remote cache (tests). */
     lastKnownCache?: CacheHandle<WorkspaceDirectoryEntry[]>;
+    remoteResults?: Pick<import('../delegation/remote-delegation-return').RemoteDelegationReturn, 'dispatch'>;
 }
 
 // ============================================================================
@@ -508,6 +515,27 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
                 throw new RemoteChatAdmissionError('Remote destination changed before admission. The chat was not started.', 'not-started');
             }
             const path = request.kind === 'ralph' ? '/api/ralph-launch' : '/api/queue';
+            let resultDelivery: import('../delegation/remote-delegation-return').UnavailableRemoteResult | undefined;
+            if (request.resultOrigin && options.remoteResults) {
+                const launch = request.kind === 'ralph' ? remoteRalphLaunchBody.parse({
+                    goalSpec: request.body.goalSpec, entryPoint: request.body.entryPoint, title: request.body.title,
+                    provider: request.body.provider, autoProviderRouting: request.body.autoProviderRouting, config: request.body.config,
+                }) : remoteChatLaunchBody.parse({
+                    content: (request.body.payload as Record<string, unknown>)?.prompt,
+                    mode: (request.body.payload as Record<string, unknown>)?.mode,
+                    priority: request.body.priority, title: request.body.displayName,
+                    provider: (request.body.payload as Record<string, unknown>)?.provider,
+                    autoProviderRouting: !!((request.body.payload as Record<string, unknown>)?.context as { autoProviderRouting?: unknown })?.autoProviderRouting,
+                    config: request.body.config,
+                });
+                const tracked = await options.remoteResults.dispatch(request.serverId, {
+                    version: 1, kind: request.kind === 'ralph' ? 'ralph' : 'launch',
+                    workspaceId: String(request.body.workspaceId ?? (request.body.payload as Record<string, unknown>)?.workspaceId),
+                    body: JSON.parse(JSON.stringify(launch)),
+                }, request.resultOrigin, serverIdentity);
+                if (tracked && !('unavailable' in tracked)) return tracked;
+                resultDelivery = tracked?.unavailable;
+            }
             let body: any;
             try {
                 body = await requestJson(`${target.effectiveUrl}${path}`, startTimeoutMs, { method: 'POST', body: request.body });
@@ -537,13 +565,14 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
                 if (grilling && (body.phase !== 'grilling' || typeof body.sessionId !== 'string')) {
                     throw new RemoteChatAdmissionError(`Remote server "${label}" did not confirm native grilling admission. Admission is uncertain; inspect the remote chat list. Do not launch a duplicate job.`, 'uncertain');
                 }
-                return { serverIdentity, processId: body.processId, ...(typeof body.sessionId === 'string' ? { sessionId: body.sessionId } : {}) };
+                return { serverIdentity, processId: body.processId, ...(typeof body.sessionId === 'string' ? { sessionId: body.sessionId } : {}),
+                    ...(resultDelivery ? { resultDelivery } : {}) };
             }
             const taskId = body?.task?.id;
             if (!isRemoteId(taskId) || !isRemoteId(toQueueProcessId(taskId))) {
                 throw new RemoteChatAdmissionError(`Remote server "${label}" returned an invalid task identity. Admission is uncertain; inspect the remote chat list. Do not launch a duplicate job.`, 'uncertain');
             }
-            return { serverIdentity, processId: toQueueProcessId(taskId) };
+            return { serverIdentity, processId: toQueueProcessId(taskId), ...(resultDelivery ? { resultDelivery } : {}) };
         },
 
         async postRemoteChat(request) {
@@ -599,6 +628,16 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
                 throw new RemoteChatAdmissionError('Remote chat ownership or follow-up settings could not be verified. No follow-up was sent.', 'not-started');
             }
             let body: any;
+            let resultDelivery: import('../delegation/remote-delegation-return').UnavailableRemoteResult | undefined;
+            if (request.resultOrigin && options.remoteResults) {
+                const tracked = await options.remoteResults.dispatch(request.serverId, {
+                    version: 1, kind: 'follow-up', workspaceId: request.workspaceId, targetProcessId: request.processId,
+                    body: { content: request.content, ...(request.mode ? { mode: request.mode } : {}),
+                        ...(model ? { model } : {}), ...(reasoningEffort ? { reasoningEffort } : {}) },
+                }, request.resultOrigin, serverIdentity);
+                if (tracked && !('unavailable' in tracked)) return tracked;
+                resultDelivery = tracked?.unavailable;
+            }
             try {
                 body = await requestJson(`${target.effectiveUrl}${processPath}/message?${query}`, startTimeoutMs, {
                     method: 'POST', body: {
@@ -627,7 +666,7 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
             } catch {
                 throw new RemoteChatAdmissionError('Remote follow-up admission is uncertain: owner or acknowledgment unavailable. Do not send a duplicate follow-up.', 'uncertain');
             }
-            return { serverIdentity, processId: request.processId, turnIndex: body.turnIndex };
+            return { serverIdentity, processId: request.processId, turnIndex: body.turnIndex, ...(resultDelivery ? { resultDelivery } : {}) };
         },
     };
 }

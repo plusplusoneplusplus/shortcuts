@@ -782,6 +782,108 @@ describe('SqliteQueuePersistence', () => {
             expect(store.getQueueTasks(rId, ['completed', 'failed'])).toHaveLength(0);
         });
 
+        it.each(['completed', 'failed', 'cancelled'] as const)(
+            'retains exact %s remote evidence without loading it into history',
+            status => {
+                const workspaceId = 'remote-destination';
+                const pending = new Set(['pending-execution']);
+                persistence = new SqliteQueuePersistence(bridge, db, {
+                    getRetainedTerminalTaskIds: owner => owner === workspaceId ? pending : new Set(),
+                });
+                store.upsertQueueTask(makeTask('pending-execution', {
+                    repoId: workspaceId, status, processId: 'exact-child',
+                    payload: { kind: 'chat', workspaceId, processId: 'exact-child' },
+                    result: 'exact response', error: 'exact failure',
+                }));
+                store.upsertQueueTask(makeTask('unrelated', { repoId: workspaceId, status }));
+                store.upsertQueueTask(makeTask('other-execution', { repoId: 'other-workspace', status }));
+
+                // Retention does not depend on a queue root mapping or a live manager.
+                persistence.restore();
+                expect(persistence.getRetainedTerminalTask(workspaceId, 'pending-execution')).toMatchObject({
+                    id: 'pending-execution', repoId: workspaceId, status,
+                    processId: 'exact-child', result: 'exact response', error: 'exact failure',
+                });
+                expect(persistence.getRetainedTerminalTask('other-workspace', 'pending-execution')).toBeUndefined();
+                expect(persistence.getRetainedTerminalTask(workspaceId, 'unrelated')).toBeUndefined();
+                expect(bridge.createAggregateQueueFacade().getHistory()).toEqual([]);
+                expect(store.getQueueTasks().map(task => task.id)).toEqual(['pending-execution']);
+
+                pending.clear();
+                expect(persistence.getRetainedTerminalTask(workspaceId, 'pending-execution')).toBeUndefined();
+                persistence.restore();
+                expect(store.getQueueTasks()).toEqual([]);
+            },
+        );
+
+        it('keeps unreadable-workspace evidence without blocking other workspace cleanup', () => {
+            persistence = new SqliteQueuePersistence(bridge, db, {
+                getRetainedTerminalTaskIds: owner => {
+                    if (owner === 'damaged-workspace') throw new Error('Unreadable admission ledger');
+                    return new Set();
+                },
+            });
+            store.upsertQueueTask(makeTask('damaged-evidence', { repoId: 'damaged-workspace', status: 'failed' }));
+            store.upsertQueueTask(makeTask('unrelated', { repoId: 'healthy-workspace', status: 'completed' }));
+            const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+            try {
+                expect(() => persistence.restore()).not.toThrow();
+                expect(store.getQueueTasks().map(task => task.id)).toEqual(['damaged-evidence']);
+                expect(() => persistence.getRetainedTerminalTask('damaged-workspace', 'damaged-evidence')).toThrow();
+            } finally {
+                log.mockRestore();
+            }
+        });
+
+        it.each(['fail', 'requeue-if-retriable'] as const)(
+            'preserves pending remote running tasks as failed evidence under %s policy',
+            restartPolicy => {
+                const rootPath = path.join(process.cwd(), 'remote-running');
+                const workspaceId = 'remote-running';
+                persistence = new SqliteQueuePersistence(bridge, db, {
+                    restartPolicy,
+                    getRetainedTerminalTaskIds: () => new Set(['remote-running']),
+                });
+                db.prepare('INSERT INTO queue_repo_paths (repo_id, root_path) VALUES (?, ?)').run(workspaceId, rootPath);
+                store.upsertQueueTask(makeTask('remote-running', {
+                    repoId: workspaceId, status: 'running', type: 'chat',
+                    payload: { kind: 'chat', workspaceId }, processId: 'queue_remote-running',
+                }));
+                store.upsertQueueTask(makeTask('unrelated-running', { repoId: workspaceId, status: 'running' }));
+
+                persistence.restore();
+                expect(persistence.getRetainedTerminalTask(workspaceId, 'remote-running')).toMatchObject({
+                    id: 'remote-running', status: 'failed', error: 'Task interrupted by server restart',
+                });
+                expect(store.getQueueTasks().map(task => task.id)).toEqual(['remote-running']);
+                expect(registry.getQueueForRepo(rootPath)!.getHistory()).toEqual([]);
+            },
+        );
+
+        it('retains exact cancelled remote evidence instead of requeueing its cancelled process', () => {
+            const workspaceId = 'remote-cancelled';
+            const rootPath = path.join(process.cwd(), workspaceId);
+            const taskId = 'cancelled-execution';
+            const processId = `queue_${taskId}`;
+            persistence = new SqliteQueuePersistence(bridge, db, {
+                restartPolicy: 'requeue',
+                getRetainedTerminalTaskIds: () => new Set([taskId]),
+            });
+            db.prepare('INSERT INTO queue_repo_paths (repo_id, root_path) VALUES (?, ?)').run(workspaceId, rootPath);
+            db.prepare('INSERT INTO processes (id, workspace_id, status, start_time, metadata) VALUES (?, ?, ?, ?, ?)')
+                .run(processId, workspaceId, 'cancelled', new Date().toISOString(), JSON.stringify({ queueTaskId: taskId }));
+            store.upsertQueueTask(makeTask(taskId, {
+                repoId: workspaceId, status: 'running', type: 'chat', processId,
+                payload: { kind: 'chat', workspaceId },
+            }));
+
+            persistence.restore();
+            expect(persistence.getRetainedTerminalTask(workspaceId, taskId)).toMatchObject({
+                id: taskId, status: 'cancelled', processId, error: 'Task cancelled before server restart',
+            });
+            expect(registry.getQueueForRepo(rootPath)!.getQueued()).toEqual([]);
+        });
+
         it('registers repo IDs with the bridge during restore', () => {
             // Create fresh bridge without pre-registered IDs
             const freshStore = createMockProcessStore();

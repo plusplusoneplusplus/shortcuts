@@ -193,9 +193,22 @@ uncertain/dispatching acceptance from exact queue/process evidence for launches 
 queue/pending/user-turn evidence for follow-ups, without enqueueing. Conflicting owners,
 task kinds or Ralph sessions fail closed; prepared Ralph journals alone cannot prove admission.
 Wire receipts exclude standalone execution bookkeeping and private tokens. Snapshot/wipe
-policy matches origin reservations. Terminal transfer and recovery scheduling await composition.
-Runtime tools retain untracked
-dispatch and unavailable result return; no tracking capability is advertised.
+policy matches origin reservations.
+
+`delegation/remote-delegation-results.ts` projects accepted destination claims into
+`DelegatedJobResults`, without local jobs or origin reviews. Launch/follow-up relay IDs
+identify exact turns; Ralph uses whole-session evidence, not grilling milestones.
+First bounded outcomes persist in admissions. Startup captures before queue activation;
+SQLite retains needed terminal tasks independently of capped history.
+
+`delegation/remote-delegation-return.ts` admits new Sentinel requests under default-off
+`features.sentinelRemoteResults` and compatible destination capabilities. Origin reservations
+precede execution. Authenticated receipt polling persists backoff and verifies both identities,
+request digest and bounded owner-qualified links. Recovery ignores the admission flag and
+never resends work. Transfer state is independent of parent review delivery and To-do assessment.
+Existing review/connector receipts return assessed replies; missing/archived owners fail
+without revival. Trusted review context survives buffering; drain and execution recheck
+the visible Sentinel owner. SQLite retains unacknowledged remote review tasks across restart.
 
 ### Delegated PR receipts
 

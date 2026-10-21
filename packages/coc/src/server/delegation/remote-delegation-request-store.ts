@@ -34,6 +34,11 @@ const requestSchema = z.object({
     }).strict().optional(),
     createdAt: z.iso.datetime(),
     admission: admissionSchema,
+    transfer: z.object({
+        attempts: z.number().int().nonnegative(),
+        nextAttemptAt: z.number().nonnegative(),
+        error: z.string().max(500).optional(),
+    }).strict().optional(),
 }).strict().superRefine((request, context) => {
     if ((request.kind === 'follow-up') !== !!request.targetProcessId) {
         context.addIssue({ code: 'custom', message: 'Only follow-ups require an exact target process' });
@@ -48,7 +53,7 @@ const requestSchema = z.object({
 
 export type RemoteDelegationRequest = z.infer<typeof requestSchema>;
 export type RemoteDelegationReservation = Omit<RemoteDelegationRequest,
-    'requestId' | 'originServerIdentity' | 'createdAt' | 'admission' | 'proofToken'> & { requestId?: string };
+    'requestId' | 'originServerIdentity' | 'createdAt' | 'admission' | 'proofToken' | 'transfer'> & { requestId?: string };
 
 /**
  * Origin-owned admission journal, separate from terminal-result delivery.
@@ -75,9 +80,18 @@ export class RemoteDelegationRequestStore {
     }
 
     reserve(input: RemoteDelegationReservation): RemoteDelegationRequest {
+        return this.reserveClaim(input, false).request;
+    }
+
+    /** Atomically publish a consumed dispatch claim before the only execution POST. */
+    reserveDispatch(input: RemoteDelegationReservation): { request: RemoteDelegationRequest; execute: boolean } {
+        return this.reserveClaim(input, true);
+    }
+
+    private reserveClaim(input: RemoteDelegationReservation, dispatch: boolean): { request: RemoteDelegationRequest; execute: boolean } {
         const request = requestSchema.parse({ ...input, proofToken: randomBytes(32).toString('hex'),
             requestId: input.requestId === undefined ? randomUUID() : input.requestId,
-            originServerIdentity: this.jobs.serverIdentity, createdAt: new Date().toISOString(), admission: { state: 'reserved' } });
+            originServerIdentity: this.jobs.serverIdentity, createdAt: new Date().toISOString(), admission: { state: dispatch ? 'dispatching' : 'reserved' } });
         const rows = this.list(request.parent.workspaceId);
         const existing = rows.find(row => row.requestId === request.requestId);
         if (existing) {
@@ -86,11 +100,19 @@ export class RemoteDelegationRequestStore {
                 intentDigest: row.intentDigest, title: row.title, messagingOrigin: row.messagingOrigin,
             });
             if (identity(existing) !== identity(request)) throw new Error('Remote request identity cannot be reassigned');
-            return existing;
+            return { request: existing, execute: false };
         }
         rows.push(request);
         this.save(request.parent.workspaceId, rows);
-        return request;
+        return { request, execute: dispatch };
+    }
+
+    rejectReserved(workspaceId: string, requestId: string): void {
+        const rows = this.list(workspaceId);
+        const request = this.require(rows, requestId);
+        if (request.admission.state !== 'reserved') return;
+        request.admission = { state: 'rejected', reason: 'Origin stopped before dispatch; no remote work was sent.' };
+        this.save(workspaceId, rows);
     }
 
     /** Read-only proof, available after the durable dispatch claim, including recovery. */
@@ -163,6 +185,15 @@ export class RemoteDelegationRequestStore {
     /** Recovery may repair registration; it must never call remote execution. */
     recoverAccepted(workspaceId: string): DelegatedJob[] {
         return this.list(workspaceId).filter(row => row.admission.state === 'accepted').map(row => this.registerAccepted(row));
+    }
+
+    recordTransfer(workspaceId: string, requestId: string, error?: string): void {
+        const rows = this.list(workspaceId);
+        const request = this.require(rows, requestId);
+        const attempts = Math.min((request.transfer?.attempts ?? 0) + 1, 30);
+        request.transfer = { attempts, nextAttemptAt: Date.now() + Math.min(60_000, 1_000 * 2 ** Math.min(attempts, 6)),
+            ...(error ? { error: error.slice(0, 500) } : {}) };
+        this.save(workspaceId, rows);
     }
 
     private registerAccepted(request: RemoteDelegationRequest): DelegatedJob {
