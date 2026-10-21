@@ -7,6 +7,7 @@ import { lookupCloneBaseUrl } from '../../repos/cloneRegistry';
 import { browserOpenInput } from '../../features/repo-detail/unified-right-panel/unifiedBrowserTabs';
 import { openUnifiedPanelTab } from '../../features/repo-detail/unified-right-panel/unifiedPanelOpen';
 import { findBrowserPanelView } from '../../features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { attachBrowserWebview, setBrowserWebviewBackground } from '../../features/repo-detail/unified-right-panel/browserWebviewLayerStore';
 import { getBrowserControlScope, subscribeBrowserControlScope } from './browser-control-scope';
 import { startBrowserControlActivity, updateBrowserControlTab, finishBrowserControlActivity, resumeBrowserControlActivity, removeBrowserControlActivity } from './browser-control-activity';
 
@@ -104,6 +105,12 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             resourceId: event.viewId,
         });
         updateBrowserControlTab(event.workspaceId, event.processId, tabId, baseUrl);
+        if (event.background === true) {
+            // The owning panel is not mounted: create the guest here so the turn can drive it unseen.
+            const bridge = desktopBrowserBridge();
+            if (bridge?.adopt && event.url) attachBrowserWebview(event.viewId, event.url, ownerRef, bridge);
+            setBrowserWebviewBackground(event.viewId, true);
+        }
         if (event.background !== true && event.workspaceId !== workspaceId && !window.location.hash.startsWith('#popout/')) {
             window.location.hash = `#repos/${encodeURIComponent(scope)}/chats/${encodeURIComponent(event.processId)}`;
         }
@@ -115,6 +122,7 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
     };
     const offActivity = control?.onActivity?.(event => {
         if (disposed || !matchesSource(event)) return;
+        setBrowserWebviewBackground(event.viewId, event.active && event.background === true);
         if (!event.active) {
             if (event.finished === false) removeBrowserControlActivity(event.workspaceId, event.processId, baseUrl, event.turnId);
             else finishBrowserControlActivity(event.workspaceId, event.processId, baseUrl, event.turnId);

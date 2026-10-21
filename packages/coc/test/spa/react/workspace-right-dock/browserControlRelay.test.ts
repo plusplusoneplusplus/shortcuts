@@ -8,6 +8,7 @@ import { renderHook, cleanup } from '@testing-library/react';
 import { useBrowserControlScope } from '../../../../src/server/spa/client/react/shared/file-path/browser-control-scope';
 import { getBrowserControlActivity, clearBrowserControlActivities } from '../../../../src/server/spa/client/react/shared/file-path/browser-control-activity';
 import { applyRuntimeConfigPatch, _resetRuntimeConfig } from '../../../../src/server/spa/client/react/utils/config';
+import { browserWebviewEntries, removeBrowserWebview } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/browserWebviewLayerStore';
 const clients = vi.hoisted(() => ({
     cancel: vi.fn(async () => {}), remoteCancel: vi.fn(async () => {}),
     config: vi.fn(async (_workspace?: string) => ({ tools: [{ name: 'browser' }], disabledLlmTools: [] as string[] })),
@@ -479,6 +480,35 @@ describe('SPA browser socket relay', () => {
             h.relay.onMessage({ type: 'browser-command', request: { ...request, id: 'r3', turnId: 't1' } });
             expect(h.send).toHaveBeenLastCalledWith({ type: 'browser-command-result', reply: { id: 'r3', ok: false, error: 'Browser workspace scope changed' } });
             h.relay.dispose();
+        });
+
+        it('creates the Electron guest for a background reveal and keeps it laid out only while the turn drives it in the background', async () => {
+            applyRuntimeConfigPatch({ browserBackgroundControlEnabled: true });
+            const h = harness(undefined, true);
+            withRetain(h);
+            const open = vi.fn(async () => ({ ok: true, engine: 'electron', embed: 'webview', src: 'https://fixture.test/', partition: 'token' }));
+            Object.assign((window as any).cocDesktop.browser, { open, adopt: vi.fn() });
+            await h.relay.update('other'); h.relay.onOpen();
+            const entry = () => [...browserWebviewEntries()].find(item => item.viewId === 'browser-agent');
+            try {
+                h.reveal({ workspaceId: 'w', processId: 'bg-p', viewId: 'browser-agent', url: 'https://fixture.test/', turnId: 'bg-t1', routingRef: 'w', background: true });
+                expect(open).toHaveBeenCalledExactlyOnceWith('browser-agent', 'https://fixture.test/', 'w');
+                await vi.waitFor(() => expect(entry()?.config).toBeTruthy());
+                expect(entry()?.background).toBe(true);
+                // Foreground activity and turn end both stop the background layout.
+                h.activity({ workspaceId: 'w', processId: 'bg-p', turnId: 'bg-t1', routingRef: 'w', viewId: 'browser-agent', active: true });
+                expect(entry()?.background).toBe(false);
+                h.activity({ workspaceId: 'w', processId: 'bg-p', turnId: 'bg-t1', routingRef: 'w', viewId: 'browser-agent', active: true, background: true });
+                expect(entry()?.background).toBe(true);
+                h.activity({ workspaceId: 'w', processId: 'bg-p', turnId: 'bg-t1', routingRef: 'w', viewId: 'browser-agent', active: false, background: true });
+                expect(entry()?.background).toBe(false);
+                // A foreground reveal leaves guest creation to the mounted panel.
+                h.reveal({ workspaceId: 'other', processId: 'bg-p2', viewId: 'browser-front', url: 'https://fixture.test/', turnId: 'bg-t2', routingRef: 'other' });
+                expect(open).toHaveBeenCalledOnce();
+            } finally {
+                h.relay.dispose();
+                removeBrowserWebview('browser-agent');
+            }
         });
 
         it('never routes a command to a workspace without a retained scope', async () => {

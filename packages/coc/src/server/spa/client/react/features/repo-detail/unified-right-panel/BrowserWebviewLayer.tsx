@@ -18,7 +18,14 @@ interface GuestHost {
     observer: ResizeObserver | null;
     bounds?: string;
     css?: string;
+    /** Last on-screen geometry, reused to keep a background-controlled guest laid out while hidden. */
+    rect?: { left: number; top: number; width: number; height: number };
+    /** Laid out unseen for a background turn; it must never keep the window's focus. */
+    backgroundHidden?: boolean;
 }
+
+/** Viewport for a background-controlled guest that was never on screen. */
+const BACKGROUND_GUEST_SIZE = { width: 1280, height: 800 };
 
 function place(host: GuestHost): void {
     const { entry, host: element } = host;
@@ -48,11 +55,23 @@ function place(host: GuestHost): void {
             host.css = css;
             element.style.cssText = css;
         }
+        if (visible) host.rect = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
     }
-    if (!visible) {
+    host.backgroundHidden = !visible && !!entry.background && !entry.error;
+    if (host.backgroundHidden) {
+        // Hidden guests stop rendering; a background turn needs layout, screenshots and input, so keep it
+        // in place at its last size but fully transparent and click-through.
+        const { left, top, width, height } = host.rect ?? { left: 0, top: 0, ...BACKGROUND_GUEST_SIZE };
+        const css = `position:fixed;left:${left}px;top:${top}px;width:${width}px;height:${height}px;opacity:0;visibility:visible;pointer-events:none`;
+        if (host.css !== css) {
+            host.css = css;
+            element.style.cssText = css;
+        }
+    } else if (!visible) {
         host.css = undefined;
         element.style.visibility = 'hidden';
         element.style.pointerEvents = 'none';
+        element.style.opacity = '';
     }
     const bounds = visible && rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null;
     const key = JSON.stringify(bounds);
@@ -74,6 +93,7 @@ export function BrowserWebviewLayer() {
         const update = () => {
             frame = 0;
             hosts.forEach(place);
+            watchFocus();
         };
         const schedule = () => {
             if (!frame) frame = requestAnimationFrame(update);
@@ -129,7 +149,27 @@ export function BrowserWebviewLayer() {
                 host.host.remove();
                 hosts.delete(id);
             }
+            watchFocus();
         };
+        // Trusted input to a background guest moves frame focus into it, with no event on the guest element
+        // and sometimes after the window blur. While such a guest exists, give focus back to the element
+        // the user was last in.
+        let lastFocused: HTMLElement | null = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        let watch = 0;
+        const recordFocus = (event: FocusEvent) => {
+            if (event.target instanceof HTMLElement && !container.contains(event.target)) lastFocused = event.target;
+        };
+        const restoreFocus = () => {
+            const active = document.activeElement;
+            if (!lastFocused?.isConnected || active === lastFocused) return;
+            if ([...hosts.values()].some(host => host.backgroundHidden && host.guest === active)) lastFocused.focus({ preventScroll: true });
+        };
+        const watchFocus = () => {
+            const background = [...hosts.values()].some(host => host.backgroundHidden);
+            if (background && !watch) watch = window.setInterval(restoreFocus, 50);
+            else if (!background && watch) { window.clearInterval(watch); watch = 0; }
+        };
+        document.addEventListener('focusin', recordFocus, true);
         const unsubscribe = subscribeBrowserWebviews(reconcile);
         reconcile();
         // Track ancestor class/layout changes, but ignore our own placement writes.
@@ -141,6 +181,8 @@ export function BrowserWebviewLayer() {
         window.addEventListener('scroll', schedule, true);
         return () => {
             unsubscribe();
+            document.removeEventListener('focusin', recordFocus, true);
+            if (watch) window.clearInterval(watch);
             mutations.disconnect();
             window.removeEventListener('resize', schedule);
             window.removeEventListener('scroll', schedule, true);

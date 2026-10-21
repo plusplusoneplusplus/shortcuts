@@ -760,6 +760,14 @@ scroll events update fixed bounds and clip to ancestor overflow viewports.
 Inactive hosts use `visibility: hidden` and `pointer-events: none`, never
 `display: none`. Menus, dialogs and toasts paint above visible Electron guests.
 Close removes the host; a late open response cannot recreate it.
+With background browser control, the relay marks a guest driven by a background
+turn (`setBrowserWebviewBackground`, from `background` reveal/activity events) and
+creates its guest when the owning panel is unmounted (`attachBrowserWebview`).
+A hidden background guest stays at its last on-screen geometry (1280x800 if never
+placed) with `opacity: 0`, `visibility: visible` and `pointer-events: none`, so it
+keeps rendering for screenshots and input. Trusted input moves frame focus into
+the guest without a focus event, so while such a guest exists the layer polls and
+returns focus to the user's last focused element.
 
 WebView2 uses `useNativeViewPlacement`. Native views paint
 above DOM, so explicit panel overlays, modal dialogs, tab menus and
