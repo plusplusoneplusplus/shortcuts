@@ -1,14 +1,7 @@
-import { CocToolRuntime, RUN_TOOL_SCRIPT_TOOL_NAME } from '@plusplusoneplusplus/coc-agent-sdk';
-import { buildChatTurnContext, type ChatTurnContextInput } from '../executors/chat-turn-context-builder';
-import { readApprovalRequiredLlmTools } from '../preferences-handler';
+import { withOwnerToolRuntime, type OwnerScriptTools } from '../executors/owner-script-runner';
 import { runJobGate } from './job-gate-runner';
 
-export interface JobGateOwnerTools extends Omit<ChatTurnContextInput,
-    'askUser' | 'unattendedScript' | 'query' | 'browserActivation' | 'browserSignal'> {
-    dataDir: string;
-    workspaceId: string;
-    processId: string;
-}
+export type JobGateOwnerTools = OwnerScriptTools;
 
 /** One gate evaluation for a Sentinel owner; the runtime resolves the owner's tools. */
 export interface JobGateRunRequest {
@@ -34,30 +27,8 @@ export async function runJobGateWithOwnerTools(options: {
     state: unknown;
     signal?: AbortSignal;
 }): Promise<unknown> {
-    const { ownerTools, signal } = options;
-    signal?.throwIfAborted();
-    const context = await buildChatTurnContext({
-        ...ownerTools,
-        unattendedScript: true,
-        askUser: undefined,
-        query: undefined,
-        browserActivation: false,
-        browserSignal: signal,
-    });
-    let runtime: CocToolRuntime | undefined;
-    try {
-        signal?.throwIfAborted();
-        const allowNestedScripts = context.tools.some(tool => tool.name === RUN_TOOL_SCRIPT_TOOL_NAME)
-            && !readApprovalRequiredLlmTools(ownerTools.dataDir, ownerTools.workspaceId)
-                .includes(RUN_TOOL_SCRIPT_TOOL_NAME);
-        runtime = new CocToolRuntime(context.tools, {
-            workspaceId: ownerTools.workspaceId, processId: ownerTools.processId,
-        });
-        return await runJobGate({
-            code: options.code, state: options.state, runtime, signal, allowNestedScripts,
-        });
-    } finally {
-        runtime?.dispose();
-        context.dispose();
-    }
+    const { signal } = options;
+    return withOwnerToolRuntime(options.ownerTools, signal, (runtime, allowNestedScripts) => runJobGate({
+        code: options.code, state: options.state, runtime, signal, allowNestedScripts,
+    }));
 }

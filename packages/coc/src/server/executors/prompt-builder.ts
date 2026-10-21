@@ -28,6 +28,8 @@ import { CONFIG_FILE_NAME, resolveConfig } from '../../config';
 import type { AskUserAnswerInput, AskUserAnswerValue, AskUserApprovalDecision, AskUserApprovalRequest, AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import { createCanvasTools } from '../llm-tools/canvas-tools';
+import { createCanvasRunScriptFactory } from '../canvas/canvas-script-bridge';
+import type { OwnerScriptRunner } from './owner-script-runner';
 import { createKustoTools } from '../llm-tools/kusto-tools';
 import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
 import { createSystemOneTool, type SystemOneToolDeps } from '../llm-tools/system-one-tool';
@@ -659,7 +661,7 @@ export function buildCanvasToolsAddon(
     store: ProcessStore | undefined,
     workspaceId: string | undefined,
     processId: string | undefined,
-    opts?: { enabled?: boolean; hostApisEnabled?: boolean },
+    opts?: { enabled?: boolean; hostApisEnabled?: boolean; ownerScriptRunner?: OwnerScriptRunner },
 ): { tools: Tool<any>[]; suffix: string } {
     if (!dataDir || !workspaceId) {
         return { tools: [], suffix: '' };
@@ -683,6 +685,13 @@ export function buildCanvasToolsAddon(
         processId,
         processStore: store,
         getCanvasHostApisEnabled,
+        runScriptFactory: createCanvasRunScriptFactory({
+            getFeatures: () => ({
+                ...resolveConfig(path.join(dataDir, CONFIG_FILE_NAME)).features,
+                ...(opts?.hostApisEnabled !== undefined ? { canvasHostApis: opts.hostApisEnabled } : {}),
+            }),
+            getOwnerScriptRunner: () => opts?.ownerScriptRunner,
+        }),
     });
 
     // No prose suffix — the canvas tool descriptions carry their own guidance.

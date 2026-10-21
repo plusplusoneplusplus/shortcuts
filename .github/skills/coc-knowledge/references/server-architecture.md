@@ -275,7 +275,9 @@ Calls follow `MultiRepoQueueRouter.runJobGate` → owning `CLITaskExecutor` brid
 `{ workspaceId, processId, code, state, signal }` request. The executor validates the
 exact Sentinel owner and resolves workspace/working directory; its shared helper
 dependencies supply the owner-bound unattended runtime through
-`runJobGateWithOwnerTools`, which disposes it after every outcome.
+`runJobGateWithOwnerTools`, which disposes it after every outcome. Canvas
+`host.runScript` follows the sibling `runOwnerScript` chain (any chat owner,
+`allowTools`-narrowed tools, no nesting); see [LLM tools](llm-tools.md).
 `SentinelJobService` is the caller: `routes/index.ts` injects `bridge.runJobGate` and
 the live `features.toolScripting` flag. The service keeps one in-flight gate per
 owner/job, re-checks flags, owner and job revision before saving any outcome, and

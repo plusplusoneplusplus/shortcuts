@@ -367,6 +367,8 @@ export interface CLIConfig {
         gitWorktreeExecution?: boolean;
         /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
         canvasHostApis?: boolean;
+        /** `host.runScript` in async canvas capabilities: owner-bound, read-only tool scripts. Disabled by default. */
+        canvasToolScripts?: boolean;
         /** `ask_user` `sensitive-input` questions: secrets pasted in the desktop dashboard go straight to a sink. Disabled by default. */
         sensitiveInput?: boolean;
         /** VS Code-style multiple editor tabs in the File Explorer. Enabled by default. */
@@ -789,6 +791,8 @@ export interface ResolvedCLIConfig {
         gitWorktreeExecution: boolean;
         /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
         canvasHostApis: boolean;
+        /** `host.runScript` in async canvas capabilities: owner-bound, read-only tool scripts. Disabled by default. */
+        canvasToolScripts: boolean;
         /** `ask_user` `sensitive-input` questions: secrets pasted in the desktop dashboard go straight to a sink. Disabled by default. */
         sensitiveInput: boolean;
         /** VS Code-style multiple editor tabs in the File Explorer. Enabled by default. */
@@ -1113,6 +1117,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         composerWordHint: true,
         gitWorktreeExecution: false,
         canvasHostApis: false,
+        canvasToolScripts: false,
         sensitiveInput: false,
         explorerEditorTabs: true,
         explorerDelete: true,

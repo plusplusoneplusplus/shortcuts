@@ -27,6 +27,7 @@ import type { ChatModeExecutorOptions } from './chat-base-executor';
 import type { DreamRuntime, ExecutorRuntimeCapabilities, LifecycleRuntime } from './executor-runtime-contracts';
 import type { QueueRuntimeConfig } from '../queue/queue-runtime-config';
 import type { JobGateOwnerRunner } from '../sentinel-jobs/job-gate-owner-runner';
+import type { OwnerScriptRunner } from './owner-script-runner';
 
 export interface ExecutorRegistryOptions {
     approvePermissions: boolean;
@@ -150,6 +151,7 @@ export class ExecutorRegistry {
     }
 
     readonly runJobGate: JobGateOwnerRunner = request => this.chatExecutor.runJobGate(request);
+    readonly runOwnerScript: OwnerScriptRunner = request => this.chatExecutor.runOwnerScript(request);
 
     /** Dispatch a task to the appropriate executor based on its type and payload. */
     async dispatch(task: QueuedTask, prompt: string): Promise<unknown> {

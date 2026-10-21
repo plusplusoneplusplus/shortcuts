@@ -7,6 +7,7 @@
  * delegated to each repo's QueueExecutor.
  */
 
+import { OwnerScriptUnavailableError } from '../executors/owner-script-runner';
 import { randomUUID } from 'crypto';
 import { pendingMessageTask } from '../processes/queued-pending-message';
 import { readActiveProviderSession } from '../processes/active-provider-session';
@@ -489,6 +490,22 @@ export class MultiRepoQueueRouter extends EventEmitter {
             const bridge = this.getOrCreateBridge(rootPath);
             if (!bridge.runJobGate) throw new Error('Gate script owner runtime is unavailable');
             return bridge.runJobGate(request);
+        };
+
+    /** Run an owner-bound script (canvas `host.runScript`) on the owner chat's repo bridge. */
+    readonly runOwnerScript: import('../executors/owner-script-runner').OwnerScriptRunner =
+        async request => {
+            request.signal?.throwIfAborted();
+            const owner = await this.store.getProcess(request.processId, request.workspaceId);
+            if (owner?.metadata?.workspaceId !== request.workspaceId) {
+                throw new OwnerScriptUnavailableError('Script owner chat is not in this workspace');
+            }
+            const rootPath = await this.resolveRootPathForProcess(request.processId);
+            request.signal?.throwIfAborted();
+            if (!rootPath) throw new OwnerScriptUnavailableError('Script owner workspace path is unavailable');
+            const bridge = this.getOrCreateBridge(rootPath);
+            if (!bridge.runOwnerScript) throw new OwnerScriptUnavailableError('Script owner runtime is unavailable');
+            return bridge.runOwnerScript(request);
         };
 
     /** Recover buffered results on the original parent's queue, independent of topic selection. */

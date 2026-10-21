@@ -127,6 +127,11 @@ export interface CanvasExtensionManifest {
      * extension — the legacy path loads nothing.
      */
     libraries?: string[];
+    /**
+     * Tools an async capability's `host.runScript` may call — registered,
+     * scriptable, read-only tool names. Absent or empty means no tool access.
+     */
+    tools?: string[];
 }
 
 export interface CanvasExtension {

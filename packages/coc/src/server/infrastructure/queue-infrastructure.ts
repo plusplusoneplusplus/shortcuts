@@ -113,6 +113,8 @@ export function createQueueInfrastructure(
         getBrowserControlRuntime,
         getBrowserToolState,
         getKustoRuntime,
+        // Late-bound to the router below: canvas scripts run on the owner chat's repo bridge.
+        getOwnerScriptRunner: () => bridge.runOwnerScript,
         getWsServer,
         getCronInfra,
         getTriggerInfra,

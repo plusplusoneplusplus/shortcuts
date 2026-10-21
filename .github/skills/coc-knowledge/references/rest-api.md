@@ -100,7 +100,7 @@ Gated by `canvas.enabled` (default on). Mutations emit `canvas-updated` on WebSo
 | GET | `/api/workspaces/:id/canvases/:canvasId/extension` | Extension documents (`manifest`, `uiHtml`, `capabilitiesJs`) for an `extension`-type canvas |
 | GET | `/api/workspaces/:id/canvases/:canvasId/files` | Read-only file metadata, ≤2000 entries; symlinks omitted |
 | GET | `/api/workspaces/:id/canvases/:canvasId/files/<path>` | Text/base64 content; optional `encoding=base64`. Canonical containment rejects traversal/absolute/backslash/NUL/symlink escapes (`400`); missing → `404`; over 1 MB text/10 MB binary → `413` |
-| POST | `/api/workspaces/:id/canvases/:canvasId/capabilities/:name` | Serialized, revision-checked state transform; sync 1s sandbox, async 30s terminable worker with `host.complete` gated by `features.canvasHostApis` (`404` off). Capability error → `422`; save race → `409` |
+| POST | `/api/workspaces/:id/canvases/:canvasId/capabilities/:name` | Serialized, revision-checked state transform; sync 1s sandbox, async 30s terminable worker with `host.complete` (and `host.runScript` as the canvas owner when `features.canvasToolScripts` is on) gated by `features.canvasHostApis` (`404` off). Capability error → `422`; save race → `409` |
 
 ## Filesystem
 

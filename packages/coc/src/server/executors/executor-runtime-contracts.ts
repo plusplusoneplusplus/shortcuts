@@ -51,6 +51,7 @@ import type { SentinelPrOutcomeService } from '../triggers/sentinel-pr-outcome-s
 import type { RegisterSentinelPrOutcome } from '../triggers/sentinel-pr-outcome-service';
 import type { TurnPerformanceRecorder } from './turn-performance-tracker';
 import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
+import type { OwnerScriptRunner } from './owner-script-runner';
 import type { BrowserControlRuntime } from '@plusplusoneplusplus/coc-client';
 import type { BrowserToolStateStore } from '../llm-tools/browser-tools';
 import type { ConversationToolInventoryStore } from '../storage/conversation-tool-inventory-store';
@@ -120,6 +121,12 @@ export interface ExecutorRuntimeCapabilities {
     readonly getBrowserToolState?: () => BrowserToolStateStore | undefined;
     /** Host-owned Kusto clients and live enablement, shared with the canvas Run route. */
     readonly getKustoRuntime?: () => KustoToolsRuntime | undefined;
+    /**
+     * Owner-bound script runner (the queue router's `runOwnerScript`). Powers
+     * canvas `host.runScript` on the `extension_canvas` run path; absent →
+     * `host.runScript` rejects `disabled`.
+     */
+    readonly getOwnerScriptRunner?: () => OwnerScriptRunner | undefined;
     /** WebSocket server for process/git broadcasts. */
     readonly getWsServer?: () => ProcessWebSocketServer | undefined;
     /** Cron infrastructure powering the `cron` and `scheduleWakeup` tools. */
@@ -232,6 +239,7 @@ export type ChatExecutorRuntime = Pick<
     ExecutorRuntimeCapabilities,
     | 'getWsServer'
     | 'getKustoRuntime'
+    | 'getOwnerScriptRunner'
     | 'getBrowserControlRuntime'
     | 'getBrowserToolState'
     | 'getCronInfra'

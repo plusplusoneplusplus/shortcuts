@@ -163,6 +163,14 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
 
     return (
         <div className="flex flex-col h-full min-h-0">
+            {(extension.manifest?.tools?.length ?? 0) > 0 && (
+                <div
+                    className="px-3 py-1 text-[11px] text-[#848484] border-b border-[#e5e5e5] dark:border-[#333] truncate"
+                    data-testid="extension-canvas-tools"
+                >
+                    Uses: {extension.manifest!.tools!.join(', ')}
+                </div>
+            )}
             {pendingInvokes > 0 && (
                 <div
                     className="px-3 py-1.5 text-[11px] text-[#848484] border-b border-[#e5e5e5] dark:border-[#333]"

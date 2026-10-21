@@ -42,6 +42,7 @@ import type { CapabilityCompleteFn } from './canvas-capability-runner';
 import { createCanvasCompleteFn } from './canvas-capability-completion';
 import { createCanvasUpdateNotifier } from './canvas-update-notifier';
 import { CanvasMutationService, isAsyncCapability } from './canvas-mutation-service';
+import type { CanvasRunScriptFactory } from './canvas-script-bridge';
 import type { CapabilityAttribution } from './canvas-mutation-service';
 import type { KustoClientFactory } from '../kusto/kusto-exec';
 
@@ -88,6 +89,8 @@ export function registerCanvasRoutes(
      * capability run never reaches a real model.
      */
     completeFactory?: (attribution: CapabilityAttribution) => CapabilityCompleteFn,
+    /** Builds `host.runScript` for async runs, bound to the canvas's owner chat. Absent → `disabled`. */
+    runScriptFactory?: CanvasRunScriptFactory,
 ): void {
     const store = new CanvasStore(dataDir);
 
@@ -106,6 +109,7 @@ export function registerCanvasRoutes(
         }),
         ...(getCanvasHostApisEnabled ? { getCanvasHostApisEnabled } : {}),
         completeFactory: completeFactory ?? defaultCompleteFactory,
+        ...(runScriptFactory ? { runScriptFactory } : {}),
         ...(kustoClientFactory ? { kustoClientFactory } : {}),
     });
 

@@ -952,6 +952,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.toolScripting': 'features',
         'features.queryPullRequestTool': 'features',
         'features.canvasHostApis': 'features',
+        'features.canvasToolScripts': 'features',
         'features.sensitiveInput': 'browser',
         'features.focusedDiff': 'features',
         'features.gitCrossCloneCherryPick': 'features',

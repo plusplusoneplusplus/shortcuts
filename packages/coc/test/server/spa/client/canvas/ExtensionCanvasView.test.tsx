@@ -428,6 +428,23 @@ describe('ExtensionCanvasView', () => {
         expect(mocks.getExtension).toHaveBeenCalledWith('ws-1', 'board-abc123');
     });
 
+    it('shows the tools a canvas declares as a read-only "Uses" line', async () => {
+        mocks.getExtension.mockResolvedValue({
+            ...EXTENSION,
+            manifest: { ...EXTENSION.manifest, tools: ['query_pull_request'] },
+        });
+        render(<ExtensionCanvasView workspaceId="ws-1" canvas={makeCanvas()} onCanvasSaved={vi.fn()} />);
+
+        expect((await screen.findByTestId('extension-canvas-tools')).textContent).toBe('Uses: query_pull_request');
+    });
+
+    it('shows no "Uses" line when the manifest declares no tools', async () => {
+        render(<ExtensionCanvasView workspaceId="ws-1" canvas={makeCanvas()} onCanvasSaved={vi.fn()} />);
+
+        await screen.findByTestId('extension-canvas-iframe');
+        expect(screen.queryByTestId('extension-canvas-tools')).toBeNull();
+    });
+
     it('renders a JSX extension through the runtime loader with the PAGE origin as asset base', async () => {
         mocks.getExtension.mockResolvedValue({
             manifest: { ...EXTENSION.manifest, libraries: ['react', 'recharts'] },

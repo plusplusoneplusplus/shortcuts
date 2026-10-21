@@ -115,6 +115,7 @@ export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
 }
 export interface QueueExecutorBridge {
     runJobGate?: import('../sentinel-jobs/job-gate-owner-runner').JobGateOwnerRunner;
+    runOwnerScript?: import('../executors/owner-script-runner').OwnerScriptRunner;
     /** Recover the head of an idle conversation's durable buffer through its queue. */
     recoverPendingMessages?(workspaceId: string, processId: string): Promise<void>;
     executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string, options?: FollowUpTurnOptions): Promise<void>;
@@ -279,6 +280,9 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
     readonly runJobGate: import('../sentinel-jobs/job-gate-owner-runner').JobGateOwnerRunner =
         request => this.executors.runJobGate(request);
+
+    readonly runOwnerScript: import('../executors/owner-script-runner').OwnerScriptRunner =
+        request => this.executors.runOwnerScript(request);
 
     setQueueManager(qm: TaskQueueManager): void {
         this.queueManager = qm;

@@ -621,14 +621,33 @@ is no dist/source path to resolve) with a 30s whole-run budget; the worker is `t
 every outcome including success, because a `vm` continuation cannot be killed and a capability
 may resolve and keep spinning. At most 4 async runs execute process-wide at once.
 
-An async capability receives a third argument `host` whose only method is
-`await host.complete(prompt, { model? })` — the one-shot `createCLIAIInvoker` path
-(`canvas-capability-completion.ts`, `resolveDefaultModel(..., 'quickAsk')`), capped at 3 calls
-per run and logged with workspace/canvas/capability/process. There is deliberately no
-`host.fetch` (CoC's own API is on unauthenticated loopback) and no `CanvasHost.complete()` in
-the iframe. Async capabilities and `host.complete` are gated on `features.canvasHostApis` (off
-by default): with the flag off an async capability 404s from the route and errors from the
-tool, while sync capabilities are untouched.
+An async capability receives a third argument `host`:
+- `await host.complete(prompt, { model? })` — the one-shot `createCLIAIInvoker` path
+  (`canvas-capability-completion.ts`, `resolveDefaultModel(..., 'quickAsk')`), capped at 3 calls
+  per run and logged with workspace/canvas/capability/process.
+- `await host.runScript(code, { state? })` → `{ result, logs, callCount }` — a
+  `run_tool_script`-style script (`canvas-script-bridge.ts`), capped at 3 per run inside the
+  same 30s budget; the parent aborts the script's signal when the budget fires or the run
+  ends. It runs as the canvas OWNER chat (`processId`), never the caller, on both the REST and
+  `extension_canvas` paths, through `MultiRepoQueueRouter.runOwnerScript` (the same router →
+  bridge → registry → `ChatBaseExecutor` chain as job gates; on the AI path via the
+  `getOwnerScriptRunner` runtime capability). Tools = owner's unattended tools ∩ manifest
+  `tools`; nested scripts are always off; approval-gated tools are denied. Results over 16 MiB
+  reject. Rejections carry `code` `disabled | no-owner | limit | timeout | aborted |
+  script-error`; one `[canvas runScript]` log line per call holds ids, counts and outcome only.
+- `host.tools` — the frozen manifest `tools` list.
+
+Manifest `tools` (validated when `extension_canvas` builds) must be registered, scriptable,
+`readOnly: true` in `LLM_TOOL_REGISTRY` (today only `query_pull_request`), unique, at most 16,
+and never `run_tool_script`. Both invoke paths build async run options with
+`buildCapabilityRunOptions` (`canvas-mutation-service.ts`). The panel shows "Uses: …" when a
+manifest declares tools. `test/fixtures/canvas/pr-dashboard/` is a reference plugin.
+
+There is deliberately no `host.fetch` (CoC's own API is on unauthenticated loopback) and no
+`CanvasHost.complete()` / `runScript()` in the iframe. Async capabilities and `host.complete`
+are gated on `features.canvasHostApis` (off by default): with the flag off an async capability
+404s from the route and errors from the tool, while sync capabilities are untouched.
+`host.runScript` additionally needs `features.toolScripting` and `features.canvasToolScripts`.
 
 `extension_canvas` also accepts `files: [{ path, content, encoding? }]` (max 20/call) — data
 written into the canvas's read-only `files/` directory that the artifact reads back with
@@ -803,6 +822,10 @@ Sentinel job gates route through `MultiRepoQueueRouter.runJobGate`, the owning
 `CLITaskExecutor` bridge and `ExecutorRegistry` to `ChatBaseExecutor.runJobGate`.
 The executor validates the exact Sentinel owner, resolves workspace/working
 directory and reuses shared helper dependencies for `runJobGateWithOwnerTools`.
+Canvas `host.runScript` uses the sibling `runOwnerScript` chain: any chat owner in
+the requested workspace (else `OwnerScriptUnavailableError`), the same owner tools
+narrowed to an `allowTools` list, nested scripts off. Both share
+`withOwnerToolRuntime` in `executors/owner-script-runner.ts`.
 The owner's current active provider (fallback: executor provider) controls Codex
 nested-script omission. See the
 [job gate runtime](server-architecture.md#sentinel-job-gate-runtime).

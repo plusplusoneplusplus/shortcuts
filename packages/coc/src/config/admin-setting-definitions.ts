@@ -1307,6 +1307,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.canvasToolScripts', default: false, runtime: 'live',
+        ui: {
+            group: 'review', order: 63.5, label: 'Canvas tool scripts', badge: 'experimental',
+            hint: 'Lets an async canvas capability call host.runScript to run a tool script as the chat that owns the canvas. Only read-only tools the canvas declares are available. Needs Canvas host APIs and Tool Scripting. Disabled by default.',
+            testId: 'toggle-canvas-tool-scripts-enabled',
+        },
+    }),
+    bool({
         key: 'features.sensitiveInput', default: false, runtime: 'live',
         ui: {
             tab: 'browser', group: 'browserAutomation', order: 20, label: 'Sensitive input for ask_user', badge: 'experimental',

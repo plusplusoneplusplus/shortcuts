@@ -538,6 +538,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 cronTools: cronDeps.cronTools,
                 systemOne: this.buildSystemOneDeps(processId, wsId, workingDirectory),
                 kustoRuntime: this.runtime.getKustoRuntime?.(),
+                ownerScriptRunner: this.runtime.getOwnerScriptRunner?.(),
                 browserRuntime: this.runtime.getBrowserControlRuntime?.(),
                 browserState: this.runtime.getBrowserToolState?.(),
                 browserSignal: turnAbort.signal,

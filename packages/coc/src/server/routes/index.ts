@@ -70,6 +70,7 @@ import { registerSentinelTodoRoutes } from '../sentinel-todos/sentinel-todo-rout
 import { createSentinelTodoDelegationHooks } from '../sentinel-todos/sentinel-todo-delegation';
 import { registerQuickAskAnswerRoutes } from '../processes/chat-sidenotes/quick-ask-answer-handler';
 import { registerCanvasRoutes } from '../canvas/canvas-routes';
+import { createCanvasRunScriptFactory } from '../canvas/canvas-script-bridge';
 import { registerWikiRoutes } from '../wiki';
 import { registerMemoryRoutes } from '../memory/memory-routes';
 import { registerMemoryV2Routes } from '../memory/memory-v2-routes';
@@ -1123,7 +1124,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerWorkspaceHistoryRoutes(routes, store, bridge);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
     registerDiffCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
-    registerCanvasRoutes(routes, dataDir, getWsServer, store, isKustoEnabled, opts.kustoClientFactory, isCanvasHostApisEnabled);
+    registerCanvasRoutes(routes, dataDir, getWsServer, store, isKustoEnabled, opts.kustoClientFactory, isCanvasHostApisEnabled,
+        undefined, createCanvasRunScriptFactory({
+            getFeatures: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features,
+            getOwnerScriptRunner: () => bridge.runOwnerScript,
+        }));
     registerAdminRoutes(routes, {
         store,
         dataDir,

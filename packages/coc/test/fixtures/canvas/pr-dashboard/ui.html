@@ -1,0 +1,49 @@
+<style>
+  body { font: 13px system-ui, sans-serif; margin: 12px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid #ddd; }
+  .error { color: #b00020; margin: 6px 0; }
+  .meta { color: #777; margin-left: 8px; }
+</style>
+<div>
+  <button id="refresh">Refresh</button><span class="meta" id="meta"></span>
+</div>
+<div class="error" id="error"></div>
+<table>
+  <thead><tr><th>#</th><th>Title</th><th>Author</th><th>Draft</th><th>CI</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<script>
+  function text(tag, value) {
+    var el = document.createElement(tag);
+    el.textContent = value == null ? '' : String(value);
+    return el;
+  }
+  function render(state) {
+    document.getElementById('meta').textContent = (state.provider || '') + ' ' + (state.repository || '')
+      + (state.refreshedAt ? ' · refreshed ' + state.refreshedAt : '');
+    document.getElementById('error').textContent = (state.errors || []).join('; ');
+    var rows = document.getElementById('rows');
+    rows.textContent = '';
+    (state.prs || []).forEach(function (pr) {
+      var tr = document.createElement('tr');
+      tr.appendChild(text('td', pr.id));
+      var title = document.createElement('td');
+      var link = text('a', pr.title);
+      link.href = pr.url;
+      link.target = '_blank';
+      title.appendChild(link);
+      tr.appendChild(title);
+      tr.appendChild(text('td', pr.author && (pr.author.login || pr.author.name || pr.author)));
+      tr.appendChild(text('td', pr.isDraft ? 'yes' : ''));
+      tr.appendChild(text('td', pr.ci && pr.ci.state));
+      rows.appendChild(tr);
+    });
+  }
+  window.CanvasHost.onState(render);
+  document.getElementById('refresh').addEventListener('click', function () {
+    window.CanvasHost.invoke('refresh').catch(function (err) {
+      document.getElementById('error').textContent = err.code + ': ' + err.message;
+    });
+  });
+</script>
