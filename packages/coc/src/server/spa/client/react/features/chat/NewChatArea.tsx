@@ -116,6 +116,8 @@ import { isContextComposerVisible } from './activeChatAttach';
 import { drainNewChatSeedContext, subscribeNewChatSeedContext } from './newChatSeedContext';
 import { useContainerWidth } from './hooks/useContainerWidth';
 import { useUnifiedPanelHost } from '../repo-detail/unified-right-panel/unifiedPanelHost';
+import { queueJobHash } from '../../queue/queueJobRoute';
+import { resolveCloneRoute } from '../../repos/cloneRegistry';
 import { inheritDraftPanelTabs } from '../repo-detail/unified-right-panel/unifiedPanelOpen';
 
 export interface NewChatAreaProps {
@@ -167,7 +169,7 @@ export interface InitialChatComposerProps {
     workspaceRoot?: string;
     onBack?: () => void;
     onSubmit: (submission: InitialChatComposerSubmission) => Promise<string | null | void>;
-    onSubmitted?: (taskId: string | null, workspaceId?: string) => Promise<void> | void;
+    onSubmitted?: (taskId: string | null, workspaceId?: string, selectionId?: string) => Promise<void> | void;
     heroTitle?: string;
     heroDescription?: string;
     /**
@@ -257,7 +259,8 @@ export function NewChatArea({ workspaceId, sourceSelectionId, onBack }: NewChatA
     const { state: appState } = useApp();
     const { updateOnboarding } = useOnboardingPreferences();
     // AC-07: enqueue the new chat onto the selected clone's server.
-    const cloneClient = useCocClient(workspaceId);
+    const routeId = sourceSelectionId ?? workspaceId;
+    const cloneClient = useCocClient(routeId);
     const panelHost = useUnifiedPanelHost();
 
     function getSelectedWorkspaceRoot(): string | undefined {
@@ -266,6 +269,9 @@ export function NewChatArea({ workspaceId, sourceSelectionId, onBack }: NewChatA
     }
 
     async function handleSubmit(submission: InitialChatComposerSubmission): Promise<string | null> {
+        if (resolveCloneRoute(routeId).kind === 'unresolved-remote') {
+            throw new Error('The chat workspace is unavailable.');
+        }
         const result = await cloneClient.queue.enqueue({
             type: 'chat',
             priority: 'normal',
@@ -286,14 +292,21 @@ export function NewChatArea({ workspaceId, sourceSelectionId, onBack }: NewChatA
         });
 
         const rawId = result.task?.id ?? (result as any).id;
+        if (typeof rawId !== 'string' || !rawId) {
+            throw new Error('Chat launch did not return a task id');
+        }
         return isQueueProcessId(rawId) ? rawId : toQueueProcessId(rawId);
     }
 
-    async function handleSubmitted(processId: string | null, executionWorkspaceId?: string) {
+    async function handleSubmitted(processId: string | null, executionWorkspaceId?: string, executionSelectionId?: string) {
         if (processId) {
-            const repoId = executionWorkspaceId ?? workspaceId;
+            const repoId = executionSelectionId ?? (executionWorkspaceId && executionWorkspaceId !== workspaceId
+                ? executionWorkspaceId : routeId);
             if (panelHost && panelHost.chatId === null && panelHost.workspaceId === repoId) {
                 inheritDraftPanelTabs(panelHost.workspaceId, processId);
+            }
+            if (repoId) {
+                location.hash = queueJobHash(repoId, { id: processId, processId });
             }
             queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId });
         }
@@ -379,7 +392,8 @@ export function InitialChatComposer({
     const userPickedForModelRef = useRef<{ provider: ChatProvider; modelId: string } | null>(null);
 
     // AC-07: skills + per-repo chat preferences load from the selected clone's server.
-    const cloneClient = useCocClient(workspaceId);
+    const routeId = sourceSelectionId ?? workspaceId;
+    const cloneClient = useCocClient(routeId);
     const commitContextOwner = useCommitContextOwner(workspaceId, sourceSelectionId);
     // AC-07: the owning clone's remote baseUrl (undefined for a local clone) —
     // threaded into the provider/model/effort hooks so their reads AND their
@@ -876,10 +890,33 @@ export function InitialChatComposer({
         },
     });
 
+    // A launch owns only the composer/page that admitted it. Hash history also
+    // revokes responses after an away-and-back excursion.
+    const submissionScope = useMemo(() => ({ active: true }), [workspaceId, sourceSelectionId, draftStorageKey, cloneBaseUrl, sourceBaseUrl]);
+    const navigationVersion = useRef(0);
+    const ralphSubmissionCurrent = useRef<(() => boolean) | null>(null);
+    const isRalphSubmissionCurrent = ralphSubmissionCurrent.current;
+    const sendInFlight = useRef(false);
+    useEffect(() => {
+        submissionScope.active = true;
+        const invalidate = () => { navigationVersion.current += 1; };
+        window.addEventListener('hashchange', invalidate);
+        return () => {
+            submissionScope.active = false;
+            window.removeEventListener('hashchange', invalidate);
+        };
+    }, [submissionScope]);
+
+    function captureSubmissionOwner() {
+        const hash = location.hash;
+        const version = navigationVersion.current;
+        return () => submissionScope.active && location.hash === hash && navigationVersion.current === version;
+    }
+
     async function handleSend() {
         const trimmed = input.trim();
         const contextItems = attachedContext.getItems();
-        if ((!trimmed && attachments.length === 0 && contextItems.length === 0 && !hasPendingPrefixContent) || sending) return;
+        if ((!trimmed && attachments.length === 0 && contextItems.length === 0 && !hasPendingPrefixContent) || sending || sendInFlight.current) return;
         // Generic pre-submit command interception (e.g. the Notes /new and /clear
         // reset commands). When the adapter consumes the raw input as a local
         // command, clear only the typed text and its draft and skip submission —
@@ -917,6 +954,8 @@ export function InitialChatComposer({
 
         setError(null);
         setSessionContextDropError(null);
+        sendInFlight.current = true;
+        const isCurrent = captureSubmissionOwner();
         setSending(true);
         abortControllerRef.current = new AbortController();
         try {
@@ -993,16 +1032,18 @@ export function InitialChatComposer({
                 ...(config ? { config } : {}),
                 ...(chatStyleSelectorEnabled && isChatStyleSupportedMode(mode) ? { chatStyle: selectedChatStyle } : {}),
             });
+            if (!isCurrent()) return;
             await onSubmitted?.(typeof submittedTaskId === 'string' ? submittedTaskId : null);
             clearComposerAfterSubmission();
             // Consume the pending prefix only after a successful create — a
             // rejected onSubmit skips this so the references stay intact for retry.
             onClearPendingPrefix?.();
         } catch (err: any) {
-            if (err?.name !== 'AbortError') {
+            if (isCurrent() && err?.name !== 'AbortError') {
                 setError(getSpaCocClientErrorMessage(err, 'Failed to create task'));
             }
         } finally {
+            sendInFlight.current = false;
             setSending(false);
             abortControllerRef.current = null;
         }
@@ -1022,11 +1063,13 @@ export function InitialChatComposer({
     function handleOpenRalphDirectGoalDialog() {
         if (sending) return;
         setError(null);
+        ralphSubmissionCurrent.current = captureSubmissionOwner();
         setRalphDirectGoalDraft(input);
     }
 
-    async function handleRalphDirectGoalLaunched(processId: string, executionWorkspaceId?: string) {
-        await onSubmitted?.(processId, executionWorkspaceId);
+    async function handleRalphDirectGoalLaunched(processId: string, executionWorkspaceId?: string, executionSelectionId?: string) {
+        if (!isRalphSubmissionCurrent?.()) return;
+        await onSubmitted?.(processId, executionWorkspaceId, executionSelectionId);
         setRalphDirectGoalDraft(null);
         setInput('');
         setCursorPos(0);

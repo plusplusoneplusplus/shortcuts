@@ -8,7 +8,8 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockInheritDraftPanelTabs, mockAppState, mockFetch, mockAppDispatch, mockEnqueueBaseUrls, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockMapReduceEnabled, mockSentinelEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockAgentProvidersResponse, mockEffortLevelsEnabled, mockEffortTiers, mockChatStyleEnabled, mockDefaultChatStyle, mockRepoPrefs, mockPatchRepo } = vi.hoisted(() => ({
+const { mockRalphRepos, mockQueueDispatch, mockInheritDraftPanelTabs, mockAppState, mockFetch, mockAppDispatch, mockEnqueueBaseUrls, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockMapReduceEnabled, mockSentinelEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockAgentProvidersResponse, mockEffortLevelsEnabled, mockEffortTiers, mockChatStyleEnabled, mockDefaultChatStyle, mockRepoPrefs, mockPatchRepo } = vi.hoisted(() => ({
+    mockRalphRepos: { value: [] as any[] },
     mockQueueDispatch: vi.fn(),
     mockInheritDraftPanelTabs: vi.fn(),
     mockAppState: {
@@ -79,6 +80,17 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-ri
     inheritDraftPanelTabs: mockInheritDraftPanelTabs,
 }));
 
+vi.mock('../../../../src/server/spa/client/react/features/chat/ChatDetail', () => ({
+    ChatDetail: ({ taskId, workspaceId, sourceSelectionId }: any) =>
+        <div data-testid="launched-chat-detail">{sourceSelectionId ?? workspaceId}/{taskId}</div>,
+}));
+vi.mock('../../../../src/server/spa/client/react/contexts/PopOutContext', () => ({
+    usePopOut: () => ({ poppedOutTasks: new Set(), markRestored: vi.fn() }),
+}));
+vi.mock('../../../../src/server/spa/client/react/contexts/FloatingChatsContext', () => ({
+    useFloatingChats: () => ({ floatingChats: new Map(), unfloatChat: vi.fn() }),
+}));
+
 const OriginalFileReader = globalThis.FileReader;
 
 function mockFileReader() {
@@ -112,7 +124,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
 // defaults to it and the launch posts the expected workspace root.
 vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
     useRepos: () => ({
-        repos: [{ workspace: { id: 'ws-1', name: 'repo', rootPath: '/home/user/repo' } }],
+        repos: mockRalphRepos.value,
         loading: false,
         fetchRepos: vi.fn(),
         unseenCounts: {},
@@ -299,9 +311,14 @@ import { notesChatDraftKey } from '../../../../src/server/spa/client/react/featu
 import {
     registerCloneBaseUrls,
     resetCloneRegistryForTests,
+    setActiveCloneForRouting,
 } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 import { __resetChatStyleSelectorFlagCache } from '../../../../src/server/spa/client/react/hooks/feature-flags/useChatStyleSelectorEnabled';
 import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
+
+import { resolveDashboardRoute, type RouteContext } from '../../../../src/server/spa/client/react/layout/dashboardRoutes';
+
+import { ChatDetailPane } from '../../../../src/server/spa/client/react/features/chat/ChatDetailPane';
 
 function makeCommitPayload(overrides: Partial<GitCommitContextDragPayload> = {}): GitCommitContextDragPayload {
     return {
@@ -377,6 +394,9 @@ function selectRalphMode() {
 
 beforeEach(() => {
     vi.clearAllMocks();
+    mockQueueDispatch.mockReset();
+    mockRalphRepos.value = [{ workspace: { id: 'ws-1', name: 'repo', rootPath: '/home/user/repo' } }];
+    history.replaceState(null, '', '#repos/ws-1/chats');
     mockAppState.workspaces = [{ id: 'ws-1', rootPath: '/home/user/repo' }];
     mockAppState.onboardingProgress = { hasUsedChat: false };
     mockModelCommand.modelOverride = null;
@@ -725,6 +745,149 @@ describe('NewChatArea', () => {
             repoId: 'ws-1',
         });
         expect(mockInheritDraftPanelTabs).not.toHaveBeenCalled();
+    });
+
+    it('hands the first message to the normal conversation detail before a queue snapshot arrives', async () => {
+        const { queueReducer } = await vi.importActual<typeof import('../../../../src/server/spa/client/react/contexts/QueueContext')>(
+            '../../../../src/server/spa/client/react/contexts/QueueContext');
+        const owner = 'remote:server-a:ws-1';
+        registerCloneBaseUrls([{ workspaceId: 'ws-1', serverId: 'server-a', baseUrl: 'https://owner.example' }]);
+        history.replaceState(null, '', `#repos/${encodeURIComponent(owner)}/chats`);
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'first-message' } });
+        function ChatSurface() {
+            const [state, dispatch] = React.useReducer(queueReducer, { selectedTaskIdByRepo: {} } as any);
+            mockQueueDispatch.mockImplementation(dispatch);
+            return <ChatDetailPane workspaceId="ws-1" sourceSelectionId={owner}
+                selectedTaskId={state.selectedTaskIdByRepo[owner] ?? null} selectedTask={null} />;
+        }
+        render(<ChatSurface />);
+        fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'First message' } });
+        await act(async () => { fireEvent.click(screen.getByTestId('new-chat-send-btn')); });
+        expect(screen.queryByTestId('new-chat-input')).toBeNull();
+        expect(screen.getByTestId('launched-chat-detail').textContent).toBe(`${owner}/queue_first-message`);
+        expect(mockEnqueueTask).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        ['ws-1', 'ws-1', 'ask'],
+        ['ws-1', 'remote:server-a:ws-1', 'autopilot'],
+        ['group-local', 'group-local', 'for-each'],
+        ['group-svc', 'remote:server-a:group-svc', 'map-reduce'],
+        ['ws-1', 'ws-1', 'ralph'],
+    ])('opens the returned conversation from %s under exact owner %s (%s)', async (workspaceId, owner, mode) => {
+        mockForEachEnabled.value = true;
+        mockMapReduceEnabled.value = true;
+        mockRalphEnabled.value = true;
+        if (owner.startsWith('remote:')) {
+            registerCloneBaseUrls([{ workspaceId, serverId: 'server-a', baseUrl: 'https://owner.example' }]);
+        }
+        history.replaceState(null, '', `#repos/${encodeURIComponent(owner)}/chats`);
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'exact-task' } });
+        render(<NewChatArea workspaceId={workspaceId} sourceSelectionId={owner} />);
+        if (mode === 'autopilot') fireEvent.click(screen.getByTestId('mode-pill-autopilot'));
+        else if (mode !== 'ask') {
+            fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+            fireEvent.click(screen.getByTestId(`workflow-mode-option-${mode}`));
+        }
+        fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'First message' } });
+        await act(async () => { fireEvent.click(screen.getByTestId('new-chat-send-btn')); });
+
+        expect(mockEnqueueTask).toHaveBeenCalledTimes(1);
+        expect(mockEnqueueTask.mock.calls[0][0].payload.workspaceId).toBe(workspaceId);
+        expect(mockEnqueueBaseUrls).toEqual([owner.startsWith('remote:') ? 'https://owner.example' : undefined]);
+        expect(location.hash).toBe(`#repos/${encodeURIComponent(owner)}/chats/queue_exact-task`);
+        const action = { type: 'SELECT_QUEUE_TASK', id: 'queue_exact-task', repoId: owner };
+        expect(mockQueueDispatch).toHaveBeenCalledWith(action);
+        // Replaying the actual router must retain this exact selection even
+        // before any queue snapshot or process record reaches the dashboard.
+        const resolution = resolveDashboardRoute(location.hash, {
+            queueState: { repoQueueMap: {}, repoHistoryMap: {} }, selectedRepoId: owner,
+            repoRouteState: {}, repoTabState: {}, isSchedulesInSlide: () => false,
+        } as RouteContext);
+        expect(resolution.effects).toContainEqual({ kind: 'queue', action });
+    });
+
+    it('keeps an explicit remote launch on its owner when another server has the same workspace id', async () => {
+        registerCloneBaseUrls([
+            { workspaceId: 'ws-1', serverId: 'owner', baseUrl: 'https://owner.example' },
+            { workspaceId: 'ws-1', serverId: 'other', baseUrl: 'https://other.example' },
+        ]);
+        setActiveCloneForRouting('remote:other:ws-1');
+        const owner = 'remote:owner:ws-1';
+        history.replaceState(null, '', `#repos/${encodeURIComponent(owner)}/chats`);
+        render(<NewChatArea workspaceId="ws-1" sourceSelectionId={owner} />);
+        fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'First message' } });
+        await act(async () => { fireEvent.click(screen.getByTestId('new-chat-send-btn')); });
+        expect(mockEnqueueBaseUrls).toEqual(['https://owner.example']);
+        expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'SELECT_QUEUE_TASK', id: 'queue_default-task', repoId: owner });
+        expect(location.hash).toBe(`#repos/${encodeURIComponent(owner)}/chats/queue_default-task`);
+    });
+
+    it.each(['page', 'workspace', 'away-and-back', 'owner', 'unmount'])('ignores launch success after %s changes', async change => {
+        let finish!: (result: any) => void;
+        mockEnqueueTask.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        const view = render(<NewChatArea workspaceId="ws-1" />);
+        fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'First message' } });
+        fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+        await waitFor(() => expect(mockEnqueueTask).toHaveBeenCalledTimes(1));
+        if (change === 'unmount') view.unmount();
+        else if (change === 'owner') view.rerender(<NewChatArea workspaceId="ws-1" sourceSelectionId="remote:server-b:ws-1" />);
+        else {
+            await act(async () => {
+                history.replaceState(null, '', change === 'workspace' ? '#repos/ws-2/chats' : '#repos/ws-1/git');
+                window.dispatchEvent(new HashChangeEvent('hashchange'));
+                if (change === 'away-and-back') {
+                    history.replaceState(null, '', '#repos/ws-1/chats');
+                    window.dispatchEvent(new HashChangeEvent('hashchange'));
+                }
+            });
+        }
+        const hash = location.hash;
+        await act(async () => { finish({ task: { id: 'late-task' } }); });
+        expect(location.hash).toBe(hash);
+        expect(mockQueueDispatch).not.toHaveBeenCalled();
+        expect(mockEnqueueTask).toHaveBeenCalledTimes(1);
+        expect(mockDraftStore.clearDraft).not.toHaveBeenCalled();
+    });
+
+    it('does not duplicate a pending submission or surface its error on a different page', async () => {
+        let fail!: (error: Error) => void;
+        mockEnqueueTask.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
+        render(<NewChatArea workspaceId="ws-1" />);
+        fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'First message' } });
+        act(() => {
+            fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+        });
+        expect(mockEnqueueTask).toHaveBeenCalledTimes(1);
+        history.replaceState(null, '', '#repos/ws-2/chats');
+        await act(async () => { fail(new Error('Late failure')); });
+        expect(location.hash).toBe('#repos/ws-2/chats');
+        expect(mockQueueDispatch).not.toHaveBeenCalled();
+        expect(screen.queryByTestId('new-chat-error')).toBeNull();
+        expect(mockDraftStore.clearDraft).not.toHaveBeenCalled();
+    });
+
+    it.each([new Error('Launch failed'), { task: {} }])('retains the draft and route on launch failure or missing identity (%j)', async result => {
+        if (result instanceof Error) mockEnqueueTask.mockRejectedValueOnce(result);
+        else mockEnqueueTask.mockResolvedValueOnce(result);
+        render(<NewChatArea workspaceId="ws-1" />);
+        fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'Keep my draft' } });
+        await act(async () => { fireEvent.click(screen.getByTestId('new-chat-send-btn')); });
+        expect(location.hash).toBe('#repos/ws-1/chats');
+        expect(mockQueueDispatch).not.toHaveBeenCalled();
+        expect(mockDraftStore.clearDraft).not.toHaveBeenCalled();
+        expect((screen.getByTestId('new-chat-input') as HTMLInputElement).value).toBe('Keep my draft');
+        expect(screen.getByTestId('new-chat-error')).toBeTruthy();
+    });
+
+    it('does not submit to the page origin for an unresolved remote owner', async () => {
+        render(<NewChatArea workspaceId="ws-1" sourceSelectionId="remote:missing:ws-1" />);
+        fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'Keep my draft' } });
+        await act(async () => { fireEvent.click(screen.getByTestId('new-chat-send-btn')); });
+        expect(mockEnqueueTask).not.toHaveBeenCalled();
+        expect(mockQueueDispatch).not.toHaveBeenCalled();
+        expect(screen.getByTestId('new-chat-error')).toBeTruthy();
     });
 
     it('inherits draft panel tabs before selecting a new chat in the matching host scope', async () => {
@@ -1971,12 +2134,55 @@ describe('NewChatArea', () => {
                 id: 'queue_direct-goal-1',
                 repoId: 'ws-1',
             });
+            expect(location.hash).toBe('#repos/ws-1/chats/queue_direct-goal-1');
             expect(mockAppDispatch).toHaveBeenCalledWith({
                 type: 'UPDATE_ONBOARDING',
                 payload: { hasUsedChat: true },
             });
             expect(mockDraftStore.clearDraft).toHaveBeenCalledWith('new-chat:ws-1');
             expect(input.value).toBe('');
+        });
+
+        it('opens a direct-goal launch under its selected remote execution owner', async () => {
+            mockRalphRepos.value.push({ workspace: {
+                id: 'ws-remote', name: 'Remote execution', rootPath: '/remote/repo', baseUrl: 'https://remote.example',
+                remote: { serverId: 'srv-remote', serverLabel: 'Remote', baseUrl: 'https://remote.example', offline: false },
+            } });
+            registerCloneBaseUrls([{ workspaceId: 'ws-remote', serverId: 'srv-remote', baseUrl: 'https://remote.example' }]);
+            mockFetch.mockImplementation((url: string) => Promise.resolve({ ok: true,
+                json: async () => String(url).endsWith('/ralph-launch') ? { processId: 'queue_remote-goal' } : {},
+            }));
+            render(<NewChatArea workspaceId="ws-1" />);
+            selectRalphMode();
+            fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: '## Goal Build it' } });
+            fireEvent.click(screen.getByTestId('new-chat-ralph-start-from-goal-btn'));
+            fireEvent.change(screen.getByTestId('ralph-launch-execution-repo-select'), { target: { value: 'srv-remote:ws-remote' } });
+            await act(async () => { fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn')); });
+            expect(mockFetch.mock.calls.filter(([url]) => String(url).endsWith('/ralph-launch'))).toHaveLength(1);
+            expect(mockQueueDispatch).toHaveBeenCalledWith({
+                type: 'SELECT_QUEUE_TASK', id: 'queue_remote-goal', repoId: 'remote:srv-remote:ws-remote',
+            });
+            expect(location.hash).toBe('#repos/remote%3Asrv-remote%3Aws-remote/chats/queue_remote-goal');
+            expect(mockEnqueueTask).not.toHaveBeenCalled();
+        });
+
+        it('ignores a direct-goal launch after navigation without queuing another chat', async () => {
+            let finish!: (response: any) => void;
+            mockFetch.mockImplementation((url: string) => String(url).endsWith('/ralph-launch')
+                ? new Promise(resolve => { finish = resolve; })
+                : Promise.resolve({ ok: true, json: async () => ({}) }));
+            render(<NewChatArea workspaceId="ws-1" />);
+            selectRalphMode();
+            fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: '## Goal Build it' } });
+            fireEvent.click(screen.getByTestId('new-chat-ralph-start-from-goal-btn'));
+            fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
+            await waitFor(() => expect(finish).toBeTypeOf('function'));
+            history.replaceState(null, '', '#repos/ws-2/chats');
+            await act(async () => { finish({ ok: true, json: async () => ({ processId: 'queue_late-ralph' }) }); });
+            expect(location.hash).toBe('#repos/ws-2/chats');
+            expect(mockQueueDispatch).not.toHaveBeenCalled();
+            expect(mockEnqueueTask).not.toHaveBeenCalled();
+            expect(mockDraftStore.clearDraft).not.toHaveBeenCalled();
         });
 
         it('shows a non-blocking warning for direct-goal text without a Goal heading', () => {
