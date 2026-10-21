@@ -107,7 +107,21 @@ export function sentinelTodoJobStateLabel(job: SentinelTodoJobLink): string {
 /** Review delivery for a finished job — not a verdict on the item. */
 export function sentinelTodoReviewLabel(job: SentinelTodoJobLink): string | null {
     const execution = job.execution;
-    if (!('review' in execution) || !execution.review) return null;
+    if (!('review' in execution) || !execution.review) {
+        if (!job.remote || !execution.delivery) return null;
+        return execution.delivery.state === 'failed'
+            ? `Result delivery failed${execution.delivery.reason ? `: ${execution.delivery.reason}` : ''}`
+            : execution.delivery.state === 'received' ? 'Result received · Assessment pending' : 'Result delivery pending';
+    }
+    if (job.remote) {
+        const delivery = execution.review.state === 'queued' ? 'Assessment queued'
+            : execution.review.state === 'failed' ? `Result delivery failed${execution.review.reason ? `: ${execution.review.reason}` : ''}`
+                : execution.review.state === 'delivered' ? 'Result delivered' : 'Result delivery pending';
+        const assessment = execution.review.assessment === 'reviewed' ? 'Reviewed'
+            : execution.review.assessment === 'superseded' ? 'User verdict retained'
+                : execution.review.assessment === 'not_required' ? 'No assessment required' : 'Assessment pending';
+        return `${delivery} · ${assessment}`;
+    }
     if (execution.review.assessment === 'reviewed') return 'Reviewed';
     if (execution.review.assessment === 'superseded') return 'User verdict retained';
     if (execution.review.assessment === 'not_required') {

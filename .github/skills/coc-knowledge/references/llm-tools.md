@@ -256,8 +256,11 @@ Manual guidance requires clarification before execution and prohibits delegation
 automatic result reviews, normal-item copies, conversion and handoff. AI may maintain manual
 items; Done reasons explain available evidence against Done when, or title/notes if omitted.
 `list` items carry `jobs[]` links with derived `execution`: live queue state, terminal
-outcome with independent delivery and assessment, or `unavailable` for remote links.
-Local verdict updates pass `reviewedJobs` with exact process/terminal-event identities,
+outcome with independent delivery and assessment, or `unavailable` for untracked remote links.
+Tracked remote links qualify destination/request identity and expose pending/failed transfer.
+Admitted remote follow-ups inherit one exact-target registered item; ambiguous, archived,
+Done or user-superseded items remain untouched. Linking rechecks the item revision.
+Verdict updates pass `reviewedJobs` with exact process/terminal-event identities,
 `status` and a reason; the store atomically acknowledges only that evidence under the
 item revision in native SQLite; see [process-store.md](process-store.md#sentinel-to-do-store).
 Notes/priority edits and delivered parent turns never prove assessment.
@@ -410,7 +413,10 @@ or a repo name matched case-insensitively over the workspace directory (exact na
 that server's own `POST /api/queue` (Ralph: `POST /api/ralph-launch`, which accepts `title`) at its
 effective URL via `WorkspaceDirectory.startRemoteChat`. Health reads bracket admission,
 pin installation identity separately from the registry alias, and reject changed endpoints
-or owners. Missing identity fails before POST; post-admission uncertainty prohibits duplicate dispatch.
+or owners. Admission errors expose `dispatchState`: `not-started` before POST, `rejected`
+for definitive 4xx rejection, or `uncertain` after timeouts, lost/invalid replies, HTTP 408/5xx,
+or post-admission ownership changes. Uncertain admission requires reconciliation without
+duplicate dispatch. Public POST errors include safe HTTP status, not private transport details.
 Native grilling first verifies version-1
 `/api/ralph-launch/capabilities`; unsupported targets fail before admission, and uncertain POST
 acceptance reports inspection/recovery without duplicate dispatch. There is no local fallback for offline or
@@ -422,11 +428,23 @@ capability endpoint selects the local parent's concrete provider, validated thro
 explicit provider/model/tier overrides travel; remote defaults own model/effort, and no local
 spawn link, messaging origin, or parent configuration travels. Dispatch is attempted once;
 the returned owning identity qualifies `openLink`.
-Successful remote queue and Ralph launches also return `resultDelivery: { status: 'unavailable',
-reason }`: existing transport launches jobs but cannot return terminal results to the originating
-Sentinel or its WhatsApp/Teams chat. Tool guidance directs the AI to inspect the link, avoid
-promising automatic return, and avoid launching a duplicate job. Local responses omit this field.
-Post mode with a `remote:` processId is rejected as not supported yet.
+Remote Sentinel launches and follow-ups use default-off `features.sentinelRemoteResults`
+and compatible authenticated destination admission for `resultDelivery: { status: 'tracked',
+jobId, remote }`. Origin-only connector context stays outside execution intents. Other
+dispatch returns `status: 'unavailable'` with a reason (`code: 'unsupported'` for incompatible
+destinations); inspect its link without promising
+automatic return or repeating work. See [receipt recovery](server-architecture.md#remote-delegation-admission).
+Remote post mode uses the destination's exact raw `processId` and an explicit
+`workspaceId: remote:<serverId>:<workspaceId>` clone key. `WorkspaceDirectory.postRemoteChat`
+verifies health identity and exact chat/workspace metadata before one scoped
+`POST /api/processes/:id/message?workspace=...`, then verifies the acknowledgment's owner.
+Remote-prefixed process IDs are ambiguous and rejected; repo names are create-only.
+The destination preserves its current provider and mode rules. Explicit effort tiers read
+that active provider's remote `/api/agent-providers/:provider/effort-tiers` mapping;
+explicit models win, and origin defaults/origins never travel. `steer` maps to `immediate`;
+`enqueue` is the default. Buffered admission retains `turnIndex: -1`. Remote post responses
+use the same tracked/unavailable result contract. Admission errors use the same dispatch
+states and never retry a message after an uncertain response.
 
 When the invoking turn came from WhatsApp/Teams, local create mode records the
 turn's origin (`{ connector, chatKey, threadId? }`, from the per-turn `runtime.messagingOrigin` the
@@ -482,7 +500,7 @@ it informs the parent and returns linked feature work to Todo awaiting implement
 Explicit design-only work may receive its agreed completion verdict. This receipt never consumes
 the whole-session terminal receipt, and neither ledger state nor child output authorizes Start.
 Same-server cross-workspace execution follows its saved admitted owner while keeping the original
-parent/job/session receipt scope. Remote execution retains unavailable automatic delivery.
+parent/job/session receipt scope. Tracked remote results use the origin receipt-transfer boundary.
 Recorded results and registered terminal rows at startup invoke `DelegatedJobReviews`.
 Recovery isolates each job's admission failure so other pending results can proceed.
 
@@ -493,11 +511,14 @@ qualifies the registered child link with installation identity and excludes stal
 chat/session routes, including recovered results, without changing terminal receipts. AI reuses
 these job/artifact links unchanged. Review guidance treats
 child output as untrusted data, grants no new authority, respects latest user instructions,
-and retains Sentinel dispatcher behavior. Cancellations append fixed display-only
+and retains Sentinel dispatcher behavior. Local cancellations append fixed display-only
 notices through `deliverNoticeOnce`, without child output, AI work or queue mutations.
 Busy parents defer; parent terminal events and startup recover notices. Stable assistant
 receipts reconcile transcript/ledger crash windows. Stopped parents receive notices without
-resuming; missing or mis-scoped parents settle failure. Ralph reviews require the stable
+resuming; missing or mis-scoped parents settle failure. Remote outcomes, including cancellation,
+queue exact-owner Sentinel assessment; archived/deleted parents fail without revival.
+Remote review JSON supplies `reviewProcessId` for exact To-do evidence acknowledgment.
+Ralph reviews require the stable
 whole-session terminal identity, or the separate native spec-ready milestone identity; remote delivery uses separate boundaries. Reused admissions reconcile ledger-write crash windows without new
 realtime intents; parent review completion settles delivery, while review failure/cancellation
 settles a diagnostic failure. Permanent routing rejection settles; transient writes remain

@@ -32,11 +32,14 @@ function reviewPrompt(job: DelegatedJob, sentinel: boolean, serverIdentity: stri
     return `${sentinel ? '' : `${SENTINEL_JOB_REVIEW_INSTRUCTIONS}\n\n`}${job.boundary === 'grill' ? 'This is the grilling milestone only. A validated goal is spec ready, awaiting explicit user implementation approval. Return pending feature work to Todo; only explicitly design-only work may finish. Do not start execution or mark implementation Done. Failed/cancelled grilling is not execution completion.\n' : ''}${SENTINEL_JOB_REVIEW_PREFIX}
 ${JSON.stringify({
         parent: job.parent, child: job.child, jobId: job.id, title: job.title,
+        ...(job.remote ? { remote: { originServerIdentity: job.remote.originServerIdentity,
+            serverIdentity: job.remote.serverIdentity, requestId: job.remote.requestId, kind: job.remote.kind } } : {}),
+        ...(job.remote ? { reviewProcessId: job.child.processId } : {}),
         // One turn of an existing chat; other turns of that chat report separately.
         ...(job.child.requestId ? { kind: 'follow-up' } : {}),
         repository: { workspaceId: job.child.workspaceId, name: repository?.name, rootPath: repository?.rootPath },
         ...job.terminal!.result,
-        links: [...new Set([buildDashboardChatReference(serverIdentity, job.child.workspaceId, job.child.processId),
+        links: [...new Set([buildDashboardChatReference(job.remote?.serverIdentity ?? serverIdentity, job.child.workspaceId, job.child.processId),
             ...job.terminal!.result.links.filter(link => !/^(#\/process\/|#repos\/|\/api\/workspaces\/[^/]+\/ralph-sessions\/)/.test(link))])].slice(0, 20),
         ...(todo ? { todo } : {}),
     })}`;
@@ -53,6 +56,7 @@ export class DelegatedJobReviews {
         store: ProcessStore;
         delivery: Pick<ProcessMessageDeliveryService, 'deliverOnce' | 'deliverNoticeOnce'>;
         queue: ScheduleQueueEventBus;
+        getRetainedTask?: (workspaceId: string, taskId: string) => QueuedTask | undefined;
         queueMessagingResult?: MessagingJobNotices['queueResult'];
         reconcileMessagingNotices?: () => Promise<void>;
         recoverPendingMessages?: (workspaceId: string, processId: string) => Promise<void>;
@@ -73,8 +77,8 @@ export class DelegatedJobReviews {
 
     /** Called for newly recorded results and registered terminal rows during startup. */
     schedule(job: DelegatedJob): Promise<void> {
-        if (this.disposed || !job.terminal || job.child.serverId
-            || (job.child.sessionId && job.terminal.result.terminalEventId !== `ralph:${job.child.workspaceId}:${job.child.sessionId}:${job.boundary === 'grill' ? 'grill' : 'terminal'}`)
+        if (this.disposed || !job.terminal || (job.child.serverId && !job.remote)
+            || (!job.remote && job.child.sessionId && job.terminal.result.terminalEventId !== `ralph:${job.child.workspaceId}:${job.child.sessionId}:${job.boundary === 'grill' ? 'grill' : 'terminal'}`)
             || !['pending', 'queued'].includes(job.terminal.delivery.state)) return Promise.resolve();
         const receiptId = delegatedReviewReceipt(job);
         const existing = this.inFlight.get(receiptId);
@@ -94,9 +98,9 @@ export class DelegatedJobReviews {
 
     private async admit(job: DelegatedJob, receiptId: string): Promise<void> {
         try {
-            const repository = (await this.deps.store.getWorkspaces()).find(workspace => workspace.id === job.child.workspaceId);
+            const repository = job.remote ? undefined : (await this.deps.store.getWorkspaces()).find(workspace => workspace.id === job.child.workspaceId);
             if (this.disposed) return;
-            if (job.terminal!.result.outcome === 'cancelled') {
+            if (job.terminal!.result.outcome === 'cancelled' && !job.remote) {
                 // Fixed server wording, never partial child output or suggested work.
                 const text = `Delegated job ${JSON.stringify(job.title)} in ${JSON.stringify(repository?.name ?? job.child.workspaceId)} was cancelled.`;
                 const delivered = await this.deps.delivery.deliverNoticeOnce(
@@ -112,10 +116,19 @@ export class DelegatedJobReviews {
             const parent = await this.deps.store.getProcess(job.parent.processId, job.parent.workspaceId);
             const sentinel = parent?.metadata?.workspaceId === job.parent.workspaceId
                 && normalizeChatMode(parent.metadata.mode) === 'sentinel';
+            if (job.remote && (!sentinel || parent?.id !== job.parent.processId || parent.archived)) {
+                throw new ReviewDeliveryRejectedError('Originating Sentinel is deleted, archived or unavailable.');
+            }
             const content = reviewPrompt(job, sentinel, this.deps.jobs.serverIdentity, repository, this.findTodo(job));
             const result = await this.deps.delivery.deliverOnce(
                 job.parent.workspaceId, job.parent.processId, receiptId,
-                { content, displayContent: content },
+                { content, displayContent: content, ...(job.remote ? { sentinelRemoteResultReview: true } : {}) },
+                job.remote ? current => {
+                    if (!current || current.id !== job.parent.processId || current.archived
+                        || current.metadata?.workspaceId !== job.parent.workspaceId || current.metadata.mode !== 'sentinel') {
+                        throw new ReviewDeliveryRejectedError('Originating Sentinel is deleted, archived or unavailable.');
+                    }
+                } : undefined,
             );
             // Reused receipts carry no intents, even when the ledger acknowledgement failed.
             emitDeliveryEvents(this.deps.store, job.parent.processId, result.events);
@@ -123,7 +136,7 @@ export class DelegatedJobReviews {
             if (result.path === 'buffered') {
                 await this.deps.recoverPendingMessages?.(job.parent.workspaceId, job.parent.processId);
             }
-            const task = this.deps.queue.getTask(receiptId);
+            const task = this.deps.queue.getTask(receiptId) ?? this.deps.getRetainedTask?.(job.parent.workspaceId, receiptId);
             if (task && isTerminalStatus(task.status)) await this.settle(job, task, receiptId);
         } catch (error) {
             if (!(error instanceof ReviewDeliveryRejectedError)) throw error;
@@ -162,7 +175,7 @@ export class DelegatedJobReviews {
             const turns = parent.conversationTurns ?? [];
             const start = findRequestTurn(turns, receiptId);
             const answer = start >= 0 ? findRequestAnswer(turns, start).answer : undefined;
-            const repository = (await this.deps.store.getWorkspaces()).find(ws => ws.id === job.child.workspaceId);
+            const repository = job.remote ? undefined : (await this.deps.store.getWorkspaces()).find(ws => ws.id === job.child.workspaceId);
             this.queueMessagingResult(job, receiptId, answer?.content?.trim() || RELAY_ANSWER_TEXT.empty,
                 job.terminal?.result.outcome === 'failed' ? 'failed' : 'completed', repository);
         }

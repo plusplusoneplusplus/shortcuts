@@ -38,6 +38,11 @@ import { coerceChatStyle } from '../executors/chat-style-prompt';
 import { BrowserToolStateStore } from '../llm-tools/browser-tools';
 import { createSendMessageCapability } from '../processes/send-message-capability';
 import { DelegatedJobStore } from '../delegation/delegated-job-store';
+import { RemoteDelegationRequestStore } from '../delegation/remote-delegation-request-store';
+import { registerRemoteDelegationProofRoutes, registerRemoteDelegationRoutes } from '../delegation/remote-delegation-routes';
+import { RemoteDelegationAdmissionStore } from '../delegation/remote-delegation-admission-store';
+import { RemoteDelegationResults } from '../delegation/remote-delegation-results';
+import { RemoteDelegationReturn } from '../delegation/remote-delegation-return';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { DelegatedJobResults } from '../delegation/delegated-job-results';
 import { DelegatedJobReviews } from '../delegation/delegated-job-reviews';
@@ -155,6 +160,7 @@ import { registerRalphLaunchRoutes } from './ralph-launch-routes';
 import { registerRalphGrillingApprovalRoutes } from './ralph-grilling-approval-routes';
 import { prepareRalphGrilling } from '../ralph/grilling-state';
 import { launchRalphSession, type LaunchRalphFn, type RalphLaunchDeps } from '../ralph/ralph-launch-service';
+import { createRemoteDelegationLaunch } from '../delegation/remote-delegation-launch';
 import { registerRalphResumeRoutes } from './ralph-resume-routes';
 import { registerRalphInputRoutes } from './ralph-input-routes';
 import { registerRalphSubmitRoutes } from './ralph-submit-routes';
@@ -535,6 +541,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // `POST /api/queue` uses: provider/effort defaults resolution, then route +
     // enqueue via the per-repo queue manager.
     const delegatedJobs = new DelegatedJobStore(dataDir);
+    const remoteDelegationRequests = new RemoteDelegationRequestStore(dataDir, delegatedJobs);
+    registerRemoteDelegationProofRoutes(routes, remoteDelegationRequests);
     // Sentinel to-do ledger: always available for Sentinel bookkeeping, never job control.
     // Production borrows the process-store connection; stub stores use native
     // in-memory SQLite, like the queue infrastructure.
@@ -776,6 +784,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     const delegatedJobReviews = new DelegatedJobReviews({
         jobs: delegatedJobs, store, queue: queueFacade,
+        getRetainedTask: (workspaceId, taskId) => queuePersistence.getRetainedTerminalTask(workspaceId, taskId),
         queueMessagingResult: result => jobNotices.queueResult(result),
         reconcileMessagingNotices: () => jobNotices.reconcile(),
         delivery: new ProcessMessageDeliveryService({ store, bridge: bridgeWithResolvedDefaults }),
@@ -941,7 +950,50 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     // Local + remote repo directory behind `list_workspaces`, `send_to_conversation`
     // name / remote clone-key targets, and messaging `list remotes`.
-    const workspaceDirectory = createWorkspaceDirectory({ store, dataDir, remoteServers: remoteServerRuntime });
+    const remoteReturn = new RemoteDelegationReturn({
+        requests: remoteDelegationRequests, jobs: delegatedJobs, store, remotes: remoteServerRuntime,
+        onRegistered: job => sentinelTodos.linkRemoteFollowUp(job),
+        enabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelRemoteResults === true,
+        onResult: async job => {
+            sentinelTodoHooks.recordResult(job);
+            await delegatedJobReviews.schedule(job);
+        },
+        onDeliveryChange: job => sentinelTodoHooks.deliveryChanged(job),
+    });
+    const remoteReturnReady = delegatedResultsRestored.then(() => remoteReturn.recover());
+    remoteReturn.start();
+    const workspaceDirectory = createWorkspaceDirectory({ store, dataDir, remoteServers: remoteServerRuntime, remoteResults: remoteReturn });
+    const remoteAdmissions = new RemoteDelegationAdmissionStore(dataDir);
+    const remoteDelivery = new ProcessMessageDeliveryService({ store, bridge });
+    const remoteLaunch = createRemoteDelegationLaunch({
+        queue: { bridge, store, dataDir, state: queueGlobalState, globalWorkspaceRootPath,
+            getDefaultProvider: concreteDefaultProvider, resolveDefaultProvider, isAutoProviderRoutingActive,
+            getEffortTiersForProvider, validateProvider: validateSendToConversationProvider,
+            browserControlEnabled: () => getLiveFeatureFlags().browserControlEnabled },
+        getRalphEnabled,
+        getRetainedTask: (workspaceId, taskId) => queuePersistence.getRetainedTerminalTask(workspaceId, taskId),
+    });
+    const remoteResults = new RemoteDelegationResults({
+        admissions: remoteAdmissions, store, dataDir, queue: queueFacade,
+        sessions: new RalphSessionStore({ dataDir }),
+        getRetainedTask: (workspaceId, taskId) => queuePersistence.getRetainedTerminalTask(workspaceId, taskId),
+        findChild: async row => {
+            if (row.kind !== 'follow-up') return remoteLaunch.findChild(row);
+            const retained = queuePersistence.getRetainedTerminalTask(row.destination.workspaceId, row.executionId)
+                ?? queuePersistence.getRetainedTerminalTask(row.destination.workspaceId, `pending-${row.targetProcessId}-${row.executionId}`);
+            if (retained?.type === 'chat' && retained.payload.workspaceId === row.destination.workspaceId
+                && retained.processId === row.targetProcessId && retained.payload.processId === row.targetProcessId
+                && retained.payload.relayRequestId === row.executionId) return { processId: row.targetProcessId! };
+            return await remoteDelivery.findRemoteFollowUpReceipt(row.destination.workspaceId, row.targetProcessId!, row.executionId)
+                ? { processId: row.targetProcessId! } : undefined;
+        },
+    });
+    const remoteResultsReady = remoteResults.restore();
+    registerRemoteDelegationRoutes(routes, {
+        admissions: remoteAdmissions, remotes: remoteServerRuntime, store,
+        delivery: remoteDelivery, launch: remoteLaunch,
+        results: { ready: remoteResultsReady, capture: () => remoteResults.restore() },
+    });
     // Connectors register their completion/result transports below.
     opts.setSendToConversationRuntime?.({
         serverIdentity: getOrCreateServerIdentity(dataDir),
@@ -950,6 +1002,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         validateProvider: validateSendToConversationProvider,
         getEffortTiersForProvider,
         workspaceDirectory,
+        getRemoteResultsEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelRemoteResults === true,
         getDashboardDiscovery: () => getWsServer()?.dashboardDiscovery,
         trackMessagingJob: job => jobNotices.track(job),
     });
@@ -1501,6 +1554,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         unsubscribeMirrorConfig?.();
         jobNotices.dispose();
         delegatedJobResults.dispose();
+        remoteResults.dispose();
+        remoteReturn.dispose();
         delegatedJobReviews.dispose();
         unsubscribeScrubberConfig?.();
         scrubberScheduler?.dispose();
@@ -1520,7 +1575,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         : () => opts.resolvedConfig?.features?.gitWorktreeExecution ?? false;
 
     registerRalphGrillingApprovalRoutes(routes, { dataDir, store, getRalphEnabled, bridge,
-        onExecutionAdmitted: (workspaceId, processId) => delegatedJobResults.reconcileExecutionOwner(workspaceId, processId),
+        onExecutionAdmitted: async (workspaceId, processId) => {
+            await delegatedJobResults.reconcileExecutionOwner(workspaceId, processId);
+            await remoteResults.restore();
+        },
     });
     registerRalphRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir, getGitWorktreeExecutionEnabled, getRalphEnabled });
     registerRalphSessionRoutes(routes, { dataDir, store, bridge: bridgeWithResolvedDefaults });
@@ -2115,5 +2173,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     );
 
-    return { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService, scrubberReady, sentinelJobsShutdown };
+    return { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService,
+        scrubberReady: Promise.all([scrubberReady, remoteResultsReady, remoteReturnReady]).then(([count]) => count), sentinelJobsShutdown };
 }

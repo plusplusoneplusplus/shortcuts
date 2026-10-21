@@ -28,7 +28,7 @@ export function isWithinDetailPane(target: EventTarget | null): boolean {
 
 /**
  * True when the focused element is a text-entry surface (form field or
- * contentEditable). Ctrl+F must not be yanked away from a surface the user is
+ * contentEditable or Monaco). Ctrl+F must not be yanked away from a surface the user is
  * actively typing in — e.g. the workspace right dock's terminal/inputs — even
  * when that surface is not itself a find-scope. Neutral chrome (a nav or tab
  * button) is NOT editable, so the body-default panel still claims Ctrl+F.
@@ -37,7 +37,9 @@ export function isEditableTarget(target: EventTarget | null): boolean {
     if (!(target instanceof Element)) return false;
     const tag = target.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-    return target instanceof HTMLElement && target.isContentEditable;
+    // Monaco's native EditContext input is a div, not a contenteditable or textarea.
+    if (target.closest('.monaco-editor')) return true;
+    return target instanceof HTMLElement && target.isContentEditable === true;
 }
 
 export interface ScopedFindShortcutOptions {

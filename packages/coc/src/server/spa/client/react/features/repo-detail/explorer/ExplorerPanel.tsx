@@ -8,6 +8,7 @@ import { useFileIdentityOpen } from '../../language-servers/useFileIdentityOpen'
 import { useState, useEffect, useCallback, useRef, useMemo, useId, type Dispatch, type SetStateAction } from 'react';
 import { Spinner } from '../../../ui';
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
+import { isEditableTarget } from '../../../hooks/useScopedFindShortcut';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { FileTree } from './FileTree';
 import { PreviewPane, type PreviewStatus } from './PreviewPane';
@@ -1373,6 +1374,7 @@ export function ExplorerPanel({
     // Keyboard shortcut: '/' to focus search, Escape to clear, Ctrl+P for Quick Open, Ctrl+O for Exact Open
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
+            if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
             // Quick Open / Exact Open. The unified right panel listens in the
             // capture phase and stops the event when it wins the routing
             // decision, so reaching this listener already means the Explorer
@@ -1389,7 +1391,8 @@ export function ExplorerPanel({
                 }
                 return;
             }
-            if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA' && !(document.activeElement as HTMLElement)?.isContentEditable) {
+            if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey
+                && !isEditableTarget(e.target) && !isEditableTarget(document.activeElement)) {
                 e.preventDefault();
                 searchInputRef.current?.focus();
             } else if (e.key === 'Escape' && (searchInput || document.activeElement === searchInputRef.current)) {

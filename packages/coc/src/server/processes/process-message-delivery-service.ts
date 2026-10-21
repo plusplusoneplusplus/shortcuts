@@ -19,7 +19,8 @@ import { resolveModelForProvider, isQueueProcessId, toTaskId } from '@pluspluson
 import { CHAT_STYLES, DEFAULT_CHAT_STYLE, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { QueueExecutorBridge } from '../core/api-handler';
 import type { ChatProvider } from '../tasks/task-types';
-import { normalizeChatMode, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
+import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, normalizeChatModeOrDefault, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
+import { buildFollowUpChatModeDisplayBlock, prependChatModeDirective } from '../executors/chat-mode-directive';
 import { readActiveProviderSession, turnProviderAttribution } from './active-provider-session';
 import {
     ProcessOperationAdmission,
@@ -214,6 +215,8 @@ export function isIdleForProviderSwitch(
  * fields plus the content/attachment values the route computed from the body.
  */
 export interface FollowUpMessageInput {
+    /** Server-owned remote result assessment; persists its owner guard through buffering. */
+    sentinelRemoteResultReview?: boolean;
     /** Assigned by trusted dashboard HTTP paths only, never copied from a request body. */
     origin?: 'desktop';
     mirrorContent?: string;
@@ -310,6 +313,9 @@ export function emitDeliveryEvents(store: ProcessStore, processId: string, event
 /** A permanent routing/admission rejection; transient storage errors remain retryable. */
 export class ReviewDeliveryRejectedError extends Error {}
 
+/** Definitive rejection before a tracked remote follow-up enters durable delivery. */
+export class RemoteFollowUpRejectedError extends ReviewDeliveryRejectedError {}
+
 /** Thrown when the underlying enqueue/dispatch fails; the route maps it to 500. */
 export class FollowUpDeliveryError extends Error {
     constructor(public readonly originalError?: unknown) {
@@ -395,6 +401,87 @@ export class ProcessMessageDeliveryService {
     }
 
     /**
+     * Trusted remote admission uses a destination-owned receipt, never steering or
+     * direct execution. Validate ownership/session again under mutation admission
+     * and during asynchronous queue routing. Provider switching is excluded.
+     */
+    async deliverRemoteFollowUpOnce(
+        workspaceId: string, processId: string, receiptId: string,
+        body: { content: string; mode?: string; model?: string; reasoningEffort?: ReasoningEffort },
+    ): Promise<DeliveryResult> {
+        if (!receiptId.trim() || !this.bridge.enqueue || !this.bridge.enqueueAdmitted || !this.bridge.getTask) {
+            throw new RemoteFollowUpRejectedError('Durable follow-up admission is unavailable');
+        }
+        return this.admission.runExclusive(processId, async () => {
+            const proc = await this.store.getProcess(processId, workspaceId);
+            if (!proc || proc.id !== processId || proc.metadata?.workspaceId !== workspaceId) {
+                throw new RemoteFollowUpRejectedError('Remote follow-up owner is unavailable');
+            }
+            const existing = this.followUpReceipt(proc, receiptId);
+            if (existing) return existing;
+            const binding = readActiveProviderSession(proc);
+            const validate = (current: AIProcess | undefined) => {
+                if (!current || current.id !== processId || current.type !== 'chat' || current.archived
+                    || current.metadata?.workspaceId !== workspaceId
+                    || ['sentinel', 'ralph'].includes(normalizeChatModeOrDefault(current.metadata?.mode))
+                    || getStoppedChatResumeUnavailableMessage(current)
+                    || (current.status === 'cancelled' && !readActiveProviderSession(current).sessionId)
+                    || readActiveProviderSession(current).provider !== binding.provider
+                    || readActiveProviderSession(current).sessionId !== binding.sessionId
+                    || readActiveProviderSession(current).segmentId !== binding.segmentId) {
+                    throw new RemoteFollowUpRejectedError('Remote follow-up target is unavailable or changed');
+                }
+            };
+            validate(proc);
+            const normalized = normalizeFollowUpInput(body, binding.provider as ChatProvider);
+            if (!normalized.ok || !body.content.trim()
+                || (body.mode !== undefined && !['ask', 'autopilot', 'plan'].includes(body.mode))) {
+                throw new RemoteFollowUpRejectedError('Invalid tracked follow-up');
+            }
+            const fields = normalized.value;
+            const mode = normalizeChatModeOrDefault(fields.mode, normalizeChatModeOrDefault(proc.metadata?.mode));
+            return this.deliverAdmitted(proc, {
+                content: body.content,
+                displayContent: prependChatModeDirective(body.content, buildFollowUpChatModeDisplayBlock({
+                    mode, previousMode: normalizeChatModeOrDefault(proc.metadata?.mode), process: proc,
+                })),
+                mode, model: fields.model, effort: fields.effort,
+                provider: binding.provider as ChatProvider,
+                ...(proc.status === 'cancelled' ? { resumeSessionId: binding.sessionId } : {}),
+                relayRequestId: receiptId, requestReceiptId: receiptId,
+                deliveryMode: 'enqueue', pasteExternalized: false,
+            }, receiptId, undefined, { respectQueueBarriers: true }, validate);
+        });
+    }
+
+    /** Read persisted admission evidence only; absence never authorizes another send. */
+    async findRemoteFollowUpReceipt(workspaceId: string, processId: string, receiptId: string): Promise<DeliveryResult | undefined> {
+        return this.admission.runExclusive(processId, async () => {
+            const proc = await this.store.getProcess(processId, workspaceId);
+            if (!proc || proc.id !== processId || proc.metadata?.workspaceId !== workspaceId) return undefined;
+            return this.followUpReceipt(proc, receiptId);
+        });
+    }
+
+    private followUpReceipt(proc: AIProcess, receiptId: string): DeliveryResult | undefined {
+        const directTask = this.bridge.getTask?.(receiptId);
+        const pendingTask = this.bridge.getTask?.(`pending-${proc.id}-${receiptId}`);
+        const pending = proc.pendingMessages?.find(message => message.id === receiptId || message.relayRequestId === receiptId);
+        const turn = proc.conversationTurns?.find(message => message.relayRequestId === receiptId);
+        if ((directTask && !this.isReviewTask(directTask, proc, receiptId))
+            || (pendingTask && !this.isReviewTask(pendingTask, proc, receiptId))
+            || (pending && (pending.id !== receiptId || pending.relayRequestId !== receiptId))
+            || (turn && turn.role !== 'user')) {
+            throw new Error('Remote follow-up receipt conflicts with persisted work');
+        }
+        const task = directTask ?? pendingTask;
+        if (!task && !pending && !turn) return undefined;
+        return { path: pending ? 'buffered' : 'enqueued', reused: true, turnIndex: turn?.turnIndex ?? -1,
+            ...(pending ? { pendingMessageId: pending.id } : {}), ...(task ? { taskId: task.id } : {}),
+            pasteExternalized: false, events: [] };
+    }
+
+    /**
      * Admit a server-owned review or Sentinel wake once, using a stable receipt ID.
      * The existing request correlation persists through pending-message drain and
      * execution. This entry point always queues and never resumes a stopped parent.
@@ -403,7 +490,7 @@ export class ProcessMessageDeliveryService {
         workspaceId: string,
         processId: string,
         receiptId: string,
-        input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource'> & { respectQueueBarriers?: boolean },
+        input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource' | 'sentinelRemoteResultReview'> & { respectQueueBarriers?: boolean },
         validateAdmission?: (process: AIProcess | undefined) => void,
     ): Promise<DeliveryResult> {
         return this.deliverReceipt(workspaceId, processId, receiptId, input, 'review', validateAdmission);
@@ -427,7 +514,7 @@ export class ProcessMessageDeliveryService {
 
     private async deliverReceipt(
         workspaceId: string, processId: string, receiptId: string,
-        input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource'> & { respectQueueBarriers?: boolean },
+        input: Pick<FollowUpMessageInput, 'content' | 'displayContent' | 'turnSource' | 'sentinelRemoteResultReview'> & { respectQueueBarriers?: boolean },
         kind: 'review' | 'pr-repair' | 'pr-outcome',
         validateAdmission?: (process: AIProcess | undefined) => void,
     ): Promise<DeliveryResult> {
@@ -561,10 +648,13 @@ export class ProcessMessageDeliveryService {
         const requestCorrelation = input.relayRequestId !== undefined
             ? { relayRequestId: input.relayRequestId }
             : {};
-        const reviewContext = input.sentinelPrOutcomeReview ? {
-            sentinelPrOutcomeReview: true,
-            ...(input.sentinelPrOutcomeStopped ? { sentinelPrOutcomeStopped: true } : {}),
-        } : {};
+        const reviewContext = {
+            ...(input.sentinelRemoteResultReview ? { sentinelRemoteResultReview: true } : {}),
+            ...(input.sentinelPrOutcomeReview ? {
+                sentinelPrOutcomeReview: true,
+                ...(input.sentinelPrOutcomeStopped ? { sentinelPrOutcomeStopped: true } : {}),
+            } : {}),
+        };
 
         // Turn index this message will occupy — the cutoff a reconstructed
         // continuation quotes history strictly before. Captured before the
@@ -606,7 +696,7 @@ export class ProcessMessageDeliveryService {
                 ...(input.imageTempDir ? { imageTempDir: input.imageTempDir } : {}),
                 ...(input.fileAttachmentMeta ? { fileAttachmentMeta: input.fileAttachmentMeta } : {}),
                 ...(input.selectedSkillNames && input.selectedSkillNames.length > 0 ? { skillNames: input.selectedSkillNames } : {}),
-                ...(input.turnSource ? { context: { ...input.turnSource, ...reviewContext } } : {}),
+                ...(input.turnSource || input.sentinelRemoteResultReview ? { context: { ...input.turnSource, ...reviewContext } } : {}),
                 createdAt: this.now().toISOString(),
             };
             await this.store.appendPendingMessage(id, pendingMessage);
@@ -667,7 +757,7 @@ export class ProcessMessageDeliveryService {
                             workingDirectory: proc.workingDirectory,
                             ...(enqueueWsId ? { workspaceId: enqueueWsId } : {}),
                             readonly: input.sentinelPrOutcomeReview ? true : (proc as { payload?: { readonly?: boolean } }).payload?.readonly,
-                            ...(input.turnSource || input.selectedSkillNames?.length ? { context: {
+                            ...(input.turnSource || input.sentinelRemoteResultReview || input.selectedSkillNames?.length ? { context: {
                                 ...input.turnSource,
                                 ...reviewContext,
                                 ...(input.selectedSkillNames?.length ? { skills: input.selectedSkillNames } : {}),

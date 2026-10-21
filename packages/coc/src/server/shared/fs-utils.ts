@@ -21,11 +21,11 @@ export function atomicWriteJson(filePath: string, data: unknown): void {
  * created exclusively, so concurrent writers to the same target never share a
  * temp file. The temp file is removed if the write or rename fails.
  */
-export function atomicWriteJsonUnique(filePath: string, data: unknown): void {
+export function atomicWriteJsonUnique(filePath: string, data: unknown, mode?: number): void {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     const tmpPath = `${filePath}.${randomUUID()}.tmp`;
     try {
-        fs.writeFileSync(tmpPath, JSON.stringify(data), { flag: 'wx' });
+        fs.writeFileSync(tmpPath, JSON.stringify(data), { flag: 'wx', mode });
         fs.renameSync(tmpPath, filePath);
     } finally {
         if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);

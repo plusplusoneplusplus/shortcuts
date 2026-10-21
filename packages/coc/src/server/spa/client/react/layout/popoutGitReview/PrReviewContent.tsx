@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { PrDescription } from '../../features/pull-requests/PrReviewSummaryPanel';
 import { getPullRequestReviewSummaryText } from '../../features/pull-requests/pr-detail-summary';
 import type { PullRequest } from '../../features/pull-requests/pr-utils';
+import { useCloneBaseUrl } from '../../repos/cloneRouting';
 import { Spinner } from '../../ui';
 import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
 import { resolveCanonicalOriginId } from '../../repos/originScope';
@@ -70,7 +71,10 @@ export function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLo
         persistence: { originId: progressOriginId, workspaceId, repoId, prId },
     });
 
-    const model = usePopOutReviewModel({ files: fileList, progress, classification, diffIdentity: `${workspaceId}:${prId}:${headSha}` });
+    const endpoint = useCloneBaseUrl(attachmentDestinationId ?? workspaceId);
+    const model = usePopOutReviewModel({ files: fileList, progress, classification,
+        diffIdentity: JSON.stringify([workspaceId, attachmentDestinationId, endpoint, progressOriginId, repoId, prId, headSha]),
+    });
 
     useEffect(() => {
         let cancelled = false;

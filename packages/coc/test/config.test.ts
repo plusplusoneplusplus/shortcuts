@@ -1173,6 +1173,7 @@ timeout: 300
                 '  sentinelDesktopMirror: true',
                 '  sentinelPrOutcomeWake: true',
                 '  sentinelFollowUpResults: true',
+                '  sentinelRemoteResults: true',
                 '  sentinelNextSteps: true',
                 '  sentinelTodoDateTimeTriggers: true',
                 '  sentinelTodoScriptTriggers: true',
@@ -1251,7 +1252,7 @@ timeout: 300
         });
 
         describe.each([
-            'sentinelTodoDependencies', 'sentinelResultCards', 'sentinelPrOutcomeWake', 'sentinelFollowUpResults',
+            'sentinelTodoDependencies', 'sentinelResultCards', 'sentinelPrOutcomeWake', 'sentinelFollowUpResults', 'sentinelRemoteResults',
             'sentinelTodoExternalReferences', 'railManualRefresh', 'railStatusActions',
             'explorerDelete', 'panelTabReordering',
         ] as const)('%s', feature => {
@@ -1557,6 +1558,7 @@ timeout: 300
                     "sentinelFollowUpResults": false,
                     "sentinelNextSteps": false,
                     "sentinelPrOutcomeWake": false,
+                    "sentinelRemoteResults": false,
                     "sentinelResultCards": true,
                     "sentinelTodoDateTimeTriggers": false,
                     "sentinelTodoDependencies": false,
@@ -1794,6 +1796,7 @@ timeout: 300
                   "features.sentinelFollowUpResults": "default",
                   "features.sentinelNextSteps": "default",
                   "features.sentinelPrOutcomeWake": "default",
+                  "features.sentinelRemoteResults": "default",
                   "features.sentinelResultCards": "default",
                   "features.sentinelTodoDateTimeTriggers": "default",
                   "features.sentinelTodoDependencies": "default",

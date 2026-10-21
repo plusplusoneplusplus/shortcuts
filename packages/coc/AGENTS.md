@@ -109,13 +109,48 @@ references before editing. Paths are package-relative.
   `src/server/servers/workspace-directory.ts` (clone keys, per-server timeouts, last-known
   offline entries). Remote create mode posts to the remote's own queue/Ralph API with no
   local fallback; output never carries paths, URLs, or credentials. Successful remote
-  launches expose unavailable automatic parent result return through `resultDelivery`
-  and expose canonical `#chat-references/<serverIdentity>/<workspaceId>/<processId>`
+  launches expose tracked or unavailable parent result return through `resultDelivery`
+  and canonical `#chat-references/<serverIdentity>/<workspaceId>/<processId>`
   links with independently encoded segments for inspecting the outcome. Local tool
   replies and delegated-result evidence use the same identity-only builder in
   `src/server/shared/chat-reference.ts`. Server composition supplies installation identity;
   remote admission verifies the owning server through health reads around its single
-  POST. Never substitute a transport alias, endpoint or viewer's server identity.
+  POST. Remote post mode requires the exact raw processId and explicit remote workspace
+  clone key; `postRemoteChat` checks exact chat/workspace metadata and uses the destination's
+  scoped message API. Provider and mode remain destination-owned; tier overrides read that
+  provider's remote effort mapping. Buffered admission returns turnIndex -1. Remote post
+  responses use the same result-return contract. Never infer remote ownership
+  from a process prefix or send its content to the local delivery capability. Admission
+  errors expose `dispatchState` (`not-started`, `rejected`, `uncertain`);
+  timeouts, lost/invalid replies and HTTP 408/5xx remain uncertain and prohibit blind
+  resubmission. Public POST errors omit private transport details. Never substitute
+  a transport alias, endpoint or viewer's server identity.
+  Remote reservation proof tokens stay server-side. Verify the exact owner/request/digest
+  through a registered reciprocal connection; proof reads never authorize execution replay.
+  The destination admission gateway hashes and captures the exact JSON execution envelope
+  before proof I/O. Its domain adapter uses that captured body and the persisted destination
+  execution ID, not the origin's raw request ID. Destination claims qualify origin server,
+  parent workspace and request; duplicate or crash-window claims only reconcile. Accepted
+  origin proofs cannot create missing destination claims. Keep domain authorization in the
+  execution adapter. Authenticated destination follow-up admission uses the queued message
+  service with exact workspace/process ownership and the active provider/session binding.
+  Destination chat/Ralph launches reuse queue preparation and native Ralph admission with
+  destination-owned task/session IDs and registered workspace roots. Reject caller paths,
+  parent/connector context and worktrees; preserve queue pauses, provider/Auto/tier policy
+  and `ralph.enabled`. Receipt reconciliation repairs acceptance from exact task/process
+  evidence for launches and task/pending/turn evidence for follow-ups; a prepared Ralph
+  journal alone proves no admission. It never sends work. `RemoteDelegationResults` captures
+  accepted outcomes in the destination admission ledger through the shared local recorder,
+  with exact destination request IDs for ordinary launch/follow-up turns and whole-session
+  Ralph results only. The first persisted outcome wins; capture never queues an origin review.
+  Default-off `features.sentinelRemoteResults` admits new tracked Sentinel launches and
+  follow-ups only with compatible authenticated destination support. `RemoteDelegationReturn`
+  transfers receipts with persisted backoff independently of admission flags, never execution
+  replay. Exact origin reviews share local queue/connector delivery; unavailable parents fail
+  without revival, with persisted review markers checked again at drain and execution.
+  SQLite retains unreturned destination and unacknowledged remote review
+  tasks outside capped history. Execution, transfer, review delivery and item assessment stay
+  distinct. Tracked To-do links include durable destination/request identity.
   AI reuses generated job/artifact links unchanged; the existing SPA resolver verifies
   visible ownership and fails unavailable without local fallback. Explicit `source: dashboard`
   reads the invoking workspace's dashboard relay through a late-bound runtime getter,
@@ -220,7 +255,9 @@ references before editing. Paths are package-relative.
   `shared/dashboard-discovery/chat-reference.ts` parses and resolves these against
   current visible topology, preferring an online exact server/workspace alias.
   Health checks bracket a transcript-excluded exact-process metadata read; ownership
-  requires `process.metadata.workspaceId`, exact process ID and chat type. Changed
+  requires `process.metadata.workspaceId`, exact process ID and chat type. Artifact
+  references append `/artifacts/<encodedAbsolutePath>` and reuse the owning server's
+  guarded preview resolution before opening an owner-routed file tab. Changed
   topology, ownership or cancellation rejects without fallback. The resolver returns
   a concrete clone chat route without changing selection; callers own read deadlines
   and immediate navigation. `dashboardRoutes` reserves durable reference hashes,
@@ -603,7 +640,8 @@ references before editing. Paths are package-relative.
   Safe URLs are validated and deduplicated; external metadata never binds PR outputs,
   creates watches, fulfills prerequisites, changes status or grants authority.
   Job execution/delivery/assessment are derived on read with exact parent/child workspace,
-  process and session identity; remote links are always `unavailable`. Job mode is a compact
+  process and session identity; tracked remote links also require verified destination/request
+  identity, while untracked remote links stay `unavailable`. Job mode is a compact
   read-time projection: batch-read local process metadata from the shared database, validate
   the execution workspace, and use live first-turn queue mode only while the process is absent.
   Unknown/remote ordinary modes stay omitted; Ralph kind/session identity stays Ralph.

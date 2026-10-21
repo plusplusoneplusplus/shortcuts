@@ -333,6 +333,8 @@ export interface CLIConfig {
         sentinelPrOutcomeWake?: boolean;
         /** Return each tracked Sentinel post-mode turn result to the Sentinel. Disabled by default. */
         sentinelFollowUpResults?: boolean;
+        /** Return new remote Sentinel requests through authenticated durable receipts. Default off. */
+        sentinelRemoteResults?: boolean;
         sentinelTodoDateTimeTriggers?: boolean;
         /** Background Sentinel To-do script conditions; also require toolScripting. Default off. */
         sentinelTodoScriptTriggers?: boolean;
@@ -757,6 +759,7 @@ export interface ResolvedCLIConfig {
         sentinelPrOutcomeWake: boolean;
         /** Return each tracked Sentinel post-mode turn result to the Sentinel. Disabled by default. */
         sentinelFollowUpResults: boolean;
+        sentinelRemoteResults: boolean;
         sentinelTodoDateTimeTriggers: boolean;
         sentinelTodoScriptTriggers: boolean;
         sentinelDesktopMirror: boolean;
@@ -1094,6 +1097,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         queryPullRequestTool: false,
         sentinelPrOutcomeWake: false,
         sentinelFollowUpResults: false,
+        sentinelRemoteResults: false,
         sentinelTodoDateTimeTriggers: false,
         sentinelTodoScriptTriggers: false,
         sentinelDesktopMirror: false,

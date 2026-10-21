@@ -45,7 +45,7 @@ import { buildGitReviewPopOutUrl } from '../../layout/Router';
 import { buildFixupGroups } from './fixup-utils';
 import { isGitCrossCloneCherryPickEnabled } from '../../utils/config';
 import { useCommitClassificationStatus } from './hooks/useCommitClassificationStatus';
-import { useScopedFindShortcut } from '../../hooks/useScopedFindShortcut';
+import { isEditableTarget, useScopedFindShortcut } from '../../hooks/useScopedFindShortcut';
 import { popOutOpened } from '../../utils/popOutWindow';
 import { matchCommitsByIdentity } from './repoGitTab/commitIdentity';
 import { useTransientToast } from './repoGitTab/useTransientToast';
@@ -634,11 +634,10 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repo
     //   - R: refresh
     //   - /: reveal + focus the commit search input
     //   - Escape: hide + clear the search when the bar is open
-    // Ignored when typing in inputs/textareas (except Escape from the search box,
+    // Ignored in text-entry surfaces and Monaco (except Escape from the search box,
     // which is handled on the input itself).
     const handlePanelKeyDown = useCallback((e: React.KeyboardEvent) => {
-        const isTextField = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
-        if (isTextField) return;
+        if (e.defaultPrevented || e.nativeEvent.isComposing || e.keyCode === 229 || isEditableTarget(e.target)) return;
         if (e.key === 'r' || e.key === 'R') {
             e.preventDefault();
             data.refreshAll();

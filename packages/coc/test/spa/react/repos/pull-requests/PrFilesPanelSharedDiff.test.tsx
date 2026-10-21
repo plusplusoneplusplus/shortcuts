@@ -305,6 +305,28 @@ describe('PrFilesPanel — hunk classification reaches the shared panel', () => 
     });
 });
 
+describe('PrFilesPanel review navigation order', () => {
+    it.each(['tree', 'flat', 'search'])('uses %s display order and retains the source owner', mode => {
+        const files = ['src/a.ts', 'root.ts', 'src/b.ts'].map(path => ({ path, status: 'M' }));
+        const source = makeSource();
+        render(<PrFilesPanel files={files} workspaceId="ws-1" attachmentDestinationId="remote:server:ws-1" diffSource={source} headSha="head" />);
+        if (mode === 'flat') fireEvent.click(screen.getByTestId('pr-file-view-flat'));
+        if (mode === 'search') fireEvent.change(screen.getByTestId('pr-file-search'), { target: { value: 'src/' } });
+        act(() => lastPanelProps.onToggleReviewed());
+        expect(lastPanelProps.filePath).toBe(mode === 'flat' ? 'root.ts' : 'src/b.ts');
+        expect(lastPanelProps.attachmentDestinationId).toBe('remote:server:ws-1');
+        expect(lastPanelProps.source).toBe(source);
+        expect(screen.getAllByTestId('pr-file-row').find(row => row.getAttribute('data-file-path') === lastPanelProps.filePath)?.className).toContain('bg-blue');
+    });
+    it('stays on the last displayed file', () => {
+        render(<PrFilesPanel files={parsedFiles} workspaceId="ws-1" diffSource={makeSource()} />);
+        fireEvent.click(screen.getAllByTestId('pr-file-row').find(row => row.getAttribute('data-file-path') === 'two.ts')!);
+        act(() => lastPanelProps.onToggleReviewed());
+        expect(lastPanelProps.filePath).toBe('two.ts');
+        expect(lastPanelProps.isReviewed).toBe(true);
+    });
+});
+
 describe('PrFilesPanel — mark reviewed / review progress (AC-04)', () => {
     const persistence = { originId: 'gh_octo_repo', workspaceId: 'ws-1', repoId: 'repo-1', prId: '7' };
 
@@ -347,7 +369,7 @@ describe('PrFilesPanel — mark reviewed / review progress (AC-04)', () => {
         expect(screen.getByTestId('pr-file-visited-two.ts')).toBeInTheDocument();
     });
 
-    it('toggles reviewed for the active file and shows the ✓ mark in the list', async () => {
+    it('marks the active file, advances selection, and unmarks without advancing', async () => {
         renderWithProgress();
         await act(async () => { await Promise.resolve(); });
 
@@ -355,12 +377,47 @@ describe('PrFilesPanel — mark reviewed / review progress (AC-04)', () => {
 
         act(() => { lastPanelProps.onToggleReviewed(); });
 
-        expect(lastPanelProps.isReviewed).toBe(true);
+        expect(lastPanelProps.filePath).toBe('two.ts');
+        expect(lastPanelProps.isReviewed).toBe(false);
         expect(screen.getByTestId('pr-file-reviewed-one.ts')).toBeInTheDocument();
         // Reviewed supersedes the visited dot.
         expect(screen.queryByTestId('pr-file-visited-one.ts')).not.toBeInTheDocument();
 
+        fireEvent.click(screen.getAllByTestId('pr-file-row').find(row => row.getAttribute('data-file-path') === 'one.ts')!);
+        expect(lastPanelProps.isReviewed).toBe(true);
         act(() => { lastPanelProps.onToggleReviewed(); });
+        expect(lastPanelProps.isReviewed).toBe(false);
+        expect(lastPanelProps.filePath).toBe('one.ts');
+    });
+
+    it('persists the reviewed file and next selection, and ignores a delayed persistence failure', async () => {
+        vi.useFakeTimers();
+        try {
+            let fail!: (reason: Error) => void;
+            putReviewProgressMock.mockImplementation(() => new Promise<void>((_, reject) => { fail = reject; }));
+            renderWithProgress();
+            await act(async () => { await Promise.resolve(); });
+            act(() => lastPanelProps.onToggleReviewed());
+            expect(lastPanelProps.filePath).toBe('two.ts');
+            await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+            expect(putReviewProgressMock).toHaveBeenLastCalledWith(persistence, {
+                headSha: 'head-sha', reviewedFiles: ['one.ts'], visitedFiles: ['one.ts', 'two.ts'], lastSelectedFile: 'two.ts',
+            });
+            await act(async () => fail(new Error('offline')));
+            expect(lastPanelProps.filePath).toBe('two.ts');
+            expect(screen.getByTestId('pr-file-reviewed-one.ts')).toBeInTheDocument();
+        } finally { vi.useRealTimers(); }
+    });
+
+    it.each(['owner', 'head', 'comparison'])('rejects an old toggle after a %s change', async change => {
+        const props = { files: parsedFiles, workspaceId: 'ws-1', diffSource: makeSource(), headSha: 'head-sha', reviewPersistence: persistence };
+        const view = render(<PrFilesPanel {...props} />);
+        await act(async () => { await Promise.resolve(); });
+        const oldToggle = lastPanelProps.onToggleReviewed;
+        view.rerender(<PrFilesPanel {...props} {...(change === 'owner' ? { attachmentDestinationId: 'remote:other:ws-1' }
+            : change === 'head' ? { headSha: 'new-head' } : { diffSource: { ...props.diffSource, cacheKey: 'other-comparison' } })} />);
+        act(() => oldToggle());
+        expect(lastPanelProps.filePath).toBe('one.ts');
         expect(lastPanelProps.isReviewed).toBe(false);
     });
 

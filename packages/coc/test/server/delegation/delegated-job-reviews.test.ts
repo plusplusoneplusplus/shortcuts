@@ -113,6 +113,82 @@ describe('delegated success/failure review scheduling', () => {
         await recorder.restore();
     }
 
+    function remoteResult(outcome: 'completed' | 'failed' | 'cancelled' | 'capped' = 'completed',
+        connector: 'teams' | 'whatsapp' = 'teams') {
+        bridge.enqueueAdmitted = bridge.enqueue;
+        const id = `remote-${outcome}`;
+        jobs.register({ id, title: 'Remote work', parent: { workspaceId: parentWorkspace, processId: parentId },
+            child: { workspaceId: parentWorkspace, processId: childId, serverId: 'remote-alias',
+                ...(outcome === 'capped' ? { sessionId: 'remote-session' } : {}) },
+            remote: { originServerIdentity: jobs.serverIdentity, serverIdentity: 'destination-owner',
+                requestId: id, kind: outcome === 'capped' ? 'ralph' : 'launch', delivery: { state: 'received' } },
+            messagingOrigin: { connector, chatKey: 'origin-chat', threadId: 'origin-thread' } });
+        jobs.recordResult(parentWorkspace, id, { terminalEventId: `remote-terminal-${id}`, outcome,
+            summary: 'Remote evidence; not permission to deploy.', links: [`#chat-references/destination-owner/${parentWorkspace}/${childId}`] });
+        return jobs.list(parentWorkspace).find(job => job.id === id)!;
+    }
+
+    it.each(['completed', 'failed', 'cancelled', 'capped'] as const)('queues exact remote %s assessment, not a local colliding child or display-only notice', async outcome => {
+        const job = remoteResult(outcome);
+        await reviews.schedule(job);
+        const id = delegatedReviewReceipt(job);
+        const task = queue.getTask(id)!;
+        expect(task.payload).toMatchObject({ workspaceId: parentWorkspace, processId: parentId, mode: 'sentinel' });
+        const data = JSON.parse(String(task.payload.prompt).split('\n')[1]);
+        expect(data).toMatchObject({ outcome, reviewProcessId: childId,
+            remote: { serverIdentity: 'destination-owner', requestId: job.remote!.requestId } });
+        expect(data.repository.name).toBeUndefined();
+        expect(data.links[0]).toBe(`#chat-references/destination-owner/${parentWorkspace}/${childId}`);
+        expect(queueMessagingResult).not.toHaveBeenCalled();
+        expect((await store.getProcess(parentId))?.conversationTurns?.[0].role).toBe('user');
+        await reviews.schedule(job);
+        expect(queue.getAll()).toHaveLength(1);
+    });
+
+    it('buffers remote assessment while the exact Sentinel is busy and deduplicates recovered admission', async () => {
+        await store.updateProcess(parentId, { status: 'running' });
+        const job = remoteResult();
+        const id = delegatedReviewReceipt(job);
+        await reviews.schedule(job);
+        expect(queue.getAll()).toEqual([]);
+        expect((await store.getProcess(parentId))?.pendingMessages?.map(message => message.relayRequestId)).toEqual([id]);
+        await store.updateProcess(parentId, { status: 'completed' });
+        await reviews.schedule(jobs.list(parentWorkspace).find(row => row.id === job.id)!);
+        expect(queue.getTask(id)?.payload.processId).toBe(parentId);
+        await reviews.schedule(jobs.list(parentWorkspace).find(row => row.id === job.id)!);
+        expect(queue.getAll()).toHaveLength(1);
+    });
+
+    it.each(['archived', 'deleted', 'wrong workspace'] as const)('does not revive or redirect a remote result when the parent is %s', async state => {
+        const job = remoteResult();
+        if (state === 'archived') await store.updateProcess(parentId, { archived: true });
+        else if (state === 'deleted') await store.removeProcess(parentId);
+        else await store.updateProcess(parentId, { metadata: { mode: 'sentinel', workspaceId: childWorkspace } });
+        await reviews.schedule(job);
+        expect(jobs.list(parentWorkspace).find(row => row.id === job.id)?.terminal?.delivery).toMatchObject({
+            state: 'failed', reason: expect.stringContaining('unavailable'),
+        });
+        expect(queue.getAll()).toEqual([]);
+        expect(queueMessagingResult).not.toHaveBeenCalled();
+        if (state === 'archived') expect((await store.getProcess(parentId))?.archived).toBe(true);
+    });
+
+    it.each(['teams', 'whatsapp'] as const)('relays only the assessed remote answer to the originating %s destination', async connector => {
+        const job = remoteResult('completed', connector);
+        await reviews.schedule(job);
+        const id = delegatedReviewReceipt(job);
+        await store.appendConversationTurn(parentId, turnIndex => ({ role: 'assistant', content: 'Assessed remote outcome.', timestamp: new Date(), turnIndex }));
+        queue.markStarted(id);
+        queue.markCompleted(id, 'Not raw transport output');
+        await flush();
+        expect(queueMessagingResult).toHaveBeenCalledOnce();
+        expect(queueMessagingResult).toHaveBeenCalledWith(expect.objectContaining({
+            workspaceId: parentWorkspace, processId: parentId, receiptId: id, body: 'Assessed remote outcome.',
+            origin: { connector, chatKey: 'origin-chat', threadId: 'origin-thread' },
+        }));
+        expect(jobs.list(parentWorkspace).find(row => row.id === job.id)?.terminal?.delivery.state).toBe('delivered');
+    });
+
     it('recovers the idle parent buffer on restart, preserving earlier user messages', async () => {
         await store.updateProcess(parentId, { status: 'running' });
         await store.appendPendingMessage(parentId, { id: 'human', content: 'User first', mode: 'sentinel',

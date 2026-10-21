@@ -219,8 +219,7 @@ describe('RepoGitTab', () => {
         });
 
         it('skips keyboard shortcut when focus is in input/textarea', () => {
-            expect(source).toContain('HTMLInputElement');
-            expect(source).toContain('HTMLTextAreaElement');
+            expect(source).toContain('isEditableTarget(e.target)');
         });
 
         it('attaches keyDown handler to left panel', () => {
@@ -2080,7 +2079,7 @@ describe('RepoGitTab', () => {
         });
 
         it('Ctrl+F reveals + focuses the commit search via the shared find helper', () => {
-            expect(source).toContain("import { useScopedFindShortcut } from '../../hooks/useScopedFindShortcut'");
+            expect(source).toContain("import { isEditableTarget, useScopedFindShortcut } from '../../hooks/useScopedFindShortcut'");
             expect(source).toContain('useScopedFindShortcut(panelRef, () => revealSearch(true)');
             // Secondary panel: the chat list owns body focus in split-workspace.
             expect(source).toContain('claimsBodyFocus: !isSplitWorkspace');

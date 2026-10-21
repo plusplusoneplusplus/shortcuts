@@ -665,9 +665,6 @@ function getMenuCopyDelegate(): MenuCopyDelegate {
 }
 
 function setupApplicationMenu(currentChannel?: UpdateChannel): void {
-    if (process.platform !== 'darwin' && process.platform !== 'win32') {
-        return;
-    }
     const channel = currentChannel ?? getUpdateChannel(defaultDataDir(), app.getVersion());
     const template = buildAppMenuTemplate(process.platform, app.name, {
         onCheckForUpdates: () => void runUpdateCheck(false),

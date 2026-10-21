@@ -81,6 +81,16 @@ describe('atomicWriteJsonUnique', () => {
         expect(fs.readdirSync(tmpDir)).toEqual(['state.json']);
     });
 
+    it('publishes private file permissions on creation and replacement', () => {
+        const filePath = path.join(tmpDir, 'private.json');
+        for (const version of [1, 2]) {
+            atomicWriteJsonUnique(filePath, { version }, 0o600);
+            expect(JSON.parse(fs.readFileSync(filePath, 'utf8'))).toEqual({ version });
+            if (process.platform !== 'win32') expect(fs.statSync(filePath).mode & 0o777).toBe(0o600);
+            expect(fs.readdirSync(tmpDir)).toEqual(['private.json']);
+        }
+    });
+
     it('removes the temp file and keeps the old content when the rename fails', () => {
         const filePath = path.join(tmpDir, 'target');
         fs.mkdirSync(filePath);

@@ -51,12 +51,16 @@ const jobResultSchema = z.object({
 /**
  * An explicit link from an item to one delegated job. `processId` is the
  * job's conversation on its own server; `result` is the first terminal
- * execution outcome recorded for a local job (remote jobs never get one).
+ * execution outcome recorded for a registered job.
  */
 const jobLinkSchema = z.object({
     processId: id,
     workspaceId: id,
     serverId: id.optional(),
+    remote: z.object({
+        serverIdentity: z.string().min(1).max(512),
+        requestId: z.string().min(1).max(512),
+    }).strict().optional(),
     kind: z.enum(['local', 'remote', 'ralph']),
     sessionId: id.optional(),
     openLink: z.string().min(1).max(2_000),
@@ -701,15 +705,15 @@ export class SentinelTodoStore {
                 || fields.statusReason !== undefined || fields.outcome !== undefined
                 || (fields.archived !== undefined && fields.archived !== current.archived);
             if (actor !== 'user' && current.type === 'normal' && changesVerdict
-                && current.jobs.some(link => !link.serverId && link.result)
+                && current.jobs.some(link => link.result)
                 && (current.userVerdictRevision ?? 0) > latestLinkedRevision) {
                 throw new SentinelTodoError('invalid', 'A newer user verdict supersedes this work; preserve it rather than applying a stale review');
             }
             const reviewedLinks = fields.reviewedJobs?.map(evidence => {
-                const link = current.jobs.find(job => !job.serverId && job.kind !== 'remote' && job.processId === evidence.processId
+                const link = current.jobs.find(job => job.processId === evidence.processId
                     && job.result?.terminalEventId === evidence.terminalEventId);
                 if (current.type !== 'normal' || !link) {
-                    throw new SentinelTodoError('invalid', 'Review evidence must match a local terminal result on this item');
+                    throw new SentinelTodoError('invalid', 'Review evidence must match a recorded terminal result on this item');
                 }
                 return link;
             }) ?? [];
@@ -785,16 +789,22 @@ export class SentinelTodoStore {
         owner: SentinelTodoOwner,
         itemId: string,
         input: SentinelTodoJobLinkInput,
+        expectedRevision?: number,
     ): { item: SentinelTodoItem; ledgerRevision: number; changed: boolean } {
         return this.mutate(owner, () => {
             const ledger = this.read(owner);
             const index = ledger.items.findIndex(item => item.id === itemId);
             if (index < 0) throw new SentinelTodoError('not_found', `To-do item ${itemId} not found`);
             const current = ledger.items[index];
+            if (expectedRevision !== undefined && current.revision !== expectedRevision) {
+                throw new SentinelTodoError('conflict', 'The item changed before follow-up linking', current);
+            }
             if (current.type === 'manual') {
                 throw new SentinelTodoError('invalid', 'Manual items cannot link jobs or authorize execution; ask the user for clarification');
             }
-            if (current.jobs.some(job => job.processId === input.processId && job.serverId === input.serverId)) {
+            if (current.jobs.some(job => job.processId === input.processId
+                && (input.remote ? job.remote?.serverIdentity === input.remote.serverIdentity && job.remote.requestId === input.remote.requestId
+                    : !job.remote && job.serverId === input.serverId))) {
                 return { item: current, ledgerRevision: ledger.revision, changed: false };
             }
             if (current.jobs.length >= MAX_TODO_JOB_LINKS) {
@@ -856,7 +866,7 @@ export class SentinelTodoStore {
     }
 
     /**
-     * Records a local job's first terminal outcome on its link. Failed,
+     * Records a registered job's first terminal outcome on its exact link. Failed,
      * cancelled, and capped outcomes move the item to Needs attention unless
      * the item is archived or done, the user edited it after the job was
      * linked, or a newer linked attempt already completed. Completion alone
@@ -867,14 +877,15 @@ export class SentinelTodoStore {
         processId: string,
         result: Omit<SentinelTodoJobResult, 'recordedAt'>,
         describe: (link: SentinelTodoJobLink) => string,
+        matches: (link: SentinelTodoJobLink) => boolean = link => link.processId === processId && !link.serverId && !link.remote,
     ): { item: SentinelTodoItem; ledgerRevision: number } | undefined {
         return this.mutate(owner, () => {
             const ledger = this.read(owner);
             const index = ledger.items.findIndex(item =>
-                item.type === 'normal' && item.jobs.some(job => job.processId === processId && !job.serverId));
+                item.type === 'normal' && item.jobs.some(matches));
             if (index < 0) return undefined;
             const current = ledger.items[index];
-            const link = current.jobs.find(job => job.processId === processId && !job.serverId)!;
+            const link = current.jobs.find(matches)!;
             if (link.result) return undefined;
             const now = new Date().toISOString();
             const recorded = { ...link, result: { ...result, recordedAt: now } };
@@ -1079,9 +1090,12 @@ export class SentinelTodoStore {
         ON CONFLICT (workspace_id, parent_process_id, item_id, server_key, process_id)
         DO UPDATE SET result = excluded.result`);
         item.jobs.forEach((job, order) => statement.run(
-            owner.workspaceId, owner.processId, item.id, job.serverId ?? '', job.processId, order,
+            owner.workspaceId, owner.processId, item.id,
+            job.remote ? JSON.stringify([job.remote.serverIdentity, job.remote.requestId]) : job.serverId ?? '',
+            job.processId, order,
             job.workspaceId, job.serverId ?? null, job.kind, job.sessionId ?? null, job.openLink,
-            job.title ?? null, job.linkedAt, job.linkedRevision, encode(job.specReady ? { execution: job.result, specReady: job.specReady } : job.result),
+            job.title ?? null, job.linkedAt, job.linkedRevision,
+            encode(job.remote || job.specReady ? { execution: job.result, specReady: job.specReady, remote: job.remote } : job.result),
         ));
     }
 
@@ -1208,5 +1222,6 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
 function jobReceipts(value: string | null): Record<string, unknown> {
     if (!value) return {};
     const parsed = JSON.parse(value);
-    return parsed.specReady ? { result: parsed.execution, specReady: parsed.specReady } : { result: parsed };
+    return parsed.specReady || parsed.remote
+        ? { result: parsed.execution, specReady: parsed.specReady, remote: parsed.remote } : { result: parsed };
 }

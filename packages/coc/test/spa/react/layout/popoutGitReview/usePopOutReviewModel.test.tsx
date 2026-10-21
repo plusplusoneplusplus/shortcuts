@@ -235,3 +235,28 @@ describe('popOutDiffPanelProps', () => {
         expect(props.onToggleReviewed).toBeUndefined();
     });
 });
+
+describe('pop-out reviewed navigation', () => {
+    it('uses the rail order and the normal navigation path, including progress selection sync', () => {
+        const progress = makeProgress();
+        const { result } = renderHook(() => usePopOutReviewModel({ files: FILES, progress, diffIdentity: 'server/member/pr/head' }));
+        act(() => result.current.setDisplayedPaths(['src/logic.ts', 'src/mechanical.ts']));
+        act(() => result.current.handleNavigateToFile('src/logic.ts', 'last'));
+        act(() => popOutDiffPanelProps(result.current, 'src/logic.ts', { progress }).onToggleReviewed?.());
+        expect(progress.toggleReviewed).toHaveBeenLastCalledWith('src/logic.ts');
+        expect(result.current.selectedFilePath).toBe('src/mechanical.ts');
+        expect(result.current.hunkTarget).toBe('first');
+        expect(progress.markVisited).toHaveBeenLastCalledWith('src/mechanical.ts');
+        expect(progress.setLastSelectedFile).toHaveBeenLastCalledWith('src/mechanical.ts');
+        act(() => popOutDiffPanelProps(result.current, 'src/mechanical.ts', { progress }).onToggleReviewed?.());
+        expect(result.current.selectedFilePath).toBe('src/mechanical.ts');
+    });
+    it('toggles a noncurrent file without selecting it', () => {
+        const progress = makeProgress();
+        const { result } = renderHook(() => usePopOutReviewModel({ files: FILES, progress }));
+        act(() => result.current.handleNavigateToFile('src/mechanical.ts', 'first'));
+        act(() => result.current.handleToggleReviewed('src/logic.ts'));
+        expect(progress.toggleReviewed).toHaveBeenLastCalledWith('src/logic.ts');
+        expect(result.current.selectedFilePath).toBe('src/mechanical.ts');
+    });
+});

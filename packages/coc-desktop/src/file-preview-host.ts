@@ -81,6 +81,15 @@ function wireView(entry: FileEntry): void {
             void shell.openExternal(url);
         }
     };
+    // A guest's native input never reaches the SPA's document key listener.
+    wc.on('before-input-event', (event, input) => {
+        const modifier = process.platform === 'darwin' ? input.meta : input.control;
+        if (!modifier || input.alt || input.key.toLowerCase() !== 'w') return;
+        event.preventDefault();
+        if (!entry.closed && entry.shown && input.type === 'keyDown' && !input.isAutoRepeat) {
+            entry.sink.closeRequested();
+        }
+    });
     wc.on('will-navigate', guard);
     wc.on('will-redirect', guard);
     // Chromium follows a failed load with its own error page load, so a

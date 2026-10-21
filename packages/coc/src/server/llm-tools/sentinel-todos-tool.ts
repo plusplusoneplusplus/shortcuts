@@ -231,6 +231,7 @@ export function createSentinelTodoTracking(deps: SentinelTodosToolDeps): SendToC
                     kind: job.kind,
                     openLink: job.openLink,
                     ...(job.serverId ? { serverId: job.serverId } : {}),
+                    ...(job.remote ? { remote: job.remote } : {}),
                     ...(job.sessionId ? { sessionId: job.sessionId } : {}),
                     ...(job.title ? { title: job.title } : {}),
                 });

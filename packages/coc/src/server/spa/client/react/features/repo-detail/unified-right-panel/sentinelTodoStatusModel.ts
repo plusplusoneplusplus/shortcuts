@@ -68,7 +68,7 @@ const ACTIVE_ORDER: Readonly<Record<SentinelTodoDisplayStatus, number>> = {
 /** Presentation only: durable assessment evidence never changes fulfillment or authorizes execution. */
 export function sentinelTodoDisplayStatus(item: SentinelTodoItem): SentinelTodoDisplayStatus {
     if (item.archived || item.status === 'done' || sentinelTodoType(item) === 'manual') return item.status;
-    const pending = item.jobs.filter(job => !job.serverId && job.kind !== 'remote' && 'review' in job.execution
+    const pending = item.jobs.filter(job => ((!job.serverId && job.kind !== 'remote') || job.remote) && 'review' in job.execution
         && job.execution.review?.assessment === 'pending');
     if (!pending.length) return item.status;
     // New/parallel work stays visible; its older pending assessments remain on their job rows.

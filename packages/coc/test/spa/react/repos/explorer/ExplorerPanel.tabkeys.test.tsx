@@ -182,6 +182,127 @@ describe('ExplorerPanel — Ctrl+Tab MRU cycling', () => {
     });
 });
 
+describe('ExplorerPanel — slash search ownership', () => {
+    it.each(['editor', 'navigator', 'sidebar'] as const)(
+        'leaves native Monaco input outside the %s mount untouched',
+        async mode => {
+            render(
+                <>
+                    <ExplorerPanel workspaceId="ws-keys" mode={mode} />
+                    <div className="monaco-editor">
+                        <div className="native-edit-context" tabIndex={0} data-testid="native-input" />
+                    </div>
+                </>,
+            );
+            await screen.findByTestId('tree-node-a.ts');
+            const input = screen.getByTestId('native-input');
+            input.focus();
+            const event = new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true });
+
+            fireEvent(input, event);
+
+            expect(event.defaultPrevented).toBe(false);
+            expect(document.activeElement).toBe(input);
+        },
+    );
+
+    it.each([
+        ['modified diff input', '<div class="monaco-diff-editor"><div class="editor modified"><div class="monaco-editor"><div class="native-edit-context" tabindex="0"></div></div></div></div>'],
+        ['read-only original diff input', '<div class="monaco-diff-editor"><div class="editor original"><div class="monaco-editor"><div class="native-edit-context" tabindex="0" aria-readonly="true"></div></div></div></div>'],
+        ['textarea fallback', '<div class="monaco-editor"><textarea class="inputarea"></textarea></div>'],
+        ['Notes source', '<textarea class="source-editor-textarea"></textarea>'],
+        ['chat composer', '<textarea></textarea>'],
+        ['form input', '<input />'],
+        ['selection control', '<select><option>one</option></select>'],
+        ['rich text', '<div contenteditable="true" tabindex="0"><span>text</span></div>'],
+    ])('leaves slash input in %s untouched', async (_name, markup) => {
+        const { container } = render(<ExplorerPanel workspaceId="ws-keys" mode="editor" />);
+        await screen.findByTestId('tree-node-a.ts');
+        const surface = document.createElement('div');
+        surface.innerHTML = markup;
+        container.appendChild(surface);
+        const input = surface.querySelector<HTMLElement>('.native-edit-context, textarea, input, select, [contenteditable]')!;
+        // jsdom does not implement isContentEditable.
+        if (input.hasAttribute('contenteditable')) {
+            Object.defineProperty(input, 'isContentEditable', { value: true });
+        }
+        input.focus();
+        const event = new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true });
+
+        fireEvent(input.querySelector('span') ?? input, event);
+
+        expect(event.defaultPrevented).toBe(false);
+        expect(document.activeElement).toBe(input);
+    });
+
+    it('uses both the event target and focused editor when deciding ownership', async () => {
+        render(
+            <>
+                <ExplorerPanel workspaceId="ws-keys" mode="editor" />
+                <div className="monaco-editor">
+                    <div className="native-edit-context" tabIndex={0} data-testid="native-input" />
+                </div>
+            </>,
+        );
+        await screen.findByTestId('tree-node-a.ts');
+        const input = screen.getByTestId('native-input');
+        input.focus();
+        const focusedEvent = new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true });
+        fireEvent(document, focusedEvent);
+        expect(focusedEvent.defaultPrevented).toBe(false);
+        expect(document.activeElement).toBe(input);
+
+        input.blur();
+        const targetEvent = new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true });
+        fireEvent(input, targetEvent);
+        expect(targetEvent.defaultPrevented).toBe(false);
+        expect(screen.getByTestId('explorer-search-input')).not.toHaveFocus();
+    });
+
+    it.each([
+        { ctrlKey: true },
+        { metaKey: true },
+        { altKey: true },
+        { ctrlKey: true, altKey: true },
+        { isComposing: true },
+        { keyCode: 229 },
+    ])('does not claim modified or composing slash: %j', async options => {
+        render(<ExplorerPanel workspaceId="ws-keys" mode="editor" />);
+        await screen.findByTestId('tree-node-a.ts');
+        const event = new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true, ...options });
+
+        fireEvent(document.body, event);
+
+        expect(event.defaultPrevented).toBe(false);
+        expect(screen.getByTestId('explorer-search-input')).not.toHaveFocus();
+    });
+
+    it('does not move focus for an already handled slash', async () => {
+        render(<ExplorerPanel workspaceId="ws-keys" mode="editor" />);
+        await screen.findByTestId('tree-node-a.ts');
+        const event = new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true });
+        event.preventDefault();
+
+        fireEvent(document.body, event);
+
+        expect(screen.getByTestId('explorer-search-input')).not.toHaveFocus();
+    });
+
+    it.each([
+        { key: '/', code: 'Slash' },
+        { key: '/', code: 'Digit7', shiftKey: true },
+    ])('focuses search outside editors using the produced character: %j', async options => {
+        render(<ExplorerPanel workspaceId="ws-keys" mode="editor" />);
+        await screen.findByTestId('tree-node-a.ts');
+        const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...options });
+
+        fireEvent(document.body, event);
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(screen.getByTestId('explorer-search-input')).toHaveFocus();
+    });
+});
+
 describe('ExplorerPanel — scoped Ctrl/Cmd+W', () => {
     it('closes the active tab and falls back to the most recently used one', async () => {
         await openThreeTabs();

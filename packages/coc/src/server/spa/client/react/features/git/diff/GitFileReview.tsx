@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import type { GitFileChange } from '@plusplusoneplusplus/coc-client';
+import { useReviewFileNavigation } from './useReviewFileNavigation';
 import { FileDiffPanel } from './FileDiffPanel';
 import type { FileDiffPanelProps } from './FileDiffPanel';
 import { STATUS_LABELS } from './FileTree';
@@ -28,7 +29,7 @@ type Props = Pick<FileDiffPanelProps, 'workspaceId' | 'attachmentDestinationId' 
     error?: string;
     onRetry?: () => void;
     reviewedFiles?: ReadonlySet<string>;
-    onToggleReviewed?: (path: string) => void;
+    onToggleReviewed?: (path: string) => void | Promise<void>;
     /** Context identity, classification and actions merged into the single toolbar row. */
     header?: GitReviewHeader;
 };
@@ -51,6 +52,7 @@ function ReviewBody({ files, selectedPath, onSelect, loading, error, onRetry, re
     const [hideViewed, setHideViewed] = useState(false);
     const [localViewed, setLocalViewed] = useState<ReadonlySet<string>>(() => new Set());
     const viewed = reviewedFiles ?? localViewed;
+    const [retainedPath, setRetainedPath] = useState<string | null>(null);
     const [selection, setSelection] = useState<string | null>(selectedPath ?? null);
     const [target, setTarget] = useState<'first' | 'last'>(initialHunkTarget ?? 'first');
     const [overview, setOverview] = useState(false);
@@ -90,7 +92,10 @@ function ReviewBody({ files, selectedPath, onSelect, loading, error, onRetry, re
     const groups = useMemo(() => groupReviewFiles(visible), [visible]);
     const ordered = useMemo(() => groups.flatMap(group => group.files), [groups]);
     const focusedSource = useMemo(() => ({ ...panel.source, files: ordered.map(file => file.path) }), [panel.source, ordered]);
-    const selected = ordered.find(file => file.path === selection) ?? ordered[0];
+    const selected = ordered.find(file => file.path === selection)
+        ?? (hideViewed && selection && selection === retainedPath && viewed.has(selection)
+            ? filterReviewFiles(files, query, kind, status, false, viewed).find(file => file.path === selection) : undefined)
+        ?? ordered[0];
     const index = selected ? ordered.indexOf(selected) : -1;
     const onSelectRef = useRef(onSelect);
     onSelectRef.current = onSelect;
@@ -101,7 +106,7 @@ function ReviewBody({ files, selectedPath, onSelect, loading, error, onRetry, re
         setCollapsed(previous => { const next = new Set(previous); next.delete(reviewFileParts(selectedPath).directory); return next; });
     } }, [selectedPath, initialHunkTarget]);
     useEffect(() => {
-        if (!loading && !error && selected && !ordered.some(file => file.path === selection)) {
+        if (!loading && !error && selected && selected.path !== selection) {
             setSelection(selected.path); setTarget('first'); onSelectRef.current?.(selected.path, 'first');
         }
     }, [selected?.path, selection, ordered, loading, error]);
@@ -119,10 +124,16 @@ function ReviewBody({ files, selectedPath, onSelect, loading, error, onRetry, re
         setSelection(path); setTarget(hunk); setOverview(false); setDrawer(false); onSelect?.(path, hunk);
     }
     function clear() { setQuery(''); setKind('all'); setStatus('all'); setHideViewed(false); }
-    function toggleViewed(path: string) {
-        if (onToggleReviewed) onToggleReviewed(path);
+    function updateViewed(path: string) {
+        if (hideViewed && path === selected?.path && !viewed.has(path) && index === ordered.length - 1) setRetainedPath(path);
+        if (onToggleReviewed) return onToggleReviewed(path);
         else setLocalViewed(previous => { const next = new Set(previous); if (next.has(path)) next.delete(path); else next.add(path); return next; });
     }
+    const toggleViewed = useReviewFileNavigation({
+        identity: JSON.stringify([_comparisonKey, panel.source.cacheKey]), selectedPath: overview ? null : selected?.path,
+        paths: ordered.map(file => file.path), reviewedFiles: viewed, toggleReviewed: updateViewed,
+        navigate: select,
+    });
     function row(file: GitFileChange, scan = false) {
         const { name, directory } = reviewFileParts(file.path);
         const code = reviewFileStatus(file.status);

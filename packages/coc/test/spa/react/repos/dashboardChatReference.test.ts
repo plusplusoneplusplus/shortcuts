@@ -7,7 +7,6 @@ import { tagRemoteWorkspaces } from '../../../../src/server/spa/client/react/rep
 import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 import { repoHashBase } from '../../../../src/server/spa/client/react/layout/routePath';
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -17,6 +16,8 @@ import { createMockProcessStore } from '../../../server/helpers/mock-process-sto
 import { getOrCreateServerIdentity } from '../../../../src/server/servers/server-identity';
 import { createWorkspaceDirectory } from '../../../../src/server/servers/workspace-directory';
 import { createSendToConversationTool } from '../../../../src/server/llm-tools/send-to-conversation-tool';
+import { buildDashboardArtifactReference } from '../../../../src/server/shared/chat-reference';
+import { registerTaskRoutes } from '../../../../src/server/tasks/tasks-read-handler';
 
 const reference = { serverIdentity: 'destination', workspaceId: 'same', processId: 'chat' };
 const local = { id: 'same', name: 'Local collision' } as WorkspaceInfo;
@@ -39,6 +40,130 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
+describe('owner-qualified artifacts', () => {
+    const artifactPath = '/workspace/outputs/result ?#%.md';
+    const artifact = { ...reference, artifactPath };
+    const metadata = { type: 'file', path: artifactPath, resolvedWorkspaceId: 'same' };
+    const fetchArtifact = (preview: unknown = metadata) => serve(url =>
+        url.pathname.endsWith('/health') ? { serverIdentity: 'destination' }
+            : url.pathname.endsWith('/files/preview') ? preview
+                : { process: { id: 'chat', metadata: { workspaceId: 'same' }, type: 'chat' } });
+
+    it.each([artifactPath, 'C:\\workspace\\outputs\\result.md', '//host/share/result.md'])(
+        'round-trips an exact artifact path %s', filePath => {
+            const href = buildDashboardArtifactReference('server/?#%', 'workspace/?#%', 'chat/?#%', filePath);
+            expect(parseDashboardChatReference(href)).toEqual({
+                serverIdentity: 'server/?#%', workspaceId: 'workspace/?#%', processId: 'chat/?#%', artifactPath: filePath,
+            });
+        });
+
+    it.each(['../secret.md', '/workspace/../secret.md', '/workspace/./result.md', 'file:///workspace/result.md',
+        'https://other/result.md', '~/result.md', '/workspace/\0bad.md', '/workspace/\nbad.md', 'C:relative.md'])(
+        'rejects unsafe artifact syntax %j without requests', async filePath => {
+            expect(() => buildDashboardArtifactReference('destination', 'same', 'chat', filePath)).toThrow();
+            expect(parseDashboardChatReference('#chat-references/destination/same/chat/artifacts/' + encodeURIComponent(filePath))).toBeNull();
+            const fetcher = fetchArtifact();
+            await expect(resolve({ ...reference, artifactPath: filePath })).rejects.toThrow('unavailable');
+            expect(fetcher).not.toHaveBeenCalled();
+        });
+
+    it.each(['#chat-references/destination/same/chat/artifacts',
+        '#chat-references/destination/same/chat/artifacts/%ZZ',
+        '#chat-references/destination/same/chat/artifacts/%2Fresult.md/extra'])(
+        'rejects malformed artifact selectors %s', hash => expect(parseDashboardChatReference(hash)).toBeNull());
+
+    it('rejects oversized qualified references instead of truncating into another file', () => {
+        expect(() => buildDashboardArtifactReference('destination', 'same', 'chat', '/' + ' '.repeat(700))).toThrow('too long');
+    });
+
+    it('resolves on the current owner only, through guarded metadata resolution, before opening the native chat', async () => {
+        publishDashboardTopology('viewer', [local, ...rows('ssh', 7000, 'destination', false, 'reconnected')], 'viewer-owner');
+        const fetcher = fetchArtifact();
+        await expect(resolve(artifact)).resolves.toEqual({
+            selectionId: buildRemoteCloneKey('reconnected', 'same'), workspaceId: 'same', processId: 'chat', artifactPath,
+            href: `${repoHashBase(buildRemoteCloneKey('reconnected', 'same'))}/chats/chat`,
+        });
+        expect(fetcher).toHaveBeenCalledTimes(4);
+        const [url, init] = fetcher.mock.calls[2];
+        expect(new URL(String(url)).pathname).toBe('/api/workspaces/same/files/preview');
+        expect(new URL(String(url)).searchParams.get('resolve')).toBe('true');
+        expect(new URL(String(url)).searchParams.get('path')).toBe(artifactPath);
+        expect(init?.method).toBeUndefined();
+        expect(fetcher.mock.calls.every(([url]) => new URL(String(url)).port === '7000')).toBe(true);
+    });
+
+    it.each([{ ...metadata, type: 'directory' }, { ...metadata, resolvedWorkspaceId: 'another-repo' },
+        { ...metadata, path: '/different/result.md' }, { ...metadata, path: undefined }])(
+        'rejects a mismatched artifact owner or target %j', async preview => {
+            publishDashboardTopology('viewer', rows());
+            fetchArtifact(preview);
+            await expect(resolve(artifact)).rejects.toThrow('unavailable');
+        });
+
+    it.each(['abort', 'topology', 'replacement'])('rejects late artifact resolution after %s', async change => {
+        publishDashboardTopology('viewer', rows());
+        let finish!: (value: unknown) => void;
+        let healthReads = 0;
+        serve(url => url.pathname.endsWith('/health')
+            ? { serverIdentity: ++healthReads === 2 && change === 'replacement' ? 'other-owner' : 'destination' }
+            : url.pathname.endsWith('/files/preview') ? new Promise(resolve => { finish = resolve; })
+                : { process: { id: 'chat', metadata: { workspaceId: 'same' }, type: 'chat' } });
+        const controller = new AbortController();
+        const pending = resolve(artifact, controller.signal);
+        const outcome = expect(pending).rejects;
+        await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+        if (change === 'abort') controller.abort(new Error('cancelled artifact'));
+        if (change === 'topology') publishDashboardTopology('viewer', rows('ssh', 7000));
+        finish(metadata);
+        await outcome.toThrow(change === 'abort' ? 'cancelled artifact' : 'unavailable');
+    });
+
+    it('keeps the real authorized preview handler authoritative for files and symlink escapes', async () => {
+        const scratch = path.resolve('.test-scratch');
+        fs.mkdirSync(scratch, { recursive: true });
+        const directory = fs.mkdtempSync(path.join(scratch, 'artifact-guards-'));
+        try {
+            const root = path.join(directory, 'repo');
+            const dataDir = path.join(directory, 'data');
+            fs.mkdirSync(root);
+            fs.mkdirSync(dataDir);
+            const allowedPath = path.join(root, 'result.md');
+            const outsidePath = path.join(directory, 'private.md');
+            fs.writeFileSync(allowedPath, 'Authorized artifact');
+            fs.writeFileSync(outsidePath, 'Must not be read');
+            const symlinkPath = path.join(root, 'escape.md');
+            // Windows symlinks can require privileges; direct outside-root denial is unconditional.
+            let linked = false;
+            try { fs.symlinkSync(outsidePath, symlinkPath); linked = true; } catch (error) {
+                if (process.platform !== 'win32') throw error;
+            }
+            const store = createMockProcessStore({ initialWorkspaces: [{ id: 'same', name: 'Repo', rootPath: root }] });
+            const routes: Route[] = [];
+            registerTaskRoutes(routes, store, dataDir);
+            const handler = routes.find(route => route.pattern instanceof RegExp
+                && route.pattern.test('/api/workspaces/same/files/preview'))!;
+            publishDashboardTopology('viewer', rows());
+            serve(async url => {
+                if (url.pathname.endsWith('/health')) return { serverIdentity: 'destination' };
+                if (!url.pathname.endsWith('/files/preview')) return { process: { id: 'chat', metadata: { workspaceId: 'same' }, type: 'chat' } };
+                let body = '';
+                let status = 0;
+                const response = { headersSent: false, writeHead: (code: number) => { status = code; },
+                    end: (value: Buffer | string) => { body = value.toString(); } };
+                await handler.handler({ url: url.pathname + url.search } as IncomingMessage,
+                    response as unknown as ServerResponse, url.pathname.match(handler.pattern as RegExp)!);
+                if (status !== 200) throw new Error('File access denied');
+                return JSON.parse(body);
+            });
+            await expect(resolve({ ...reference, artifactPath: allowedPath })).resolves.toMatchObject({ artifactPath: allowedPath });
+            await expect(resolve({ ...reference, artifactPath: outsidePath })).rejects.toThrow('unavailable');
+            if (linked) await expect(resolve({ ...reference, artifactPath: symlinkPath })).rejects.toThrow('unavailable');
+        } finally {
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
+});
+
 describe('durable chat reference parser', () => {
     it('decodes segments once, preserving encoded separators and reserved characters', () => {
         const ids = ['server/one', 'group-works ?#%', 'chat/a?b#%2F'];
@@ -58,7 +183,9 @@ describe('application-generated job links through the shared resolver', () => {
     const store = { getWorkspaces: async () => [{ id: 'parent' }, { id: 'same' }] } as unknown as ProcessStore;
 
     async function launch(remote: boolean) {
-        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'job-links-'));
+        const scratch = path.resolve('.test-scratch');
+        fs.mkdirSync(scratch, { recursive: true });
+        const directory = fs.mkdtempSync(path.join(scratch, 'job-links-'));
         try {
             const identity = getOrCreateServerIdentity(directory);
             // Reopening this installation uses the same identity, independently of ports/workspaces.

@@ -51,6 +51,19 @@ describe('sentinel_todos tool', () => {
     });
     afterEach(() => { database.dispose(); });
 
+    it('preserves destination/request identity when the tool links an admitted remote job', async () => {
+        const item = await createItem();
+        const tracking = createSentinelTodoTracking({ service, owner });
+        expect(await tracking.link(item.id, {
+            processId: 'queue_remote', workspaceId: 'remote-repo', kind: 'remote', serverId: 'alias',
+            openLink: '#chat-references/destination/remote-repo/queue_remote',
+            remote: { serverIdentity: 'destination', requestId: 'exact-request' },
+        })).toMatchObject({ status: 'tracked', itemId: item.id });
+        expect(todos.get(owner).items.find(row => row.id === item.id)?.jobs[0].remote).toEqual({
+            serverIdentity: 'destination', requestId: 'exact-request',
+        });
+    });
+
     it('permits native review verdict bookkeeping but rejects authoring and trigger actions even with forged arguments', async () => {
         const item = await createItem();
         const { tool } = createSentinelTodosTool({ service, owner, reviewOnly: true, triggers: {} as never });

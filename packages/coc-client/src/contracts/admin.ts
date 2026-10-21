@@ -141,6 +141,7 @@ export interface AdminResolvedConfig {
     sentinelTodoDateTimeTriggers?: boolean;
     sentinelTodoScriptTriggers?: boolean;
     sentinelFollowUpResults?: boolean;
+    sentinelRemoteResults?: boolean;
     sentinelDesktopMirror?: boolean;
     botManagedConversations?: boolean;
     quickAskSidenotes?: boolean;
@@ -248,6 +249,7 @@ export interface AdminConfigUpdate {
   'features.sentinelTodoDateTimeTriggers'?: boolean;
   'features.sentinelTodoScriptTriggers'?: boolean;
   'features.sentinelFollowUpResults'?: boolean;
+  'features.sentinelRemoteResults'?: boolean;
   'features.sentinelDesktopMirror'?: boolean;
   'features.quickAskSidenotes'?: boolean;
   'features.arxivPaperIngest'?: boolean;
@@ -327,6 +329,7 @@ export interface RuntimeDashboardConfig {
     sentinelTodoDateTimeTriggersEnabled: boolean;
     sentinelTodoScriptTriggersEnabled: boolean;
     sentinelFollowUpResultsEnabled: boolean;
+    sentinelRemoteResultsEnabled: boolean;
     sentinelDesktopMirrorEnabled: boolean;
     botManagedConversationsEnabled: boolean;
     quickAskSidenotesEnabled: boolean;

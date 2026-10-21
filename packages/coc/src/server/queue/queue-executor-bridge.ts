@@ -656,6 +656,15 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                     await this.drainPendingMessages(proc.id, task.id);
                 }
             }
+            const reviewContext = task.payload.context;
+            if (typeof reviewContext === 'object' && reviewContext !== null
+                && 'sentinelRemoteResultReview' in reviewContext && reviewContext.sentinelRemoteResultReview === true) {
+                const current = await this.store.getProcess(task.processId!, task.payload.workspaceId as string | undefined);
+                if (!current || current.id !== task.processId || current.archived || current.metadata?.mode !== 'sentinel'
+                    || current.metadata.workspaceId !== task.payload.workspaceId || ['cancelled', 'cancelling'].includes(current.status)) {
+                    return { success: false, error: new Error('Originating Sentinel is unavailable for remote result assessment.'), durationMs: 0 };
+                }
+            }
             if (!await guardSentinelPrOutcomeExecution(this.store, task, this.runtime.getTriggerInfra?.()?.sentinelPrOutcomes)) {
                 if (task.payload.sentinelPrOutcomeExecutionDeferred === true) this.recoverDeferredPrReviewAfterSettlement(task);
                 return { success: true, result: 'PR outcome review retained or skipped', durationMs: 0 };
@@ -1116,6 +1125,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         if (outcomeOnly && proc.metadata?.mode !== 'sentinel') return;
         let nextMsg: PendingMessage | undefined;
         for (const message of proc.pendingMessages) {
+            if (message.context?.sentinelRemoteResultReview === true && (proc.archived || proc.metadata?.mode !== 'sentinel')) return;
             const review = message.context?.source === 'trigger' && message.context.sentinelPrOutcomeReview === true;
             if (outcomeOnly && !review) continue;
             if (review) {

@@ -1,3 +1,5 @@
+import { remoteChatLaunchBody, remoteRalphLaunchBody } from '../delegation/remote-delegation-launch';
+
 /**
  * Workspace directory — one listing of the repos and repo groups this server
  * can reach: its own registry plus every registered remote CoC server's.
@@ -19,10 +21,11 @@
 
 import type { ChatProvider } from '../tasks/task-types';
 import type { ProcessIndexEntry, ProcessStore } from '@plusplusoneplusplus/forge';
-import { toQueueProcessId } from '@plusplusoneplusplus/forge';
+import { resolveModelForProvider, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import { createCache, type CacheHandle } from '../cache';
 import { isRepoGroupWorkspaceId, readRepoGroup } from '../workspaces/repo-group-workspace';
 import type { RemoteServerKind, RemoteServerWithRuntime } from './remote-server-types';
+import { resolveRecordedProvider } from '../processes/active-provider-session';
 
 // ============================================================================
 // Types
@@ -71,6 +74,7 @@ export interface RemoteChatRequest {
     /** `queue` → `POST /api/queue`; `ralph` → `POST /api/ralph-launch`. */
     kind: 'queue' | 'ralph';
     body: Record<string, unknown>;
+    resultOrigin?: import('../delegation/remote-delegation-return').RemoteResultOrigin;
 }
 
 export interface RemoteChatResult {
@@ -79,6 +83,38 @@ export interface RemoteChatResult {
     processId: string;
     /** Ralph only. */
     sessionId?: string;
+    resultDelivery?: import('../llm-tools/send-to-conversation-tool').TrackedResultDelivery | import('../delegation/remote-delegation-return').UnavailableRemoteResult;
+}
+
+export interface RemoteChatPostRequest {
+    serverId: string;
+    workspaceId: string;
+    /** Exact process ID on the destination; never a connection-qualified ID. */
+    processId: string;
+    content: string;
+    mode?: 'ask' | 'autopilot';
+    model?: string;
+    effortTier?: 'very-low' | 'low' | 'medium' | 'high';
+    deliveryMode?: 'immediate' | 'enqueue' | 'steer';
+    resultOrigin?: import('../delegation/remote-delegation-return').RemoteResultOrigin;
+}
+
+export interface RemoteChatPostResult {
+    serverIdentity: string;
+    processId: string;
+    /** -1 means buffered; the destination appends the user turn when it drains. */
+    turnIndex: number;
+    resultDelivery?: import('../llm-tools/send-to-conversation-tool').TrackedResultDelivery | import('../delegation/remote-delegation-return').UnavailableRemoteResult;
+}
+
+export type RemoteChatDispatchState = 'not-started' | 'rejected' | 'uncertain';
+
+/** Admission errors never imply that retrying execution is safe. */
+export class RemoteChatAdmissionError extends Error {
+    constructor(message: string, readonly dispatchState: RemoteChatDispatchState) {
+        super(message);
+        this.name = 'RemoteChatAdmissionError';
+    }
 }
 
 /** One chat of a remote repo, as returned by the remote's `GET /api/processes`. */
@@ -116,6 +152,8 @@ export interface WorkspaceDirectory {
     }): Promise<{ entries: ProcessIndexEntry[]; total: number; target: RemoteChatReadTarget }>;
     /** Start a chat on a remote server. Throws an Error with a model-facing message. */
     startRemoteChat(request: RemoteChatRequest): Promise<RemoteChatResult>;
+    /** One follow-up through the destination's existing message-delivery API. */
+    postRemoteChat?(request: RemoteChatPostRequest): Promise<RemoteChatPostResult>;
 }
 
 /** The slice of `RemoteServerRuntimeService` the directory needs. */
@@ -134,6 +172,7 @@ export interface WorkspaceDirectoryOptions {
     fetchImpl?: typeof fetch;
     /** Override the shared last-known remote cache (tests). */
     lastKnownCache?: CacheHandle<WorkspaceDirectoryEntry[]>;
+    remoteResults?: Pick<import('../delegation/remote-delegation-return').RemoteDelegationReturn, 'dispatch'>;
 }
 
 // ============================================================================
@@ -183,7 +222,6 @@ interface RawWorkspace {
 const DEFAULT_LIST_TIMEOUT_MS = 4_000;
 const DEFAULT_START_TIMEOUT_MS = 15_000;
 
-/** The remote answered with a non-2xx status. */
 // Last-known remote entries per server id, served while a server is unreachable.
 // Module-level so per-turn local-only directories never allocate a handle.
 let sharedLastKnown: CacheHandle<WorkspaceDirectoryEntry[]> | undefined;
@@ -192,6 +230,7 @@ function getSharedLastKnownCache(): CacheHandle<WorkspaceDirectoryEntry[]> {
     return sharedLastKnown;
 }
 
+/** The remote answered with a non-2xx status; a server error can follow admission. */
 class RemoteRejectedError extends Error {
     constructor(message: string, readonly status: number) { super(message); }
 }
@@ -206,6 +245,16 @@ export class RemoteServerOfflineError extends Error {
 
 function serverName(server: RemoteServerWithRuntime): string {
     return server.label || server.id;
+}
+
+function isRemoteId(value: unknown): value is string {
+    if (typeof value !== 'string' || !value.trim() || value.length > 512) return false;
+    try {
+        encodeURIComponent(value);
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): WorkspaceDirectory {
@@ -430,47 +479,75 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
         async startRemoteChat(request) {
             const server = options.remoteServers?.list().find(s => s.id === request.serverId);
             if (!server) {
-                throw new Error(`Remote server '${request.serverId}' is not registered. Call list_workspaces to see available repos.`);
+                throw new RemoteChatAdmissionError(`Remote server '${request.serverId}' is not registered. Call list_workspaces to see available repos.`, 'not-started');
             }
             const label = serverName(server);
             if (!server.effectiveUrl) {
-                throw new Error(`Remote server "${label}" is offline (no reachable endpoint). The chat was not started.`);
+                throw new RemoteChatAdmissionError(`Remote server "${label}" is offline (no reachable endpoint). The chat was not started.`, 'not-started');
             }
             const target = { effectiveUrl: server.effectiveUrl, serverIdentity: server.serverIdentity };
             let serverIdentity: string;
             try {
                 const health = await requestJson(`${target.effectiveUrl}/api/health`, listTimeoutMs);
                 assertCurrentTarget(server.id, target);
-                if (typeof health?.serverIdentity !== 'string' || !health.serverIdentity.trim()
+                if (!isRemoteId(health?.serverIdentity)
                     || (target.serverIdentity && health.serverIdentity !== target.serverIdentity)) {
                     throw new Error('Server identity unavailable or replaced');
                 }
                 serverIdentity = health.serverIdentity;
             } catch {
-                throw new Error('Remote owning server identity unavailable or replaced. The chat was not started.');
+                throw new RemoteChatAdmissionError('Remote owning server identity unavailable or replaced. The chat was not started.', 'not-started');
             }
             const grilling = request.kind === 'ralph' && request.body.entryPoint === 'grill';
             if (grilling) {
                 try {
-                    const capabilities = await requestJson(`${server.effectiveUrl}/api/ralph-launch/capabilities`, listTimeoutMs);
+                    const capabilities = await requestJson(`${target.effectiveUrl}/api/ralph-launch/capabilities`, listTimeoutMs);
                     if (capabilities?.version !== 1 || capabilities?.grilling !== true) {
                         throw new Error('Native Ralph grilling is unsupported or disabled');
                     }
-                } catch (error) {
-                    throw new Error(`Remote server "${label}" cannot admit native Ralph grilling: ${error instanceof Error ? error.message : String(error)}. No launch was attempted.`);
+                } catch {
+                    throw new RemoteChatAdmissionError(`Remote server "${label}" cannot admit native Ralph grilling. No launch was attempted.`, 'not-started');
                 }
             }
-            assertCurrentTarget(server.id, target);
+            try {
+                assertCurrentTarget(server.id, target);
+            } catch {
+                throw new RemoteChatAdmissionError('Remote destination changed before admission. The chat was not started.', 'not-started');
+            }
             const path = request.kind === 'ralph' ? '/api/ralph-launch' : '/api/queue';
+            let resultDelivery: import('../delegation/remote-delegation-return').UnavailableRemoteResult | undefined;
+            if (request.resultOrigin && options.remoteResults) {
+                const launch = request.kind === 'ralph' ? remoteRalphLaunchBody.parse({
+                    goalSpec: request.body.goalSpec, entryPoint: request.body.entryPoint, title: request.body.title,
+                    provider: request.body.provider, autoProviderRouting: request.body.autoProviderRouting, config: request.body.config,
+                }) : remoteChatLaunchBody.parse({
+                    content: (request.body.payload as Record<string, unknown>)?.prompt,
+                    mode: (request.body.payload as Record<string, unknown>)?.mode,
+                    priority: request.body.priority, title: request.body.displayName,
+                    provider: (request.body.payload as Record<string, unknown>)?.provider,
+                    autoProviderRouting: !!((request.body.payload as Record<string, unknown>)?.context as { autoProviderRouting?: unknown })?.autoProviderRouting,
+                    config: request.body.config,
+                });
+                const tracked = await options.remoteResults.dispatch(request.serverId, {
+                    version: 1, kind: request.kind === 'ralph' ? 'ralph' : 'launch',
+                    workspaceId: String(request.body.workspaceId ?? (request.body.payload as Record<string, unknown>)?.workspaceId),
+                    body: JSON.parse(JSON.stringify(launch)),
+                }, request.resultOrigin, serverIdentity);
+                if (tracked && !('unavailable' in tracked)) return tracked;
+                resultDelivery = tracked?.unavailable;
+            }
             let body: any;
             try {
-                body = await requestJson(`${server.effectiveUrl}${path}`, startTimeoutMs, { method: 'POST', body: request.body });
+                body = await requestJson(`${target.effectiveUrl}${path}`, startTimeoutMs, { method: 'POST', body: request.body });
             } catch (err) {
-                const reason = err instanceof Error ? err.message : String(err);
-                const prefix = err instanceof RemoteRejectedError ? `Remote server "${label}" rejected the request` : `Remote server "${label}" is unreachable`;
-                throw new Error(grilling && !(err instanceof RemoteRejectedError)
-                    ? `${prefix}: ${reason}. Admission is uncertain; inspect the remote chat list before retrying. Do not launch a duplicate job.`
-                    : `${prefix}: ${reason}. The chat was not started.`);
+                // A timeout, lost response or server-side error may follow durable
+                // admission. Only a definitive client rejection proves non-admission.
+                // Do not expose fetch errors (which may contain private endpoints).
+                const rejected = err instanceof RemoteRejectedError && err.status >= 400 && err.status < 500 && err.status !== 408;
+                throw new RemoteChatAdmissionError(rejected
+                    ? `Remote server "${label}" rejected the request (HTTP ${err.status}). The chat was not started.`
+                    : `Remote server "${label}" did not confirm admission. Admission is uncertain; inspect the remote chat list before retrying. Do not launch a duplicate job.`,
+                rejected ? 'rejected' : 'uncertain');
             }
             // A transport change during admission must not publish a guessed owner.
             try {
@@ -479,23 +556,117 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
                 assertCurrentTarget(server.id, target);
                 if (after?.serverIdentity !== serverIdentity) throw new Error('Server identity changed');
             } catch {
-                throw new Error('Remote job admission is uncertain: owning server unavailable or replaced. Do not launch a duplicate job.');
+                throw new RemoteChatAdmissionError('Remote job admission is uncertain: owning server unavailable or replaced. Do not launch a duplicate job.', 'uncertain');
             }
             if (request.kind === 'ralph') {
-                if (typeof body?.processId !== 'string') {
-                    throw new Error(`Remote server "${label}" returned no processId for the Ralph launch.`
-                        + (grilling ? ' Acceptance is uncertain; inspect the remote chat list, do not relaunch.' : ''));
+                if (!isRemoteId(body?.processId) || (body.sessionId !== undefined && !isRemoteId(body.sessionId))) {
+                    throw new RemoteChatAdmissionError(`Remote server "${label}" returned invalid Ralph admission identities. Admission is uncertain; inspect the remote chat list. Do not launch a duplicate job.`, 'uncertain');
                 }
                 if (grilling && (body.phase !== 'grilling' || typeof body.sessionId !== 'string')) {
-                    throw new Error(`Remote server "${label}" did not confirm native grilling admission. Acceptance is uncertain; inspect the remote chat list, do not relaunch.`);
+                    throw new RemoteChatAdmissionError(`Remote server "${label}" did not confirm native grilling admission. Admission is uncertain; inspect the remote chat list. Do not launch a duplicate job.`, 'uncertain');
                 }
-                return { serverIdentity, processId: body.processId, ...(typeof body.sessionId === 'string' ? { sessionId: body.sessionId } : {}) };
+                return { serverIdentity, processId: body.processId, ...(typeof body.sessionId === 'string' ? { sessionId: body.sessionId } : {}),
+                    ...(resultDelivery ? { resultDelivery } : {}) };
             }
             const taskId = body?.task?.id;
-            if (typeof taskId !== 'string' || !taskId) {
-                throw new Error(`Remote server "${label}" returned no task id for the new chat.`);
+            if (!isRemoteId(taskId) || !isRemoteId(toQueueProcessId(taskId))) {
+                throw new RemoteChatAdmissionError(`Remote server "${label}" returned an invalid task identity. Admission is uncertain; inspect the remote chat list. Do not launch a duplicate job.`, 'uncertain');
             }
-            return { serverIdentity, processId: toQueueProcessId(taskId) };
+            return { serverIdentity, processId: toQueueProcessId(taskId), ...(resultDelivery ? { resultDelivery } : {}) };
+        },
+
+        async postRemoteChat(request) {
+            const server = options.remoteServers?.list().find(s => s.id === request.serverId);
+            if (!server?.effectiveUrl) {
+                throw new RemoteChatAdmissionError('Remote server is unregistered or offline. No follow-up was sent.', 'not-started');
+            }
+            if (![request.workspaceId, request.processId].every(isRemoteId)) {
+                throw new RemoteChatAdmissionError('An exact remote workspace and process identity are required. No follow-up was sent.', 'not-started');
+            }
+            const target = { effectiveUrl: server.effectiveUrl, serverIdentity: server.serverIdentity };
+            const query = new URLSearchParams({ workspace: request.workspaceId });
+            const processPath = `/api/processes/${encodeURIComponent(request.processId)}`;
+            let serverIdentity: string;
+            let model = request.model;
+            let reasoningEffort: string | undefined;
+            try {
+                const health = await requestJson(`${target.effectiveUrl}/api/health`, listTimeoutMs);
+                assertCurrentTarget(server.id, target);
+                if (!isRemoteId(health?.serverIdentity)
+                    || (target.serverIdentity && health.serverIdentity !== target.serverIdentity)) {
+                    throw new Error('Remote owner unavailable or replaced');
+                }
+                serverIdentity = health.serverIdentity;
+                const detailQuery = new URLSearchParams(query);
+                detailQuery.set('exclude', 'conversation,toolCalls');
+                const detail = await requestJson(`${target.effectiveUrl}${processPath}?${detailQuery}`, listTimeoutMs);
+                assertCurrentTarget(server.id, target);
+                const proc = detail?.process;
+                if (!proc || proc.id !== request.processId || proc.metadata?.workspaceId !== request.workspaceId
+                    || proc.type !== 'chat' || proc.archived) {
+                    throw new Error('Exact remote chat owner unavailable');
+                }
+                const provider = resolveRecordedProvider(proc);
+                if ((model || request.effortTier) && !provider) throw new Error('Remote provider unavailable');
+                if (!model && request.effortTier) {
+                    // Read the owning server's configured mapping, never origin defaults.
+                    const tiers = await requestJson(`${target.effectiveUrl}/api/agent-providers/${provider}/effort-tiers`, listTimeoutMs);
+                    assertCurrentTarget(server.id, target);
+                    const tier = tiers?.effortTiers?.[request.effortTier];
+                    if (tiers?.provider !== provider || !isRemoteId(tier?.model)
+                        || (tier.reasoningEffort !== undefined && !['low', 'medium', 'high', 'xhigh'].includes(tier.reasoningEffort))) {
+                        throw new Error('Remote effort tier unavailable');
+                    }
+                    model = tier.model;
+                    reasoningEffort = tier.reasoningEffort;
+                }
+                if (model && resolveModelForProvider(provider!, model).coerced) throw new Error('Incompatible remote model');
+                const before = await requestJson(`${target.effectiveUrl}/api/health`, listTimeoutMs);
+                assertCurrentTarget(server.id, target);
+                if (before?.serverIdentity !== serverIdentity) throw new Error('Remote owner changed');
+            } catch {
+                throw new RemoteChatAdmissionError('Remote chat ownership or follow-up settings could not be verified. No follow-up was sent.', 'not-started');
+            }
+            let body: any;
+            let resultDelivery: import('../delegation/remote-delegation-return').UnavailableRemoteResult | undefined;
+            if (request.resultOrigin && options.remoteResults) {
+                const tracked = await options.remoteResults.dispatch(request.serverId, {
+                    version: 1, kind: 'follow-up', workspaceId: request.workspaceId, targetProcessId: request.processId,
+                    body: { content: request.content, ...(request.mode ? { mode: request.mode } : {}),
+                        ...(model ? { model } : {}), ...(reasoningEffort ? { reasoningEffort } : {}) },
+                }, request.resultOrigin, serverIdentity);
+                if (tracked && !('unavailable' in tracked)) return tracked;
+                resultDelivery = tracked?.unavailable;
+            }
+            try {
+                body = await requestJson(`${target.effectiveUrl}${processPath}/message?${query}`, startTimeoutMs, {
+                    method: 'POST', body: {
+                        content: request.content,
+                        ...(request.mode ? { mode: request.mode } : {}),
+                        ...(model ? { model } : {}),
+                        ...(reasoningEffort ? { reasoningEffort } : {}),
+                        deliveryMode: request.deliveryMode === 'steer' ? 'immediate' : request.deliveryMode ?? 'enqueue',
+                    },
+                });
+            } catch (err) {
+                const rejected = err instanceof RemoteRejectedError && err.status >= 400 && err.status < 500 && err.status !== 408;
+                throw new RemoteChatAdmissionError(rejected
+                    ? `Remote server rejected the follow-up (HTTP ${err.status}). No follow-up was admitted.`
+                    : 'Remote follow-up admission is uncertain. Inspect the remote chat before retrying. Do not send a duplicate follow-up.',
+                rejected ? 'rejected' : 'uncertain');
+            }
+            try {
+                assertCurrentTarget(server.id, target);
+                const after = await requestJson(`${target.effectiveUrl}/api/health`, listTimeoutMs);
+                assertCurrentTarget(server.id, target);
+                if (after?.serverIdentity !== serverIdentity || body?.processId !== request.processId
+                    || !Number.isSafeInteger(body?.turnIndex) || body.turnIndex < -1) {
+                    throw new Error('Invalid follow-up acknowledgment');
+                }
+            } catch {
+                throw new RemoteChatAdmissionError('Remote follow-up admission is uncertain: owner or acknowledgment unavailable. Do not send a duplicate follow-up.', 'uncertain');
+            }
+            return { serverIdentity, processId: request.processId, turnIndex: body.turnIndex, ...(resultDelivery ? { resultDelivery } : {}) };
         },
     };
 }

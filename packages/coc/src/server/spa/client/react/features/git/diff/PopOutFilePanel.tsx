@@ -6,7 +6,7 @@
  * and a collapse/expand toggle.
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
     FileTreeView,
     FlatFileList,
@@ -28,6 +28,7 @@ import { HUNK_CATEGORIES } from '../../pull-requests/classification-types';
 
 export interface PopOutFilePanelProps {
     workspaceId: string;
+    onDisplayOrderChange?: (paths: string[]) => void;
     files: FileChange[];
     selectedFilePath: string | null;
     onFileSelect: (filePath: string) => void;
@@ -70,6 +71,7 @@ function loadCollapsed(): boolean {
 
 export function PopOutFilePanel({
     workspaceId,
+    onDisplayOrderChange,
     files,
     selectedFilePath,
     onFileSelect,
@@ -106,6 +108,15 @@ export function PopOutFilePanel({
         });
     }, [files, prioritySort, getFileBadge, reviewedFiles]);
 
+    const treeNodes = useMemo(() => buildFileTree(orderedFiles), [orderedFiles]);
+    const compactedNodes = useMemo(() => compactFolders(treeNodes), [treeNodes]);
+    const displayedPaths = useMemo(() => {
+        const flatten = (nodes: ReturnType<typeof buildFileTree>): string[] =>
+            nodes.flatMap(node => node.type === 'dir' ? flatten(node.children) : [node.path]);
+        return mode === 'tree' ? flatten(treeNodes) : orderedFiles.map(file => file.path);
+    }, [orderedFiles, treeNodes, mode]);
+    useEffect(() => { onDisplayOrderChange?.(displayedPaths); }, [onDisplayOrderChange, displayedPaths]);
+
     const counts: CategoryCounts | null = useMemo(() => {
         if (!getFileBadge) return null;
         return computeCategoryCounts(files, getFileBadge);
@@ -127,9 +138,6 @@ export function PopOutFilePanel({
     const allFiltersOn = activeFilters
         ? ALL_CATEGORIES.every((c) => activeFilters.has(c))
         : true;
-
-    const treeNodes = buildFileTree(orderedFiles);
-    const compactedNodes = compactFolders(treeNodes);
 
     const toggleCollapse = useCallback(() => {
         setCollapsed(prev => {

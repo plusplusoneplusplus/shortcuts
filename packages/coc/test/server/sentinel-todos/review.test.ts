@@ -4,7 +4,7 @@ import type { AIProcess, ProcessStore, QueuedTask } from '@plusplusoneplusplus/f
 import { SentinelTodoStore, type SentinelTodoItem } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { createSentinelTodoDelegationHooks } from '../../../src/server/sentinel-todos/sentinel-todo-delegation';
-import { DelegatedJobStore } from '../../../src/server/delegation/delegated-job-store';
+import { DelegatedJobStore, type DelegatedJobResult } from '../../../src/server/delegation/delegated-job-store';
 import { DelegatedJobResults } from '../../../src/server/delegation/delegated-job-results';
 import { DelegatedJobReviews } from '../../../src/server/delegation/delegated-job-reviews';
 import { SENTINEL_JOB_REVIEW_PREFIX } from '../../../src/server/delegation/sentinel-job-review-instructions';
@@ -91,6 +91,219 @@ describe('Sentinel to-do reviewed outcomes', () => {
         return [{ processId, terminalEventId: job.terminal!.result.terminalEventId }];
     }
     async function view() { return (await service.list(owner)).items[0]; }
+
+    function registerRemote(requestId: string, kind: 'launch' | 'follow-up' | 'ralph' = 'follow-up') {
+        return jobs.register({
+            id: `remote-${requestId}`, title: 'Remote work', parent: owner,
+            child: { processId: 'queue_remote', workspaceId: 'ws-child', serverId: 'remote-host',
+                ...(kind === 'follow-up' ? { requestId } : {}),
+                ...(kind === 'ralph' ? { sessionId: 'remote-session' } : {}) },
+            remote: { originServerIdentity: jobs.serverIdentity, serverIdentity: 'remote-identity', requestId, kind },
+        });
+    }
+    async function linkRemote(itemId: string, requestId: string, kind: 'launch' | 'follow-up' | 'ralph' = 'follow-up') {
+        return service.linkJob(owner, itemId, {
+            processId: 'queue_remote', workspaceId: 'ws-child', serverId: 'remote-host', kind: 'remote', openLink: '#',
+            remote: { serverIdentity: 'remote-identity', requestId },
+            ...(kind === 'ralph' ? { sessionId: 'remote-session' } : {}),
+        });
+    }
+    function remoteResult(requestId: string, outcome: DelegatedJobResult['outcome'] = 'completed') {
+        jobs.recordResult(owner.workspaceId, `remote-${requestId}`, {
+            terminalEventId: `event-${requestId}`, outcome, summary: 'Remote outcome', links: ['#remote-result'],
+        });
+        return jobs.list(owner.workspaceId).find(job => job.id === `remote-${requestId}`)!;
+    }
+
+    it('projects exact remote receipt and assessment delivery through existing hooks without changing fulfillment', async () => {
+        registerRemote('first');
+        const { item: linked } = await service.create(owner, { title: 'Remote task' }, { actor: 'sentinel' });
+        await linkRemote(linked.id, 'first');
+        expect((await view()).jobs[0].execution).toEqual({ state: 'unknown', delivery: { state: 'pending' } });
+        jobs.updateRemoteDelivery(owner.workspaceId, 'remote-first', { state: 'failed', reason: 'Remote owner disconnected' });
+        expect((await view()).jobs[0].execution).toMatchObject({
+            delivery: { state: 'failed', reason: 'Remote owner disconnected' },
+        });
+        const hooks = createSentinelTodoDelegationHooks(service);
+        const completed = remoteResult('first');
+        hooks.recordResult(completed);
+        expect(hooks.findTodo(completed)?.id).toBe(linked.id);
+        expect((await view()).jobs[0].execution).toMatchObject({
+            state: 'completed', review: { state: 'pending', assessment: 'pending', terminalEventId: 'event-first' },
+        });
+        expect(sentinelTodoDisplayStatus(await view())).toBe('in_review');
+        const revision = todos.get(owner).revision;
+        for (const [expected, delivery] of [
+            ['pending', { state: 'queued', receiptId: 'review-first' }],
+            ['queued', { state: 'delivered', receiptId: 'review-first' }],
+        ] as const) {
+            jobs.updateDelivery(owner.workspaceId, completed.id, expected, delivery);
+            onChange.mockClear();
+            hooks.deliveryChanged(jobs.list(owner.workspaceId).find(job => job.id === completed.id)!);
+            expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ owner, ledgerRevision: revision,
+                item: expect.objectContaining({ id: linked.id, status: 'in_progress' }) }));
+            expect((await view()).jobs[0].execution).toMatchObject({ review: { state: delivery.state, assessment: 'pending' } });
+        }
+        hooks.recordResult(completed);
+        expect(todos.get(owner).revision).toBe(revision);
+        expect(item(linked.id).status).toBe('in_progress');
+        expect(deliverOnce).not.toHaveBeenCalled();
+    });
+
+    it('keeps repeated remote follow-ups on the same conversation separate across reload and assessment', async () => {
+        registerRemote('first');
+        registerRemote('second');
+        const { item: linked } = await service.create(owner, { title: 'Remote task' }, { actor: 'sentinel' });
+        await linkRemote(linked.id, 'first');
+        await linkRemote(linked.id, 'second');
+        service.recordJobResult(remoteResult('second'));
+        service.recordJobResult(remoteResult('first'));
+        expect(item(linked.id).jobs.map(link => [link.remote?.requestId, link.result?.terminalEventId]))
+            .toEqual([['first', 'event-first'], ['second', 'event-second']]);
+        await service.update(owner, linked.id, item(linked.id).revision, {
+            status: 'in_progress', statusReason: 'Only the first request assessed',
+            reviewedJobs: [{ processId: 'queue_remote', terminalEventId: 'event-first' }],
+        }, 'sentinel');
+        expect((await view()).jobs.map(link => 'review' in link.execution && link.execution.review?.assessment))
+            .toEqual(['reviewed', 'pending']);
+        database.close();
+        database = createTodoTestDatabase(dataDir);
+        todos = new SentinelTodoStore(database.db);
+        service = new SentinelTodoService({ todos, store, jobs });
+        await linkRemote(linked.id, 'second');
+        expect(item(linked.id).jobs).toHaveLength(2);
+        expect(item(linked.id).jobs[0].result?.reviewed?.recordedBy).toBe('sentinel');
+        expect((await view()).jobs[1].execution).toMatchObject({ review: { assessment: 'pending' } });
+    });
+
+    it('automatically links each admitted remote follow-up to its existing exact-owner item', async () => {
+        registerRemote('launch', 'launch');
+        const followUp = registerRemote('follow-up');
+        const { item: linked } = await service.create(owner, { title: 'Remote task' }, { actor: 'sentinel' });
+        await linkRemote(linked.id, 'launch', 'launch');
+        await service.linkRemoteFollowUp(followUp);
+        await service.linkRemoteFollowUp(followUp);
+        expect(item(linked.id).jobs.map(link => link.remote?.requestId)).toEqual(['launch', 'follow-up']);
+        expect(service.findLinkedItem(followUp)?.id).toBe(linked.id);
+        service.recordJobResult(remoteResult('follow-up'));
+        expect((await view()).jobs[1].execution).toMatchObject({ state: 'completed', review: { assessment: 'pending' } });
+    });
+
+    it('does not infer follow-up item ownership from ambiguous or user-superseded links', async () => {
+        registerRemote('launch', 'launch');
+        const followUp = registerRemote('follow-up');
+        const first = (await service.create(owner, { title: 'First' }, { actor: 'sentinel' })).item;
+        const second = (await service.create(owner, { title: 'Second' }, { actor: 'sentinel' })).item;
+        await linkRemote(first.id, 'launch', 'launch');
+        await linkRemote(second.id, 'launch', 'launch');
+        await expect(service.linkRemoteFollowUp(followUp)).rejects.toMatchObject({ code: 'invalid' });
+        for (const linked of [first, second]) await service.update(owner, linked.id, item(linked.id).revision,
+            { status: 'todo', statusReason: 'Wait for a new decision' }, 'user');
+        await service.linkRemoteFollowUp(followUp);
+        expect(todos.get(owner).items.every(row => row.status === 'todo' && row.jobs.length === 1)).toBe(true);
+    });
+
+    it('preserves a manual verdict racing automatic follow-up bookkeeping', async () => {
+        registerRemote('launch', 'launch');
+        const followUp = registerRemote('follow-up');
+        const linked = (await service.create(owner, { title: 'Remote task' }, { actor: 'sentinel' })).item;
+        await linkRemote(linked.id, 'launch', 'launch');
+        const getProcess = store.getProcess;
+        vi.mocked(store.getProcess).mockImplementationOnce(async (...args) => {
+            todos.update(owner, linked.id, item(linked.id).revision, { status: 'todo', statusReason: 'User decision' }, 'user');
+            return getProcess(...args);
+        });
+        await expect(service.linkRemoteFollowUp(followUp)).rejects.toMatchObject({ code: 'conflict' });
+        expect(item(linked.id)).toMatchObject({ status: 'todo', statusReason: 'User decision' });
+        expect(item(linked.id).jobs).toHaveLength(1);
+    });
+
+    it.each(['completed', 'failed', 'cancelled', 'capped'] as const)(
+        'records a remote %s result before link creation without automatically completing the item', async outcome => {
+            registerRemote('launch', 'launch');
+            remoteResult('launch', outcome);
+            const { item: linked } = await service.create(owner, { title: 'Remote task' }, { actor: 'sentinel' });
+            await linkRemote(linked.id, 'launch', 'launch');
+            expect(item(linked.id).jobs[0].result?.outcome).toBe(outcome);
+            expect(item(linked.id).status).toBe(outcome === 'completed' ? 'in_progress' : 'needs_attention');
+            expect((await view()).jobs[0].execution).toMatchObject({
+                state: outcome, review: { assessment: 'pending' },
+            });
+        },
+    );
+
+    it.each([{ status: 'todo' as const }, { status: 'done' as const }, { archived: true }])(
+        'retains manual verdict %j despite a failed remote result, failed delivery and stale assessment', async verdict => {
+            registerRemote('first');
+            const { item: linked } = await service.create(owner, { title: 'Remote task' }, { actor: 'sentinel' });
+            await linkRemote(linked.id, 'first');
+            await service.update(owner, linked.id, item(linked.id).revision, verdict, 'user');
+            service.recordJobResult(remoteResult('first', 'failed'));
+            jobs.updateDelivery(owner.workspaceId, 'remote-first', 'pending', { state: 'failed', reason: 'Parent archived' });
+            const accepted = item(linked.id);
+            expect(accepted).toMatchObject(verdict);
+            expect((await view()).jobs[0].execution).toMatchObject({
+                review: { state: 'failed', reason: 'Parent archived', assessment: 'superseded' },
+            });
+            expect(sentinelTodoDisplayStatus(await view())).toBe(accepted.status);
+            await expect(service.update(owner, linked.id, accepted.revision, {
+                status: 'needs_attention', statusReason: 'Stale assessment',
+                reviewedJobs: [{ processId: 'queue_remote', terminalEventId: 'event-first' }],
+            }, 'sentinel')).rejects.toMatchObject({ code: 'invalid' });
+            expect(item(linked.id)).toEqual(accepted);
+        },
+    );
+
+    it('requires registered remote identity and exact request, workspace, parent and session ownership', async () => {
+        const registered = registerRemote('first');
+        const { item: linked } = await service.create(owner, { title: 'Remote task' }, { actor: 'sentinel' });
+        await linkRemote(linked.id, 'first');
+        const completed = remoteResult('first');
+        for (const changed of [
+            { ...completed, remote: undefined },
+            { ...completed, parent: { ...owner, processId: 'another-parent' } },
+            { ...completed, child: { ...completed.child, workspaceId: 'another-workspace' } },
+            { ...completed, child: { ...completed.child, sessionId: 'another-session' } },
+            { ...completed, remote: { ...registered.remote!, serverIdentity: 'another-identity' } },
+            { ...completed, remote: { ...registered.remote!, requestId: 'another-request' } },
+        ]) {
+            expect(service.findLinkedItem(changed)).toBeUndefined();
+            expect(service.recordJobResult(changed)).toBeUndefined();
+        }
+        expect(item(linked.id).jobs[0].result).toBeUndefined();
+        const { item: untracked } = await service.create(owner, { title: 'Untracked remote' }, { actor: 'sentinel' });
+        await service.linkJob(owner, untracked.id, {
+            processId: 'queue_remote', workspaceId: 'ws-child', serverId: 'remote-host', kind: 'remote', openLink: '#',
+        });
+        expect((await service.list(owner)).items[1].jobs[0].execution).toEqual({ state: 'unavailable' });
+        expect(service.findLinkedItem(completed)?.id).toBe(linked.id);
+    });
+
+    it('retains exact tracked remote delivery when only the connection alias changes', async () => {
+        registerRemote('first');
+        const { item: linked } = await service.create(owner, { title: 'Remote task' }, { actor: 'sentinel' });
+        await linkRemote(linked.id, 'first');
+        await service.linkJob(owner, linked.id, {
+            processId: 'queue_remote', workspaceId: 'ws-child', serverId: 'new-alias', kind: 'remote', openLink: '#',
+            remote: { serverIdentity: 'remote-identity', requestId: 'first' },
+        });
+        expect(item(linked.id).jobs).toHaveLength(1);
+        const completed = remoteResult('first');
+        expect(service.findLinkedItem({ ...completed, child: { ...completed.child, serverId: 'new-alias' } })?.id).toBe(linked.id);
+        service.recordJobResult(completed);
+        expect((await view()).jobs[0].execution).toMatchObject({ state: 'completed', review: { assessment: 'pending' } });
+    });
+
+    it('uses only whole-session remote Ralph results for the exact linked session', async () => {
+        registerRemote('ralph', 'ralph');
+        const { item: linked } = await service.create(owner, { title: 'Remote Ralph' }, { actor: 'sentinel' });
+        await linkRemote(linked.id, 'ralph', 'ralph');
+        expect(item(linked.id).jobs[0].result).toBeUndefined();
+        service.recordJobResult(remoteResult('ralph', 'capped'));
+        expect((await view()).jobs[0]).toMatchObject({
+            mode: 'ralph', sessionId: 'remote-session', execution: { state: 'capped', review: { assessment: 'pending' } },
+        });
+    });
 
     it('keeps delivered parent turns in review until an explicit durable assessment commits', async () => {
         const linked = await linkedItem();

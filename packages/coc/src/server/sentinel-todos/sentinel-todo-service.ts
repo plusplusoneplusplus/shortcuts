@@ -54,10 +54,10 @@ export interface SentinelTodoChange {
 
 /**
  * A linked job's execution state, derived on read and kept apart from the
- * item's fulfillment status. Remote jobs are `unavailable`: their results
- * never return here, so only an explicit reviewed outcome settles them.
+ * item's fulfillment status. Only registered remote requests have result
+ * delivery metadata; untracked remote links remain unavailable.
  */
-export type SentinelTodoJobExecution =
+export type SentinelTodoJobExecution = (
     | { state: 'queued' | 'running' | 'unknown' | 'unavailable' }
     | {
         state: 'completed' | 'failed' | 'cancelled' | 'capped';
@@ -69,7 +69,10 @@ export type SentinelTodoJobExecution =
             terminalEventId: string;
             reason?: string;
         };
-    };
+    }
+) & {
+    delivery?: { state: 'pending' | 'failed' | 'received'; reason?: string };
+};
 export type SentinelTodoJobMode = 'ask' | 'autopilot' | 'ralph';
 export type SentinelTodoJobLinkView = SentinelTodoJobLink & { execution: SentinelTodoJobExecution; mode?: SentinelTodoJobMode };
 export type SentinelTodoItemView = Omit<SentinelTodoItem, 'jobs'> & {
@@ -441,7 +444,7 @@ export class SentinelTodoService {
         this.dependencyActions?.refresh(owner);
         const ledger: SentinelTodoLedger = this.deps.todos.get(owner);
         let delegated: DelegatedJob[] = [];
-        if (ledger.items.some(item => item.jobs.some(job => !job.serverId && job.kind !== 'remote'))) {
+        if (ledger.items.some(item => item.jobs.length)) {
             try { delegated = this.deps.jobs?.list(owner.workspaceId) ?? []; }
             catch { /* Execution status degrades to the recorded link result. */ }
         }
@@ -467,11 +470,12 @@ export class SentinelTodoService {
         owner: SentinelTodoOwner,
         itemId: string,
         link: SentinelTodoJobLinkInput,
+        expectedRevision?: number,
     ): Promise<{ item: SentinelTodoItem; ledgerRevision: number }> {
         await this.assertOwner(owner);
-        const result = this.withVisibleErrors(() => this.deps.todos.linkJob(owner, itemId, link));
+        const result = this.withVisibleErrors(() => this.deps.todos.linkJob(owner, itemId, link, expectedRevision));
         if (result.changed) this.emit({ owner, item: result.item, ledgerRevision: result.ledgerRevision });
-        const delegated = this.deps.jobs?.list(owner.workspaceId).find(job => job.id === link.processId);
+        const delegated = this.deps.jobs?.list(owner.workspaceId).find(job => this.matchesJob(link, owner, job));
         const milestone = delegated && grillingResultJob(delegated);
         if (milestone) this.recordJobResult(milestone);
         if (delegated?.terminal) this.recordJobResult(delegated);
@@ -594,7 +598,7 @@ export class SentinelTodoService {
      */
     recordJobResult(job: DelegatedJob): SentinelTodoItem | undefined {
         const terminal = job.terminal?.result;
-        if (!terminal || job.child.serverId || !this.findLinkedItem(job)) return undefined;
+        if (!terminal || !this.findLinkedItem(job)) return undefined;
         const owner = { workspaceId: job.parent.workspaceId, processId: job.parent.processId };
         if (job.boundary === 'grill') {
             if (terminal.reason !== 'spec-ready') return undefined;
@@ -602,22 +606,55 @@ export class SentinelTodoService {
             if (milestone) this.emit({ owner, ...milestone });
             return milestone?.item;
         }
-        const result = this.deps.todos.recordJobResult(owner, job.id, {
+        const result = this.deps.todos.recordJobResult(owner, job.child.processId, {
             terminalEventId: terminal.terminalEventId,
             outcome: terminal.outcome,
             ...(terminal.reason ? { reason: terminal.reason.slice(0, 2_000) } : {}),
         }, link => `Job ${JSON.stringify(link.title ?? job.title)} ${terminal.outcome}`
-            + (terminal.reason ? `: ${terminal.reason}` : '.'));
+            + (terminal.reason ? `: ${terminal.reason}` : '.'),
+        link => this.matchesJob(link, owner, job));
         if (result) this.emit({ owner, ...result });
         return result?.item;
     }
 
-    /** The item linking a local delegated job, for its parent review prompt. */
+    /** Bookkeeping for admitted work inherits only an unambiguous eligible target link. */
+    async linkRemoteFollowUp(job: DelegatedJob): Promise<void> {
+        if (job.remote?.kind !== 'follow-up' || this.findLinkedItem(job)) return;
+        const registered = this.deps.jobs?.list(job.parent.workspaceId) ?? [];
+        const items = this.deps.todos.get(job.parent).items.filter(item => {
+            if (item.type !== 'normal' || item.archived || item.status === 'done') return false;
+            return item.jobs.some(link => link.processId === job.child.processId && link.workspaceId === job.child.workspaceId
+                && link.remote?.serverIdentity === job.remote!.serverIdentity
+                && (item.userVerdictRevision ?? 0) <= (link.linkedRevision ?? 0)
+                && registered.some(previous => this.matchesJob(link, job.parent, previous)));
+        });
+        if (items.length > 1) throw new SentinelTodoError('invalid', 'Remote follow-up has ambiguous linked To-do ownership');
+        if (!items.length) return;
+        await this.linkJob(job.parent, items[0].id, {
+            processId: job.child.processId, workspaceId: job.child.workspaceId, serverId: job.child.serverId,
+            kind: 'remote', title: job.title,
+            openLink: buildDashboardChatReference(job.remote.serverIdentity, job.child.workspaceId, job.child.processId),
+            remote: { serverIdentity: job.remote.serverIdentity, requestId: job.remote.requestId },
+        }, items[0].revision);
+    }
+
+    /** The item linking this exact registered request, for its parent review prompt. */
     findLinkedItem(job: DelegatedJob): SentinelTodoItem | undefined {
         return this.deps.todos.get(job.parent).items
-            .find(item => item.type === 'normal' && item.jobs.some(link => link.processId === job.id
-                && link.processId === job.child.processId && link.workspaceId === job.child.workspaceId
-                && link.sessionId === job.child.sessionId && link.kind !== 'remote' && !link.serverId && !job.child.serverId));
+            .find(item => item.type === 'normal' && item.jobs.some(link => this.matchesJob(link, job.parent, job)));
+    }
+
+    private matchesJob(link: SentinelTodoJobLinkInput, owner: SentinelTodoOwner, job: DelegatedJob): boolean {
+        if (job.parent.processId !== owner.processId || job.parent.workspaceId !== owner.workspaceId
+            || link.processId !== job.child.processId || link.workspaceId !== job.child.workspaceId
+            || link.sessionId !== job.child.sessionId) return false;
+        if (job.remote) {
+            return !!link.serverId
+                && link.remote?.serverIdentity === job.remote.serverIdentity
+                && link.remote.requestId === job.remote.requestId
+                && (job.remote.kind !== 'follow-up' || job.child.requestId === link.remote.requestId);
+        }
+        return !link.remote && !link.serverId && link.kind !== 'remote' && !job.child.serverId && link.processId === job.id;
     }
 
     /** Invalidate derived delivery state only after the delegation receipt commits. */
@@ -656,24 +693,25 @@ export class SentinelTodoService {
 
     private execution(link: SentinelTodoJobLink, owner: SentinelTodoOwner, delegated: DelegatedJob[],
         userVerdictRevision?: number): SentinelTodoJobExecution {
-        if (link.serverId || link.kind === 'remote') return { state: 'unavailable' };
-        const terminal = delegated.find(job => job.id === link.processId
-            && job.parent.processId === owner.processId && job.parent.workspaceId === owner.workspaceId
-            && job.child.workspaceId === link.workspaceId && job.child.processId === link.processId
-            && job.child.sessionId === link.sessionId && !job.child.serverId)?.terminal;
-        const result = terminal?.result ?? link.result;
+        const job = delegated.find(job => this.matchesJob(link, owner, job));
+        const remote = !!link.serverId || link.kind === 'remote';
+        if (remote && !job?.remote) return { state: 'unavailable' };
+        const terminal = job?.terminal;
+        const result = terminal?.result ?? (remote ? undefined : link.result);
         if (result) {
             const delivery = terminal?.delivery ?? { state: 'pending' as const };
-            const assessment = result.outcome === 'cancelled' ? 'not_required'
+            const assessment = result.outcome === 'cancelled' && !job?.remote ? 'not_required'
                 : link.result?.terminalEventId === result.terminalEventId && link.result.reviewed
                     ? 'reviewed' : (userVerdictRevision ?? 0) > (link.linkedRevision ?? 0) ? 'superseded' : 'pending';
             return {
                 state: result.outcome,
+                ...(job?.remote?.delivery ? { delivery: job.remote.delivery } : {}),
                 ...(result.reason ? { reason: result.reason } : {}),
                 review: { state: delivery.state, assessment, terminalEventId: result.terminalEventId,
                     ...(delivery.state === 'failed' ? { reason: delivery.reason } : {}) },
             };
         }
+        if (remote) return { state: 'unknown', delivery: job?.remote?.delivery ?? { state: 'pending' } };
         // A Ralph session spans many queue tasks; only its whole-session result settles it.
         if (link.kind === 'ralph') return { state: 'running' };
         const task = isQueueProcessId(link.processId) ? this.deps.getTask?.(toTaskId(link.processId)) : undefined;

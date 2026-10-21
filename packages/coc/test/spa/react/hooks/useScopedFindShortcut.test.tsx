@@ -10,6 +10,7 @@ import { render, cleanup } from '@testing-library/react';
 import { useRef } from 'react';
 import {
     useScopedFindShortcut,
+    isEditableTarget,
     isWithinDetailPane,
     type ScopedFindShortcutOptions,
 } from '../../../../src/server/spa/client/react/hooks/useScopedFindShortcut';
@@ -65,6 +66,27 @@ describe('isWithinDetailPane', () => {
     it('is false for non-Element targets', () => {
         expect(isWithinDetailPane(null)).toBe(false);
         expect(isWithinDetailPane(document)).toBe(false);
+    });
+});
+
+describe('isEditableTarget — Monaco keyboard ownership', () => {
+    it.each([
+        '<div class="monaco-editor"><div class="native-edit-context" tabindex="0"></div></div>',
+        '<div class="monaco-editor"><textarea class="inputarea"></textarea></div>',
+        '<div class="monaco-diff-editor"><div class="editor original"><div class="monaco-editor"><div class="native-edit-context"></div></div></div></div>',
+        '<div class="monaco-diff-editor"><div class="editor modified"><div class="monaco-editor"><div class="native-edit-context"></div></div></div></div>',
+    ])('recognizes editor inputs without loading Monaco: %s', markup => {
+        document.body.innerHTML = markup;
+        const target = document.querySelector('.native-edit-context, textarea')!;
+        expect(isEditableTarget(target)).toBe(true);
+    });
+
+    it('does not classify surrounding panel chrome as an editor', () => {
+        document.body.innerHTML = '<div><button>Search</button><div class="monaco-editor"></div></div>';
+        expect(isEditableTarget(document.querySelector('button'))).toBe(false);
+        expect(isEditableTarget(document.body)).toBe(false);
+        expect(isEditableTarget(document)).toBe(false);
+        expect(isEditableTarget(null)).toBe(false);
     });
 });
 
@@ -205,6 +227,24 @@ describe('useScopedFindShortcut', () => {
         makeVisible(getByTestId('p') as HTMLElement);
 
         const event = pressCtrlF(getByTestId('dock-input'));
+
+        expect(onTrigger).not.toHaveBeenCalled();
+        expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('leaves Ctrl+F with a native Monaco input outside the search scope', () => {
+        const onTrigger = vi.fn();
+        const { getByTestId } = render(
+            <>
+                <Panel testid="p" onTrigger={onTrigger} />
+                <div className="monaco-editor">
+                    <div className="native-edit-context" data-testid="monaco-input" />
+                </div>
+            </>,
+        );
+        makeVisible(getByTestId('p'));
+
+        const event = pressCtrlF(getByTestId('monaco-input'));
 
         expect(onTrigger).not.toHaveBeenCalled();
         expect(event.defaultPrevented).toBe(false);

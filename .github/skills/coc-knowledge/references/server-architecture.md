@@ -131,8 +131,88 @@ Sentinel request, including existing/native-resumed, provider-switched and post-
 turns; it never depends on stored initial prompts, summaries or child output. Non-Sentinel
 review recipients receive the same contract inline. Cancellation remains display-only.
 
-`delegation/delegated-job-store.ts` retains produced-PR receipts in the existing
-owner-workspace `delegated-jobs.json`. `recordPullRequest` requires a registered job
+`delegation/delegated-job-store.ts` owns `delegated-jobs.json` in the parent workspace.
+Optional `remote` registration metadata binds originating/destination server identities,
+request ID and launch/follow-up/Ralph kind. Follow-ups require the matching child request;
+Ralph requires a whole-session child. Reads and registration reject foreign origins and
+duplicate remote workspace/request or session identities independently of connection aliases.
+Historical rows retain their existing tracking semantics; transport admission owns proof
+of remote identity.
+
+### Remote delegation admission
+
+`delegation/remote-delegation-request-store.ts` provides origin-side admission
+reservations in `repos/<parentWorkspaceId>/remote-delegation-requests.json`.
+It captures the parent, destination identity and connection hint, request kind,
+exact follow-up target, request digest, connector origin and private random proof
+token before a child exists. Atomic publication requests file mode `0600`.
+A durable dispatch claim permits one execution attempt; claimed or uncertain requests
+require receipt reconciliation. Verified acceptance persists before idempotent
+delegated-job registration. Machine-local receipts are excluded from snapshots and
+cleared with delegated jobs.
+
+`delegation/remote-delegation-auth.ts` verifies origin reservations through an online
+registered reciprocal relationship. Health identity checks bracket the origin's
+`POST /api/remote-delegations/proof`; endpoint/registry changes, redirects, timeout,
+cancellation and mismatching bindings reject. Proof binds both servers/workspaces,
+parent, request, kind, follow-up target and execution digest. The private token travels
+only in the POST body; proof replies omit it, connector data and routing aliases.
+Reads are bounded and never authorize execution replay.
+
+`delegation/remote-delegation-routes.ts` exposes read-only proof after a durable dispatch
+claim, including uncertain/accepted recovery states; reserved, rejected and tokenless
+rows cannot prove origin. Recovery proof is independent of admission flags. Destination
+follow-up admission accepts a strict scalar message body through the authenticated gateway.
+`ProcessMessageDeliveryService.deliverRemoteFollowUpOnce` queues with the destination
+execution ID, preserves active provider/strict session resumption, and rechecks exact
+owner/visibility during queue routing. Sentinel/Ralph targets are excluded. No desktop
+mirror or caller-selected connector/correlation fields enter this path.
+
+`delegation/remote-delegation-launch.ts` admits ordinary Ask/Autopilot chats and native
+Ralph interviews/execution through the shared queue preparation and Ralph launch services.
+Strict bodies accept content/goal, AI selection and title/priority, excluding caller paths,
+parent/connector context and worktrees. Registered destination workspaces supply execution
+roots; queue pauses, provider/tier/Auto policy and `ralph.enabled` remain authoritative.
+The destination execution ID owns the task and deterministic whole-session Ralph identity.
+Workspace roots are rechecked after asynchronous policy resolution before queue admission.
+
+`delegation/remote-delegation-admission.ts` provides the destination gateway.
+It captures the exact versioned JSON execution envelope, hashes all keys
+canonically, checks kind/workspace/target/digest, then verifies the origin proof. The
+domain adapter receives that captured body and a destination-local execution ID.
+Intent capture caps bytes, depth and node count; domain authorization remains separate.
+
+`delegation/remote-delegation-admission-store.ts` persists destination-owned receipts in
+`repos/<destinationWorkspaceId>/remote-delegation-admissions.json` with requested mode
+`0600`. Keys qualify origin server, parent workspace and request; destination execution
+IDs remain independent of colliding origin IDs. Durable `dispatching` claims admit one
+adapter call. Duplicate/uncertain/crash-window claims only reconcile; accepted origin
+proofs cannot create missing destination claims. Immutable accepted children enforce
+exact follow-up targets and whole Ralph sessions. Authenticated receipt reads repair
+uncertain/dispatching acceptance from exact queue/process evidence for launches and
+queue/pending/user-turn evidence for follow-ups, without enqueueing. Conflicting owners,
+task kinds or Ralph sessions fail closed; prepared Ralph journals alone cannot prove admission.
+Wire receipts exclude standalone execution bookkeeping and private tokens. Snapshot/wipe
+policy matches origin reservations.
+
+`delegation/remote-delegation-results.ts` projects accepted destination claims into
+`DelegatedJobResults`, without local jobs or origin reviews. Launch/follow-up relay IDs
+identify exact turns; Ralph uses whole-session evidence, not grilling milestones.
+First bounded outcomes persist in admissions. Startup captures before queue activation;
+SQLite retains needed terminal tasks independently of capped history.
+
+`delegation/remote-delegation-return.ts` admits new Sentinel requests under default-off
+`features.sentinelRemoteResults` and compatible destination capabilities. Origin reservations
+precede execution. Authenticated receipt polling persists backoff and verifies both identities,
+request digest and bounded owner-qualified links. Recovery ignores the admission flag and
+never resends work. Transfer state is independent of parent review delivery and To-do assessment.
+Existing review/connector receipts return assessed replies; missing/archived owners fail
+without revival. Trusted review context survives buffering; drain and execution recheck
+the visible Sentinel owner. SQLite retains unacknowledged remote review tasks across restart.
+
+### Delegated PR receipts
+
+The ledger retains produced-PR receipts. `recordPullRequest` requires a registered job
 and records exact canonical provider/host/repository/number identity with an item ID
 and immutable receipt. Repeated submissions reuse that receipt; each distinct PR
 remains separate. `triggers/sentinel-pr-outcome-service.ts` verifies the original

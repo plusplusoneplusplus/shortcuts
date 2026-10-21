@@ -1020,9 +1020,10 @@ export function UnifiedRightPanel({
     // never use stale DOM focus or close a different active tab after a switch.
     useEffect(() => desktopBrowserBridge()?.onCloseRequested?.(({ viewId }) => {
         const root = panelRootRef.current;
-        if (!isOpen || !root || root.offsetParent === null
-            || active?.kind !== 'browser' || active.resourceId !== viewId) return;
-        requestClose(active.id);
+        const activeViewId = active?.kind === 'browser' ? active.resourceId
+            : active?.kind === 'html-page' ? `${HTML_PAGE_VIEW_PREFIX}${active.htmlPageId}` : null;
+        if (!isOpen || !root || root.offsetParent === null || activeViewId !== viewId) return;
+        if (active) requestClose(active.id);
     }), [isOpen, active, requestClose]);
 
     const requestBulkClose = useCallback((ids: readonly string[]) => {
