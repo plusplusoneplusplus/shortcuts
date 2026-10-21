@@ -496,6 +496,11 @@ references before editing. Paths are package-relative.
   committed origins label bounded snapshots/reads; delta baselines include
   document/frame identity. Frame refs and contexts remain transient, never
   process metadata, profile settings or new storage.
+  `browserControl.backgroundEnabled` is independently default-off and live.
+  The relay keeps per-socket background workspace sets only while it is on,
+  rejects only a dropped workspace's calls, and lets the owning socket pause a
+  call's 60s timer with `browser-command-waiting` while its Switch back notice
+  waits. Flag off keeps one foreground workspace per socket.
   `/browser` persists prompt-only `metadata.browserMode`; tool execution does
   not require activation. Ask, Autopilot and follow-ups share registration,
   preferences and turn cancellation; create the turn AbortController before

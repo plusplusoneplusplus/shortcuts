@@ -685,6 +685,16 @@ requires explicit `replaceClipboard: true`; supplied content remains on the
 clipboard, and old contents are never read or returned. Delivery acknowledgement
 does not establish editor persistence. Unknown outcomes must not auto-retry.
 
+Every browser action is limited to 60s across the desktop queue, view host and
+server relay; `wait` and text-wait deadlines use the same bound. Default-off
+`browserControl.backgroundEnabled` lets one desktop window keep serving each
+workspace that has an active control turn after the window switches workspace.
+Commands reach only that turn's retained owner/session-key scope and run on the
+hidden tab without focus or selection changes. Actions that need the screen
+(rich paste, Electron frame-session input) fail with `foreground-required:`; the SPA
+relay shows a Switch back notice, sends `browser-command-waiting` so the server
+pauses that call's 60s timer, and waits without timeout. See `spa/shell.md`.
+
 ### kusto_query
 
 Runs a KQL query server-side against Azure Data Explorer using the official
