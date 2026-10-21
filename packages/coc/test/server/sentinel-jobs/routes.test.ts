@@ -190,6 +190,35 @@ describe('Sentinel job REST routes', () => {
         await vi.waitFor(() => expect(signal!.aborted).toBe(true));
     });
 
+    it.each([
+        ['an edit', (id: string) => request('PATCH', `${base}/${id}`, { name: 'Renamed', expectedRevision: 1 })],
+        ['a delete', (id: string) => request('DELETE', `${base}/${id}`, { expectedRevision: 1 })],
+    ])('cancels a ticking gate on %s without counting a failure or starting a run', async (_label, write) => {
+        const { body: job } = await request('POST', base, { ...input, cron: '0 * * * *', gateScript: 'return 1;' });
+        let signal: AbortSignal | undefined;
+        let settle!: (value: unknown) => void;
+        runGate.mockImplementationOnce((gate: { signal: AbortSignal }) => new Promise((resolve, reject) => {
+            signal = gate.signal;
+            settle = resolve;
+            signal.addEventListener('abort', () => reject(signal!.reason));
+        }));
+        const tick = service.tick(owner, job.id);
+        await vi.waitFor(() => expect(signal).toBeDefined());
+        expect(signal!.aborted).toBe(false);
+        expect((await write(job.id)).status).toBeLessThan(300);
+        expect(signal!.aborted).toBe(true);
+        settle({ late: true });
+        expect(await tick).toBeUndefined();
+        expect(enqueue).not.toHaveBeenCalled();
+        const [stored] = jobStore.list(owner);
+        if (stored) {
+            expect(stored).toMatchObject({ gateConsecutiveFailures: 0, gatePaused: false });
+            expect(stored.gateLastResult).toBeUndefined();
+            expect(stored.gateLastError).toBeUndefined();
+            expect(jobStore.runs(owner, job.id)).toEqual([]);
+        }
+    });
+
     it('creates, lists, patches with revision checks, and deletes a job', async () => {
         expect((await request('GET')).body).toEqual({ jobs: [] });
         const created = await request('POST', base, input);
