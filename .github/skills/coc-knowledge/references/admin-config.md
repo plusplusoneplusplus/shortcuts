@@ -47,7 +47,7 @@ Queue execution never loads a config file itself. `packages/coc/src/server/queue
 | `getDefaultTimeoutMs()` | `timeout` (seconds → ms) | execution start, when a task has no `config.timeoutMs` |
 | `getDefaultIdleTimeoutMs()` | `idleTimeout` (seconds → ms) | execution start; unset falls back to `DEFAULT_AI_IDLE_TIMEOUT_MS` (1 h) |
 | `getFollowUpSuggestions()` | `chat.followUpSuggestions` | chat-turn context build |
-| `getSentinelNextStepsEnabled()` | `features.sentinelNextSteps` (default off) | Sentinel chat-turn context build |
+| `getSentinelNextStepsEnabled()` | `features.sentinelNextSteps` (default on; absent = on, explicit `false` = off) | Sentinel chat-turn context build |
 | `getAskUser()` | `chat.askUser` | chat-turn context build |
 | `getSkillFolders()` | `skills.globalExtraFolders`, `skills.autoDetectDefaultFolders` | each `resolveSkillConfig` call |
 | `getRalphFinalCheckPolicy()` | `ralph.finalCheck.maxGapFixLoops` | when a final check is scheduled |

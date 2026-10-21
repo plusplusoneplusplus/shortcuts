@@ -630,18 +630,18 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.sentinelNextSteps', default: false, runtime: 'live', runtimeFlag: 'sentinelNextStepsEnabled',
+        key: 'features.sentinelNextSteps', default: true, runtime: 'live', runtimeFlag: 'sentinelNextStepsEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelMode', order: 32.1, label: 'Sentinel next steps', badge: 'experimental',
-            hint: 'Optional next actions with click-to-send in Sentinel chats. Disabled by default.',
+            hint: 'Optional next actions with click-to-send in Sentinel chats. Enabled by default.',
             testId: 'toggle-sentinel-next-steps',
         },
     }),
     bool({
-        key: 'features.sentinelAdditionalInstructions', default: false, runtime: 'live', runtimeFlag: 'sentinelAdditionalInstructionsEnabled',
+        key: 'features.sentinelAdditionalInstructions', default: true, runtime: 'live', runtimeFlag: 'sentinelAdditionalInstructionsEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelMode', order: 32.2, label: 'Sentinel additional instructions', badge: 'experimental',
-            hint: 'Edit per-chat additional instructions from a Sentinel chat\'s information menu. Saved text is added when context is first built or after the next compaction; built-in Sentinel rules are unchanged. Disabled by default.',
+            hint: 'Edit per-chat additional instructions from a Sentinel chat\'s information menu. Saved text is added when context is first built or after the next compaction; built-in Sentinel rules are unchanged. Enabled by default.',
             testId: 'toggle-sentinel-additional-instructions-enabled',
         },
     }),
@@ -863,10 +863,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.queryPullRequestTool', default: false, runtime: 'live', runtimeFlag: 'queryPullRequestToolEnabled',
+        key: 'features.queryPullRequestTool', default: true, runtime: 'live', runtimeFlag: 'queryPullRequestToolEnabled',
         ui: {
             group: 'review', order: 64.6, label: 'Query pull request tool', badge: 'experimental',
-            hint: 'Chat AI can call `query_pull_request` to read GitHub or Azure DevOps pull requests (list with filters, or get by ID) for a repository it names, using this server\'s credentials. Read-only. Disabled by default.',
+            hint: 'Chat AI can call `query_pull_request` to read GitHub or Azure DevOps pull requests (list with filters, or get by ID) for a repository it names, using this server\'s credentials. Read-only. Enabled by default.',
             testId: 'toggle-query-pull-request-tool-enabled',
         },
     }),

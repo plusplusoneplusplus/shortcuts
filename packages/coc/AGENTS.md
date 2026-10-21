@@ -720,8 +720,9 @@ references before editing. Paths are package-relative.
 
 ## Chat and Provider Safety
 
-- Default-off `features.sentinelNextSteps` gates optional 1–3 Sentinel actions and
-  click-to-send. Resolve the UI gate from the conversation owner. Keep clicks on
+- Default-on `features.sentinelNextSteps` gates optional 1–3 Sentinel actions and
+  click-to-send; only an explicit `false` disables it. Resolve the UI gate from the
+  conversation owner; a remote owner must advertise the flag. Keep clicks on
   the normal guarded follow-up path; suggestion display grants no authority and
   clicks request only the named scope. Ordinary modes retain their suggestion behavior.
 
@@ -869,7 +870,7 @@ references before editing. Paths are package-relative.
   `delegation/sentinel-job-review-instructions.ts` and are appended by
   `chat-turn-system-message.ts` on every first/follow-up Sentinel request, including
   resumed, provider-switched and post-compaction sessions, independently of admin/repo
-  prompts. Saved per-chat additional instructions (default-off
+  prompts. Saved per-chat additional instructions (default-on
   `features.sentinelAdditionalInstructions`) ride only the turns that carry the Sentinel
   mode directive, read fresh there, never the system message or the stored marker.
   Sentinel completion messages contain only the untrusted-result prefix and

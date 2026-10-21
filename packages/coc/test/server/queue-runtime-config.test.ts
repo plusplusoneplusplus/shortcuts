@@ -340,25 +340,43 @@ describe('createFixedQueueRuntimeConfig', () => {
 
 
 describe('Sentinel next steps queue gate', () => {
-    it('defaults off and reads only the supplied live snapshot', () => {
-        expect(DEFAULT_QUEUE_RUNTIME_CONFIG.getSentinelNextStepsEnabled()).toBe(false);
+    it('defaults on and reads only the supplied live snapshot', () => {
+        expect(DEFAULT_QUEUE_RUNTIME_CONFIG.getSentinelNextStepsEnabled()).toBe(true);
         const source = { config: { ...DEFAULT_CONFIG, features: { ...DEFAULT_CONFIG.features } } };
         const port = createQueueRuntimeConfig(source);
-        expect(port.getSentinelNextStepsEnabled()).toBe(false);
-        source.config.features.sentinelNextSteps = true;
         expect(port.getSentinelNextStepsEnabled()).toBe(true);
-        expect(createFixedQueueRuntimeConfig({ config: source.config }).getSentinelNextStepsEnabled()).toBe(true);
+        source.config.features.sentinelNextSteps = false;
+        expect(port.getSentinelNextStepsEnabled()).toBe(false);
+        expect(createFixedQueueRuntimeConfig({ config: source.config }).getSentinelNextStepsEnabled()).toBe(false);
+    });
+
+    it('treats an absent value as on and keeps an explicit false off', () => {
+        const absent = { ...DEFAULT_CONFIG, features: { ...DEFAULT_CONFIG.features, sentinelNextSteps: undefined } } as unknown as typeof DEFAULT_CONFIG;
+        expect(createQueueRuntimeConfig({ config: absent }).getSentinelNextStepsEnabled()).toBe(true);
+        expect(createFixedQueueRuntimeConfig({ config: absent }).getSentinelNextStepsEnabled()).toBe(true);
+        expect(createFixedQueueRuntimeConfig({ config: { features: {} } as unknown as typeof DEFAULT_CONFIG }).getSentinelNextStepsEnabled()).toBe(true);
+        const off = { ...DEFAULT_CONFIG, features: { ...DEFAULT_CONFIG.features, sentinelNextSteps: false } };
+        expect(createFixedQueueRuntimeConfig({ config: off }).getSentinelNextStepsEnabled()).toBe(false);
     });
 });
 
 describe('Sentinel additional instructions queue gate', () => {
-    it('defaults off and reads only the supplied live snapshot', () => {
-        expect(DEFAULT_QUEUE_RUNTIME_CONFIG.getSentinelAdditionalInstructionsEnabled()).toBe(false);
+    it('defaults on and reads only the supplied live snapshot', () => {
+        expect(DEFAULT_QUEUE_RUNTIME_CONFIG.getSentinelAdditionalInstructionsEnabled()).toBe(true);
         const source = { config: { ...DEFAULT_CONFIG, features: { ...DEFAULT_CONFIG.features } } };
         const port = createQueueRuntimeConfig(source);
-        expect(port.getSentinelAdditionalInstructionsEnabled()).toBe(false);
-        source.config.features.sentinelAdditionalInstructions = true;
         expect(port.getSentinelAdditionalInstructionsEnabled()).toBe(true);
-        expect(createFixedQueueRuntimeConfig({ config: source.config }).getSentinelAdditionalInstructionsEnabled()).toBe(true);
+        source.config.features.sentinelAdditionalInstructions = false;
+        expect(port.getSentinelAdditionalInstructionsEnabled()).toBe(false);
+        expect(createFixedQueueRuntimeConfig({ config: source.config }).getSentinelAdditionalInstructionsEnabled()).toBe(false);
+    });
+
+    it('treats an absent value as on and keeps an explicit false off', () => {
+        const absent = { ...DEFAULT_CONFIG, features: { ...DEFAULT_CONFIG.features, sentinelAdditionalInstructions: undefined } } as unknown as typeof DEFAULT_CONFIG;
+        expect(createQueueRuntimeConfig({ config: absent }).getSentinelAdditionalInstructionsEnabled()).toBe(true);
+        expect(createFixedQueueRuntimeConfig({ config: absent }).getSentinelAdditionalInstructionsEnabled()).toBe(true);
+        expect(createFixedQueueRuntimeConfig({ config: { features: {} } as unknown as typeof DEFAULT_CONFIG }).getSentinelAdditionalInstructionsEnabled()).toBe(true);
+        const off = { ...DEFAULT_CONFIG, features: { ...DEFAULT_CONFIG.features, sentinelAdditionalInstructions: false } };
+        expect(createFixedQueueRuntimeConfig({ config: off }).getSentinelAdditionalInstructionsEnabled()).toBe(false);
     });
 });

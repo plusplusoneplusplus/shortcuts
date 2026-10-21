@@ -438,20 +438,36 @@ describe('Features card UI metadata', () => {
         expect(config.features.sentinelTodoScrubber).toBe(false);
     });
 
-    it('exposes Sentinel additional instructions as a live, experimental opt-in', () => {
+    it('exposes Sentinel additional instructions as a live, experimental default-on toggle', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.sentinelAdditionalInstructions')!;
-        expect(def.default).toBe(false);
+        expect(def.default).toBe(true);
+        expect(def.ui?.hint).toContain('Enabled by default');
         expect(def.runtime).toBe('live');
         expect(def.runtimeFlag).toBe('sentinelAdditionalInstructionsEnabled');
         expect(def.ui).toMatchObject({
             tab: 'sentinel', group: 'sentinelMode', badge: 'experimental',
             testId: 'toggle-sentinel-additional-instructions-enabled',
         });
-        expect(buildRuntimeFeatureFlags({}).sentinelAdditionalInstructionsEnabled).toBe(false);
-        expect(DEFAULT_CONFIG.features.sentinelAdditionalInstructions).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).sentinelAdditionalInstructionsEnabled).toBe(true);
+        expect(DEFAULT_CONFIG.features.sentinelAdditionalInstructions).toBe(true);
         expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
-            features: { sentinelAdditionalInstructions: true },
-        })).sentinelAdditionalInstructionsEnabled).toBe(true);
+            features: { sentinelAdditionalInstructions: false },
+        })).sentinelAdditionalInstructionsEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({ features: { sentinelAdditionalInstructions: false } }).sentinelAdditionalInstructionsEnabled).toBe(false);
+    });
+
+    it('exposes Sentinel next steps as a live, experimental default-on toggle', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.sentinelNextSteps')!;
+        expect(def.default).toBe(true);
+        expect(def.ui?.hint).toContain('Enabled by default');
+        expect(def.runtime).toBe('live');
+        expect(def.runtimeFlag).toBe('sentinelNextStepsEnabled');
+        expect(DEFAULT_CONFIG.features.sentinelNextSteps).toBe(true);
+        expect(buildRuntimeFeatureFlags({}).sentinelNextStepsEnabled).toBe(true);
+        expect(buildRuntimeFeatureFlags({ features: { sentinelNextSteps: false } }).sentinelNextStepsEnabled).toBe(false);
+        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
+            features: { sentinelNextSteps: false },
+        })).sentinelNextStepsEnabled).toBe(false);
     });
 
     it('exposes tool scripting as a live, default-on toggle', () => {
@@ -470,18 +486,19 @@ describe('Features card UI metadata', () => {
         })).toolScriptingEnabled).toBe(true);
     });
 
-    it('exposes the query pull request tool as a live, default-off toggle', () => {
+    it('exposes the query pull request tool as a live, default-on toggle', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.queryPullRequestTool')!;
-        expect(def.default).toBe(false);
+        expect(def.default).toBe(true);
         expect(def.runtime).toBe('live');
         expect(def.runtimeFlag).toBe('queryPullRequestToolEnabled');
         expect(def.ui).toMatchObject({ group: 'review', badge: 'experimental', testId: 'toggle-query-pull-request-tool-enabled' });
-        expect(def.ui?.hint).toContain('Disabled by default');
-        expect(DEFAULT_CONFIG.features.queryPullRequestTool).toBe(false);
-        expect(buildRuntimeFeatures(DEFAULT_CONFIG).queryPullRequestToolEnabled).toBe(false);
+        expect(def.ui?.hint).toContain('Enabled by default');
+        expect(DEFAULT_CONFIG.features.queryPullRequestTool).toBe(true);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).queryPullRequestToolEnabled).toBe(true);
+        expect(buildRuntimeFeatureFlags({}).queryPullRequestToolEnabled).toBe(true);
         expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
-            features: { queryPullRequestTool: true },
-        })).queryPullRequestToolEnabled).toBe(true);
+            features: { queryPullRequestTool: false },
+        })).queryPullRequestToolEnabled).toBe(false);
     });
 
     it('exposes Teams message reaction as an independent live, default-off toggle', () => {
@@ -953,7 +970,7 @@ describe('feature toggle settings-tab placement', () => {
         expect(uiDefs.filter(d => getFeatureSettingTab(d) === 'sentinel').map(d => d.key).sort()).toEqual(sentinelKeys);
         const runtime = buildRuntimeFeatureFlags({});
         for (const def of sentinelDefs) {
-            const expectedDefault = def.key === 'features.sentinelResultCards';
+            const expectedDefault = ['features.sentinelResultCards', 'features.sentinelNextSteps', 'features.sentinelAdditionalInstructions'].includes(def.key);
             expect(def.default, def.key).toBe(expectedDefault);
             expect(readAdminSettingValue(def, {}), def.key).toBe(expectedDefault);
             expect(def.runtime, def.key).toBe('live');

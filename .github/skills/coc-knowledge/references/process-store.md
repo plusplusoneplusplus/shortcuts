@@ -536,7 +536,7 @@ compactions settle as failed without replay.
 ### Sentinel additional instructions
 
 `processes/sentinel-additional-instructions.ts` owns `metadata.additionalInstructions`
-(`{ text, updatedAt }`, missing = empty) behind live default-off
+(`{ text, updatedAt }`, missing = empty) behind live default-on
 `features.sentinelAdditionalInstructions` (`QueueRuntimeConfig.getSentinelAdditionalInstructionsEnabled`).
 Only its REST route writes it; forks drop it, and it never propagates to delegated or child chats.
 The saved text rides the outgoing user turn as one `<coc-sentinel-additional-instructions>`

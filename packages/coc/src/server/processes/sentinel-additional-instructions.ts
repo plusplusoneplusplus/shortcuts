@@ -1,7 +1,7 @@
 /**
  * Sentinel additional instructions: user-authored plain text saved per
  * Sentinel conversation at `metadata.additionalInstructions`, gated by the
- * default-off `features.sentinelAdditionalInstructions` flag.
+ * default-on `features.sentinelAdditionalInstructions` flag.
  *
  * Saving only persists the text. It never interrupts or restarts work; the
  * executor reads the saved value when Sentinel context is next built. The

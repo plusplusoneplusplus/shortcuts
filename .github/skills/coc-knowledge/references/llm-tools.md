@@ -74,7 +74,8 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 
 ### query_pull_request
 
-`features.queryPullRequestTool` gates the read-only, repository-bound query/get
+Live default-on `features.queryPullRequestTool` (an explicit `false` disables it)
+gates the read-only, repository-bound query/get
 service. The published `ids` schema accepts a positive integer or a non-empty
 array of up to 20 positive integers; omitting it selects query mode.
 Cursor parsing bounds offsets to the fixed 100-candidate page and accepts only
@@ -98,7 +99,7 @@ late in-flight completions cannot dispatch further provider requests.
 
 ### suggest_follow_ups
 
-Default-off live `features.sentinelNextSteps` selects optional 1–3 distinct actions,
+Default-on live `features.sentinelNextSteps` (explicit `false` disables) selects optional 1–3 distinct actions,
 best first, for Sentinel first turns and follow-ups. `getSentinelNextStepsEnabled()`
 reads the queue's authoritative config; tool preferences still gate availability.
 `buildFollowUpSuggestionsAddon` adds the compact `<sentinel_next_steps>` guidance only

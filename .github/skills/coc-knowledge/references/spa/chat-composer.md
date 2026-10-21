@@ -93,7 +93,7 @@ per workspace; New Chat submits them like any other mode.
 ### Follow-up suggestions
 
 `FollowUpInputArea` reuses `SuggestionChips`; ordinary clicks fill the composer and
-Ctrl/Meta clicks send. With default-off `features.sentinelNextSteps`, Sentinel clicks
+Ctrl/Meta clicks send. With default-on `features.sentinelNextSteps`, Sentinel clicks
 send the named action through the same `onSend` / `useSendMessage` owner-qualified
 flow, including draft, attachment and pending-context guards. A synchronous guard
 prevents duplicate activation while submitting. Native buttons share mouse and keyboard

@@ -72,7 +72,7 @@ const { mockState } = vi.hoisted(() => ({
         // tests keep the pre-experiment toolbar.
         chatStyleSelectorEnabled: false,
         chatHistoryPagingEnabled: false,
-        sentinelAdditionalInstructionsEnabled: false,
+        sentinelAdditionalInstructionsEnabled: false as boolean | undefined,
         realMinimap: false,
         sseOptions: undefined as any,
     },
@@ -83,9 +83,8 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isSchedulerDelayHintEnabled: () => false,
     isMarkdownPanelPreviewEnabled: () => false,
     isPanelSourceSplitEnabled: () => false,
-    isFeatureEnabled: (name: string) => (name === 'chatHistoryPagingEnabled' && mockState.chatHistoryPagingEnabled)
-        || (name === 'sentinelAdditionalInstructionsEnabled' && mockState.sentinelAdditionalInstructionsEnabled),
-    getFeatureValue: () => undefined,
+    isFeatureEnabled: (name: string) => name === 'chatHistoryPagingEnabled' && mockState.chatHistoryPagingEnabled,
+    getFeatureValue: (name: string) => name === 'sentinelAdditionalInstructionsEnabled' ? mockState.sentinelAdditionalInstructionsEnabled : undefined,
     isComposerWordHintEnabled: () => false,
     isContainerMode: () => false,
     getApiBase: () => '/api',
@@ -3620,6 +3619,14 @@ describe('ChatDetail — Sentinel additional instructions target', () => {
         render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-owner" hideHeader onHeaderMetadataChange={publish} /></Wrap>);
         await waitFor(() => expect(publish.mock.calls.at(-1)?.[0]?.toolInventoryTarget).toBeDefined());
         expect(lastTarget(publish)).toBeUndefined();
+    });
+
+    it('offers the editor target when the runtime flag is absent (default on)', async () => {
+        mockState.sentinelAdditionalInstructionsEnabled = undefined;
+        const publish = vi.fn();
+        setupStandardFetch(makeTask(), makeProcess({ metadata: { workspaceId: 'ws-owner', mode: 'sentinel' } }));
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-owner" hideHeader onHeaderMetadataChange={publish} /></Wrap>);
+        await waitFor(() => expect(lastTarget(publish)).toMatchObject({ workspaceId: 'ws-owner', processId: 'proc-1' }));
     });
 
     it('routes a group member Sentinel chat to its scoped owner without reading while closed', async () => {
