@@ -1,3 +1,4 @@
+import { SENTINEL_COMPLETION_GUIDANCE } from '../../../src/server/delegation/sentinel-job-review-instructions';
 import * as fs from 'node:fs';
 import { EventEmitter } from 'node:events';
 import * as path from 'node:path';
@@ -145,6 +146,9 @@ describe('ScrubberRunService.start', () => {
             encodeURIComponent(owner.processId), run.id, 'snapshot.json'));
         expect(task.payload.prompt).toContain(snapshotPath);
         expect(task.payload.prompt).toContain(SUBMIT_SCRUB_FINDINGS_TOOL_NAME);
+        expect(task.payload.prompt).toContain(SENTINEL_COMPLETION_GUIDANCE);
+        expect(task.payload.prompt).toContain('If closure is uncertain, report `unchanged` with the gap for the parent to ask the user; never auto-apply.');
+        expect(task.payload.prompt).toContain('and its completion condition met');
         const snapshot = JSON.parse(fs.readFileSync(snapshotPath, 'utf-8'));
         expect(snapshot.items.map((entry: { id: string }) => entry.id)).toEqual([a.id]);
         expect(onChange).toHaveBeenCalledWith(owner, { runId: run.id });

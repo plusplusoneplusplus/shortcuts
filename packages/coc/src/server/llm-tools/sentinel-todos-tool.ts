@@ -26,15 +26,15 @@ import type { Trigger } from '../triggers/trigger-types';
 import { DEFAULT_SCRIPT_CONDITION_INTERVAL_MS, MIN_SCRIPT_CONDITION_INTERVAL_MS } from '../triggers/trigger-types';
 import type { SentinelTodoDependencyEvaluation, SentinelTodoPrProvenance, SentinelTodoTag, SentinelTodoTagLibrary, SentinelTodoExternalReference, SentinelTodoTriggerEventInput } from '@plusplusoneplusplus/coc-client';
 import { SENTINEL_TODO_RECENT_LIMIT } from '@plusplusoneplusplus/coc-client';
-import { SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
+import { SENTINEL_COMPLETION_GUIDANCE, SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
 import { sentinelTodoRecentList } from '../sentinel-todos/sentinel-todo-list';
 
 export const SENTINEL_TODOS_TOOL_NAME = 'sentinel_todos';
 export const SENTINEL_PR_OUTCOME_REVIEW_GUIDANCE =
-    'PR outcome review only: list the current ledger and record an evidence-backed done or needs_attention verdict ' +
+    'PR outcome review only: list the current ledger and, when supported, record an evidence-backed done or needs_attention verdict ' +
     'using update with the current expectedRevision, reason and optional outcome/reviewedJobs. Respect the ENTIRE ' +
     'completionCondition and latest user verdict. Skip manual, Done or archived items. Never create items, rewrite ' +
-    'completion conditions, arm triggers, delegate, retry, implement or deploy work.';
+    'completion conditions, arm triggers, delegate, retry, implement or deploy work. ' + SENTINEL_COMPLETION_GUIDANCE;
 
 export const MANUAL_TRACKING_GUIDANCE =
     'Manual items (`type: manual`) are tracking only: never execute or delegate them, link jobs, or automatically ' +
@@ -132,7 +132,7 @@ const DESCRIPTION =
     '`update` needs `itemId` and the item\'s current `revision` as `expectedRevision`; a `conflict` ' +
     'error returns the newer `current` item — re-read it and only reapply your change if it still makes sense. ' +
     'Setting `status` to `done` or `needs_attention` requires a short `reason`; `done` records that reason as the ' +
-    'reviewed outcome unless you pass `outcome`. Only mark `done` after checking evidence against the completion ' +
+    'reviewed outcome unless you pass `outcome`. ' + SENTINEL_COMPLETION_GUIDANCE + ' Check evidence against the completion ' +
     'condition. ' + SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE + ' Choose status from the overall outcome, not linked job completion: successful intermediate phases are ' +
     'neither `done` nor failures. Use `todo` for pending next steps/approval, `in_progress` for continuing authorized ' +
     'work, and `needs_attention` for failed, cancelled, blocked, or incomplete final work. After successful grilling, ' +

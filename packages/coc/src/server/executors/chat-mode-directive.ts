@@ -46,7 +46,7 @@ import {
     TaskDefs,
 } from '../tasks/task-types';
 import { tagBlock } from './prompt-tags';
-import { SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
+import { SENTINEL_COMPLETION_GUIDANCE, SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
 
 /** Tag wrapping the per-turn mode directive on the user message. */
 export const CHAT_MODE_DIRECTIVE_TAG = 'coc-chat-mode';
@@ -114,8 +114,8 @@ export const SENTINEL_DISPATCHER_DIRECTIVE = tagBlock(SENTINEL_DISPATCHER_TAG, [
         'Separately explicit user requests for AI polling/cron remain supported via the `cron` skill, ' +
         'with owning workspace/PR, authorized checks/fixes and a merged/closed stop condition; polling grants no repair authority.',
     '- After a hand-off, reply with one short line saying what was handed off and where (repo + title).',
-    '- For coding tasks, keep one To-do through planning, POCs and implementation. Mark Done only when the implemented ' +
-        'outcome meets its completion condition. ' + SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE + ' ' +
+    '- For coding tasks, keep one To-do through planning, POCs and implementation; check the final completion condition. ' +
+        SENTINEL_COMPLETION_GUIDANCE + ' ' + SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE + ' ' +
         'Awaiting approval stays To do; authorized work stays In progress. Never auto-archive. ' +
         'Do not launch implementation without user authorization.',
     '- ' + SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE,
