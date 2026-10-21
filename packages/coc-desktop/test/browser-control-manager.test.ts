@@ -268,6 +268,53 @@ describe('main browser control scope and selection', () => {
         await h.manager.dispose();
     });
 
+    it('keeps serving a retained background scope after the window selects another workspace, isolated per routing ref', async () => {
+        const h = harness();
+        const exec = (workspaceId: string, command: BrowserCommand, routingRef?: string, selectedTab?: string) =>
+            h.manager.executeControl(1, { id: 'r', workspaceId, processId: 'p', command, selectedTab }, undefined, routingRef);
+        const opened = await h.run({ action: 'open', url: 'https://fixture.test/' });
+        await h.manager.open(1, 'b-tab', 'https://b.test/', 'b');
+        h.manager.bindControlScope(4, 'w', 'remote:server:w');
+        await h.manager.open(4, 'remote', 'https://remote.test/', 'remote:server:w');
+        h.manager.retainControlScope(1, 'w', 'w');
+        h.manager.bindControlScope(1, 'b', 'b');
+        h.send.mockClear();
+        expect(h.manager.controlSessionKey(1, 'w', 'w')).toBe('w');
+        expect(h.manager.controlSessionKey(1, 'b')).toBe('b');
+        // Foreground-only routing (no ref) no longer reaches the background workspace.
+        await expect(exec('w', { action: 'tabs' })).rejects.toThrow('scope changed');
+        expect((await exec('w', { action: 'tabs' }, 'w')).tabs?.map(tab => tab.id)).toEqual([opened.tab]);
+        expect((await exec('b', { action: 'tabs' })).tabs?.map(tab => tab.id)).toEqual(['t1:b-tab']);
+        await expect(exec('w', { action: 'read' }, 'w', opened.tab)).resolves.toMatchObject({ text: '# Fixture\n\nContent' });
+        expect(h.send).toHaveBeenCalledWith(1, BROWSER_CONTROL_REVEAL_CHANNEL, expect.objectContaining({ workspaceId: 'w', routingRef: 'w', background: true }));
+        // Never another workspace's or another clone's tabs, even with a retained ref.
+        await expect(exec('w', { action: 'select', tab: 't1:b-tab' }, 'w')).rejects.toThrow('not found');
+        await expect(exec('w', { action: 'select', tab: 't4:remote' }, 'w')).rejects.toThrow('not found');
+        await expect(exec('b', { action: 'tabs' }, 'w')).rejects.toThrow('scope changed');
+        await expect(exec('w', { action: 'tabs' }, 'remote:server:w')).rejects.toThrow('scope changed');
+        // Foreground reveals stay unflagged.
+        h.send.mockClear();
+        await exec('b', { action: 'select', tab: 't1:b-tab' });
+        expect(h.send).toHaveBeenCalledWith(1, BROWSER_CONTROL_REVEAL_CHANNEL, expect.not.objectContaining({ background: true }));
+        h.manager.retainControlScope(1, 'w', null);
+        await expect(exec('w', { action: 'tabs' }, 'w')).rejects.toThrow('scope changed');
+        h.manager.retainControlScope(1, 'w', 'w');
+        h.manager.bindControlScope(1, null, null);
+        expect(h.manager.retainedSessionKeys(1).size).toBe(0);
+        await h.manager.dispose();
+    });
+
+    it('validates and bounds retained background scopes', async () => {
+        const h = harness();
+        expect(() => h.manager.retainControlScope(1, '', 'w')).toThrow(TypeError);
+        expect(() => h.manager.retainControlScope(1, 'w', 42)).toThrow(TypeError);
+        for (let i = 0; i < 64; i++) h.manager.retainControlScope(1, `ws-${i}`, `ws-${i}`);
+        expect(() => h.manager.retainControlScope(1, 'ws-64', 'ws-64')).toThrow('Too many');
+        h.manager.retainControlScope(1, 'ws-0', 'ws-0');
+        expect(h.manager.retainedSessionKeys(1).size).toBe(64);
+        await h.manager.dispose();
+    });
+
     it('serializes navigation, snapshots and raw eval in one retained control queue', async () => {
         const h = harness();
         const first = await h.run({ action: 'open', url: 'https://fixture.test/' });

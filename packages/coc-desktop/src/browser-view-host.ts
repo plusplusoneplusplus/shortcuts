@@ -9,7 +9,7 @@ import { ElectronFilePreviewHost } from './file-preview-host';
 import { installBrowserWebviewGuard, isBrowserEmbedder, registerBrowserEmbedder as registerEmbedder } from './browser-webview-guard';
 import { WebView2BrowserHost } from './webview2-browser-host';
 import { toHtmlPageViewBounds } from './html-page-policy';
-import { BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL, validateBrowserCommandRequest } from './browser-control-command';
+import { BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_RETAIN_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL, validateBrowserCommandRequest } from './browser-control-command';
 import {
     BROWSER_ADDRESS_MENU_CHANNEL,
     BROWSER_CLICKONCE_SET_CHANNEL,
@@ -28,12 +28,19 @@ import {
 let manager: BrowserHostManager | undefined;
 let historyMaintenance: ReturnType<typeof setInterval> | undefined;
 const owners = new Map<number, BrowserWindow>();
-const controlRequests = new Map<number, Map<string, AbortController>>();
+const controlRequests = new Map<number, Map<string, { controller: AbortController; sessionKey: string }>>();
 
 function cancelControl(ownerId: number, includeOwned = true): void {
     manager?.finishControl(ownerId, undefined, includeOwned);
-    for (const controller of controlRequests.get(ownerId)?.values() ?? []) controller.abort(new Error('CoC desktop window closed or workspace changed during browser command'));
+    for (const { controller } of controlRequests.get(ownerId)?.values() ?? []) controller.abort(new Error('CoC desktop window closed or workspace changed during browser command'));
     controlRequests.delete(ownerId);
+}
+
+/** Abort a window's requests whose owner session is not kept by `keep`. */
+function cancelScopedControl(ownerId: number, keep: (sessionKey: string) => boolean): void {
+    for (const { controller, sessionKey } of controlRequests.get(ownerId)?.values() ?? []) {
+        if (!keep(sessionKey)) controller.abort(new Error('CoC desktop window closed or workspace changed during browser command'));
+    }
 }
 
 export function registerBrowserEmbedder(window: BrowserWindow, url: string): void {
@@ -114,7 +121,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         send: (id, channel, payload) => {
             const window = owners.get(id);
             if (!window || window.isDestroyed() || window.webContents.isDestroyed() || !isBrowserEmbedder(window.webContents)) { return; }
-            if (channel === BROWSER_CONTROL_REVEAL_CHANNEL) {
+            if (channel === BROWSER_CONTROL_REVEAL_CHANNEL && (payload as { background?: boolean }).background !== true) {
                 if (!isBrowserEmbedder(window.webContents)) return;
                 window.show();
                 window.focus();
@@ -164,29 +171,45 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     });
     ipcMain.handle(BROWSER_CONTROL_SCOPE_CHANNEL, (event, workspaceId: unknown, sessionKey: unknown) => {
         if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');
-        cancelControl(event.sender.id, false);
+        const retained = manager!.retainedSessionKeys(event.sender.id);
+        if (retained.size === 0) cancelControl(event.sender.id, false);
+        else {
+            // Retained background scopes keep their in-flight requests and activity across a workspace switch.
+            manager!.finishUnretainedControl(event.sender.id);
+            cancelScopedControl(event.sender.id, key => retained.has(key));
+        }
         manager!.bindControlScope(event.sender.id, workspaceId, sessionKey);
         return { ownerId: event.sender.id };
+    });
+    ipcMain.handle(BROWSER_CONTROL_RETAIN_CHANNEL, (event, sessionKey: unknown, workspaceId: unknown) => {
+        if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');
+        manager!.retainControlScope(event.sender.id, sessionKey, workspaceId);
+        if (workspaceId === null) {
+            const foreground = manager!.foregroundSessionKey(event.sender.id);
+            if (foreground !== sessionKey) cancelScopedControl(event.sender.id, key => key !== sessionKey);
+        }
     });
     ipcMain.handle(BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, (event, sessionKey: unknown) => {
         if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');
         return manager!.releaseFrames(event.sender.id, sessionKey);
     });
-    ipcMain.handle(BROWSER_CONTROL_COMMAND_CHANNEL, async (event, input: unknown) => {
+    ipcMain.handle(BROWSER_CONTROL_COMMAND_CHANNEL, async (event, input: unknown, routingRef?: unknown) => {
         if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');
         const request = validateBrowserCommandRequest(input);
+        if (routingRef !== undefined && (typeof routingRef !== 'string' || !routingRef || routingRef.length > 512)) throw new TypeError('Invalid browser routing reference');
+        const sessionKey = manager!.controlSessionKey(event.sender.id, request.workspaceId, routingRef);
         let requests = controlRequests.get(event.sender.id);
         if (!requests) { requests = new Map(); controlRequests.set(event.sender.id, requests); }
         if (requests.has(request.id)) throw new Error('Duplicate browser request');
         const controller = new AbortController();
-        requests.set(request.id, controller);
+        requests.set(request.id, { controller, sessionKey });
         const timeout = setTimeout(() => controller.abort(new Error('Browser command timed out after 60s')), 60_000);
         let aborted!: () => void;
         const cancellation = new Promise<never>((_resolve, reject) => {
             aborted = () => reject(controller.signal.reason);
             controller.signal.addEventListener('abort', aborted, { once: true });
         });
-        try { return await Promise.race([manager!.executeControl(event.sender.id, request, controller.signal), cancellation]); }
+        try { return await Promise.race([manager!.executeControl(event.sender.id, request, controller.signal, sessionKey), cancellation]); }
         finally {
             clearTimeout(timeout);
             controller.signal.removeEventListener('abort', aborted);
@@ -195,7 +218,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     });
     ipcMain.on(BROWSER_CONTROL_CANCEL_CHANNEL, (event, id: unknown) => {
         if (event.senderFrame !== event.sender.mainFrame || !isBrowserEmbedder(event.sender) || !ownWindow(event.sender) || typeof id !== 'string') return;
-        controlRequests.get(event.sender.id)?.get(id)?.abort(new Error('Browser command cancelled'));
+        controlRequests.get(event.sender.id)?.get(id)?.controller.abort(new Error('Browser command cancelled'));
     });
     ipcMain.on(BROWSER_CONTROL_FINISH_CHANNEL, (event, turnId: unknown, routingRef: unknown) => {
         if (!historyWindow(event) || (turnId !== undefined && (typeof turnId !== 'string' || !turnId || turnId.length > 512))) return;
