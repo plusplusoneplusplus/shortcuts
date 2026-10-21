@@ -166,6 +166,7 @@ describe('UpdateCoordinator', () => {
     it.each(['win32', 'linux'] as const)('uses the existing browser URL selection on %s', async platform => {
         const f = fixture();
         f.options.downloadOptions.platform = platform;
+        f.options.downloadOptions.arch = 'x64';
         vi.mocked(f.options.download!).mockRejectedValue('Failed');
         vi.mocked(f.options.promptError).mockResolvedValue(true);
         await f.coordinator.start(release);

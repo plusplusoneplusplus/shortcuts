@@ -1,12 +1,31 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const auditScript = fileURLToPath(new URL("./ci-npm-audit.sh", import.meta.url));
+
+for (const lockfile of ["../package-lock.json", "./skillopt/package-lock.json"]) {
+    test(`${lockfile} excludes vulnerable redirect and Vite releases, including nested copies`, () => {
+        const lock = JSON.parse(readFileSync(new URL(lockfile, import.meta.url), "utf8"));
+        for (const [path, pkg] of Object.entries(lock.packages)) {
+            if (/(^|\/)node_modules\/follow-redirects$/.test(path)) {
+                assert.notEqual(pkg.version, "1.16.0", `${path}: redirect credential disclosure`);
+            }
+            if (/(^|\/)node_modules\/vite$/.test(path)) {
+                const [major, minor, patch] = pkg.version.split(".").map(Number);
+                if (major === 8) {
+                    const vulnerable = minor === 0 || (minor === 1 && patch <= 5)
+                        || (minor === 2 && patch <= 3) || (minor === 3 && patch <= 2);
+                    assert.ok(!vulnerable, `${path}: launch-editor injection`);
+                }
+            }
+        }
+    });
+}
 
 // The gate only fires through `npm audit`, so every case here runs the real
 // script against a stub `npm` placed first on PATH.

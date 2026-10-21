@@ -71,7 +71,9 @@ session and its clones. Trusted transport injection is a test boundary, not a UR
 Graph is feature-gated and enabled by default. MCP and experimental IC3 always compile;
 IC3 requires an explicit region. All backend HTTP requests use the shared session request
 and transport boundary. IC3 notifications use a separate WebSocket connection and HTTP
-registration, not the chat-history stream.
+registration, not the chat-history stream. The WebSocket connector supplies
+patched bundled WebPKI roots directly to a verified rustls client with an
+explicit ring provider; it does not use the operating system trust store.
 
 ```mermaid
 flowchart LR
