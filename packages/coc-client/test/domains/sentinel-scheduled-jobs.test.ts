@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CocApiError, CocClient, CocNetworkError, SentinelTodosClient } from '../../src';
-import type { SentinelScheduledJob, SentinelScheduledJobInput, SentinelScheduledJobRun } from '../../src';
+import type { SentinelScheduledJob, SentinelScheduledJobGateTest, SentinelScheduledJobInput, SentinelScheduledJobRun } from '../../src';
 import { createMockAdapter } from './helpers';
 
 const ownerPath = '/workspaces/ws%20one/sentinel-todos/chat%23one/jobs';
@@ -172,6 +172,17 @@ describe('Sentinel scheduled jobs client', () => {
       path: ownerPath + '/job-one/runs/run-001/cancel',
       options: { method: 'POST' },
     });
+  });
+
+  it('tests a gate with optional cancellation and resumes it on the owner path', async () => {
+    const outcome: SentinelScheduledJobGateTest = { ok: true, result: '{"items":[1]}', empty: false };
+    const adapter = createMockAdapter(outcome);
+    const client = new SentinelTodosClient(adapter).jobs;
+    const signal = new AbortController().signal;
+    expect(await client.testGate('ws one', 'chat#one', 'job/one', { signal })).toEqual(outcome);
+    expect(adapter.calls[0]).toEqual({ path: ownerPath + '/job%2Fone/gate/test', options: { signal, method: 'POST' } });
+    await client.resumeGate('ws one', 'chat#one', 'job/one');
+    expect(adapter.calls[1]).toEqual({ path: ownerPath + '/job%2Fone/gate/resume', options: { method: 'POST' } });
   });
 
   it('encodes owner, job, and run IDs in path segments', async () => {

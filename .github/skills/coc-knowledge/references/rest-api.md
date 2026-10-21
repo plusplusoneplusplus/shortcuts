@@ -286,13 +286,16 @@ workspace and Sentinel process; mutation methods carry the rule revision.
 | DELETE | `/:jobId` | `delete`: `expectedRevision` |
 | POST | `/:jobId/runs` | `start`: manual run in the persistent job chat |
 | POST | `/:jobId/runs/:runId/cancel` | `cancel`: exact owner/job/run |
+| POST | `/:jobId/gate/test` | `testGate`: `{ ok, result?, empty?, error? }` from one gate evaluation with the saved state; no run, no saved state, works while paused; `409` while `features.toolScripting` is off; client disconnect cancels it |
+| POST | `/:jobId/gate/resume` | `resumeGate`: clears `gatePaused` and the failure count (no revision bump) |
 
 Editing instructions/config and deletion conflict while a run or Sentinel handback
 is pending. Schedule-only `enabled` updates remain available; paused schedules still
 permit Run now. Blank `cron`/`effort`/`effortTier`/`gateScript` clears the optional setting.
 A `gateScript` requires `cron`. Gate state fields (`gateLastResult`,
 `gateConsecutiveFailures`, `gateLastError`, `gatePaused`) are read-only and reset when
-the script changes. Run `skipReason` is `overlap`, `gate-empty` or `gate-unavailable`
+the script changes; only Resume gate writes them directly. Gate actions on an ungated
+job return `400 invalid`. Run `skipReason` is `overlap`, `gate-empty` or `gate-unavailable`
 (`features.toolScripting` off at the tick); Run now never runs the gate.
 A job stores either an explicit `model` (with optional `effort`) or an `effortTier`;
 a tier drops stored model/effort, and a model-only patch drops a stored tier. Each run

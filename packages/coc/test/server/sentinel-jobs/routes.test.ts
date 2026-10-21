@@ -33,6 +33,8 @@ let onConfigChange: ReturnType<typeof vi.fn>;
 let enqueue: ReturnType<typeof vi.fn>;
 let cancelTask: ReturnType<typeof vi.fn>;
 let jobProcesses: Map<string, AIProcess>;
+let gateEnabled: boolean;
+let runGate: ReturnType<typeof vi.fn>;
 
 async function request(method: string, route = base, body?: unknown) {
     const res = await fetch(url + route, {
@@ -59,6 +61,8 @@ beforeEach(async () => {
         } as unknown as ProcessStore,
     });
     enabled = true;
+    gateEnabled = true;
+    runGate = vi.fn(async () => ({ items: [1] }));
     jobProcesses = new Map();
     onConfigChange = vi.fn();
     enqueue = vi.fn(async (taskInput: CreateTaskInput) => taskInput.id!);
@@ -77,6 +81,8 @@ beforeEach(async () => {
             updateProcess: async () => {},
         } as unknown as ProcessStore,
         getEnabled: () => enabled,
+        getGateEnabled: () => gateEnabled,
+        runGate,
         enqueue,
         cancelTask,
         getTask: () => undefined,
@@ -132,6 +138,58 @@ describe('Sentinel job REST routes', () => {
         expect(cleared.body.cron).toBeUndefined();
         expect((await request('GET')).body.jobs).toHaveLength(1);
     });
+    it('tests a paused gate without starting a run or saving state, then resumes it', async () => {
+        const gateScript = 'return state;';
+        const { body: job } = await request('POST', base, { ...input, cron: '0 * * * *', gateScript });
+        jobStore.updateGate(owner, job.id, gateScript, () => ({
+            gateLastResult: '{"seen":1}', gateConsecutiveFailures: 5, gatePaused: true, gateLastError: { message: 'boom', at: 'x' } }));
+        const saved = jobStore.get(owner, job.id);
+        onConfigChange.mockClear();
+        expect(await request('POST', `${base}/${job.id}/gate/test`)).toEqual({ status: 200,
+            body: { ok: true, result: '{"items":[1]}', empty: false } });
+        expect(runGate).toHaveBeenCalledWith(expect.objectContaining({ ...owner, code: gateScript, state: { seen: 1 } }));
+        runGate.mockResolvedValueOnce(null).mockRejectedValueOnce(new Error('bad'));
+        expect((await request('POST', `${base}/${job.id}/gate/test`)).body).toEqual({ ok: true, result: 'null', empty: true });
+        expect((await request('POST', `${base}/${job.id}/gate/test`)).body).toEqual({ ok: false, error: 'bad' });
+        expect(jobStore.get(owner, job.id)).toEqual(saved);
+        expect(jobStore.runs(owner, job.id)).toEqual([]);
+        expect(enqueue).not.toHaveBeenCalled();
+
+        const resumed = await request('POST', `${base}/${job.id}/gate/resume`);
+        expect(resumed).toMatchObject({ status: 200, body: { id: job.id, gatePaused: false, gateConsecutiveFailures: 0,
+            gateLastResult: '{"seen":1}', revision: 1, runs: [] } });
+        expect(onConfigChange).not.toHaveBeenCalled();
+    });
+
+    it('rejects Test gate while tool scripting is off and gate actions on ungated or unknown jobs', async () => {
+        const gated = (await request('POST', base, { ...input, cron: '0 * * * *', gateScript: 'return 1;' })).body;
+        const plain = (await request('POST', base, input)).body;
+        gateEnabled = false;
+        expect(await request('POST', `${base}/${gated.id}/gate/test`)).toMatchObject({ status: 409, body: { code: 'conflict' } });
+        gateEnabled = true;
+        for (const action of ['test', 'resume']) {
+            expect(await request('POST', `${base}/${plain.id}/gate/${action}`)).toMatchObject({ status: 400, body: { code: 'invalid' } });
+            expect((await request('POST', `${base}/missing/gate/${action}`)).status).toBe(404);
+        }
+        expect(runGate).not.toHaveBeenCalled();
+    });
+
+    it('cancels a running Test gate when the client disconnects', async () => {
+        const { body: job } = await request('POST', base, { ...input, cron: '0 * * * *', gateScript: 'return 1;' });
+        let signal: AbortSignal | undefined;
+        runGate.mockImplementationOnce((gate: { signal: AbortSignal }) => new Promise((_resolve, reject) => {
+            signal = gate.signal;
+            signal.addEventListener('abort', () => reject(signal!.reason));
+        }));
+        const client = new AbortController();
+        const pending = fetch(`${url}${base}/${job.id}/gate/test`, { method: 'POST', signal: client.signal });
+        await vi.waitFor(() => expect(signal).toBeDefined());
+        expect(signal!.aborted).toBe(false);
+        client.abort();
+        await expect(pending).rejects.toThrow();
+        await vi.waitFor(() => expect(signal!.aborted).toBe(true));
+    });
+
     it('creates, lists, patches with revision checks, and deletes a job', async () => {
         expect((await request('GET')).body).toEqual({ jobs: [] });
         const created = await request('POST', base, input);
@@ -245,7 +303,8 @@ describe('Sentinel job REST routes', () => {
         for (const [method, route, body] of [
             ['GET', base, undefined], ['POST', base, input], ['PATCH', `${base}/${id}`, { expectedRevision: 1 }],
             ['DELETE', `${base}/${id}`, { expectedRevision: 1 }], ['POST', `${base}/${id}/runs`, undefined],
-            ['POST', `${base}/${id}/runs/x/cancel`, undefined],
+            ['POST', `${base}/${id}/runs/x/cancel`, undefined], ['POST', `${base}/${id}/gate/test`, undefined],
+            ['POST', `${base}/${id}/gate/resume`, undefined],
         ] as const) {
             expect((await request(method, route, body)).status).toBe(404);
         }

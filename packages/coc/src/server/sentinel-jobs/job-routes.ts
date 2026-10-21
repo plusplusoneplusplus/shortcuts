@@ -80,4 +80,12 @@ export function registerSentinelJobRoutes(opts: {
         sendJSON(res, 202, await commands.start(owner, decodeURIComponent(match[3]))));
     add('POST', '/([^/]+)/runs/([^/]+)/cancel', async (_req, res, owner, match) =>
         sendJSON(res, 200, await commands.cancel(owner, decodeURIComponent(match[3]), decodeURIComponent(match[4]))));
+    add('POST', '/([^/]+)/gate/test', async (_req, res, owner, match) => {
+        // A client that leaves before the result arrives cancels the gate run.
+        const controller = new AbortController();
+        res.once('close', () => controller.abort(new Error('The request was closed')));
+        sendJSON(res, 200, await commands.testGate(owner, decodeURIComponent(match[3]), controller.signal));
+    });
+    add('POST', '/([^/]+)/gate/resume', async (_req, res, owner, match) =>
+        sendJSON(res, 200, await commands.resumeGate(owner, decodeURIComponent(match[3]))));
 }

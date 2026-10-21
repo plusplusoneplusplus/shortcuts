@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { isQueueProcessId, toTaskId, toQueueProcessId, type CreateTaskInput, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
-import type { ReasoningEffort, SentinelScheduledJob } from '@plusplusoneplusplus/coc-client';
+import type { ReasoningEffort, SentinelScheduledJob, SentinelScheduledJobGateTest } from '@plusplusoneplusplus/coc-client';
 import { getRepoDataPath } from '../paths';
 import { nextCronTime } from '../schedule/cron-utils';
 import { readAutoCompact } from '../processes/auto-compact';
@@ -45,6 +45,8 @@ export class SentinelJobService {
     private readonly admissions = new Set<Promise<unknown>>();
     /** In-flight scheduled gates; aborting one cancels it without counting a failure. */
     private readonly gates = new Map<string, AbortController>();
+    /** In-flight Test gate runs; shutdown and the tool-scripting flag abort them. */
+    private readonly gateTests = new Set<AbortController>();
     private detach?: () => void;
 
     constructor(readonly deps: JobServiceDeps) {}
@@ -86,6 +88,19 @@ export class SentinelJobService {
         return this.track(this.tickRun(owner, jobId, scheduleCurrent));
     }
 
+    /** Test gate: one evaluation with the saved state. It starts no run, saves nothing and ignores a pause. */
+    async testGate(owner: SentinelTodoOwner, jobId: string, signal?: AbortSignal): Promise<SentinelScheduledJobGateTest> {
+        return this.track(this.runGateTest(owner, jobId, signal));
+    }
+
+    /** Clears a paused gate and its failure count so scheduled ticks run it again. */
+    async resumeGate(owner: SentinelTodoOwner, jobId: string): Promise<JobRecord> {
+        const job = await this.gatedJob(owner, jobId);
+        const resumed = this.deps.jobs.updateGate(owner, jobId, job.gateScript!, () => ({ gatePaused: false, gateConsecutiveFailures: 0 }))!;
+        this.changed(owner);
+        return resumed;
+    }
+
     /** Cancels a job's in-flight scheduled gate after an edit or delete. */
     cancelGate(owner: SentinelTodoOwner, jobId: string): void {
         this.gates.get(gateKey(owner, jobId))?.abort(new JobError('conflict', 'Job changed during its gate'));
@@ -106,11 +121,7 @@ export class SentinelJobService {
         this.gates.set(gateKey(owner, jobId), controller);
         let result: string;
         try {
-            if (!this.deps.runGate) throw new Error('Gate script runtime is unavailable');
-            result = canonicalizeJobGateResult(await this.deps.runGate({
-                workspaceId: owner.workspaceId, processId: owner.processId, code: script,
-                state: job.gateLastResult === undefined ? null : JSON.parse(job.gateLastResult), signal: controller.signal,
-            }));
+            result = await this.evaluateGate(owner, job, controller.signal);
         } catch (error) {
             if (await this.gateLive(owner, controller.signal, scheduleCurrent)) await this.gateFailed(owner, jobId, script, message(error));
             return undefined;
@@ -125,6 +136,37 @@ export class SentinelJobService {
         this.changed(owner);
         if (EMPTY_GATE_RESULTS.has(result)) return this.skip(owner, jobId, 'gate-empty');
         return this.startRun(owner, jobId, 'schedule', scheduleCurrent, result);
+    }
+
+    private async runGateTest(owner: SentinelTodoOwner, jobId: string, signal?: AbortSignal): Promise<SentinelScheduledJobGateTest> {
+        const job = await this.gatedJob(owner, jobId);
+        if (!this.gateEnabled()) throw new JobError('conflict', 'Gate scripts need tool scripting (features.toolScripting)');
+        const controller = new AbortController();
+        this.gateTests.add(controller);
+        try {
+            const result = await this.evaluateGate(owner, job, signal ? AbortSignal.any([signal, controller.signal]) : controller.signal);
+            return { ok: true, result, empty: EMPTY_GATE_RESULTS.has(result) };
+        } catch (error) {
+            return { ok: false, error: message(error) };
+        } finally {
+            this.gateTests.delete(controller);
+        }
+    }
+
+    private async gatedJob(owner: SentinelTodoOwner, jobId: string): Promise<JobRecord> {
+        await this.assertOwner(owner);
+        const job = this.deps.jobs.get(owner, jobId);
+        if (!job.gateScript) throw new JobError('invalid', 'This job has no gate script');
+        return job;
+    }
+
+    /** Runs the job's gate with its saved state and returns the canonical result JSON. */
+    private async evaluateGate(owner: SentinelTodoOwner, job: JobRecord, signal: AbortSignal): Promise<string> {
+        if (!this.deps.runGate) throw new Error('Gate script runtime is unavailable');
+        return canonicalizeJobGateResult(await this.deps.runGate({
+            workspaceId: owner.workspaceId, processId: owner.processId, code: job.gateScript!,
+            state: job.gateLastResult === undefined ? null : JSON.parse(job.gateLastResult), signal,
+        }));
     }
 
     /** A gate outcome counts only while its tick is live; revocation, edits, the flag and shutdown cancel it. */
@@ -546,7 +588,7 @@ export class SentinelJobService {
         this.deps.jobs.markChatCreated(owner, job.id);
     }
     private abortGates(reason: string): void {
-        for (const controller of this.gates.values()) controller.abort(new JobError('conflict', reason));
+        for (const controller of [...this.gates.values(), ...this.gateTests]) controller.abort(new JobError('conflict', reason));
     }
     private gateEnabled(): boolean { return this.deps.getGateEnabled?.() === true; }
     private changed(owner: SentinelTodoOwner): void { this.deps.onChange?.(owner); }

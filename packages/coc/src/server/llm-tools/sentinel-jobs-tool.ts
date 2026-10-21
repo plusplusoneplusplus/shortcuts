@@ -7,7 +7,7 @@
  */
 
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
-import type { SentinelScheduledJob, SentinelScheduledJobInput, SentinelScrubberConfig } from '@plusplusoneplusplus/coc-client';
+import type { SentinelScheduledJob, SentinelScheduledJobGateTest, SentinelScheduledJobInput, SentinelScrubberConfig } from '@plusplusoneplusplus/coc-client';
 import type { SentinelJobCommands } from '../sentinel-jobs/job-commands';
 import { JobError, type JobRunRecord } from '../sentinel-jobs/job-store';
 import type { ScrubberCommands, ScrubberView } from '../sentinel-scrubber/scrubber-commands';
@@ -22,7 +22,7 @@ export interface SentinelJobDefaults { provider?: string; model?: string; effort
 export interface SentinelJobsToolDeps {
     /** The invoking Sentinel chat; every call is scoped to its jobs. */
     owner: SentinelTodoOwner;
-    jobs: Pick<SentinelJobCommands, 'assertOwner' | 'list' | 'get' | 'create' | 'update' | 'start' | 'cancel'>;
+    jobs: Pick<SentinelJobCommands, 'assertOwner' | 'list' | 'get' | 'create' | 'update' | 'start' | 'cancel' | 'testGate' | 'resumeGate'>;
     /** Present only when the scrubber feature is wired; commands still re-check the flag. */
     scrubber?: Pick<ScrubberCommands, 'view' | 'putConfig' | 'start' | 'cancel'>;
     defaults: () => SentinelJobDefaults;
@@ -34,7 +34,7 @@ export type SentinelJobCommandSet = Pick<SentinelJobsToolDeps, 'jobs' | 'scrubbe
 type JobSettings = Partial<SentinelScheduledJobInput>;
 
 export interface SentinelJobsArgs extends JobSettings {
-    action: 'list' | 'get' | 'create' | 'update' | 'pause' | 'resume' | 'run_now' | 'cancel';
+    action: 'list' | 'get' | 'create' | 'update' | 'pause' | 'resume' | 'run_now' | 'cancel' | 'test_gate' | 'resume_gate';
     kind?: 'custom' | 'scrubber';
     jobId?: string;
     expectedRevision?: number;
@@ -47,6 +47,7 @@ export type SentinelJobsResult =
     | { job: SentinelScheduledJob }
     | { scrubber: ScrubberView | SentinelScrubberConfig }
     | { run: JobRunRecord | ScrubRunRecord }
+    | { gateTest: SentinelScheduledJobGateTest }
     | { error: string; code?: string; current?: SentinelScheduledJob | SentinelScrubberConfig };
 
 const JOB_SETTINGS = ['name', 'instructions', 'provider', 'model', 'effort', 'mode', 'cron', 'enabled', 'autoCompactThreshold', 'gateScript'] as const;
@@ -66,7 +67,10 @@ const DESCRIPTION =
     'cron and enabled only). A custom job\'s optional `gateScript` (set only when the user asks for one; needs ' +
     '`cron`) runs unattended with this Sentinel\'s tools on each tick before any run: a non-empty JSON result ' +
     'starts a run with that result in the prompt, an empty one (null, false, "", [], {}) skips the tick, and ' +
-    '`state` is the previous result. Changing the script resets its gate state. `pause`/`resume` toggle the ' +
+    '`state` is the previous result. Changing the script resets its gate state. Five failures in a row pause the ' +
+    'gate. `test_gate` (custom, on the user\'s request) runs the gate once with its saved state and returns ' +
+    '`gateTest: { ok, result, empty, error }`; it starts no run, saves nothing and works while paused. ' +
+    '`resume_gate` (only when the user asks) clears a paused gate and its failure count. `pause`/`resume` toggle the ' +
     'schedule without cancelling an active run; resuming the scrubber clears its auto-pause. Writes need the current `revision` as `expectedRevision`; a `conflict` returns the newer ' +
     '`current` state — re-read and only reapply if it still makes sense. Custom jobs with an active run or pending ' +
     'handback can only be paused/resumed until the run finishes. `run_now` queues a run (scrubber: optional ' +
@@ -78,9 +82,9 @@ const DESCRIPTION =
 export const SENTINEL_JOBS_TOOL_PARAMETERS = {
     type: 'object',
     properties: {
-        action: { type: 'string', enum: ['list', 'get', 'create', 'update', 'pause', 'resume', 'run_now', 'cancel'] },
+        action: { type: 'string', enum: ['list', 'get', 'create', 'update', 'pause', 'resume', 'run_now', 'cancel', 'test_gate', 'resume_gate'] },
         kind: { type: 'string', enum: ['custom', 'scrubber'], description: 'Required except for list: a custom job or the built-in scrubber.' },
-        jobId: { type: 'string', description: 'Custom job id for get/update/pause/resume/run_now/cancel.' },
+        jobId: { type: 'string', description: 'Custom job id for get/update/pause/resume/run_now/cancel/test_gate/resume_gate.' },
         expectedRevision: { type: 'number', description: 'Current revision for update/pause/resume.' },
         runId: { type: 'string', description: 'cancel: the active run id.' },
         itemIds: { type: 'array', items: { type: 'string' }, description: 'Scrubber run_now: open to-do item ids to check (default all eligible).' },
@@ -139,7 +143,7 @@ export function createSentinelJobsTool(deps: SentinelJobsToolDeps) {
     const tool = defineTool<SentinelJobsArgs>(SENTINEL_JOBS_TOOL_NAME, {
         description: DESCRIPTION,
         parameters: SENTINEL_JOBS_TOOL_PARAMETERS,
-        handler: async (args: SentinelJobsArgs): Promise<SentinelJobsResult> => {
+        handler: async (args: SentinelJobsArgs, invocation): Promise<SentinelJobsResult> => {
             const kind = args.kind;
             try {
                 await jobs.assertOwner(owner);
@@ -159,6 +163,8 @@ export function createSentinelJobsTool(deps: SentinelJobsToolDeps) {
                         case 'resume': return { scrubber: await writeScrubber({ ...args, enabled: undefined }, true) };
                         case 'run_now': return { run: await scrubber.start(owner, args.itemIds) };
                         case 'cancel': return { run: await scrubber.cancel(owner, requireField(args.runId, 'runId')) };
+                        case 'test_gate':
+                        case 'resume_gate': return { error: 'The scrubber has no gate script', code: 'invalid' };
                         default: return { error: 'The scrubber is a built-in singleton; it cannot be created', code: 'invalid' };
                     }
                 }
@@ -176,6 +182,8 @@ export function createSentinelJobsTool(deps: SentinelJobsToolDeps) {
                         return { job: await jobs.update(owner, jobId, { enabled: args.action === 'resume' }, requireRevision(args)) };
                     case 'run_now': return { run: await jobs.start(owner, jobId) };
                     case 'cancel': return { run: await jobs.cancel(owner, jobId, requireField(args.runId, 'runId')) };
+                    case 'test_gate': return { gateTest: await jobs.testGate(owner, jobId, invocation?.signal) };
+                    case 'resume_gate': return { job: await jobs.resumeGate(owner, jobId) };
                 }
                 return { error: `Unsupported action: ${args.action}`, code: 'invalid' };
             } catch (err) {

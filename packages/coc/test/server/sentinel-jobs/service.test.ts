@@ -868,6 +868,80 @@ describe('SentinelJobService gated ticks', () => {
         expect(enqueue).not.toHaveBeenCalled();
     });
 
+    it('Test gate evaluates with the saved state while paused, starting no run and saving nothing', async () => {
+        const job = jobStore.create(owner, gated);
+        const error = { message: 'boom', at: NOW };
+        jobStore.updateGate(owner, job.id, gated.gateScript, () => ({
+            gateLastResult: '{"seen":1}', gateConsecutiveFailures: GATE_FAILURE_LIMIT, gateLastError: error, gatePaused: true }));
+        const saved = jobStore.get(owner, job.id);
+        runGate.mockResolvedValueOnce({ b: 2, a: [1] }).mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('bad'))
+            .mockResolvedValueOnce(undefined);
+        expect(await service.testGate(owner, job.id)).toEqual({ ok: true, result: '{"a":[1],"b":2}', empty: false });
+        expect(runGate).toHaveBeenCalledWith(expect.objectContaining({ code: gated.gateScript, state: { seen: 1 } }));
+        expect(await service.testGate(owner, job.id)).toEqual({ ok: true, result: '{}', empty: true });
+        expect(await service.testGate(owner, job.id)).toEqual({ ok: false, error: 'bad' });
+        expect(await service.testGate(owner, job.id)).toMatchObject({ ok: false, error: expect.any(String) });
+        expect(jobStore.get(owner, job.id)).toEqual(saved);
+        expect(jobStore.runs(owner, job.id)).toEqual([]);
+        expect(enqueue).not.toHaveBeenCalled();
+        expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('rejects Test gate for an ungated job, an unknown job and while tool scripting is off', async () => {
+        const plain = jobStore.create(owner, { ...input, cron: '0 * * * *' });
+        const job = jobStore.create(owner, gated);
+        await expect(service.testGate(owner, plain.id)).rejects.toMatchObject({ code: 'invalid' });
+        await expect(service.resumeGate(owner, plain.id)).rejects.toMatchObject({ code: 'invalid' });
+        await expect(service.testGate(owner, 'missing')).rejects.toMatchObject({ code: 'not_found' });
+        gateEnabled = false;
+        await expect(service.testGate(owner, job.id)).rejects.toMatchObject({ code: 'conflict', message: expect.stringMatching(/toolScripting/) });
+        enabled = false;
+        await expect(service.testGate(owner, job.id)).rejects.toMatchObject({ code: 'not_found' });
+        expect(runGate).not.toHaveBeenCalled();
+    });
+
+    it('cancels a Test gate when its caller aborts, the server stops or tool scripting turns off', async () => {
+        const job = jobStore.create(owner, gated);
+        const caller = new AbortController();
+        pendingGate();
+        const aborted = service.testGate(owner, job.id, caller.signal);
+        await flush();
+        caller.abort(new Error('Request closed'));
+        expect(await aborted).toEqual({ ok: false, error: 'Request closed' });
+
+        pendingGate();
+        const flagged = service.testGate(owner, job.id);
+        await flush();
+        gateEnabled = false;
+        await service.invalidate();
+        expect(await flagged).toEqual({ ok: false, error: 'Tool scripting was turned off' });
+
+        gateEnabled = true;
+        pendingGate();
+        const stopped = service.testGate(owner, job.id);
+        await flush();
+        await service.shutdown();
+        expect(await stopped).toEqual({ ok: false, error: 'Server stopped' });
+        expect(jobStore.get(owner, job.id)).toMatchObject({ gateConsecutiveFailures: 0, gatePaused: false });
+    });
+
+    it('Resume clears the pause and failure count without a revision bump, so ticks run the gate again', async () => {
+        const job = jobStore.create(owner, gated);
+        runGate.mockRejectedValue(new Error('boom'));
+        for (let i = 0; i < GATE_FAILURE_LIMIT; i++) await service.tick(owner, job.id);
+        expect(await service.tick(owner, job.id)).toBeUndefined();
+        expect(runGate).toHaveBeenCalledTimes(GATE_FAILURE_LIMIT);
+        onChange.mockClear();
+        const resumed = await service.resumeGate(owner, job.id);
+        expect(resumed).toMatchObject({ gatePaused: false, gateConsecutiveFailures: 0, revision: job.revision,
+            gateLastError: { message: 'boom' } });
+        expect(jobStore.get(owner, job.id)).toEqual(resumed);
+        expect(onChange).toHaveBeenCalledWith(owner);
+        runGate.mockReset().mockResolvedValueOnce({ items: [1] });
+        expect(await service.tick(owner, job.id)).toMatchObject({ status: 'queued', trigger: 'schedule' });
+        expect(runGate).toHaveBeenCalledOnce();
+    });
+
     it('fails the tick without a runtime and never runs a second gate for the same job concurrently', async () => {
         const job = jobStore.create(owner, gated);
         const gate = pendingGate();

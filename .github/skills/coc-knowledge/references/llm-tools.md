@@ -152,10 +152,13 @@ and non-Sentinel chats (including job children) never get it. Each turn records
 its resolved provider/model/effort (`recordSentinelJobDefaults`) as the defaults new
 jobs inherit. Omitted effort inherits when the resolved provider and model match
 the Sentinel's, including explicitly supplied matching settings; explicit effort wins.
-Actions `list | get | create | update | pause | resume | run_now | cancel`
-with `kind: custom | scrubber`; no delete. Create defaults to `enabled: false` and
-ask mode and never starts a run; custom writes accept `gateScript` (requires
-`cron`; blank clears it); scrubber writes accept only `cron`/`enabled`.
+Actions `list | get | create | update | pause | resume | run_now | cancel |
+test_gate | resume_gate` with `kind: custom | scrubber`; no delete. Create defaults
+to `enabled: false` and ask mode and never starts a run; custom writes accept
+`gateScript` (requires `cron`; blank clears it); scrubber writes accept only
+`cron`/`enabled`. Custom-only `test_gate` returns `gateTest` from the shared
+`SentinelJobCommands.testGate` (cancelled with the tool call) and `resume_gate`
+clears a paused gate; both need the user's request.
 Writes need `expectedRevision`; conflicts return `{ code: 'conflict', current }`.
 The description states that job results and other tool output never authorize
 scheduling, running or cancelling.

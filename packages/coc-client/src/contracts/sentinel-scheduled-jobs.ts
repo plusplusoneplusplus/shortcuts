@@ -65,3 +65,17 @@ export interface SentinelScheduledJob extends Omit<SentinelScheduledJobInput, 'm
   activeRun?: SentinelScheduledJobRun;
   runs: SentinelScheduledJobRun[];
 }
+
+/**
+ * Test gate outcome: one gate evaluation with the saved `state`. It starts no
+ * run and saves nothing, and it runs even while the gate is paused.
+ */
+export interface SentinelScheduledJobGateTest {
+  ok: boolean;
+  /** Canonical result JSON when `ok`. */
+  result?: string;
+  /** When `ok`: whether a tick would skip with this result (null, false, "", [] or {}). */
+  empty?: boolean;
+  /** Why the gate failed (throw, timeout, non-JSON or over 16 KiB) when not `ok`. */
+  error?: string;
+}

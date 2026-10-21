@@ -280,7 +280,9 @@ dependencies supply the owner-bound unattended runtime through
 the live `features.toolScripting` flag. The service keeps one in-flight gate per
 owner/job, re-checks flags, owner and job revision before saving any outcome, and
 aborts the signal on `cancelGate` (edit/delete), `invalidate()` and `shutdown()`;
-a cancelled gate never counts as a failure. See
+a cancelled gate never counts as a failure. `testGate` shares the evaluation path
+with the saved state but never saves, counts or starts a run; the caller's signal,
+`shutdown()` and the flag turning off cancel it. See
 [tool assembly](llm-tools.md#chat-tool-assembly).
 
 ### Delegated PR outcome reviews

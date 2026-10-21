@@ -412,7 +412,10 @@ references before editing. Paths are package-relative.
   fenced after the instructions. Five consecutive failures pause the gate and queue
   one `notice` Sentinel turn that, like handbacks, never gets `sentinel_jobs`. Edits
   and deletes (`cancelGate`), owner/flag invalidation and shutdown abort in-flight
-  gates without counting a failure. Run now (`start`) never runs the gate. The first run persists one ordinary
+  gates without counting a failure. Run now (`start`) never runs the gate. Test gate
+  (`testGate`, REST `gate/test`, tool `test_gate`) evaluates once with the saved
+  state and never saves, counts or starts a run, even while paused; Resume gate
+  (`resumeGate`) clears the pause and failure count. The first run persists one ordinary
   Ask/Autopilot chat; later runs retain it, including after cancellation or failure.
   Snapshot paths stay repo-scoped and read-only. Runs and handbacks use the existing
   low-priority task queue; job metadata grants compaction, never Sentinel identity.
