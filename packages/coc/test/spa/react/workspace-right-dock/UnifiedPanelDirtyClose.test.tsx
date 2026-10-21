@@ -183,6 +183,27 @@ describe('UnifiedRightPanel dirty close guard (AC-05)', () => {
         expect(mockExplorerApi.writeBlob).not.toHaveBeenCalled();
     });
 
+    it.each([{ ctrlKey: true }, { metaKey: true }])('keeps dirty-file confirmation on the close shortcut (%o)', async modifiers => {
+        const { tabId } = await dirtyFileTab();
+        Object.defineProperty(screen.getByTestId('unified-right-panel'), 'offsetParent', { get: () => document.body });
+        const editor = screen.getByTestId('mock-monaco-textarea');
+        const press = () => {
+            editor.focus();
+            const event = new KeyboardEvent('keydown', { key: 'w', bubbles: true, cancelable: true, ...modifiers });
+            act(() => { editor.dispatchEvent(event); });
+            expect(event.defaultPrevented).toBe(true);
+        };
+        press();
+        expect(screen.getByTestId('explorer-close-tabs-prompt')).toBeTruthy();
+        fireEvent.click(screen.getByTestId('explorer-close-cancel-btn'));
+        expect(screen.getByTestId(`unified-panel-tab-${tabId}`)).toBeTruthy();
+        expect(editor).toHaveValue('edited');
+        press();
+        fireEvent.click(screen.getByTestId('explorer-close-save-btn'));
+        await waitFor(() => expect(mockExplorerApi.writeBlob).toHaveBeenCalledWith(WS, 'src/a.ts', 'edited'));
+        await waitFor(() => expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull());
+    });
+
     it('routes middle-click through the unsaved-edit guard without activating the tab', async () => {
         const backgroundTabId = openFile({ path: 'src/background.ts' });
         const activeTabId = openFile({ path: 'src/active.ts' });

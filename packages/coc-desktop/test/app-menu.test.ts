@@ -816,3 +816,24 @@ describe.each(['darwin', 'win32'] as const)('update menu state on %s', platform 
         expect(items.find(item => item.label === CHECK_FOR_UPDATES_LABEL)?.enabled).toBe(true);
     });
 });
+
+describe('window close accelerator regression', () => {
+    it.each(['win32', 'linux'] as const)('%s keeps explicit Close without a Ctrl+W accelerator', platform => {
+        const template = buildAppMenuTemplate(platform, 'CoC', { onCheckForUpdates: vi.fn() });
+        const windowMenu = template.find(item => item.role === 'windowMenu')!;
+        expect(submenuOf(windowMenu)).toEqual([
+            { role: 'minimize' }, { role: 'zoom' },
+            // null/undefined would restore Electron's default CommandOrControl+W.
+            { role: 'close', accelerator: '', registerAccelerator: false },
+        ]);
+        expect(template.find(item => item.role === 'fileMenu')).toBeDefined();
+    });
+
+    it('keeps macOS Quit and window management without installing Command+W window close', () => {
+        const template = buildAppMenuTemplate('darwin', 'CoC', { onCheckForUpdates: vi.fn() });
+        expect(submenuOf(template[0]).some(item => item.role === 'quit')).toBe(true);
+        // Electron's macOS windowMenu contains minimize/zoom/front, not close.
+        expect(template.find(item => item.role === 'fileMenu')).toBeUndefined();
+        expect(template.find(item => item.role === 'windowMenu')).toEqual({ role: 'windowMenu' });
+    });
+});

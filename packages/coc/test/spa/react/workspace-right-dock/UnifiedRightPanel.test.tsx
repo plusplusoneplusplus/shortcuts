@@ -635,6 +635,41 @@ describe('UnifiedRightPanel', () => {
             expect(localStorage.getItem(workspaceDockOpenStorageKey(WS))).toBe('0');
         });
 
+        it('routes HTML guest close only to the matching active preview and safely closes the last tab', async () => {
+            Object.defineProperty(window, 'cocDesktop', { value: { browser: {
+                ...bridge, sources: ['url', 'file'], openViewExternal: vi.fn(),
+            } }, configurable: true });
+            writeUnifiedTreeState(WS, { open: false, width: 220 });
+            renderPanel();
+            const root = screen.getByTestId('unified-right-panel');
+            Object.defineProperty(root, 'offsetParent', { configurable: true, get: () => document.body });
+            const openPage = (pageId: string) => act(() => {
+                window.dispatchEvent(new CustomEvent('coc-open-html-page', { detail: {
+                    pageId, filePath: `/workspace/${pageId}.html`, wsId: WS, scopeWsId: WS, handled: false,
+                } }));
+            });
+            openPage('first');
+            openPage('second');
+            expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(2);
+            document.body.focus();
+            act(() => onCloseRequested?.({ viewId: 'html-page:first' }));
+            act(() => onCloseRequested?.({ viewId: 'another-workspace-view' }));
+            expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(2);
+            Object.defineProperty(root, 'offsetParent', { configurable: true, get: () => null });
+            act(() => onCloseRequested?.({ viewId: 'html-page:second' }));
+            expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(2);
+            Object.defineProperty(root, 'offsetParent', { configurable: true, get: () => document.body });
+            act(() => onCloseRequested?.({ viewId: 'html-page:second' }));
+            expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(1);
+            act(() => onCloseRequested?.({ viewId: 'html-page:second' }));
+            expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(1);
+            act(() => onCloseRequested?.({ viewId: 'html-page:first' }));
+            expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(0);
+            act(() => onCloseRequested?.({ viewId: 'html-page:first' }));
+            expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(0);
+            expect(localStorage.getItem(workspaceDockOpenStorageKey(WS))).toBe('0');
+        });
+
         it.each([{ ctrlKey: true }, { metaKey: true }])('closes the active browser from its editable address bar (%o)', async modifiers => {
             renderPanel();
             Object.defineProperty(screen.getByTestId('unified-right-panel'), 'offsetParent', { get: () => document.body });

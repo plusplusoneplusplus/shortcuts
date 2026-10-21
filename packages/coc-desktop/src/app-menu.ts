@@ -329,8 +329,7 @@ export function buildEditMenu(
  *   - Windows: the standard File/Edit/View/Window menus plus a Help menu holding
  *     "About <app>" then "Check for Updates…" and "Update Channel".
  *
- * Linux is out of scope (the app keeps Electron's default menu there); callers
- * should not invoke this for Linux, but the non-darwin branch is used if they do.
+ * Linux shares the non-darwin menu so it also avoids native Ctrl+W window close.
  */
 export function buildAppMenuTemplate(
     platform: NodeJS.Platform,
@@ -437,7 +436,16 @@ export function buildAppMenuTemplate(
         { role: 'fileMenu' },
         buildEditMenu(platform, handlers.onCopy),
         { role: 'viewMenu' },
-        { role: 'windowMenu' },
+        {
+            role: 'windowMenu',
+            // Electron's default submenu binds Close Window to Ctrl+W. Keep
+            // explicit window close, but leave this key to content/tab routing.
+            submenu: [
+                { role: 'minimize' },
+                { role: 'zoom' },
+                { role: 'close', accelerator: '', registerAccelerator: false },
+            ],
+        },
     ];
 
     // Windows-only top-level Dev Tunnel menu (AC-01), placed before Help. Gated on

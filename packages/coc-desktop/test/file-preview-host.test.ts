@@ -122,3 +122,39 @@ describe('renderer-owned file previews', () => {
         expect(mocks.authorize).not.toHaveBeenCalled();
     });
 });
+
+describe('HTML preview native close shortcut', () => {
+    it.each(['linux', 'win32', 'darwin'])('routes %s native input to its tab, never directly closes a window', async platform => {
+        vi.stubGlobal('process', { ...process, platform });
+        try {
+            const { view, sink } = await create();
+            mocks.attach!(mocks.guest);
+            const press = (patch = {}) => {
+                const event = { preventDefault: vi.fn() };
+                mocks.guest.emit('before-input-event', event, {
+                    key: 'w', control: platform !== 'darwin', meta: platform === 'darwin',
+                    alt: false, type: 'keyDown', isAutoRepeat: false, ...patch,
+                });
+                return event;
+            };
+            // Hidden/no-longer-active guests consume the native shortcut without routing a close.
+            expect(press().preventDefault).toHaveBeenCalledOnce();
+            expect(sink.closeRequested).not.toHaveBeenCalled();
+            await view.setBounds({ x: 0, y: 0, width: 200, height: 100 });
+            expect(press().preventDefault).toHaveBeenCalledOnce();
+            expect(sink.closeRequested).toHaveBeenCalledOnce();
+            expect(press({ isAutoRepeat: true }).preventDefault).toHaveBeenCalledOnce();
+            expect(press({ type: 'keyUp' }).preventDefault).toHaveBeenCalledOnce();
+            expect(sink.closeRequested).toHaveBeenCalledOnce();
+            for (const patch of [{ alt: true }, { control: false, meta: false }, { key: 'q' }]) {
+                expect(press(patch).preventDefault).not.toHaveBeenCalled();
+            }
+            expect(mocks.guest.close).not.toHaveBeenCalled();
+            await view.close();
+            press();
+            expect(sink.closeRequested).toHaveBeenCalledOnce();
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+});

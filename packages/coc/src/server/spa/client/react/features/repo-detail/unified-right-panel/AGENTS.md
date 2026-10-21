@@ -437,9 +437,12 @@ closes a terminal normally. The accepted consequence is that on Linux/Windows a
 terminal tab is closed with the ✕ or a middle click, not the keyboard.
 
 The close goes through `requestClose`, never `closeTab`, so a live PTY and an
-unsaved buffer still get their prompts. `ExplorerPanel`'s own Ctrl+W handler is
-independent and self-gates on its own root; there is deliberately no shared
-helper.
+unsaved buffer still get their prompts. Native URL and HTML guests send
+owner-scoped `onCloseRequested` events; the panel checks visibility and the
+active browser resource id or `HTML_PAGE_VIEW_PREFIX + htmlPageId` before closing.
+Desktop menus keep window Close without a Ctrl/Cmd+W accelerator, so unclaimed
+keys and empty panels cannot close CoC. `ExplorerPanel`'s own Ctrl+W handler is
+independent and self-gates on its own root.
 
 ## Ctrl/Cmd+F follows navigator focus (`findRouting.ts`)
 

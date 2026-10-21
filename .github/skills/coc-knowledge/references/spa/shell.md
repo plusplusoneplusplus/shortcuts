@@ -896,10 +896,13 @@ of stepping history.
 
 Unified-panel tabs close on Ctrl/Cmd+W when the visible panel owns keyboard
 focus, and on middle-click, through the same dirty-buffer and live terminal
-guards as their close buttons. Git's portal host takes focus on clicks in
-nonfocusable diff content through a native DOM capture listener; editor and
-control focus stay intact. Plain Ctrl+W inside the active terminal retains its
-shell binding. The tab strip's accessible context menu provides
+guards as their close buttons. Desktop menus leave Ctrl/Cmd+W unbound to window
+close, including Linux; explicit Close and Quit retain their native actions.
+Electron URL/HTML guests and Windows WebView2 forward native close requests to
+the owning renderer, which accepts only the matching active, visible view.
+Git's portal host takes focus on clicks in nonfocusable diff content; editor and
+control focus stay intact. Plain Ctrl+W in the active terminal keeps its shell
+binding. The tab strip's accessible context menu provides
 preview promotion, visible-strip bulk close commands, and file-only path copy and
 Explorer reveal. Bulk close targets span the tools/resources divider in
 rendered order, exclude tabs hidden under other chats, and run each target through
