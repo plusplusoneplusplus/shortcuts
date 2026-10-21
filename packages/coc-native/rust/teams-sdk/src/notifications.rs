@@ -18,7 +18,7 @@ use std::{
 use tokio::sync::{mpsc, watch};
 use tokio_tungstenite::{
     tungstenite::{protocol::WebSocketConfig, Message},
-    MaybeTlsStream, WebSocketStream,
+    Connector, MaybeTlsStream, WebSocketStream,
 };
 use url::Url;
 
@@ -65,17 +65,35 @@ pub trait NotificationConnector: Send + Sync {
 }
 pub struct WebSocketConnector;
 struct NativeSocket(WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>);
+
+fn websocket_root_store() -> rustls::RootCertStore {
+    rustls::RootCertStore {
+        roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+    }
+}
+
 #[async_trait]
 impl NotificationConnector for WebSocketConnector {
     async fn connect(&self, url: Url) -> Result<Box<dyn NotificationSocket>> {
+        let tls = rustls::ClientConfig::builder_with_provider(Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .map_err(|_| Error::new(ErrorCode::Configuration))?
+        .with_root_certificates(websocket_root_store())
+        .with_no_client_auth();
         let config = WebSocketConfig::default()
             .max_message_size(Some(MAX_FRAME))
             .max_frame_size(Some(MAX_FRAME))
             .max_write_buffer_size(MAX_FRAME * 2);
-        let (socket, _) =
-            tokio_tungstenite::connect_async_with_config(url.as_str(), Some(config), false)
-                .await
-                .map_err(|_| Error::new(ErrorCode::Network))?;
+        let (socket, _) = tokio_tungstenite::connect_async_tls_with_config(
+            url.as_str(),
+            Some(config),
+            false,
+            Some(Connector::Rustls(Arc::new(tls))),
+        )
+        .await
+        .map_err(|_| Error::new(ErrorCode::Network))?;
         Ok(Box::new(NativeSocket(socket)))
     }
 }
@@ -504,6 +522,18 @@ fn conversation_id(value: &str) -> Option<ChatId> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn websocket_trust_store_excludes_distrusted_emsign_root() {
+        let roots = websocket_root_store();
+        assert!(!roots.is_empty());
+        let distrusted = b"emSign ECC Root CA - G3";
+        assert!(!roots.roots.iter().any(|root| root
+            .subject
+            .as_ref()
+            .windows(distrusted.len())
+            .any(|part| part == distrusted)));
+    }
+
     #[test]
     fn self_chat_events_preserve_notes_but_filter_other_activity_streams() {
         for target in [
