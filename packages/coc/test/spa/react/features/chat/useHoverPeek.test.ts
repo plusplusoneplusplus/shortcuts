@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createElement } from 'react';
-import { renderHook, render, act } from '@testing-library/react';
+import { renderHook, render, act, fireEvent } from '@testing-library/react';
 import { useHoverPeek } from '../../../../../src/server/spa/client/react/features/chat/hooks/useHoverPeek';
 
 describe('useHoverPeek', () => {
@@ -128,6 +128,61 @@ describe('useHoverPeek', () => {
         act(() => { vi.advanceTimersByTime(1); });
         expect(result.current.isOpen).toBe(false);
     });
+
+    it('ends an owned press even when the release stops bubbling', () => {
+        const { result } = renderHook(() => useHoverPeek({ enabled: true }));
+        openPeek(result);
+        const view = render(createElement('div', result.current.panelProps,
+            createElement('div', { 'data-testid': 'scrollbar', onMouseUp: event => event.stopPropagation() }),
+        ));
+        fireEvent.mouseDown(view.getByTestId('scrollbar'));
+        act(() => { result.current.onPanelPointerLeave(); vi.advanceTimersByTime(1000); });
+        expect(result.current.isOpen).toBe(true);
+        fireEvent.mouseUp(view.getByTestId('scrollbar'));
+        act(() => { vi.advanceTimersByTime(250); });
+        expect(result.current.isOpen).toBe(false);
+    });
+
+    it('does not retain a press from the permanently expanded layout', () => {
+        const { result, rerender } = renderHook(
+            ({ enabled }) => useHoverPeek({ enabled }),
+            { initialProps: { enabled: false } },
+        );
+        const view = render(createElement('div', result.current.panelProps,
+            createElement('div', { 'data-testid': 'expanded-list' }),
+        ));
+        fireEvent.mouseDown(view.getByTestId('expanded-list'));
+        rerender({ enabled: true });
+        openPeek(result);
+        act(() => { result.current.onPanelPointerLeave(); vi.advanceTimersByTime(250); });
+        expect(result.current.isOpen).toBe(false);
+    });
+
+    it.each(['Escape', 'outside', 'blur', 'scope', 'disabled'])(
+        'revokes a held press on %s and restores normal hover dismissal', reason => {
+            const { result, rerender } = renderHook(
+                ({ enabled, scopeKey }) => useHoverPeek({ enabled, scopeKey }),
+                { initialProps: { enabled: true, scopeKey: 'owner-a' } },
+            );
+            openPeek(result);
+            const view = render(createElement('div', result.current.panelProps,
+                createElement('div', { 'data-testid': 'pressed' }),
+            ));
+            fireEvent.mouseDown(view.getByTestId('pressed'));
+            act(() => { result.current.onPanelPointerLeave(); vi.advanceTimersByTime(1000); });
+            expect(result.current.isOpen).toBe(true);
+            if (reason === 'Escape') fireEvent.keyDown(document, { key: 'Escape' });
+            if (reason === 'outside') fireEvent.mouseDown(document.body);
+            if (reason === 'blur') fireEvent(window, new Event('blur'));
+            if (reason === 'scope') rerender({ enabled: true, scopeKey: 'owner-b' });
+            if (reason === 'disabled') rerender({ enabled: false, scopeKey: 'owner-a' });
+            expect(result.current.isOpen).toBe(false);
+            rerender({ enabled: true, scopeKey: 'owner-a' });
+            openPeek(result);
+            act(() => { result.current.onPanelPointerLeave(); vi.advanceTimersByTime(250); });
+            expect(result.current.isOpen).toBe(false);
+        },
+    );
 
     it('retains the peek while its input is focused and closes 250ms after blur', () => {
         const { result } = renderHook(() => useHoverPeek({ enabled: true }));

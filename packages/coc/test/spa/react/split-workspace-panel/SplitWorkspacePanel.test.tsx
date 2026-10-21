@@ -928,6 +928,99 @@ describe('SplitWorkspacePanel collapsed rail — hover-to-peek', () => {
         });
     });
 
+    it.each(['ws-peek-drag', 'remote:server:ws-peek-drag', 'group-peek-drag'])(
+        'keeps %s open across the resize shield and persists only the split on release', workspaceId => {
+            vi.useFakeTimers();
+            try {
+                localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey(workspaceId), '1');
+                renderPanel(workspaceId);
+                const panel = screen.getByTestId('split-workspace-left');
+                vi.spyOn(panel, 'getBoundingClientRect').mockReturnValue({
+                    left: 36, right: 396, top: 0, bottom: 900,
+                } as DOMRect);
+                fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail'));
+                act(() => { vi.advanceTimersByTime(1000); });
+                fireEvent.mouseEnter(panel);
+                fireEvent.mouseDown(screen.getByTestId('split-workspace-divider'), { clientY: 320 });
+                const shield = document.querySelector('[data-resize-overlay]')!;
+                expect(shield).toBeTruthy();
+                // The browser fires leave when the global resize shield covers
+                // the panel. Slow drags must survive the normal close delay.
+                fireEvent.mouseLeave(panel, { relatedTarget: shield });
+                act(() => { vi.advanceTimersByTime(1000); });
+                expect(panel).not.toHaveClass('hidden');
+                fireEvent.mouseMove(shield, { clientY: 430 });
+                expect(screen.getByTestId('split-workspace-chat')).toHaveStyle({ height: '430px' });
+                fireEvent.mouseUp(shield, { clientX: 200, clientY: 430 });
+                expect(document.querySelector('[data-resize-overlay]')).toBeNull();
+                act(() => { vi.advanceTimersByTime(300); });
+                expect(panel).not.toHaveClass('hidden');
+                expect(localStorage.getItem(splitWorkspaceDividerStorageKey(workspaceId))).toBe('430');
+                expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey(workspaceId))).toBe('1');
+                expect(localStorage.getItem(splitWorkspaceDividerStorageKey('unrelated'))).toBeNull();
+                // Once released, ordinary hover dismissal still works.
+                fireEvent.mouseLeave(panel);
+                act(() => { vi.advanceTimersByTime(250); });
+                expect(panel).toHaveClass('hidden');
+            } finally {
+                vi.useRealTimers();
+            }
+        },
+    );
+
+    it.each(['chat', 'git'])('retains a %s scrollbar press and leaves pane scrolling uncancelled', pane => {
+        vi.useFakeTimers();
+        try {
+            localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey('ws-scroll'), '1');
+            renderPanel('ws-scroll');
+            const panel = screen.getByTestId('split-workspace-left');
+            vi.spyOn(panel, 'getBoundingClientRect').mockReturnValue({
+                left: 36, right: 396, top: 0, bottom: 900,
+            } as DOMRect);
+            const body = screen.getByTestId(`split-workspace-${pane}-body`);
+            const other = screen.getByTestId(`split-workspace-${pane === 'chat' ? 'git' : 'chat'}-body`);
+            fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail'));
+            act(() => { vi.advanceTimersByTime(1000); });
+            fireEvent.mouseEnter(body);
+            const wheel = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 80 });
+            fireEvent(body, wheel);
+            expect(wheel.defaultPrevented).toBe(false);
+            const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+            fireEvent(body, press);
+            expect(press.defaultPrevented).toBe(false);
+            // Native scrollbar drags can leave the panel without moving focus.
+            fireEvent.mouseLeave(panel);
+            act(() => { vi.advanceTimersByTime(1000); });
+            expect(panel).not.toHaveClass('hidden');
+            expect(document.querySelector('[data-resize-overlay]')).toBeNull();
+            body.scrollTop = 80;
+            fireEvent.scroll(body);
+            expect(body.scrollTop).toBe(80);
+            expect(other.scrollTop).toBe(0);
+            fireEvent.mouseUp(document.body);
+            act(() => { vi.advanceTimersByTime(249); });
+            expect(panel).not.toHaveClass('hidden');
+            act(() => { vi.advanceTimersByTime(1); });
+            expect(panel).toHaveClass('hidden');
+            expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-scroll'))).toBe('1');
+            // A native scrollbar can also release over its original panel
+            // without a new enter event. Keep that peek open until it leaves.
+            fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail'));
+            act(() => { vi.advanceTimersByTime(1000); });
+            fireEvent.mouseDown(body);
+            fireEvent.mouseLeave(panel);
+            fireEvent.mouseUp(body, { clientX: 390, clientY: 400 });
+            act(() => { vi.advanceTimersByTime(300); });
+            expect(panel).not.toHaveClass('hidden');
+            expect(body.scrollTop).toBe(80);
+            fireEvent.mouseLeave(panel);
+            act(() => { vi.advanceTimersByTime(250); });
+            expect(panel).toHaveClass('hidden');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('hovering the collapsed rail floats the full panel back, and leaving hides it', () => {
         vi.useFakeTimers();
         try {
