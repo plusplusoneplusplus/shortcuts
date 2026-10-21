@@ -30,7 +30,7 @@
 .dark .sentinel-tag-chip[data-color="violet"] { color: #bca4d9; }
 .dark .sentinel-tag-chip[data-color="teal"] { color: #86c4b8; }
 .dark .sentinel-tag-chip[data-color="amber"] { color: #d6ba76; }
-.sentinel-tags-detail { padding: 6px 8px; border-top: 1px solid #84848430; font-size: 11px; }
+.sentinel-tags-detail { padding: 2px 8px 4px; border-top: 1px solid #84848430; font-size: 11px; }
 .sentinel-tags-detail > * + * { margin-top: 6px; }
 .sentinel-tags-muted { color: #616161; }
 .dark .sentinel-tags-muted { color: #9d9d9d; }
@@ -57,3 +57,6 @@
 .sentinel-tags-library-row > .sentinel-tag-chip { margin-right: auto; }
 .sentinel-tags-actions { justify-content: flex-end; }
 .sentinel-tags-editor :focus-visible, .sentinel-tags-toolbar :focus-visible { outline: 2px solid #0078d4; outline-offset: 2px; }
+
+.sentinel-tags-summary > .sentinel-tags-actions { margin-left: auto; }
+.sentinel-tags-match { min-width: 0; overflow-wrap: anywhere; }

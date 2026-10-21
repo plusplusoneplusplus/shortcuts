@@ -341,6 +341,27 @@ describe('UnifiedTodoTab', () => {
         expect(update).not.toHaveBeenCalled();
     });
 
+    it.each([320, 900])('wraps full detail titles beside status without forced rows at width %s', async width => {
+        vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(width);
+        const title = 'A complete title with a long identifier ' + 'x'.repeat(120);
+        get.mockResolvedValue(ledger([item({ title })]));
+        render(<UnifiedTodoTab owner={OWNER} scopeWorkspaceId="ws-1" />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        fireEvent.click(within(row).getByRole('button', { pressed: false, name: new RegExp(title) }));
+        const detail = screen.getByTestId('sentinel-todo-detail-i1');
+        const heading = within(detail).getByRole('heading', { level: 2 });
+        const text = within(heading).getByText(title);
+        expect(text.textContent).toBe(title);
+        expect(text.classList.contains('w-full')).toBe(false);
+        expect(text.className).toContain('overflow-wrap:anywhere');
+        expect(heading.classList.contains('flex-wrap')).toBe(true);
+        expect(within(heading).getByText('To do')).toBeTruthy();
+        expect(within(detail).getByRole('button', { name: 'Close To-do details' })).toBeTruthy();
+        expect(within(detail).getByRole('button', { name: 'Edit', exact: true })).toBeTruthy();
+        expect(within(detail).getByRole('button', { name: 'Archive' })).toBeTruthy();
+        expect(update).not.toHaveBeenCalled();
+    });
+
     it.each([true, false])('consolidates compact job metadata and preserves distinct titles (identical=%s)', async identical => {
         const title = 'Fix login';
         const jobTitle = identical ? title : 'Verify SSO in the child repo';

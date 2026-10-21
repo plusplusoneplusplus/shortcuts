@@ -157,14 +157,14 @@ function DependencyDetails({ owner, item, items, ledgerRevision, expanded, onLed
                 {isManual && <span className={MUTED}>Tracking only</span>}
             </div>}
             {expanded && <>
-                <div className="flex items-center justify-between gap-1">
-                    <strong>Dependencies - ALL required</strong>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <strong>{hasDependencies || editing ? 'Dependencies - ALL required' : 'Dependencies'}</strong>
+                    {!hasDependencies && !editing && <span className={MUTED}>No prerequisites.</span>}
                     {!item.archived && !editing && <Button size="sm" variant="ghost" disabled={busy || binding !== null} onClick={() => {
                         setError(null); setConflictRevision(null); setBaseRevision(item.revision);
                         setDraft(item.dependsOn ?? []); setEditing(true);
                     }}>Edit dependencies</Button>}
                 </div>
-                {!hasDependencies && !editing && <span className={MUTED}>No prerequisites.</span>}
                 {hasDependencies && <ol aria-label="Prerequisite evidence" className="flex flex-col gap-1">
                     {(item.dependsOn ?? []).map((edge, index) => {
                         const source = items.find(source => source.id === edge.itemId);
@@ -220,8 +220,8 @@ function DependencyDetails({ owner, item, items, ledgerRevision, expanded, onLed
                 </div>}
                 {evaluation?.blocker && <div role="note">{evaluation.blocker}</div>}
                 {readError && <div role="alert">Evidence unavailable: {readError} <Button size="sm" variant="ghost" onClick={() => setRefresh(value => value + 1)}>Retry evidence read</Button></div>}
-                {isManual ? <span className={MUTED}>Tracking only - dependencies never authorize work.</span>
-                    : <span className={MUTED}>Readiness does not start work. Sentinel follows your conversation instructions.</span>}
+                {(hasDependencies || editing) && (isManual ? <span className={MUTED}>Tracking only - dependencies never authorize work.</span>
+                    : <span className={MUTED}>Readiness does not start work. Sentinel follows your conversation instructions.</span>)}
                 {item.dependencyReadiness?.requiresReview && <div role="alert">Requires review - prerequisite evidence changed after admission. Running work is not cancelled.</div>}
                 {item.dependencyReadiness?.error && <div role="alert">{item.dependencyReadiness.error}</div>}
                 {editing && <form aria-label="Edit dependencies" className="flex flex-col gap-1" onSubmit={event => { event.preventDefault(); void saveDependencies(); }}>

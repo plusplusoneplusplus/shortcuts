@@ -108,6 +108,26 @@ afterEach(() => {
 });
 
 describe('Sentinel to-do tags', () => {
+    it.each([false, true])('keeps tags, suggestion state and every action in a wrapping summary (tagged=%s)', async tagged => {
+        snapshot.items = [item('item-one', { tagIds: tagged ? ['tag-ui'] : [], tagOrigin: 'suggested',
+            tagMatch: { state: tagged ? 'unavailable' : 'no_match', message: tagged ? 'Owning server unavailable' : undefined } })];
+        render(<UnifiedTodoTab owner={owner} />);
+        await screen.findByTestId('sentinel-todo-row-item-one');
+        const detail = selectItem();
+        const section = within(detail).getByRole('region', { name: 'Item tags' });
+        const summary = within(section).getByText('Tags').parentElement!;
+        expect(summary.classList.contains('sentinel-tags-summary')).toBe(true);
+        expect(within(summary).getByText(tagged ? 'Interface' : 'Untagged')).toBeTruthy();
+        expect(within(summary).getByRole('status').textContent).toContain(tagged ? 'Owning server unavailable' : 'No matching tag');
+        expect(within(summary).getByRole('button', { name: 'Re-suggest tags' })).toBeTruthy();
+        fireEvent.click(within(summary).getByRole('button', { name: 'Edit tags' }));
+        expect(within(section).getByRole('form', { name: 'Edit item tags' })).toBeTruthy();
+        fireEvent.click(within(section).getByRole('button', { name: 'Clear tags' }));
+        fireEvent.click(within(section).getByRole('button', { name: 'Save tags' }));
+        await waitFor(() => expect(api.update).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId, 'item-one',
+            expect.objectContaining({ tagIds: [] })));
+    });
+
     it('reloads an existing snapshot when the runtime tag gate becomes enabled without resetting selection or text drafts', async () => {
         applyRuntimeConfigPatch({ sentinelTodoTagsEnabled: false });
         snapshot.tagLibrary = undefined;

@@ -1016,8 +1016,8 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
             )}
             <div className="flex items-start">
                 <h2 id={titleId} tabIndex={-1} data-todo-heading={item.id}
-                    className="m-0 flex min-w-0 flex-1 flex-wrap items-center gap-1.5 break-words px-2 py-2 text-xs font-semibold focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4]">
-                    <span className="min-w-0 w-full">{item.title}</span>
+                    className="m-0 flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 break-words px-2 py-1 text-xs font-semibold focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4]">
+                    <span className="min-w-0 [overflow-wrap:anywhere]">{item.title}</span>
                     <StatusBadge status={displayStatus} />
                     {high && <HighPriorityBadge itemId={item.id} />}
                     {sentinelTodoType(item) === 'manual' && <span className={MUTED}>Tracked only · never run</span>}
