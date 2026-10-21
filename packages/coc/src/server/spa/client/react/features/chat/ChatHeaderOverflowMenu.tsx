@@ -11,6 +11,10 @@ export interface OverflowMenuItem {
     render?: () => ReactNode;
     /** Consecutive items with the same group render together; a separator divides groups. */
     group?: string;
+    /** Visible heading at the start of a group. */
+    groupLabel?: string;
+    /** A selectable value; undefined keeps an ordinary action row. */
+    checked?: boolean;
     /**
      * Non-actionable secondary information (duration, model/context usage).
      * Collected into a muted footer below the actions instead of a menu row.
@@ -22,11 +26,12 @@ export interface OverflowMenuItem {
 
 interface ChatHeaderOverflowMenuProps {
     items: OverflowMenuItem[];
+    ariaLabel?: string;
     /** Workspace ID stamped on the portal div so DOM traversal in file-path-preview.ts can resolve it. */
     wsId?: string;
 }
 
-const MENU_ITEM_SELECTOR = '[role="menuitem"]:not([disabled])';
+const MENU_ITEM_SELECTOR = '[role="menuitem"]:not([disabled]), [role="menuitemradio"]:not([disabled])';
 
 function focusMenuItem(menu: HTMLElement | null, which: 'first' | 'last' | 'next' | 'prev') {
     if (!menu) return;
@@ -41,7 +46,7 @@ function focusMenuItem(menu: HTMLElement | null, which: 'first' | 'last' | 'next
     items[index].focus();
 }
 
-export function ChatHeaderOverflowMenu({ items, wsId }: ChatHeaderOverflowMenuProps) {
+export function ChatHeaderOverflowMenu({ items, wsId, ariaLabel = 'Conversation actions' }: ChatHeaderOverflowMenuProps) {
     const [open, setOpen] = useState(false);
     const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
     const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -139,7 +144,7 @@ export function ChatHeaderOverflowMenu({ items, wsId }: ChatHeaderOverflowMenuPr
     const handleMenuKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
         const target = e.target as HTMLElement;
         // Embedded controls (References dropdown, context popover) own their keys.
-        if (target.getAttribute('role') !== 'menuitem' && e.key !== 'Tab') return;
+        if (!['menuitem', 'menuitemradio'].includes(target.getAttribute('role') ?? '') && e.key !== 'Tab') return;
         switch (e.key) {
             case 'ArrowDown': e.preventDefault(); focusMenuItem(popoverRef.current, 'next'); break;
             case 'ArrowUp': e.preventDefault(); focusMenuItem(popoverRef.current, 'prev'); break;
@@ -189,7 +194,7 @@ export function ChatHeaderOverflowMenu({ items, wsId }: ChatHeaderOverflowMenuPr
                 <div
                     ref={popoverRef}
                     role="menu"
-                    aria-label="Conversation actions"
+                    aria-label={ariaLabel}
                     data-testid="chat-header-overflow-menu"
                     {...(wsId ? { 'data-ws-id': wsId } : {})}
                     onKeyDown={handleMenuKeyDown}
@@ -217,9 +222,13 @@ export function ChatHeaderOverflowMenu({ items, wsId }: ChatHeaderOverflowMenuPr
                         return (
                             <Fragment key={item.key}>
                                 {separator}
+                                {item.groupLabel && (index === 0 || item.group !== actions[index - 1].group) && (
+                                    <div role="presentation" className="px-2 py-0.5 text-[11px] font-medium text-[#616161] dark:text-[#9d9d9d]">{item.groupLabel}</div>
+                                )}
                                 <button
                                     type="button"
-                                    role="menuitem"
+                                    role={item.checked === undefined ? 'menuitem' : 'menuitemradio'}
+                                    aria-checked={item.checked}
                                     tabIndex={-1}
                                     disabled={item.disabled}
                                     data-testid={`overflow-item-${item.key}`}
@@ -239,7 +248,7 @@ export function ChatHeaderOverflowMenu({ items, wsId }: ChatHeaderOverflowMenuPr
                                         aria-hidden="true"
                                         className="flex-shrink-0 w-4 h-4 flex items-center justify-center text-[#6e6e6e] dark:text-[#9d9d9d] group-hover:text-current"
                                     >
-                                        {item.icon}
+                                        {item.checked ? '✓' : item.icon}
                                     </span>
                                     <span className="truncate">{item.label}</span>
                                 </button>

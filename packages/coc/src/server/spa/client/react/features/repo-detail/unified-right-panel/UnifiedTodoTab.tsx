@@ -93,6 +93,8 @@ export interface UnifiedTodoTabProps {
     onErrorChange?: (hasError: boolean) => void;
 }
 
+type TodoMenuAction = { itemId: string } & ({ status: SentinelTodoStatus } | { priority: SentinelTodoPriority });
+
 type FollowLink = (event: MouseEvent<HTMLAnchorElement>, linkKey: string, href?: string) => void;
 
 type DraftFieldsValue = { title: string; completionCondition: string; notes: string; priority: SentinelTodoPriority };
@@ -287,6 +289,17 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(restored.expandedIds));
     const [selectedId, setSelectedId] = useState<string | null>(restored.selectedId ?? null);
     const [detailOpen, setDetailOpen] = useState(restored.detailOpen ?? restored.selectedId != null);
+    const [menuAction, setMenuAction] = useState<TodoMenuAction | null>(null);
+    const consumeMenuAction = useCallback(() => setMenuAction(null), []);
+    const [blockedMenus, setBlockedMenus] = useState<ReadonlySet<string>>(() => new Set());
+    const blockMenu = useCallback((id: string, blocked: boolean) => {
+        setBlockedMenus(previous => {
+            if (previous.has(id) === blocked) return previous;
+            const next = new Set(previous);
+            if (blocked) next.add(id); else next.delete(id);
+            return next;
+        });
+    }, []);
     const [showDone, setShowDone] = useState(restored.sections?.done ?? false);
     const [showArchived, setShowArchived] = useState(restored.sections?.archived ?? false);
     const [showManual, setShowManual] = useState(restored.sections?.manual ?? true);
@@ -596,7 +609,11 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     });
     const renderList = (items: readonly SentinelTodoItem[]) => (
         <ul className="flex flex-col gap-1" role="list">
-            {items.map(item => <CompactTodoRow key={item.id} {...rowProps(item)} selected={item.id === selectedId} onSelect={() => selectItem(item.id)} />)}
+            {items.map(item => <CompactTodoRow key={item.id} {...rowProps(item)} selected={item.id === selectedId} onSelect={() => selectItem(item.id)}
+                menuDisabled={blockedMenus.has(item.id)} onMenuAction={action => {
+                    selectItem(item.id);
+                    setMenuAction(action);
+                }} />)}
         </ul>
     );
 
@@ -771,7 +788,8 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                 </p>}
                 <ul className="flex flex-col gap-1">
                     {(ledger?.items ?? []).filter(item => expanded.has(item.id) || item.id === selectedId).map(item =>
-                        <TodoDetail key={item.id} {...rowProps(item)} hidden={item.id !== selectedId} onClose={closeDetails} />)}
+                        <TodoDetail key={item.id} {...rowProps(item)} hidden={item.id !== selectedId} onClose={closeDetails}
+                            menuAction={menuAction?.itemId === item.id ? menuAction : null} onMenuBlocked={blockMenu} onMenuActionConsumed={consumeMenuAction} />)}
                 </ul>
             </section>
             </div>
@@ -814,6 +832,9 @@ type TodoDetailProps = {
     tagClient: CocClient;
     matchMultiple: boolean;
     onClose: () => void;
+    menuAction?: TodoMenuAction | null;
+    onMenuBlocked: (id: string, blocked: boolean) => void;
+    onMenuActionConsumed: () => void;
 };
 
 function useTodoAttachment(owner: SentinelTodoOwner, item: SentinelTodoItem) {
@@ -856,7 +877,9 @@ function AttachTodoButton({ title, onClick, onDragStart }: {
     </button>;
 }
 
-function TodoCardMenu({ owner, onAttach }: { owner: SentinelTodoOwner; onAttach: () => void }) {
+function TodoCardMenu({ owner, item, onAttach, disabled, onAction }: {
+    owner: SentinelTodoOwner; item: SentinelTodoItem; onAttach?: () => void; disabled: boolean; onAction: (action: TodoMenuAction) => void;
+}) {
     const root = useRef<HTMLDivElement>(null);
     const trigger = () => root.current?.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]');
     return <div ref={root} className="ml-auto shrink-0" draggable={false}
@@ -874,19 +897,38 @@ function TodoCardMenu({ owner, onAttach }: { owner: SentinelTodoOwner; onAttach:
             }
         }}
         onDragStart={event => { event.preventDefault(); event.stopPropagation(); }}>
-        <ChatHeaderOverflowMenu wsId={owner.ownerRoutingRef ?? owner.ownerWorkspaceId} items={[{
-            key: 'attach', label: 'Attach', onClick: () => {
+        <ChatHeaderOverflowMenu ariaLabel="To-do actions" wsId={owner.ownerRoutingRef ?? owner.ownerWorkspaceId} items={[
+            ...(!item.archived ? [
+                ...SENTINEL_TODO_STATUSES.map(status => ({
+                    key: `status-${status}`, label: SENTINEL_TODO_STATUS_LABELS[status], group: 'status', groupLabel: 'Status',
+                    checked: item.status === status, disabled,
+                    onClick: () => {
+                        trigger()?.focus();
+                        if (status !== item.status) onAction({ itemId: item.id, status });
+                    },
+                })),
+                ...SENTINEL_TODO_PRIORITIES.map(priority => ({
+                    key: `priority-${priority}`, label: SENTINEL_TODO_PRIORITY_LABELS[priority], group: 'priority', groupLabel: 'Priority',
+                    checked: sentinelTodoPriority(item) === priority, disabled,
+                    onClick: () => {
+                        trigger()?.focus();
+                        if (priority !== sentinelTodoPriority(item)) onAction({ itemId: item.id, priority });
+                    },
+                })),
+            ] : []),
+            ...(onAttach ? [{ key: 'attach', label: 'Attach', group: 'attach', onClick: () => {
                 trigger()?.focus();
                 onAttach();
-            },
-        }]} />
+            } }] : []),
+        ]} />
     </div>;
 }
 
-function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibrary, selected, onSelect }: Pick<TodoDetailProps, 'item' | 'owner' | 'currentWorkspaceId' | 'onFollowLink' | 'tagLibrary'> & {
-    selected: boolean; onSelect: () => void;
+function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibrary, selected, onSelect, menuDisabled, onMenuAction }: Pick<TodoDetailProps, 'item' | 'owner' | 'currentWorkspaceId' | 'onFollowLink' | 'tagLibrary'> & {
+    selected: boolean; onSelect: () => void; menuDisabled: boolean; onMenuAction: (action: TodoMenuAction) => void;
 }) {
     const { canAttach, attach, attachError, drag } = useTodoAttachment(owner, item);
+    const { mutationPending } = useContext(ScrubberFindingsContext);
     const high = sentinelTodoPriority(item) === 'high';
     const reasonPreview = sentinelTodoDisplayStatus(item) === 'needs_attention' && item.statusReason ? <span
         className="min-w-0 max-w-full flex-[1_1_8rem] truncate text-[11px] text-[#b5650f] dark:text-[#cca700]" title={item.statusReason}
@@ -906,7 +948,7 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
                 <span className={cn('min-w-0 flex-1 basis-[8rem] break-words [overflow-wrap:anywhere] font-medium', item.archived && 'line-through opacity-70')}>{item.title}</span>
                 {sentinelTodoType(item) === 'manual' && <span className={MUTED}>Tracking only</span>}
             </button>
-            {canAttach && <TodoCardMenu owner={owner} onAttach={attach} />}
+            <TodoCardMenu owner={owner} item={item} onAttach={canAttach ? attach : undefined} disabled={menuDisabled || mutationPending} onAction={onMenuAction} />
         </div>
         {tagLibrary && item.tagIds?.length ? <div className="px-1.5 pb-1"><SentinelTodoTagChips item={item} library={tagLibrary} /></div> : null}
         <div className={cn('flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-1.5 pb-1 text-[11px]', MUTED)} data-testid={`sentinel-todo-meta-${item.id}`}>
@@ -923,7 +965,7 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
     </li>;
 }
 
-function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, items, ledgerRevision, onLedgerChange, onItemLink, onArtifactLink, hidden, headingId, tagLibrary, tagClient, matchMultiple, onClose }: TodoDetailProps) {
+function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, items, ledgerRevision, onLedgerChange, onItemLink, onArtifactLink, hidden, headingId, tagLibrary, tagClient, matchMultiple, onClose, menuAction, onMenuBlocked, onMenuActionConsumed }: TodoDetailProps) {
     const referencesEnabled = useSentinelTodoExternalReferencesEnabled();
     const [restoredDraft] = useState(() => recallSentinelTodoView(owner).itemDrafts?.[item.id]);
     const [editing, setEditing] = useState<(Draft & { baseRevision: number }) | null>(restoredDraft?.editing ?? null);
@@ -936,6 +978,10 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
     const [outcomesBusy, setOutcomesBusy] = useState(false);
     const { mutationPending: scrubberBusy } = useContext(ScrubberFindingsContext);
     const closeBlocked = busy || tagsBusy || dependenciesBusy || outcomesBusy || scrubberBusy;
+    useLayoutEffect(() => {
+        onMenuBlocked(item.id, closeBlocked || editing !== null || statusDraft !== null);
+    }, [item.id, closeBlocked, editing, statusDraft, onMenuBlocked]);
+    useEffect(() => () => onMenuBlocked(item.id, false), [item.id, onMenuBlocked]);
     const [notesOpen, setNotesOpen] = useState(restoredDraft?.notesOpen ?? true);
     const lastAction = useRef<(() => Promise<void>) | null>(null);
     const live = useRef(true);
@@ -999,6 +1045,20 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
             ...(status === 'done' && reason.trim() ? { outcome: reason.trim() } : {}),
         }), () => setStatusDraft(null));
     };
+
+    // Menu choices enter the same validated status/reason and revision-aware save
+    // flow as the detail controls. Consume each choice once, including StrictMode.
+    const consumedMenuAction = useRef<TodoMenuAction | null>(null);
+    useEffect(() => {
+        if (!menuAction || consumedMenuAction.current === menuAction) return;
+        consumedMenuAction.current = menuAction;
+        onMenuActionConsumed();
+        if (item.archived || closeBlocked || editing || statusDraft) return;
+        if ('status' in menuAction) applyStatus(menuAction.status, '');
+        else void run(() => onSave(item, { priority: menuAction.priority }), () => {});
+        // The request is an explicit user action, never replayed by ledger refreshes.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [menuAction]);
 
     const domId = headingId ?? `sentinel-todo-${item.id}`;
     const titleId = domId;
