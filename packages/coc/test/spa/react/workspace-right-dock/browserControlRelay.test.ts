@@ -8,6 +8,7 @@ import { renderHook, cleanup } from '@testing-library/react';
 import { useBrowserControlScope } from '../../../../src/server/spa/client/react/shared/file-path/browser-control-scope';
 import { getBrowserControlActivity, clearBrowserControlActivities } from '../../../../src/server/spa/client/react/shared/file-path/browser-control-activity';
 import { applyRuntimeConfigPatch, _resetRuntimeConfig } from '../../../../src/server/spa/client/react/utils/config';
+import { getBrowserControlNotices } from '../../../../src/server/spa/client/react/shared/file-path/browser-control-notice';
 import { browserWebviewEntries, removeBrowserWebview } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/browserWebviewLayerStore';
 const clients = vi.hoisted(() => ({
     cancel: vi.fn(async () => {}), remoteCancel: vi.fn(async () => {}),
@@ -575,6 +576,153 @@ describe('SPA browser socket relay', () => {
             h.relay.onMessage({ type: 'browser-command', request: next });
             expect(h.control.execute).toHaveBeenLastCalledWith(next, 'remote:server:w');
             h.relay.dispose();
+        });
+
+        describe('Switch back notice', () => {
+            const foregroundRequired = new Error("Error invoking remote method 'coc-desktop:browser-control': Error: foreground-required: rich paste needs the workspace on screen");
+            const paste = { ...request, id: 'r-paste', turnId: 't1', framesEnabled: true, richPasteEnabled: true, command: { action: 'paste_html', ref: 'e1', html: '<b>x</b>' } };
+            const backgroundTurn = async (baseUrl?: string, ref = 'w') => {
+                applyRuntimeConfigPatch({ browserBackgroundControlEnabled: true });
+                const h = harness(baseUrl, true);
+                const retainScope = withRetain(h);
+                window.location.hash = `#repos/${ref}`;
+                await h.relay.update(ref); h.relay.onOpen();
+                h.relay.onMessage({ type: 'browser-command', request: { ...request, turnId: 't1' } });
+                await tick();
+                window.location.hash = '#repos/other';
+                await h.relay.update('other');
+                h.send.mockClear();
+                return { ...h, retainScope };
+            };
+            const results = (h: ReturnType<typeof harness>) => (h.send.mock.calls as unknown[][])
+                .map(([message]) => message as any).filter(message => message.type === 'browser-command-result');
+            afterEach(() => { window.location.hash = ''; });
+
+            it('waits without replying, then re-runs the action on Switch back as a foreground command', async () => {
+                const h = await backgroundTurn();
+                h.control.execute.mockRejectedValueOnce(foregroundRequired);
+                h.relay.onMessage({ type: 'browser-command', request: paste });
+                await tick();
+                expect(h.send).toHaveBeenCalledWith({ type: 'browser-command-waiting', id: 'r-paste', waiting: true });
+                expect(results(h)).toEqual([]);
+                const [notice] = getBrowserControlNotices();
+                expect(notice).toMatchObject({ workspaceId: 'w', processId: 'p', routingRef: 'w', actions: ['paste_html'] });
+                // No timeout: the wait survives other switches while the turn is alive.
+                await h.relay.update('third');
+                expect(getBrowserControlNotices()).toHaveLength(1);
+
+                notice.switchBack();
+                expect(window.location.hash).toBe('#repos/w/chats/p');
+                h.control.execute.mockClear();
+                await h.relay.update('w');
+                expect(h.control.execute).toHaveBeenCalledExactlyOnceWith(paste, 'w');
+                const waitingOff = (h.send.mock.calls as unknown[][]).findIndex(([m]) => (m as any).type === 'browser-command-waiting' && (m as any).waiting === false);
+                expect(waitingOff).toBeGreaterThanOrEqual(0);
+                await tick();
+                expect(results(h)).toEqual([{ type: 'browser-command-result', reply: { id: 'r-paste', ok: true, result: { tabs: [] } } }]);
+                expect(getBrowserControlNotices()).toEqual([]);
+                h.relay.dispose();
+            });
+
+            it('shows one notice per turn listing each waiting action', async () => {
+                const h = await backgroundTurn();
+                h.control.execute.mockRejectedValueOnce(foregroundRequired).mockRejectedValueOnce(foregroundRequired);
+                h.relay.onMessage({ type: 'browser-command', request: paste });
+                h.relay.onMessage({ type: 'browser-command', request: { ...paste, id: 'r-click', command: { action: 'click', ref: 'e2' } } });
+                await tick();
+                expect(getBrowserControlNotices()).toHaveLength(1);
+                expect(getBrowserControlNotices()[0].actions).toEqual(['paste_html', 'click']);
+                h.relay.dispose();
+                expect(getBrowserControlNotices()).toEqual([]);
+            });
+
+            it.each([
+                ['turn finished', (h: any) => h.relay.onMessage({ type: 'browser-turn-finished', workspaceId: 'w', processId: 'p', turnId: 't1' }), 'Browser conversation turn has finished'],
+                ['tab closed', (h: any) => h.activity({ workspaceId: 'w', processId: 'p', turnId: 't1', routingRef: 'w', viewId: 'v', active: false, finished: false }), 'Browser tab closed'],
+                ['flag off', () => applyRuntimeConfigPatch({ browserBackgroundControlEnabled: false }), 'Browser workspace scope changed'],
+            ])('rejects the waiting action and clears its notice when the %s', async (_label, trigger, error) => {
+                const h = await backgroundTurn();
+                h.control.execute.mockRejectedValueOnce(foregroundRequired);
+                h.relay.onMessage({ type: 'browser-command', request: paste });
+                await tick();
+                trigger(h);
+                expect(results(h)).toEqual([{ type: 'browser-command-result', reply: { id: 'r-paste', ok: false, error } }]);
+                expect(getBrowserControlNotices()).toEqual([]);
+                h.control.execute.mockClear();
+                await h.relay.update('w');
+                expect(h.control.execute).not.toHaveBeenCalled();
+                h.relay.dispose();
+            });
+
+            it('drops a waiting action the server cancelled without replying and never re-runs it', async () => {
+                const h = await backgroundTurn();
+                h.control.execute.mockRejectedValueOnce(foregroundRequired);
+                h.relay.onMessage({ type: 'browser-command', request: paste });
+                await tick();
+                h.relay.onMessage({ type: 'browser-command-cancel', id: 'r-paste' });
+                expect(h.control.cancel).not.toHaveBeenCalled();
+                expect(getBrowserControlNotices()).toEqual([]);
+                h.control.execute.mockClear();
+                await h.relay.update('w');
+                expect(h.control.execute).not.toHaveBeenCalled();
+                expect(results(h)).toEqual([]);
+                h.relay.dispose();
+            });
+
+            it('returns other background errors and foreground-required errors on screen unchanged', async () => {
+                const h = await backgroundTurn();
+                h.control.execute.mockRejectedValueOnce(new Error('Element not found'));
+                h.relay.onMessage({ type: 'browser-command', request: paste });
+                await tick();
+                expect(results(h)).toEqual([{ type: 'browser-command-result', reply: { id: 'r-paste', ok: false, error: 'Element not found' } }]);
+                await h.relay.update('w');
+                h.send.mockClear();
+                h.control.execute.mockRejectedValueOnce(foregroundRequired);
+                h.relay.onMessage({ type: 'browser-command', request: { ...paste, id: 'r-front' } });
+                await tick();
+                expect(results(h)).toEqual([{ type: 'browser-command-result', reply: { id: 'r-front', ok: false, error: foregroundRequired.message } }]);
+                expect(getBrowserControlNotices()).toEqual([]);
+                h.relay.dispose();
+            });
+
+            it('opens the repo-group scope the turn was started from', async () => {
+                applyRuntimeConfigPatch({ browserBackgroundControlEnabled: true });
+                const h = harness(undefined, true);
+                withRetain(h);
+                await h.relay.update('group-1'); h.relay.onOpen();
+                const scope = renderHook(() => useBrowserControlScope('w', 'group-1'));
+                await tick();
+                expect(h.control.bindScope).toHaveBeenLastCalledWith('w', 'w');
+                h.relay.onMessage({ type: 'browser-command', request: { ...request, turnId: 't1' } });
+                await tick();
+                scope.unmount(); await tick();
+                await h.relay.update('other');
+                h.control.execute.mockRejectedValueOnce(foregroundRequired);
+                h.relay.onMessage({ type: 'browser-command', request: paste });
+                await tick();
+                getBrowserControlNotices()[0].switchBack();
+                expect(window.location.hash).toBe('#repos/group-1/chats/p');
+                h.relay.dispose();
+            });
+
+            it('routes Switch back and Stop through the owning remote clone', async () => {
+                const baseUrl = 'http://127.0.0.1:4500';
+                registerCloneBaseUrls([{ workspaceId: 'w', serverId: 'server', baseUrl }]);
+                const h = await backgroundTurn(baseUrl, 'remote:server:w');
+                h.control.execute.mockRejectedValueOnce(foregroundRequired);
+                h.relay.onMessage({ type: 'browser-command', request: paste });
+                await tick();
+                const [notice] = getBrowserControlNotices();
+                expect(notice.routingRef).toBe('remote:server:w');
+                await notice.stop();
+                expect(clients.remoteCancel).toHaveBeenCalledWith('p', { workspace: 'w' });
+                expect(clients.cancel).not.toHaveBeenCalled();
+                notice.switchBack();
+                expect(window.location.hash).toBe(`#repos/${encodeURIComponent('remote:server:w')}/chats/p`);
+                await h.relay.update('remote:server:w');
+                expect(h.control.execute).toHaveBeenLastCalledWith(paste, 'remote:server:w');
+                h.relay.dispose();
+            });
         });
     });
 });

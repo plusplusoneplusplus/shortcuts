@@ -320,6 +320,21 @@ until they settle; release events complete dispatched key/mouse presses. The
 local-only Electron relay fixture exercises WebSocket, SPA tab creation, preload,
 main, trusted input, markdown, evaluation, JPEG crops and popup discovery.
 
+With default-off `browserControl.backgroundEnabled` (runtime flag
+`browserBackgroundControlEnabled`) and a desktop exposing `control.retainScope`,
+switching workspace keeps every scope with an active turn retained: the relay
+retains it before rebinding, advertises it in `background`, and runs its commands
+with `execute(request, routingRef)` without cancelling them. Background reveals
+create the guest unseen and never change the hash. Desktop actions that cannot run
+hidden fail before dispatch with `foreground-required:`; the relay then sends
+`browser-command-waiting` (the server pauses its 60s limit) and publishes one
+`browser-control-notice.ts` entry per turn, rendered by the app-shell
+`BrowserControlSwitchBackNotices` with Switch back and Stop. Switch back opens
+`#repos/<panel scope>/chats/<processId>` (repo group or clone key); once that ref
+is foreground again, waiting requests re-run. Turn finish, tab close, server
+cancel, flag off, socket close and dispose reject and clear them. Other background
+errors return unchanged. With the flag off, switching cancels as before.
+
 With default-off `browserControl.framesEnabled`, a main-owned per-view registry
 maps opaque frame handles to default-world contexts and private OOPIF sessions.
 Electron debugger events and WebView2 native event receivers supply lifecycle
