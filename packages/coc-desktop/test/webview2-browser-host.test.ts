@@ -652,6 +652,34 @@ describe('WebView2 native focus handoff', () => {
         });
     });
 
+    it('keeps a hidden background-controlled view rendering off-screen at its last size, without focus', async () => {
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: 'https://example.test' }, sink);
+        const fresh = await host.create({ ownerId: 7, viewId: 'fresh', sessionKey: 'workspace', url: 'https://example.test' }, sink);
+        await view.setBounds(bounds);
+        await view.setBounds(null);
+        mocks.request.mockClear();
+        await view.setBackgroundControl!(true);
+        expect(mocks.request).toHaveBeenCalledExactlyOnceWith('bounds', {
+            viewId: '7:tab:1', bounds: { x: -(bounds.width + 64), y: 0, width: bounds.width, height: bounds.height, contentOrigin: { x: 100, y: 200 } },
+        });
+        // Idempotent, and a real placement still wins while background control is on.
+        await view.setBackgroundControl!(true);
+        await view.setBounds(bounds);
+        expect(mocks.request).toHaveBeenLastCalledWith('bounds', { viewId: '7:tab:1', bounds: { ...bounds, contentOrigin: { x: 100, y: 200 } } });
+        await view.setBounds(null);
+        expect(mocks.request).toHaveBeenLastCalledWith('bounds', expect.objectContaining({ bounds: expect.objectContaining({ x: -(bounds.width + 64) }) }));
+        await view.setBackgroundControl!(false);
+        expect(mocks.request).toHaveBeenLastCalledWith('bounds', { viewId: '7:tab:1', bounds: null });
+        // A view never placed on screen gets an ordinary desktop viewport.
+        await fresh.setBackgroundControl!(true);
+        expect(mocks.request).toHaveBeenLastCalledWith('bounds', {
+            viewId: '7:fresh:2', bounds: { x: -1344, y: 0, width: 1280, height: 800, contentOrigin: { x: 100, y: 200 } },
+        });
+        expect(mocks.request).not.toHaveBeenCalledWith('focus', expect.anything());
+        expect(mocks.window.focus).not.toHaveBeenCalled();
+    });
+
     it('forwards close only for the matching live visible native view', async () => {
         const host = new WebView2BrowserHost('profile');
         const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'remote-workspace', url: 'https://example.test' }, sink);

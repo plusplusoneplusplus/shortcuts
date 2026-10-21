@@ -47,4 +47,6 @@ export interface BrowserControlActivityEvent {
     viewId: string;
     active: boolean;
     finished?: boolean;
+    /** The turn drives this tab from a retained scope while another workspace is selected. */
+    background?: boolean;
 }

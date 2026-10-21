@@ -34,6 +34,8 @@ interface Entry {
     control?: BrowserControlQueue;
     popout?: boolean;
     activity?: BrowserControlActivityEvent & { routingOwnerId: number };
+    /** CDP focus emulation is on so a background tab takes input without window focus. */
+    focusEmulated?: boolean;
     hostGeneration?: object;
 }
 
@@ -123,9 +125,20 @@ export class BrowserHostManager {
         entry.activity = undefined;
         this.options.send(entry.ownerId, BROWSER_CONTROL_ACTIVITY_CHANNEL, { ...activity, active: false, finished });
         this.nativeActivity(entry);
+        if (activity.background) void this.backgroundControl(entry, false).catch(error => console.error('[coc-desktop] Browser background control cleanup failed:', error));
     }
 
-    private activateControl(entry: Entry, routingOwnerId: number, request: BrowserCommandRequest): void {
+    /** Hidden layout and focus emulation for a tab a background turn drives; foreground commands undo both. */
+    private async backgroundControl(entry: Entry, enabled: boolean): Promise<void> {
+        const view = entry.view;
+        if (!view || entry.closed) return;
+        await view.setBackgroundControl?.(enabled);
+        if (!view.cdp || (entry.focusEmulated ?? false) === enabled) return;
+        entry.focusEmulated = enabled;
+        await view.cdp('Emulation.setFocusEmulationEnabled', { enabled });
+    }
+
+    private activateControl(entry: Entry, routingOwnerId: number, request: BrowserCommandRequest, background: boolean): void {
         const turnId = request.turnId ?? request.processId;
         if (this.finishedTurns.get(routingOwnerId)?.has(turnId)) throw new Error('Browser conversation turn has finished');
         for (const entries of this.owners.values()) for (const other of entries.values()) {
@@ -133,7 +146,7 @@ export class BrowserHostManager {
         }
         if (entry.activity && entry.activity.turnId !== turnId) this.clearControlEntry(entry, entry.activity.processId === request.processId);
         entry.activity = { workspaceId: request.workspaceId, processId: request.processId, turnId,
-            routingRef: entry.sessionKey, viewId: entry.viewId, active: true, routingOwnerId };
+            routingRef: entry.sessionKey, viewId: entry.viewId, active: true, routingOwnerId, ...(background ? { background: true } : {}) };
         this.options.send(entry.ownerId, BROWSER_CONTROL_ACTIVITY_CHANNEL, entry.activity);
         this.nativeActivity(entry);
     }
@@ -268,13 +281,16 @@ export class BrowserHostManager {
         return this.withControlPage(selected.ownerId, selected.viewId, selected.sessionKey, async (page, activeSignal, view) => {
             this.scopedEntries(ownerId, request.workspaceId, routingRef);
             activeSignal.throwIfAborted();
-            this.activateControl(selected, ownerId, request);
+            this.activateControl(selected, ownerId, request, scope.background);
+            await this.backgroundControl(selected, scope.background);
+            activeSignal.throwIfAborted();
             await page.configureFrames(request.framesEnabled === true,
                 view.onCdpEvent ? listener => view.onCdpEvent!(listener) : undefined,
                 view.waitForCdpEvents ? () => view.waitForCdpEvents!() : undefined);
-            if (selected.popout || command.action === 'click' || command.action === 'type'
+            // Background tabs never take focus: input relies on CDP focus emulation instead.
+            if (!scope.background && (selected.popout || command.action === 'click' || command.action === 'type'
                 || command.action === 'select_option' || command.action === 'press'
-                || command.action === 'scroll') {
+                || command.action === 'scroll')) {
                 await view.focus();
                 activeSignal.throwIfAborted();
             }
@@ -282,6 +298,8 @@ export class BrowserHostManager {
                 case 'paste_html': {
                     const clipboard = this.options.richClipboard;
                     if (!clipboard) throw new Error('unsupported-runtime: native rich clipboard unavailable');
+                    // Native paste needs real window focus, which a background tab must not take.
+                    if (scope.background) throw new Error('foreground-required: rich paste needs the workspace on screen');
                     await withRichClipboard(clipboard, command.html!, command.text!, command.replaceClipboard === true, activeSignal, async write => {
                         activeSignal.throwIfAborted();
                         await view.focus();

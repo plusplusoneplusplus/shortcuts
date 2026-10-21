@@ -304,6 +304,72 @@ describe('main browser control scope and selection', () => {
         await h.manager.dispose();
     });
 
+    it('drives a background tab without focus, using hidden layout and CDP focus emulation until a foreground command', async () => {
+        const clipboard = { availableFormats: () => [], write: vi.fn() };
+        const h = harness(undefined, clipboard);
+        const configure = vi.spyOn(BrowserControlPage.prototype, 'configureFrames').mockResolvedValue();
+        const exec = (command: BrowserCommand, routingRef: string | undefined, selectedTab: string, extra = {}) =>
+            h.manager.executeControl(1, { id: 'r', workspaceId: 'w', processId: 'p', command, selectedTab, ...extra }, undefined, routingRef);
+        try {
+            const opened = await h.run({ action: 'open', url: 'https://fixture.test/' });
+            const view = h.views[0];
+            const order: string[] = [];
+            view.setBackgroundControl = vi.fn(enabled => { order.push(`layout:${enabled}`); });
+            const cdp = vi.mocked(view.cdp!);
+            const original = cdp.getMockImplementation()!;
+            cdp.mockImplementation(async (method, params, session) => {
+                if (method === 'Emulation.setFocusEmulationEnabled') order.push(`emulate:${params?.enabled}`);
+                if (method === 'Input.dispatchKeyEvent') order.push(String(params?.type));
+                return original(method, params, session);
+            });
+            h.manager.retainControlScope(1, 'w', 'w');
+            h.manager.bindControlScope(1, 'b', 'b');
+            h.send.mockClear();
+            await exec({ action: 'press', key: 'x' }, 'w', opened.tab!);
+            expect(view.focus).not.toHaveBeenCalled();
+            expect(order).toEqual(['layout:true', 'emulate:true', 'keyDown', 'keyUp']);
+            expect(h.send).toHaveBeenCalledWith(1, 'coc-desktop:browser-control-activity', expect.objectContaining({ viewId: view.snapshot().viewId, active: true, background: true }));
+            // Emulation is enabled once per background stretch.
+            order.length = 0;
+            await exec({ action: 'press', key: 'y' }, 'w', opened.tab!);
+            expect(order).toEqual(['layout:true', 'keyDown', 'keyUp']);
+            // Native rich paste needs real focus, so a background turn never attempts it.
+            await expect(exec({ action: 'paste_html', ref: 'e1', html: '<b>x</b>', text: 'x' }, 'w', opened.tab!,
+                { framesEnabled: true, richPasteEnabled: true })).rejects.toThrow('foreground-required');
+            expect(clipboard.write).not.toHaveBeenCalled();
+            expect(view.focus).not.toHaveBeenCalled();
+            // Back in the foreground, the next command restores normal layout, real focus and no emulation.
+            h.manager.bindControlScope(1, 'w', 'w');
+            order.length = 0;
+            h.send.mockClear();
+            await exec({ action: 'press', key: 'z' }, 'w', opened.tab!);
+            expect(order).toEqual(['layout:false', 'emulate:false', 'keyDown', 'keyUp']);
+            expect(view.focus).toHaveBeenCalledOnce();
+            expect(h.send).toHaveBeenCalledWith(1, 'coc-desktop:browser-control-activity', expect.not.objectContaining({ background: true }));
+        } finally {
+            configure.mockRestore();
+            await h.manager.dispose();
+        }
+    });
+
+    it('drops hidden layout when a background turn finishes', async () => {
+        const h = harness();
+        try {
+            const opened = await h.run({ action: 'open', url: 'https://fixture.test/' });
+            const view = h.views[0];
+            view.setBackgroundControl = vi.fn();
+            h.manager.retainControlScope(1, 'w', 'w');
+            h.manager.bindControlScope(1, 'b', 'b');
+            await h.manager.executeControl(1, { id: 'r', workspaceId: 'w', processId: 'p', turnId: 't', command: { action: 'read' }, selectedTab: opened.tab }, undefined, 'w');
+            expect(view.setBackgroundControl).toHaveBeenLastCalledWith(true);
+            h.manager.finishControl(1, 't');
+            await vi.waitFor(() => expect(view.setBackgroundControl).toHaveBeenLastCalledWith(false));
+            expect(vi.mocked(view.cdp!)).toHaveBeenLastCalledWith('Emulation.setFocusEmulationEnabled', { enabled: false });
+        } finally {
+            await h.manager.dispose();
+        }
+    });
+
     it('validates and bounds retained background scopes', async () => {
         const h = harness();
         expect(() => h.manager.retainControlScope(1, '', 'w')).toThrow(TypeError);

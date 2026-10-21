@@ -18,6 +18,9 @@ interface NativeEntry {
     sink: BrowserEventSink;
     state: BrowserViewState;
     bounds: HtmlPageBounds | null;
+    /** Last real placement; a background-controlled view keeps this size off-screen. */
+    lastBounds?: HtmlPageBounds;
+    background: boolean;
     parent: string;
     window: BrowserWindow;
     fullscreen: boolean;
@@ -31,6 +34,9 @@ interface NativeEntry {
     cdpError?: Error;
     documentGeneration: number;
 }
+
+/** Never-placed background views get an ordinary desktop viewport. */
+const BACKGROUND_VIEW_SIZE = { width: 1280, height: 800 };
 
 export class WebView2BrowserHost implements BrowserEngineHost {
     readonly engine = 'webview2' as const;
@@ -73,8 +79,14 @@ export class WebView2BrowserHost implements BrowserEngineHost {
     }
 
     private bounds(entry: NativeEntry): (HtmlPageBounds & { contentOrigin: { x: number; y: number } }) | null {
-        if (!entry.bounds || entry.window.isDestroyed()) { return null; }
+        if (entry.window.isDestroyed()) { return null; }
         const { x, y, width, height } = entry.window.getContentBounds();
+        if (!entry.bounds) {
+            if (!entry.background) { return null; }
+            // A visible child window clipped outside the parent's client area keeps rendering and taking CDP input unseen.
+            const size = entry.lastBounds ?? BACKGROUND_VIEW_SIZE;
+            return { x: -(size.width + 64), y: 0, width: size.width, height: size.height, contentOrigin: screen.dipToScreenPoint({ x, y }) };
+        }
         return {
             ...(entry.fullscreen ? { x: 0, y: 0, width, height } : entry.bounds),
             contentOrigin: screen.dipToScreenPoint({ x, y }),
@@ -89,7 +101,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         const parent = handle.length === 8 ? handle.readBigUInt64LE().toString() : String(handle.readUInt32LE());
         const id = `${request.ownerId}:${request.viewId}:${++this.sequence}`;
         const entry: NativeEntry = {
-            nativeId: id, request, sink, parent, window, bounds: null, fullscreen: false, wasFullscreen: window.isFullScreen(), pageZoom: request.pageZoomPercent ?? 100,
+            nativeId: id, request, sink, parent, window, bounds: null, background: false, fullscreen: false, wasFullscreen: window.isFullScreen(), pageZoom: request.pageZoomPercent ?? 100,
             cdpListeners: new Set(), cdpSessions: new Map(), cdpReady: Promise.resolve(), cdpGeneration: 0, documentGeneration: 0,
             state: { viewId: request.viewId, engine: 'webview2', url: request.url, title: '', canGoBack: false, canGoForward: false, loading: true },
             reposition: () => {
@@ -169,7 +181,13 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             setBounds: async bounds => {
                 if (entry.root) { return; }
                 entry.bounds = bounds;
+                if (bounds) { entry.lastBounds = bounds; }
                 await this.process.request('bounds', { viewId: id, bounds: this.bounds(entry) });
+            },
+            setBackgroundControl: async enabled => {
+                if (entry.root || entry.background === enabled || this.views.get(id) !== entry) { return; }
+                entry.background = enabled;
+                if (!entry.bounds) { await this.process.request('bounds', { viewId: id, bounds: this.bounds(entry) }); }
             },
             focus: async () => {
                 if (this.views.get(id) !== entry || entry.window.isDestroyed()) {
@@ -269,7 +287,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
                 ...root, root, nativeId: message.viewId,
                 request: { ...root.request, viewId, url: message.url },
                 state: { ...root.state, viewId, url: message.url, title: '', loading: true, canGoBack: false, canGoForward: false, error: undefined, errorCode: undefined },
-                bounds: null, fullscreen: false,
+                bounds: null, background: false, fullscreen: false,
                 cdpListeners: new Set(), cdpSessions: new Map(), cdpReady: Promise.resolve(), cdpGeneration: 0, cdpError: undefined,
             };
             this.views.set(message.viewId, popup);
