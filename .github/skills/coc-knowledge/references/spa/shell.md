@@ -819,6 +819,11 @@ launch/retry/cancel or authorization controls.
 
 ### Sentinel To-do Scrubber
 
+With the owning server's Jobs flags on, `SentinelTodoJobs` lists user prompt jobs
+and hosts the Scrubber as its pinned built-in row. Job dialogs, gate status,
+Test gate/Resume gate and skip labels are described in the unified-right-panel
+`AGENTS.md`.
+
 `SentinelTodoScrubber` mounts after the ledger loads when both live ledger and
 scrubber flags are enabled; its function child places one inline strip and history in
 the list column below triggers, beside the detail pane. Owner/endpoint remounts isolate async state and drafts.
@@ -841,11 +846,7 @@ The editor uses browser-safe
 
 `SentinelTodoTriggers` lists owner-bound, nondelegated rules below the cards.
 PR/date authoring uses eligible normal items and owner-server capabilities.
-Script rows show interval, last run/error, pause and escaped read-only source;
-they never open the PR editor. Disabled/unavailable owner script capability
-retains rows and safe lifecycle actions while blocking Resume/Run now.
-Confirmed script Run now evaluates without consuming or resuming the rule;
-PR/date Run now confirms a one-shot wake. Neither launches jobs directly.
+Run now confirms a one-shot wake and never launches jobs directly.
 
 Lifecycle and pending delivery stay separate from item/job/review state; typed
 writes carry owner identity and saved revisions. Owner changes isolate async

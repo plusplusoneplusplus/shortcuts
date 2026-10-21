@@ -961,7 +961,15 @@ and clone-qualified job/Sentinel turn links. Model catalogs and effort tiers use
 the same owner client. When the owning server's `effortLevelsEnabled` is on and the
 provider has tiers, the dialog shows the shared `EffortTierSelector` and saves only
 `effortTier`; otherwise it keeps explicit Model/Effort and clears a stored tier.
-Autopilot displays a permission warning.
+Autopilot displays a permission warning. The optional Gate script field needs a
+cron (inline error, Create/Save disabled) and is sent as typed, so an unchanged
+script keeps its server gate state; blank clears it. Gated cards show active or
+paused status, the failure streak, the last gate error and a truncated last-result
+preview (full JSON in its title). Test gate calls `jobs.testGate` outside the
+mutation lock and shows the outcome inline; a changed script or unmount aborts it
+and discards the late result. Resume gate appears only while paused and uses the
+mutation lock. History and the last-run line label `overlap`, `gate-empty` and
+`gate-unavailable` skips separately.
 
 With Jobs enabled, `SentinelTodoScrubber` supplies the pinned built-in row only
 when the independent scrubber flag is enabled, retaining its findings context,
@@ -1002,19 +1010,12 @@ Tests use isolated mock clients in
 
 `SentinelTodoTriggers` lists intact, nondelegated To-do bindings through the ledger
 owner's typed `client.triggers` API. Rule status and delivery stay separate from
-item/job/review states. Rows link the canonical PR, show a zoned date with UTC
-tooltip, or display a script's interval, last run/error and paused state.
-Script source is escaped, read-only text in a bounded disclosure; script rows
-never enter the PR/date editor or expose stored result payloads.
+item/job/review states. Rows link the canonical PR or show a zoned date with UTC
+tooltip.
 
-The owner's `sentinelTodoCapabilities` controls date visibility and script
-execution, independently of page-origin flags. Disabled/unavailable script
-execution retains rows, source, Pause and Remove; Resume and Run now fail closed.
-Refreshes close script run confirmations when admission disappears. Owner changes
-isolate async reads and dialogs. Lifecycle writes carry saved revisions.
-Confirmed script Run now evaluates once, establishes a silent first baseline and
-wakes only on change; it neither consumes nor resumes a paused rule. Pending
-delivery and in-flight evaluation disable another script run.
+The owner's `sentinelTodoCapabilities` controls date visibility, independently of
+page-origin flags; losing it closes date Run now and resume confirmations. Owner
+changes isolate async reads and dialogs. Lifecycle writes carry saved revisions.
 
 `SentinelTodoTriggerEditor` selects eligible normal items, PR URL/local picker or
 one-time date/time, and optional guidance. Shared coc-client helpers validate

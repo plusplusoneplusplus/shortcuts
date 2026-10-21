@@ -1,10 +1,10 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { SentinelScheduledJob, SentinelScheduledJobRun } from '@plusplusoneplusplus/coc-client';
+import type { SentinelScheduledJob, SentinelScheduledJobGateTest, SentinelScheduledJobRun } from '@plusplusoneplusplus/coc-client';
 
 const mock = vi.hoisted(() => ({
-    list: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(), start: vi.fn(), cancel: vi.fn(),
+    list: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(), start: vi.fn(), cancel: vi.fn(), testGate: vi.fn(), resumeGate: vi.fn(),
     connect: vi.fn(), request: vi.fn(), scrubGet: vi.fn(), scrubStart: vi.fn(), scrubUpdate: vi.fn(),
     refs: [] as unknown[], route: { kind: 'local' } as { kind: string; baseUrl?: string },
     tierReads: [] as unknown[][], tiersLoading: false,
@@ -33,7 +33,8 @@ const owner = { ownerWorkspaceId: 'ws-a', processId: 'queue_sentinel' };
 const follow = vi.fn();
 const job = (patch: Partial<SentinelScheduledJob> = {}): SentinelScheduledJob => ({
     id: 'j1', name: 'Daily review', instructions: 'Review the snapshot.', provider: 'copilot', model: 'test-model',
-    mode: 'ask', enabled: true, autoCompactThreshold: 100_000, revision: 2, processId: 'queue_job', runs: [], ...patch,
+    mode: 'ask', enabled: true, autoCompactThreshold: 100_000, gateConsecutiveFailures: 0, gatePaused: false, revision: 2,
+    processId: 'queue_job', runs: [], ...patch,
 });
 const run = (patch: Partial<SentinelScheduledJobRun> = {}): SentinelScheduledJobRun => ({
     id: 'r1', runNumber: 1, trigger: 'manual', status: 'running', createdAt: '2026-10-18T12:00:00Z', ...patch,
@@ -49,7 +50,7 @@ function view(ownerOverride = owner) {
 beforeEach(() => {
     vi.clearAllMocks();
     mock.list.mockReset().mockResolvedValue({ jobs: [] });
-    for (const action of [mock.create, mock.update, mock.delete, mock.start, mock.cancel]) action.mockReset().mockResolvedValue({});
+    for (const action of [mock.create, mock.update, mock.delete, mock.start, mock.cancel, mock.testGate, mock.resumeGate]) action.mockReset().mockResolvedValue({});
     mock.connect.mockReturnValue({ close: vi.fn() });
     mock.request.mockReset().mockResolvedValue({ features: { sentinelEnabled: true, sentinelTodoJobsEnabled: true, sentinelTodoScrubberEnabled: false } });
     mock.scrubGet.mockReset().mockResolvedValue({ config: { enabled: true, paused: false, consecutiveFailures: 0, cron: '0 9 * * *', revision: 2 }, runs: [] });
@@ -143,7 +144,7 @@ describe('Sentinel To-do Jobs', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Create job' }));
         await waitFor(() => expect(mock.create).toHaveBeenCalledWith('ws-a', 'queue_sentinel', {
             name: 'Daily audit', instructions: 'Review pending work.', provider: 'copilot', model: 'test-model',
-            effort: '', effortTier: '', mode: 'ask', cron: '', enabled: true, autoCompactThreshold: 100_000,
+            effort: '', effortTier: '', mode: 'ask', cron: '', enabled: true, autoCompactThreshold: 100_000, gateScript: '',
         }));
         await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     });
@@ -315,6 +316,157 @@ describe('Sentinel To-do Jobs', () => {
         expect(close).toHaveBeenCalledOnce();
         await act(async () => pending.resolve({ jobs: [job()] }));
         expect(screen.queryByText('Daily review')).toBeNull();
+    });
+    describe('gate scripts', () => {
+        const gated = (patch: Partial<SentinelScheduledJob> = {}) => job({ cron: '0 * * * *', gateScript: 'return state;', ...patch });
+
+        it('requires a cron for a gate script and saves the script with the schedule', async () => {
+            view();
+            await fillNew();
+            const gate = screen.getByLabelText('Gate script (optional)');
+            expect(screen.getByText(/Return a non-empty JSON value to start a run/)).toBeInTheDocument();
+            fireEvent.change(gate, { target: { value: 'return { items: [1] };' } });
+            expect(screen.getByRole('alert')).toHaveTextContent('A gate script needs a cron schedule.');
+            expect(gate).toHaveAttribute('aria-invalid', 'true');
+            expect(screen.getByRole('button', { name: 'Create job' })).toBeDisabled();
+            fireEvent.change(screen.getByLabelText('Schedule preset'), { target: { value: '0 * * * *' } });
+            expect(screen.queryByText('A gate script needs a cron schedule.')).toBeNull();
+            fireEvent.click(screen.getByRole('button', { name: 'Create job' }));
+            await waitFor(() => expect(mock.create).toHaveBeenCalledWith('ws-a', 'queue_sentinel', expect.objectContaining({
+                cron: '0 * * * *', gateScript: 'return { items: [1] };',
+            })));
+        });
+        it('ignores a blank gate when validating a manual job', async () => {
+            view();
+            await fillNew();
+            fireEvent.change(screen.getByLabelText('Gate script (optional)'), { target: { value: '  \n ' } });
+            expect(screen.queryByText('A gate script needs a cron schedule.')).toBeNull();
+            fireEvent.click(screen.getByRole('button', { name: 'Create job' }));
+            await waitFor(() => expect(mock.create).toHaveBeenCalledWith('ws-a', 'queue_sentinel', expect.objectContaining({ cron: '', gateScript: '' })));
+        });
+        it('resends an unchanged script as stored and clears a removed one', async () => {
+            const script = 'return state;\n';
+            mock.list.mockResolvedValue({ jobs: [gated({ gateScript: script })] });
+            view();
+            fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+            expect(screen.getByLabelText('Gate script (optional)')).toHaveValue(script);
+            fireEvent.click(screen.getByRole('button', { name: 'Save job' }));
+            await waitFor(() => expect(mock.update).toHaveBeenCalledWith('ws-a', 'queue_sentinel', 'j1', expect.objectContaining({ gateScript: script })));
+            fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+            fireEvent.change(screen.getByLabelText('Gate script (optional)'), { target: { value: '' } });
+            fireEvent.change(screen.getByLabelText('Schedule preset'), { target: { value: 'manual' } });
+            fireEvent.click(screen.getByRole('button', { name: 'Save job' }));
+            await waitFor(() => expect(mock.update).toHaveBeenLastCalledWith('ws-a', 'queue_sentinel', 'j1', expect.objectContaining({ gateScript: '', cron: '' })));
+        });
+        it('shows an active gate with its last result and no gate controls for ungated jobs', async () => {
+            mock.list.mockResolvedValue({ jobs: [gated({ gateLastResult: '{"items":[1]}' }), job({ id: 'j2', name: 'Plain' })] });
+            view();
+            const card = await screen.findByRole('article', { name: 'Daily review' });
+            expect(within(card).getByText('Gate active')).toBeInTheDocument();
+            expect(within(card).getByText('{"items":[1]}')).toBeInTheDocument();
+            expect(within(card).queryByRole('button', { name: 'Resume gate' })).toBeNull();
+            const plain = screen.getByRole('article', { name: 'Plain' });
+            expect(within(plain).queryByTestId('sentinel-job-gate')).toBeNull();
+            expect(within(plain).queryByRole('button', { name: 'Test gate' })).toBeNull();
+        });
+        it('truncates a long last result preview and keeps the full JSON as its title', async () => {
+            const long = JSON.stringify({ items: Array.from({ length: 80 }, (_, i) => i) });
+            mock.list.mockResolvedValue({ jobs: [gated({ gateLastResult: long })] });
+            view();
+            const line = await screen.findByText(/Last gate result/);
+            expect(line).toHaveAttribute('title', long);
+            expect(line.textContent).toContain('…');
+            expect(line.textContent!.length).toBeLessThan(long.length);
+        });
+        it('tests the gate inline without starting a run or reloading jobs', async () => {
+            mock.list.mockResolvedValue({ jobs: [gated()] });
+            const pending = deferred<SentinelScheduledJobGateTest>();
+            mock.testGate.mockReturnValue(pending.promise);
+            view();
+            fireEvent.click(await screen.findByRole('button', { name: 'Test gate' }));
+            expect(mock.testGate).toHaveBeenCalledExactlyOnceWith('ws-a', 'queue_sentinel', 'j1', { signal: expect.any(AbortSignal) });
+            expect(screen.getByRole('button', { name: 'Testing gate...' })).toBeDisabled();
+            expect(screen.getByRole('button', { name: 'Run now' })).not.toBeDisabled();
+            await act(async () => pending.resolve({ ok: true, result: '{"items":[1]}', empty: false }));
+            const status = screen.getByText(/a tick would start a run/).closest('[role="status"]') as HTMLElement;
+            expect(within(status).getByText('{"items":[1]}')).toBeInTheDocument();
+            expect(mock.start).not.toHaveBeenCalled();
+            expect(mock.update).not.toHaveBeenCalled();
+            expect(mock.list).toHaveBeenCalledTimes(1);
+            mock.testGate.mockResolvedValue({ ok: true, result: '[]', empty: true });
+            fireEvent.click(screen.getByRole('button', { name: 'Test gate' }));
+            await screen.findByText(/a tick would skip/);
+            expect(screen.queryByText(/a tick would start a run/)).toBeNull();
+        });
+        it('shows gate failures and rejected tests inline', async () => {
+            mock.list.mockResolvedValue({ jobs: [gated()] });
+            mock.testGate.mockResolvedValue({ ok: false, error: 'Gate script exceeded its 60-second deadline' });
+            view();
+            fireEvent.click(await screen.findByRole('button', { name: 'Test gate' }));
+            expect(await screen.findByRole('alert')).toHaveTextContent('Gate test failed: Gate script exceeded its 60-second deadline');
+            mock.testGate.mockRejectedValue(Object.assign(new Error('Gate scripts need tool scripting (features.toolScripting)'), { status: 409 }));
+            fireEvent.click(screen.getByRole('button', { name: 'Test gate' }));
+            await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Gate test failed: Gate scripts need tool scripting'));
+            expect(screen.queryByText(/Job changed/)).toBeNull();
+        });
+        it('shows a paused gate with its last error, still tests it, and resumes it', async () => {
+            mock.list.mockResolvedValue({ jobs: [gated({ gatePaused: true, gateConsecutiveFailures: 5,
+                gateLastError: { message: 'boom', at: '2026-10-18T12:00:00Z' } })] });
+            mock.testGate.mockResolvedValue({ ok: true, result: 'null', empty: true });
+            view();
+            const card = await screen.findByRole('article', { name: 'Daily review' });
+            expect(within(card).getByText(/Gate paused after 5 failures in a row/)).toBeInTheDocument();
+            expect(within(card).getByText(/Last gate error/)).toHaveTextContent('boom');
+            fireEvent.click(within(card).getByRole('button', { name: 'Test gate' }));
+            await screen.findByText(/a tick would skip/);
+            expect(mock.resumeGate).not.toHaveBeenCalled();
+            mock.list.mockResolvedValue({ jobs: [gated({ gateLastError: { message: 'boom', at: '2026-10-18T12:00:00Z' } })] });
+            fireEvent.click(within(card).getByRole('button', { name: 'Resume gate' }));
+            await waitFor(() => expect(mock.resumeGate).toHaveBeenCalledExactlyOnceWith('ws-a', 'queue_sentinel', 'j1'));
+            await screen.findByText('Gate active');
+            expect(screen.queryByRole('button', { name: 'Resume gate' })).toBeNull();
+            expect(mock.update).not.toHaveBeenCalled();
+        });
+        it('shows the failure streak on an active gate', async () => {
+            mock.list.mockResolvedValue({ jobs: [gated({ gateConsecutiveFailures: 2, gateLastError: { message: 'bad JSON', at: '2026-10-18T12:00:00Z' } })] });
+            view();
+            expect(await screen.findByText('Gate active · 2 failed in a row')).toBeInTheDocument();
+            expect(screen.getByText(/Last gate error/)).toHaveTextContent('bad JSON');
+        });
+        it('discards a running test when the script changes or the panel unmounts', async () => {
+            mock.list.mockResolvedValue({ jobs: [gated()] });
+            const first = deferred<SentinelScheduledJobGateTest>();
+            mock.testGate.mockReturnValue(first.promise);
+            const page = view();
+            fireEvent.click(await screen.findByRole('button', { name: 'Test gate' }));
+            const signal = mock.testGate.mock.calls[0][3].signal as AbortSignal;
+            const options = mock.connect.mock.calls[0][0];
+            mock.list.mockResolvedValue({ jobs: [gated({ gateScript: 'return null;', revision: 3 })] });
+            await act(async () => options.onMessage({ type: 'sentinel-jobs-changed', workspaceId: 'ws-a', processId: 'queue_sentinel' }));
+            await waitFor(() => expect(signal.aborted).toBe(true));
+            expect(screen.getByRole('button', { name: 'Test gate' })).not.toBeDisabled();
+            await act(async () => first.resolve({ ok: true, result: '{"stale":true}', empty: false }));
+            expect(screen.queryByText('{"stale":true}')).toBeNull();
+            const second = deferred<SentinelScheduledJobGateTest>();
+            mock.testGate.mockReturnValue(second.promise);
+            fireEvent.click(screen.getByRole('button', { name: 'Test gate' }));
+            const secondSignal = mock.testGate.mock.calls[1][3].signal as AbortSignal;
+            page.unmount();
+            expect(secondSignal.aborted).toBe(true);
+        });
+        it('labels gate skips apart from overlap skips in history and the last run', async () => {
+            mock.list.mockResolvedValue({ jobs: [gated({ runs: [
+                run({ id: 'r3', runNumber: 3, status: 'skipped', trigger: 'schedule', skipReason: 'gate-unavailable' }),
+                run({ id: 'r2', runNumber: 2, status: 'skipped', trigger: 'schedule', skipReason: 'gate-empty' }),
+                run({ id: 'r1', runNumber: 1, status: 'skipped', trigger: 'schedule', skipReason: 'overlap' }),
+            ] })] });
+            view();
+            expect(await screen.findByText('Last run #3: skipped: gate unavailable (tool scripting off)')).toBeInTheDocument();
+            fireEvent.click(screen.getByText('History (3)'));
+            expect(screen.getByText('#2 · schedule · skipped: gate result empty')).toBeInTheDocument();
+            expect(screen.getByText('#1 · schedule · skipped: overlap')).toBeInTheDocument();
+            expect(screen.getByText('#3 · schedule · skipped: gate unavailable (tool scripting off)')).toBeInTheDocument();
+        });
     });
     describe('effort tiers', () => {
         async function openNew() {

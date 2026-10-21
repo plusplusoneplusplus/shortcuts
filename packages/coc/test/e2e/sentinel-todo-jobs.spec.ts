@@ -34,7 +34,8 @@ test.beforeAll(async () => {
                     jobs: {
                         list: async (ws, process) => { record('list', ws, process); return { jobs: jobs.map(job => ({ ...job })) }; },
                         create: async (ws, process, input) => { record('create', ws, process);
-                            const job = { ...input, id: 'job-' + (jobs.length + 1), revision: 1, processId: 'queue_job', runs: [] };
+                            const job = { ...input, id: 'job-' + (jobs.length + 1), revision: 1, processId: 'queue_job', runs: [],
+                                gateConsecutiveFailures: 0, gatePaused: false };
                             jobs.push(job); return job; },
                         update: async (ws, process, id, input) => { record('update', ws, process);
                             return Object.assign(find(id), input, { revision: find(id).revision + 1 }); },
@@ -45,6 +46,8 @@ test.beforeAll(async () => {
                         cancel: async (ws, process, id) => { record('cancel', ws, process);
                             const job = find(id); const run = { ...job.activeRun, status: 'cancelled', error: 'Cancelled by user' };
                             delete job.activeRun; job.runs = [run]; return run; },
+                        testGate: async (ws, process) => { record('test-gate', ws, process);
+                            return { ok: true, empty: false, result: JSON.stringify({ items: Array.from({ length: 120 }, (_, i) => 'item-' + i) }) }; },
                     },
                     scrubber: {
                         get: async () => ({ config: { ...scrub }, runs: [] }),
@@ -149,4 +152,30 @@ test('remote owner routes job creation to its own workspace and Sentinel', async
     const calls = await page.evaluate(() => (window as Window & { jobsFixture: { calls: unknown[][] } }).jobsFixture.calls);
     expect(calls).toContainEqual(['create', 'ws-owner', 'queue_sentinel']);
     expect(calls.every(call => call[1] === 'ws-owner' && call[2] === 'queue_sentinel')).toBe(true);
+});
+test('gated job requires a schedule and shows Test gate results inline at 320px', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+    await mount(page, { width: 320 });
+    await page.getByRole('button', { name: 'New job' }).click();
+    const dialog = page.getByRole('dialog', { name: 'New job', exact: true });
+    await dialog.getByLabel('Name', { exact: true }).fill('Gated audit');
+    await dialog.getByLabel('Instructions').fill('Review the gate result.');
+    await dialog.getByLabel('Model', { exact: true }).fill('test-model');
+    await dialog.getByLabel('Gate script (optional)').fill('return { items: [1] };');
+    await expect(dialog.getByText('A gate script needs a cron schedule.')).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Create job' })).toBeDisabled();
+    await dialog.getByLabel('Schedule preset').selectOption('0 */6 * * *');
+    expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await dialog.getByRole('button', { name: 'Create job' }).click();
+    const job = page.getByRole('article', { name: 'Gated audit' });
+    await expect(job.getByText('Gate active')).toBeVisible();
+    await job.getByRole('button', { name: 'Test gate' }).click();
+    await expect(job.getByText(/a tick would start a run/)).toBeVisible();
+    await expect(job.getByText(/item-119/)).toBeVisible();
+    expect(await job.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    const calls = await page.evaluate(() => (window as Window & { jobsFixture: { calls: unknown[][] } }).jobsFixture.calls);
+    expect(calls).toContainEqual(['test-gate', 'ws-owner', 'queue_sentinel']);
+    expect(calls.some(call => call[0] === 'start')).toBe(false);
+    expect(errors).toEqual([]);
 });

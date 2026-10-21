@@ -12,7 +12,7 @@ import { describeCron } from '../../../utils/cron';
 const INPUT = 'w-full min-w-0 rounded border border-[#e0e0e0] bg-transparent px-2 py-1 text-xs dark:border-[#3c3c3c]';
 type Draft = {
     name: string; instructions: string; provider: AgentProvider; model: string; effort: string; effortTier: EffortTierKey | '';
-    mode: 'ask' | 'autopilot'; cron: string; enabled: boolean; threshold: string;
+    mode: 'ask' | 'autopilot'; cron: string; enabled: boolean; threshold: string; gateScript: string;
 };
 function concreteProvider(value?: string): AgentProvider {
     return value === 'codex' || value === 'claude' || value === 'opencode' ? value : 'copilot';
@@ -39,6 +39,7 @@ export function SentinelTodoJobDialog({ job, client, baseUrl, effortLevelsEnable
         name: job?.name ?? '', instructions: job?.instructions ?? '', provider: concreteProvider(job?.provider),
         model: job?.model ?? '', effort: job?.effort ?? '', effortTier: tierKey(job?.effortTier), mode: job?.mode ?? 'ask',
         cron: job?.cron ?? '', enabled: job?.enabled ?? true, threshold: String(job?.autoCompactThreshold ?? 100_000),
+        gateScript: job?.gateScript ?? '',
     }));
     const { models, loading, error: modelError, reload } = useProviderModels(draft.provider, { baseUrl, client });
     const { tiers, loading: tiersLoading } = useProviderEffortTiers(draft.provider, baseUrl, client);
@@ -49,13 +50,16 @@ export function SentinelTodoJobDialog({ job, client, baseUrl, effortLevelsEnable
     const cronError = draft.cron.trim() ? validateScrubCron(draft.cron) : undefined;
     const threshold = Number(draft.threshold);
     const thresholdError = !Number.isSafeInteger(threshold) || threshold <= 0;
-    const valid = !!draft.name.trim() && !!draft.instructions.trim() && aiValid && !cronError && !thresholdError;
+    const gateError = draft.gateScript.trim() && !draft.cron.trim() ? 'A gate script needs a cron schedule.' : undefined;
+    const valid = !!draft.name.trim() && !!draft.instructions.trim() && aiValid && !cronError && !thresholdError && !gateError;
     const update = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft(previous => ({ ...previous, [key]: value }));
     const save = () => onSave({
         name: draft.name.trim(), instructions: draft.instructions.trim(), provider: draft.provider,
         // The server drops model/effort for a tier; an empty tier clears a stored one.
         ...(tierMode ? { effortTier: selectedTier } : { model: draft.model.trim(), effort: draft.effort, effortTier: '' }), mode: draft.mode, cron: draft.cron.trim(),
         enabled: draft.enabled, autoCompactThreshold: threshold,
+        // Sent as typed so an unchanged script keeps its gate state; blank clears the gate.
+        gateScript: draft.gateScript.trim() ? draft.gateScript : '',
     });
     return <Dialog open title={job ? 'Edit job' : 'New job'} trapFocus disableClose={busy} onClose={() => { if (!busy) onClose(); }}>
         <form aria-label={job ? 'Edit job' : 'New job'} className="flex min-w-0 flex-col gap-2" onSubmit={event => { event.preventDefault(); if (valid && !busy) void save(); }}>
@@ -108,6 +112,12 @@ export function SentinelTodoJobDialog({ job, client, baseUrl, effortLevelsEnable
             <input id={`${id}-threshold`} className={INPUT} type="number" min="1" step="1" required value={draft.threshold} disabled={busy}
                 aria-invalid={thresholdError} onChange={event => update('threshold', event.target.value)} />
             {thresholdError && <p role="alert">Enter a positive whole number of tokens.</p>}
+            <label htmlFor={`${id}-gate`}>Gate script (optional)</label>
+            <textarea id={`${id}-gate`} className={`${INPUT} min-h-[80px] font-mono`} value={draft.gateScript} maxLength={32_000} disabled={busy}
+                spellCheck={false} aria-invalid={!!gateError} aria-describedby={`${id}-gate-help`} placeholder="return items.length ? { items } : null;"
+                onChange={event => update('gateScript', event.target.value)} />
+            <p id={`${id}-gate-help`} role={gateError ? 'alert' : undefined} className="text-xs">{gateError
+                ?? 'Async JS body run before each scheduled tick with tools and state (its previous result). Return a non-empty JSON value to start a run with it in the prompt; null, false, "", [] or {} skips. Run now skips the gate.'}</p>
             <label className="text-xs"><input type="checkbox" checked={draft.enabled} disabled={busy} onChange={event => update('enabled', event.target.checked)} /> Enabled</label>
             {error && <p role="alert" className="text-xs text-[#c72e2e] dark:text-[#f48771]">{error}</p>}
             <div className="mt-2 flex justify-end gap-2"><Button variant="secondary" disabled={busy} onClick={onClose}>Cancel</Button>
