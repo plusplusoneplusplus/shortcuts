@@ -26,7 +26,7 @@ describe('desktop browser command validation', () => {
         { action: 'type', ref: 'e1', text: [] }, { action: 'type', ref: 'e1' },
         { action: 'select_option', ref: 'e1' }, { action: 'press', key: '' }, { action: 'navigate', direction: 'stop' },
         { action: 'scroll' }, { action: 'scroll', direction: 'around' }, { action: 'wait', text: 'x', ms: 2 },
-        { action: 'wait', text: ' ' }, { action: 'wait', ms: 30001 }, { action: 'wait', ms: '1' },
+        { action: 'wait', text: ' ' }, { action: 'wait', ms: 60001 }, { action: 'wait', ms: '1' },
         { action: 'wait' }, { action: 'eval' }, { action: 'select', tab: {} },
     ])('rejects %j at the IPC boundary', command => { expect(() => validateBrowserCommandRequest(request(command))).toThrow(); });
     it.each([

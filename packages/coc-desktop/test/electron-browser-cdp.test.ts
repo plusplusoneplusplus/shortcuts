@@ -173,13 +173,13 @@ describe('Electron URL guest CDP lifecycle', () => {
         cdp.dispose();
     });
 
-    it('times out after 30 seconds, retires timers and permits later commands', async () => {
+    it('times out after 60 seconds, retires timers and permits later commands', async () => {
         vi.useFakeTimers();
         const { cdp, debuggerApi } = fixture();
         debuggerApi.sendCommand.mockImplementationOnce(() => new Promise(() => {}));
         const pending = cdp.send('Runtime.evaluate');
-        const rejected = expect(pending).rejects.toThrow('timed out after 30s');
-        await vi.advanceTimersByTimeAsync(29_999);
+        const rejected = expect(pending).rejects.toThrow('timed out after 60s');
+        await vi.advanceTimersByTimeAsync(59_999);
         expect(vi.getTimerCount()).toBe(1);
         await vi.advanceTimersByTimeAsync(1);
         await rejected;

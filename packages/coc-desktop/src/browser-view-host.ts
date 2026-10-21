@@ -180,7 +180,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         if (requests.has(request.id)) throw new Error('Duplicate browser request');
         const controller = new AbortController();
         requests.set(request.id, controller);
-        const timeout = setTimeout(() => controller.abort(new Error('Browser command timed out after 30s')), 30_000);
+        const timeout = setTimeout(() => controller.abort(new Error('Browser command timed out after 60s')), 60_000);
         let aborted!: () => void;
         const cancellation = new Promise<never>((_resolve, reject) => {
             aborted = () => reject(controller.signal.reason);

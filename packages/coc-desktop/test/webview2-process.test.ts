@@ -167,8 +167,8 @@ describe('WebView2 CDP transport', () => {
     it('times out one CDP request, ignores its late reply and leaves other tabs running', async () => {
         const { native, transport, failure } = await started();
         const pending = transport.request('cdp', { viewId: 'owner:a', method: 'Runtime.evaluate' });
-        const rejected = expect(pending).rejects.toThrow('timed out after 30s');
-        await vi.advanceTimersByTimeAsync(30_000);
+        const rejected = expect(pending).rejects.toThrow('timed out after 60s');
+        await vi.advanceTimersByTimeAsync(60_000);
         await rejected;
         expect(native.kill).not.toHaveBeenCalled();
         expect(failure).not.toHaveBeenCalled();

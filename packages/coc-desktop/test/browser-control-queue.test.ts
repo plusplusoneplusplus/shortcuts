@@ -140,16 +140,18 @@ describe('browser command queue', () => {
         expect(send.mock.calls[1][1].expression).toContain('"nextRef":10');
     });
 
-    it('times out after 30s including time spent queued and cleans listeners and timers', async () => {
+    it('times out after 60s including time spent queued and cleans listeners and timers', async () => {
         vi.useFakeTimers();
         const gate = deferred<unknown>();
         const controller = new AbortController();
         const remove = vi.spyOn(controller.signal, 'removeEventListener');
         const queue = new BrowserControlQueue(() => gate.promise);
         const operation = vi.fn();
-        const active = expect(queue.run(page => page.scroll('down'), controller.signal)).rejects.toThrow('timed out after 30s');
-        const queued = expect(queue.run(operation)).rejects.toThrow('timed out after 30s');
-        await vi.advanceTimersByTimeAsync(30_000);
+        const active = expect(queue.run(page => page.scroll('down'), controller.signal)).rejects.toThrow('timed out after 60s');
+        const queued = expect(queue.run(operation)).rejects.toThrow('timed out after 60s');
+        await vi.advanceTimersByTimeAsync(59_999);
+        expect(vi.getTimerCount()).toBe(2);
+        await vi.advanceTimersByTimeAsync(1);
         await Promise.all([active, queued]);
         expect(vi.getTimerCount()).toBe(0);
         expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));

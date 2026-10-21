@@ -167,14 +167,16 @@ describe('browser control relay', () => {
         relay.reply(a, { id, ok: true, result: {} });
     });
 
-    it('times out after 30s, forwards cancellation, and releases all timers/listeners', async () => {
+    it('times out after 60s, forwards cancellation, and releases all timers/listeners', async () => {
         vi.useFakeTimers();
         const relay = enabled(), a = client('a');
         relay.advertise(a, 'w', true);
         const result = relay.execute('w', 'p', { action: 'read' });
-        const assertion = expect(result).rejects.toThrow('timed out after 30s');
+        const assertion = expect(result).rejects.toThrow('timed out after 60s');
         const id = request(a).id;
-        await vi.advanceTimersByTimeAsync(30_000);
+        await vi.advanceTimersByTimeAsync(59_999);
+        expect(a.send.mock.calls.some(([data]) => JSON.parse(data).type === 'browser-command-cancel')).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
         await assertion;
         expect(JSON.parse(a.send.mock.calls.at(-1)![0])).toEqual({ type: 'browser-command-cancel', id });
         expect(vi.getTimerCount()).toBe(0);

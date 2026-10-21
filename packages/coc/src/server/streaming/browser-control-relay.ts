@@ -140,8 +140,8 @@ export class BrowserControlRelay implements BrowserControlRuntime {
             };
             const timer = setTimeout(() => {
                 cancel();
-                finish(new Error('Browser command timed out after 30s'));
-            }, 30_000);
+                finish(new Error('Browser command timed out after 60s'));
+            }, 60_000);
             timer.unref();
             const finish = (error?: unknown, result?: BrowserCommandResult) => {
                 if (!this.pending.delete(id)) return;

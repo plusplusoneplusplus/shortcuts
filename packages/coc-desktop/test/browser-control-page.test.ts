@@ -343,17 +343,17 @@ describe('engine-neutral trusted CDP actions', () => {
         }
     });
 
-    it('reports text timeout at the 30-second deadline', async () => {
+    it('reports text timeout at the 60-second deadline', async () => {
         const { send, page } = fixture();
         send.mockResolvedValue({ result: { value: false } });
-        const now = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValue(30_000);
-        try { await expect(page.wait('Missing')).rejects.toThrow('Text not found after 30s'); }
+        const now = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValue(60_000);
+        try { await expect(page.wait('Missing')).rejects.toThrow('Text not found after 60s'); }
         finally { now.mockRestore(); }
     });
 
-    it.each([-1, 30_001, Infinity, NaN])('rejects invalid wait duration %s', async ms => {
+    it.each([-1, 60_001, Infinity, NaN])('rejects invalid wait duration %s', async ms => {
         const { page } = fixture();
-        await expect(page.wait(ms)).rejects.toThrow('between 0 and 30000');
+        await expect(page.wait(ms)).rejects.toThrow('between 0 and 60000');
     });
 
     it('waits for a duration without CDP and cancels a pending timer promptly', async () => {

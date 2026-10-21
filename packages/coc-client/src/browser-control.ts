@@ -150,8 +150,8 @@ export function assertBrowserCommand(raw: unknown): asserts raw is BrowserComman
         if (name === 'all' || name === 'newTab' || name === 'submit' || name === 'view' || name === 'replaceClipboard') {
             if (typeof value !== 'boolean') throw new TypeError(`${name} must be boolean`);
         } else if (name === 'offset' || name === 'ms') {
-            if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || (name === 'ms' && value > 30_000)) {
-                throw new TypeError(`${name} must be a nonnegative integer${name === 'ms' ? ' up to 30000' : ''}`);
+            if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || (name === 'ms' && value > 60_000)) {
+                throw new TypeError(`${name} must be a nonnegative integer${name === 'ms' ? ' up to 60000' : ''}`);
             }
         } else if (typeof value !== 'string') {
             throw new TypeError(`${name} must be string`);

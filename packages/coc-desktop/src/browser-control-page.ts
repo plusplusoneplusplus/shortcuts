@@ -430,12 +430,12 @@ export class BrowserControlPage {
     async wait(textOrMs: string | number, signal?: AbortSignal, frame?: string): Promise<void> {
         signal?.throwIfAborted();
         if (typeof textOrMs === 'number') {
-            if (!Number.isFinite(textOrMs) || textOrMs < 0 || textOrMs > 30_000) throw new Error('wait ms must be between 0 and 30000');
+            if (!Number.isFinite(textOrMs) || textOrMs < 0 || textOrMs > 60_000) throw new Error('wait ms must be between 0 and 60000');
             await delay(textOrMs, undefined, { signal });
             return;
         }
         if (!textOrMs.trim()) throw new Error('wait text must not be empty');
-        const deadline = Date.now() + 30_000;
+        const deadline = Date.now() + 60_000;
         if (this.frames) this.budget = { nodes: 20000, chars: 1000000, refs: 10000 };
         try {
             do {
@@ -461,7 +461,7 @@ export class BrowserControlPage {
                 await delay(Math.min(100, remaining), undefined, { signal });
             } while (Date.now() < deadline);
         } finally { this.executionFrame = undefined; this.budget = undefined; }
-        throw new Error('Text not found after 30s');
+        throw new Error('Text not found after 60s');
     }
 
     private async viewport(frame: string): Promise<BrowserDomTarget> {

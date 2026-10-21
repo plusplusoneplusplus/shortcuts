@@ -7,7 +7,7 @@ const valid: BrowserCommand[] = [
     { action: 'read', ref: 'e1', offset: 4 }, { action: 'click', ref: 'e1' },
     { action: 'type', ref: 'e1', text: '', submit: true }, { action: 'select_option', ref: 'e1', value: '' },
     { action: 'press', key: 'Enter' }, { action: 'scroll', ref: 'e1' },
-    { action: 'navigate', direction: 'back' }, { action: 'wait', ms: 30_000 },
+    { action: 'navigate', direction: 'back' }, { action: 'wait', ms: 60_000 },
     { action: 'screenshot', ref: 'e1' }, { action: 'eval', js: 'document.title' },
     { action: 'frames' },
     { action: 'paste_html', ref: 'e1', html: '<b>Fixture</b>', text: 'Fixture' },
@@ -56,7 +56,7 @@ describe('single browser command contract', () => {
 
     it.each([
         { action: 'wait' }, { action: 'wait', ms: 2, text: 'ready' },
-        { action: 'wait', text: ' ' }, { action: 'wait', ms: -1 }, { action: 'wait', ms: 30_001 },
+        { action: 'wait', text: ' ' }, { action: 'wait', ms: -1 }, { action: 'wait', ms: 60_001 },
         { action: 'wait', ms: 1.5 }, { action: 'read', offset: Infinity }, { action: 'read', offset: -1 },
         { action: 'scroll' }, { action: 'scroll', direction: 'back' },
         { action: 'navigate', direction: 'up' }, { action: 'type', ref: 'e1', text: false },

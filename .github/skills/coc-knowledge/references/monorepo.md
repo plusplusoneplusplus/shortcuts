@@ -335,7 +335,7 @@ URL hosts expose optional `BrowserHostedView.cdp(method, params)`. Electron's
 `ElectronBrowserCdp` lazily attaches to the adopted guest debugger and detaches
 its own attachment on close and retains the debugger emitter for destruction-safe
 listener cleanup. Pending calls reject on destruction, crash, detach
-or a 30-second timeout and retire timers/listeners. WebView2 forwards owner-qualified
+or a 60-second timeout and retire timers/listeners. WebView2 forwards owner-qualified
 requests to Rust `CallDevToolsProtocolMethod`, returning correlated JSON and rejecting
 on tab/helper close or crash. Native navigation reserves loading before dispatch and
 publishes state before acknowledgement; matching completion or committed
@@ -349,7 +349,7 @@ omit CDP; the primitive has no renderer IPC surface by itself.
 through an exact-source SPA main frame's workspace/session binding. Typed preload
 commands expose no arbitrary CDP. `withControlPage` checks the selected view's identity;
 its `BrowserControlQueue` retains one page across navigation and serializes whole
-input sequences. Turn abort, close, crash or 30 seconds including queue time reject
+input sequences. Turn abort, close, crash or 60 seconds including queue time reject
 callers. Cancellation keeps outstanding CDP serialized, releases dispatched presses
 and retains late snapshot counters. Every driven view receives owner-qualified,
 factory-stable turn activity, including remembered selections across SPA windows.

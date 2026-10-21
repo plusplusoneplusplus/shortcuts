@@ -443,13 +443,13 @@ function setBounds(entry: BrowserEntry, bounds: HtmlPageBounds | null): void {
 }
 
 async function waitForControlContents(getContents: () => WebContents | undefined, closed: () => boolean, signal: AbortSignal): Promise<void> {
-    const deadline = Date.now() + 30_000;
+    const deadline = Date.now() + 60_000;
     while (true) {
         signal.throwIfAborted();
         const contents = getContents();
         if (closed() || contents?.isDestroyed()) throw new Error('Browser tab closed');
         if (contents && !contents.isLoading() && contents.getURL()) return;
-        if (Date.now() >= deadline) throw new Error('Browser page did not become ready after 30s');
+        if (Date.now() >= deadline) throw new Error('Browser page did not become ready after 60s');
         await delay(20, undefined, { signal });
     }
 }
