@@ -111,9 +111,12 @@ export class SentinelJobService {
         if (scheduleCurrent?.() === false) throw new JobError('conflict', 'Job schedule changed during admission');
         const job = this.deps.jobs.get(owner, jobId);
         const script = job.gateScript;
-        // The overlap skip comes before the gate, so a busy job never evaluates its script.
-        if (!script || !job.enabled || this.deps.jobs.runs(owner, jobId).some(run => ACTIVE.includes(run.status as typeof ACTIVE[number]))) {
-            return this.startRun(owner, jobId, 'schedule', scheduleCurrent);
+        if (!script) return this.startRun(owner, jobId, 'schedule', scheduleCurrent);
+        if (!job.enabled) throw new JobError('conflict', 'Job schedule is paused');
+        // Overlap is checked and recorded in one synchronous step that never claims a run, so a busy job
+        // never evaluates its gate and a run that settles meanwhile cannot let this tick start without it.
+        if (this.deps.jobs.runs(owner, jobId).some(run => ACTIVE.includes(run.status as typeof ACTIVE[number]))) {
+            return this.skip(owner, jobId, 'overlap');
         }
         if (job.gatePaused || this.gates.has(gateKey(owner, jobId))) return undefined;
         if (!this.gateEnabled()) return this.skip(owner, jobId, 'gate-unavailable');
@@ -213,7 +216,7 @@ export class SentinelJobService {
         if (this.disposed || !this.deps.getEnabled()) await this.deps.cancelTask(taskId);
     }
 
-    private skip(owner: SentinelTodoOwner, jobId: string, reason: 'gate-empty' | 'gate-unavailable'): JobRunRecord {
+    private skip(owner: SentinelTodoOwner, jobId: string, reason: NonNullable<JobRunRecord['skipReason']>): JobRunRecord {
         const run = this.deps.jobs.createRun(owner, jobId, 'schedule', undefined, this.now().toISOString(), reason);
         this.changed(owner);
         return run;
@@ -225,6 +228,10 @@ export class SentinelJobService {
         if (scheduleCurrent?.() === false) throw new JobError('conflict', 'Job schedule changed during admission');
         let job = this.deps.jobs.get(owner, jobId);
         if (!job.enabled && trigger === 'schedule') throw new JobError('conflict', 'Job schedule is paused');
+        // A gated job's scheduled run needs its gate result; a script added during admission ends the tick.
+        if (trigger === 'schedule' && job.gateScript && gateResult === undefined) {
+            throw new JobError('conflict', 'Job schedule changed during admission');
+        }
         const taskId = randomUUID();
         // Claim single-flight before reading the snapshot or awaiting filesystem I/O.
         const run = this.deps.jobs.createRun(owner, jobId, trigger, toQueueProcessId(taskId), this.now().toISOString());

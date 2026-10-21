@@ -129,11 +129,11 @@ export class SentinelJobStore {
     }
 
     /**
-     * Claims single-flight, or records a skip: an active run always wins as `overlap` over a gate `skip`.
-     * Only a claimed run adopts `processId` as the job chat.
+     * Claims single-flight, or records a skip: an active run always wins as `overlap` over a gate `skip`,
+     * and a call with `skip` never claims. Only a claimed run adopts `processId` as the job chat.
      */
     createRun(owner: SentinelTodoOwner, id: string, trigger: JobRunRecord['trigger'], processId: string | undefined, now: string,
-        skip?: Exclude<JobRunRecord['skipReason'], 'overlap' | undefined>): JobRunRecord {
+        skip?: NonNullable<JobRunRecord['skipReason']>): JobRunRecord {
         return this.db.transaction(() => {
             const job = this.get(owner, id);
             const overlap = this.runs(owner, id).some(active);

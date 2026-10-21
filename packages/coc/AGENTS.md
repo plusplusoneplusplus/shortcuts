@@ -405,7 +405,8 @@ references before editing. Paths are package-relative.
   is never a user setting, and resets when the script changes or clears;
   `updateGate` writes it without a revision bump only while the evaluated script is
   still current. Scheduled ticks use `SentinelJobService.tick`: an active run records
-  an `overlap` skip before any gate runs, a paused gate skips silently and
+  an `overlap` skip before any gate runs and that skip never claims a run, so a gated
+  job's scheduled run only starts with a gate result; a paused gate skips silently and
   `features.toolScripting` off records `gate-unavailable`. The gate receives the
   parsed `gateLastResult` as `state`; an empty result (`null`, `false`, `""`, `[]`,
   `{}`) records `gate-empty`, anything else starts the run with the canonical JSON

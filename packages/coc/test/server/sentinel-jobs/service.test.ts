@@ -719,6 +719,50 @@ describe('SentinelJobService gated ticks', () => {
         expect(jobStore.run(owner, job.id, active.id).status).toBe('queued');
     });
 
+    it('records the overlap without claiming a run when the active run settles during admission', async () => {
+        const job = jobStore.create(owner, gated);
+        await service.start(owner, job.id);
+        const queue = new FakeQueue();
+        service.attach(queue);
+        // Stall owner validation from the moment the tick reads the still-active run.
+        let release!: () => void;
+        const runs = jobStore.runs.bind(jobStore);
+        vi.spyOn(jobStore, 'runs').mockImplementationOnce((...args) => {
+            stallWorkspaces = new Promise(resolve => { release = resolve; });
+            return runs(...args);
+        });
+        const tick = service.tick(owner, job.id);
+        await flush();
+        queue.emit('taskCompleted', owner.workspaceId, guardTask(enqueue.mock.calls[0][0] as CreateTaskInput));
+        await flush();
+        release();
+        stallWorkspaces = null;
+        expect(await tick).toMatchObject({ status: 'skipped', skipReason: 'overlap', trigger: 'schedule' });
+        await flush();
+        expect(runGate).not.toHaveBeenCalled();
+        expect(enqueue.mock.calls.filter(([task]) => getJobTaskContext(task)?.kind === 'run')).toHaveLength(1);
+        expect(jobStore.runs(owner, job.id).map(run => run.status)).toEqual(['skipped', 'completed']);
+    });
+
+    it('starts no gate-less scheduled run for a job that gained a gate script during admission', async () => {
+        const job = jobStore.create(owner, { ...input, cron: '0 * * * *' });
+        let release!: () => void;
+        const get = jobStore.get.bind(jobStore);
+        vi.spyOn(jobStore, 'get').mockImplementationOnce((...args) => {
+            stallWorkspaces = new Promise(resolve => { release = resolve; });
+            return get(...args);
+        });
+        const tick = service.tick(owner, job.id);
+        await flush();
+        jobStore.update(owner, job.id, { gateScript: gated.gateScript }, job.revision);
+        release();
+        stallWorkspaces = null;
+        await expect(tick).rejects.toMatchObject({ code: 'conflict' });
+        expect(runGate).not.toHaveBeenCalled();
+        expect(enqueue).not.toHaveBeenCalled();
+        expect(jobStore.runs(owner, job.id)).toEqual([]);
+    });
+
     it('counts failures, pauses after five in a row with exactly one Sentinel notice, and stops running the gate', async () => {
         const job = jobStore.create(owner, gated);
         runGate.mockRejectedValueOnce(new Error('boom 1'))

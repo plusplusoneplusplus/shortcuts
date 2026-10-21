@@ -210,7 +210,7 @@ timer registry's delay cap rather than firing early.
 Schedules use server local time and arm future dates without catch-up. Each tick
 re-arms independently of completion; an active job records a skipped overlap.
 Ticks call `SentinelJobService.tick`; a gated job checks overlap and its paused
-gate before running the gate script, then records `gate-empty` or starts a run with
+gate before running the gate script (its overlap skip never claims a run), then records `gate-empty` or starts a run with
 the result inline (see [gate runtime](server-architecture.md#sentinel-job-gate-runtime)).
 Multiple selected minutes are rejected even for dates beyond the validation horizon.
 

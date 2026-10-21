@@ -181,6 +181,9 @@ describe('scheduled job definitions and durable runs', () => {
         expect(store.createRun(owner, c.id, 'schedule', 'queue_c', at, 'gate-unavailable'))
             .toMatchObject({ status: 'skipped', skipReason: 'gate-unavailable', runNumber: 1, durationMs: 0 });
         expect(store.get(owner, c.id).processId).toBeUndefined();
+        // An explicit overlap skip never claims, even once nothing is active.
+        expect(store.createRun(owner, c.id, 'schedule', 'queue_c', at, 'overlap')).toMatchObject({ status: 'skipped', skipReason: 'overlap' });
+        expect(store.get(owner, c.id).processId).toBeUndefined();
         store.patchRun(owner, a.id, run.id, { status: 'cancelled' }, ['queued']);
         expect(store.patchRun(owner, a.id, run.id, { status: 'completed' }, ['running'])).toBeUndefined();
         expect(store.run(owner, a.id, run.id).status).toBe('cancelled');
