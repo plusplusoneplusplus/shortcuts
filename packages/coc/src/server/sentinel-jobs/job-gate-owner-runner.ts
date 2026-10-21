@@ -10,9 +10,21 @@ export interface JobGateOwnerTools extends Omit<ChatTurnContextInput,
     processId: string;
 }
 
+/** One gate evaluation for a Sentinel owner; the runtime resolves the owner's tools. */
+export interface JobGateRunRequest {
+    workspaceId: string;
+    processId: string;
+    code: string;
+    state: unknown;
+    signal?: AbortSignal;
+}
+
+/** Owner-scoped gate execution supplied by the queue runtime. No provider turn starts. */
+export type JobGateOwnerRunner = (request: JobGateRunRequest) => Promise<unknown>;
+
 /**
  * Runs with the owner's resolved chat capabilities, including tools that ordinary
- * chat scripts omit. The caller validates live flags, owner and rule revision,
+ * chat scripts omit. The caller validates live flags, owner and job revision,
  * supplies owner-bound capabilities, and cancels on revocation or shutdown.
  * No provider session is started: only the CoC handlers in this context execute.
  */

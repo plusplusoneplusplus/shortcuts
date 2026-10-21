@@ -13,9 +13,6 @@
 .sentinel-trigger-closed { color: #946200; }
 .sentinel-trigger-error { color: #c72e2e; }
 .sentinel-trigger-instruction { margin: 4px 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.sentinel-trigger-script { font-size: 12px; min-width: 0; }
-.sentinel-trigger-script summary { cursor: pointer; margin-top: 6px; }
-.sentinel-trigger-script pre { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 8px; border: 1px solid #c8c8c8; border-radius: 4px; }
 .sentinel-trigger-muted { font-size: 11px; margin: 4px 0 0; }
 .sentinel-trigger-menu { margin-left: auto; position: relative; }
 .sentinel-trigger-menu summary { cursor: pointer; padding: 0 6px; list-style: none; }
@@ -34,4 +31,3 @@
 .dark .sentinel-trigger-error { color: #f48771; }
 .dark .sentinel-trigger-editor input, .dark .sentinel-trigger-editor select, .dark .sentinel-trigger-editor textarea { background: #1e1e1e; color: #ccc; border-color: #555; }
 .dark .sentinel-trigger-preview { border-color: #555; }
-.dark .sentinel-trigger-script pre { border-color: #555; }

@@ -226,11 +226,8 @@ The tool exposes `list_triggers`, `create_trigger`, `edit_trigger`, `pause_trigg
 `resume_trigger`, `remove_trigger` and confirmed `run_trigger_now`, bound to the
 invoking Sentinel through `getTriggerInfra().sentinelTodoTriggers`. Creation uses
 `idempotencyKey`; mutations use rule `expectedRevision`. PR URLs arm one-shot
-wakes. Independently gated event schemas accept date rules or
-`{ type: 'script-condition', script, intervalMs? }`. Script guidance covers previous
-state, silent baseline, repeating changes, unattended tool denial and paused Run now.
-Shared service admission rechecks live flags; disabled scripts remain listable,
-pausable and removable. Rules never launch jobs or change item status; manual
+wakes. A live-gated event schema accepts date rules, and shared service admission
+rechecks the date flag. Rules never launch jobs or change item status; manual
 items and native verdict-only tools cannot author executable rules.
 
 With default-off `features.sentinelTodoTags`, `list` includes the parent-owned
@@ -758,7 +755,7 @@ state and strict mode apply only to the run receiving those options.
 The `allowNestedScripts` policy is inherited by child runners: false rejects synthetic
 `run_tool_script` calls with `ToolCallError` before starting a child, even when the
 runtime contains a handler for that name. Its SDK default is true for chat.
-`runScriptCondition` defaults it to false; the owner-resolved background caller
+`runJobGate` defaults it to false; the owner-resolved background caller
 may enable it only when `run_tool_script` is enabled and requires no approval.
 
 Inner calls emit `ToolEvent`s with `parentToolCallId` = the script's call id through
@@ -797,13 +794,13 @@ that result into `ToolCallError`, including for gated tools called by nested scr
 Ungated tools and workspace preferences retain their normal behavior. Ordinary
 bundles retain their existing interactive and noninteractive approval policies.
 
-Production routes through `MultiRepoQueueRouter.runScriptCondition`, the owning
-`CLITaskExecutor` bridge and `ExecutorRegistry` to `ChatBaseExecutor.runScriptCondition`.
+Sentinel job gates route through `MultiRepoQueueRouter.runJobGate`, the owning
+`CLITaskExecutor` bridge and `ExecutorRegistry` to `ChatBaseExecutor.runJobGate`.
 The executor validates the exact Sentinel owner, resolves workspace/working
 directory and reuses shared helper dependencies for `runJobGateWithOwnerTools`.
 The owner's current active provider (fallback: executor provider) controls Codex
-nested-script omission. Startup readiness and lifecycle revocation belong to
-[trigger infrastructure](server-architecture.md#sentinel-to-do-trigger-firing).
+nested-script omission. See the
+[job gate runtime](server-architecture.md#sentinel-job-gate-runtime).
 
 `runJobGateWithOwnerTools` builds the shared context, including Memory V2,
 and creates a per-run runtime from the full resolved CoC tool list, not the
@@ -812,12 +809,12 @@ attended-only `sentinel_jobs` and does not add write-only `create_pull_request`.
 It opens no provider session and passes no provider approval callback. Synthetic
 nesting requires an enabled, ungated owner script tool; children inherit this policy.
 Context/memory and runtime disposal cover success, failure and cancellation;
-the script runner retains its trigger-only 60-second abort deadline.
+the gate runner retains its 60-second abort deadline.
 
 Provider-native/MCP shell handlers are outside the existing `CocToolRuntime`
 contract. Calls to unavailable tools raise catchable `ToolCallError`; model calls
-never emulate them. Callers recheck live flags and owner/item/rule eligibility
-before and after execution, and abort assembly and running tools on revocation.
+never emulate them. Callers recheck live flags and owner/job eligibility around
+execution, and abort assembly and running tools on revocation.
 
 Some addons emit a prompt `suffix` wrapped in a named XML-style tag via `tagGuidanceSuffix()`
 from `prompt-tags.ts`, so aggregated `toolGuidance` is self-delimiting. Most addons emit

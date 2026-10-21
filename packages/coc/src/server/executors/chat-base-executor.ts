@@ -85,8 +85,7 @@ import { createToolCallLedger } from './tool-call-ledger';
 import type { SystemOneAddonDeps } from './prompt-builder';
 import type { CreatePullRequestToolDeps } from '../llm-tools/create-pull-request-tool';
 import { readAutomationTurnSource } from '../processes/automation-turn-source';
-import type { ScriptConditionRunner } from '../triggers/script-condition-evaluator';
-import { runJobGateWithOwnerTools } from '../sentinel-jobs/job-gate-owner-runner';
+import { runJobGateWithOwnerTools, type JobGateOwnerRunner } from '../sentinel-jobs/job-gate-owner-runner';
 /** Log prefix for every line this executor writes. */
 const CHAT_EXECUTOR_LOG_LABEL = '[ChatModeExecutor]';
 
@@ -383,24 +382,24 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     }
 
     /** Resolve the current Sentinel's unattended CoC capabilities without a provider turn. */
-    readonly runScriptCondition: ScriptConditionRunner = async (trigger, state, signal) => {
+    readonly runJobGate: JobGateOwnerRunner = async ({ workspaceId, processId, code, state, signal }) => {
         signal?.throwIfAborted();
-        const owner = await this.store.getProcess(trigger.processId, trigger.workspaceId);
+        const owner = await this.store.getProcess(processId, workspaceId);
         signal?.throwIfAborted();
-        if (!this.dataDir || trigger.event.type !== 'script-condition'
-            || owner?.id !== trigger.processId || owner.type !== 'chat'
-            || owner.metadata?.workspaceId !== trigger.workspaceId || owner.metadata.mode !== 'sentinel'
+        if (!this.dataDir
+            || owner?.id !== processId || owner.type !== 'chat'
+            || owner.metadata?.workspaceId !== workspaceId || owner.metadata.mode !== 'sentinel'
             || owner.status === 'cancelled' || owner.status === 'cancelling') {
-            throw new Error('Script condition owner is unavailable');
+            throw new Error('Gate script owner is unavailable');
         }
         const provider = resolveRecordedProvider(owner) ?? this.provider;
         const workingDirectory = owner.workingDirectory ?? this.defaultWorkingDirectory;
         const cron = this.buildCronToolDeps(owner.id);
         return runJobGateWithOwnerTools({
-            code: trigger.event.script, state, signal,
+            code, state, signal,
             ownerTools: {
                 dataDir: this.dataDir, store: this.store,
-                workspaceId: trigger.workspaceId, processId: owner.id,
+                workspaceId, processId: owner.id,
                 followUpSuggestions: this.followUpSuggestions,
                 sentinelNextSteps: this.queueConfig.getSentinelNextStepsEnabled(),
                 enqueueChat: this.runtime.getEnqueueChat?.(),
@@ -408,13 +407,13 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 sendMessage: this.runtime.getSendMessage?.(),
                 sendToConversationRuntime: this.runtime.getSendToConversationRuntime?.(),
                 scheduleWakeup: cron.scheduleWakeup, cronTools: cron.cronTools,
-                systemOne: this.buildSystemOneDeps(owner.id, trigger.workspaceId, workingDirectory),
+                systemOne: this.buildSystemOneDeps(owner.id, workspaceId, workingDirectory),
                 kustoRuntime: this.runtime.getKustoRuntime?.(),
                 browserRuntime: this.runtime.getBrowserControlRuntime?.(),
                 browserState: this.runtime.getBrowserToolState?.(),
-                sentinelTodos: this.buildSentinelTodoDeps(owner.id, trigger.workspaceId, 'sentinel'),
+                sentinelTodos: this.buildSentinelTodoDeps(owner.id, workspaceId, 'sentinel'),
                 // Background turns do not acquire attended Sentinel job authority.
-                sentinelJobs: this.buildSentinelJobsDeps(owner.id, trigger.workspaceId, 'sentinel', provider, true),
+                sentinelJobs: this.buildSentinelJobsDeps(owner.id, workspaceId, 'sentinel', provider, true),
                 includeToolScripting: provider !== 'codex',
             },
         });

@@ -34,7 +34,6 @@ function TriggerSection({ owner, items, client, onItemLink }: {
     const [runNow, setRunNow] = useState<Trigger | null>(null);
     const [resume, setResume] = useState<Trigger | null>(null);
     const [dateTimeEnabled, setDateTimeEnabled] = useState(false);
-    const [scriptConditionEnabled, setScriptConditionEnabled] = useState(false);
     const [busy, setBusy] = useState(false);
     const busyRef = useRef(false);
     const sequence = useRef(0);
@@ -46,24 +45,20 @@ function TriggerSection({ owner, items, client, onItemLink }: {
             const [result, capabilities] = await Promise.all([
                 client.triggers.listSentinelTodo(owner.ownerWorkspaceId, owner.processId),
                 client.triggers.sentinelTodoCapabilities(owner.ownerWorkspaceId, owner.processId).then(
-                    result => ({ dateTime: result.dateTime, scriptCondition: result.scriptCondition, error: null }),
-                    failure => ({ dateTime: false, scriptCondition: false, error: triggerError(failure).message })),
+                    result => ({ dateTime: result.dateTime, error: null }),
+                    failure => ({ dateTime: false, error: triggerError(failure).message })),
             ]);
             if (mounted.current && seq === sequence.current) {
                 setRules(result); setDateTimeEnabled(capabilities.dateTime === true);
-                setScriptConditionEnabled(capabilities.scriptCondition === true);
                 setCapabilityError(capabilities.error); setLoadError(null);
-                setRunNow(current => current && (
-                    current.event.type === 'date-time' && !capabilities.dateTime
-                    || current.event.type === 'script-condition' && !capabilities.scriptCondition
-                ) ? null : current);
                 if (!capabilities.dateTime) {
+                    setRunNow(current => current?.event.type === 'date-time' ? null : current);
                     setResume(null);
                 }
             }
         } catch (failure) {
             if (mounted.current && seq === sequence.current) {
-                setLoadError(triggerError(failure).message); setDateTimeEnabled(false); setScriptConditionEnabled(false);
+                setLoadError(triggerError(failure).message); setDateTimeEnabled(false);
                 setRunNow(null);
             }
         } finally {
@@ -74,7 +69,6 @@ function TriggerSection({ owner, items, client, onItemLink }: {
         mounted.current = true;
         setRules([]);
         setDateTimeEnabled(false);
-        setScriptConditionEnabled(false);
         setLoading(true);
         setEditor(null);
         setError(null);
@@ -117,7 +111,7 @@ function TriggerSection({ owner, items, client, onItemLink }: {
     };
     const sorted = rules.filter(rule => rule.workspaceId === owner.ownerWorkspaceId && rule.processId === owner.processId
         && rule.binding?.kind === 'sentinel-todo' && !rule.binding.delegatedPr
-        && (rule.event.monitor === 'pr-merged' || rule.event.type === 'script-condition' || rule.event.type === 'date-time' && dateTimeEnabled))
+        && (rule.event.monitor === 'pr-merged' || rule.event.type === 'date-time' && dateTimeEnabled))
         .sort((a, b) => Number(isTerminalTrigger(a)) - Number(isTerminalTrigger(b)) || b.createdAt.localeCompare(a.createdAt));
     const add = <Button size="sm" variant="secondary" disabled={busy || eligibleTriggerItems(items).length === 0} onClick={() => setEditor('new')}>+ Add trigger</Button>;
     return <div className="sentinel-trigger-root">
@@ -135,15 +129,13 @@ function TriggerSection({ owner, items, client, onItemLink }: {
             </div>
             {open && <ul id={`${id}-body`} className="sentinel-trigger-list">
                 {sorted.map(rule => {
-                    if ((rule.event.monitor !== 'pr-merged' && rule.event.type !== 'date-time' && rule.event.type !== 'script-condition') || !rule.binding) return null;
+                    if ((rule.event.monitor !== 'pr-merged' && rule.event.type !== 'date-time') || !rule.binding) return null;
                     const terminal = isTerminalTrigger(rule);
-                    const script = rule.event.type === 'script-condition' ? rule.event : undefined;
-                    const scriptUnavailable = !!script && !scriptConditionEnabled;
                     const item = items.find(candidate => candidate.id === rule.binding!.itemId);
                     const label = rule.outcome === 'fired' ? 'Fired' : rule.outcome === 'closed-unmerged' ? 'Closed, not merged'
                         : rule.outcome === 'skipped' ? 'Skipped' : rule.outcome === 'error' ? 'Error' : rule.status === 'paused' ? 'Paused' : 'Waiting';
                     const icon = { Waiting: '⏳', Paused: '⏸', Fired: '⚡', 'Closed, not merged': '⊘', Skipped: '↷', Error: '⚠' }[label];
-                    const deliveryError = (rule.outcome === 'fired' || script) && rule.delivery?.state === 'pending' ? rule.outcomeReason : undefined;
+                    const deliveryError = rule.outcome === 'fired' && rule.delivery?.state === 'pending' ? rule.outcomeReason : undefined;
                     return <li key={rule.id} className="sentinel-trigger-row" data-testid={`sentinel-trigger-${rule.id}`}>
                         <div className="sentinel-trigger-summary">
                             <span className={`sentinel-trigger-badge sentinel-trigger-${label === 'Closed, not merged' ? 'closed' : label.toLowerCase()}`}
@@ -155,32 +147,21 @@ function TriggerSection({ owner, items, client, onItemLink }: {
                                 title={`${deliveryError} · Last retry ${rule.lastTickAt ?? rule.delivery!.firedAt} · Next retry ${rule.nextTickAt ?? 'startup reconciliation or retry with backoff'}`}>⚠ Error · delivery retrying</span>}
                             {rule.event.type === 'date-time'
                                 ? <time dateTime={rule.event.firesAt} title={`UTC: ${rule.event.firesAt}`}>{zonedTriggerTime(rule.event.firesAt, rule.event.timeZone)} ({rule.event.timeZone})</time>
-                                : rule.event.type === 'script-condition' ? <span>Script condition · Every {rule.event.intervalMs / 60_000} min</span>
                                 : <a href={rule.event.pr.url} target="_blank" rel="noopener noreferrer" title={rule.event.lastSeenTitle}>PR {rule.event.pr.repoPath}#{rule.event.pr.number}</a>}
                             <a href={`#sentinel-todo-item-${encodeURIComponent(rule.binding.itemId)}`} onClick={event => { event.preventDefault(); onItemLink(rule.binding!.itemId); }}>→ {item?.title ?? 'Item unavailable'}</a>
-                            {!terminal ? <details className="sentinel-trigger-menu"><summary aria-label={rule.event.type === 'date-time' ? 'Actions for date/time trigger' : rule.event.type === 'script-condition' ? 'Actions for script condition' : `Actions for PR #${rule.event.pr.number}`}>⋯</summary>
-                                <Button size="sm" variant="secondary" disabled={busy || scriptUnavailable && rule.status === 'paused'} onClick={() => {
+                            {!terminal ? <details className="sentinel-trigger-menu"><summary aria-label={rule.event.type === 'date-time' ? 'Actions for date/time trigger' : `Actions for PR #${rule.event.pr.number}`}>⋯</summary>
+                                <Button size="sm" variant="secondary" disabled={busy} onClick={() => {
                                     if (rule.status === 'paused' && rule.event.type === 'date-time' && Date.parse(rule.event.firesAt) <= Date.now()) {
                                         setResume(rule); return;
                                     }
                                     void mutate(() => rule.status === 'paused'
                                     ? client.triggers.resumeSentinelTodo(owner.ownerWorkspaceId, owner.processId, rule.id, rule.revision)
                                     : client.triggers.pauseSentinelTodo(owner.ownerWorkspaceId, owner.processId, rule.id, rule.revision)); }}>{rule.status === 'paused' ? 'Resume' : 'Pause'}</Button>
-                                <Button size="sm" variant="secondary" disabled={busy || scriptUnavailable || !!script && (rule.inFlight || rule.delivery?.state === 'pending')} onClick={() => setRunNow(rule)}>Run now</Button>
-                                {!script && <Button size="sm" variant="secondary" disabled={busy} onClick={() => setEditor(rule)}>Edit</Button>}
+                                <Button size="sm" variant="secondary" disabled={busy} onClick={() => setRunNow(rule)}>Run now</Button>
+                                <Button size="sm" variant="secondary" disabled={busy} onClick={() => setEditor(rule)}>Edit</Button>
                                 <Button size="sm" variant="secondary" disabled={busy} onClick={() => { void mutate(() => client.triggers.removeSentinelTodo(owner.ownerWorkspaceId, owner.processId, rule.id, rule.revision)); }}>Remove</Button>
                             </details> : <Button size="sm" variant="secondary" disabled={busy} onClick={() => { void mutate(() => client.triggers.removeSentinelTodo(owner.ownerWorkspaceId, owner.processId, rule.id, rule.revision)); }}>Clear</Button>}
                         </div>
-                        {script && <div className="sentinel-trigger-script">
-                            {scriptUnavailable && <p className="sentinel-trigger-muted">Script execution disabled on the owning server. Rules are retained.</p>}
-                            <p className="sentinel-trigger-muted">Last run: {rule.lastTickAt
-                                ? <time dateTime={rule.lastTickAt} title={new Date(rule.lastTickAt).toLocaleString()}>{formatRelativeTime(rule.lastTickAt)}</time>
-                                : 'Not run yet'}{rule.inFlight && ' · Running'}</p>
-                            {script.lastError && <p className="sentinel-trigger-error">Last error: {script.lastError.message}{' '}
-                                <time dateTime={script.lastError.at}>{formatRelativeTime(script.lastError.at)}</time>
-                                {' '}· Consecutive failures: {script.consecutiveFailures}</p>}
-                            <details><summary>Script source (read-only)</summary><pre><code>{script.script}</code></pre></details>
-                        </div>}
                         {rule.binding.instruction && <p className="sentinel-trigger-instruction" title={rule.binding.instruction}>{rule.binding.instruction}</p>}
                         <div className="sentinel-trigger-muted">Armed by {rule.binding.armedBy === 'sentinel' ? 'Sentinel' : 'You'} · <time dateTime={rule.binding.armedAt} title={new Date(rule.binding.armedAt).toLocaleString()}>{formatRelativeTime(rule.binding.armedAt)}</time>
                             {rule.delivery && <> · <time dateTime={rule.delivery.firedAt}>{formatRelativeTime(rule.delivery.firedAt)}</time> · {rule.delivery.state === 'pending' ? 'Delivery pending' : rule.delivery.state === 'failed' ? 'Delivery failed' : 'Message delivered'}</>}
@@ -193,12 +174,10 @@ function TriggerSection({ owner, items, client, onItemLink }: {
         {editor && <SentinelTodoTriggerEditor client={client} owner={owner} items={items} dateTimeEnabled={dateTimeEnabled} trigger={editor === 'new' ? undefined : editor} onClose={() => setEditor(null)}
             onSaved={() => { setEditor(null); void load(); }} onConflict={() => { void load(); }} />}
         {runNow && <Dialog open trapFocus disableClose={busy} title="Run trigger now" onClose={() => { if (!busy) setRunNow(null); }}>
-            <p>{runNow.event.type === 'script-condition'
-                ? `Evaluate the script once now? The first result sets a silent baseline; only a changed result wakes Sentinel. The rule is not consumed.${runNow.status === 'paused' ? ' It remains paused.' : ' It keeps running on its interval.'}`
-                : 'Post the start message to the Sentinel now? This uses up the rule.'}</p>
+            <p>Post the start message to the Sentinel now? This uses up the rule.</p>
             <div className="sentinel-trigger-actions">
                 <Button size="sm" variant="secondary" disabled={busy} onClick={() => setRunNow(null)}>Cancel</Button>
-                <Button size="sm" disabled={busy || conflict || runNow.event.type === 'script-condition' && !scriptConditionEnabled} onClick={() => { void mutate(() => client.triggers.runSentinelTodoNow(owner.ownerWorkspaceId, owner.processId, runNow.id, runNow.revision)); }}>Confirm run now</Button>
+                <Button size="sm" disabled={busy || conflict} onClick={() => { void mutate(() => client.triggers.runSentinelTodoNow(owner.ownerWorkspaceId, owner.processId, runNow.id, runNow.revision)); }}>Confirm run now</Button>
             </div>
             {error && <p role="alert">{error} <Button size="sm" variant="secondary" disabled={busy} onClick={() => {
                 if (conflict) { refresh(); setRunNow(null); } else if (retry.current) void retry.current();

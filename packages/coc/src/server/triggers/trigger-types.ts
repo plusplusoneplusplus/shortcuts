@@ -5,7 +5,7 @@
  *
  * This is intentionally shaped as a small, extensible abstraction:
  *  - `event` is a discriminated union of server-side condition monitors for
- *    CI failures and PR merges, absolute Sentinel dates and script conditions.
+ *    CI failures and PR merges, and absolute Sentinel dates.
  *  - `action` is a discriminated union with one variant: `send-message`.
  *
  * The framework reuses existing plumbing rather than inventing new plumbing:
@@ -132,25 +132,7 @@ export interface DateTimeTriggerEvent {
     timeZone: string;
 }
 
-/** Repeating Sentinel To-do condition, evaluated against the previous JSON result. */
-export interface ScriptConditionEvent {
-    type: 'script-condition';
-    monitor?: never;
-    /** Body of an async JavaScript function receiving tools and state. */
-    script: string;
-    /** Incremented when source or interval changes; baseline resets with it. */
-    scriptRevision: number;
-    intervalMs: number;
-    /** Canonical JSON text; absence means the first run has not succeeded. */
-    lastResult?: string;
-    lastResultHash?: string;
-    consecutiveFailures: number;
-    lastError?: { message: string; at: string };
-    /** Mirrors the script rule's disabled state, including automatic failure pauses. */
-    paused: boolean;
-}
-
-export type TriggerEvent = ConditionMonitorEvent | PrMergedMonitorEvent | DateTimeTriggerEvent | ScriptConditionEvent;
+export type TriggerEvent = ConditionMonitorEvent | PrMergedMonitorEvent | DateTimeTriggerEvent;
 
 // ============================================================================
 // Action (discriminated union — only `send-message` built this iteration)
@@ -214,10 +196,7 @@ export type TriggerOutcome = 'fired' | 'closed-unmerged' | 'skipped' | 'error';
 export interface TriggerDelivery {
     deliveryId: string;
     firedAt: string;
-    reason: 'merged' | 'closed' | 'run-now' | 'due' | 'script-changed' | 'script-paused';
-    /** Script wake admission is bound to this exact result and source revision. */
-    resultHash?: string;
-    scriptRevision?: number;
+    reason: 'merged' | 'closed' | 'run-now' | 'due';
     state: 'pending' | 'delivered' | 'failed';
     deliveredAt?: string;
     /** Item revision captured when the fire committed. */
@@ -317,10 +296,6 @@ export function isTriggerExpired(trigger: Pick<Trigger, 'expiresAt'>, nowMs: num
 
 /** Default PR-merge watch cadence (5 min). */
 export const DEFAULT_PR_MERGE_POLL_INTERVAL_MS = 5 * 60_000;
-
-export const MIN_SCRIPT_CONDITION_INTERVAL_MS = 5 * 60_000;
-export const DEFAULT_SCRIPT_CONDITION_INTERVAL_MS = 15 * 60_000;
-export const MAX_SCRIPT_CONDITIONS_PER_OWNER = 10;
 
 /** Maximum backoff for a PR-merge watch after read/login errors (30 min). */
 export const MAX_PR_MERGE_BACKOFF_MS = 30 * 60_000;

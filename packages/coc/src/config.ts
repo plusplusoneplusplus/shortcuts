@@ -336,8 +336,6 @@ export interface CLIConfig {
         /** Return new remote Sentinel requests through authenticated durable receipts. Default off. */
         sentinelRemoteResults?: boolean;
         sentinelTodoDateTimeTriggers?: boolean;
-        /** Background Sentinel To-do script conditions; also require toolScripting. Default off. */
-        sentinelTodoScriptTriggers?: boolean;
         sentinelDesktopMirror?: boolean;
         botManagedConversations?: boolean;
         /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Disabled by default. */
@@ -761,7 +759,6 @@ export interface ResolvedCLIConfig {
         sentinelFollowUpResults: boolean;
         sentinelRemoteResults: boolean;
         sentinelTodoDateTimeTriggers: boolean;
-        sentinelTodoScriptTriggers: boolean;
         sentinelDesktopMirror: boolean;
         botManagedConversations: boolean;
         /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Enabled by default. */
@@ -1099,7 +1096,6 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         sentinelFollowUpResults: false,
         sentinelRemoteResults: false,
         sentinelTodoDateTimeTriggers: false,
-        sentinelTodoScriptTriggers: false,
         sentinelDesktopMirror: false,
         botManagedConversations: false,
         quickAskSidenotes: true,

@@ -1,18 +1,11 @@
-import { createHash } from 'node:crypto';
-
 /** Maximum stored result size, measured as UTF-8 canonical JSON. */
 export const MAX_JOB_GATE_RESULT_BYTES = 16 * 1024;
-
-export interface JobGateResult {
-    canonicalJson: string;
-    hash: string;
-}
 
 /**
  * Encode JSON values without invoking toJSON or silently dropping invalid values.
  * Object keys sort lexically at every level; array order remains significant.
  */
-export function canonicalizeJobGateResult(value: unknown): JobGateResult {
+export function canonicalizeJobGateResult(value: unknown): string {
     const parts: string[] = [];
     const ancestors = new Set<object>();
     let bytes = 0;
@@ -70,6 +63,5 @@ export function canonicalizeJobGateResult(value: unknown): JobGateResult {
     }
 
     encode(value);
-    const canonicalJson = parts.join('');
-    return { canonicalJson, hash: createHash('sha256').update(canonicalJson, 'utf8').digest('hex') };
+    return parts.join('');
 }

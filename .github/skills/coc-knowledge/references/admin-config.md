@@ -200,13 +200,9 @@ Editors keeps only `features.arxivPaperIngest` (Notes Editor). The Chat tab host
 `#admin/settings/sentinel` owns the Sentinel behavior controls: `sentinel.enabled`,
 `features.sentinelNextSteps`, `sentinelTodoDependencies`, `sentinelTodoTags`, `sentinelTodoExternalReferences`,
 `sentinelTodoScrubber`, `sentinelTodoJobs`, `sentinelTodoDateTimeTriggers`,
-`sentinelTodoScriptTriggers`, `sentinelPrOutcomeWake`, `sentinelFollowUpResults`,
-and `sentinelDesktopMirror`. The
+`sentinelPrOutcomeWake`, `sentinelFollowUpResults`, and `sentinelDesktopMirror`. The
 presentation-only `sentinelResultCards` lives on Appearance → Chat Interface. Registry groups organize mode, To-do/PR outcomes and
 messaging. Features search renders links to Sentinel, not duplicate controls.
-`features.sentinelTodoScriptTriggers` is live and default-off, exposing
-`sentinelTodoScriptTriggersEnabled`. Its row explains the additional
-`features.toolScripting` requirement; both saved switches remain independent.
 Shared triggers, execution and connector settings retain their tabs. The existing shared
 draft controller scopes saves, keyboard saves and cancels to the active tab; Admin uses
 the page-origin client and its API prefix independently of the selected workspace.

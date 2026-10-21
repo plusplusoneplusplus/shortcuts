@@ -670,14 +670,6 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.sentinelTodoScriptTriggers', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoScriptTriggersEnabled',
-        ui: {
-            tab: 'sentinel', group: 'sentinelTodos', order: 32.575, label: 'To-do script triggers', badge: 'experimental',
-            hint: 'Allow background JavaScript conditions to wake their owning Sentinel when results change. Requires tool scripting. Disabling either flag stops evaluation and retains rules.',
-            testId: 'toggle-sentinel-todo-script-triggers',
-        },
-    }),
-    bool({
         key: 'features.sentinelPrOutcomeWake', default: false, runtime: 'live', runtimeFlag: 'sentinelPrOutcomeWakeEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.58, label: 'Sentinel PR outcome wake', badge: 'experimental',

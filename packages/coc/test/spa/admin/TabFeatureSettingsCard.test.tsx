@@ -137,24 +137,6 @@ describe('TabFeatureSettingsCard', () => {
         expect(controller.featureValues['sentinel.enabled']).toBe(false);
     });
 
-    it('shows the default-off script trigger switch on Sentinel and saves its live flag independently', async () => {
-        render(<Harness tabs={['sentinel']} />);
-        act(() => controller.hydrate({ features: { toolScripting: false } }));
-        const toggle = screen.getByTestId('toggle-sentinel-todo-script-triggers');
-        expect(toggle).toHaveProperty('checked', false);
-        expect(toggle.closest('#sentinel-group-sentinelTodos')).not.toBeNull();
-        expect(toggle.closest('.ar-row')?.textContent).toContain('Requires tool scripting');
-        fireEvent.click(toggle);
-        await act(async () => { await controller.handleSaveTab('sentinel'); });
-        expect(updateConfig.mock.calls[0][0]).toMatchObject({ 'features.sentinelTodoScriptTriggers': true });
-        expect(updateConfig.mock.calls[0][0]).not.toHaveProperty('features.toolScripting');
-        expect(applyRuntimeConfigPatch.mock.calls[0][0]).toMatchObject({ sentinelTodoScriptTriggersEnabled: true });
-        expect(controller.isTabDirty('sentinel')).toBe(false);
-        fireEvent.click(toggle);
-        act(() => controller.handleCancelTab('sentinel'));
-        expect(toggle).toHaveProperty('checked', true);
-    });
-
     it('shows To-do jobs under To-do & PR Outcomes only with Sentinel Mode and saves its live flag', async () => {
         render(<Harness tabs={['sentinel']} />);
         expect(controller.featureValues['features.sentinelTodoJobs']).toBe(false);
