@@ -76,6 +76,45 @@ describe('SentinelJobScheduler', () => {
         expect(tick).toHaveBeenCalledOnce();
     });
 
+    it('keeps a fired tick live across refreshes and other jobs\' edits and deletes', async () => {
+        const job = jobs.create(owner, input);
+        const sibling = jobs.create(owner, { ...input, name: 'Sibling' });
+        const elsewhere = jobs.create(other, input);
+        scheduler.refreshAll();
+        await settle();
+        await vi.advanceTimersByTimeAsync(30 * 60_000);
+        const live = tick.mock.calls.find(call => call[1] === job.id)![2] as () => boolean;
+        expect(live()).toBe(true);
+        scheduler.refreshAll();
+        jobs.update(owner, sibling.id, { name: 'Renamed' }, sibling.revision);
+        jobs.delete(other, elsewhere.id, elsewhere.revision);
+        jobs.create(owner, { ...input, name: 'New' });
+        scheduler.refreshAll();
+        await settle();
+        expect(live()).toBe(true);
+    });
+
+    it.each([
+        ['its own edit', (job: { id: string; revision: number }) => { jobs.update(owner, job.id, { name: 'Renamed' }, job.revision); }],
+        ['its own schedule pause', (job: { id: string; revision: number }) => { jobs.update(owner, job.id, { enabled: false }, job.revision); }],
+        ['its own pause and resume', (job: { id: string; revision: number }) => {
+            const paused = jobs.update(owner, job.id, { enabled: false }, job.revision);
+            jobs.update(owner, job.id, { enabled: true }, paused.revision);
+        }],
+        ['its own delete', (job: { id: string; revision: number }) => { jobs.delete(owner, job.id, job.revision); }],
+        ['the jobs flag turning off', () => { enabled = false; }],
+        ['disposal', () => { scheduler.dispose(); }],
+    ])('ends a fired tick\'s liveness on %s', async (_label, change) => {
+        const job = jobs.create(owner, input);
+        scheduler.refreshAll();
+        await settle();
+        await vi.advanceTimersByTimeAsync(30 * 60_000);
+        const live = tick.mock.calls[0][2] as () => boolean;
+        expect(live()).toBe(true);
+        change(job);
+        expect(live()).toBe(false);
+    });
+
     it('disposes cleanly: clears timers, stops future arming, and tolerates refreshAll after disposal', async () => {
         jobs.create(owner, input);
         scheduler.refreshAll();

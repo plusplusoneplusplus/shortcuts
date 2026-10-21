@@ -1,7 +1,7 @@
 import { nextCronTime } from '../schedule/cron-utils';
 import { ScheduleTimerRegistry } from '../schedule/schedule-timer-registry';
 import type { SentinelTodoOwner } from '../sentinel-todos/sentinel-todo-store';
-import type { SentinelJobStore } from './job-store';
+import type { JobRecord, SentinelJobStore } from './job-store';
 import type { SentinelJobService } from './job-service';
 
 /** Future-only local-server cron dates. Each job re-arms at admission, not completion. */
@@ -49,9 +49,20 @@ export class SentinelJobScheduler {
             }
             // Re-arm independently of run completion, so overlaps remain observable.
             void this.arm(owner, id, generation);
-            void this.deps.service.tick(owner, id, () => this.current(generation)
-                && this.deps.jobs.get(owner, id).revision === job.revision).catch(error =>
+            void this.deps.service.tick(owner, id, () => this.armed(owner, job)).catch(error =>
                 console.error('[sentinel-jobs] Scheduled job admission failed:', error));
         }, next.getTime() - now.getTime());
+    }
+
+    /**
+     * Liveness of an admitted tick, scoped to its own job: refreshAll() and other jobs' changes never
+     * cancel it, but its own edit, delete or schedule toggle, the jobs flag and disposal do.
+     */
+    private armed(owner: SentinelTodoOwner, armed: JobRecord): boolean {
+        if (this.disposed || !this.deps.getEnabled()) return false;
+        try {
+            const job = this.deps.jobs.get(owner, armed.id);
+            return job.revision === armed.revision && job.enabled && job.cron === armed.cron;
+        } catch { return false; }
     }
 }

@@ -121,24 +121,31 @@ export class SentinelJobService {
         if (job.gatePaused || this.gates.has(gateKey(owner, jobId))) return undefined;
         if (!this.gateEnabled()) return this.skip(owner, jobId, 'gate-unavailable');
         const controller = new AbortController();
+        const { signal } = controller;
+        // The gate stays cancellable until its outcome is recorded.
         this.gates.set(gateKey(owner, jobId), controller);
-        let result: string;
         try {
-            result = await this.evaluateGate(owner, job, controller.signal);
-        } catch (error) {
-            if (await this.gateLive(owner, controller.signal, scheduleCurrent)) await this.gateFailed(owner, jobId, script, message(error));
-            return undefined;
+            let result: string;
+            try {
+                result = await this.evaluateGate(owner, job, signal);
+            } catch (error) {
+                if (await this.gateLive(owner, signal, scheduleCurrent) && this.gateCurrent(signal, scheduleCurrent)) {
+                    await this.gateFailed(owner, jobId, script, message(error));
+                }
+                return undefined;
+            }
+            if (!(await this.gateLive(owner, signal, scheduleCurrent)) || !this.gateCurrent(signal, scheduleCurrent)) return undefined;
+            // Save and claim in one synchronous step: a saved non-empty result always starts its run
+            // or leaves a run record (an overlap skip, or a run that fails its admission).
+            const saved = this.deps.jobs.updateGate(owner, jobId, script, () => ({
+                gateLastResult: result, gateConsecutiveFailures: 0, gateLastError: undefined,
+            }));
+            if (!saved) return undefined;
+            if (EMPTY_GATE_RESULTS.has(result)) return this.skip(owner, jobId, 'gate-empty');
+            return this.admit(owner, jobId, 'schedule', scheduleCurrent, result);
         } finally {
             if (this.gates.get(gateKey(owner, jobId)) === controller) this.gates.delete(gateKey(owner, jobId));
         }
-        if (!(await this.gateLive(owner, controller.signal, scheduleCurrent))) return undefined;
-        const saved = this.deps.jobs.updateGate(owner, jobId, script, () => ({
-            gateLastResult: result, gateConsecutiveFailures: 0, gateLastError: undefined,
-        }));
-        if (!saved) return undefined;
-        this.changed(owner);
-        if (EMPTY_GATE_RESULTS.has(result)) return this.skip(owner, jobId, 'gate-empty');
-        return this.startRun(owner, jobId, 'schedule', scheduleCurrent, result);
     }
 
     private async runGateTest(owner: SentinelTodoOwner, jobId: string, signal?: AbortSignal): Promise<SentinelScheduledJobGateTest> {
@@ -172,13 +179,20 @@ export class SentinelJobService {
         }));
     }
 
-    /** A gate outcome counts only while its tick is live; revocation, edits, the flag and shutdown cancel it. */
+    /**
+     * A gate outcome counts only while its tick is live; revocation, the job's own edits, the flags and
+     * shutdown cancel it. Callers repeat `gateCurrent` in the synchronous step that records the outcome.
+     */
     private async gateLive(owner: SentinelTodoOwner, signal: AbortSignal, scheduleCurrent?: () => boolean): Promise<boolean> {
         try {
-            if (signal.aborted || this.disposed || !this.gateEnabled() || scheduleCurrent?.() === false) return false;
+            if (!this.gateCurrent(signal, scheduleCurrent)) return false;
             await this.assertOwner(owner);
-            return !signal.aborted && this.gateEnabled() && scheduleCurrent?.() !== false;
+            return true;
         } catch { return false; }
+    }
+
+    private gateCurrent(signal: AbortSignal, scheduleCurrent?: () => boolean): boolean {
+        return !signal.aborted && !this.disposed && this.deps.getEnabled() && this.gateEnabled() && scheduleCurrent?.() !== false;
     }
 
     private async gateFailed(owner: SentinelTodoOwner, jobId: string, script: string, error: string): Promise<void> {
@@ -223,15 +237,22 @@ export class SentinelJobService {
     }
 
     private async startRun(owner: SentinelTodoOwner, jobId: string, trigger: JobRunRecord['trigger'],
-        scheduleCurrent?: () => boolean, gateResult?: string): Promise<JobRunRecord> {
+        scheduleCurrent?: () => boolean): Promise<JobRunRecord> {
         await this.assertOwner(owner);
         if (scheduleCurrent?.() === false) throw new JobError('conflict', 'Job schedule changed during admission');
-        let job = this.deps.jobs.get(owner, jobId);
+        const job = this.deps.jobs.get(owner, jobId);
         if (!job.enabled && trigger === 'schedule') throw new JobError('conflict', 'Job schedule is paused');
         // A gated job's scheduled run needs its gate result; a script added during admission ends the tick.
-        if (trigger === 'schedule' && job.gateScript && gateResult === undefined) {
-            throw new JobError('conflict', 'Job schedule changed during admission');
-        }
+        if (trigger === 'schedule' && job.gateScript) throw new JobError('conflict', 'Job schedule changed during admission');
+        return this.admit(owner, jobId, trigger, scheduleCurrent);
+    }
+
+    /**
+     * Claims single-flight before its first await, then queues the run. Every failure after the claim
+     * finishes the run record, so a claim made right after saving a gate result is never lost silently.
+     */
+    private async admit(owner: SentinelTodoOwner, jobId: string, trigger: JobRunRecord['trigger'],
+        scheduleCurrent?: () => boolean, gateResult?: string): Promise<JobRunRecord> {
         const taskId = randomUUID();
         // Claim single-flight before reading the snapshot or awaiting filesystem I/O.
         const run = this.deps.jobs.createRun(owner, jobId, trigger, toQueueProcessId(taskId), this.now().toISOString());
@@ -239,7 +260,7 @@ export class SentinelJobService {
         if (run.status === 'skipped') return run;
         this.deps.jobs.patchRun(owner, jobId, run.id, { taskId });
         try {
-            job = this.deps.jobs.get(owner, jobId);
+            let job = this.deps.jobs.get(owner, jobId);
             await this.ensureChat(owner, job);
             const ledger = await this.deps.todos.list(owner);
             const snapshotPath = this.snapshotPath(owner, jobId, run.id);

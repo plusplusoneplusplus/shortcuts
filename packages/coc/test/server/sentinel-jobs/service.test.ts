@@ -6,6 +6,9 @@ import type { AIProcess, CreateTaskInput, ProcessStore, QueuedTask } from '@plus
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import { SentinelJobStore } from '../../../src/server/sentinel-jobs/job-store';
 import { GATE_FAILURE_LIMIT, SentinelJobService, getJobTaskContext, type JobServiceDeps } from '../../../src/server/sentinel-jobs/job-service';
+import { SentinelJobCommands } from '../../../src/server/sentinel-jobs/job-commands';
+import { SentinelJobScheduler } from '../../../src/server/sentinel-jobs/job-scheduler';
+import { nextCronTime } from '../../../src/server/schedule/cron-utils';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { createTodoTestDatabase } from '../sentinel-todos/test-db';
@@ -119,7 +122,11 @@ beforeEach(() => {
     todoService = new SentinelTodoService({ todos: todoStore, store: { getProcess: async (id: string) => processes.get(id) } as unknown as ProcessStore });
     service = makeService();
 });
-afterEach(() => fixture.dispose());
+afterEach(() => {
+    // A failed test must not leave later tests stalled on owner validation.
+    stallWorkspaces = null;
+    fixture.dispose();
+});
 
 describe('SentinelJobService', () => {
     it('exposes an active run separately after more than twenty overlap skips fill the visible history', async () => {
@@ -910,6 +917,134 @@ describe('SentinelJobService gated ticks', () => {
         expect(await tick).toBeUndefined();
         expect(jobStore.get(owner, job.id).gateLastResult).toBeUndefined();
         expect(enqueue).not.toHaveBeenCalled();
+    });
+
+    it('keeps the gate cancellable until its outcome is recorded', async () => {
+        const job = jobStore.create(owner, gated);
+        const gate = pendingGate();
+        const tick = service.tick(owner, job.id);
+        await flush();
+        // Stall the post-gate owner check, then edit the job while it is pending.
+        let release!: () => void;
+        stallWorkspaces = new Promise(resolve => { release = resolve; });
+        gate.resolve({ items: [1] });
+        await flush();
+        jobStore.update(owner, job.id, { name: 'Renamed' }, job.revision);
+        service.cancelGate(owner, job.id);
+        release();
+        stallWorkspaces = null;
+        expect(await tick).toBeUndefined();
+        expect(jobStore.get(owner, job.id).gateLastResult).toBeUndefined();
+        expect(enqueue).not.toHaveBeenCalled();
+        expect(jobStore.runs(owner, job.id)).toEqual([]);
+    });
+
+    it('records an overlap for a saved result when Run now started during the gate', async () => {
+        const job = jobStore.create(owner, gated);
+        const gate = pendingGate();
+        const tick = service.tick(owner, job.id);
+        await flush();
+        const manual = await service.start(owner, job.id);
+        gate.resolve({ items: [1] });
+        expect(await tick).toMatchObject({ status: 'skipped', skipReason: 'overlap', trigger: 'schedule' });
+        expect(jobStore.get(owner, job.id).gateLastResult).toBe('{"items":[1]}');
+        expect(enqueue).toHaveBeenCalledOnce();
+        expect(jobStore.runs(owner, job.id).map(run => [run.id, run.status])).toEqual([
+            [expect.any(String), 'skipped'], [manual.id, 'queued']]);
+    });
+
+    it('claims the run with the saved result, so a pause during admission leaves a failed run, never nothing', async () => {
+        const job = jobStore.create(owner, gated);
+        const queue = new FakeQueue();
+        service.attach(queue);
+        // Stall owner validation from the moment the result is saved.
+        let release!: () => void;
+        const updateGate = jobStore.updateGate.bind(jobStore);
+        vi.spyOn(jobStore, 'updateGate').mockImplementationOnce((...args) => {
+            const saved = updateGate(...args);
+            stallWorkspaces = new Promise(resolve => { release = resolve; });
+            return saved;
+        });
+        const tick = service.tick(owner, job.id);
+        await flush();
+        expect(jobStore.runs(owner, job.id).map(run => [run.status, run.trigger])).toEqual([['queued', 'schedule']]);
+        jobStore.update(owner, job.id, { enabled: false }, job.revision);
+        release();
+        stallWorkspaces = null;
+        expect(await tick).toMatchObject({ status: 'failed', trigger: 'schedule', error: 'Job schedule is paused' });
+        expect(jobStore.get(owner, job.id).gateLastResult).toBe('{"items":[1]}');
+        expect(enqueue.mock.calls.filter(([task]) => getJobTaskContext(task)?.kind === 'run')).toEqual([]);
+        expect(service.view(owner, jobStore.get(owner, job.id)).runs).toEqual([
+            expect.objectContaining({ status: 'failed', error: 'Job schedule is paused' })]);
+    });
+
+    describe('with the job scheduler', () => {
+        let scheduler: SentinelJobScheduler;
+        let commands: SentinelJobCommands;
+        let ticks: Array<Promise<unknown>>;
+
+        beforeEach(() => {
+            vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+            ticks = [];
+            scheduler = new SentinelJobScheduler({ jobs: jobStore, getEnabled: () => enabled, now: () => new Date(clock),
+                service: {
+                    assertOwner: value => service.assertOwner(value),
+                    tick: (...args) => { const tick = service.tick(...args); ticks.push(tick); return tick; },
+                } });
+            commands = new SentinelJobCommands({ jobs: jobStore, service, onConfigChange: () => scheduler.refreshAll() });
+        });
+        afterEach(() => {
+            scheduler.dispose();
+            vi.useRealTimers();
+        });
+
+        /** Arms every job, then fires the next cron boundary for the gated jobs. */
+        async function fireTick(): Promise<void> {
+            scheduler.refreshAll();
+            await flush();
+            const due = nextCronTime(gated.cron, new Date(clock))!.getTime();
+            const delay = due - clock;
+            clock = due;
+            await vi.advanceTimersByTimeAsync(delay);
+        }
+
+        it('a pending gate survives refreshAll() and other jobs\' changes, then starts its run with the gate JSON', async () => {
+            const job = jobStore.create(owner, gated);
+            const sibling = jobStore.create(owner, { ...input, name: 'Sibling' });
+            const gate = pendingGate();
+            await fireTick();
+            expect(runGate).toHaveBeenCalledOnce();
+            scheduler.refreshAll();
+            await commands.update(owner, sibling.id, { name: 'Renamed' }, sibling.revision);
+            await commands.create(owner, { ...input, name: 'New' });
+            await flush();
+            expect(runGate.mock.calls[0][0].signal.aborted).toBe(false);
+            gate.resolve({ items: [1] });
+            expect(await ticks[0]).toMatchObject({ status: 'queued', trigger: 'schedule' });
+            expect(enqueue).toHaveBeenCalledOnce();
+            expect((enqueue.mock.calls[0][0] as CreateTaskInput).payload).toMatchObject({
+                prompt: expect.stringContaining('Gate script result (JSON):\n```json\n{"items":[1]}\n```') });
+            expect(jobStore.get(owner, job.id).gateLastResult).toBe('{"items":[1]}');
+        });
+
+        it.each([
+            ['its own edit', (job: { id: string; revision: number }) => { jobStore.update(owner, job.id, { name: 'Renamed' }, job.revision); }],
+            ['its own schedule pause', (job: { id: string; revision: number }) => { jobStore.update(owner, job.id, { enabled: false }, job.revision); }],
+            ['its own delete', (job: { id: string; revision: number }) => { jobStore.delete(owner, job.id, job.revision); }],
+            ['the jobs flag turning off', () => { enabled = false; }],
+        ])('discards a pending gate result after %s, even without a cancel', async (_label, change) => {
+            const job = jobStore.create(owner, gated);
+            const gate = pendingGate();
+            await fireTick();
+            expect(runGate).toHaveBeenCalledOnce();
+            change(job);
+            scheduler.refreshAll();
+            gate.resolve({ items: [1] });
+            expect(await ticks[0]).toBeUndefined();
+            expect(enqueue).not.toHaveBeenCalled();
+            expect(jobStore.all().flatMap(entry => jobStore.runs(owner, entry.job.id))).toEqual([]);
+            expect(jobStore.all().map(entry => entry.job.gateLastResult)).not.toContain('{"items":[1]}');
+        });
     });
 
     it('Test gate evaluates with the saved state while paused, starting no run and saving nothing', async () => {

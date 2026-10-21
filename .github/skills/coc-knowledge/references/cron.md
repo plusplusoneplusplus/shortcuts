@@ -212,6 +212,10 @@ re-arms independently of completion; an active job records a skipped overlap.
 Ticks call `SentinelJobService.tick`; a gated job checks overlap and its paused
 gate before running the gate script (its overlap skip never claims a run), then records `gate-empty` or starts a run with
 the result inline (see [gate runtime](server-architecture.md#sentinel-job-gate-runtime)).
+A fired tick's liveness is scoped to its own job (jobs flag on, scheduler not disposed,
+same revision, still enabled with the same cron), so `refreshAll()` and other jobs'
+changes never cancel an in-flight gate. Saving a non-empty result and claiming its run
+happen in one synchronous step, so the result always starts a run or leaves a run record.
 Multiple selected minutes are rejected even for dates beyond the validation horizon.
 
 `SentinelJobService` queues each run at low priority into one persistent Ask/Autopilot
