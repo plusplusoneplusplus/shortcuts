@@ -71,7 +71,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.pullRequests.autoClassifyTeam).toBe(false);
             expect(DEFAULT_CONFIG.forEach).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.mapReduce).toEqual({ enabled: false });
-            expect(DEFAULT_CONFIG.browserControl).toEqual({ enabled: false, framesEnabled: false, richPasteEnabled: false });
+            expect(DEFAULT_CONFIG.browserControl).toEqual({ enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false });
             expect(DEFAULT_CONFIG.sentinel).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.dreams).toEqual({
                 enabled: false,
@@ -1096,6 +1096,7 @@ timeout: 300
                 '  enabled: true',
                 '  framesEnabled: true',
                 '  richPasteEnabled: true',
+                '  backgroundEnabled: true',
                 'dangerousCommandGuard:',
                 '  enabled: true',
                 'vimNavigation:',
@@ -1249,6 +1250,7 @@ timeout: 300
             const notFromFile = CONFIG_SOURCE_KEYS.filter((key) => result.sources[key] !== 'file');
             expect(notFromFile).toEqual([]);
             expect(result.resolved.browserControl.enabled).toBe(true);
+            expect(result.resolved.browserControl.backgroundEnabled).toBe(true);
         });
 
         describe.each([
@@ -1463,6 +1465,7 @@ timeout: 300
                   },
                   "approvePermissions": true,
                   "browserControl": {
+                    "backgroundEnabled": false,
                     "enabled": false,
                     "framesEnabled": false,
                     "richPasteEnabled": false,
@@ -1727,6 +1730,7 @@ timeout: 300
                   "LLMToolSystemOne.enabled": "default",
                   "agentProviderRouting.auto": "default",
                   "approvePermissions": "file",
+                  "browserControl.backgroundEnabled": "default",
                   "browserControl.enabled": "default",
                   "browserControl.framesEnabled": "default",
                   "browserControl.richPasteEnabled": "default",

@@ -839,6 +839,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'browserControl.backgroundEnabled', default: false, runtime: 'live', runtimeFlag: 'browserBackgroundControlEnabled',
+        ui: {
+            tab: 'browser', group: 'browserAutomation', order: 13, label: 'Background browser control',
+            hint: 'Keep browser control working for a workspace while the desktop window shows another workspace. Actions run on the hidden tab without switching or taking focus.',
+            dependsOn: 'browserControl.enabled', badge: 'experimental', testId: 'toggle-browser-background-control-enabled',
+        },
+    }),
+    bool({
         key: 'kusto.enabled', default: false, runtime: 'live', runtimeFlag: 'kustoEnabled',
         ui: {
             tab: 'integrations', group: 'review', order: 62, label: 'Kusto query canvas', badge: 'experimental',
