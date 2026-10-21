@@ -60,6 +60,8 @@ export class RemoteDelegationResults {
     /** Restore stopped queues before activation; also used after admission/receipt repair. */
     restore(): Promise<void> {
         const next = this.pending.then(async () => {
+            // Disposal can close the process store before queued recovery runs.
+            if (this.disposed) return;
             for (const workspace of await this.deps.store.getWorkspaces()) {
                 if (this.disposed) return;
                 try {

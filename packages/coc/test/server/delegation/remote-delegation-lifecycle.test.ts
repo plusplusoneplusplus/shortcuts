@@ -378,6 +378,14 @@ describe('remote Sentinel lifecycle over authenticated fixture HTTP', () => {
         expect(executionPosts).toBe(1);
     });
 
+    it('skips queued recovery after disposal so a closed origin store is never read', async () => {
+        const getWorkspaces = vi.spyOn(origin, 'getWorkspaces')
+            .mockRejectedValue(new Error('database connection is closed'));
+        returns.dispose();
+        await expect(returns.recover(true)).resolves.toBeUndefined();
+        expect(getWorkspaces).not.toHaveBeenCalled();
+    });
+
     it('admits no tracked work while default-off or when the peer lacks the compatible capability', async () => {
         const originContext = { parent: { workspaceId, processId: parentId }, title: 'Fixture work' };
         enabled = false;

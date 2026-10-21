@@ -31,6 +31,7 @@ import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 import { isChatPayload } from '../../src/server/tasks/task-types';
 import { MessagingJobNotices } from '../../src/server/messaging/job-notices';
 import { DelegatedJobResults } from '../../src/server/delegation/delegated-job-results';
+import { RemoteDelegationResults } from '../../src/server/delegation/remote-delegation-results';
 import { DelegatedJobStore } from '../../src/server/delegation/delegated-job-store';
 import { TeamsUserStateStore } from '../../src/server/messaging/teams-user-state';
 import { createMockProcessStore } from '../helpers/mock-process-store';
@@ -819,6 +820,11 @@ describe('registerAllRoutes', () => {
                 'taskCompleted', 'taskFailed', 'taskCancelled',
                 'taskCompleted', 'taskFailed', 'taskCancelled',
                 'ralphSessionComplete',
+                // Destination remote result capture and its private whole-session recorder.
+                'taskCompleted', 'taskFailed', 'taskCancelled',
+                'ralphSessionComplete',
+                'taskCompleted', 'taskFailed', 'taskCancelled',
+                'ralphSessionComplete',
                 'taskCompleted', 'taskFailed', 'taskCancelled',
                 'taskCompleted', 'taskFailed', 'taskCancelled',
                 ...(hasMirrorProjections ? ['taskCompleted', 'taskFailed', 'taskCancelled'] : []),
@@ -837,6 +843,8 @@ describe('registerAllRoutes', () => {
         const notices = vi.spyOn(MessagingJobNotices.prototype, 'restore').mockImplementation(() =>
             new Promise<void>(resolve => { finishNotices = resolve; }));
         const results = vi.spyOn(DelegatedJobResults.prototype, 'restore').mockResolvedValue(undefined);
+        // Destination-only capture never schedules connector sends; keep its private recorder out of this count.
+        vi.spyOn(RemoteDelegationResults.prototype, 'restore').mockResolvedValue(undefined);
         registerAllRoutes([], makeOpts());
         expect(notices).toHaveBeenCalledOnce();
         expect(results).not.toHaveBeenCalled();

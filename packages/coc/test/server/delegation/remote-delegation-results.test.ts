@@ -262,4 +262,18 @@ describe('durable destination remote results', () => {
         expect(saved(row).terminal).toBeUndefined();
         expect(queue.listenerCount('ralphSessionComplete')).toBe(0);
     });
+
+    it('skips queued recovery after disposal closes the process store', async () => {
+        let releaseFirst!: () => void;
+        store.getWorkspaces = vi.fn()
+            .mockImplementationOnce(() => new Promise(resolve => { releaseFirst = () => resolve([]); }))
+            .mockRejectedValue(new Error('database connection is closed'));
+        const result = service();
+        const first = result.restore();
+        const queued = result.restore();
+        await flush(); result.dispose(); releaseFirst();
+        await expect(first).resolves.toBeUndefined();
+        await expect(queued).resolves.toBeUndefined();
+        expect(store.getWorkspaces).toHaveBeenCalledOnce();
+    });
 });

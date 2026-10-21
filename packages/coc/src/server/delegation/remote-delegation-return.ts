@@ -174,6 +174,8 @@ export class RemoteDelegationReturn {
         if (this.recovering) return this.pending;
         this.recovering = true;
         const work = this.pending.catch(() => {}).then(async () => {
+            // Disposal can close the process store before queued recovery runs.
+            if (this.abort.signal.aborted) return;
             for (const workspace of await this.deps.store.getWorkspaces()) {
                 if (this.abort.signal.aborted) return;
                 let requests: RemoteDelegationRequest[];

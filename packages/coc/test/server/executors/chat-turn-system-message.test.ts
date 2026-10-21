@@ -81,7 +81,7 @@ describe('buildChatTurnSystemMessage', () => {
             'Receiving this result is not a verdict', "intended feature/outcome's final completion condition",
             'Re-read the item with `sentinel_todos` before updating', 'current `expectedRevision`',
             'reconcile conflicts rather than overwriting user edits', 'honor manual user verdicts and latest instructions',
-            '`reviewedJobs` with this `jobId` as `processId` and the exact `terminalEventId`',
+            '`reviewedJobs` with `reviewProcessId` (or `jobId` when absent) as `processId` and the exact `terminalEventId`',
             'overall `status` verdict and a short `reason` in the same update',
             'A completed parent turn or delivered result is not assessment evidence',
             'Acknowledge only assessed results; leave unrelated results and running follow-ups alone',
