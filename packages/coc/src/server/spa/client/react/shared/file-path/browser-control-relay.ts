@@ -1,7 +1,7 @@
 import type { BrowserCommandRequest, ProcessWebSocketConnection } from '@plusplusoneplusplus/coc-client';
 import { desktopBrowserBridge, type BrowserControlReveal, type BrowserControlActivityEvent } from './browser-bridge';
 import { getSpaCocClient, getCocClientFor } from '../../api/cocClient';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserControlEnabled } from '../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserBackgroundControlEnabled, isBrowserControlEnabled } from '../../utils/config';
 import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
 import { lookupCloneBaseUrl } from '../../repos/cloneRegistry';
 import { browserOpenInput } from '../../features/repo-detail/unified-right-panel/unifiedBrowserTabs';
@@ -10,7 +10,10 @@ import { findBrowserPanelView } from '../../features/repo-detail/unified-right-p
 import { getBrowserControlScope, subscribeBrowserControlScope } from './browser-control-scope';
 import { startBrowserControlActivity, updateBrowserControlTab, finishBrowserControlActivity, resumeBrowserControlActivity, removeBrowserControlActivity } from './browser-control-activity';
 
-/** One relay on the existing socket; only the socket owning the selected clone advertises. */
+/**
+ * One relay on the existing socket; only the socket owning the selected clone advertises.
+ * With background control on, scopes with active turns stay retained and served after a switch.
+ */
 export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnection, 'send'>, baseUrl?: string) {
     const control = desktopBrowserBridge()?.control;
     let routingRef: string | null = null;
@@ -21,9 +24,14 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
     let selectedRef: string | null = null;
     let ownerId: number | undefined;
     const controlled = new Map<string, { workspaceId: string; processId: string; routingRef: string; turnId?: string; routed?: boolean }>();
-    const pending = new Set<string>();
+    /** Pending request id -> the routing ref it runs under. */
+    const pending = new Map<string, string>();
     const framePending = new Set<string>();
-    let framesActive = false;
+    const frameRefs = new Set<string>();
+    /** Background scopes retained on the desktop: routing ref -> workspace id. */
+    const retained = new Map<string, string>();
+    const backgroundOn = () => !!control?.retainScope && isBrowserBackgroundControlEnabled();
+    const backgroundIds = () => [...retained].filter(([ref]) => ref !== routingRef).map(([, id]) => id);
     const track = (targetWorkspace: string, processId: string, ownerRef: string, tabId?: string, turnId?: string, routed?: boolean) => {
         const key = JSON.stringify([targetWorkspace, processId]);
         const previous = controlled.get(key);
@@ -34,19 +42,49 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
         syncVisibility();
         return true;
     };
-    const panelTabId = (wireTab: string | undefined): string | undefined => {
-        if (!wireTab || !workspaceId || !routingRef) return undefined;
+    const panelTabId = (wireTab: string | undefined, targetWorkspace: string | null, ref: string | null): string | undefined => {
+        if (!wireTab || !targetWorkspace || !ref) return undefined;
         const match = /^t(\d+):(.+)$/.exec(wireTab);
         if (!match || ownerId !== undefined && Number(match[1]) !== ownerId) return undefined;
-        return findBrowserPanelView(match[2], workspaceId, routingRef)?.tab.id;
+        return findBrowserPanelView(match[2], targetWorkspace, ref)?.tab.id;
     };
-    const advertise = () => {
-        if (connected && workspaceId) connection.send({ type: 'browser-capability', workspaceId, focused: document.hasFocus() });
+    const background = () => backgroundOn() ? { background: backgroundIds() } : {};
+    const advertise = (focused = document.hasFocus()) => {
+        if (!connected) return;
+        if (workspaceId) connection.send({ type: 'browser-capability', workspaceId, focused, ...background() });
+        else if (backgroundOn()) connection.send({ type: 'browser-capability-clear', ...background() });
     };
     const focus = () => advertise();
-    const offFocused = control?.onFocused?.(() => {
-        if (connected && workspaceId) connection.send({ type: 'browser-capability', workspaceId, focused: true });
-    });
+    const offFocused = control?.onFocused?.(() => advertise(true));
+    /** Retains every controlled scope other than the foreground one; never drops (see `releaseRetained`). */
+    const retainControlled = (foreground: string | null) => {
+        if (!backgroundOn() || !connected) return;
+        for (const activity of controlled.values()) {
+            if (activity.routingRef === foreground || retained.has(activity.routingRef) || retained.size >= 64) continue;
+            retained.set(activity.routingRef, activity.workspaceId);
+            void control!.retainScope!(activity.routingRef, activity.workspaceId)
+                .catch(error => console.warn('Could not retain desktop browser control scope:', error));
+        }
+    };
+    /** Drops retained scopes without an active turn; their pending requests are cancelled. */
+    const releaseRetained = (all = false) => {
+        const live = new Set(all || !backgroundOn() || !connected ? [] : [...controlled.values()].map(activity => activity.routingRef));
+        if (!all && routingRef) live.delete(routingRef);
+        let changed = false;
+        for (const ref of [...retained.keys()]) {
+            if (live.has(ref)) continue;
+            retained.delete(ref);
+            changed = true;
+            for (const [id, owner] of pending) if (owner === ref && owner !== routingRef) { control?.cancel(id); pending.delete(id); framePending.delete(id); }
+            void control?.retainScope?.(ref, null).catch(error => console.warn('Could not release desktop browser control scope:', error));
+        }
+        return changed;
+    };
+    const syncRetention = () => {
+        if (disposed) return;
+        retainControlled(routingRef);
+        if (releaseRetained()) advertise();
+    };
     window.addEventListener('focus', focus);
     const offReveal = control?.onReveal((event: BrowserControlReveal) => {
         if (disposed) return;
@@ -66,7 +104,7 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             resourceId: event.viewId,
         });
         updateBrowserControlTab(event.workspaceId, event.processId, tabId, baseUrl);
-        if (event.workspaceId !== workspaceId && !window.location.hash.startsWith('#popout/')) {
+        if (event.background !== true && event.workspaceId !== workspaceId && !window.location.hash.startsWith('#popout/')) {
             window.location.hash = `#repos/${encodeURIComponent(scope)}/chats/${encodeURIComponent(event.processId)}`;
         }
     });
@@ -82,6 +120,7 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             else finishBrowserControlActivity(event.workspaceId, event.processId, baseUrl, event.turnId);
             if (event.finished !== false && controlled.get(JSON.stringify([event.workspaceId, event.processId]))?.turnId === event.turnId) {
                 controlled.delete(JSON.stringify([event.workspaceId, event.processId]));
+                syncRetention();
             }
             return;
         }
@@ -127,18 +166,24 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
         }
     };
     syncVisibility();
-    window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, syncVisibility);
-    const releaseFrames = () => {
-        if (framesActive && routingRef && control?.releaseFrames) {
-            framesActive = false;
-            void control.releaseFrames(routingRef).catch(error => console.warn('Could not release desktop browser frame control:', error));
+    const onConfigUpdated = () => { syncVisibility(); syncRetention(); };
+    window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, onConfigUpdated);
+    const releaseFrames = (all = true) => {
+        for (const ref of frameRefs) {
+            if (!all && retained.has(ref)) continue;
+            frameRefs.delete(ref);
+            void control?.releaseFrames?.(ref).catch(error => console.warn('Could not release desktop browser frame control:', error));
         }
     };
-    const cancelPending = () => {
-        for (const id of pending) control?.cancel(id);
-        pending.clear();
-        framePending.clear();
-        releaseFrames();
+    /** Cancels pending work; retained background scopes keep theirs unless `all`. */
+    const cancelPending = (all = true) => {
+        for (const [id, ref] of pending) {
+            if (!all && retained.has(ref)) continue;
+            control?.cancel(id);
+            pending.delete(id);
+            framePending.delete(id);
+        }
+        releaseFrames(all);
     };
     const clearActivities = () => {
         ++visibilityRevision;
@@ -163,13 +208,15 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             const ref = getBrowserControlScope()?.routingRef ?? selected;
             if (!control || disposed) return;
             const version = ++revision;
-            cancelPending();
-            workspaceId = null;
-            routingRef = null;
-            connection.send({ type: 'browser-capability-clear' });
             const clone = parseRemoteCloneKey(ref);
             const matches = ref && (baseUrl ? clone && lookupCloneBaseUrl(ref) === baseUrl : !clone);
-            if (!matches) { syncVisibility(); return; }
+            // Retain the turns being switched away from before the desktop rebinds its foreground scope.
+            retainControlled(matches ? ref : null);
+            cancelPending(false);
+            workspaceId = null;
+            routingRef = null;
+            connection.send({ type: 'browser-capability-clear', ...background() });
+            if (!matches) { syncVisibility(); syncRetention(); return; }
             let scope: { ownerId: number } | void;
             try { scope = await control.bindScope(clone?.workspaceId ?? ref!, ref); }
             catch {
@@ -181,10 +228,11 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             workspaceId = clone?.workspaceId ?? ref;
             ownerId = scope?.ownerId;
             syncVisibility();
+            releaseRetained();
             advertise();
         },
-        onOpen() { connected = true; syncVisibility(); advertise(); },
-        onClose() { connected = false; cancelPending(); clearActivities(); },
+        onOpen() { connected = true; syncVisibility(); retainControlled(routingRef); advertise(); },
+        onClose() { connected = false; cancelPending(); releaseRetained(true); clearActivities(); },
         onMessage(message: { type: string; [key: string]: unknown }): boolean {
             if (message.type === 'config-changed') {
                 for (const id of framePending) {
@@ -194,14 +242,14 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
                 }
                 framePending.clear();
                 releaseFrames();
-                syncVisibility();
+                onConfigUpdated();
             }
             if (message.type === 'browser-turn-finished' && typeof message.turnId === 'string'
                 && typeof message.workspaceId === 'string' && typeof message.processId === 'string') {
                 control?.finish?.(message.turnId);
                 finishBrowserControlActivity(message.workspaceId, message.processId, baseUrl, message.turnId);
                 const key = JSON.stringify([message.workspaceId, message.processId]);
-                if (controlled.get(key)?.turnId === message.turnId) controlled.delete(key);
+                if (controlled.get(key)?.turnId === message.turnId) { controlled.delete(key); syncRetention(); }
                 return true;
             }
             if (message.type === 'process-updated') {
@@ -214,6 +262,7 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
                             if (activity?.turnId) control?.finish?.(activity.turnId);
                             finishBrowserControlActivity(process.workspaceId, process.id, baseUrl);
                             controlled.delete(JSON.stringify([process.workspaceId, process.id]));
+                            syncRetention();
                         }
                     }
                 }
@@ -225,7 +274,9 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             if (message.type !== 'browser-command') return false;
             const request = message.request as BrowserCommandRequest | undefined;
             if (!request || typeof request.id !== 'string') return true;
-            if (!control || !workspaceId || request.workspaceId !== workspaceId) {
+            const backgroundRef = control && request.workspaceId !== workspaceId
+                ? [...retained].find(([ref, id]) => ref !== routingRef && id === request.workspaceId)?.[0] : undefined;
+            if (!control || !backgroundRef && (!workspaceId || request.workspaceId !== workspaceId)) {
                 connection.send({ type: 'browser-command-result', reply: { id: request.id, ok: false, error: 'Browser workspace scope changed' } });
                 return true;
             }
@@ -247,27 +298,29 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             }
             if (pending.has(request.id)) return true;
             const targetedTab = request.command?.action === 'select' ? request.command.tab : request.selectedTab;
-            if (!control.onActivity && !track(request.workspaceId, request.processId, routingRef!, panelTabId(targetedTab) ?? targetedTab, request.turnId)) {
+            const ref = backgroundRef ?? routingRef!;
+            if (!control.onActivity && !track(request.workspaceId, request.processId, ref, panelTabId(targetedTab, request.workspaceId, ref) ?? targetedTab, request.turnId)) {
                 connection.send({ type: 'browser-command-result', reply: { id: request.id, ok: false, error: 'Browser conversation turn has finished' } });
                 return true;
             }
             if (control.onActivity) controlled.set(JSON.stringify([request.workspaceId, request.processId]), {
-                workspaceId: request.workspaceId, processId: request.processId, routingRef: routingRef!, turnId: request.turnId, routed: true,
+                workspaceId: request.workspaceId, processId: request.processId, routingRef: ref, turnId: request.turnId, routed: true,
             });
-            pending.add(request.id);
-            if (request.framesEnabled === true) { framePending.add(request.id); framesActive = true; }
+            pending.set(request.id, ref);
+            if (request.framesEnabled === true) { framePending.add(request.id); frameRefs.add(ref); }
             syncVisibility();
-            const version = revision;
-            void control.execute(request).then(
+            // Cancellation (switch, close, config change) removes the entry, so only live requests reply.
+            const live = () => pending.get(request.id) === ref && connected;
+            void (backgroundOn() ? control.execute(request, ref) : control.execute(request)).then(
                 result => {
-                    if (pending.has(request.id) && version === revision && connected) {
-                        const tabId = panelTabId(result.tab) ?? result.tab;
+                    if (live()) {
+                        const tabId = panelTabId(result.tab, request.workspaceId, ref) ?? result.tab;
                         if (tabId) updateBrowserControlTab(request.workspaceId, request.processId, tabId, baseUrl, request.turnId);
                         connection.send({ type: 'browser-command-result', reply: { id: request.id, ok: true, result } });
                     }
                 },
                 error => {
-                    if (pending.has(request.id) && version === revision && connected) connection.send({ type: 'browser-command-result', reply: { id: request.id, ok: false, error: error instanceof Error ? error.message : String(error) } });
+                    if (live()) connection.send({ type: 'browser-command-result', reply: { id: request.id, ok: false, error: error instanceof Error ? error.message : String(error) } });
                 },
             ).finally(() => { pending.delete(request.id); framePending.delete(request.id); });
             return true;
@@ -276,13 +329,14 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             disposed = true;
             ++revision;
             cancelPending();
+            releaseRetained(true);
             clearActivities();
             if (control) connection.send({ type: 'browser-capability-clear' });
             offReveal?.();
             offFocused?.();
             offActivity?.();
             offStop?.();
-            window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, syncVisibility);
+            window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, onConfigUpdated);
             window.removeEventListener('focus', focus);
             unsubscribeScope();
         },

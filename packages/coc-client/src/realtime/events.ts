@@ -7,8 +7,8 @@ export type BrowserControlServerEvent =
   | { type: 'browser-command-cancel'; id: string }
   | { type: 'browser-turn-finished'; workspaceId: string; processId: string; turnId: string };
 export type BrowserControlClientEvent =
-  | { type: 'browser-capability'; workspaceId: string; focused: boolean }
-  | { type: 'browser-capability-clear' }
+  | { type: 'browser-capability'; workspaceId: string; focused: boolean; background?: string[] }
+  | { type: 'browser-capability-clear'; background?: string[] }
   | { type: 'browser-command-result'; reply: BrowserCommandReply };
 
 export interface ProcessEvent {

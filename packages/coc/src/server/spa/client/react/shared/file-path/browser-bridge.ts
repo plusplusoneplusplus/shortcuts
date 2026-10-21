@@ -74,7 +74,9 @@ export interface DesktopBrowserBridge {
         framesSupported?: boolean;
         richPasteSupported?: boolean;
         bindScope(workspaceId: string | null, sessionKey: string | null): Promise<{ ownerId: number } | void>;
-        execute(request: BrowserCommandRequest): Promise<BrowserCommandResult>;
+        /** Keep a background scope controllable while another is selected; `null` drops it. Absent on older desktops. */
+        retainScope?(sessionKey: string, workspaceId: string | null): Promise<void>;
+        execute(request: BrowserCommandRequest, routingRef?: string): Promise<BrowserCommandResult>;
         cancel(id: string): void;
         releaseFrames?(routingRef: string): Promise<void>;
         finish?(turnId?: string, routingRef?: string): void;
@@ -125,6 +127,8 @@ export interface BrowserControlReveal {
     url?: string;
     routingRef?: string;
     turnId?: string;
+    /** The view belongs to a retained background scope; the window must not switch to it. */
+    background?: boolean;
 }
 
 export interface BrowserControlActivityEvent {

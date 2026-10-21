@@ -430,4 +430,121 @@ describe('SPA browser socket relay', () => {
         expect(readUnifiedPanelState('other').workspaceTabs).toHaveLength(0);
         h.relay.dispose();
     });
+    describe('background control', () => {
+        const withRetain = (h: ReturnType<typeof harness>) => {
+            const retainScope = vi.fn(async (_ref: string, _workspace: string | null) => {});
+            (h.control as any).retainScope = retainScope;
+            return retainScope;
+        };
+        const hold = (h: ReturnType<typeof harness>) => {
+            let finish!: (result: BrowserCommandResult) => void;
+            h.control.execute.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+            return (result: BrowserCommandResult) => finish(result);
+        };
+
+        it('keeps an active turn bound and served after the window switches workspace', async () => {
+            applyRuntimeConfigPatch({ browserBackgroundControlEnabled: true });
+            const h = harness(undefined, true);
+            const retainScope = withRetain(h);
+            await h.relay.update('w'); h.relay.onOpen();
+            expect(h.send).toHaveBeenLastCalledWith({ type: 'browser-capability', workspaceId: 'w', focused: expect.any(Boolean), background: [] });
+            const finish = hold(h);
+            h.relay.onMessage({ type: 'browser-command', request: { ...request, turnId: 't1' } });
+            expect(h.control.execute).toHaveBeenLastCalledWith({ ...request, turnId: 't1' }, 'w');
+
+            window.location.hash = '#repos/other';
+            await h.relay.update('other');
+            expect(retainScope).toHaveBeenCalledWith('w', 'w');
+            expect(retainScope.mock.invocationCallOrder[0]).toBeLessThan(h.control.bindScope.mock.invocationCallOrder[1]);
+            expect(h.control.cancel).not.toHaveBeenCalled();
+            expect(h.send).toHaveBeenCalledWith({ type: 'browser-capability-clear', background: ['w'] });
+            expect(h.send).toHaveBeenLastCalledWith({ type: 'browser-capability', workspaceId: 'other', focused: expect.any(Boolean), background: ['w'] });
+
+            // The in-flight reply still reaches the server and later commands run on the retained scope.
+            finish({ tabs: [] }); await tick();
+            expect(h.send).toHaveBeenCalledWith({ type: 'browser-command-result', reply: { id: 'r', ok: true, result: { tabs: [] } } });
+            const next = { ...request, id: 'r2', turnId: 't1' };
+            h.relay.onMessage({ type: 'browser-command', request: next });
+            expect(h.control.execute).toHaveBeenLastCalledWith(next, 'w');
+
+            // A background reveal opens the tab without moving the window.
+            h.reveal({ workspaceId: 'w', processId: 'p', viewId: 'browser-agent', url: 'https://fixture.test/', turnId: 't1', routingRef: 'w', background: true });
+            expect(window.location.hash).toBe('#repos/other');
+            expect(readUnifiedPanelState('w').workspaceTabs).toHaveLength(1);
+
+            // Finishing the turn drops the retention and stops serving the workspace.
+            h.relay.onMessage({ type: 'browser-turn-finished', workspaceId: 'w', processId: 'p', turnId: 't1' });
+            expect(retainScope).toHaveBeenLastCalledWith('w', null);
+            expect(h.send).toHaveBeenLastCalledWith({ type: 'browser-capability', workspaceId: 'other', focused: expect.any(Boolean), background: [] });
+            h.relay.onMessage({ type: 'browser-command', request: { ...request, id: 'r3', turnId: 't1' } });
+            expect(h.send).toHaveBeenLastCalledWith({ type: 'browser-command-result', reply: { id: 'r3', ok: false, error: 'Browser workspace scope changed' } });
+            h.relay.dispose();
+        });
+
+        it('never routes a command to a workspace without a retained scope', async () => {
+            applyRuntimeConfigPatch({ browserBackgroundControlEnabled: true });
+            const h = harness(undefined, true);
+            withRetain(h);
+            await h.relay.update('w'); h.relay.onOpen();
+            h.relay.onMessage({ type: 'browser-command', request: { ...request, workspaceId: 'other' } });
+            expect(h.control.execute).not.toHaveBeenCalled();
+            expect(h.send).toHaveBeenLastCalledWith({ type: 'browser-command-result', reply: { id: 'r', ok: false, error: 'Browser workspace scope changed' } });
+            h.relay.dispose();
+        });
+
+        it('cancels on switch and never retains with the flag off', async () => {
+            const h = harness(undefined, true);
+            const retainScope = withRetain(h);
+            await h.relay.update('w'); h.relay.onOpen();
+            hold(h);
+            h.relay.onMessage({ type: 'browser-command', request: { ...request, turnId: 't1' } });
+            expect(h.control.execute).toHaveBeenLastCalledWith({ ...request, turnId: 't1' });
+            await h.relay.update('other');
+            expect(retainScope).not.toHaveBeenCalled();
+            expect(h.control.cancel).toHaveBeenCalledWith('r');
+            expect(h.send).toHaveBeenCalledWith({ type: 'browser-capability-clear' });
+            expect(h.send).toHaveBeenLastCalledWith({ type: 'browser-capability', workspaceId: 'other', focused: expect.any(Boolean) });
+            h.relay.dispose();
+        });
+
+        it('drops retained scopes and cancels their work when the flag turns off or the socket closes', async () => {
+            applyRuntimeConfigPatch({ browserBackgroundControlEnabled: true });
+            const h = harness(undefined, true);
+            const retainScope = withRetain(h);
+            await h.relay.update('w'); h.relay.onOpen();
+            hold(h);
+            h.relay.onMessage({ type: 'browser-command', request: { ...request, turnId: 't1' } });
+            await h.relay.update('other');
+            applyRuntimeConfigPatch({ browserBackgroundControlEnabled: false });
+            expect(retainScope).toHaveBeenLastCalledWith('w', null);
+            expect(h.control.cancel).toHaveBeenCalledWith('r');
+            expect(h.send).toHaveBeenLastCalledWith({ type: 'browser-capability', workspaceId: 'other', focused: expect.any(Boolean) });
+
+            applyRuntimeConfigPatch({ browserBackgroundControlEnabled: true });
+            await h.relay.update('w');
+            h.relay.onMessage({ type: 'browser-command', request: { ...request, id: 'r2', turnId: 't2' } });
+            await h.relay.update('other');
+            expect(retainScope).toHaveBeenLastCalledWith('w', 'w');
+            h.relay.onClose();
+            expect(retainScope).toHaveBeenLastCalledWith('w', null);
+            h.relay.dispose();
+        });
+
+        it('retains remote clone turns under the clone ref on that clone socket only', async () => {
+            const baseUrl = 'http://127.0.0.1:4500';
+            registerCloneBaseUrls([{ workspaceId: 'w', serverId: 'server', baseUrl }]);
+            applyRuntimeConfigPatch({ browserBackgroundControlEnabled: true });
+            const h = harness(baseUrl, true);
+            const retainScope = withRetain(h);
+            await h.relay.update('remote:server:w'); h.relay.onOpen();
+            h.relay.onMessage({ type: 'browser-command', request: { ...request, turnId: 't1' } });
+            await h.relay.update('other');
+            expect(retainScope).toHaveBeenCalledExactlyOnceWith('remote:server:w', 'w');
+            expect(h.send).toHaveBeenCalledWith({ type: 'browser-capability-clear', background: ['w'] });
+            const next = { ...request, id: 'r2', turnId: 't1' };
+            h.relay.onMessage({ type: 'browser-command', request: next });
+            expect(h.control.execute).toHaveBeenLastCalledWith(next, 'remote:server:w');
+            h.relay.dispose();
+        });
+    });
 });
