@@ -131,6 +131,7 @@ describe('CommitTooltip', () => {
 
         const copyButton = screen.getByTestId('tooltip-copy-hash-btn');
         fireEvent.mouseDown(copyButton);
+        fireEvent.mouseUp(copyButton);
         await act(async () => fireEvent.click(copyButton));
         expect(copyToClipboard).toHaveBeenCalledWith(commit.hash);
         expect(copyButton).toHaveTextContent('Copied!');
@@ -147,6 +148,24 @@ describe('CommitTooltip', () => {
         fireEvent.mouseDown(screen.getByTestId('outside-panel'));
         expect(panel).toHaveClass('hidden');
         expect(screen.queryByTestId('commit-tooltip')).toBeNull();
+    });
+
+    it('retains the peek during a tooltip press and dismisses after release outside', () => {
+        renderPanel(true);
+        fireEvent.mouseEnter(screen.getByTestId('split-workspace-left-rail'));
+        act(() => vi.advanceTimersByTime(1000));
+        const tooltip = openTooltip();
+        const panel = screen.getByTestId('split-workspace-left');
+
+        fireEvent.mouseDown(screen.getByTestId('tooltip-copy-hash-btn'));
+        fireEvent.mouseOut(tooltip, { relatedTarget: document.body });
+        act(() => vi.advanceTimersByTime(300));
+        expect(panel).not.toHaveClass('hidden');
+
+        fireEvent.mouseUp(document.body);
+        act(() => vi.advanceTimersByTime(300));
+        expect(panel).toHaveClass('hidden');
+        expect(copyToClipboard).not.toHaveBeenCalled();
     });
 
     it('dismisses both the peek and its portaled tooltip on Escape', () => {

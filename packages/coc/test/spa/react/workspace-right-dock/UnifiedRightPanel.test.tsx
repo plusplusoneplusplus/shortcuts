@@ -382,14 +382,12 @@ describe('UnifiedRightPanel', () => {
         });
 
         it('tracks geometry, hides on tab switch/collapse/menu, and closes the native view', async () => {
-            const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
-                x: 50, y: 90, width: 300, height: 220,
-            } as DOMRect);
+            const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(50, 90, 300, 220));
             try {
                 const { rerender } = renderPanel({ chatId: 'chat-1' });
                 openPage();
                 await waitFor(() => expect(bridge.setBounds).toHaveBeenCalledWith('page-1', { x: 50, y: 90, width: 300, height: 220 }));
-                rect.mockReturnValue({ x: 80, y: 90, width: 250, height: 220 } as DOMRect);
+                rect.mockReturnValue(new DOMRect(80, 90, 250, 220));
                 fireEvent(window, new Event('resize'));
                 await waitFor(() => expect(bridge.setBounds).toHaveBeenCalledWith(
                     'page-1', { x: 80, y: 90, width: 250, height: 220 },
@@ -403,7 +401,9 @@ describe('UnifiedRightPanel', () => {
                 bridge.hide.mockClear();
                 fireEvent.contextMenu(screen.getByTestId(`unified-panel-tab-${tabId}`));
                 await waitFor(() => expect(bridge.hide).toHaveBeenCalledWith('page-1'));
+                bridge.setBounds.mockClear();
                 fireEvent.keyDown(document, { key: 'Escape' });
+                await waitFor(() => expect(bridge.setBounds).toHaveBeenCalledWith('page-1', { x: 80, y: 90, width: 250, height: 220 }));
                 rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-1" dock={dockStub({ isOpen: false })} />);
                 expect(bridge.hide).toHaveBeenCalledWith('page-1');
                 rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-1" dock={dockStub()} />);
@@ -810,9 +810,7 @@ describe('UnifiedRightPanel', () => {
         });
 
         it('keeps the view across chat switches and collapse, and closes it only with the tab', async () => {
-            const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
-                x: 40, y: 80, width: 320, height: 240,
-            } as DOMRect);
+            const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 80, 320, 240));
             try {
                 const { rerender } = renderPanel({ chatId: 'chat-1' });
                 await openUrlTab('https://example.com');

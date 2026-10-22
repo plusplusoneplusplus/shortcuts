@@ -738,7 +738,7 @@ describe('Sentinel To-do Triggers', () => {
             expect(within(activeRow).getByRole('button', { name: /normal active/ }).getAttribute('aria-pressed')).toBe('false');
             for (const other of items.filter(candidate => candidate.id !== 'item-1' && candidate.id !== 'normal-active')) {
                 const row = screen.queryByTestId(`sentinel-todo-row-${other.id}`);
-                if (row) expect(within(row).getByRole('button', { name: new RegExp(other.title) }).getAttribute('aria-pressed')).toBe('false');
+                if (row) expect(within(row).getByRole('button', { name: new RegExp(other.title), pressed: false }).getAttribute('aria-pressed')).toBe('false');
             }
         };
         const user = userEvent.setup();
@@ -747,8 +747,8 @@ describe('Sentinel To-do Triggers', () => {
             await user.keyboard('{Enter}');
             const target = await screen.findByTestId('sentinel-todo-row-item-1');
             await waitFor(() => expect(target.dataset.sentinelTriggerHighlight).toBe('true'));
-            expect(document.activeElement).toBe(within(target).getByRole('button', { name: /Follow-up work/ }));
-            expect(within(target).getByRole('button', { name: /Follow-up work/ }).getAttribute('aria-pressed')).toBe('true');
+            expect(document.activeElement).toBe(within(target).getByRole('button', { name: /Follow-up work/, pressed: true }));
+            expect(within(target).getByRole('button', { name: /Follow-up work/, pressed: true }).getAttribute('aria-pressed')).toBe('true');
             assertState();
         }
         expect(mocks.get).toHaveBeenCalledTimes(1);
@@ -772,7 +772,7 @@ describe('Sentinel To-do Triggers', () => {
         await waitFor(() => expect(screen.getByTestId('sentinel-todo-row-item-1').dataset.sentinelTriggerHighlight).toBe('true'));
         expect(done.getAttribute('aria-expanded')).toBe('true');
         expect(manualDone.getAttribute('aria-expanded')).toBe('true');
-        expect(within(screen.getByTestId('sentinel-todo-row-done')).getByRole('button', { name: /Done item/ }).getAttribute('aria-pressed')).toBe('false');
+        expect(within(screen.getByTestId('sentinel-todo-row-done')).getByRole('button', { name: /Done item/, pressed: false }).getAttribute('aria-pressed')).toBe('false');
         expect(within(screen.getByTestId('sentinel-todo-archived-section')).getByRole('button').getAttribute('aria-expanded')).toBe('false');
     });
 
