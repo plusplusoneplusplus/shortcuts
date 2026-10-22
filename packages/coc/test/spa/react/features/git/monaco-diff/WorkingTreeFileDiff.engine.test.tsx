@@ -79,6 +79,20 @@ vi.mock('../../../../../../src/server/spa/client/react/repos/cloneRouting', () =
     useCocClient: (workspaceId: string) => clients[workspaceId],
 }));
 
+type NavigateTarget = { workspaceId: string; path: string; line: number; column: number; symbolCandidate?: true };
+const currentCodeMounts = vi.hoisted(() => [] as { uri: string; onNavigate: (target: NavigateTarget) => boolean }[]);
+vi.mock('../../../../../../src/server/spa/client/react/features/git/diff/diffCurrentCodeMount', () => ({
+    mountDiffCurrentCodeModel: (options: { model: { uri: { toString(): string } }; onNavigate: (target: NavigateTarget) => boolean }) => {
+        currentCodeMounts.push({ uri: options.model.uri.toString(), onNavigate: options.onNavigate });
+        return () => {};
+    },
+}));
+const openUnifiedPanelTab = vi.hoisted(() => vi.fn(() => 'tab-id'));
+vi.mock('../../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen', async importOriginal => ({
+    ...(await importOriginal<object>()),
+    openUnifiedPanelTab,
+}));
+
 import { WorkingTreeFileDiff } from '../../../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff';
 import {
     DIFF_ENGINE_STORAGE_KEY,
@@ -86,6 +100,7 @@ import {
 } from '../../../../../../src/server/spa/client/react/features/git/hooks/useDiffEngine';
 import type { DiffEditorFactory } from '../../../../../../src/server/spa/client/react/features/git/diff/monacoDiffEditorAdapter';
 import { __resetDiffWordWrapForTesting } from '../../../../../../src/server/spa/client/react/features/git/hooks/useDiffWordWrap';
+import { UnifiedPanelHostProvider } from '../../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
 
 let fakes: FakeDiffEditor[];
 const createDiffEditor: DiffEditorFactory = async (_host, options) => {
@@ -114,6 +129,8 @@ async function renderDiff(props: Partial<React.ComponentProps<typeof WorkingTree
 
 beforeEach(() => {
     fakes = [];
+    currentCodeMounts.length = 0;
+    openUnifiedPanelTab.mockClear();
     localStorage.clear();
     __resetDiffEngineForTesting();
     __resetDiffWordWrapForTesting();
@@ -258,5 +275,55 @@ describe('WorkingTreeFileDiff — historical definitions', () => {
         const sides = fakes[0].historicalMounts.filter(m => m.live).map(m => m.side);
         expect(sides[0]).toBe('original');
         expect(fakes[0].historicalMounts.every(m => m.uri.startsWith('coc-diff-ref://'))).toBe(true);
+    });
+});
+
+describe('WorkingTreeFileDiff — definition routing', () => {
+    const target = (path: string, extra: Partial<NavigateTarget> = {}): NavigateTarget => ({ workspaceId: 'ws-a', path, line: 7, column: 2, ...extra });
+    async function renderHosted(props: Partial<React.ComponentProps<typeof WorkingTreeFileDiff>> = {}) {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
+        await act(async () => {
+            render(
+                <UnifiedPanelHostProvider host={{ workspaceId: 'group-1', chatId: 'chat-1', routingRef: null }}>
+                    <WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/a.ts" repoRoot="/repo" stage="unstaged"
+                        createDiffEditor={createDiffEditor} {...props} />
+                </UnifiedPanelHostProvider>,
+            );
+        });
+        await act(async () => {});
+        expect(currentCodeMounts).toHaveLength(1);
+        return currentCodeMounts[0];
+    }
+
+    it('reveals a same-file target on the left side the jump started from', async () => {
+        const mount = await renderHosted();
+        let handled: boolean | undefined;
+        act(() => { handled = mount.onNavigate(target('src/a.ts')); });
+        expect(handled).toBe(true);
+        expect(fakes[0].revealedPositions).toEqual([{ side: 'original', line: 7, column: 2 }]);
+        expect(openUnifiedPanelTab).not.toHaveBeenCalled();
+    });
+
+    it('opens another file, even a changed one, in Explorer at the definition line', async () => {
+        const onNavigateToFile = vi.fn();
+        const mount = await renderHosted({ attachmentDestinationId: 'remote:srv:ws-a', onNavigateToFile, workingTreeFiles: ['/repo/src/a.ts', '/repo/src/b.ts'] });
+        let handled: boolean | undefined;
+        act(() => { handled = mount.onNavigate(target('src/b.ts', { symbolCandidate: true })); });
+        expect(handled).toBe(true);
+        expect(onNavigateToFile).not.toHaveBeenCalled();
+        expect(openUnifiedPanelTab).toHaveBeenCalledWith('group-1', expect.objectContaining({
+            kind: 'file', ownerWorkspaceId: 'ws-a', ownerRoutingRef: 'remote:srv:ws-a', chatId: 'chat-1',
+            resourceId: 'src/b.ts', line: 7, column: 2, symbolCandidate: true,
+        }));
+        expect(fakes[0].revealedPositions).toEqual([]);
+    });
+
+    it('declines a target in another workspace', async () => {
+        const mount = await renderHosted();
+        let handled: boolean | undefined;
+        act(() => { handled = mount.onNavigate(target('src/a.ts', { workspaceId: 'ws-b' })); });
+        expect(handled).toBe(false);
+        expect(fakes[0].revealedPositions).toEqual([]);
+        expect(openUnifiedPanelTab).not.toHaveBeenCalled();
     });
 });

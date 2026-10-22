@@ -302,10 +302,12 @@ staged and unstaged diffs. `DiffDefinitionNavigate` receives the initiating side
 on the initiating side, another changed file of the review switches the review
 there (same side), and any other file opens its current version at the line in
 the unified panel's Explorer file tab (the `#repos/:id/explorer/:path` deep link
-without a panel). Foreign-workspace targets are declined. `FileDiffPanel` holds
-the reveal until that file's models are displayed and suppresses the hunk target
-for it; the viewer's `revealTarget` goes through the controller's `reveal`, which
-waits for attach and is dropped by a model swap. Peek stays Monaco's own.
+without a panel; `diffDefinitionExplorer.ts`). Foreign-workspace targets are
+declined. `FileDiffPanel` holds the reveal until that file's models are displayed
+and suppresses the hunk target for it; the viewer's `revealTarget` goes through
+the controller's `reveal`, which waits for attach and is dropped by a model swap.
+`WorkingTreeFileDiff` is not a review: it routes both its full-language and
+ref-backed jumps to a same-file reveal or Explorer only. Peek stays Monaco's own.
 
 ### Retry
 

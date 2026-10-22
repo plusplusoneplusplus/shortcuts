@@ -39,6 +39,11 @@ import { resolveDiffEngineSelection, type DiffContentLoadState } from '../diff/d
 import { useDiffEngine } from '../hooks/useDiffEngine';
 import { MonacoFileDiffViewer, type MonacoFileDiffViewerHandle } from '../diff/MonacoFileDiffViewer';
 import type { DiffEditorFactory } from '../diff/monacoDiffEditorAdapter';
+import type { DiffEditorPosition } from '../diff/monacoDiffController';
+import type { DiffDefinitionNavigate } from '../diff/diffLanguageMount';
+import { resolveDiffDefinitionRoute } from '../diff/diffDefinitionRoute';
+import { openDiffDefinitionInExplorer } from '../diff/diffDefinitionExplorer';
+import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
 import { DiffMiniMap } from '../diff/DiffMiniMap';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
@@ -309,6 +314,21 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
         onRegisterSave(handleSaveEdits);
         return () => onRegisterSave(null);
     }, [stage, canSave, onRegisterSave, handleSaveEdits]);
+
+    // ── Go to definition: same diff side, else the current file in Explorer ──
+    // The working tree is not a review, so another changed file opens in Explorer too.
+    const panelHost = useUnifiedPanelHost();
+    const [definitionReveal, setDefinitionReveal] = useState<DiffEditorPosition | null>(null);
+    const handleNavigateDefinition = useCallback<DiffDefinitionNavigate>((target, side) => {
+        const route = resolveDiffDefinitionRoute({ workspaceId, filePath: relativePath, reviewFiles: [], target, side });
+        if (!route) return false;
+        if (route.kind === 'same-file') {
+            setDefinitionReveal({ side: route.side, line: route.line, column: route.column });
+            return true;
+        }
+        if (route.kind !== 'explorer') return false;
+        return openDiffDefinitionInExplorer({ route, workspaceId, ownerRoutingRef: ownerRoute, panelHost });
+    }, [workspaceId, relativePath, ownerRoute, panelHost]);
 
     const handleEditorError = useCallback(() => setEditorFailedKey(contentKey), [contentKey]);
     const retryEditor = useCallback(() => setEditorAttempt(a => a + 1), []);
@@ -603,6 +623,8 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                             modifiedMatchesWorkingCopy={stage === 'staged' ? diskMatchesIndex : undefined}
                             historicalDefinitions
                             routingRef={ownerRoute}
+                            onNavigateDefinition={handleNavigateDefinition}
+                            revealTarget={definitionReveal}
                             onModifiedChange={setEditedText}
                             onSave={() => { void handleSaveEdits(); }}
                             editedText={editedText}

@@ -51,6 +51,7 @@ import { DiffFilePicker } from './DiffFilePicker';
 import type { DiffEditorPosition } from './monacoDiffController';
 import type { DiffDefinitionNavigate } from './diffLanguageMount';
 import { resolveDiffDefinitionRoute } from './diffDefinitionRoute';
+import { openDiffDefinitionInExplorer } from './diffDefinitionExplorer';
 import { reviewFileParts } from './gitReviewFiles';
 
 export interface FileDiffPanelProps {
@@ -474,21 +475,11 @@ export function FileDiffPanel({
             onNavigateToFile(route.path, 'first');
             return true;
         }
-        const file = { path: route.path, line: route.line, column: route.column, ...(target.symbolCandidate ? { symbolCandidate: true as const } : {}) };
-        if (panelHost) {
-            const input = explorerFileTabInput(file, {
-                ownerWorkspaceId: workspaceId,
-                ownerRoutingRef,
-                scopeWorkspaceId: panelHost.workspaceId,
-                chatId: panelHost.chatId,
-            });
-            if (!input) return false;
-            openUnifiedPanelTab(panelHost.workspaceId, input);
-            return true;
-        }
-        // No panel here (pop-out, embedded hosts): the Explorer sub-tab deep link.
-        location.hash = `#repos/${encodeURIComponent(ownerRoutingRef ?? workspaceId)}/explorer/${encodeURIComponent(route.path)}`;
-        return true;
+        const explorerRoute = route.kind === 'explorer' ? route : {
+            kind: 'explorer' as const, path: route.path, line: route.line, column: route.column,
+            ...(target.symbolCandidate ? { symbolCandidate: true as const } : {}),
+        };
+        return openDiffDefinitionInExplorer({ route: explorerRoute, workspaceId, ownerRoutingRef, panelHost });
     }, [workspaceId, filePath, allFiles, onNavigateToFile, panelHost, ownerRoutingRef]);
     // Any other file change (picker, hunk nav) drops a jump that was not for it.
     useEffect(() => {
