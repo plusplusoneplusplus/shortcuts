@@ -16,7 +16,7 @@ import { SentinelTodoError, type SentinelTodoOwner } from '../sentinel-todos/sen
 
 export const SENTINEL_REFRAINS_TOOL_NAME = 'sentinel_jobs';
 
-/** The Sentinel's current resolved settings, inherited by new custom jobs. */
+/** The Sentinel's current resolved settings, inherited by new refrains. */
 export interface SentinelRefrainDefaults { provider?: string; model?: string; effort?: string }
 
 export interface SentinelRefrainsToolDeps {
@@ -132,7 +132,7 @@ export function createSentinelRefrainsTool(deps: SentinelRefrainsToolDeps) {
         });
     }
 
-    async function writeScrubber(args: SentinelRefrainsArgs, enabled?: boolean) {
+    async function writeCoda(args: SentinelRefrainsArgs, enabled?: boolean) {
         const unsupported = JOB_SETTINGS.filter(key => args[key] !== undefined && !SCRUBBER_SETTINGS.has(key));
         if (unsupported.length) {
             throw new CodaStoreError('invalid', `Coda only supports cron and enabled; unsupported: ${unsupported.join(', ')}`);
@@ -160,9 +160,9 @@ export function createSentinelRefrainsTool(deps: SentinelRefrainsToolDeps) {
                     if (!scrubber) return { error: 'Sentinel Coda is disabled', code: 'not_found' };
                     switch (args.action) {
                         case 'get': return { scrubber: await scrubber.view(owner) };
-                        case 'update': return { scrubber: await writeScrubber(args) };
-                        case 'pause': return { scrubber: await writeScrubber({ ...args, enabled: undefined }, false) };
-                        case 'resume': return { scrubber: await writeScrubber({ ...args, enabled: undefined }, true) };
+                        case 'update': return { scrubber: await writeCoda(args) };
+                        case 'pause': return { scrubber: await writeCoda({ ...args, enabled: undefined }, false) };
+                        case 'resume': return { scrubber: await writeCoda({ ...args, enabled: undefined }, true) };
                         case 'run_now': return { run: await scrubber.start(owner, args.itemIds) };
                         case 'cancel': return { run: await scrubber.cancel(owner, requireField(args.runId, 'runId')) };
                         case 'test_gate':

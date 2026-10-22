@@ -230,7 +230,7 @@ describe('registerAllRoutes', () => {
         const refresh = vi.spyOn(SentinelJobScheduler.prototype, 'refreshAll');
         const composition = registerAllRoutes([], opts);
         try {
-            await composition.scrubberReady;
+            await composition.codaReady;
             const runA = await getJobs()!.start(owners[0], a.id);
             const runB = await getJobs()!.start(owners[1], b.id);
             const handback = await getJobs()!.start(owners[0], notification.id);
@@ -290,7 +290,7 @@ describe('registerAllRoutes', () => {
             return response;
         };
         try {
-            await composition.scrubberReady;
+            await composition.codaReady;
             expect(jobs.run(owner, job.id, orphan.id).status).toBe('interrupted');
             expect(cancel).toHaveBeenCalledWith('orphan-task');
             expect((await read()).statusCode).toBe(404);
@@ -348,7 +348,7 @@ describe('registerAllRoutes', () => {
         config.features.sentinelTodoJobs = true;
         const composition = registerAllRoutes([], opts);
         try {
-            await composition.scrubberReady;
+            await composition.codaReady;
             expect(await getJobs()!.tick(owner, job.id)).toMatchObject({ status: 'skipped', skipReason: 'gate-empty' });
             expect(bridge.runRefrainGate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
                 ...owner, code: 'return state;', state: null }));
@@ -460,7 +460,7 @@ describe('registerAllRoutes', () => {
         const routes: Route[] = [];
         const composition = registerAllRoutes(routes, opts);
         try {
-            await composition.scrubberReady;
+            await composition.codaReady;
             expect(getTodos()).toBeDefined();
             expect(getScrubber()).toBeUndefined();
             for (const owner of owners) {
@@ -524,7 +524,7 @@ describe('registerAllRoutes', () => {
         const composition = registerAllRoutes(routes, opts);
         const scrubberListener = bridge.registry.listeners('taskCompleted')[0];
         try {
-            await composition.scrubberReady;
+            await composition.codaReady;
             expect(refreshAll).toHaveBeenCalledOnce();
             expect(scrubber.getRun(owner, 'orphan')?.status).toBe('interrupted');
             expect(bridge.findExecutorForTask).toHaveBeenCalledWith('old');

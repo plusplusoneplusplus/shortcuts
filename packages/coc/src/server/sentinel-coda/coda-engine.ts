@@ -57,7 +57,7 @@ export class CodaEngine {
         });
     }
 
-    /** Applies a proposal as the user. Stale items need a fresh scrub. */
+    /** Applies a proposal as the user. Stale items need a fresh Coda run. */
     accept(owner: SentinelTodoOwner, runId: string, itemId: string, expectedItemRevision: number):
         { item: SentinelTodoItem; finding: CodaFindingRecord } {
         return this.withEffects(effects => {

@@ -71,9 +71,9 @@ function OwnedAutomation(props: SentinelCodaProps & { client: CocClient; routeKi
         window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, refresh);
         return () => { disposed = true; generation++; read?.abort(); clearInterval(timer); window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, refresh); };
     }, [props.client, props.routeKind, props.ready, retry]);
-    const [localJobs, localScrubber, localEffortLevels] = local.split(':');
+    const [localJobs, localCoda, localEffortLevels] = local.split(':');
     const policy = props.routeKind === 'local'
-        ? { jobs: localJobs === 'true', scrubber: localScrubber === 'true', effortLevels: localEffortLevels === 'true' } : remote;
+        ? { jobs: localJobs === 'true', scrubber: localCoda === 'true', effortLevels: localEffortLevels === 'true' } : remote;
     if (props.ready === false && props.routeKind !== 'local') return <SentinelCoda {...props} enabledOverride={false} />;
     if (props.routeKind === 'unresolved-remote' || (props.routeKind === 'remote' && !policy)) {
         return <>{props.toolbar}{place(props.children, <p role={error ? 'alert' : 'status'} className={MUTED}>

@@ -1,6 +1,6 @@
 import type { SentinelTodoStatus, SentinelTodoWriteResponse } from './sentinel-todos';
 
-/** Scrubber data is scoped to the ledger's workspace and Sentinel on its owning server. */
+/** Coda data is scoped to the ledger's workspace and Sentinel on its owning server. */
 export type SentinelCodaRunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'timed_out'
   | 'cancelled' | 'interrupted' | 'skipped';
 export type SentinelCodaVerdict = 'done' | 'obsolete' | 'in_progress' | 'deferred' | 'needs_attention' | 'unchanged' | 'unverified';

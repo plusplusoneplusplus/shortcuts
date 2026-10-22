@@ -56,7 +56,7 @@ const OPEN_STATUSES = new Set(['todo', 'in_progress', 'deferred', 'needs_attenti
 const findingsSchema = z.array(codaFindingInputSchema).max(MAX_CODA_ITEMS);
 
 /**
- * Starts, follows and settles scrubber runs. A run is one queued, read-only
+ * Starts, follows and settles Coda runs. A run is one queued, read-only
  * ask chat in the owner's workspace; its only output is one
  * `submit_scrub_findings` call, applied when the chat finishes. Cancel,
  * failure and timeout apply nothing.
@@ -290,7 +290,7 @@ export class CodaRunService {
     private async stopChild(run: CodaRunRecord): Promise<void> {
         if (!run.childProcessId) return;
         try { await this.deps.cancelTask(toTaskId(run.childProcessId)); }
-        catch (error) { console.error('[sentinel-scrubber] Could not cancel the scrub chat:', error); }
+        catch (error) { console.error('[sentinel-scrubber] Could not cancel the Coda chat:', error); }
     }
 
     private record(owner: SentinelTodoOwner, run: CodaRunRecord): CodaRunRecord {
@@ -335,7 +335,7 @@ function awaitingReview(item: SentinelTodoItemView): boolean {
     return item.jobs.some(job => 'review' in job.execution && job.execution.review?.assessment === 'pending');
 }
 
-/** Identity of what a scheduled tick would check; equal means nothing new to scrub. */
+/** Identity of what a scheduled tick would check; equal means nothing new to check. */
 function fingerprintInput(items: readonly SentinelTodoItemView[], triggers: readonly Trigger[]): string {
     const itemKeys = items.map(item => [item.id, item.revision,
         item.jobs.map(job => [job.processId, job.execution.state,

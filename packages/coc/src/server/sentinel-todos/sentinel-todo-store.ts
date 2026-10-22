@@ -911,7 +911,7 @@ export class SentinelTodoStore {
     }
 
     /**
-     * Marks a normal item Done for the To-do scrubber as `system`. The caller
+     * Marks a normal item Done for Coda as `system`. The caller
      * owns the authority checks; this write never records a user verdict.
      */
     recordCodaDone(

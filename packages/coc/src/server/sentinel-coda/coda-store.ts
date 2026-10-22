@@ -26,7 +26,7 @@ export interface CodaRunRecord {
     createdAt: string;
     startedAt?: string;
     finishedAt?: string;
-    /** Set for "Scrub selected" runs. */
+    /** Set for "Run on selected" runs. */
     selectedItemIds?: string[];
     /** The read-only child chat (queue process id). */
     childProcessId?: string;
@@ -172,7 +172,7 @@ export class CodaStore {
     createRun(owner: SentinelTodoOwner, run: CodaRunRecord): CodaRunRecord {
         return this.write(() => {
             if (ACTIVE_SCRUB_STATUSES.includes(run.status) && this.activeRun(owner)) {
-                throw new CodaStoreError('conflict', 'A scrub is already running for this ledger');
+                throw new CodaStoreError('conflict', 'A Coda run is already active for this ledger');
             }
             this.db.prepare(`INSERT INTO scrubber_runs (workspace_id, parent_process_id, id, status, created_at, record)
                 VALUES (?, ?, ?, ?, ?, ?)`).run(owner.workspaceId, owner.processId, run.id, run.status, run.createdAt, JSON.stringify(run));

@@ -320,9 +320,9 @@ export interface CLIConfig {
         sentinelTodoTags?: boolean;
         /** Typed display-only external references on Sentinel items. Disabled by default. */
         sentinelTodoExternalReferences?: boolean;
-        /** Sentinel To-do Scrubber (visible evidence checks, cron). Disabled by default. */
+        /** Sentinel Coda, the built-in to-do review (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber?: boolean;
-        /** Scheduled and on-demand Sentinel To-do jobs. Disabled by default. */
+        /** Sentinel Refrains: scheduled and on-demand prompts. Disabled by default. */
         sentinelTodoJobs?: boolean;
         /** Per-chat Sentinel additional instructions editor and context injection. Disabled by default. */
         sentinelAdditionalInstructions?: boolean;
@@ -746,9 +746,9 @@ export interface ResolvedCLIConfig {
         sentinelTodoDependencies: boolean;
         sentinelTodoTags: boolean;
         sentinelTodoExternalReferences: boolean;
-        /** Sentinel To-do Scrubber (visible evidence checks, cron). Disabled by default. */
+        /** Sentinel Coda, the built-in to-do review (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber: boolean;
-        /** Scheduled and on-demand Sentinel To-do jobs. Disabled by default. */
+        /** Sentinel Refrains: scheduled and on-demand prompts. Disabled by default. */
         sentinelTodoJobs: boolean;
         /** Per-chat Sentinel additional instructions editor and context injection. Disabled by default. */
         sentinelAdditionalInstructions: boolean;

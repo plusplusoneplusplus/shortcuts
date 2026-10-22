@@ -112,7 +112,7 @@ export interface ChatToolBundleOptions {
      */
     sentinelRefrains?: SentinelRefrainsToolDeps;
     /**
-     * A Sentinel To-do Scrubber child chat: its findings tool replaces every
+     * A Coda child chat: its findings tool replaces every
      * other LLM tool, so the chat can neither write the ledger nor message
      * other chats.
      */

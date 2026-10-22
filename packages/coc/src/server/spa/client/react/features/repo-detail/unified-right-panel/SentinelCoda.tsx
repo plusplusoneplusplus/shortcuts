@@ -22,7 +22,7 @@ function readEnabled() {
 
 export type SentinelCodaProps = {
     ready?: boolean;
-    /** A function child places the Scrubber itself; otherwise it renders before the children. */
+    /** A function child places Coda itself; otherwise it renders before the children. */
     children?: ReactNode | ((scrubber: ReactNode) => ReactNode);
     toolbar?: ReactNode;
     onLedgerChange?: () => Promise<void>;

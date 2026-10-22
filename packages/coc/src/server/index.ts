@@ -828,7 +828,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     let localBaseUrl = formatLocalBaseUrl(host, port);
     const routes: Route[] = [];
-    const { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService, scrubberReady, sentinelRefrainsShutdown } = registerAllRoutes(routes, {
+    const { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService, codaReady, sentinelRefrainsShutdown } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
         dataDir, configPath: options.configPath,
@@ -876,7 +876,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         setSendToConversationRuntime: (runtime) => { sendToConversationRuntime = runtime; },
         notesSearchService,
     });
-    await scrubberReady;
+    await codaReady;
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });
     // Arm server-side git auto-pull for every repo whose preference enables it.

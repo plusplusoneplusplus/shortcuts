@@ -80,7 +80,7 @@ export function registerCodaRoutes(opts: {
             return;
         }
         const parsed = startSchema.safeParse(body ?? {});
-        if (!parsed.success) return sendError(res, 400, 'Invalid scrub selection');
+        if (!parsed.success) return sendError(res, 400, 'Invalid Coda selection');
         const run = await commands.start(owner, parsed.data.itemIds);
         sendJSON(res, 202, { runId: run.id, processId: run.childProcessId });
     });

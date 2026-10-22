@@ -160,7 +160,7 @@ export interface ExecutorRuntimeCapabilities {
     /** Receipt-only admission stays available to finish running work when authoring is disabled. */
     readonly getSentinelDependencyAdmission?: () => Pick<NonNullable<SentinelTodoService['dependencyActions']>, 'guard'> | undefined;
     /**
-     * Sentinel To-do Scrubber runs, bound at the route layer. Returns
+     * Sentinel Coda runs, bound at the route layer. Returns
      * `undefined` while `features.sentinelTodoScrubber` is off; a scrub child
      * chat then gets no findings tool and its run fails without changes.
      */

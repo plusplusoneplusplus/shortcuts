@@ -5,10 +5,10 @@
  * refreshed by that server's `sentinel-todos-changed` events. Every write
  * carries the item revision it was based on; a conflict reloads the current
  * ledger and keeps whatever the user typed. Job links only navigate; the
- * optional Jobs section manages persistent prompt jobs and the built-in Scrubber;
- * with Jobs disabled, the Scrubber strip controls its read-only assessment chats. Active normal items come first, then
+ * optional Refrains section manages persistent prompts and the built-in Coda review;
+ * with Refrains disabled, the Coda strip controls its read-only assessment chats. Active normal items come first, then
  * the chat's Manual tracking section with its own add form and groups, then the
- * normal Done and Archived sections, then triggers and Jobs or the Scrubber strip,
+ * normal Done and Archived sections, then Overtures and Refrains or the Coda strip,
  * all in the list column beside the detail pane.
  */
 
@@ -336,7 +336,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         pendingLoads.current += 1;
         setLoading(true);
         try {
-            // Dependencies, triggers and Scrubber projections need the full snapshot, not just visible rows.
+            // Dependencies, overtures and Coda projections need the full snapshot, not just visible rows.
             const next = await client.sentinelTodos.get(owner.ownerWorkspaceId, owner.processId, { full: true });
             if (!mounted.current || seq !== loadSeq.current) return;
             loadedRevision.current = next.revision;
@@ -1073,8 +1073,8 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
     const [tagsBusy, setTagsBusy] = useState(false);
     const [dependenciesBusy, setDependenciesBusy] = useState(false);
     const [outcomesBusy, setOutcomesBusy] = useState(false);
-    const { mutationPending: scrubberBusy } = useContext(CodaFindingsContext);
-    const closeBlocked = busy || tagsBusy || dependenciesBusy || outcomesBusy || scrubberBusy;
+    const { mutationPending: codaBusy } = useContext(CodaFindingsContext);
+    const closeBlocked = busy || tagsBusy || dependenciesBusy || outcomesBusy || codaBusy;
     useLayoutEffect(() => {
         onMenuBlocked(item.id, closeBlocked || editing !== null || statusDraft !== null);
     }, [item.id, closeBlocked, editing, statusDraft, onMenuBlocked]);

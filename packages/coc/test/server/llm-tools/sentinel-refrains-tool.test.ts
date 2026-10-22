@@ -27,7 +27,7 @@ let enqueue: ReturnType<typeof vi.fn>;
 let scrubEnqueue: ReturnType<typeof vi.fn>;
 let onConfigChange: ReturnType<typeof vi.fn>;
 let jobCommands: SentinelRefrainCommands;
-let scrubberCommands: CodaCommands;
+let codaCommands: CodaCommands;
 let defaults: SentinelRefrainDefaults;
 let gateEnabled: boolean;
 let runGate: ReturnType<typeof vi.fn>;
@@ -71,14 +71,14 @@ beforeEach(() => {
     jobCommands = new SentinelRefrainCommands({ jobs: jobStore, service, onConfigChange });
     const runs = new CodaRunService({ dataDir: fixture.dataDir, todos: todoService, scrubber: scrubberStore,
         engine: new CodaEngine({ todos, scrubber: scrubberStore }), enqueue: scrubEnqueue, cancelTask: vi.fn(() => true) });
-    scrubberCommands = new CodaCommands({ todos: todoService, scrubber: scrubberStore, runs, getEnabled: () => scrubberEnabled });
+    codaCommands = new CodaCommands({ todos: todoService, scrubber: scrubberStore, runs, getEnabled: () => scrubberEnabled });
     defaults = { provider: 'copilot', model: 'gpt-5', effort: 'high' };
 });
 
 function call(args: SentinelRefrainsArgs | Record<string, unknown>, bound = owner, withScrubber = true,
     invocation: { signal?: AbortSignal } = {}): Promise<any> {
     const tool = createSentinelRefrainsTool({ owner: bound, jobs: jobCommands,
-        ...(withScrubber ? { scrubber: scrubberCommands } : {}), defaults: () => defaults });
+        ...(withScrubber ? { scrubber: codaCommands } : {}), defaults: () => defaults });
     return (tool as any).handler(args, invocation);
 }
 
@@ -90,7 +90,7 @@ async function createJob(extra: Record<string, unknown> = {}) {
 
 describe('sentinel_jobs tool schema', () => {
     it('exposes no delete action and no owner parameters', () => {
-        const tool = createSentinelRefrainsTool({ owner, jobs: jobCommands, scrubber: scrubberCommands, defaults: () => defaults }) as any;
+        const tool = createSentinelRefrainsTool({ owner, jobs: jobCommands, scrubber: codaCommands, defaults: () => defaults }) as any;
         const props = tool.parameters.properties;
         expect(props.action.enum).not.toContain('delete');
         for (const key of ['owner', 'workspaceId', 'processId', 'serverId']) expect(props).not.toHaveProperty(key);
@@ -103,7 +103,7 @@ describe('sentinel_jobs tool schema', () => {
     });
 
     it('names refrains and Coda in its contract while keeping the wire tool and kind values', () => {
-        const tool = createSentinelRefrainsTool({ owner, jobs: jobCommands, scrubber: scrubberCommands, defaults: () => defaults }) as any;
+        const tool = createSentinelRefrainsTool({ owner, jobs: jobCommands, scrubber: codaCommands, defaults: () => defaults }) as any;
         expect(tool.name).toBe('sentinel_jobs');
         expect(tool.parameters.properties.kind.enum).toEqual(['custom', 'scrubber']);
         expect(tool.description).toMatch(/refrains \(`kind: custom`\)/);
@@ -280,12 +280,12 @@ describe('ownership and feature gates', () => {
     it.each(['sentinel', 'jobs', 'owner', 'workspace'] as const)(
         'revokes every action on an issued tool after %s becomes unavailable', async gate => {
             const job = await createJob();
-            const tool = createSentinelRefrainsTool({ owner, jobs: jobCommands, scrubber: scrubberCommands,
+            const tool = createSentinelRefrainsTool({ owner, jobs: jobCommands, scrubber: codaCommands,
                 defaults: () => defaults }) as any;
             expect((await tool.handler({ action: 'get', kind: 'scrubber' }, {})).scrubber).toBeDefined();
             const config = scrubberStore.getConfig(owner);
             const scrubberCalls = ['view', 'putConfig', 'start', 'cancel'] as const;
-            const spies = scrubberCalls.map(method => vi.spyOn(scrubberCommands, method));
+            const spies = scrubberCalls.map(method => vi.spyOn(codaCommands, method));
             if (gate === 'sentinel') sentinelEnabled = false;
             if (gate === 'jobs') jobsEnabled = false;
             if (gate === 'owner') processes.delete(owner.processId);
@@ -303,7 +303,7 @@ describe('ownership and feature gates', () => {
             expect(enqueue).not.toHaveBeenCalled();
             expect(scrubEnqueue).not.toHaveBeenCalled();
             // Scrubber REST commands remain independent of the jobs feature.
-            if (gate === 'sentinel' || gate === 'jobs') expect((await scrubberCommands.view(owner)).config).toEqual(config);
+            if (gate === 'sentinel' || gate === 'jobs') expect((await codaCommands.view(owner)).config).toEqual(config);
         });
 
     it('rejects non-Sentinel owners and calls after the feature is disabled', async () => {
@@ -351,7 +351,7 @@ describe('built-in scrubber', () => {
     });
 
     it('revokes scrubber actions on an issued tool when only the scrubber flag is disabled', async () => {
-        const tool = createSentinelRefrainsTool({ owner, jobs: jobCommands, scrubber: scrubberCommands,
+        const tool = createSentinelRefrainsTool({ owner, jobs: jobCommands, scrubber: codaCommands,
             defaults: () => defaults }) as any;
         expect((await tool.handler({ action: 'get', kind: 'scrubber' }, {})).scrubber).toBeDefined();
         const config = scrubberStore.getConfig(owner);

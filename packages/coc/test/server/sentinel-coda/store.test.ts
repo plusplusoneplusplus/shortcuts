@@ -97,7 +97,7 @@ describe('CodaStore', () => {
 
     it('allows one active run per owner while other owners run independently', () => {
         store.createRun(owner, run('r1'));
-        expect(() => store.createRun(owner, run('r2'))).toThrow(/already running/);
+        expect(() => store.createRun(owner, run('r2'))).toThrow('A Coda run is already active for this ledger');
         for (const other of others) expect(store.createRun(other, run('r1')).id).toBe('r1');
         // A skipped record is not active, so it never blocks.
         store.createRun(owner, run('r3', { status: 'skipped', skipReason: 'overlap' }));

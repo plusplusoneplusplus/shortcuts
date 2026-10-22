@@ -822,7 +822,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     }
 
     /**
-     * `submit_scrub_findings` for a Sentinel To-do Scrubber child chat; its
+     * `submit_scrub_findings` for a Coda child chat; its
      * first turn starting marks the run running. Other chats get nothing.
      */
     protected buildCodaFindingsTool(task: QueuedTask): Tool<any> | undefined {
@@ -1180,7 +1180,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             ...(isAsk
                 ? {
                     dangerousCommandGuard: this.buildDangerousCommandGuardWiring(processId, {
-                        // Scrubber children run unattended, including manual starts.
+                        // Coda children run unattended, including manual starts.
                         isInteractive: () => !codaContext,
                     }),
                 }

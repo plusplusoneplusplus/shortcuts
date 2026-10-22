@@ -22,7 +22,7 @@ export interface CodaView {
 }
 
 /**
- * Owner-validated commands for the built-in To-do Scrubber singleton, shared
+ * Owner-validated commands for the built-in Coda singleton, shared
  * by REST and the `sentinel_jobs` tool. Findings review stays REST-only.
  */
 export class CodaCommands {
@@ -41,7 +41,7 @@ export class CodaCommands {
             runs: this.deps.scrubber.listRuns(owner).map(run => this.summary(owner, run)) };
     }
 
-    /** Saving (or resuming) the schedule clears an auto-pause, as in the Jobs panel. */
+    /** Saving (or resuming) the schedule clears an auto-pause, as for refrains. */
     async putConfig(owner: SentinelTodoOwner, input: { enabled: boolean; cron: string },
         expectedRevision: number): Promise<SentinelCodaConfig> {
         await this.assertOwner(owner);
@@ -55,7 +55,7 @@ export class CodaCommands {
     async start(owner: SentinelTodoOwner, itemIds?: string[]): Promise<CodaRunRecord> {
         await this.assertOwner(owner);
         // Also enforce single-flight when the ledger currently has no eligible items.
-        if (this.deps.scrubber.activeRun(owner)) throw new CodaStoreError('conflict', 'A scrub is already running for this ledger');
+        if (this.deps.scrubber.activeRun(owner)) throw new CodaStoreError('conflict', 'A Coda run is already active for this ledger');
         return this.deps.runs.start(owner, { trigger: 'manual', ...(itemIds ? { itemIds } : {}) });
     }
 
