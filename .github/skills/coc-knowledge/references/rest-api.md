@@ -254,9 +254,9 @@ policies. See [LLM tools](llm-tools.md#create_pull_request) for polling invarian
 | GET | `/api/workspaces/:workspaceId/triggers` | List monitor scope, persisted repair status and in-flight writer state |
 | PATCH/DELETE | `/api/workspaces/:workspaceId/triggers/:triggerId` | Pause/resume/disarm; preserves admitted repair ownership until completion |
 
-### Sentinel To-do trigger rules
+### Sentinel overtures
 
-Owner-scoped rules use `SentinelTodoTriggerService`. Date authoring/actions/arming require live, default-off `features.sentinelTodoDateTimeTriggers` (`403` off). Rules never expire and share the server's 50-active cap. Every operation validates the owning Sentinel workspace/process; foreign rules/items return `404`. Manual/Done/archived items are ineligible; terminal rules cannot edit/resume/refire. Generic `/triggers` APIs exclude bound rules and reject their mutation. Wakes never change item status, launch jobs or grant authorization.
+Overtures (one-shot wake-ups; the REST paths keep the `/triggers` name) use `SentinelOvertureService`. Date authoring/actions/arming require live, default-off `features.sentinelTodoDateTimeTriggers` (`403` off). Overtures never expire and share the server's 50-active cap. Every operation validates the owning Sentinel workspace/process; foreign rules/items return `404`. Manual/Done/archived items are ineligible; terminal rules cannot edit/resume/refire. Generic `/triggers` APIs exclude bound rules and reject their mutation. Wakes never change item status, launch jobs or grant authorization.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -274,9 +274,11 @@ Owner-scoped rules use `SentinelTodoTriggerService`. Date authoring/actions/armi
 `removeSentinelTodo` and `runSentinelTodoNow`. Every method requires the owner's
 workspace and Sentinel process; mutation methods carry the rule revision.
 
-### To-do prompt jobs
+### Refrains
 
-`client.sentinelTodos.jobs` uses the ledger owner's client and the base path `/api/workspaces/:workspaceId/sentinel-todos/:processId/jobs`. The owning server requires live `sentinel.enabled` and default-off `features.sentinelTodoJobs`; every command proves the Sentinel owner. Contracts live in `coc-client/src/contracts/sentinel-scheduled-jobs.ts`.
+Refrains (user prompts on demand or cron) keep the `/jobs` REST path and `jobId` fields.
+
+`client.sentinelTodos.jobs` uses the ledger owner's client and the base path `/api/workspaces/:workspaceId/sentinel-todos/:processId/jobs`. The owning server requires live `sentinel.enabled` and default-off `features.sentinelTodoJobs`; every command proves the Sentinel owner. Contracts live in `coc-client/src/contracts/sentinel-refrains.ts`.
 
 | Method | Suffix | Client operation |
 |---|---|---|
@@ -302,13 +304,15 @@ a tier drops stored model/effort, and a model-only patch drops a stored tier. Ea
 enqueues the tier for the owning server's normal provider tier resolution. The first run creates
 the persistent job chat before queue admission; every later run reuses it.
 
-### To-do Scrubber
+### Coda
 
-`sentinel-scrubber/scrubber-routes.ts` defines owner-validated commands below the ledger's `/scrubber` path: GET config/active run/history, PUT `/config`, POST `/runs`, GET `/runs/:runId`, POST `/runs/:runId/cancel`, and POST `/runs/:runId/findings/:itemId/{accept|dismiss|undo}`. Each request proves the Sentinel owner with the transcript-free `SentinelTodoService.assertOwner`, not a full ledger list. 
+Coda (the built-in to-do review) keeps the `/scrubber` REST path and `sentinel-scrubber-changed` event.
 
-`client.sentinelTodos.scrubber` exposes `get`, `updateConfig`, `start`, `getRun`, `cancel`, `accept`, `dismiss` and `undo`; contracts live in `coc-client/src/contracts/sentinel-scrubber.ts`. Each call requires the ledger workspace and Sentinel process and uses the chosen client's transport. Run detail includes snapshot revisions, deferred/awaiting-review IDs, evidence, demotion reasons and audit entries. Accept/Undo return a stored item plus finding; Dismiss returns only the finding.
+`sentinel-coda/coda-routes.ts` defines owner-validated commands below the ledger's `/scrubber` path: GET config/active run/history, PUT `/config`, POST `/runs`, GET `/runs/:runId`, POST `/runs/:runId/cancel`, and POST `/runs/:runId/findings/:itemId/{accept|dismiss|undo}`. Each request proves the Sentinel owner with the transcript-free `SentinelTodoService.assertOwner`, not a full ledger list. 
 
-Its injected gate requires `features.sentinelTodoScrubber`, which defaults off. Configuration uses `expectedRevision`; finding actions require `expectedItemRevision`. Accept/Undo reject stale items with `409` and the current item. Dismiss changes only finding/suppression state. Route composition shares the native ledger database and resolved-defaults enqueue path. It publishes the live-gated `getSentinelScrubber` capability, follows terminal registry events, and emits owner-scoped `sentinel-scrubber-changed` plus ledger invalidations. Server startup awaits `scrubberReady` recovery before activating restored queues; route disposal removes queue listeners and timeout timers.
+`client.sentinelTodos.scrubber` exposes `get`, `updateConfig`, `start`, `getRun`, `cancel`, `accept`, `dismiss` and `undo`; contracts live in `coc-client/src/contracts/sentinel-coda.ts`. Each call requires the ledger workspace and Sentinel process and uses the chosen client's transport. Run detail includes snapshot revisions, deferred/awaiting-review IDs, evidence, demotion reasons and audit entries. Accept/Undo return a stored item plus finding; Dismiss returns only the finding.
+
+Its injected gate requires `features.sentinelTodoScrubber`, which defaults off. Configuration uses `expectedRevision`; finding actions require `expectedItemRevision`. Accept/Undo reject stale items with `409` and the current item. Dismiss changes only finding/suppression state. Route composition shares the native ledger database and resolved-defaults enqueue path. It publishes the live-gated `getSentinelCoda` capability, follows terminal registry events, and emits owner-scoped `sentinel-scrubber-changed` plus ledger invalidations. Server startup awaits `codaReady` recovery before activating restored queues; route disposal removes queue listeners and timeout timers.
 
 Run admission persists the supplied child task id before enqueueing. Early execution/terminal events use that identity; cancellation after snapshot writes prevents enqueue, and cancellation during admission cancels the late-admitted child without applying findings.
 

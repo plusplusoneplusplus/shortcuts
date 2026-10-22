@@ -78,7 +78,7 @@ async function fillNew() {
     fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'test-model' } });
 }
 
-describe('Sentinel To-do Jobs', () => {
+describe('Sentinel Refrains', () => {
     it('keeps the existing Scrubber strip and makes no jobs reads with the flag off', async () => {
         applyRuntimeConfigPatch({ sentinelTodoJobsEnabled: false, sentinelTodoScrubberEnabled: true });
         view();

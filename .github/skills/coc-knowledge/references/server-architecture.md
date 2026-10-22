@@ -226,7 +226,7 @@ the identity of the entire delegated session.
 
 ### Sentinel To-do trigger firing
 
-`triggers/sentinel-todo-trigger-service.ts` owns authoring for normal eligible items,
+`triggers/sentinel-overture-service.ts` owns authoring for normal eligible items,
 using exact owner checks, optimistic revisions and owner-scoped creation receipts.
 PR rules need no setting; date rules require default-off live
 `features.sentinelTodoDateTimeTriggers`. Rules share the active cap and never expire.
@@ -238,7 +238,7 @@ Only the absolute instant and display zone persist in the existing JSON event.
 Owner-qualified capabilities return `dateTime`, which also selects the Sentinel
 tool's date event schema.
 
-`triggers/sentinel-todo-trigger-firer.ts` commits one-shot PR/date decisions using
+`triggers/sentinel-overture-firer.ts` commits one-shot PR/date decisions using
 the trigger and to-do stores' shared database writer. It checks the rule revision
 and current owner-scoped item after asynchronous Sentinel lookup. Missing, manual,
 Done or archived items stop as Skipped. Eligible fires persist the terminal outcome,
@@ -261,24 +261,24 @@ Trigger firing never writes item status, calls delegation admission or selects a
 ### Sentinel job gate runtime
 
 Gate scripts on Sentinel scheduled jobs run without a provider session.
-`sentinel-jobs/job-gate-result.ts` supplies canonical result encoding: object keys
+`sentinel-refrains/refrain-gate-result.ts` supplies canonical result encoding: object keys
 sort lexically at every level, array order is significant and encoded UTF-8 JSON is
 capped at 16 KiB. Non-JSON values reject without invoking serialization hooks.
 Validation must precede any runner conversion that could silently drop fields or
-normalize non-JSON values. `sentinel-jobs/job-gate-runner.ts` passes state and strict
+normalize non-JSON values. `sentinel-refrains/refrain-gate-runner.ts` passes state and strict
 JSON validation to `runToolScript` with a 60-second abort deadline. The engine
 terminates workers and aborts in-flight tool calls on cancellation; the wrapper
 preserves the cancellation reason and clears its deadline timer on every outcome.
 
-Calls follow `MultiRepoQueueRouter.runJobGate` → owning `CLITaskExecutor` bridge →
-`ExecutorRegistry` → `ChatBaseExecutor.runJobGate` with an exact
+Calls follow `MultiRepoQueueRouter.runRefrainGate` → owning `CLITaskExecutor` bridge →
+`ExecutorRegistry` → `ChatBaseExecutor.runRefrainGate` with an exact
 `{ workspaceId, processId, code, state, signal }` request. The executor validates the
 exact Sentinel owner and resolves workspace/working directory; its shared helper
 dependencies supply the owner-bound unattended runtime through
-`runJobGateWithOwnerTools`, which disposes it after every outcome. Canvas
+`runRefrainGateWithOwnerTools`, which disposes it after every outcome. Canvas
 `host.runScript` follows the sibling `runOwnerScript` chain (any chat owner,
 `allowTools`-narrowed tools, no nesting); see [LLM tools](llm-tools.md).
-`SentinelJobService` is the caller: `routes/index.ts` injects `bridge.runJobGate` and
+`SentinelRefrainService` is the caller: `routes/index.ts` injects `bridge.runRefrainGate` and
 the live `features.toolScripting` flag. The service keeps one in-flight gate per
 owner/job, re-checks flags, owner and job revision before saving any outcome, and
 aborts the signal on `cancelGate` (edit/delete), `invalidate()` and `shutdown()`;

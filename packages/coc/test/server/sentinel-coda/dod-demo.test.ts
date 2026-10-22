@@ -76,7 +76,7 @@ afterEach(async () => {
     fixture.dispose();
 });
 
-describe('To-do Scrubber Definition of Done demo', () => {
+describe('Coda Definition of Done demo', () => {
     it('walks the A–E ledger through scrub, guards, Accept/Undo, cancel and failure pause', async () => {
         const create = (title: string, extra: Record<string, unknown> = {}) =>
             todos.create(owner, { title, status: 'in_progress', ...extra } as never, { actor: 'sentinel' }).item;

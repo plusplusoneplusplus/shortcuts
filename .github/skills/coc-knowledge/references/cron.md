@@ -187,14 +187,14 @@ When `cron.enabled = false`: cron REST routes are not registered, `scheduleWakeu
 
 Crons are separate from the schedule subsystem. They share only `ScheduleTimerRegistry`, which is generic over its key type: crons, wakeups, and triggers key by their own globally unique `string` IDs, while `ScheduleManager` keys by a branded `(repoId, scheduleId)` runtime key. Crons have their own type (`CronEntry`), persistence (`crons` table), executor, and routes (`/crons` vs `/schedules`). Schedules are cron-expression recurring tasks that create new processes; crons are interval-based recurring follow-ups inside an existing conversation.
 
-### Sentinel To-do Scrubber schedules
+### Sentinel Coda schedules
 
-`sentinel-scrubber/scrubber-scheduler.ts` uses `ScheduleTimerRegistry` and cron-expression
+`sentinel-coda/scrubber-scheduler.ts` uses `ScheduleTimerRegistry` and cron-expression
 utilities for one timer per `(workspaceId, processId)`. Config is disabled by default,
-revision-checked in the ledger's native database and requires the scrubber flag.
+revision-checked in the ledger's native database and requires the Coda flag (`features.sentinelTodoScrubber`).
 Startup arms future ticks after interrupted-run recovery, without catch-up. Config/run
 changes refresh timers; live flag changes and owner removal invalidate pending checks.
-Each tick proves the workspace and Sentinel owner, then delegates to `ScrubberRunService`
+Each tick proves the workspace and Sentinel owner, then delegates to `CodaRunService`
 for queued read-only execution and overlap/unchanged skip records.
 
 Scheduled admission rechecks live gates after snapshot reads. Three consecutive failed
@@ -203,13 +203,13 @@ validation failures disarm timers, and shutdown invalidates asynchronous checks 
 clears timers without changing persisted config. Distant cron dates re-arm at the shared
 timer registry's delay cap rather than firing early.
 
-### Sentinel prompt-job schedules
+### Sentinel Refrain schedules
 
-`sentinel-jobs/job-scheduler.ts` reuses `ScheduleTimerRegistry`, `nextCronTime` and
-`validateScrubCron` for owner/job timers. Both live Sentinel/jobs gates must be on.
+`sentinel-refrains/job-scheduler.ts` reuses `ScheduleTimerRegistry`, `nextCronTime` and
+`validateScrubCron` for owner/refrain timers. Both live Sentinel/refrain gates must be on.
 Schedules use server local time and arm future dates without catch-up. Each tick
-re-arms independently of completion; an active job records a skipped overlap.
-Ticks call `SentinelJobService.tick`; a gated job checks overlap and its paused
+re-arms independently of completion; an active refrain records a skipped overlap.
+Ticks call `SentinelRefrainService.tick`; a gated job checks overlap and its paused
 gate before running the gate script (its overlap skip never claims a run), then records `gate-empty` or starts a run with
 the result inline (see [gate runtime](server-architecture.md#sentinel-job-gate-runtime)).
 A fired tick's liveness is scoped to its own job (jobs flag on, scheduler not disposed,
@@ -218,7 +218,7 @@ changes never cancel an in-flight gate. Saving a non-empty result and claiming i
 happen in one synchronous step, so the result always starts a run or leaves a run record.
 Multiple selected minutes are rejected even for dates beyond the validation horizon.
 
-`SentinelJobService` queues each run at low priority into one persistent Ask/Autopilot
+`SentinelRefrainService` queues each run at low priority into one persistent Ask/Autopilot
 chat, with a fresh read-only snapshot path. Terminal events queue a receipt-keyed
 Sentinel handback behind its active turn. Job turns have no timeouts or retries;
 failure does not pause the schedule. Restart interrupts active runs and reconciles

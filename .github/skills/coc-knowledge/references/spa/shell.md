@@ -753,7 +753,7 @@ The panel always uses list/detail presentation:
 at 660px the panes scroll independently; narrower panels use selection and Back.
 Visited detail editors stay mounted across selection and resizing to retain drafts.
 Detail Close remembers owner-scoped deselection and restores list focus; pending
-item, tag, dependency, PR-outcome and Scrubber mutations block it. Item tag drafts share the
+item, tag, dependency, PR-outcome and Coda mutations block it. Item tag drafts share the
 remembered owner view across remounts. The live tag gate reloads the owner snapshot
 on enable; missing libraries expose loading/error/unavailable states and retry,
 without fabricating capability or depending on selection.
@@ -778,7 +778,7 @@ all unarchived non-Done items, then recently updated Done within a 50-item budge
 active counts above 50 stay complete and archived history follows Done. Saved
 fulfillment determines selection, not job completion. Older-item expansion and
 section sorting apply to this selection; dependency,
-trigger and Scrubber controls retain the full snapshot. Job-title previews use owner-scoped compact process reads or Ralph
+Overture and Coda controls retain the full snapshot. Job-title previews use owner-scoped compact process reads or Ralph
 whole-session task-group summaries, with abortable lazy loading and bounded
 per-reference caching. List/latest and detail/all-job titles share compact
 mode pills from the ledger projection, with Ralph session identity preserved and
@@ -819,16 +819,18 @@ Waiting/Ready chips and durable evidence-review warnings supplement
 fulfillment status. Manual items remain tracking-only; the tab adds no job
 launch/retry/cancel or authorization controls.
 
-### Sentinel To-do Scrubber
+### Sentinel Refrains and Coda
 
-With the owning server's Jobs flags on, `SentinelTodoJobs` lists user prompt jobs
-and hosts the Scrubber as its pinned built-in row. Job dialogs, gate status,
+The automation names are **Refrains** (user prompts), **Coda** (built-in to-do review) and
+**Overtures** (one-shot wake-ups); wire names keep `jobs`, `scrubber` and `triggers`.
+With the owning server's Refrains flags on, `SentinelRefrains` lists refrains
+and hosts Coda as its pinned built-in row. Refrain dialogs, gate status,
 Test gate/Resume gate and skip labels are described in the unified-right-panel
 `AGENTS.md`.
 
-`SentinelTodoScrubber` mounts after the ledger loads when both live ledger and
-scrubber flags are enabled; its function child places one inline strip and history in
-the list column below triggers, beside the detail pane. Owner/endpoint remounts isolate async state and drafts.
+`SentinelCoda` mounts after the ledger loads when both live ledger and
+Coda flags are enabled; its function child places one inline strip and history in
+the list column below Overtures, beside the detail pane. Owner/endpoint remounts isolate async state and drafts.
 Its typed owner-routed client reads config/run summaries, starts all-open/selected
 assessments, cancels runs and saves revision-bound schedules. Exact owner WebSocket
 invalidation and visibility-aware polling refresh runs; chat links share To-do
@@ -844,9 +846,9 @@ before/after and exclusions; chat links share owner-routed excursion navigation.
 The editor uses browser-safe
 `schedule/scrub-cron.ts` validation/presets; the server owns writes and single-flight.
 
-### Sentinel To-do triggers
+### Sentinel Overtures
 
-`SentinelTodoTriggers` lists owner-bound, nondelegated rules below the cards.
+`SentinelOvertures` lists owner-bound, nondelegated overtures below the cards.
 PR/date authoring uses eligible normal items and owner-server capabilities.
 Run now confirms a one-shot wake and never launches jobs directly.
 

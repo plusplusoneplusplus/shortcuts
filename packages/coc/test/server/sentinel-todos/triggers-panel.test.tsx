@@ -100,7 +100,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
-describe('Sentinel To-do Triggers', () => {
+describe('Sentinel Overtures', () => {
     const dated = (overrides: Partial<Trigger> = {}) => rule({
         event: { type: 'date-time', firesAt: '2027-11-07T06:30:00.000Z', timeZone: 'America/New_York' },
         ...overrides,

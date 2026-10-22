@@ -43,7 +43,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false }); });
 
-describe('To-do Scrubber strip', () => {
+describe('Coda strip', () => {
     it('stays off when omitted and ignores the retired ledger flag when explicitly enabled', async () => {
         applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: undefined, sentinelTodoScrubberEnabled: undefined });
         render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);

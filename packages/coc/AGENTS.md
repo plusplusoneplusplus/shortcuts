@@ -345,35 +345,35 @@ references before editing. Paths are package-relative.
   delivery backoff and a cross-head budget; ambiguous/exhausted
   outcomes require human action. Repairs use isolated existing-PR worktrees, never
   submission workflows or policy bypasses. Arming failures preserve PR success.
-  Sentinel To-do PR-merge firing reserves the shared database writer, rechecks the
-  rule revision and owner-scoped item, and persists the terminal decision, immutable
+  Sentinel overture (PR-merged/date) firing reserves the shared database writer, rechecks the
+  overture revision and owner-scoped item, and persists the terminal decision, immutable
   wake prompt and delivery identity before queue work. Wakes use shared
   `ProcessMessageDeliveryService.deliverOnce` admission and the existing trigger
   scheduler for receipt reconciliation/retries. Trigger code never writes item
   status or launches a job; external PR metadata is data, not instructions.
-  `SentinelTodoTriggerService` owns PR-merge and date rule authoring with expected
+  `SentinelOvertureService` owns PR-merge and date overture authoring with expected
   revisions, eligibility and shared-cap checks. Trigger infrastructure is always
-  wired; rules never expire and require no additional approval gate. Clearing rules
+  wired; overtures never expire and require no additional approval gate. Clearing overtures
   hides their presentation while preserving delivery and keyed authoring receipts;
-  retries must not duplicate wakes or revive removed rules.
-  Sentinel tool actions use late-bound `getTriggerInfra().sentinelTodoTriggers`;
-  the rule owner is the invoking chat, never a tool argument. The tool's date event
+  retries must not duplicate wakes or revive removed overtures.
+  Sentinel tool actions use late-bound `getTriggerInfra().sentinelOvertures`;
+  the overture owner is the invoking chat, never a tool argument. The tool's date event
   schema follows the live service capability; owner-qualified REST capabilities
   return `dateTime`. Already-built tools recheck authoring gates through the service.
-- Sentinel job gate scripts reuse the unattended script engine in
-  `src/server/sentinel-jobs/`. `job-gate-result.ts` canonicalizes result JSON with
+- Refrain gate scripts reuse the unattended script engine in
+  `src/server/sentinel-refrains/`. `refrain-gate-result.ts` canonicalizes result JSON with
   recursive lexical key ordering and a 16 KiB UTF-8 cap; it rejects non-JSON
   values, and runner-side JSON normalization must not bypass it.
   `job-gate-runner.ts` passes state and strict JSON validation to the shared script
   engine with a 60-second abort deadline; abort terminates workers and cancels inner
-  calls. `runJobGateWithOwnerTools` assembles the supplied owner-bound capabilities
+  calls. `runRefrainGateWithOwnerTools` assembles the supplied owner-bound capabilities
   through the shared chat context, including Memory V2, and disposes its
   context/runtime after every outcome. It uses the full resolved CoC list, omits
   questions and denies approval-gated handlers. Nested scripts require the owner's
   script tool to survive filtering and require no approval; children inherit that
   policy. Provider sessions are never started. Production calls
-  `MultiRepoQueueRouter.runJobGate` → owner bridge `CLITaskExecutor` →
-  `ExecutorRegistry` → `ChatBaseExecutor.runJobGate` with an exact
+  `MultiRepoQueueRouter.runRefrainGate` → owner bridge `CLITaskExecutor` →
+  `ExecutorRegistry` → `ChatBaseExecutor.runRefrainGate` with an exact
   `{ workspaceId, processId, code, state, signal }` request. The executor validates
   the exact Sentinel owner and resolves workspace/working directory; the current
   active provider (fallback: executor provider) controls Codex nested-script omission.
@@ -381,9 +381,9 @@ references before editing. Paths are package-relative.
   chat-scriptable subset; omit attended-only `sentinel_jobs` and write-only
   `create_pull_request`. Supply no provider approval callback. Provider-native/MCP
   shell handlers are outside `CocToolRuntime` and fail as catchable `ToolCallError`,
-  never model-call emulation. `SentinelJobService` owns live-flag/job-revision checks
+  never model-call emulation. `SentinelRefrainService` owns live-flag/job-revision checks
   and aborts the signal on edit, revocation and shutdown; `routes/index.ts` injects
-  `bridge.runJobGate` and the live `features.toolScripting` flag.
+  `bridge.runRefrainGate` and the live `features.toolScripting` flag.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated
@@ -400,7 +400,16 @@ references before editing. Paths are package-relative.
   affect only its registry keys. Shared triggers and messaging settings keep their own tabs.
   `features.sentinelTodoJobs` is live, experimental and default-off in `sentinelTodos`;
   its Admin row depends on `sentinel.enabled` and publishes `sentinelTodoJobsEnabled`.
-- Sentinel prompt jobs (`src/server/sentinel-jobs/`) require both live flags, prove
+- Sentinel automation names: **Refrains** (user prompts on demand or cron; wire word `jobs`),
+  **Coda** (built-in to-do review; wire word `scrubber`/`scrub`) and **Overtures** (one-shot
+  PR-merged/date wake-ups; wire word `trigger`). Code, UI and LLM text use the new names; wire
+  names keep the wire words on purpose: REST paths (`/jobs`, `/scrubber`, `/triggers`), event types
+  (`sentinel-jobs-changed`, `sentinel-scrubber-changed`), SQL tables, JSON fields, task
+  context keys, flag keys, the `sentinel_jobs`/`submit_scrub_findings` tools and enums, and
+  `client.sentinelTodos.jobs|scrubber`/`client.triggers`. Scheduler files (`job-scheduler.ts`,
+  `scrubber-scheduler.ts`, `schedule/scrub-cron.ts`) keep their names. Delegated jobs and the
+  generic trigger framework are separate concepts.
+- Refrains (Sentinel prompt jobs, `src/server/sentinel-refrains/`) require both live flags, prove
   the exact Sentinel owner and share the native ledger database. Definitions use
   expected revisions and a ten-job owner limit. A definition holds either an explicit
   model/effort or an `effortTier` resolved by the enqueue path at each run; neither overrides the other.
@@ -408,7 +417,7 @@ references before editing. Paths are package-relative.
   `gateConsecutiveFailures`, `gateLastError`, `gatePaused`) lives in the job record,
   is never a user setting, and resets when the script changes or clears;
   `updateGate` writes it without a revision bump only while the evaluated script is
-  still current. Scheduled ticks use `SentinelJobService.tick`: an active run records
+  still current. Scheduled ticks use `SentinelRefrainService.tick`: an active run records
   an `overlap` skip before any gate runs and that skip never claims a run, so a gated
   job's scheduled run only starts with a gate result. Tick liveness is job-scoped
   (flag, disposal, own revision/enabled/cron), never the scheduler's global refresh;
@@ -562,13 +571,13 @@ references before editing. Paths are package-relative.
   reviews. Execution requests require clarification; never create a normal-item copy,
   convert, or hand off a manual item. Never let ledger edits
   start, retry, or cancel jobs. Every Sentinel chat has a persistent ledger.
-  Sentinel Mode and To-do Scrubber are independently default-off. The
+  Sentinel Mode and Coda are independently default-off. The
   `sentinel_todos` tool is bound to the invoking Sentinel chat via the late-bound
   `getSentinelTodos` runtime capability. The opt-in `sentinel_jobs` tool reuses the
-  REST job/scrubber command objects (`getSentinelJobCommands`), bound to the owning
+  REST refrain/Coda command objects (`getSentinelRefrainCommands`), bound to the owning
   Sentinel's attended turns only; handbacks, reviews and automation turns never get it.
-  Every tool action, including scrubber actions, rechecks live jobs availability and
-  ownership through `SentinelJobCommands.assertOwner`. New jobs inherit omitted effort
+  Every tool action, including Coda actions, rechecks live refrain availability and
+  ownership through `SentinelRefrainCommands.assertOwner`. New refrains inherit omitted effort
   when their resolved provider/model match the Sentinel's, including explicit matches.
   Default-off `features.sentinelTodoTags` exposes parent-ledger tag definitions
   and metadata through the same service, REST client and tool. Target workspaces
@@ -620,16 +629,16 @@ references before editing. Paths are package-relative.
   their revisions; badges never require per-job transcript reads or polling.
   The SPA's To-do tab lives in the unified right panel (see its `AGENTS.md`): a hosted
   Sentinel `ChatDetail` publishes its ledger owner; stored tabs remain visible.
-  Scrubber REST commands live in `src/server/sentinel-scrubber/scrubber-routes.ts`;
+  Coda (the built-in to-do review) REST commands live in `src/server/sentinel-coda/coda-routes.ts`;
   prove the Sentinel owner through `SentinelTodoService.assertOwner` before accessing
-  scrubber state (never a full ledger list), and use the engine for revision-checked Accept/Undo. The shared
+  Coda state (never a full ledger list), and use the engine for revision-checked Accept/Undo. The shared
   `client.sentinelTodos.scrubber` resource uses the owning client transport for config,
   runs and finding actions; reads support abort signals and conflicts retain the current
   item in `CocApiError.body.current`. Route composition
-  shares the native ledger database, publishes the live flag-gated `getSentinelScrubber`
-  executor capability, and returns `scrubberReady`; server startup awaits recovery before
-  activating restored queues. Scrubber ask turns are unattended; enabled shell guards
-  auto-deny without offering user approval. Scrubber events carry workspace/process ownership and use
+  shares the native ledger database, publishes the live flag-gated `getSentinelCoda`
+  executor capability, and returns `codaReady`; server startup awaits recovery before
+  activating restored queues. Coda ask turns are unattended; enabled shell guards
+  auto-deny without offering user approval. Coda events carry workspace/process ownership and use
   workspace WebSocket filtering; ledger invalidations may omit `itemId` for a whole run.
   Runs persist a caller-supplied child task id before queue admission, so early
   execution/terminal events stay bound. Admission rechecks cancellation after snapshot
