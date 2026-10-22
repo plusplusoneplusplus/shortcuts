@@ -71,7 +71,7 @@ export interface GlyphWidgetSpec {
 }
 
 /**
- * The modified editor and its model, handed to a language host (AC-06). Monaco
+ * A side editor and its model, handed to a language host (AC-06). Monaco
  * values, typed only: this module never touches them.
  */
 export interface DiffLanguageMountContext {
@@ -122,6 +122,13 @@ export interface DiffEditorAdapter {
      * on dispose, whichever comes first.
      */
     attachModifiedLanguage(documentUri: string, mount: DiffLanguageMount): Disposable | null;
+    /**
+     * Mount definition-only features on one side, but only when that side's
+     * model is a ref-backed `coc-diff-ref:` snapshot; a working-copy document
+     * never qualifies. One mount per side, undone before the next model swap
+     * and on dispose. Optional for adapters without historical navigation.
+     */
+    attachHistoricalLanguage?(side: DiffEditorSide, mount: DiffLanguageMount): Disposable | null;
     /**
      * Publish language diagnostics on the modified model; `[]` clears them.
      * Ignored unless that model is exactly `documentUri`.

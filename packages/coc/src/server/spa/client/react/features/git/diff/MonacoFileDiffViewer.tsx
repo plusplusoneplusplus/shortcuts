@@ -20,8 +20,10 @@
  * read-only.
  *
  * Unstaged modified sides and server-confirmed clean branch heads share the
- * explorer's language features through `useDiffLanguageFeatures`.
- * Ref-backed sides never register.
+ * explorer's language features through `useDiffLanguageFeatures`. With
+ * `historicalDefinitions`, every ref-backed side instead gets best-effort
+ * current-code go-to-definition (`mountDiffCurrentCodeModel`), which never
+ * opens a language document.
  */
 
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -52,6 +54,8 @@ import { synthesizeDiffLines } from './monacoDiffLineShim';
 import type { LanguageDocumentStore } from '../../language-servers/documentStore';
 import { useDiffLanguageFeatures } from './useDiffLanguageFeatures';
 import type { DiffDefinitionNavigate } from './diffLanguageMount';
+import { mountDiffCurrentCodeModel } from './diffCurrentCodeMount';
+import type { DiffEditorSide } from './diffCoords';
 import { MonacoDiffSelectionAttachPill } from './MonacoDiffSelectionAttachPill';
 import type { DiffSelectionDragSource } from './diffSelectionContext';
 import { registerSelectionEditor } from '../../../shared/monaco/focusedSelection';
@@ -103,6 +107,13 @@ export interface MonacoFileDiffViewerProps extends MonacoDiffCommentHandlers {
     languageStore?: LanguageDocumentStore;
     /** Opens a go-to-definition target in another file of this workspace. */
     onNavigateDefinition?: DiffDefinitionNavigate;
+    /**
+     * Best-effort current-code definitions on ref-backed sides. Hosts opt in
+     * for local reviews only; PR snapshots must leave it off. Default false.
+     */
+    historicalDefinitions?: boolean;
+    /** Concrete clone route for historical lookups; null/undefined = workspace's own. */
+    routingRef?: string | null;
     /** Enables dragging a selected range into chat context. */
     diffSelectionDragSource?: DiffSelectionDragSource;
     /** Lets the user edit an on-disk modified side. Default false. */
@@ -132,7 +143,8 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
         workspaceId, relativePath, stage, modelIdentity, modifiedMatchesWorkingCopy, original, modified, viewMode, initialHunkTarget,
         onLineChanges, onLinesReady, onEditorError, createEditor = createDefaultDiffEditor,
         comments, renderCommentThread, onAddComment, onAskAI, onCopyAsContext,
-        languageFeatures = true, languageStore, onNavigateDefinition, diffSelectionDragSource,
+        languageFeatures = true, languageStore, onNavigateDefinition, historicalDefinitions = false, routingRef,
+        diffSelectionDragSource,
         editable: editableRequested = false, onModifiedChange, onSave, editedText, savedText,
         'data-testid': testId = 'monaco-file-diff-viewer',
     }, ref) {
@@ -258,6 +270,30 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
             const mounted = editor.attachModifiedLanguage(languageUri, languageMount);
             return () => mounted?.dispose();
         }, [editor, modelsVersion, languageUri, languageMount]);
+
+        // Current-code definitions on each ref-backed side; the adapter refuses
+        // the working-copy document, which keeps the full language mount above.
+        const navigateRef = useRef(onNavigateDefinition);
+        navigateRef.current = onNavigateDefinition;
+        const historicalEnabled = historicalDefinitions && !identical;
+        useEffect(() => {
+            if (!editor?.attachHistoricalLanguage || !historicalEnabled) return;
+            const attach = editor.attachHistoricalLanguage.bind(editor);
+            // Best effort: a lookup that cannot start leaves a plain diff.
+            const mounted = (['original', 'modified'] as const satisfies readonly DiffEditorSide[]).map(side => attach(side, context => {
+                try {
+                    return mountDiffCurrentCodeModel({
+                        ...context,
+                        workspaceId,
+                        routingRef,
+                        onNavigate: target => navigateRef.current?.(target, side) ?? false,
+                    });
+                } catch {
+                    return undefined;
+                }
+            }));
+            return () => { for (const mount of mounted) mount?.dispose(); };
+        }, [editor, modelsVersion, historicalEnabled, workspaceId, routingRef]);
 
         // Diagnostics as markers; cleared when features go away (an unsaved
         // explorer edit, a refused session) so stale squiggles never linger.

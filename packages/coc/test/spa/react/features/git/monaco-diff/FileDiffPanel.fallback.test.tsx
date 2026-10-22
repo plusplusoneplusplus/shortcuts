@@ -69,6 +69,14 @@ vi.mock('../../../../../../src/server/spa/client/react/features/git/diff/SideByS
     }),
 }));
 
+const currentCodeMounts = vi.hoisted(() => [] as { uri: string; routingRef: unknown }[]);
+vi.mock('../../../../../../src/server/spa/client/react/features/git/diff/diffCurrentCodeMount', () => ({
+    mountDiffCurrentCodeModel: (options: { model: { uri: { toString(): string } }; routingRef: unknown }) => {
+        currentCodeMounts.push({ uri: options.model.uri.toString(), routingRef: options.routingRef });
+        return () => {};
+    },
+}));
+
 import { FileDiffPanel } from '../../../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel';
 
 function content(extra: Partial<GitFileDiffContentResponse> = {}): GitFileDiffContentResponse {
@@ -124,6 +132,22 @@ beforeEach(() => {
     comments = [];
     classicProps = null;
     fakes = [];
+    currentCodeMounts.length = 0;
+});
+
+describe('historical definition surfaces', () => {
+    it.each([
+        ['commit', true],
+        ['branch-range', true],
+        ['pull-request', false],
+    ] as const)('%s source mounts current-code definitions: %s', async (kind, expected) => {
+        const source = { ...makeSource(kind), routingTarget: 'remote:srv:ws-a', supportsCurrentCodeDefinitions: kind !== 'pull-request' };
+        await mount(source);
+        await act(async () => {});
+        expect(fakes).toHaveLength(1);
+        expect(fakes[0].historicalMounts.map(m => m.side)).toEqual(expected ? ['original', 'modified'] : []);
+        expect(currentCodeMounts.map(m => m.routingRef)).toEqual(expected ? ['remote:srv:ws-a', 'remote:srv:ws-a'] : []);
+    });
 });
 
 describe.each<SourceKind>(['commit', 'branch-range', 'pull-request'])('%s fallback wiring', kind => {

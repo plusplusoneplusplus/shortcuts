@@ -14,7 +14,7 @@ import type { DiffEditorAdapter, Disposable, CommentDecorationKind } from './mon
 import { LANGUAGE_MARKER_OWNER } from '../../language-servers/monacoBridge';
 import type { DiffEditorSide } from './diffCoords';
 import type { MonacoRange } from '../../language-servers/monacoBridge';
-import type { DiffEditorOptions } from './monacoDiffOptions';
+import { DIFF_REF_URI_SCHEME, type DiffEditorOptions } from './monacoDiffOptions';
 import { createModelRegistry, type ModelLease, type ModelRegistry } from './monacoDiffModelRegistry';
 
 type Monaco = typeof MonacoApi;
@@ -109,6 +109,16 @@ export function createMonacoDiffEditorAdapter(
         cleanup?.();
     };
 
+    // Historical (ref-backed) mounts, at most one per side.
+    const historicalCleanup: Record<DiffEditorSide, (() => void) | null> = { original: null, modified: null };
+    const unmountHistorical = () => {
+        for (const side of SIDES) {
+            const cleanup = historicalCleanup[side];
+            historicalCleanup[side] = null;
+            cleanup?.();
+        }
+    };
+
     const releaseLeases = () => {
         for (const lease of leases) lease.release();
         leases = [];
@@ -121,6 +131,7 @@ export function createMonacoDiffEditorAdapter(
             // its real URI back instead of a conflict variant. Language
             // providers go before their model can be disposed.
             unmountLanguage();
+            unmountHistorical();
             clearOverlays();
             editor.setModel(null);
             releaseLeases();
@@ -233,6 +244,22 @@ export function createMonacoDiffEditorAdapter(
                 },
             };
         },
+        attachHistoricalLanguage(side, mount): Disposable | null {
+            historicalCleanup[side]?.();
+            historicalCleanup[side] = null;
+            const sideEditorInstance = sideEditor(side);
+            const model = sideEditorInstance.getModel();
+            if (!model || model.uri.scheme !== DIFF_REF_URI_SCHEME) return null;
+            const cleanup = mount({ editor: sideEditorInstance, monaco, model }) ?? (() => {});
+            historicalCleanup[side] = cleanup;
+            return {
+                dispose: () => {
+                    if (historicalCleanup[side] !== cleanup) return;
+                    historicalCleanup[side] = null;
+                    cleanup();
+                },
+            };
+        },
         setModifiedMarkers(documentUri, markers) {
             const model = documentModel(documentUri);
             if (model) monaco.editor.setModelMarkers(model, LANGUAGE_MARKER_OWNER, [...markers]);
@@ -257,6 +284,7 @@ export function createMonacoDiffEditorAdapter(
         },
         dispose() {
             unmountLanguage();
+            unmountHistorical();
             clearOverlays();
             editor.setModel(null);
             editor.dispose();

@@ -287,8 +287,16 @@ ref-backed models within the size limit. It scopes providers to the exact model,
 prepares candidate models through the routed Explorer reader for Peek, and uses
 `definitionLinkCue` with a document-free resolver. Hover identifies current-code
 results. Each invocation owns cancellation; disposal revokes pending answers and
-releases providers, previews and the workspace attachment. This mount is available
-to viewer hosts independently of the working-copy document mount.
+releases providers, previews and the workspace attachment.
+
+Viewer hosts opt in with `historicalDefinitions` plus the concrete clone
+`routingRef`. The adapter's `attachHistoricalLanguage(side, mount)` mounts on a
+side only while its model is `coc-diff-ref:`, so the working-copy document keeps
+the full mount and ref-backed models never open one. Mounts are per side and
+undone on model swap and dispose; a mount that cannot start leaves a plain diff.
+Local commit and branch-range `DiffSource`s set `supportsCurrentCodeDefinitions`
+(PR sources never do); `WorkingTreeFileDiff` opts in for the HEAD/index sides of
+staged and unstaged diffs. `DiffDefinitionNavigate` receives the initiating side.
 
 ### Retry
 

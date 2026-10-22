@@ -86,6 +86,11 @@ export interface DiffSource {
     fetchFileContent?(filePath: string): Promise<GitFileDiffContentResponse>;
     /** Branch ranges may expose their head as the real document when the server confirms it. */
     readonly supportsWorkingCopyLanguage?: boolean;
+    /**
+     * Local commit/range reviews offer best-effort current-code definitions on
+     * ref-backed sides. PR sources never set it.
+     */
+    readonly supportsCurrentCodeDefinitions?: boolean;
 
     /**
      * Build the API URL for a full-file-context diff.
@@ -163,6 +168,7 @@ export function createCommitDiffSource(
     const client = () => getGitReviewClient(workspaceId, options?.routingTarget);
     return {
         routingTarget: options?.routingTarget,
+        supportsCurrentCodeDefinitions: true,
         label: `Commit ${shortHash}`,
 
         fileDiffUrl(filePath: string, full?: boolean): string {
@@ -230,6 +236,7 @@ export function createBranchRangeDiffSource(
     return {
         routingTarget: options?.routingTarget,
         supportsWorkingCopyLanguage: true,
+        supportsCurrentCodeDefinitions: true,
         ...(range ? { fileContextRefs: { baseRef: range.mergeBase ?? range.baseSha ?? range.baseRef, headRef: range.headSha ?? range.headRef } } : {}),
         ...(range ? { diffSelectionRef: { type: 'range' as const, baseRef: range.baseRef, headRef: range.headRef } } : {}),
 

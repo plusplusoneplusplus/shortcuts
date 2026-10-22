@@ -34,9 +34,13 @@ import {
     type LanguageNavigationTarget,
 } from '../../language-servers/editorNavigation';
 import type { DiffLanguageMountContext } from './monacoDiffController';
+import type { DiffEditorSide } from './diffCoords';
 
-/** Where a definition in another file of this workspace should open. */
-export type DiffDefinitionNavigate = (target: LanguageNavigationTarget) => boolean | void;
+/**
+ * Where a definition in another file of this workspace should open; `side`
+ * names the diff side the jump started from.
+ */
+export type DiffDefinitionNavigate = (target: LanguageNavigationTarget, side?: DiffEditorSide) => boolean | void;
 
 export interface MountDiffLanguageOptions extends DiffLanguageMountContext {
     workspaceId: string;

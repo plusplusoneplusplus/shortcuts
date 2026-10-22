@@ -36,6 +36,8 @@ export interface FakeDiffEditor {
     revealedLines: { side: string; line: number }[];
     /** Language mounts made on the modified model, in order; `live` until cleaned up. */
     languageMounts: { uri: string; live: boolean }[];
+    /** Historical (ref-backed) mounts per side, in order; `live` until cleaned up. */
+    historicalMounts: { side: 'original' | 'modified'; uri: string; live: boolean }[];
     /** Language-marker lists published per document URI, in order. */
     markerLog: { uri: string; count: number }[];
     /**
@@ -71,6 +73,14 @@ export function createFakeDiffEditor(initialOptions?: DiffEditorOptions): FakeDi
         languageCleanup = null;
         cleanup?.();
     };
+    const historicalCleanup: Record<'original' | 'modified', (() => void) | null> = { original: null, modified: null };
+    const unmountHistorical = () => {
+        for (const side of ['original', 'modified'] as const) {
+            const cleanup = historicalCleanup[side];
+            historicalCleanup[side] = null;
+            cleanup?.();
+        }
+    };
     const contentListeners = new Set<(text: string) => void>();
     const currentModifiedUri = () => fake.models[fake.models.length - 1]?.modified.uri ?? null;
     const fake: FakeDiffEditor = {
@@ -81,6 +91,7 @@ export function createFakeDiffEditor(initialOptions?: DiffEditorOptions): FakeDi
         actions: [],
         revealedLines: [],
         languageMounts: [],
+        historicalMounts: [],
         markerLog: [],
         languageContext: () => inertLanguageContext(currentModifiedUri() ?? ''),
         select(selection) {
@@ -116,6 +127,7 @@ export function createFakeDiffEditor(initialOptions?: DiffEditorOptions): FakeDi
             setModels: vi.fn((models: DiffModelsInput) => {
                 // Like the real adapter: providers go before their model does.
                 unmountLanguage();
+                unmountHistorical();
                 fake.models.push(models);
                 fake.modifiedText = models?.modified?.text ?? null;
                 lineChanges = null; // a new pair starts computing
@@ -175,6 +187,18 @@ export function createFakeDiffEditor(initialOptions?: DiffEditorOptions): FakeDi
                 languageCleanup = done;
                 return { dispose: () => { if (languageCleanup === done) unmountLanguage(); } };
             }),
+            attachHistoricalLanguage: vi.fn((side: 'original' | 'modified', mount: DiffLanguageMount) => {
+                historicalCleanup[side]?.();
+                historicalCleanup[side] = null;
+                const uri = fake.models[fake.models.length - 1]?.[side].uri ?? null;
+                if (!uri || !uri.startsWith('coc-diff-ref://')) return null;
+                const record = { side, uri, live: true };
+                fake.historicalMounts.push(record);
+                const cleanup = mount(inertLanguageContext(uri));
+                const done = () => { record.live = false; cleanup?.(); };
+                historicalCleanup[side] = done;
+                return { dispose: () => { if (historicalCleanup[side] === done) { historicalCleanup[side] = null; done(); } } };
+            }),
             setModifiedMarkers: vi.fn((uri: string, markers: readonly unknown[]) => {
                 if (currentModifiedUri() !== uri) return;
                 fake.markerLog.push({ uri, count: markers.length });
@@ -188,7 +212,7 @@ export function createFakeDiffEditor(initialOptions?: DiffEditorOptions): FakeDi
                 fake.saveCommands.add(run);
                 return { dispose: () => { fake.saveCommands.delete(run); } };
             }),
-            dispose: vi.fn(() => { unmountLanguage(); fake.disposals++; }),
+            dispose: vi.fn(() => { unmountLanguage(); unmountHistorical(); fake.disposals++; }),
         },
     };
     return fake;
@@ -233,6 +257,7 @@ export function inertLanguageContext(uri: string): DiffLanguageMountContext {
         getLanguageId: () => 'plaintext',
         getWordUntilPosition: () => ({ startColumn: 1, endColumn: 1 }),
         getWordAtPosition: () => null,
+        getValueLength: () => 0,
     };
     return { editor, monaco, model } as unknown as DiffLanguageMountContext;
 }

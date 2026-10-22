@@ -212,6 +212,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     // Editing the modified (disk) side. `savedText` is what the last successful
     // save wrote; `editedText` the editor's text after the latest edit.
     const relativePath = repoRoot ? repoRelative(filePath, repoRoot) : filePath;
+    const ownerRoute = attachmentDestinationId && attachmentDestinationId !== workspaceId ? attachmentDestinationId : null;
     const diskMatchesIndex = currentContent?.status === 'loaded' && currentContent.diskMatchesIndex;
     const editable = stage === 'unstaged' || (stage === 'staged' && diskMatchesIndex);
     const [editedText, setEditedText] = useState<string | null>(null);
@@ -583,8 +584,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                             <PreviewPane
                                 key={attachmentDestinationId ?? workspaceId}
                                 repoId={workspaceId}
-                                routingRef={attachmentDestinationId && attachmentDestinationId !== workspaceId
-                                    ? attachmentDestinationId : null}
+                                routingRef={ownerRoute}
                                 filePath={relativePath}
                                 fileName={filePath.split('/').pop() ?? filePath}
                                 onNotFound={handlePreviewNotFound}
@@ -601,6 +601,8 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                             stage={stage as 'staged' | 'unstaged'}
                             editable={editable}
                             modifiedMatchesWorkingCopy={stage === 'staged' ? diskMatchesIndex : undefined}
+                            historicalDefinitions
+                            routingRef={ownerRoute}
                             onModifiedChange={setEditedText}
                             onSave={() => { void handleSaveEdits(); }}
                             editedText={editedText}

@@ -123,7 +123,7 @@ export function useDiffLanguageFeatures(options: UseDiffLanguageFeaturesOptions)
                 view,
                 workspaceId,
                 languageId: language,
-                onNavigate: target => navigateRef.current?.(target) ?? false,
+                onNavigate: target => navigateRef.current?.(target, 'modified') ?? false,
             })
             : undefined),
         [view, workspaceId, language],

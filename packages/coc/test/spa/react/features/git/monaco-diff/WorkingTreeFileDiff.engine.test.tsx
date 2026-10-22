@@ -242,3 +242,21 @@ it.each(['ws-a', 'remote:one:ws-a', 'remote:two:ws-a'])('forwards working-tree s
         filePath="/repo/src/a.ts" stage="unstaged" repoRoot="/repo" createDiffEditor={createDiffEditor} />);
     expect(selectionPill).toHaveBeenLastCalledWith(expect.objectContaining({ workspaceId: 'ws-a', destinationId: 'remote:next:ws-a' }));
 });
+
+describe('WorkingTreeFileDiff — historical definitions', () => {
+    it('serves the left (index) side of an unstaged diff, never the disk document', async () => {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
+        await renderDiff({ stage: 'unstaged' });
+        expect(fakes).toHaveLength(1);
+        expect(fakes[0].historicalMounts.filter(m => m.live).map(m => m.side)).toEqual(['original']);
+    });
+
+    it('serves the HEAD side of a staged diff', async () => {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
+        await renderDiff({ stage: 'staged' });
+        expect(fakes).toHaveLength(1);
+        const sides = fakes[0].historicalMounts.filter(m => m.live).map(m => m.side);
+        expect(sides[0]).toBe('original');
+        expect(fakes[0].historicalMounts.every(m => m.uri.startsWith('coc-diff-ref://'))).toBe(true);
+    });
+});

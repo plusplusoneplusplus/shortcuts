@@ -603,6 +603,8 @@ export function FileDiffPanel({
                                 onCopyAsContext={handleCopyAsContext}
                                 diffSelectionDragSource={showEditor ? diffSelectionDragSource : undefined}
                                 languageFeatures={showEditor && displayedEditor.supportsWorkingCopyLanguage === true && displayedEditor.content.modifiedMatchesWorkingCopy === true}
+                                historicalDefinitions={showEditor && source.supportsCurrentCodeDefinitions === true}
+                                routingRef={source.routingTarget}
                                 onEditorError={handleEditorError}
                                 createEditor={createDiffEditor}
                                 data-testid="file-diff-editor"

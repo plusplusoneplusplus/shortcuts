@@ -732,3 +732,11 @@ describe('focused review source lifetimes', () => {
     });
 
 });
+
+describe('current-code definition support', () => {
+    it('is offered by local commit and branch-range sources, never PR sources', () => {
+        expect(createCommitDiffSource('ws1', 'abc1234').supportsCurrentCodeDefinitions).toBe(true);
+        expect(createBranchRangeDiffSource('ws1').supportsCurrentCodeDefinitions).toBe(true);
+        expect(createPrDiffSource('ws1', 'repo-1', '42', { originId: 'origin-1' }).supportsCurrentCodeDefinitions).toBeUndefined();
+    });
+});
