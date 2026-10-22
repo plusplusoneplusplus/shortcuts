@@ -760,7 +760,9 @@ without fabricating capability or depending on selection.
 Detail notes default to expanded; explicit visibility choices share the owner/item-scoped
 in-memory `SentinelTodoView` with drafts across refreshes and remounts.
 Compact list headers combine wrapping titles, status, priority and shared overflow
-actions; job metadata wraps below. Identical item/job titles use accessible Open job links,
+actions; job metadata wraps below. Titles take the card's full width; a one-line
+repo/Updated row sits under them and moves beside them only in wide cards
+(`todo-card` container query, capped at 40%). Identical item/job titles use accessible Open job links,
 while distinct job titles remain visible. Full content and controls live in details;
 card text uses native selection, with attachment dragging scoped to list-card grips
 and detail Attach controls. Grips also attach on click or keyboard activation.

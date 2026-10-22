@@ -409,7 +409,7 @@ describe('UnifiedTodoTab', () => {
         expect(link.getAttribute('href')).toBe(tracked.jobs[0].openLink);
         const meta = within(row).getByTestId('sentinel-todo-meta-i1');
         expect(meta.contains(link)).toBe(false);
-        expect(meta.className).toContain('flex-wrap');
+        expect(meta.className).toContain('basis-full');
         expect(meta.textContent).toContain('Updated');
         const jobMetadata = within(row).getByTestId('sentinel-todo-job-metadata');
         expect(link.nextElementSibling).toBe(jobMetadata);
@@ -1230,12 +1230,12 @@ describe('UnifiedTodoTab', () => {
             const updatedAt = '2026-10-09T11:55:00.000Z';
             get.mockResolvedValue(ledger([item({ createdAt, updatedAt })]));
             render(<UnifiedTodoTab owner={OWNER} />);
-            // Cards show relative time with an accessible label in wrapping header metadata.
+            // Cards show relative time with an accessible label in header metadata below the title.
             const updated = await screen.findByTestId('sentinel-todo-updated-i1');
             expect(within(updated).getByText('Updated').classList.contains('sr-only')).toBe(true);
             const meta = screen.getByTestId('sentinel-todo-meta-i1');
             expect(meta.contains(updated)).toBe(true);
-            expect(meta.className).toContain('flex-wrap');
+            expect(meta.className).toContain('basis-full');
             expect(meta.className).toContain('dark:text-[#9d9d9d]');
             expect(screen.queryByTestId('sentinel-todo-created-i1')).toBeNull();
             fireEvent.click(within(screen.getByTestId('sentinel-todo-row-i1')).getByRole('button', { pressed: false }));
@@ -1897,7 +1897,7 @@ describe('UnifiedTodoTab', () => {
             { width: 900, targetRepo: { workspaceId: 'ws-web', label: 'web-app' } },
             { width: 320, targetRepo: { workspaceId: 'ws-long-' + 'x'.repeat(120) } },
             { width: 320, targetRepo: undefined },
-        ])('keeps muted repo/time metadata in the wrapping header with its menu (width=$width, repo=$targetRepo)', async ({ width, targetRepo }) => {
+        ])('keeps muted repo/time metadata in the title header with its menu (width=$width, repo=$targetRepo)', async ({ width, targetRepo }) => {
             vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(width);
             const title = 'Readable title ' + 'identifier'.repeat(15);
             get.mockResolvedValue(ledger([item({ title, targetRepo })]));
@@ -1909,8 +1909,9 @@ describe('UnifiedTodoTab', () => {
             expect(meta.parentElement).toBe(header);
             expect(header.classList.contains('flex-wrap')).toBe(true);
             expect(header.classList.contains('min-w-0')).toBe(true);
-            expect(meta.classList.contains('ml-auto')).toBe(true);
-            expect(meta.classList.contains('flex-wrap')).toBe(true);
+            expect(header.getAttribute('data-testid')).toBe('sentinel-todo-header-i1');
+            expect(meta.classList.contains('basis-full')).toBe(true);
+            expect(meta.classList.contains('whitespace-nowrap')).toBe(true);
             expect(meta.className).toContain('dark:text-[#9d9d9d]');
             expect(toggle.contains(meta)).toBe(false);
             expect(toggle.title).toBe(title);
@@ -1936,6 +1937,52 @@ describe('UnifiedTodoTab', () => {
             fireEvent.keyDown(menu, { key: 'Escape' });
             expect(document.activeElement).toBe(menu);
             expect(update).not.toHaveBeenCalled();
+        });
+
+        it('gives the title the full card width and reflows repo/time beneath it unless the card is wide', async () => {
+            // Regression: title squeezed into an 8rem column while repo + "Updated just now" took the right side.
+            const wide = '[@container_todo-card_(min-width:28rem)]:';
+            const title = 'Investigate why the long running sentinel delegation keeps getting stuck';
+            get.mockResolvedValue(ledger([
+                item({ id: 'repo', title, targetRepo: { workspaceId: 'ws-x', label: 'very-long-repository-label-'.repeat(4) } }),
+                item({ id: 'bare', title, status: 'needs_attention', statusReason: 'Blocked' }),
+            ]));
+            render(<UnifiedTodoTab owner={OWNER} />);
+            for (const id of ['repo', 'bare']) {
+                const row = await screen.findByTestId(`sentinel-todo-row-${id}`);
+                const header = within(row).getByTestId(`sentinel-todo-header-${id}`);
+                const toggle = within(header).getByRole('button', { pressed: false });
+                const meta = within(header).getByTestId(`sentinel-todo-meta-${id}`);
+                // The card header is the query container, so panel width and browser zoom both drive the layout.
+                expect(header.className).toContain('[container-type:inline-size]');
+                expect(header.className).toContain('[container-name:todo-card]');
+                expect(header.classList.contains('flex-wrap')).toBe(true);
+                // Default (narrow): title takes a whole line; metadata wraps onto its own line below it.
+                expect(toggle.className).toContain('flex-[1_1_100%]');
+                expect(toggle.className).not.toContain('basis-[8rem]');
+                expect(meta.classList.contains('basis-full')).toBe(true);
+                expect(meta.classList.contains('ml-auto')).toBe(false);
+                expect(toggle.compareDocumentPosition(meta) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+                // Wide: metadata sits beside the title but is capped so the title keeps most of the width.
+                expect(toggle.classList.contains(`${wide}basis-[55%]`)).toBe(true);
+                for (const cls of ['ml-auto', 'max-w-[40%]', 'basis-auto', 'justify-end']) {
+                    expect(meta.classList.contains(`${wide}${cls}`)).toBe(true);
+                }
+                // Metadata stays one secondary line: a long repo label ellipsizes, the time never shrinks.
+                expect(meta.classList.contains('whitespace-nowrap')).toBe(true);
+                expect(meta.classList.contains('flex-wrap')).toBe(false);
+                const repo = within(meta).queryByTestId(`sentinel-todo-repo-${id}`);
+                if (repo) {
+                    expect(repo.className).toContain('truncate');
+                    expect(repo.textContent).toBe('very-long-repository-label-'.repeat(4));
+                    expect((repo.nextElementSibling as HTMLElement).getAttribute('aria-hidden')).toBe('true');
+                }
+                expect(within(meta).getByTestId(`sentinel-todo-updated-${id}`).className).toContain('whitespace-nowrap');
+                // Title stays a full, untruncated, keyboard-selectable button.
+                expect(within(toggle).getByText(title).className).not.toContain('truncate');
+            }
+            expect(within(screen.getByTestId('sentinel-todo-row-bare')).getByTestId('sentinel-todo-reason-preview-bare')).toBeTruthy();
+            expect(within(screen.getByTestId('sentinel-todo-row-repo')).getByRole('button', { name: 'More actions' })).toBeTruthy();
         });
 
         it('previews a Needs attention reason in the list and shows it once in details', async () => {

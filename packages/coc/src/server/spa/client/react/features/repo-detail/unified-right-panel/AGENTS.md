@@ -861,7 +861,10 @@ and PR-outcome mutations, plus pending Coda actions, block Close. Native pressed
 arrows/Home/End move row focus without selecting. Visited editors stay mounted
 but hidden across selection and resizing, retaining drafts.
 List cards combine status, priority, wrapping title and an ellipsis menu in a compact header,
-with target/Updated/latest-job metadata below. Identical item/job titles use an
+with target/Updated/latest-job metadata below. The header is a `todo-card` container:
+the title takes the full width and the one-line repo/Updated row (ellipsized repo,
+unshrinkable time) sits under it; only at 28rem+ does that row move beside the title,
+capped at 40% so the title keeps most of the width. Identical item/job titles use an
 accessible Open job link; distinct job titles remain visible. Full job history,
 conversation references and editing controls live in the detail pane.
 Default-off `sentinelTodoTagsEnabled` adds named restrained tag chips, a tag filter

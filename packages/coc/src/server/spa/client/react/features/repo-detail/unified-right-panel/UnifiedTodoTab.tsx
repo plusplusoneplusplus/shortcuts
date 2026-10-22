@@ -1018,7 +1018,11 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
         {high && <span aria-hidden="true" data-testid={`sentinel-todo-priority-band-${item.id}`}
             className="pointer-events-none absolute inset-y-0 left-0 w-1 rounded-l-[3px] bg-[#e51400] dark:bg-[#f14c4c]" />}
         <div className="flex items-start gap-1 px-1.5 pt-1 pb-0.5">
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+            {/* Title-first header: the title owns the full width and repo/time reflow beneath it;
+                only a wide card (container query, so panel width and zoom both count) puts them
+                beside the title, capped so they never squeeze it. */}
+            <div className="flex min-w-0 flex-1 flex-wrap items-start gap-x-2 gap-y-0.5 [container-type:inline-size] [container-name:todo-card]"
+                data-testid={`sentinel-todo-header-${item.id}`}>
                 <button type="button" aria-pressed={selected} data-todo-select={item.id} title={item.title}
                     onPointerDown={() => { selectedTextOnRelease.current = false; }}
                     onPointerUp={() => { selectedTextOnRelease.current = hasSelectedText(); }}
@@ -1027,15 +1031,18 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
                         if (event.detail > 0 && (selectedTextOnRelease.current || hasSelectedText())) return;
                         onSelect();
                     }}
-                    className="flex min-w-0 flex-1 basis-[8rem] select-text flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4]">
+                    className="flex min-w-0 flex-[1_1_100%] select-text flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] [@container_todo-card_(min-width:28rem)]:basis-[55%]">
                     <StatusBadge status={sentinelTodoDisplayStatus(item)} />
                     {high && <HighPriorityBadge itemId={item.id} />}
                     <span className={cn('min-w-0 flex-1 basis-[8rem] break-words [overflow-wrap:anywhere] font-medium', item.archived && 'line-through opacity-70')}>{item.title}</span>
                     {sentinelTodoType(item) === 'manual' && <span className={MUTED}>Tracking only</span>}
                 </button>
-                <div className={cn('ml-auto flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px]', MUTED)} data-testid={`sentinel-todo-meta-${item.id}`}>
-                    {item.targetRepo && <span className="min-w-0 max-w-full break-words [overflow-wrap:anywhere]" title={item.targetRepo.workspaceId}
+                <div className={cn('flex min-w-0 max-w-full basis-full items-center gap-x-1.5 whitespace-nowrap text-[11px]',
+                    '[@container_todo-card_(min-width:28rem)]:ml-auto [@container_todo-card_(min-width:28rem)]:max-w-[40%] [@container_todo-card_(min-width:28rem)]:basis-auto [@container_todo-card_(min-width:28rem)]:justify-end [@container_todo-card_(min-width:28rem)]:pt-0.5',
+                    MUTED)} data-testid={`sentinel-todo-meta-${item.id}`}>
+                    {item.targetRepo && <span className="min-w-0 max-w-full truncate" title={item.targetRepo.workspaceId}
                         data-testid={`sentinel-todo-repo-${item.id}`}>{item.targetRepo.label ?? item.targetRepo.workspaceId}</span>}
+                    {item.targetRepo && <span aria-hidden="true" className="shrink-0">·</span>}
                     <TodoTime label="Updated" iso={item.updatedAt} testId={`sentinel-todo-updated-${item.id}`} hideLabel />
                 </div>
             </div>
