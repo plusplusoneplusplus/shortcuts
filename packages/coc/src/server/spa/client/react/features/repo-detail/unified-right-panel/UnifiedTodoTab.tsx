@@ -93,6 +93,8 @@ export interface UnifiedTodoTabProps {
     onErrorChange?: (hasError: boolean) => void;
 }
 
+const TODO_REOPEN_DRAG_MIME = 'application/x-coc-sentinel-todo-reopen';
+
 type TodoMenuAction = { itemId: string } & ({ status: SentinelTodoStatus } | { priority: SentinelTodoPriority });
 
 type FollowLink = (event: MouseEvent<HTMLAnchorElement>, linkKey: string, href?: string) => void;
@@ -300,6 +302,12 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             return next;
         });
     }, []);
+    // A local drag ticket binds this gesture to this exact owner/transport and revision.
+    const draggedDone = useRef<SentinelTodoItem | null>(null);
+    const [draggedDoneType, setDraggedDoneType] = useState<SentinelTodoType | null>(null);
+    const reopenPending = useRef(false);
+    const [reopeningId, setReopeningId] = useState<string | null>(null);
+    const [reopenError, setReopenError] = useState<string | null>(null);
     const [showDone, setShowDone] = useState(restored.sections?.done ?? false);
     const [showArchived, setShowArchived] = useState(restored.sections?.archived ?? false);
     const [showManual, setShowManual] = useState(restored.sections?.manual ?? true);
@@ -607,10 +615,58 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         onSave: saveItem, onFollowLink: followLink,
         tagLibrary, tagClient: client, matchMultiple,
     });
+    const clearDoneDrag = () => {
+        draggedDone.current = null;
+        setDraggedDoneType(null);
+    };
+    const canDropDone = (event: DragEvent<HTMLElement>, type: SentinelTodoType) => {
+        const source = draggedDone.current;
+        const current = ledger?.items.find(item => item.id === source?.id);
+        return !reopenPending.current && !!source && !!current && !current.archived && current.status === 'done'
+            && sentinelTodoType(source) === type && sentinelTodoType(current) === type && !blockedMenus.has(current.id)
+            && event.dataTransfer.types.includes(TODO_REOPEN_DRAG_MIME);
+    };
+    const hasDoneItems = (type: SentinelTodoType) => ledger?.items.some(item => !item.archived && item.status === 'done' && sentinelTodoType(item) === type);
+    const reopenTargetProps = (type: SentinelTodoType) => ({
+        onDragOver: (event: DragEvent<HTMLElement>) => {
+            if (!canDropDone(event, type)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            event.dataTransfer.dropEffect = 'move';
+        },
+        onDrop: (event: DragEvent<HTMLElement>) => {
+            const source = draggedDone.current;
+            const accepted = canDropDone(event, type) && event.dataTransfer.getData(TODO_REOPEN_DRAG_MIME) === source?.id;
+            clearDoneDrag();
+            if (!accepted || !source) return;
+            event.preventDefault();
+            event.stopPropagation();
+            reopenPending.current = true;
+            setReopeningId(source.id);
+            setReopenError(null);
+            void saveItem(source, { status: 'todo', statusReason: null }).then(failure => {
+                if (mounted.current && failure) setReopenError(`Could not reopen ${source.title}: ${failure.message} Drag again to retry.`);
+            }).finally(() => {
+                reopenPending.current = false;
+                if (mounted.current) setReopeningId(null);
+            });
+        },
+        className: cn('flex flex-col gap-1',
+            hasDoneItems(type) && 'min-h-10 rounded border border-dashed border-[#848484]/40 p-1',
+            draggedDoneType === type && 'bg-[#0078d4]/10 ring-1 ring-[#0078d4]/50'),
+    });
+    const reopenHint = (type: SentinelTodoType) => hasDoneItems(type)
+        ? <span className={cn('text-[11px]', MUTED)}>Drop a Done item here to reopen as To do.</span> : null;
     const renderList = (items: readonly SentinelTodoItem[]) => (
         <ul className="flex flex-col gap-1" role="list">
             {items.map(item => <CompactTodoRow key={item.id} {...rowProps(item)} selected={item.id === selectedId} onSelect={() => selectItem(item.id)}
-                menuDisabled={blockedMenus.has(item.id)} onMenuAction={action => {
+                onReopenDragStart={item.status === 'done' && !item.archived ? event => {
+                    draggedDone.current = item;
+                    setDraggedDoneType(sentinelTodoType(item));
+                    event.dataTransfer.setData(TODO_REOPEN_DRAG_MIME, item.id);
+                    event.dataTransfer.effectAllowed = 'copyMove';
+                } : undefined} onReopenDragEnd={clearDoneDrag}
+                menuDisabled={blockedMenus.has(item.id) || reopeningId === item.id} onMenuAction={action => {
                     selectItem(item.id);
                     setMenuAction(action);
                 }} />)}
@@ -669,6 +725,8 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                     Could not load the to-do list: {loadError}
                 </Notice>
             )}
+            {reopenError && <Notice tone="error" testId="sentinel-todo-reopen-error">{reopenError}</Notice>}
+            {reopeningId && <Notice tone="info" testId="sentinel-todo-reopening">Reopening as To do…</Notice>}
             <div className="flex min-h-[160px] flex-1 gap-2">
             <div ref={scrollRef}
                 tabIndex={-1}
@@ -696,6 +754,8 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                 )
             ) : (
                 <>
+                    <section aria-label="To do" data-testid="sentinel-todo-reopen-normal" {...reopenTargetProps('normal')}>
+                    {reopenHint('normal')}
                     {normalCount === 0 ? (
                         !addForm.adding && (
                             <div className={cn('flex flex-col items-start gap-2 p-2', MUTED)} data-testid="sentinel-todo-empty">
@@ -708,6 +768,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                     ) : sections.active.length > 0
                         ? renderList(sections.active)
                         : <span className={MUTED} data-testid="sentinel-todo-no-active">No active items.</span>}
+                    </section>
                     <section className="flex flex-col gap-1 border-t border-[#e0e0e0] pt-2 dark:border-[#3c3c3c]"
                         aria-labelledby={`${manualId}-heading`} data-testid="sentinel-todo-manual-section">
                         <div className="flex flex-wrap items-center justify-between gap-1">
@@ -730,6 +791,8 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                         {showManual && (
                             <div id={`${manualId}-body`} className="flex flex-col gap-1">
                                 {manualForm.adding && <AddItemForm form={manualForm} testIdPrefix="sentinel-todo-manual-add" label="Add manual item" manual />}
+                                <section aria-label="Manual To do" data-testid="sentinel-todo-reopen-manual" {...reopenTargetProps('manual')}>
+                                {reopenHint('manual')}
                                 {manual.active.length > 0 ? renderList(manual.active) : (
                                     <span className={cn('px-1', MUTED)} data-testid="sentinel-todo-manual-empty">
                                         {manualCount === 0
@@ -739,6 +802,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                                             : 'No active manual items.'}
                                     </span>
                                 )}
+                                </section>
                                 {manual.done.length > 0 && (
                                     <Section label="Done" count={manual.done.length} open={showManualDone} onToggle={() => toggleSection(showManualDone, setShowManualDone, selectedType === 'manual' && selectedSection === 'done')} testId="sentinel-todo-manual-done-section">
                                         {renderList(manual.done)}
@@ -924,8 +988,9 @@ function TodoCardMenu({ owner, item, onAttach, disabled, onAction }: {
     </div>;
 }
 
-function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibrary, selected, onSelect, menuDisabled, onMenuAction }: Pick<TodoDetailProps, 'item' | 'owner' | 'currentWorkspaceId' | 'onFollowLink' | 'tagLibrary'> & {
+function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibrary, selected, onSelect, menuDisabled, onMenuAction, onReopenDragStart, onReopenDragEnd }: Pick<TodoDetailProps, 'item' | 'owner' | 'currentWorkspaceId' | 'onFollowLink' | 'tagLibrary'> & {
     selected: boolean; onSelect: () => void; menuDisabled: boolean; onMenuAction: (action: TodoMenuAction) => void;
+    onReopenDragStart?: (event: DragEvent<HTMLButtonElement>) => void; onReopenDragEnd: () => void;
 }) {
     const { canAttach, attach, attachError, drag } = useTodoAttachment(owner, item);
     const card = useRef<HTMLLIElement>(null);
@@ -939,6 +1004,7 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
         return false;
     };
     const { mutationPending } = useContext(ScrubberFindingsContext);
+    const canReopen = !!onReopenDragStart && !menuDisabled && !mutationPending;
     const high = sentinelTodoPriority(item) === 'high';
     const reasonPreview = sentinelTodoDisplayStatus(item) === 'needs_attention' && item.statusReason ? <span
         className="min-w-0 max-w-full flex-[1_1_8rem] truncate text-[11px] text-[#b5650f] dark:text-[#cca700]" title={item.statusReason}
@@ -971,8 +1037,15 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
                     <TodoTime label="Updated" iso={item.updatedAt} testId={`sentinel-todo-updated-${item.id}`} />
                 </div>
             </div>
-            {canAttach && <button type="button" draggable onDragStart={drag} onClick={attach}
-                aria-label={`Attach ${item.title} as context`} title="Drag to owning Sentinel as context, or click to attach"
+            {(canAttach || canReopen) && <button type="button" draggable onDragStart={event => {
+                onReopenDragEnd();
+                if (canAttach) drag(event); else event.stopPropagation();
+                if (canReopen) onReopenDragStart?.(event);
+            }} onDragEnd={onReopenDragEnd}
+                onClick={canAttach ? attach : () => onMenuAction({ itemId: item.id, status: 'todo' })}
+                aria-label={canAttach ? `Attach ${item.title} as context` : `Reopen ${item.title} as To do`}
+                title={canReopen ? `Drag to To do to reopen, or click to ${canAttach ? 'attach to owning Sentinel' : 'reopen'}`
+                    : 'Drag to owning Sentinel as context, or click to attach'}
                 className="flex h-6 w-6 shrink-0 cursor-grab select-none items-center justify-center rounded text-[#848484] hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] active:cursor-grabbing dark:hover:bg-white/[0.04]">
                 <span aria-hidden="true">⠿</span>
             </button>}

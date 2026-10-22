@@ -2750,6 +2750,218 @@ describe('UnifiedTodoTab Manual tracking', () => {
     });
 });
 
+describe('Done card drop reopening', () => {
+    function transfer() {
+        const values = new Map<string, string>();
+        return { types: [] as string[], effectAllowed: 'none', dropEffect: 'none',
+            setData: vi.fn(function (this: { types: string[] }, key: string, value: string) {
+                values.set(key, value);
+                if (!this.types.includes(key)) this.types.push(key);
+            }),
+            getData: (key: string) => values.get(key) ?? '',
+        };
+    }
+    async function openDone(type: 'normal' | 'manual' = 'normal') {
+        const section = await screen.findByTestId(type === 'manual' ? 'sentinel-todo-manual-done-section' : 'sentinel-todo-done-section');
+        fireEvent.click(within(section).getByRole('button', { name: 'Done (1)' }));
+        const row = within(section).getByTestId('sentinel-todo-row-i1');
+        return { row, grip: within(row).getByRole('button', { name: /Attach Fix login as context|Reopen Fix login as To do/ }),
+            target: screen.getByTestId(`sentinel-todo-reopen-${type}`) };
+    }
+    it.each([
+        { type: 'normal' as const, enabled: true }, { type: 'normal' as const, enabled: false },
+        { type: 'manual' as const, enabled: true }, { type: 'manual' as const, enabled: false },
+    ])('persists Done -> To do in an empty $type list (context attachments=$enabled)', async ({ type, enabled }) => {
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: enabled });
+        let current = item({ type, status: 'done', revision: 4, priority: 'high' });
+        get.mockImplementation(async () => ledger([current], current.revision));
+        update.mockImplementation(async (_ws, _process, _id, { expectedRevision, ...patch }) => {
+            current = { ...current, ...patch, revision: expectedRevision + 1 };
+            return { item: current, ledgerRevision: current.revision };
+        });
+        const view = render(<UnifiedTodoTab owner={OWNER} />);
+        const { row, grip, target } = await openDone(type);
+        expect(within(target).getByText('Drop a Done item here to reopen as To do.')).toBeTruthy();
+        expect(target.className).toContain('min-h-10');
+        expect(row.draggable).toBe(false);
+        const dataTransfer = transfer();
+        const localAttach = vi.fn();
+        subscribeActiveChatAttach('ws-1', localAttach);
+        fireEvent.dragStart(grip, { dataTransfer });
+        expect(dataTransfer.effectAllowed).toBe('copyMove');
+        if (enabled) expect(dataTransfer.types).toContain(POINTER_CONTEXT_DRAG_MIME);
+        expect(fireEvent.dragOver(target, { dataTransfer })).toBe(false);
+        expect(dataTransfer.dropEffect).toBe('move');
+        fireEvent.drop(target, { dataTransfer });
+        fireEvent.dragEnd(grip);
+        await waitFor(() => expect(update).toHaveBeenCalledWith('ws-1', 'queue_sentinel', 'i1', {
+            expectedRevision: 4, status: 'todo', statusReason: null,
+        }));
+        await waitFor(() => expect(within(target).getByTestId('sentinel-todo-row-i1')).toBeTruthy());
+        expect(within(target).getByTestId('sentinel-todo-status-todo')).toBeTruthy();
+        expect(within(target).getByTestId('sentinel-todo-row-i1').dataset.priority).toBe('high');
+        expect(current.type).toBe(type);
+        expect(current.archived).toBe(false);
+        expect(localAttach).not.toHaveBeenCalled();
+        expect(create).not.toHaveBeenCalled();
+        view.unmount();
+        render(<UnifiedTodoTab owner={OWNER} />);
+        await waitFor(() => expect(within(screen.getByTestId(`sentinel-todo-reopen-${type}`)).getByTestId('sentinel-todo-row-i1')).toBeTruthy());
+        expect(update).toHaveBeenCalledTimes(1);
+    });
+    it('keeps the Done row until persistence and refresh complete, serializes repeated drops and preserves active items', async () => {
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: true });
+        let current = item({ status: 'done', revision: 3 });
+        const other = item({ id: 'other', title: 'Existing work', status: 'in_progress', priority: 'high' });
+        get.mockImplementation(async () => ledger([current, other], current.revision));
+        const pending = deferred<{ item: SentinelTodoItem; ledgerRevision: number }>();
+        update.mockReturnValue(pending.promise);
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const { grip, target } = await openDone();
+        const dataTransfer = transfer();
+        fireEvent.dragStart(grip, { dataTransfer });
+        fireEvent.drop(target, { dataTransfer });
+        fireEvent.drop(target, { dataTransfer });
+        expect(update).toHaveBeenCalledTimes(1);
+        expect(screen.getByTestId('sentinel-todo-reopening')).toBeTruthy();
+        expect(within(target).queryByTestId('sentinel-todo-row-i1')).toBeNull();
+        expect(screen.getByTestId('sentinel-todo-row-i1').closest('[data-testid="sentinel-todo-done-section"]')).toBeTruthy();
+        current = { ...current, status: 'todo', revision: 4 };
+        await act(async () => pending.resolve({ item: current, ledgerRevision: 4 }));
+        expect(within(target).getByTestId('sentinel-todo-row-i1')).toBeTruthy();
+        expect(within(target).getByTestId('sentinel-todo-row-other').dataset.priority).toBe('high');
+        expect(screen.queryByTestId('sentinel-todo-reopening')).toBeNull();
+    });
+    it.each(['cancelled', 'text', 'external', 'wrong-type', 'bad-marker'] as const)('rejects a %s drop without mutation', async kind => {
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: true });
+        get.mockResolvedValue(ledger([item({ status: 'done' })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const { row, grip, target } = await openDone();
+        const dataTransfer = transfer();
+        if (kind === 'text') fireEvent.dragStart(within(row).getByText('Fix login'), { dataTransfer });
+        else if (kind !== 'external') fireEvent.dragStart(grip, { dataTransfer });
+        if (kind === 'external') dataTransfer.setData('application/x-coc-sentinel-todo-reopen', 'i1');
+        if (kind === 'cancelled') fireEvent.dragEnd(grip);
+        if (kind === 'bad-marker') dataTransfer.setData('application/x-coc-sentinel-todo-reopen', 'someone-else');
+        const destination = kind === 'wrong-type' ? screen.getByTestId('sentinel-todo-reopen-manual') : target;
+        if (kind !== 'bad-marker') expect(fireEvent.dragOver(destination, { dataTransfer })).toBe(true);
+        fireEvent.drop(destination, { dataTransfer });
+        expect(update).not.toHaveBeenCalled();
+        expect(within(target).queryByTestId('sentinel-todo-row-i1')).toBeNull();
+        expect(screen.getByTestId('sentinel-todo-row-i1').closest('[data-testid="sentinel-todo-done-section"]')).toBeTruthy();
+        expect(screen.queryByTestId('sentinel-todo-reopening')).toBeNull();
+    });
+    it.each(['todo', 'in_progress', 'needs_attention', 'archived'] as const)('does not reopen or restore a %s item by dropping its context drag', async state => {
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: true });
+        get.mockResolvedValue(ledger([item({ status: state === 'archived' ? 'done' : state, archived: state === 'archived' })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        if (state === 'archived') fireEvent.click(await screen.findByRole('button', { name: 'Archived (1)' }));
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        const dataTransfer = transfer();
+        fireEvent.dragStart(within(row).getByRole('button', { name: 'Attach Fix login as context' }), { dataTransfer });
+        fireEvent.drop(screen.getByTestId('sentinel-todo-reopen-normal'), { dataTransfer });
+        expect(update).not.toHaveBeenCalled();
+    });
+    it.each(['failure', 'conflict'] as const)('shows %s feedback without optimistically reopening or retrying', async kind => {
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: false });
+        let current = item({ status: 'done', revision: 3 });
+        get.mockImplementation(async () => ledger([current], current.revision));
+        update.mockImplementationOnce(async () => {
+            if (kind === 'conflict') {
+                current = { ...current, revision: 8, notes: 'Concurrent edit' };
+                throw conflict(current);
+            }
+            throw new Error('Offline');
+        });
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const { grip, target } = await openDone();
+        const dataTransfer = transfer();
+        fireEvent.dragStart(grip, { dataTransfer });
+        fireEvent.drop(target, { dataTransfer });
+        expect((await screen.findByTestId('sentinel-todo-reopen-error')).textContent).toContain(kind === 'failure' ? 'Offline' : 'changed');
+        expect(within(target).queryByTestId('sentinel-todo-row-i1')).toBeNull();
+        expect(update).toHaveBeenCalledTimes(1);
+        if (kind === 'conflict') {
+            const nextTransfer = transfer();
+            fireEvent.dragStart(screen.getByRole('button', { name: 'Reopen Fix login as To do' }), { dataTransfer: nextTransfer });
+            fireEvent.drop(target, { dataTransfer: nextTransfer });
+            await waitFor(() => expect(update).toHaveBeenLastCalledWith('ws-1', 'queue_sentinel', 'i1', {
+                expectedRevision: 8, status: 'todo', statusReason: null,
+            }));
+        }
+    });
+    it.each(['archived', 'active', 'removed'] as const)('rejects an item that becomes %s before the drop', async state => {
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: false });
+        let items = [item({ status: 'done' })];
+        get.mockImplementation(async () => ledger(items, 2));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const { grip, target } = await openDone();
+        const dataTransfer = transfer();
+        fireEvent.dragStart(grip, { dataTransfer });
+        items = state === 'removed' ? [] : [item({ status: state === 'active' ? 'in_progress' : 'done', archived: state === 'archived' })];
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Refresh to-do list' })));
+        fireEvent.drop(target, { dataTransfer });
+        expect(update).not.toHaveBeenCalled();
+    });
+    it('keeps a keyboard alternative on the Done handle when context attachments are disabled', async () => {
+        const user = userEvent.setup();
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: false });
+        let current = item({ status: 'done', revision: 4 });
+        get.mockImplementation(async () => ledger([current], current.revision));
+        update.mockImplementation(async (_ws, _process, _id, patch) => {
+            current = { ...current, status: 'todo', revision: 5 };
+            return { item: current, ledgerRevision: 5 };
+        });
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const { grip } = await openDone();
+        grip.focus();
+        await user.keyboard('{Enter}');
+        await waitFor(() => expect(update).toHaveBeenCalledWith('ws-1', 'queue_sentinel', 'i1', {
+            expectedRevision: 4, status: 'todo', statusReason: null,
+        }));
+    });
+    it('uses the revision captured at drag start when the ledger changes during the gesture', async () => {
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: false });
+        let current = item({ status: 'done', revision: 3 });
+        get.mockImplementation(async () => ledger([current], current.revision));
+        update.mockRejectedValue(conflict({ ...current, revision: 9 }));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const { grip, target } = await openDone();
+        const dataTransfer = transfer();
+        fireEvent.dragStart(grip, { dataTransfer });
+        current = { ...current, revision: 9 };
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh to-do list' }));
+        await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+        fireEvent.drop(target, { dataTransfer });
+        await screen.findByTestId('sentinel-todo-reopen-error');
+        expect(update).toHaveBeenCalledWith('ws-1', 'queue_sentinel', 'i1', { expectedRevision: 3, status: 'todo', statusReason: null });
+    });
+    it.each(['workspace', 'process', 'server'] as const)('routes reopening to the remote ledger owner and rejects a drag after $0 replacement', async change => {
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: false });
+        registerCloneBaseUrls([{ workspaceId: 'ws-1', serverId: 'srv-2', baseUrl: 'https://owner.example' }]);
+        const owner = { ...OWNER, ownerRoutingRef: 'remote:srv-2:ws-1' };
+        get.mockResolvedValue(ledger([item({ status: 'done', revision: 6 })], 6));
+        update.mockRejectedValue(new Error('Remote offline'));
+        const view = render(<UnifiedTodoTab owner={owner} scopeWorkspaceId="another-viewer" />);
+        const { grip, target } = await openDone();
+        const dataTransfer = transfer();
+        fireEvent.dragStart(grip, { dataTransfer });
+        fireEvent.drop(target, { dataTransfer });
+        await screen.findByTestId('sentinel-todo-reopen-error');
+        expect(clientRefs).toContain(owner.ownerRoutingRef);
+        expect(update).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId, 'i1', { expectedRevision: 6, status: 'todo', statusReason: null });
+        const nextTransfer = transfer();
+        fireEvent.dragStart(screen.getByRole('button', { name: 'Reopen Fix login as To do' }), { dataTransfer: nextTransfer });
+        const nextOwner = change === 'workspace' ? { ...owner, ownerWorkspaceId: 'other-workspace', ownerRoutingRef: 'remote:srv-2:other-workspace' }
+            : change === 'process' ? { ...owner, processId: 'other-parent' } : { ...OWNER, ownerRoutingRef: null };
+        if (change === 'workspace') registerCloneBaseUrls([{ workspaceId: 'other-workspace', serverId: 'srv-2', baseUrl: 'https://owner.example' }]);
+        view.rerender(<UnifiedTodoTab owner={nextOwner} />);
+        const newTarget = await screen.findByTestId('sentinel-todo-reopen-normal');
+        fireEvent.drop(newTarget, { dataTransfer: nextTransfer });
+        expect(update).toHaveBeenCalledTimes(1);
+    });
+});
+
 describe('Sentinel chat registry and persistent tabs', () => {
     afterEach(() => {
         clearSentinelTodoChats();
