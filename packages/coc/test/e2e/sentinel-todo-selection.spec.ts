@@ -172,7 +172,11 @@ for (const remote of [false, true]) {
             expect(await page.evaluate(() => window.sentinelTodoSelectionFixture.dragSources)).toEqual([]);
             await expect(detail.getByTestId('sentinel-todo-notes-toggle-selected')).toHaveAttribute('aria-expanded', 'true');
             await expect(row.locator('[data-todo-select]')).toHaveAttribute('aria-pressed', 'true');
-            await expect(row).toHaveAttribute('draggable', 'true');
+            await expect(row).not.toHaveAttribute('draggable', 'true');
+            expect(await row.locator('[data-todo-select]').evaluate(element => !!element.closest('[draggable="true"]'))).toBe(false);
+            // Narrow panels retain the list hidden while showing details.
+            const rowGrip = row.getByRole('button', { name: 'Attach Selectable fixture title as context', includeHidden: true });
+            await expect(rowGrip).toHaveAttribute('draggable', 'true');
             await expect(detail).not.toHaveAttribute('draggable', 'true');
             await details.evaluate(element => { element.scrollTop = 100; });
             expect(await details.evaluate(element => element.scrollTop)).toBe(100);
@@ -191,12 +195,14 @@ for (const remote of [false, true]) {
             const attach = detail.getByRole('button', { name: 'Attach Selectable fixture title as context' });
             await attach.click();
             expect(await page.evaluate(() => window.sentinelTodoSelectionFixture.attachments)).toHaveLength(1);
-            await expect(attach).toHaveAttribute('draggable', 'true');
-            const transfer = await page.evaluateHandle(() => new DataTransfer());
-            await attach.dispatchEvent('dragstart', { dataTransfer: transfer });
-            expect(await page.evaluate(() => window.sentinelTodoSelectionFixture.dragSources)).toEqual(['BUTTON']);
-            expect(await transfer.evaluate(data => data.getData('text/plain'))).toContain('Selectable fixture title');
-            await transfer.dispose();
+            for (const source of [attach, rowGrip]) {
+                await expect(source).toHaveAttribute('draggable', 'true');
+                const transfer = await page.evaluateHandle(() => new DataTransfer());
+                await source.dispatchEvent('dragstart', { dataTransfer: transfer });
+                expect(await transfer.evaluate(data => data.getData('text/plain'))).toContain('Selectable fixture title');
+                await transfer.dispose();
+            }
+            expect(await page.evaluate(() => window.sentinelTodoSelectionFixture.dragSources)).toEqual(['BUTTON', 'BUTTON']);
             await detail.getByRole('link', { name: 'Fixture reference' }).click();
             await expect.poll(() => page.evaluate(() => location.hash)).toBe('#repos/parent/chats/reference');
             await detail.getByRole('button', { name: 'Done', exact: true }).click();
