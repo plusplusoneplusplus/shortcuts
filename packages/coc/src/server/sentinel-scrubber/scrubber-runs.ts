@@ -386,7 +386,8 @@ function buildChildTask(owner: SentinelTodoOwner, run: ScrubRunRecord, snapshotP
             workspaceId: owner.workspaceId,
             context: { sentinelScrub: context },
         },
-        config: {},
+        // Pin only reasoning effort; keep provider/model routing workspace-owned.
+        config: { reasoningEffort: 'medium' },
         displayName: `[Scrubber] ${run.snapshot.length} to-do${run.snapshot.length === 1 ? '' : 's'}`,
     };
 }

@@ -156,12 +156,16 @@ describe('SentinelJobService', () => {
         });
     });
 
-    it.each(['low', 'medium', 'high', 'xhigh'])('forwards %s as explicit reasoning effort, not a model-routing tier', async effort => {
-        const job = jobStore.create(owner, { ...input, effort });
-        await service.start(owner, job.id);
-        const call = enqueue.mock.calls[0][0] as CreateTaskInput;
-        expect(call.config).toMatchObject({ reasoningEffort: effort, model: input.model });
-        expect(call.config).not.toHaveProperty('effortTier');
+    it.each(['manual', 'schedule'])('preserves custom job effort on %s launches', async trigger => {
+        for (const effort of [undefined, 'low', 'medium', 'high', 'xhigh']) {
+            const job = jobStore.create(owner, { ...input, effort });
+            if (trigger === 'schedule') await service.tick(owner, job.id);
+            else await service.start(owner, job.id);
+            const call = enqueue.mock.calls.at(-1)![0] as CreateTaskInput;
+            expect(call.config?.reasoningEffort).toBe(effort);
+            expect(call.config?.model).toBe(input.model);
+            expect(call.config).not.toHaveProperty('effortTier');
+        }
     });
     it('enqueues a stored tier for owning-server resolution, never a stale model or effort', async () => {
         const job = jobStore.create(owner, { ...input, effort: 'xhigh', effortTier: 'high' });
