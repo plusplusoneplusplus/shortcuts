@@ -175,8 +175,8 @@ export function createQueueRuntimeConfig(source: QueueConfigSource): QueueRuntim
         getDefaultTimeoutMs: () => readFromSnapshot(source.config).timeoutMs,
         getDefaultIdleTimeoutMs: () => readFromSnapshot(source.config).idleTimeoutMs,
         getFollowUpSuggestions: () => readFromSnapshot(source.config).followUpSuggestions,
-        getSentinelNextStepsEnabled: () => source.config.features.sentinelNextSteps === true,
-        getSentinelAdditionalInstructionsEnabled: () => source.config.features.sentinelAdditionalInstructions === true,
+        getSentinelNextStepsEnabled: () => (source.config.features?.sentinelNextSteps ?? DEFAULT_CONFIG.features.sentinelNextSteps) === true,
+        getSentinelAdditionalInstructionsEnabled: () => (source.config.features?.sentinelAdditionalInstructions ?? DEFAULT_CONFIG.features.sentinelAdditionalInstructions) === true,
         getAskUser: () => readFromSnapshot(source.config).askUser,
         getSkillFolders: () => readFromSnapshot(source.config).skillFolders,
         getRalphFinalCheckPolicy: () => readFromSnapshot(source.config).ralphFinalCheck,
@@ -207,8 +207,8 @@ export function createFixedQueueRuntimeConfig(overrides: {
     sensitiveInput?: QueueSensitiveInputConfig;
 } = {}): QueueRuntimeConfig {
     const file = overrides.config;
-    const sentinelNextStepsEnabled = file?.features?.sentinelNextSteps === true;
-    const sentinelAdditionalInstructionsEnabled = file?.features?.sentinelAdditionalInstructions === true;
+    const sentinelNextStepsEnabled = (file?.features?.sentinelNextSteps ?? DEFAULT_CONFIG.features.sentinelNextSteps) === true;
+    const sentinelAdditionalInstructionsEnabled = (file?.features?.sentinelAdditionalInstructions ?? DEFAULT_CONFIG.features.sentinelAdditionalInstructions) === true;
 
     const timeoutMs = overrides.defaultTimeoutMs
         ?? resolveDefaultTimeoutMs(file?.timeout);

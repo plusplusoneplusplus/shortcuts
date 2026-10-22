@@ -17,6 +17,7 @@ import {
     useWorktreeLaunchControls,
     useWorktreeCapability,
 } from './WorktreeLaunchControls';
+import { buildRemoteCloneKey } from '../repos/cloneIdentity';
 import { isGitWorktreeExecutionEnabled } from '../utils/config';
 
 export interface RalphLaunchDialogProps {
@@ -44,7 +45,7 @@ export interface RalphLaunchDialogProps {
     confirmLabel?: string;
     onClose: () => void;
     /** Called with the new processId after successful launch */
-    onLaunched: (processId: string, workspaceId?: string) => void | Promise<void>;
+    onLaunched: (processId: string, workspaceId?: string, selectionId?: string) => void | Promise<void>;
 }
 
 export function RalphLaunchDialog({
@@ -146,7 +147,9 @@ export function RalphLaunchDialog({
             if (!processId) {
                 throw new Error('Ralph launch did not return a process id');
             }
-            await onLaunched(processId, selectedTarget.workspaceId);
+            await onLaunched(processId, selectedTarget.workspaceId, selectedTarget.local
+                ? selectedTarget.workspaceId
+                : buildRemoteCloneKey(selectedTarget.serverId, selectedTarget.workspaceId));
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to launch Ralph');
         } finally {

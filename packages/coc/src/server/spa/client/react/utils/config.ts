@@ -45,6 +45,7 @@ interface DashboardConfig {
     browserControlEnabled?: boolean;
     browserFrameControlEnabled?: boolean;
     browserRichPasteEnabled?: boolean;
+    browserBackgroundControlEnabled?: boolean;
     mcpOauthEnabled?: boolean;
     focusedDiffEnabled?: boolean;
     sessionContextAttachmentsEnabled?: boolean;
@@ -515,6 +516,11 @@ export function isKustoEnabled(): boolean {
 
 export function isBrowserControlEnabled(): boolean {
     return isFeatureEnabled('browserControlEnabled');
+}
+
+/** Keep browser control for workspaces with active turns after the window switches away. */
+export function isBrowserBackgroundControlEnabled(): boolean {
+    return isFeatureEnabled('browserBackgroundControlEnabled');
 }
 
 export function isMcpOauthEnabled(): boolean {

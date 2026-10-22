@@ -99,7 +99,7 @@ import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { resolveLoadedTaskMode } from './chatMode';
 import { useSentinelAutoCompact } from './AutoCompactPanel';
 import { normalizeChatMode } from '../../repos/modeConfig';
-import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isCanvasEnabled, isCronEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, getDefaultChatStyle, isFeatureEnabled } from '../../utils/config';
+import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isCanvasEnabled, isCronEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, getDefaultChatStyle, getFeatureValue } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
@@ -2902,7 +2902,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const isSentinelChat = resolveLoadedTaskMode(task) === 'sentinel' || metadataProcess?.metadata?.mode === 'sentinel';
     // Same exact-owner guard as the tool inventory: edits never resolve a fallback server.
     const additionalInstructionsTarget = useMemo(() => {
-        if (!isSentinelChat || !toolInventoryTarget || !isFeatureEnabled('sentinelAdditionalInstructionsEnabled')) return undefined;
+        if (!isSentinelChat || !toolInventoryTarget || getFeatureValue('sentinelAdditionalInstructionsEnabled') === false) return undefined;
         const { client: ownerClient, workspaceId: ownerWorkspaceId, processId: ownerProcessId } = toolInventoryTarget;
         return { client: ownerClient, workspaceId: ownerWorkspaceId, processId: ownerProcessId };
     }, [isSentinelChat, toolInventoryTarget?.client, toolInventoryTarget?.workspaceId, toolInventoryTarget?.processId]);

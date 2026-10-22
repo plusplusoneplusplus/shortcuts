@@ -1,5 +1,6 @@
 import type {
   SentinelScheduledJob,
+  SentinelScheduledJobGateTest,
   SentinelScheduledJobInput,
   SentinelScheduledJobRun,
   SentinelTodoTagLibrary,
@@ -183,6 +184,17 @@ export class SentinelScheduledJobsClient {
 
   cancel(workspaceId: string, processId: string, jobId: string, runId: string): Promise<SentinelScheduledJobRun> {
     return this.transport.request(this.path(workspaceId, processId, jobId) + `/runs/${encodePathSegment(runId)}/cancel`, { method: 'POST' });
+  }
+
+  /** Runs the gate once with its saved state; starts no run and saves nothing. */
+  testGate(workspaceId: string, processId: string, jobId: string,
+    options?: { signal?: AbortSignal }): Promise<SentinelScheduledJobGateTest> {
+    return this.transport.request(this.path(workspaceId, processId, jobId) + '/gate/test', { ...options, method: 'POST' });
+  }
+
+  /** Clears a paused gate and its failure count. */
+  resumeGate(workspaceId: string, processId: string, jobId: string): Promise<SentinelScheduledJob> {
+    return this.transport.request(this.path(workspaceId, processId, jobId) + '/gate/resume', { method: 'POST' });
   }
 }
 

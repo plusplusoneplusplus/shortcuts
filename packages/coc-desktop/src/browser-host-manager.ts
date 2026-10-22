@@ -34,6 +34,8 @@ interface Entry {
     control?: BrowserControlQueue;
     popout?: boolean;
     activity?: BrowserControlActivityEvent & { routingOwnerId: number };
+    /** CDP focus emulation is on so a background tab takes input without window focus. */
+    focusEmulated?: boolean;
     hostGeneration?: object;
 }
 
@@ -59,6 +61,8 @@ export interface BrowserManagerOptions {
 
 export class BrowserHostManager {
     private readonly controlScopes = new Map<number, { workspaceId: string; sessionKey: string }>();
+    /** Background scopes a window keeps serving after its selection moves on, keyed by owner `sessionKey`. */
+    private readonly retainedScopes = new Map<number, Map<string, string>>();
     private readonly finishedTurns = new Map<number, Set<string>>();
     private readonly visibleControl = new Map<number, Map<string, boolean>>();
     private readonly owners = new Map<number, Map<string, Entry>>();
@@ -121,9 +125,20 @@ export class BrowserHostManager {
         entry.activity = undefined;
         this.options.send(entry.ownerId, BROWSER_CONTROL_ACTIVITY_CHANNEL, { ...activity, active: false, finished });
         this.nativeActivity(entry);
+        if (activity.background) void this.backgroundControl(entry, false).catch(error => console.error('[coc-desktop] Browser background control cleanup failed:', error));
     }
 
-    private activateControl(entry: Entry, routingOwnerId: number, request: BrowserCommandRequest): void {
+    /** Hidden layout and focus emulation for a tab a background turn drives; foreground commands undo both. */
+    private async backgroundControl(entry: Entry, enabled: boolean): Promise<void> {
+        const view = entry.view;
+        if (!view || entry.closed) return;
+        await view.setBackgroundControl?.(enabled);
+        if (!view.cdp || (entry.focusEmulated ?? false) === enabled) return;
+        entry.focusEmulated = enabled;
+        await view.cdp('Emulation.setFocusEmulationEnabled', { enabled });
+    }
+
+    private activateControl(entry: Entry, routingOwnerId: number, request: BrowserCommandRequest, background: boolean): void {
         const turnId = request.turnId ?? request.processId;
         if (this.finishedTurns.get(routingOwnerId)?.has(turnId)) throw new Error('Browser conversation turn has finished');
         for (const entries of this.owners.values()) for (const other of entries.values()) {
@@ -131,7 +146,7 @@ export class BrowserHostManager {
         }
         if (entry.activity && entry.activity.turnId !== turnId) this.clearControlEntry(entry, entry.activity.processId === request.processId);
         entry.activity = { workspaceId: request.workspaceId, processId: request.processId, turnId,
-            routingRef: entry.sessionKey, viewId: entry.viewId, active: true, routingOwnerId };
+            routingRef: entry.sessionKey, viewId: entry.viewId, active: true, routingOwnerId, ...(background ? { background: true } : {}) };
         this.options.send(entry.ownerId, BROWSER_CONTROL_ACTIVITY_CHANNEL, entry.activity);
         this.nativeActivity(entry);
     }
@@ -142,38 +157,90 @@ export class BrowserHostManager {
         this.options.send(activity.routingOwnerId, BROWSER_CONTROL_STOP_CHANNEL, activity);
     }
 
+    /** Foreground scope; a full clear (`null`, `null`) also drops every retained background scope. */
     bindControlScope(ownerId: number, workspaceId: unknown, sessionKey: unknown): void {
         if (workspaceId === null && sessionKey === null) {
             this.finishControl(ownerId, undefined, false);
             this.controlScopes.delete(ownerId);
+            this.retainedScopes.delete(ownerId);
             return;
         }
         if (typeof workspaceId !== 'string' || !isValidBrowserSessionKey(workspaceId) || !isValidBrowserSessionKey(sessionKey)) throw new TypeError('Invalid browser workspace scope');
         this.controlScopes.set(ownerId, { workspaceId, sessionKey });
     }
 
+    /** Keep (`workspaceId`) or drop (`null`) a background scope that stays controllable while another workspace is selected. */
+    retainControlScope(ownerId: number, sessionKey: unknown, workspaceId: unknown): void {
+        if (!isValidBrowserSessionKey(sessionKey)) throw new TypeError('Invalid browser workspace scope');
+        const scopes = this.retainedScopes.get(ownerId) ?? new Map<string, string>();
+        if (workspaceId === null) {
+            scopes.delete(sessionKey);
+            if (scopes.size === 0) this.retainedScopes.delete(ownerId);
+            return;
+        }
+        if (typeof workspaceId !== 'string' || !isValidBrowserSessionKey(workspaceId)) throw new TypeError('Invalid browser workspace scope');
+        if (!scopes.has(sessionKey) && scopes.size >= 64) throw new Error('Too many background browser workspaces');
+        scopes.set(sessionKey, workspaceId);
+        this.retainedScopes.set(ownerId, scopes);
+    }
+
+    foregroundSessionKey(ownerId: number): string | undefined {
+        return this.controlScopes.get(ownerId)?.sessionKey;
+    }
+
+    retainedSessionKeys(ownerId: number): Set<string> {
+        return new Set(this.retainedScopes.get(ownerId)?.keys());
+    }
+
+    /** Finish this window's control activity except for retained background scopes. */
+    finishUnretainedControl(ownerId: number): void {
+        const retained = this.retainedSessionKeys(ownerId);
+        if (retained.size === 0) { this.finishControl(ownerId, undefined, false); return; }
+        const refs = new Set(this.visibleControl.get(ownerId)?.keys());
+        for (const entries of this.owners.values()) for (const entry of entries.values()) {
+            if (entry.activity?.routingOwnerId === ownerId) refs.add(entry.activity.routingRef);
+        }
+        for (const ref of refs) if (!retained.has(ref)) this.finishControl(ownerId, undefined, false, ref);
+    }
+
+    /** Owner session a request runs in; `routingRef` may select a retained background scope. */
+    controlSessionKey(ownerId: number, workspaceId: string, routingRef?: string): string {
+        return this.controlScope(ownerId, workspaceId, routingRef).sessionKey;
+    }
+
+    private controlScope(ownerId: number, workspaceId: string, routingRef?: string): { sessionKey: string; background: boolean } {
+        const scope = this.controlScopes.get(ownerId);
+        if (scope && scope.workspaceId === workspaceId && (routingRef === undefined || scope.sessionKey === routingRef)) return { sessionKey: scope.sessionKey, background: false };
+        if (routingRef !== undefined && this.retainedScopes.get(ownerId)?.get(routingRef) === workspaceId) return { sessionKey: routingRef, background: true };
+        throw new Error('Browser workspace scope changed');
+    }
+
     async releaseFrames(ownerId: number, sessionKey: unknown): Promise<void> {
         const scope = this.controlScopes.get(ownerId);
-        if (!scope || scope.sessionKey !== sessionKey) throw new Error('Browser workspace scope changed');
-        const results = await Promise.allSettled(this.scopedEntries(ownerId, scope.workspaceId).map(entry =>
+        const workspaceId = scope && scope.sessionKey === sessionKey ? scope.workspaceId
+            : typeof sessionKey === 'string' ? this.retainedScopes.get(ownerId)?.get(sessionKey) : undefined;
+        if (!workspaceId) throw new Error('Browser workspace scope changed');
+        const results = await Promise.allSettled(this.scopedEntries(ownerId, workspaceId, sessionKey as string).map(entry =>
             entry.control!.run(page => page.configureFrames(false))));
         throwRejected(results);
     }
 
     private controlId(entry: Entry): string { return `t${entry.ownerId}:${entry.viewId}`; }
 
-    private scopedEntries(ownerId: number, workspaceId: string): Entry[] {
-        const scope = this.controlScopes.get(ownerId);
-        if (!scope || scope.workspaceId !== workspaceId) throw new Error('Browser workspace scope changed');
+    private scopedEntries(ownerId: number, workspaceId: string, routingRef?: string): Entry[] {
+        const scope = this.controlScope(ownerId, workspaceId, routingRef);
         return [...this.owners.values()].flatMap(entries => [...entries.values()]).filter(entry =>
             !entry.closed && entry.sourceKind === 'url' && entry.sessionKey === scope.sessionKey);
     }
 
-    async executeControl(ownerId: number, input: BrowserCommandRequest, signal?: AbortSignal): Promise<BrowserCommandResult> {
+    async executeControl(ownerId: number, input: BrowserCommandRequest, signal?: AbortSignal, routingRef?: string): Promise<BrowserCommandResult> {
         const request = validateBrowserCommandRequest(input);
         signal?.throwIfAborted();
         if (this.finishedTurns.get(ownerId)?.has(request.turnId ?? request.processId)) throw new Error('Browser conversation turn has finished');
-        let entries = this.scopedEntries(ownerId, request.workspaceId);
+        const scope = this.controlScope(ownerId, request.workspaceId, routingRef);
+        // Background reveals publish the tab without raising the window or changing its selection.
+        const background = scope.background ? { background: true } : {};
+        let entries = this.scopedEntries(ownerId, request.workspaceId, routingRef);
         const command = request.command;
         if (command.action === 'tabs') {
             const tabs: BrowserControlTab[] = [];
@@ -194,15 +261,14 @@ export class BrowserHostManager {
         if (target && !entry && command.action !== 'open') throw new Error('Browser tab not found in this workspace');
         if (command.action === 'open' && (command.newTab || !entry)) {
             const viewId = `browser-${randomUUID()}`;
-            const scope = this.controlScopes.get(ownerId)!;
             const opened = this.open(ownerId, viewId, command.url!, scope.sessionKey);
             // Publish through the existing unified panel before Electron waits for guest adoption.
             this.options.send(ownerId, BROWSER_CONTROL_REVEAL_CHANNEL, {
-                workspaceId: request.workspaceId, processId: request.processId, turnId: request.turnId, viewId, url: command.url, routingRef: scope.sessionKey, routingOwnerId: ownerId,
+                workspaceId: request.workspaceId, processId: request.processId, turnId: request.turnId, viewId, url: command.url, routingRef: scope.sessionKey, routingOwnerId: ownerId, ...background,
             });
             const result = await opened;
             if (!result.ok) throw new Error(result.message ?? result.reason);
-            entries = this.scopedEntries(ownerId, request.workspaceId);
+            entries = this.scopedEntries(ownerId, request.workspaceId, routingRef);
             entry = entries.find(entry => entry.ownerId === ownerId && entry.viewId === viewId);
             created = true;
         }
@@ -210,18 +276,21 @@ export class BrowserHostManager {
         const selected = entry;
         if (!selected.popout) this.options.send(selected.ownerId, BROWSER_CONTROL_REVEAL_CHANNEL, {
             workspaceId: request.workspaceId, processId: request.processId, turnId: request.turnId, viewId: selected.viewId, routingOwnerId: ownerId,
-            url: command.action === 'open' ? command.url : selected.view?.snapshot().url, routingRef: selected.sessionKey,
+            url: command.action === 'open' ? command.url : selected.view?.snapshot().url, routingRef: selected.sessionKey, ...background,
         });
         return this.withControlPage(selected.ownerId, selected.viewId, selected.sessionKey, async (page, activeSignal, view) => {
-            this.scopedEntries(ownerId, request.workspaceId);
+            this.scopedEntries(ownerId, request.workspaceId, routingRef);
             activeSignal.throwIfAborted();
-            this.activateControl(selected, ownerId, request);
+            this.activateControl(selected, ownerId, request, scope.background);
+            await this.backgroundControl(selected, scope.background);
+            activeSignal.throwIfAborted();
             await page.configureFrames(request.framesEnabled === true,
                 view.onCdpEvent ? listener => view.onCdpEvent!(listener) : undefined,
                 view.waitForCdpEvents ? () => view.waitForCdpEvents!() : undefined);
-            if (selected.popout || command.action === 'click' || command.action === 'type'
+            // Background tabs never take focus: input relies on CDP focus emulation instead.
+            if (!scope.background && (selected.popout || command.action === 'click' || command.action === 'type'
                 || command.action === 'select_option' || command.action === 'press'
-                || command.action === 'scroll') {
+                || command.action === 'scroll')) {
                 await view.focus();
                 activeSignal.throwIfAborted();
             }
@@ -229,6 +298,8 @@ export class BrowserHostManager {
                 case 'paste_html': {
                     const clipboard = this.options.richClipboard;
                     if (!clipboard) throw new Error('unsupported-runtime: native rich clipboard unavailable');
+                    // Native paste needs real window focus, which a background tab must not take.
+                    if (scope.background) throw new Error('foreground-required: rich paste needs the workspace on screen');
                     await withRichClipboard(clipboard, command.html!, command.text!, command.replaceClipboard === true, activeSignal, async write => {
                         activeSignal.throwIfAborted();
                         await view.focus();
@@ -689,6 +760,7 @@ export class BrowserHostManager {
         this.finishControl(ownerId);
         this.visibleControl.delete(ownerId);
         this.controlScopes.delete(ownerId);
+        this.retainedScopes.delete(ownerId);
         const entries = this.owners.get(ownerId);
         this.owners.delete(ownerId);
         const results = await Promise.allSettled([...entries?.values() ?? []].map(entry => this.closeEntry(entry)));

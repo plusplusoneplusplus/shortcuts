@@ -28,11 +28,13 @@ import { CONFIG_FILE_NAME, resolveConfig } from '../../config';
 import type { AskUserAnswerInput, AskUserAnswerValue, AskUserApprovalDecision, AskUserApprovalRequest, AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import { createCanvasTools } from '../llm-tools/canvas-tools';
+import { createCanvasRunScriptFactory } from '../canvas/canvas-script-bridge';
+import type { OwnerScriptRunner } from './owner-script-runner';
 import { createKustoTools } from '../llm-tools/kusto-tools';
 import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
 import { createSystemOneTool, type SystemOneToolDeps } from '../llm-tools/system-one-tool';
 import { createSentinelTodosTool, createSentinelTodoTracking, MANUAL_TRACKING_GUIDANCE, SENTINEL_PR_OUTCOME_REVIEW_GUIDANCE, type SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
-import { SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
+import { SENTINEL_COMPLETION_GUIDANCE, SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
 import { createSendToConversationTool, type EnqueueChatFn, type SendMessageFn, type SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { createListWorkspacesTool } from '../llm-tools/list-workspaces-tool';
 import { createWorkspaceDirectory, type WorkspaceDirectory } from '../servers/workspace-directory';
@@ -659,7 +661,7 @@ export function buildCanvasToolsAddon(
     store: ProcessStore | undefined,
     workspaceId: string | undefined,
     processId: string | undefined,
-    opts?: { enabled?: boolean; hostApisEnabled?: boolean },
+    opts?: { enabled?: boolean; hostApisEnabled?: boolean; ownerScriptRunner?: OwnerScriptRunner },
 ): { tools: Tool<any>[]; suffix: string } {
     if (!dataDir || !workspaceId) {
         return { tools: [], suffix: '' };
@@ -683,6 +685,13 @@ export function buildCanvasToolsAddon(
         processId,
         processStore: store,
         getCanvasHostApisEnabled,
+        runScriptFactory: createCanvasRunScriptFactory({
+            getFeatures: () => ({
+                ...resolveConfig(path.join(dataDir, CONFIG_FILE_NAME)).features,
+                ...(opts?.hostApisEnabled !== undefined ? { canvasHostApis: opts.hostApisEnabled } : {}),
+            }),
+            getOwnerScriptRunner: () => opts?.ownerScriptRunner,
+        }),
     });
 
     // No prose suffix — the canvas tool descriptions carry their own guidance.
@@ -827,7 +836,7 @@ export const SENTINEL_TODO_LEDGER_GUIDANCE = [
         'and `in_progress` while authorized work continues. After successful grilling, leave/return the feature item ' +
         'to `todo` with reason "Spec ready; awaiting implementation approval". Do not launch implementation without ' +
         'user authorization. Remote jobs show no status here; inspect their owning chat and record the reviewed state explicitly.',
-    '- Mark an item `done` only after checking evidence against its completion condition, with a short reason; ' +
+    '- ' + SENTINEL_COMPLETION_GUIDANCE + ' Check evidence against the completion condition and give a short reason; ' +
         'use `needs_attention` with a reason for failed, cancelled, blocked, or incomplete final work, not a successful ' +
         'intermediate phase. ' + SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE + ' ' + SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE,
     '- Before a review update, re-read the item and honor manual user verdicts and latest instructions; use its current ' +

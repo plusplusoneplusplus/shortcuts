@@ -197,6 +197,8 @@ export interface CanvasExtensionManifest {
    * load order. Absent for a `uiHtml` extension, which loads none.
    */
   libraries?: string[];
+  /** Read-only tools async capabilities may call through `host.runScript`. */
+  tools?: string[];
 }
 
 export interface CanvasExtension {

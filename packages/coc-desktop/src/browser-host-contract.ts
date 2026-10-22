@@ -78,6 +78,8 @@ export interface BrowserHostedView {
     /** Web content only; file previews deliberately omit this capability. */
     setPageZoom?(percent: number): void | Promise<void>;
     setBounds(bounds: HtmlPageBounds | null): void | Promise<void>;
+    /** Background browser control: keep a hidden view rendering at its last size without showing or focusing it. */
+    setBackgroundControl?(enabled: boolean): void | Promise<void>;
     focus(): void | Promise<void>;
     close(): void | Promise<void>;
 }

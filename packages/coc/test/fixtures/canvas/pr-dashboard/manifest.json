@@ -1,0 +1,8 @@
+{
+  "description": "Open pull requests for one repository",
+  "capabilities": [
+    { "name": "refresh", "description": "Load open PRs and details for the first 5", "async": true },
+    { "name": "set_repo", "description": "Change provider/repository", "paramsDescription": "{ provider, repository }" }
+  ],
+  "tools": ["query_pull_request"]
+}

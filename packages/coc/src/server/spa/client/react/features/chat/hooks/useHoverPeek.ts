@@ -59,6 +59,9 @@ export function useHoverPeek(options: UseHoverPeekOptions): UseHoverPeekReturn {
     const portalKey = useRef<Event | null>(null);
     const focused = useRef<EventTarget | null>(null);
     const pointerInside = useRef(false);
+    // A resize shield or a native scrollbar drag can leave the panel while
+    // the user is still pressing inside it. Hover alone cannot own that drag.
+    const pressing = useRef(false);
 
     const clearOpenTimer = useCallback(() => {
         if (openTimerRef.current !== null) {
@@ -81,6 +84,7 @@ export function useHoverPeek(options: UseHoverPeekOptions): UseHoverPeekReturn {
         portalKey.current = null;
         focused.current = null;
         pointerInside.current = false;
+        pressing.current = false;
         setIsOpen(false);
     }, [clearOpenTimer, clearCloseTimer]);
 
@@ -114,7 +118,7 @@ export function useHoverPeek(options: UseHoverPeekOptions): UseHoverPeekReturn {
         clearCloseTimer();
         closeTimerRef.current = setTimeout(() => {
             closeTimerRef.current = null;
-            if (focused.current !== document.activeElement) close();
+            if (!pressing.current && focused.current !== document.activeElement) close();
         }, closeDelay);
     }, [isOpen, closeDelay, clearCloseTimer, close]);
 
@@ -141,13 +145,32 @@ export function useHoverPeek(options: UseHoverPeekOptions): UseHoverPeekReturn {
             if (panel && e.target instanceof Node && panel.contains(e.target)) return;
             close();
         };
+        const handleMouseUp = (e: MouseEvent) => {
+            if (!pressing.current) return;
+            pressing.current = false;
+            // The resize hook removes its full-window shield on release. Use
+            // panel bounds while it still owns the event target, so releasing
+            // over the panel does not depend on another mouse movement.
+            const panel = panelRef?.current;
+            if (e.target instanceof Element && (panel?.contains(e.target) || e.target.closest('[data-resize-overlay]'))) {
+                const rect = panel?.getBoundingClientRect();
+                pointerInside.current = !!rect && e.clientX >= rect.left && e.clientX < rect.right
+                    && e.clientY >= rect.top && e.clientY < rect.bottom;
+            }
+            if (pointerInside.current) clearCloseTimer();
+            else onPanelPointerLeave();
+        };
         document.addEventListener('keydown', handleKeyDown);
         document.addEventListener('mousedown', handlePointerDown);
+        document.addEventListener('mouseup', handleMouseUp, true);
+        window.addEventListener('blur', close);
         return () => {
             document.removeEventListener('keydown', handleKeyDown);
             document.removeEventListener('mousedown', handlePointerDown);
+            document.removeEventListener('mouseup', handleMouseUp, true);
+            window.removeEventListener('blur', close);
         };
-    }, [isOpen, close, panelRef]);
+    }, [isOpen, close, panelRef, onPanelPointerLeave, clearCloseTimer]);
 
     // Clear any pending timers on unmount.
     useEffect(() => () => {
@@ -164,7 +187,12 @@ export function useHoverPeek(options: UseHoverPeekOptions): UseHoverPeekReturn {
         close,
         panelProps: {
             onMouseDownCapture: event => {
-                if (!isWithinDetailPane(event.target)) insidePress.current = event.nativeEvent;
+                if (isWithinDetailPane(event.target)) return;
+                insidePress.current = event.nativeEvent;
+                if (isOpen && event.button === 0) {
+                    pressing.current = true;
+                    clearCloseTimer();
+                }
             },
             onMouseOverCapture: event => {
                 // The list also owns long-lived detail portals, not just overlays.

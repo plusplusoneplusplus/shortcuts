@@ -139,7 +139,6 @@ export interface AdminResolvedConfig {
     sentinelTodoExternalReferences?: boolean;
     sentinelPrOutcomeWake?: boolean;
     sentinelTodoDateTimeTriggers?: boolean;
-    sentinelTodoScriptTriggers?: boolean;
     sentinelFollowUpResults?: boolean;
     sentinelRemoteResults?: boolean;
     sentinelDesktopMirror?: boolean;
@@ -247,7 +246,6 @@ export interface AdminConfigUpdate {
   'features.sentinelTodoExternalReferences'?: boolean;
   'features.sentinelPrOutcomeWake'?: boolean;
   'features.sentinelTodoDateTimeTriggers'?: boolean;
-  'features.sentinelTodoScriptTriggers'?: boolean;
   'features.sentinelFollowUpResults'?: boolean;
   'features.sentinelRemoteResults'?: boolean;
   'features.sentinelDesktopMirror'?: boolean;
@@ -289,6 +287,7 @@ export interface RuntimeDashboardConfig {
     browserControlEnabled?: boolean;
     browserFrameControlEnabled?: boolean;
     browserRichPasteEnabled?: boolean;
+    browserBackgroundControlEnabled?: boolean;
     mcpOauthEnabled: boolean;
     focusedDiffEnabled: boolean;
     containerDefaultAgentEnabled: boolean;
@@ -327,7 +326,6 @@ export interface RuntimeDashboardConfig {
     queryPullRequestToolEnabled: boolean;
     sentinelPrOutcomeWakeEnabled: boolean;
     sentinelTodoDateTimeTriggersEnabled: boolean;
-    sentinelTodoScriptTriggersEnabled: boolean;
     sentinelFollowUpResultsEnabled: boolean;
     sentinelRemoteResultsEnabled: boolean;
     sentinelDesktopMirrorEnabled: boolean;

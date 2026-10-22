@@ -1653,6 +1653,7 @@ describe('AdminPanel', () => {
                 'browserControl.enabled': true,
                 'browserControl.framesEnabled': false,
                 'browserControl.richPasteEnabled': false,
+                'browserControl.backgroundEnabled': false,
                 'features.htmlPageTab': false,
                 'features.sensitiveInput': false,
             });

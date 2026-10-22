@@ -7,9 +7,11 @@ export type BrowserControlServerEvent =
   | { type: 'browser-command-cancel'; id: string }
   | { type: 'browser-turn-finished'; workspaceId: string; processId: string; turnId: string };
 export type BrowserControlClientEvent =
-  | { type: 'browser-capability'; workspaceId: string; focused: boolean }
-  | { type: 'browser-capability-clear' }
-  | { type: 'browser-command-result'; reply: BrowserCommandReply };
+  | { type: 'browser-capability'; workspaceId: string; focused: boolean; background?: string[] }
+  | { type: 'browser-capability-clear'; background?: string[] }
+  | { type: 'browser-command-result'; reply: BrowserCommandReply }
+  /** A background action is waiting on the Switch back notice; the owning server pauses its 60s limit. */
+  | { type: 'browser-command-waiting'; id: string; waiting: boolean };
 
 export interface ProcessEvent {
   type: string;

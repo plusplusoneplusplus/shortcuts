@@ -7,6 +7,7 @@
  * delegated to each repo's QueueExecutor.
  */
 
+import { OwnerScriptUnavailableError } from '../executors/owner-script-runner';
 import { randomUUID } from 'crypto';
 import { pendingMessageTask } from '../processes/queued-pending-message';
 import { readActiveProviderSession } from '../processes/active-provider-session';
@@ -475,19 +476,36 @@ export class MultiRepoQueueRouter extends EventEmitter {
         return action(this.getOrCreateBridge(rootPath));
     }
 
-    readonly runScriptCondition: import('../triggers/script-condition-evaluator').ScriptConditionRunner =
-        async (trigger, state, signal) => {
-            signal?.throwIfAborted();
-            const owner = await this.store.getProcess(trigger.processId, trigger.workspaceId);
-            if (owner?.metadata?.workspaceId !== trigger.workspaceId) {
-                throw new Error('Script condition owner workspace is unavailable');
+    /** Run a job gate on the owning Sentinel's repo bridge so its tools stay repo-scoped. */
+    readonly runJobGate: import('../sentinel-jobs/job-gate-owner-runner').JobGateOwnerRunner =
+        async request => {
+            request.signal?.throwIfAborted();
+            const owner = await this.store.getProcess(request.processId, request.workspaceId);
+            if (owner?.metadata?.workspaceId !== request.workspaceId) {
+                throw new Error('Gate script owner workspace is unavailable');
             }
-            const rootPath = await this.resolveRootPathForProcess(trigger.processId);
-            signal?.throwIfAborted();
-            if (!rootPath) throw new Error('Script condition owner workspace path is unavailable');
+            const rootPath = await this.resolveRootPathForProcess(request.processId);
+            request.signal?.throwIfAborted();
+            if (!rootPath) throw new Error('Gate script owner workspace path is unavailable');
             const bridge = this.getOrCreateBridge(rootPath);
-            if (!bridge.runScriptCondition) throw new Error('Script condition owner runtime is unavailable');
-            return bridge.runScriptCondition(trigger, state, signal);
+            if (!bridge.runJobGate) throw new Error('Gate script owner runtime is unavailable');
+            return bridge.runJobGate(request);
+        };
+
+    /** Run an owner-bound script (canvas `host.runScript`) on the owner chat's repo bridge. */
+    readonly runOwnerScript: import('../executors/owner-script-runner').OwnerScriptRunner =
+        async request => {
+            request.signal?.throwIfAborted();
+            const owner = await this.store.getProcess(request.processId, request.workspaceId);
+            if (owner?.metadata?.workspaceId !== request.workspaceId) {
+                throw new OwnerScriptUnavailableError('Script owner chat is not in this workspace');
+            }
+            const rootPath = await this.resolveRootPathForProcess(request.processId);
+            request.signal?.throwIfAborted();
+            if (!rootPath) throw new OwnerScriptUnavailableError('Script owner workspace path is unavailable');
+            const bridge = this.getOrCreateBridge(rootPath);
+            if (!bridge.runOwnerScript) throw new OwnerScriptUnavailableError('Script owner runtime is unavailable');
+            return bridge.runOwnerScript(request);
         };
 
     /** Recover buffered results on the original parent's queue, independent of topic selection. */

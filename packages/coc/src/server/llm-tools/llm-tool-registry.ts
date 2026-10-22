@@ -53,6 +53,8 @@ export interface LlmToolMeta {
      * tools outside the registry are never scriptable.
      */
     scriptable?: boolean;
+    /** The tool only reads data. Canvas `host.runScript` may call read-only tools only. */
+    readOnly?: boolean;
 }
 
 /**
@@ -164,6 +166,7 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         label: 'Query Pull Request',
         description: 'Reads GitHub or Azure DevOps pull requests for a repository the AI names: list with status/author/CI filters, or get full details by ID. Read-only.',
         enabledByDefault: true,
+        readOnly: true,
     },
     {
         name: 'sentinel_jobs',

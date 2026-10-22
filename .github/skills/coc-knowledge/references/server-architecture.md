@@ -235,75 +235,8 @@ UTC `firesAt`, IANA `timeZone` and matching `localTime` through coc-client's
 `dateTimeCandidates`; gaps reject and overlaps require an explicit instant.
 Only the absolute instant and display zone persist in the existing JSON event.
 
-Script authoring requires an injected live conjunction of script-trigger and
-tool-scripting flags. Intervals have a five-minute floor and 15-minute default;
-ten active/paused script rules are allowed per exact owner. Source/interval edits
-bump script revision and clear the baseline/errors; guidance-only edits preserve
-evaluation state. Script edits and lifecycle changes revoke saved notices and
-disarm execution. Resume resets failures/errors while retaining the baseline.
-Removal retains dedupe receipts without retrying delivery. Confirmed script Run now
-uses `TriggerManager.runScriptNow` with revision admission and the repeating evaluator;
-pending receipts and overlapping runs reject. Paused rules evaluate once without
-resuming; success resets errors, and failure retains the pause without another notice.
-Create-and-run records a silent first baseline and creation replays never rerun it.
-Owner-qualified capabilities return `dateTime` and `scriptCondition`, independently
-selecting the Sentinel tool's event schemas. Typed coc-client contracts carry script
-authoring, evaluation state and repeating delivery receipts.
-`createTriggerInfrastructure` composes the script evaluator and repeating firer
-under one gate requiring an injected owner runner, both live flags and an undisposed
-infrastructure instance; missing runner injection denies authoring/execution.
-Admission checks exact Sentinel ownership, eligible item
-and rule revision/source/state before and after runtime execution. Revocation aborts
-without advancing baseline or failures. Server configuration refreshes script timers
-on changes to the combined flags.
-
-`server/index.ts` supplies the production runner and holds restored script rules
-behind `scriptConditionRuntimeReady` until routes/runtime services, the WebSocket
-lifecycle handler and HTTP listening are ready, then opens the gate and refreshes
-the manager. Calls follow `MultiRepoQueueRouter.runScriptCondition` → owning
-`CLITaskExecutor` bridge → `ExecutorRegistry` → `ChatBaseExecutor.runScriptCondition`.
-The executor validates the exact Sentinel owner and resolves workspace/working
-directory; its shared helper dependencies supply the owner-bound runtime through
-`runScriptConditionWithOwnerTools`. See [tool assembly](llm-tools.md#chat-tool-assembly).
-
-`triggers/script-condition-result.ts` supplies canonical result encoding and SHA-256
-hashing for script conditions. Object keys sort lexically at every level, array order
-is significant and encoded UTF-8 JSON is capped at 16 KiB. Non-JSON values reject
-without invoking serialization hooks. Validation must precede any runner conversion
-that could silently drop fields or normalize non-JSON values.
-
-`ScriptConditionEvent` stores source/revision, interval, canonical result/hash and
-failure/pause state. `script-condition-evaluator.ts` uses an injected runner with a
-freshly parsed previous result (initially null) and the manager's abort signal.
-Revocation propagates without changing failure or baseline state, even if the
-runner returns a late success. The first success establishes a
-baseline; subsequent hash changes request repeating fires without terminal state.
-The evaluator leaves input rules untouched. Execution/validation failures preserve
-baseline state, record a timestamped error (500 characters maximum) and pause the
-event at five consecutive failures. Success clears errors and resets the failure
-count, including unchanged results. `getScriptConditionPollDelay` doubles cadence
-per failure, capped at one hour without shortening longer configured intervals.
-`script-condition-runner.ts` passes state and strict JSON validation to `runToolScript`
-with a trigger-only 60-second abort deadline. The engine terminates workers and aborts
-in-flight tool calls on cancellation; the wrapper preserves the cancellation reason
-and clears its deadline timer on every outcome. The caller owns and disposes the
-owner-resolved unattended runtime.
-
-`TriggerManager` owns one abort controller per active script evaluation. Disarm,
-live script refresh and shutdown revoke execution; callers disarm on edits,
-pause/removal and owner revocation. Replacement timer arms wait until the cancelled
-run releases its overlap guard and reload the persisted rule. Cancelled outcomes
-cannot persist failures, baselines or wakes. The runner's internal deadline remains
-a script failure because it does not abort the manager's admission signal.
-Infrastructure disposal closes the shared execution/delivery gate before cancelling
-the manager, preventing delayed queue admission after shutdown.
-
-`createWebSocketInfrastructure` synchronously forwards every ProcessStore lifecycle
-event to `infra.onProcessChange` before WebSocket broadcasting. The callback
-disarms affected script rules on owner cancellation/cancelling, type/mode/workspace
-mismatch, deletion or clear, aborting runtime assembly and running VM tools.
-Unrelated owners, ordinary title/running-status updates and unidentified bulk
-`process-updated` events do not revoke execution.
+Owner-qualified capabilities return `dateTime`, which also selects the Sentinel
+tool's date event schema.
 
 `triggers/sentinel-todo-trigger-firer.ts` commits one-shot PR/date decisions using
 the trigger and to-do stores' shared database writer. It checks the rule revision
@@ -313,28 +246,6 @@ fixed delivery identity and immutable wake prompt before queue work; delivery er
 remain pending and visible. Date recovery rechecks item/owner eligibility and
 removal before admission; missing owners fail without retargeting. Clearing retains
 dedupe receipts. A date wake grants no new authorization.
-
-`SentinelTodoTriggerFirer.fireScriptResult` atomically commits an evaluated changed
-result, immutable prompt and `script-condition:<ruleId>:<resultHash>` receipt. It
-retains active/paused status and holds newer results while a delivery is pending.
-Paused changed-result wakes require explicit manual admission; pending retries survive
-restart without resuming evaluation and stop timers after acknowledgement.
-Delivery carries a synchronous admission guard through `ActionExecutor` and
-`deliverOnce`, under the shared process lock. It checks fresh owner state after
-mode resolution and checks live flags, revision and item eligibility immediately
-before buffering or the final queue write after asynchronous owner routing.
-Promoted predecessors recheck admission too. Guarded delivery requires admitted
-routing; rejection retains the pending receipt without restoring a stopped owner.
-Retries preserve the saved prompt and do not mark edited rules delivered. The wake
-contains bounded top-level changed-field names and escaped untrusted JSON.
-The infrastructure-wired manager uses this path before persisting a changed
-baseline. `pauseScriptCondition` atomically commits the fifth failure, paused
-status and a notice receipt unique to that pause episode. Retries/restarts reuse
-its immutable prompt through the same delivery path, including while paused;
-manual resume or source revision changes revoke admission. Error text is escaped
-untrusted JSON and grants no authority to resume or act. The manager must commit
-this pause before saving the failed event, disarm evaluation timers and retain
-pending-notice retries. The authoring service resets failures on manual resume.
 
 `QueueActionExecutor` sends bound wakes through `ProcessMessageDeliveryService.deliverOnce`,
 which serializes owner checks and dedupe with human follow-ups and buffer draining.
@@ -346,6 +257,35 @@ Live gating disarms date timers without deleting rules; enabling restores overdu
 catch-up once. Resuming an overdue paused rule requires `confirmed: true`.
 Accepted busy-parent buffers recover through the existing owner-routed drain.
 Trigger firing never writes item status, calls delegation admission or selects a remote target.
+
+### Sentinel job gate runtime
+
+Gate scripts on Sentinel scheduled jobs run without a provider session.
+`sentinel-jobs/job-gate-result.ts` supplies canonical result encoding: object keys
+sort lexically at every level, array order is significant and encoded UTF-8 JSON is
+capped at 16 KiB. Non-JSON values reject without invoking serialization hooks.
+Validation must precede any runner conversion that could silently drop fields or
+normalize non-JSON values. `sentinel-jobs/job-gate-runner.ts` passes state and strict
+JSON validation to `runToolScript` with a 60-second abort deadline. The engine
+terminates workers and aborts in-flight tool calls on cancellation; the wrapper
+preserves the cancellation reason and clears its deadline timer on every outcome.
+
+Calls follow `MultiRepoQueueRouter.runJobGate` → owning `CLITaskExecutor` bridge →
+`ExecutorRegistry` → `ChatBaseExecutor.runJobGate` with an exact
+`{ workspaceId, processId, code, state, signal }` request. The executor validates the
+exact Sentinel owner and resolves workspace/working directory; its shared helper
+dependencies supply the owner-bound unattended runtime through
+`runJobGateWithOwnerTools`, which disposes it after every outcome. Canvas
+`host.runScript` follows the sibling `runOwnerScript` chain (any chat owner,
+`allowTools`-narrowed tools, no nesting); see [LLM tools](llm-tools.md).
+`SentinelJobService` is the caller: `routes/index.ts` injects `bridge.runJobGate` and
+the live `features.toolScripting` flag. The service keeps one in-flight gate per
+owner/job, re-checks flags, owner and job revision before saving any outcome, and
+aborts the signal on `cancelGate` (edit/delete), `invalidate()` and `shutdown()`;
+a cancelled gate never counts as a failure. `testGate` shares the evaluation path
+with the saved state but never saves, counts or starts a run; the caller's signal,
+`shutdown()` and the flag turning off cancel it. See
+[tool assembly](llm-tools.md#chat-tool-assembly).
 
 ### Delegated PR outcome reviews
 

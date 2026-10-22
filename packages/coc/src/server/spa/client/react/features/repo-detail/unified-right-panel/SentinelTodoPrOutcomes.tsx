@@ -140,6 +140,7 @@ function OutcomeDetails({ owner, item, client, ledgerRevision, onBusyChange }: P
     return <section aria-label={`PR outcomes for ${item.title}`} className="flex flex-col gap-1 px-2 pb-1.5 text-xs">
         <div className="flex flex-wrap items-center gap-1">
             <strong className={MUTED}>PR outcomes</strong>
+            {snapshot && snapshot.outcomes.length === 0 && <span className={MUTED}>No recorded PR outcomes.</span>}
             {snapshot?.paused && <span className={MUTED}>Notifications paused</span>}
             <Button size="sm" variant="ghost" disabled={busy || loading || !snapshot} onClick={() => void act('check')}>Check outcome</Button>
             <Button size="sm" variant="ghost" disabled={busy || loading || !snapshot} onClick={() => void act('toggle')}>
@@ -147,8 +148,7 @@ function OutcomeDetails({ owner, item, client, ledgerRevision, onBusyChange }: P
             </Button>
         </div>
         {loading && !snapshot && <span role="status" className={MUTED}>Loading PR evidence…</span>}
-        {snapshot && snapshot.outcomes.length === 0 && <span className={MUTED}>No recorded PR outcomes.</span>}
-        {snapshot && <ul aria-label="Exact PR evidence" className="flex flex-col gap-1">
+        {snapshot && snapshot.outcomes.length > 0 && <ul aria-label="Exact PR evidence" className="flex flex-col gap-1">
             {snapshot.outcomes.map(watch => <li key={watch.id} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                 <a href={watch.pr.url} target="_blank" rel="noopener noreferrer" className="break-all text-[#0078d4] hover:underline">
                     PR {watch.pr.repoPath}#{watch.pr.number}

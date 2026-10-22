@@ -21,6 +21,9 @@
  * The only capability the vm context is handed is `host`:
  *   - `host.complete(prompt, { model? })` — one-shot model call, proxied over
  *     the message port to the parent, capped per run.
+ *   - `host.runScript(code, { state? })` — a tool script run by the parent as
+ *     the canvas's owner chat, limited to `host.tools`, capped per run.
+ *   - `host.tools` — the frozen list of tool names the manifest declared.
  * There is deliberately NO `host.fetch`. CoC's own API listens on loopback and
  * is unauthenticated, so arbitrary outbound HTTP from inside a capability would
  * hand the sandbox the entire CoC API. `host.complete` has a fixed destination
@@ -42,6 +45,10 @@ export interface CapabilityWorkerData {
     loadTimeoutMs: number;
     /** Byte ceiling on the serialized next state. */
     maxStateBytes: number;
+    /** Hard cap on `host.runScript` calls for this run. */
+    maxScripts: number;
+    /** Tool names declared in the manifest; exposed read-only as `host.tools`. */
+    tools: string[];
 }
 
 /** Worker → parent: the capability asked for a model completion. */
@@ -57,12 +64,28 @@ export type CapabilityResultMessage =
     | { type: 'result'; ok: true; state: string }
     | { type: 'result'; ok: false; error: string };
 
-export type CapabilityWorkerMessage = CapabilityCompleteRequestMessage | CapabilityResultMessage;
+/** Worker → parent: the capability asked to run a tool script. */
+export interface CapabilityScriptRequestMessage {
+    type: 'script-request';
+    id: number;
+    code: string;
+    state?: unknown;
+}
+
+export type CapabilityWorkerMessage =
+    | CapabilityCompleteRequestMessage
+    | CapabilityScriptRequestMessage
+    | CapabilityResultMessage;
 
 /** Parent → worker: the answer to one `complete-request`. */
 export type CapabilityCompleteResponseMessage =
     | { type: 'complete-response'; id: number; ok: true; text: string }
     | { type: 'complete-response'; id: number; ok: false; code: string; error: string };
+
+/** Parent → worker: the answer to one `script-request`. */
+export type CapabilityScriptResponseMessage =
+    | { type: 'script-response'; id: number; ok: true; result: unknown; logs: string[]; callCount: number }
+    | { type: 'script-response'; id: number; ok: false; code: string; error: string };
 
 /**
  * The worker program.
@@ -80,10 +103,15 @@ const capabilityName = workerData.capability;
 const maxCompletions = workerData.maxCompletions;
 const loadTimeoutMs = workerData.loadTimeoutMs;
 const maxStateBytes = workerData.maxStateBytes;
+const maxScripts = workerData.maxScripts;
+const declaredTools = Object.freeze((workerData.tools || []).slice());
 
 let completionsUsed = 0;
 let nextCompletionId = 1;
 const pendingCompletions = new Map();
+let scriptsUsed = 0;
+let nextScriptId = 1;
+const pendingScripts = new Map();
 
 function hostError(code, message) {
     const err = new Error(message);
@@ -96,16 +124,50 @@ function errorMessage(err) {
 }
 
 parentPort.on('message', (msg) => {
-    if (!msg || msg.type !== 'complete-response') return;
-    const entry = pendingCompletions.get(msg.id);
-    if (!entry) return;
-    pendingCompletions.delete(msg.id);
-    if (msg.ok) entry.resolve(msg.text);
-    else entry.reject(hostError(msg.code || 'capability-error', msg.error || 'Completion failed'));
+    if (!msg) return;
+    if (msg.type === 'complete-response') {
+        const entry = pendingCompletions.get(msg.id);
+        if (!entry) return;
+        pendingCompletions.delete(msg.id);
+        if (msg.ok) entry.resolve(msg.text);
+        else entry.reject(hostError(msg.code || 'capability-error', msg.error || 'Completion failed'));
+        return;
+    }
+    if (msg.type === 'script-response') {
+        const entry = pendingScripts.get(msg.id);
+        if (!entry) return;
+        pendingScripts.delete(msg.id);
+        if (msg.ok) entry.resolve({ result: msg.result, logs: msg.logs || [], callCount: msg.callCount || 0 });
+        else entry.reject(hostError(msg.code || 'script-error', msg.error || 'Script failed'));
+    }
 });
 
-// The whole host surface handed to a capability. One method, fixed destination.
+// The whole host surface handed to a capability. Fixed destinations only.
 const host = {
+    tools: declaredTools,
+    runScript(code, options) {
+        if (typeof code !== 'string' || !code.trim()) {
+            return Promise.reject(hostError('script-error', 'host.runScript needs a non-empty code string'));
+        }
+        if (scriptsUsed >= maxScripts) {
+            return Promise.reject(hostError(
+                'limit',
+                'host.runScript is limited to ' + maxScripts + ' calls per capability run',
+            ));
+        }
+        scriptsUsed++;
+        const id = nextScriptId++;
+        const state = options && typeof options === 'object' ? options.state : undefined;
+        return new Promise((resolve, reject) => {
+            pendingScripts.set(id, { resolve: resolve, reject: reject });
+            try {
+                parentPort.postMessage({ type: 'script-request', id: id, code: code, state: state });
+            } catch (err) {
+                pendingScripts.delete(id);
+                reject(hostError('script-error', 'host.runScript state must be plain data: ' + errorMessage(err)));
+            }
+        });
+    },
     complete(prompt, options) {
         if (typeof prompt !== 'string' || !prompt.trim()) {
             return Promise.reject(hostError('capability-error', 'host.complete needs a non-empty prompt string'));

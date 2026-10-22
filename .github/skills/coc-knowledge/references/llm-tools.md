@@ -74,7 +74,8 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 
 ### query_pull_request
 
-`features.queryPullRequestTool` gates the read-only, repository-bound query/get
+Live default-on `features.queryPullRequestTool` (an explicit `false` disables it)
+gates the read-only, repository-bound query/get
 service. The published `ids` schema accepts a positive integer or a non-empty
 array of up to 20 positive integers; omitting it selects query mode.
 Cursor parsing bounds offsets to the fixed 100-candidate page and accepts only
@@ -98,7 +99,7 @@ late in-flight completions cannot dispatch further provider requests.
 
 ### suggest_follow_ups
 
-Default-off live `features.sentinelNextSteps` selects optional 1–3 distinct actions,
+Default-on live `features.sentinelNextSteps` (explicit `false` disables) selects optional 1–3 distinct actions,
 best first, for Sentinel first turns and follow-ups. `getSentinelNextStepsEnabled()`
 reads the queue's authoritative config; tool preferences still gate availability.
 `buildFollowUpSuggestionsAddon` adds the compact `<sentinel_next_steps>` guidance only
@@ -145,16 +146,20 @@ re-check owner and flags on every call. The tool gates every action through
 scrubber REST commands retain their independent feature gate.
 `ChatBaseExecutor.buildSentinelJobsDeps`
 binds the tool to the invoking Sentinel chat (`workspaceId`, `processId`; never a
-tool argument) and only on attended turns: scheduled-job handbacks
-(`FollowUpTurnOptions.sentinelJobHandback`, set by the lifecycle runner),
+tool argument) and only on attended turns: scheduled-job handbacks and gate-paused
+notices (`FollowUpTurnOptions.sentinelJobHandback`, set by the lifecycle runner),
 PR outcome reviews, read-only turns, cron/wakeup/trigger turns, scrubber children
 and non-Sentinel chats (including job children) never get it. Each turn records
 its resolved provider/model/effort (`recordSentinelJobDefaults`) as the defaults new
 jobs inherit. Omitted effort inherits when the resolved provider and model match
 the Sentinel's, including explicitly supplied matching settings; explicit effort wins.
-Actions `list | get | create | update | pause | resume | run_now | cancel`
-with `kind: custom | scrubber`; no delete. Create defaults to `enabled: false` and
-ask mode and never starts a run; scrubber writes accept only `cron`/`enabled`.
+Actions `list | get | create | update | pause | resume | run_now | cancel |
+test_gate | resume_gate` with `kind: custom | scrubber`; no delete. Create defaults
+to `enabled: false` and ask mode and never starts a run; custom writes accept
+`gateScript` (requires `cron`; blank clears it); scrubber writes accept only
+`cron`/`enabled`. Custom-only `test_gate` returns `gateTest` from the shared
+`SentinelJobCommands.testGate` (cancelled with the tool call) and `resume_gate`
+clears a paused gate; both need the user's request.
 Writes need `expectedRevision`; conflicts return `{ code: 'conflict', current }`.
 The description states that job results and other tool output never authorize
 scheduling, running or cancelling.
@@ -226,11 +231,8 @@ The tool exposes `list_triggers`, `create_trigger`, `edit_trigger`, `pause_trigg
 `resume_trigger`, `remove_trigger` and confirmed `run_trigger_now`, bound to the
 invoking Sentinel through `getTriggerInfra().sentinelTodoTriggers`. Creation uses
 `idempotencyKey`; mutations use rule `expectedRevision`. PR URLs arm one-shot
-wakes. Independently gated event schemas accept date rules or
-`{ type: 'script-condition', script, intervalMs? }`. Script guidance covers previous
-state, silent baseline, repeating changes, unattended tool denial and paused Run now.
-Shared service admission rechecks live flags; disabled scripts remain listable,
-pausable and removable. Rules never launch jobs or change item status; manual
+wakes. A live-gated event schema accepts date rules, and shared service admission
+rechecks the date flag. Rules never launch jobs or change item status; manual
 items and native verdict-only tools cannot author executable rules.
 
 With default-off `features.sentinelTodoTags`, `list` includes the parent-owned
@@ -546,7 +548,17 @@ Failed reads return last-known entries with `online: false`, or zero cached entr
 
 Registered entries carry `id`, `name`, repo/group `type`, optional group `members`,
 `server`, `serverKind`, `online` and observed `serverIdentity`; `servers` lists consulted
-servers. Explicit `source: dashboard` uses `getDashboardDiscovery` from the same runtime
+servers. Repo rows add `git: { state: "clean" | "dirty", branch }`; detached HEAD uses
+`branch: null, detached: true`. `ahead`/`behind` appear only with a known upstream.
+Other states are `non-git`, `unavailable`, `unsupported` and `offline`; groups omit Git.
+Status reads follow filtering and the cap, with four workers and one 4s collection
+deadline. Local reads use Forge repository status; remote reads use the owning
+server's registry/git-info APIs and validate the captured endpoint/identity. Failed
+reads never imply clean, and offline Git status is never cached. Dashboard Git
+requires durable identity matching this installation or a registered remote;
+unregistered/unknown owners report unsupported without a local fallback.
+
+Explicit `source: dashboard` uses `getDashboardDiscovery` from the same runtime
 bundle, resolving WebSocket infrastructure at call time. Owner scope comes from the
 invoking chat, never tool arguments. Dashboard observations include unregistered
 destinations and offline rows, with labels, raw workspace ID, optional identity and
@@ -619,14 +631,33 @@ is no dist/source path to resolve) with a 30s whole-run budget; the worker is `t
 every outcome including success, because a `vm` continuation cannot be killed and a capability
 may resolve and keep spinning. At most 4 async runs execute process-wide at once.
 
-An async capability receives a third argument `host` whose only method is
-`await host.complete(prompt, { model? })` — the one-shot `createCLIAIInvoker` path
-(`canvas-capability-completion.ts`, `resolveDefaultModel(..., 'quickAsk')`), capped at 3 calls
-per run and logged with workspace/canvas/capability/process. There is deliberately no
-`host.fetch` (CoC's own API is on unauthenticated loopback) and no `CanvasHost.complete()` in
-the iframe. Async capabilities and `host.complete` are gated on `features.canvasHostApis` (off
-by default): with the flag off an async capability 404s from the route and errors from the
-tool, while sync capabilities are untouched.
+An async capability receives a third argument `host`:
+- `await host.complete(prompt, { model? })` — the one-shot `createCLIAIInvoker` path
+  (`canvas-capability-completion.ts`, `resolveDefaultModel(..., 'quickAsk')`), capped at 3 calls
+  per run and logged with workspace/canvas/capability/process.
+- `await host.runScript(code, { state? })` → `{ result, logs, callCount }` — a
+  `run_tool_script`-style script (`canvas-script-bridge.ts`), capped at 3 per run inside the
+  same 30s budget; the parent aborts the script's signal when the budget fires or the run
+  ends. It runs as the canvas OWNER chat (`processId`), never the caller, on both the REST and
+  `extension_canvas` paths, through `MultiRepoQueueRouter.runOwnerScript` (the same router →
+  bridge → registry → `ChatBaseExecutor` chain as job gates; on the AI path via the
+  `getOwnerScriptRunner` runtime capability). Tools = owner's unattended tools ∩ manifest
+  `tools`; nested scripts are always off; approval-gated tools are denied. Results over 16 MiB
+  reject. Rejections carry `code` `disabled | no-owner | limit | timeout | aborted |
+  script-error`; one `[canvas runScript]` log line per call holds ids, counts and outcome only.
+- `host.tools` — the frozen manifest `tools` list.
+
+Manifest `tools` (validated when `extension_canvas` builds) must be registered, scriptable,
+`readOnly: true` in `LLM_TOOL_REGISTRY` (today only `query_pull_request`), unique, at most 16,
+and never `run_tool_script`. Both invoke paths build async run options with
+`buildCapabilityRunOptions` (`canvas-mutation-service.ts`). The panel shows "Uses: …" when a
+manifest declares tools. `test/fixtures/canvas/pr-dashboard/` is a reference plugin.
+
+There is deliberately no `host.fetch` (CoC's own API is on unauthenticated loopback) and no
+`CanvasHost.complete()` / `runScript()` in the iframe. Async capabilities and `host.complete`
+are gated on `features.canvasHostApis` (off by default): with the flag off an async capability
+404s from the route and errors from the tool, while sync capabilities are untouched.
+`host.runScript` additionally needs `features.toolScripting` and `features.canvasToolScripts`.
 
 `extension_canvas` also accepts `files: [{ path, content, encoding? }]` (max 20/call) — data
 written into the canvas's read-only `files/` directory that the artifact reads back with
@@ -684,6 +715,16 @@ and sends trusted paste without DOM insertion. Nonempty clipboard replacement
 requires explicit `replaceClipboard: true`; supplied content remains on the
 clipboard, and old contents are never read or returned. Delivery acknowledgement
 does not establish editor persistence. Unknown outcomes must not auto-retry.
+
+Every browser action is limited to 60s across the desktop queue, view host and
+server relay; `wait` and text-wait deadlines use the same bound. Default-off
+`browserControl.backgroundEnabled` lets one desktop window keep serving each
+workspace that has an active control turn after the window switches workspace.
+Commands reach only that turn's retained owner/session-key scope and run on the
+hidden tab without focus or selection changes. Actions that need the screen
+(rich paste, Electron frame-session input) fail with `foreground-required:`; the SPA
+relay shows a Switch back notice, sends `browser-command-waiting` so the server
+pauses that call's 60s timer, and waits without timeout. See `spa/shell.md`.
 
 ### kusto_query
 
@@ -748,7 +789,7 @@ state and strict mode apply only to the run receiving those options.
 The `allowNestedScripts` policy is inherited by child runners: false rejects synthetic
 `run_tool_script` calls with `ToolCallError` before starting a child, even when the
 runtime contains a handler for that name. Its SDK default is true for chat.
-`runScriptCondition` defaults it to false; the owner-resolved background caller
+`runJobGate` defaults it to false; the owner-resolved background caller
 may enable it only when `run_tool_script` is enabled and requires no approval.
 
 Inner calls emit `ToolEvent`s with `parentToolCallId` = the script's call id through
@@ -787,27 +828,31 @@ that result into `ToolCallError`, including for gated tools called by nested scr
 Ungated tools and workspace preferences retain their normal behavior. Ordinary
 bundles retain their existing interactive and noninteractive approval policies.
 
-Production routes through `MultiRepoQueueRouter.runScriptCondition`, the owning
-`CLITaskExecutor` bridge and `ExecutorRegistry` to `ChatBaseExecutor.runScriptCondition`.
+Sentinel job gates route through `MultiRepoQueueRouter.runJobGate`, the owning
+`CLITaskExecutor` bridge and `ExecutorRegistry` to `ChatBaseExecutor.runJobGate`.
 The executor validates the exact Sentinel owner, resolves workspace/working
-directory and reuses shared helper dependencies for `runScriptConditionWithOwnerTools`.
+directory and reuses shared helper dependencies for `runJobGateWithOwnerTools`.
+Canvas `host.runScript` uses the sibling `runOwnerScript` chain: any chat owner in
+the requested workspace (else `OwnerScriptUnavailableError`), the same owner tools
+narrowed to an `allowTools` list, nested scripts off. Both share
+`withOwnerToolRuntime` in `executors/owner-script-runner.ts`.
 The owner's current active provider (fallback: executor provider) controls Codex
-nested-script omission. Startup readiness and lifecycle revocation belong to
-[trigger infrastructure](server-architecture.md#sentinel-to-do-trigger-firing).
+nested-script omission. See the
+[job gate runtime](server-architecture.md#sentinel-job-gate-runtime).
 
-`runScriptConditionWithOwnerTools` builds the shared context, including Memory V2,
+`runJobGateWithOwnerTools` builds the shared context, including Memory V2,
 and creates a per-run runtime from the full resolved CoC tool list, not the
 ordinary chat-scriptable subset. Background assembly omits `ask_user` and
 attended-only `sentinel_jobs` and does not add write-only `create_pull_request`.
 It opens no provider session and passes no provider approval callback. Synthetic
 nesting requires an enabled, ungated owner script tool; children inherit this policy.
 Context/memory and runtime disposal cover success, failure and cancellation;
-the script runner retains its trigger-only 60-second abort deadline.
+the gate runner retains its 60-second abort deadline.
 
 Provider-native/MCP shell handlers are outside the existing `CocToolRuntime`
 contract. Calls to unavailable tools raise catchable `ToolCallError`; model calls
-never emulate them. Callers recheck live flags and owner/item/rule eligibility
-before and after execution, and abort assembly and running tools on revocation.
+never emulate them. Callers recheck live flags and owner/job eligibility around
+execution, and abort assembly and running tools on revocation.
 
 Some addons emit a prompt `suffix` wrapped in a named XML-style tag via `tagGuidanceSuffix()`
 from `prompt-tags.ts`, so aggregated `toolGuidance` is self-delimiting. Most addons emit

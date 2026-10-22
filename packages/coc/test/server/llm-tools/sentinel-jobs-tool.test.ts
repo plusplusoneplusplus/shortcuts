@@ -29,6 +29,8 @@ let onConfigChange: ReturnType<typeof vi.fn>;
 let jobCommands: SentinelJobCommands;
 let scrubberCommands: ScrubberCommands;
 let defaults: SentinelJobDefaults;
+let gateEnabled: boolean;
+let runGate: ReturnType<typeof vi.fn>;
 
 function sentinel(id: string, workspaceId: string): AIProcess {
     return { id, type: 'chat', status: 'running', startTime: new Date(), conversationTurns: [],
@@ -61,8 +63,11 @@ beforeEach(() => {
     enqueue = vi.fn(async (input: CreateTaskInput) => input.id ?? 'task');
     scrubEnqueue = vi.fn(async (input: CreateTaskInput) => input.id!);
     onConfigChange = vi.fn();
+    gateEnabled = true;
+    runGate = vi.fn(async () => ({ items: [1] }));
     const service = new SentinelJobService({ dataDir: fixture.dataDir, jobs: jobStore, todos: todoService, store,
-        getEnabled: () => sentinelEnabled && jobsEnabled, enqueue, cancelTask: vi.fn(() => true), getTask: () => undefined });
+        getEnabled: () => sentinelEnabled && jobsEnabled, getGateEnabled: () => gateEnabled, runGate,
+        enqueue, cancelTask: vi.fn(() => true), getTask: () => undefined });
     jobCommands = new SentinelJobCommands({ jobs: jobStore, service, onConfigChange });
     const runs = new ScrubberRunService({ dataDir: fixture.dataDir, todos: todoService, scrubber: scrubberStore,
         engine: new ScrubberEngine({ todos, scrubber: scrubberStore }), enqueue: scrubEnqueue, cancelTask: vi.fn(() => true) });
@@ -70,10 +75,11 @@ beforeEach(() => {
     defaults = { provider: 'copilot', model: 'gpt-5', effort: 'high' };
 });
 
-function call(args: SentinelJobsArgs | Record<string, unknown>, bound = owner, withScrubber = true): Promise<any> {
+function call(args: SentinelJobsArgs | Record<string, unknown>, bound = owner, withScrubber = true,
+    invocation: { signal?: AbortSignal } = {}): Promise<any> {
     const tool = createSentinelJobsTool({ owner: bound, jobs: jobCommands,
         ...(withScrubber ? { scrubber: scrubberCommands } : {}), defaults: () => defaults });
-    return (tool as any).handler(args, {});
+    return (tool as any).handler(args, invocation);
 }
 
 async function createJob(extra: Record<string, unknown> = {}) {
@@ -89,6 +95,11 @@ describe('sentinel_jobs tool schema', () => {
         expect(props.action.enum).not.toContain('delete');
         for (const key of ['owner', 'workspaceId', 'processId', 'serverId']) expect(props).not.toHaveProperty(key);
         expect(tool.description).toMatch(/never permission/);
+        expect(props.gateScript).toMatchObject({ type: 'string' });
+        expect(tool.description).toMatch(/gateScript.*needs\s+`cron`/s);
+        expect(props.action.enum).toEqual(expect.arrayContaining(['test_gate', 'resume_gate']));
+        expect(tool.description).toMatch(/`test_gate`.*starts no run, saves nothing and works while paused/s);
+        expect(tool.description).toMatch(/`resume_gate` \(only when the user asks\)/);
     });
 });
 
@@ -159,6 +170,55 @@ describe('custom jobs', () => {
         expect(await call({ action: 'create', kind: 'custom', name: 'X', instructions: 'Y', mode: 'yolo' })).toMatchObject({ code: 'invalid' });
         for (let i = 0; i < 10; i++) await createJob({ name: `Job ${i}` });
         expect(await call({ action: 'create', kind: 'custom', name: 'Eleventh', instructions: 'Y' })).toMatchObject({ code: 'limit' });
+    });
+
+    it('sets, keeps and clears a cron-bound gate script, rejecting one without a cron', async () => {
+        const gateScript = 'return state ?? { items: [1] };';
+        expect(await call({ action: 'create', kind: 'custom', name: 'X', instructions: 'Y', gateScript }))
+            .toMatchObject({ code: 'invalid', error: expect.stringMatching(/needs a cron/) });
+        const job = await createJob({ cron: '0 9 * * *', gateScript });
+        expect(job).toMatchObject({ gateScript, gateConsecutiveFailures: 0, gatePaused: false });
+        expect(await call({ action: 'update', kind: 'custom', jobId: job.id, expectedRevision: 1, cron: '' }))
+            .toMatchObject({ code: 'invalid', error: expect.stringMatching(/needs a cron/) });
+        const renamed = (await call({ action: 'update', kind: 'custom', jobId: job.id, expectedRevision: 1, name: 'Gated' })).job;
+        expect(renamed).toMatchObject({ name: 'Gated', gateScript, revision: 2 });
+        const cleared = (await call({ action: 'update', kind: 'custom', jobId: job.id, expectedRevision: 2, gateScript: '' })).job;
+        expect(cleared.gateScript).toBeUndefined();
+        expect(await call({ action: 'update', kind: 'scrubber', expectedRevision: 0, gateScript }))
+            .toMatchObject({ code: 'invalid', error: expect.stringMatching(/gateScript/) });
+        expect(enqueue).not.toHaveBeenCalled();
+    });
+
+    it('tests a paused gate with its saved state and the call signal, then resumes it', async () => {
+        const gateScript = 'return state;';
+        const job = await createJob({ cron: '0 9 * * *', gateScript });
+        jobStore.updateGate(owner, job.id, gateScript, () => ({ gateLastResult: '[2]', gateConsecutiveFailures: 5, gatePaused: true }));
+        const saved = jobStore.get(owner, job.id);
+        const turn = new AbortController();
+        expect(await call({ action: 'test_gate', kind: 'custom', jobId: job.id }, owner, true, { signal: turn.signal }))
+            .toEqual({ gateTest: { ok: true, result: '{"items":[1]}', empty: false } });
+        expect(runGate).toHaveBeenCalledWith(expect.objectContaining({ ...owner, code: gateScript, state: [2] }));
+        const passed: AbortSignal = runGate.mock.calls[0][0].signal;
+        expect(passed.aborted).toBe(false);
+        turn.abort();
+        expect(passed.aborted).toBe(true);
+        expect(jobStore.get(owner, job.id)).toEqual(saved);
+        expect(enqueue).not.toHaveBeenCalled();
+        const { job: resumed } = await call({ action: 'resume_gate', kind: 'custom', jobId: job.id });
+        expect(resumed).toMatchObject({ gatePaused: false, gateConsecutiveFailures: 0, gateLastResult: '[2]', revision: 1 });
+    });
+
+    it('rejects gate actions without a jobId, on the scrubber, on ungated jobs and while tool scripting is off', async () => {
+        const gated = await createJob({ cron: '0 9 * * *', gateScript: 'return 1;' });
+        const plain = await createJob();
+        expect(await call({ action: 'test_gate', kind: 'custom' })).toMatchObject({ code: 'invalid', error: 'Pass jobId' });
+        for (const action of ['test_gate', 'resume_gate']) {
+            expect(await call({ action, kind: 'scrubber' })).toMatchObject({ code: 'invalid', error: expect.stringMatching(/no gate/) });
+            expect(await call({ action, kind: 'custom', jobId: plain.id })).toMatchObject({ code: 'invalid' });
+        }
+        gateEnabled = false;
+        expect(await call({ action: 'test_gate', kind: 'custom', jobId: gated.id })).toMatchObject({ code: 'conflict' });
+        expect(runGate).not.toHaveBeenCalled();
     });
 
     it('runs now, blocks overlap and edits during a run, allows pause, and cancels', async () => {

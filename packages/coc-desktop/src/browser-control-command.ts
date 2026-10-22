@@ -27,6 +27,7 @@ export function validateBrowserCommandRequest(input: unknown): BrowserCommandReq
 }
 
 export const BROWSER_CONTROL_SCOPE_CHANNEL = 'coc-desktop:browser-control-scope';
+export const BROWSER_CONTROL_RETAIN_CHANNEL = 'coc-desktop:browser-control-retain';
 export const BROWSER_CONTROL_COMMAND_CHANNEL = 'coc-desktop:browser-control-command';
 export const BROWSER_CONTROL_CANCEL_CHANNEL = 'coc-desktop:browser-control-cancel';
 export const BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL = 'coc-desktop:browser-control-release-frames';
@@ -46,4 +47,6 @@ export interface BrowserControlActivityEvent {
     viewId: string;
     active: boolean;
     finished?: boolean;
+    /** The turn drives this tab from a retained scope while another workspace is selected. */
+    background?: boolean;
 }

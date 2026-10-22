@@ -31,6 +31,7 @@ import { workspaceReadSource } from './api/workspaceReads';
 import { getCocClientForWorkspace } from './repos/cloneRegistry';
 import { RemoteCloneEventBridge } from './features/remote-shell/RemoteCloneEventBridge';
 import { ToastContainer, useToast } from './ui';
+import { BrowserControlSwitchBackNotices } from './shared/file-path/BrowserControlSwitchBackNotice';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { MarkdownReviewDialog } from './processes/MarkdownReviewDialog';
 import { EnqueueDialog } from './queue/EnqueueDialog';
@@ -466,6 +467,7 @@ function AppInner() {
                 <BottomNav />
                 <MobileScopeBar />
                 <ToastContainer toasts={toasts} removeToast={removeToast} />
+                <BrowserControlSwitchBackNotices />
                 <EnqueueDialog />
                 <RunScriptDialog />
                 <MarkdownReviewDialog

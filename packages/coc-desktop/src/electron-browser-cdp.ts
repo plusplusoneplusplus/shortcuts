@@ -112,7 +112,7 @@ export class ElectronBrowserCdp {
                 if (error !== undefined) { reject(error); } else { resolve(result); }
             };
             const fail = (error: Error) => finish(error);
-            const timer = setTimeout(() => fail(new Error('Browser CDP command timed out after 30s.')), 30_000);
+            const timer = setTimeout(() => fail(new Error('Browser CDP command timed out after 60s.')), 60_000);
             this.pending.set(fail, sessionId);
             try {
                 const result = sessionId === undefined ? debuggerApi.sendCommand(method, params) : debuggerApi.sendCommand(method, params, sessionId);

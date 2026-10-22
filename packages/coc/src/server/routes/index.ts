@@ -70,6 +70,7 @@ import { registerSentinelTodoRoutes } from '../sentinel-todos/sentinel-todo-rout
 import { createSentinelTodoDelegationHooks } from '../sentinel-todos/sentinel-todo-delegation';
 import { registerQuickAskAnswerRoutes } from '../processes/chat-sidenotes/quick-ask-answer-handler';
 import { registerCanvasRoutes } from '../canvas/canvas-routes';
+import { createCanvasRunScriptFactory } from '../canvas/canvas-script-bridge';
 import { registerWikiRoutes } from '../wiki';
 import { registerMemoryRoutes } from '../memory/memory-routes';
 import { registerMemoryV2Routes } from '../memory/memory-v2-routes';
@@ -711,6 +712,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const scheduledJobs = new SentinelJobStore(todoDb);
     const scheduledJobService = new SentinelJobService({
         jobs: scheduledJobs, todos: sentinelTodos, dataDir, store, getEnabled: getJobsEnabled,
+        getGateEnabled: () => ((opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.toolScripting
+            ?? DEFAULT_CONFIG.features.toolScripting) === true,
+        runGate: request => bridge.runJobGate(request),
         enqueue: input => enqueueWithResolvedDefaults(input),
         getTask: id => bridge.getTask(id),
         cancelTask: id => {
@@ -870,7 +874,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             chatProviderSwitchingEnabled: opts.runtimeConfigService!.config.features?.chatProviderSwitching === true,
             chatHistoryPagingEnabled: opts.runtimeConfigService!.config.features?.chatHistoryPaging === true,
             botManagedConversationsEnabled: opts.runtimeConfigService!.config.features?.botManagedConversations === true,
-            sentinelAdditionalInstructionsEnabled: opts.runtimeConfigService!.config.features?.sentinelAdditionalInstructions === true,
+            sentinelAdditionalInstructionsEnabled: (opts.runtimeConfigService!.config.features?.sentinelAdditionalInstructions ?? DEFAULT_CONFIG.features.sentinelAdditionalInstructions) === true,
             defaultChatStyle: coerceChatStyle(opts.runtimeConfigService!.config.features?.defaultChatStyle),
         })
         : () => ({
@@ -885,7 +889,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             chatProviderSwitchingEnabled: opts.resolvedConfig?.features?.chatProviderSwitching === true,
             chatHistoryPagingEnabled: opts.resolvedConfig?.features?.chatHistoryPaging === true,
             botManagedConversationsEnabled: opts.resolvedConfig?.features?.botManagedConversations === true,
-            sentinelAdditionalInstructionsEnabled: opts.resolvedConfig?.features?.sentinelAdditionalInstructions === true,
+            sentinelAdditionalInstructionsEnabled: (opts.resolvedConfig?.features?.sentinelAdditionalInstructions ?? DEFAULT_CONFIG.features.sentinelAdditionalInstructions) === true,
             defaultChatStyle: coerceChatStyle(opts.resolvedConfig?.features?.defaultChatStyle),
         });
     const isKustoEnabled = (): boolean => getLiveFeatureFlags().kustoEnabled;
@@ -899,6 +903,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         browserControl?.setRichPasteEnabledGetter(() => (
             opts.runtimeConfigService?.config ?? opts.resolvedConfig
         )?.browserControl?.richPasteEnabled === true);
+        browserControl?.setBackgroundEnabledGetter(() => (
+            opts.runtimeConfigService?.config ?? opts.resolvedConfig
+        )?.browserControl?.backgroundEnabled === true);
         return browserControl;
     }, new BrowserToolStateStore(dataDir));
     // Async extension-canvas capabilities + host.complete. Live (admin toggle
@@ -962,7 +969,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     const remoteReturnReady = delegatedResultsRestored.then(() => remoteReturn.recover());
     remoteReturn.start();
-    const workspaceDirectory = createWorkspaceDirectory({ store, dataDir, remoteServers: remoteServerRuntime, remoteResults: remoteReturn });
+    const workspaceDirectory = createWorkspaceDirectory({ store, dataDir, serverIdentity: getOrCreateServerIdentity(dataDir), remoteServers: remoteServerRuntime, remoteResults: remoteReturn });
     const remoteAdmissions = new RemoteDelegationAdmissionStore(dataDir);
     const remoteDelivery = new ProcessMessageDeliveryService({ store, bridge });
     const remoteLaunch = createRemoteDelegationLaunch({
@@ -1117,7 +1124,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerWorkspaceHistoryRoutes(routes, store, bridge);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
     registerDiffCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
-    registerCanvasRoutes(routes, dataDir, getWsServer, store, isKustoEnabled, opts.kustoClientFactory, isCanvasHostApisEnabled);
+    registerCanvasRoutes(routes, dataDir, getWsServer, store, isKustoEnabled, opts.kustoClientFactory, isCanvasHostApisEnabled,
+        undefined, createCanvasRunScriptFactory({
+            getFeatures: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features,
+            getOwnerScriptRunner: () => bridge.runOwnerScript,
+        }));
     registerAdminRoutes(routes, {
         store,
         dataDir,

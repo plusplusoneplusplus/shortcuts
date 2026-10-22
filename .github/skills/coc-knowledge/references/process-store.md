@@ -238,7 +238,9 @@ parent Sentinel and job. These definitions are distinct from the ledger's
 item-linked `sentinel_todo_jobs`. Transactions enforce the ten-job limit,
 expected revisions and a single active run per job. The public history contains
 the last 20 runs; active or pending-delivery records remain protected from pruning.
-Run records retain queue/turn/delivery identities. Definitions and snapshot files
+Run records retain queue/turn/delivery identities. Gate runtime state stays in the
+job's JSON record; `updateGate` applies it without a revision bump only while the
+evaluated `gateScript` is unchanged. Definitions and snapshot files
 are machine-local, excluded from snapshot export/import and cleared by ledger wipe.
 
 ### Sentinel dependency operations
@@ -534,7 +536,7 @@ compactions settle as failed without replay.
 ### Sentinel additional instructions
 
 `processes/sentinel-additional-instructions.ts` owns `metadata.additionalInstructions`
-(`{ text, updatedAt }`, missing = empty) behind live default-off
+(`{ text, updatedAt }`, missing = empty) behind live default-on
 `features.sentinelAdditionalInstructions` (`QueueRuntimeConfig.getSentinelAdditionalInstructionsEnabled`).
 Only its REST route writes it; forks drop it, and it never propagates to delegated or child chats.
 The saved text rides the outgoing user turn as one `<coc-sentinel-additional-instructions>`

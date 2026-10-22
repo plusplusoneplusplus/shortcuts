@@ -187,23 +187,6 @@ When `cron.enabled = false`: cron REST routes are not registered, `scheduleWakeu
 
 Crons are separate from the schedule subsystem. They share only `ScheduleTimerRegistry`, which is generic over its key type: crons, wakeups, and triggers key by their own globally unique `string` IDs, while `ScheduleManager` keys by a branded `(repoId, scheduleId)` runtime key. Crons have their own type (`CronEntry`), persistence (`crons` table), executor, and routes (`/crons` vs `/schedules`). Schedules are cron-expression recurring tasks that create new processes; crons are interval-based recurring follow-ups inside an existing conversation.
 
-### Sentinel To-do script-condition polling
-
-`TriggerManager` uses its existing `PeriodicEntryScheduler` and timer registry for
-script intervals and failure backoff. Scheduling requires a supplied
-`ScriptConditionFirer`, the live conjunction of script-trigger/tool-scripting flags,
-and an intact Sentinel To-do binding. `refreshScriptConditions` reconciles timers
-without deleting rules. Evaluated results are discarded after revision, status or
-live-gate changes; owner/runtime admission and revocation cancellation belong to
-production composition.
-
-Silent baselines and unchanged results persist through the manager. Changed results
-and fifth-failure pauses go to the firer before advancing the stored event, keeping
-baseline/receipt and pause/notice commits atomic. Pending receipts retry before new
-runs, including paused notices after restart. Acknowledged changes resume polling;
-acknowledged pause notices stop. Ineligible notice recipients still leave failed
-rules paused. Pre-commit infrastructure errors retain the prior event for retry.
-
 ### Sentinel To-do Scrubber schedules
 
 `sentinel-scrubber/scrubber-scheduler.ts` uses `ScheduleTimerRegistry` and cron-expression
@@ -226,6 +209,13 @@ timer registry's delay cap rather than firing early.
 `validateScrubCron` for owner/job timers. Both live Sentinel/jobs gates must be on.
 Schedules use server local time and arm future dates without catch-up. Each tick
 re-arms independently of completion; an active job records a skipped overlap.
+Ticks call `SentinelJobService.tick`; a gated job checks overlap and its paused
+gate before running the gate script (its overlap skip never claims a run), then records `gate-empty` or starts a run with
+the result inline (see [gate runtime](server-architecture.md#sentinel-job-gate-runtime)).
+A fired tick's liveness is scoped to its own job (jobs flag on, scheduler not disposed,
+same revision, still enabled with the same cron), so `refreshAll()` and other jobs'
+changes never cancel an in-flight gate. Saving a non-empty result and claiming its run
+happen in one synchronous step, so the result always starts a run or leaves a run record.
 Multiple selected minutes are rejected even for dates beyond the validation horizon.
 
 `SentinelJobService` queues each run at low priority into one persistent Ask/Autopilot

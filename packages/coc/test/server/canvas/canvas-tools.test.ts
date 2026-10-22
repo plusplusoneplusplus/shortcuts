@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { LLM_TOOL_REGISTRY } from '../../../src/server/llm-tools/llm-tool-registry';
 import { createCanvasTools } from '../../../src/server/llm-tools/canvas-tools';
 import { CanvasStore } from '../../../src/server/canvas/canvas-store';
 import { CANVAS_LIBRARY_IDS } from '../../../src/server/canvas/canvas-libraries';
@@ -342,6 +343,50 @@ describe('canvas LLM tools', () => {
             // State preserved across the extension-document update
             expect(JSON.parse(store.getCanvas(WS, created.canvasId)!.content).cards).toHaveLength(1);
             expect(store.getExtension(WS, created.canvasId)?.uiHtml).toBe('<div id="board2"></div>');
+        });
+
+        // --- manifest tools -------------------------------------------------
+
+        it('accepts read-only scriptable tools and stores them in the manifest', async () => {
+            const { extension } = buildTools();
+            const result = await extension.handler({ ...BUILD_ARGS, tools: ['query_pull_request'] } as any) as any;
+
+            expect(result.success).toBe(true);
+            expect(store.getExtension(WS, result.canvasId)!.manifest.tools).toEqual(['query_pull_request']);
+        });
+
+        it('stores no tools when the manifest declares none', async () => {
+            const { extension } = buildTools();
+            const result = await extension.handler(BUILD_ARGS as any) as any;
+
+            expect(result.success).toBe(true);
+            expect(store.getExtension(WS, result.canvasId)!.manifest.tools).toBeUndefined();
+        });
+
+        const nonScriptable = LLM_TOOL_REGISTRY.find(tool => tool.scriptable === false)!.name;
+        const notReadOnly = LLM_TOOL_REGISTRY.find(tool =>
+            tool.scriptable !== false && tool.readOnly !== true && tool.name !== 'run_tool_script')!.name;
+        it.each([
+            ['an unknown tool', ['no_such_tool'], 'unknown tool "no_such_tool"'],
+            ['a non-scriptable tool', [nonScriptable], 'cannot be called from a script'],
+            ['a tool that is not read-only', [notReadOnly], 'is not read-only'],
+            ['run_tool_script', ['run_tool_script'], 'cannot include run_tool_script'],
+            ['duplicates', ['query_pull_request', 'query_pull_request'], 'more than once'],
+            ['more than 16 names', Array.from({ length: 17 }, () => 'query_pull_request'), 'at most 16'],
+            ['a non-array', 'query_pull_request', 'must be an array'],
+        ])('rejects %s with a clear message and writes nothing', async (_label, tools, message) => {
+            const { extension } = buildTools();
+            const result = await extension.handler({ ...BUILD_ARGS, tools } as any) as any;
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain(message);
+            expect(store.listCanvases(WS)).toHaveLength(0);
+        });
+
+        it('describes tools and host.runScript in the tool description', () => {
+            const { extension } = buildTools();
+            expect(extension.description).toContain('host.runScript');
+            expect(extension.description).toContain('through `state`');
         });
 
         // --- async capability declaration ----------------------------------

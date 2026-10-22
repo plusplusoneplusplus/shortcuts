@@ -213,8 +213,14 @@ export function SentinelTodoTagPicker({ item, multiple, onBusyChange, ...scope }
             <SentinelTodoTagChips item={item} library={library} />
             {!(item.tagIds?.some(id => library.tags.some(tag => tag.id === id))) && <span className="sentinel-tags-muted">Untagged</span>}
             {item.tagOrigin && <span className="sentinel-tags-muted">{item.tagOrigin === 'manual' ? 'Manual tags' : 'Suggested tags'}</span>}
+            {matchLabel && <span role="status" className="sentinel-tags-muted sentinel-tags-match">{matchLabel}{item.tagMatch?.message ? `: ${item.tagMatch.message}` : ''}</span>}
+            {!draft && <div className="sentinel-tags-actions">
+                <Button size="sm" variant="secondary" disabled={busy} onClick={() => {
+                    setConfirm(null); setDraft({ ids: [...(item.tagIds ?? [])], revision: item.revision, tagRevision: item.tagRevision ?? 0 });
+                }}>Edit tags</Button>
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => suggest()}>Re-suggest tags</Button>
+            </div>}
         </div>
-        {matchLabel && <p role="status" className="sentinel-tags-muted">{matchLabel}{item.tagMatch?.message ? `: ${item.tagMatch.message}` : ''}</p>}
         {error && <p role="alert" className="sentinel-tags-error">{error}</p>}
         {draft ? <form className="sentinel-tags-editor" aria-label="Edit item tags" onSubmit={event => {
             event.preventDefault();
@@ -247,12 +253,7 @@ export function SentinelTodoTagPicker({ item, multiple, onBusyChange, ...scope }
                     ...draft, revision: item.revision, tagRevision: item.tagRevision ?? 0,
                 })}>Use current revision for tags</Button>
             </div>}
-        </form> : <div className="sentinel-tags-actions">
-            <Button size="sm" variant="secondary" disabled={busy} onClick={() => {
-                setConfirm(null); setDraft({ ids: [...(item.tagIds ?? [])], revision: item.revision, tagRevision: item.tagRevision ?? 0 });
-            }}>Edit tags</Button>
-            <Button size="sm" variant="ghost" disabled={busy} onClick={() => suggest()}>Re-suggest tags</Button>
-        </div>}
+        </form> : null}
         {confirm && <div className="sentinel-tags-confirm" role="group" aria-label="Replace manual tags">
             <p>Replace your manual tag selection with a new suggestion? This includes tags you explicitly cleared. Matching may return no tags.</p>
             {(confirm.revision !== item.revision || confirm.tagRevision !== (item.tagRevision ?? 0))

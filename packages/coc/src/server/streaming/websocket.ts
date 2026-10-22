@@ -176,9 +176,10 @@ export type ServerMessage = DashboardDiscoveryServerEvent
 
 /** Client → Server message types */
 export type ClientMessage = DashboardDiscoveryClientEvent
-    | { type: 'browser-capability'; workspaceId: string; focused: boolean }
-    | { type: 'browser-capability-clear' }
+    | { type: 'browser-capability'; workspaceId: string; focused: boolean; background?: string[] }
+    | { type: 'browser-capability-clear'; background?: string[] }
     | { type: 'browser-command-result'; reply: BrowserCommandReply }
+    | { type: 'browser-command-waiting'; id: string; waiting: boolean }
     | { type: 'ping' }
     | { type: 'subscribe'; workspaceId: string }
     | { type: 'subscribe-wiki'; wikiId: string }
@@ -451,13 +452,16 @@ export class ProcessWebSocketServer {
                 this.dashboardDiscovery.reply(client, message.reply, 'chats');
                 break;
             case 'browser-capability':
-                this.browserControl.advertise(client, message.workspaceId, message.focused);
+                this.browserControl.advertise(client, message.workspaceId, message.focused, message.background);
                 break;
             case 'browser-capability-clear':
-                this.browserControl.disconnect(client);
+                this.browserControl.clear(client, message.background);
                 break;
             case 'browser-command-result':
                 this.browserControl.reply(client, message.reply);
+                break;
+            case 'browser-command-waiting':
+                this.browserControl.waiting(client, message.id, message.waiting);
                 break;
             case 'ping':
                 client.send(JSON.stringify({ type: 'pong' }));

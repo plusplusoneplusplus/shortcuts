@@ -107,8 +107,12 @@ references before editing. Paths are package-relative.
 - `list_workspaces` defaults to registered dispatch targets; these, `send_to_conversation`
   remote targets and messaging `list remotes` share one route-layer
   `src/server/servers/workspace-directory.ts` (clone keys, per-server timeouts, last-known
-  offline entries). Remote create mode posts to the remote's own queue/Ralph API with no
-  local fallback; output never carries paths, URLs, or credentials. Successful remote
+  offline entries). Repo rows add a compact owner-scoped `git` summary after filtering
+  and capping: clean/dirty plus branch, detached marker and known upstream counts, or
+  explicit non-git/unavailable/unsupported/offline state. Groups omit Git. Collection
+  has four workers and one four-second deadline; dashboard status requires a known
+  installation identity matching this server or a registered remote. Remote create mode
+  posts to the remote's own queue/Ralph API with no local fallback; output never carries paths, URLs, or credentials. Successful remote
   launches expose tracked or unavailable parent result return through `resultDelivery`
   and canonical `#chat-references/<serverIdentity>/<workspaceId>/<processId>`
   links with independently encoded segments for inspecting the outcome. Local tool
@@ -347,93 +351,39 @@ references before editing. Paths are package-relative.
   `ProcessMessageDeliveryService.deliverOnce` admission and the existing trigger
   scheduler for receipt reconciliation/retries. Trigger code never writes item
   status or launches a job; external PR metadata is data, not instructions.
-  `SentinelTodoTriggerService` owns rule authoring with expected revisions,
-  eligibility and shared-cap checks. Script authoring requires an injected live
-  conjunction of both script flags, a five-minute minimum (15-minute default)
-  and at most ten active/paused script rules per exact owner. Source or interval
-  edits bump script revision and clear baseline/errors; guidance-only edits
-  preserve evaluation state. Script edits and lifecycle changes revoke saved
-  notices and disarm active evaluation. Resume resets failures/errors, not the
-  baseline; remove retains dedupe receipts without retrying delivery. Script
-  Run now uses the repeating evaluator and requires confirmation/revision admission;
-  pending deliveries and overlapping runs reject. Paused rules run once without
-  resuming, including changed-result wakes and failure recovery. Trigger infrastructure
-  is always wired; rules never expire and require no additional approval gate. Clearing rules hides their
-  presentation while preserving delivery and keyed authoring receipts; retries
-  must not duplicate wakes or revive removed rules.
+  `SentinelTodoTriggerService` owns PR-merge and date rule authoring with expected
+  revisions, eligibility and shared-cap checks. Trigger infrastructure is always
+  wired; rules never expire and require no additional approval gate. Clearing rules
+  hides their presentation while preserving delivery and keyed authoring receipts;
+  retries must not duplicate wakes or revive removed rules.
   Sentinel tool actions use late-bound `getTriggerInfra().sentinelTodoTriggers`;
-  the rule owner is the invoking chat, never a tool argument. Tool event schemas
-  independently expose date and script variants through live service capabilities.
-  Owner-qualified REST capabilities return `dateTime` and `scriptCondition`;
-  coc-client contracts include script input, evaluation state and delivery receipts.
-  Already-built tools recheck authoring gates through the shared service; script
-  list/pause/remove remain available with execution disabled.
-  `triggers/script-condition-result.ts` canonicalizes script result JSON with
-  recursive lexical key ordering, a 16 KiB UTF-8 cap and SHA-256 hashing. It rejects
-  non-JSON values; runner-side JSON normalization must not bypass this validation.
-  `ScriptConditionEvaluator` computes a first-run baseline and repeating whole-result
-  changes through an injected runner, without mutating the input rule. Its event
-  stores source/revision, cadence, canonical result/hash and failure/pause fields.
-  Failures preserve the baseline, record bounded error text and pause the event at
-  five consecutive failures; success clears errors and resets the count. Its poll
-  delay helper doubles cadence per failure, capped at one hour without shortening
-  longer intervals. `runScriptCondition` passes state and strict JSON validation
-  to the shared script engine with a trigger-only 60-second abort deadline. Abort
-  terminates workers and cancels inner calls; the caller disposes its owner-resolved
-  unattended runtime. `runScriptConditionWithOwnerTools` assembles the supplied
-  owner-bound capabilities through the shared chat context, including Memory V2,
-  and disposes its context/runtime after every outcome. It uses the full resolved
-  CoC list, omits questions and denies approval-gated handlers. Nested scripts
-  require the owner's script tool to survive filtering and require no approval;
-  children inherit that policy. Callers validate owner, live flags and revision
-  and abort on revocation. Provider sessions are not started by this adapter.
-  `SentinelTodoTriggerFirer.fireScriptResult` commits a changed
-  evaluated event and immutable untrusted-data wake together, using rule/result-hash
-  receipts through the shared message admission service. It retains the rule's
-  active/paused status, blocks result replacement during pending delivery, and rechecks live
-  flags, owner/item eligibility and revisions before admission. Its synchronous
-  guard travels through `ActionExecutor` and `deliverOnce` under the shared process
-  lock, checks fresh owner state after mode resolution, and runs at the final
-  owner-queue write after asynchronous routing. Buffer writes and promoted
-  predecessors also recheck admission. Guarded delivery requires admitted routing;
-  rejection preserves stopped owner state and the pending receipt. Pending retries
-  reuse the saved prompt; script revisions revoke stale deliveries.
-  `pauseScriptCondition` atomically commits the fifth failure, paused status and
-  one immutable notice with a persisted receipt unique to that pause episode.
-  Paused notices retry while the rule remains paused and eligible; errors are
-  untrusted JSON and grant no authority to resume. `TriggerManager` requires an
-  injected script firer and live combined flags, uses script cadence/backoff and
-  routes repeating decisions before baseline persistence. Pending receipts retry
-  before another evaluation; acknowledged result wakes resume polling, while
-  acknowledged pause notices stop timers. Ineligible pause recipients still leave
-  the rule paused. `refreshScriptConditions` reconciles live timer gates without
-  deleting rows. Manager disarm, live refresh and shutdown abort active script
-  evaluations through the evaluator/runner signal; revocations preserve failure
-  counts and baselines, while deadline expiry counts as a failure. Replacement
-  timers wait for the cancelled run's overlap guard to release. Trigger infrastructure
-  composes the evaluator/firer with one shared gate requiring an injected runner, both
-  live flags and an undisposed infrastructure instance. Missing injection defaults to
-  denied authoring/execution. Before and after running it checks the exact
-  Sentinel, eligible item and current rule revision/source/state. Revocation aborts
-  without recording a result or failure. Disposal closes delivery admission before
-  cancelling execution. Server configuration refreshes script timers when the flag
-  conjunction changes. `server/index.ts` holds restored script rules behind
-  `scriptConditionRuntimeReady` until routes/runtime services, the WebSocket lifecycle
-  handler and HTTP listening are ready, then opens the gate and refreshes the manager.
-  Production calls `MultiRepoQueueRouter.runScriptCondition` → owner bridge
-  `CLITaskExecutor` → `ExecutorRegistry` → `ChatBaseExecutor.runScriptCondition`.
-  Validate the exact owner and resolve workspace/working directory; the current active
-  provider (fallback: executor provider) controls Codex nested-script omission.
+  the rule owner is the invoking chat, never a tool argument. The tool's date event
+  schema follows the live service capability; owner-qualified REST capabilities
+  return `dateTime`. Already-built tools recheck authoring gates through the service.
+- Sentinel job gate scripts reuse the unattended script engine in
+  `src/server/sentinel-jobs/`. `job-gate-result.ts` canonicalizes result JSON with
+  recursive lexical key ordering and a 16 KiB UTF-8 cap; it rejects non-JSON
+  values, and runner-side JSON normalization must not bypass it.
+  `job-gate-runner.ts` passes state and strict JSON validation to the shared script
+  engine with a 60-second abort deadline; abort terminates workers and cancels inner
+  calls. `runJobGateWithOwnerTools` assembles the supplied owner-bound capabilities
+  through the shared chat context, including Memory V2, and disposes its
+  context/runtime after every outcome. It uses the full resolved CoC list, omits
+  questions and denies approval-gated handlers. Nested scripts require the owner's
+  script tool to survive filtering and require no approval; children inherit that
+  policy. Provider sessions are never started. Production calls
+  `MultiRepoQueueRouter.runJobGate` → owner bridge `CLITaskExecutor` →
+  `ExecutorRegistry` → `ChatBaseExecutor.runJobGate` with an exact
+  `{ workspaceId, processId, code, state, signal }` request. The executor validates
+  the exact Sentinel owner and resolves workspace/working directory; the current
+  active provider (fallback: executor provider) controls Codex nested-script omission.
   Reuse shared helper dependencies for the full owner-bound CoC tool list, not the
   chat-scriptable subset; omit attended-only `sentinel_jobs` and write-only
   `create_pull_request`. Supply no provider approval callback. Provider-native/MCP
   shell handlers are outside `CocToolRuntime` and fail as catchable `ToolCallError`,
-  never model-call emulation.
-  `createWebSocketInfrastructure` synchronously forwards every ProcessStore lifecycle
-  event to `infra.onProcessChange` before broadcasting. Disarm affected script rules
-  on owner cancellation/cancelling, type/mode/workspace mismatch, deletion or clear;
-  cancellation reaches runtime assembly and running VM tools. Unrelated owners,
-  ordinary title/running-status updates and unidentified bulk updates do not revoke.
+  never model-call emulation. `SentinelJobService` owns live-flag/job-revision checks
+  and aborts the signal on edit, revocation and shutdown; `routes/index.ts` injects
+  `bridge.runJobGate` and the live `features.toolScripting` flag.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated
@@ -450,13 +400,29 @@ references before editing. Paths are package-relative.
   affect only its registry keys. Shared triggers and messaging settings keep their own tabs.
   `features.sentinelTodoJobs` is live, experimental and default-off in `sentinelTodos`;
   its Admin row depends on `sentinel.enabled` and publishes `sentinelTodoJobsEnabled`.
-  `features.sentinelTodoScriptTriggers` is a separate live default-off switch in
-  that group, publishing `sentinelTodoScriptTriggersEnabled`; execution must also
-  require live `features.toolScripting`. Keep both saved switches independent.
 - Sentinel prompt jobs (`src/server/sentinel-jobs/`) require both live flags, prove
   the exact Sentinel owner and share the native ledger database. Definitions use
   expected revisions and a ten-job owner limit. A definition holds either an explicit
-  model/effort or an `effortTier` resolved by the enqueue path at each run; neither overrides the other. The first run persists one ordinary
+  model/effort or an `effortTier` resolved by the enqueue path at each run; neither overrides the other.
+  An optional `gateScript` requires `cron`. Gate state (`gateLastResult`,
+  `gateConsecutiveFailures`, `gateLastError`, `gatePaused`) lives in the job record,
+  is never a user setting, and resets when the script changes or clears;
+  `updateGate` writes it without a revision bump only while the evaluated script is
+  still current. Scheduled ticks use `SentinelJobService.tick`: an active run records
+  an `overlap` skip before any gate runs and that skip never claims a run, so a gated
+  job's scheduled run only starts with a gate result. Tick liveness is job-scoped
+  (flag, disposal, own revision/enabled/cron), never the scheduler's global refresh;
+  a saved non-empty result claims its run in the same synchronous step; a paused gate skips silently and
+  `features.toolScripting` off records `gate-unavailable`. The gate receives the
+  parsed `gateLastResult` as `state`; an empty result (`null`, `false`, `""`, `[]`,
+  `{}`) records `gate-empty`, anything else starts the run with the canonical JSON
+  fenced after the instructions. Five consecutive failures pause the gate and queue
+  one `notice` Sentinel turn that, like handbacks, never gets `sentinel_jobs`. Edits
+  and deletes (`cancelGate`), owner/flag invalidation and shutdown abort in-flight
+  gates without counting a failure. Run now (`start`) never runs the gate. Test gate
+  (`testGate`, REST `gate/test`, tool `test_gate`) evaluates once with the saved
+  state and never saves, counts or starts a run, even while paused; Resume gate
+  (`resumeGate`) clears the pause and failure count. The first run persists one ordinary
   Ask/Autopilot chat; later runs retain it, including after cancellation or failure.
   Snapshot paths stay repo-scoped and read-only. Runs and handbacks use the existing
   low-priority task queue; job metadata grants compaction, never Sentinel identity.
@@ -496,6 +462,11 @@ references before editing. Paths are package-relative.
   committed origins label bounded snapshots/reads; delta baselines include
   document/frame identity. Frame refs and contexts remain transient, never
   process metadata, profile settings or new storage.
+  `browserControl.backgroundEnabled` is independently default-off and live.
+  The relay keeps per-socket background workspace sets only while it is on,
+  rejects only a dropped workspace's calls, and lets the owning socket pause a
+  call's 60s timer with `browser-command-waiting` while its Switch back notice
+  waits. Flag off keeps one foreground workspace per socket.
   `/browser` persists prompt-only `metadata.browserMode`; tool execution does
   not require activation. Ask, Autopilot and follow-ups share registration,
   preferences and turn cancellation; create the turn AbortController before
@@ -753,8 +724,9 @@ references before editing. Paths are package-relative.
 
 ## Chat and Provider Safety
 
-- Default-off `features.sentinelNextSteps` gates optional 1–3 Sentinel actions and
-  click-to-send. Resolve the UI gate from the conversation owner. Keep clicks on
+- Default-on `features.sentinelNextSteps` gates optional 1–3 Sentinel actions and
+  click-to-send; only an explicit `false` disables it. Resolve the UI gate from the
+  conversation owner; a remote owner must advertise the flag. Keep clicks on
   the normal guarded follow-up path; suggestion display grants no authority and
   clicks request only the named scope. Ordinary modes retain their suggestion behavior.
 
@@ -902,7 +874,7 @@ references before editing. Paths are package-relative.
   `delegation/sentinel-job-review-instructions.ts` and are appended by
   `chat-turn-system-message.ts` on every first/follow-up Sentinel request, including
   resumed, provider-switched and post-compaction sessions, independently of admin/repo
-  prompts. Saved per-chat additional instructions (default-off
+  prompts. Saved per-chat additional instructions (default-on
   `features.sentinelAdditionalInstructions`) ride only the turns that carry the Sentinel
   mode directive, read fresh there, never the system message or the stored marker.
   Sentinel completion messages contain only the untrusted-result prefix and

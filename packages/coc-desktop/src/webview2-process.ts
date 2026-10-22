@@ -220,11 +220,11 @@ export class WebView2Process {
         }
         return new Promise<unknown>((resolve, reject) => {
             const timer = setTimeout(() => {
-                const error = new BrowserHostError('runtime-crashed', `WebView2 ${op} timed out after 30s. Retry explicitly.`);
+                const error = new BrowserHostError('runtime-crashed', `WebView2 ${op} timed out after 60s. Retry explicitly.`);
                 if (!viewRequest) { this.fail(error); return; }
                 this.pending.delete(id);
                 reject(error);
-            }, 30_000);
+            }, 60_000);
             this.pending.set(id, {
                 resolve, reject, timer, ...(viewRequest && typeof payload.viewId === 'string' ? { viewId: payload.viewId } : {}),
                 ...(typeof payload.sessionId === 'string' ? { sessionId: payload.sessionId } : {}),

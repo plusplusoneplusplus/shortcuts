@@ -268,6 +268,119 @@ describe('main browser control scope and selection', () => {
         await h.manager.dispose();
     });
 
+    it('keeps serving a retained background scope after the window selects another workspace, isolated per routing ref', async () => {
+        const h = harness();
+        const exec = (workspaceId: string, command: BrowserCommand, routingRef?: string, selectedTab?: string) =>
+            h.manager.executeControl(1, { id: 'r', workspaceId, processId: 'p', command, selectedTab }, undefined, routingRef);
+        const opened = await h.run({ action: 'open', url: 'https://fixture.test/' });
+        await h.manager.open(1, 'b-tab', 'https://b.test/', 'b');
+        h.manager.bindControlScope(4, 'w', 'remote:server:w');
+        await h.manager.open(4, 'remote', 'https://remote.test/', 'remote:server:w');
+        h.manager.retainControlScope(1, 'w', 'w');
+        h.manager.bindControlScope(1, 'b', 'b');
+        h.send.mockClear();
+        expect(h.manager.controlSessionKey(1, 'w', 'w')).toBe('w');
+        expect(h.manager.controlSessionKey(1, 'b')).toBe('b');
+        // Foreground-only routing (no ref) no longer reaches the background workspace.
+        await expect(exec('w', { action: 'tabs' })).rejects.toThrow('scope changed');
+        expect((await exec('w', { action: 'tabs' }, 'w')).tabs?.map(tab => tab.id)).toEqual([opened.tab]);
+        expect((await exec('b', { action: 'tabs' })).tabs?.map(tab => tab.id)).toEqual(['t1:b-tab']);
+        await expect(exec('w', { action: 'read' }, 'w', opened.tab)).resolves.toMatchObject({ text: '# Fixture\n\nContent' });
+        expect(h.send).toHaveBeenCalledWith(1, BROWSER_CONTROL_REVEAL_CHANNEL, expect.objectContaining({ workspaceId: 'w', routingRef: 'w', background: true }));
+        // Never another workspace's or another clone's tabs, even with a retained ref.
+        await expect(exec('w', { action: 'select', tab: 't1:b-tab' }, 'w')).rejects.toThrow('not found');
+        await expect(exec('w', { action: 'select', tab: 't4:remote' }, 'w')).rejects.toThrow('not found');
+        await expect(exec('b', { action: 'tabs' }, 'w')).rejects.toThrow('scope changed');
+        await expect(exec('w', { action: 'tabs' }, 'remote:server:w')).rejects.toThrow('scope changed');
+        // Foreground reveals stay unflagged.
+        h.send.mockClear();
+        await exec('b', { action: 'select', tab: 't1:b-tab' });
+        expect(h.send).toHaveBeenCalledWith(1, BROWSER_CONTROL_REVEAL_CHANNEL, expect.not.objectContaining({ background: true }));
+        h.manager.retainControlScope(1, 'w', null);
+        await expect(exec('w', { action: 'tabs' }, 'w')).rejects.toThrow('scope changed');
+        h.manager.retainControlScope(1, 'w', 'w');
+        h.manager.bindControlScope(1, null, null);
+        expect(h.manager.retainedSessionKeys(1).size).toBe(0);
+        await h.manager.dispose();
+    });
+
+    it('drives a background tab without focus, using hidden layout and CDP focus emulation until a foreground command', async () => {
+        const clipboard = { availableFormats: () => [], write: vi.fn() };
+        const h = harness(undefined, clipboard);
+        const configure = vi.spyOn(BrowserControlPage.prototype, 'configureFrames').mockResolvedValue();
+        const exec = (command: BrowserCommand, routingRef: string | undefined, selectedTab: string, extra = {}) =>
+            h.manager.executeControl(1, { id: 'r', workspaceId: 'w', processId: 'p', command, selectedTab, ...extra }, undefined, routingRef);
+        try {
+            const opened = await h.run({ action: 'open', url: 'https://fixture.test/' });
+            const view = h.views[0];
+            const order: string[] = [];
+            view.setBackgroundControl = vi.fn(enabled => { order.push(`layout:${enabled}`); });
+            const cdp = vi.mocked(view.cdp!);
+            const original = cdp.getMockImplementation()!;
+            cdp.mockImplementation(async (method, params, session) => {
+                if (method === 'Emulation.setFocusEmulationEnabled') order.push(`emulate:${params?.enabled}`);
+                if (method === 'Input.dispatchKeyEvent') order.push(String(params?.type));
+                return original(method, params, session);
+            });
+            h.manager.retainControlScope(1, 'w', 'w');
+            h.manager.bindControlScope(1, 'b', 'b');
+            h.send.mockClear();
+            await exec({ action: 'press', key: 'x' }, 'w', opened.tab!);
+            expect(view.focus).not.toHaveBeenCalled();
+            expect(order).toEqual(['layout:true', 'emulate:true', 'keyDown', 'keyUp']);
+            expect(h.send).toHaveBeenCalledWith(1, 'coc-desktop:browser-control-activity', expect.objectContaining({ viewId: view.snapshot().viewId, active: true, background: true }));
+            // Emulation is enabled once per background stretch.
+            order.length = 0;
+            await exec({ action: 'press', key: 'y' }, 'w', opened.tab!);
+            expect(order).toEqual(['layout:true', 'keyDown', 'keyUp']);
+            // Native rich paste needs real focus, so a background turn never attempts it.
+            await expect(exec({ action: 'paste_html', ref: 'e1', html: '<b>x</b>', text: 'x' }, 'w', opened.tab!,
+                { framesEnabled: true, richPasteEnabled: true })).rejects.toThrow('foreground-required');
+            expect(clipboard.write).not.toHaveBeenCalled();
+            expect(view.focus).not.toHaveBeenCalled();
+            // Back in the foreground, the next command restores normal layout, real focus and no emulation.
+            h.manager.bindControlScope(1, 'w', 'w');
+            order.length = 0;
+            h.send.mockClear();
+            await exec({ action: 'press', key: 'z' }, 'w', opened.tab!);
+            expect(order).toEqual(['layout:false', 'emulate:false', 'keyDown', 'keyUp']);
+            expect(view.focus).toHaveBeenCalledOnce();
+            expect(h.send).toHaveBeenCalledWith(1, 'coc-desktop:browser-control-activity', expect.not.objectContaining({ background: true }));
+        } finally {
+            configure.mockRestore();
+            await h.manager.dispose();
+        }
+    });
+
+    it('drops hidden layout when a background turn finishes', async () => {
+        const h = harness();
+        try {
+            const opened = await h.run({ action: 'open', url: 'https://fixture.test/' });
+            const view = h.views[0];
+            view.setBackgroundControl = vi.fn();
+            h.manager.retainControlScope(1, 'w', 'w');
+            h.manager.bindControlScope(1, 'b', 'b');
+            await h.manager.executeControl(1, { id: 'r', workspaceId: 'w', processId: 'p', turnId: 't', command: { action: 'read' }, selectedTab: opened.tab }, undefined, 'w');
+            expect(view.setBackgroundControl).toHaveBeenLastCalledWith(true);
+            h.manager.finishControl(1, 't');
+            await vi.waitFor(() => expect(view.setBackgroundControl).toHaveBeenLastCalledWith(false));
+            expect(vi.mocked(view.cdp!)).toHaveBeenLastCalledWith('Emulation.setFocusEmulationEnabled', { enabled: false });
+        } finally {
+            await h.manager.dispose();
+        }
+    });
+
+    it('validates and bounds retained background scopes', async () => {
+        const h = harness();
+        expect(() => h.manager.retainControlScope(1, '', 'w')).toThrow(TypeError);
+        expect(() => h.manager.retainControlScope(1, 'w', 42)).toThrow(TypeError);
+        for (let i = 0; i < 64; i++) h.manager.retainControlScope(1, `ws-${i}`, `ws-${i}`);
+        expect(() => h.manager.retainControlScope(1, 'ws-64', 'ws-64')).toThrow('Too many');
+        h.manager.retainControlScope(1, 'ws-0', 'ws-0');
+        expect(h.manager.retainedSessionKeys(1).size).toBe(64);
+        await h.manager.dispose();
+    });
+
     it('serializes navigation, snapshots and raw eval in one retained control queue', async () => {
         const h = harness();
         const first = await h.run({ action: 'open', url: 'https://fixture.test/' });

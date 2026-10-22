@@ -71,7 +71,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.pullRequests.autoClassifyTeam).toBe(false);
             expect(DEFAULT_CONFIG.forEach).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.mapReduce).toEqual({ enabled: false });
-            expect(DEFAULT_CONFIG.browserControl).toEqual({ enabled: false, framesEnabled: false, richPasteEnabled: false });
+            expect(DEFAULT_CONFIG.browserControl).toEqual({ enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false });
             expect(DEFAULT_CONFIG.sentinel).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.dreams).toEqual({
                 enabled: false,
@@ -1096,6 +1096,7 @@ timeout: 300
                 '  enabled: true',
                 '  framesEnabled: true',
                 '  richPasteEnabled: true',
+                '  backgroundEnabled: true',
                 'dangerousCommandGuard:',
                 '  enabled: true',
                 'vimNavigation:',
@@ -1176,7 +1177,6 @@ timeout: 300
                 '  sentinelRemoteResults: true',
                 '  sentinelNextSteps: true',
                 '  sentinelTodoDateTimeTriggers: true',
-                '  sentinelTodoScriptTriggers: true',
                 '  sentinelResultCards: true',
                 '  sentinelTodoDependencies: true',
                 '  sentinelTodoExternalReferences: true',
@@ -1207,6 +1207,7 @@ timeout: 300
                 '  composerWordHint: false',
                 '  chatProviderSwitching: true',
                 '  canvasHostApis: true',
+                '  canvasToolScripts: true',
                 '  sensitiveInput: true',
                 '  explorerEditorTabs: false',
                 '  explorerDelete: true',
@@ -1249,6 +1250,7 @@ timeout: 300
             const notFromFile = CONFIG_SOURCE_KEYS.filter((key) => result.sources[key] !== 'file');
             expect(notFromFile).toEqual([]);
             expect(result.resolved.browserControl.enabled).toBe(true);
+            expect(result.resolved.browserControl.backgroundEnabled).toBe(true);
         });
 
         describe.each([
@@ -1463,6 +1465,7 @@ timeout: 300
                   },
                   "approvePermissions": true,
                   "browserControl": {
+                    "backgroundEnabled": false,
                     "enabled": false,
                     "framesEnabled": false,
                     "richPasteEnabled": false,
@@ -1520,6 +1523,7 @@ timeout: 300
                     "autoMemoryPromotion": true,
                     "botManagedConversations": false,
                     "canvasHostApis": false,
+                    "canvasToolScripts": false,
                     "chatFolders": false,
                     "chatHistoryPaging": false,
                     "chatProviderSwitching": false,
@@ -1542,7 +1546,7 @@ timeout: 300
                     "panelSourceSplit": true,
                     "panelTabReordering": true,
                     "pinnedScopes": true,
-                    "queryPullRequestTool": false,
+                    "queryPullRequestTool": true,
                     "quickAskSidenotes": true,
                     "railManualRefresh": true,
                     "railStatusActions": true,
@@ -1553,10 +1557,10 @@ timeout: 300
                     "schedulesInScheduledSlide": true,
                     "scopeSwitcher": true,
                     "sensitiveInput": false,
-                    "sentinelAdditionalInstructions": false,
+                    "sentinelAdditionalInstructions": true,
                     "sentinelDesktopMirror": false,
                     "sentinelFollowUpResults": false,
-                    "sentinelNextSteps": false,
+                    "sentinelNextSteps": true,
                     "sentinelPrOutcomeWake": false,
                     "sentinelRemoteResults": false,
                     "sentinelResultCards": true,
@@ -1564,7 +1568,6 @@ timeout: 300
                     "sentinelTodoDependencies": false,
                     "sentinelTodoExternalReferences": false,
                     "sentinelTodoJobs": false,
-                    "sentinelTodoScriptTriggers": false,
                     "sentinelTodoScrubber": false,
                     "sentinelTodoTags": false,
                     "sessionContextAttachments": true,
@@ -1727,6 +1730,7 @@ timeout: 300
                   "LLMToolSystemOne.enabled": "default",
                   "agentProviderRouting.auto": "default",
                   "approvePermissions": "file",
+                  "browserControl.backgroundEnabled": "default",
                   "browserControl.enabled": "default",
                   "browserControl.framesEnabled": "default",
                   "browserControl.richPasteEnabled": "default",
@@ -1759,6 +1763,7 @@ timeout: 300
                   "features.autoMemoryPromotion": "file",
                   "features.botManagedConversations": "default",
                   "features.canvasHostApis": "default",
+                  "features.canvasToolScripts": "default",
                   "features.chatFolders": "default",
                   "features.chatHistoryPaging": "default",
                   "features.chatProviderSwitching": "default",
@@ -1802,7 +1807,6 @@ timeout: 300
                   "features.sentinelTodoDependencies": "default",
                   "features.sentinelTodoExternalReferences": "default",
                   "features.sentinelTodoJobs": "default",
-                  "features.sentinelTodoScriptTriggers": "default",
                   "features.sentinelTodoScrubber": "default",
                   "features.sentinelTodoTags": "default",
                   "features.sessionContextAttachments": "default",

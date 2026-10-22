@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from 'react';
-import type { CocClient, RuntimeDashboardConfig, SentinelScheduledJob, SentinelScheduledJobRun, SentinelScheduledJobInput } from '@plusplusoneplusplus/coc-client';
+import type { CocClient, RuntimeDashboardConfig, SentinelScheduledJob, SentinelScheduledJobGateTest, SentinelScheduledJobRun,
+    SentinelScheduledJobInput } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled } from '../../../utils/config';
@@ -12,6 +13,7 @@ import { SentinelTodoScrubber, type SentinelTodoScrubberProps } from './Sentinel
 import { sentinelTodoOwnerKey, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 
 const MUTED = 'text-[#616161] dark:text-[#9d9d9d]';
+const ERROR = 'text-[#c72e2e] dark:text-[#f48771]';
 const CARD = 'flex min-w-0 flex-col gap-2 rounded border border-[#e0e0e0] p-2 dark:border-[#3c3c3c]';
 function subscribeConfig(listener: () => void) {
     window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, listener);
@@ -185,7 +187,9 @@ function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFol
                 onEdit={() => { setActionError(null); setEditor(job); }} onDelete={() => { setActionError(null); setDeleting(job); }}
                 onRun={() => void mutate(() => api.start(owner.ownerWorkspaceId, owner.processId, job.id))}
                 onCancel={() => { if (job.activeRun) void mutate(() => api.cancel(owner.ownerWorkspaceId, owner.processId, job.id, job.activeRun!.id)); }}
-                onToggle={() => void mutate(() => api.update(owner.ownerWorkspaceId, owner.processId, job.id, { enabled: !job.enabled, expectedRevision: job.revision }))} />)}
+                onToggle={() => void mutate(() => api.update(owner.ownerWorkspaceId, owner.processId, job.id, { enabled: !job.enabled, expectedRevision: job.revision }))}
+                onTestGate={signal => api.testGate(owner.ownerWorkspaceId, owner.processId, job.id, { signal })}
+                onResumeGate={() => void mutate(() => api.resumeGate(owner.ownerWorkspaceId, owner.processId, job.id))} />)}
         </div>
         {editor && <SentinelTodoJobDialog key={editor === 'new' ? 'new' : editor.id} job={editor === 'new' ? undefined : editor}
             client={client} baseUrl={baseUrl} effortLevelsEnabled={effortLevelsEnabled} busy={busy} error={actionError} onSave={save} onClose={() => { if (!pending.current) { setEditor(null); setActionError(null); } }} />}
@@ -202,7 +206,8 @@ function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFol
     </section>;
 }
 
-function JobRow({ job, owner, onFollowLink, disabled, onEdit, onDelete, onRun, onCancel, onToggle }: {
+type GateTestProps = { onTestGate: (signal: AbortSignal) => Promise<SentinelScheduledJobGateTest>; onResumeGate: () => void };
+function JobRow({ job, owner, onFollowLink, disabled, onEdit, onDelete, onRun, onCancel, onToggle, onTestGate, onResumeGate }: GateTestProps & {
     job: SentinelScheduledJob; owner: SentinelTodoOwner; onFollowLink: JobsProps['onFollowLink']; disabled: boolean;
     onEdit: () => void; onDelete: () => void; onRun: () => void; onCancel: () => void; onToggle: () => void;
 }) {
@@ -215,9 +220,10 @@ function JobRow({ job, owner, onFollowLink, disabled, onEdit, onDelete, onRun, o
         </div>
         <p className={MUTED}>{job.provider} / {job.effortTier ? `${job.effortTier} effort tier` : job.model}{job.effort && ` / ${job.effort}`} · {job.cron ? describeCron(job.cron) || job.cron : 'Manual only'}</p>
         {job.enabled && job.nextRunAt && <p className={MUTED}>Next <time dateTime={job.nextRunAt}>{new Date(job.nextRunAt).toLocaleString()}</time></p>}
+        {job.gateScript && <JobGate job={job} disabled={disabled} onTestGate={onTestGate} onResumeGate={onResumeGate} />}
         {job.activeRun ? <div role="status" className="flex items-center gap-1"><Spinner size="sm" /> Run #{job.activeRun.runNumber} {job.activeRun.status}</div>
-            : last && <p className={last.status === 'failed' || last.status === 'interrupted' ? 'text-[#c72e2e] dark:text-[#f48771]' : MUTED}>
-                Last run #{last.runNumber}: {last.status}{last.error && `: ${last.error}`}
+            : last && <p className={last.status === 'failed' || last.status === 'interrupted' ? ERROR : MUTED}>
+                Last run #{last.runNumber}: {runOutcome(last)}{last.error && `: ${last.error}`}
             </p>}
         <div className="flex flex-wrap items-center gap-1">
             <Button size="sm" disabled={disabled || !!job.activeRun} onClick={onRun}>Run now</Button>
@@ -232,12 +238,12 @@ function JobRow({ job, owner, onFollowLink, disabled, onEdit, onDelete, onRun, o
             {!job.runs.length && <p className={MUTED}>No runs yet.</p>}
             <ol className="mt-2 flex max-h-64 flex-col gap-2 overflow-auto">
                 {job.runs.map(run => <li key={run.id} className="border-t border-[#e0e0e0] pt-1 dark:border-[#3c3c3c]">
-                    <p>#{run.runNumber} · {run.trigger} · {run.status}{run.skipReason && `: ${run.skipReason}`}</p>
+                    <p>#{run.runNumber} · {run.trigger} · {runOutcome(run)}</p>
                     <RunTime label="Created" value={run.createdAt} />
                     <RunTime label="Started" value={run.startedAt} />
                     <RunTime label="Finished" value={run.finishedAt} />
                     {run.durationMs !== undefined && <p>Duration: {(run.durationMs / 1000).toFixed(1)}s</p>}
-                    {run.error && <p className="text-[#c72e2e] dark:text-[#f48771]">{run.error}</p>}
+                    {run.error && <p className={ERROR}>{run.error}</p>}
                     <div className="flex flex-wrap gap-2">
                         {job.processId && run.jobTurnHref && <JobChatLink owner={owner} processId={job.processId}
                             href={run.jobTurnHref} onFollowLink={onFollowLink}>Job turn</JobChatLink>}
@@ -248,6 +254,53 @@ function JobRow({ job, owner, onFollowLink, disabled, onEdit, onDelete, onRun, o
             </ol>
         </details>
     </article>;
+}
+const SKIP_REASONS: Record<NonNullable<SentinelScheduledJobRun['skipReason']>, string> = {
+    overlap: 'overlap', 'gate-empty': 'gate result empty', 'gate-unavailable': 'gate unavailable (tool scripting off)',
+};
+function runOutcome(run: SentinelScheduledJobRun) {
+    return run.skipReason ? `${run.status}: ${SKIP_REASONS[run.skipReason] ?? run.skipReason}` : run.status;
+}
+type GateTest = { running: true } | { outcome: SentinelScheduledJobGateTest } | { error: string };
+/** Test gate never saves state, so its outcome stays local to this card and this script. */
+function JobGate({ job, disabled, onTestGate, onResumeGate }: GateTestProps & { job: SentinelScheduledJob; disabled: boolean }) {
+    const [test, setTest] = useState<GateTest | null>(null);
+    const controller = useRef<AbortController | null>(null);
+    useEffect(() => { setTest(null); return () => controller.current?.abort(); }, [job.gateScript]);
+    const runTest = async () => {
+        controller.current?.abort();
+        const current = new AbortController();
+        controller.current = current;
+        setTest({ running: true });
+        try {
+            const outcome = await onTestGate(current.signal);
+            if (!current.signal.aborted) setTest({ outcome });
+        } catch (failure) {
+            if (!current.signal.aborted) setTest({ error: failure instanceof Error ? failure.message : String(failure) });
+        }
+    };
+    const outcome = test && 'outcome' in test ? test.outcome : undefined;
+    const failure = test && 'error' in test ? test.error : outcome && !outcome.ok ? outcome.error ?? 'Unknown error' : undefined;
+    return <div data-testid="sentinel-job-gate" className="flex min-w-0 flex-col gap-1">
+        <p className={job.gatePaused ? ERROR : MUTED}>{job.gatePaused
+            ? `Gate paused after ${job.gateConsecutiveFailures} failures in a row. Scheduled ticks skip it until you resume it.`
+            : `Gate active${job.gateConsecutiveFailures ? ` · ${job.gateConsecutiveFailures} failed in a row` : ''}`}</p>
+        {job.gateLastError && <p className={ERROR}>Last gate error (<time dateTime={job.gateLastError.at}>{new Date(job.gateLastError.at).toLocaleString()}</time>): {job.gateLastError.message}</p>}
+        {job.gateLastResult !== undefined && <p className={`${MUTED} break-all`} title={job.gateLastResult}>Last gate result: <code>{preview(job.gateLastResult)}</code></p>}
+        <div className="flex flex-wrap items-center gap-1">
+            <Button size="sm" variant="secondary" disabled={!!test && 'running' in test} onClick={() => void runTest()}>
+                {test && 'running' in test ? 'Testing gate...' : 'Test gate'}</Button>
+            {job.gatePaused && <Button size="sm" variant="secondary" disabled={disabled} onClick={onResumeGate}>Resume gate</Button>}
+        </div>
+        {outcome?.ok && <div role="status">
+            <p>{outcome.empty ? 'Test result is empty: a tick would skip.' : 'Test result is not empty: a tick would start a run.'}</p>
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono">{outcome.result}</pre>
+        </div>}
+        {failure && <p role="alert" className={ERROR}>Gate test failed: {failure}</p>}
+    </div>;
+}
+function preview(json: string) {
+    return json.length > 160 ? `${json.slice(0, 160)}\u2026` : json;
 }
 function RunTime({ label, value }: { label: string; value?: string }) {
     return value ? <p>{label}: <time dateTime={value}>{new Date(value).toLocaleString()}</time></p> : null;

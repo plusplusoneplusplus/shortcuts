@@ -1,4 +1,4 @@
-import type { SentinelScheduledJob, SentinelScheduledJobInput } from '@plusplusoneplusplus/coc-client';
+import type { SentinelScheduledJob, SentinelScheduledJobGateTest, SentinelScheduledJobInput } from '@plusplusoneplusplus/coc-client';
 import type { SentinelTodoOwner } from '../sentinel-todos/sentinel-todo-store';
 import type { JobRunRecord, SentinelJobStore } from './job-store';
 import type { SentinelJobService } from './job-service';
@@ -44,6 +44,7 @@ export class SentinelJobCommands {
         expectedRevision: number): Promise<SentinelScheduledJob> {
         await this.deps.service.assertOwner(owner);
         const job = this.deps.jobs.update(owner, id, settings, expectedRevision);
+        this.deps.service.cancelGate(owner, id);
         this.deps.onConfigChange?.();
         return this.deps.service.view(owner, job);
     }
@@ -51,6 +52,7 @@ export class SentinelJobCommands {
     async delete(owner: SentinelTodoOwner, id: string, expectedRevision: number): Promise<void> {
         await this.deps.service.assertOwner(owner);
         this.deps.jobs.delete(owner, id, expectedRevision);
+        this.deps.service.cancelGate(owner, id);
         this.deps.onConfigChange?.();
         await this.deps.service.removeSnapshots(owner, id);
     }
@@ -61,5 +63,13 @@ export class SentinelJobCommands {
 
     cancel(owner: SentinelTodoOwner, id: string, runId: string): Promise<JobRunRecord> {
         return this.deps.service.cancel(owner, id, runId);
+    }
+
+    testGate(owner: SentinelTodoOwner, id: string, signal?: AbortSignal): Promise<SentinelScheduledJobGateTest> {
+        return this.deps.service.testGate(owner, id, signal);
+    }
+
+    async resumeGate(owner: SentinelTodoOwner, id: string): Promise<SentinelScheduledJob> {
+        return this.deps.service.view(owner, await this.deps.service.resumeGate(owner, id));
     }
 }

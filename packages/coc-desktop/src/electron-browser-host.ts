@@ -39,6 +39,7 @@ import { ElectronBrowserCdp } from './electron-browser-cdp';
 import { setTimeout as delay } from 'node:timers/promises';
 import { randomUUID } from 'node:crypto';
 import { browserPopupChrome } from './browser-popup-chrome';
+import { translateBackgroundInput } from './electron-background-input';
 import { isClickOnceRequest, validActivationUrl, type BrowserApplicationRequest } from './browser-clickonce';
 
 interface BrowserEntry {
@@ -48,6 +49,8 @@ interface BrowserEntry {
     contents?: WebContents;
     cdp?: ElectronBrowserCdp;
     shown: boolean;
+    /** A background browser-control turn drives this guest; input must not go through the embedder. */
+    background?: boolean;
     pageZoom: number;
     authorization?: ReturnType<typeof authorizeBrowserWebview>;
     viewId: string;
@@ -442,14 +445,32 @@ function setBounds(entry: BrowserEntry, bounds: HtmlPageBounds | null): void {
     entry.shown = bounds !== null;
 }
 
+/** Deliver background input to the guest itself; CDP keyboard input would reach the embedder's focused element. */
+async function sendBackgroundInput(entry: BrowserEntry, method: string, params: Record<string, unknown> | undefined, sessionId: string | undefined): Promise<unknown> {
+    const steps = translateBackgroundInput(method, params, sessionId);
+    const contents = entry.contents;
+    if (entry.closed || !contents || contents.isDestroyed()) { throw new BrowserHostError('not-found', 'Browser tab is closed.'); }
+    for (const step of steps) {
+        if (step.kind === 'insertText') { await contents.insertText(step.text); }
+        else if (step.kind === 'selectAll') { contents.selectAll(); }
+        else { contents.sendInputEvent(step.event); }
+    }
+    // sendInputEvent only queues; let the page handle it before the next control step reads page state.
+    await Promise.race([
+        entry.cdp!.send('Runtime.evaluate', { expression: 'new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve)))', awaitPromise: true }),
+        delay(1_000),
+    ]);
+    return {};
+}
+
 async function waitForControlContents(getContents: () => WebContents | undefined, closed: () => boolean, signal: AbortSignal): Promise<void> {
-    const deadline = Date.now() + 30_000;
+    const deadline = Date.now() + 60_000;
     while (true) {
         signal.throwIfAborted();
         const contents = getContents();
         if (closed() || contents?.isDestroyed()) throw new Error('Browser tab closed');
         if (contents && !contents.isLoading() && contents.getURL()) return;
-        if (Date.now() >= deadline) throw new Error('Browser page did not become ready after 30s');
+        if (Date.now() >= deadline) throw new Error('Browser page did not become ready after 60s');
         await delay(20, undefined, { signal });
     }
 }
@@ -498,6 +519,7 @@ export class ElectronBrowserHost implements BrowserEngineHost {
             cdp: (method, params, sessionId) => {
                 if (entry.closed) { return Promise.reject(new BrowserHostError('not-found', 'Browser tab is closed.')); }
                 if (!entry.cdp) { return Promise.reject(new BrowserHostError('busy', 'Browser guest is not attached yet.')); }
+                if (entry.background && method.startsWith('Input.')) { return sendBackgroundInput(entry, method, params, sessionId); }
                 return entry.cdp.send(method, params, sessionId);
             },
             onCdpEvent: listener => {
@@ -515,6 +537,7 @@ export class ElectronBrowserHost implements BrowserEngineHost {
                 if (entry.contents && !entry.contents.isDestroyed()) { entry.contents.setZoomFactor(percent / 100); }
             },
             setBounds: bounds => setBounds(entry, bounds),
+            setBackgroundControl: enabled => { entry.background = enabled; },
             focus: async () => {
                 if (entry.closed || entry.win.isDestroyed() || !entry.contents || entry.contents.isDestroyed()) {
                     throw new BrowserHostError('not-found', 'Browser tab is closed.');

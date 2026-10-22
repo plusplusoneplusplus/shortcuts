@@ -1,3 +1,4 @@
+import { SENTINEL_COMPLETION_GUIDANCE } from '../../../src/server/delegation/sentinel-job-review-instructions';
 import * as fs from 'node:fs';
 import { EventEmitter } from 'node:events';
 import * as path from 'node:path';
@@ -13,6 +14,9 @@ import type { SentinelTodoItemView, SentinelTodoLedgerView } from '../../../src/
 import { SentinelTodoStore, type SentinelTodoItem } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import type { Trigger } from '../../../src/server/triggers/trigger-types';
 import { createTodoTestDatabase, createTodoTestDirectory } from '../sentinel-todos/test-db';
+import * as config from '../../../src/config';
+import { prepareTaskForEnqueue } from '../../../src/server/routes/queue-enqueue';
+import { resolveChatTurnPolicy } from '../../../src/server/executors/chat-turn-policy-resolver';
 
 const owner = { workspaceId: 'ws-a', processId: 'queue_parent' };
 const other = { workspaceId: 'ws-b', processId: 'queue_parent' };
@@ -89,6 +93,36 @@ afterEach(() => {
 });
 
 describe('ScrubberRunService.start', () => {
+    it.each(['manual', 'schedule'] as const)('resolves %s runs to medium without changing owner or model routing', async trigger => {
+        for (const [ledgerOwner, provider, preferredEffort] of [
+            [owner, 'copilot', 'high'], [other, 'codex', 'low'],
+        ] as const) {
+            const settings = { models: { providers: { [provider]: { reasoningEfforts: { 'gpt-5': preferredEffort } } } } };
+            vi.spyOn(config, 'loadConfigFile').mockReturnValue(settings);
+            const scheduleBefore = scrubber.getConfig(ledgerOwner);
+            const run = await service.start(ledgerOwner, { trigger });
+            const task = enqueued.at(-1)!;
+            expect(task.config).toEqual({ reasoningEffort: 'medium' });
+            expect(task.payload).not.toHaveProperty('provider');
+            expect(task.payload).not.toHaveProperty('model');
+            await prepareTaskForEnqueue(task, {});
+            const policyInput = {
+                provider, requestedModel: 'gpt-5', defaultModelMode: 'ask' as const,
+                getModelMetadata: async () => ({ id: 'gpt-5', name: 'GPT-5',
+                    capabilities: { supports: { reasoning_effort: ['low', 'medium', 'high'] } } }),
+            };
+            expect((await resolveChatTurnPolicy({ ...policyInput, requestedEffort: undefined })).reasoningEffort)
+                .toBe(preferredEffort);
+            const policy = await resolveChatTurnPolicy({ ...policyInput, requestedEffort: task.config!.reasoningEffort });
+            expect(policy).toMatchObject({ modelId: 'gpt-5', reasoningEffort: 'medium' });
+            expect(task.repoId).toBe(ledgerOwner.workspaceId);
+            expect(task.payload.workspaceId).toBe(ledgerOwner.workspaceId);
+            expect(getScrubChildContext(task.payload)).toEqual({ ...ledgerOwner, runId: run.id });
+            expect(scrubber.getConfig(ledgerOwner)).toEqual(scheduleBefore);
+            expect(settings.models.providers[provider]?.reasoningEfforts['gpt-5']).toBe(preferredEffort);
+        }
+    });
+
     it('cancels a scheduled admission disarmed during snapshot I/O without counting a failure', async () => {
         item('Work');
         service.dispose();
@@ -145,6 +179,9 @@ describe('ScrubberRunService.start', () => {
             encodeURIComponent(owner.processId), run.id, 'snapshot.json'));
         expect(task.payload.prompt).toContain(snapshotPath);
         expect(task.payload.prompt).toContain(SUBMIT_SCRUB_FINDINGS_TOOL_NAME);
+        expect(task.payload.prompt).toContain(SENTINEL_COMPLETION_GUIDANCE);
+        expect(task.payload.prompt).toContain('If closure is uncertain, report `unchanged` with the gap for the parent to ask the user; never auto-apply.');
+        expect(task.payload.prompt).toContain('and its completion condition met');
         const snapshot = JSON.parse(fs.readFileSync(snapshotPath, 'utf-8'));
         expect(snapshot.items.map((entry: { id: string }) => entry.id)).toEqual([a.id]);
         expect(onChange).toHaveBeenCalledWith(owner, { runId: run.id });

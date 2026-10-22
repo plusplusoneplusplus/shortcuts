@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { CocToolRuntime, type Tool } from '@plusplusoneplusplus/coc-agent-sdk';
-import { runScriptCondition } from '../../../src/server/triggers/script-condition-runner';
+import { runJobGate } from '../../../src/server/sentinel-jobs/job-gate-runner';
 import {
     applyLlmToolApprovalGate,
     formatLlmToolApprovalArgs,
@@ -325,7 +325,7 @@ describe('buildChatToolBundle approval gate wiring', () => {
             return { name: error.name, toolName: error.toolName, code: error.code, message: error.message };
         }`;
         try {
-            const result = await runScriptCondition({
+            const result = await runJobGate({
                 code: nested ? `return (await tools.run_tool_script({ code: ${JSON.stringify(code)} })).result;` : code,
                 // The script tool is enabled and ungated; the child tool is gated.
                 state: null, runtime, allowNestedScripts: true,

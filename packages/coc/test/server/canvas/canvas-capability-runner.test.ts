@@ -6,6 +6,7 @@ import {
     ASYNC_CAPABILITY_TIMEOUT_MS,
     MAX_HOST_COMPLETIONS_PER_RUN,
     MAX_CONCURRENT_ASYNC_RUNS,
+    MAX_HOST_SCRIPTS_PER_RUN,
 } from '../../../src/server/canvas/canvas-capability-runner';
 
 /** Poll until the runner reports no live workers, or give up. */
@@ -338,6 +339,90 @@ describe('runCanvasCapability — async path', () => {
         expect(peak).toBeLessThanOrEqual(MAX_CONCURRENT_ASYNC_RUNS);
         expect(await waitForNoWorkers()).toBe(0);
     }, 20_000);
+});
+
+describe('runCanvasCapability — host.runScript', () => {
+    const SCRIPT_CAPS = `
+        capabilities = {
+            run: async function (state, params, host) {
+                try {
+                    const out = await host.runScript(params.code, params.withState ? { state: { repo: 'r' } } : undefined);
+                    return { out: out };
+                } catch (err) { return { code: err.code, message: err.message }; }
+            },
+            many: async function (state, params, host) {
+                const results = [];
+                for (var i = 0; i < 4; i++) {
+                    try { results.push((await host.runScript('return ' + i + ';')).result); }
+                    catch (err) { results.push('ERR:' + err.code); }
+                }
+                return { results: results };
+            },
+            tools: async function (state, params, host) {
+                var frozen = Object.isFrozen(host.tools);
+                try { host.tools.push('x'); } catch (_) { /* frozen */ }
+                return { tools: host.tools.slice(), frozen: frozen };
+            },
+        };
+    `;
+
+    it('round-trips code and state to the injected runner and returns { result, logs, callCount }', async () => {
+        const runScript = vi.fn(async () => ({ ok: true as const, result: { n: 1 }, logs: ['hello'], callCount: 2 }));
+        const result = await runCanvasCapability(SCRIPT_CAPS, 'run', '{}', { code: 'return 1;', withState: true }, { async: true, runScript });
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(JSON.parse(result.state)).toEqual({ out: { result: { n: 1 }, logs: ['hello'], callCount: 2 } });
+        expect(runScript).toHaveBeenCalledWith({ code: 'return 1;', state: { repo: 'r' } }, expect.any(AbortSignal));
+    });
+
+    it(`allows ${MAX_HOST_SCRIPTS_PER_RUN} scripts per run and rejects the next with 'limit'`, async () => {
+        const runScript = vi.fn(async () => ({ ok: true as const, result: 'ok', logs: [], callCount: 0 }));
+        const result = await runCanvasCapability(SCRIPT_CAPS, 'many', '{}', {}, { async: true, runScript });
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(JSON.parse(result.state).results).toEqual(['ok', 'ok', 'ok', 'ERR:limit']);
+        expect(runScript).toHaveBeenCalledTimes(MAX_HOST_SCRIPTS_PER_RUN);
+    });
+
+    it("rejects with 'disabled' (and does not hang) when no runner is supplied", async () => {
+        const result = await runCanvasCapability(SCRIPT_CAPS, 'run', '{}', { code: 'return 1;' }, { async: true, timeoutMs: 5000 });
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(JSON.parse(result.state).code).toBe('disabled');
+    });
+
+    it.each([[''], ['   '], [42]])("rejects code %j with 'script-error' without asking the parent", async (code) => {
+        const runScript = vi.fn();
+        const result = await runCanvasCapability(SCRIPT_CAPS, 'run', '{}', { code }, { async: true, runScript });
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(JSON.parse(result.state).code).toBe('script-error');
+        expect(runScript).not.toHaveBeenCalled();
+    });
+
+    it('passes a runner error code through to the capability', async () => {
+        const runScript = vi.fn(async () => ({ ok: false as const, code: 'no-owner', error: 'no owner chat' }));
+        const result = await runCanvasCapability(SCRIPT_CAPS, 'run', '{}', { code: 'return 1;' }, { async: true, runScript });
+        if (result.ok) expect(JSON.parse(result.state)).toEqual({ code: 'no-owner', message: 'no owner chat' });
+    });
+
+    it('fails the run with the budget error and aborts the pending script with a timeout reason', async () => {
+        let seen: AbortSignal | undefined;
+        const runScript = vi.fn((_request: unknown, signal: AbortSignal) => {
+            seen = signal;
+            return new Promise<never>(() => { /* never settles */ });
+        });
+        const result = await runCanvasCapability(SCRIPT_CAPS, 'run', '{}', { code: 'return 1;' }, { async: true, runScript, timeoutMs: 300 });
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(result.error).toContain('exceeded the 300ms async budget');
+        expect(seen?.aborted).toBe(true);
+        expect(seen?.reason).toEqual({ code: 'timeout' });
+        expect(await waitForNoWorkers()).toBe(0);
+    });
+
+    it('exposes the declared tools as a frozen host.tools', async () => {
+        const result = await runCanvasCapability(SCRIPT_CAPS, 'tools', '{}', {}, { async: true, tools: ['query_pull_request'] });
+        if (result.ok) expect(JSON.parse(result.state)).toEqual({ tools: ['query_pull_request'], frozen: true });
+        const none = await runCanvasCapability(SCRIPT_CAPS, 'tools', '{}', {}, { async: true });
+        if (none.ok) expect(JSON.parse(none.state).tools).toEqual([]);
+        expect(result.ok && none.ok).toBe(true);
+    });
 });
 
 describe('isValidCapabilityName', () => {

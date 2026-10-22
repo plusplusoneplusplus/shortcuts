@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as policy from '../src/browser-view-policy';
 import { BROWSER_HISTORY_RETENTION_MS } from '../src/browser-history';
-import { BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL } from '../src/browser-control-command';
+import { BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_RETAIN_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL } from '../src/browser-control-command';
 
 const mocks = vi.hoisted(() => ({
     handlers: new Map<string, (...args: any[]) => any>(), events: new Map<string, (...args: any[]) => any>(), windows: new Map<any, any>(),
@@ -153,6 +153,42 @@ describe('desktop history IPC', () => {
         const closing = invoke(BROWSER_CONTROL_COMMAND_CHANNEL, spa.event, { ...request, id: 'close' });
         spa.window.emit('closed');
         await expect(closing).rejects.toThrow('window closed');
+    });
+
+    it('keeps retained background requests across a workspace switch and aborts them when the scope is dropped', async () => {
+        const spa = owner(1), arbitrary = owner(2, 'http://localhost:4000/other');
+        expect(() => invoke(BROWSER_CONTROL_RETAIN_CHANNEL, arbitrary.event, 'a', 'a')).toThrow('registered SPA main frame');
+        invoke(BROWSER_CONTROL_SCOPE_CHANNEL, spa.event, 'a', 'a');
+        await invoke(policy.BROWSER_VIEW_OPEN_CHANNEL, spa.event, 'view', 'https://fixture.test/', 'a');
+        await invoke(policy.BROWSER_VIEW_OPEN_CHANNEL, spa.event, 'second', 'https://fixture.test/two', 'a');
+        const request = { id: 'r', workspaceId: 'a', processId: 'p', selectedTab: 't1:view', command: { action: 'wait', ms: 30_000 } };
+        let settled = false;
+        const waiting = invoke(BROWSER_CONTROL_COMMAND_CHANNEL, spa.event, request);
+        waiting.catch(() => {}).finally(() => { settled = true; });
+        await new Promise(resolve => setTimeout(resolve, 0));
+        invoke(BROWSER_CONTROL_RETAIN_CHANNEL, spa.event, 'a', 'a');
+        invoke(BROWSER_CONTROL_SCOPE_CHANNEL, spa.event, 'b', 'b');
+        await new Promise(resolve => setTimeout(resolve, 10));
+        expect(settled).toBe(false);
+        spa.window.show.mockClear(); spa.window.focus.mockClear();
+        await expect(invoke(BROWSER_CONTROL_COMMAND_CHANNEL, spa.event, { ...request, id: 'bg', processId: 'q', command: { action: 'select', tab: 't1:second' } }, 'a'))
+            .resolves.toMatchObject({ tab: 't1:second' });
+        expect(spa.contents.send).toHaveBeenCalledWith(BROWSER_CONTROL_REVEAL_CHANNEL, expect.objectContaining({ viewId: 'second', background: true }));
+        expect(spa.window.show).not.toHaveBeenCalled();
+        expect(spa.window.focus).not.toHaveBeenCalled();
+        await expect(invoke(BROWSER_CONTROL_COMMAND_CHANNEL, spa.event, { ...request, id: 'fg' })).rejects.toThrow('scope changed');
+        await expect(invoke(BROWSER_CONTROL_COMMAND_CHANNEL, spa.event, request, 42)).rejects.toThrow('routing reference');
+        invoke(BROWSER_CONTROL_RETAIN_CHANNEL, spa.event, 'a', null);
+        await expect(waiting).rejects.toThrow('workspace changed');
+    });
+    it('aborts unretained requests on a workspace switch as before', async () => {
+        const spa = owner(1);
+        invoke(BROWSER_CONTROL_SCOPE_CHANNEL, spa.event, 'a', 'a');
+        await invoke(policy.BROWSER_VIEW_OPEN_CHANNEL, spa.event, 'view', 'https://fixture.test/', 'a');
+        const waiting = invoke(BROWSER_CONTROL_COMMAND_CHANNEL, spa.event, { id: 'r', workspaceId: 'a', processId: 'p', selectedTab: 't1:view', command: { action: 'wait', ms: 30_000 } });
+        await new Promise(resolve => setTimeout(resolve, 0));
+        invoke(BROWSER_CONTROL_SCOPE_CHANNEL, spa.event, 'b', 'b');
+        await expect(waiting).rejects.toThrow('workspace changed');
     });
 
     it('reveals a selected URL tab in its existing desktop owner without exposing debugger/CDP IPC', async () => {

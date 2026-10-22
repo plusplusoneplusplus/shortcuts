@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createRef } from 'react';
-import { cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useNativeViewPlacement } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useNativeViewPlacement';
@@ -32,6 +32,7 @@ function elementFromPoint(x: number, y: number): Element | null {
 
 function addOverlay(box: Box, attrs: Record<string, string> = {}): HTMLElement {
     const el = document.createElement('div');
+    el.getBoundingClientRect = () => toRect(box);
     for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value);
     el.appendChild(document.createElement('button'));
     overlays.push({ el, box });
@@ -50,6 +51,7 @@ beforeEach(() => {
     placeholder.getBoundingClientRect = () => toRect(PLACEHOLDER);
     document.body.appendChild(placeholder);
     document.elementFromPoint = elementFromPoint;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => toRect(PLACEHOLDER));
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => window.setTimeout(() => cb(0), 0));
     vi.stubGlobal('cancelAnimationFrame', (id: number) => window.clearTimeout(id));
 });
@@ -57,6 +59,7 @@ beforeEach(() => {
 afterEach(() => {
     cleanup();
     document.body.innerHTML = '';
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
 });
 
@@ -118,6 +121,71 @@ describe('useNativeViewPlacement', () => {
         mount();
         addOverlay({ left: 0, top: 0, width: 1200, height: 800 });
         await waitFor(() => expect(placement.hide).toHaveBeenCalled());
+    });
+
+    it.each(['data-native-view-overlay', 'data-testid'])('keeps the view for an unrelated explicit overlay (%s), including edge contact', async attr => {
+        mount();
+        const box = { left: 100, top: 100, width: 400, height: 100 };
+        const overlay = addOverlay(box, { [attr]: attr === 'data-testid' ? 'unified-panel-tab-menu' : '' });
+        // Wait for a placement update, rather than assuming the observer has fired.
+        placement.setBounds.mockClear();
+        await waitFor(() => expect(placement.setBounds).toHaveBeenCalled());
+        expect(placement.hide).not.toHaveBeenCalled();
+        overlay.remove();
+    });
+
+    it('restores when a marked preview becomes hidden or moves out of overlap, then hides again when it returns', async () => {
+        mount();
+        const box = { left: 890, top: 100, width: 8, height: 8 };
+        const preview = addOverlay(box, { 'data-native-view-overlay': '' });
+        await waitFor(() => expect(placement.hide).toHaveBeenCalled());
+        placement.setBounds.mockClear();
+        preview.style.visibility = 'hidden';
+        await waitFor(() => expect(placement.setBounds).toHaveBeenCalled());
+        placement.hide.mockClear();
+        preview.style.visibility = 'visible';
+        await waitFor(() => expect(placement.hide).toHaveBeenCalled());
+        placement.setBounds.mockClear();
+        box.left = 100;
+        preview.style.left = '100px';
+        await waitFor(() => expect(placement.setBounds).toHaveBeenCalled());
+        placement.hide.mockClear();
+        box.left = 890;
+        preview.style.left = '890px';
+        await waitFor(() => expect(placement.hide).toHaveBeenCalled());
+    });
+
+    it('tracks explicit overlay registration and removal on an existing node between probes', async () => {
+        mount();
+        const preview = addOverlay({ left: 890, top: 100, width: 8, height: 8 });
+        placement.setBounds.mockClear();
+        await waitFor(() => expect(placement.setBounds).toHaveBeenCalled());
+        expect(placement.hide).not.toHaveBeenCalled();
+        preview.setAttribute('data-native-view-overlay', '');
+        await waitFor(() => expect(placement.hide).toHaveBeenCalled());
+        placement.setBounds.mockClear();
+        preview.removeAttribute('data-native-view-overlay');
+        await waitFor(() => expect(placement.setBounds).toHaveBeenCalled());
+    });
+
+    it('does not restore a previous owner from a stale scheduled frame after replacement or unmount', async () => {
+        const frames: FrameRequestCallback[] = [];
+        vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return frames.length; });
+        const ref = { current: placeholder };
+        const next = { setBounds: vi.fn(), hide: vi.fn() };
+        const view = renderHook(({ owner }) => useNativeViewPlacement(ref, true, owner), { initialProps: { owner: placement } });
+        const overlay = addOverlay({ left: 600, top: 100, width: 100, height: 100 });
+        await waitFor(() => expect(frames).toHaveLength(1));
+        view.rerender({ owner: next });
+        overlay.remove();
+        placement.setBounds.mockClear();
+        act(() => frames[0](0));
+        expect(placement.setBounds).not.toHaveBeenCalled();
+        await waitFor(() => expect(frames).toHaveLength(2));
+        view.unmount();
+        next.setBounds.mockClear();
+        act(() => frames[1](0));
+        expect(next.setBounds).not.toHaveBeenCalled();
     });
 
     it('keeps the view when an overlay sits outside the placeholder', async () => {

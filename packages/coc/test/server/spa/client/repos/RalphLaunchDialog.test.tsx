@@ -248,7 +248,7 @@ describe('RalphLaunchDialog', () => {
         fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
 
         await waitFor(() => {
-            expect(defaultProps.onLaunched).toHaveBeenCalledWith('new-pid-123', 'ws-123');
+            expect(defaultProps.onLaunched).toHaveBeenCalledWith('new-pid-123', 'ws-123', 'ws-123');
         });
 
         expect(mockFetch).toHaveBeenCalledWith(
@@ -280,7 +280,7 @@ describe('RalphLaunchDialog', () => {
         fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
 
         await waitFor(() => {
-            expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-456', 'ws-123');
+            expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-456', 'ws-123', 'ws-123');
         });
 
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
@@ -300,7 +300,7 @@ describe('RalphLaunchDialog', () => {
         fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
 
         await waitFor(() => {
-            expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-no-config', 'ws-123');
+            expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-no-config', 'ws-123', 'ws-123');
         });
 
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
@@ -340,7 +340,7 @@ describe('RalphLaunchDialog', () => {
         fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
 
         await waitFor(() => {
-            expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-cross', 'ws-456');
+            expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-cross', 'ws-456', 'ws-456');
         });
 
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
@@ -382,7 +382,7 @@ describe('RalphLaunchDialog', () => {
         fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
 
         await waitFor(() => {
-            expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-remote', 'remote-ws');
+            expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-remote', 'remote-ws', 'remote:srv-remote:remote-ws');
         });
 
         expect(mockFetch.mock.calls[0][0]).toBe('http://127.0.0.1:7777/api/ralph-launch');
@@ -548,7 +548,7 @@ describe('RalphLaunchDialog', () => {
             fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
 
             await waitFor(() => {
-                expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-wt', 'ws-123');
+                expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-wt', 'ws-123', 'ws-123');
             });
             const launchCall = mockFetch.mock.calls.find(c => String(c[0]).endsWith('/ralph-launch'))!;
             const body = JSON.parse(launchCall[1].body);
@@ -563,7 +563,7 @@ describe('RalphLaunchDialog', () => {
             fireEvent.click(screen.getByTestId('ralph-launch-confirm-btn'));
 
             await waitFor(() => {
-                expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-plain', 'ws-123');
+                expect(defaultProps.onLaunched).toHaveBeenCalledWith('pid-plain', 'ws-123', 'ws-123');
             });
             const launchCall = mockFetch.mock.calls.find(c => String(c[0]).endsWith('/ralph-launch'))!;
             const body = JSON.parse(launchCall[1].body);

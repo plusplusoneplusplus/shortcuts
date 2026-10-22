@@ -167,17 +167,59 @@ describe('browser control relay', () => {
         relay.reply(a, { id, ok: true, result: {} });
     });
 
-    it('times out after 30s, forwards cancellation, and releases all timers/listeners', async () => {
+    it('times out after 60s, forwards cancellation, and releases all timers/listeners', async () => {
         vi.useFakeTimers();
         const relay = enabled(), a = client('a');
         relay.advertise(a, 'w', true);
         const result = relay.execute('w', 'p', { action: 'read' });
-        const assertion = expect(result).rejects.toThrow('timed out after 30s');
+        const assertion = expect(result).rejects.toThrow('timed out after 60s');
         const id = request(a).id;
-        await vi.advanceTimersByTimeAsync(30_000);
+        await vi.advanceTimersByTimeAsync(59_999);
+        expect(a.send.mock.calls.some(([data]) => JSON.parse(data).type === 'browser-command-cancel')).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
         await assertion;
         expect(JSON.parse(a.send.mock.calls.at(-1)![0])).toEqual({ type: 'browser-command-cancel', id });
         expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('excludes Switch back notice waits from the 60s limit, only for the owning socket with background control on', async () => {
+        vi.useFakeTimers();
+        const relay = enabled(), win = client('win'), other = client('other');
+        let background = true;
+        relay.setBackgroundEnabledGetter(() => background);
+        relay.advertise(win, 'b', true, ['a']);
+        const call = relay.execute('a', 'p', { action: 'click', ref: 'e1' });
+        const assertion = expect(call).rejects.toThrow('timed out after 60s');
+        const id = request(win).id;
+        await vi.advanceTimersByTimeAsync(20_000);
+        relay.waiting(other, id, true);
+        relay.waiting(win, id, 'yes');
+        relay.waiting(win, 'missing', true);
+        relay.waiting(win, id, true);
+        relay.waiting(win, id, true);
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        expect(win.send.mock.calls.some(([data]) => JSON.parse(data).type === 'browser-command-cancel')).toBe(false);
+        relay.waiting(win, id, false);
+        relay.waiting(win, id, false);
+        await vi.advanceTimersByTimeAsync(39_999);
+        expect(win.send.mock.calls.some(([data]) => JSON.parse(data).type === 'browser-command-cancel')).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        await assertion;
+        expect(vi.getTimerCount()).toBe(0);
+
+        // A reply still settles a waiting call, and waiting is ignored with background control off.
+        const waited = relay.execute('a', 'q', { action: 'tabs' });
+        const waitedId = request(win).id;
+        relay.waiting(win, waitedId, true);
+        relay.reply(win, { id: waitedId, ok: true, result: { tabs: [] } });
+        await expect(waited).resolves.toEqual({ tabs: [] });
+        background = false;
+        relay.advertise(win, 'a', true);
+        const foreground = relay.execute('a', 'p', { action: 'read' });
+        const foregroundAssertion = expect(foreground).rejects.toThrow('timed out after 60s');
+        relay.waiting(win, request(win).id, true);
+        await vi.advanceTimersByTimeAsync(60_000);
+        await foregroundAssertion;
     });
 
     it('forwards abort, handles pre-abort and allows an admitted call to finish after disable', async () => {
@@ -217,6 +259,71 @@ describe('browser control relay', () => {
         await expect(rebound).rejects.toThrow('disconnected');
     });
 
+    it('keeps background workspaces served per socket only while background control is on', async () => {
+        const relay = enabled(), win = client('win'), other = client('other');
+        let background = false;
+        relay.setBackgroundEnabledGetter(() => background);
+        relay.advertise(win, 'a', true);
+        relay.advertise(other, 'c', true);
+        const flagOff = relay.execute('a', 'p', { action: 'tabs' });
+        relay.advertise(win, 'b', true, ['a']);
+        await expect(flagOff).rejects.toThrow('disconnected');
+        await expect(relay.execute('a', 'p', { action: 'tabs' })).rejects.toThrow('No CoC desktop window');
+
+        background = true;
+        relay.advertise(win, 'a', true);
+        const kept = relay.execute('a', 'p', { action: 'tabs' });
+        const keptId = request(win).id;
+        relay.advertise(win, 'b', true, ['a', '', 42, 'b']);
+        relay.reply(win, { id: keptId, ok: true, result: { tabs: [] } });
+        await expect(kept).resolves.toEqual({ tabs: [] });
+        // Background routing reaches only the retaining socket and only for retained workspaces.
+        const later = relay.execute('a', 'q', { action: 'tabs' });
+        expect(request(win)).toMatchObject({ workspaceId: 'a', processId: 'q' });
+        expect(other.send).not.toHaveBeenCalled();
+        relay.reply(win, { id: request(win).id, ok: true, result: { tabs: [] } });
+        await expect(later).resolves.toEqual({ tabs: [] });
+        await expect(relay.execute('c2', 'p', { action: 'tabs' })).rejects.toThrow('No CoC desktop window');
+
+        // Clearing the selected workspace keeps retained ones; dropping a workspace rejects only its calls.
+        const foreground = relay.execute('b', 'p', { action: 'tabs' });
+        const backgroundCall = relay.execute('a', 'p', { action: 'tabs' });
+        const backgroundId = request(win).id;
+        relay.clear(win, ['a']);
+        await expect(foreground).rejects.toThrow('disconnected');
+        relay.reply(win, { id: backgroundId, ok: true, result: { tabs: [] } });
+        await expect(backgroundCall).resolves.toEqual({ tabs: [] });
+        await expect(relay.execute('b', 'p', { action: 'tabs' })).rejects.toThrow('No CoC desktop window');
+        const dropped = relay.execute('a', 'p', { action: 'tabs' });
+        relay.advertise(win, 'b', true, []);
+        await expect(dropped).rejects.toThrow('disconnected');
+
+        // Turning the flag off drops retained workspaces at once.
+        relay.advertise(win, 'b', true, ['a']);
+        const live = relay.execute('a', 'p', { action: 'tabs' });
+        background = false;
+        relay.syncPolicies();
+        await expect(live).rejects.toThrow('disconnected');
+        await expect(relay.execute('a', 'p', { action: 'tabs' })).rejects.toThrow('No CoC desktop window');
+        relay.clear(win, ['b']);
+        await expect(relay.execute('b', 'p', { action: 'tabs' })).rejects.toThrow('No CoC desktop window');
+    });
+
+    it('prefers a window showing the workspace over one keeping it in the background', async () => {
+        const relay = enabled(), keeper = client('keeper'), viewer = client('viewer');
+        relay.setBackgroundEnabledGetter(() => true);
+        relay.advertise(viewer, 'a', false);
+        relay.advertise(keeper, 'b', true, ['a']);
+        const call = relay.execute('a', 'p', { action: 'tabs' });
+        expect(keeper.send).not.toHaveBeenCalled();
+        relay.reply(viewer, { id: request(viewer).id, ok: true, result: { tabs: [] } });
+        await expect(call).resolves.toEqual({ tabs: [] });
+        relay.disconnect(viewer);
+        const fallback = relay.execute('a', 'p', { action: 'tabs' });
+        relay.reply(keeper, { id: request(keeper).id, ok: true, result: { tabs: [] } });
+        await expect(fallback).resolves.toEqual({ tabs: [] });
+    });
+
     it('cleans pending calls if socket send throws', async () => {
         const relay = enabled(), a = client('a');
         a.send.mockImplementation(() => { throw new Error('closed socket'); });
@@ -246,6 +353,22 @@ describe('real existing WebSocket protocol', () => {
             });
             await expect(sockets.browserControl.execute('w', 'p', { action: 'tabs' })).resolves.toEqual({ tabs: [] });
             expect(broadcasts).not.toHaveBeenCalled();
+            sockets.browserControl.setBackgroundEnabledGetter(() => true);
+            const pong = () => new Promise<void>(resolve => {
+                const listener = (data: unknown) => { if (JSON.parse(String(data)).type === 'pong') { ws.off('message', listener); resolve(); } };
+                ws.on('message', listener);
+                ws.send(JSON.stringify({ type: 'ping' }));
+            });
+            ws.send(JSON.stringify({ type: 'browser-capability-clear', background: ['w'] }));
+            await pong();
+            await expect(sockets.browserControl.execute('w', 'p', { action: 'tabs' })).resolves.toEqual({ tabs: [] });
+            ws.send(JSON.stringify({ type: 'browser-capability', workspaceId: 'x', focused: true, background: ['w'] }));
+            await pong();
+            await expect(sockets.browserControl.execute('w', 'p', { action: 'tabs' })).resolves.toEqual({ tabs: [] });
+            const waiting = vi.spyOn(sockets.browserControl, 'waiting');
+            ws.send(JSON.stringify({ type: 'browser-command-waiting', id: 'call', waiting: true }));
+            await pong();
+            expect(waiting).toHaveBeenCalledWith(expect.anything(), 'call', true);
             ws.removeAllListeners('message');
             const inflight = sockets.browserControl.execute('w', 'p', { action: 'tabs' });
             ws.close();

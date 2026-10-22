@@ -27,7 +27,7 @@ export class BrowserControlQueue {
         this.pending.add(controller);
         const abort = () => controller.abort(signal?.reason);
         signal?.addEventListener('abort', abort, { once: true });
-        const timeout = setTimeout(() => controller.abort(new Error('Browser command timed out after 30s')), 30_000);
+        const timeout = setTimeout(() => controller.abort(new Error('Browser command timed out after 60s')), 60_000);
         timeout.unref();
         let rejectAborted!: (reason: unknown) => void;
         const aborted = new Promise<never>((_resolve, reject) => { rejectAborted = reject; });

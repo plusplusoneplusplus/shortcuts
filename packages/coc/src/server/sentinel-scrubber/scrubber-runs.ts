@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { toQueueProcessId, toTaskId, type CreateTaskInput, type QueuedTask } from '@plusplusoneplusplus/forge';
 import { z } from 'zod';
 import { getRepoDataPath } from '../paths';
+import { SENTINEL_COMPLETION_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
 import type { SentinelTodoItemView, SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import type { SentinelTodoOwner } from '../sentinel-todos/sentinel-todo-store';
 import type { Trigger } from '../triggers/trigger-types';
@@ -385,7 +386,8 @@ function buildChildTask(owner: SentinelTodoOwner, run: ScrubRunRecord, snapshotP
             workspaceId: owner.workspaceId,
             context: { sentinelScrub: context },
         },
-        config: {},
+        // Pin only reasoning effort; keep provider/model routing workspace-owned.
+        config: { reasoningEffort: 'medium' },
         displayName: `[Scrubber] ${run.snapshot.length} to-do${run.snapshot.length === 1 ? '' : 's'}`,
     };
 }
@@ -400,6 +402,8 @@ export function buildScrubPrompt(run: ScrubRunRecord, snapshotPath: string): str
         '- This chat is read-only. Never edit files, run write commands, or message other chats. The server applies results; you only report them.',
         '- For each item, check its linked jobs, references, PRs and commits in its target repo (use `gh`/`git` read-only commands).',
         '- Verdicts: `done` (completion condition met), `obsolete` (no longer needed or superseded), `in_progress`, `needs_attention`, `unchanged` (status still right), `unverified` (evidence could not be checked: give `unverifiedReason`).',
+        '- ' + SENTINEL_COMPLETION_GUIDANCE,
+        '- If closure is uncertain, report `unchanged` with the gap for the parent to ask the user; never auto-apply.',
         '- Never guess. If gh auth fails, a remote server is offline or a repo is missing, use `unverified`.',
         '- Every verdict except `unchanged`/`unverified` needs at least one evidence entry, each with `checkedAt` set to when you checked it.',
         '- Set `autoApply: true` only on `done` with `confidence: "high"`: a merged PR or a commit on the default branch clearly tied to the item, and its completion condition met. A successful job with no landed artifact, or a commit found only by search, is usually medium.',

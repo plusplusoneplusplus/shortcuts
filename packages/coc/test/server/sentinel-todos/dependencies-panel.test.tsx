@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { SentinelTodoDependencyEvaluation, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
 
 const { evaluate, save, bind, references, fakeClient } = vi.hoisted(() => {
@@ -48,6 +48,26 @@ beforeEach(() => {
 afterEach(() => { cleanup(); applyRuntimeConfigPatch({ sentinelTodoDependenciesEnabled: false }); });
 
 describe('owner-scoped dependency details', () => {
+    it('renders empty dependencies inline, retains warnings and opens the owner-scoped editor', async () => {
+        const current = item('No prerequisites item', { dependencyReadiness: {
+            state: 'ready', requiresReview: true, error: 'Prerequisite evidence needs review',
+        } });
+        render(<SentinelTodoDependencies {...props(current)} />);
+        const empty = screen.getByText('No prerequisites.');
+        const row = empty.parentElement!;
+        expect(row.classList.contains('flex-wrap')).toBe(true);
+        expect(within(row).getByText('Dependencies')).toBeTruthy();
+        expect(screen.getAllByRole('alert').map(node => node.textContent).join(' ')).toContain('Prerequisite evidence needs review');
+        expect(screen.queryByText(/Readiness does not start work/)).toBeNull();
+        fireEvent.click(within(row).getByRole('button', { name: 'Edit dependencies' }));
+        expect(screen.getByRole('form', { name: 'Edit dependencies' })).toBeTruthy();
+        expect(screen.getByText(/Readiness does not start work/)).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: 'Save dependencies' }));
+        await waitFor(() => expect(save).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId, current.id,
+            expect.objectContaining({ expectedRevision: current.revision, dependsOn: [] })));
+        expect(references).toContain(owner.ownerRoutingRef);
+    });
+
     it('reports pending dependency mutations through reload and releases the close guard on unmount', async () => {
         let finish!: (value: object) => void;
         save.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));

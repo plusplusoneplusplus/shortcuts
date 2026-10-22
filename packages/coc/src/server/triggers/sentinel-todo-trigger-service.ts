@@ -5,12 +5,11 @@ import { dateTimeCandidates, type SentinelTodoTriggerCapabilities } from '@plusp
 import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import type { SentinelTodoOwner, SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
 import type { TriggerManager, TriggerEventEmit, OneShotFirer } from './trigger-manager';
-import { OneShotFireConflictError, ScriptConditionRunConflictError } from './trigger-manager';
+import { OneShotFireConflictError } from './trigger-manager';
 import type { TriggerStore } from './trigger-store';
 import { parsePullRequestUrl, type PrStatusFetcher, type PrStatusSnapshot } from './pr-status-fetcher';
 import {
-    DEFAULT_PR_MERGE_POLL_INTERVAL_MS, DEFAULT_SCRIPT_CONDITION_INTERVAL_MS,
-    MAX_ACTIVE_TRIGGERS, MAX_SCRIPT_CONDITIONS_PER_OWNER, MIN_SCRIPT_CONDITION_INTERVAL_MS,
+    DEFAULT_PR_MERGE_POLL_INTERVAL_MS, MAX_ACTIVE_TRIGGERS,
     type Trigger, type PrIdentity, type TriggerEvent,
 } from './trigger-types';
 
@@ -22,11 +21,6 @@ const ruleInput = z.object({
         z.object({
             type: z.literal('date-time'), firesAt: z.string().max(40),
             timeZone: z.string().min(1).max(100), localTime: z.string().max(30),
-        }).strict(),
-        z.object({
-            type: z.literal('script-condition'),
-            script: z.string().refine(value => value.trim().length > 0, 'Script source is required'),
-            intervalMs: z.number().int().min(MIN_SCRIPT_CONDITION_INTERVAL_MS).default(DEFAULT_SCRIPT_CONDITION_INTERVAL_MS),
         }).strict(),
     ]).optional(),
     instruction: z.string().trim().max(8_000).optional(),
@@ -50,12 +44,10 @@ export interface SentinelTodoTriggerServiceDeps {
     triggers: TriggerStore;
     todos: SentinelTodoStore;
     owners: Pick<SentinelTodoService, 'list'>;
-    manager: Pick<TriggerManager, 'arm' | 'disarm'> & Partial<Pick<TriggerManager, 'runScriptNow'>>;
+    manager: Pick<TriggerManager, 'arm' | 'disarm'>;
     firer: OneShotFirer;
     fetchPr: PrStatusFetcher;
     dateTimeEnabled?: () => boolean;
-    /** Live conjunction of script-trigger and tool-scripting flags; absent denies. */
-    scriptConditionsEnabled?: () => boolean;
     emit?: TriggerEventEmit;
     now?: () => number;
 }
@@ -66,11 +58,9 @@ export class SentinelTodoTriggerService {
 
     isDateTimeEnabled(): boolean { return this.deps.dateTimeEnabled?.() === true; }
 
-    isScriptConditionEnabled(): boolean { return this.deps.scriptConditionsEnabled?.() === true; }
-
     async capabilities(owner: SentinelTodoOwner): Promise<SentinelTodoTriggerCapabilities> {
         await this.assertOwner(owner);
-        return { dateTime: this.isDateTimeEnabled(), scriptCondition: this.isScriptConditionEnabled() };
+        return { dateTime: this.isDateTimeEnabled() };
     }
 
     async list(owner: SentinelTodoOwner): Promise<Trigger[]> {
@@ -91,10 +81,6 @@ export class SentinelTodoTriggerService {
         await this.assertOwner(owner);
         const body = parse(createInput, input);
         if (body.event?.type === 'date-time') this.assertDateTimeEnabled();
-        if (body.event?.type === 'script-condition') {
-            this.assertScriptConditionsEnabled();
-            if (body.runNow) this.requireScriptRunNow();
-        }
         if (body.runNow && !body.confirmed) throw new SentinelTodoTriggerError(400, 'Run now requires confirmation');
         const replay = this.findCreation(owner, body.idempotencyKey);
         if (replay) return replay;
@@ -107,7 +93,6 @@ export class SentinelTodoTriggerService {
             this.assertEligible(owner, body.itemId);
             this.assertAuthoringTime(event);
             this.assertCap();
-            if (event.type === 'script-condition') this.assertScriptCap(owner);
             const at = this.timestamp();
             const candidate: Trigger = {
                 id: `trigger_${randomUUID()}`, ...owner, status: 'active', revision: 1, inFlight: false,
@@ -132,12 +117,7 @@ export class SentinelTodoTriggerService {
             throw error;
         }
         this.emit('trigger-created', trigger);
-        if (body.runNow) {
-            if (trigger.event.type === 'script-condition') {
-                return this.runNow(owner, trigger.id, { expectedRevision: trigger.revision, confirmed: true });
-            }
-            await this.deps.firer.fire(trigger.id, 'run-now');
-        }
+        if (body.runNow) await this.deps.firer.fire(trigger.id, 'run-now');
         return this.deps.triggers.getById(trigger.id)!;
     }
 
@@ -155,16 +135,9 @@ export class SentinelTodoTriggerService {
             const next: Trigger = {
                 ...current, revision: current.revision + 1,
                 binding: { ...current.binding!, itemId: body.itemId, instruction: body.instruction },
-                event: this.editedEvent(current, event),
+                event,
                 nextTickAt: current.status === 'active' ? this.nextTick(event) : null,
             };
-            if (current.event.type === 'script-condition' || event.type === 'script-condition') {
-                next.delivery = undefined;
-                next.action = { ...current.action, prompt: '' };
-                next.outcomeReason = undefined;
-                next.inFlight = false;
-                if (event.type === 'script-condition') this.assertScriptCap(owner, current.id);
-            }
             this.deps.triggers.update(next);
             return next;
         });
@@ -180,7 +153,6 @@ export class SentinelTodoTriggerService {
         const updated = this.deps.triggers.transaction(() => {
             const current = this.requireMutable(owner, triggerId, body.expectedRevision);
             if (!paused) {
-                if (current.event.type === 'script-condition') this.assertScriptConditionsEnabled();
                 if (current.event.type === 'date-time' && Date.parse(current.event.firesAt) <= this.now() && !body.confirmed) {
                     throw new SentinelTodoTriggerError(409, 'Overdue rule will wake Sentinel immediately; confirm resume', current);
                 }
@@ -191,16 +163,6 @@ export class SentinelTodoTriggerService {
                 ...current, revision: current.revision + 1, status: paused ? 'paused' : 'active',
                 nextTickAt: paused ? null : current.event.type === 'date-time' ? current.event.firesAt : this.timestamp(),
             };
-            if (current.event.type === 'script-condition') {
-                next.event = {
-                    ...current.event, paused,
-                    ...(!paused ? { consecutiveFailures: 0, lastError: undefined } : {}),
-                };
-                next.delivery = undefined;
-                next.action = { ...current.action, prompt: '' };
-                next.outcomeReason = undefined;
-                next.inFlight = false;
-            }
             this.deps.triggers.update(next);
             return next;
         });
@@ -235,20 +197,7 @@ export class SentinelTodoTriggerService {
     async runNow(owner: SentinelTodoOwner, triggerId: string, input: unknown): Promise<Trigger> {
         await this.assertOwner(owner);
         const body = parse(runInput, input);
-        const current = this.requireMutable(owner, triggerId, body.expectedRevision);
-        if (current.event.type === 'script-condition') {
-            this.assertScriptConditionsEnabled();
-            this.assertEligible(owner, current.binding!.itemId);
-            const run = this.requireScriptRunNow();
-            try { await run(triggerId, body.expectedRevision); }
-            catch (error) {
-                if (error instanceof ScriptConditionRunConflictError) {
-                    throw new SentinelTodoTriggerError(409, error.message, this.deps.triggers.getById(triggerId) ?? undefined);
-                }
-                throw error;
-            }
-            return this.deps.triggers.getById(triggerId)!;
-        }
+        this.requireMutable(owner, triggerId, body.expectedRevision);
         try { await this.deps.firer.fire(triggerId, 'run-now', body.expectedRevision); }
         catch (error) {
             if (error instanceof OneShotFireConflictError) {
@@ -271,10 +220,7 @@ export class SentinelTodoTriggerService {
         const next: Trigger = {
             ...current, status: 'disarmed', revision: current.revision + 1,
             binding: { ...current.binding!, removedAt: this.timestamp() },
-            nextTickAt: current.event.type !== 'script-condition' && current.delivery?.state === 'pending' ? current.nextTickAt : null,
-            ...(current.event.type === 'script-condition' ? {
-                event: { ...current.event, paused: true }, inFlight: false,
-            } : {}),
+            nextTickAt: current.delivery?.state === 'pending' ? current.nextTickAt : null,
         };
         // Delivery and authoring receipts survive Clear so stale retries cannot revive work.
         if (current.delivery || current.binding?.idempotencyKey) this.deps.triggers.update(next);
@@ -283,7 +229,7 @@ export class SentinelTodoTriggerService {
     }
 
     private released(removed: Trigger): void {
-        if (removed.event.type === 'script-condition' || removed.delivery?.state !== 'pending') this.deps.manager.disarm(removed.id);
+        if (removed.delivery?.state !== 'pending') this.deps.manager.disarm(removed.id);
         this.emit('trigger-disarmed', removed);
     }
 
@@ -298,30 +244,6 @@ export class SentinelTodoTriggerService {
         if (this.deps.triggers.countActive() >= MAX_ACTIVE_TRIGGERS) {
             throw new SentinelTodoTriggerError(409, `Server-wide active trigger limit reached (${MAX_ACTIVE_TRIGGERS})`);
         }
-    }
-
-    private assertScriptCap(owner: SentinelTodoOwner, exceptId?: string): void {
-        const count = this.deps.triggers.getByWorkspace(owner.workspaceId).filter(trigger =>
-            trigger.id !== exceptId && trigger.processId === owner.processId
-            && trigger.event.type === 'script-condition' && trigger.binding?.kind === 'sentinel-todo'
-            && !trigger.binding.removedAt && !trigger.binding.delegatedPr
-            && (trigger.status === 'active' || trigger.status === 'paused')).length;
-        if (count >= MAX_SCRIPT_CONDITIONS_PER_OWNER) {
-            throw new SentinelTodoTriggerError(409, `Sentinel script rule limit reached (${MAX_SCRIPT_CONDITIONS_PER_OWNER})`);
-        }
-    }
-
-    private editedEvent(current: Trigger, event: TriggerEvent): TriggerEvent {
-        if (event.type !== 'script-condition') return event;
-        const previous = current.event;
-        if (previous.type === 'script-condition'
-            && previous.script === event.script && previous.intervalMs === event.intervalMs) {
-            return { ...previous, paused: current.status === 'paused' };
-        }
-        return {
-            ...event, scriptRevision: previous.type === 'script-condition' ? previous.scriptRevision + 1 : 1,
-            paused: current.status === 'paused',
-        };
     }
 
     private findCreation(owner: SentinelTodoOwner, key: string | undefined): Trigger | undefined {
@@ -345,7 +267,7 @@ export class SentinelTodoTriggerService {
 
     private requireMutable(owner: SentinelTodoOwner, triggerId: string, revision: number): Trigger {
         const current = this.requireRule(owner, triggerId, revision);
-        if (current.outcome || (current.delivery && current.event.type !== 'script-condition')
+        if (current.outcome || current.delivery
             || (current.status !== 'active' && current.status !== 'paused')) {
             throw new SentinelTodoTriggerError(409, 'Terminal rules cannot be edited, resumed or run again', current);
         }
@@ -359,19 +281,7 @@ export class SentinelTodoTriggerService {
     private assertDateTimeEnabled(): void {
         if (!this.deps.dateTimeEnabled?.()) throw new SentinelTodoTriggerError(403, 'Date/time triggers are disabled');
     }
-    private assertScriptConditionsEnabled(): void {
-        if (!this.isScriptConditionEnabled()) throw new SentinelTodoTriggerError(403, 'Script conditions are disabled');
-    }
-    private requireScriptRunNow(): NonNullable<SentinelTodoTriggerServiceDeps['manager']['runScriptNow']> {
-        const run = this.deps.manager.runScriptNow;
-        if (!run) throw new SentinelTodoTriggerError(503, 'Script Run now is unavailable');
-        return run.bind(this.deps.manager);
-    }
     private assertAuthoringTime(event: TriggerEvent): void {
-        if (event.type === 'script-condition') {
-            this.assertScriptConditionsEnabled();
-            this.nextTick(event);
-        }
         if (event.type !== 'date-time') return;
         this.assertDateTimeEnabled();
         if (Date.parse(event.firesAt) <= this.now()) {
@@ -379,10 +289,6 @@ export class SentinelTodoTriggerService {
         }
     }
     private async prepareEvent(body: z.infer<typeof ruleInput>, runNow = false): Promise<TriggerEvent> {
-        if (body.event?.type === 'script-condition') {
-            this.assertScriptConditionsEnabled();
-            return { ...body.event, scriptRevision: 1, consecutiveFailures: 0, paused: false };
-        }
         if (body.event?.type === 'date-time') {
             this.assertDateTimeEnabled();
             const { firesAt, timeZone, localTime } = body.event;
@@ -409,9 +315,7 @@ export class SentinelTodoTriggerService {
     }
     private nextTick(event: TriggerEvent): string {
         if (event.type === 'date-time') return event.firesAt;
-        const date = new Date(this.now() + (event.type === 'script-condition' ? event.intervalMs : DEFAULT_PR_MERGE_POLL_INTERVAL_MS));
-        if (!Number.isFinite(date.getTime())) throw new SentinelTodoTriggerError(400, 'Interval exceeds the supported date range');
-        return date.toISOString();
+        return new Date(this.now() + DEFAULT_PR_MERGE_POLL_INTERVAL_MS).toISOString();
     }
     private now(): number { return (this.deps.now ?? Date.now)(); }
     private timestamp(): string { return new Date(this.now()).toISOString(); }

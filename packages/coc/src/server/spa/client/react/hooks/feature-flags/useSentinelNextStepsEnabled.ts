@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react';
 import { normalizeApiBasePath } from '@plusplusoneplusplus/coc-client';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, getFeatureValue } from '../../utils/config';
 
-/** Resolve the default-off policy from the conversation owner's server. */
+/**
+ * Resolve the default-on policy. Locally only an explicit false disables it;
+ * a remote owner must advertise the flag, since older owners lack the feature.
+ */
 export function useSentinelNextStepsEnabled(baseUrl?: string): boolean {
-    const read = () => getFeatureValue('sentinelNextStepsEnabled') === true;
+    const read = () => getFeatureValue('sentinelNextStepsEnabled') !== false;
     const [localEnabled, setLocalEnabled] = useState(read);
     const [remote, setRemote] = useState<{ baseUrl: string; enabled: boolean }>();
     useEffect(() => {
@@ -23,7 +26,7 @@ export function useSentinelNextStepsEnabled(baseUrl?: string): boolean {
             try {
                 const response = await fetch(url);
                 if (response.ok) enabled = (await response.json())?.features?.sentinelNextStepsEnabled === true;
-            } catch { /* Unavailable owners keep the default-off policy. */ }
+            } catch { /* Owners that are unreachable or do not advertise the flag stay off. */ }
             if (!cancelled) setRemote({ baseUrl, enabled });
         })();
         return () => { cancelled = true; };

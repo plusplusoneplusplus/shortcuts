@@ -37,6 +37,7 @@ const mocks = vi.hoisted(() => ({
         },
         setZoomFactor: vi.fn(),
         setBackgroundThrottling: vi.fn(),
+        sendInputEvent: vi.fn(), insertText: vi.fn().mockResolvedValue(undefined), selectAll: vi.fn(),
         getURL: () => 'https://example.test/', getTitle: () => 'Fixture', isLoading: () => false,
         navigationHistory: { canGoBack: () => true, canGoForward: () => false },
     },
@@ -100,6 +101,36 @@ describe('Electron browser profile cleanup', () => {
             await view.close();
         }
     });
+    it('sends background input to the guest itself instead of CDP, and restores CDP input in the foreground', async () => {
+        const host = new ElectronBrowserHost('profile');
+        const sink: BrowserEventSink = { state() {}, newTab() {}, download() {}, closeRequested() {}, openMenuRequested() {} };
+        const view = await host.create({ ownerId: 7, viewId: 'background', sessionKey: 'w', url: 'https://fixture.test/' }, sink);
+        try {
+            await view.setBackgroundControl!(true);
+            mocks.contents.debugger.sendCommand.mockClear();
+            await view.cdp!('Input.dispatchKeyEvent', { type: 'keyDown', key: 'a', text: 'a' });
+            await view.cdp!('Input.insertText', { text: 'typed' });
+            expect(mocks.contents.sendInputEvent.mock.calls).toEqual([
+                [{ type: 'keyDown', keyCode: 'a', modifiers: [] }], [{ type: 'char', keyCode: 'a', modifiers: [] }],
+            ]);
+            expect(mocks.contents.insertText).toHaveBeenCalledExactlyOnceWith('typed');
+            const sent = mocks.contents.debugger.sendCommand.mock.calls.map(([method]) => method);
+            expect(sent.every(method => method === 'Runtime.evaluate')).toBe(true);
+            await expect(view.cdp!('Input.dispatchMouseEvent', { type: 'mousePressed', x: 1, y: 1 }, 'frame')).rejects.toThrow('foreground-required');
+            expect(mocks.windowFocus).not.toHaveBeenCalled();
+            expect(mocks.contents.focus).not.toHaveBeenCalled();
+
+            await view.setBackgroundControl!(false);
+            mocks.contents.sendInputEvent.mockClear();
+            mocks.contents.debugger.sendCommand.mockClear();
+            await view.cdp!('Input.insertText', { text: 'front' });
+            expect(mocks.contents.sendInputEvent).not.toHaveBeenCalled();
+            expect(mocks.contents.debugger.sendCommand).toHaveBeenCalledWith('Input.insertText', { text: 'front' });
+        } finally {
+            await view.close();
+        }
+    });
+
     it('waits for all browsing data to clear before flushing the persistent profile', async () => {
         let finish!: () => void;
         mocks.profile.clearData.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));

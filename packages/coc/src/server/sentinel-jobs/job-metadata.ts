@@ -1,17 +1,16 @@
 import type { AIProcess, QueuedTask } from '@plusplusoneplusplus/forge';
 import type { SentinelTodoOwner } from '../sentinel-todos/sentinel-todo-store';
 
-export interface JobTaskContext extends SentinelTodoOwner {
-    jobId: string;
-    runId: string;
-    kind: 'run' | 'handback';
-}
+/** `notice` is the one-time gate-paused Sentinel turn; it belongs to the job, not a run. */
+export type JobTaskContext = SentinelTodoOwner & { jobId: string } & (
+    { kind: 'run' | 'handback'; runId: string } | { kind: 'notice' });
 
 export function getJobTaskContext(task: Pick<QueuedTask, 'payload'>): JobTaskContext | undefined {
     const context = (task.payload.context as { sentinelScheduledJob?: JobTaskContext } | undefined)?.sentinelScheduledJob;
     return context && typeof context.workspaceId === 'string' && typeof context.processId === 'string'
-        && typeof context.jobId === 'string' && typeof context.runId === 'string'
-        && (context.kind === 'run' || context.kind === 'handback') ? context : undefined;
+        && typeof context.jobId === 'string'
+        && (context.kind === 'notice' || ((context.kind === 'run' || context.kind === 'handback')
+            && typeof context.runId === 'string')) ? context : undefined;
 }
 
 export function isScheduledJobProcess(proc: Pick<AIProcess, 'metadata'>): boolean {

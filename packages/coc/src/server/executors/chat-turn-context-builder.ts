@@ -27,6 +27,7 @@ import { buildChatToolBundle } from './chat-tool-builder';
 import type { LlmToolApprovalRecord } from './llm-tool-approval-gate';
 import type { ChatToolBundle } from './chat-tool-builder';
 import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
+import type { OwnerScriptRunner } from './owner-script-runner';
 import type { BrowserControlRuntime } from '@plusplusoneplusplus/coc-client';
 import type { BrowserToolStateStore } from '../llm-tools/browser-tools';
 import { processOperationAdmission } from '../processes/process-operation-admission';
@@ -75,6 +76,8 @@ export interface ChatTurnContextInput {
     /** Decision service + ledger wiring for `system_one`; absent → the tool is not offered. */
     systemOne?: SystemOneAddonDeps;
     kustoRuntime?: KustoToolsRuntime;
+    /** Owner-bound script runner behind canvas `host.runScript`. */
+    ownerScriptRunner?: OwnerScriptRunner;
     browserRuntime?: BrowserControlRuntime;
     browserState?: BrowserToolStateStore;
     browserSignal?: AbortSignal;
@@ -214,6 +217,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         askUser: input.askUser,
         systemOne: input.systemOne,
         kustoRuntime: input.kustoRuntime,
+        ownerScriptRunner: input.ownerScriptRunner,
         browserRuntime: input.browserRuntime,
         browserState: input.browserState,
         browserSignal: input.browserSignal,

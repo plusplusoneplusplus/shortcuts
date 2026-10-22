@@ -3,8 +3,8 @@
  *
  * A trigger binds an `event` (watched condition) to an `action` (what fires).
  * Events: the `condition-monitor` `ci-failure` CI auto-fix monitor and the
- * one-shot `pr-merged` watch, absolute `date-time`, or repeating `script-condition`
- * bound to a Sentinel To-do. Action: `send-message`.
+ * one-shot `pr-merged` watch, or absolute `date-time` bound to a Sentinel To-do.
+ * Action: `send-message`.
  */
 
 export type TriggerStatus = 'active' | 'paused' | 'disarmed' | 'expired';
@@ -67,21 +67,7 @@ export interface DateTimeTriggerEvent {
   timeZone: string;
 }
 
-export interface ScriptConditionEvent {
-  type: 'script-condition';
-  monitor?: never;
-  script: string;
-  scriptRevision: number;
-  intervalMs: number;
-  /** Canonical JSON text, absent until the first successful baseline. */
-  lastResult?: string;
-  lastResultHash?: string;
-  consecutiveFailures: number;
-  lastError?: { message: string; at: string };
-  paused: boolean;
-}
-
-export type TriggerEvent = ConditionMonitorEvent | PrMergedMonitorEvent | DateTimeTriggerEvent | ScriptConditionEvent;
+export type TriggerEvent = ConditionMonitorEvent | PrMergedMonitorEvent | DateTimeTriggerEvent;
 
 export type TriggerActionMode = 'autopilot' | 'inherit';
 
@@ -110,9 +96,7 @@ export type TriggerOutcome = 'fired' | 'closed-unmerged' | 'skipped' | 'error';
 export interface TriggerDelivery {
   deliveryId: string;
   firedAt: string;
-  reason: 'merged' | 'closed' | 'run-now' | 'due' | 'script-changed' | 'script-paused';
-  resultHash?: string;
-  scriptRevision?: number;
+  reason: 'merged' | 'closed' | 'run-now' | 'due';
   state: 'pending' | 'delivered' | 'failed';
   deliveredAt?: string;
   itemRevision?: number;
@@ -175,12 +159,9 @@ export interface TriggerDeleteResponse {
 
 export interface SentinelTodoTriggerCapabilities {
   dateTime: boolean;
-  scriptCondition: boolean;
 }
 
-export type SentinelTodoTriggerEventInput =
-  | (DateTimeTriggerEvent & { localTime: string })
-  | { type: 'script-condition'; script: string; intervalMs?: number };
+export type SentinelTodoTriggerEventInput = DateTimeTriggerEvent & { localTime: string };
 
 export type SentinelTodoTriggerInput = {
   itemId: string;

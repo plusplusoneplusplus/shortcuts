@@ -43,6 +43,8 @@ import { runCanvasCapability, isValidCapabilityName } from '../canvas/canvas-cap
 import type { CapabilityCompleteFn } from '../canvas/canvas-capability-runner';
 import { queueCanvasCapabilityRun } from '../canvas/canvas-capability-queue';
 import { createCanvasCompleteFn } from '../canvas/canvas-capability-completion';
+import { buildCapabilityRunOptions, isAsyncCapability } from '../canvas/canvas-mutation-service';
+import { validateCanvasManifestTools, type CanvasRunScriptFactory } from '../canvas/canvas-script-bridge';
 import { normaliseExcalidrawScene } from '../canvas/excalidraw-scene';
 import { emitCanvasUpdated } from '../streaming/sse-handler';
 
@@ -68,6 +70,8 @@ export interface CanvasToolsDeps {
     getCanvasHostApisEnabled?: () => boolean;
     /** Injectable `host.complete` implementation. Overridden in tests. */
     completeFactory?: (attribution: { workspaceId: string; canvasId: string; capability: string; processId?: string }) => CapabilityCompleteFn;
+    /** Builds `host.runScript` for async runs. Absent → `host.runScript` rejects `disabled`. */
+    runScriptFactory?: CanvasRunScriptFactory;
 }
 
 /** Create (omit canvasId) or update (with canvasId) a markdown/code canvas. */
@@ -98,6 +102,8 @@ export interface ExtensionCanvasArgs {
     uiJsx?: string;
     /** Vendored libraries `uiJsx` needs, from the fixed allowlist. */
     libraries?: string[];
+    /** Read-only tools async capabilities may call through `host.runScript`. */
+    tools?: string[];
     initialState?: Record<string, unknown>;
     capability?: string;
     params?: Record<string, unknown>;
@@ -154,6 +160,10 @@ function validateExtensionAuthorInput(args: ExtensionCanvasArgs): string | null 
     }
     if (typeof args.capabilitiesJs !== 'string' || !args.capabilitiesJs.trim()) {
         return 'capabilitiesJs is required';
+    }
+    const tools = validateCanvasManifestTools(args.tools);
+    if (!tools.ok) {
+        return tools.error;
     }
     if (Buffer.byteLength(args.capabilitiesJs, 'utf-8') > MAX_EXTENSION_CAPABILITIES_BYTES) {
         return 'capabilitiesJs exceeds the 256 KB limit';
@@ -468,6 +478,12 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
             + '`host`, whose only method is `await host.complete(prompt, { model? })` — a one-shot model call, max 3 per '
             + 'run. Write it as `async name(state, params, host) { … return nextState }`. There is no network access of '
             + 'any kind beyond that. Leave async off unless the capability genuinely awaits something.\n\n'
+            + 'TOOLS: list read-only CoC tools in `tools` (e.g. ["query_pull_request"]) and an async capability can call '
+            + '`await host.runScript(code, { state })` — a run_tool_script-style script, run as the chat that owns the '
+            + 'canvas, that calls `await tools.<name>(args)` (results arrive parsed) and returns JSON. It resolves '
+            + '{ result, logs, callCount }; max 3 per run, sharing the 30s budget. Pass inputs through `state` and read '
+            + 'them as `state.x` in the script — never build the code string from values. `host.tools` lists the '
+            + 'declared names. Rejections carry code disabled|no-owner|limit|timeout|aborted|script-error.\n\n'
             + 'uiJsx (PREFERRED for anything with charts, tables or real interaction) — write a React component in JSX; '
             + 'the server compiles it. Declare what you need in `libraries`; they arrive as GLOBALS, so never write an '
             + 'import or a CDN <script> (module scripts and fetch are blocked in the sandboxed frame). '
@@ -548,6 +564,13 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                         'BUILD (uiJsx only): vendored libraries to load as globals. '
                         + `${CANVAS_LIBRARY_IDS.map(id => `"${id}"`).join(', ')}. react is added automatically.`,
                 },
+                tools: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description:
+                        'BUILD: read-only CoC tools async capabilities may call via host.runScript, e.g. ["query_pull_request"]. '
+                        + 'Omit for no tool access.',
+                },
                 initialState: { type: 'object', description: 'BUILD (create only): initial JSON state. Default {}.' },
                 files: {
                     type: 'array',
@@ -596,29 +619,27 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                     if (!fresh || fresh.type !== 'extension' || !freshExt) {
                         return { kind: 'gone' } as const;
                     }
-                    const isAsync = freshExt.manifest?.capabilities?.some(
-                        meta => meta?.name === capabilityName && meta.async === true,
-                    ) === true;
-                    if (isAsync && !deps.getCanvasHostApisEnabled?.()) {
+                    if (isAsyncCapability(freshExt.manifest, capabilityName) && !deps.getCanvasHostApisEnabled?.()) {
                         return { kind: 'disabled' } as const;
                     }
 
+                    // Attributed to the canvas's owner chat, not the calling one.
                     const run = await runCanvasCapability(
                         freshExt.capabilitiesJs,
                         capabilityName,
                         fresh.content,
                         params,
-                        isAsync
-                            ? {
-                                async: true,
-                                complete: (deps.completeFactory ?? defaultCompleteFactory)({
-                                    workspaceId: deps.workspaceId,
-                                    canvasId,
-                                    capability: capabilityName,
-                                    ...(fresh.processId ? { processId: fresh.processId } : {}),
-                                }),
-                            }
-                            : undefined,
+                        buildCapabilityRunOptions({
+                            manifest: freshExt.manifest,
+                            attribution: {
+                                workspaceId: deps.workspaceId,
+                                canvasId,
+                                capability: capabilityName,
+                                ...(fresh.processId ? { processId: fresh.processId } : {}),
+                            },
+                            completeFactory: deps.completeFactory ?? defaultCompleteFactory,
+                            runScriptFactory: deps.runScriptFactory,
+                        }),
                     );
                     if (!run.ok) {
                         return { kind: 'run-error', error: run.error } as const;
@@ -704,6 +725,7 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                     ...(c.async === true ? { async: true } : {}),
                 })),
                 ...(libraries ? { libraries } : {}),
+                ...(a.tools && a.tools.length > 0 ? { tools: [...a.tools] } : {}),
             };
             const uiDocuments = authoringJsx
                 ? { uiHtml: '', uiJs, uiJsx: a.uiJsx! }

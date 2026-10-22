@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import userEvent from '@testing-library/user-event';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UnifiedBrowserTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedBrowserTab';
 import type { DesktopBrowserBridge } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
+import { ToolCallView } from '../../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolCallView';
 
 const mocks = vi.hoisted(() => ({ bridge: undefined as DesktopBrowserBridge | undefined }));
 vi.mock('../../../../src/server/spa/client/react/shared/file-path/browser-bridge', async importOriginal => ({
@@ -36,6 +37,44 @@ const props = { tabId: 'tab', viewId: 'view', sessionKey: 'workspace-a', url: 'h
 const normal = { x: 500, y: 100, width: 400, height: 400 };
 
 describe('browser toolbar native placement regression', () => {
+    it.each([false, true])('keeps the same WebView2 page through result hover/dismiss (overlap: %s)', async overlap => {
+        const bridge = mocks.bridge!;
+        vi.mocked(bridge.open).mockResolvedValue({ ok: true, engine: 'webview2' });
+        const view = render(<><UnifiedBrowserTab {...props} /><ToolCallView toolCall={{
+            id: 'result', toolName: 'task', args: {}, status: 'completed', result: 'Tool result preview',
+        }} /></>);
+        const previewBox = { x: overlap ? 650 : 40, y: 150, left: overlap ? 650 : 40, top: 150,
+            right: overlap ? 850 : 240, bottom: 250, width: 200, height: 100, toJSON: () => ({}) };
+        vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+            return this.dataset.testid === 'tool-result-popover' ? previewBox : { ...normal, left: 500, top: 100, right: 900, bottom: 500, toJSON: () => ({}) };
+        });
+        document.elementFromPoint = (x, y) => {
+            const preview = screen.queryByTestId('tool-result-popover');
+            return preview && x > previewBox.left && x < previewBox.right && y > previewBox.top && y < previewBox.bottom
+                ? preview : screen.getByTestId('browser-placeholder');
+        };
+        await waitFor(() => expect(bridge.setBounds).toHaveBeenLastCalledWith('view', normal));
+        vi.mocked(bridge.hide).mockClear();
+        vi.mocked(bridge.setBounds).mockClear();
+        const header = view.container.querySelector('.tool-call-header')!;
+        fireEvent.mouseEnter(header);
+        const preview = await screen.findByTestId('tool-result-popover');
+        expect(preview).toHaveTextContent('Tool result preview');
+        if (overlap) await waitFor(() => expect(bridge.hide).toHaveBeenCalledWith('view'));
+        else {
+            await waitFor(() => expect(bridge.setBounds).toHaveBeenCalled());
+            expect(bridge.hide).not.toHaveBeenCalled();
+        }
+        vi.mocked(bridge.setBounds).mockClear();
+        fireEvent.mouseLeave(header);
+        await waitFor(() => expect(screen.queryByTestId('tool-result-popover')).toBeNull());
+        await waitFor(() => expect(bridge.setBounds).toHaveBeenLastCalledWith('view', normal));
+        expect(bridge.open).toHaveBeenCalledExactlyOnceWith('view', props.url, props.sessionKey, undefined);
+        expect(bridge.close).not.toHaveBeenCalled();
+        expect(bridge.navigate).not.toHaveBeenCalled();
+        expect(bridge.nav).not.toHaveBeenCalled();
+    });
+
     it.each(['webview2'] as const)('hides the native %s page under the dropdown and restores the same bounds without reopening or navigating', async engine => {
         vi.mocked(mocks.bridge!.open).mockResolvedValue({ ok: true, engine });
         render(<UnifiedBrowserTab {...props} />);

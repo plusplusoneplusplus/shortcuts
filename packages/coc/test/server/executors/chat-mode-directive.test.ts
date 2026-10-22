@@ -759,6 +759,34 @@ describe('sentinel dispatcher directive', () => {
         expect(dispatcherAt).toBeGreaterThan(readOnlyAt);
     });
 
+    it('defaults only repo-group Sentinels to the owning group without changing follow-up or provider guidance', () => {
+        const rule = '- For a repo-group Sentinel, delegate to that same group by default (omit `workspaceId` for new chats), unless the user specifies another target.';
+        const directive = buildChatModeDirective({ mode: 'sentinel' })!;
+        expect(directive.split(rule)).toHaveLength(2);
+        expect(directive).toContain('Prefer a follow-up to an existing chat with relevant context for the same task and owner.');
+        expect(directive).toContain('Preserve tracking and authorization.');
+        expect(directive).toContain('Follow-ups retain their existing provider.');
+        expect(directive).toContain('For new chats, prefer `provider: "auto"` unless the user requests a particular provider/model.');
+        for (const mode of ['ask', 'autopilot', 'ralph'] as const) {
+            expect(buildChatModeDirective({ mode }) ?? '').not.toContain(rule);
+        }
+    });
+
+    it.each([undefined, 'ASK-ONLY'])('refreshes the owning-group default once for an older Sentinel (instructions: %s)', modeInstructions => {
+        const current = buildChatModeDirective({ mode: 'sentinel', modeInstructions })!;
+        const previous = current.split('\n').filter(line => !line.startsWith('- For a repo-group Sentinel,')).join('\n');
+        expect(previous).not.toBe(current);
+        const check: ChatModeInjectionCheck = {
+            mode: 'sentinel', previousMode: 'sentinel', canResumeSession: true,
+            modeInstructions, checkInstructionDrift: true, compaction: undefined,
+            turns: [{ role: 'user', content: 'Delegate this', timestamp: new Date('2026-01-01T00:00:00.000Z'), chatModeContext: previous }],
+        };
+        expect(shouldInjectChatModeDirective(check)).toBe(true);
+        check.turns![0].chatModeContext = current;
+        expect(parseChatModeMarker(current).instructions).toBe(modeInstructions);
+        expect(shouldInjectChatModeDirective(check)).toBe(false);
+    });
+
     it.each([undefined, 'ASK-ONLY'])('refreshes persisted pre-native-automation guidance once (instructions: %s)', modeInstructions => {
         const current = buildChatModeDirective({ mode: 'sentinel', modeInstructions })!;
         const previous = current.split('\n').filter(line => ![

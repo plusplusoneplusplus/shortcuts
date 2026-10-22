@@ -14,7 +14,7 @@ import * as path from 'path';
 
 import type { MemoryV2Addon } from '../../../src/server/executors/memory-v2-addon';
 import { GLOBAL_SYSTEM_PROMPT_TAG } from '../../../src/server/executors/system-message-builder';
-import { SENTINEL_JOB_REVIEW_INSTRUCTIONS } from '../../../src/server/delegation/sentinel-job-review-instructions';
+import { SENTINEL_COMPLETION_GUIDANCE, SENTINEL_JOB_REVIEW_INSTRUCTIONS } from '../../../src/server/delegation/sentinel-job-review-instructions';
 import {
     buildChatTurnSystemMessage,
     buildCodexAskUserDiscoveryBlock,
@@ -62,6 +62,7 @@ describe('buildChatTurnSystemMessage', () => {
                 }));
                 expect(result!.mode).toBe('append');
                 expect(result!.content.endsWith(SENTINEL_JOB_REVIEW_INSTRUCTIONS)).toBe(true);
+                expect(result!.content).toContain(SENTINEL_COMPLETION_GUIDANCE);
                 expect(result!.content.split(SENTINEL_JOB_REVIEW_INSTRUCTIONS)).toHaveLength(2);
                 if (globalSystemPrompt) expect(result!.content).toContain(globalSystemPrompt);
             }

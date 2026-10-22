@@ -18,6 +18,13 @@ export interface SentinelScheduledJobInput {
   enabled?: boolean;
   /** Absolute context-token threshold, not a percentage. */
   autoCompactThreshold?: number;
+  /**
+   * Optional gate: the body of an async JS function receiving `tools` and
+   * `state` (the previous result). Each cron tick runs it first; a non-empty
+   * JSON result starts a run with that result in the prompt. Needs `cron`.
+   * Empty string clears it on update.
+   */
+  gateScript?: string;
 }
 
 export interface SentinelScheduledJobRun {
@@ -33,7 +40,12 @@ export interface SentinelScheduledJobRun {
   jobTurnHref?: string;
   sentinelFollowUpHref?: string;
   error?: string;
-  skipReason?: 'overlap';
+  /**
+   * Why a tick started no run: `overlap` (a run was active), `gate-empty`
+   * (the gate returned null, false, "", [] or {}) or `gate-unavailable`
+   * (`features.toolScripting` was off, so the gate could not run).
+   */
+  skipReason?: 'overlap' | 'gate-empty' | 'gate-unavailable';
 }
 
 export interface SentinelScheduledJob extends Omit<SentinelScheduledJobInput, 'mode' | 'enabled' | 'autoCompactThreshold'> {
@@ -41,9 +53,29 @@ export interface SentinelScheduledJob extends Omit<SentinelScheduledJobInput, 'm
   mode: 'ask' | 'autopilot';
   enabled: boolean;
   autoCompactThreshold: number;
+  /** Canonical JSON of the gate's last successful result. */
+  gateLastResult?: string;
+  gateConsecutiveFailures: number;
+  gateLastError?: { message: string; at: string };
+  /** Set after five gate failures in a row; scheduled ticks skip until resumed. */
+  gatePaused: boolean;
   revision: number;
   processId?: string;
   nextRunAt?: string;
   activeRun?: SentinelScheduledJobRun;
   runs: SentinelScheduledJobRun[];
+}
+
+/**
+ * Test gate outcome: one gate evaluation with the saved `state`. It starts no
+ * run and saves nothing, and it runs even while the gate is paused.
+ */
+export interface SentinelScheduledJobGateTest {
+  ok: boolean;
+  /** Canonical result JSON when `ok`. */
+  result?: string;
+  /** When `ok`: whether a tick would skip with this result (null, false, "", [] or {}). */
+  empty?: boolean;
+  /** Why the gate failed (throw, timeout, non-JSON or over 16 KiB) when not `ok`. */
+  error?: string;
 }

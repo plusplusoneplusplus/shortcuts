@@ -99,19 +99,6 @@ function makeExecutor(
 // ============================================================================
 
 describe('QueueActionExecutor', () => {
-    it('rejects a script wake without live admission instead of using ordinary follow-up delivery', async () => {
-        const store = makeProcessStore({ [PROC]: { id: PROC, status: 'completed' } });
-        const queue = makeQueueManager();
-        const trigger = makeTrigger({ event: {
-            type: 'script-condition', script: 'return null;', scriptRevision: 1,
-            intervalMs: 300_000, consecutiveFailures: 0, paused: false,
-        } });
-        const executor = makeExecutor(store, queue);
-        await expect(executor.execute(trigger, trigger.action, 'Wake')).rejects.toThrow('live owner and rule admission');
-        expect(queue.enqueued).toEqual([]);
-        expect(store.updateProcess).not.toHaveBeenCalled();
-    });
-
     it.each(['github-origin', 'ado-origin'])('validates exact bound chat/workspace for %s on its owning server', async origin => {
         const store = new SqliteProcessStore({ dbPath: ':memory:' });
         try {

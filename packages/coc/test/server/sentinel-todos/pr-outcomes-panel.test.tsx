@@ -56,6 +56,22 @@ beforeEach(() => {
 afterEach(() => { cleanup(); applyRuntimeConfigPatch({ sentinelPrOutcomeWakeEnabled: false }); });
 
 describe('compact Sentinel PR outcome evidence', () => {
+    it('keeps empty evidence and its owner-routed actions in one wrapping row without an empty list', async () => {
+        mocks.get.mockResolvedValue(snapshot({ outcomes: [] }));
+        mocks.check.mockResolvedValue(snapshot({ outcomes: [] }));
+        mount();
+        const empty = await screen.findByText('No recorded PR outcomes.');
+        const row = empty.parentElement!;
+        expect(row.classList.contains('flex-wrap')).toBe(true);
+        expect(within(row).getByText('PR outcomes')).toBeTruthy();
+        expect(screen.queryByRole('list', { name: 'Exact PR evidence' })).toBeNull();
+        expect(within(row).getByRole('button', { name: 'Pause notifications' })).toBeTruthy();
+        fireEvent.click(within(row).getByRole('button', { name: 'Check outcome' }));
+        await waitFor(() => expect(mocks.check).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId, 'item-1',
+            { expectedRevision: 3 }, expect.objectContaining({ signal: expect.any(AbortSignal) })));
+        expect(mocks.refs).toContain(owner.ownerRoutingRef);
+    });
+
     it('reports mutation busy state for detail Close and releases it on completion or removal', async () => {
         const pending = deferred<Snapshot>();
         mocks.pause.mockReturnValueOnce(pending.promise);

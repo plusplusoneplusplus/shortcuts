@@ -41,19 +41,19 @@ endpoint_error_re='audit endpoint returned an error|Service Unavailable|Internal
 # (`--omit=dev`) never consults this list. Remove an entry
 # the moment the upstream parent ships a release that pulls the patched version.
 #
-# Reviewed 2026-10-03; neither advisory has a patched npm release:
+# Reviewed 2026-10-22; this advisory has no patched npm release:
 # - GHSA-vfj7-8cjw-p6xm (braces): dev glob tooling consumes repository patterns,
 #   not untrusted runtime requests. Excalidraw uses a Sass override that removes
 #   braces from the production graph.
-# - GHSA-ch52-4w7c-c8xp (http-cache-semantics): electron-builder's download client
-#   is dev-only and does not serve a shared cache of user responses.
 # Advisory details: https://github.com/advisories/<GHSA-ID>.
-AUDIT_ALLOWLIST="${AUDIT_ALLOWLIST-GHSA-vfj7-8cjw-p6xm GHSA-ch52-4w7c-c8xp}"
+AUDIT_ALLOWLIST="${AUDIT_ALLOWLIST-GHSA-vfj7-8cjw-p6xm}"
 
 # Exit 0 iff `npm audit` reports at least one blocking (>= high) advisory AND
 # every blocking advisory is in AUDIT_ALLOWLIST. Any non-allowlisted blocking
 # advisory — or a parse failure — yields non-zero, so the real gate still fires.
 blocking_advisories_all_allowlisted() {
+    local json="$1"
+    shift
     # Honor npm flags and environment defaults; fail closed for omit/only flags.
     case "${npm_config_omit:-} ${npm_config_only:-} ${NODE_ENV:-}" in
         *dev*|*prod*) return 1 ;;
@@ -65,8 +65,6 @@ blocking_advisories_all_allowlisted() {
             --omit=*dev*|--omit|--prod|--production|--production=true|--only|--only=prod|--only=production) return 1 ;;
         esac
     done
-    local json
-    json="$(npm audit --json --audit-level=high "$@" 2>/dev/null)" || true
     [ -n "$json" ] || return 1
     printf '%s' "$json" | AUDIT_ALLOWLIST="$AUDIT_ALLOWLIST" node -e '
         const allow = new Set((process.env.AUDIT_ALLOWLIST || "").split(/\s+/).filter(Boolean));
@@ -92,7 +90,8 @@ blocking_advisories_all_allowlisted() {
 }
 
 for i in $(seq 1 "$attempts"); do
-    out="$(npm audit --audit-level=high "$@" 2>&1)"
+    # Use one snapshot for retry classification and the reviewed exceptions.
+    out="$(npm audit --json --audit-level=high "$@" 2>&1)"
     code=$?
     printf '%s\n' "$out"
 
@@ -114,7 +113,7 @@ for i in $(seq 1 "$attempts"); do
     # A non-endpoint failure means npm audit found vulnerabilities at/above the
     # configured level. Before failing, allow through the reviewed dev-only
     # advisories in AUDIT_ALLOWLIST (see above). Anything else is the real gate.
-    if blocking_advisories_all_allowlisted "$@"; then
+    if blocking_advisories_all_allowlisted "$out" "$@"; then
         echo "::warning::npm audit: every blocking (>=high) advisory is in the reviewed allowlist (${AUDIT_ALLOWLIST}); passing. See scripts/ci-npm-audit.sh to review or remove entries."
         exit 0
     fi

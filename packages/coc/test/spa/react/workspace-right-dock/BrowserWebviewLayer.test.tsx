@@ -1,16 +1,17 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BrowserWebviewLayer } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/BrowserWebviewLayer';
 import { NativeViewTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/NativeViewTab';
 import {
-    browserWebviewEntries, prepareBrowserWebview, removeBrowserWebview,
+    attachBrowserWebview, browserWebviewEntries, prepareBrowserWebview, removeBrowserWebview, setBrowserWebviewBackground,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/browserWebviewLayerStore';
 import { closeBrowserPanelView } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { UnifiedBrowserTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedBrowserTab';
 import { UnifiedHtmlPageTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedHtmlPageTab';
 import type { BrowserOpenResult, DesktopBrowserBridge } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
+import { ToolCallView } from '../../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolCallView';
 
 const result: BrowserOpenResult = { ok: true, engine: 'electron', embed: 'webview', src: 'https://example.test/', partition: 'persist:coc-browser' };
 let bridge: DesktopBrowserBridge;
@@ -49,6 +50,29 @@ afterEach(() => {
 });
 
 describe('persistent browser webview layer', () => {
+    it('retains the visible Electron guest while a conversation result preview opens and dismisses', async () => {
+        const view = render(<><BrowserWebviewLayer /><UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="workspace"
+            url="https://example.test/" active visible onNavigate={vi.fn()} onPageState={vi.fn()} />
+            <ToolCallView toolCall={{ id: 'result', toolName: 'task', args: {}, status: 'completed', result: 'Tool result preview' }} /></>);
+        await waitFor(() => expect(guest()).toBeTruthy());
+        const original = guest();
+        const header = view.container.querySelector('.tool-call-header')!;
+        vi.mocked(bridge.hide).mockClear();
+        fireEvent.mouseEnter(header);
+        expect(await screen.findByTestId('tool-result-popover')).toHaveTextContent('Tool result preview');
+        expect(host().style.visibility).toBe('visible');
+        expect(guest()).toBe(original);
+        fireEvent.mouseLeave(header);
+        await waitFor(() => expect(screen.queryByTestId('tool-result-popover')).toBeNull());
+        expect(host().style.visibility).toBe('visible');
+        expect(guest()).toBe(original);
+        expect(bridge.hide).not.toHaveBeenCalled();
+        expect(bridge.open).toHaveBeenCalledExactlyOnceWith('view', 'https://example.test/', 'workspace', undefined);
+        expect(bridge.close).not.toHaveBeenCalled();
+        expect(bridge.navigate).not.toHaveBeenCalled();
+        expect(bridge.nav).not.toHaveBeenCalled();
+    });
+
     it('keeps Electron guests live under the actual history dropdown without reattachment or navigation', async () => {
         bridge.history = {
             suggest: vi.fn(async () => ({ ok: true, entries: [{ url: 'https://recent.test/', title: 'Recent',
@@ -123,6 +147,72 @@ describe('persistent browser webview layer', () => {
         expect(guest().parentElement).toBe(parent);
         expect(host().style.visibility).toBe('visible');
         expect(bridge.close).not.toHaveBeenCalled();
+    });
+
+    it('keeps a background-controlled guest laid out at its last size, transparent and click-through, while hidden', () => {
+        render(<BrowserWebviewLayer />);
+        const first = render(<Placeholder />);
+        act(() => open());
+        first.unmount();
+        expect(host().style.visibility).toBe('hidden');
+        act(() => setBrowserWebviewBackground('view', true));
+        expect(host().style.visibility).toBe('visible');
+        expect(host().style.opacity).toBe('0');
+        expect(host().style.pointerEvents).toBe('none');
+        expect([host().style.left, host().style.top, host().style.width, host().style.height]).toEqual(['100px', '80px', '400px', '300px']);
+        expect(bridge.setBounds).toHaveBeenLastCalledWith('view', null);
+        // On screen again, the real placement wins; when the turn ends the guest hides as before.
+        render(<Placeholder />);
+        expect(host().style.opacity).toBe('');
+        expect(host().style.visibility).toBe('visible');
+        cleanup();
+        render(<BrowserWebviewLayer />);
+        act(() => setBrowserWebviewBackground('view', false));
+        expect(host().style.visibility).toBe('hidden');
+        expect(host().style.opacity).toBe('');
+    });
+
+    it('gives focus back to the user\'s element when a hidden background guest takes it, but not for visible guests', async () => {
+        render(<><input data-testid="draft" /><BrowserWebviewLayer /></>);
+        const first = render(<Placeholder />);
+        act(() => open());
+        const webview = guest();
+        webview.tabIndex = 0;
+        const draft = screen.getByTestId('draft');
+        act(() => draft.focus());
+        // Visible: a click into the page legitimately takes focus.
+        act(() => webview.focus());
+        await new Promise(resolve => setTimeout(resolve, 80));
+        expect(document.activeElement).toBe(webview);
+        act(() => draft.focus());
+        first.unmount();
+        act(() => setBrowserWebviewBackground('view', true));
+        act(() => webview.focus());
+        await waitFor(() => expect(document.activeElement).toBe(draft));
+        // The watch stops with background control.
+        act(() => setBrowserWebviewBackground('view', false));
+        act(() => webview.focus());
+        await new Promise(resolve => setTimeout(resolve, 80));
+        expect(document.activeElement).toBe(webview);
+    });
+
+    it('creates a never-placed background guest at a desktop viewport and only once', async () => {
+        render(<BrowserWebviewLayer />);
+        act(() => attachBrowserWebview('bg', 'https://example.test/', 'workspace', bridge));
+        await waitFor(() => expect(guest()).toBeTruthy());
+        act(() => attachBrowserWebview('bg', 'https://example.test/', 'workspace', bridge));
+        expect(bridge.open).toHaveBeenCalledExactlyOnceWith('bg', 'https://example.test/', 'workspace');
+        expect(host().style.visibility).toBe('hidden');
+        act(() => setBrowserWebviewBackground('bg', true));
+        expect([host().style.left, host().style.width, host().style.height, host().style.opacity]).toEqual(['0px', '1280px', '800px', '0']);
+    });
+
+    it('drops a background attachment the desktop does not embed as a webview', async () => {
+        vi.mocked(bridge.open).mockResolvedValueOnce({ ok: true, engine: 'webview2', embed: 'native' });
+        render(<BrowserWebviewLayer />);
+        act(() => attachBrowserWebview('native', 'https://example.test/', 'workspace', bridge));
+        await waitFor(() => expect([...browserWebviewEntries()]).toHaveLength(0));
+        expect(document.querySelector('webview')).toBeNull();
     });
 
     it('positions, clips and repositions guests while leaving DOM overlays above a live page', async () => {

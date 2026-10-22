@@ -25,6 +25,34 @@ describe('ChatHeaderOverflowMenu', () => {
         expect(container.innerHTML).toBe('');
     });
 
+    it('labels selection groups, checks the current value and navigates radio choices with the keyboard', () => {
+        const choose = vi.fn();
+        render(<ChatHeaderOverflowMenu items={[
+            { key: 'todo', label: 'To do', group: 'status', groupLabel: 'Status', checked: true, onClick: choose },
+            { key: 'progress', label: 'In progress', group: 'status', groupLabel: 'Status', checked: false, disabled: true, onClick: choose },
+            { key: 'regular', label: 'Regular', group: 'priority', groupLabel: 'Priority', checked: true, onClick: choose },
+            { key: 'high', label: 'High', group: 'priority', groupLabel: 'Priority', checked: false, onClick: choose },
+        ]} />);
+        fireEvent.keyDown(screen.getByTestId('chat-header-overflow-btn'), { key: 'ArrowDown' });
+        const todo = screen.getByRole('menuitemradio', { name: 'To do', checked: true });
+        const regular = screen.getByRole('menuitemradio', { name: 'Regular', checked: true });
+        const high = screen.getByRole('menuitemradio', { name: 'High', checked: false });
+        expect(screen.getAllByText('Status')).toHaveLength(1);
+        expect(screen.getAllByText('Priority')).toHaveLength(1);
+        expect(todo.textContent).toContain('✓');
+        expect(document.activeElement).toBe(todo);
+        fireEvent.keyDown(todo, { key: 'ArrowDown' });
+        expect(document.activeElement).toBe(regular);
+        fireEvent.keyDown(regular, { key: 'End' });
+        expect(document.activeElement).toBe(high);
+        fireEvent.keyDown(high, { key: 'Home' });
+        expect(document.activeElement).toBe(todo);
+        fireEvent.keyDown(todo, { key: 'Escape' });
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(document.activeElement).toBe(screen.getByTestId('chat-header-overflow-btn'));
+        expect(choose).not.toHaveBeenCalled();
+    });
+
     it('renders the ⋮ trigger button when items are provided', () => {
         render(<ChatHeaderOverflowMenu items={makeItems()} />);
         expect(screen.getByTestId('chat-header-overflow-btn')).toBeTruthy();

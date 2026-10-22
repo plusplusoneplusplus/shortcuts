@@ -112,6 +112,61 @@ describe('scheduled job definitions and durable runs', () => {
         expect(store.runs(owner, job.id)).toEqual([]);
     });
 
+    it('stores a cron-bound gate script with fresh gate state and rejects a gate without a cron', () => {
+        const gateScript = 'return { items: [1] };';
+        const job = store.create(owner, { ...input, cron: '0 */6 * * *', gateScript });
+        expect(job).toMatchObject({ gateScript, gateConsecutiveFailures: 0, gatePaused: false, revision: 1 });
+        expect(job).not.toHaveProperty('gateLastResult');
+        expect(new SentinelJobStore(fixture.db).get(owner, job.id)).toEqual(job);
+        expect(() => store.create(owner, { ...input, gateScript })).toThrow(/needs a cron/);
+        expect(() => store.create(owner, { ...input, cron: '', gateScript })).toThrow(/needs a cron/);
+        expect(() => store.update(owner, job.id, { cron: '' }, 1)).toThrow(/needs a cron/);
+        expect(() => store.create(owner, { ...input, cron: '0 */6 * * *', gateScript: 'x'.repeat(32_001) })).toThrow();
+        expect(() => store.create(owner, { ...input, cron: '0 */6 * * *', gateScript: 1 } as never)).toThrow();
+        // A blank script is no gate, so it needs no cron.
+        expect(store.create(owner, { ...input, gateScript: '  \n ' })).not.toHaveProperty('gateScript');
+        expect(store.list(owner)).toHaveLength(2);
+    });
+
+    it('keeps gate state across other edits and resets it when the script changes or clears', () => {
+        const job = store.create(owner, { ...input, cron: '0 */6 * * *', gateScript: 'return 1;' });
+        const failing = { gateLastResult: '{"a":1}', gateConsecutiveFailures: 5,
+            gateLastError: { message: 'boom', at: '2026-10-21T00:00:00.000Z' }, gatePaused: true };
+        store.updateGate(owner, job.id, 'return 1;', () => failing);
+        // Resending the same script, renaming or toggling the schedule is not a script edit.
+        expect(store.update(owner, job.id, { name: 'renamed', gateScript: 'return 1;' }, 1)).toMatchObject({ ...failing, revision: 2 });
+        expect(store.update(owner, job.id, { enabled: false }, 2)).toMatchObject({ ...failing, revision: 3 });
+        const fresh = { gateConsecutiveFailures: 0, gatePaused: false };
+        const edited = store.update(owner, job.id, { gateScript: 'return 2;' }, 3);
+        expect(edited).toMatchObject({ gateScript: 'return 2;', ...fresh, revision: 4 });
+        expect(store.get(owner, job.id)).not.toHaveProperty('gateLastResult');
+        expect(store.get(owner, job.id)).not.toHaveProperty('gateLastError');
+        store.updateGate(owner, job.id, 'return 2;', () => failing);
+        const cleared = store.update(owner, job.id, { gateScript: '' }, 4);
+        expect(cleared).toMatchObject(fresh);
+        expect(cleared).not.toHaveProperty('gateScript');
+        expect(store.get(owner, job.id)).toEqual(expect.objectContaining({ ...fresh, cron: '0 */6 * * *', revision: 5 }));
+        expect(store.get(owner, job.id)).not.toHaveProperty('gateLastResult');
+        // Without a gate the cron may be cleared again.
+        expect(store.update(owner, job.id, { cron: '' }, 5).cron).toBeUndefined();
+    });
+
+    it('applies gate bookkeeping only to the gate script that ran, without a revision bump', () => {
+        const job = store.create(owner, { ...input, cron: '0 */6 * * *', gateScript: 'return 1;' });
+        const bump = (current: { gateConsecutiveFailures: number }) => ({ gateConsecutiveFailures: current.gateConsecutiveFailures + 1 });
+        expect(store.updateGate(owner, job.id, 'return 1;', bump)).toMatchObject({ gateConsecutiveFailures: 1, revision: 1 });
+        expect(store.updateGate(owner, job.id, 'return 1;', bump)).toMatchObject({ gateConsecutiveFailures: 2, revision: 1 });
+        expect(store.updateGate(owner, job.id, 'return 0;', () => ({ gatePaused: true }))).toBeUndefined();
+        store.updateGate(owner, job.id, 'return 1;', () => ({ gateLastResult: '[1]' }));
+        expect(store.updateGate(owner, job.id, 'return 1;', () => ({ gateLastResult: undefined }))).toBeDefined();
+        expect(store.get(owner, job.id)).toMatchObject({ gateConsecutiveFailures: 2, gatePaused: false, revision: 1 });
+        expect(store.get(owner, job.id)).not.toHaveProperty('gateLastResult');
+        const ungated = store.create(owner, input);
+        expect(store.updateGate(owner, ungated.id, '', () => ({ gatePaused: true }))).toBeUndefined();
+        expect(store.get(owner, ungated.id).gatePaused).toBe(false);
+        expect(() => store.updateGate({ ...owner, processId: 'queue_other' }, job.id, 'return 1;', bump)).toThrow(/not found/);
+    });
+
     it('serializes each job, records schedule overlaps, and keeps independent jobs parallel', () => {
         const a = store.create(owner, input);
         const b = store.create(owner, input);
@@ -120,6 +175,15 @@ describe('scheduled job definitions and durable runs', () => {
         expect(() => store.createRun(owner, a.id, 'manual', 'queue_a', at)).toThrow(/active/);
         expect(store.createRun(owner, a.id, 'schedule', 'queue_a', at)).toMatchObject({ status: 'skipped', skipReason: 'overlap', runNumber: 2 });
         expect(store.createRun(owner, b.id, 'manual', 'queue_b', at).status).toBe('queued');
+        // An active run outranks a gate skip; a gate skip never adopts a job chat id.
+        expect(store.createRun(owner, a.id, 'schedule', undefined, at, 'gate-empty')).toMatchObject({ skipReason: 'overlap' });
+        const c = store.create(owner, input);
+        expect(store.createRun(owner, c.id, 'schedule', 'queue_c', at, 'gate-unavailable'))
+            .toMatchObject({ status: 'skipped', skipReason: 'gate-unavailable', runNumber: 1, durationMs: 0 });
+        expect(store.get(owner, c.id).processId).toBeUndefined();
+        // An explicit overlap skip never claims, even once nothing is active.
+        expect(store.createRun(owner, c.id, 'schedule', 'queue_c', at, 'overlap')).toMatchObject({ status: 'skipped', skipReason: 'overlap' });
+        expect(store.get(owner, c.id).processId).toBeUndefined();
         store.patchRun(owner, a.id, run.id, { status: 'cancelled' }, ['queued']);
         expect(store.patchRun(owner, a.id, run.id, { status: 'completed' }, ['running'])).toBeUndefined();
         expect(store.run(owner, a.id, run.id).status).toBe('cancelled');

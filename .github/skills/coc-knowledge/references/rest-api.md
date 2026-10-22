@@ -100,7 +100,7 @@ Gated by `canvas.enabled` (default on). Mutations emit `canvas-updated` on WebSo
 | GET | `/api/workspaces/:id/canvases/:canvasId/extension` | Extension documents (`manifest`, `uiHtml`, `capabilitiesJs`) for an `extension`-type canvas |
 | GET | `/api/workspaces/:id/canvases/:canvasId/files` | Read-only file metadata, ≤2000 entries; symlinks omitted |
 | GET | `/api/workspaces/:id/canvases/:canvasId/files/<path>` | Text/base64 content; optional `encoding=base64`. Canonical containment rejects traversal/absolute/backslash/NUL/symlink escapes (`400`); missing → `404`; over 1 MB text/10 MB binary → `413` |
-| POST | `/api/workspaces/:id/canvases/:canvasId/capabilities/:name` | Serialized, revision-checked state transform; sync 1s sandbox, async 30s terminable worker with `host.complete` gated by `features.canvasHostApis` (`404` off). Capability error → `422`; save race → `409` |
+| POST | `/api/workspaces/:id/canvases/:canvasId/capabilities/:name` | Serialized, revision-checked state transform; sync 1s sandbox, async 30s terminable worker with `host.complete` (and `host.runScript` as the canvas owner when `features.canvasToolScripts` is on) gated by `features.canvasHostApis` (`404` off). Capability error → `422`; save race → `409` |
 
 ## Filesystem
 
@@ -165,7 +165,7 @@ Disabled-by-default `features.gitWorktreeExecution`. The target server creates i
 | DELETE | `/api/processes/:id/compact` | Cancel queued compaction only; `409 COMPACTION_NOT_QUEUED` after execution starts; later messages continue |
 | PUT | `/api/processes/:id/auto-compact` | Sentinel chats only (`422 AUTO_COMPACT_SENTINEL_ONLY`); body `{ enabled, thresholdTokens }`, finite positive safe-integer absolute tokens (default 700000, per-chat OFF); invalid/percentage settings → `400`. Returns `{ autoCompact }`; explicit PUT replaces unsupported persisted state. A change clears pause/failure streak; never compacts by itself. Generic metadata writes cannot write `autoCompact` |
 | POST | `/api/processes/:id/auto-compact/resume` | Clear pause/failure streak; `409 AUTO_COMPACT_NOT_CONFIGURED` when unset, `409 AUTO_COMPACT_UNSUPPORTED_STATE` for invalid/percentage state (explicit valid PUT required). Never compacts immediately; the next persisted response checks `currentTokens > thresholdTokens`, independent of model limit |
-| GET/PUT | `/api/processes/:id/additional-instructions` | Sentinel chats only (`422 ADDITIONAL_INSTRUCTIONS_SENTINEL_ONLY`); owner-server live default-off `features.sentinelAdditionalInstructions` (`404 ADDITIONAL_INSTRUCTIONS_DISABLED`, saved data retained). PUT `{ text }` (plain text, ≤10000 chars, CRLF→LF, trimmed; blank clears, unknown keys → `400`) → `{ additionalInstructions: { text, updatedAt? } }`, missing → `text: ''`. Persists at `metadata.additionalInstructions`; generic metadata writes cannot touch it and forks drop it. Saving never interrupts work. Client: `processes.getAdditionalInstructions` / `updateAdditionalInstructions` |
+| GET/PUT | `/api/processes/:id/additional-instructions` | Sentinel chats only (`422 ADDITIONAL_INSTRUCTIONS_SENTINEL_ONLY`); owner-server live default-on `features.sentinelAdditionalInstructions` (`404 ADDITIONAL_INSTRUCTIONS_DISABLED`, saved data retained). PUT `{ text }` (plain text, ≤10000 chars, CRLF→LF, trimmed; blank clears, unknown keys → `400`) → `{ additionalInstructions: { text, updatedAt? } }`, missing → `text: ''`. Persists at `metadata.additionalInstructions`; generic metadata writes cannot touch it and forks drop it. Saving never interrupts work. Client: `processes.getAdditionalInstructions` / `updateAdditionalInstructions` |
 | POST | `/api/processes/:id/turns/:turnIndex/rewind` | Native-anchor rewind in active provider segment, serialized with admission. Earlier segment → `409 CROSS_PROVIDER_REWIND_UNAVAILABLE`; non-idle → `409 CONVERSATION_NOT_IDLE` |
 | POST | `/api/processes/:id/note` | Retarget Notes chat; normalized relative path must remain in workspace notes root and bound section (`400` otherwise). See [spa/notes.md](spa/notes.md) |
 | POST | `/api/processes/:id/ask-user-response` | Resolve batch with answered, skipped or needs-context-deferred answers |
@@ -256,17 +256,17 @@ policies. See [LLM tools](llm-tools.md#create_pull_request) for polling invarian
 
 ### Sentinel To-do trigger rules
 
-Owner-scoped rules use `SentinelTodoTriggerService`. Date authoring/actions/arming require live `features.sentinelTodoDateTimeTriggers`; script authoring/resume/runs require live `features.sentinelTodoScriptTriggers` and `features.toolScripting` (`403` off). Both trigger flags default off. Scripts remain listable, pausable and removable while disabled. Rules never expire and share the server's 50-active cap; scripts also have a ten-rule exact-owner cap. Every operation validates the owning Sentinel workspace/process; foreign rules/items return `404`. Manual/Done/archived items are ineligible; terminal rules cannot edit/resume/refire. Generic `/triggers` APIs exclude bound rules and reject their mutation. Wakes never change item status, launch jobs or grant authorization.
+Owner-scoped rules use `SentinelTodoTriggerService`. Date authoring/actions/arming require live, default-off `features.sentinelTodoDateTimeTriggers` (`403` off). Rules never expire and share the server's 50-active cap. Every operation validates the owning Sentinel workspace/process; foreign rules/items return `404`. Manual/Done/archived items are ineligible; terminal rules cannot edit/resume/refire. Generic `/triggers` APIs exclude bound rules and reject their mutation. Wakes never change item status, launch jobs or grant authorization.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET/POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers` | List/create; PR input `{ itemId, prUrl, instruction?, workspaceId?, originId?, idempotencyKey? }`; event input replaces PR fields with `{ type: 'date-time', firesAt, timeZone, localTime }` (matching future UTC/IANA/local instant) or `{ type: 'script-condition', script, intervalMs? }` (five-minute floor, 15-minute default); invalid input → `400`; same owner/key replays; merged PR → `409` unless confirmed Run now; closed → `409`; provider failure → `502`; cap → `409` |
-| GET | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/capabilities` | Owner-validated `{ dateTime: boolean, scriptCondition: boolean }` from this server's live gates; typed client `sentinelTodoCapabilities` |
+| GET/POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers` | List/create; PR input `{ itemId, prUrl, instruction?, workspaceId?, originId?, idempotencyKey? }`; event input replaces PR fields with `{ type: 'date-time', firesAt, timeZone, localTime }` (matching future UTC/IANA/local instant); invalid input, including unsupported event types → `400`; same owner/key replays; merged PR → `409` unless confirmed Run now; closed → `409`; provider failure → `502`; cap → `409` |
+| GET | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/capabilities` | Owner-validated `{ dateTime: boolean }` from this server's live gate; typed client `sentinelTodoCapabilities` |
 | POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/preview` | `{ prUrl }` → canonical provider identity and untrusted PR snapshot; no persisted state |
-| PATCH | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId` | Replace authoring fields with required `expectedRevision`; script source/interval changes bump source revision and reset baseline/errors; preserves armed-by attribution; stale/terminal → `409` |
+| PATCH | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId` | Replace authoring fields with required `expectedRevision`; preserves armed-by attribution; stale/terminal → `409` |
 | POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId/pause` | `{ expectedRevision }` pauses a non-terminal rule |
 | POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId/resume` | `{ expectedRevision, confirmed? }` rechecks eligibility/cap; overdue date resume requires `confirmed: true` and catches up immediately |
-| POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId/run-now` | `{ expectedRevision, confirmed: true }` consumes PR/date rules with one wake; scripts evaluate once using the same change rule without consuming/resuming; pending delivery or overlap → `409` |
+| POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId/run-now` | `{ expectedRevision, confirmed: true }` consumes PR/date rules with one wake; terminal or stale → `409` |
 | DELETE | `/api/workspaces/:workspaceId/sentinel-todos/:processId/triggers/:triggerId` | `{ expectedRevision }` removes/clears presentation; dedupe receipts remain durable; pending removed date rules suppress delivery; committed PR wakes retain recovery |
 
 `coc-client` exposes these as `client.triggers.listSentinelTodo`, `previewSentinelTodo`,
@@ -286,10 +286,17 @@ workspace and Sentinel process; mutation methods carry the rule revision.
 | DELETE | `/:jobId` | `delete`: `expectedRevision` |
 | POST | `/:jobId/runs` | `start`: manual run in the persistent job chat |
 | POST | `/:jobId/runs/:runId/cancel` | `cancel`: exact owner/job/run |
+| POST | `/:jobId/gate/test` | `testGate`: `{ ok, result?, empty?, error? }` from one gate evaluation with the saved state; no run, no saved state, works while paused; `409` while `features.toolScripting` is off; client disconnect cancels it |
+| POST | `/:jobId/gate/resume` | `resumeGate`: clears `gatePaused` and the failure count (no revision bump) |
 
 Editing instructions/config and deletion conflict while a run or Sentinel handback
 is pending. Schedule-only `enabled` updates remain available; paused schedules still
-permit Run now. Blank `cron`/`effort`/`effortTier` clears the optional setting.
+permit Run now. Blank `cron`/`effort`/`effortTier`/`gateScript` clears the optional setting.
+A `gateScript` requires `cron`. Gate state fields (`gateLastResult`,
+`gateConsecutiveFailures`, `gateLastError`, `gatePaused`) are read-only and reset when
+the script changes; only Resume gate writes them directly. Gate actions on an ungated
+job return `400 invalid`. Run `skipReason` is `overlap`, `gate-empty` or `gate-unavailable`
+(`features.toolScripting` off at the tick); Run now never runs the gate.
 A job stores either an explicit `model` (with optional `effort`) or an `effortTier`;
 a tier drops stored model/effort, and a model-only patch drops a stored tier. Each run
 enqueues the tier for the owning server's normal provider tier resolution. The first run creates

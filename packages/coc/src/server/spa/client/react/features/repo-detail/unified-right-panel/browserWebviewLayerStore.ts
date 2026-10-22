@@ -5,6 +5,8 @@ export interface BrowserWebviewEntry {
     viewId: string;
     config?: { src: string; partition: string; bridge: DesktopBrowserBridge };
     placement?: { element: HTMLElement; shown: boolean };
+    /** A background browser-control turn drives this guest: keep it laid out (transparent) while hidden. */
+    background?: boolean;
     error?: string;
 }
 
@@ -58,6 +60,28 @@ export function placeBrowserWebview(viewId: string, element: HTMLElement, shown:
         entry.placement = undefined;
         notify();
     };
+}
+
+/** Create the guest for a tab whose panel is not mounted, so a background turn can drive it. */
+export function attachBrowserWebview(viewId: string, url: string, sessionKey: string, bridge: DesktopBrowserBridge): void {
+    if (entries.get(viewId)?.config) return;
+    const attach = prepareBrowserWebview(viewId);
+    void bridge.open(viewId, url, sessionKey).then(result => attach(result, bridge), error => {
+        console.error('Could not attach background browser page:', error);
+        removeBrowserWebviewIfUnplaced(viewId);
+    });
+}
+
+function removeBrowserWebviewIfUnplaced(viewId: string): void {
+    const entry = entries.get(viewId);
+    if (entry && !entry.config && !entry.placement && entries.delete(viewId)) notify();
+}
+
+export function setBrowserWebviewBackground(viewId: string, background: boolean): void {
+    const entry = entries.get(viewId);
+    if (!entry || !!entry.background === background) return;
+    entry.background = background;
+    notify();
 }
 
 export function reportBrowserWebviewError(entry: BrowserWebviewEntry, error: string): void {

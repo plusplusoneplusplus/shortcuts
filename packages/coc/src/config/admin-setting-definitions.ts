@@ -630,18 +630,18 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.sentinelNextSteps', default: false, runtime: 'live', runtimeFlag: 'sentinelNextStepsEnabled',
+        key: 'features.sentinelNextSteps', default: true, runtime: 'live', runtimeFlag: 'sentinelNextStepsEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelMode', order: 32.1, label: 'Sentinel next steps', badge: 'experimental',
-            hint: 'Optional next actions with click-to-send in Sentinel chats. Disabled by default.',
+            hint: 'Optional next actions with click-to-send in Sentinel chats. Enabled by default.',
             testId: 'toggle-sentinel-next-steps',
         },
     }),
     bool({
-        key: 'features.sentinelAdditionalInstructions', default: false, runtime: 'live', runtimeFlag: 'sentinelAdditionalInstructionsEnabled',
+        key: 'features.sentinelAdditionalInstructions', default: true, runtime: 'live', runtimeFlag: 'sentinelAdditionalInstructionsEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelMode', order: 32.2, label: 'Sentinel additional instructions', badge: 'experimental',
-            hint: 'Edit per-chat additional instructions from a Sentinel chat\'s information menu. Saved text is added when context is first built or after the next compaction; built-in Sentinel rules are unchanged. Disabled by default.',
+            hint: 'Edit per-chat additional instructions from a Sentinel chat\'s information menu. Saved text is added when context is first built or after the next compaction; built-in Sentinel rules are unchanged. Enabled by default.',
             testId: 'toggle-sentinel-additional-instructions-enabled',
         },
     }),
@@ -667,14 +667,6 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             tab: 'sentinel', group: 'sentinelTodos', order: 32.57, label: 'To-do date/time triggers', badge: 'experimental',
             hint: 'Allow one-time dated rules to wake their owning Sentinel. Does not authorize jobs.',
             testId: 'toggle-sentinel-todo-date-time-triggers',
-        },
-    }),
-    bool({
-        key: 'features.sentinelTodoScriptTriggers', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoScriptTriggersEnabled',
-        ui: {
-            tab: 'sentinel', group: 'sentinelTodos', order: 32.575, label: 'To-do script triggers', badge: 'experimental',
-            hint: 'Allow background JavaScript conditions to wake their owning Sentinel when results change. Requires tool scripting. Disabling either flag stops evaluation and retains rules.',
-            testId: 'toggle-sentinel-todo-script-triggers',
         },
     }),
     bool({
@@ -839,6 +831,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'browserControl.backgroundEnabled', default: false, runtime: 'live', runtimeFlag: 'browserBackgroundControlEnabled',
+        ui: {
+            tab: 'browser', group: 'browserAutomation', order: 13, label: 'Background browser control',
+            hint: 'Keep browser control working for a workspace while the desktop window shows another workspace. Actions run on the hidden tab without switching or taking focus.',
+            dependsOn: 'browserControl.enabled', badge: 'experimental', testId: 'toggle-browser-background-control-enabled',
+        },
+    }),
+    bool({
         key: 'kusto.enabled', default: false, runtime: 'live', runtimeFlag: 'kustoEnabled',
         ui: {
             tab: 'integrations', group: 'review', order: 62, label: 'Kusto query canvas', badge: 'experimental',
@@ -863,10 +863,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.queryPullRequestTool', default: false, runtime: 'live', runtimeFlag: 'queryPullRequestToolEnabled',
+        key: 'features.queryPullRequestTool', default: true, runtime: 'live', runtimeFlag: 'queryPullRequestToolEnabled',
         ui: {
             group: 'review', order: 64.6, label: 'Query pull request tool', badge: 'experimental',
-            hint: 'Chat AI can call `query_pull_request` to read GitHub or Azure DevOps pull requests (list with filters, or get by ID) for a repository it names, using this server\'s credentials. Read-only. Disabled by default.',
+            hint: 'Chat AI can call `query_pull_request` to read GitHub or Azure DevOps pull requests (list with filters, or get by ID) for a repository it names, using this server\'s credentials. Read-only. Enabled by default.',
             testId: 'toggle-query-pull-request-tool-enabled',
         },
     }),
@@ -1304,6 +1304,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             group: 'review', order: 63, label: 'Canvas host APIs', badge: 'experimental',
             hint: 'Lets an extension canvas declare async capabilities, which run in a terminable worker with a 30s budget and can call the model via host.complete (max 3 calls per run). Disabled by default.',
             testId: 'toggle-canvas-host-apis-enabled',
+        },
+    }),
+    bool({
+        key: 'features.canvasToolScripts', default: false, runtime: 'live',
+        ui: {
+            group: 'review', order: 63.5, label: 'Canvas tool scripts', badge: 'experimental',
+            hint: 'Lets an async canvas capability call host.runScript to run a tool script as the chat that owns the canvas. Only read-only tools the canvas declares are available. Needs Canvas host APIs and Tool Scripting. Disabled by default.',
+            testId: 'toggle-canvas-tool-scripts-enabled',
         },
     }),
     bool({

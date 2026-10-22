@@ -1,10 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CocToolRuntime, defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
-import { runScriptCondition, SCRIPT_CONDITION_DEADLINE_MS } from '../../../src/server/triggers/script-condition-runner';
-import { ScriptConditionEvaluator } from '../../../src/server/triggers/script-condition-evaluator';
-import type { Trigger } from '../../../src/server/triggers/trigger-types';
+import { runJobGate, JOB_GATE_DEADLINE_MS } from '../../../src/server/sentinel-jobs/job-gate-runner';
 
-describe('runScriptCondition', () => {
+describe('runJobGate', () => {
     let runtime: CocToolRuntime;
 
     beforeEach(() => {
@@ -19,7 +17,7 @@ describe('runScriptCondition', () => {
 
     it('passes the previous result without allowing mutations to escape the worker', async () => {
         const state = { count: 2 };
-        await expect(runScriptCondition({ code: 'state.count++; return state;', state, runtime }))
+        await expect(runJobGate({ code: 'state.count++; return state;', state, runtime }))
             .resolves.toEqual({ count: 3 });
         expect(state).toEqual({ count: 2 });
         expect(vi.getTimerCount()).toBe(0);
@@ -29,7 +27,7 @@ describe('runScriptCondition', () => {
         const handler = vi.fn(async (_args: unknown) => JSON.stringify({ state: 'open' }));
         runtime.dispose();
         runtime = new CocToolRuntime([defineTool('query_pull_request', { handler })]);
-        await expect(runScriptCondition({
+        await expect(runJobGate({
             code: 'return { previous: state, current: await tools.query_pull_request({ number: 42 }) };',
             state: null, runtime,
         })).resolves.toEqual({ previous: null, current: { state: 'open' } });
@@ -45,7 +43,7 @@ describe('runScriptCondition', () => {
             defineTool('run_tool_script', { handler }),
             defineTool('effect', { handler }),
         ]);
-        await expect(runScriptCondition({
+        await expect(runJobGate({
             code: `return await tools.run_tool_script({ code: 'return await tools.effect({});' });`,
             state: null, runtime, allowNestedScripts,
         })).rejects.toMatchObject({ name: 'ToolCallError', message: expect.stringContaining('denied') });
@@ -54,7 +52,7 @@ describe('runScriptCondition', () => {
     });
 
     it('lets a script catch the nesting denial as ToolCallError', async () => {
-        await expect(runScriptCondition({
+        await expect(runJobGate({
             code: `try { await tools.run_tool_script({ code: 'return 1;' }); }
                 catch (e) { return { name: e.name, code: e.code }; }`,
             state: null, runtime,
@@ -64,7 +62,7 @@ describe('runScriptCondition', () => {
 
     it('permits admitted nesting through depth three', async () => {
         const child = `return await tools.run_tool_script({ code: 'return 3;' });`;
-        await expect(runScriptCondition({
+        await expect(runJobGate({
             code: `return await tools.run_tool_script({ code: ${JSON.stringify(child)} });`,
             state: null, runtime, allowNestedScripts: true,
         })).resolves.toMatchObject({ result: { result: 3 } });
@@ -73,12 +71,12 @@ describe('runScriptCondition', () => {
 
     it.each(['return undefined;', 'return NaN;', 'return { value: undefined };', 'return new Date();'])
         ('rejects a non-JSON result: %s', async code => {
-            await expect(runScriptCondition({ code, state: null, runtime })).rejects.toThrow();
+            await expect(runJobGate({ code, state: null, runtime })).rejects.toThrow();
             expect(vi.getTimerCount()).toBe(0);
         });
 
     it('propagates script errors and clears the deadline', async () => {
-        await expect(runScriptCondition({ code: 'throw new Error("provider unavailable");', state: null, runtime }))
+        await expect(runJobGate({ code: 'throw new Error("provider unavailable");', state: null, runtime }))
             .rejects.toThrow('provider unavailable');
         expect(vi.getTimerCount()).toBe(0);
     });
@@ -86,10 +84,10 @@ describe('runScriptCondition', () => {
     it.each(['await new Promise(() => {});', 'while (true) {}'])
         ('aborts a stalled worker at the fixed deadline: %s', async code => {
             let settled = false;
-            const run = runScriptCondition({ code, state: null, runtime });
+            const run = runJobGate({ code, state: null, runtime });
             const assertion = expect(run).rejects.toThrow('60-second deadline');
             void run.then(() => { settled = true; }, () => { settled = true; });
-            await vi.advanceTimersByTimeAsync(SCRIPT_CONDITION_DEADLINE_MS - 1);
+            await vi.advanceTimersByTimeAsync(JOB_GATE_DEADLINE_MS - 1);
             expect(settled).toBe(false);
             await vi.advanceTimersByTimeAsync(1);
             await assertion;
@@ -108,11 +106,11 @@ describe('runScriptCondition', () => {
                 return new Promise<string>(resolve => invocation.signal!.addEventListener('abort', () => resolve('cancelled'), { once: true }));
             },
         })]);
-        const run = runScriptCondition({ code: 'return await tools.slow({});', state: null, runtime });
+        const run = runJobGate({ code: 'return await tools.slow({});', state: null, runtime });
         const assertion = expect(run).rejects.toThrow('60-second deadline');
         await toolStarted;
         expect(toolSignal?.aborted).toBe(false);
-        await vi.advanceTimersByTimeAsync(SCRIPT_CONDITION_DEADLINE_MS);
+        await vi.advanceTimersByTimeAsync(JOB_GATE_DEADLINE_MS);
         await assertion;
         expect(toolSignal?.aborted).toBe(true);
         expect(vi.getTimerCount()).toBe(0);
@@ -120,42 +118,12 @@ describe('runScriptCondition', () => {
 
     it.each([true, false])('preserves caller cancellation (pre-aborted=%s)', async preAborted => {
         const controller = new AbortController();
-        const reason = new Error('Rule revision changed');
+        const reason = new Error('Job edited');
         if (preAborted) controller.abort(reason);
-        const run = runScriptCondition({ code: 'await new Promise(() => {});', state: null, runtime, signal: controller.signal });
+        const run = runJobGate({ code: 'await new Promise(() => {});', state: null, runtime, signal: controller.signal });
         const assertion = expect(run).rejects.toBe(reason);
         controller.abort(reason);
         await assertion;
-        expect(vi.getTimerCount()).toBe(0);
-    });
-
-    it('records a timeout as one evaluator failure without replacing the baseline', async () => {
-        const trigger: Trigger = {
-            id: 'script-rule', workspaceId: 'workspace-a', processId: 'sentinel-a', status: 'active',
-            event: {
-                type: 'script-condition', script: 'await new Promise(() => {});', scriptRevision: 1,
-                intervalMs: 900_000, consecutiveFailures: 0, paused: false,
-                lastResult: '{"state":"open"}', lastResultHash: 'previous-hash',
-            },
-            action: { type: 'send-message', processId: 'sentinel-a', prompt: '', mode: 'inherit' },
-            inFlight: false, createdAt: '2026-10-19T00:00:00Z', expiresAt: null,
-            lastTickAt: null, nextTickAt: null, revision: 1,
-        };
-        const owner = new AbortController();
-        const evaluator = new ScriptConditionEvaluator((rule, state, signal) => runScriptCondition({
-            code: rule.event.type === 'script-condition' ? rule.event.script : '', state, runtime, signal,
-        }));
-        const evaluation = evaluator.evaluate(trigger, { signal: owner.signal });
-        await vi.advanceTimersByTimeAsync(SCRIPT_CONDITION_DEADLINE_MS);
-        const outcome = await evaluation;
-        expect(outcome).toMatchObject({
-            fire: false, changed: true,
-            event: {
-                consecutiveFailures: 1, paused: false, lastResult: '{"state":"open"}', lastResultHash: 'previous-hash',
-                lastError: { message: 'Script condition exceeded its 60-second deadline' },
-            },
-        });
-        expect(owner.signal.aborted).toBe(false);
         expect(vi.getTimerCount()).toBe(0);
     });
 });

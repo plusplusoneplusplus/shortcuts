@@ -249,7 +249,7 @@ export interface CLIConfig {
         enabled?: boolean;
     };
     /** Desktop browser control. Disabled by default. */
-    browserControl?: { enabled?: boolean; framesEnabled?: boolean; richPasteEnabled?: boolean };
+    browserControl?: { enabled?: boolean; framesEnabled?: boolean; richPasteEnabled?: boolean; backgroundEnabled?: boolean };
     /** Kusto query canvas (interactive KQL query + charts). Disabled by default. */
     kusto?: {
         enabled?: boolean;
@@ -336,8 +336,6 @@ export interface CLIConfig {
         /** Return new remote Sentinel requests through authenticated durable receipts. Default off. */
         sentinelRemoteResults?: boolean;
         sentinelTodoDateTimeTriggers?: boolean;
-        /** Background Sentinel To-do script conditions; also require toolScripting. Default off. */
-        sentinelTodoScriptTriggers?: boolean;
         sentinelDesktopMirror?: boolean;
         botManagedConversations?: boolean;
         /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Disabled by default. */
@@ -369,6 +367,8 @@ export interface CLIConfig {
         gitWorktreeExecution?: boolean;
         /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
         canvasHostApis?: boolean;
+        /** `host.runScript` in async canvas capabilities: owner-bound, read-only tool scripts. Disabled by default. */
+        canvasToolScripts?: boolean;
         /** `ask_user` `sensitive-input` questions: secrets pasted in the desktop dashboard go straight to a sink. Disabled by default. */
         sensitiveInput?: boolean;
         /** VS Code-style multiple editor tabs in the File Explorer. Enabled by default. */
@@ -666,7 +666,7 @@ export interface ResolvedCLIConfig {
         enabled: boolean;
     };
     /** Desktop browser control. */
-    browserControl: { enabled: boolean; framesEnabled: boolean; richPasteEnabled: boolean };
+    browserControl: { enabled: boolean; framesEnabled: boolean; richPasteEnabled: boolean; backgroundEnabled: boolean };
     /** Kusto query canvas (interactive KQL query + charts). */
     kusto: {
         enabled: boolean;
@@ -761,7 +761,6 @@ export interface ResolvedCLIConfig {
         sentinelFollowUpResults: boolean;
         sentinelRemoteResults: boolean;
         sentinelTodoDateTimeTriggers: boolean;
-        sentinelTodoScriptTriggers: boolean;
         sentinelDesktopMirror: boolean;
         botManagedConversations: boolean;
         /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Enabled by default. */
@@ -792,6 +791,8 @@ export interface ResolvedCLIConfig {
         gitWorktreeExecution: boolean;
         /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
         canvasHostApis: boolean;
+        /** `host.runScript` in async canvas capabilities: owner-bound, read-only tool scripts. Disabled by default. */
+        canvasToolScripts: boolean;
         /** `ask_user` `sensitive-input` questions: secrets pasted in the desktop dashboard go straight to a sink. Disabled by default. */
         sensitiveInput: boolean;
         /** VS Code-style multiple editor tabs in the File Explorer. Enabled by default. */
@@ -1019,7 +1020,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
         azureCli: { account: '', tenant: '', subscription: '' },
     },
-    browserControl: { enabled: false, framesEnabled: false, richPasteEnabled: false },
+    browserControl: { enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false },
     LLMToolSystemOne: {
         enabled: true,
     },
@@ -1086,20 +1087,19 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         teamsBridgeObservability: false,
         teamsAiAnswerRelay: true,
         teamsMessageReaction: false,
-        sentinelNextSteps: false,
+        sentinelNextSteps: true,
         sentinelTodoDependencies: false,
         sentinelTodoTags: false,
         sentinelTodoExternalReferences: false,
         sentinelTodoScrubber: false,
         sentinelTodoJobs: false,
-        sentinelAdditionalInstructions: false,
+        sentinelAdditionalInstructions: true,
         toolScripting: true,
-        queryPullRequestTool: false,
+        queryPullRequestTool: true,
         sentinelPrOutcomeWake: false,
         sentinelFollowUpResults: false,
         sentinelRemoteResults: false,
         sentinelTodoDateTimeTriggers: false,
-        sentinelTodoScriptTriggers: false,
         sentinelDesktopMirror: false,
         botManagedConversations: false,
         quickAskSidenotes: true,
@@ -1117,6 +1117,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         composerWordHint: true,
         gitWorktreeExecution: false,
         canvasHostApis: false,
+        canvasToolScripts: false,
         sensitiveInput: false,
         explorerEditorTabs: true,
         explorerDelete: true,

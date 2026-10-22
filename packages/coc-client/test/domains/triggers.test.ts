@@ -28,41 +28,6 @@ function makeTrigger(overrides: Partial<Trigger> = {}): Trigger {
 }
 
 describe('TriggersClient', () => {
-  it('round-trips script authoring and result/error/delivery state on the exact owner route', async () => {
-    const trigger = makeTrigger({
-      status: 'paused', expiresAt: null, lastTickAt: '2027-01-01T12:00:00.000Z',
-      event: {
-        type: 'script-condition', script: 'return state;', intervalMs: 300_000, scriptRevision: 2,
-        lastResult: '{"ready":true}', lastResultHash: 'result-hash', paused: true,
-        consecutiveFailures: 5, lastError: { message: 'Failed', at: '2027-01-01T12:00:00.000Z' },
-      },
-      delivery: {
-        deliveryId: 'notice', firedAt: '2027-01-01T12:00:00.000Z', reason: 'script-paused',
-        resultHash: 'result-hash', scriptRevision: 2, state: 'delivered',
-      },
-    });
-    const adapter = createMockAdapter({ trigger, triggers: [trigger], dateTime: false, scriptCondition: true });
-    const client = new TriggersClient(adapter);
-    const input: CreateSentinelTodoTriggerRequest = {
-      itemId: 'item', event: { type: 'script-condition', script: 'return null;' },
-    };
-    await expect(client.sentinelTodoCapabilities('owner/clone', 'sentinel/id'))
-      .resolves.toMatchObject({ dateTime: false, scriptCondition: true });
-    await expect(client.createSentinelTodo('owner/clone', 'sentinel/id', input)).resolves.toEqual(trigger);
-    const edit = { itemId: 'item', event: { ...input.event!, intervalMs: 300_000 }, expectedRevision: 2 };
-    await expect(client.editSentinelTodo('owner/clone', 'sentinel/id', 'rule/id', edit)).resolves.toEqual(trigger);
-    await expect(client.listSentinelTodo('owner/clone', 'sentinel/id')).resolves.toEqual([trigger]);
-    await expect(client.runSentinelTodoNow('owner/clone', 'sentinel/id', 'rule/id', 3)).resolves.toEqual(trigger);
-    const base = '/workspaces/owner%2Fclone/sentinel-todos/sentinel%2Fid/triggers';
-    expect(adapter.calls).toMatchObject([
-      { path: `${base}/capabilities` },
-      { path: base, options: { method: 'POST', body: input } },
-      { path: `${base}/rule%2Fid`, options: { method: 'PATCH', body: edit } },
-      { path: base },
-      { path: `${base}/rule%2Fid/run-now`, options: { method: 'POST', body: { expectedRevision: 3, confirmed: true } } },
-    ]);
-  });
-
   it('serializes date authoring, capabilities and confirmed catch-up on the exact owner path', async () => {
     const adapter = createMockAdapter({ trigger: makeTrigger(), dateTime: true });
     const client = new TriggersClient(adapter);

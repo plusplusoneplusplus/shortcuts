@@ -22,13 +22,10 @@ describe('Sentinel PR-merge rule tool actions', () => {
     const fetchPr = vi.fn();
     const arm = vi.fn();
     let dateTimeEnabled = false;
-    let scriptEnabled = false;
-    const runScriptNow = vi.fn();
 
     beforeEach(() => {
         vi.resetAllMocks();
         dateTimeEnabled = false;
-        scriptEnabled = false;
         db = new NativeDatabase(':memory:');
         initializeDatabase(db);
         todos = new SentinelTodoStore(db);
@@ -43,14 +40,12 @@ describe('Sentinel PR-merge rule tool actions', () => {
             dateTimeEnabled: () => dateTimeEnabled });
         triggers = new SentinelTodoTriggerService({
             triggers: store, todos, owners: service, firer, fetchPr,
-            manager: { arm, disarm: vi.fn(), runScriptNow },
+            manager: { arm, disarm: vi.fn() },
             dateTimeEnabled: () => dateTimeEnabled,
-            scriptConditionsEnabled: () => scriptEnabled,
         });
         itemId = todos.create(owner, { title: 'Item', completionCondition: 'Complete' }, { actor: 'user' }).item.id;
         fetchPr.mockResolvedValue({ status: 'open', title: 'PR', url: prUrl });
         execute.mockResolvedValue(undefined);
-        runScriptNow.mockImplementation(async id => store.getById(id)!);
     });
     afterEach(() => db.close());
 
@@ -59,98 +54,21 @@ describe('Sentinel PR-merge rule tool actions', () => {
         return (tool as any).handler(args, {}) as Promise<any>;
     }
 
-    it.each([false, true])('publishes script input only when admitted, independently of date rules (%s)', enabled => {
-        scriptEnabled = enabled;
+    it('publishes no script rule input or guidance, and keeps date input out of verdict-only tools', () => {
+        dateTimeEnabled = true;
         const { tool } = createSentinelTodosTool({ service, owner, triggers });
         const schema = JSON.stringify(tool);
-        expect(schema.includes('script-condition')).toBe(enabled);
-        expect(schema).not.toContain('localTime');
-        if (enabled) {
-            expect(schema).toContain('"minimum":300000');
-            expect(schema).toContain('"default":900000');
-            expect(tool.description).toContain('never resumes a paused rule');
-            expect(tool.description).toContain('approval-gated tools and ask_user are denied');
-            expect(tool.description).toContain('first success stores a silent baseline');
-        }
-        dateTimeEnabled = true;
-        const both = JSON.stringify(createSentinelTodosTool({ service, owner, triggers }).tool);
-        expect(both).toContain('localTime');
-        expect(both.includes('script-condition')).toBe(enabled);
+        expect(schema).toContain('localTime');
+        expect(schema).not.toMatch(/intervalMs|"script"/);
+        const review = JSON.stringify(createSentinelTodosTool({ service, owner, triggers, reviewOnly: true }).tool);
+        expect(review).not.toContain('localTime');
     });
 
-    it('keeps script input and guidance out of verdict-only tools', () => {
-        scriptEnabled = true;
-        dateTimeEnabled = true;
-        const { tool } = createSentinelTodosTool({ service, owner, triggers, reviewOnly: true });
-        expect(JSON.stringify(tool)).not.toContain('script-condition');
-        expect(JSON.stringify(tool)).not.toContain('localTime');
-    });
-
-    it('authors and manages repeating scripts through the owner-bound service', async () => {
-        scriptEnabled = true;
-        const before = todos.get(owner);
-        const event = { type: 'script-condition' as const, script: 'return { count: state?.count ?? 0 };' };
-        const rule = (await call({ action: 'create_trigger', itemId, event, idempotencyKey: 'script-draft' })).trigger;
-        expect(rule).toMatchObject({
-            ...owner, event: { ...event, intervalMs: 900_000, scriptRevision: 1, consecutiveFailures: 0, paused: false },
-            binding: { armedBy: 'sentinel', itemId },
-        });
-        expect((await call({ action: 'create_trigger', itemId, event, idempotencyKey: 'script-draft' })).trigger.id).toBe(rule.id);
-        expect(await call({ action: 'list_triggers' })).toEqual({ triggers: [rule] });
-        expect(await call({ action: 'pause_trigger', triggerId: rule.id, expectedRevision: 1 }))
-            .toMatchObject({ trigger: { revision: 2, status: 'paused', event: { paused: true } } });
-        expect(await call({ action: 'edit_trigger', triggerId: rule.id, expectedRevision: 2, itemId,
-            event: { ...event, script: 'return 1;', intervalMs: 300_000 } }))
-            .toMatchObject({ trigger: { revision: 3, status: 'paused', event: { scriptRevision: 2, intervalMs: 300_000 } } });
-        expect(await call({ action: 'run_trigger_now', triggerId: rule.id, expectedRevision: 3 }))
-            .toMatchObject({ code: 'invalid' });
-        expect(await call({ action: 'run_trigger_now', triggerId: rule.id, expectedRevision: 3, confirmed: true }))
-            .toMatchObject({ trigger: { status: 'paused' } });
-        expect(runScriptNow).toHaveBeenCalledExactlyOnceWith(rule.id, 3);
-        expect(await call({ action: 'resume_trigger', triggerId: rule.id, expectedRevision: 3 }))
-            .toMatchObject({ trigger: { revision: 4, status: 'active', event: { paused: false } } });
-        expect(await call({ action: 'remove_trigger', triggerId: rule.id, expectedRevision: 4 }))
-            .toMatchObject({ removed: true });
-        expect(await call({ action: 'list_triggers' })).toEqual({ triggers: [] });
-        expect(todos.get(owner)).toEqual(before);
-        expect(fetchPr).not.toHaveBeenCalled();
-        expect(execute).not.toHaveBeenCalled();
-    });
-
-    it('rechecks the live script gate for already-built tool handlers while preserving list/pause/remove', async () => {
-        scriptEnabled = true;
-        const { tool } = createSentinelTodosTool({ service, owner, triggers });
-        const invoke = (args: SentinelTodosArgs) => tool.handler!(args, {});
-        const event = { type: 'script-condition' as const, script: 'return null;' };
-        const created = await invoke({ action: 'create_trigger', itemId, event });
-        if (!('trigger' in created)) throw new Error('Expected script rule');
-        const id = created.trigger.id;
-        scriptEnabled = false;
-        expect(await invoke({ action: 'create_trigger', itemId, event })).toMatchObject({ error: expect.stringContaining('disabled') });
-        expect(await invoke({ action: 'edit_trigger', triggerId: id, expectedRevision: 1, itemId, event }))
-            .toMatchObject({ error: expect.stringContaining('disabled') });
-        expect(await invoke({ action: 'run_trigger_now', triggerId: id, expectedRevision: 1, confirmed: true }))
-            .toMatchObject({ error: expect.stringContaining('disabled') });
-        expect(await invoke({ action: 'list_triggers' })).toMatchObject({ triggers: [{ id }] });
-        expect(await invoke({ action: 'pause_trigger', triggerId: id, expectedRevision: 1 }))
-            .toMatchObject({ trigger: { status: 'paused', revision: 2 } });
-        expect(await invoke({ action: 'resume_trigger', triggerId: id, expectedRevision: 2 }))
-            .toMatchObject({ error: expect.stringContaining('disabled') });
-        expect(await invoke({ action: 'remove_trigger', triggerId: id, expectedRevision: 2 }))
-            .toMatchObject({ removed: true });
-        expect(runScriptNow).not.toHaveBeenCalled();
-    });
-
-    it('enforces interval validation and the ten-rule owner cap through the tool', async () => {
-        scriptEnabled = true;
-        const event = { type: 'script-condition' as const, script: 'return null;', intervalMs: 300_000 };
-        expect(await call({ action: 'create_trigger', itemId, event: { ...event, intervalMs: 60_000 } }))
-            .toMatchObject({ code: 'invalid' });
-        for (let i = 0; i < 10; i++) {
-            expect(await call({ action: 'create_trigger', itemId, event })).toHaveProperty('trigger');
-        }
-        expect(await call({ action: 'create_trigger', itemId, event })).toMatchObject({ error: expect.stringContaining('10') });
-        expect(store.getAll()).toHaveLength(10);
+    it('rejects repeating script rule input through the tool without arming anything', async () => {
+        const event = { type: 'script', script: 'return null;', intervalMs: 300_000 };
+        expect(await call({ action: 'create_trigger', itemId, event })).toMatchObject({ code: 'invalid' });
+        expect(store.getAll()).toEqual([]);
+        expect(arm).not.toHaveBeenCalled();
     });
 
     it('gates date schema and forged date requests on the owning server, preserving PR actions', async () => {

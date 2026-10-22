@@ -320,6 +320,21 @@ until they settle; release events complete dispatched key/mouse presses. The
 local-only Electron relay fixture exercises WebSocket, SPA tab creation, preload,
 main, trusted input, markdown, evaluation, JPEG crops and popup discovery.
 
+With default-off `browserControl.backgroundEnabled` (runtime flag
+`browserBackgroundControlEnabled`) and a desktop exposing `control.retainScope`,
+switching workspace keeps every scope with an active turn retained: the relay
+retains it before rebinding, advertises it in `background`, and runs its commands
+with `execute(request, routingRef)` without cancelling them. Background reveals
+create the guest unseen and never change the hash. Desktop actions that cannot run
+hidden fail before dispatch with `foreground-required:`; the relay then sends
+`browser-command-waiting` (the server pauses its 60s limit) and publishes one
+`browser-control-notice.ts` entry per turn, rendered by the app-shell
+`BrowserControlSwitchBackNotices` with Switch back and Stop. Switch back opens
+`#repos/<panel scope>/chats/<processId>` (repo group or clone key); once that ref
+is foreground again, waiting requests re-run. Turn finish, tab close, server
+cancel, flag off, socket close and dispose reject and clear them. Other background
+errors return unchanged. With the flag off, switching cancels as before.
+
 With default-off `browserControl.framesEnabled`, a main-owned per-view registry
 maps opaque frame handles to default-world contexts and private OOPIF sessions.
 Electron debugger events and WebView2 native event receivers supply lifecycle
@@ -375,7 +390,7 @@ Optional `browser.importCookies(viewId, domain, cookies, relatedEngine?)` accept
 
 Main-process validation rejects unrelated domains, invalid fields and partitioned cookies before writes; engine failures omit cookie values. Imports coordinate with profile cleanup and never navigate. JSON retains attributes, supplied expiry/session semantics and exact values, including literal double quotes and backslashes escaped with JSON syntax. Pairs retain quotes/backslashes literally, trim surrounding spaces, and use host-only, secure cookies at `/` with SameSite Lax and expiry 30 days from import. Both engines receive Unix-second expiry in their installation-wide profiles. Values reject controls, non-ASCII characters, spaces, semicolons and commas; pairs reject controls before trimming. Size and batch limits apply.
 
-Electron `cookies.set` and WebView2 `CreateCookie`/`AddOrUpdateCookie` receive values without unquoting or decoding. Import compatibility does not guarantee site authentication. Cookie text stays in dialog memory. Native surfaces use `useNativeViewPlacement` to hide for overlapping DOM content and explicit `data-native-view-overlay` elements. DOM webviews stay visible under menus, dialogs and toasts.
+Electron `cookies.set` and WebView2 `CreateCookie`/`AddOrUpdateCookie` receive values without unquoting or decoding. Import compatibility does not guarantee site authentication. Cookie text stays in dialog memory. Native surfaces use `useNativeViewPlacement`: modals hide them globally; visible tab menus and `data-native-view-overlay` elements hide only intersecting views, including overlaps between hit-test probes. Dismissal restores placement; disposed callbacks cannot restore a previous owner. DOM webviews stay visible under menus, dialogs and toasts.
 The sandbox preload captures renderer pointer/focus events. Owner-validated `browser-host-focus` IPC restores renderer focus and sends the visible WebView2 view a `focus-host` command, which transfers native keyboard focus to its parent HWND without joining input queues.
 
 The browser toolbar handles Ctrl+L (Cmd+L on macOS); native engines forward
@@ -747,8 +762,10 @@ in-memory `SentinelTodoView` with drafts across refreshes and remounts.
 Compact list headers combine wrapping titles, status, priority and shared overflow
 actions; job metadata wraps below. Identical item/job titles use accessible Open job links,
 while distinct job titles remain visible. Full content and controls live in details;
-detail text uses native selection, with attachment dragging scoped to Attach.
-List cards retain whole-card attachment dragging.
+card text uses native selection, with attachment dragging scoped to list-card grips
+and detail Attach controls. Grips also attach on click or keyboard activation.
+Title pointer clicks after card text selection leave details closed; keyboard
+activation opens details.
 Events, manual refresh and post-write reloads share
 the owner/generation-guarded loader. Writes reuse an in-flight or applied read only
 once its snapshot reaches the write's `ledgerRevision`. Pending reads block duplicate manual admission;
@@ -804,6 +821,11 @@ launch/retry/cancel or authorization controls.
 
 ### Sentinel To-do Scrubber
 
+With the owning server's Jobs flags on, `SentinelTodoJobs` lists user prompt jobs
+and hosts the Scrubber as its pinned built-in row. Job dialogs, gate status,
+Test gate/Resume gate and skip labels are described in the unified-right-panel
+`AGENTS.md`.
+
 `SentinelTodoScrubber` mounts after the ledger loads when both live ledger and
 scrubber flags are enabled; its function child places one inline strip and history in
 the list column below triggers, beside the detail pane. Owner/endpoint remounts isolate async state and drafts.
@@ -826,11 +848,7 @@ The editor uses browser-safe
 
 `SentinelTodoTriggers` lists owner-bound, nondelegated rules below the cards.
 PR/date authoring uses eligible normal items and owner-server capabilities.
-Script rows show interval, last run/error, pause and escaped read-only source;
-they never open the PR editor. Disabled/unavailable owner script capability
-retains rows and safe lifecycle actions while blocking Resume/Run now.
-Confirmed script Run now evaluates without consuming or resuming the rule;
-PR/date Run now confirms a one-shot wake. Neither launches jobs directly.
+Run now confirms a one-shot wake and never launches jobs directly.
 
 Lifecycle and pending delivery stay separate from item/job/review state; typed
 writes carry owner identity and saved revisions. Owner changes isolate async

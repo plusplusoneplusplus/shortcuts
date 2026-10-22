@@ -21,7 +21,8 @@ import { CanvasStore } from './canvas-store';
 import type { CanvasEdit, CanvasRecord, CanvasExtensionManifest } from './canvas-store';
 import type { CanvasUpdateNotifier } from './canvas-update-notifier';
 import { runCanvasCapability } from './canvas-capability-runner';
-import type { CapabilityCompleteFn } from './canvas-capability-runner';
+import type { CapabilityCompleteFn, RunCanvasCapabilityOptions } from './canvas-capability-runner';
+import type { CanvasRunScriptFactory } from './canvas-script-bridge';
 import { queueCanvasCapabilityRun } from './canvas-capability-queue';
 import { runKustoCanvas } from '../kusto/kusto-service';
 import type { KustoClientFactory } from '../kusto/kusto-exec';
@@ -81,6 +82,8 @@ export interface CanvasMutationServiceDeps {
     getCanvasHostApisEnabled?: () => boolean;
     /** Builds the `host.complete` a given async capability run gets. */
     completeFactory: (attribution: CapabilityAttribution) => CapabilityCompleteFn;
+    /** Builds the `host.runScript` a given async capability run gets. Absent → `disabled`. */
+    runScriptFactory?: CanvasRunScriptFactory;
     /** Injectable Kusto client factory; defaults to the real SDK when absent. */
     kustoClientFactory?: KustoClientFactory;
 }
@@ -92,6 +95,28 @@ export interface CanvasMutationServiceDeps {
  */
 export function isAsyncCapability(manifest: CanvasExtensionManifest | undefined, capability: string): boolean {
     return manifest?.capabilities?.some(meta => meta?.name === capability && meta.async === true) === true;
+}
+
+/**
+ * Run options for one capability invocation: `undefined` (the sync path) unless
+ * the manifest declares it async, in which case the run gets `host.complete`,
+ * `host.runScript` and `host.tools`, all attributed to the canvas's owner chat.
+ * Shared by the REST/UI path and the `extension_canvas` run path.
+ */
+export function buildCapabilityRunOptions(input: {
+    manifest: CanvasExtensionManifest | undefined;
+    attribution: CapabilityAttribution;
+    completeFactory: (attribution: CapabilityAttribution) => CapabilityCompleteFn;
+    runScriptFactory?: CanvasRunScriptFactory;
+}): RunCanvasCapabilityOptions | undefined {
+    if (!isAsyncCapability(input.manifest, input.attribution.capability)) return undefined;
+    const tools = input.manifest?.tools ?? [];
+    return {
+        async: true,
+        complete: input.completeFactory(input.attribution),
+        ...(input.runScriptFactory ? { runScript: input.runScriptFactory({ ...input.attribution, tools }) } : {}),
+        tools,
+    };
 }
 
 export class CanvasMutationService {
@@ -175,17 +200,17 @@ export class CanvasMutationService {
                 capability,
                 fresh.content,
                 params,
-                isAsync
-                    ? {
-                        async: true,
-                        complete: this.deps.completeFactory({
-                            workspaceId,
-                            canvasId,
-                            capability,
-                            ...(fresh.processId ? { processId: fresh.processId } : {}),
-                        }),
-                    }
-                    : undefined,
+                buildCapabilityRunOptions({
+                    manifest: freshExtension.manifest,
+                    attribution: {
+                        workspaceId,
+                        canvasId,
+                        capability,
+                        ...(fresh.processId ? { processId: fresh.processId } : {}),
+                    },
+                    completeFactory: this.deps.completeFactory,
+                    runScriptFactory: this.deps.runScriptFactory,
+                }),
             );
             if (!run.ok) {
                 return { kind: 'run-error', error: run.error };

@@ -760,12 +760,21 @@ scroll events update fixed bounds and clip to ancestor overflow viewports.
 Inactive hosts use `visibility: hidden` and `pointer-events: none`, never
 `display: none`. Menus, dialogs and toasts paint above visible Electron guests.
 Close removes the host; a late open response cannot recreate it.
+With background browser control, the relay marks a guest driven by a background
+turn (`setBrowserWebviewBackground`, from `background` reveal/activity events) and
+creates its guest when the owning panel is unmounted (`attachBrowserWebview`).
+A hidden background guest stays at its last on-screen geometry (1280x800 if never
+placed) with `opacity: 0`, `visibility: visible` and `pointer-events: none`, so it
+keeps rendering for screenshots and input. Trusted input moves frame focus into
+the guest without a focus event, so while such a guest exists the layer polls and
+returns focus to the user's last focused element.
 
-WebView2 uses `useNativeViewPlacement`. Native views paint
-above DOM, so explicit panel overlays, modal dialogs, tab menus and
-`data-native-view-overlay` elements hide them. A 5x5 `elementFromPoint` grid
-detects other overlapping DOM content; `data-native-view-passthrough` exempts
-underlays. Without a desktop bridge the view offers Open in
+WebView2 uses `useNativeViewPlacement`. Native views paint above DOM: modal
+dialogs hide them, while tab menus and visible `data-native-view-overlay`
+elements hide only intersecting views, including overlaps between probe points.
+A 5x5 `elementFromPoint` grid detects other overlapping DOM content;
+`data-native-view-passthrough` exempts underlays. Dismissal restores placement;
+disposed placement callbacks cannot restore a previous owner. Without a desktop bridge the view offers Open in
 system browser (`openUrlInSystemBrowser`, `window.open` noopener) instead of
 embedded browsing.
 
@@ -866,14 +875,14 @@ parent identity; deletion confirms removal from all items. Explicit picks and
 clears are manual; re-suggest confirms replacing them. Classification notices
 remain separate from save errors, status and execution controls. Narrow panels
 wrap tags and use native keyboard-accessible controls.
-With session-context attachments enabled, list cards and the detail pane's Attach
-button are copy-drag sources for their owning Sentinel composer. List cards expose
-Attach in the shared overflow menu; detail-pane Attach controls remain inline.
-Menu interactions stay isolated from row selection and dragging. Detail cards use
-`select-text` and keep informational text outside draggable ancestors for native
-mouse and touch selection. Payloads
-contain the stable item reference and owner, not notes or job data; attaching never
-writes the ledger or starts a job. The shared composer reads authoritative details
+With session-context attachments enabled, list-card grips and the detail pane's
+Attach button are copy-drag sources for their owning Sentinel composer. Grips also
+attach on click or keyboard activation; the overflow menu retains Attach. Cards use
+`select-text` with text outside draggable ancestors. Title pointer clicks after a
+card text selection leave details closed; keyboard activation opens details.
+Menu interactions stay isolated from row selection and dragging. Payloads contain
+the stable item reference and owner, not notes or job data; attaching never writes
+the ledger or starts a job. The shared composer reads authoritative details
 on drop and send (see the composer knowledge reference). Details list every job and explain when the displayed status is derived
 (`Saved status: …`), then Reason, Done when, Outcome and Notes. Notes start expanded;
 notes over two lines or 160 characters have an optional collapse toggle
@@ -953,7 +962,15 @@ and clone-qualified job/Sentinel turn links. Model catalogs and effort tiers use
 the same owner client. When the owning server's `effortLevelsEnabled` is on and the
 provider has tiers, the dialog shows the shared `EffortTierSelector` and saves only
 `effortTier`; otherwise it keeps explicit Model/Effort and clears a stored tier.
-Autopilot displays a permission warning.
+Autopilot displays a permission warning. The optional Gate script field needs a
+cron (inline error, Create/Save disabled) and is sent as typed, so an unchanged
+script keeps its server gate state; blank clears it. Gated cards show active or
+paused status, the failure streak, the last gate error and a truncated last-result
+preview (full JSON in its title). Test gate calls `jobs.testGate` outside the
+mutation lock and shows the outcome inline; a changed script or unmount aborts it
+and discards the late result. Resume gate appears only while paused and uses the
+mutation lock. History and the last-run line label `overlap`, `gate-empty` and
+`gate-unavailable` skips separately.
 
 With Jobs enabled, `SentinelTodoScrubber` supplies the pinned built-in row only
 when the independent scrubber flag is enabled, retaining its findings context,
@@ -994,19 +1011,12 @@ Tests use isolated mock clients in
 
 `SentinelTodoTriggers` lists intact, nondelegated To-do bindings through the ledger
 owner's typed `client.triggers` API. Rule status and delivery stay separate from
-item/job/review states. Rows link the canonical PR, show a zoned date with UTC
-tooltip, or display a script's interval, last run/error and paused state.
-Script source is escaped, read-only text in a bounded disclosure; script rows
-never enter the PR/date editor or expose stored result payloads.
+item/job/review states. Rows link the canonical PR or show a zoned date with UTC
+tooltip.
 
-The owner's `sentinelTodoCapabilities` controls date visibility and script
-execution, independently of page-origin flags. Disabled/unavailable script
-execution retains rows, source, Pause and Remove; Resume and Run now fail closed.
-Refreshes close script run confirmations when admission disappears. Owner changes
-isolate async reads and dialogs. Lifecycle writes carry saved revisions.
-Confirmed script Run now evaluates once, establishes a silent first baseline and
-wakes only on change; it neither consumes nor resumes a paused rule. Pending
-delivery and in-flight evaluation disable another script run.
+The owner's `sentinelTodoCapabilities` controls date visibility, independently of
+page-origin flags; losing it closes date Run now and resume confirmations. Owner
+changes isolate async reads and dialogs. Lifecycle writes carry saved revisions.
 
 `SentinelTodoTriggerEditor` selects eligible normal items, PR URL/local picker or
 one-time date/time, and optional guidance. Shared coc-client helpers validate

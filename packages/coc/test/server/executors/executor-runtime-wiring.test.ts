@@ -45,6 +45,7 @@ function makeSentinelRuntime() {
     const sentinels = {
         getWsServer: vi.fn(() => undefined),
         getKustoRuntime: vi.fn(() => undefined),
+        getOwnerScriptRunner: vi.fn(() => undefined),
         getBrowserControlRuntime: vi.fn(() => undefined),
         getBrowserToolState: vi.fn(() => undefined),
         getCronInfra: vi.fn(() => undefined),
@@ -140,6 +141,9 @@ describe('Executor runtime capability wiring', () => {
             ['getSentinelJobCommands', 'chat executors', p => p.chatExecutor.runtime.getSentinelJobCommands],
             ['getWsServer', 'chat executors', p => p.chatExecutor.runtime.getWsServer],
             ['getKustoRuntime', 'chat executors', p => p.chatExecutor.runtime.getKustoRuntime],
+            ['getOwnerScriptRunner', 'chat executors', p => p.chatExecutor.runtime.getOwnerScriptRunner],
+            ['getOwnerScriptRunner', 'follow-up executor', p => p.followUpExecutor.runtime.getOwnerScriptRunner],
+            ['getOwnerScriptRunner', 'ralph executor', p => p.ralphExecutor.runtime.getOwnerScriptRunner],
             ['getCronInfra', 'chat executors', p => p.chatExecutor.runtime.getCronInfra],
             ['getTriggerInfra', 'chat executors', p => p.chatExecutor.runtime.getTriggerInfra],
             ['getEnqueueChat', 'chat executors', p => p.chatExecutor.runtime.getEnqueueChat],
@@ -167,6 +171,17 @@ describe('Executor runtime capability wiring', () => {
                 expect(read(internals(executor))).toBe(runtime[capability]);
             },
         );
+
+        it('forwards runOwnerScript from the queue bridge through the registry to the chat executor', async () => {
+            const runtime = makeSentinelRuntime();
+            const { executor } = makeBridge(runtime);
+            const { chatExecutor } = internals(executor);
+            const outcome = { ok: true, logs: [], calls: [], callCount: 0, result: 1 };
+            const spy = vi.spyOn(chatExecutor, 'runOwnerScript', 'get').mockReturnValue(vi.fn(async () => outcome));
+            const request = { workspaceId: 'ws', processId: 'p', code: 'return 1;', allowTools: [] };
+            await expect(executor.runOwnerScript(request)).resolves.toBe(outcome);
+            expect(spy.mock.results[0].value).toHaveBeenCalledWith(request);
+        });
 
         it('keeps scrubber child chats from receiving ordinary tools when the feature is disabled', () => {
             const runtime = makeSentinelRuntime();

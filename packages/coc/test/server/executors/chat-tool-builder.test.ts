@@ -154,6 +154,7 @@ describe('buildChatToolBundle', () => {
             'ask_user',
             'extension_canvas',
             'get_conversation',
+            'query_pull_request',
             'read_canvas',
             'run_tool_script',
             'search_conversations',
@@ -338,8 +339,15 @@ describe('buildChatToolBundle', () => {
             ...overrides,
         }).tools.map(t => t.name);
 
-        it('is hidden by default because the admin flag defaults off', () => {
+        it('is offered by default when config omits the admin flag, and an explicit false hides it', () => {
+            const configPath = path.join(tmpDir, CONFIG_FILE_NAME);
+            expect(fs.existsSync(configPath)).toBe(false);
+            expect(build()).toContain('query_pull_request');
+            fs.writeFileSync(configPath, 'features:\n  toolScripting: true\n');
+            expect(build()).toContain('query_pull_request');
+            fs.writeFileSync(configPath, 'features:\n  queryPullRequestTool: false\n');
             expect(build()).not.toContain('query_pull_request');
+            expect(build({ queryPullRequestToolEnabled: false })).not.toContain('query_pull_request');
         });
 
         it('is offered in ask and write turns once the admin flag is on', () => {

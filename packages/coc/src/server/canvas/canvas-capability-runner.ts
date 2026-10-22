@@ -28,6 +28,8 @@
  * general rate limiter anywhere in the server):
  *   - {@link ASYNC_CAPABILITY_TIMEOUT_MS} covers the WHOLE run, model time included
  *   - {@link MAX_HOST_COMPLETIONS_PER_RUN} `host.complete` calls per run
+ *   - {@link MAX_HOST_SCRIPTS_PER_RUN} `host.runScript` calls per run; a script
+ *     shares the run's budget and its signal aborts when the run ends
  *   - {@link MAX_CONCURRENT_ASYNC_RUNS} runs in flight process-wide, the rest queued
  *
  * Script contract: the extension's `capabilities.js` assigns a top-level
@@ -40,6 +42,7 @@ import { Worker } from 'worker_threads';
 import {
     CAPABILITY_WORKER_SOURCE,
     type CapabilityCompleteResponseMessage,
+    type CapabilityScriptResponseMessage,
     type CapabilityWorkerData,
     type CapabilityWorkerMessage,
 } from './canvas-capability-worker';
@@ -56,6 +59,9 @@ export const ASYNC_CAPABILITY_TIMEOUT_MS = 30_000;
 
 /** `host.complete` calls one run may make. A loop would otherwise burn quota. */
 export const MAX_HOST_COMPLETIONS_PER_RUN = 3;
+
+/** `host.runScript` calls one run may make. Same cap style as `host.complete`. */
+export const MAX_HOST_SCRIPTS_PER_RUN = 3;
 
 /** Async runs in flight process-wide. Further runs wait for a slot. */
 export const MAX_CONCURRENT_ASYNC_RUNS = 4;
@@ -91,11 +97,36 @@ export type CapabilityCompleteFn = (
     request: CapabilityCompletionRequest,
 ) => Promise<{ ok: true; text: string } | { ok: false; error: string; code?: string }>;
 
+/** One `host.runScript` call, as it reaches the parent. */
+export interface CapabilityScriptRequest {
+    code: string;
+    state?: unknown;
+}
+
+export type CapabilityScriptOutcome =
+    | { ok: true; result: unknown; logs: string[]; callCount: number }
+    | { ok: false; code: string; error: string };
+
+/**
+ * Services `host.runScript` for one run. Built by the caller already bound to
+ * the canvas and its owner (see `canvas-script-bridge.ts`). `signal` aborts
+ * when the run's budget expires (reason `{ code: 'timeout' }`) or the run ends.
+ * Absent means "no tool access": `host.runScript` rejects with `disabled`.
+ */
+export type CapabilityRunScriptFn = (
+    request: CapabilityScriptRequest,
+    signal: AbortSignal,
+) => Promise<CapabilityScriptOutcome>;
+
 export interface RunCanvasCapabilityOptions {
     /** Manifest's per-capability `async` flag. Anything but `true` takes the vm path. */
     async?: boolean;
     /** Services `host.complete`. Omit to leave the capability without model access. */
     complete?: CapabilityCompleteFn;
+    /** Services `host.runScript`. Omit to leave the capability without tool access. */
+    runScript?: CapabilityRunScriptFn;
+    /** Manifest `tools`, exposed to the capability as the frozen `host.tools`. */
+    tools?: readonly string[];
     /**
      * Shorten the async budget. A test seam — waiting the real 30 s to prove a
      * runaway is killed would make the suite unusable. Clamped to at most
@@ -268,6 +299,8 @@ async function runAsyncCapability(
         maxCompletions: MAX_HOST_COMPLETIONS_PER_RUN,
         loadTimeoutMs: CAPABILITY_TIMEOUT_MS,
         maxStateBytes: MAX_STATE_BYTES,
+        maxScripts: MAX_HOST_SCRIPTS_PER_RUN,
+        tools: [...(options.tools ?? [])],
     };
 
     let worker: Worker;
@@ -284,15 +317,19 @@ async function runAsyncCapability(
         typeof options.timeoutMs === 'number' && options.timeoutMs > 0 ? options.timeoutMs : ASYNC_CAPABILITY_TIMEOUT_MS,
     );
 
+    // Aborts every in-flight `host.runScript` when the run ends, however it ends.
+    const scriptAbort = new AbortController();
     const outcome = await new Promise<CapabilityRunResult>(resolve => {
         let settled = false;
         const settle = (result: CapabilityRunResult): void => {
             if (settled) return;
             settled = true;
             clearTimeout(timer);
+            if (!scriptAbort.signal.aborted) scriptAbort.abort({ code: 'aborted' });
             resolve(result);
         };
         const timer = setTimeout(() => {
+            scriptAbort.abort({ code: 'timeout' });
             settle({
                 ok: false,
                 error: `Capability "${capability}" exceeded the ${budgetMs}ms async budget and was terminated`,
@@ -303,6 +340,10 @@ async function runAsyncCapability(
             if (!message || typeof message !== 'object') return;
             if (message.type === 'complete-request') {
                 void serviceCompletion(worker, message.id, message.prompt, message.model, options.complete);
+                return;
+            }
+            if (message.type === 'script-request') {
+                void serviceScript(worker, message.id, message.code, message.state, options.runScript, scriptAbort.signal);
                 return;
             }
             if (message.type === 'result') {
@@ -373,6 +414,47 @@ async function serviceCompletion(
             : { type: 'complete-response', id, ok: false, code: result.code ?? 'capability-error', error: result.error });
     } catch (err) {
         reply({ type: 'complete-response', id, ok: false, code: 'capability-error', error: errorMessage(err) });
+    }
+}
+
+/**
+ * Answer one `host.runScript` request from the worker. Always replies, for the
+ * same reason as {@link serviceCompletion}.
+ */
+async function serviceScript(
+    worker: Worker,
+    id: number,
+    code: unknown,
+    state: unknown,
+    runScript: CapabilityRunScriptFn | undefined,
+    signal: AbortSignal,
+): Promise<void> {
+    const reply = (message: CapabilityScriptResponseMessage): void => {
+        try {
+            worker.postMessage(message);
+        } catch {
+            // The worker was terminated while its script was in flight.
+        }
+    };
+
+    if (!runScript) {
+        reply({
+            type: 'script-response',
+            id,
+            ok: false,
+            code: 'disabled',
+            error: 'host.runScript is unavailable — canvas tool scripts are off on this server',
+        });
+        return;
+    }
+
+    try {
+        const result = await runScript({ code: typeof code === 'string' ? code : '', ...(state === undefined ? {} : { state }) }, signal);
+        reply(result.ok
+            ? { type: 'script-response', id, ok: true, result: result.result, logs: result.logs, callCount: result.callCount }
+            : { type: 'script-response', id, ok: false, code: result.code, error: result.error });
+    } catch (err) {
+        reply({ type: 'script-response', id, ok: false, code: 'script-error', error: errorMessage(err) });
     }
 }
 

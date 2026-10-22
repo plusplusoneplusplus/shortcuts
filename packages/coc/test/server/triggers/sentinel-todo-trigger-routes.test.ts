@@ -27,13 +27,10 @@ describe('Sentinel To-do trigger REST ownership and lifecycle', () => {
     const fetchPr = vi.fn();
     const execute = vi.fn();
     let dateTimeEnabled = false;
-    let scriptEnabled = false;
-    const runScriptNow = vi.fn();
 
     beforeEach(async () => {
         vi.resetAllMocks();
         dateTimeEnabled = false;
-        scriptEnabled = false;
         store = new SqliteProcessStore({ dbPath: ':memory:' });
         await store.addProcess({
             id: owner.processId, type: 'chat', promptPreview: '', status: 'completed', startTime: new Date(),
@@ -47,11 +44,9 @@ describe('Sentinel To-do trigger REST ownership and lifecycle', () => {
         const firer = new SentinelTodoTriggerFirer({ triggers, todos, processes: store, executor: { execute }, emit: vi.fn() });
         service = new SentinelTodoTriggerService({
             triggers, todos, owners: new SentinelTodoService({ todos, store }), firer,
-            manager: { arm: vi.fn(), disarm: vi.fn(), runScriptNow }, fetchPr,
+            manager: { arm: vi.fn(), disarm: vi.fn() }, fetchPr,
             dateTimeEnabled: () => dateTimeEnabled,
-            scriptConditionsEnabled: () => scriptEnabled,
         });
-        runScriptNow.mockImplementation(async id => triggers.getById(id)!);
         routes = [];
         registerSentinelTodoTriggerRoutes(routes, service);
     });
@@ -78,86 +73,22 @@ describe('Sentinel To-do trigger REST ownership and lifecycle', () => {
         return request('POST', base, { itemId, prUrl, instruction: 'Owner guidance' });
     }
 
-    it('reports live script admission and preserves existing rows when disabled', async () => {
-        const input = { itemId, event: { type: 'script-condition', script: 'return { ready: false };' } };
-        expect((await request('GET', `${base}/capabilities`)).body.scriptCondition).toBe(false);
-        expect((await request('POST', base, input)).status).toBe(403);
-        scriptEnabled = true;
-        expect((await request('GET', `${base}/capabilities`)).body).toEqual({ dateTime: false, scriptCondition: true });
-        const created = await request('POST', base, input);
-        expect(created.status).toBe(201);
-        const rule = created.body.trigger;
-        expect(rule.event).toEqual({ ...input.event, intervalMs: 900_000, scriptRevision: 1, consecutiveFailures: 0, paused: false });
-        scriptEnabled = false;
-        expect((await request('GET', base)).body.triggers).toEqual([rule]);
-        expect((await request('PATCH', `${base}/${rule.id}`, { ...input, expectedRevision: 1 })).status).toBe(403);
-        expect((await request('POST', `${base}/${rule.id}/run-now`, { expectedRevision: 1, confirmed: true })).status).toBe(403);
-        expect((await request('POST', `${base}/${rule.id}/pause`, { expectedRevision: 1 })).status).toBe(200);
-        expect((await request('POST', `${base}/${rule.id}/resume`, { expectedRevision: 2 })).status).toBe(403);
-        expect((await request('DELETE', `${base}/${rule.id}`, { expectedRevision: 2 })).status).toBe(200);
-        expect(fetchPr).not.toHaveBeenCalled();
-        expect(runScriptNow).not.toHaveBeenCalled();
-    });
-
-    it('edits, runs once while paused, resumes and removes scripts without one-shot delivery or ledger writes', async () => {
-        scriptEnabled = true;
-        const before = todos.get(owner);
-        const event = { type: 'script-condition', script: 'return null;', intervalMs: 300_000 };
-        const rule = (await request('POST', base, { itemId, event })).body.trigger;
-        expect((await request('POST', `${base}/${rule.id}/pause`, { expectedRevision: 1 })).body.trigger.status).toBe('paused');
-        const edited = await request('PATCH', `${base}/${rule.id}`, {
-            itemId, event: { ...event, script: 'return state;' }, expectedRevision: 2,
-        });
-        expect(edited.body.trigger).toMatchObject({ revision: 3, status: 'paused', event: { scriptRevision: 2 } });
-        expect((await request('POST', `${base}/${rule.id}/run-now`, { expectedRevision: 3 })).status).toBe(400);
-        expect((await request('POST', `${base}/${rule.id}/run-now`, { expectedRevision: 2, confirmed: true })).status).toBe(409);
-        expect((await request('POST', `${base}/${rule.id}/run-now`, { expectedRevision: 3, confirmed: true })).body.trigger.status).toBe('paused');
-        expect(runScriptNow).toHaveBeenCalledExactlyOnceWith(rule.id, 3);
-        expect((await request('POST', `${base}/${rule.id}/resume`, { expectedRevision: 3 })).body.trigger)
-            .toMatchObject({ revision: 4, status: 'active', event: { paused: false, consecutiveFailures: 0 } });
-        expect((await request('DELETE', `${base}/${rule.id}`, { expectedRevision: 4 })).status).toBe(200);
-        expect((await request('GET', base)).body.triggers).toEqual([]);
-        expect(todos.get(owner)).toEqual(before);
-        expect(execute).not.toHaveBeenCalled();
-        expect(fetchPr).not.toHaveBeenCalled();
-    });
-
-    it.each([
-        { intervalMs: 60_000 }, { script: ' ' }, { scriptRevision: 5 }, { lastResult: 'null' },
-        { lastResultHash: 'forged' }, { paused: false }, { processId: 'other' },
-    ])('rejects invalid or caller-owned script event fields %j', async patch => {
-        scriptEnabled = true;
-        expect((await request('POST', base, {
-            itemId, event: { type: 'script-condition', script: 'return null;', ...patch },
-        })).status).toBe(400);
-        expect(triggers.getAll()).toEqual([]);
-    });
-
-    it('keeps script ownership on the exact Sentinel route and rejects caller ownership fields', async () => {
-        scriptEnabled = true;
-        const input = { itemId, event: { type: 'script-condition', script: 'return null;' } };
-        expect((await request('POST', base, { ...input, processId: 'other' })).status).toBe(400);
-        const rule = (await request('POST', base, input)).body.trigger;
-        await store.addProcess({
-            id: 'other-sentinel', type: 'chat', promptPreview: '', status: 'completed', startTime: new Date(),
-            metadata: { mode: 'sentinel', workspaceId: owner.workspaceId },
-        });
-        for (const foreign of [base.replace(owner.workspaceId, 'foreign'), base.replace(owner.processId, 'other-sentinel')]) {
-            expect((await request('PATCH', `${foreign}/${rule.id}`, { ...input, expectedRevision: 1 })).status).toBe(404);
-            expect((await request('POST', `${foreign}/${rule.id}/run-now`, { expectedRevision: 1, confirmed: true })).status).toBe(404);
-        }
-        expect(triggers.getById(rule.id)).toEqual(rule);
-        expect(runScriptNow).not.toHaveBeenCalled();
+    it('rejects repeating script rule input as an unsupported event', async () => {
+        const event = { type: 'script', script: 'return null;', intervalMs: 300_000 };
+        expect((await request('POST', base, { itemId, event })).status).toBe(400);
+        const rule = (await request('POST', base, { itemId, prUrl })).body.trigger;
+        expect((await request('PATCH', `${base}/${rule.id}`, { itemId, event, expectedRevision: 1 })).status).toBe(400);
+        expect(triggers.getAll()).toEqual([rule]);
     });
 
     it('reports live owner-server date capability, enforces its gate and accepts date input without a PR', async () => {
         const input = { itemId, event: { type: 'date-time', firesAt: '2090-01-01T12:00:00.000Z',
             timeZone: 'UTC', localTime: '2090-01-01T12:00' } };
-        expect((await request('GET', `${base}/capabilities`)).body).toEqual({ dateTime: false, scriptCondition: false });
+        expect((await request('GET', `${base}/capabilities`)).body).toEqual({ dateTime: false });
         expect((await request('POST', base, input)).status).toBe(403);
         expect((await request('GET', base.replace(owner.workspaceId, 'foreign') + '/capabilities')).status).toBe(404);
         dateTimeEnabled = true;
-        expect((await request('GET', `${base}/capabilities`)).body).toEqual({ dateTime: true, scriptCondition: false });
+        expect((await request('GET', `${base}/capabilities`)).body).toEqual({ dateTime: true });
         const created = await request('POST', base, input);
         expect(created.status).toBe(201);
         expect(created.body.trigger.event).toEqual({ type: 'date-time', firesAt: input.event.firesAt, timeZone: 'UTC' });

@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useSentinelNextStepsEnabled } from '../../../../src/server/spa/client/react/hooks/feature-flags/useSentinelNextStepsEnabled';
 
-const { local } = vi.hoisted(() => ({ local: { enabled: false } }));
+const { local } = vi.hoisted(() => ({ local: { enabled: false as boolean | undefined } }));
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getFeatureValue: () => local.enabled,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'config-updated',
@@ -10,10 +10,16 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
 afterEach(() => { local.enabled = false; vi.unstubAllGlobals(); });
 
 describe('Sentinel next-step owner gate', () => {
-    it('defaults off locally and follows runtime config events', () => {
+    it('honors an explicit local false and follows runtime config events', () => {
         const { result } = renderHook(() => useSentinelNextStepsEnabled());
         expect(result.current).toBe(false);
         act(() => { local.enabled = true; window.dispatchEvent(new Event('config-updated')); });
+        expect(result.current).toBe(true);
+    });
+
+    it('defaults on locally when the runtime flag is absent', () => {
+        local.enabled = undefined;
+        const { result } = renderHook(() => useSentinelNextStepsEnabled());
         expect(result.current).toBe(true);
     });
 

@@ -22,6 +22,7 @@ import type { BrowserControlActivityEvent } from './browser-control-command';
 const BROWSER_HISTORY_QUERY_CHANNEL = 'coc-desktop:browser-history-query';
 const BROWSER_ADDRESS_MENU_CHANNEL = 'coc-desktop:browser-address-menu';
 const BROWSER_CONTROL_SCOPE_CHANNEL = 'coc-desktop:browser-control-scope';
+const BROWSER_CONTROL_RETAIN_CHANNEL = 'coc-desktop:browser-control-retain';
 const BROWSER_CONTROL_COMMAND_CHANNEL = 'coc-desktop:browser-control-command';
 const BROWSER_CONTROL_CANCEL_CHANNEL = 'coc-desktop:browser-control-cancel';
 const BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL = 'coc-desktop:browser-control-release-frames';
@@ -249,8 +250,12 @@ const browser = {
         richPasteSupported: true,
         bindScope: (workspaceId: string | null, sessionKey: string | null): Promise<{ ownerId: number }> =>
             ipcRenderer.invoke(BROWSER_CONTROL_SCOPE_CHANNEL, workspaceId, sessionKey),
-        execute: (request: BrowserCommandRequest): Promise<BrowserCommandResult> =>
-            ipcRenderer.invoke(BROWSER_CONTROL_COMMAND_CHANNEL, request),
+        /** Keep a background workspace scope controllable while another one is selected; `null` drops it. */
+        retainScope: (sessionKey: string, workspaceId: string | null): Promise<void> =>
+            ipcRenderer.invoke(BROWSER_CONTROL_RETAIN_CHANNEL, sessionKey, workspaceId),
+        execute: (request: BrowserCommandRequest, routingRef?: string): Promise<BrowserCommandResult> =>
+            routingRef === undefined ? ipcRenderer.invoke(BROWSER_CONTROL_COMMAND_CHANNEL, request)
+                : ipcRenderer.invoke(BROWSER_CONTROL_COMMAND_CHANNEL, request, routingRef),
         cancel: (id: string): void => ipcRenderer.send(BROWSER_CONTROL_CANCEL_CHANNEL, id),
         releaseFrames: (routingRef: string): Promise<void> => ipcRenderer.invoke(BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, routingRef),
         finish: (turnId?: string, routingRef?: string): void => ipcRenderer.send(BROWSER_CONTROL_FINISH_CHANNEL, turnId, routingRef),

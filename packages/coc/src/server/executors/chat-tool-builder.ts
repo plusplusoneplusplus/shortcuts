@@ -1,3 +1,4 @@
+import type { OwnerScriptRunner } from './owner-script-runner';
 import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Tool, ToolEvent } from '@plusplusoneplusplus/coc-agent-sdk';
@@ -77,6 +78,8 @@ export interface ChatToolBundleOptions {
     includeCanvasTools?: boolean;
     /** Overrides the `canvas.enabled` config flag (used by tests). */
     canvasToolsEnabled?: boolean;
+    /** Owner-bound script runner behind canvas `host.runScript`. */
+    ownerScriptRunner?: OwnerScriptRunner;
     includeKustoTools?: boolean;
     /** Overrides the `kusto.enabled` config flag (used by tests). */
     kustoToolsEnabled?: boolean;
@@ -222,7 +225,10 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
             options.store,
             options.workspaceId,
             options.processId,
-            options.canvasToolsEnabled !== undefined ? { enabled: options.canvasToolsEnabled } : undefined,
+            {
+                ...(options.canvasToolsEnabled !== undefined ? { enabled: options.canvasToolsEnabled } : {}),
+                ...(options.ownerScriptRunner ? { ownerScriptRunner: options.ownerScriptRunner } : {}),
+            },
         ));
     }
 
