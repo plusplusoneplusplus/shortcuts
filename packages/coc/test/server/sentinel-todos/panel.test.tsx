@@ -1222,7 +1222,7 @@ describe('UnifiedTodoTab', () => {
         expect(screen.getByTestId('sentinel-todo-row-arch')).toBeTruthy();
     });
 
-    it('shows labeled Created and Updated ledger times with exact local date/time', async () => {
+    it('keeps card Updated labels accessible and detail ledger labels visible with exact local date/time', async () => {
         vi.useFakeTimers({ toFake: ['Date'] });
         vi.setSystemTime(new Date('2026-10-09T12:00:00.000Z'));
         try {
@@ -1230,8 +1230,9 @@ describe('UnifiedTodoTab', () => {
             const updatedAt = '2026-10-09T11:55:00.000Z';
             get.mockResolvedValue(ledger([item({ createdAt, updatedAt })]));
             render(<UnifiedTodoTab owner={OWNER} />);
-            // List cards show Updated in muted, wrapping header metadata.
+            // Cards show relative time with an accessible label in wrapping header metadata.
             const updated = await screen.findByTestId('sentinel-todo-updated-i1');
+            expect(within(updated).getByText('Updated').classList.contains('sr-only')).toBe(true);
             const meta = screen.getByTestId('sentinel-todo-meta-i1');
             expect(meta.contains(updated)).toBe(true);
             expect(meta.className).toContain('flex-wrap');
@@ -1239,6 +1240,9 @@ describe('UnifiedTodoTab', () => {
             expect(screen.queryByTestId('sentinel-todo-created-i1')).toBeNull();
             fireEvent.click(within(screen.getByTestId('sentinel-todo-row-i1')).getByRole('button', { pressed: false }));
             const created = screen.getByTestId('sentinel-todo-created-i1');
+            const detailUpdated = within(screen.getByTestId('sentinel-todo-detail-i1')).getByTestId('sentinel-todo-updated-i1');
+            expect(within(created).getByText('Created').classList.contains('sr-only')).toBe(false);
+            expect(within(detailUpdated).getByText('Updated').classList.contains('sr-only')).toBe(false);
             for (const [el, label, iso, relative] of [[created, 'Created', createdAt, '3h ago'], [updated, 'Updated', updatedAt, '5m ago']] as const) {
                 const exact = new Date(iso).toLocaleString();
                 const time = el.querySelector('time')!;
@@ -1708,7 +1712,7 @@ describe('UnifiedTodoTab', () => {
             { width: 900, targetRepo: { workspaceId: 'ws-web', label: 'web-app' } },
             { width: 320, targetRepo: { workspaceId: 'ws-long-' + 'x'.repeat(120) } },
             { width: 320, targetRepo: undefined },
-        ])('keeps muted repo/Updated metadata in the wrapping header with its menu (width=$width, repo=$targetRepo)', async ({ width, targetRepo }) => {
+        ])('keeps muted repo/time metadata in the wrapping header with its menu (width=$width, repo=$targetRepo)', async ({ width, targetRepo }) => {
             vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(width);
             const title = 'Readable title ' + 'identifier'.repeat(15);
             get.mockResolvedValue(ledger([item({ title, targetRepo })]));
@@ -1732,7 +1736,9 @@ describe('UnifiedTodoTab', () => {
                 expect(repo?.textContent).toBe(targetRepo.label ?? targetRepo.workspaceId);
                 expect(repo?.getAttribute('title')).toBe(targetRepo.workspaceId);
             } else expect(repo).toBeNull();
-            expect(within(meta).getByTestId('sentinel-todo-updated-i1')).toBeTruthy();
+            const updated = within(meta).getByTestId('sentinel-todo-updated-i1');
+            expect(within(updated).getByText('Updated').classList.contains('sr-only')).toBe(true);
+            expect(updated.querySelector('time')?.classList.contains('sr-only')).toBe(false);
             expect(within(row).getAllByTestId('sentinel-todo-meta-i1')).toHaveLength(1);
             const menu = within(row).getByRole('button', { name: 'More actions' });
             expect(header.parentElement?.contains(menu)).toBe(true);

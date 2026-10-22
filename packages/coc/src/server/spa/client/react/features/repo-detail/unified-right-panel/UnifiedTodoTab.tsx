@@ -148,13 +148,13 @@ function StatusBadge({ status }: { status: SentinelTodoDisplayStatus }) {
 }
 
 /** Ledger timestamp: relative text, exact local date/time on hover and for screen readers. */
-function TodoTime({ label, iso, testId }: { label: string; iso: string; testId: string }) {
+function TodoTime({ label, iso, testId, hideLabel = false }: { label: string; iso: string; testId: string; hideLabel?: boolean }) {
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return null;
     const exact = date.toLocaleString();
     return (
         <span className="whitespace-nowrap" data-testid={testId}>
-            {label}{' '}
+            <span className={hideLabel ? 'sr-only' : undefined}>{label}{' '}</span>
             <time dateTime={iso} title={exact}>
                 <span aria-hidden="true">{formatRelativeTime(iso)}</span>
                 <span className="sr-only">{exact}</span>
@@ -1035,7 +1035,7 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
                 <div className={cn('ml-auto flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px]', MUTED)} data-testid={`sentinel-todo-meta-${item.id}`}>
                     {item.targetRepo && <span className="min-w-0 max-w-full break-words [overflow-wrap:anywhere]" title={item.targetRepo.workspaceId}
                         data-testid={`sentinel-todo-repo-${item.id}`}>{item.targetRepo.label ?? item.targetRepo.workspaceId}</span>}
-                    <TodoTime label="Updated" iso={item.updatedAt} testId={`sentinel-todo-updated-${item.id}`} />
+                    <TodoTime label="Updated" iso={item.updatedAt} testId={`sentinel-todo-updated-${item.id}`} hideLabel />
                 </div>
             </div>
             {(canAttach || canReopen) && <button type="button" draggable onDragStart={event => {
