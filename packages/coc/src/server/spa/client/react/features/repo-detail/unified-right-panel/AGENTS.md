@@ -874,14 +874,14 @@ parent identity; deletion confirms removal from all items. Explicit picks and
 clears are manual; re-suggest confirms replacing them. Classification notices
 remain separate from save errors, status and execution controls. Narrow panels
 wrap tags and use native keyboard-accessible controls.
-With session-context attachments enabled, list cards and the detail pane's Attach
-button are copy-drag sources for their owning Sentinel composer. List cards expose
-Attach in the shared overflow menu; detail-pane Attach controls remain inline.
-Menu interactions stay isolated from row selection and dragging. Detail cards use
-`select-text` and keep informational text outside draggable ancestors for native
-mouse and touch selection. Payloads
-contain the stable item reference and owner, not notes or job data; attaching never
-writes the ledger or starts a job. The shared composer reads authoritative details
+With session-context attachments enabled, list-card grips and the detail pane's
+Attach button are copy-drag sources for their owning Sentinel composer. Grips also
+attach on click or keyboard activation; the overflow menu retains Attach. Cards use
+`select-text` with text outside draggable ancestors. Title pointer clicks after a
+card text selection leave details closed; keyboard activation opens details.
+Menu interactions stay isolated from row selection and dragging. Payloads contain
+the stable item reference and owner, not notes or job data; attaching never writes
+the ledger or starts a job. The shared composer reads authoritative details
 on drop and send (see the composer knowledge reference). Details list every job and explain when the displayed status is derived
 (`Saved status: …`), then Reason, Done when, Outcome and Notes. Notes start expanded;
 notes over two lines or 160 characters have an optional collapse toggle

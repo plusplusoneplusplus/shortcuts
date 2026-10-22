@@ -139,6 +139,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    window.getSelection()?.removeAllRanges();
     cleanup();
     vi.restoreAllMocks();
     applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false, sentinelTodoDependenciesEnabled: false, sentinelPrOutcomeWakeEnabled: false });
@@ -717,6 +718,80 @@ describe('UnifiedTodoTab', () => {
         expect(connect).toHaveBeenCalledTimes(2);
         expect(create).not.toHaveBeenCalled(); expect(update).not.toHaveBeenCalled();
     });
+    it.each([true, false])('selects card text without dragging or opening details (attachments=%s)', async enabled => {
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: enabled });
+        get.mockResolvedValue(ledger([item({ targetRepo: { workspaceId: 'ws-child', label: 'Child repo' } })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        const toggle = within(row).getByRole('button', { pressed: false });
+        const title = within(toggle).getByText('Fix login');
+        expect(row.draggable).toBe(false);
+        expect(row.classList.contains('select-text')).toBe(true);
+        expect(toggle.classList.contains('select-text')).toBe(true);
+        const setData = vi.fn();
+        fireEvent.dragStart(title, { dataTransfer: { setData } });
+        expect(setData).not.toHaveBeenCalled();
+        fireEvent.pointerDown(toggle);
+        const range = document.createRange();
+        range.selectNodeContents(title);
+        const selection = window.getSelection()!;
+        selection.addRange(range);
+        fireEvent.pointerUp(toggle);
+        fireEvent.click(toggle, { detail: 1 });
+        expect(selection.toString()).toBe('Fix login');
+        expect(fireEvent.copy(title)).toBe(true);
+        expect(toggle.getAttribute('aria-pressed')).toBe('false');
+        // The mouseup selection still guards the click if another handler clears it.
+        selection.removeAllRanges();
+        fireEvent.click(toggle, { detail: 1 });
+        expect(toggle.getAttribute('aria-pressed')).toBe('false');
+        fireEvent.pointerDown(toggle);
+        fireEvent.pointerUp(toggle);
+        fireEvent.click(toggle, { detail: 1 });
+        expect(screen.getByTestId('sentinel-todo-detail-i1')).toBeTruthy();
+        expect(update).not.toHaveBeenCalled();
+        expect(create).not.toHaveBeenCalled();
+    });
+
+    it.each(['{Enter}', ' '])('does not block keyboard opening (%s) or controls when card text is selected', async key => {
+        const user = userEvent.setup();
+        applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: true });
+        get.mockResolvedValue(ledger([item()]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        const toggle = within(row).getByRole('button', { pressed: false });
+        const range = document.createRange();
+        range.selectNodeContents(within(toggle).getByText('Fix login'));
+        window.getSelection()!.addRange(range);
+        const receive = vi.fn();
+        subscribeActiveChatAttach('ws-1', receive);
+        const grip = within(row).getByRole('button', { name: 'Attach Fix login as context' });
+        expect(grip.title).toContain('Drag to owning Sentinel');
+        expect(grip.classList.contains('cursor-grab')).toBe(true);
+        grip.focus();
+        await user.keyboard('{Enter}');
+        expect(receive).toHaveBeenCalledWith(expect.objectContaining({ todoItemId: 'i1' }));
+        expect(toggle.getAttribute('aria-pressed')).toBe('false');
+        fireEvent.click(within(row).getByRole('button', { name: 'More actions' }));
+        expect(screen.getByRole('menuitemradio', { name: 'Regular', checked: true })).toBeTruthy();
+        fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+        toggle.focus();
+        await user.keyboard(key);
+        expect(screen.getByTestId('sentinel-todo-detail-i1')).toBeTruthy();
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it('ignores selection outside this card when opening details with a pointer', async () => {
+        get.mockResolvedValue(ledger([item()]));
+        render(<><p>Unrelated selected text</p><UnifiedTodoTab owner={OWNER} /></>);
+        const row = await screen.findByTestId('sentinel-todo-row-i1');
+        const range = document.createRange();
+        range.selectNodeContents(screen.getByText('Unrelated selected text'));
+        window.getSelection()!.addRange(range);
+        fireEvent.click(within(row).getByRole('button', { pressed: false }), { detail: 1 });
+        expect(screen.getByTestId('sentinel-todo-detail-i1')).toBeTruthy();
+    });
+
     it.each(['normal', 'manual'] as const)('copy-drags and attaches a %s row without ledger writes or execution', async type => {
         applyRuntimeConfigPatch({ sessionContextAttachmentsEnabled: true });
         get.mockResolvedValue(ledger([item({ type })]));
@@ -724,7 +799,7 @@ describe('UnifiedTodoTab', () => {
         await screen.findByText('Fix login');
         const setData = vi.fn();
         const dataTransfer = { setData, effectAllowed: 'none' };
-        fireEvent.dragStart(screen.getByTestId('sentinel-todo-row-i1'), { dataTransfer });
+        fireEvent.dragStart(screen.getByRole('button', { name: 'Attach Fix login as context' }), { dataTransfer });
         expect(dataTransfer.effectAllowed).toBe('copy');
         const payload = JSON.parse(setData.mock.calls.find(call => call[0] === POINTER_CONTEXT_DRAG_MIME)![1]);
         expect(payload).toMatchObject({
@@ -756,7 +831,7 @@ describe('UnifiedTodoTab', () => {
         const selection = within(row).getByRole('button', { pressed: false });
         const receive = vi.fn();
         subscribeActiveChatAttach('ws-1', receive);
-        expect(within(row).queryByRole('button', { name: /Attach/ })).toBeNull();
+        expect(within(row).getByRole('button', { name: 'Attach Fix login as context' }).draggable).toBe(true);
         expect(screen.queryByRole('menu')).toBeNull();
         trigger.focus();
         await user.keyboard('{ArrowDown}');
@@ -816,6 +891,7 @@ describe('UnifiedTodoTab', () => {
         for (const id of ['i1', 'manual']) {
             const row = await screen.findByTestId(`sentinel-todo-row-${id}`);
             expect(row.draggable).toBe(false);
+            expect(within(row).queryByRole('button', { name: /Attach .* as context/ })).toBeNull();
             fireEvent.click(within(row).getByRole('button', { name: 'More actions' }));
             expect(screen.queryByRole('menuitem', { name: 'Attach' })).toBeNull();
             fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
@@ -834,6 +910,13 @@ describe('UnifiedTodoTab', () => {
         const remote = vi.fn();
         subscribeActiveChatAttach('ws-1', local);
         subscribeActiveChatAttach(owner.ownerRoutingRef, remote);
+        const setData = vi.fn();
+        fireEvent.dragStart(within(row).getByRole('button', { name: 'Attach Fix login as context' }),
+            { dataTransfer: { setData, effectAllowed: 'none' } });
+        expect(JSON.parse(setData.mock.calls.find(call => call[0] === POINTER_CONTEXT_DRAG_MIME)![1]))
+            .toMatchObject({ sourceWorkspaceId: 'ws-1', sourceProcessId: OWNER.processId, sourceRoutingRef: owner.ownerRoutingRef });
+        expect(local).not.toHaveBeenCalled();
+        expect(remote).not.toHaveBeenCalled();
         fireEvent.click(within(row).getByRole('button', { name: 'More actions' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'Attach' }));
         expect(remote).toHaveBeenCalledWith(expect.objectContaining({
@@ -2216,7 +2299,7 @@ describe('UnifiedTodoTab split layout', () => {
         render(<UnifiedTodoTab owner={OWNER} />);
         const row = await screen.findByTestId('sentinel-todo-row-i1');
         const setData = vi.fn();
-        fireEvent.dragStart(row, { dataTransfer: { setData, effectAllowed: 'none' } });
+        fireEvent.dragStart(within(row).getByRole('button', { name: 'Attach Fix login as context' }), { dataTransfer: { setData, effectAllowed: 'none' } });
         const payload = JSON.parse(setData.mock.calls.find(call => call[0] === POINTER_CONTEXT_DRAG_MIME)![1]);
         const receive = vi.fn();
         subscribeActiveChatAttach('ws-1', receive);

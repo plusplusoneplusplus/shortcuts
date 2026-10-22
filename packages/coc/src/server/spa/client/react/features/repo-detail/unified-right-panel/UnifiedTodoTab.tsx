@@ -928,22 +928,38 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
     selected: boolean; onSelect: () => void; menuDisabled: boolean; onMenuAction: (action: TodoMenuAction) => void;
 }) {
     const { canAttach, attach, attachError, drag } = useTodoAttachment(owner, item);
+    const card = useRef<HTMLLIElement>(null);
+    const selectedTextOnRelease = useRef(false);
+    const hasSelectedText = () => {
+        const selection = card.current?.ownerDocument.getSelection();
+        if (!card.current || !selection || selection.isCollapsed) return false;
+        for (let index = 0; index < selection.rangeCount; index++) {
+            if (selection.getRangeAt(index).intersectsNode(card.current)) return true;
+        }
+        return false;
+    };
     const { mutationPending } = useContext(ScrubberFindingsContext);
     const high = sentinelTodoPriority(item) === 'high';
     const reasonPreview = sentinelTodoDisplayStatus(item) === 'needs_attention' && item.statusReason ? <span
         className="min-w-0 max-w-full flex-[1_1_8rem] truncate text-[11px] text-[#b5650f] dark:text-[#cca700]" title={item.statusReason}
         data-testid={`sentinel-todo-reason-preview-${item.id}`}>{item.statusReason}</span> : null;
-    return <li data-testid={`sentinel-todo-row-${item.id}`} data-priority={sentinelTodoPriority(item)}
-        draggable={canAttach} onDragStart={drag}
-        className={cn('relative rounded border pl-1', selected
+    return <li ref={card} data-testid={`sentinel-todo-row-${item.id}`} data-priority={sentinelTodoPriority(item)}
+        className={cn('relative select-text rounded border pl-1', selected
             ? 'border-[#0078d4]/50 bg-[#0078d4]/10 dark:border-[#3794ff]/50'
             : 'border-[#e0e0e0] dark:border-[#3c3c3c]')}>
         {high && <span aria-hidden="true" data-testid={`sentinel-todo-priority-band-${item.id}`}
             className="pointer-events-none absolute inset-y-0 left-0 w-1 rounded-l-[3px] bg-[#e51400] dark:bg-[#f14c4c]" />}
         <div className="flex items-start gap-1 px-1.5 pt-1 pb-0.5">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
-                <button type="button" aria-pressed={selected} data-todo-select={item.id} onClick={onSelect} title={item.title}
-                    className="flex min-w-0 flex-1 basis-[8rem] flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4]">
+                <button type="button" aria-pressed={selected} data-todo-select={item.id} title={item.title}
+                    onPointerDown={() => { selectedTextOnRelease.current = false; }}
+                    onPointerUp={() => { selectedTextOnRelease.current = hasSelectedText(); }}
+                    onClick={event => {
+                        // Keyboard activation remains available while copied text is selected.
+                        if (event.detail > 0 && (selectedTextOnRelease.current || hasSelectedText())) return;
+                        onSelect();
+                    }}
+                    className="flex min-w-0 flex-1 basis-[8rem] select-text flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4]">
                     <StatusBadge status={sentinelTodoDisplayStatus(item)} />
                     {high && <HighPriorityBadge itemId={item.id} />}
                     <span className={cn('min-w-0 flex-1 basis-[8rem] break-words [overflow-wrap:anywhere] font-medium', item.archived && 'line-through opacity-70')}>{item.title}</span>
@@ -955,6 +971,11 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
                     <TodoTime label="Updated" iso={item.updatedAt} testId={`sentinel-todo-updated-${item.id}`} />
                 </div>
             </div>
+            {canAttach && <button type="button" draggable onDragStart={drag} onClick={attach}
+                aria-label={`Attach ${item.title} as context`} title="Drag to owning Sentinel as context, or click to attach"
+                className="flex h-6 w-6 shrink-0 cursor-grab select-none items-center justify-center rounded text-[#848484] hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] active:cursor-grabbing dark:hover:bg-white/[0.04]">
+                <span aria-hidden="true">⠿</span>
+            </button>}
             <TodoCardMenu owner={owner} item={item} onAttach={canAttach ? attach : undefined} disabled={menuDisabled || mutationPending} onAction={onMenuAction} />
         </div>
         {tagLibrary && item.tagIds?.length ? <div className="px-1.5 pb-1"><SentinelTodoTagChips item={item} library={tagLibrary} /></div> : null}

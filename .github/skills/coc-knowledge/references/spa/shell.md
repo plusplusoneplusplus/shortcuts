@@ -762,8 +762,10 @@ in-memory `SentinelTodoView` with drafts across refreshes and remounts.
 Compact list headers combine wrapping titles, status, priority and shared overflow
 actions; job metadata wraps below. Identical item/job titles use accessible Open job links,
 while distinct job titles remain visible. Full content and controls live in details;
-detail text uses native selection, with attachment dragging scoped to Attach.
-List cards retain whole-card attachment dragging.
+card text uses native selection, with attachment dragging scoped to list-card grips
+and detail Attach controls. Grips also attach on click or keyboard activation.
+Title pointer clicks after card text selection leave details closed; keyboard
+activation opens details.
 Events, manual refresh and post-write reloads share
 the owner/generation-guarded loader. Writes reuse an in-flight or applied read only
 once its snapshot reaches the write's `ledgerRevision`. Pending reads block duplicate manual admission;
