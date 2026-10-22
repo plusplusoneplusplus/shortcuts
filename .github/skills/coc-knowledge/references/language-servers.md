@@ -298,6 +298,15 @@ Local commit and branch-range `DiffSource`s set `supportsCurrentCodeDefinitions`
 (PR sources never do); `WorkingTreeFileDiff` opts in for the HEAD/index sides of
 staged and unstaged diffs. `DiffDefinitionNavigate` receives the initiating side.
 
+`diffDefinitionRoute.ts` decides where a diff jump lands: the shown file reveals
+on the initiating side, another changed file of the review switches the review
+there (same side), and any other file opens its current version at the line in
+the unified panel's Explorer file tab (the `#repos/:id/explorer/:path` deep link
+without a panel). Foreign-workspace targets are declined. `FileDiffPanel` holds
+the reveal until that file's models are displayed and suppresses the hunk target
+for it; the viewer's `revealTarget` goes through the controller's `reveal`, which
+waits for attach and is dropped by a model swap. Peek stays Monaco's own.
+
 ### Retry
 
 Editor retry travels over `/ws/language-server`. Settings retry uses

@@ -48,6 +48,9 @@ import { useCurrentChatInsertDraft } from '../../repo-detail/unified-right-panel
 import { openUnifiedPanelTab } from '../../repo-detail/unified-right-panel/unifiedPanelOpen';
 import { explorerFileTabInput } from '../../repo-detail/unified-right-panel/unifiedExplorerFiles';
 import { DiffFilePicker } from './DiffFilePicker';
+import type { DiffEditorPosition } from './monacoDiffController';
+import type { DiffDefinitionNavigate } from './diffLanguageMount';
+import { resolveDiffDefinitionRoute } from './diffDefinitionRoute';
 import { reviewFileParts } from './gitReviewFiles';
 
 export interface FileDiffPanelProps {
@@ -442,19 +445,63 @@ export function FileDiffPanel({
 
     // ── Ctrl/Cmd+click the path: open the file in its own right-panel tab ──
     const panelHost = useUnifiedPanelHost();
+    const ownerRoutingRef = source.routingTarget === undefined
+        ? (attachmentDestinationId === workspaceId ? null : attachmentDestinationId) : source.routingTarget;
     const handlePathClick = useCallback((e: React.MouseEvent) => {
         if (!panelHost || !(e.ctrlKey || e.metaKey)) return;
         const input = explorerFileTabInput({ path: filePath }, {
             ownerWorkspaceId: workspaceId,
-            ownerRoutingRef: source.routingTarget === undefined
-                ? (attachmentDestinationId === workspaceId ? null : attachmentDestinationId) : source.routingTarget,
+            ownerRoutingRef,
             scopeWorkspaceId: panelHost.workspaceId,
             chatId: panelHost.chatId,
         });
         if (!input) return;
         e.preventDefault();
         openUnifiedPanelTab(panelHost.workspaceId, input);
-    }, [panelHost, filePath, workspaceId, attachmentDestinationId, source.routingTarget]);
+    }, [panelHost, filePath, workspaceId, ownerRoutingRef]);
+
+    // ── Go to definition: same diff side, another file of this review, or Explorer ──
+    const [definitionReveal, setDefinitionReveal] = useState<(DiffEditorPosition & { path: string }) | null>(null);
+    const handleNavigateDefinition = useCallback<DiffDefinitionNavigate>((target, side) => {
+        const route = resolveDiffDefinitionRoute({ workspaceId, filePath, reviewFiles: allFiles, target, side });
+        if (!route) return false;
+        if (route.kind === 'same-file') {
+            setDefinitionReveal({ path: filePath, side: route.side, line: route.line, column: route.column });
+            return true;
+        }
+        if (route.kind === 'review-file' && onNavigateToFile) {
+            setDefinitionReveal({ path: route.path, side: route.side, line: route.line, column: route.column });
+            onNavigateToFile(route.path, 'first');
+            return true;
+        }
+        const file = { path: route.path, line: route.line, column: route.column, ...(target.symbolCandidate ? { symbolCandidate: true as const } : {}) };
+        if (panelHost) {
+            const input = explorerFileTabInput(file, {
+                ownerWorkspaceId: workspaceId,
+                ownerRoutingRef,
+                scopeWorkspaceId: panelHost.workspaceId,
+                chatId: panelHost.chatId,
+            });
+            if (!input) return false;
+            openUnifiedPanelTab(panelHost.workspaceId, input);
+            return true;
+        }
+        // No panel here (pop-out, embedded hosts): the Explorer sub-tab deep link.
+        location.hash = `#repos/${encodeURIComponent(ownerRoutingRef ?? workspaceId)}/explorer/${encodeURIComponent(route.path)}`;
+        return true;
+    }, [workspaceId, filePath, allFiles, onNavigateToFile, panelHost, ownerRoutingRef]);
+    // Any other file change (picker, hunk nav) drops a jump that was not for it.
+    useEffect(() => {
+        setDefinitionReveal(previous => previous && previous.path !== filePath ? null : previous);
+    }, [filePath]);
+    // Held until that file's models are on screen; a jump replaces the hunk target.
+    const pendingDefinitionReveal = definitionReveal?.path === filePath ? definitionReveal : null;
+    const editorRevealTarget = useMemo<DiffEditorPosition | null>(
+        () => pendingDefinitionReveal && displayedEditor?.filePath === pendingDefinitionReveal.path
+            ? { side: pendingDefinitionReveal.side, line: pendingDefinitionReveal.line, column: pendingDefinitionReveal.column }
+            : null,
+        [pendingDefinitionReveal, displayedEditor?.filePath],
+    );
 
     // ── Render ──
 
@@ -594,7 +641,9 @@ export function FileDiffPanel({
                                 original={displayedEditor.content.base.content}
                                 modified={displayedEditor.content.head.content}
                                 viewMode={viewMode}
-                                initialHunkTarget={initialHunkTarget}
+                                initialHunkTarget={pendingDefinitionReveal ? undefined : initialHunkTarget}
+                                revealTarget={editorRevealTarget}
+                                onNavigateDefinition={handleNavigateDefinition}
                                 onLinesReady={showEditor ? (lines) => { setDiffLines(lines); runRelocation(lines); } : undefined}
                                 comments={showEditor ? comments : []}
                                 renderCommentThread={renderCommentThread}

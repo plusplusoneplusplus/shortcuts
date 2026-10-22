@@ -34,6 +34,8 @@ export interface FakeDiffEditor {
     glyph: GlyphWidgetSpec | null;
     actions: DiffEditorSelectionAction[];
     revealedLines: { side: string; line: number }[];
+    /** Positions revealed through revealPosition, in order. */
+    revealedPositions: { side: string; line: number; column: number }[];
     /** Language mounts made on the modified model, in order; `live` until cleaned up. */
     languageMounts: { uri: string; live: boolean }[];
     /** Historical (ref-backed) mounts per side, in order; `live` until cleaned up. */
@@ -90,6 +92,7 @@ export function createFakeDiffEditor(initialOptions?: DiffEditorOptions): FakeDi
         glyph: null,
         actions: [],
         revealedLines: [],
+        revealedPositions: [],
         languageMounts: [],
         historicalMounts: [],
         markerLog: [],
@@ -177,6 +180,9 @@ export function createFakeDiffEditor(initialOptions?: DiffEditorOptions): FakeDi
             }),
             getClientPosition: vi.fn((_side: string, line: number, column: number) => ({ top: line * 20, left: column * 7 })),
             revealLine: vi.fn((side: string, line: number) => { fake.revealedLines.push({ side, line }); }),
+            revealPosition: vi.fn((side: string, line: number, column: number) => {
+                fake.revealedPositions.push({ side, line, column });
+            }),
             attachModifiedLanguage: vi.fn((uri: string, mount: DiffLanguageMount) => {
                 unmountLanguage();
                 if (currentModifiedUri() !== uri) return null;

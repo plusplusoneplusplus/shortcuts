@@ -13,6 +13,7 @@ vi.mock('@monaco-editor/react', () => ({ loader: { init: vi.fn() } }));
 
 function fakeMonaco() {
     const models = new Map<string, { uri: { scheme: string; toString: () => string }; getValue: () => string; dispose: () => void }>();
+
     const parse = (value: string) => ({ scheme: value.slice(0, value.indexOf(':')), toString: () => value });
     const sideEditor = () => {
         let model: unknown = null;
@@ -22,6 +23,9 @@ function fakeMonaco() {
             createDecorationsCollection: () => ({ set: () => {}, clear: () => {} }),
             changeViewZones: () => {},
             removeGlyphMarginWidget: () => {},
+            setPosition: vi.fn(),
+            revealPositionInCenter: vi.fn(),
+            focus: vi.fn(),
         };
     };
     const original = sideEditor();
@@ -41,7 +45,12 @@ function fakeMonaco() {
             createDiffEditor: () => diffEditor,
             getModel: (uri: { toString: () => string }) => models.get(uri.toString()) ?? null,
             createModel: (text: string, _language: string, uri: { scheme: string; toString: () => string }) => {
-                const model = { uri, getValue: () => text, dispose: () => { models.delete(uri.toString()); } };
+                const lines = text.split('\n');
+                const model = {
+                    uri, getValue: () => text, dispose: () => { models.delete(uri.toString()); },
+                    getLineCount: () => lines.length,
+                    getLineMaxColumn: (line: number) => lines[line - 1].length + 1,
+                };
                 models.set(uri.toString(), model);
                 return model;
             },
@@ -108,5 +117,20 @@ describe('monacoDiffEditorAdapter — historical language mounts', () => {
         expect(second).not.toHaveBeenCalled();
         adapter.dispose();
         expect(second).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('monacoDiffEditorAdapter — definition reveal', () => {
+    it('puts the cursor on the requested side, clamped to that model, and focuses it', () => {
+        const { monaco, original, modified } = fakeMonaco();
+        const adapter = createMonacoDiffEditorAdapter(monaco, document.createElement('div'), {});
+        adapter.setModels(COMMIT);
+        adapter.revealPosition!('original', 40, 99);
+        expect(original.setPosition).toHaveBeenCalledWith({ lineNumber: 2, column: 1 });
+        expect(original.revealPositionInCenter).toHaveBeenCalledWith({ lineNumber: 2, column: 1 });
+        expect(original.focus).toHaveBeenCalled();
+        adapter.revealPosition!('modified', 1, 3);
+        expect(modified.setPosition).toHaveBeenCalledWith({ lineNumber: 1, column: 3 });
+        expect(modified.focus).toHaveBeenCalled();
     });
 });

@@ -40,7 +40,7 @@ import {
     type MonacoDiffCommentLayerHandle,
     type MonacoDiffCommentState,
 } from './MonacoDiffCommentLayer';
-import type { DiffEditorAdapter } from './monacoDiffController';
+import type { DiffEditorAdapter, DiffEditorPosition } from './monacoDiffController';
 import {
     buildDiffEditorOptions,
     buildDiffModels,
@@ -105,6 +105,11 @@ export interface MonacoFileDiffViewerProps extends MonacoDiffCommentHandlers {
     languageFeatures?: boolean;
     /** Language document store; tests inject one. Defaults to the workspace's. */
     languageStore?: LanguageDocumentStore;
+    /**
+     * A position to reveal in the current models (a definition jump). Each new
+     * object reveals once; hosts pass it only once its file's models are shown.
+     */
+    revealTarget?: DiffEditorPosition | null;
     /** Opens a go-to-definition target in another file of this workspace. */
     onNavigateDefinition?: DiffDefinitionNavigate;
     /**
@@ -141,7 +146,7 @@ function prefersDarkScheme(): boolean {
 export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, MonacoFileDiffViewerProps>(
     function MonacoFileDiffViewer({
         workspaceId, relativePath, stage, modelIdentity, modifiedMatchesWorkingCopy, original, modified, viewMode, initialHunkTarget,
-        onLineChanges, onLinesReady, onEditorError, createEditor = createDefaultDiffEditor,
+        onLineChanges, onLinesReady, onEditorError, createEditor = createDefaultDiffEditor, revealTarget,
         comments, renderCommentThread, onAddComment, onAskAI, onCopyAsContext,
         languageFeatures = true, languageStore, onNavigateDefinition, historicalDefinitions = false, routingRef,
         diffSelectionDragSource,
@@ -239,6 +244,11 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
             const target = initialHunkTargetRef.current;
             if (target) controller.navigate({ kind: target });
         }, [models, identical]);
+
+        // After the models effect, so a target for a newly shown file lands on it.
+        useEffect(() => {
+            if (revealTarget) controllerRef.current?.reveal(revealTarget);
+        }, [revealTarget, identical]);
 
         useEffect(() => { controllerRef.current?.setOptions(options); }, [options, identical]);
 

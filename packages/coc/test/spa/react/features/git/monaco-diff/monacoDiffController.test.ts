@@ -203,3 +203,49 @@ describe('createMonacoDiffController — disposal', () => {
         expect(controller.isDisposed()).toBe(true);
     });
 });
+
+describe('createMonacoDiffController — position reveal', () => {
+    it('holds a reveal until the editor and its models exist', async () => {
+        const fake = createFakeDiffEditor();
+        const pending = deferred<typeof fake.adapter>();
+        const controller = createMonacoDiffController(() => pending.promise);
+        controller.setModels(fileA);
+        controller.reveal({ side: 'original', line: 7, column: 3 });
+        expect(fake.revealedPositions).toEqual([]);
+        pending.resolve(fake.adapter);
+        await flush();
+        expect(fake.revealedPositions).toEqual([{ side: 'original', line: 7, column: 3 }]);
+        controller.dispose();
+    });
+
+    it('reveals at once on attached models, and only once', async () => {
+        const { fake, controller } = await attached();
+        controller.setModels(fileA);
+        controller.reveal({ side: 'modified', line: 2, column: 5 });
+        controller.setModels(fileA);
+        expect(fake.revealedPositions).toEqual([{ side: 'modified', line: 2, column: 5 }]);
+        controller.dispose();
+    });
+
+    it('drops a held reveal when other models replace the current ones', async () => {
+        const fake = createFakeDiffEditor();
+        const pending = deferred<typeof fake.adapter>();
+        const controller = createMonacoDiffController(() => pending.promise);
+        controller.setModels(fileA);
+        controller.reveal({ side: 'modified', line: 2, column: 1 });
+        controller.setModels(fileB);
+        pending.resolve(fake.adapter);
+        await flush();
+        expect(fake.revealedPositions).toEqual([]);
+        controller.dispose();
+    });
+
+    it('falls back to a line reveal for adapters without revealPosition', async () => {
+        const { fake, controller } = await attached();
+        delete (fake.adapter as { revealPosition?: unknown }).revealPosition;
+        controller.setModels(fileB);
+        controller.reveal({ side: 'original', line: 4, column: 9 });
+        expect(fake.revealedLines).toEqual([{ side: 'original', line: 4 }]);
+        controller.dispose();
+    });
+});
