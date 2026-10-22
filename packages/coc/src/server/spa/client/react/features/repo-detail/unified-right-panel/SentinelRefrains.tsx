@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from 'react';
-import type { CocClient, RuntimeDashboardConfig, SentinelScheduledJob, SentinelScheduledJobGateTest, SentinelScheduledJobRun,
-    SentinelScheduledJobInput } from '@plusplusoneplusplus/coc-client';
+import type { CocClient, RuntimeDashboardConfig, SentinelRefrain, SentinelRefrainGateTest, SentinelRefrainRun,
+    SentinelRefrainInput } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled } from '../../../utils/config';
@@ -98,12 +98,12 @@ type JobsProps = {
 function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFollowLink }: JobsProps) {
     const id = useId();
     const [open, setOpen] = useState(true);
-    const [jobs, setJobs] = useState<SentinelScheduledJob[] | null>(null);
+    const [jobs, setJobs] = useState<SentinelRefrain[] | null>(null);
     const [readError, setReadError] = useState<string | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
-    const [editor, setEditor] = useState<SentinelScheduledJob | 'new' | null>(null);
-    const [deleting, setDeleting] = useState<SentinelScheduledJob | null>(null);
+    const [editor, setEditor] = useState<SentinelRefrain | 'new' | null>(null);
+    const [deleting, setDeleting] = useState<SentinelRefrain | null>(null);
     const live = useRef(false);
     const pending = useRef(false);
     const sequence = useRef(0);
@@ -163,7 +163,7 @@ function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFol
         }
         return saved;
     };
-    const save = (input: SentinelScheduledJobInput) => {
+    const save = (input: SentinelRefrainInput) => {
         if (!editor) return Promise.resolve(false);
         return mutate(() => editor === 'new' ? api.create(owner.ownerWorkspaceId, owner.processId, input)
             : api.update(owner.ownerWorkspaceId, owner.processId, editor.id, { ...input, expectedRevision: editor.revision }), () => setEditor(null));
@@ -206,9 +206,9 @@ function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFol
     </section>;
 }
 
-type GateTestProps = { onTestGate: (signal: AbortSignal) => Promise<SentinelScheduledJobGateTest>; onResumeGate: () => void };
+type GateTestProps = { onTestGate: (signal: AbortSignal) => Promise<SentinelRefrainGateTest>; onResumeGate: () => void };
 function JobRow({ job, owner, onFollowLink, disabled, onEdit, onDelete, onRun, onCancel, onToggle, onTestGate, onResumeGate }: GateTestProps & {
-    job: SentinelScheduledJob; owner: SentinelTodoOwner; onFollowLink: JobsProps['onFollowLink']; disabled: boolean;
+    job: SentinelRefrain; owner: SentinelTodoOwner; onFollowLink: JobsProps['onFollowLink']; disabled: boolean;
     onEdit: () => void; onDelete: () => void; onRun: () => void; onCancel: () => void; onToggle: () => void;
 }) {
     const last = job.runs[0];
@@ -220,7 +220,7 @@ function JobRow({ job, owner, onFollowLink, disabled, onEdit, onDelete, onRun, o
         </div>
         <p className={MUTED}>{job.provider} / {job.effortTier ? `${job.effortTier} effort tier` : job.model}{job.effort && ` / ${job.effort}`} · {job.cron ? describeCron(job.cron) || job.cron : 'Manual only'}</p>
         {job.enabled && job.nextRunAt && <p className={MUTED}>Next <time dateTime={job.nextRunAt}>{new Date(job.nextRunAt).toLocaleString()}</time></p>}
-        {job.gateScript && <JobGate job={job} disabled={disabled} onTestGate={onTestGate} onResumeGate={onResumeGate} />}
+        {job.gateScript && <RefrainGate job={job} disabled={disabled} onTestGate={onTestGate} onResumeGate={onResumeGate} />}
         {job.activeRun ? <div role="status" className="flex items-center gap-1"><Spinner size="sm" /> Run #{job.activeRun.runNumber} {job.activeRun.status}</div>
             : last && <p className={last.status === 'failed' || last.status === 'interrupted' ? ERROR : MUTED}>
                 Last run #{last.runNumber}: {runOutcome(last)}{last.error && `: ${last.error}`}
@@ -255,15 +255,15 @@ function JobRow({ job, owner, onFollowLink, disabled, onEdit, onDelete, onRun, o
         </details>
     </article>;
 }
-const SKIP_REASONS: Record<NonNullable<SentinelScheduledJobRun['skipReason']>, string> = {
+const SKIP_REASONS: Record<NonNullable<SentinelRefrainRun['skipReason']>, string> = {
     overlap: 'overlap', 'gate-empty': 'gate result empty', 'gate-unavailable': 'gate unavailable (tool scripting off)',
 };
-function runOutcome(run: SentinelScheduledJobRun) {
+function runOutcome(run: SentinelRefrainRun) {
     return run.skipReason ? `${run.status}: ${SKIP_REASONS[run.skipReason] ?? run.skipReason}` : run.status;
 }
-type GateTest = { running: true } | { outcome: SentinelScheduledJobGateTest } | { error: string };
+type GateTest = { running: true } | { outcome: SentinelRefrainGateTest } | { error: string };
 /** Test gate never saves state, so its outcome stays local to this card and this script. */
-function JobGate({ job, disabled, onTestGate, onResumeGate }: GateTestProps & { job: SentinelScheduledJob; disabled: boolean }) {
+function RefrainGate({ job, disabled, onTestGate, onResumeGate }: GateTestProps & { job: SentinelRefrain; disabled: boolean }) {
     const [test, setTest] = useState<GateTest | null>(null);
     const controller = useRef<AbortController | null>(null);
     useEffect(() => { setTest(null); return () => controller.current?.abort(); }, [job.gateScript]);

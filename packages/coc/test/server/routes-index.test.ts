@@ -38,9 +38,9 @@ import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import type { SendToConversationRuntimeOptions } from '../../src/server/llm-tools/send-to-conversation-tool';
 import { DEFAULT_CONFIG, mergeConfig } from '../../src/config';
-import { SentinelJobStore } from '../../src/server/sentinel-jobs/job-store';
-import type { SentinelJobService } from '../../src/server/sentinel-jobs/job-service';
-import { SentinelJobScheduler } from '../../src/server/sentinel-jobs/job-scheduler';
+import { SentinelRefrainStore } from '../../src/server/sentinel-refrains/refrain-store';
+import type { SentinelRefrainService } from '../../src/server/sentinel-refrains/refrain-service';
+import { SentinelJobScheduler } from '../../src/server/sentinel-refrains/job-scheduler';
 
 // ── Minimal stubs ─────────────────────────────────────────────────────────────
 
@@ -210,7 +210,7 @@ describe('registerAllRoutes', () => {
             await store.addProcess({ id: owner.processId, type: 'chat', status: 'completed', startTime: new Date(),
                 metadata: { ...owner, mode: 'sentinel', provider: 'copilot' } });
         }
-        const jobs = new SentinelJobStore(store.getDatabase());
+        const jobs = new SentinelRefrainStore(store.getDatabase());
         const input = { name: 'Review', instructions: 'Read evidence', provider: 'copilot', model: 'model', cron: '0 * * * *' };
         const a = jobs.create(owners[0], input);
         const b = jobs.create(owners[1], input);
@@ -221,9 +221,9 @@ describe('registerAllRoutes', () => {
         bridge.getTask = vi.fn();
         const cancel = vi.fn();
         bridge.findExecutorForTask = vi.fn().mockReturnValue({ cancelTask: cancel });
-        let getJobs!: () => SentinelJobService | undefined;
+        let getJobs!: () => SentinelRefrainService | undefined;
         const opts = makeOpts({ store, bridge, dataDir: tmpDir,
-            setSentinelScheduledJobs: get => { getJobs = get; } });
+            setSentinelRefrains: get => { getJobs = get; } });
         const config = opts.runtimeConfigService!.config as any;
         config.sentinel = { enabled: true };
         config.features.sentinelTodoJobs = true;
@@ -250,7 +250,7 @@ describe('registerAllRoutes', () => {
             expect(jobs.get(owners[0], a.id).processId).toBeTruthy();
             await expect(getJobs()!.assertOwner(owners[0])).rejects.toBeDefined();
         } finally {
-            await composition.sentinelJobsShutdown();
+            await composition.sentinelRefrainsShutdown();
             composition.whatsappMessagingManager.dispose();
             store.close();
         }
@@ -262,7 +262,7 @@ describe('registerAllRoutes', () => {
         await store.registerWorkspace({ id: owner.workspaceId, name: 'Jobs', rootPath: tmpDir });
         await store.addProcess({ id: owner.processId, type: 'chat', status: 'completed', startTime: new Date(),
             promptPreview: 'Sentinel', metadata: { ...owner, mode: 'sentinel', provider: 'copilot' } });
-        const jobs = new SentinelJobStore(store.getDatabase());
+        const jobs = new SentinelRefrainStore(store.getDatabase());
         const job = jobs.create(owner, { name: 'Review', instructions: 'Read evidence', provider: 'copilot',
             model: 'model', cron: '0 * * * *' });
         const orphan = jobs.createRun(owner, job.id, 'manual', 'queue_orphan', new Date().toISOString());
@@ -273,10 +273,10 @@ describe('registerAllRoutes', () => {
         bridge.getTask = vi.fn();
         const cancel = vi.fn();
         bridge.findExecutorForTask = vi.fn().mockReturnValue({ cancelTask: cancel });
-        let getJobs!: () => SentinelJobService | undefined;
+        let getJobs!: () => SentinelRefrainService | undefined;
         let getScrubber!: () => ScrubberRunService | undefined;
         const opts = makeOpts({ store, bridge, dataDir: tmpDir,
-            setSentinelScheduledJobs: get => { getJobs = get; }, setSentinelScrubber: get => { getScrubber = get; } });
+            setSentinelRefrains: get => { getJobs = get; }, setSentinelScrubber: get => { getScrubber = get; } });
         const config = opts.runtimeConfigService!.config as any;
         config.features.sentinelTodoScrubber = true;
         const disposed = vi.spyOn(SentinelJobScheduler.prototype, 'dispose');
@@ -318,10 +318,10 @@ describe('registerAllRoutes', () => {
             expect(next.taskId).not.toBe(active.taskId);
             expect(jobs.get(owner, job.id).processId).toBe(persistentProcessId);
             expect(await store.getProcess(persistentProcessId)).toBeDefined();
-            await composition.sentinelJobsShutdown();
+            await composition.sentinelRefrainsShutdown();
             expect(disposed).toHaveBeenCalledOnce();
         } finally {
-            await composition.sentinelJobsShutdown();
+            await composition.sentinelRefrainsShutdown();
             composition.whatsappMessagingManager.dispose();
             store.close();
         }
@@ -332,7 +332,7 @@ describe('registerAllRoutes', () => {
         await store.registerWorkspace({ id: owner.workspaceId, name: 'Gate', rootPath: tmpDir });
         await store.addProcess({ id: owner.processId, type: 'chat', status: 'completed', startTime: new Date(),
             promptPreview: 'Sentinel', metadata: { ...owner, mode: 'sentinel', provider: 'copilot' } });
-        const jobs = new SentinelJobStore(store.getDatabase());
+        const jobs = new SentinelRefrainStore(store.getDatabase());
         const job = jobs.create(owner, { name: 'Watch', instructions: 'Read evidence', provider: 'copilot',
             model: 'model', cron: '0 * * * *', gateScript: 'return state;' });
         const bridge = makeBridge();
@@ -340,9 +340,9 @@ describe('registerAllRoutes', () => {
         bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => input.id!);
         bridge.getTask = vi.fn();
         bridge.findExecutorForTask = vi.fn().mockReturnValue({ cancelTask: vi.fn() });
-        bridge.runJobGate = vi.fn(async () => []);
-        let getJobs!: () => SentinelJobService | undefined;
-        const opts = makeOpts({ store, bridge, dataDir: tmpDir, setSentinelScheduledJobs: get => { getJobs = get; } });
+        bridge.runRefrainGate = vi.fn(async () => []);
+        let getJobs!: () => SentinelRefrainService | undefined;
+        const opts = makeOpts({ store, bridge, dataDir: tmpDir, setSentinelRefrains: get => { getJobs = get; } });
         const config = opts.runtimeConfigService!.config as any;
         config.sentinel = { enabled: true };
         config.features.sentinelTodoJobs = true;
@@ -350,13 +350,13 @@ describe('registerAllRoutes', () => {
         try {
             await composition.scrubberReady;
             expect(await getJobs()!.tick(owner, job.id)).toMatchObject({ status: 'skipped', skipReason: 'gate-empty' });
-            expect(bridge.runJobGate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+            expect(bridge.runRefrainGate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
                 ...owner, code: 'return state;', state: null }));
             config.features.toolScripting = false;
             expect(await getJobs()!.tick(owner, job.id)).toMatchObject({ status: 'skipped', skipReason: 'gate-unavailable' });
-            expect(bridge.runJobGate).toHaveBeenCalledOnce();
+            expect(bridge.runRefrainGate).toHaveBeenCalledOnce();
         } finally {
-            await composition.sentinelJobsShutdown();
+            await composition.sentinelRefrainsShutdown();
             composition.whatsappMessagingManager.dispose();
             store.close();
         }

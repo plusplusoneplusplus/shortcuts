@@ -4,10 +4,10 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AIProcess, CreateTaskInput, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
-import { SentinelJobStore } from '../../../src/server/sentinel-jobs/job-store';
-import { GATE_FAILURE_LIMIT, SentinelJobService, getJobTaskContext, type JobServiceDeps } from '../../../src/server/sentinel-jobs/job-service';
-import { SentinelJobCommands } from '../../../src/server/sentinel-jobs/job-commands';
-import { SentinelJobScheduler } from '../../../src/server/sentinel-jobs/job-scheduler';
+import { SentinelRefrainStore } from '../../../src/server/sentinel-refrains/refrain-store';
+import { GATE_FAILURE_LIMIT, SentinelRefrainService, getRefrainTaskContext, type RefrainServiceDeps } from '../../../src/server/sentinel-refrains/refrain-service';
+import { SentinelRefrainCommands } from '../../../src/server/sentinel-refrains/refrain-commands';
+import { SentinelJobScheduler } from '../../../src/server/sentinel-refrains/job-scheduler';
 import { nextCronTime } from '../../../src/server/schedule/cron-utils';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
@@ -19,10 +19,10 @@ const input = { name: 'Review', instructions: 'Check evidence', provider: 'copil
 const NOW = '2026-10-18T10:00:00.000Z';
 
 let fixture: ReturnType<typeof createTodoTestDatabase>;
-let jobStore: SentinelJobStore;
+let jobStore: SentinelRefrainStore;
 let todoStore: SentinelTodoStore;
 let todoService: SentinelTodoService;
-let service: SentinelJobService;
+let service: SentinelRefrainService;
 let processes: Map<string, AIProcess>;
 let enabled: boolean;
 let enqueue: ReturnType<typeof vi.fn>;
@@ -52,8 +52,8 @@ function assistantTurn(turnIndex: number, content: string, overrides: Record<str
 
 let stallWorkspaces: Promise<void> | null = null;
 
-function makeService(overrides: Pick<Partial<JobServiceDeps>, 'getEnabled' | 'getGateEnabled' | 'runGate'> = {}): SentinelJobService {
-    return new SentinelJobService({
+function makeService(overrides: Pick<Partial<RefrainServiceDeps>, 'getEnabled' | 'getGateEnabled' | 'runGate'> = {}): SentinelRefrainService {
+    return new SentinelRefrainService({
         ...overrides,
         dataDir: fixture.dataDir,
         jobs: jobStore,
@@ -109,7 +109,7 @@ beforeEach(() => {
     const directory = path.resolve('.sentinel-jobs-tests', randomUUID());
     fs.mkdirSync(directory, { recursive: true });
     fixture = createTodoTestDatabase(directory);
-    jobStore = new SentinelJobStore(fixture.db);
+    jobStore = new SentinelRefrainStore(fixture.db);
     todoStore = new SentinelTodoStore(fixture.db);
     processes = new Map();
     enabled = true;
@@ -128,7 +128,7 @@ afterEach(() => {
     fixture.dispose();
 });
 
-describe('SentinelJobService', () => {
+describe('SentinelRefrainService', () => {
     it('exposes an active run separately after more than twenty overlap skips fill the visible history', async () => {
         const job = jobStore.create(owner, input);
         const active = await service.start(owner, job.id);
@@ -255,7 +255,7 @@ describe('SentinelJobService', () => {
         expect(processes.get(call1.processId!)?.metadata).toMatchObject({
             mode: 'ask', autoCompact: { enabled: true, thresholdTokens: 100_000 },
         });
-        expect(getJobTaskContext({ payload: call1.payload })).toMatchObject({
+        expect(getRefrainTaskContext({ payload: call1.payload })).toMatchObject({
             workspaceId: owner.workspaceId, processId: owner.processId, jobId: job.id, runId: first.id, kind: 'run',
         });
         const chatProcessId = call1.processId!;
@@ -611,7 +611,7 @@ describe('SentinelJobService', () => {
         enqueue.mockClear();
         await makeService().recover();
         expect(enqueue).toHaveBeenCalledTimes(1);
-        expect(getJobTaskContext({ payload: enqueue.mock.calls[0][0].payload })?.kind).toBe('handback');
+        expect(getRefrainTaskContext({ payload: enqueue.mock.calls[0][0].payload })?.kind).toBe('handback');
         expect(enqueue.mock.calls[0][0].id).not.toBe(handbackId);
     });
 
@@ -654,7 +654,7 @@ describe('SentinelJobService', () => {
     });
 });
 
-describe('SentinelJobService gated ticks', () => {
+describe('SentinelRefrainService gated ticks', () => {
     const gated = { ...input, cron: '0 * * * *', gateScript: 'return state;' };
     let gateEnabled: boolean;
     let runGate: ReturnType<typeof vi.fn>;
@@ -751,7 +751,7 @@ describe('SentinelJobService gated ticks', () => {
         expect(await tick).toMatchObject({ status: 'skipped', skipReason: 'overlap', trigger: 'schedule' });
         await flush();
         expect(runGate).not.toHaveBeenCalled();
-        expect(enqueue.mock.calls.filter(([task]) => getJobTaskContext(task)?.kind === 'run')).toHaveLength(1);
+        expect(enqueue.mock.calls.filter(([task]) => getRefrainTaskContext(task)?.kind === 'run')).toHaveLength(1);
         expect(jobStore.runs(owner, job.id).map(run => run.status)).toEqual(['skipped', 'completed']);
     });
 
@@ -823,7 +823,7 @@ describe('SentinelJobService gated ticks', () => {
         runGate.mockRejectedValue(new Error('boom'));
         for (let i = 0; i < GATE_FAILURE_LIMIT; i++) await service.tick(owner, job.id);
         const notice = guardTask(enqueue.mock.calls[0][0] as CreateTaskInput);
-        expect(getJobTaskContext(notice)).toEqual({ ...owner, jobId: job.id, kind: 'notice' });
+        expect(getRefrainTaskContext(notice)).toEqual({ ...owner, jobId: job.id, kind: 'notice' });
         await expect(service.guard(notice)).resolves.toBeUndefined();
         await expect(service.guard({ ...notice, processId: 'queue_other' })).rejects.toMatchObject({ code: 'conflict' });
         await expect(service.guard({ ...notice, payload: { ...notice.payload, mode: 'ask' } })).rejects.toMatchObject({ code: 'conflict' });
@@ -977,14 +977,14 @@ describe('SentinelJobService gated ticks', () => {
         stallWorkspaces = null;
         expect(await tick).toMatchObject({ status: 'failed', trigger: 'schedule', error: 'Refrain schedule is paused' });
         expect(jobStore.get(owner, job.id).gateLastResult).toBe('{"items":[1]}');
-        expect(enqueue.mock.calls.filter(([task]) => getJobTaskContext(task)?.kind === 'run')).toEqual([]);
+        expect(enqueue.mock.calls.filter(([task]) => getRefrainTaskContext(task)?.kind === 'run')).toEqual([]);
         expect(service.view(owner, jobStore.get(owner, job.id)).runs).toEqual([
             expect.objectContaining({ status: 'failed', error: 'Refrain schedule is paused' })]);
     });
 
     describe('with the job scheduler', () => {
         let scheduler: SentinelJobScheduler;
-        let commands: SentinelJobCommands;
+        let commands: SentinelRefrainCommands;
         let ticks: Array<Promise<unknown>>;
 
         beforeEach(() => {
@@ -995,7 +995,7 @@ describe('SentinelJobService gated ticks', () => {
                     assertOwner: value => service.assertOwner(value),
                     tick: (...args) => { const tick = service.tick(...args); ticks.push(tick); return tick; },
                 } });
-            commands = new SentinelJobCommands({ jobs: jobStore, service, onConfigChange: () => scheduler.refreshAll() });
+            commands = new SentinelRefrainCommands({ jobs: jobStore, service, onConfigChange: () => scheduler.refreshAll() });
         });
         afterEach(() => {
             scheduler.dispose();

@@ -1,19 +1,19 @@
 /** Maximum stored result size, measured as UTF-8 canonical JSON. */
-export const MAX_JOB_GATE_RESULT_BYTES = 16 * 1024;
+export const MAX_REFRAIN_GATE_RESULT_BYTES = 16 * 1024;
 
 /**
  * Encode JSON values without invoking toJSON or silently dropping invalid values.
  * Object keys sort lexically at every level; array order remains significant.
  */
-export function canonicalizeJobGateResult(value: unknown): string {
+export function canonicalizeRefrainGateResult(value: unknown): string {
     const parts: string[] = [];
     const ancestors = new Set<object>();
     let bytes = 0;
 
     function append(text: string): void {
         bytes += Buffer.byteLength(text, 'utf8');
-        if (bytes > MAX_JOB_GATE_RESULT_BYTES) {
-            throw new Error(`Script result exceeds ${MAX_JOB_GATE_RESULT_BYTES} bytes of canonical JSON`);
+        if (bytes > MAX_REFRAIN_GATE_RESULT_BYTES) {
+            throw new Error(`Script result exceeds ${MAX_REFRAIN_GATE_RESULT_BYTES} bytes of canonical JSON`);
         }
         parts.push(text);
     }

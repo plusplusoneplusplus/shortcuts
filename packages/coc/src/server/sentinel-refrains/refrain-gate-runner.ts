@@ -1,8 +1,8 @@
 import { runToolScript, type CocToolRuntime } from '@plusplusoneplusplus/coc-agent-sdk';
 
-export const JOB_GATE_DEADLINE_MS = 60_000;
+export const REFRAIN_GATE_DEADLINE_MS = 60_000;
 
-export interface JobGateRunOptions {
+export interface RefrainGateRunOptions {
     code: string;
     state: unknown;
     /** Owner-resolved, unattended tools. The caller owns and disposes this runtime. */
@@ -14,13 +14,13 @@ export interface JobGateRunOptions {
 }
 
 /** Gate-only deadline; the shared chat scripting engine remains unbounded. */
-export async function runJobGate(options: JobGateRunOptions): Promise<unknown> {
+export async function runRefrainGate(options: RefrainGateRunOptions): Promise<unknown> {
     options.signal?.throwIfAborted();
     const deadline = new AbortController();
     const signal = options.signal ? AbortSignal.any([options.signal, deadline.signal]) : deadline.signal;
     const timer = setTimeout(() => {
         deadline.abort(new Error('Gate script exceeded its 60-second deadline'));
-    }, JOB_GATE_DEADLINE_MS);
+    }, REFRAIN_GATE_DEADLINE_MS);
     try {
         const run = await runToolScript({
             code: options.code,

@@ -1,10 +1,10 @@
 import { withOwnerToolRuntime, type OwnerScriptTools } from '../executors/owner-script-runner';
-import { runJobGate } from './job-gate-runner';
+import { runRefrainGate } from './refrain-gate-runner';
 
-export type JobGateOwnerTools = OwnerScriptTools;
+export type RefrainGateOwnerTools = OwnerScriptTools;
 
 /** One gate evaluation for a Sentinel owner; the runtime resolves the owner's tools. */
-export interface JobGateRunRequest {
+export interface RefrainGateRunRequest {
     workspaceId: string;
     processId: string;
     code: string;
@@ -13,7 +13,7 @@ export interface JobGateRunRequest {
 }
 
 /** Owner-scoped gate execution supplied by the queue runtime. No provider turn starts. */
-export type JobGateOwnerRunner = (request: JobGateRunRequest) => Promise<unknown>;
+export type RefrainGateOwnerRunner = (request: RefrainGateRunRequest) => Promise<unknown>;
 
 /**
  * Runs with the owner's resolved chat capabilities, including tools that ordinary
@@ -21,14 +21,14 @@ export type JobGateOwnerRunner = (request: JobGateRunRequest) => Promise<unknown
  * supplies owner-bound capabilities, and cancels on revocation or shutdown.
  * No provider session is started: only the CoC handlers in this context execute.
  */
-export async function runJobGateWithOwnerTools(options: {
-    ownerTools: JobGateOwnerTools;
+export async function runRefrainGateWithOwnerTools(options: {
+    ownerTools: RefrainGateOwnerTools;
     code: string;
     state: unknown;
     signal?: AbortSignal;
 }): Promise<unknown> {
     const { signal } = options;
-    return withOwnerToolRuntime(options.ownerTools, signal, (runtime, allowNestedScripts) => runJobGate({
+    return withOwnerToolRuntime(options.ownerTools, signal, (runtime, allowNestedScripts) => runRefrainGate({
         code: options.code, state: options.state, runtime, signal, allowNestedScripts,
     }));
 }

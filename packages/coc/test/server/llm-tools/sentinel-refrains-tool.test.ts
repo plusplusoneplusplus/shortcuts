@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AIProcess, CreateTaskInput, ProcessStore } from '@plusplusoneplusplus/forge';
-import { createSentinelJobsTool, type SentinelJobDefaults, type SentinelJobsArgs } from '../../../src/server/llm-tools/sentinel-jobs-tool';
-import { SentinelJobCommands } from '../../../src/server/sentinel-jobs/job-commands';
-import { SentinelJobService } from '../../../src/server/sentinel-jobs/job-service';
-import { SentinelJobStore } from '../../../src/server/sentinel-jobs/job-store';
+import { createSentinelRefrainsTool, type SentinelRefrainDefaults, type SentinelRefrainsArgs } from '../../../src/server/llm-tools/sentinel-refrains-tool';
+import { SentinelRefrainCommands } from '../../../src/server/sentinel-refrains/refrain-commands';
+import { SentinelRefrainService } from '../../../src/server/sentinel-refrains/refrain-service';
+import { SentinelRefrainStore } from '../../../src/server/sentinel-refrains/refrain-store';
 import { ScrubberCommands } from '../../../src/server/sentinel-scrubber/scrubber-commands';
 import { ScrubberEngine } from '../../../src/server/sentinel-scrubber/scrubber-engine';
 import { ScrubberRunService } from '../../../src/server/sentinel-scrubber/scrubber-runs';
@@ -16,7 +16,7 @@ const owner = { workspaceId: 'ws-a', processId: 'queue_s1' };
 const sibling = { workspaceId: 'ws-a', processId: 'queue_s2' };
 const otherWorkspace = { workspaceId: 'ws-b', processId: 'queue_s3' };
 
-let jobStore: SentinelJobStore;
+let jobStore: SentinelRefrainStore;
 let todos: SentinelTodoStore;
 let scrubberStore: ScrubberStore;
 let processes: Map<string, AIProcess>;
@@ -26,9 +26,9 @@ let scrubberEnabled: boolean;
 let enqueue: ReturnType<typeof vi.fn>;
 let scrubEnqueue: ReturnType<typeof vi.fn>;
 let onConfigChange: ReturnType<typeof vi.fn>;
-let jobCommands: SentinelJobCommands;
+let jobCommands: SentinelRefrainCommands;
 let scrubberCommands: ScrubberCommands;
-let defaults: SentinelJobDefaults;
+let defaults: SentinelRefrainDefaults;
 let gateEnabled: boolean;
 let runGate: ReturnType<typeof vi.fn>;
 
@@ -53,7 +53,7 @@ beforeEach(() => {
             if (current) processes.set(id, { ...current, ...updates, metadata: { ...current.metadata, ...updates.metadata } });
         },
     } as unknown as ProcessStore;
-    jobStore = new SentinelJobStore(fixture.db);
+    jobStore = new SentinelRefrainStore(fixture.db);
     todos = new SentinelTodoStore(fixture.db);
     scrubberStore = new ScrubberStore(fixture.db);
     const todoService = new SentinelTodoService({ todos, store });
@@ -65,19 +65,19 @@ beforeEach(() => {
     onConfigChange = vi.fn();
     gateEnabled = true;
     runGate = vi.fn(async () => ({ items: [1] }));
-    const service = new SentinelJobService({ dataDir: fixture.dataDir, jobs: jobStore, todos: todoService, store,
+    const service = new SentinelRefrainService({ dataDir: fixture.dataDir, jobs: jobStore, todos: todoService, store,
         getEnabled: () => sentinelEnabled && jobsEnabled, getGateEnabled: () => gateEnabled, runGate,
         enqueue, cancelTask: vi.fn(() => true), getTask: () => undefined });
-    jobCommands = new SentinelJobCommands({ jobs: jobStore, service, onConfigChange });
+    jobCommands = new SentinelRefrainCommands({ jobs: jobStore, service, onConfigChange });
     const runs = new ScrubberRunService({ dataDir: fixture.dataDir, todos: todoService, scrubber: scrubberStore,
         engine: new ScrubberEngine({ todos, scrubber: scrubberStore }), enqueue: scrubEnqueue, cancelTask: vi.fn(() => true) });
     scrubberCommands = new ScrubberCommands({ todos: todoService, scrubber: scrubberStore, runs, getEnabled: () => scrubberEnabled });
     defaults = { provider: 'copilot', model: 'gpt-5', effort: 'high' };
 });
 
-function call(args: SentinelJobsArgs | Record<string, unknown>, bound = owner, withScrubber = true,
+function call(args: SentinelRefrainsArgs | Record<string, unknown>, bound = owner, withScrubber = true,
     invocation: { signal?: AbortSignal } = {}): Promise<any> {
-    const tool = createSentinelJobsTool({ owner: bound, jobs: jobCommands,
+    const tool = createSentinelRefrainsTool({ owner: bound, jobs: jobCommands,
         ...(withScrubber ? { scrubber: scrubberCommands } : {}), defaults: () => defaults });
     return (tool as any).handler(args, invocation);
 }
@@ -90,7 +90,7 @@ async function createJob(extra: Record<string, unknown> = {}) {
 
 describe('sentinel_jobs tool schema', () => {
     it('exposes no delete action and no owner parameters', () => {
-        const tool = createSentinelJobsTool({ owner, jobs: jobCommands, scrubber: scrubberCommands, defaults: () => defaults }) as any;
+        const tool = createSentinelRefrainsTool({ owner, jobs: jobCommands, scrubber: scrubberCommands, defaults: () => defaults }) as any;
         const props = tool.parameters.properties;
         expect(props.action.enum).not.toContain('delete');
         for (const key of ['owner', 'workspaceId', 'processId', 'serverId']) expect(props).not.toHaveProperty(key);
@@ -103,7 +103,7 @@ describe('sentinel_jobs tool schema', () => {
     });
 
     it('names refrains and Coda in its contract while keeping the wire tool and kind values', () => {
-        const tool = createSentinelJobsTool({ owner, jobs: jobCommands, scrubber: scrubberCommands, defaults: () => defaults }) as any;
+        const tool = createSentinelRefrainsTool({ owner, jobs: jobCommands, scrubber: scrubberCommands, defaults: () => defaults }) as any;
         expect(tool.name).toBe('sentinel_jobs');
         expect(tool.parameters.properties.kind.enum).toEqual(['custom', 'scrubber']);
         expect(tool.description).toMatch(/refrains \(`kind: custom`\)/);
@@ -280,7 +280,7 @@ describe('ownership and feature gates', () => {
     it.each(['sentinel', 'jobs', 'owner', 'workspace'] as const)(
         'revokes every action on an issued tool after %s becomes unavailable', async gate => {
             const job = await createJob();
-            const tool = createSentinelJobsTool({ owner, jobs: jobCommands, scrubber: scrubberCommands,
+            const tool = createSentinelRefrainsTool({ owner, jobs: jobCommands, scrubber: scrubberCommands,
                 defaults: () => defaults }) as any;
             expect((await tool.handler({ action: 'get', kind: 'scrubber' }, {})).scrubber).toBeDefined();
             const config = scrubberStore.getConfig(owner);
@@ -351,7 +351,7 @@ describe('built-in scrubber', () => {
     });
 
     it('revokes scrubber actions on an issued tool when only the scrubber flag is disabled', async () => {
-        const tool = createSentinelJobsTool({ owner, jobs: jobCommands, scrubber: scrubberCommands,
+        const tool = createSentinelRefrainsTool({ owner, jobs: jobCommands, scrubber: scrubberCommands,
             defaults: () => defaults }) as any;
         expect((await tool.handler({ action: 'get', kind: 'scrubber' }, {})).scrubber).toBeDefined();
         const config = scrubberStore.getConfig(owner);

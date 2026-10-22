@@ -13,7 +13,7 @@ import { pendingMessageTask } from '../processes/queued-pending-message';
 import { readAutomationTurnSource } from '../processes/automation-turn-source';
 import type { PendingMessage } from '@plusplusoneplusplus/forge';
 import { BaseExecutor } from '../executors/base-executor';
-import { getJobTaskContext } from '../sentinel-jobs/job-metadata';
+import { getRefrainTaskContext } from '../sentinel-refrains/refrain-metadata';
 import type { FollowUpTurnOptions } from '../executors/follow-up-executor';
 import { resolveSkillConfig } from '../executors/skill-config-resolver';
 import { TitleGenerationService } from '../executors/title-generator';
@@ -114,7 +114,7 @@ export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     initialDelayMs?: number;
 }
 export interface QueueExecutorBridge {
-    runJobGate?: import('../sentinel-jobs/job-gate-owner-runner').JobGateOwnerRunner;
+    runRefrainGate?: import('../sentinel-refrains/refrain-gate-owner-runner').RefrainGateOwnerRunner;
     runOwnerScript?: import('../executors/owner-script-runner').OwnerScriptRunner;
     /** Recover the head of an idle conversation's durable buffer through its queue. */
     recoverPendingMessages?(workspaceId: string, processId: string): Promise<void>;
@@ -278,8 +278,8 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         });
     }
 
-    readonly runJobGate: import('../sentinel-jobs/job-gate-owner-runner').JobGateOwnerRunner =
-        request => this.executors.runJobGate(request);
+    readonly runRefrainGate: import('../sentinel-refrains/refrain-gate-owner-runner').RefrainGateOwnerRunner =
+        request => this.executors.runRefrainGate(request);
 
     readonly runOwnerScript: import('../executors/owner-script-runner').OwnerScriptRunner =
         request => this.executors.runOwnerScript(request);
@@ -1322,7 +1322,7 @@ function isAutoProviderRoutingRequested(context: ChatPayload['context'] | undefi
  *   in the same workspace.
  */
 export function defaultIsExclusive(task: QueuedTask): boolean {
-    if (getJobTaskContext(task)?.kind === 'run') return false;
+    if (getRefrainTaskContext(task)?.kind === 'run') return false;
     if (task.payload.kind === 'compact') return false;
     // Chat has mode-dependent exclusivity
     if (isChatPayload(task.payload)) {

@@ -294,7 +294,7 @@ describe('buildChatToolBundle', () => {
         const build = (extra: Record<string, unknown> = {}, commands = jobs()) => buildChatToolBundle({
             dataDir: tmpDir, workspaceId: WS_ID, processId: 'owner', store: makeStore(),
             canvasToolsEnabled: false, kustoToolsEnabled: false, systemOneToolEnabled: false, toolScriptingEnabled: false,
-            sentinelJobs: { owner: { workspaceId: WS_ID, processId: 'owner' }, jobs: commands, defaults: () => ({}) },
+            sentinelRefrains: { owner: { workspaceId: WS_ID, processId: 'owner' }, jobs: commands, defaults: () => ({}) },
             ...extra,
         });
         const names = (bundle: ReturnType<typeof buildChatToolBundle>) => bundle.tools.map(tool => tool.name);

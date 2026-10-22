@@ -5,29 +5,29 @@ import { parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../shared/router';
 import { isValidWorkspaceId } from '../tasks/comments/base-comments-manager';
 import { SentinelTodoError, type SentinelTodoOwner } from '../sentinel-todos/sentinel-todo-store';
-import { JobError, jobInputSchema, type SentinelJobStore } from './job-store';
-import type { SentinelJobService } from './job-service';
-import { SentinelJobCommands } from './job-commands';
+import { RefrainError, refrainInputSchema, type SentinelRefrainStore } from './refrain-store';
+import type { SentinelRefrainService } from './refrain-service';
+import { SentinelRefrainCommands } from './refrain-commands';
 
 const BASE = '/api/workspaces/([^/]+)/sentinel-todos/([^/]+)/jobs';
 const revision = z.number().int().positive();
-const updateSchema = jobInputSchema.partial().extend({
-    mode: jobInputSchema.shape.mode.removeDefault().optional(),
-    enabled: jobInputSchema.shape.enabled.removeDefault().optional(),
-    autoCompactThreshold: jobInputSchema.shape.autoCompactThreshold.removeDefault().optional(),
+const updateSchema = refrainInputSchema.partial().extend({
+    mode: refrainInputSchema.shape.mode.removeDefault().optional(),
+    enabled: refrainInputSchema.shape.enabled.removeDefault().optional(),
+    autoCompactThreshold: refrainInputSchema.shape.autoCompactThreshold.removeDefault().optional(),
     expectedRevision: revision,
 }).strict();
 const deleteSchema = z.object({ expectedRevision: revision }).strict();
 
-export function registerSentinelJobRoutes(opts: {
+export function registerSentinelRefrainRoutes(opts: {
     routes: Route[];
-    jobs: SentinelJobStore;
-    service: SentinelJobService;
+    jobs: SentinelRefrainStore;
+    service: SentinelRefrainService;
     onConfigChange?: () => void;
     /** Shared with the `sentinel_jobs` tool; built from the options above when omitted. */
-    commands?: SentinelJobCommands;
+    commands?: SentinelRefrainCommands;
 }): void {
-    const commands = opts.commands ?? new SentinelJobCommands(opts);
+    const commands = opts.commands ?? new SentinelRefrainCommands(opts);
     const add = (method: string, suffix: string, command: (
         req: http.IncomingMessage, res: http.ServerResponse, owner: SentinelTodoOwner, match: RegExpMatchArray,
     ) => Promise<unknown>) => opts.routes.push({
@@ -42,7 +42,7 @@ export function registerSentinelJobRoutes(opts: {
                 await command(req, res, owner, match!);
             } catch (error) {
                 if (error instanceof URIError) return sendError(res, 400, 'Invalid URL encoding');
-                if (error instanceof JobError || error instanceof SentinelTodoError) {
+                if (error instanceof RefrainError || error instanceof SentinelTodoError) {
                     const status = { invalid: 400, not_found: 404, conflict: 409, limit: 400 }[error.code];
                     return sendJSON(res, status, { error: error.message, code: error.code });
                 }
@@ -60,7 +60,7 @@ export function registerSentinelJobRoutes(opts: {
     };
     add('GET', '', async (_req, res, owner) => sendJSON(res, 200, { jobs: await commands.list(owner) }));
     add('POST', '', async (req, res, owner) => {
-        const input = await body(req, res, jobInputSchema);
+        const input = await body(req, res, refrainInputSchema);
         if (!input) return;
         sendJSON(res, 201, await commands.create(owner, input));
     });

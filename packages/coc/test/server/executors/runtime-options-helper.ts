@@ -19,7 +19,7 @@ export const RUNTIME_CAPABILITY_KEYS = [
     'getSendMessage',
     'getSendToConversationRuntime',
     'getSentinelTodos',
-    'getSentinelJobCommands',
+    'getSentinelRefrainCommands',
     'getMcpOauthManager',
     'getTurnPerformanceStore',
     'getToolInventoryStore',

@@ -1,5 +1,5 @@
 /** User jobs belong to one Sentinel on the workspace's owning server. */
-export interface SentinelScheduledJobInput {
+export interface SentinelRefrainInput {
   name: string;
   instructions: string;
   provider: string;
@@ -27,7 +27,7 @@ export interface SentinelScheduledJobInput {
   gateScript?: string;
 }
 
-export interface SentinelScheduledJobRun {
+export interface SentinelRefrainRun {
   id: string;
   runNumber: number;
   trigger: 'manual' | 'schedule';
@@ -48,7 +48,7 @@ export interface SentinelScheduledJobRun {
   skipReason?: 'overlap' | 'gate-empty' | 'gate-unavailable';
 }
 
-export interface SentinelScheduledJob extends Omit<SentinelScheduledJobInput, 'mode' | 'enabled' | 'autoCompactThreshold'> {
+export interface SentinelRefrain extends Omit<SentinelRefrainInput, 'mode' | 'enabled' | 'autoCompactThreshold'> {
   id: string;
   mode: 'ask' | 'autopilot';
   enabled: boolean;
@@ -62,15 +62,15 @@ export interface SentinelScheduledJob extends Omit<SentinelScheduledJobInput, 'm
   revision: number;
   processId?: string;
   nextRunAt?: string;
-  activeRun?: SentinelScheduledJobRun;
-  runs: SentinelScheduledJobRun[];
+  activeRun?: SentinelRefrainRun;
+  runs: SentinelRefrainRun[];
 }
 
 /**
  * Test gate outcome: one gate evaluation with the saved `state`. It starts no
  * run and saves nothing, and it runs even while the gate is paused.
  */
-export interface SentinelScheduledJobGateTest {
+export interface SentinelRefrainGateTest {
   ok: boolean;
   /** Canonical result JSON when `ok`. */
   result?: string;

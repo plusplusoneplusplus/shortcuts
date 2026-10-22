@@ -58,7 +58,7 @@ describe('production job gate owner runtime', () => {
     });
 
     function run(code: string, state: unknown = null, signal?: AbortSignal, target = owner) {
-        return router.runJobGate({ ...target, code, state, signal });
+        return router.runRefrainGate({ ...target, code, state, signal });
     }
 
     it('runs through router, bridge, executor and worker with the supplied state and no provider turn', async () => {

@@ -68,7 +68,7 @@ import { isMessagingJobOrigin } from '../messaging/job-notices';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
-import type { SentinelJobDefaults, SentinelJobsToolDeps } from '../llm-tools/sentinel-jobs-tool';
+import type { SentinelRefrainDefaults, SentinelRefrainsToolDeps } from '../llm-tools/sentinel-refrains-tool';
 import { createSubmitScrubFindingsTool } from '../llm-tools/submit-scrub-findings-tool';
 import { getScrubChildContext } from '../sentinel-scrubber/scrubber-runs';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
@@ -86,7 +86,7 @@ import { createToolCallLedger } from './tool-call-ledger';
 import type { SystemOneAddonDeps } from './prompt-builder';
 import type { CreatePullRequestToolDeps } from '../llm-tools/create-pull-request-tool';
 import { readAutomationTurnSource } from '../processes/automation-turn-source';
-import { runJobGateWithOwnerTools, type JobGateOwnerRunner } from '../sentinel-jobs/job-gate-owner-runner';
+import { runRefrainGateWithOwnerTools, type RefrainGateOwnerRunner } from '../sentinel-refrains/refrain-gate-owner-runner';
 import { OwnerScriptUnavailableError, runScriptWithOwnerTools, type OwnerScriptRunner, type OwnerScriptTools } from './owner-script-runner';
 /** Log prefix for every line this executor writes. */
 const CHAT_EXECUTOR_LOG_LABEL = '[ChatModeExecutor]';
@@ -296,7 +296,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      */
     private readonly providerReasoningModelCache = new Map<ChatProvider, ModelInfo[]>();
     /** Each Sentinel chat's latest resolved turn settings, inherited by jobs `sentinel_jobs` creates. */
-    private readonly sentinelJobDefaults = new Map<string, SentinelJobDefaults>();
+    private readonly sentinelRefrainDefaults = new Map<string, SentinelRefrainDefaults>();
 
     constructor(store: ProcessStore, options: ChatModeExecutorOptions, dataDir?: string) {
         super(store, dataDir);
@@ -384,7 +384,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     }
 
     /** Resolve the current Sentinel's unattended CoC capabilities without a provider turn. */
-    readonly runJobGate: JobGateOwnerRunner = async ({ workspaceId, processId, code, state, signal }) => {
+    readonly runRefrainGate: RefrainGateOwnerRunner = async ({ workspaceId, processId, code, state, signal }) => {
         signal?.throwIfAborted();
         const owner = await this.store.getProcess(processId, workspaceId);
         signal?.throwIfAborted();
@@ -394,7 +394,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             || owner.status === 'cancelled' || owner.status === 'cancelling') {
             throw new Error('Gate script owner is unavailable');
         }
-        return runJobGateWithOwnerTools({ code, state, signal, ownerTools: this.buildOwnerScriptTools(owner, workspaceId, this.dataDir) });
+        return runRefrainGateWithOwnerTools({ code, state, signal, ownerTools: this.buildOwnerScriptTools(owner, workspaceId, this.dataDir) });
     };
 
     /** Run a script with any chat's unattended CoC tools, narrowed to `allowTools`. No provider turn starts. */
@@ -434,7 +434,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             browserState: this.runtime.getBrowserToolState?.(),
             sentinelTodos: this.buildSentinelTodoDeps(owner.id, workspaceId, mode),
             // Background turns do not acquire attended Sentinel job authority.
-            sentinelJobs: this.buildSentinelJobsDeps(owner.id, workspaceId, mode, provider, true),
+            sentinelRefrains: this.buildSentinelRefrainsDeps(owner.id, workspaceId, mode, provider, true),
             includeToolScripting: provider !== 'codex',
         };
     }
@@ -801,24 +801,24 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      * read-only and automation (cron/wakeup/trigger) turns get no new job
      * authority. Every call is still owner- and flag-checked server-side.
      */
-    protected buildSentinelJobsDeps(
+    protected buildSentinelRefrainsDeps(
         processId: string,
         workspaceId: string | undefined,
         mode: ChatMode | undefined,
         provider: ChatProvider,
         unattended: boolean,
-    ): SentinelJobsToolDeps | undefined {
+    ): SentinelRefrainsToolDeps | undefined {
         if (unattended || normalizeChatMode(mode) !== 'sentinel' || !workspaceId) return undefined;
-        const commands = this.runtime.getSentinelJobCommands?.();
+        const commands = this.runtime.getSentinelRefrainCommands?.();
         if (!commands) return undefined;
-        this.sentinelJobDefaults.set(processId, { provider });
-        return { ...commands, owner: { workspaceId, processId }, defaults: () => this.sentinelJobDefaults.get(processId) ?? { provider } };
+        this.sentinelRefrainDefaults.set(processId, { provider });
+        return { ...commands, owner: { workspaceId, processId }, defaults: () => this.sentinelRefrainDefaults.get(processId) ?? { provider } };
     }
 
     /** Records the turn's resolved model/effort for a chat wired with `sentinel_jobs`. */
-    protected recordSentinelJobDefaults(processId: string, provider: ChatProvider, model: string | undefined, effort: string | undefined): void {
-        if (!this.sentinelJobDefaults.has(processId)) return;
-        this.sentinelJobDefaults.set(processId, { provider, ...(model ? { model } : {}), ...(effort ? { effort } : {}) });
+    protected recordSentinelRefrainDefaults(processId: string, provider: ChatProvider, model: string | undefined, effort: string | undefined): void {
+        if (!this.sentinelRefrainDefaults.has(processId)) return;
+        this.sentinelRefrainDefaults.set(processId, { provider, ...(model ? { model } : {}), ...(effort ? { effort } : {}) });
     }
 
     /**
@@ -1085,7 +1085,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             createPullRequest: isAsk ? undefined : this.buildCreatePullRequestDeps(processId, payload.workspaceId, workingDirectory),
             // Sentinel runs on the ask path; only it gets the to-do ledger tool.
             sentinelTodos: isAsk ? this.buildSentinelTodoDeps(processId, payload.workspaceId, payload.mode) : undefined,
-            sentinelJobs: isAsk ? this.buildSentinelJobsDeps(processId, payload.workspaceId, payload.mode,
+            sentinelRefrains: isAsk ? this.buildSentinelRefrainsDeps(processId, payload.workspaceId, payload.mode,
                 payload.provider ?? this.provider, !!scrubContext || !!readAutomationTurnSource(payload.context as Record<string, unknown> | undefined)) : undefined,
             scrubFindings: isAsk ? this.buildScrubFindingsTool(task) : undefined,
             // Registered in autopilot too, so the tool block is identical to
@@ -1450,7 +1450,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             const effectiveModel = policy.resolvedModel;
             policyModelId = policy.modelId;
             policyReasoningEffort = policy.reasoningEffort;
-            this.recordSentinelJobDefaults(processId, taskProvider, policy.resolvedModel, policy.reasoningEffort);
+            this.recordSentinelRefrainDefaults(processId, taskProvider, policy.resolvedModel, policy.reasoningEffort);
             await this.assertChatImageModel(taskProvider, effectiveAiService, policy.modelId, attachments);
             imagesAccepted = true;
 

@@ -1,8 +1,8 @@
 import type {
-  SentinelScheduledJob,
-  SentinelScheduledJobGateTest,
-  SentinelScheduledJobInput,
-  SentinelScheduledJobRun,
+  SentinelRefrain,
+  SentinelRefrainGateTest,
+  SentinelRefrainInput,
+  SentinelRefrainRun,
   SentinelTodoTagLibrary,
   WriteSentinelTodoTagRequest,
   DeleteSentinelTodoTagRequest,
@@ -43,11 +43,11 @@ function ledgerPath(workspaceId: string, processId: string, suffix = ''): string
  */
 export class SentinelTodosClient {
   readonly scrubber: SentinelScrubberClient;
-  readonly jobs: SentinelScheduledJobsClient;
+  readonly jobs: SentinelRefrainsClient;
 
   constructor(private readonly transport: RequestAdapter) {
     this.scrubber = new SentinelScrubberClient(transport);
-    this.jobs = new SentinelScheduledJobsClient(transport);
+    this.jobs = new SentinelRefrainsClient(transport);
   }
 
   getTags(workspaceId: string, processId: string, options?: { signal?: AbortSignal }): Promise<SentinelTodoTagLibrary> {
@@ -154,23 +154,23 @@ export class SentinelTodosClient {
 }
 
 /** Resolve the owner client before accessing jobs (including remote workspaces). */
-export class SentinelScheduledJobsClient {
+export class SentinelRefrainsClient {
   constructor(private readonly transport: RequestAdapter) {}
 
   private path(workspaceId: string, processId: string, jobId?: string): string {
     return ledgerPath(workspaceId, processId, '/jobs' + (jobId ? `/${encodePathSegment(jobId)}` : ''));
   }
 
-  list(workspaceId: string, processId: string, options?: { signal?: AbortSignal }): Promise<{ jobs: SentinelScheduledJob[] }> {
+  list(workspaceId: string, processId: string, options?: { signal?: AbortSignal }): Promise<{ jobs: SentinelRefrain[] }> {
     return this.transport.request(this.path(workspaceId, processId), options);
   }
 
-  create(workspaceId: string, processId: string, input: SentinelScheduledJobInput): Promise<SentinelScheduledJob> {
+  create(workspaceId: string, processId: string, input: SentinelRefrainInput): Promise<SentinelRefrain> {
     return this.transport.request(this.path(workspaceId, processId), { method: 'POST', body: input });
   }
 
   update(workspaceId: string, processId: string, jobId: string,
-    input: Partial<SentinelScheduledJobInput> & { expectedRevision: number }): Promise<SentinelScheduledJob> {
+    input: Partial<SentinelRefrainInput> & { expectedRevision: number }): Promise<SentinelRefrain> {
     return this.transport.request(this.path(workspaceId, processId, jobId), { method: 'PATCH', body: input });
   }
 
@@ -178,22 +178,22 @@ export class SentinelScheduledJobsClient {
     return this.transport.request(this.path(workspaceId, processId, jobId), { method: 'DELETE', body: input });
   }
 
-  start(workspaceId: string, processId: string, jobId: string): Promise<SentinelScheduledJobRun> {
+  start(workspaceId: string, processId: string, jobId: string): Promise<SentinelRefrainRun> {
     return this.transport.request(this.path(workspaceId, processId, jobId) + '/runs', { method: 'POST' });
   }
 
-  cancel(workspaceId: string, processId: string, jobId: string, runId: string): Promise<SentinelScheduledJobRun> {
+  cancel(workspaceId: string, processId: string, jobId: string, runId: string): Promise<SentinelRefrainRun> {
     return this.transport.request(this.path(workspaceId, processId, jobId) + `/runs/${encodePathSegment(runId)}/cancel`, { method: 'POST' });
   }
 
   /** Runs the gate once with its saved state; starts no run and saves nothing. */
   testGate(workspaceId: string, processId: string, jobId: string,
-    options?: { signal?: AbortSignal }): Promise<SentinelScheduledJobGateTest> {
+    options?: { signal?: AbortSignal }): Promise<SentinelRefrainGateTest> {
     return this.transport.request(this.path(workspaceId, processId, jobId) + '/gate/test', { ...options, method: 'POST' });
   }
 
   /** Clears a paused gate and its failure count. */
-  resumeGate(workspaceId: string, processId: string, jobId: string): Promise<SentinelScheduledJob> {
+  resumeGate(workspaceId: string, processId: string, jobId: string): Promise<SentinelRefrain> {
     return this.transport.request(this.path(workspaceId, processId, jobId) + '/gate/resume', { method: 'POST' });
   }
 }

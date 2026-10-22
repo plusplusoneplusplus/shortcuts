@@ -6,11 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TaskQueueManager, type QueuedTask } from '@plusplusoneplusplus/forge';
 import { ProcessLifecycleRunner, type LifecycleRunnerOptions } from '../../../src/server/executors/process-lifecycle-runner';
 import { defaultIsExclusive } from '../../../src/server/queue/queue-executor-bridge';
-import { SentinelJobService, getJobTaskContext } from '../../../src/server/sentinel-jobs/job-service';
-import { SentinelJobStore } from '../../../src/server/sentinel-jobs/job-store';
+import { SentinelRefrainService, getRefrainTaskContext } from '../../../src/server/sentinel-refrains/refrain-service';
+import { SentinelRefrainStore } from '../../../src/server/sentinel-refrains/refrain-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
-import { registerSentinelJobRoutes } from '../../../src/server/sentinel-jobs/job-routes';
+import { registerSentinelRefrainRoutes } from '../../../src/server/sentinel-refrains/refrain-routes';
 import { createRouter, type Route } from '../../../src/server/shared/router';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createTodoTestDatabase } from '../sentinel-todos/test-db';
@@ -21,8 +21,8 @@ vi.mock('../../../src/server/processes/output-file-manager', () => ({
 
 const owner = { workspaceId: 'ws-jobs', processId: 'queue_sentinel' };
 let fixture: ReturnType<typeof createTodoTestDatabase>;
-let jobs: SentinelJobStore;
-let service: SentinelJobService;
+let jobs: SentinelRefrainStore;
+let service: SentinelRefrainService;
 let queue: TaskQueueManager;
 let store: ReturnType<typeof createMockProcessStore>;
 let runner: ProcessLifecycleRunner;
@@ -33,7 +33,7 @@ beforeEach(async () => {
     const directory = path.resolve('.sentinel-jobs-tests', randomUUID());
     fs.mkdirSync(directory, { recursive: true });
     fixture = createTodoTestDatabase(directory);
-    jobs = new SentinelJobStore(fixture.db);
+    jobs = new SentinelRefrainStore(fixture.db);
     enabled = true;
     store = createMockProcessStore({ initialWorkspaces: [{ id: owner.workspaceId,
         rootPath: process.cwd(), name: 'Jobs' }] });
@@ -42,7 +42,7 @@ beforeEach(async () => {
         metadata: { type: 'chat', ...owner, mode: 'sentinel', provider: 'copilot' } });
     const todos = new SentinelTodoService({ todos: new SentinelTodoStore(fixture.db), store });
     queue = new TaskQueueManager({ keepHistory: true, isExclusive: defaultIsExclusive });
-    service = new SentinelJobService({ dataDir: fixture.dataDir, jobs, todos, store, getEnabled: () => enabled,
+    service = new SentinelRefrainService({ dataDir: fixture.dataDir, jobs, todos, store, getEnabled: () => enabled,
         enqueue: async input => queue.enqueue(input), cancelTask: id => queue.cancelTask(id),
         getTask: id => queue.getTask(id) });
     const listeners = new Map<unknown, (...args: unknown[]) => void>();
@@ -55,7 +55,7 @@ beforeEach(async () => {
         off(event, listener) { queue.off(event, listeners.get(listener) as never); listeners.delete(listener); },
     });
     runner = new ProcessLifecycleRunner(store, directory, vi.fn(), 'copilot', {
-        getSentinelScheduledJobs: () => service,
+        getSentinelRefrains: () => service,
     });
     options = {
         cancelledTasks: new Set(),
@@ -116,7 +116,7 @@ describe('scheduled job queue and lifecycle integration', () => {
 
     it('executes HTTP-created runs through the queue and lifecycle, then gates both routes and queued provider dispatch live', async () => {
         const routes: Route[] = [];
-        registerSentinelJobRoutes({ routes, jobs, service, onConfigChange: () => {} });
+        registerSentinelRefrainRoutes({ routes, jobs, service, onConfigChange: () => {} });
         const server = http.createServer(createRouter({ routes, spaHtml: '' }));
         await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
         try {
@@ -201,7 +201,7 @@ describe('scheduled job queue and lifecycle integration', () => {
             .toEqual(['user', 'assistant', 'user', 'assistant']);
         expect(jobs.run(owner, a.id, next.id).jobTurnHref).toContain('?turn=2');
         expect(options.executeByTypeFn).not.toHaveBeenCalled();
-        expect(getJobTaskContext(taskA)?.kind).toBe('run');
+        expect(getRefrainTaskContext(taskA)?.kind).toBe('run');
     });
 
     it('checks live gates in the real lifecycle before invoking the provider', async () => {

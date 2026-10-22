@@ -7,33 +7,33 @@
  */
 
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
-import type { SentinelScheduledJob, SentinelScheduledJobGateTest, SentinelScheduledJobInput, SentinelScrubberConfig } from '@plusplusoneplusplus/coc-client';
-import type { SentinelJobCommands } from '../sentinel-jobs/job-commands';
-import { JobError, type JobRunRecord } from '../sentinel-jobs/job-store';
+import type { SentinelRefrain, SentinelRefrainGateTest, SentinelRefrainInput, SentinelScrubberConfig } from '@plusplusoneplusplus/coc-client';
+import type { SentinelRefrainCommands } from '../sentinel-refrains/refrain-commands';
+import { RefrainError, type RefrainRunRecord } from '../sentinel-refrains/refrain-store';
 import type { ScrubberCommands, ScrubberView } from '../sentinel-scrubber/scrubber-commands';
 import { ScrubberStoreError, type ScrubRunRecord } from '../sentinel-scrubber/scrubber-store';
 import { SentinelTodoError, type SentinelTodoOwner } from '../sentinel-todos/sentinel-todo-store';
 
-export const SENTINEL_JOBS_TOOL_NAME = 'sentinel_jobs';
+export const SENTINEL_REFRAINS_TOOL_NAME = 'sentinel_jobs';
 
 /** The Sentinel's current resolved settings, inherited by new custom jobs. */
-export interface SentinelJobDefaults { provider?: string; model?: string; effort?: string }
+export interface SentinelRefrainDefaults { provider?: string; model?: string; effort?: string }
 
-export interface SentinelJobsToolDeps {
+export interface SentinelRefrainsToolDeps {
     /** The invoking Sentinel chat; every call is scoped to its jobs. */
     owner: SentinelTodoOwner;
-    jobs: Pick<SentinelJobCommands, 'assertOwner' | 'list' | 'get' | 'create' | 'update' | 'start' | 'cancel' | 'testGate' | 'resumeGate'>;
+    jobs: Pick<SentinelRefrainCommands, 'assertOwner' | 'list' | 'get' | 'create' | 'update' | 'start' | 'cancel' | 'testGate' | 'resumeGate'>;
     /** Present only when the scrubber feature is wired; commands still re-check the flag. */
     scrubber?: Pick<ScrubberCommands, 'view' | 'putConfig' | 'start' | 'cancel'>;
-    defaults: () => SentinelJobDefaults;
+    defaults: () => SentinelRefrainDefaults;
 }
 
 /** The server-bound command objects; the executor adds the owner and defaults per turn. */
-export type SentinelJobCommandSet = Pick<SentinelJobsToolDeps, 'jobs' | 'scrubber'>;
+export type SentinelRefrainCommandSet = Pick<SentinelRefrainsToolDeps, 'jobs' | 'scrubber'>;
 
-type JobSettings = Partial<SentinelScheduledJobInput>;
+type JobSettings = Partial<SentinelRefrainInput>;
 
-export interface SentinelJobsArgs extends JobSettings {
+export interface SentinelRefrainsArgs extends JobSettings {
     action: 'list' | 'get' | 'create' | 'update' | 'pause' | 'resume' | 'run_now' | 'cancel' | 'test_gate' | 'resume_gate';
     kind?: 'custom' | 'scrubber';
     jobId?: string;
@@ -42,13 +42,13 @@ export interface SentinelJobsArgs extends JobSettings {
     itemIds?: string[];
 }
 
-export type SentinelJobsResult =
-    | { jobs: SentinelScheduledJob[]; scrubber?: ScrubberView | { unavailable: string } }
-    | { job: SentinelScheduledJob }
+export type SentinelRefrainsResult =
+    | { jobs: SentinelRefrain[]; scrubber?: ScrubberView | { unavailable: string } }
+    | { job: SentinelRefrain }
     | { scrubber: ScrubberView | SentinelScrubberConfig }
-    | { run: JobRunRecord | ScrubRunRecord }
-    | { gateTest: SentinelScheduledJobGateTest }
-    | { error: string; code?: string; current?: SentinelScheduledJob | SentinelScrubberConfig };
+    | { run: RefrainRunRecord | ScrubRunRecord }
+    | { gateTest: SentinelRefrainGateTest }
+    | { error: string; code?: string; current?: SentinelRefrain | SentinelScrubberConfig };
 
 const JOB_SETTINGS = ['name', 'instructions', 'provider', 'model', 'effort', 'mode', 'cron', 'enabled', 'autoCompactThreshold', 'gateScript'] as const;
 const SCRUBBER_SETTINGS = new Set<string>(['cron', 'enabled']);
@@ -81,7 +81,7 @@ const DESCRIPTION =
     'Coda findings are user actions in the Refrains panel. Report failures to the user as-is.';
 
 /** Input schema, shared with the settings-page parameter mirror. */
-export const SENTINEL_JOBS_TOOL_PARAMETERS = {
+export const SENTINEL_REFRAINS_TOOL_PARAMETERS = {
     type: 'object',
     properties: {
         action: { type: 'string', enum: ['list', 'get', 'create', 'update', 'pause', 'resume', 'run_now', 'cancel', 'test_gate', 'resume_gate'] },
@@ -105,7 +105,7 @@ export const SENTINEL_JOBS_TOOL_PARAMETERS = {
     additionalProperties: false,
 };
 
-export function createSentinelJobsTool(deps: SentinelJobsToolDeps) {
+export function createSentinelRefrainsTool(deps: SentinelRefrainsToolDeps) {
     const { owner, jobs, scrubber } = deps;
 
     async function currentState(kind: 'custom' | 'scrubber', jobId?: string) {
@@ -115,7 +115,7 @@ export function createSentinelJobsTool(deps: SentinelJobsToolDeps) {
         } catch { return undefined; }
     }
 
-    async function createJob(args: SentinelJobsArgs) {
+    async function createJob(args: SentinelRefrainsArgs) {
         const settings = pickSettings(args);
         const defaults = deps.defaults();
         // A different provider needs its own model; never pair another provider's model or effort.
@@ -123,7 +123,7 @@ export function createSentinelJobsTool(deps: SentinelJobsToolDeps) {
         const provider = settings.provider ?? defaults.provider;
         const model = settings.model ?? (inherit ? defaults.model : undefined);
         if (!provider || !model) {
-            throw new JobError('invalid', 'Could not resolve a provider and model for this refrain; ask the user which provider and model to use.');
+            throw new RefrainError('invalid', 'Could not resolve a provider and model for this refrain; ask the user which provider and model to use.');
         }
         const effort = settings.effort ?? (inherit && model === defaults.model ? defaults.effort : undefined);
         return jobs.create(owner, {
@@ -132,7 +132,7 @@ export function createSentinelJobsTool(deps: SentinelJobsToolDeps) {
         });
     }
 
-    async function writeScrubber(args: SentinelJobsArgs, enabled?: boolean) {
+    async function writeScrubber(args: SentinelRefrainsArgs, enabled?: boolean) {
         const unsupported = JOB_SETTINGS.filter(key => args[key] !== undefined && !SCRUBBER_SETTINGS.has(key));
         if (unsupported.length) {
             throw new ScrubberStoreError('invalid', `Coda only supports cron and enabled; unsupported: ${unsupported.join(', ')}`);
@@ -142,10 +142,10 @@ export function createSentinelJobsTool(deps: SentinelJobsToolDeps) {
             requireRevision(args));
     }
 
-    const tool = defineTool<SentinelJobsArgs>(SENTINEL_JOBS_TOOL_NAME, {
+    const tool = defineTool<SentinelRefrainsArgs>(SENTINEL_REFRAINS_TOOL_NAME, {
         description: DESCRIPTION,
-        parameters: SENTINEL_JOBS_TOOL_PARAMETERS,
-        handler: async (args: SentinelJobsArgs, invocation): Promise<SentinelJobsResult> => {
+        parameters: SENTINEL_REFRAINS_TOOL_PARAMETERS,
+        handler: async (args: SentinelRefrainsArgs, invocation): Promise<SentinelRefrainsResult> => {
             const kind = args.kind;
             try {
                 await jobs.assertOwner(owner);
@@ -189,7 +189,7 @@ export function createSentinelJobsTool(deps: SentinelJobsToolDeps) {
                 }
                 return { error: `Unsupported action: ${args.action}`, code: 'invalid' };
             } catch (err) {
-                if (err instanceof JobError || err instanceof ScrubberStoreError || err instanceof SentinelTodoError) {
+                if (err instanceof RefrainError || err instanceof ScrubberStoreError || err instanceof SentinelTodoError) {
                     const current = err.code === 'conflict' && kind ? await currentState(kind, args.jobId) : undefined;
                     return { error: err.message, code: err.code, ...(current ? { current } : {}) };
                 }
@@ -200,19 +200,19 @@ export function createSentinelJobsTool(deps: SentinelJobsToolDeps) {
     return tool;
 }
 
-function pickSettings(args: SentinelJobsArgs): JobSettings {
+function pickSettings(args: SentinelRefrainsArgs): JobSettings {
     const settings: Record<string, unknown> = {};
     for (const key of JOB_SETTINGS) if (args[key] !== undefined) settings[key] = args[key];
     return settings as JobSettings;
 }
 
-function requireRevision(args: SentinelJobsArgs): number {
-    if (typeof args.expectedRevision !== 'number') throw new JobError('invalid', 'Pass expectedRevision from the latest list/get');
+function requireRevision(args: SentinelRefrainsArgs): number {
+    if (typeof args.expectedRevision !== 'number') throw new RefrainError('invalid', 'Pass expectedRevision from the latest list/get');
     return args.expectedRevision;
 }
 
 function requireField(value: string | undefined, name: string): string {
-    if (!value) throw new JobError('invalid', `Pass ${name}`);
+    if (!value) throw new RefrainError('invalid', `Pass ${name}`);
     return value;
 }
 

@@ -2,15 +2,15 @@ import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SentinelJobStore } from '../../../src/server/sentinel-jobs/job-store';
-import { SentinelJobScheduler } from '../../../src/server/sentinel-jobs/job-scheduler';
+import { SentinelRefrainStore } from '../../../src/server/sentinel-refrains/refrain-store';
+import { SentinelJobScheduler } from '../../../src/server/sentinel-refrains/job-scheduler';
 import { createTodoTestDatabase } from '../sentinel-todos/test-db';
 
 const owner = { workspaceId: 'ws-a', processId: 'queue_parent' };
 const other = { workspaceId: 'ws-b', processId: 'queue_other' };
 const input = { name: 'Review', instructions: 'Check evidence', provider: 'copilot' as const, model: 'model', cron: '0 * * * *' };
 let fixture: ReturnType<typeof createTodoTestDatabase>;
-let jobs: SentinelJobStore;
+let jobs: SentinelRefrainStore;
 let scheduler: SentinelJobScheduler;
 let enabled: boolean;
 let exists: boolean;
@@ -24,7 +24,7 @@ beforeEach(() => {
     const directory = path.resolve('.sentinel-jobs-tests', randomUUID());
     fs.mkdirSync(directory, { recursive: true });
     fixture = createTodoTestDatabase(directory);
-    jobs = new SentinelJobStore(fixture.db);
+    jobs = new SentinelRefrainStore(fixture.db);
     enabled = true;
     exists = true;
     tick.mockReset().mockResolvedValue({});

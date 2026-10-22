@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import type { CocClient, SentinelScheduledJob, SentinelScheduledJobInput } from '@plusplusoneplusplus/coc-client';
+import type { CocClient, SentinelRefrain, SentinelRefrainInput } from '@plusplusoneplusplus/coc-client';
 import { useProviderModels, type AgentProvider } from '../../../hooks/useProviderModels';
 import { TIER_KEYS, useProviderEffortTiers, type EffortTierKey, type LocalEffortTiersMap } from '../../../hooks/useProviderEffortTiers';
 import { resolveEffectiveTier } from '../../../utils/resolveEffortTier';
@@ -31,8 +31,8 @@ function desiredTier(draft: Draft, tiers: LocalEffortTiersMap): EffortTierKey {
  * otherwise it keeps the explicit model and reasoning effort.
  */
 export function SentinelRefrainDialog({ job, client, baseUrl, effortLevelsEnabled, busy, error, onSave, onClose }: {
-    job?: SentinelScheduledJob; client: CocClient; baseUrl?: string; effortLevelsEnabled: boolean; busy: boolean; error: string | null;
-    onSave: (input: SentinelScheduledJobInput) => Promise<boolean>; onClose: () => void;
+    job?: SentinelRefrain; client: CocClient; baseUrl?: string; effortLevelsEnabled: boolean; busy: boolean; error: string | null;
+    onSave: (input: SentinelRefrainInput) => Promise<boolean>; onClose: () => void;
 }) {
     const id = useId();
     const [draft, setDraft] = useState<Draft>(() => ({

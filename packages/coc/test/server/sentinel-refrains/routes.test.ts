@@ -7,9 +7,9 @@ import type { AIProcess, CreateTaskInput, ProcessStore } from '@plusplusoneplusp
 import { createRouter, type Route } from '../../../src/server/shared/router';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
-import { SentinelJobStore } from '../../../src/server/sentinel-jobs/job-store';
-import { SentinelJobService } from '../../../src/server/sentinel-jobs/job-service';
-import { registerSentinelJobRoutes } from '../../../src/server/sentinel-jobs/job-routes';
+import { SentinelRefrainStore } from '../../../src/server/sentinel-refrains/refrain-store';
+import { SentinelRefrainService } from '../../../src/server/sentinel-refrains/refrain-service';
+import { registerSentinelRefrainRoutes } from '../../../src/server/sentinel-refrains/refrain-routes';
 import { createTodoTestDatabase } from '../sentinel-todos/test-db';
 
 const owner = { workspaceId: 'ws-a', processId: 'queue_s1' };
@@ -24,8 +24,8 @@ const processesMeta: Record<string, { workspaceId: string; mode: string }> = {
 let fixture: ReturnType<typeof createTodoTestDatabase>;
 let todoStore: SentinelTodoStore;
 let todoService: SentinelTodoService;
-let jobStore: SentinelJobStore;
-let service: SentinelJobService;
+let jobStore: SentinelRefrainStore;
+let service: SentinelRefrainService;
 let server: http.Server;
 let url: string;
 let enabled: boolean;
@@ -50,7 +50,7 @@ beforeEach(async () => {
     fs.mkdirSync(directory, { recursive: true });
     fixture = createTodoTestDatabase(directory);
     todoStore = new SentinelTodoStore(fixture.db);
-    jobStore = new SentinelJobStore(fixture.db);
+    jobStore = new SentinelRefrainStore(fixture.db);
     todoService = new SentinelTodoService({
         todos: todoStore,
         store: {
@@ -67,7 +67,7 @@ beforeEach(async () => {
     onConfigChange = vi.fn();
     enqueue = vi.fn(async (taskInput: CreateTaskInput) => taskInput.id!);
     cancelTask = vi.fn(() => true);
-    service = new SentinelJobService({
+    service = new SentinelRefrainService({
         dataDir: fixture.dataDir,
         jobs: jobStore,
         todos: todoService,
@@ -88,7 +88,7 @@ beforeEach(async () => {
         getTask: () => undefined,
     });
     const routes: Route[] = [];
-    registerSentinelJobRoutes({ routes, jobs: jobStore, service, onConfigChange });
+    registerSentinelRefrainRoutes({ routes, jobs: jobStore, service, onConfigChange });
     server = http.createServer(createRouter({ routes, spaHtml: '' }));
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
     const address = server.address();

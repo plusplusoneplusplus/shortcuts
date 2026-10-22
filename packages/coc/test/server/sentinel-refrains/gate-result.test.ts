@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-    canonicalizeJobGateResult as canonicalize,
-    MAX_JOB_GATE_RESULT_BYTES,
-} from '../../../src/server/sentinel-jobs/job-gate-result';
+    canonicalizeRefrainGateResult as canonicalize,
+    MAX_REFRAIN_GATE_RESULT_BYTES,
+} from '../../../src/server/sentinel-refrains/refrain-gate-result';
 
-describe('canonicalizeJobGateResult', () => {
+describe('canonicalizeRefrainGateResult', () => {
     it.each([null, true, false, 0, -12.5, 'hello', [], {}])('accepts JSON value %j', value => {
         expect(JSON.parse(canonicalize(value))).toEqual(value);
     });
@@ -35,16 +35,16 @@ describe('canonicalizeJobGateResult', () => {
     });
 
     it('accepts exactly 16 KiB and rejects larger canonical JSON', () => {
-        const value = 'x'.repeat(MAX_JOB_GATE_RESULT_BYTES - 2);
-        expect(Buffer.byteLength(canonicalize(value))).toBe(MAX_JOB_GATE_RESULT_BYTES);
+        const value = 'x'.repeat(MAX_REFRAIN_GATE_RESULT_BYTES - 2);
+        expect(Buffer.byteLength(canonicalize(value))).toBe(MAX_REFRAIN_GATE_RESULT_BYTES);
         expect(() => canonicalize(value + 'x')).toThrow('exceeds');
     });
 
     it('counts UTF-8 and JSON escaping in the stored size', () => {
-        const multibyte = 'é'.repeat((MAX_JOB_GATE_RESULT_BYTES - 2) / 2);
-        expect(Buffer.byteLength(canonicalize(multibyte))).toBe(MAX_JOB_GATE_RESULT_BYTES);
+        const multibyte = 'é'.repeat((MAX_REFRAIN_GATE_RESULT_BYTES - 2) / 2);
+        expect(Buffer.byteLength(canonicalize(multibyte))).toBe(MAX_REFRAIN_GATE_RESULT_BYTES);
         expect(() => canonicalize(multibyte + 'é')).toThrow('exceeds');
-        expect(() => canonicalize('\n'.repeat(MAX_JOB_GATE_RESULT_BYTES / 2))).toThrow('exceeds');
+        expect(() => canonicalize('\n'.repeat(MAX_REFRAIN_GATE_RESULT_BYTES / 2))).toThrow('exceeds');
     });
 
     it.each([undefined, NaN, Infinity, -Infinity, 1n, Symbol('x'), () => 1,

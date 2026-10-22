@@ -42,7 +42,7 @@ import type { McpOauthManager } from '../mcp-oauth';
 import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import type { ScrubberRunService } from '../sentinel-scrubber/scrubber-runs';
-import type { SentinelJobCommandSet } from '../llm-tools/sentinel-jobs-tool';
+import type { SentinelRefrainCommandSet } from '../llm-tools/sentinel-refrains-tool';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { CreateTriggerFn } from '../triggers/create-trigger-service';
 import type { TriggerManager } from '../triggers/trigger-manager';
@@ -165,13 +165,13 @@ export interface ExecutorRuntimeCapabilities {
      * chat then gets no findings tool and its run fails without changes.
      */
     readonly getSentinelScrubber?: () => ScrubberRunService | undefined;
-    readonly getSentinelScheduledJobs?: () => import('../sentinel-jobs/job-service').SentinelJobService | undefined;
+    readonly getSentinelRefrains?: () => import('../sentinel-refrains/refrain-service').SentinelRefrainService | undefined;
     /**
      * Owner-validated job/scrubber commands REST uses, bound at the route layer.
      * Powers `sentinel_jobs`; `undefined` while Sentinel jobs are disabled, and
      * `scrubber` is absent while the scrubber is.
      */
-    readonly getSentinelJobCommands?: () => SentinelJobCommandSet | undefined;
+    readonly getSentinelRefrainCommands?: () => SentinelRefrainCommandSet | undefined;
     /** Shared decision service; powers the `system_one` tool. Absent → the tool is not offered. */
     readonly getDecisionService?: () => DecisionService | undefined;
     /** MCP OAuth manager used to surface an interactive authorization prompt. */
@@ -251,7 +251,7 @@ export type ChatExecutorRuntime = Pick<
     | 'getSendToConversationRuntime'
     | 'getSentinelTodos'
     | 'getSentinelScrubber'
-    | 'getSentinelJobCommands'
+    | 'getSentinelRefrainCommands'
     | 'getDecisionService'
     | 'getMcpOauthManager'
     | 'getTurnPerformanceStore'
@@ -263,7 +263,7 @@ export type ChatExecutorRuntime = Pick<
 >;
 
 /** Capabilities visible to {@link ProcessLifecycleRunner}. */
-export type LifecycleRuntime = Pick<ExecutorRuntimeCapabilities, 'getChatStyleSelectorEnabled' | 'getDefaultChatStyle' | 'getSentinelTodos' | 'getSentinelDependencyAdmission' | 'getTriggerInfra' | 'getSentinelScheduledJobs'>;
+export type LifecycleRuntime = Pick<ExecutorRuntimeCapabilities, 'getChatStyleSelectorEnabled' | 'getDefaultChatStyle' | 'getSentinelTodos' | 'getSentinelDependencyAdmission' | 'getTriggerInfra' | 'getSentinelRefrains'>;
 
 /** Capabilities visible to the Dreams task executor. */
 export type DreamRuntime = Pick<ExecutorRuntimeCapabilities, 'getDreamRunExecutor'>;

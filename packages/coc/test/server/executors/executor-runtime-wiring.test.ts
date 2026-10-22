@@ -57,7 +57,7 @@ function makeSentinelRuntime() {
         getSendToConversationRuntime: vi.fn(() => undefined),
         getSentinelTodos: vi.fn(() => undefined),
         getSentinelScrubber: vi.fn(() => undefined),
-        getSentinelJobCommands: vi.fn(() => undefined),
+        getSentinelRefrainCommands: vi.fn(() => undefined),
         getMcpOauthManager: vi.fn(() => undefined),
         getTurnPerformanceStore: vi.fn(() => undefined),
         getToolInventoryStore: vi.fn(() => undefined),
@@ -138,7 +138,7 @@ describe('Executor runtime capability wiring', () => {
             (parts: ReturnType<typeof internals>) => unknown,
         ]> = [
             ['getSentinelScrubber', 'chat executors', p => p.chatExecutor.runtime.getSentinelScrubber],
-            ['getSentinelJobCommands', 'chat executors', p => p.chatExecutor.runtime.getSentinelJobCommands],
+            ['getSentinelRefrainCommands', 'chat executors', p => p.chatExecutor.runtime.getSentinelRefrainCommands],
             ['getWsServer', 'chat executors', p => p.chatExecutor.runtime.getWsServer],
             ['getKustoRuntime', 'chat executors', p => p.chatExecutor.runtime.getKustoRuntime],
             ['getOwnerScriptRunner', 'chat executors', p => p.chatExecutor.runtime.getOwnerScriptRunner],

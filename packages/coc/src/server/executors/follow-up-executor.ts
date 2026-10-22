@@ -547,7 +547,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     ? this.buildCreatePullRequestDeps(processId, wsId, workingDirectory)
                     : undefined,
                 sentinelTodos: this.buildSentinelTodoDeps(processId, wsId, currentMode),
-                sentinelJobs: this.buildSentinelJobsDeps(processId, wsId, currentMode, sessionProvider,
+                sentinelRefrains: this.buildSentinelRefrainsDeps(processId, wsId, currentMode, sessionProvider,
                     reviewOnly || turnSource !== undefined || options?.sentinelJobHandback === true),
                 // Registered regardless of `currentMode` so toggling the mode
                 // pill mid-chat leaves the tool block byte-identical and the
@@ -700,7 +700,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     logger,
                 }),
             });
-            this.recordSentinelJobDefaults(processId, sessionProvider, policy.resolvedModel, policy.reasoningEffort);
+            this.recordSentinelRefrainDefaults(processId, sessionProvider, policy.resolvedModel, policy.reasoningEffort);
 
             await this.assertChatImageModel(sessionProvider, followUpAiService, policy.modelId, attachments);
             imagesAccepted = true;

@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { SentinelScheduledJob, SentinelScheduledJobGateTest, SentinelScheduledJobRun } from '@plusplusoneplusplus/coc-client';
+import type { SentinelRefrain, SentinelRefrainGateTest, SentinelRefrainRun } from '@plusplusoneplusplus/coc-client';
 
 const mock = vi.hoisted(() => ({
     list: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(), start: vi.fn(), cancel: vi.fn(), testGate: vi.fn(), resumeGate: vi.fn(),
@@ -31,12 +31,12 @@ import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/ut
 
 const owner = { ownerWorkspaceId: 'ws-a', processId: 'queue_sentinel' };
 const follow = vi.fn();
-const job = (patch: Partial<SentinelScheduledJob> = {}): SentinelScheduledJob => ({
+const job = (patch: Partial<SentinelRefrain> = {}): SentinelRefrain => ({
     id: 'j1', name: 'Daily review', instructions: 'Review the snapshot.', provider: 'copilot', model: 'test-model',
     mode: 'ask', enabled: true, autoCompactThreshold: 100_000, gateConsecutiveFailures: 0, gatePaused: false, revision: 2,
     processId: 'queue_job', runs: [], ...patch,
 });
-const run = (patch: Partial<SentinelScheduledJobRun> = {}): SentinelScheduledJobRun => ({
+const run = (patch: Partial<SentinelRefrainRun> = {}): SentinelRefrainRun => ({
     id: 'r1', runNumber: 1, trigger: 'manual', status: 'running', createdAt: '2026-10-18T12:00:00Z', ...patch,
 });
 function deferred<T>() {
@@ -93,7 +93,7 @@ describe('Sentinel To-do Jobs', () => {
         expect(screen.queryByRole('region', { name: 'Refrains' })).toBeNull();
     });
     it('renders loading and empty states, and collapses the section', async () => {
-        const pending = deferred<{ jobs: SentinelScheduledJob[] }>();
+        const pending = deferred<{ jobs: SentinelRefrain[] }>();
         mock.list.mockReturnValue(pending.promise);
         view();
         expect(screen.getByText('Loading refrains…')).toBeInTheDocument();
@@ -189,7 +189,7 @@ describe('Sentinel To-do Jobs', () => {
         expect(screen.getByRole('button', { name: 'New refrain' })).toBeDisabled();
     });
     it('serializes Run now clicks and exposes Cancel for an active run', async () => {
-        const pending = deferred<SentinelScheduledJobRun>();
+        const pending = deferred<SentinelRefrainRun>();
         mock.start.mockReturnValue(pending.promise);
         mock.list.mockResolvedValue({ jobs: [job()] });
         view();
@@ -221,7 +221,7 @@ describe('Sentinel To-do Jobs', () => {
         mock.list.mockResolvedValue({ jobs: [job()] });
         view();
         const button = await screen.findByRole('button', { name: 'Run now' });
-        const refresh = deferred<{ jobs: SentinelScheduledJob[] }>();
+        const refresh = deferred<{ jobs: SentinelRefrain[] }>();
         mock.list.mockReturnValue(refresh.promise);
         fireEvent.click(button);
         await waitFor(() => expect(mock.list).toHaveBeenCalledTimes(2));
@@ -280,7 +280,7 @@ describe('Sentinel To-do Jobs', () => {
     it('discards a late mutation result after switching to another Sentinel', async () => {
         mock.list.mockResolvedValue({ jobs: [job()] });
         const page = view();
-        const start = deferred<SentinelScheduledJobRun>();
+        const start = deferred<SentinelRefrainRun>();
         mock.start.mockReturnValue(start.promise);
         fireEvent.click(await screen.findByRole('button', { name: 'Run now' }));
         mock.list.mockResolvedValue({ jobs: [] });
@@ -308,7 +308,7 @@ describe('Sentinel To-do Jobs', () => {
         const options = mock.connect.mock.calls[0][0];
         await act(async () => options.onMessage({ type: 'sentinel-jobs-changed', workspaceId: 'other', processId: owner.processId }));
         expect(mock.list).toHaveBeenCalledTimes(1);
-        const pending = deferred<{ jobs: SentinelScheduledJob[] }>();
+        const pending = deferred<{ jobs: SentinelRefrain[] }>();
         mock.list.mockReturnValue(pending.promise);
         act(() => options.onMessage({ type: 'sentinel-jobs-changed', workspaceId: owner.ownerWorkspaceId, processId: owner.processId }));
         const close = mock.connect.mock.results[0].value.close;
@@ -318,7 +318,7 @@ describe('Sentinel To-do Jobs', () => {
         expect(screen.queryByText('Daily review')).toBeNull();
     });
     describe('gate scripts', () => {
-        const gated = (patch: Partial<SentinelScheduledJob> = {}) => job({ cron: '0 * * * *', gateScript: 'return state;', ...patch });
+        const gated = (patch: Partial<SentinelRefrain> = {}) => job({ cron: '0 * * * *', gateScript: 'return state;', ...patch });
 
         it('requires a cron for a gate script and saves the script with the schedule', async () => {
             view();
@@ -380,7 +380,7 @@ describe('Sentinel To-do Jobs', () => {
         });
         it('tests the gate inline without starting a run or reloading jobs', async () => {
             mock.list.mockResolvedValue({ jobs: [gated()] });
-            const pending = deferred<SentinelScheduledJobGateTest>();
+            const pending = deferred<SentinelRefrainGateTest>();
             mock.testGate.mockReturnValue(pending.promise);
             view();
             fireEvent.click(await screen.findByRole('button', { name: 'Test gate' }));
@@ -435,7 +435,7 @@ describe('Sentinel To-do Jobs', () => {
         });
         it('discards a running test when the script changes or the panel unmounts', async () => {
             mock.list.mockResolvedValue({ jobs: [gated()] });
-            const first = deferred<SentinelScheduledJobGateTest>();
+            const first = deferred<SentinelRefrainGateTest>();
             mock.testGate.mockReturnValue(first.promise);
             const page = view();
             fireEvent.click(await screen.findByRole('button', { name: 'Test gate' }));
@@ -447,7 +447,7 @@ describe('Sentinel To-do Jobs', () => {
             expect(screen.getByRole('button', { name: 'Test gate' })).not.toBeDisabled();
             await act(async () => first.resolve({ ok: true, result: '{"stale":true}', empty: false }));
             expect(screen.queryByText('{"stale":true}')).toBeNull();
-            const second = deferred<SentinelScheduledJobGateTest>();
+            const second = deferred<SentinelRefrainGateTest>();
             mock.testGate.mockReturnValue(second.promise);
             fireEvent.click(screen.getByRole('button', { name: 'Test gate' }));
             const secondSignal = mock.testGate.mock.calls[1][3].signal as AbortSignal;

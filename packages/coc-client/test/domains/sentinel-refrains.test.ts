@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CocApiError, CocClient, CocNetworkError, SentinelTodosClient } from '../../src';
-import type { SentinelScheduledJob, SentinelScheduledJobGateTest, SentinelScheduledJobInput, SentinelScheduledJobRun } from '../../src';
+import type { SentinelRefrain, SentinelRefrainGateTest, SentinelRefrainInput, SentinelRefrainRun } from '../../src';
 import { createMockAdapter } from './helpers';
 
 const ownerPath = '/workspaces/ws%20one/sentinel-todos/chat%23one/jobs';
 
 describe('Sentinel scheduled jobs client', () => {
   it('lists all jobs for the owner with optional abort signal', async () => {
-    const jobs: SentinelScheduledJob[] = [
+    const jobs: SentinelRefrain[] = [
       {
         id: 'job-one',
         name: 'Daily review',
@@ -41,7 +41,7 @@ describe('Sentinel scheduled jobs client', () => {
   });
 
   it('creates a job with required and optional input fields', async () => {
-    const input: SentinelScheduledJobInput = {
+    const input: SentinelRefrainInput = {
       name: 'New job',
       instructions: 'Do something',
       provider: 'copilot',
@@ -51,7 +51,7 @@ describe('Sentinel scheduled jobs client', () => {
       cron: '0 9 * * *',
       autoCompactThreshold: 100000,
     };
-    const created: SentinelScheduledJob = {
+    const created: SentinelRefrain = {
       ...input,
       id: 'job-abc',
       revision: 1,
@@ -68,13 +68,13 @@ describe('Sentinel scheduled jobs client', () => {
   });
 
   it('creates a job with minimal input fields', async () => {
-    const input: SentinelScheduledJobInput = {
+    const input: SentinelRefrainInput = {
       name: 'Minimal job',
       instructions: 'Do it',
       provider: 'copilot',
       model: 'gpt-5.4',
     };
-    const created: SentinelScheduledJob = {
+    const created: SentinelRefrain = {
       ...input,
       id: 'job-xyz',
       mode: 'ask',
@@ -89,7 +89,7 @@ describe('Sentinel scheduled jobs client', () => {
   });
 
   it('updates a job with revision safety guard and partial fields', async () => {
-    const updated: SentinelScheduledJob = {
+    const updated: SentinelRefrain = {
       id: 'job-one',
       name: 'Updated name',
       instructions: 'Updated instructions',
@@ -137,7 +137,7 @@ describe('Sentinel scheduled jobs client', () => {
   });
 
   it('starts a manual job run', async () => {
-    const run: SentinelScheduledJobRun = {
+    const run: SentinelRefrainRun = {
       id: 'run-001',
       runNumber: 1,
       trigger: 'manual',
@@ -155,7 +155,7 @@ describe('Sentinel scheduled jobs client', () => {
   });
 
   it('cancels an active job run', async () => {
-    const cancelled: SentinelScheduledJobRun = {
+    const cancelled: SentinelRefrainRun = {
       id: 'run-001',
       runNumber: 1,
       trigger: 'manual',
@@ -175,7 +175,7 @@ describe('Sentinel scheduled jobs client', () => {
   });
 
   it('tests a gate with optional cancellation and resumes it on the owner path', async () => {
-    const outcome: SentinelScheduledJobGateTest = { ok: true, result: '{"items":[1]}', empty: false };
+    const outcome: SentinelRefrainGateTest = { ok: true, result: '{"items":[1]}', empty: false };
     const adapter = createMockAdapter(outcome);
     const client = new SentinelTodosClient(adapter).jobs;
     const signal = new AbortController().signal;
@@ -295,19 +295,19 @@ describe('Sentinel scheduled jobs client', () => {
   });
 
   it('job run transitions through state machine: queued -> running -> completed', async () => {
-    const queued: SentinelScheduledJobRun = {
+    const queued: SentinelRefrainRun = {
       id: 'run-abc',
       runNumber: 1,
       trigger: 'schedule',
       status: 'queued',
       createdAt: '2026-10-18T09:00:00Z',
     };
-    const running: SentinelScheduledJobRun = {
+    const running: SentinelRefrainRun = {
       ...queued,
       status: 'running',
       startedAt: '2026-10-18T09:01:00Z',
     };
-    const completed: SentinelScheduledJobRun = {
+    const completed: SentinelRefrainRun = {
       ...running,
       status: 'completed',
       finishedAt: '2026-10-18T09:05:00Z',
@@ -331,7 +331,7 @@ describe('Sentinel scheduled jobs client', () => {
   });
 
   it('skipped run due to overlap conflict has skip reason and no duration', async () => {
-    const skipped: SentinelScheduledJobRun = {
+    const skipped: SentinelRefrainRun = {
       id: 'run-xyz',
       runNumber: 2,
       trigger: 'schedule',
@@ -348,7 +348,7 @@ describe('Sentinel scheduled jobs client', () => {
   });
 
   it('run with error and interrupted status includes error message', async () => {
-    const failed: SentinelScheduledJobRun = {
+    const failed: SentinelRefrainRun = {
       id: 'run-fail',
       runNumber: 3,
       trigger: 'manual',
@@ -367,7 +367,7 @@ describe('Sentinel scheduled jobs client', () => {
   });
 
   it('job with active run and process link maintains ledger references', async () => {
-    const job: SentinelScheduledJob = {
+    const job: SentinelRefrain = {
       id: 'job-active',
       name: 'Active job',
       instructions: 'Running work',

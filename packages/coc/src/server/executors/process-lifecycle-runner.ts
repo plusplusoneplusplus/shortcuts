@@ -86,7 +86,7 @@ import {
 import { deriveScriptTitle } from './title-generator';
 import { BaseExecutor } from './base-executor';
 import { EMPTY_EXECUTOR_RUNTIME } from './executor-runtime-contracts';
-import { getJobTaskContext } from '../sentinel-jobs/job-metadata';
+import { getRefrainTaskContext } from '../sentinel-refrains/refrain-metadata';
 import type { LifecycleRuntime } from './executor-runtime-contracts';
 import { updateForEachGenerationMetadataFromAssistantTurn } from '../for-each/for-each-generation-metadata';
 import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduce/map-reduce-generation-metadata';
@@ -494,9 +494,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         }
 
         // Follow-up: reuse the existing process
-        if (getJobTaskContext(task)) {
+        if (getRefrainTaskContext(task)) {
             try {
-                const jobs = this.runtime.getSentinelScheduledJobs?.();
+                const jobs = this.runtime.getSentinelRefrains?.();
                 if (!jobs) throw new Error('Sentinel jobs are unavailable');
                 await jobs.guard(task);
             } catch (error) {
@@ -616,7 +616,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         }
                         return { success: true, result: 'PR outcome review retained or skipped', durationMs: Date.now() - startTime };
                     }
-                    if (getJobTaskContext(task)) await this.runtime.getSentinelScheduledJobs?.()?.guard(task);
+                    if (getRefrainTaskContext(task)) await this.runtime.getSentinelRefrains?.()?.guard(task);
                     await opts.executeFollowUpFn(
                         followUpPayload.processId!,
                         followUpPayload.prompt,
@@ -635,9 +635,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         // later metadata change from retargeting a message
                         // that is already queued.
                         {
-                            ...(getJobTaskContext(task)?.kind === 'run' ? { sentinelScheduledJob: true } : {}),
+                            ...(getRefrainTaskContext(task)?.kind === 'run' ? { sentinelScheduledJob: true } : {}),
                             // Server-queued Sentinel turns (handbacks, gate notices) grant no job authority.
-                            ...(['handback', 'notice'].includes(getJobTaskContext(task)?.kind ?? '') ? { sentinelJobHandback: true } : {}),
+                            ...(['handback', 'notice'].includes(getRefrainTaskContext(task)?.kind ?? '') ? { sentinelJobHandback: true } : {}),
                             ...(userTurnPersisted ? { userTurnPersisted: true } : {}),
                             ...(imageTempDir ? { imageTempDir } : {}),
                             ...(followUpPayload.provider ? { requestedProvider: followUpPayload.provider } : {}),
@@ -822,7 +822,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             ...(spawnedFromProcessId ? { parentProcessId: spawnedFromProcessId } : {}),
             metadata: {
                 type: task.type,
-                ...this.runtime.getSentinelScheduledJobs?.()?.metadataForTask(task),
+                ...this.runtime.getSentinelRefrains?.()?.metadataForTask(task),
                 queueTaskId: task.id,
                 ...(botControl ? { botControl } : {}),
                 priority: task.priority,
@@ -979,7 +979,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 if (!admission) throw new Error('Tracked dependency admission is unavailable');
                 await admission.guard(task, 'start');
             }
-            if (getJobTaskContext(task)) await this.runtime.getSentinelScheduledJobs?.()?.guard(task);
+            if (getRefrainTaskContext(task)) await this.runtime.getSentinelRefrains?.()?.guard(task);
             const result = await opts.executeByTypeFn(task, prompt);
             const duration = Date.now() - startTime;
             logger.debug(LogCategory.AI, `[QueueExecutor] Task ${task.id} completed in ${duration}ms`);

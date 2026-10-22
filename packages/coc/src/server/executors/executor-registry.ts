@@ -26,7 +26,7 @@ import type { ITaskExecutor } from './executor-types';
 import type { ChatModeExecutorOptions } from './chat-base-executor';
 import type { DreamRuntime, ExecutorRuntimeCapabilities, LifecycleRuntime } from './executor-runtime-contracts';
 import type { QueueRuntimeConfig } from '../queue/queue-runtime-config';
-import type { JobGateOwnerRunner } from '../sentinel-jobs/job-gate-owner-runner';
+import type { RefrainGateOwnerRunner } from '../sentinel-refrains/refrain-gate-owner-runner';
 import type { OwnerScriptRunner } from './owner-script-runner';
 
 export interface ExecutorRegistryOptions {
@@ -150,7 +150,7 @@ export class ExecutorRegistry {
         this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, options.provider, lifecycleRuntime);
     }
 
-    readonly runJobGate: JobGateOwnerRunner = request => this.chatExecutor.runJobGate(request);
+    readonly runRefrainGate: RefrainGateOwnerRunner = request => this.chatExecutor.runRefrainGate(request);
     readonly runOwnerScript: OwnerScriptRunner = request => this.chatExecutor.runOwnerScript(request);
 
     /** Dispatch a task to the appropriate executor based on its type and payload. */

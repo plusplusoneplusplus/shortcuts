@@ -34,4 +34,4 @@ export * from './wiki';
 export * from './cron';
 export * from './triggers';
 export * from './worktree';
-export * from './sentinel-scheduled-jobs';
+export * from './sentinel-refrains';

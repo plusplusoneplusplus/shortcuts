@@ -12,7 +12,7 @@ import type { AIProcess, QueuedTask } from '@plusplusoneplusplus/forge';
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
 import { FollowUpExecutor, type FollowUpTurnOptions } from '../../../src/server/executors/follow-up-executor';
 import { ProcessLifecycleRunner } from '../../../src/server/executors/process-lifecycle-runner';
-import { SENTINEL_JOBS_TOOL_NAME } from '../../../src/server/llm-tools/sentinel-jobs-tool';
+import { SENTINEL_REFRAINS_TOOL_NAME } from '../../../src/server/llm-tools/sentinel-refrains-tool';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
@@ -88,7 +88,7 @@ function lastCall(): any {
 }
 
 function jobsTool(call = lastCall()): any {
-    return (call.tools ?? []).find((tool: any) => tool.name === SENTINEL_JOBS_TOOL_NAME);
+    return (call.tools ?? []).find((tool: any) => tool.name === SENTINEL_REFRAINS_TOOL_NAME);
 }
 
 async function followUp(commands: ReturnType<typeof makeCommands> | undefined, options?: FollowUpTurnOptions,
@@ -96,7 +96,7 @@ async function followUp(commands: ReturnType<typeof makeCommands> | undefined, o
     const store = createMockProcessStore();
     await store.addProcess(makeProcess(processId, mode, workspaceId));
     writeRepoPreferences(dataDir, workspaceId, { disabledLlmTools: [] });
-    await new FollowUpExecutor(store, makeOptions({ getSentinelJobCommands: () => commands as any }), dataDir)
+    await new FollowUpExecutor(store, makeOptions({ getSentinelRefrainCommands: () => commands as any }), dataDir)
         .executeFollowUp(processId, 'next', undefined, mode as any, undefined, undefined, undefined, undefined,
             turnSource, undefined, undefined, options);
     return lastCall();
@@ -118,7 +118,7 @@ describe('sentinel_jobs executor wiring', () => {
     it('binds a sentinel first turn to its own chat and inherits the resolved settings', async () => {
         const commands = makeCommands();
         const executor = new ChatExecutor(createMockProcessStore(),
-            makeOptions({ getSentinelJobCommands: () => commands as any }), dataDir);
+            makeOptions({ getSentinelRefrainCommands: () => commands as any }), dataDir);
         await executor.execute(makeTask('sentinel', 'task-s1', { provider: 'claude' }, { model: 'claude-sonnet-4.5' }), 'Hello');
 
         const tool = jobsTool();
@@ -134,23 +134,23 @@ describe('sentinel_jobs executor wiring', () => {
 
     it('stays absent under default preferences, for other modes, and while the feature is off', async () => {
         writeRepoPreferences(dataDir, 'ws-1', {});
-        await new ChatExecutor(createMockProcessStore(), makeOptions({ getSentinelJobCommands: () => makeCommands() as any }), dataDir)
+        await new ChatExecutor(createMockProcessStore(), makeOptions({ getSentinelRefrainCommands: () => makeCommands() as any }), dataDir)
             .execute(makeTask('sentinel', 'task-default'), 'Hello');
         expect(jobsTool()).toBeUndefined();
 
         writeRepoPreferences(dataDir, 'ws-1', { disabledLlmTools: [] });
         for (const mode of ['ask', 'autopilot']) {
-            await new ChatExecutor(createMockProcessStore(), makeOptions({ getSentinelJobCommands: () => makeCommands() as any }), dataDir)
+            await new ChatExecutor(createMockProcessStore(), makeOptions({ getSentinelRefrainCommands: () => makeCommands() as any }), dataDir)
                 .execute(makeTask(mode, `task-${mode}`), 'Hello');
             expect(jobsTool()).toBeUndefined();
         }
-        await new ChatExecutor(createMockProcessStore(), makeOptions({ getSentinelJobCommands: () => undefined }), dataDir)
+        await new ChatExecutor(createMockProcessStore(), makeOptions({ getSentinelRefrainCommands: () => undefined }), dataDir)
             .execute(makeTask('sentinel', 'task-off'), 'Hello');
         expect(jobsTool()).toBeUndefined();
     });
 
     it('withholds the tool from automation-started sentinel first turns', async () => {
-        await new ChatExecutor(createMockProcessStore(), makeOptions({ getSentinelJobCommands: () => makeCommands() as any }), dataDir)
+        await new ChatExecutor(createMockProcessStore(), makeOptions({ getSentinelRefrainCommands: () => makeCommands() as any }), dataDir)
             .execute(makeTask('sentinel', 'task-cron', { context: { source: 'cron', cronId: 'c1' } }), 'Hello');
         expect(jobsTool()).toBeUndefined();
     });
@@ -188,7 +188,7 @@ describe('sentinel_jobs executor wiring', () => {
             await store.addProcess(makeProcess('queue_parent', 'sentinel'));
             const executeFollowUpFn = vi.fn(async () => undefined);
             const result = await new ProcessLifecycleRunner(store, undefined, () => undefined, 'copilot',
-                { getSentinelScheduledJobs: () => ({ guard: async () => undefined }) as any }).run({
+                { getSentinelRefrains: () => ({ guard: async () => undefined }) as any }).run({
                 id: `task-${kind}`, type: 'chat', priority: 'low', status: 'running', createdAt: Date.now(), processId: 'queue_parent',
                 payload: { kind: 'chat', mode: 'sentinel', workspaceId: 'ws-1', processId: 'queue_parent', prompt: 'result',
                     context: { sentinelScheduledJob: { workspaceId: 'ws-1', processId: 'queue_parent', jobId: 'j1', runId: 'r1', kind } } },

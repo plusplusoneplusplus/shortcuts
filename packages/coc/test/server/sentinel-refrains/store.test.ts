@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { SentinelJobStore } from '../../../src/server/sentinel-jobs/job-store';
+import { SentinelRefrainStore } from '../../../src/server/sentinel-refrains/refrain-store';
 import { createTodoTestDatabase } from '../sentinel-todos/test-db';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { createSentinelTodosDomain } from '../../../src/server/storage/snapshot/delegated-jobs-domain';
@@ -10,12 +10,12 @@ import { createSentinelTodosDomain } from '../../../src/server/storage/snapshot/
 const owner = { workspaceId: 'ws-a', processId: 'queue_parent' };
 const input = { name: 'Review', instructions: 'Check evidence', provider: 'copilot', model: 'model' };
 let fixture: ReturnType<typeof createTodoTestDatabase>;
-let store: SentinelJobStore;
+let store: SentinelRefrainStore;
 beforeEach(() => {
     const directory = path.resolve('.sentinel-jobs-tests', randomUUID());
     fs.mkdirSync(directory, { recursive: true });
     fixture = createTodoTestDatabase(directory);
-    store = new SentinelJobStore(fixture.db);
+    store = new SentinelRefrainStore(fixture.db);
 });
 afterEach(() => fixture.dispose());
 
@@ -32,14 +32,14 @@ describe('scheduled job definitions and durable runs', () => {
         await domain.executeWipe(context as never, (await domain.planWipe(context as never)).plan, result);
         expect(result.errors).toEqual([]);
         fixture = createTodoTestDatabase(fixture.dataDir);
-        const restored = new SentinelJobStore(fixture.db);
+        const restored = new SentinelRefrainStore(fixture.db);
         expect(restored.list(owner)).toEqual([]);
         expect(restored.runs(owner, job.id)).toEqual([]);
     });
     it('persists defaults, limits each owner independently and enforces scoped identity', () => {
         const job = store.create(owner, input);
         expect(job).toMatchObject({ mode: 'ask', enabled: true, autoCompactThreshold: 100_000, revision: 1 });
-        expect(new SentinelJobStore(fixture.db).get(owner, job.id)).toEqual(job);
+        expect(new SentinelRefrainStore(fixture.db).get(owner, job.id)).toEqual(job);
         for (let i = 1; i < 10; i++) store.create(owner, input);
         expect(() => store.create(owner, input)).toThrow(/at most 10/);
         for (const other of [{ ...owner, workspaceId: 'ws-b' }, { ...owner, processId: 'queue_other' }]) {
@@ -117,7 +117,7 @@ describe('scheduled job definitions and durable runs', () => {
         const job = store.create(owner, { ...input, cron: '0 */6 * * *', gateScript });
         expect(job).toMatchObject({ gateScript, gateConsecutiveFailures: 0, gatePaused: false, revision: 1 });
         expect(job).not.toHaveProperty('gateLastResult');
-        expect(new SentinelJobStore(fixture.db).get(owner, job.id)).toEqual(job);
+        expect(new SentinelRefrainStore(fixture.db).get(owner, job.id)).toEqual(job);
         expect(() => store.create(owner, { ...input, gateScript })).toThrow(/needs a cron/);
         expect(() => store.create(owner, { ...input, cron: '', gateScript })).toThrow(/needs a cron/);
         expect(() => store.update(owner, job.id, { cron: '' }, 1)).toThrow(/needs a cron/);

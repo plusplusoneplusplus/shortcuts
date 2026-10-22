@@ -3,15 +3,15 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { CocToolRuntime, defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
-import { runJobGateWithOwnerTools, type JobGateOwnerTools } from '../../../src/server/sentinel-jobs/job-gate-owner-runner';
+import { runRefrainGateWithOwnerTools, type RefrainGateOwnerTools } from '../../../src/server/sentinel-refrains/refrain-gate-owner-runner';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import { buildMemoryV2Addon } from '../../../src/server/executors/memory-v2-addon';
 
 vi.mock('../../../src/server/executors/memory-v2-addon', () => ({ buildMemoryV2Addon: vi.fn() }));
 
-describe('runJobGateWithOwnerTools', () => {
+describe('runRefrainGateWithOwnerTools', () => {
     let dataDir: string;
-    let ownerTools: JobGateOwnerTools;
+    let ownerTools: RefrainGateOwnerTools;
     const dispose = vi.fn();
     const handler = vi.fn(async () => JSON.stringify({ value: 7 }));
 
@@ -34,7 +34,7 @@ describe('runJobGateWithOwnerTools', () => {
     it('uses the full resolved CoC list and owner-qualified memory context', async () => {
         // Unregistered owner_tool is excluded by the ordinary chat script adapter.
         const runtimeDispose = vi.spyOn(CocToolRuntime.prototype, 'dispose');
-        await expect(runJobGateWithOwnerTools({
+        await expect(runRefrainGateWithOwnerTools({
             ownerTools, state: { previous: 2 },
             code: 'return { state, result: await tools.owner_tool({ number: 42 }) };',
         })).resolves.toEqual({ state: { previous: 2 }, result: { value: 7 } });
@@ -53,7 +53,7 @@ describe('runJobGateWithOwnerTools', () => {
         const emitQuestions = vi.fn();
         // Extra runtime properties cannot supply approval wiring to this path.
         const extra = { ...ownerTools, askUser: { enabled: true, deps: { emitQuestions } } };
-        await expect(runJobGateWithOwnerTools({
+        await expect(runRefrainGateWithOwnerTools({
             ownerTools: extra, state: null,
             code: 'try { await tools.save_memory({}); } catch (e) { return { name: e.name, code: e.code }; }',
         })).resolves.toEqual({ name: 'ToolCallError', code: 'TOOL_ERROR' });
@@ -63,7 +63,7 @@ describe('runJobGateWithOwnerTools', () => {
     });
 
     it('does not expose ask_user', async () => {
-        await expect(runJobGateWithOwnerTools({
+        await expect(runRefrainGateWithOwnerTools({
             ownerTools, state: null, code: 'return await tools.ask_user({ questions: [] });',
         })).rejects.toMatchObject({ name: 'ToolCallError' });
         expect(dispose).toHaveBeenCalledOnce();
@@ -71,14 +71,14 @@ describe('runJobGateWithOwnerTools', () => {
 
     it('retains enabled tools marked non-scriptable for ordinary chat scripts', async () => {
         ownerTools.followUpSuggestions = { enabled: true, count: 3 };
-        await expect(runJobGateWithOwnerTools({
+        await expect(runRefrainGateWithOwnerTools({
             ownerTools, state: null,
             code: 'return await tools.suggest_follow_ups({ suggestions: ["Read", "Check", "Wait"] });',
         })).resolves.toEqual({ suggestions: ['Read', 'Check', 'Wait'] });
     });
 
     it('admits nesting through an enabled and ungated owner script tool', async () => {
-        await expect(runJobGateWithOwnerTools({
+        await expect(runRefrainGateWithOwnerTools({
             ownerTools, state: null,
             code: `return await tools.run_tool_script({ code: 'return await tools.owner_tool({});' });`,
         })).resolves.toMatchObject({ result: { value: 7 } });
@@ -92,7 +92,7 @@ describe('runJobGateWithOwnerTools', () => {
         });
         if (policy === 'excluded') ownerTools.excludeTools = ['run_tool_script'];
         if (policy === 'provider-excluded') ownerTools.includeToolScripting = false;
-        await expect(runJobGateWithOwnerTools({
+        await expect(runRefrainGateWithOwnerTools({
             ownerTools, state: null,
             code: `return await tools.run_tool_script({ code: 'return await tools.owner_tool({});' });`,
         })).rejects.toMatchObject({ name: 'ToolCallError', message: expect.stringContaining('denied') });
@@ -104,7 +104,7 @@ describe('runJobGateWithOwnerTools', () => {
         writeRepoPreferences(dataDir, 'workspace-a', {
             disabledLlmTools: [], approvalRequiredLlmTools: ['save_memory'],
         });
-        await expect(runJobGateWithOwnerTools({
+        await expect(runRefrainGateWithOwnerTools({
             ownerTools, state: null,
             code: `return await tools.run_tool_script({ code: 'return await tools.save_memory({});' });`,
         })).rejects.toMatchObject({ name: 'ToolCallError' });
@@ -115,10 +115,10 @@ describe('runJobGateWithOwnerTools', () => {
     it('isolates preferences between owners in different workspaces', async () => {
         writeRepoPreferences(dataDir, 'workspace-a', { disabledLlmTools: ['save_memory', 'run_tool_script'] });
         writeRepoPreferences(dataDir, 'workspace-b', { disabledLlmTools: [] });
-        await expect(runJobGateWithOwnerTools({
+        await expect(runRefrainGateWithOwnerTools({
             ownerTools, state: null, code: 'return await tools.save_memory({});',
         })).rejects.toMatchObject({ name: 'ToolCallError' });
-        await expect(runJobGateWithOwnerTools({
+        await expect(runRefrainGateWithOwnerTools({
             ownerTools: { ...ownerTools, workspaceId: 'workspace-b', processId: 'sentinel-b' },
             state: null, code: 'return await tools.save_memory({});',
         })).resolves.toEqual({ value: 7 });
@@ -129,7 +129,7 @@ describe('runJobGateWithOwnerTools', () => {
 
     it('disposes context and runtime after a script error', async () => {
         const runtimeDispose = vi.spyOn(CocToolRuntime.prototype, 'dispose');
-        await expect(runJobGateWithOwnerTools({
+        await expect(runRefrainGateWithOwnerTools({
             ownerTools, state: null, code: 'throw new Error("failed script");',
         })).rejects.toThrow('failed script');
         expect(runtimeDispose).toHaveBeenCalledOnce();
@@ -139,7 +139,7 @@ describe('runJobGateWithOwnerTools', () => {
     it('rejects pre-aborted runs before resolving resources', async () => {
         const controller = new AbortController();
         controller.abort(new Error('rule removed'));
-        await expect(runJobGateWithOwnerTools({
+        await expect(runRefrainGateWithOwnerTools({
             ownerTools, state: null, code: 'return 1;', signal: controller.signal,
         })).rejects.toThrow('rule removed');
         expect(buildMemoryV2Addon).not.toHaveBeenCalled();
@@ -151,7 +151,7 @@ describe('runJobGateWithOwnerTools', () => {
             controller.abort(new Error('owner revoked'));
             return { tools: [], suffix: '', excludedBuiltinTools: [], dispose };
         });
-        await expect(runJobGateWithOwnerTools({
+        await expect(runRefrainGateWithOwnerTools({
             ownerTools, state: null, code: 'return await tools.owner_tool({});', signal: controller.signal,
         })).rejects.toThrow('owner revoked');
         expect(handler).not.toHaveBeenCalled();
@@ -169,7 +169,7 @@ describe('runJobGateWithOwnerTools', () => {
                 () => reject(toolSignal!.reason), { once: true }));
         });
         const runtimeDispose = vi.spyOn(CocToolRuntime.prototype, 'dispose');
-        const run = runJobGateWithOwnerTools({
+        const run = runRefrainGateWithOwnerTools({
             ownerTools, state: null, code: 'return await tools.owner_tool({});', signal: controller.signal,
         });
         const assertion = expect(run).rejects.toThrow('rule edited');
