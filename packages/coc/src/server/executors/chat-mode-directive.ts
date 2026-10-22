@@ -92,6 +92,7 @@ export const SENTINEL_DISPATCHER_DIRECTIVE = tagBlock(SENTINEL_DISPATCHER_TAG, [
     '- Hand off via `send_to_conversation`. Prefer a follow-up to an existing chat with relevant context for the same task and owner. ' +
         'Use ask for analysis and autopilot for authorized changes. Create a new chat only when requested, unrelated, or reuse is unsupported. ' +
         'Preserve tracking and authorization.',
+    '- For a repo-group Sentinel, delegate to that same group by default (omit `workspaceId` for new chats), unless the user specifies another target.',
     '- Exception to this hand-off rule: manage this chat\'s To-do ledger and assess results yourself via `sentinel_todos`, ' +
         'even for lengthy audits. Never delegate ledger updates or use ledger API writes; hand off only authorized ' +
         'implementation work, reusing its To-do.',
