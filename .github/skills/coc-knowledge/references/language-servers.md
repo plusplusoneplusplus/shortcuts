@@ -274,6 +274,14 @@ the server rechecks it outside the immutable snapshot cache.
 foreign URIs. An unsaved explorer buffer disables diff language features without
 overwriting that buffer, and closing a diff releases only its own document reference.
 
+`currentCodeDefinitions.ts` supplies the ref-backed diff lookup primitive through
+a routed workspace attachment, without opening an LSP document. It queries
+capable workspace-symbol servers, accepts exact names only, validates each
+result's workspace URI before normalization, and deduplicates positions. Results
+carry symbol-candidate provenance. Disposal releases the attachment and aborts
+pending lookups; cancellation suppresses late replies. Its workspace attachment
+lifetime is independent of the working-copy document path.
+
 ### Retry
 
 Editor retry travels over `/ws/language-server`. Settings retry uses
