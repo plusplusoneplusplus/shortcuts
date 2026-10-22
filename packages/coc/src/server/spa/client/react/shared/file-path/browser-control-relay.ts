@@ -1,4 +1,4 @@
-import type { BrowserCommandRequest, ProcessWebSocketConnection } from '@plusplusoneplusplus/coc-client';
+import type { BrowserCommandRequest, BrowserNavigationPrompt, ProcessWebSocketConnection } from '@plusplusoneplusplus/coc-client';
 import { desktopBrowserBridge, type BrowserControlReveal, type BrowserControlActivityEvent } from './browser-bridge';
 import { getSpaCocClient, getCocClientFor } from '../../api/cocClient';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserBackgroundControlEnabled, isBrowserControlEnabled } from '../../utils/config';
@@ -11,12 +11,15 @@ import { attachBrowserWebview, setBrowserWebviewBackground } from '../../feature
 import { getBrowserControlScope, subscribeBrowserControlScope } from './browser-control-scope';
 import { startBrowserControlActivity, updateBrowserControlTab, finishBrowserControlActivity, resumeBrowserControlActivity, removeBrowserControlActivity } from './browser-control-activity';
 import { clearBrowserControlNotice, setBrowserControlNotice } from './browser-control-notice';
+import { clearBrowserNavigationPrompt, setBrowserNavigationPrompt } from './browser-navigation-prompts';
 
 /**
  * One relay on the existing socket; only the socket owning the selected clone advertises.
  * With background control on, scopes with active turns stay retained and served after a switch.
  * Background actions the desktop reports as `foreground-required:` wait, without a timeout,
  * behind a Switch back notice and re-run once that scope is the foreground scope again.
+ * Navigations the desktop holds during a turn are asked of the owning server; its prompts
+ * show in the conversation's chat and are blocked when the socket goes away.
  */
 export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnection, 'send'>, baseUrl?: string) {
     const control = desktopBrowserBridge()?.control;
@@ -165,7 +168,7 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             window.location.hash = `#repos/${encodeURIComponent(scope)}/chats/${encodeURIComponent(event.processId)}`;
         }
     });
-    const matchesSource = (event: BrowserControlActivityEvent) => {
+    const matchesSource = (event: Pick<BrowserControlActivityEvent, 'routingRef' | 'workspaceId'>) => {
         const clone = parseRemoteCloneKey(event.routingRef);
         return (baseUrl ? !!clone && lookupCloneBaseUrl(event.routingRef) === baseUrl : !clone)
             && (clone?.workspaceId ?? event.routingRef) === event.workspaceId;
@@ -187,6 +190,22 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
         const tab = findBrowserPanelView(event.viewId, event.workspaceId, event.routingRef);
         if (tab) track(event.workspaceId, event.processId, event.routingRef, tab.tab.id, event.turnId,
             event.routingOwnerId === undefined ? undefined : event.routingOwnerId === ownerId);
+    });
+    /** Held desktop navigations this socket asked its server about. */
+    const navigationChecks = new Set<string>();
+    const promptKey = (checkId: string) => JSON.stringify([baseUrl ?? '', checkId]);
+    const decideNavigation = (checkId: string, allow: boolean) => {
+        if (!navigationChecks.delete(checkId)) return;
+        clearBrowserNavigationPrompt(promptKey(checkId));
+        control?.decideNavigation?.(checkId, allow);
+    };
+    const blockNavigations = () => { for (const checkId of [...navigationChecks]) decideNavigation(checkId, false); };
+    const offNavigationCheck = control?.onNavigationCheck?.(event => {
+        if (disposed || !matchesSource(event)) return;
+        if (!connected) { control.decideNavigation?.(event.checkId, false); return; }
+        navigationChecks.add(event.checkId);
+        connection.send({ type: 'browser-navigation-check', checkId: event.checkId, workspaceId: event.workspaceId,
+            processId: event.processId, turnId: event.turnId, url: event.url });
     });
     const stopping = new Set<string>();
     const offStop = control?.onStop?.(event => {
@@ -334,7 +353,7 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             rerunWaiting();
         },
         onOpen() { connected = true; syncVisibility(); retainControlled(routingRef); advertise(); },
-        onClose() { connected = false; cancelPending(); releaseRetained(true); clearActivities(); },
+        onClose() { connected = false; cancelPending(); blockNavigations(); releaseRetained(true); clearActivities(); },
         onMessage(message: { type: string; [key: string]: unknown }): boolean {
             if (message.type === 'config-changed') {
                 for (const id of [...framePending]) {
@@ -374,6 +393,23 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             }
             if (message.type === 'browser-command-cancel') {
                 if (typeof message.id === 'string' && !dropWaiting(message.id) && pending.has(message.id)) control?.cancel(message.id);
+                return true;
+            }
+            if (message.type === 'browser-navigation-decision') {
+                if (typeof message.checkId === 'string') decideNavigation(message.checkId, message.allow === true);
+                return true;
+            }
+            if (message.type === 'browser-navigation-prompt') {
+                const prompt = message.prompt as BrowserNavigationPrompt | undefined;
+                if (!prompt || typeof prompt.checkId !== 'string' || !navigationChecks.has(prompt.checkId)) return true;
+                setBrowserNavigationPrompt({
+                    ...prompt, key: promptKey(prompt.checkId), sourceBaseUrl: baseUrl,
+                    answer: answer => { if (connected) connection.send({ type: 'browser-navigation-answer', checkId: prompt.checkId, answer }); },
+                });
+                return true;
+            }
+            if (message.type === 'browser-navigation-prompt-cleared') {
+                if (typeof message.checkId === 'string') clearBrowserNavigationPrompt(promptKey(message.checkId));
                 return true;
             }
             if (message.type !== 'browser-command') return false;
@@ -419,6 +455,7 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             disposed = true;
             ++revision;
             cancelPending();
+            blockNavigations();
             releaseRetained(true);
             clearActivities();
             if (control) connection.send({ type: 'browser-capability-clear' });
@@ -426,6 +463,7 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             offFocused?.();
             offActivity?.();
             offStop?.();
+            offNavigationCheck?.();
             window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, onConfigUpdated);
             window.removeEventListener('focus', focus);
             unsubscribeScope();

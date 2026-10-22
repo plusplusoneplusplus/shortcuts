@@ -9,6 +9,7 @@ import { useBrowserControlScope } from '../../../../src/server/spa/client/react/
 import { getBrowserControlActivity, clearBrowserControlActivities } from '../../../../src/server/spa/client/react/shared/file-path/browser-control-activity';
 import { applyRuntimeConfigPatch, _resetRuntimeConfig } from '../../../../src/server/spa/client/react/utils/config';
 import { getBrowserControlNotices } from '../../../../src/server/spa/client/react/shared/file-path/browser-control-notice';
+import { getBrowserNavigationPrompts } from '../../../../src/server/spa/client/react/shared/file-path/browser-navigation-prompts';
 import { browserWebviewEntries, removeBrowserWebview } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/browserWebviewLayerStore';
 const clients = vi.hoisted(() => ({
     cancel: vi.fn(async () => {}), remoteCancel: vi.fn(async () => {}),
@@ -40,6 +41,7 @@ function harness(baseUrl?: string, modern = false) {
     let reveal!: (event: any) => void;
     let activity!: (event: any) => void;
     let stop!: (event: any) => void;
+    let navigationCheck!: (event: any) => void;
     const control = {
         framesSupported: modern,
         richPasteSupported: modern,
@@ -51,11 +53,14 @@ function harness(baseUrl?: string, modern = false) {
             finish: vi.fn(), setVisible: vi.fn(), releaseFrames: vi.fn(async () => {}),
             onActivity: vi.fn((handler: (event: any) => void) => { activity = handler; return vi.fn(); }),
             onStop: vi.fn((handler: (event: any) => void) => { stop = handler; return vi.fn(); }),
+            onNavigationCheck: vi.fn((handler: (event: any) => void) => { navigationCheck = handler; return vi.fn(); }),
+            decideNavigation: vi.fn(),
         } : {}),
     };
     (window as any).cocDesktop = { browser: { control } };
     const relay = createBrowserSocketRelay({ send }, baseUrl);
-    return { relay, control, send, reveal: (event: any) => reveal(event), activity: (event: any) => activity(event), stop: (event: any) => stop(event) };
+    return { relay, control, send, reveal: (event: any) => reveal(event), activity: (event: any) => activity(event), stop: (event: any) => stop(event),
+        navigationCheck: (event: any) => navigationCheck(event) };
 }
 const request = { id: 'r', workspaceId: 'w', processId: 'p', command: { action: 'tabs' } };
 const tick = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
@@ -723,6 +728,84 @@ describe('SPA browser socket relay', () => {
                 expect(h.control.execute).toHaveBeenLastCalledWith(paste, 'remote:server:w');
                 h.relay.dispose();
             });
+        });
+    });
+    describe('navigation approval', () => {
+        const check = { checkId: 'c1', workspaceId: 'w', processId: 'p', turnId: 't1', routingRef: 'w', url: 'https://mail.example.com/inbox' };
+        const prompt = { checkId: 'c1', workspaceId: 'w', processId: 'p', turnId: 't1', site: 'example.com', url: check.url };
+
+        it('asks the owning server about a held navigation and relays its decision to the desktop', async () => {
+            const h = harness(undefined, true);
+            await h.relay.update('w'); h.relay.onOpen();
+            h.navigationCheck(check);
+            expect(h.send).toHaveBeenCalledWith({ type: 'browser-navigation-check', checkId: 'c1', workspaceId: 'w', processId: 'p', turnId: 't1', url: check.url });
+            expect(h.relay.onMessage({ type: 'browser-navigation-decision', checkId: 'c1', allow: true })).toBe(true);
+            expect(h.control.decideNavigation).toHaveBeenCalledExactlyOnceWith('c1', true);
+            // A repeated or unknown decision never reaches the desktop again.
+            h.relay.onMessage({ type: 'browser-navigation-decision', checkId: 'c1', allow: false });
+            h.relay.onMessage({ type: 'browser-navigation-decision', checkId: 'other', allow: true });
+            expect(h.control.decideNavigation).toHaveBeenCalledOnce();
+            h.relay.dispose();
+        });
+
+        it('shows the prompt, sends each answer on the same socket and removes the card when cleared', async () => {
+            const h = harness(undefined, true);
+            await h.relay.update('w'); h.relay.onOpen();
+            h.navigationCheck(check);
+            h.relay.onMessage({ type: 'browser-navigation-prompt', prompt });
+            const [entry] = getBrowserNavigationPrompts();
+            expect(entry).toMatchObject({ ...prompt, sourceBaseUrl: undefined });
+            for (const answer of ['once', 'always', 'deny'] as const) {
+                entry.answer(answer);
+                expect(h.send).toHaveBeenLastCalledWith({ type: 'browser-navigation-answer', checkId: 'c1', answer });
+            }
+            h.relay.onMessage({ type: 'browser-navigation-prompt-cleared', checkId: 'c1' });
+            expect(getBrowserNavigationPrompts()).toEqual([]);
+            h.relay.dispose();
+        });
+
+        it('ignores prompts for navigations it never asked about', async () => {
+            const h = harness(undefined, true);
+            await h.relay.update('w'); h.relay.onOpen();
+            h.relay.onMessage({ type: 'browser-navigation-prompt', prompt });
+            expect(getBrowserNavigationPrompts()).toEqual([]);
+            h.relay.dispose();
+        });
+
+        it('blocks held navigations and drops their cards when the socket closes or the relay is disposed', async () => {
+            const h = harness(undefined, true);
+            await h.relay.update('w'); h.relay.onOpen();
+            h.navigationCheck(check);
+            h.relay.onMessage({ type: 'browser-navigation-prompt', prompt });
+            h.relay.onClose();
+            expect(h.control.decideNavigation).toHaveBeenCalledExactlyOnceWith('c1', false);
+            expect(getBrowserNavigationPrompts()).toEqual([]);
+            // Checks arriving while disconnected are blocked at once.
+            h.navigationCheck({ ...check, checkId: 'c2' });
+            expect(h.control.decideNavigation).toHaveBeenLastCalledWith('c2', false);
+            h.relay.onOpen();
+            h.navigationCheck({ ...check, checkId: 'c3' });
+            h.relay.dispose();
+            expect(h.control.decideNavigation).toHaveBeenLastCalledWith('c3', false);
+        });
+
+        it('only the owning clone socket asks, and its cards are keyed to that server', async () => {
+            const baseUrl = 'http://127.0.0.1:4500';
+            registerCloneBaseUrls([{ workspaceId: 'w', serverId: 'server', baseUrl }]);
+            const local = harness(undefined, true);
+            const localHandler = local.control.onNavigationCheck.mock.calls[0][0];
+            const remote = harness(baseUrl, true);
+            await remote.relay.update('remote:server:w'); remote.relay.onOpen();
+            await local.relay.update(null); local.relay.onOpen();
+            const remoteCheck = { ...check, routingRef: 'remote:server:w' };
+            localHandler(remoteCheck);
+            expect(local.send).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'browser-navigation-check' }));
+            remote.navigationCheck(remoteCheck);
+            expect(remote.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'browser-navigation-check', checkId: 'c1' }));
+            remote.relay.onMessage({ type: 'browser-navigation-prompt', prompt });
+            expect(getBrowserNavigationPrompts()[0]).toMatchObject({ sourceBaseUrl: baseUrl, key: JSON.stringify([baseUrl, 'c1']) });
+            remote.relay.dispose();
+            local.relay.dispose();
         });
     });
 });

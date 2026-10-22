@@ -11,6 +11,7 @@ import { KustoEmbedGroupProvider } from '../../shared/KustoEmbedGroup';
 import { QueuedFollowUps } from './QueuedBubble';
 import { BackgroundTasksIndicator } from './BackgroundTasksIndicator';
 import { AskUserInline } from './AskUserInline';
+import { BrowserNavigationPrompts } from '../../shared/file-path/BrowserNavigationApprovalCard';
 import { McpOAuthPrompt } from './McpOAuthPrompt';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import type { QueuedMessage } from '../../utils/chatUtils';
@@ -653,6 +654,7 @@ export function ConversationArea({
                                 workspaceId={workspaceId}
                             />
                         )}
+                        <BrowserNavigationPrompts workspaceId={workspaceId} processId={processId ?? taskId} sourceBaseUrl={sourceBaseUrl} />
                         {showRalphGrillPlanningProgress && (
                             <RalphGrillPlanningProgressCard progress={ralphGrillPlanningProgress} />
                         )}
