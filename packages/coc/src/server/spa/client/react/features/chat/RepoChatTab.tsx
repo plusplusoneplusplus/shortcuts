@@ -22,6 +22,7 @@ import { ChatDetailPane } from './ChatDetailPane';
 import { RefreshSidebarButton } from './RefreshSidebarButton';
 import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
 import { SentinelRailShortcut } from './SentinelRailShortcut';
+import { NativeRailUnreadChats } from './RailUnreadChats';
 import { RailPinnedJobs } from './RailPinnedJobs';
 import { RailJobOpenerContext, type RailJobOpener } from '../repo-detail/RailJobStatuses';
 import { ScheduleMainPane, parseScheduleMainPaneRoute, isSchedulesRoute } from '../schedules/ScheduleMainPane';
@@ -90,6 +91,8 @@ export interface RepoChatTabProps {
      * `selectTask` is the native row-click path for this tab's own chats.
      */
     renderList?: (ctx: RepoChatTabListContext) => ReactNode;
+    /** Replacement list's unread projection, using its existing owner-qualified selection. */
+    renderUnreadRail?: (ctx: RepoChatTabListContext) => ReactNode;
     /** Split-layout owner-routed detail supplied by an aggregated workspace. */
     detailOverride?: ReactNode;
     /** Reload the replacement list through its owning feed. */
@@ -178,7 +181,7 @@ function loadActivityListCollapsed(storageKey: string): boolean {
     try { return localStorage.getItem(storageKey) === 'true'; } catch { return false; }
 }
 
-export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, detailContainer, detailActive, onActivateDetail, railShortcutContainer, railScopeLabel, dockStatusFooter, renderList, detailOverride, refreshList, refreshGit, sidebarOwnerAvailable = true }: RepoChatTabProps) {
+export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, detailContainer, detailActive, onActivateDetail, railShortcutContainer, railScopeLabel, dockStatusFooter, renderList, renderUnreadRail, detailOverride, refreshList, refreshGit, sidebarOwnerAvailable = true }: RepoChatTabProps) {
     const routeId = sourceSelectionId ?? workspaceId;
     const { state: queueState, dispatch: queueDispatch } = useQueue();
 
@@ -1428,6 +1431,15 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
                                 selectedTaskId={selectedTaskId}
                                 onOpen={handleOpenRailShortcut}
                             />
+                            {sidebarOwnerAvailable && !unresolvedRemote && (renderUnreadRail
+                                ? renderUnreadRail({ selectedTaskId, selectTask: (id, task) => {
+                                    onActivateDetail?.();
+                                    selectTask(id, task);
+                                } })
+                                : <NativeRailUnreadChats history={mergedHistory} unseenProcessIds={unseenProcessIds}
+                                    routeId={routeId} tab={getActivityTabSegment(mode)} onOpen={handleOpenRailShortcut}
+                                    scopeKey={`${routeId}:${workspaceReadSource(cloneClient)}`}
+                                    scopeLabel={railScopeLabel ?? workspaceId} />)}
                             <RailPinnedJobs
                                 onRefreshReady={registerPinnedRefresh}
                                 ownerAvailable={sidebarOwnerAvailable}

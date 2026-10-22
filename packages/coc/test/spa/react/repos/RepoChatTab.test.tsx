@@ -2668,7 +2668,9 @@ describe('RepoChatTab: collapsed-rail latest Sentinel shortcut', () => {
         await act(async () => {
             renderWithProviders(
                 React.createElement(React.Fragment, null,
-                    React.createElement(RepoChatTab, {
+                    React.createElement(RailControlsContext.Provider, { value: {
+                        hoverEnabled: true, onExpand: vi.fn(), onPreview: vi.fn(),
+                    } }, React.createElement(RepoChatTab, {
                         workspaceId,
                         sourceSelectionId,
                         layout: 'split-workspace',
@@ -2676,7 +2678,7 @@ describe('RepoChatTab: collapsed-rail latest Sentinel shortcut', () => {
                         detailActive: true,
                         onActivateDetail,
                         railShortcutContainer: rail,
-                    }),
+                    })),
                     dispatchRef ? React.createElement(WsSimulator, { dispatchRef }) : null,
                 ),
             );
@@ -2689,6 +2691,33 @@ describe('RepoChatTab: collapsed-rail latest Sentinel shortcut', () => {
 
     const shortcutIn = (rail: HTMLElement) =>
         rail.querySelector<HTMLButtonElement>('[data-testid="split-workspace-left-sentinel"]');
+
+    it.each([
+        ['ws-1', undefined],
+        ['group-xstore', undefined],
+        ['ws-remote', 'remote:box-b:ws-remote'],
+        ['group-xstore', 'remote:box-b:group-xstore'],
+    ])('places Unread after Sentinel and selects through the existing %s owner', async (workspaceId, sourceSelectionId) => {
+        const task = makeHistoryTask('queue_unread', sentinel('queue_unread', { customTitle: 'Unread Sentinel answer' }));
+        setupFetchMock({ history: [task] });
+        mockUnseenTaskIds = new Set([task.id]);
+        const rail = await renderWithRail({ workspaceId, sourceSelectionId });
+        const unread = rail.querySelector<HTMLButtonElement>('[data-testid="split-workspace-left-unread"]')!;
+        expect(shortcutIn(rail)?.nextElementSibling).toBe(unread);
+        expect(unread).toHaveAccessibleName('1 unread conversation');
+        mockMarkSeen.mockClear();
+        mockMarkReadByProcessId.mockClear();
+        await act(async () => { unread.focus(); });
+        expect(screen.getByRole('link', { name: 'Unread Sentinel answer' })).toBeTruthy();
+        expect(mockMarkSeen).not.toHaveBeenCalled();
+        expect(mockMarkReadByProcessId).not.toHaveBeenCalled();
+        await act(async () => { fireEvent.click(screen.getByRole('link', { name: 'Unread Sentinel answer' })); });
+        const owner = sourceSelectionId ?? workspaceId;
+        expect(location.hash).toBe(`#repos/${encodeURIComponent(owner)}/activity/queue_unread`);
+        expect(mockMarkSeen).toHaveBeenCalledWith('queue_unread');
+        expect(mockMarkReadByProcessId).toHaveBeenCalledWith('queue_unread');
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
 
     it('targets the most recent Sentinel chat, not the most recent chat', async () => {
         setupFetchMock({
@@ -2714,12 +2743,13 @@ describe('RepoChatTab: collapsed-rail latest Sentinel shortcut', () => {
         expect(shortcutIn(rail)?.getAttribute('data-sentinel-task-id')).toBe('sn-run');
     });
 
-    it('omits Sentinel but retains the default refresh control when the list has no Sentinel chat', async () => {
+    it('omits Sentinel but retains refresh and the empty Unread control without a Sentinel chat', async () => {
         setupFetchMock({ history: [makeHistoryTask('h1')] });
         const rail = await renderWithRail();
         expect(shortcutIn(rail)).toBeNull();
         expect(rail.querySelector('[aria-label="Refresh sidebar"]')).toBeTruthy();
-        expect(rail.childElementCount).toBe(1);
+        expect(rail.querySelector('[data-testid="split-workspace-left-unread"]')).toHaveAccessibleName('0 unread conversations');
+        expect(rail.childElementCount).toBe(2);
     });
 
     it('opens the chat through the list selection path without expanding anything', async () => {
@@ -2817,6 +2847,7 @@ describe('RepoChatTab: collapsed-rail latest Sentinel shortcut', () => {
         });
         await waitFor(() => expect(screen.queryByText('Loading queue...')).not.toBeInTheDocument());
         expect(document.querySelector('[data-testid="split-workspace-left-sentinel"]')).toBeNull();
+        expect(document.querySelector('[data-testid="split-workspace-left-unread"]')).toBeNull();
     });
 });
 

@@ -61,6 +61,11 @@ import { useRepoGroupChatSelection } from './useRepoGroupChatSelection';
 import { RepoGroupMemberChatDetail } from './RepoGroupMemberChatDetail';
 import { allRepoGroupChatRows } from './repoGroupChatFeed';
 import { RepoGroupChatList } from './RepoGroupChatList';
+import { RailUnreadChats } from '../features/chat/RailUnreadChats';
+import { getChatRowTitle } from '../features/chat/latestSentinelChat';
+import { isUnseenGroupChat } from './repoGroupChatRowLabels';
+import { buildRepoGroupChatHash } from '../layout/dashboardRoutes';
+import { queueJobHash } from '../queue/queueJobRoute';
 import { useRepoGroupChatFilters } from './useRepoGroupChatFilters';
 import { WorkspaceOwnerContext } from './workspaceOwnerContext';
 import type { RepoChatTabListContext } from '../features/chat/RepoChatTab';
@@ -272,6 +277,26 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
             />
         );
     }, [chatFeed, chatFilters, chatServerKey, chatServerLabel, groupBaseUrl, selectionId, memberChat.selectedKey, memberChat.selectMember, memberChat.clearSelection, workspaceId]);
+    const renderAggregatedUnreadRail = useCallback((ctx: RepoChatTabListContext) => (
+        <RailUnreadChats scopeKey={`${selectionId}:${groupBaseUrl ?? ''}`} scopeLabel={chatServerLabel}
+            count={chatFeed.model?.counts.unread}
+            partial={chatFeed.model?.counts.unread === undefined || chatFeed.model?.counts.partial || chatFeed.model?.hasMore || chatFeed.status === 'error'}
+            rows={(chatFeed.model?.history ?? []).filter(isUnseenGroupChat).map(row => ({
+                key: row.key,
+                title: getChatRowTitle(row.item),
+                meta: row.ownerName ?? row.ownerWorkspaceId,
+                href: row.ownerWorkspaceId === workspaceId
+                    ? queueJobHash(selectionId, row.item, 'chats')
+                    : buildRepoGroupChatHash(selectionId, row.ownerWorkspaceId, row.canonicalId),
+                open: () => {
+                    setSplitLastClicked('chat');
+                    if (row.ownerWorkspaceId === workspaceId) {
+                        memberChat.clearSelection();
+                        ctx.selectTask(row.item.id, row.item);
+                    } else memberChat.selectMember(row);
+                },
+            }))} />
+    ), [chatFeed.model, chatFeed.status, selectionId, groupBaseUrl, chatServerLabel, workspaceId, memberChat.clearSelection, memberChat.selectMember]);
     const routedGitMember = state.gitRouteScope?.routeWorkspaceId === workspaceId
         ? state.gitRouteScope.workspaceId
         : null;
@@ -375,6 +400,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                         detailActive={true}
                                         onActivateDetail={() => setSplitLastClicked('chat')}
                                         renderList={aggregatedChats ? renderAggregatedList : undefined}
+                                        renderUnreadRail={aggregatedChats ? renderAggregatedUnreadRail : undefined}
                                         refreshList={aggregatedChats ? chatFeed.refresh : undefined}
                                         refreshGit={refreshSidebarGit}
                                         detailOverride={memberChat.selection ? (

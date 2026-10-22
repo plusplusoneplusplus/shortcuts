@@ -24,13 +24,20 @@ const mockQueueDispatch = vi.fn();
 let mockAppState: any = {};
 let mockQueueMap: Record<string, { running: any[]; queued: any[] }> = {};
 const mockGetRepoGroup = vi.fn();
+const mockSelectNativeChat = vi.fn();
+let mockUnreadFeed: any = null;
+let mockRemoteGroupWorkspaces: any[] = [];
+vi.mock('../../../../src/server/spa/client/react/repos/useRepoGroupChatFeed', async importOriginal => {
+    const original = await importOriginal<any>();
+    return { ...original, useRepoGroupChatFeed: (options: any) => mockUnreadFeed ?? original.useRepoGroupChatFeed(options) };
+});
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: mockAppState, dispatch: mockDispatch }),
     useAppOptional: () => ({ state: mockAppState, dispatch: mockDispatch }),
 }));
 vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
-    useReposOptional: () => ({ remoteGroupWorkspaces: [] }),
+    useReposOptional: () => ({ remoteGroupWorkspaces: mockRemoteGroupWorkspaces }),
 }));
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: { selectedTaskIdByRepo: {}, repoQueueMap: mockQueueMap }, dispatch: mockQueueDispatch }),
@@ -67,13 +74,16 @@ interface LeafProps {
     active?: boolean;
     members?: unknown;
     rightPanel?: { chatId: string | null; ownerRoutingRef: string | null };
+    railShortcutContainer?: HTMLElement | null;
+    renderUnreadRail?: (context: any) => React.ReactNode;
 }
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/RepoChatTab', () => ({
-    RepoChatTab: ({ workspaceId, layout, detailContainer, detailActive, onActivateDetail }: LeafProps) => (
+    RepoChatTab: ({ workspaceId, layout, detailContainer, detailActive, onActivateDetail, railShortcutContainer, renderUnreadRail }: LeafProps) => (
         <div data-testid="stub-chat-tab" data-workspace={workspaceId} data-layout={layout ?? ''}>
             <button data-testid="stub-chat-row" onClick={() => onActivateDetail?.()}>chat</button>
             {detailContainer && detailActive && createPortal(<div data-testid="stub-chat-detail" />, detailContainer)}
+            {railShortcutContainer && renderUnreadRail && createPortal(renderUnreadRail({ selectedTaskId: null, selectTask: mockSelectNativeChat }), railShortcutContainer)}
         </div>
     ),
 }));
@@ -136,6 +146,9 @@ beforeEach(() => {
     mockDispatch.mockReset();
     mockQueueDispatch.mockReset();
     mockQueueMap = {};
+    mockUnreadFeed = null;
+    mockRemoteGroupWorkspaces = [];
+    mockSelectNativeChat.mockReset();
     mockGetRepoGroup.mockReset();
     mockGetRepoGroup.mockResolvedValue({
         id: GROUP_ID,
@@ -156,6 +169,49 @@ function click(testId: string): void {
 afterEach(() => { cleanup(); _resetRuntimeConfig(); });
 
 describe('RepoGroupView — desktop split Workspace panel', () => {
+    it.each([false, true])('opens unread group/member rows through their existing navigation (remote=%s)', async remote => {
+        applyRuntimeConfigPatch({ repoGroupAggregatedChatsEnabled: true });
+        window.matchMedia = vi.fn().mockReturnValue({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() });
+        const selectionId = remote ? `remote:server-remote:${GROUP_ID}` : GROUP_ID;
+        if (remote) mockRemoteGroupWorkspaces = [{
+            id: GROUP_ID, name: 'Remote group', baseUrl: 'http://remote:3000',
+            remote: { serverId: 'server-remote', cloneKey: selectionId },
+        }];
+        localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey(GROUP_ID), '1');
+        const row = (ownerWorkspaceId: string, title: string) => ({
+            key: `${ownerWorkspaceId}|queue_same`, ownerWorkspaceId, canonicalId: 'queue_same',
+            section: 'history', ownerName: ownerWorkspaceId,
+            item: { id: 'queue_same', type: 'chat', customTitle: title, status: 'completed', endTime: '2026-10-21T00:00:00Z' },
+        });
+        const groupRow = row(GROUP_ID, 'Group unread');
+        const memberRow = row('r1', 'Member unread');
+        mockUnreadFeed = { status: 'ready', refresh: vi.fn(), loadMore: vi.fn(), model: {
+            history: [groupRow, memberRow, { ...row('r2', 'Read answer'), item: { ...memberRow.item, seenAt: memberRow.item.endTime } }],
+            running: [], queued: [], sources: [], counts: { unread: 2, total: 3, partial: false }, hasMore: false,
+        } };
+        const { rerender } = render(<RepoGroupView workspaceId={GROUP_ID} selectionId={selectionId} />);
+        const unread = await screen.findByTestId('split-workspace-left-unread');
+        expect(unread).toHaveAccessibleName('2 unread conversations');
+        fireEvent.click(unread);
+        expect(screen.queryByRole('link', { name: /Read answer/ })).toBeNull();
+        const groupLink = screen.getByRole('link', { name: /Group unread/ });
+        expect(groupLink.getAttribute('href')).toBe(`#repos/${encodeURIComponent(selectionId)}/chats/queue_same`);
+        fireEvent.click(groupLink);
+        expect(mockSelectNativeChat).toHaveBeenCalledWith('queue_same', groupRow.item);
+        fireEvent.click(unread);
+        const memberLink = screen.getByRole('link', { name: /Member unread/ });
+        expect(memberLink.getAttribute('href')).toBe(`#repos/${encodeURIComponent(selectionId)}/chats/member/r1/queue_same`);
+        fireEvent.click(memberLink);
+        expect(location.hash).toBe(`#repos/${encodeURIComponent(selectionId)}/chats/member/r1/queue_same`);
+        expect(mockSelectNativeChat).toHaveBeenCalledTimes(1);
+        expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey(GROUP_ID))).toBe('1');
+        mockUnreadFeed = { ...mockUnreadFeed, model: { ...mockUnreadFeed.model, history: [], counts: { unread: 0, partial: false } } };
+        rerender(<RepoGroupView workspaceId={GROUP_ID} selectionId={selectionId} />);
+        expect(unread).toHaveAccessibleName('0 unread conversations');
+        fireEvent.click(unread);
+        expect(screen.getByText('No unread conversations.')).toBeTruthy();
+    });
+
     it.each([undefined, false, true])('shows live-member Git tiles with obsolete runtime flag %s', async saved => {
         localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey(GROUP_ID), '1');
         if (saved !== undefined) applyRuntimeConfigPatch({ railGitSummaryEnabled: saved });
