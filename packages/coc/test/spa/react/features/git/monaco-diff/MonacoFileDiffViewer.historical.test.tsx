@@ -8,6 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render } from '@testing-library/react';
+import { ToastProvider } from '../../../../../../src/server/spa/client/react/contexts/ToastContext';
 import {
     MonacoFileDiffViewer,
     type MonacoFileDiffViewerProps,
@@ -18,15 +19,15 @@ import { FakeClient } from '../../../language-servers/fakeLanguageTransport';
 import { createFakeDiffEditor, flush, type FakeDiffEditor } from './fakeDiffEditorAdapter';
 
 const mountFailure = vi.hoisted(() => ({ throws: false }));
-const mountCalls = vi.hoisted(() => [] as { uri: string; workspaceId: string; routingRef: unknown; onNavigate?: (target: unknown) => unknown; cleanup: ReturnType<typeof import('vitest').vi.fn> }[]);
+const mountCalls = vi.hoisted(() => [] as { uri: string; workspaceId: string; routingRef: unknown; onNavigate?: (target: unknown) => unknown; onNoDefinition?: (word: string) => void; cleanup: ReturnType<typeof import('vitest').vi.fn> }[]);
 
 vi.mock('../../../../../../src/server/spa/client/react/features/git/diff/diffCurrentCodeMount', async () => {
     const { vi: mockVi } = await import('vitest');
     return {
-        mountDiffCurrentCodeModel: (options: { model: { uri: { toString(): string } }; workspaceId: string; routingRef: unknown; onNavigate?: (target: unknown) => unknown }) => {
+        mountDiffCurrentCodeModel: (options: { model: { uri: { toString(): string } }; workspaceId: string; routingRef: unknown; onNavigate?: (target: unknown) => unknown; onNoDefinition?: (word: string) => void }) => {
             if (mountFailure.throws) throw new Error('language client unavailable');
             const cleanup = mockVi.fn();
-            mountCalls.push({ uri: options.model.uri.toString(), workspaceId: options.workspaceId, routingRef: options.routingRef, onNavigate: options.onNavigate, cleanup });
+            mountCalls.push({ uri: options.model.uri.toString(), workspaceId: options.workspaceId, routingRef: options.routingRef, onNavigate: options.onNavigate, onNoDefinition: options.onNoDefinition, cleanup });
             return cleanup;
         },
     };
@@ -47,7 +48,7 @@ beforeEach(() => {
     store = new LanguageDocumentStore({ workspaceId: 'ws-1', client: client.asClient() });
 });
 
-function harness(overrides: Partial<MonacoFileDiffViewerProps> = {}) {
+function harness(overrides: Partial<MonacoFileDiffViewerProps> = {}, addToast?: (message: string, type?: string) => void) {
     const fakes: FakeDiffEditor[] = [];
     const createEditor = vi.fn(async (_host: HTMLElement, options) => {
         const fake = createFakeDiffEditor(options);
@@ -67,8 +68,11 @@ function harness(overrides: Partial<MonacoFileDiffViewerProps> = {}) {
         historicalDefinitions: true,
         ...overrides,
     };
-    const view = render(<MonacoFileDiffViewer {...props} />);
-    const rerender = (next: Partial<MonacoFileDiffViewerProps>) => view.rerender(<MonacoFileDiffViewer {...props} {...next} />);
+    const wrap = (node: JSX.Element) => addToast
+        ? <ToastProvider value={{ addToast, removeToast: () => {}, toasts: [] }}>{node}</ToastProvider>
+        : node;
+    const view = render(wrap(<MonacoFileDiffViewer {...props} />));
+    const rerender = (next: Partial<MonacoFileDiffViewerProps>) => view.rerender(wrap(<MonacoFileDiffViewer {...props} {...next} />));
     return { ...view, rerender, fake: () => fakes[0] };
 }
 
@@ -150,5 +154,28 @@ describe('MonacoFileDiffViewer — historical definitions', () => {
         expect(h.fake().historicalMounts.map(m => m.side)).toEqual(['original', 'modified']);
         h.unmount();
         expect(h.fake().historicalMounts.every(m => !m.live)).toBe(true);
+    });
+
+    it('toasts "No definition found" for an empty click on either side, or defers to the host', async () => {
+        const addToast = vi.fn();
+        const h = harness({}, addToast);
+        await act(flush);
+        mountCalls[0].onNoDefinition?.('parse');
+        mountCalls[1].onNoDefinition?.('render');
+        expect(addToast.mock.calls).toEqual([
+            ["No definition found for 'parse'", 'info'],
+            ["No definition found for 'render'", 'info'],
+        ]);
+        const onNoDefinition = vi.fn();
+        h.rerender({ onNoDefinition });
+        mountCalls[0].onNoDefinition?.('parse');
+        expect(onNoDefinition).toHaveBeenCalledWith('parse');
+        expect(addToast).toHaveBeenCalledTimes(2);
+    });
+
+    it('stays quiet without a toast provider', async () => {
+        harness();
+        await act(flush);
+        expect(() => mountCalls[0].onNoDefinition?.('parse')).not.toThrow();
     });
 });

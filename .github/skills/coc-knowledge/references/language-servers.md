@@ -309,6 +309,14 @@ the controller's `reveal`, which waits for attach and is dropped by a model swap
 `WorkingTreeFileDiff` is not a review: it routes both its full-language and
 ref-backed jumps to a same-file reveal or Explorer only. Peek stays Monaco's own.
 
+Monaco mutes its empty-result message for Ctrl/Cmd+Click, so both diff mounts
+install `diffDefinitionFeedback.ts`: a modifier left-click on a word re-asks the
+mount's own resolver (LSP definition or current-code lookup) and reports a word
+with no result or a failed lookup; superseded clicks and disposal stay quiet.
+The viewer forwards it to `onNoDefinition` or, by default, a
+`No definition found for '<word>'` toast from `ToastContext` when one is mounted.
+Keyboard F12/Alt+F12 keep Monaco's inline message.
+
 ### Retry
 
 Editor retry travels over `/ws/language-server`. Settings retry uses

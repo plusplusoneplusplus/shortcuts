@@ -8,6 +8,7 @@ import { applyShadowLanguage, type ShadowMonaco } from '../../language-servers/s
 import { explorerApi } from '../../repo-detail/explorer/explorerApi';
 import { getMonacoLanguage } from '../../../shared/file-viewer/monacoLanguage';
 import { createCurrentCodeDefinitions, type CurrentCodeDefinitions } from './currentCodeDefinitions';
+import { installNoDefinitionFeedback, type DiffNoDefinition } from './diffDefinitionFeedback';
 import { DIFF_LANGUAGE_MAX_CHARS } from './diffLanguageEligibility';
 import type { DiffDefinitionNavigate } from './diffLanguageMount';
 import type { DiffLanguageMountContext } from './monacoDiffController';
@@ -17,6 +18,8 @@ export interface MountDiffCurrentCodeOptions extends DiffLanguageMountContext {
     workspaceId: string;
     routingRef?: string | null;
     onNavigate?: DiffDefinitionNavigate;
+    /** A Ctrl/Cmd+Click on a word the current code does not define. */
+    onNoDefinition?: DiffNoDefinition;
     loadSource?: (path: string, signal: AbortSignal) => Promise<string>;
     /** Injectable lookup, owned and disposed by this mount. */
     definitions?: CurrentCodeDefinitions;
@@ -98,6 +101,12 @@ export function mountDiffCurrentCodeModel(options: MountDiffCurrentCodeOptions):
         isEnabled: () => !disposed,
         hasDefinition: async (position, signal) => (await lookup(position, signal)).length > 0,
     });
+    const feedback = installNoDefinitionFeedback({
+        editor,
+        model,
+        onNoDefinition: options.onNoDefinition,
+        resolve: async (position, signal) => (await lookup(position, signal)).length > 0,
+    });
     const navigation = registerEditorNavigator(model, target => {
         if (isExternalNavigationTarget(target) || target.workspaceId !== workspaceId || !onNavigate) return false;
         return onNavigate(target) !== false;
@@ -108,6 +117,7 @@ export function mountDiffCurrentCodeModel(options: MountDiffCurrentCodeOptions):
         for (const abort of pending) abort.abort();
         pending.clear();
         navigation.dispose();
+        feedback.dispose();
         cue.dispose();
         hover.dispose();
         definition.dispose();

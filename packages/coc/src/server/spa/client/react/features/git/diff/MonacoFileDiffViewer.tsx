@@ -26,7 +26,7 @@
  * opens a language document.
  */
 
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
+import { forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Spinner } from '../../../ui';
 import { useTheme } from '../../../layout/ThemeProvider';
 import type { DiffLine, UnifiedDiffViewerHandle } from './UnifiedDiffViewer';
@@ -55,6 +55,8 @@ import type { LanguageDocumentStore } from '../../language-servers/documentStore
 import { useDiffLanguageFeatures } from './useDiffLanguageFeatures';
 import type { DiffDefinitionNavigate } from './diffLanguageMount';
 import { mountDiffCurrentCodeModel } from './diffCurrentCodeMount';
+import { noDefinitionMessage, type DiffNoDefinition } from './diffDefinitionFeedback';
+import { ToastContext } from '../../../contexts/ToastContext';
 import type { DiffEditorSide } from './diffCoords';
 import { MonacoDiffSelectionAttachPill } from './MonacoDiffSelectionAttachPill';
 import type { DiffSelectionDragSource } from './diffSelectionContext';
@@ -113,6 +115,11 @@ export interface MonacoFileDiffViewerProps extends MonacoDiffCommentHandlers {
     /** Opens a go-to-definition target in another file of this workspace. */
     onNavigateDefinition?: DiffDefinitionNavigate;
     /**
+     * A Ctrl/Cmd+Click that resolved no definition; defaults to a
+     * "No definition found" toast when a toast provider is mounted.
+     */
+    onNoDefinition?: DiffNoDefinition;
+    /**
      * Best-effort current-code definitions on ref-backed sides. Hosts opt in
      * for local reviews only; PR snapshots must leave it off. Default false.
      */
@@ -148,7 +155,7 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
         workspaceId, relativePath, stage, modelIdentity, modifiedMatchesWorkingCopy, original, modified, viewMode, initialHunkTarget,
         onLineChanges, onLinesReady, onEditorError, createEditor = createDefaultDiffEditor, revealTarget,
         comments, renderCommentThread, onAddComment, onAskAI, onCopyAsContext,
-        languageFeatures = true, languageStore, onNavigateDefinition, historicalDefinitions = false, routingRef,
+        languageFeatures = true, languageStore, onNavigateDefinition, onNoDefinition, historicalDefinitions = false, routingRef,
         diffSelectionDragSource,
         editable: editableRequested = false, onModifiedChange, onSave, editedText, savedText,
         'data-testid': testId = 'monaco-file-diff-viewer',
@@ -173,6 +180,15 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
             [workspaceId, relativePath, stage, modelIdentity, modifiedMatchesWorkingCopy, original, modified],
         );
         const editable = isEditableDiff(editableRequested, stage, models);
+        // Never a silent no-op: an empty Ctrl/Cmd+Click says so.
+        const toast = useContext(ToastContext);
+        const noDefinitionRef = useRef({ onNoDefinition, toast });
+        noDefinitionRef.current = { onNoDefinition, toast };
+        const reportNoDefinition = useCallback((word: string) => {
+            const { onNoDefinition: report, toast: current } = noDefinitionRef.current;
+            if (report) report(word);
+            else current?.addToast(noDefinitionMessage(word), 'info');
+        }, []);
         const options = useMemo(() => buildDiffEditorOptions(viewMode, editable, wordWrap), [viewMode, editable, wordWrap]);
         const language = useDiffLanguageFeatures({
             workspaceId,
@@ -182,6 +198,7 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
             enabled: languageFeatures && !identical,
             store: languageStore,
             onNavigate: onNavigateDefinition,
+            onNoDefinition: reportNoDefinition,
             editedText: editable ? editedText : null,
             savedText: editable ? savedText : null,
         });
@@ -297,13 +314,14 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
                         workspaceId,
                         routingRef,
                         onNavigate: target => navigateRef.current?.(target, side) ?? false,
+                        onNoDefinition: reportNoDefinition,
                     });
                 } catch {
                     return undefined;
                 }
             }));
             return () => { for (const mount of mounted) mount?.dispose(); };
-        }, [editor, modelsVersion, historicalEnabled, workspaceId, routingRef]);
+        }, [editor, modelsVersion, historicalEnabled, workspaceId, routingRef, reportNoDefinition]);
 
         // Diagnostics as markers; cleared when features go away (an unsaved
         // explorer edit, a refused session) so stale squiggles never linger.

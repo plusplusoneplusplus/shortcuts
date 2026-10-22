@@ -48,13 +48,16 @@ function setup(uri = URI, size = 30) {
         },
     };
     const subscribe = () => ({ dispose: vi.fn() });
+    let mouseUp: (event: unknown) => void = () => {};
+    const onNoDefinition = vi.fn();
     const editor = {
+        onMouseUp: (listener: (event: unknown) => void) => { mouseUp = listener; return { dispose: vi.fn() }; },
         createDecorationsCollection: () => ({ clear() {}, set() {} }),
         onDidChangeModelContent: subscribe, onDidScrollChange: subscribe,
         onKeyDown: subscribe, onKeyUp: subscribe, onMouseLeave: subscribe, onMouseMove: subscribe,
     };
     const cleanup = mountDiffCurrentCodeModel({
-        model, editor, monaco, workspaceId: 'ws-1', definitions, loadSource, onNavigate,
+        model, editor, monaco, workspaceId: 'ws-1', definitions, loadSource, onNavigate, onNoDefinition,
     } as any);
     cleanups.push(cleanup);
     let cancel = () => {};
@@ -67,7 +70,11 @@ function setup(uri = URI, size = 30) {
         },
     };
     return { providers, disposed, definitions, lookup, loadSource, model, previews, monaco,
-        onNavigate, cleanup, token, cancel: () => cancel(), unsubscribe, opener: () => opener };
+        onNavigate, cleanup, token, cancel: () => cancel(), unsubscribe, opener: () => opener,
+        onNoDefinition, click: () => mouseUp({
+            event: { leftButton: true, ctrlKey: true, metaKey: true },
+            target: { type: 6, position },
+        }) };
 }
 
 describe('historical diff definition mount', () => {
@@ -156,5 +163,16 @@ describe('historical diff definition mount', () => {
         const s = setup(uri, size);
         expect(s.providers).toEqual({});
         expect(s.lookup).not.toHaveBeenCalled();
+    });
+
+    it('reports a Ctrl/Cmd+Click the current code cannot resolve, and only that', async () => {
+        const s = setup();
+        s.click();
+        await vi.waitFor(() => expect(s.lookup).toHaveBeenCalledOnce());
+        await Promise.resolve();
+        expect(s.onNoDefinition).not.toHaveBeenCalled();
+        s.lookup.mockResolvedValue([]);
+        s.click();
+        await vi.waitFor(() => expect(s.onNoDefinition).toHaveBeenCalledWith('target'));
     });
 });

@@ -35,6 +35,9 @@ import {
 } from '../../language-servers/editorNavigation';
 import type { DiffLanguageMountContext } from './monacoDiffController';
 import type { DiffEditorSide } from './diffCoords';
+import { installNoDefinitionFeedback, type DiffNoDefinition } from './diffDefinitionFeedback';
+import { toLocationLinks } from '../../language-servers/languageFeatures';
+import { toLspPosition } from '../../language-servers/monacoBridge';
 
 /**
  * Where a definition in another file of this workspace should open; `side`
@@ -49,6 +52,8 @@ export interface MountDiffLanguageOptions extends DiffLanguageMountContext {
     languageId: string;
     /** Opens a cross-file target; absent means cross-file jumps are declined. */
     onNavigate?: DiffDefinitionNavigate;
+    /** A Ctrl/Cmd+Click on a word the language server does not define. */
+    onNoDefinition?: DiffNoDefinition;
     /** Reads another file's text for Peek; defaults to the explorer blob API. */
     loadSource?: (path: string, signal: AbortSignal) => Promise<string>;
 }
@@ -95,6 +100,16 @@ export function mountDiffLanguageModel(options: MountDiffLanguageOptions): () =>
         view,
         isEnabled: () => definitionEnabled(view),
     });
+    const feedback = installNoDefinitionFeedback({
+        editor,
+        model,
+        onNoDefinition: options.onNoDefinition,
+        resolve: async (position, signal) => toLocationLinks(await view.sendRequest(
+            'textDocument/definition',
+            view.documentParams({ position: toLspPosition(position) }),
+            { signal },
+        )).length > 0,
+    });
     // A diff has no tab strip for external sources; those jumps, and any into
     // another workspace, are declined so Monaco falls through.
     const navigation = registerEditorNavigator(model, (target) => {
@@ -104,6 +119,7 @@ export function mountDiffLanguageModel(options: MountDiffLanguageOptions): () =>
 
     return () => {
         navigation.dispose();
+        feedback.dispose();
         linkCue.dispose();
         registration.dispose();
         previewSource.dispose();
