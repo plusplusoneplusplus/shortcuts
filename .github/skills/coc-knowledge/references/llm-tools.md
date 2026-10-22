@@ -432,8 +432,8 @@ explicit provider/model/tier overrides travel; remote defaults own model/effort,
 spawn link, messaging origin, or parent configuration travels. Dispatch is attempted once;
 the returned owning identity qualifies `openLink`.
 Remote Sentinel launches and follow-ups use default-off `features.sentinelRemoteResults`
-and compatible authenticated destination admission for `resultDelivery: { status: 'tracked',
-jobId, remote }`. Origin-only connector context stays outside execution intents. Other
+and a sender-polling destination for `resultDelivery: { status: 'tracked',
+jobId, remote }`; the destination needs no registration of, or route to, the origin. Origin-only connector context stays outside execution intents. Other
 dispatch returns `status: 'unavailable'` with a reason (`code: 'unsupported'` for incompatible
 destinations); inspect its link without promising
 automatic return or repeating work. See [receipt recovery](server-architecture.md#remote-delegation-admission).

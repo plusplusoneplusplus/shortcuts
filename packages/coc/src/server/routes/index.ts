@@ -39,7 +39,7 @@ import { BrowserToolStateStore } from '../llm-tools/browser-tools';
 import { createSendMessageCapability } from '../processes/send-message-capability';
 import { DelegatedJobStore } from '../delegation/delegated-job-store';
 import { RemoteDelegationRequestStore } from '../delegation/remote-delegation-request-store';
-import { registerRemoteDelegationProofRoutes, registerRemoteDelegationRoutes } from '../delegation/remote-delegation-routes';
+import { registerRemoteDelegationRoutes } from '../delegation/remote-delegation-routes';
 import { RemoteDelegationAdmissionStore } from '../delegation/remote-delegation-admission-store';
 import { RemoteDelegationResults } from '../delegation/remote-delegation-results';
 import { RemoteDelegationReturn } from '../delegation/remote-delegation-return';
@@ -543,7 +543,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // enqueue via the per-repo queue manager.
     const delegatedJobs = new DelegatedJobStore(dataDir);
     const remoteDelegationRequests = new RemoteDelegationRequestStore(dataDir, delegatedJobs);
-    registerRemoteDelegationProofRoutes(routes, remoteDelegationRequests);
     // Sentinel to-do ledger: always available for Sentinel bookkeeping, never job control.
     // Production borrows the process-store connection; stub stores use native
     // in-memory SQLite, like the queue infrastructure.
@@ -997,7 +996,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     const remoteResultsReady = remoteResults.restore();
     registerRemoteDelegationRoutes(routes, {
-        admissions: remoteAdmissions, remotes: remoteServerRuntime, store,
+        admissions: remoteAdmissions, store,
         delivery: remoteDelivery, launch: remoteLaunch,
         results: { ready: remoteResultsReady, capture: () => remoteResults.restore() },
     });

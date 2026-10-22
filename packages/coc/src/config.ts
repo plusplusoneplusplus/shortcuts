@@ -335,7 +335,7 @@ export interface CLIConfig {
         sentinelPrOutcomeWake?: boolean;
         /** Return each tracked Sentinel post-mode turn result to the Sentinel. Disabled by default. */
         sentinelFollowUpResults?: boolean;
-        /** Return new remote Sentinel requests through authenticated durable receipts. Default off. */
+        /** Return new remote Sentinel requests by polling durable destination receipts. Default off. */
         sentinelRemoteResults?: boolean;
         sentinelTodoDateTimeTriggers?: boolean;
         sentinelDesktopMirror?: boolean;

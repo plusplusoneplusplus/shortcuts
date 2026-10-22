@@ -10,21 +10,19 @@ import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue
 import { SqliteQueuePersistence } from '../../../src/server/queue/sqlite-queue-persistence';
 import { ProcessMessageDeliveryService } from '../../../src/server/processes/process-message-delivery-service';
 import { RemoteDelegationAdmissionStore } from '../../../src/server/delegation/remote-delegation-admission-store';
-import { getOrCreateServerIdentity } from '../../../src/server/servers/server-identity';
 import { RemoteDelegationRequestStore } from '../../../src/server/delegation/remote-delegation-request-store';
 import { captureRemoteDelegationIntent, type RemoteDelegationIntent } from '../../../src/server/delegation/remote-delegation-admission';
 import type { RemoteDelegationClaim } from '../../../src/server/delegation/remote-delegation-auth';
 import { REMOTE_DELEGATION_FOLLOW_UP_PATH, REMOTE_DELEGATION_RECEIPT_PATH,
-    registerRemoteDelegationRoutes, registerRemoteDelegationProofRoutes } from '../../../src/server/delegation/remote-delegation-routes';
-import { createRouter, sendJson, type Route } from '../../../src/server/shared/router';
-import type { RemoteServerWithRuntime } from '../../../src/server/servers/remote-server-types';
+    registerRemoteDelegationRoutes } from '../../../src/server/delegation/remote-delegation-routes';
+import { createRouter, type Route } from '../../../src/server/shared/router';
 
 const workspaceId = 'destination-repo';
 const processId = 'queue_exact-chat';
 const intent: RemoteDelegationIntent = { version: 1, kind: 'follow-up', workspaceId,
     targetProcessId: processId, body: { content: 'Inspect the saved plan', mode: 'ask' } };
 
-describe('authenticated destination follow-up HTTP admission', () => {
+describe('sender-only destination follow-up HTTP admission', () => {
     let directory: string;
     let store: SqliteProcessStore;
     let bridge: MultiRepoQueueRouter;
@@ -32,7 +30,6 @@ describe('authenticated destination follow-up HTTP admission', () => {
     let delivery: ProcessMessageDeliveryService;
     let requests: RemoteDelegationRequestStore;
     let admissions: RemoteDelegationAdmissionStore;
-    let remotes: RemoteServerWithRuntime[];
     let destinationUrl: string;
     const servers: http.Server[] = [];
     const destinationRoutes: Route[] = [];
@@ -51,7 +48,7 @@ describe('authenticated destination follow-up HTTP admission', () => {
         admissions = new RemoteDelegationAdmissionStore(destinationDir());
         destinationRoutes.splice(0);
         registerRemoteDelegationRoutes(destinationRoutes, {
-            admissions, store, delivery, remotes: { list: () => remotes },
+            admissions, store, delivery
         });
     }
     function closeDestination() { persistence.dispose(); bridge.dispose(); store.close(); }
@@ -87,12 +84,7 @@ describe('authenticated destination follow-up HTTP admission', () => {
         directory = fs.mkdtempSync(path.join(os.tmpdir(), 'remote-follow-up-'));
         fs.mkdirSync(destinationDir());
         requests = new RemoteDelegationRequestStore(originDir());
-        const originRoutes: Route[] = [{ method: 'GET', pattern: '/api/health', handler: (_req, res) =>
-            sendJson(res, { serverIdentity: getOrCreateServerIdentity(originDir()) }) }];
-        registerRemoteDelegationProofRoutes(originRoutes, requests);
-        const originUrl = await listen(originRoutes);
-        remotes = [{ id: 'origin-alias', kind: 'url', label: 'Origin', url: originUrl, effectiveUrl: originUrl,
-            status: 'online', serverIdentity: getOrCreateServerIdentity(originDir()), addedAt: 1, updatedAt: 1 }];
+        // The destination has no registration for, or route to, any origin.
         openDestination();
         await store.registerWorkspace({ id: workspaceId, rootPath: path.join(directory, 'repo'), name: 'Destination' });
         await store.addProcess({ id: processId, type: 'chat', status: 'completed', startTime: new Date(), promptPreview: 'Initial',
@@ -110,7 +102,7 @@ describe('authenticated destination follow-up HTTP admission', () => {
         fs.rmSync(directory, { recursive: true, force: true });
     });
 
-    it('authenticates real proof routes, admits once and hides private destination correlation', async () => {
+    it('admits once with no origin registration and hides private destination correlation', async () => {
         const claim = reserve();
         const enqueue = vi.spyOn(bridge, 'enqueueAdmitted');
         const response = await admit(claim);
@@ -168,7 +160,7 @@ describe('authenticated destination follow-up HTTP admission', () => {
 
     it('never executes a claimed crash-before-send request, including missing domain evidence', async () => {
         const claim = reserve();
-        admissions.claim(requests.proveOrigin(claim)!);
+        admissions.claim(claim);
         closeDestination(); openDestination();
         const enqueue = vi.spyOn(bridge, 'enqueueAdmitted');
         expect((await reconcile(claim)).body.admission.state).toBe('dispatching');
@@ -225,13 +217,13 @@ describe('authenticated destination follow-up HTTP admission', () => {
         expect(queues()).toHaveLength(0);
     });
 
-    it('reconciles through another registered alias for the same verified origin', async () => {
+    it('serves receipts only to the submitter secret, never to a spoofed origin or other workspace', async () => {
         const claim = reserve();
         expect((await admit(claim)).body.admission.state).toBe('accepted');
-        remotes = [{ ...remotes[0], id: 'replacement-alias', updatedAt: 2 }];
         expect((await reconcile(claim)).body.admission.state).toBe('accepted');
-        remotes[0].serverIdentity = 'foreign-origin';
-        expect((await reconcile(claim)).status).toBe(503);
+        expect((await reconcile({ ...claim, proofToken: 'c'.repeat(64) })).status).toBe(404);
+        expect((await reconcile({ ...claim, originServerIdentity: 'foreign-origin' })).status).toBe(404);
+        expect((await reconcile({ ...claim, destination: { ...claim.destination, workspaceId: 'other-repo' } })).status).toBe(404);
         expect(queues()).toHaveLength(1);
     });
 
@@ -304,19 +296,28 @@ describe('authenticated destination follow-up HTTP admission', () => {
         },
     );
 
-    it('rejects tampered content, forged proof and changed owner without execution', async () => {
+    it('refuses tampered content and self or foreign destination identities before any claim', async () => {
         const claim = reserve();
-        expect((await admit(claim, { ...intent, body: { content: 'tampered' } })).status).toBe(503);
-        expect((await admit({ ...claim, proofToken: 'b'.repeat(64) })).status).toBe(503);
-        remotes[0].serverIdentity = 'replacement-owner';
-        expect((await admit(claim)).status).toBe(503);
+        expect((await admit(claim, { ...intent, body: { content: 'tampered' } })).status).toBe(400);
+        expect((await admit({ ...claim, originServerIdentity: admissions.serverIdentity })).status).toBe(400);
+        expect((await admit({ ...claim, destination: { ...claim.destination, serverIdentity: 'other-server' } })).status).toBe(400);
         expect(admissions.list(workspaceId)).toHaveLength(0);
         expect(queues()).toHaveLength(0);
     });
 
+    it('denies a replay under another secret without disclosing or executing again', async () => {
+        const claim = reserve();
+        expect((await admit(claim)).body.admission.state).toBe('accepted');
+        const forged = await admit({ ...claim, proofToken: 'b'.repeat(64) });
+        expect(forged.status).toBe(403);
+        expect(JSON.stringify(forged.body)).not.toContain(row(claim).executionId);
+        expect((await admit(claim)).body.admission.state).toBe('accepted');
+        expect((await proc())!.conversationTurns).toHaveLength(1);
+    });
+
     it('retains uncertainty on conflicting domain receipts and never trusts raw ID matches', async () => {
         const claim = reserve();
-        const executionId = admissions.claim(requests.proveOrigin(claim)!).receipt.executionId;
+        const executionId = admissions.claim(claim).receipt.executionId;
         await bridge.enqueue({ id: executionId, type: 'chat', processId: 'foreign',
             payload: { kind: 'chat', prompt: 'foreign', processId: 'foreign', workspaceId: 'foreign', workingDirectory: path.join(directory, 'repo') } });
         expect((await reconcile(claim)).status).toBe(503);
@@ -327,7 +328,7 @@ describe('authenticated destination follow-up HTTP admission', () => {
 
     it('reads derived pending task receipts after buffer removal without another admission', async () => {
         const claim = reserve();
-        const executionId = admissions.claim(requests.proveOrigin(claim)!).receipt.executionId;
+        const executionId = admissions.claim(claim).receipt.executionId;
         await bridge.enqueue({ id: `pending-${processId}-${executionId}`, type: 'chat', processId,
             payload: { kind: 'chat', prompt: 'already admitted', processId, workspaceId, relayRequestId: executionId,
                 workingDirectory: path.join(directory, 'repo') } });
@@ -336,15 +337,10 @@ describe('authenticated destination follow-up HTTP admission', () => {
         expect((await proc())!.conversationTurns).toHaveLength(0);
     });
 
-    it('keeps colliding origin request IDs independent across authenticated installations', async () => {
+    it('keeps colliding origin request IDs independent across installations', async () => {
         const shared = randomUUID();
         const first = reserve(intent, requests, shared);
         const other = new RemoteDelegationRequestStore(path.join(directory, 'other-origin'));
-        const routes: Route[] = [{ method: 'GET', pattern: '/api/health', handler: (_req, res) =>
-            sendJson(res, { serverIdentity: getOrCreateServerIdentity(path.join(directory, 'other-origin')) }) }];
-        registerRemoteDelegationProofRoutes(routes, other);
-        const url = await listen(routes);
-        remotes.push({ ...remotes[0], id: 'other-origin', serverIdentity: getOrCreateServerIdentity(path.join(directory, 'other-origin')), url, effectiveUrl: url });
         const second = reserve(intent, other, shared);
         expect((await admit(first)).body.admission.state).toBe('accepted');
         expect((await admit(second)).body.admission.state).toBe('accepted');

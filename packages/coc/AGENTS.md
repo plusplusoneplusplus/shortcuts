@@ -129,14 +129,18 @@ references before editing. Paths are package-relative.
   timeouts, lost/invalid replies and HTTP 408/5xx remain uncertain and prohibit blind
   resubmission. Public POST errors omit private transport details. Never substitute
   a transport alias, endpoint or viewer's server identity.
-  Remote reservation proof tokens stay server-side. Verify the exact owner/request/digest
-  through a registered reciprocal connection; proof reads never authorize execution replay.
+  Remote delegation is sender-only: the origin submits admission, then polls the destination
+  receipt. Never make the destination register, connect to or call the origin (no callback,
+  proof fetch or push). Transport authorization is reaching the destination API, as for
+  `POST /api/queue`; `originServerIdentity` is a claimed label that scopes keys, never
+  authority; the first destination claim binds a SHA-256 digest of the origin's private
+  per-request secret, required for replays and receipt reads. Secrets travel only in POST
+  bodies. Legacy digestless destination receipts are never readable or rebindable.
   The destination admission gateway hashes and captures the exact JSON execution envelope
-  before proof I/O. Its domain adapter uses that captured body and the persisted destination
+  before any await. Its domain adapter uses that captured body and the persisted destination
   execution ID, not the origin's raw request ID. Destination claims qualify origin server,
-  parent workspace and request; duplicate or crash-window claims only reconcile. Accepted
-  origin proofs cannot create missing destination claims. Keep domain authorization in the
-  execution adapter. Authenticated destination follow-up admission uses the queued message
+  parent workspace and request; duplicate or crash-window claims only reconcile. Keep domain
+  authorization in the execution adapter. Destination follow-up admission uses the queued message
   service with exact workspace/process ownership and the active provider/session binding.
   Destination chat/Ralph launches reuse queue preparation and native Ralph admission with
   destination-owned task/session IDs and registered workspace roots. Reject caller paths,

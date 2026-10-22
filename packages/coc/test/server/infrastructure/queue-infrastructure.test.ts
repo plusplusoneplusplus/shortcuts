@@ -24,7 +24,7 @@ import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue
 import { SqliteQueuePersistence } from '../../../src/server/queue/sqlite-queue-persistence';
 import { RepoQueueRegistry, SqliteQueueStore, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import { RemoteDelegationAdmissionStore } from '../../../src/server/delegation/remote-delegation-admission-store';
-import type { RemoteDelegationProof } from '../../../src/server/delegation/remote-delegation-auth';
+import type { RemoteDelegationClaim } from '../../../src/server/delegation/remote-delegation-auth';
 import { CLITaskExecutor } from '../../../src/server/queue/queue-executor-bridge';
 import type { ExecutorRuntimeCapabilities } from '../../../src/server/executors/executor-runtime-contracts';
 import { ConversationToolInventoryStore } from '../../../src/server/storage/conversation-tool-inventory-store';
@@ -133,11 +133,11 @@ describe('createQueueInfrastructure', () => {
             { state: 'recorded', kind: 'launch', status: 'completed' },
         ] as const;
         const bindings = cases.map(entry => {
-            const proof: RemoteDelegationProof = {
+            const proof: RemoteDelegationClaim = {
                 version: 1, requestId: randomUUID(), originServerIdentity: 'origin-owner',
                 parent: { workspaceId: 'origin-workspace', processId: 'parent-sentinel' },
                 destination: { serverIdentity: admissions.serverIdentity, workspaceId },
-                kind: entry.kind, intentDigest: 'a'.repeat(64), admission: 'dispatching',
+                kind: entry.kind, intentDigest: 'a'.repeat(64), proofToken: 'b'.repeat(64),
                 ...(entry.kind === 'follow-up' ? { targetProcessId: 'existing-chat' } : {}),
             };
             const { executionId } = admissions.claim(proof).receipt;

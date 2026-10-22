@@ -697,7 +697,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         key: 'features.sentinelRemoteResults', default: false, runtime: 'live', runtimeFlag: 'sentinelRemoteResultsEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.587, label: 'Sentinel remote results', badge: 'experimental',
-            hint: 'Track new remote launches and follow-ups and queue their results in the originating Sentinel. Requires compatible authenticated remote support. Recovery continues when disabled.',
+            hint: 'Track new remote launches and follow-ups and queue their results in the originating Sentinel. This server polls the destination for receipts; the destination needs no connection back. Requires an up-to-date destination. Recovery continues when disabled.',
             testId: 'toggle-sentinel-remote-results-enabled',
         },
     }),

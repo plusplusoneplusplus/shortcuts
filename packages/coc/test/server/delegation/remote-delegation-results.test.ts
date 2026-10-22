@@ -6,7 +6,7 @@ import { TaskQueueManager, toQueueProcessId, type ConversationTurn } from '@plus
 import { createMockProcessStore, createProcessFixture } from '../../helpers/mock-process-store';
 import { RemoteDelegationAdmissionStore, type RemoteDelegationAdmission } from '../../../src/server/delegation/remote-delegation-admission-store';
 import { RemoteDelegationResults } from '../../../src/server/delegation/remote-delegation-results';
-import type { RemoteDelegationProof } from '../../../src/server/delegation/remote-delegation-auth';
+import type { RemoteDelegationClaim } from '../../../src/server/delegation/remote-delegation-auth';
 import { RalphSessionStore } from '../../../src/server/ralph/ralph-session-store';
 import { DelegatedJobStore } from '../../../src/server/delegation/delegated-job-store';
 import { buildDashboardArtifactReference } from '../../../src/server/shared/chat-reference';
@@ -39,11 +39,11 @@ describe('durable destination remote results', () => {
         fs.rmSync(dataDir, { recursive: true, force: true });
         vi.restoreAllMocks();
     });
-    function claim(kind: RemoteDelegationProof['kind'] = 'launch', overrides: Partial<RemoteDelegationProof> = {}) {
+    function claim(kind: RemoteDelegationClaim['kind'] = 'launch', overrides: Partial<RemoteDelegationClaim> = {}) {
         return admissions.claim({ version: 1, requestId: randomUUID(), originServerIdentity: 'origin-owner',
             parent: { workspaceId: 'origin-repo', processId: 'exact-sentinel' },
             destination: { serverIdentity: admissions.serverIdentity, workspaceId },
-            kind, intentDigest: 'a'.repeat(64), admission: 'dispatching',
+            kind, intentDigest: 'a'.repeat(64), proofToken: 'b'.repeat(64),
             ...(kind === 'follow-up' ? { targetProcessId: 'queue_shared' } : {}), ...overrides }).receipt;
     }
     function child(row: RemoteDelegationAdmission) {
@@ -94,8 +94,9 @@ describe('durable destination remote results', () => {
         const find = vi.fn(async () => child(row));
         await service(find).restore();
         expect(saved(row)).toMatchObject({ admission: { state: 'accepted' }, terminal: { result: { summary: 'Fast answer' } } });
-        const { executionId: _executionId, createdAt: _createdAt, terminal: _terminal, admission: _admission, ...binding } = row;
-        expect(admissions.claim({ ...binding, admission: 'dispatching' }).execute).toBe(false);
+        const { executionId: _executionId, createdAt: _createdAt, terminal: _terminal, admission: _admission,
+            receiptTokenDigest: _digest, ...binding } = row;
+        expect(admissions.claim({ ...binding, proofToken: 'b'.repeat(64) }).execute).toBe(false);
         expect(queue.getAll()).toHaveLength(1);
     });
 

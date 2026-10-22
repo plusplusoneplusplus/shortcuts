@@ -2,11 +2,11 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { isValidWorkspaceId } from '../tasks/comments/base-comments-manager';
 import {
-    remoteDelegationClaimSchema, verifyRemoteDelegationOrigin,
+    parseRemoteDelegationClaim, RemoteDelegationRefusedError,
     type RemoteDelegationBinding,
 } from './remote-delegation-auth';
 import {
-    RemoteDelegationAdmissionStore, type RemoteDelegationAdmission, type RemoteDelegationChild,
+    RemoteDelegationAdmissionStore, RemoteDelegationReceiptOwnerError, type RemoteDelegationAdmission, type RemoteDelegationChild,
 } from './remote-delegation-admission-store';
 
 const intentSchema = z.object({
@@ -65,7 +65,6 @@ export function captureRemoteDelegationIntent(input: unknown): { intent: RemoteD
     return { intent: captured as RemoteDelegationIntent, digest: createHash('sha256').update(canonical).digest('hex') };
 }
 
-type OriginVerificationOptions = Omit<Parameters<typeof verifyRemoteDelegationOrigin>[1], 'serverIdentity'>;
 export type RemoteDelegationDispatch = (input: {
     binding: RemoteDelegationBinding; intent: RemoteDelegationIntent;
     /** Use for destination task/relay IDs; never use the origin's raw request ID. */
@@ -75,64 +74,62 @@ export type RemoteDelegationDispatch = (input: {
 /** Inspect durable domain records only. This callback must never enqueue or execute. */
 export type RemoteDelegationFindChild = (receipt: RemoteDelegationAdmission) => Promise<RemoteDelegationChild | undefined>;
 
-/** Authenticated destination gateway; execution adapters are supplied by route composition. */
+/**
+ * Destination gateway; execution adapters are supplied by route composition.
+ * It never contacts the origin: see `parseRemoteDelegationClaim` for the trust model.
+ */
 export class RemoteDelegationAdmissionService {
-    constructor(private readonly store: RemoteDelegationAdmissionStore, private readonly options: OriginVerificationOptions) {}
+    constructor(private readonly store: RemoteDelegationAdmissionStore) {}
 
     async admit(input: unknown, execution: unknown, dispatch: RemoteDelegationDispatch): Promise<RemoteDelegationAdmission> {
-        const claim = remoteDelegationClaimSchema.parse(input);
-        const { intent, digest } = captureRemoteDelegationIntent(execution);
+        const claim = parseRemoteDelegationClaim(input, this.store.serverIdentity);
+        let captured: ReturnType<typeof captureRemoteDelegationIntent>;
+        try { captured = captureRemoteDelegationIntent(execution); }
+        catch { throw new RemoteDelegationRefusedError('Invalid remote execution intent'); }
+        const { intent, digest } = captured;
         if (digest !== claim.intentDigest || intent.kind !== claim.kind
             || intent.workspaceId !== claim.destination.workspaceId || intent.targetProcessId !== claim.targetProcessId) {
-            throw new Error('Remote execution intent does not match the origin reservation');
+            throw new RemoteDelegationRefusedError('Remote execution intent does not match the origin reservation');
         }
-        const proof = await this.verify(claim);
-        this.options.signal?.throwIfAborted();
         let receipt: RemoteDelegationAdmission;
         let execute: boolean;
-        try { ({ receipt, execute } = this.store.claim(proof)); }
-        catch { throw new Error('Destination admission is unavailable; do not retry execution'); }
+        try { ({ receipt, execute } = this.store.claim(claim)); }
+        catch (error) {
+            if (error instanceof RemoteDelegationReceiptOwnerError) throw error;
+            throw new Error('Destination admission is unavailable; do not retry execution');
+        }
         if (!execute) return receipt;
         try {
             // The durable claim remains consumed even if dispatch throws or its reply is lost.
-            const outcome = await dispatch({ binding: remoteDelegationBinding(proof), intent, executionId: receipt.executionId });
-            if (outcome.state === 'accepted') return this.store.accept(proof, outcome.child);
-            if (outcome.state === 'rejected') return this.store.settle(proof, 'rejected');
+            const outcome = await dispatch({ binding: remoteDelegationBinding(claim), intent, executionId: receipt.executionId });
+            if (outcome.state === 'accepted') return this.store.accept(claim, outcome.child);
+            if (outcome.state === 'rejected') return this.store.settle(claim, 'rejected');
             throw new Error('Unrecognized execution admission outcome');
         } catch {
-            try { return this.store.settle(proof, 'uncertain'); }
+            try { return this.store.settle(claim, 'uncertain'); }
             catch { throw new Error('Destination admission could not be recorded; do not retry execution'); }
         }
     }
 
-    /** Authenticated receipt reconciliation; only durable domain evidence can repair acceptance. */
+    /** Owner-only receipt reconciliation; only durable domain evidence can repair acceptance. */
     async reconcile(input: unknown, findChild?: RemoteDelegationFindChild): Promise<RemoteDelegationAdmission | undefined> {
-        const proof = await this.verify(input);
-        this.options.signal?.throwIfAborted();
+        const claim = parseRemoteDelegationClaim(input, this.store.serverIdentity);
         try {
-            const receipt = this.store.get(proof);
+            const receipt = this.store.owned(claim);
             if (receipt && (receipt.admission.state === 'dispatching' || receipt.admission.state === 'uncertain') && findChild) {
                 const child = await findChild(receipt);
-                this.options.signal?.throwIfAborted();
-                if (child) return this.store.accept(proof, child);
+                if (child) return this.store.accept(claim, child);
             }
             return receipt;
         }
-        catch {
-            this.options.signal?.throwIfAborted();
-            throw new Error('Destination admission receipt is unavailable');
-        }
-    }
-
-    private verify(input: unknown) {
-        return verifyRemoteDelegationOrigin(input, { ...this.options, serverIdentity: this.store.serverIdentity });
+        catch { throw new Error('Destination admission receipt is unavailable'); }
     }
 }
 
-function remoteDelegationBinding(proof: RemoteDelegationBinding): RemoteDelegationBinding {
+function remoteDelegationBinding(claim: RemoteDelegationBinding): RemoteDelegationBinding {
     return {
-        version: proof.version, requestId: proof.requestId, originServerIdentity: proof.originServerIdentity,
-        parent: proof.parent, destination: proof.destination, kind: proof.kind,
-        ...(proof.targetProcessId ? { targetProcessId: proof.targetProcessId } : {}), intentDigest: proof.intentDigest,
+        version: claim.version, requestId: claim.requestId, originServerIdentity: claim.originServerIdentity,
+        parent: claim.parent, destination: claim.destination, kind: claim.kind,
+        ...(claim.targetProcessId ? { targetProcessId: claim.targetProcessId } : {}), intentDigest: claim.intentDigest,
     };
 }
