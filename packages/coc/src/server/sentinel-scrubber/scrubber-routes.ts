@@ -39,14 +39,14 @@ export function registerScrubberRoutes(opts: {
             return sendJSON(res, status, { error: error.message, code: error.code,
                 ...(error instanceof SentinelTodoError && error.current ? { current: error.current } : {}) });
         }
-        return sendError(res, 500, 'Failed to update the scrubber');
+        return sendError(res, 500, 'Failed to update Coda');
     };
     const add = (method: string, suffix: string, command: (
         req: http.IncomingMessage, res: http.ServerResponse, owner: SentinelTodoOwner, match: RegExpMatchArray,
     ) => Promise<unknown>) => routes.push({
         method, pattern: new RegExp(`^${BASE}${suffix}$`),
         handler: async (req, res, match) => {
-            if (!opts.getEnabled()) return sendError(res, 404, 'Sentinel to-do scrubber is disabled');
+            if (!opts.getEnabled()) return sendError(res, 404, 'Sentinel Coda is disabled');
             try {
                 const owner = { workspaceId: decodeURIComponent(match![1]), processId: decodeURIComponent(match![2]) };
                 if (!isValidWorkspaceId(owner.workspaceId) || !owner.processId || owner.processId.includes('/')) {
@@ -69,7 +69,7 @@ export function registerScrubberRoutes(opts: {
             return;
         }
         const parsed = configSchema.safeParse(body);
-        if (!parsed.success) return sendError(res, 400, 'Invalid scrubber configuration');
+        if (!parsed.success) return sendError(res, 400, 'Invalid Coda configuration');
         const { expectedRevision, ...input } = parsed.data;
         sendJSON(res, 200, await commands.putConfig(owner, input, expectedRevision));
     });

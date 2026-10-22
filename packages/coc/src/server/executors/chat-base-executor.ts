@@ -829,7 +829,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         const context = getScrubChildContext(task.payload);
         const service = context && this.runtime.getSentinelScrubber?.();
         if (!context) return undefined;
-        if (!service) throw new Error('Sentinel to-do scrubber is disabled');
+        if (!service) throw new Error('Sentinel Coda is disabled');
         service.markRunning(context);
         return createSubmitScrubFindingsTool({ service, context });
     }

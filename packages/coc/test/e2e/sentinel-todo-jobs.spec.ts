@@ -103,9 +103,9 @@ for (const dark of [false, true]) {
             page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
             await mount(page, { dark, width });
             const jobs = page.getByRole('region', { name: 'Jobs', exact: true });
-            await expect(jobs.getByText('To-do Scrubber · built-in')).toBeVisible();
-            await jobs.getByRole('button', { name: 'New job' }).click();
-            const dialog = page.getByRole('dialog', { name: 'New job', exact: true });
+            await expect(jobs.getByText('Coda · built-in')).toBeVisible();
+            await jobs.getByRole('button', { name: 'New refrain' }).click();
+            const dialog = page.getByRole('dialog', { name: 'New refrain', exact: true });
             await expect(dialog.getByLabel('Name', { exact: true })).toBeFocused();
             await dialog.getByLabel('Name', { exact: true }).fill('Browser audit');
             await dialog.getByLabel('Instructions').fill('Review the fresh read-only snapshot.');
@@ -114,7 +114,7 @@ for (const dark of [false, true]) {
             await expect(dialog.getByText(/Autopilot can change files/)).toBeVisible();
             await dialog.getByLabel('Schedule preset').selectOption('0 */6 * * *');
             expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
-            await dialog.getByRole('button', { name: 'Create job' }).click();
+            await dialog.getByRole('button', { name: 'Create refrain' }).click();
             const job = jobs.getByRole('article', { name: 'Browser audit' });
             await expect(job).toBeVisible();
             await expect(job.getByText('Autopilot', { exact: true })).toBeVisible();
@@ -128,26 +128,26 @@ for (const dark of [false, true]) {
             await expect(job.getByText('Paused', { exact: true })).toBeVisible();
             await page.screenshot({ path: info.outputPath('sentinel-jobs.png'), fullPage: true });
             await job.getByRole('button', { name: 'Delete', exact: true }).click();
-            await page.getByRole('dialog', { name: 'Delete job' }).getByRole('button', { name: 'Delete job', exact: true }).click();
-            await expect(jobs.getByText(/No user jobs yet/)).toBeVisible();
+            await page.getByRole('dialog', { name: 'Delete refrain' }).getByRole('button', { name: 'Delete refrain', exact: true }).click();
+            await expect(jobs.getByText(/No refrains yet/)).toBeVisible();
             expect(errors).toEqual([]);
         });
     }
 }
 test('flag-off keeps the Scrubber strip and makes no Jobs calls', async ({ page }) => {
     await mount(page, { enabled: false });
-    await expect(page.getByRole('button', { name: 'Scrub now' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Run now' })).toBeVisible();
     await expect(page.getByTestId('sentinel-todo-jobs')).toHaveCount(0);
     expect(await page.evaluate(() => (window as Window & { jobsFixture: { calls: unknown[] } }).jobsFixture.calls)).toEqual([]);
 });
 test('remote owner routes job creation to its own workspace and Sentinel', async ({ page }) => {
     await mount(page, { remote: true });
-    await page.getByRole('button', { name: 'New job' }).click();
-    const dialog = page.getByRole('dialog', { name: 'New job', exact: true });
+    await page.getByRole('button', { name: 'New refrain' }).click();
+    const dialog = page.getByRole('dialog', { name: 'New refrain', exact: true });
     await dialog.getByLabel('Name', { exact: true }).fill('Remote audit');
     await dialog.getByLabel('Instructions').fill('Review the remote snapshot.');
     await dialog.getByLabel('Model', { exact: true }).fill('test-model');
-    await dialog.getByRole('button', { name: 'Create job' }).click();
+    await dialog.getByRole('button', { name: 'Create refrain' }).click();
     await expect(page.getByRole('article', { name: 'Remote audit' })).toBeVisible();
     const calls = await page.evaluate(() => (window as Window & { jobsFixture: { calls: unknown[][] } }).jobsFixture.calls);
     expect(calls).toContainEqual(['create', 'ws-owner', 'queue_sentinel']);
@@ -157,17 +157,17 @@ test('gated job requires a schedule and shows Test gate results inline at 320px'
     const errors: string[] = [];
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
     await mount(page, { width: 320 });
-    await page.getByRole('button', { name: 'New job' }).click();
-    const dialog = page.getByRole('dialog', { name: 'New job', exact: true });
+    await page.getByRole('button', { name: 'New refrain' }).click();
+    const dialog = page.getByRole('dialog', { name: 'New refrain', exact: true });
     await dialog.getByLabel('Name', { exact: true }).fill('Gated audit');
     await dialog.getByLabel('Instructions').fill('Review the gate result.');
     await dialog.getByLabel('Model', { exact: true }).fill('test-model');
     await dialog.getByLabel('Gate script (optional)').fill('return { items: [1] };');
     await expect(dialog.getByText('A gate script needs a cron schedule.')).toBeVisible();
-    await expect(dialog.getByRole('button', { name: 'Create job' })).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: 'Create refrain' })).toBeDisabled();
     await dialog.getByLabel('Schedule preset').selectOption('0 */6 * * *');
     expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
-    await dialog.getByRole('button', { name: 'Create job' }).click();
+    await dialog.getByRole('button', { name: 'Create refrain' }).click();
     const job = page.getByRole('article', { name: 'Gated audit' });
     await expect(job.getByText('Gate active')).toBeVisible();
     await job.getByRole('button', { name: 'Test gate' }).click();

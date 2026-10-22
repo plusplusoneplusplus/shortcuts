@@ -664,8 +664,8 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.sentinelTodoDateTimeTriggers', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoDateTimeTriggersEnabled',
         ui: {
-            tab: 'sentinel', group: 'sentinelTodos', order: 32.57, label: 'To-do date/time triggers', badge: 'experimental',
-            hint: 'Allow one-time dated rules to wake their owning Sentinel. Does not authorize jobs.',
+            tab: 'sentinel', group: 'sentinelTodos', order: 32.57, label: 'Date/time overtures', badge: 'experimental',
+            hint: 'Allow one-time dated overtures to wake their owning Sentinel. Does not authorize work.',
             testId: 'toggle-sentinel-todo-date-time-triggers',
         },
     }),
@@ -704,17 +704,17 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({
         key: 'features.sentinelTodoScrubber', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoScrubberEnabled',
         ui: {
-            tab: 'sentinel', group: 'sentinelTodos', order: 32.6, label: 'Sentinel To-do Scrubber', badge: 'experimental',
-            hint: 'Add a Scrubber strip to the Sentinel To-do tab that checks open items against linked jobs, PRs and commits in a separate read-only chat, on demand or on a schedule. Only evidence-backed Done is applied automatically; other changes are proposals. Disabled by default.',
+            tab: 'sentinel', group: 'sentinelTodos', order: 32.6, label: 'Sentinel Coda', badge: 'experimental',
+            hint: 'Add the built-in Coda review to the Sentinel To-do tab that checks open items against linked jobs, PRs and commits in a separate read-only chat, on demand or on a schedule. Only evidence-backed Done is applied automatically; other changes are proposals. Disabled by default.',
             testId: 'toggle-sentinel-todo-scrubber-enabled',
         },
     }),
     bool({
         key: 'features.sentinelTodoJobs', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoJobsEnabled',
         ui: {
-            tab: 'sentinel', group: 'sentinelTodos', order: 32.61, label: 'Sentinel To-do jobs', badge: 'experimental',
+            tab: 'sentinel', group: 'sentinelTodos', order: 32.61, label: 'Sentinel Refrains', badge: 'experimental',
             dependsOn: 'sentinel.enabled',
-            hint: 'Manage scheduled and on-demand prompt jobs from each Sentinel chat\'s To-do tab. Requires Sentinel Mode. Disabled by default.',
+            hint: 'Manage refrains (scheduled and on-demand prompts) from each Sentinel chat\'s To-do tab. Requires Sentinel Mode. Disabled by default.',
             testId: 'toggle-sentinel-todo-jobs-enabled',
         },
     }),

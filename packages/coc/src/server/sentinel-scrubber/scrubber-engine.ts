@@ -155,7 +155,7 @@ export class ScrubberEngine {
         const item = this.deps.todos.get(owner).items.find(candidate => candidate.id === itemId);
         if (!item) throw new SentinelTodoError('not_found', `To-do item ${itemId} not found`);
         if (item.revision !== findingRevision || item.revision !== expectedRevision) {
-            throw new SentinelTodoError('conflict', 'Item changed since this proposal; run a fresh scrub', item);
+            throw new SentinelTodoError('conflict', 'Item changed since this proposal; run Coda again', item);
         }
         return item;
     }

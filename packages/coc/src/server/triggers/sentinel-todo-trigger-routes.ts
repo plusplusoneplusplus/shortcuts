@@ -34,7 +34,7 @@ export function registerSentinelTodoTriggerRoutes(
                 }
                 if (error instanceof URIError) return sendError(res, 400, 'Invalid route encoding');
                 getLogger().error(LogCategory.AI, `[SentinelTodoTriggerRoutes] Operation failed: ${String(error)}`);
-                sendError(res, 500, 'Trigger operation failed');
+                sendError(res, 500, 'Overture operation failed');
             }
         },
     });

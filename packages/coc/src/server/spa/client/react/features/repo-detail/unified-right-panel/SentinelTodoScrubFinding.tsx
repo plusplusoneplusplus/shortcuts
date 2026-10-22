@@ -38,9 +38,9 @@ export function SentinelTodoScrubFinding({ item }: { item: SentinelTodoItem }) {
     if (record.state === 'applied' && (appliedRevision === undefined || appliedRevision !== item.revision)) return null;
     const stale = record.state === 'proposed' && record.itemRevision !== item.revision;
     const finding = record.finding;
-    return <div role="group" aria-label={`Scrubber finding for ${item.title}`} className="flex flex-col gap-1 px-2 pb-1.5 text-[11px]">
+    return <div role="group" aria-label={`Coda finding for ${item.title}`} className="flex flex-col gap-1 px-2 pb-1.5 text-[11px]">
         <div className="flex flex-wrap items-center gap-1">
-            <span>{record.state === 'applied' ? '✓ Done by scrubber' : record.state === 'proposed'
+            <span>{record.state === 'applied' ? '✓ Done by Coda' : record.state === 'proposed'
                 ? `◇ Proposal: ${verdictLabels[finding.verdict]} (${finding.confidence})` : '? Unverified'}</span>
             <span>· {record.state === 'unverified' ? finding.unverifiedReason ?? finding.summary : finding.summary}</span>
             {record.state === 'proposed' && <>
@@ -49,7 +49,7 @@ export function SentinelTodoScrubFinding({ item }: { item: SentinelTodoItem }) {
             </>}
             {record.state === 'applied' && <Button size="sm" variant="secondary" disabled={busy} onClick={() => { void act(record, 'undo'); }}>Undo</Button>}
         </div>
-        {stale && <p role="status">Item changed since this proposal. Run a fresh scrub.</p>}
+        {stale && <p role="status">Item changed since this proposal. Run Coda again.</p>}
         {record.demotedBecause && <p>{demotionLabels[record.demotedBecause]}</p>}
         <ScrubFindingEvidence finding={finding} />
     </div>;

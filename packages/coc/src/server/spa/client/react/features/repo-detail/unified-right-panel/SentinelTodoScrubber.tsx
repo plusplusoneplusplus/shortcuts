@@ -46,7 +46,7 @@ export function SentinelTodoScrubber(props: Props) {
     const client = useCocClient(ref);
     const route = resolveCloneRoute(ref);
     if (!(props.enabledOverride ?? enabled) || props.ready === false) return <>{props.toolbar}{place(props.children, null)}</>;
-    if (route.kind === 'unresolved-remote') return <>{props.toolbar}{place(props.children, <p role="status">Scrubber unavailable: owning server is not connected.</p>)}</>;
+    if (route.kind === 'unresolved-remote') return <>{props.toolbar}{place(props.children, <p role="status">Coda unavailable: owning server is not connected.</p>)}</>;
     return <ScrubberStrip key={`${sentinelTodoOwnerKey(props.owner)}:${route.kind === 'remote' ? route.baseUrl : 'local'}`}
         {...props} client={client} />;
 }
@@ -87,7 +87,7 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, 
             if (mounted.current && seq === sequence.current) { setFindings(records); setFindingsError(null); }
         } catch (failure) {
             if (mounted.current && seq === sequence.current) {
-                const message = failure instanceof Error ? failure.message : 'Could not load scrubber.';
+                const message = failure instanceof Error ? failure.message : 'Could not load Coda.';
                 if (configLoaded) setFindingsError(message); else setLoadError(message);
             }
         }
@@ -120,7 +120,7 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, 
         } catch (failure) {
             if (!mounted.current) return;
             const conflict = (failure as { status?: number })?.status === 409;
-            setError(conflict ? 'Scrubber changed. Refresh and try again.' : failure instanceof Error ? failure.message : 'Scrubber action failed.');
+            setError(conflict ? 'Coda changed. Refresh and try again.' : failure instanceof Error ? failure.message : 'Coda action failed.');
             if (conflict) { setSchedule(null); await load(); }
         } finally {
             busyRef.current = false;
@@ -154,7 +154,7 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, 
         } catch (failure) {
             if (!mounted.current) return;
             setError((failure as { status?: number })?.status === 409
-                ? 'Item changed since this proposal. Run a fresh scrub.'
+                ? 'Item changed since this proposal. Run Coda again.'
                 : failure instanceof Error ? failure.message : 'Could not update finding.');
             await onLedgerChange?.();
             if (mounted.current) await load();
@@ -200,7 +200,7 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, 
             }
             if (!mounted.current) return;
             setBatchResult(`Accepted ${accepted} proposal${accepted === 1 ? '' : 's'}.`
-                + (changed ? ` ${changed} item${changed === 1 ? '' : 's'} changed since this proposal. Run a fresh scrub.` : '')
+                + (changed ? ` ${changed} item${changed === 1 ? '' : 's'} changed since this proposal. Run Coda again.` : '')
                 + (failureMessage ? ` 1 acceptance failed; ${proposals.length - attempted} not attempted.` : ''));
             if (failureMessage) setError(failureMessage);
             await onLedgerChange?.();
@@ -215,26 +215,26 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, 
     return <ScrubberFindingsContext.Provider value={{ findings, busy: busy || !!loadError || !!findingsError, mutationPending: busy, act: findingAction, proposalCount: proposals.length, acceptAll }}>
         {toolbar}
         {place(children, <>
-        <section aria-label="To-do Scrubber" data-testid="sentinel-scrubber-strip"
+        <section aria-label="Coda" data-testid="sentinel-scrubber-strip"
             className="flex min-w-0 flex-col gap-1 break-words rounded border border-[#e0e0e0] bg-white p-2 [overflow-wrap:anywhere] dark:border-[#3c3c3c] dark:bg-[#1e1e1e]">
             <div className="flex flex-wrap items-center gap-1">
-                <strong className="mr-auto">{builtInRow ? 'To-do Scrubber · built-in' : 'Scrubber'}</strong>
+                <strong className="mr-auto">{builtInRow ? 'Coda · built-in' : 'Coda'}</strong>
                 <AcceptAllScrubProposals />
-                <Button size="sm" disabled={!data || !!active || busy || !!loadError} onClick={() => { void start(); }}>{builtInRow ? 'Run now' : 'Scrub now'}</Button>
+                <Button size="sm" disabled={!data || !!active || busy || !!loadError} onClick={() => { void start(); }}>Run now</Button>
                 {builtInRow && config && <Button size="sm" variant="secondary" disabled={busy || !!loadError}
                     onClick={() => { void saveConfig({ ...config, enabled: !config.enabled }); }}>{config.enabled ? 'Pause' : 'Resume'}</Button>}
                 <Button size="sm" variant="secondary" disabled={!config || busy || !!loadError} onClick={() => setSchedule(schedule ? null : { ...config! })}>Schedule ▾</Button>
             </div>
-            {loadError && <p role="alert">{loadError} <Button size="sm" variant="secondary" onClick={() => { void load(); }}>Refresh scrubber</Button></p>}
+            {loadError && <p role="alert">{loadError} <Button size="sm" variant="secondary" onClick={() => { void load(); }}>Refresh Coda</Button></p>}
             {findingsError && <p role="alert">Could not load findings: {findingsError} <Button size="sm" variant="secondary" onClick={() => { void load(); }}>Refresh findings</Button></p>}
-            {!data && !loadError && <div role="status" className="flex items-center gap-1"><Spinner size="sm" /> Loading scrubber…</div>}
+            {!data && !loadError && <div role="status" className="flex items-center gap-1"><Spinner size="sm" /> Loading Coda…</div>}
             {config && <div className="text-[#616161] dark:text-[#9d9d9d]">
                 {config.enabled ? describeCron(config.cron) || config.cron : 'Manual only'}
                 {config.enabled && !config.paused && config.nextRunAt && <> · next <time dateTime={config.nextRunAt} title={new Date(config.nextRunAt).toLocaleString()}>{formatRelativeTime(config.nextRunAt)}</time></>}
             </div>}
             {config?.paused && <p role="status" className="text-[#b5650f] dark:text-[#cca700]">Schedule paused after {config.consecutiveFailures} failures · <Button size="sm" variant="secondary" disabled={busy || !!loadError} onClick={() => { void saveConfig(config); }}>Resume</Button></p>}
             {active ? <div role="status" className="flex flex-wrap items-center gap-1">
-                <Spinner size="sm" /> {active.status === 'queued' ? 'Queued' : `Scrubbing ${active.snapshot.length} items…`} · {formatRelativeTime(active.startedAt ?? active.createdAt)}
+                <Spinner size="sm" /> {active.status === 'queued' ? 'Queued' : `Checking ${active.snapshot.length} items…`} · {formatRelativeTime(active.startedAt ?? active.createdAt)}
                 <Button size="sm" variant="secondary" disabled={busy} onClick={() => { void mutate(() => api.cancel(owner.ownerWorkspaceId, owner.processId, active.id)); }}>Cancel</Button>
             </div> : last && <div className={last.status === 'failed' || last.status === 'timed_out' ? 'text-[#c72e2e] dark:text-[#f48771]' : ''}>
                 {last.status === 'failed' || last.status === 'timed_out' ? <>Last run failed: {last.error ?? last.status} <Button size="sm" variant="secondary" disabled={busy || !!loadError} onClick={() => { void start(); }}>Retry</Button></>
@@ -248,7 +248,7 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, 
             {data && <div className="flex flex-wrap gap-1">
                 <Button size="sm" variant="ghost" aria-expanded={historyOpen} onClick={() => setHistoryOpen(value => !value)}>{historyOpen ? 'Hide history' : 'History'} ({data.runs.length})</Button>
                 <Button size="sm" variant="ghost" onClick={() => setSelecting(value => !value)}>{selecting ? 'Hide selection' : 'Select items'}</Button>
-                {selecting && <Button size="sm" variant="secondary" disabled={!!active || busy || !selectedIds.length || !!loadError} onClick={() => { void start(selectedIds); }}>Scrub selected ({selectedIds.length})</Button>}
+                {selecting && <Button size="sm" variant="secondary" disabled={!!active || busy || !selectedIds.length || !!loadError} onClick={() => { void start(selectedIds); }}>Run on selected ({selectedIds.length})</Button>}
             </div>}
             {selecting && <fieldset className="flex max-h-48 flex-col gap-1 overflow-auto"><legend>Select open items</legend>
                 {openItems.map(item => <label key={item.id} className="flex items-start gap-1"><input type="checkbox" checked={selected.has(item.id)} onChange={() => setSelected(previous => {
@@ -258,7 +258,7 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, 
                 })} />{item.title}{item.type === 'manual' && ' · Manual'}</label>)}
                 {!openItems.length && <span>No open items.</span>}
             </fieldset>}
-            {schedule && <form aria-label="Scrubber schedule" onSubmit={event => { event.preventDefault(); if (!cronError) void saveConfig(schedule); }} className="flex min-w-0 flex-col gap-1 rounded border border-[#e0e0e0] p-2 dark:border-[#3c3c3c]">
+            {schedule && <form aria-label="Coda schedule" onSubmit={event => { event.preventDefault(); if (!cronError) void saveConfig(schedule); }} className="flex min-w-0 flex-col gap-1 rounded border border-[#e0e0e0] p-2 dark:border-[#3c3c3c]">
                 <label><input type="checkbox" checked={schedule.enabled} disabled={busy} onChange={event => setSchedule({ ...schedule, enabled: event.target.checked })} /> Enable schedule</label>
                 <label htmlFor={`${id}-preset`}>Preset</label>
                 <select id={`${id}-preset`} className="max-w-full" value={SCRUB_CRON_PRESETS.some(preset => preset.cron === schedule.cron) ? schedule.cron : 'custom'} disabled={busy}

@@ -101,6 +101,16 @@ describe('sentinel_jobs tool schema', () => {
         expect(tool.description).toMatch(/`test_gate`.*starts no run, saves nothing and works while paused/s);
         expect(tool.description).toMatch(/`resume_gate` \(only when the user asks\)/);
     });
+
+    it('names refrains and Coda in its contract while keeping the wire tool and kind values', () => {
+        const tool = createSentinelJobsTool({ owner, jobs: jobCommands, scrubber: scrubberCommands, defaults: () => defaults }) as any;
+        expect(tool.name).toBe('sentinel_jobs');
+        expect(tool.parameters.properties.kind.enum).toEqual(['custom', 'scrubber']);
+        expect(tool.description).toMatch(/refrains \(`kind: custom`\)/);
+        expect(tool.description).toMatch(/Coda review \(`kind: scrubber`/);
+        expect(tool.description).toMatch(/a refrain, a repeating job or a scheduled prompt, use `create` with `kind: custom`/);
+        expect(tool.description).not.toMatch(/Scrubber|scrubber findings|Jobs panel/);
+    });
 });
 
 describe('custom jobs', () => {

@@ -15,7 +15,7 @@ export function SentinelTodoTriggers(props: { owner: SentinelTodoOwner; items: r
     const ref = props.owner.ownerRoutingRef === null ? undefined : props.owner.ownerRoutingRef ?? props.owner.ownerWorkspaceId;
     const client = useCocClient(ref);
     const route = resolveCloneRoute(ref);
-    if (route.kind === 'unresolved-remote') return <p role="status">Triggers unavailable: owning server is not connected.</p>;
+    if (route.kind === 'unresolved-remote') return <p role="status">Overtures unavailable: owning server is not connected.</p>;
     return <TriggerSection key={`${sentinelTodoOwnerKey(props.owner)}:${route.kind === 'remote' ? route.baseUrl : 'local'}`} {...props} client={client} />;
 }
 
@@ -113,18 +113,18 @@ function TriggerSection({ owner, items, client, onItemLink }: {
         && rule.binding?.kind === 'sentinel-todo' && !rule.binding.delegatedPr
         && (rule.event.monitor === 'pr-merged' || rule.event.type === 'date-time' && dateTimeEnabled))
         .sort((a, b) => Number(isTerminalTrigger(a)) - Number(isTerminalTrigger(b)) || b.createdAt.localeCompare(a.createdAt));
-    const add = <Button size="sm" variant="secondary" disabled={busy || eligibleTriggerItems(items).length === 0} onClick={() => setEditor('new')}>+ Add trigger</Button>;
+    const add = <Button size="sm" variant="secondary" disabled={busy || eligibleTriggerItems(items).length === 0} onClick={() => setEditor('new')}>+ Add overture</Button>;
     return <div className="sentinel-trigger-root">
-        {loading && <p role="status" className="sentinel-trigger-muted">Loading triggers...</p>}
-        {capabilityError && <p role="alert">Trigger capabilities unavailable: {capabilityError}{' '}
-            <Button size="sm" variant="secondary" onClick={refresh}>Retry trigger availability</Button></p>}
+        {loading && <p role="status" className="sentinel-trigger-muted">Loading overtures…</p>}
+        {capabilityError && <p role="alert">Overture capabilities unavailable: {capabilityError}{' '}
+            <Button size="sm" variant="secondary" onClick={refresh}>Retry overture availability</Button></p>}
         {(loadError || error) && <div role="alert" className="sentinel-trigger-error">{loadError || error}{' '}
-            <Button size="sm" variant="secondary" disabled={busy} onClick={conflict ? refresh : () => { if (retry.current) void retry.current(); else refresh(); }}>{conflict ? 'Refresh rules' : 'Retry'}</Button>
+            <Button size="sm" variant="secondary" disabled={busy} onClick={conflict ? refresh : () => { if (retry.current) void retry.current(); else refresh(); }}>{conflict ? 'Refresh overtures' : 'Retry'}</Button>
         </div>}
         {sorted.length > 0 ? <section aria-labelledby={`${id}-heading`} className="sentinel-trigger-section" data-testid="sentinel-todo-triggers">
             <div className="sentinel-trigger-heading">
                 <h3><button id={`${id}-heading`} type="button" aria-expanded={open} aria-controls={`${id}-body`} onClick={() => setOpen(value => !value)}>
-                    <span aria-hidden="true">{open ? '▾' : '▸'}</span> Triggers ({sorted.length})
+                    <span aria-hidden="true">{open ? '▾' : '▸'}</span> Overtures ({sorted.length})
                 </button></h3>{add}
             </div>
             {open && <ul id={`${id}-body`} className="sentinel-trigger-list">
@@ -149,7 +149,7 @@ function TriggerSection({ owner, items, client, onItemLink }: {
                                 ? <time dateTime={rule.event.firesAt} title={`UTC: ${rule.event.firesAt}`}>{zonedTriggerTime(rule.event.firesAt, rule.event.timeZone)} ({rule.event.timeZone})</time>
                                 : <a href={rule.event.pr.url} target="_blank" rel="noopener noreferrer" title={rule.event.lastSeenTitle}>PR {rule.event.pr.repoPath}#{rule.event.pr.number}</a>}
                             <a href={`#sentinel-todo-item-${encodeURIComponent(rule.binding.itemId)}`} onClick={event => { event.preventDefault(); onItemLink(rule.binding!.itemId); }}>→ {item?.title ?? 'Item unavailable'}</a>
-                            {!terminal ? <details className="sentinel-trigger-menu"><summary aria-label={rule.event.type === 'date-time' ? 'Actions for date/time trigger' : `Actions for PR #${rule.event.pr.number}`}>⋯</summary>
+                            {!terminal ? <details className="sentinel-trigger-menu"><summary aria-label={rule.event.type === 'date-time' ? 'Actions for date/time overture' : `Actions for PR #${rule.event.pr.number}`}>⋯</summary>
                                 <Button size="sm" variant="secondary" disabled={busy} onClick={() => {
                                     if (rule.status === 'paused' && rule.event.type === 'date-time' && Date.parse(rule.event.firesAt) <= Date.now()) {
                                         setResume(rule); return;
@@ -173,18 +173,18 @@ function TriggerSection({ owner, items, client, onItemLink }: {
         </section> : <div className="sentinel-trigger-entry">{add}</div>}
         {editor && <SentinelTodoTriggerEditor client={client} owner={owner} items={items} dateTimeEnabled={dateTimeEnabled} trigger={editor === 'new' ? undefined : editor} onClose={() => setEditor(null)}
             onSaved={() => { setEditor(null); void load(); }} onConflict={() => { void load(); }} />}
-        {runNow && <Dialog open trapFocus disableClose={busy} title="Run trigger now" onClose={() => { if (!busy) setRunNow(null); }}>
-            <p>Post the start message to the Sentinel now? This uses up the rule.</p>
+        {runNow && <Dialog open trapFocus disableClose={busy} title="Run overture now" onClose={() => { if (!busy) setRunNow(null); }}>
+            <p>Post the start message to the Sentinel now? This uses up the overture.</p>
             <div className="sentinel-trigger-actions">
                 <Button size="sm" variant="secondary" disabled={busy} onClick={() => setRunNow(null)}>Cancel</Button>
                 <Button size="sm" disabled={busy || conflict} onClick={() => { void mutate(() => client.triggers.runSentinelTodoNow(owner.ownerWorkspaceId, owner.processId, runNow.id, runNow.revision)); }}>Confirm run now</Button>
             </div>
             {error && <p role="alert">{error} <Button size="sm" variant="secondary" disabled={busy} onClick={() => {
                 if (conflict) { refresh(); setRunNow(null); } else if (retry.current) void retry.current();
-            }}>{conflict ? 'Refresh rules' : 'Retry run now'}</Button></p>}
+            }}>{conflict ? 'Refresh overtures' : 'Retry run now'}</Button></p>}
         </Dialog>}
-        {resume && <Dialog open trapFocus disableClose={busy} title="Resume overdue trigger" onClose={() => { if (!busy) setResume(null); }}>
-            <p>This overdue rule will wake Sentinel immediately. It grants no new authorization.</p>
+        {resume && <Dialog open trapFocus disableClose={busy} title="Resume overdue overture" onClose={() => { if (!busy) setResume(null); }}>
+            <p>This overdue overture will wake Sentinel immediately. It grants no new authorization.</p>
             <div className="sentinel-trigger-actions">
                 <Button size="sm" variant="secondary" disabled={busy} onClick={() => setResume(null)}>Cancel</Button>
                 <Button size="sm" disabled={busy || conflict} onClick={() => { void mutate(() =>

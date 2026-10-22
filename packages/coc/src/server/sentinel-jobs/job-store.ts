@@ -69,14 +69,14 @@ export class SentinelJobStore {
     get(owner: SentinelTodoOwner, id: string): JobRecord {
         const row = this.db.prepare('SELECT record FROM sentinel_scheduled_jobs WHERE workspace_id = ? AND parent_process_id = ? AND id = ?')
             .get<{ record: string }>(owner.workspaceId, owner.processId, id);
-        if (!row) throw new JobError('not_found', 'Job not found');
+        if (!row) throw new JobError('not_found', 'Refrain not found');
         return JSON.parse(row.record);
     }
 
     create(owner: SentinelTodoOwner, input: SentinelScheduledJobInput): JobRecord {
         return this.db.transaction(() => {
             const parsed = this.validate(input);
-            if (this.list(owner).length >= 10) throw new JobError('limit', 'A Sentinel can have at most 10 user jobs');
+            if (this.list(owner).length >= 10) throw new JobError('limit', 'A Sentinel can have at most 10 refrains');
             const job: JobRecord = { ...parsed, ...FRESH_GATE, id: randomUUID(), revision: 1, runCount: 0 };
             this.db.prepare('INSERT INTO sentinel_scheduled_jobs VALUES (?, ?, ?, ?)')
                 .run(owner.workspaceId, owner.processId, job.id, JSON.stringify(job));
@@ -124,7 +124,7 @@ export class SentinelJobStore {
         const row = this.db.prepare(`SELECT record FROM sentinel_scheduled_job_runs
             WHERE workspace_id = ? AND parent_process_id = ? AND job_id = ? AND id = ?`)
             .get<{ record: string }>(owner.workspaceId, owner.processId, id, runId);
-        if (!row) throw new JobError('not_found', 'Job run not found');
+        if (!row) throw new JobError('not_found', 'Refrain run not found');
         return JSON.parse(row.record);
     }
 
@@ -137,7 +137,7 @@ export class SentinelJobStore {
         return this.db.transaction(() => {
             const job = this.get(owner, id);
             const overlap = this.runs(owner, id).some(active);
-            if (overlap && trigger === 'manual') throw new JobError('conflict', 'This job already has an active run');
+            if (overlap && trigger === 'manual') throw new JobError('conflict', 'This refrain already has an active run');
             const skipReason = overlap ? 'overlap' as const : skip;
             const run: JobRunRecord = { id: randomUUID(), runNumber: job.runCount + 1, trigger,
                 status: skipReason ? 'skipped' : 'queued', createdAt: now,
@@ -181,7 +181,7 @@ export class SentinelJobStore {
 
     private mutable(owner: SentinelTodoOwner, id: string, revision: number, togglingSchedule = false): JobRecord {
         const job = this.get(owner, id);
-        if (job.revision !== revision) throw new JobError('conflict', 'Job changed since it was loaded');
+        if (job.revision !== revision) throw new JobError('conflict', 'Refrain changed since it was loaded');
         if (!togglingSchedule && this.runs(owner, id).some(run => active(run) || pending(run))) {
             throw new JobError('conflict', 'Cancel the active run and wait for its Sentinel handback before editing or deleting');
         }
@@ -190,7 +190,7 @@ export class SentinelJobStore {
 
     private validate(input: unknown): z.infer<typeof jobInputSchema> {
         const parsed = jobInputSchema.safeParse(input);
-        if (!parsed.success) throw new JobError('invalid', 'Invalid job settings');
+        if (!parsed.success) throw new JobError('invalid', 'Invalid refrain settings');
         const value = parsed.data;
         if (value.cron === '') delete value.cron;
         if (value.effort === '') delete value.effort;
@@ -201,7 +201,7 @@ export class SentinelJobStore {
             delete value.model;
             delete value.effort;
         } else if (!value.model) {
-            throw new JobError('invalid', 'Invalid job settings');
+            throw new JobError('invalid', 'Invalid refrain settings');
         }
         if (value.cron) {
             const error = validateScrubCron(value.cron);

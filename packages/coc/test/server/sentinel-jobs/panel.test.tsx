@@ -72,7 +72,7 @@ afterEach(() => {
     applyRuntimeConfigPatch({ sentinelEnabled: false, sentinelTodoJobsEnabled: false, sentinelTodoScrubberEnabled: false });
 });
 async function fillNew() {
-    fireEvent.click(await screen.findByRole('button', { name: 'New job' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'New refrain' }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Daily audit' } });
     fireEvent.change(screen.getByLabelText('Instructions'), { target: { value: 'Review pending work.' } });
     fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'test-model' } });
@@ -82,33 +82,33 @@ describe('Sentinel To-do Jobs', () => {
     it('keeps the existing Scrubber strip and makes no jobs reads with the flag off', async () => {
         applyRuntimeConfigPatch({ sentinelTodoJobsEnabled: false, sentinelTodoScrubberEnabled: true });
         view();
-        await screen.findByRole('button', { name: 'Scrub now' });
-        expect(screen.queryByRole('region', { name: 'Jobs' })).toBeNull();
+        await screen.findByRole('button', { name: 'Run now' });
+        expect(screen.queryByRole('region', { name: 'Refrains' })).toBeNull();
         expect(mock.list).not.toHaveBeenCalled();
     });
     it('requires Sentinel mode even with the jobs flag on', () => {
         applyRuntimeConfigPatch({ sentinelEnabled: false });
         view();
         expect(mock.list).not.toHaveBeenCalled();
-        expect(screen.queryByRole('region', { name: 'Jobs' })).toBeNull();
+        expect(screen.queryByRole('region', { name: 'Refrains' })).toBeNull();
     });
     it('renders loading and empty states, and collapses the section', async () => {
         const pending = deferred<{ jobs: SentinelScheduledJob[] }>();
         mock.list.mockReturnValue(pending.promise);
         view();
-        expect(screen.getByText('Loading jobs...')).toBeInTheDocument();
+        expect(screen.getByText('Loading refrains…')).toBeInTheDocument();
         await act(async () => pending.resolve({ jobs: [] }));
-        expect(screen.getByText(/No user jobs yet/)).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: /Jobs \(0\/10\)/ }));
-        expect(screen.getByRole('button', { name: /Jobs \(0\/10\)/ })).toHaveAttribute('aria-expanded', 'false');
-        expect(screen.getByText(/No user jobs yet/)).not.toBeVisible();
+        expect(screen.getByText(/No refrains yet/)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: /Refrains \(0\/10\)/ }));
+        expect(screen.getByRole('button', { name: /Refrains \(0\/10\)/ })).toHaveAttribute('aria-expanded', 'false');
+        expect(screen.getByText(/No refrains yet/)).not.toBeVisible();
     });
     it('waits for the owning ledger before mounting job controls or subscriptions', async () => {
         const page = render(<SentinelTodoJobs owner={owner} ready={false} items={[]} onFollowLink={follow} />);
         expect(mock.list).not.toHaveBeenCalled();
         expect(mock.connect).not.toHaveBeenCalled();
         page.rerender(<SentinelTodoJobs owner={owner} ready items={[]} onFollowLink={follow} />);
-        await screen.findByText(/No user jobs yet/);
+        await screen.findByText(/No refrains yet/);
         expect(mock.list).toHaveBeenCalledTimes(1);
     });
     it('shows the Scrubber as the pinned first built-in row using its unchanged endpoints', async () => {
@@ -116,9 +116,9 @@ describe('Sentinel To-do Jobs', () => {
         mock.list.mockResolvedValue({ jobs: [job()] });
         view();
         await screen.findByRole('article', { name: 'Daily review' });
-        const section = screen.getByRole('region', { name: 'Jobs' });
+        const section = screen.getByRole('region', { name: 'Refrains' });
         const builtIn = screen.getByTestId('sentinel-jobs-built-in');
-        expect(within(builtIn).getByText('To-do Scrubber · built-in')).toBeInTheDocument();
+        expect(within(builtIn).getByText('Coda · built-in')).toBeInTheDocument();
         expect(within(builtIn).queryByRole('button', { name: 'Delete' })).toBeNull();
         expect(within(builtIn).queryByRole('button', { name: 'Edit' })).toBeNull();
         expect(section.querySelector('section')).toBe(screen.getByTestId('sentinel-scrubber-strip'));
@@ -131,7 +131,7 @@ describe('Sentinel To-do Jobs', () => {
     });
     it('omits the built-in row with only the jobs flag enabled', async () => {
         view();
-        await screen.findByText(/No user jobs yet/);
+        await screen.findByText(/No refrains yet/);
         expect(screen.queryByTestId('sentinel-jobs-built-in')).toBeNull();
         expect(mock.scrubGet).not.toHaveBeenCalled();
     });
@@ -141,7 +141,7 @@ describe('Sentinel To-do Jobs', () => {
         expect(screen.getByLabelText('Mode')).toHaveValue('ask');
         expect(within(screen.getByLabelText('Effort')).queryByRole('option', { name: 'max', exact: true })).toBeNull();
         expect(screen.getByLabelText('Auto-compact threshold (tokens)')).toHaveValue(100_000);
-        fireEvent.click(screen.getByRole('button', { name: 'Create job' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Create refrain' }));
         await waitFor(() => expect(mock.create).toHaveBeenCalledWith('ws-a', 'queue_sentinel', {
             name: 'Daily audit', instructions: 'Review pending work.', provider: 'copilot', model: 'test-model',
             effort: '', effortTier: '', mode: 'ask', cron: '', enabled: true, autoCompactThreshold: 100_000, gateScript: '',
@@ -155,14 +155,14 @@ describe('Sentinel To-do Jobs', () => {
         expect(screen.getByText(/Autopilot can change files/)).toBeInTheDocument();
         const cron = screen.getByLabelText(/Cron \(optional/);
         fireEvent.change(cron, { target: { value: '*/15 * * * *' } });
-        expect(screen.getByRole('button', { name: 'Create job' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Create refrain' })).toBeDisabled();
         expect(screen.getByText(/schedule must run at most once an hour/)).toBeInTheDocument();
         fireEvent.change(screen.getByLabelText('Schedule preset'), { target: { value: '0 * * * *' } });
         expect(cron).toHaveValue('0 * * * *');
         fireEvent.change(screen.getByLabelText('Auto-compact threshold (tokens)'), { target: { value: '0' } });
-        expect(screen.getByRole('button', { name: 'Create job' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Create refrain' })).toBeDisabled();
         fireEvent.change(screen.getByLabelText('Auto-compact threshold (tokens)'), { target: { value: '2000' } });
-        fireEvent.click(screen.getByRole('button', { name: 'Create job' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Create refrain' }));
         await waitFor(() => expect(mock.create).toHaveBeenCalledWith('ws-a', 'queue_sentinel', expect.objectContaining({
             mode: 'autopilot', cron: '0 * * * *', autoCompactThreshold: 2000,
         })));
@@ -174,19 +174,19 @@ describe('Sentinel To-do Jobs', () => {
         fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
         fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Edited audit' } });
         fireEvent.change(screen.getByLabelText('Schedule preset'), { target: { value: 'manual' } });
-        fireEvent.click(screen.getByRole('button', { name: 'Save job' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Save refrain' }));
         await waitFor(() => expect(mock.update).toHaveBeenCalledWith('ws-a', 'queue_sentinel', 'j1', expect.objectContaining({
             name: 'Edited audit', expectedRevision: 2, cron: '',
         })));
-        await screen.findAllByText(/Job changed/);
+        await screen.findAllByText(/Refrain changed/);
         expect(screen.getByLabelText('Name')).toHaveValue('Edited audit');
         expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
     it('limits user jobs to 10 without counting the built-in Scrubber', async () => {
         mock.list.mockResolvedValue({ jobs: Array.from({ length: 10 }, (_, i) => job({ id: `j${i}`, name: `Job ${i}` })) });
         view();
-        await screen.findByText(/10-job limit reached/);
-        expect(screen.getByRole('button', { name: 'New job' })).toBeDisabled();
+        await screen.findByText(/10-refrain limit reached/);
+        expect(screen.getByRole('button', { name: 'New refrain' })).toBeDisabled();
     });
     it('serializes Run now clicks and exposes Cancel for an active run', async () => {
         const pending = deferred<SentinelScheduledJobRun>();
@@ -213,7 +213,7 @@ describe('Sentinel To-do Jobs', () => {
         await waitFor(() => expect(screen.getByRole('button', { name: 'Delete' })).not.toBeDisabled());
         fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
         expect(mock.delete).not.toHaveBeenCalled();
-        fireEvent.click(screen.getByRole('button', { name: 'Delete job' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Delete refrain' }));
         await waitFor(() => expect(mock.delete).toHaveBeenCalledWith('ws-a', 'queue_sentinel', 'j1', { expectedRevision: 2 }));
         expect(mock.start).not.toHaveBeenCalled();
     });
@@ -235,12 +235,12 @@ describe('Sentinel To-do Jobs', () => {
     it('shows load errors with explicit retry and restores controls after success', async () => {
         mock.list.mockRejectedValue(new Error('Offline'));
         view();
-        await screen.findByText(/Could not load jobs: Offline/);
-        expect(screen.getByRole('button', { name: 'New job' })).toBeDisabled();
+        await screen.findByText(/Could not load refrains: Offline/);
+        expect(screen.getByRole('button', { name: 'New refrain' })).toBeDisabled();
         mock.list.mockResolvedValue({ jobs: [] });
-        fireEvent.click(screen.getByRole('button', { name: 'Refresh jobs' }));
-        await screen.findByText(/No user jobs yet/);
-        expect(screen.getByRole('button', { name: 'New job' })).not.toBeDisabled();
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh refrains' }));
+        await screen.findByText(/No refrains yet/);
+        expect(screen.getByRole('button', { name: 'New refrain' })).not.toBeDisabled();
     });
     it('renders bounded history with timings, failure/overlap and owner-qualified turn links', async () => {
         mock.route = { kind: 'remote', baseUrl: 'https://example.invalid' };
@@ -264,7 +264,7 @@ describe('Sentinel To-do Jobs', () => {
         applyRuntimeConfigPatch({ sentinelEnabled: false, sentinelTodoJobsEnabled: false });
         mock.route = { kind: 'remote', baseUrl: 'https://example.invalid' };
         render(<SentinelTodoJobs owner={{ ...owner, ownerRoutingRef: 'remote:server:group-a' }} items={[]} onFollowLink={follow} />);
-        await screen.findByText(/No user jobs yet/);
+        await screen.findByText(/No refrains yet/);
         expect(mock.request).toHaveBeenCalledWith('/config/runtime', expect.objectContaining({ signal: expect.any(AbortSignal) }));
         expect(mock.refs).toContain('remote:server:group-a');
         expect(mock.list).toHaveBeenCalledWith('ws-a', 'queue_sentinel', expect.objectContaining({ signal: expect.any(AbortSignal) }));
@@ -273,8 +273,8 @@ describe('Sentinel To-do Jobs', () => {
         mock.route = { kind: 'remote', baseUrl: 'https://example.invalid' };
         mock.request.mockResolvedValue({ features: { sentinelEnabled: true, sentinelTodoJobsEnabled: false, sentinelTodoScrubberEnabled: true } });
         view();
-        await screen.findByRole('button', { name: 'Scrub now' });
-        expect(screen.queryByRole('region', { name: 'Jobs' })).toBeNull();
+        await screen.findByRole('button', { name: 'Run now' });
+        expect(screen.queryByRole('region', { name: 'Refrains' })).toBeNull();
         expect(mock.list).not.toHaveBeenCalled();
     });
     it('discards a late mutation result after switching to another Sentinel', async () => {
@@ -285,7 +285,7 @@ describe('Sentinel To-do Jobs', () => {
         fireEvent.click(await screen.findByRole('button', { name: 'Run now' }));
         mock.list.mockResolvedValue({ jobs: [] });
         page.rerender(<SentinelTodoJobs owner={{ ...owner, processId: 'queue_other' }} items={[]} onFollowLink={follow} />);
-        await screen.findByText(/No user jobs yet/);
+        await screen.findByText(/No refrains yet/);
         await act(async () => start.resolve(run()));
         expect(screen.queryByText('Daily review')).toBeNull();
         expect(mock.list).toHaveBeenCalledTimes(2);
@@ -295,7 +295,7 @@ describe('Sentinel To-do Jobs', () => {
         mock.route = { kind: 'remote', baseUrl: 'https://example.invalid' };
         mock.request.mockRejectedValue(new Error('No connection'));
         const page = view();
-        await screen.findByText(/Jobs unavailable: No connection/);
+        await screen.findByText(/Refrains unavailable: No connection/);
         expect(mock.list).not.toHaveBeenCalled();
         mock.route = { kind: 'unresolved-remote' };
         page.rerender(<SentinelTodoJobs owner={owner} items={[]} onFollowLink={follow} />);
@@ -304,7 +304,7 @@ describe('Sentinel To-do Jobs', () => {
     });
     it('filters owner events and unsubscribes/ignores late reads when the live flag is disabled', async () => {
         view();
-        await screen.findByText(/No user jobs yet/);
+        await screen.findByText(/No refrains yet/);
         const options = mock.connect.mock.calls[0][0];
         await act(async () => options.onMessage({ type: 'sentinel-jobs-changed', workspaceId: 'other', processId: owner.processId }));
         expect(mock.list).toHaveBeenCalledTimes(1);
@@ -328,10 +328,10 @@ describe('Sentinel To-do Jobs', () => {
             fireEvent.change(gate, { target: { value: 'return { items: [1] };' } });
             expect(screen.getByRole('alert')).toHaveTextContent('A gate script needs a cron schedule.');
             expect(gate).toHaveAttribute('aria-invalid', 'true');
-            expect(screen.getByRole('button', { name: 'Create job' })).toBeDisabled();
+            expect(screen.getByRole('button', { name: 'Create refrain' })).toBeDisabled();
             fireEvent.change(screen.getByLabelText('Schedule preset'), { target: { value: '0 * * * *' } });
             expect(screen.queryByText('A gate script needs a cron schedule.')).toBeNull();
-            fireEvent.click(screen.getByRole('button', { name: 'Create job' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Create refrain' }));
             await waitFor(() => expect(mock.create).toHaveBeenCalledWith('ws-a', 'queue_sentinel', expect.objectContaining({
                 cron: '0 * * * *', gateScript: 'return { items: [1] };',
             })));
@@ -341,7 +341,7 @@ describe('Sentinel To-do Jobs', () => {
             await fillNew();
             fireEvent.change(screen.getByLabelText('Gate script (optional)'), { target: { value: '  \n ' } });
             expect(screen.queryByText('A gate script needs a cron schedule.')).toBeNull();
-            fireEvent.click(screen.getByRole('button', { name: 'Create job' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Create refrain' }));
             await waitFor(() => expect(mock.create).toHaveBeenCalledWith('ws-a', 'queue_sentinel', expect.objectContaining({ cron: '', gateScript: '' })));
         });
         it('resends an unchanged script as stored and clears a removed one', async () => {
@@ -350,12 +350,12 @@ describe('Sentinel To-do Jobs', () => {
             view();
             fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
             expect(screen.getByLabelText('Gate script (optional)')).toHaveValue(script);
-            fireEvent.click(screen.getByRole('button', { name: 'Save job' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Save refrain' }));
             await waitFor(() => expect(mock.update).toHaveBeenCalledWith('ws-a', 'queue_sentinel', 'j1', expect.objectContaining({ gateScript: script })));
             fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
             fireEvent.change(screen.getByLabelText('Gate script (optional)'), { target: { value: '' } });
             fireEvent.change(screen.getByLabelText('Schedule preset'), { target: { value: 'manual' } });
-            fireEvent.click(screen.getByRole('button', { name: 'Save job' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Save refrain' }));
             await waitFor(() => expect(mock.update).toHaveBeenLastCalledWith('ws-a', 'queue_sentinel', 'j1', expect.objectContaining({ gateScript: '', cron: '' })));
         });
         it('shows an active gate with its last result and no gate controls for ungated jobs', async () => {
@@ -407,7 +407,7 @@ describe('Sentinel To-do Jobs', () => {
             mock.testGate.mockRejectedValue(Object.assign(new Error('Gate scripts need tool scripting (features.toolScripting)'), { status: 409 }));
             fireEvent.click(screen.getByRole('button', { name: 'Test gate' }));
             await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Gate test failed: Gate scripts need tool scripting'));
-            expect(screen.queryByText(/Job changed/)).toBeNull();
+            expect(screen.queryByText(/Refrain changed/)).toBeNull();
         });
         it('shows a paused gate with its last error, still tests it, and resumes it', async () => {
             mock.list.mockResolvedValue({ jobs: [gated({ gatePaused: true, gateConsecutiveFailures: 5,
@@ -470,7 +470,7 @@ describe('Sentinel To-do Jobs', () => {
     });
     describe('effort tiers', () => {
         async function openNew() {
-            fireEvent.click(await screen.findByRole('button', { name: 'New job' }));
+            fireEvent.click(await screen.findByRole('button', { name: 'New refrain' }));
             fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Daily audit' } });
             fireEvent.change(screen.getByLabelText('Instructions'), { target: { value: 'Review pending work.' } });
         }
@@ -487,7 +487,7 @@ describe('Sentinel To-do Jobs', () => {
             expect(screen.queryByLabelText('Effort')).toBeNull();
             expect(screen.getByTestId('effort-tier-trigger-btn')).toHaveAccessibleName('Effort tier: Medium');
             pickTier('High');
-            fireEvent.click(screen.getByRole('button', { name: 'Create job' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Create refrain' }));
             await waitFor(() => expect(mock.create).toHaveBeenCalledTimes(1));
             const input = mock.create.mock.calls[0][2];
             expect(input).toMatchObject({ provider: 'copilot', effortTier: 'high' });
@@ -500,7 +500,7 @@ describe('Sentinel To-do Jobs', () => {
             view();
             await openNew();
             expect(screen.queryByLabelText('Model')).toBeNull();
-            expect(screen.getByRole('button', { name: 'Create job' })).toBeDisabled();
+            expect(screen.getByRole('button', { name: 'Create refrain' })).toBeDisabled();
         });
         it('resolves tiers for a changed provider and resets the selection', async () => {
             applyRuntimeConfigPatch({ effortLevelsEnabled: true });
@@ -510,7 +510,7 @@ describe('Sentinel To-do Jobs', () => {
             fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'codex' } });
             expect(mock.tierReads.at(-1)?.[0]).toBe('codex');
             expect(screen.getByTestId('effort-tier-trigger-btn')).toHaveAccessibleName('Effort tier: Medium');
-            fireEvent.click(screen.getByRole('button', { name: 'Create job' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Create refrain' }));
             await waitFor(() => expect(mock.create).toHaveBeenCalledWith('ws-a', 'queue_sentinel',
                 expect.objectContaining({ provider: 'codex', effortTier: 'medium' })));
         });
@@ -520,7 +520,7 @@ describe('Sentinel To-do Jobs', () => {
             view();
             await fillNew();
             expect(screen.queryByTestId('effort-tier-trigger-btn')).toBeNull();
-            fireEvent.click(screen.getByRole('button', { name: 'Create job' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Create refrain' }));
             await waitFor(() => expect(mock.create).toHaveBeenCalledWith('ws-a', 'queue_sentinel',
                 expect.objectContaining({ model: 'test-model', effort: '', effortTier: '' })));
         });
@@ -534,7 +534,7 @@ describe('Sentinel To-do Jobs', () => {
             fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
             fireEvent.click(within(screen.getByRole('article', { name: 'Legacy' })).getByRole('button', { name: 'Edit' }));
             expect(screen.getByTestId('effort-tier-trigger-btn')).toHaveAccessibleName('Effort tier: High');
-            fireEvent.click(screen.getByRole('button', { name: 'Save job' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Save refrain' }));
             await waitFor(() => expect(mock.update).toHaveBeenCalledTimes(1));
             const input = mock.update.mock.calls[0][3];
             expect(input).toMatchObject({ effortTier: 'high', expectedRevision: 2 });
@@ -545,10 +545,10 @@ describe('Sentinel To-do Jobs', () => {
             view();
             fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
             expect(screen.queryByTestId('effort-tier-trigger-btn')).toBeNull();
-            expect(screen.getByRole('button', { name: 'Save job' })).toBeDisabled();
+            expect(screen.getByRole('button', { name: 'Save refrain' })).toBeDisabled();
             fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'test-model' } });
             fireEvent.change(screen.getByLabelText('Effort'), { target: { value: 'low' } });
-            fireEvent.click(screen.getByRole('button', { name: 'Save job' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Save refrain' }));
             await waitFor(() => expect(mock.update).toHaveBeenCalledWith('ws-a', 'queue_sentinel', 'j1',
                 expect.objectContaining({ model: 'test-model', effort: 'low', effortTier: '' })));
         });

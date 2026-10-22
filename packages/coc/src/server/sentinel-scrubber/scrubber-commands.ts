@@ -30,7 +30,7 @@ export class ScrubberCommands {
 
     /** Proves the flag and Sentinel/workspace identity before any scrubber read or write. */
     async assertOwner(owner: SentinelTodoOwner): Promise<void> {
-        if (!this.deps.getEnabled()) throw new ScrubberStoreError('not_found', 'Sentinel to-do scrubber is disabled');
+        if (!this.deps.getEnabled()) throw new ScrubberStoreError('not_found', 'Sentinel Coda is disabled');
         await this.deps.todos.assertOwner(owner);
     }
 

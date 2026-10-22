@@ -438,6 +438,16 @@ describe('Features card UI metadata', () => {
         expect(config.features.sentinelTodoScrubber).toBe(false);
     });
 
+    it('labels Refrains, Coda and overtures while keeping their wire keys and flags', () => {
+        const byKey = (key: string) => ADMIN_SETTING_DEFINITIONS.find(d => d.key === key)!;
+        expect(byKey('features.sentinelTodoJobs')).toMatchObject({ runtimeFlag: 'sentinelTodoJobsEnabled', ui: { label: 'Sentinel Refrains' } });
+        expect(byKey('features.sentinelTodoScrubber')).toMatchObject({ runtimeFlag: 'sentinelTodoScrubberEnabled', ui: { label: 'Sentinel Coda' } });
+        expect(byKey('features.sentinelTodoDateTimeTriggers')).toMatchObject({ runtimeFlag: 'sentinelTodoDateTimeTriggersEnabled', ui: { label: 'Date/time overtures' } });
+        for (const key of ['features.sentinelTodoJobs', 'features.sentinelTodoScrubber', 'features.sentinelTodoDateTimeTriggers']) {
+            expect(`${byKey(key).ui?.label} ${byKey(key).ui?.hint}`).not.toMatch(/Scrubber|To-do jobs|prompt jobs|dated rules/);
+        }
+    });
+
     it('exposes Sentinel additional instructions as a live, experimental default-on toggle', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.sentinelAdditionalInstructions')!;
         expect(def.default).toBe(true);

@@ -52,12 +52,12 @@ export class SentinelJobService {
     constructor(readonly deps: JobServiceDeps) {}
 
     async assertOwner(owner: SentinelTodoOwner): Promise<void> {
-        if (this.disposed || !this.deps.getEnabled()) throw new JobError('not_found', 'Sentinel jobs are disabled');
+        if (this.disposed || !this.deps.getEnabled()) throw new JobError('not_found', 'Sentinel refrains are disabled');
         await this.deps.todos.assertOwner(owner);
         if (!(await this.deps.store.getWorkspaces()).some(workspace => workspace.id === owner.workspaceId)) {
             throw new JobError('not_found', 'Workspace not found');
         }
-        if (this.disposed || !this.deps.getEnabled()) throw new JobError('not_found', 'Sentinel jobs are disabled');
+        if (this.disposed || !this.deps.getEnabled()) throw new JobError('not_found', 'Sentinel refrains are disabled');
     }
 
     view(owner: SentinelTodoOwner, job: JobRecord): SentinelScheduledJob {
@@ -103,16 +103,16 @@ export class SentinelJobService {
 
     /** Cancels a job's in-flight scheduled gate after an edit or delete. */
     cancelGate(owner: SentinelTodoOwner, jobId: string): void {
-        this.gates.get(gateKey(owner, jobId))?.abort(new JobError('conflict', 'Job changed during its gate'));
+        this.gates.get(gateKey(owner, jobId))?.abort(new JobError('conflict', 'Refrain changed during its gate'));
     }
 
     private async tickRun(owner: SentinelTodoOwner, jobId: string, scheduleCurrent?: () => boolean): Promise<JobRunRecord | undefined> {
         await this.assertOwner(owner);
-        if (scheduleCurrent?.() === false) throw new JobError('conflict', 'Job schedule changed during admission');
+        if (scheduleCurrent?.() === false) throw new JobError('conflict', 'Refrain schedule changed during admission');
         const job = this.deps.jobs.get(owner, jobId);
         const script = job.gateScript;
         if (!script) return this.startRun(owner, jobId, 'schedule', scheduleCurrent);
-        if (!job.enabled) throw new JobError('conflict', 'Job schedule is paused');
+        if (!job.enabled) throw new JobError('conflict', 'Refrain schedule is paused');
         // Overlap is checked and recorded in one synchronous step that never claims a run, so a busy job
         // never evaluates its gate and a run that settles meanwhile cannot let this tick start without it.
         if (this.deps.jobs.runs(owner, jobId).some(run => ACTIVE.includes(run.status as typeof ACTIVE[number]))) {
@@ -166,7 +166,7 @@ export class SentinelJobService {
     private async gatedJob(owner: SentinelTodoOwner, jobId: string): Promise<JobRecord> {
         await this.assertOwner(owner);
         const job = this.deps.jobs.get(owner, jobId);
-        if (!job.gateScript) throw new JobError('invalid', 'This job has no gate script');
+        if (!job.gateScript) throw new JobError('invalid', 'This refrain has no gate script');
         return job;
     }
 
@@ -239,11 +239,11 @@ export class SentinelJobService {
     private async startRun(owner: SentinelTodoOwner, jobId: string, trigger: JobRunRecord['trigger'],
         scheduleCurrent?: () => boolean): Promise<JobRunRecord> {
         await this.assertOwner(owner);
-        if (scheduleCurrent?.() === false) throw new JobError('conflict', 'Job schedule changed during admission');
+        if (scheduleCurrent?.() === false) throw new JobError('conflict', 'Refrain schedule changed during admission');
         const job = this.deps.jobs.get(owner, jobId);
-        if (!job.enabled && trigger === 'schedule') throw new JobError('conflict', 'Job schedule is paused');
+        if (!job.enabled && trigger === 'schedule') throw new JobError('conflict', 'Refrain schedule is paused');
         // A gated job's scheduled run needs its gate result; a script added during admission ends the tick.
-        if (trigger === 'schedule' && job.gateScript) throw new JobError('conflict', 'Job schedule changed during admission');
+        if (trigger === 'schedule' && job.gateScript) throw new JobError('conflict', 'Refrain schedule changed during admission');
         return this.admit(owner, jobId, trigger, scheduleCurrent);
     }
 
@@ -269,14 +269,14 @@ export class SentinelJobService {
                 createdAt: run.createdAt, readOnly: true, ledger }, null, 2), { flag: 'wx', mode: 0o400 });
             await this.pruneSnapshots(owner, jobId);
             await this.assertOwner(owner);
-            if (scheduleCurrent?.() === false) throw new JobError('conflict', 'Job schedule changed during admission');
+            if (scheduleCurrent?.() === false) throw new JobError('conflict', 'Refrain schedule changed during admission');
             job = this.deps.jobs.get(owner, jobId);
             if (this.deps.jobs.run(owner, jobId, run.id).status !== 'queued') {
                 return this.deps.jobs.run(owner, jobId, run.id);
             }
-            if (!job.enabled && trigger === 'schedule') throw new JobError('conflict', 'Job schedule is paused');
+            if (!job.enabled && trigger === 'schedule') throw new JobError('conflict', 'Refrain schedule is paused');
             const process = await this.deps.store.getProcess(job.processId!, owner.workspaceId);
-            if (!process) throw new JobError('conflict', 'Persistent job chat was removed');
+            if (!process) throw new JobError('conflict', 'Persistent refrain chat was removed');
             await this.assertOwner(owner);
             if (this.deps.jobs.run(owner, jobId, run.id).status !== 'queued') return this.deps.jobs.run(owner, jobId, run.id);
             const context: JobTaskContext = { ...owner, jobId, runId: run.id, kind: 'run' };
@@ -319,12 +319,12 @@ export class SentinelJobService {
         await this.assertOwner(context);
         const job = this.deps.jobs.get(context, context.jobId);
         if (task.repoId !== context.workspaceId || task.payload.workspaceId !== context.workspaceId) {
-            throw new JobError('conflict', 'Job task workspace does not match its owner');
+            throw new JobError('conflict', 'Refrain task workspace does not match its owner');
         }
         const target = task.processId ?? task.payload.processId ?? toQueueProcessId(task.id);
         if (context.kind === 'notice') {
             if (!job.gatePaused || target !== context.processId || task.payload.mode !== 'sentinel') {
-                throw new JobError('conflict', 'Job gate notice is no longer current');
+                throw new JobError('conflict', 'Refrain gate notice is no longer current');
             }
             return;
         }
@@ -332,13 +332,13 @@ export class SentinelJobService {
         if (context.kind === 'handback') {
             if (run.handbackTaskId !== task.id || run.handbackState !== 'queued'
                 || target !== context.processId || task.payload.mode !== 'sentinel') {
-                throw new JobError('conflict', 'Job handback is no longer authorized');
+                throw new JobError('conflict', 'Refrain handback is no longer authorized');
             }
             return;
         }
         if ((!job.enabled && run.trigger === 'schedule') || run.taskId !== task.id || !ACTIVE.includes(run.status as typeof ACTIVE[number])
             || target !== job.processId || task.payload.mode !== job.mode || task.payload.provider !== job.provider) {
-            throw new JobError('conflict', 'Job run is no longer authorized');
+            throw new JobError('conflict', 'Refrain run is no longer authorized');
         }
         const process = await this.deps.store.getProcess(job.processId!, context.workspaceId);
         const index = process?.conversationTurns?.length
@@ -445,14 +445,14 @@ export class SentinelJobService {
         for (const { owner, job } of this.deps.jobs.all()) {
             try { await this.assertOwner(owner); continue; }
             catch (error) { if (!ownerUnavailable(error)) throw error; }
-            this.gates.get(gateKey(owner, job.id))?.abort(new JobError('not_found', 'Sentinel jobs or their owner became unavailable'));
+            this.gates.get(gateKey(owner, job.id))?.abort(new JobError('not_found', 'Sentinel refrains or their owner became unavailable'));
             for (const run of this.deps.jobs.runs(owner, job.id)) {
                 if (pending(run)) {
                     this.deps.jobs.patchRun(owner, job.id, run.id, { handbackState: 'suppressed' });
                     if (run.handbackTaskId) await this.deps.cancelTask(run.handbackTaskId);
                 }
                 if (ACTIVE.includes(run.status as typeof ACTIVE[number])) {
-                    await this.finish(owner, job.id, run.id, 'cancelled', 'Sentinel jobs or their owner became unavailable', true);
+                    await this.finish(owner, job.id, run.id, 'cancelled', 'Sentinel refrains or their owner became unavailable', true);
                 }
             }
             this.changed(owner);
@@ -602,7 +602,7 @@ export class SentinelJobService {
             if (!job.chatCreated) this.deps.jobs.markChatCreated(owner, job.id);
             return;
         }
-        if (job.chatCreated) throw new JobError('conflict', 'Persistent job chat was removed; create a new job to start a new chat');
+        if (job.chatCreated) throw new JobError('conflict', 'Persistent refrain chat was removed; create a new refrain to start a new chat');
         await this.assertOwner(owner);
         const workspace = (await this.deps.store.getWorkspaces()).find(workspace => workspace.id === owner.workspaceId);
         await this.deps.store.addProcess({

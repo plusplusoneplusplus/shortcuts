@@ -61,8 +61,8 @@ export function SentinelTodoJobDialog({ job, client, baseUrl, effortLevelsEnable
         // Sent as typed so an unchanged script keeps its gate state; blank clears the gate.
         gateScript: draft.gateScript.trim() ? draft.gateScript : '',
     });
-    return <Dialog open title={job ? 'Edit job' : 'New job'} trapFocus disableClose={busy} onClose={() => { if (!busy) onClose(); }}>
-        <form aria-label={job ? 'Edit job' : 'New job'} className="flex min-w-0 flex-col gap-2" onSubmit={event => { event.preventDefault(); if (valid && !busy) void save(); }}>
+    return <Dialog open title={job ? 'Edit refrain' : 'New refrain'} trapFocus disableClose={busy} onClose={() => { if (!busy) onClose(); }}>
+        <form aria-label={job ? 'Edit refrain' : 'New refrain'} className="flex min-w-0 flex-col gap-2" onSubmit={event => { event.preventDefault(); if (valid && !busy) void save(); }}>
             <label htmlFor={`${id}-name`}>Name</label>
             <input id={`${id}-name`} data-dialog-initial-focus className={INPUT} value={draft.name} maxLength={120} required disabled={busy}
                 onChange={event => update('name', event.target.value)} />
@@ -96,7 +96,7 @@ export function SentinelTodoJobDialog({ job, client, baseUrl, effortLevelsEnable
                     </select></div>
             </div>
             {!tierMode && modelError && <p role="alert" className="text-xs">Could not load models: {modelError} <Button size="sm" variant="secondary" onClick={reload}>Retry models</Button></p>}
-            {draft.mode === 'autopilot' && <p role="status" className="rounded bg-[#e8912d]/15 p-2 text-xs text-[#b5650f] dark:text-[#cca700]">Autopilot can change files and run commands without waiting for approval. Use Ask for read-only jobs.</p>}
+            {draft.mode === 'autopilot' && <p role="status" className="rounded bg-[#e8912d]/15 p-2 text-xs text-[#b5650f] dark:text-[#cca700]">Autopilot can change files and run commands without waiting for approval. Use Ask for read-only refrains.</p>}
             <label htmlFor={`${id}-preset`}>Schedule preset</label>
             <select id={`${id}-preset`} className={INPUT} value={!draft.cron ? 'manual' : draft.cron === '0 * * * *' || SCRUB_CRON_PRESETS.some(preset => preset.cron === draft.cron) ? draft.cron : 'custom'}
                 disabled={busy} onChange={event => { if (event.target.value !== 'custom') update('cron', event.target.value === 'manual' ? '' : event.target.value); }}>
@@ -121,7 +121,7 @@ export function SentinelTodoJobDialog({ job, client, baseUrl, effortLevelsEnable
             <label className="text-xs"><input type="checkbox" checked={draft.enabled} disabled={busy} onChange={event => update('enabled', event.target.checked)} /> Enabled</label>
             {error && <p role="alert" className="text-xs text-[#c72e2e] dark:text-[#f48771]">{error}</p>}
             <div className="mt-2 flex justify-end gap-2"><Button variant="secondary" disabled={busy} onClick={onClose}>Cancel</Button>
-                <Button type="submit" disabled={!valid || busy}>{busy ? 'Saving...' : job ? 'Save job' : 'Create job'}</Button></div>
+                <Button type="submit" disabled={!valid || busy}>{busy ? 'Saving...' : job ? 'Save refrain' : 'Create refrain'}</Button></div>
         </form>
     </Dialog>;
 }

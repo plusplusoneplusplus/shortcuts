@@ -47,7 +47,7 @@ export function registerSentinelJobRoutes(opts: {
                     return sendJSON(res, status, { error: error.message, code: error.code });
                 }
                 console.error('[sentinel-jobs] Job request failed:', error);
-                return sendError(res, 500, 'Failed to update Sentinel jobs');
+                return sendError(res, 500, 'Failed to update Sentinel refrains');
             }
         },
     });
@@ -55,7 +55,7 @@ export function registerSentinelJobRoutes(opts: {
         const value = await parseBodyOrReject(req, res);
         if (value === null) { if (!res.headersSent) sendError(res, 400, 'Expected an object'); return; }
         const result = schema.safeParse(value);
-        if (!result.success) { sendError(res, 400, 'Invalid job settings'); return; }
+        if (!result.success) { sendError(res, 400, 'Invalid refrain settings'); return; }
         return result.data;
     };
     add('GET', '', async (_req, res, owner) => sendJSON(res, 200, { jobs: await commands.list(owner) }));

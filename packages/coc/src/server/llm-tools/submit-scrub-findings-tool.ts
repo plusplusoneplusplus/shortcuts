@@ -1,6 +1,6 @@
 /**
- * Factory for `submit_scrub_findings`: the only output of a Sentinel To-do
- * Scrubber child chat. It is bound to the run on the chat's task payload, so
+ * Factory for `submit_scrub_findings`: the only output of a Coda
+ * (built-in to-do review) child chat. It is bound to the run on the chat's task payload, so
  * the model can report findings for that run alone. The server applies them
  * once the chat finishes; nothing here writes the ledger.
  */
@@ -33,7 +33,7 @@ const evidenceSchema = {
 
 export function createSubmitScrubFindingsTool(deps: SubmitScrubFindingsToolDeps) {
     return defineTool<SubmitScrubFindingsArgs>(SUBMIT_SCRUB_FINDINGS_TOOL_NAME, {
-        description: 'Report this scrub run\'s findings, one per snapshot item. Call exactly once; later calls are rejected. '
+        description: 'Report this Coda run\'s findings, one per snapshot item. Call exactly once; later calls are rejected. '
             + 'The server applies auto-Done and records every other verdict as a proposal for the user.',
         parameters: {
             type: 'object',

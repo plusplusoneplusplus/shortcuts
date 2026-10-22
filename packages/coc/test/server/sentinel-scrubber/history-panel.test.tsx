@@ -31,7 +31,7 @@ function client(value: SentinelScrubRunDetail) {
 const follow = vi.fn();
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
-describe('Scrubber run history', () => {
+describe('Coda run history', () => {
     it('lists all retained statuses, counts and exclusions without detail I/O or mutation', () => {
         const transport = client(detail());
         const runs = ['completed', 'failed', 'timed_out', 'cancelled', 'interrupted', 'skipped', 'queued', 'running'] as const;
@@ -60,7 +60,7 @@ describe('Scrubber run history', () => {
         const transport = client(detail({ findings: [applied, accepted, dismissed] }));
         render(<SentinelTodoScrubHistory client={transport.api} owner={owner} runs={[summary()]} items={[]} onFollowLink={follow} />);
         fireEvent.click(screen.getByRole('button', { name: 'Details and change log' }));
-        const region = await screen.findByRole('region', { name: 'Scrubber run detail' });
+        const region = await screen.findByRole('region', { name: 'Coda run detail' });
         await within(region).findByText(/applied by scrubber/);
         expect(within(region).getByText(/undone by user/)).toBeInTheDocument();
         expect(within(region).getByText(/accepted by user/)).toBeInTheDocument();
@@ -127,7 +127,7 @@ describe('Scrubber run history', () => {
         view.rerender(<SentinelTodoScrubHistory {...props} runs={[summary({ counts: { done: 0, proposals: 0, unverified: 0 } })]} />);
         await screen.findByText(/undone by user/);
         view.rerender(<SentinelTodoScrubHistory {...props} runs={[]} />);
-        expect(screen.queryByRole('region', { name: 'Scrubber run detail' })).toBeNull();
-        expect(screen.getByText('No scrubber runs yet.')).toBeInTheDocument();
+        expect(screen.queryByRole('region', { name: 'Coda run detail' })).toBeNull();
+        expect(screen.getByText('No Coda runs yet.')).toBeInTheDocument();
     });
 });

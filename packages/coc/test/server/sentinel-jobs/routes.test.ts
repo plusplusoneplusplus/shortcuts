@@ -325,7 +325,7 @@ describe('Sentinel job REST routes', () => {
         expect((await request('PATCH', `${other}/${id}`, { expectedRevision: 1 })).status).toBe(404);
     });
 
-    it('hides every endpoint while Sentinel jobs are disabled, with no persistence or queue side effects', async () => {
+    it('hides every endpoint while Sentinel refrains are disabled, with no persistence or queue side effects', async () => {
         const created = await request('POST', base, input);
         const id = created.body.id;
         enabled = false;

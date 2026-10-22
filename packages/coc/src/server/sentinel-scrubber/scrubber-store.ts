@@ -162,7 +162,7 @@ export class ScrubberStore {
     putConfig(owner: SentinelTodoOwner, input: { enabled: boolean; cron: string }, expectedRevision: number): ScrubberConfig {
         return this.write(() => {
             const current = this.getConfig(owner);
-            if (current.revision !== expectedRevision) throw new ScrubberStoreError('conflict', 'The scrubber schedule changed since it was loaded');
+            if (current.revision !== expectedRevision) throw new ScrubberStoreError('conflict', 'The Coda schedule changed since it was loaded');
             this.saveConfig(owner, { ...current, enabled: input.enabled, cron: input.cron.trim(), paused: false,
                 consecutiveFailures: 0, revision: current.revision + 1 });
             return this.getConfig(owner);

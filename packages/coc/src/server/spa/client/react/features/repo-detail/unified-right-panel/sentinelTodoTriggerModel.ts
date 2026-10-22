@@ -11,7 +11,7 @@ export function isTerminalTrigger(trigger: Trigger) {
 
 export function triggerError(error: unknown): { message: string; conflict: boolean } {
     const detail = error as { message?: unknown; status?: number; code?: string; body?: { current?: unknown } } | null;
-    const message = typeof detail?.message === 'string' && detail.message ? detail.message : 'Could not update triggers.';
+    const message = typeof detail?.message === 'string' && detail.message ? detail.message : 'Could not update overtures.';
     const conflict = detail?.code === 'conflict' || detail?.status === 409
         && (!!detail.body?.current || /conflict|changed|terminal/i.test(message));
     return { message, conflict };

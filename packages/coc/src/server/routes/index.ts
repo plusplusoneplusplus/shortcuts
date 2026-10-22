@@ -701,7 +701,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     scrubberScheduler = new ScrubberScheduler({ scrubber, runs: scrubberRuns, getEnabled: getScrubberEnabled,
         assertOwner: async owner => {
             if (!(await store.getWorkspaces()).some(workspace => workspace.id === owner.workspaceId)) {
-                throw new Error('Scrubber workspace not found');
+                throw new Error('Coda workspace not found');
             }
             await sentinelTodos.assertOwner(owner);
         } });

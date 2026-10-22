@@ -975,11 +975,11 @@ describe('SentinelJobService gated ticks', () => {
         jobStore.update(owner, job.id, { enabled: false }, job.revision);
         release();
         stallWorkspaces = null;
-        expect(await tick).toMatchObject({ status: 'failed', trigger: 'schedule', error: 'Job schedule is paused' });
+        expect(await tick).toMatchObject({ status: 'failed', trigger: 'schedule', error: 'Refrain schedule is paused' });
         expect(jobStore.get(owner, job.id).gateLastResult).toBe('{"items":[1]}');
         expect(enqueue.mock.calls.filter(([task]) => getJobTaskContext(task)?.kind === 'run')).toEqual([]);
         expect(service.view(owner, jobStore.get(owner, job.id)).runs).toEqual([
-            expect.objectContaining({ status: 'failed', error: 'Job schedule is paused' })]);
+            expect.objectContaining({ status: 'failed', error: 'Refrain schedule is paused' })]);
     });
 
     describe('with the job scheduler', () => {

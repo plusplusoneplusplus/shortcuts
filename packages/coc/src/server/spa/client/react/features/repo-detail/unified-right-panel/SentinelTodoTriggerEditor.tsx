@@ -152,12 +152,12 @@ export function SentinelTodoTriggerEditor({ client, owner, items, trigger, onClo
     const unchanged = !trigger || itemId === trigger.binding?.itemId && instruction === (trigger.binding.instruction ?? '')
         && trigger.event.monitor === 'pr-merged' && prUrl.trim() === trigger.event.pr.url;
 
-    return <Dialog open trapFocus disableClose={saving} onClose={() => { if (!saving) onClose(); }} title={trigger ? 'Edit trigger' : 'Add trigger'}>
+    return <Dialog open trapFocus disableClose={saving} onClose={() => { if (!saving) onClose(); }} title={trigger ? 'Edit overture' : 'Add overture'}>
         <form className="sentinel-trigger-editor" onSubmit={event => { event.preventDefault(); if (canSave) void save(); }}>
             <p className="sentinel-trigger-muted">{kind === 'date-time'
                 ? 'Wake this Sentinel once at the saved time. This grants no new authorization and never marks the item Done.'
                 : 'When this PR merges, post a start message to this Sentinel. Never expires; the Sentinel chooses how to launch the job.'}</p>
-            {dateTimeEnabled && <><label htmlFor={`${id}-kind`}>Trigger type</label>
+            {dateTimeEnabled && <><label htmlFor={`${id}-kind`}>Overture type</label>
                 <select id={`${id}-kind`} value={kind} onChange={event => { setKind(event.target.value === 'date-time' ? 'date-time' : 'pr'); setConfirmRun(false); }}>
                     <option value="pr">PR merged</option><option value="date-time">Date/time</option>
                 </select></>}
@@ -205,16 +205,16 @@ export function SentinelTodoTriggerEditor({ client, owner, items, trigger, onClo
             {prUrl.trim() && !preview && !previewError && <p role="status">Checking PR…</p>}
             {previewError && <p role="alert">{previewError} <Button size="sm" variant="secondary" onClick={() => setPreviewRetry(value => value + 1)}>Retry preview</Button></p>}
             {preview && <div className="sentinel-trigger-preview" role="status"><strong>{preview.snapshot.title}</strong> · {status}
-                {status === 'merged' && <p>Already merged. {unchanged ? 'Use Run now to post the start message immediately.' : 'Run now uses the saved rule. Restore its fields or choose an open PR to save your edits.'}</p>}
-                {status === 'closed' && <p>Closed, not merged. This PR cannot arm a trigger.</p>}
+                {status === 'merged' && <p>Already merged. {unchanged ? 'Use Run now to post the start message immediately.' : 'Run now uses the saved overture. Restore its fields or choose an open PR to save your edits.'}</p>}
+                {status === 'closed' && <p>Closed, not merged. This PR cannot arm an overture.</p>}
             </div>}</>}
             <label htmlFor={`${id}-instruction`}>When it fires (optional)</label>
             <textarea id={`${id}-instruction`} rows={3} value={instruction} onChange={event => { setInstruction(event.target.value); setConfirmRun(false); }} />
             {error && <p role="alert">{error} {conflict
-                ? <Button size="sm" variant="secondary" onClick={() => { onConflict(); onClose(); }}>Refresh rules</Button>
+                ? <Button size="sm" variant="secondary" onClick={() => { onConflict(); onClose(); }}>Refresh overtures</Button>
                 : <Button size="sm" variant="secondary" onClick={() => { if (status === 'merged') setConfirmRun(true); else void save(); }}>Retry save</Button>}</p>}
             {confirmRun && <div role="alert" className="sentinel-trigger-preview">
-                <p>Post the start message to the Sentinel now? This uses up the rule.</p>
+                <p>Post the start message to the Sentinel now? This uses up the overture.</p>
                 <Button size="sm" variant="secondary" onClick={() => setConfirmRun(false)}>Cancel run now</Button>
                 <Button size="sm" disabled={saving} onClick={() => { void save(true); }}>Confirm run now</Button>
             </div>}

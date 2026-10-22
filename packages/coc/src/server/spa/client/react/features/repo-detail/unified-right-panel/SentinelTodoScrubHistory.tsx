@@ -29,9 +29,9 @@ export function SentinelTodoScrubHistory({ runs, ...props }: Props) {
     const [selected, setSelected] = useState<string | null>(null);
     const detailId = useId();
     const run = runs.find(entry => entry.id === selected);
-    return <section aria-label="Scrubber run history" className="flex flex-col gap-2 rounded border border-[#e0e0e0] p-2 dark:border-[#3c3c3c]">
+    return <section aria-label="Coda run history" className="flex flex-col gap-2 rounded border border-[#e0e0e0] p-2 dark:border-[#3c3c3c]">
         <h3 className="m-0 text-xs font-semibold">Run history ({runs.length})</h3>
-        {!runs.length && <p>No scrubber runs yet.</p>}
+        {!runs.length && <p>No Coda runs yet.</p>}
         <ul className="flex max-h-48 flex-col gap-2 overflow-auto">
             {runs.map(entry => <li key={entry.id} className="flex flex-col gap-1">
                 <div><time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleString()}</time>
@@ -67,7 +67,7 @@ function RunDetail({ client, owner, items, summary, id, onFollowLink }: Omit<Pro
         return () => controller.abort();
     }, [client, owner.ownerWorkspaceId, owner.processId, summary, retry]);
     const title = (itemId: string) => items.find(item => item.id === itemId)?.title ?? itemId;
-    return <section id={id} aria-label="Scrubber run detail" className="flex flex-col gap-2 border-t border-[#e0e0e0] pt-2 dark:border-[#3c3c3c]">
+    return <section id={id} aria-label="Coda run detail" className="flex flex-col gap-2 border-t border-[#e0e0e0] pt-2 dark:border-[#3c3c3c]">
         <h4 className="m-0 text-xs font-semibold">Run {summary.id}</h4>
         {error ? <p role="alert">Could not load run details: {error} <Button size="sm" variant="secondary" onClick={() => setRetry(value => value + 1)}>Retry details</Button></p>
             : !detail ? <div role="status" className="flex items-center gap-1"><Spinner size="sm" /> Loading run details...</div>

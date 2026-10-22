@@ -679,7 +679,7 @@ describe('UnifiedTodoTab', () => {
         expect(screen.getAllByTestId('sentinel-scrubber-strip')).toHaveLength(1);
         const strip = screen.getByTestId('sentinel-scrubber-strip');
         const list = screen.getByTestId('sentinel-todo-list');
-        const addTrigger = await within(list).findByRole('button', { name: '+ Add trigger' });
+        const addTrigger = await within(list).findByRole('button', { name: '+ Add overture' });
         const follows = (a: Node, b: Node) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
         expect(list.contains(strip)).toBe(true);
         expect(screen.getByTestId('sentinel-todo-details').contains(strip)).toBe(false);
@@ -687,14 +687,14 @@ describe('UnifiedTodoTab', () => {
         expect(follows(addTrigger, strip)).toBe(true);
         expect(follows(screen.getByRole('toolbar', { name: 'To-do actions' }), list)).toBe(true);
         expect(strip.className).not.toMatch(/\bsticky\b/);
-        for (const name of ['Scrub now', 'Schedule ▾', 'History (0)', 'Select items']) within(strip).getByRole('button', { name });
+        for (const name of ['Run now', 'Schedule ▾', 'History (0)', 'Select items']) within(strip).getByRole('button', { name });
         fireEvent.click(within(strip).getByRole('button', { name: 'Select items' }));
         expect(list.contains(within(strip).getByRole('group', { name: 'Select open items' }))).toBe(true);
         fireEvent.click(within(strip).getByRole('button', { name: 'Schedule ▾' }));
-        const schedule = within(list).getByRole('form', { name: 'Scrubber schedule' });
+        const schedule = within(list).getByRole('form', { name: 'Coda schedule' });
         expect(schedule.className).not.toMatch(/\babsolute\b/);
         fireEvent.click(within(strip).getByRole('button', { name: 'History (0)' }));
-        const history = within(list).getByRole('region', { name: 'Scrubber run history' });
+        const history = within(list).getByRole('region', { name: 'Coda run history' });
         expect(follows(strip, history)).toBe(true);
         fireEvent.click(screen.getByRole('button', { name: /Fix login/ }));
         expect(screen.getAllByTestId('sentinel-scrubber-strip')).toHaveLength(1);

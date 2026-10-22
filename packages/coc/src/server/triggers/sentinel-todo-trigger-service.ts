@@ -154,7 +154,7 @@ export class SentinelTodoTriggerService {
             const current = this.requireMutable(owner, triggerId, body.expectedRevision);
             if (!paused) {
                 if (current.event.type === 'date-time' && Date.parse(current.event.firesAt) <= this.now() && !body.confirmed) {
-                    throw new SentinelTodoTriggerError(409, 'Overdue rule will wake Sentinel immediately; confirm resume', current);
+                    throw new SentinelTodoTriggerError(409, 'Overdue overture will wake Sentinel immediately; confirm resume', current);
                 }
                 this.assertEligible(owner, current.binding!.itemId);
                 if (current.status !== 'active') this.assertCap();
@@ -206,7 +206,7 @@ export class SentinelTodoTriggerService {
             throw error;
         }
         const result = this.deps.triggers.getById(triggerId);
-        if (!result || !result.outcome) throw new SentinelTodoTriggerError(409, 'Rule changed before Run now', result ?? undefined);
+        if (!result || !result.outcome) throw new SentinelTodoTriggerError(409, 'Overture changed before Run now', result ?? undefined);
         this.deps.manager.disarm(triggerId);
         if (result.delivery?.state === 'pending') this.deps.manager.arm(result);
         return result;
@@ -236,7 +236,7 @@ export class SentinelTodoTriggerService {
     private assertEligible(owner: SentinelTodoOwner, itemId: string): void {
         const item = this.deps.todos.get(owner).items.find(item => item.id === itemId);
         if (!item) throw new SentinelTodoTriggerError(404, 'To-do item not found');
-        if (item.type === 'manual') throw new SentinelTodoTriggerError(400, 'Manual items cannot have executable rules');
+        if (item.type === 'manual') throw new SentinelTodoTriggerError(400, 'Manual items cannot have overtures');
         if (item.archived || item.status === 'done') throw new SentinelTodoTriggerError(409, 'Item is Done or archived');
     }
 
@@ -250,7 +250,7 @@ export class SentinelTodoTriggerService {
         if (!key) return;
         const existing = this.deps.triggers.getByWorkspace(owner.workspaceId).find(trigger =>
             trigger.processId === owner.processId && trigger.binding?.idempotencyKey === key);
-        if (existing?.binding?.removedAt) throw new SentinelTodoTriggerError(409, 'Rule was removed', existing);
+        if (existing?.binding?.removedAt) throw new SentinelTodoTriggerError(409, 'Overture was removed', existing);
         return existing;
     }
 
@@ -258,9 +258,9 @@ export class SentinelTodoTriggerService {
         const current = this.deps.triggers.getById(triggerId);
         if (!current?.binding || current.binding.delegatedPr || current.binding.removedAt
             || current.workspaceId !== owner.workspaceId || current.processId !== owner.processId) {
-            throw new SentinelTodoTriggerError(404, 'Trigger not found');
+            throw new SentinelTodoTriggerError(404, 'Overture not found');
         }
-        if (current.revision !== revision) throw new SentinelTodoTriggerError(409, 'Rule revision conflict', current);
+        if (current.revision !== revision) throw new SentinelTodoTriggerError(409, 'Overture revision conflict', current);
         if (current.event.type === 'date-time') this.assertDateTimeEnabled();
         return current;
     }
@@ -269,7 +269,7 @@ export class SentinelTodoTriggerService {
         const current = this.requireRule(owner, triggerId, revision);
         if (current.outcome || current.delivery
             || (current.status !== 'active' && current.status !== 'paused')) {
-            throw new SentinelTodoTriggerError(409, 'Terminal rules cannot be edited, resumed or run again', current);
+            throw new SentinelTodoTriggerError(409, 'Terminal overtures cannot be edited, resumed or run again', current);
         }
         return current;
     }
@@ -279,13 +279,13 @@ export class SentinelTodoTriggerService {
         catch (error) { throw new SentinelTodoTriggerError(502, message(error)); }
     }
     private assertDateTimeEnabled(): void {
-        if (!this.deps.dateTimeEnabled?.()) throw new SentinelTodoTriggerError(403, 'Date/time triggers are disabled');
+        if (!this.deps.dateTimeEnabled?.()) throw new SentinelTodoTriggerError(403, 'Date/time overtures are disabled');
     }
     private assertAuthoringTime(event: TriggerEvent): void {
         if (event.type !== 'date-time') return;
         this.assertDateTimeEnabled();
         if (Date.parse(event.firesAt) <= this.now()) {
-            throw new SentinelTodoTriggerError(400, 'Date/time must be in the future; use confirmed Run now on a saved rule');
+            throw new SentinelTodoTriggerError(400, 'Date/time must be in the future; use confirmed Run now on a saved overture');
         }
     }
     private async prepareEvent(body: z.infer<typeof ruleInput>, runNow = false): Promise<TriggerEvent> {

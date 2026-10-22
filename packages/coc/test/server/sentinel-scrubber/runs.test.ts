@@ -8,7 +8,7 @@ import { buildChatToolBundle } from '../../../src/server/executors/chat-tool-bui
 import { createSubmitScrubFindingsTool } from '../../../src/server/llm-tools/submit-scrub-findings-tool';
 import { ScrubberEngine } from '../../../src/server/sentinel-scrubber/scrubber-engine';
 import { MAX_SCRUB_ITEMS } from '../../../src/server/sentinel-scrubber/scrubber-model';
-import { ScrubberRunService, getScrubChildContext, SUBMIT_SCRUB_FINDINGS_TOOL_NAME } from '../../../src/server/sentinel-scrubber/scrubber-runs';
+import { ScrubberRunService, buildScrubPrompt, getScrubChildContext, SUBMIT_SCRUB_FINDINGS_TOOL_NAME } from '../../../src/server/sentinel-scrubber/scrubber-runs';
 import { ScrubberStore } from '../../../src/server/sentinel-scrubber/scrubber-store';
 import type { SentinelTodoItemView, SentinelTodoLedgerView } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { SentinelTodoStore, type SentinelTodoItem } from '../../../src/server/sentinel-todos/sentinel-todo-store';
@@ -302,7 +302,7 @@ describe('ScrubberRunService.start', () => {
 
         const run = await service.start(owner, { trigger: 'manual' });
 
-        expect(run).toMatchObject({ status: 'failed', error: 'Could not start the scrub: queue full' });
+        expect(run).toMatchObject({ status: 'failed', error: 'Could not start Coda: queue full' });
         expect(scrubber.activeRun(owner)).toBeUndefined();
     });
 
@@ -446,11 +446,11 @@ describe('ScrubberRunService findings lifecycle', () => {
         const first = await service.start(owner, { trigger: 'manual' });
         service.markRunning({ ...owner, runId: first.id });
         await service.handleTaskTerminal(childTask(0), 'completed');
-        expect(scrubber.getRun(owner, first.id)).toMatchObject({ status: 'failed', error: 'The scrub chat ended without submitting findings' });
+        expect(scrubber.getRun(owner, first.id)).toMatchObject({ status: 'failed', error: 'The Coda chat ended without submitting findings' });
 
         const second = await service.start(owner, { trigger: 'manual' });
         await service.handleTaskTerminal(childTask(1), 'failed', new Error('invalid model'));
-        expect(scrubber.getRun(owner, second.id)).toMatchObject({ status: 'failed', error: 'The scrub chat failed: invalid model' });
+        expect(scrubber.getRun(owner, second.id)).toMatchObject({ status: 'failed', error: 'The Coda chat failed: invalid model' });
         expect(scrubber.getConfig(owner).consecutiveFailures).toBe(2);
     });
 
@@ -526,4 +526,13 @@ it('replaces queue subscriptions on reattach and removes them on disposal', asyn
     for (const event of ['taskCompleted', 'taskFailed', 'taskCancelled']) expect(nextQueue.listenerCount(event)).toBe(0);
     nextQueue.emit('taskCompleted', '/repo', {});
     expect(settle).toHaveBeenCalledOnce();
+});
+
+describe('Coda run prompt', () => {
+    it('introduces the run as Coda and keeps the wire tool name', () => {
+        const prompt = buildScrubPrompt({ id: 'run-1' } as Parameters<typeof buildScrubPrompt>[0], '/tmp/snapshot.json');
+        expect(prompt).toMatch(/^You are Coda, this Sentinel's built-in to-do review \(run run-1\)\./);
+        expect(prompt).toContain(`call \`${SUBMIT_SCRUB_FINDINGS_TOOL_NAME}\``);
+        expect(prompt).not.toMatch(/Scrubber/);
+    });
 });

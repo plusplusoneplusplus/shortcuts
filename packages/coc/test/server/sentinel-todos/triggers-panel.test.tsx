@@ -65,7 +65,7 @@ function mount(items = [item()]) {
     return { ...render(<SentinelTodoTriggers owner={owner} items={items} onItemLink={onItemLink} />), onItemLink };
 }
 async function openEditor() {
-    fireEvent.click(await screen.findByRole('button', { name: '+ Add trigger' }));
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add overture' }));
     fireEvent.change(screen.getByLabelText('PR URL'), { target: { value: preview().pr.url } });
     await screen.findByText('Dependency update');
 }
@@ -109,8 +109,8 @@ describe('Sentinel To-do Triggers', () => {
         mocks.capabilities.mockResolvedValue({ dateTime: true });
         mount();
         await waitFor(() => expect(mocks.capabilities).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId));
-        fireEvent.click(screen.getByRole('button', { name: '+ Add trigger' }));
-        fireEvent.change(await screen.findByLabelText('Trigger type'), { target: { value: 'date-time' } });
+        fireEvent.click(screen.getByRole('button', { name: '+ Add overture' }));
+        fireEvent.change(await screen.findByLabelText('Overture type'), { target: { value: 'date-time' } });
         fireEvent.change(screen.getByLabelText('Date'), { target: { value: date } });
         fireEvent.change(screen.getByLabelText('Time'), { target: { value: time } });
         fireEvent.change(screen.getByLabelText('IANA timezone'), { target: { value: zone } });
@@ -132,8 +132,8 @@ describe('Sentinel To-do Triggers', () => {
         mount();
         await screen.findByText('PR example/repo#7');
         expect(screen.queryByTestId('sentinel-trigger-dated')).toBeNull();
-        fireEvent.click(screen.getByRole('button', { name: '+ Add trigger' }));
-        expect(screen.queryByLabelText('Trigger type')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: '+ Add overture' }));
+        expect(screen.queryByLabelText('Overture type')).toBeNull();
         expect(screen.getByLabelText('PR URL')).toBeTruthy();
     });
     it('surfaces unavailable date capability while retaining existing PR rules', async () => {
@@ -143,7 +143,7 @@ describe('Sentinel To-do Triggers', () => {
         await screen.findByText('PR example/repo#7');
         expect(screen.getByRole('alert').textContent).toContain('Owner capability unavailable');
         expect(screen.queryByTestId('sentinel-trigger-dated')).toBeNull();
-        fireEvent.click(screen.getByRole('button', { name: 'Retry trigger availability' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Retry overture availability' }));
         await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
     });
 
@@ -152,8 +152,8 @@ describe('Sentinel To-do Triggers', () => {
         mocks.capabilities.mockResolvedValue({ dateTime: false });
         act(() => mocks.connect.mock.calls[0][0].onMessage({ type: 'trigger-updated' }));
         await waitFor(() => expect(screen.queryByLabelText('IANA timezone')).toBeNull());
-        fireEvent.click(screen.getByRole('button', { name: '+ Add trigger' }));
-        expect(screen.queryByLabelText('Trigger type')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: '+ Add overture' }));
+        expect(screen.queryByLabelText('Overture type')).toBeNull();
         expect(screen.getByLabelText('PR URL')).toBeTruthy();
         expect(mocks.create).not.toHaveBeenCalled();
     });
@@ -165,8 +165,8 @@ describe('Sentinel To-do Triggers', () => {
         rendered.rerender(<SentinelTodoTriggers owner={{ ...owner, processId: 'second-owner' }} items={[item()]} onItemLink={vi.fn()} />);
         await waitFor(() => expect(mocks.capabilities).toHaveBeenCalledTimes(2));
         await act(async () => pendingCapabilities.resolve({ dateTime: true }));
-        fireEvent.click(screen.getByRole('button', { name: '+ Add trigger' }));
-        expect(screen.queryByLabelText('Trigger type')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: '+ Add overture' }));
+        expect(screen.queryByLabelText('Overture type')).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
         rendered.unmount();
         const pendingSave = deferred<Trigger>();
@@ -213,8 +213,8 @@ describe('Sentinel To-do Triggers', () => {
         await act(async () => pending.resolve(dated()));
         await waitFor(() => expect(screen.queryByLabelText('IANA timezone')).toBeNull());
         mocks.create.mockRejectedValueOnce(new Error('Date save unavailable'));
-        fireEvent.click(screen.getByRole('button', { name: '+ Add trigger' }));
-        fireEvent.change(screen.getByLabelText('Trigger type'), { target: { value: 'date-time' } });
+        fireEvent.click(screen.getByRole('button', { name: '+ Add overture' }));
+        fireEvent.change(screen.getByLabelText('Overture type'), { target: { value: 'date-time' } });
         fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2027-01-15' } });
         fireEvent.change(screen.getByLabelText('Time'), { target: { value: '09:30' } });
         fireEvent.change(screen.getByLabelText('IANA timezone'), { target: { value: 'UTC' } });
@@ -225,13 +225,13 @@ describe('Sentinel To-do Triggers', () => {
     it('retains a conflicted date edit and requires refresh rather than retrying a stale revision', async () => {
         mocks.capabilities.mockResolvedValue({ dateTime: true });
         mocks.list.mockResolvedValue([dated()]);
-        mocks.edit.mockRejectedValueOnce(Object.assign(new Error('Rule revision conflict'), { status: 409 }));
+        mocks.edit.mockRejectedValueOnce(Object.assign(new Error('Overture revision conflict'), { status: 409 }));
         mount();
-        fireEvent.click(await screen.findByLabelText('Actions for date/time trigger'));
+        fireEvent.click(await screen.findByLabelText('Actions for date/time overture'));
         fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
         fireEvent.change(screen.getByLabelText('When it fires (optional)'), { target: { value: 'Changed guidance' } });
         fireEvent.click(screen.getByRole('button', { name: 'Save and arm' }));
-        await screen.findByText('Rule revision conflict');
+        await screen.findByText('Overture revision conflict');
         expect((screen.getByLabelText('When it fires (optional)') as HTMLTextAreaElement).value).toBe('Changed guidance');
         expect(screen.getByRole('button', { name: 'Save and arm' }).hasAttribute('disabled')).toBe(true);
         expect(mocks.edit).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId, 'rule-1', expect.objectContaining({
@@ -239,7 +239,7 @@ describe('Sentinel To-do Triggers', () => {
                 timeZone: 'America/New_York', localTime: '2027-11-07T01:30' },
         }));
         expect(mocks.edit).toHaveBeenCalledOnce();
-        fireEvent.click(screen.getByRole('button', { name: 'Refresh rules' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh overtures' }));
         await waitFor(() => expect(screen.queryByLabelText('IANA timezone')).toBeNull());
     });
     it('renders wrapping dated rows with separate item/delivery state and confirms overdue resume', async () => {
@@ -255,9 +255,9 @@ describe('Sentinel To-do Triggers', () => {
         expect(instant.textContent).toContain('(UTC)');
         fireEvent.click(within(row).getByRole('link', { name: /Follow-up work/ }));
         expect(onItemLink).toHaveBeenCalledWith('item-1');
-        fireEvent.click(screen.getByLabelText('Actions for date/time trigger'));
+        fireEvent.click(screen.getByLabelText('Actions for date/time overture'));
         fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
-        expect(screen.getByText(/overdue rule will wake Sentinel immediately/)).toBeTruthy();
+        expect(screen.getByText(/overdue overture will wake Sentinel immediately/)).toBeTruthy();
         expect(mocks.resume).not.toHaveBeenCalled();
         fireEvent.click(screen.getByRole('button', { name: 'Confirm resume' }));
         await waitFor(() => expect(mocks.resume).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId, 'rule-1', 4, true));
@@ -266,7 +266,7 @@ describe('Sentinel To-do Triggers', () => {
         mocks.capabilities.mockResolvedValue({ dateTime: true });
         mocks.list.mockResolvedValue([dated()]);
         mount();
-        fireEvent.click(await screen.findByLabelText('Actions for date/time trigger'));
+        fireEvent.click(await screen.findByLabelText('Actions for date/time overture'));
         fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
         await waitFor(() => expect(mocks.pause).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId, 'rule-1', 4));
         fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
@@ -294,7 +294,7 @@ describe('Sentinel To-do Triggers', () => {
         mount();
         await waitFor(() => expect(mocks.list).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId));
         expect(screen.queryByTestId('sentinel-todo-triggers')).toBeNull();
-        expect(screen.getByRole('button', { name: '+ Add trigger' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: '+ Add overture' })).toBeTruthy();
         expect(mocks.refs).toContain(owner.ownerRoutingRef);
         expect(mocks.create).not.toHaveBeenCalled();
     });
@@ -302,7 +302,7 @@ describe('Sentinel To-do Triggers', () => {
         applyRuntimeConfigPatch({ triggersEnabled: false });
         mount();
         await waitFor(() => expect(mocks.list).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId));
-        expect(screen.getByRole('button', { name: '+ Add trigger' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: '+ Add overture' })).toBeTruthy();
         expect(mocks.create).not.toHaveBeenCalled();
     });
     it('does not fall back to local transport for an unresolved remote owner', () => {
@@ -326,9 +326,9 @@ describe('Sentinel To-do Triggers', () => {
         expect(onItemLink).toHaveBeenCalledWith('item-1');
         expect(first.getByText('Run focused tests').className).toContain('sentinel-trigger-instruction');
         expect(rows[0].textContent).toContain('Armed by Sentinel');
-        fireEvent.click(screen.getByRole('button', { name: /Triggers \(2\)/ }));
+        fireEvent.click(screen.getByRole('button', { name: /Overtures \(2\)/ }));
         expect(screen.queryByText('Waiting')).toBeNull();
-        expect(screen.getByRole('button', { name: /Triggers \(2\)/ }).getAttribute('aria-expanded')).toBe('false');
+        expect(screen.getByRole('button', { name: /Overtures \(2\)/ }).getAttribute('aria-expanded')).toBe('false');
     });
     it.each([
         ['paused', rule({ status: 'paused' }), 'Paused'],
@@ -374,7 +374,7 @@ describe('Sentinel To-do Triggers', () => {
     });
     it('keeps add disabled when no eligible item exists', async () => {
         mount([item({ type: 'manual' }), item({ id: 'done', status: 'done' })]);
-        expect((await screen.findByRole('button', { name: '+ Add trigger' }) as HTMLButtonElement).disabled).toBe(true);
+        expect((await screen.findByRole('button', { name: '+ Add overture' }) as HTMLButtonElement).disabled).toBe(true);
     });
     it('blocks closed PRs and never calls create', async () => {
         mocks.preview.mockResolvedValue(preview('closed'));
@@ -391,7 +391,7 @@ describe('Sentinel To-do Triggers', () => {
         await openEditor();
         fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
         expect(mocks.create).not.toHaveBeenCalled();
-        expect(screen.getByText(/This uses up the rule/)).toBeTruthy();
+        expect(screen.getByText(/This uses up the overture/)).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: 'Confirm run now' }));
         await waitFor(() => expect(mocks.create).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId,
             { itemId: 'item-1', prUrl: preview().pr.url, instruction: '', idempotencyKey: expect.any(String), runNow: true, confirmed: true }));
@@ -399,7 +399,7 @@ describe('Sentinel To-do Triggers', () => {
     it('keeps failed preview inline and retries without losing draft input', async () => {
         mocks.preview.mockRejectedValueOnce(new Error('PR login required'));
         mount();
-        fireEvent.click(await screen.findByRole('button', { name: '+ Add trigger' }));
+        fireEvent.click(await screen.findByRole('button', { name: '+ Add overture' }));
         fireEvent.change(screen.getByLabelText('PR URL'), { target: { value: preview().pr.url } });
         await screen.findByText('PR login required', { exact: false });
         fireEvent.click(screen.getByRole('button', { name: 'Retry preview' }));
@@ -410,7 +410,7 @@ describe('Sentinel To-do Triggers', () => {
         const old = deferred<PrTriggerPreview>();
         mocks.preview.mockReturnValueOnce(old.promise).mockResolvedValue(preview('closed'));
         mount();
-        fireEvent.click(await screen.findByRole('button', { name: '+ Add trigger' }));
+        fireEvent.click(await screen.findByRole('button', { name: '+ Add overture' }));
         fireEvent.change(screen.getByLabelText('PR URL'), { target: { value: preview().pr.url } });
         await waitFor(() => expect(mocks.preview).toHaveBeenCalledOnce());
         fireEvent.change(screen.getByLabelText('PR URL'), { target: { value: 'https://github.com/example/repo/pull/8' } });
@@ -421,7 +421,7 @@ describe('Sentinel To-do Triggers', () => {
     });
     it('uses owner-server local workspace/origin PR APIs and attaches picked identity', async () => {
         mount();
-        fireEvent.click(await screen.findByRole('button', { name: '+ Add trigger' }));
+        fireEvent.click(await screen.findByRole('button', { name: '+ Add overture' }));
         fireEvent.click(screen.getByRole('button', { name: 'Pick a local PR' }));
         await screen.findByRole('option', { name: 'Local repo' });
         fireEvent.change(screen.getByLabelText('Local workspace on owning server'), { target: { value: 'ws-local' } });
@@ -435,7 +435,7 @@ describe('Sentinel To-do Triggers', () => {
     });
     it('clears picker identity when URL is manually changed', async () => {
         mount();
-        fireEvent.click(await screen.findByRole('button', { name: '+ Add trigger' }));
+        fireEvent.click(await screen.findByRole('button', { name: '+ Add overture' }));
         fireEvent.click(screen.getByRole('button', { name: 'Pick a local PR' }));
         await screen.findByRole('option', { name: 'Local repo' });
         fireEvent.change(screen.getByLabelText('Local workspace on owning server'), { target: { value: 'ws-local' } });
@@ -483,7 +483,7 @@ describe('Sentinel To-do Triggers', () => {
         expect(mocks.edit).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId, 'rule-1',
             { itemId: 'item-1', prUrl: preview().pr.url, instruction: 'Keep my draft', expectedRevision: 4 });
         expect((screen.getByLabelText('When it fires (optional)') as HTMLTextAreaElement).value).toBe('Keep my draft');
-        expect(screen.getByRole('button', { name: 'Refresh rules' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Refresh overtures' })).toBeTruthy();
         expect((screen.getByRole('button', { name: 'Save and arm' }) as HTMLButtonElement).disabled).toBe(true);
     });
     it('offers confirmed Run now in the editor for a merged saved rule without silently discarding edits', async () => {
@@ -509,8 +509,8 @@ describe('Sentinel To-do Triggers', () => {
         mount();
         await actions();
         fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
-        await screen.findByRole('button', { name: 'Refresh rules' });
-        fireEvent.click(screen.getByRole('button', { name: 'Refresh rules' }));
+        await screen.findByRole('button', { name: 'Refresh overtures' });
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh overtures' }));
         await waitFor(() => expect(mocks.list.mock.calls.length).toBeGreaterThanOrEqual(3));
         expect(mocks.pause).toHaveBeenCalledOnce();
     });
@@ -589,7 +589,7 @@ describe('Sentinel To-do Triggers', () => {
     it('retries owner-server workspace picker failures inline', async () => {
         mocks.workspaceList.mockRejectedValueOnce(new Error('Workspace list unavailable'));
         mount();
-        fireEvent.click(await screen.findByRole('button', { name: '+ Add trigger' }));
+        fireEvent.click(await screen.findByRole('button', { name: '+ Add overture' }));
         fireEvent.click(screen.getByRole('button', { name: 'Pick a local PR' }));
         await screen.findByText(/Workspace list unavailable/);
         fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
@@ -599,7 +599,7 @@ describe('Sentinel To-do Triggers', () => {
     it('does not mistake capacity or already-merged 409 validation errors for stale revisions', () => {
         expect(triggerError(Object.assign(new Error('Server-wide active trigger limit reached (50)'), { status: 409 })).conflict).toBe(false);
         expect(triggerError(Object.assign(new Error('PR already merged; use Run now'), { status: 409 })).conflict).toBe(false);
-        expect(triggerError(Object.assign(new Error('Rule revision conflict'), { status: 409 })).conflict).toBe(true);
+        expect(triggerError(Object.assign(new Error('Overture revision conflict'), { status: 409 })).conflict).toBe(true);
     });
     it('refreshes on owner trigger events only and ignores late owner reads', async () => {
         const old = deferred<Trigger[]>();

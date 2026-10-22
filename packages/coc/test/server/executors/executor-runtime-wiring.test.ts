@@ -190,7 +190,7 @@ describe('Executor runtime capability wiring', () => {
             const task = { payload: { context: { sentinelScrub: {
                 workspaceId: 'ws', processId: 'parent', runId: 'run',
             } } } };
-            expect(() => chatExecutor.buildScrubFindingsTool(task)).toThrow('scrubber is disabled');
+            expect(() => chatExecutor.buildScrubFindingsTool(task)).toThrow('Sentinel Coda is disabled');
             const markRunning = vi.fn();
             runtime.getSentinelScrubber.mockReturnValue({ markRunning } as any);
             expect(chatExecutor.buildScrubFindingsTool(task)?.name).toBe('submit_scrub_findings');

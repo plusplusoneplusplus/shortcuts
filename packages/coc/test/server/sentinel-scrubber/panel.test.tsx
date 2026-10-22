@@ -64,7 +64,7 @@ describe('To-do Scrubber strip', () => {
         const flag = 'sentinelTodoScrubberEnabled';
         applyRuntimeConfigPatch({ [flag]: false });
         render(<SentinelTodoScrubber owner={owner} items={[]} onFollowLink={follow} />);
-        expect(screen.queryByRole('region', { name: 'To-do Scrubber' })).toBeNull();
+        expect(screen.queryByRole('region', { name: 'Coda' })).toBeNull();
         expect(mock.get).not.toHaveBeenCalled();
         act(() => applyRuntimeConfigPatch({ [flag]: true }));
         await screen.findByText('Manual only');
@@ -78,13 +78,13 @@ describe('To-do Scrubber strip', () => {
         mock.start.mockReturnValue(request.promise);
         render(<SentinelTodoScrubber owner={owner} items={[item('a')]} onFollowLink={follow} />);
         await screen.findByText('Manual only');
-        fireEvent.click(screen.getByRole('button', { name: 'Scrub now' }));
-        fireEvent.click(screen.getByRole('button', { name: 'Scrub now' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
         expect(mock.start).toHaveBeenCalledExactlyOnceWith('ws-a', 'queue_parent', {});
         mock.get.mockResolvedValue(response({ activeRun: active() }));
         await act(async () => request.resolve({ runId: 'run-1' }));
-        await screen.findByText(/Scrubbing 1 items/);
-        expect(screen.getByRole('button', { name: 'Scrub now' })).toBeDisabled();
+        await screen.findByText(/Checking 1 items/);
+        expect(screen.getByRole('button', { name: 'Run now' })).toBeDisabled();
         fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
         await waitFor(() => expect(mock.cancel).toHaveBeenCalledWith('ws-a', 'queue_parent', 'run-1'));
         const link = screen.getByRole('link', { name: 'Open chat' });
@@ -103,7 +103,7 @@ describe('To-do Scrubber strip', () => {
         fireEvent.click(screen.getByLabelText('Item a'));
         fireEvent.click(screen.getByLabelText('Item m · Manual'));
         view.rerender(<SentinelTodoScrubber {...props} items={[item('a', { status: 'done' }), item('m', { type: 'manual' })]} />);
-        fireEvent.click(screen.getByRole('button', { name: 'Scrub selected (1)' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Run on selected (1)' }));
         await waitFor(() => expect(mock.start).toHaveBeenCalledWith('ws-a', 'queue_parent', { itemIds: ['m'] }));
     });
 
@@ -150,11 +150,11 @@ describe('To-do Scrubber strip', () => {
         const toggle = await screen.findByRole('button', { name: 'History (1)' });
         await waitFor(() => expect(mock.getRun).toHaveBeenCalledOnce());
         fireEvent.click(toggle);
-        const history = screen.getByRole('region', { name: 'Scrubber run history' });
+        const history = screen.getByRole('region', { name: 'Coda run history' });
         expect(screen.getByTestId('sentinel-scrubber-strip').contains(history)).toBe(false);
         expect(mock.getRun).toHaveBeenCalledOnce();
         fireEvent.click(screen.getByRole('button', { name: 'Hide history (1)' }));
-        expect(screen.queryByRole('region', { name: 'Scrubber run history' })).toBeNull();
+        expect(screen.queryByRole('region', { name: 'Coda run history' })).toBeNull();
     });
 
     it('shows schedule description/next time and resumes a failure pause with expected revision', async () => {
@@ -185,7 +185,7 @@ describe('To-do Scrubber strip', () => {
         expect(screen.getByRole('status')).toHaveTextContent('Every 6 hours');
         fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
         await waitFor(() => expect(mock.updateConfig).toHaveBeenCalledWith('ws-a', 'queue_parent', { enabled: true, cron: '0 */6 * * *', expectedRevision: 4 }));
-        expect(screen.queryByRole('form', { name: 'Scrubber schedule' })).toBeNull();
+        expect(screen.queryByRole('form', { name: 'Coda schedule' })).toBeNull();
     });
 
     it('retains the schedule draft revision through remote invalidation and reloads conflicts without retrying writes', async () => {
@@ -196,17 +196,17 @@ describe('To-do Scrubber strip', () => {
         await act(async () => mock.connect.mock.calls[0][0].onMessage({ type: 'sentinel-scrubber-changed', workspaceId: 'ws-a', processId: owner.processId }));
         mock.updateConfig.mockRejectedValue(Object.assign(new Error('stale'), { status: 409 }));
         fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
-        await screen.findByText('Scrubber changed. Refresh and try again.');
+        await screen.findByText('Coda changed. Refresh and try again.');
         expect(mock.updateConfig).toHaveBeenCalledExactlyOnceWith('ws-a', 'queue_parent', { enabled: false, cron: '0 9 * * *', expectedRevision: 4 });
-        expect(screen.queryByRole('form', { name: 'Scrubber schedule' })).toBeNull();
+        expect(screen.queryByRole('form', { name: 'Coda schedule' })).toBeNull();
     });
 
     it('keeps failed drafts for an explicit retry and refreshes read failures', async () => {
         mock.get.mockRejectedValueOnce(new Error('offline'));
         render(<SentinelTodoScrubber owner={owner} items={[]} onFollowLink={follow} />);
         await screen.findByText('offline');
-        expect(screen.getByRole('button', { name: 'Scrub now' })).toBeDisabled();
-        fireEvent.click(screen.getByRole('button', { name: 'Refresh scrubber' }));
+        expect(screen.getByRole('button', { name: 'Run now' })).toBeDisabled();
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh Coda' }));
         await screen.findByText('Manual only');
         fireEvent.click(screen.getByRole('button', { name: 'Schedule ▾' }));
         mock.updateConfig.mockRejectedValueOnce(new Error('Save failed'));
@@ -226,7 +226,7 @@ describe('To-do Scrubber strip', () => {
         expect(screen.queryByText(/Scrubbing/)).toBeNull();
         const oldWrite = deferred<{ runId: string }>();
         mock.start.mockReturnValueOnce(oldWrite.promise);
-        fireEvent.click(screen.getByRole('button', { name: 'Scrub now' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
         mock.route = { kind: 'remote', baseUrl: 'https://new.example' };
         view.rerender(<SentinelTodoScrubber owner={{ ...owner, processId: 'other' }} items={[]} onFollowLink={follow} />);
         await screen.findByText('Manual only');
@@ -336,19 +336,19 @@ describe('Scrubber row findings', () => {
             render(panel(current));
             const buttons = await screen.findAllByRole('button', { name: 'Accept all proposals' });
             fireEvent.click(buttons[0]);
-            await screen.findByText('Accepted 1 proposal. 2 items changed since this proposal. Run a fresh scrub.');
+            await screen.findByText('Accepted 1 proposal. 2 items changed since this proposal. Run Coda again.');
             expect(mock.accept.mock.calls).toEqual([
                 ['ws-a', 'queue_parent', 'result', 'race', { expectedItemRevision: 3 }],
                 ['ws-a', 'queue_parent', 'result', 'ok', { expectedItemRevision: 5 }],
             ]);
-            expect(screen.getAllByText('Item changed since this proposal. Run a fresh scrub.')).toHaveLength(1);
+            expect(screen.getAllByText('Item changed since this proposal. Run Coda again.')).toHaveLength(1);
         });
 
         it('reports a fully stale batch without submitting any writes', async () => {
             const current = batch([proposal('a')], [item('a', { revision: 2 })]);
             render(panel(current));
             fireEvent.click((await screen.findAllByRole('button', { name: 'Accept all proposals' }))[0]);
-            await screen.findByText('Accepted 0 proposals. 1 item changed since this proposal. Run a fresh scrub.');
+            await screen.findByText('Accepted 0 proposals. 1 item changed since this proposal. Run Coda again.');
             expect(mock.accept).not.toHaveBeenCalled();
         });
 
@@ -422,24 +422,24 @@ describe('Scrubber row findings', () => {
         setupFindings(finding('applied', { audit: [{ action: 'applied', actor: 'scrubber', at: '2026-10-11T01:00:00Z',
             before: { status: 'in_progress', archived: false, revision: 1 }, after: { status: 'done', archived: false, revision: 2 } }] }));
         const view = render(rows(item('a', { revision: 2, status: 'done' })));
-        await screen.findByText('✓ Done by scrubber');
+        await screen.findByText('✓ Done by Coda');
         fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
         await waitFor(() => expect(mock.undo).toHaveBeenCalledExactlyOnceWith('ws-a', 'queue_parent', 'result', 'a', { expectedItemRevision: 2 }));
         view.rerender(rows(item('a', { revision: 3, status: 'in_progress' })));
-        expect(screen.queryByText('✓ Done by scrubber')).toBeNull();
+        expect(screen.queryByText('✓ Done by Coda')).toBeNull();
     });
 
     it('blocks known stale proposals and reloads raced conflicts without retrying against a newer revision', async () => {
         setupFindings();
         const view = render(rows(item('a', { revision: 2 })));
-        await screen.findByText('Item changed since this proposal. Run a fresh scrub.');
+        await screen.findByText('Item changed since this proposal. Run Coda again.');
         expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Dismiss' })).toBeEnabled();
         view.rerender(rows());
         mock.accept.mockRejectedValue(Object.assign(new Error('stale'), { status: 409 }));
         fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
         await screen.findByRole('alert');
-        expect(screen.getByRole('alert')).toHaveTextContent('Item changed since this proposal. Run a fresh scrub.');
+        expect(screen.getByRole('alert')).toHaveTextContent('Item changed since this proposal. Run Coda again.');
         expect(mock.accept).toHaveBeenCalledTimes(1);
     });
 
@@ -477,7 +477,7 @@ describe('Scrubber row findings', () => {
         mock.getRun.mockImplementation((_ws, _pid, runId) => Promise.resolve(runId === 'new' ? newest.detail : old.detail));
         render(rows());
         await screen.findByText('Manual only');
-        expect(screen.queryByText('✓ Done by scrubber')).toBeNull();
+        expect(screen.queryByText('✓ Done by Coda')).toBeNull();
     });
 
     it('discards delayed finding reads and mutations when owner changes', async () => {

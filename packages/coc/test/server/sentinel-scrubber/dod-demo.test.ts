@@ -95,7 +95,7 @@ describe('To-do Scrubber Definition of Done demo', () => {
         expect(initial.config.nextRunAt).toBeUndefined();
         expect(initial.activeRun).toBeUndefined();
 
-        // 1.2 Scrub now queues one visible low-priority ask chat; a second start conflicts.
+        // 1.2 Run now queues one visible low-priority ask chat; a second start conflicts.
         const first = await scrubNow();
         expect(first.input).toMatchObject({ type: 'chat', priority: 'low', repoId: ws, payload: { mode: 'ask', workspaceId: ws } });
         expect((await client.get(ws, pid)).activeRun).toMatchObject({ id: first.runId, status: 'running' });

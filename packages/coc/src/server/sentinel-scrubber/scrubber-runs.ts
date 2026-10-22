@@ -96,10 +96,10 @@ export class ScrubberRunService {
         const ledger = await this.deps.todos.list(owner);
         const triggers = await this.listArmedTriggers(owner);
         if (opts.trigger === 'schedule' && this.deps.canStartScheduled?.(owner) === false) {
-            throw new ScrubberStoreError('conflict', 'The scrubber schedule is disarmed');
+            throw new ScrubberStoreError('conflict', 'The Coda schedule is disarmed');
         }
         if (opts.trigger === 'manual' && this.deps.scrubber.activeRun(owner)) {
-            throw new ScrubberStoreError('conflict', 'A scrub run is already active');
+            throw new ScrubberStoreError('conflict', 'A Coda run is already active');
         }
         let open = ledger.items.filter(item => OPEN_STATUSES.has(item.status) && !item.archived);
         if (opts.itemIds) {
@@ -135,11 +135,11 @@ export class ScrubberRunService {
             await fs.mkdir(path.dirname(snapshotPath), { recursive: true });
             await fs.writeFile(snapshotPath, JSON.stringify(buildSnapshot(owner, run, included, awaiting, triggers), null, 2));
             const beforeAdmission = this.deps.scrubber.getRun(owner, run.id);
-            if (!beforeAdmission) throw new ScrubberStoreError('not_found', 'Scrub run was removed during admission');
+            if (!beforeAdmission) throw new ScrubberStoreError('not_found', 'Coda run was removed during admission');
             if (beforeAdmission.status !== 'queued') return beforeAdmission;
             if (opts.trigger === 'schedule' && this.deps.canStartScheduled?.(owner) === false) {
                 const cancelled = this.deps.scrubber.transitionRun(owner, run.id, ['queued'], {
-                    status: 'cancelled', finishedAt: this.now().toISOString(), error: 'The scrubber schedule was disarmed',
+                    status: 'cancelled', finishedAt: this.now().toISOString(), error: 'The Coda schedule was disarmed',
                 });
                 this.finish(owner, run.id);
                 return cancelled ?? this.deps.scrubber.getRun(owner, run.id)!;
@@ -148,11 +148,11 @@ export class ScrubberRunService {
             const admitted = this.deps.scrubber.getRun(owner, run.id);
             if (!admitted || ['cancelled', 'timed_out', 'interrupted', 'failed'].includes(admitted.status)) await this.stopChild(run);
             this.changed(owner, run.id);
-            if (!admitted) throw new ScrubberStoreError('not_found', 'Scrub run was removed during admission');
+            if (!admitted) throw new ScrubberStoreError('not_found', 'Coda run was removed during admission');
             return admitted;
         } catch (error) {
             const failed = this.deps.scrubber.transitionRun(owner, run.id, ['queued', 'running'], {
-                status: 'failed', finishedAt: this.now().toISOString(), error: `Could not start the scrub: ${message(error)}`,
+                status: 'failed', finishedAt: this.now().toISOString(), error: `Could not start Coda: ${message(error)}`,
             });
             if (failed) await this.stopChild(failed);
             this.finish(owner, run.id);
@@ -184,7 +184,7 @@ export class ScrubberRunService {
         if (!parsed.success) throw new ScrubberStoreError('invalid', z.prettifyError(parsed.error));
         return this.deps.scrubber.transaction(() => {
             const run = this.deps.scrubber.getRun(owner, context.runId);
-            if (!run || run.status !== 'running') throw new ScrubberStoreError('conflict', 'This scrub run is no longer active');
+            if (!run || run.status !== 'running') throw new ScrubberStoreError('conflict', 'This Coda run is no longer active');
             if (run.findingsSubmittedAt) throw new ScrubberStoreError('conflict', 'Findings were already submitted for this run');
             const snapshot = new Set(run.snapshot.map(entry => entry.itemId));
             const seen = new Set<string>();
@@ -214,7 +214,7 @@ export class ScrubberRunService {
             { status: 'cancelled', finishedAt: this.now().toISOString() });
         if (!run) {
             const current = this.deps.scrubber.getRun(owner, runId);
-            if (!current) throw new ScrubberStoreError('not_found', 'Scrub run not found');
+            if (!current) throw new ScrubberStoreError('not_found', 'Coda run not found');
             return current;
         }
         await this.stopChild(run);
@@ -263,8 +263,8 @@ export class ScrubberRunService {
             ledgerChanged = !!result?.findings.some(record => record.state === 'applied');
         } else {
             const error = outcome === 'cancelled' ? undefined
-                : outcome === 'failed' ? `The scrub chat failed: ${message(detail)}`
-                    : 'The scrub chat ended without submitting findings';
+                : outcome === 'failed' ? `The Coda chat failed: ${message(detail)}`
+                    : 'The Coda chat ended without submitting findings';
             this.deps.scrubber.transitionRun(owner, run.id, ['queued', 'running'], {
                 status: outcome === 'cancelled' ? 'cancelled' : 'failed', finishedAt, ...(error ? { error } : {}),
             });
@@ -280,7 +280,7 @@ export class ScrubberRunService {
     private async timeOut(owner: SentinelTodoOwner, runId: string): Promise<void> {
         const minutes = Math.round((this.deps.timeoutMs ?? SCRUB_TIMEOUT_MS) / 60_000);
         const run = this.deps.scrubber.transitionRun(owner, runId, ['running'], {
-            status: 'timed_out', finishedAt: this.now().toISOString(), error: `The scrub did not finish within ${minutes} min`,
+            status: 'timed_out', finishedAt: this.now().toISOString(), error: `Coda did not finish within ${minutes} min`,
         });
         if (!run) return;
         await this.stopChild(run);
@@ -388,13 +388,13 @@ function buildChildTask(owner: SentinelTodoOwner, run: ScrubRunRecord, snapshotP
         },
         // Pin only reasoning effort; keep provider/model routing workspace-owned.
         config: { reasoningEffort: 'medium' },
-        displayName: `[Scrubber] ${run.snapshot.length} to-do${run.snapshot.length === 1 ? '' : 's'}`,
+        displayName: `[Coda] ${run.snapshot.length} to-do${run.snapshot.length === 1 ? '' : 's'}`,
     };
 }
 
 export function buildScrubPrompt(run: ScrubRunRecord, snapshotPath: string): string {
     return [
-        `You are the Sentinel To-do Scrubber (run ${run.id}). Check whether each open to-do in the snapshot is still accurate, using live evidence.`,
+        `You are Coda, this Sentinel's built-in to-do review (run ${run.id}). Check whether each open to-do in the snapshot is still accurate, using live evidence.`,
         '',
         `Snapshot (read it first): ${snapshotPath}`,
         '',

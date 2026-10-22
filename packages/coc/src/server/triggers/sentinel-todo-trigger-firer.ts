@@ -35,7 +35,7 @@ export class SentinelTodoTriggerFirer implements OneShotFirer {
         const eligible = (trigger: Trigger) => canFire(trigger, reason, (this.deps.now ?? Date.now)())
             && (trigger.event.type !== 'date-time' || this.deps.dateTimeEnabled?.() === true);
         if (expectedRevision !== undefined && (!initial || initial.revision !== expectedRevision || !eligible(initial))) {
-            throw new OneShotFireConflictError('Rule changed before Run now');
+            throw new OneShotFireConflictError('Overture changed before Run now');
         }
         if (!initial || !eligible(initial)) return;
 
@@ -47,7 +47,7 @@ export class SentinelTodoTriggerFirer implements OneShotFirer {
         const committed = this.deps.triggers.transaction(() => {
             const current = this.deps.triggers.getById(triggerId);
             if (!current || current.revision !== initial.revision || !eligible(current)) {
-                if (expectedRevision !== undefined) throw new OneShotFireConflictError('Rule changed before Run now');
+                if (expectedRevision !== undefined) throw new OneShotFireConflictError('Overture changed before Run now');
                 return;
             }
             const item = this.deps.todos.get({

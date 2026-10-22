@@ -77,8 +77,8 @@ function OwnedAutomation(props: SentinelTodoScrubberProps & { client: CocClient;
     if (props.ready === false && props.routeKind !== 'local') return <SentinelTodoScrubber {...props} enabledOverride={false} />;
     if (props.routeKind === 'unresolved-remote' || (props.routeKind === 'remote' && !policy)) {
         return <>{props.toolbar}{place(props.children, <p role={error ? 'alert' : 'status'} className={MUTED}>
-            {props.routeKind === 'unresolved-remote' ? 'Jobs unavailable: owning server is not connected.'
-                : error ? <>Jobs unavailable: {error} <Button size="sm" variant="secondary" onClick={() => setRetry(value => value + 1)}>Retry jobs</Button></>
+            {props.routeKind === 'unresolved-remote' ? 'Refrains unavailable: owning server is not connected.'
+                : error ? <>Refrains unavailable: {error} <Button size="sm" variant="secondary" onClick={() => setRetry(value => value + 1)}>Retry refrains</Button></>
                     : 'Loading owning-server automation settings...'}
         </p>)}</>;
     }
@@ -153,7 +153,7 @@ function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFol
         } catch (failure) {
             if (live.current) {
                 const conflict = failure !== null && typeof failure === 'object' && 'status' in failure && failure.status === 409;
-                setActionError(conflict ? 'Job changed. Review the refreshed job before trying again; your draft is preserved.'
+                setActionError(conflict ? 'Refrain changed. Review the refreshed refrain before trying again; your draft is preserved.'
                     : failure instanceof Error ? failure.message : String(failure));
             }
         } finally {
@@ -168,21 +168,21 @@ function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFol
         return mutate(() => editor === 'new' ? api.create(owner.ownerWorkspaceId, owner.processId, input)
             : api.update(owner.ownerWorkspaceId, owner.processId, editor.id, { ...input, expectedRevision: editor.revision }), () => setEditor(null));
     };
-    return <section aria-label="Jobs" data-testid="sentinel-todo-jobs" className="mt-2 flex min-w-0 flex-col gap-2 border-t border-[#e0e0e0] pt-2 text-xs dark:border-[#3c3c3c]">
+    return <section aria-label="Refrains" data-testid="sentinel-todo-jobs" className="mt-2 flex min-w-0 flex-col gap-2 border-t border-[#e0e0e0] pt-2 text-xs dark:border-[#3c3c3c]">
         <div className="flex flex-wrap items-center gap-2">
             <h3 className="mr-auto font-semibold"><button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(value => !value)}>
-                {open ? '\u25be' : '\u25b8'} Jobs{jobs && ` (${jobs.length}/10)`}
+                {open ? '\u25be' : '\u25b8'} Refrains{jobs && ` (${jobs.length}/10)`}
             </button></h3>
-            <Button size="sm" variant="secondary" disabled={!jobs || busy || !!readError || jobs.length >= 10} onClick={() => setEditor('new')}>New job</Button>
+            <Button size="sm" variant="secondary" disabled={!jobs || busy || !!readError || jobs.length >= 10} onClick={() => setEditor('new')}>New refrain</Button>
         </div>
         <div id={id} hidden={!open} className="flex min-w-0 flex-col gap-2">
             {scrubber && <div data-testid="sentinel-jobs-built-in">{scrubber}</div>}
             <p className={MUTED}>Results return to this Sentinel. Schedules use the owning server&apos;s local time; missed runs are not caught up.</p>
-            {readError && <p role="alert">Could not load jobs: {readError} <Button size="sm" variant="secondary" onClick={() => void load()}>Refresh jobs</Button></p>}
+            {readError && <p role="alert">Could not load refrains: {readError} <Button size="sm" variant="secondary" onClick={() => void load()}>Refresh refrains</Button></p>}
             {actionError && <p role="alert">{actionError}</p>}
-            {!jobs && !readError && <div role="status" className="flex items-center gap-1"><Spinner size="sm" /> Loading jobs...</div>}
-            {jobs?.length === 0 && <p className={MUTED}>No user jobs yet. Create a job to run a prompt here on demand or on a schedule.</p>}
-            {jobs?.length === 10 && <p role="status" className={MUTED}>10-job limit reached. Delete a job before creating another.</p>}
+            {!jobs && !readError && <div role="status" className="flex items-center gap-1"><Spinner size="sm" /> Loading refrains…</div>}
+            {jobs?.length === 0 && <p className={MUTED}>No refrains yet. Create one to run a prompt here on demand or on a schedule, or ask this Sentinel to set one up.</p>}
+            {jobs?.length === 10 && <p role="status" className={MUTED}>10-refrain limit reached. Delete a refrain before creating another.</p>}
             {jobs?.map(job => <JobRow key={job.id} job={job} owner={owner} onFollowLink={onFollowLink} disabled={busy || !!readError}
                 onEdit={() => { setActionError(null); setEditor(job); }} onDelete={() => { setActionError(null); setDeleting(job); }}
                 onRun={() => void mutate(() => api.start(owner.ownerWorkspaceId, owner.processId, job.id))}
@@ -193,14 +193,14 @@ function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFol
         </div>
         {editor && <SentinelTodoJobDialog key={editor === 'new' ? 'new' : editor.id} job={editor === 'new' ? undefined : editor}
             client={client} baseUrl={baseUrl} effortLevelsEnabled={effortLevelsEnabled} busy={busy} error={actionError} onSave={save} onClose={() => { if (!pending.current) { setEditor(null); setActionError(null); } }} />}
-        <Dialog open={!!deleting} title="Delete job" trapFocus onClose={() => { if (!pending.current) setDeleting(null); }} disableClose={busy}>
+        <Dialog open={!!deleting} title="Delete refrain" trapFocus onClose={() => { if (!pending.current) setDeleting(null); }} disableClose={busy}>
             <p>Delete {deleting?.name}? Its schedule and retained run history will be removed. Its chat remains available.</p>
             {actionError && <p role="alert">{actionError}</p>}
             <div className="mt-3 flex justify-end gap-2">
-                <Button variant="secondary" disabled={busy} onClick={() => setDeleting(null)}>Keep job</Button>
+                <Button variant="secondary" disabled={busy} onClick={() => setDeleting(null)}>Keep refrain</Button>
                 <Button disabled={busy} onClick={() => {
                     if (deleting) void mutate(() => api.delete(owner.ownerWorkspaceId, owner.processId, deleting.id, { expectedRevision: deleting.revision }), () => setDeleting(null));
-                }}>Delete job</Button>
+                }}>Delete refrain</Button>
             </div>
         </Dialog>
     </section>;
