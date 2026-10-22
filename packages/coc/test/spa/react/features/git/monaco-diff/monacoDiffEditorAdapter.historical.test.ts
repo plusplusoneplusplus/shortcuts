@@ -25,6 +25,9 @@ function fakeMonaco() {
             removeGlyphMarginWidget: () => {},
             setPosition: vi.fn(),
             revealPositionInCenter: vi.fn(),
+            setScrollTop: vi.fn(),
+            getScrollTop: () => 120,
+            getPosition: () => (model ? { lineNumber: 2, column: 4 } : null),
             focus: vi.fn(),
         };
     };
@@ -132,5 +135,17 @@ describe('monacoDiffEditorAdapter — definition reveal', () => {
         adapter.revealPosition!('modified', 1, 3);
         expect(modified.setPosition).toHaveBeenCalledWith({ lineNumber: 1, column: 3 });
         expect(modified.focus).toHaveBeenCalled();
+    });
+
+    it('restores an exact scroll offset instead of centring, and reports cursor + scroll per side', () => {
+        const { monaco, original } = fakeMonaco();
+        const adapter = createMonacoDiffEditorAdapter(monaco, document.createElement('div'), {});
+        expect(adapter.getViewPosition!('original')).toBeNull();
+        adapter.setModels(COMMIT);
+        expect(adapter.getViewPosition!('original')).toEqual({ side: 'original', line: 2, column: 4, scrollTop: 120 });
+        adapter.revealPosition!('original', 2, 1, 300);
+        expect(original.setPosition).toHaveBeenCalledWith({ lineNumber: 2, column: 1 });
+        expect(original.setScrollTop).toHaveBeenCalledWith(300);
+        expect(original.revealPositionInCenter).not.toHaveBeenCalled();
     });
 });

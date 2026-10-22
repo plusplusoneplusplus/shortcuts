@@ -739,4 +739,10 @@ describe('current-code definition support', () => {
         expect(createBranchRangeDiffSource('ws1').supportsCurrentCodeDefinitions).toBe(true);
         expect(createPrDiffSource('ws1', 'repo-1', '42', { originId: 'origin-1' }).supportsCurrentCodeDefinitions).toBeUndefined();
     });
+
+    it('exposes a short revision for the definition back chip', () => {
+        expect(createCommitDiffSource('ws1', 'abc1234def5678').shortRef).toBe('abc1234');
+        expect(createBranchRangeDiffSource('ws1', { range: { baseRef: 'main', headRef: 'feat', headSha: 'fedcba9876543' } }).shortRef).toBe('fedcba9');
+        expect(createBranchRangeDiffSource('ws1').shortRef).toBeUndefined();
+    });
 });

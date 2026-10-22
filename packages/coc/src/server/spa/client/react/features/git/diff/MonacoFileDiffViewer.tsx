@@ -70,6 +70,8 @@ export type MonacoFileDiffViewerHandle = Pick<
     isHunkNavigationReady: () => boolean;
     /** Scrolls to a comment's thread and expands it; false when not shown here. */
     revealComment: (id: string) => boolean;
+    /** Cursor and scroll offset of one side, for a later `revealTarget` back jump. */
+    capturePosition: (side: DiffEditorSide) => DiffEditorPosition | null;
 };
 
 export interface MonacoFileDiffViewerProps extends MonacoDiffCommentHandlers {
@@ -369,6 +371,7 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
             getCurrentHunkIndex: () => controllerRef.current?.getCurrentHunkIndex() ?? -1,
             isHunkNavigationReady: () => (controllerRef.current ? controllerRef.current.isHunkNavigationReady() : true),
             revealComment: (id: string) => commentLayerRef.current?.revealComment(id) ?? false,
+            capturePosition: (side: DiffEditorSide) => controllerRef.current?.capturePosition(side) ?? null,
         }), []);
 
         if (identical) {

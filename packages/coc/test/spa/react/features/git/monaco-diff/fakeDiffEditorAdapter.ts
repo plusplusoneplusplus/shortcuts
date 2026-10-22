@@ -35,7 +35,9 @@ export interface FakeDiffEditor {
     actions: DiffEditorSelectionAction[];
     revealedLines: { side: string; line: number }[];
     /** Positions revealed through revealPosition, in order. */
-    revealedPositions: { side: string; line: number; column: number }[];
+    revealedPositions: { side: string; line: number; column: number; scrollTop?: number }[];
+    /** What getViewPosition reports per side (cursor + scroll); unset sides report null. */
+    viewPositions: Partial<Record<'original' | 'modified', { line: number; column: number; scrollTop: number }>>;
     /** Language mounts made on the modified model, in order; `live` until cleaned up. */
     languageMounts: { uri: string; live: boolean }[];
     /** Historical (ref-backed) mounts per side, in order; `live` until cleaned up. */
@@ -93,6 +95,7 @@ export function createFakeDiffEditor(initialOptions?: DiffEditorOptions): FakeDi
         actions: [],
         revealedLines: [],
         revealedPositions: [],
+        viewPositions: {},
         languageMounts: [],
         historicalMounts: [],
         markerLog: [],
@@ -180,8 +183,12 @@ export function createFakeDiffEditor(initialOptions?: DiffEditorOptions): FakeDi
             }),
             getClientPosition: vi.fn((_side: string, line: number, column: number) => ({ top: line * 20, left: column * 7 })),
             revealLine: vi.fn((side: string, line: number) => { fake.revealedLines.push({ side, line }); }),
-            revealPosition: vi.fn((side: string, line: number, column: number) => {
-                fake.revealedPositions.push({ side, line, column });
+            revealPosition: vi.fn((side: string, line: number, column: number, scrollTop?: number) => {
+                fake.revealedPositions.push({ side, line, column, ...(scrollTop !== undefined ? { scrollTop } : {}) });
+            }),
+            getViewPosition: vi.fn((side: 'original' | 'modified') => {
+                const view = fake.viewPositions[side];
+                return view ? { side, ...view } : null;
             }),
             attachModifiedLanguage: vi.fn((uri: string, mount: DiffLanguageMount) => {
                 unmountLanguage();

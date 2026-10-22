@@ -231,6 +231,49 @@ describe('definition routing', () => {
         location.hash = '';
     });
 
+    it('Alt+← and the back chip return to the exact file, side and scroll spot', async () => {
+        const fetchContent = vi.fn(async (path: string) => content({ path, base: { content: `${path} old\n`, ref: 'base', exists: true } }));
+        const source = { ...makeSource('commit', fetchContent), supportsCurrentCodeDefinitions: true, shortRef: 'abc1234' };
+        const onNavigateToFile = vi.fn();
+        let view!: ReturnType<typeof render>;
+        await act(async () => { view = render(panel(source, 'src/a.ts', onNavigateToFile)); });
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+
+        // Same-file jump from the old side, then back with Alt+←.
+        fakes[0].viewPositions.original = { line: 4, column: 6, scrollTop: 140 };
+        act(() => { jumpFrom('original').onNavigate(target('src/a.ts')); });
+        expect(screen.getByTestId('diff-definition-back-chip').textContent).toBe('← Back to abc1234 · a.ts');
+        const key = new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, bubbles: true, cancelable: true });
+        act(() => { screen.getByTestId('file-diff-panel').dispatchEvent(key); });
+        expect(key.defaultPrevented).toBe(true);
+        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side: 'original', line: 4, column: 6, scrollTop: 140 });
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+
+        // Cross-file jump from the new side, then the chip switches back.
+        fakes[0].viewPositions.modified = { line: 12, column: 1, scrollTop: 400 };
+        act(() => { jumpFrom('modified').onNavigate(target('src/b.ts')); });
+        await act(async () => { view.rerender(panel(source, 'src/b.ts', onNavigateToFile)); });
+        await act(async () => {});
+        expect(screen.getByTestId('diff-definition-back-chip').textContent).toBe('← Back to abc1234 · a.ts');
+        act(() => { fireEvent.click(screen.getByTestId('diff-definition-back-chip')); });
+        expect(onNavigateToFile).toHaveBeenLastCalledWith('src/a.ts', 'first');
+        await act(async () => { view.rerender(panel(source, 'src/a.ts', onNavigateToFile)); });
+        await act(async () => {});
+        expect(fakes[0].models.at(-1)?.original.text).toBe('src/a.ts old\n');
+        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side: 'modified', line: 12, column: 1, scrollTop: 400 });
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+    });
+
+    it('leaves Alt+← to the editor when there is nothing to go back to, and Explorer jumps add no history', async () => {
+        await act(async () => { render(panel(commitSource(), 'src/a.ts', vi.fn())); });
+        fakes[0].viewPositions.modified = { line: 1, column: 1, scrollTop: 0 };
+        act(() => { jumpFrom('modified').onNavigate(target('lib/util.ts')); });
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+        const key = new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, bubbles: true, cancelable: true });
+        act(() => { screen.getByTestId('file-diff-panel').dispatchEvent(key); });
+        expect(key.defaultPrevented).toBe(false);
+    });
+
     it('declines a target in another workspace', async () => {
         await act(async () => { render(panel(commitSource(), 'src/a.ts', vi.fn())); });
         let handled: boolean | undefined;

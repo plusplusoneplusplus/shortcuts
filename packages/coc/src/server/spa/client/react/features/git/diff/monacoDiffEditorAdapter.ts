@@ -230,15 +230,22 @@ export function createMonacoDiffEditorAdapter(
         revealLine(side, line) {
             sideEditor(side).revealLineInCenter(line);
         },
-        revealPosition(side, line, column) {
+        revealPosition(side, line, column, scrollTop) {
             const ed = sideEditor(side);
             const model = ed.getModel();
             if (!model) return;
             const lineNumber = Math.min(Math.max(1, line), model.getLineCount());
             const position = { lineNumber, column: Math.min(Math.max(1, column), model.getLineMaxColumn(lineNumber)) };
             ed.setPosition(position);
-            ed.revealPositionInCenter(position);
+            if (scrollTop === undefined) ed.revealPositionInCenter(position);
+            else ed.setScrollTop(scrollTop);
             ed.focus();
+        },
+        getViewPosition(side) {
+            const ed = sideEditor(side);
+            const position = ed.getPosition();
+            if (!ed.getModel() || !position) return null;
+            return { side, line: position.lineNumber, column: position.column, scrollTop: ed.getScrollTop() };
         },
         attachModifiedLanguage(documentUri, mount): Disposable | null {
             unmountLanguage();

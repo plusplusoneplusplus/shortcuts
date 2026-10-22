@@ -116,9 +116,12 @@ export interface DiffEditorAdapter {
     revealLine(side: DiffEditorSide, line: number): void;
     /**
      * Centre `line` on `side`, clamped to that model, and put the cursor at
-     * `column`. Optional; the controller falls back to `revealLine`.
+     * `column`. With `scrollTop`, restore that scroll offset instead of
+     * centring. Optional; the controller falls back to `revealLine`.
      */
-    revealPosition?(side: DiffEditorSide, line: number, column: number): void;
+    revealPosition?(side: DiffEditorSide, line: number, column: number, scrollTop?: number): void;
+    /** Cursor and scroll offset of `side`; null with no model. Optional. */
+    getViewPosition?(side: DiffEditorSide): DiffEditorPosition | null;
     /**
      * Mount language features on the modified model, but only when that model
      * is exactly `documentUri` (the real working-copy document). Returns null
@@ -154,6 +157,8 @@ export interface DiffEditorPosition {
     side: DiffEditorSide;
     line: number;
     column: number;
+    /** Exact scroll offset to restore (a "back" jump); centred when absent. */
+    scrollTop?: number;
 }
 
 export interface MonacoDiffControllerCallbacks {
@@ -182,6 +187,8 @@ export interface MonacoDiffController {
      * dropped when other models replace the current ones first.
      */
     reveal(position: DiffEditorPosition): void;
+    /** Cursor and scroll offset of `side` in the applied models; null before then. */
+    capturePosition(side: DiffEditorSide): DiffEditorPosition | null;
     isAttached(): boolean;
     /** The attached editor, for comment overlays; null before attach and after dispose. */
     getEditor(): DiffEditorAdapter | null;
@@ -231,9 +238,9 @@ export function createMonacoDiffController(
 
     const flushReveal = () => {
         if (!adapter || !appliedModels || !pendingReveal) return;
-        const { side, line, column } = pendingReveal;
+        const { side, line, column, scrollTop } = pendingReveal;
         pendingReveal = null;
-        if (adapter.revealPosition) adapter.revealPosition(side, line, column);
+        if (adapter.revealPosition) adapter.revealPosition(side, line, column, scrollTop);
         else adapter.revealLine(side, line);
     };
 
@@ -295,6 +302,10 @@ export function createMonacoDiffController(
             if (disposed) return;
             pendingReveal = position;
             flushReveal();
+        },
+        capturePosition(side) {
+            if (disposed || !adapter || !appliedModels) return null;
+            return adapter.getViewPosition?.(side) ?? null;
         },
         isAttached: () => adapter !== null && !disposed,
         getEditor: () => (disposed ? null : adapter),

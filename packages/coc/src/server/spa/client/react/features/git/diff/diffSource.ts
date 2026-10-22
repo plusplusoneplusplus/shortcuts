@@ -72,6 +72,8 @@ export interface DiffSource {
     readonly routingTarget?: string | null;
     /** Human-readable label, e.g. "Commit abc1234" or "Branch diff". */
     readonly label: string;
+    /** Short revision for compact cues, e.g. "abc1234"; absent when there is none. */
+    readonly shortRef?: string;
 
     /**
      * Build the API URL for a single-file diff.
@@ -170,6 +172,7 @@ export function createCommitDiffSource(
         routingTarget: options?.routingTarget,
         supportsCurrentCodeDefinitions: true,
         label: `Commit ${shortHash}`,
+        shortRef: shortHash,
 
         fileDiffUrl(filePath: string, full?: boolean): string {
             const base = getCocClientForWorkspace(workspaceId).git.commitFileDiffPath(workspaceId, hash, filePath);
@@ -241,6 +244,7 @@ export function createBranchRangeDiffSource(
         ...(range ? { diffSelectionRef: { type: 'range' as const, baseRef: range.baseRef, headRef: range.headRef } } : {}),
 
         label: baseMode === 'upstream' ? 'Unpushed diff' : 'Branch diff',
+        ...(range?.headSha ? { shortRef: range.headSha.slice(0, 7) } : {}),
 
         fileDiffUrl(filePath: string, full?: boolean): string {
             const path = getCocClientForWorkspace(workspaceId).git.branchRangeFileDiffPath(workspaceId, filePath);

@@ -248,4 +248,21 @@ describe('createMonacoDiffController — position reveal', () => {
         expect(fake.revealedLines).toEqual([{ side: 'original', line: 4 }]);
         controller.dispose();
     });
+
+    it('passes a back scroll offset through and captures a side only once models are applied', async () => {
+        const fake = createFakeDiffEditor();
+        const pending = deferred<typeof fake.adapter>();
+        const controller = createMonacoDiffController(() => pending.promise);
+        fake.viewPositions.original = { line: 3, column: 2, scrollTop: 80 };
+        expect(controller.capturePosition('original')).toBeNull();
+        controller.setModels(fileA);
+        pending.resolve(fake.adapter);
+        await flush();
+        expect(controller.capturePosition('original')).toEqual({ side: 'original', line: 3, column: 2, scrollTop: 80 });
+        expect(controller.capturePosition('modified')).toBeNull();
+        controller.reveal({ side: 'original', line: 3, column: 2, scrollTop: 80 });
+        expect(fake.revealedPositions).toEqual([{ side: 'original', line: 3, column: 2, scrollTop: 80 }]);
+        controller.dispose();
+        expect(controller.capturePosition('original')).toBeNull();
+    });
 });

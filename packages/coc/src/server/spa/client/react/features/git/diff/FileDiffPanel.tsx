@@ -49,6 +49,7 @@ import { openUnifiedPanelTab } from '../../repo-detail/unified-right-panel/unifi
 import { explorerFileTabInput } from '../../repo-detail/unified-right-panel/unifiedExplorerFiles';
 import { DiffFilePicker } from './DiffFilePicker';
 import type { DiffEditorPosition } from './monacoDiffController';
+import type { DiffEditorSide } from './diffCoords';
 import type { DiffDefinitionNavigate } from './diffLanguageMount';
 import { resolveDiffDefinitionRoute } from './diffDefinitionRoute';
 import { openDiffDefinitionInExplorer } from './diffDefinitionExplorer';
@@ -101,6 +102,10 @@ type PopupState = {
     selection: DiffCommentSelection;
     selectedText: string;
 } | null;
+
+/** A spot in one file of this review: a jump target or a back origin. */
+type DefinitionLocation = DiffEditorPosition & { path: string };
+const DEFINITION_BACK_LIMIT = 50;
 
 type EditorContentState =
     | { key: string; status: 'loading' }
@@ -462,15 +467,23 @@ export function FileDiffPanel({
     }, [panelHost, filePath, workspaceId, ownerRoutingRef]);
 
     // ── Go to definition: same diff side, another file of this review, or Explorer ──
-    const [definitionReveal, setDefinitionReveal] = useState<(DiffEditorPosition & { path: string }) | null>(null);
+    const [definitionReveal, setDefinitionReveal] = useState<DefinitionLocation | null>(null);
+    // Origins of in-diff jumps, newest last; Alt+← and the back chip pop them.
+    const [definitionBack, setDefinitionBack] = useState<DefinitionLocation[]>([]);
+    const rememberDefinitionOrigin = useCallback((side: DiffEditorSide | undefined) => {
+        const origin = side ? monacoViewerRef.current?.capturePosition(side) : null;
+        if (origin) setDefinitionBack(stack => [...stack, { ...origin, path: filePath }].slice(-DEFINITION_BACK_LIMIT));
+    }, [filePath]);
     const handleNavigateDefinition = useCallback<DiffDefinitionNavigate>((target, side) => {
         const route = resolveDiffDefinitionRoute({ workspaceId, filePath, reviewFiles: allFiles, target, side });
         if (!route) return false;
         if (route.kind === 'same-file') {
+            rememberDefinitionOrigin(side);
             setDefinitionReveal({ path: filePath, side: route.side, line: route.line, column: route.column });
             return true;
         }
         if (route.kind === 'review-file' && onNavigateToFile) {
+            rememberDefinitionOrigin(side);
             setDefinitionReveal({ path: route.path, side: route.side, line: route.line, column: route.column });
             onNavigateToFile(route.path, 'first');
             return true;
@@ -480,7 +493,24 @@ export function FileDiffPanel({
             ...(target.symbolCandidate ? { symbolCandidate: true as const } : {}),
         };
         return openDiffDefinitionInExplorer({ route: explorerRoute, workspaceId, ownerRoutingRef, panelHost });
-    }, [workspaceId, filePath, allFiles, onNavigateToFile, panelHost, ownerRoutingRef]);
+    }, [workspaceId, filePath, allFiles, onNavigateToFile, panelHost, ownerRoutingRef, rememberDefinitionOrigin]);
+    const backFromDefinition = definitionBack[definitionBack.length - 1] ?? null;
+    const goBackFromDefinition = useCallback(() => {
+        if (!backFromDefinition) return;
+        setDefinitionBack(stack => stack.slice(0, -1));
+        setDefinitionReveal(backFromDefinition);
+        if (backFromDefinition.path !== filePath) onNavigateToFile?.(backFromDefinition.path, 'first');
+    }, [backFromDefinition, filePath, onNavigateToFile]);
+    // Capture phase: Monaco would otherwise consume Alt+← (word left on macOS).
+    const handleDefinitionBackKey = useCallback((e: React.KeyboardEvent) => {
+        if (!backFromDefinition || e.key !== 'ArrowLeft' || !e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+        e.preventDefault();
+        e.stopPropagation();
+        goBackFromDefinition();
+    }, [backFromDefinition, goBackFromDefinition]);
+    // Another review (commit, range) starts a fresh history.
+    const historyScope = `${workspaceId}\u0000${source.label}\u0000${source.shortRef ?? ''}`;
+    useEffect(() => { setDefinitionBack([]); }, [historyScope]);
     // Any other file change (picker, hunk nav) drops a jump that was not for it.
     useEffect(() => {
         setDefinitionReveal(previous => previous && previous.path !== filePath ? null : previous);
@@ -489,7 +519,8 @@ export function FileDiffPanel({
     const pendingDefinitionReveal = definitionReveal?.path === filePath ? definitionReveal : null;
     const editorRevealTarget = useMemo<DiffEditorPosition | null>(
         () => pendingDefinitionReveal && displayedEditor?.filePath === pendingDefinitionReveal.path
-            ? { side: pendingDefinitionReveal.side, line: pendingDefinitionReveal.line, column: pendingDefinitionReveal.column }
+            ? { side: pendingDefinitionReveal.side, line: pendingDefinitionReveal.line, column: pendingDefinitionReveal.column,
+                ...(pendingDefinitionReveal.scrollTop !== undefined ? { scrollTop: pendingDefinitionReveal.scrollTop } : {}) }
             : null,
         [pendingDefinitionReveal, displayedEditor?.filePath],
     );
@@ -497,7 +528,8 @@ export function FileDiffPanel({
     // ── Render ──
 
     return (
-        <div className="file-diff-panel flex flex-col h-full overflow-hidden" data-testid="file-diff-panel">
+        <div className="file-diff-panel flex flex-col h-full overflow-hidden" data-testid="file-diff-panel"
+            onKeyDownCapture={handleDefinitionBackKey}>
             {/* ── Sticky header ── */}
             <div
                 className="sticky top-0 z-10 px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] flex items-center justify-between"
@@ -511,6 +543,17 @@ export function FileDiffPanel({
                             data-testid={backTestId}
                         >
                             ← {backLabel}
+                        </button>
+                    )}
+                    {backFromDefinition && (
+                        <button
+                            type="button"
+                            onClick={goBackFromDefinition}
+                            className="flex-shrink-0 max-w-[16rem] truncate rounded border border-[#0078d4]/40 px-1.5 text-[10px] text-[#0078d4] dark:text-[#3794ff] hover:bg-[#0078d4]/10"
+                            title="Back to where go to definition started (Alt+←)"
+                            data-testid="diff-definition-back-chip"
+                        >
+                            ← Back to {source.shortRef ?? source.label} · {reviewFileParts(backFromDefinition.path).name}
                         </button>
                     )}
                     <DiffFilePicker key={`${fileListKey}\u0000${filePath}`} filePath={filePath} files={allFiles}
