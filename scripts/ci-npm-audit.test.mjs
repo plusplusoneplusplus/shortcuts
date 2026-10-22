@@ -30,6 +30,16 @@ for (const lockfile of ["../package-lock.json", "./skillopt/package-lock.json"])
 // The gate only fires through `npm audit`, so every case here runs the real
 // script against a stub `npm` placed first on PATH.
 const STUB_NPM = `#!/usr/bin/env bash
+echo "$*" >> "$STUB_CALLS"
+if [[ "$STUB_FAIL_REPEAT" == "1" && $(wc -l < "$STUB_CALLS") -gt 1 ]]; then
+    echo "npm error audit endpoint returned an error" >&2
+    exit 1
+fi
+if [[ "$STUB_ENDPOINT_FIRST" == "1" && $(wc -l < "$STUB_CALLS") -eq 1 ]]; then
+    echo '{"error":{"summary":"audit endpoint returned an error"}}'
+    echo "npm warn audit network timeout" >&2
+    exit 1
+fi
 case "$STUB_MODE" in
     clean)
         echo "found 0 vulnerabilities"
@@ -61,7 +71,7 @@ function auditJson(...ghsaIds) {
     return JSON.stringify({ vulnerabilities: { "some-pkg": { severity: "high", via } } });
 }
 
-function runAudit({ mode, ghsaIds = [], env = {}, args = [] }) {
+function runAudit({ mode, ghsaIds = [], json, env = {}, args = [] }) {
     const dir = mkdtempSync(join(tmpdir(), "ci-npm-audit-"));
     try {
         const stub = join(dir, "npm");
@@ -69,13 +79,15 @@ function runAudit({ mode, ghsaIds = [], env = {}, args = [] }) {
         chmodSync(stub, 0o755);
 
         const jsonPath = join(dir, "audit.json");
-        writeFileSync(jsonPath, auditJson(...ghsaIds));
+        writeFileSync(jsonPath, json ?? auditJson(...ghsaIds));
+        const callsPath = join(dir, "calls.txt");
 
         const childEnv = {
             ...process.env,
             PATH: `${dir}${process.platform === "win32" ? ";" : ":"}${process.env.PATH}`,
             STUB_MODE: mode,
             STUB_JSON: jsonPath,
+            STUB_CALLS: callsPath,
             CI_AUDIT_ATTEMPTS: "1",
             CI_AUDIT_DELAY: "0",
             ...env,
@@ -87,7 +99,8 @@ function runAudit({ mode, ghsaIds = [], env = {}, args = [] }) {
         }
 
         const result = spawnSync("bash", [auditScript, ...args], { env: childEnv, encoding: "utf8" });
-        return { status: result.status, output: `${result.stdout || ""}${result.stderr || ""}` };
+        const calls = readFileSync(callsPath, "utf8").trim().split("\n");
+        return { status: result.status, output: `${result.stdout || ""}${result.stderr || ""}`, calls };
     } finally {
         rmSync(dir, { recursive: true, force: true });
     }
@@ -105,7 +118,47 @@ test("fails on an unreviewed blocking advisory", { skip }, () => {
     assert.notEqual(status, 0);
 });
 
-const reviewedAdvisories = ["GHSA-vfj7-8cjw-p6xm", "GHSA-ch52-4w7c-c8xp"];
+const reviewedAdvisories = ["GHSA-vfj7-8cjw-p6xm"];
+
+test("uses the same JSON report for the gate and reviewed exceptions without another endpoint request", { skip }, () => {
+    const { status, calls } = runAudit({
+        mode: "vuln", ghsaIds: reviewedAdvisories, env: { STUB_FAIL_REPEAT: "1" },
+    });
+    assert.equal(status, 0);
+    assert.equal(calls.length, 1);
+    assert.match(calls[0], /--json/);
+});
+
+test("retries a JSON endpoint error before classifying the next report", { skip }, () => {
+    for (const reviewed of [true, false]) {
+        const { status, calls, output } = runAudit({
+            mode: "vuln", ghsaIds: reviewed ? reviewedAdvisories : ["GHSA-aaaa-bbbb-cccc"],
+            env: { STUB_ENDPOINT_FIRST: "1", CI_AUDIT_ATTEMPTS: "2" },
+        });
+        assert.equal(status, reviewed ? 0 : 1);
+        assert.equal(calls.length, 2);
+        assert.ok(calls.every(call => call.includes("--json")));
+        assert.match(output, /advisory endpoint error \(attempt 1\/2\)/);
+    }
+});
+
+test("rejects malformed reports and advisories with an available patch", { skip }, () => {
+    assert.notEqual(runAudit({ mode: "vuln", json: "invalid JSON" }).status, 0);
+    assert.notEqual(runAudit({ mode: "vuln", ghsaIds: ["GHSA-ch52-4w7c-c8xp"] }).status, 0);
+});
+
+test("locks http-cache-semantics outside the affected range", () => {
+    const lock = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"));
+    let found = false;
+    for (const [path, pkg] of Object.entries(lock.packages)) {
+        if (/(^|\/)node_modules\/http-cache-semantics$/.test(path)) {
+            found = true;
+            const [major, minor] = pkg.version.split(".").map(Number);
+            assert.ok(major > 4 || (major === 4 && minor >= 3), `${path}: max-stale cache disclosure`);
+        }
+    }
+    assert.ok(found);
+});
 
 test("accepts only the reviewed development advisories by default", { skip }, () => {
     assert.equal(runAudit({ mode: "vuln", ghsaIds: reviewedAdvisories }).status, 0);
