@@ -5,9 +5,9 @@ import { Dialog } from '../../../ui/Dialog';
 import { Button } from '../../../ui/Button';
 import { resolveCanonicalOriginId } from '../../../repos/originScope';
 import { type SentinelTodoOwner } from './sentinelTodoPanelModel';
-import { eligibleTriggerItems, triggerError } from './sentinelTodoTriggerModel';
+import { eligibleTriggerItems, triggerError } from './sentinelOvertureModel';
 
-export function SentinelTodoTriggerEditor({ client, owner, items, trigger, onClose, onSaved, onConflict, dateTimeEnabled = false }: {
+export function SentinelOvertureEditor({ client, owner, items, trigger, onClose, onSaved, onConflict, dateTimeEnabled = false }: {
     client: CocClient; owner: SentinelTodoOwner; items: readonly SentinelTodoItem[]; trigger?: Trigger;
     onClose: () => void; onSaved: () => void; onConflict: () => void;
     dateTimeEnabled?: boolean;
@@ -153,8 +153,8 @@ export function SentinelTodoTriggerEditor({ client, owner, items, trigger, onClo
         && trigger.event.monitor === 'pr-merged' && prUrl.trim() === trigger.event.pr.url;
 
     return <Dialog open trapFocus disableClose={saving} onClose={() => { if (!saving) onClose(); }} title={trigger ? 'Edit overture' : 'Add overture'}>
-        <form className="sentinel-trigger-editor" onSubmit={event => { event.preventDefault(); if (canSave) void save(); }}>
-            <p className="sentinel-trigger-muted">{kind === 'date-time'
+        <form className="sentinel-overture-editor" onSubmit={event => { event.preventDefault(); if (canSave) void save(); }}>
+            <p className="sentinel-overture-muted">{kind === 'date-time'
                 ? 'Wake this Sentinel once at the saved time. This grants no new authorization and never marks the item Done.'
                 : 'When this PR merges, post a start message to this Sentinel. Never expires; the Sentinel chooses how to launch the job.'}</p>
             {dateTimeEnabled && <><label htmlFor={`${id}-kind`}>Overture type</label>
@@ -182,13 +182,13 @@ export function SentinelTodoTriggerEditor({ client, owner, items, trigger, onClo
                         </option>)}
                     </select></>}
                 {dateError && <p role="alert">{dateError}</p>}
-                {firesAt && <div role="status" className="sentinel-trigger-preview">
+                {firesAt && <div role="status" className="sentinel-overture-preview">
                     {zonedTriggerTime(firesAt, timeZone)} ({timeZone})<br />UTC: {firesAt}
                 </div>}
             </> : <><label htmlFor={`${id}-url`}>PR URL</label>
             <input id={`${id}-url`} type="url" required value={prUrl} onChange={event => { setPrUrl(event.target.value); setPicked(null); setConfirmRun(false); }} />
             <Button size="sm" variant="secondary" onClick={() => setWorkspaces([])}>Pick a local PR</Button>
-            {workspaces !== null && <div className="sentinel-trigger-picker">
+            {workspaces !== null && <div className="sentinel-overture-picker">
                 <label htmlFor={`${id}-workspace`}>Local workspace on owning server</label>
                 <select id={`${id}-workspace`} value={pickerScope?.workspaceId ?? ''} onChange={event => {
                     const workspace = workspaces.find(candidate => candidate.id === event.target.value);
@@ -204,7 +204,7 @@ export function SentinelTodoTriggerEditor({ client, owner, items, trigger, onClo
             </div>}
             {prUrl.trim() && !preview && !previewError && <p role="status">Checking PR…</p>}
             {previewError && <p role="alert">{previewError} <Button size="sm" variant="secondary" onClick={() => setPreviewRetry(value => value + 1)}>Retry preview</Button></p>}
-            {preview && <div className="sentinel-trigger-preview" role="status"><strong>{preview.snapshot.title}</strong> · {status}
+            {preview && <div className="sentinel-overture-preview" role="status"><strong>{preview.snapshot.title}</strong> · {status}
                 {status === 'merged' && <p>Already merged. {unchanged ? 'Use Run now to post the start message immediately.' : 'Run now uses the saved overture. Restore its fields or choose an open PR to save your edits.'}</p>}
                 {status === 'closed' && <p>Closed, not merged. This PR cannot arm an overture.</p>}
             </div>}</>}
@@ -213,12 +213,12 @@ export function SentinelTodoTriggerEditor({ client, owner, items, trigger, onClo
             {error && <p role="alert">{error} {conflict
                 ? <Button size="sm" variant="secondary" onClick={() => { onConflict(); onClose(); }}>Refresh overtures</Button>
                 : <Button size="sm" variant="secondary" onClick={() => { if (status === 'merged') setConfirmRun(true); else void save(); }}>Retry save</Button>}</p>}
-            {confirmRun && <div role="alert" className="sentinel-trigger-preview">
+            {confirmRun && <div role="alert" className="sentinel-overture-preview">
                 <p>Post the start message to the Sentinel now? This uses up the overture.</p>
                 <Button size="sm" variant="secondary" onClick={() => setConfirmRun(false)}>Cancel run now</Button>
                 <Button size="sm" disabled={saving} onClick={() => { void save(true); }}>Confirm run now</Button>
             </div>}
-            <div className="sentinel-trigger-actions">
+            <div className="sentinel-overture-actions">
                 <Button size="sm" variant="secondary" disabled={saving} onClick={onClose}>Cancel</Button>
                 {status === 'merged' && <Button size="sm" disabled={conflict || saving || !unchanged || !eligible.some(item => item.id === itemId)} onClick={() => setConfirmRun(true)}>Run now</Button>}
                 <Button size="sm" type="submit" disabled={!canSave || saving} loading={saving}>Save and arm</Button>

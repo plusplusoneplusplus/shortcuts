@@ -137,7 +137,7 @@ for (const dark of [false, true]) {
 test('flag-off keeps the Scrubber strip and makes no Jobs calls', async ({ page }) => {
     await mount(page, { enabled: false });
     await expect(page.getByRole('button', { name: 'Run now' })).toBeVisible();
-    await expect(page.getByTestId('sentinel-todo-jobs')).toHaveCount(0);
+    await expect(page.getByTestId('sentinel-refrains')).toHaveCount(0);
     expect(await page.evaluate(() => (window as Window & { jobsFixture: { calls: unknown[] } }).jobsFixture.calls)).toEqual([]);
 });
 test('remote owner routes job creation to its own workspace and Sentinel', async ({ page }) => {

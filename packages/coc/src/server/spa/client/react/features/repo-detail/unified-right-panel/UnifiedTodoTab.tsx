@@ -42,7 +42,7 @@ import { writePointerContextDragData } from '../../chat/sessionContextDrag';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { formatRelativeTime } from '../../../utils/format';
 import { getSentinelTodoChat, useSentinelTodoEvents } from './sentinelTodoChats';
-import { SentinelTodoTriggers } from './SentinelTodoTriggers';
+import { SentinelOvertures } from './SentinelOvertures';
 import { SentinelTodoDependencies } from './SentinelTodoDependencies';
 import { SentinelTodoPrOutcomes } from './SentinelTodoPrOutcomes';
 import { SentinelTodoTagChips, SentinelTodoTagPicker, SentinelTodoTagToolbar, sentinelTodoMatchesTag, useSentinelTodoTagsEnabled } from './SentinelTodoTags';
@@ -50,8 +50,8 @@ import { externalReferences, SentinelTodoExternalReferences, SentinelTodoExterna
 import { openUnifiedPanelTab } from './unifiedPanelOpen';
 import { resourcePathName } from './unifiedPanelOpenMenuModel';
 import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
-import { AcceptAllScrubProposals, ScrubberFindingsContext, SentinelTodoScrubFinding } from './SentinelTodoScrubFinding';
-import { SentinelTodoJobs } from './SentinelTodoJobs';
+import { AcceptAllCodaProposals, CodaFindingsContext, SentinelCodaFinding } from './SentinelCodaFinding';
+import { SentinelRefrains } from './SentinelRefrains';
 import { sentinelTodoRecentPage } from './sentinelTodoStatusModel';
 import {
     endSentinelTodoExcursion,
@@ -453,7 +453,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     const highlightedRow = useRef<HTMLElement | null>(null);
     const currentView = useRef({ ownerKey, ledger });
     currentView.current = { ownerKey, ledger };
-    useEffect(() => () => { clearTimeout(highlightTimer.current); highlightedRow.current?.removeAttribute('data-sentinel-trigger-highlight'); }, [ownerKey, client]);
+    useEffect(() => () => { clearTimeout(highlightTimer.current); highlightedRow.current?.removeAttribute('data-sentinel-overture-highlight'); }, [ownerKey, client]);
     const followTriggerItem = (itemId: string) => {
         if (!mounted.current) return;
         if (currentView.current.ownerKey !== ownerKey) return;
@@ -472,7 +472,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         setExpanded(previous => new Set([...previous, itemId]));
         setSelectedId(itemId); setDetailOpen(true);
         clearTimeout(highlightTimer.current);
-        highlightedRow.current?.removeAttribute('data-sentinel-trigger-highlight');
+        highlightedRow.current?.removeAttribute('data-sentinel-overture-highlight');
         highlightTimer.current = setTimeout(() => {
             if (currentView.current.ownerKey !== ownerKey
                 || !currentView.current.ledger?.items.some(candidate => candidate.id === itemId)) return;
@@ -485,8 +485,8 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                 [...(panelRef.current?.querySelectorAll<HTMLElement>('[data-todo-heading]') ?? [])]
                     .find(heading => heading.dataset.todoHeading === itemId)?.focus({ preventScroll: true });
             } else row.querySelector<HTMLButtonElement>('button[aria-expanded], button[aria-pressed]')?.focus({ preventScroll: true });
-            row.setAttribute('data-sentinel-trigger-highlight', 'true');
-            highlightTimer.current = setTimeout(() => row.removeAttribute('data-sentinel-trigger-highlight'), 2500);
+            row.setAttribute('data-sentinel-overture-highlight', 'true');
+            highlightTimer.current = setTimeout(() => row.removeAttribute('data-sentinel-overture-highlight'), 2500);
         }, 0);
     };
     const scrollTop = useRef(restored.scrollTop ?? 0);
@@ -689,7 +689,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                         aria-label={`Unpin ${originTitle} To-do`}>Unpin</Button>
                 </div>
             )}
-            <SentinelTodoJobs owner={owner} ready={ledger !== null} items={ledger?.items ?? []} onFollowLink={followLink} onLedgerChange={load} toolbar={
+            <SentinelRefrains owner={owner} ready={ledger !== null} items={ledger?.items ?? []} onFollowLink={followLink} onLedgerChange={load} toolbar={
             <div role="toolbar" aria-label="To-do actions" className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold">To-do</span>
                 {ledger && sections.active.length > 0 && (
@@ -702,7 +702,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                     </span>
                 )}
                 <span className="flex-1" />
-                <AcceptAllScrubProposals />
+                <AcceptAllCodaProposals />
                 <div className="flex shrink-0 items-center gap-2">
                     <button type="button" aria-label="Refresh to-do list" title="Refresh to-do list"
                         aria-busy={loading} disabled={loading} onClick={refresh} data-testid="sentinel-todo-refresh"
@@ -834,7 +834,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                             Show older items ({ledger.items.length - recentItems.length})
                         </Button>
                     )}
-                    <SentinelTodoTriggers owner={owner} items={ledger.items} onItemLink={followTriggerItem} />
+                    <SentinelOvertures owner={owner} items={ledger.items} onItemLink={followTriggerItem} />
                     {scrubber}
                 </>
             )}
@@ -859,7 +859,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             </section>
             </div>
             </>}
-            </SentinelTodoJobs>
+            </SentinelRefrains>
         </div>
     );
 }
@@ -1004,7 +1004,7 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
         }
         return false;
     };
-    const { mutationPending } = useContext(ScrubberFindingsContext);
+    const { mutationPending } = useContext(CodaFindingsContext);
     const canReopen = !!onReopenDragStart && !menuDisabled && !mutationPending;
     const high = sentinelTodoPriority(item) === 'high';
     const reasonPreview = sentinelTodoDisplayStatus(item) === 'needs_attention' && item.statusReason ? <span
@@ -1057,7 +1057,7 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
             <TodoJobs item={item} owner={owner} currentWorkspaceId={currentWorkspaceId} onFollowLink={onFollowLink} reasonPreview={reasonPreview} />
         </div>}
         {attachError && <Notice tone="error" testId={`sentinel-todo-attach-error-${item.id}`}>{attachError}</Notice>}
-        <SentinelTodoScrubFinding item={item} />
+        <SentinelCodaFinding item={item} />
         <SentinelTodoExternalReferences item={item} />
     </li>;
 }
@@ -1073,7 +1073,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
     const [tagsBusy, setTagsBusy] = useState(false);
     const [dependenciesBusy, setDependenciesBusy] = useState(false);
     const [outcomesBusy, setOutcomesBusy] = useState(false);
-    const { mutationPending: scrubberBusy } = useContext(ScrubberFindingsContext);
+    const { mutationPending: scrubberBusy } = useContext(CodaFindingsContext);
     const closeBlocked = busy || tagsBusy || dependenciesBusy || outcomesBusy || scrubberBusy;
     useLayoutEffect(() => {
         onMenuBlocked(item.id, closeBlocked || editing !== null || statusDraft !== null);
@@ -1191,7 +1191,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
             </div>
             {tagLibrary && <SentinelTodoTagPicker item={item} owner={owner} client={tagClient} library={tagLibrary}
                 multiple={matchMultiple} onLedgerChange={onLedgerChange} onBusyChange={setTagsBusy} />}
-            <SentinelTodoScrubFinding item={item} />
+            <SentinelCodaFinding item={item} />
             <div className={cn('flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-2 pb-1.5 text-[11px]', MUTED)} data-testid={`sentinel-todo-meta-${item.id}`}>
                 {item.targetRepo && (
                     <span className="max-w-full truncate" title={item.targetRepo.workspaceId} data-testid={`sentinel-todo-repo-${item.id}`}>

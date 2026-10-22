@@ -7,8 +7,8 @@ const mock = vi.hoisted(() => ({ getRun: vi.fn(), accept: vi.fn(), dismiss: vi.f
 vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({ useCocClient: (ref: unknown) => { mock.refs.push(ref); return client; } }));
 vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({ resolveCloneRoute: () => mock.route }));
 const client = { sentinelTodos: { scrubber: mock }, events: { connect: mock.connect } };
-import { SentinelTodoScrubber } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubber';
-import { AcceptAllScrubProposals, SentinelTodoScrubFinding } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubFinding';
+import { SentinelCoda } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelCoda';
+import { AcceptAllCodaProposals, SentinelCodaFinding } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelCodaFinding';
 import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
 
 const owner = { ownerWorkspaceId: 'ws-a', processId: 'queue_parent' };
@@ -46,24 +46,24 @@ afterEach(() => { cleanup(); applyRuntimeConfigPatch({ sentinelTodoScrubberEnabl
 describe('To-do Scrubber strip', () => {
     it('stays off when omitted and ignores the retired ledger flag when explicitly enabled', async () => {
         applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: undefined, sentinelTodoScrubberEnabled: undefined });
-        render(<SentinelTodoScrubber owner={owner} items={[]} onFollowLink={follow} />);
-        expect(screen.queryByTestId('sentinel-scrubber-strip')).toBeNull();
+        render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
+        expect(screen.queryByTestId('sentinel-coda-strip')).toBeNull();
         expect(mock.get).not.toHaveBeenCalled();
         act(() => applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: true }));
         await screen.findByText('Manual only');
         const connection = mock.connect.mock.results[0].value;
         act(() => applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: false }));
-        expect(screen.getByTestId('sentinel-scrubber-strip')).toBeInTheDocument();
+        expect(screen.getByTestId('sentinel-coda-strip')).toBeInTheDocument();
         expect(connection.close).not.toHaveBeenCalled();
         act(() => applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false }));
-        expect(screen.queryByTestId('sentinel-scrubber-strip')).toBeNull();
+        expect(screen.queryByTestId('sentinel-coda-strip')).toBeNull();
         expect(connection.close).toHaveBeenCalledOnce();
     });
 
     it('requires the live scrubber setting and stops subscriptions when disabled', async () => {
         const flag = 'sentinelTodoScrubberEnabled';
         applyRuntimeConfigPatch({ [flag]: false });
-        render(<SentinelTodoScrubber owner={owner} items={[]} onFollowLink={follow} />);
+        render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
         expect(screen.queryByRole('region', { name: 'Coda' })).toBeNull();
         expect(mock.get).not.toHaveBeenCalled();
         act(() => applyRuntimeConfigPatch({ [flag]: true }));
@@ -76,7 +76,7 @@ describe('To-do Scrubber strip', () => {
     it('starts all-open once and disables admission while a run is active', async () => {
         const request = deferred<{ runId: string }>();
         mock.start.mockReturnValue(request.promise);
-        render(<SentinelTodoScrubber owner={owner} items={[item('a')]} onFollowLink={follow} />);
+        render(<SentinelCoda owner={owner} items={[item('a')]} onFollowLink={follow} />);
         await screen.findByText('Manual only');
         fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
         fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
@@ -95,21 +95,21 @@ describe('To-do Scrubber strip', () => {
 
     it('selects only open normal/manual items and drops items closed since selection', async () => {
         const props = { owner, onFollowLink: follow };
-        const view = render(<SentinelTodoScrubber {...props} items={[item('a'), item('m', { type: 'manual' }), item('d', { status: 'done' }), item('x', { archived: true })]} />);
+        const view = render(<SentinelCoda {...props} items={[item('a'), item('m', { type: 'manual' }), item('d', { status: 'done' }), item('x', { archived: true })]} />);
         await screen.findByText('Manual only');
         fireEvent.click(screen.getByRole('button', { name: 'Select items' }));
         expect(screen.queryByLabelText('Item d')).toBeNull();
         expect(screen.queryByLabelText('Item x')).toBeNull();
         fireEvent.click(screen.getByLabelText('Item a'));
         fireEvent.click(screen.getByLabelText('Item m · Manual'));
-        view.rerender(<SentinelTodoScrubber {...props} items={[item('a', { status: 'done' }), item('m', { type: 'manual' })]} />);
+        view.rerender(<SentinelCoda {...props} items={[item('a', { status: 'done' }), item('m', { type: 'manual' })]} />);
         fireEvent.click(screen.getByRole('button', { name: 'Run on selected (1)' }));
         await waitFor(() => expect(mock.start).toHaveBeenCalledWith('ws-a', 'queue_parent', { itemIds: ['m'] }));
     });
 
     it('shows queued state, uses owner server events, and ignores other owners', async () => {
         mock.get.mockResolvedValue(response({ activeRun: active('queued') }));
-        render(<SentinelTodoScrubber owner={{ ...owner, ownerRoutingRef: 'remote:srv:group-a' }} items={[]} onFollowLink={follow} />);
+        render(<SentinelCoda owner={{ ...owner, ownerRoutingRef: 'remote:srv:group-a' }} items={[]} onFollowLink={follow} />);
         await screen.findByText(/Queued/);
         expect(mock.refs).toContain('remote:srv:group-a');
         expect(screen.getByRole('link', { name: 'Open chat' })).toHaveAttribute('href', '#repos/remote%3Asrv%3Agroup-a/chats/queue_child');
@@ -128,7 +128,7 @@ describe('To-do Scrubber strip', () => {
     it('renders failure retry, summary counts and review/deferred exclusions', async () => {
         mock.get.mockResolvedValue(response({ runs: [{ id: 'r', status: 'timed_out', trigger: 'manual', createdAt: new Date().toISOString(), error: 'Budget exceeded', itemCount: 1,
             deferredCount: 2, awaitingReviewCount: 1, counts: { done: 2, proposals: 1, unverified: 1 } }] }));
-        render(<SentinelTodoScrubber owner={owner} items={[]} onFollowLink={follow} />);
+        render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
         await screen.findByText(/Last run failed: Budget exceeded/);
         expect(screen.getByText('2 deferred to next run')).toBeInTheDocument();
         expect(screen.getByText('1 awaiting Sentinel review')).toBeInTheDocument();
@@ -139,19 +139,19 @@ describe('To-do Scrubber strip', () => {
     it('shows completed finding counts and links to its child chat', async () => {
         mock.get.mockResolvedValue(response({ runs: [{ id: 'r', status: 'completed', trigger: 'schedule', createdAt: new Date().toISOString(), childProcessId: 'queue_done', itemCount: 4,
             deferredCount: 0, awaitingReviewCount: 0, counts: { done: 2, proposals: 1, unverified: 1 } }] }));
-        render(<SentinelTodoScrubber owner={owner} items={[]} onFollowLink={follow} />);
+        render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
         await screen.findByText(/2 done · 1 proposal · 1 unverified/);
         expect(screen.getByRole('link', { name: 'Open chat' })).toHaveAttribute('href', '#repos/ws-a/chats/queue_done');
     });
 
     it('opens and closes bounded history outside the pinned strip without extra reads until details are selected', async () => {
         setupFindings();
-        render(<SentinelTodoScrubber owner={owner} items={[item('a')]} onFollowLink={follow} />);
+        render(<SentinelCoda owner={owner} items={[item('a')]} onFollowLink={follow} />);
         const toggle = await screen.findByRole('button', { name: 'History (1)' });
         await waitFor(() => expect(mock.getRun).toHaveBeenCalledOnce());
         fireEvent.click(toggle);
         const history = screen.getByRole('region', { name: 'Coda run history' });
-        expect(screen.getByTestId('sentinel-scrubber-strip').contains(history)).toBe(false);
+        expect(screen.getByTestId('sentinel-coda-strip').contains(history)).toBe(false);
         expect(mock.getRun).toHaveBeenCalledOnce();
         fireEvent.click(screen.getByRole('button', { name: 'Hide history (1)' }));
         expect(screen.queryByRole('region', { name: 'Coda run history' })).toBeNull();
@@ -160,7 +160,7 @@ describe('To-do Scrubber strip', () => {
     it('shows schedule description/next time and resumes a failure pause with expected revision', async () => {
         const config = { ...response().config, enabled: true, paused: true, consecutiveFailures: 3, nextRunAt: '2026-10-12T09:00:00Z' };
         mock.get.mockResolvedValue(response({ config }));
-        render(<SentinelTodoScrubber owner={owner} items={[]} onFollowLink={follow} />);
+        render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
         await screen.findByText(/Schedule paused after 3 failures/);
         expect(screen.getByText('Every day at 09:00')).toBeInTheDocument();
         expect(screen.queryByTitle(new Date(config.nextRunAt).toLocaleString())).toBeNull();
@@ -171,7 +171,7 @@ describe('To-do Scrubber strip', () => {
     });
 
     it('validates cron live, offers presets and saves an owner-bound revision snapshot', async () => {
-        render(<SentinelTodoScrubber owner={owner} items={[]} onFollowLink={follow} />);
+        render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
         await screen.findByText('Manual only');
         fireEvent.click(screen.getByRole('button', { name: 'Schedule ▾' }));
         fireEvent.click(screen.getByLabelText('Enable schedule'));
@@ -189,7 +189,7 @@ describe('To-do Scrubber strip', () => {
     });
 
     it('retains the schedule draft revision through remote invalidation and reloads conflicts without retrying writes', async () => {
-        render(<SentinelTodoScrubber owner={owner} items={[]} onFollowLink={follow} />);
+        render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
         await screen.findByText('Manual only');
         fireEvent.click(screen.getByRole('button', { name: 'Schedule ▾' }));
         mock.get.mockResolvedValue(response({ config: { ...response().config, revision: 5 } }));
@@ -203,7 +203,7 @@ describe('To-do Scrubber strip', () => {
 
     it('keeps failed drafts for an explicit retry and refreshes read failures', async () => {
         mock.get.mockRejectedValueOnce(new Error('offline'));
-        render(<SentinelTodoScrubber owner={owner} items={[]} onFollowLink={follow} />);
+        render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
         await screen.findByText('offline');
         expect(screen.getByRole('button', { name: 'Run now' })).toBeDisabled();
         fireEvent.click(screen.getByRole('button', { name: 'Refresh Coda' }));
@@ -219,8 +219,8 @@ describe('To-do Scrubber strip', () => {
     it('discards delayed reads and writes after owner/endpoint changes', async () => {
         const oldRead = deferred<SentinelScrubberResponse>();
         mock.get.mockReturnValueOnce(oldRead.promise);
-        const view = render(<SentinelTodoScrubber owner={owner} items={[]} onFollowLink={follow} />);
-        view.rerender(<SentinelTodoScrubber owner={{ ...owner, processId: 'other' }} items={[]} onFollowLink={follow} />);
+        const view = render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
+        view.rerender(<SentinelCoda owner={{ ...owner, processId: 'other' }} items={[]} onFollowLink={follow} />);
         await screen.findByText('Manual only');
         await act(async () => oldRead.resolve(response({ activeRun: active() })));
         expect(screen.queryByText(/Scrubbing/)).toBeNull();
@@ -228,7 +228,7 @@ describe('To-do Scrubber strip', () => {
         mock.start.mockReturnValueOnce(oldWrite.promise);
         fireEvent.click(screen.getByRole('button', { name: 'Run now' }));
         mock.route = { kind: 'remote', baseUrl: 'https://new.example' };
-        view.rerender(<SentinelTodoScrubber owner={{ ...owner, processId: 'other' }} items={[]} onFollowLink={follow} />);
+        view.rerender(<SentinelCoda owner={{ ...owner, processId: 'other' }} items={[]} onFollowLink={follow} />);
         await screen.findByText('Manual only');
         const reads = mock.get.mock.calls.length;
         await act(async () => oldWrite.resolve({ runId: 'stale' }));
@@ -238,7 +238,7 @@ describe('To-do Scrubber strip', () => {
 
     it('never contacts a local server for an unresolved remote owner', () => {
         mock.route = { kind: 'unresolved-remote' };
-        render(<SentinelTodoScrubber owner={{ ...owner, ownerRoutingRef: 'remote:srv:ws-a' }} items={[]} onFollowLink={follow} />);
+        render(<SentinelCoda owner={{ ...owner, ownerRoutingRef: 'remote:srv:ws-a' }} items={[]} onFollowLink={follow} />);
         expect(screen.getByRole('status')).toHaveTextContent('owning server is not connected');
         expect(mock.get).not.toHaveBeenCalled();
         expect(mock.connect).not.toHaveBeenCalled();
@@ -261,9 +261,9 @@ function setupFindings(record = finding()) {
     mock.getRun.mockResolvedValue(result.detail);
 }
 function rows(current = item('a'), onLedgerChange = vi.fn().mockResolvedValue(undefined), own = owner) {
-    return <SentinelTodoScrubber owner={own} items={[current]} onFollowLink={follow} onLedgerChange={onLedgerChange}>
-        <SentinelTodoScrubFinding item={current} />
-    </SentinelTodoScrubber>;
+    return <SentinelCoda owner={own} items={[current]} onFollowLink={follow} onLedgerChange={onLedgerChange}>
+        <SentinelCodaFinding item={current} />
+    </SentinelCoda>;
 }
 
 describe('Scrubber row findings', () => {
@@ -294,10 +294,10 @@ describe('Scrubber row findings', () => {
             return current;
         }
         function panel(current: SentinelTodoItem[], refresh = vi.fn().mockResolvedValue(undefined), own = owner) {
-            return <SentinelTodoScrubber owner={own} items={current} onFollowLink={follow} onLedgerChange={refresh}
-                toolbar={<div role="toolbar" aria-label="To-do actions"><AcceptAllScrubProposals /></div>}>
-                {current.map(value => <SentinelTodoScrubFinding key={value.id} item={value} />)}
-            </SentinelTodoScrubber>;
+            return <SentinelCoda owner={own} items={current} onFollowLink={follow} onLedgerChange={refresh}
+                toolbar={<div role="toolbar" aria-label="To-do actions"><AcceptAllCodaProposals /></div>}>
+                {current.map(value => <SentinelCodaFinding key={value.id} item={value} />)}
+            </SentinelCoda>;
         }
         const proposal = (id: string, revision = 1) => finding('proposed', { itemId: id, itemRevision: revision,
             finding: { ...finding().finding, itemId: id } });

@@ -30,7 +30,7 @@ function desiredTier(draft: Draft, tiers: LocalEffortTiersMap): EffortTierKey {
  * provider, the job stores a shared effort tier the owning server resolves at each run;
  * otherwise it keeps the explicit model and reasoning effort.
  */
-export function SentinelTodoJobDialog({ job, client, baseUrl, effortLevelsEnabled, busy, error, onSave, onClose }: {
+export function SentinelRefrainDialog({ job, client, baseUrl, effortLevelsEnabled, busy, error, onSave, onClose }: {
     job?: SentinelScheduledJob; client: CocClient; baseUrl?: string; effortLevelsEnabled: boolean; busy: boolean; error: string | null;
     onSave: (input: SentinelScheduledJobInput) => Promise<boolean>; onClose: () => void;
 }) {
@@ -79,7 +79,7 @@ export function SentinelTodoJobDialog({ job, client, baseUrl, effortLevelsEnable
                 {tierMode ? <div><span id={`${id}-tier`}>Effort tier</span>
                     <div role="group" aria-labelledby={`${id}-tier`}>
                         <EffortTierSelector tiers={tiers} selectedTier={selectedTier} disabled={busy || tiersLoading}
-                            onChange={tier => update('effortTier', tier)} data-testid="sentinel-job-effort-tier" />
+                            onChange={tier => update('effortTier', tier)} data-testid="sentinel-refrain-effort-tier" />
                     </div></div> : <>
                 <div><label htmlFor={`${id}-model`}>Model</label>
                     <input id={`${id}-model`} className={INPUT} list={`${id}-models`} value={draft.model} required maxLength={200} disabled={busy}

@@ -8,8 +8,8 @@ import { formatRelativeTime } from '../../../utils/format';
 import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/Spinner';
 import { SCRUB_CRON_PRESETS, validateScrubCron } from '../../../../../../schedule/scrub-cron';
-import { AcceptAllScrubProposals, ScrubberFindingsContext } from './SentinelTodoScrubFinding';
-import { ScrubRunChatLink, SentinelTodoScrubHistory } from './SentinelTodoScrubHistory';
+import { AcceptAllCodaProposals, CodaFindingsContext } from './SentinelCodaFinding';
+import { CodaRunChatLink, SentinelCodaHistory } from './SentinelCodaHistory';
 import { sentinelTodoOwnerKey, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 
 function subscribeConfig(listener: () => void) {
@@ -20,7 +20,7 @@ function readEnabled() {
     return isFeatureEnabled('sentinelTodoScrubberEnabled');
 }
 
-export type SentinelTodoScrubberProps = {
+export type SentinelCodaProps = {
     ready?: boolean;
     /** A function child places the Scrubber itself; otherwise it renders before the children. */
     children?: ReactNode | ((scrubber: ReactNode) => ReactNode);
@@ -33,25 +33,25 @@ export type SentinelTodoScrubberProps = {
     builtInRow?: boolean;
     enabledOverride?: boolean;
 };
-type Props = SentinelTodoScrubberProps;
+type Props = SentinelCodaProps;
 
 function place(children: Props['children'], scrubber: ReactNode) {
     return typeof children === 'function' ? children(scrubber) : <>{scrubber}{children}</>;
 }
 
 /** The owner and transport form a remount boundary for drafts and late results. */
-export function SentinelTodoScrubber(props: Props) {
+export function SentinelCoda(props: Props) {
     const enabled = useSyncExternalStore(subscribeConfig, readEnabled, readEnabled);
     const ref = props.owner.ownerRoutingRef === null ? undefined : props.owner.ownerRoutingRef ?? props.owner.ownerWorkspaceId;
     const client = useCocClient(ref);
     const route = resolveCloneRoute(ref);
     if (!(props.enabledOverride ?? enabled) || props.ready === false) return <>{props.toolbar}{place(props.children, null)}</>;
     if (route.kind === 'unresolved-remote') return <>{props.toolbar}{place(props.children, <p role="status">Coda unavailable: owning server is not connected.</p>)}</>;
-    return <ScrubberStrip key={`${sentinelTodoOwnerKey(props.owner)}:${route.kind === 'remote' ? route.baseUrl : 'local'}`}
+    return <CodaStrip key={`${sentinelTodoOwnerKey(props.owner)}:${route.kind === 'remote' ? route.baseUrl : 'local'}`}
         {...props} client={client} />;
 }
 
-function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, onLedgerChange, builtInRow }: Props & { client: CocClient }) {
+function CodaStrip({ owner, items, onFollowLink, client, children, toolbar, onLedgerChange, builtInRow }: Props & { client: CocClient }) {
     const id = useId();
     const [findings, setFindings] = useState<ReadonlyMap<string, SentinelScrubFindingRecord>>(new Map());
     const [data, setData] = useState<SentinelScrubberResponse | null>(null);
@@ -212,14 +212,14 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, 
             if (mounted.current) setBusy(false);
         }
     };
-    return <ScrubberFindingsContext.Provider value={{ findings, busy: busy || !!loadError || !!findingsError, mutationPending: busy, act: findingAction, proposalCount: proposals.length, acceptAll }}>
+    return <CodaFindingsContext.Provider value={{ findings, busy: busy || !!loadError || !!findingsError, mutationPending: busy, act: findingAction, proposalCount: proposals.length, acceptAll }}>
         {toolbar}
         {place(children, <>
-        <section aria-label="Coda" data-testid="sentinel-scrubber-strip"
+        <section aria-label="Coda" data-testid="sentinel-coda-strip"
             className="flex min-w-0 flex-col gap-1 break-words rounded border border-[#e0e0e0] bg-white p-2 [overflow-wrap:anywhere] dark:border-[#3c3c3c] dark:bg-[#1e1e1e]">
             <div className="flex flex-wrap items-center gap-1">
                 <strong className="mr-auto">{builtInRow ? 'Coda · built-in' : 'Coda'}</strong>
-                <AcceptAllScrubProposals />
+                <AcceptAllCodaProposals />
                 <Button size="sm" disabled={!data || !!active || busy || !!loadError} onClick={() => { void start(); }}>Run now</Button>
                 {builtInRow && config && <Button size="sm" variant="secondary" disabled={busy || !!loadError}
                     onClick={() => { void saveConfig({ ...config, enabled: !config.enabled }); }}>{config.enabled ? 'Pause' : 'Resume'}</Button>}
@@ -242,7 +242,7 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, 
                 {last.deferredCount > 0 && <p>{last.deferredCount} deferred to next run</p>}
                 {last.awaitingReviewCount > 0 && <p>{last.awaitingReviewCount} awaiting Sentinel review</p>}
             </div>}
-            <ScrubRunChatLink owner={owner} childProcessId={chatId} onFollowLink={onFollowLink} />
+            <CodaRunChatLink owner={owner} childProcessId={chatId} onFollowLink={onFollowLink} />
             {error && <p role="alert">{error}</p>}
             {batchResult && <p role="status">{batchResult}</p>}
             {data && <div className="flex flex-wrap gap-1">
@@ -273,7 +273,7 @@ function ScrubberStrip({ owner, items, onFollowLink, client, children, toolbar, 
                     <Button size="sm" type="submit" disabled={busy || !!cronError || !!loadError}>Save schedule</Button></div>
             </form>}
         </section>
-        {historyOpen && data && <SentinelTodoScrubHistory client={client} owner={owner} runs={data.runs} items={items} onFollowLink={onFollowLink} />}
+        {historyOpen && data && <SentinelCodaHistory client={client} owner={owner} runs={data.runs} items={items} onFollowLink={onFollowLink} />}
         </>)}
-    </ScrubberFindingsContext.Provider>;
+    </CodaFindingsContext.Provider>;
 }

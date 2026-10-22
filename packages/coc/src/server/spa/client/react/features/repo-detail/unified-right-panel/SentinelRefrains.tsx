@@ -8,8 +8,8 @@ import { describeCron } from '../../../utils/cron';
 import { Button } from '../../../ui/Button';
 import { Dialog } from '../../../ui/Dialog';
 import { Spinner } from '../../../ui/Spinner';
-import { SentinelTodoJobDialog } from './SentinelTodoJobDialog';
-import { SentinelTodoScrubber, type SentinelTodoScrubberProps } from './SentinelTodoScrubber';
+import { SentinelRefrainDialog } from './SentinelRefrainDialog';
+import { SentinelCoda, type SentinelCodaProps } from './SentinelCoda';
 import { sentinelTodoOwnerKey, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 
 const MUTED = 'text-[#616161] dark:text-[#9d9d9d]';
@@ -22,12 +22,12 @@ function subscribeConfig(listener: () => void) {
 const localPolicy = () => [isFeatureEnabled('sentinelEnabled') && isFeatureEnabled('sentinelTodoJobsEnabled'),
     isFeatureEnabled('sentinelTodoScrubberEnabled'), isFeatureEnabled('effortLevelsEnabled')].join(':');
 type Policy = { jobs: boolean; scrubber: boolean; effortLevels: boolean };
-function place(children: SentinelTodoScrubberProps['children'], node: ReactNode) {
+function place(children: SentinelCodaProps['children'], node: ReactNode) {
     return typeof children === 'function' ? children(node) : <>{node}{children}</>;
 }
 
 /** Policy and requests stay on the exact ledger owner, including group members. */
-export function SentinelTodoJobs(props: SentinelTodoScrubberProps) {
+export function SentinelRefrains(props: SentinelCodaProps) {
     const ref = props.owner.ownerRoutingRef === null ? undefined : props.owner.ownerRoutingRef ?? props.owner.ownerWorkspaceId;
     const client = useCocClient(ref);
     const route = resolveCloneRoute(ref);
@@ -35,7 +35,7 @@ export function SentinelTodoJobs(props: SentinelTodoScrubberProps) {
         {...props} client={client} routeKind={route.kind} baseUrl={route.kind === 'remote' ? route.baseUrl : undefined} />;
 }
 
-function OwnedAutomation(props: SentinelTodoScrubberProps & { client: CocClient; routeKind: string; baseUrl?: string }) {
+function OwnedAutomation(props: SentinelCodaProps & { client: CocClient; routeKind: string; baseUrl?: string }) {
     const local = useSyncExternalStore(subscribeConfig, localPolicy, localPolicy);
     const [remote, setRemote] = useState<Policy | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -74,7 +74,7 @@ function OwnedAutomation(props: SentinelTodoScrubberProps & { client: CocClient;
     const [localJobs, localScrubber, localEffortLevels] = local.split(':');
     const policy = props.routeKind === 'local'
         ? { jobs: localJobs === 'true', scrubber: localScrubber === 'true', effortLevels: localEffortLevels === 'true' } : remote;
-    if (props.ready === false && props.routeKind !== 'local') return <SentinelTodoScrubber {...props} enabledOverride={false} />;
+    if (props.ready === false && props.routeKind !== 'local') return <SentinelCoda {...props} enabledOverride={false} />;
     if (props.routeKind === 'unresolved-remote' || (props.routeKind === 'remote' && !policy)) {
         return <>{props.toolbar}{place(props.children, <p role={error ? 'alert' : 'status'} className={MUTED}>
             {props.routeKind === 'unresolved-remote' ? 'Refrains unavailable: owning server is not connected.'
@@ -82,11 +82,11 @@ function OwnedAutomation(props: SentinelTodoScrubberProps & { client: CocClient;
                     : 'Loading owning-server automation settings...'}
         </p>)}</>;
     }
-    if (!policy?.jobs) return <SentinelTodoScrubber {...props} enabledOverride={policy?.scrubber} />;
-    return <SentinelTodoScrubber {...props} builtInRow enabledOverride={policy.scrubber}>
+    if (!policy?.jobs) return <SentinelCoda {...props} enabledOverride={policy?.scrubber} />;
+    return <SentinelCoda {...props} builtInRow enabledOverride={policy.scrubber}>
         {scrubber => place(props.children, props.ready === false ? null : <JobsList client={props.client} owner={props.owner} scrubber={scrubber}
             baseUrl={props.baseUrl} effortLevelsEnabled={policy.effortLevels} onFollowLink={props.onFollowLink} />)}
-    </SentinelTodoScrubber>;
+    </SentinelCoda>;
 }
 
 type JobsProps = {
@@ -168,7 +168,7 @@ function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFol
         return mutate(() => editor === 'new' ? api.create(owner.ownerWorkspaceId, owner.processId, input)
             : api.update(owner.ownerWorkspaceId, owner.processId, editor.id, { ...input, expectedRevision: editor.revision }), () => setEditor(null));
     };
-    return <section aria-label="Refrains" data-testid="sentinel-todo-jobs" className="mt-2 flex min-w-0 flex-col gap-2 border-t border-[#e0e0e0] pt-2 text-xs dark:border-[#3c3c3c]">
+    return <section aria-label="Refrains" data-testid="sentinel-refrains" className="mt-2 flex min-w-0 flex-col gap-2 border-t border-[#e0e0e0] pt-2 text-xs dark:border-[#3c3c3c]">
         <div className="flex flex-wrap items-center gap-2">
             <h3 className="mr-auto font-semibold"><button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(value => !value)}>
                 {open ? '\u25be' : '\u25b8'} Refrains{jobs && ` (${jobs.length}/10)`}
@@ -176,7 +176,7 @@ function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFol
             <Button size="sm" variant="secondary" disabled={!jobs || busy || !!readError || jobs.length >= 10} onClick={() => setEditor('new')}>New refrain</Button>
         </div>
         <div id={id} hidden={!open} className="flex min-w-0 flex-col gap-2">
-            {scrubber && <div data-testid="sentinel-jobs-built-in">{scrubber}</div>}
+            {scrubber && <div data-testid="sentinel-refrains-built-in">{scrubber}</div>}
             <p className={MUTED}>Results return to this Sentinel. Schedules use the owning server&apos;s local time; missed runs are not caught up.</p>
             {readError && <p role="alert">Could not load refrains: {readError} <Button size="sm" variant="secondary" onClick={() => void load()}>Refresh refrains</Button></p>}
             {actionError && <p role="alert">{actionError}</p>}
@@ -191,7 +191,7 @@ function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFol
                 onTestGate={signal => api.testGate(owner.ownerWorkspaceId, owner.processId, job.id, { signal })}
                 onResumeGate={() => void mutate(() => api.resumeGate(owner.ownerWorkspaceId, owner.processId, job.id))} />)}
         </div>
-        {editor && <SentinelTodoJobDialog key={editor === 'new' ? 'new' : editor.id} job={editor === 'new' ? undefined : editor}
+        {editor && <SentinelRefrainDialog key={editor === 'new' ? 'new' : editor.id} job={editor === 'new' ? undefined : editor}
             client={client} baseUrl={baseUrl} effortLevelsEnabled={effortLevelsEnabled} busy={busy} error={actionError} onSave={save} onClose={() => { if (!pending.current) { setEditor(null); setActionError(null); } }} />}
         <Dialog open={!!deleting} title="Delete refrain" trapFocus onClose={() => { if (!pending.current) setDeleting(null); }} disableClose={busy}>
             <p>Delete {deleting?.name}? Its schedule and retained run history will be removed. Its chat remains available.</p>
@@ -212,7 +212,7 @@ function JobRow({ job, owner, onFollowLink, disabled, onEdit, onDelete, onRun, o
     onEdit: () => void; onDelete: () => void; onRun: () => void; onCancel: () => void; onToggle: () => void;
 }) {
     const last = job.runs[0];
-    return <article aria-label={job.name} className={CARD} data-testid={`sentinel-job-${job.id}`}>
+    return <article aria-label={job.name} className={CARD} data-testid={`sentinel-refrain-${job.id}`}>
         <div className="flex flex-wrap items-center gap-1">
             <strong className="mr-auto break-words">{job.name}</strong>
             {job.mode === 'autopilot' && <span className="rounded bg-[#e8912d]/15 px-1.5 text-[#b5650f] dark:text-[#cca700]" title="Can change files and run commands">Autopilot</span>}
@@ -281,7 +281,7 @@ function JobGate({ job, disabled, onTestGate, onResumeGate }: GateTestProps & { 
     };
     const outcome = test && 'outcome' in test ? test.outcome : undefined;
     const failure = test && 'error' in test ? test.error : outcome && !outcome.ok ? outcome.error ?? 'Unknown error' : undefined;
-    return <div data-testid="sentinel-job-gate" className="flex min-w-0 flex-col gap-1">
+    return <div data-testid="sentinel-refrain-gate" className="flex min-w-0 flex-col gap-1">
         <p className={job.gatePaused ? ERROR : MUTED}>{job.gatePaused
             ? `Gate paused after ${job.gateConsecutiveFailures} failures in a row. Scheduled ticks skip it until you resume it.`
             : `Gate active${job.gateConsecutiveFailures ? ` · ${job.gateConsecutiveFailures} failed in a row` : ''}`}</p>

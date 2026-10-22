@@ -26,7 +26,7 @@ const client = {
     sentinelTodos: { jobs: mock, scrubber: { get: mock.scrubGet, start: mock.scrubStart, updateConfig: mock.scrubUpdate, getRun: vi.fn().mockResolvedValue({ findings: [] }) } },
     events: { connect: mock.connect }, request: mock.request,
 };
-import { SentinelTodoJobs } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoJobs';
+import { SentinelRefrains } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelRefrains';
 import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
 
 const owner = { ownerWorkspaceId: 'ws-a', processId: 'queue_sentinel' };
@@ -45,7 +45,7 @@ function deferred<T>() {
     return { promise, resolve };
 }
 function view(ownerOverride = owner) {
-    return render(<SentinelTodoJobs owner={ownerOverride} items={[]} onFollowLink={follow} />);
+    return render(<SentinelRefrains owner={ownerOverride} items={[]} onFollowLink={follow} />);
 }
 beforeEach(() => {
     vi.clearAllMocks();
@@ -104,10 +104,10 @@ describe('Sentinel To-do Jobs', () => {
         expect(screen.getByText(/No refrains yet/)).not.toBeVisible();
     });
     it('waits for the owning ledger before mounting job controls or subscriptions', async () => {
-        const page = render(<SentinelTodoJobs owner={owner} ready={false} items={[]} onFollowLink={follow} />);
+        const page = render(<SentinelRefrains owner={owner} ready={false} items={[]} onFollowLink={follow} />);
         expect(mock.list).not.toHaveBeenCalled();
         expect(mock.connect).not.toHaveBeenCalled();
-        page.rerender(<SentinelTodoJobs owner={owner} ready items={[]} onFollowLink={follow} />);
+        page.rerender(<SentinelRefrains owner={owner} ready items={[]} onFollowLink={follow} />);
         await screen.findByText(/No refrains yet/);
         expect(mock.list).toHaveBeenCalledTimes(1);
     });
@@ -117,11 +117,11 @@ describe('Sentinel To-do Jobs', () => {
         view();
         await screen.findByRole('article', { name: 'Daily review' });
         const section = screen.getByRole('region', { name: 'Refrains' });
-        const builtIn = screen.getByTestId('sentinel-jobs-built-in');
+        const builtIn = screen.getByTestId('sentinel-refrains-built-in');
         expect(within(builtIn).getByText('Coda · built-in')).toBeInTheDocument();
         expect(within(builtIn).queryByRole('button', { name: 'Delete' })).toBeNull();
         expect(within(builtIn).queryByRole('button', { name: 'Edit' })).toBeNull();
-        expect(section.querySelector('section')).toBe(screen.getByTestId('sentinel-scrubber-strip'));
+        expect(section.querySelector('section')).toBe(screen.getByTestId('sentinel-coda-strip'));
         fireEvent.click(within(builtIn).getByRole('button', { name: 'Run now' }));
         await waitFor(() => expect(mock.scrubStart).toHaveBeenCalledWith('ws-a', 'queue_sentinel', {}));
         fireEvent.click(within(builtIn).getByRole('button', { name: 'Pause' }));
@@ -132,7 +132,7 @@ describe('Sentinel To-do Jobs', () => {
     it('omits the built-in row with only the jobs flag enabled', async () => {
         view();
         await screen.findByText(/No refrains yet/);
-        expect(screen.queryByTestId('sentinel-jobs-built-in')).toBeNull();
+        expect(screen.queryByTestId('sentinel-refrains-built-in')).toBeNull();
         expect(mock.scrubGet).not.toHaveBeenCalled();
     });
     it('creates an Ask manual job with its default threshold through the owner client', async () => {
@@ -249,7 +249,7 @@ describe('Sentinel To-do Jobs', () => {
                 jobTurnHref: '#repos/ws-a/chats/queue_job?turn=2', sentinelFollowUpHref: '#repos/ws-a/chats/queue_sentinel?turn=4' }),
             run({ id: 'r2', runNumber: 2, status: 'skipped', trigger: 'schedule', skipReason: 'overlap' }),
         ] })] });
-        render(<SentinelTodoJobs owner={{ ...owner, ownerRoutingRef: 'remote:server:ws-a' }} items={[]} onFollowLink={follow} />);
+        render(<SentinelRefrains owner={{ ...owner, ownerRoutingRef: 'remote:server:ws-a' }} items={[]} onFollowLink={follow} />);
         await screen.findByText('Autopilot');
         fireEvent.click(screen.getByText('History (2)'));
         expect(screen.getByText('#2 · schedule · skipped: overlap')).toBeInTheDocument();
@@ -263,7 +263,7 @@ describe('Sentinel To-do Jobs', () => {
     it('uses owning-server feature policy even when local jobs are off', async () => {
         applyRuntimeConfigPatch({ sentinelEnabled: false, sentinelTodoJobsEnabled: false });
         mock.route = { kind: 'remote', baseUrl: 'https://example.invalid' };
-        render(<SentinelTodoJobs owner={{ ...owner, ownerRoutingRef: 'remote:server:group-a' }} items={[]} onFollowLink={follow} />);
+        render(<SentinelRefrains owner={{ ...owner, ownerRoutingRef: 'remote:server:group-a' }} items={[]} onFollowLink={follow} />);
         await screen.findByText(/No refrains yet/);
         expect(mock.request).toHaveBeenCalledWith('/config/runtime', expect.objectContaining({ signal: expect.any(AbortSignal) }));
         expect(mock.refs).toContain('remote:server:group-a');
@@ -284,7 +284,7 @@ describe('Sentinel To-do Jobs', () => {
         mock.start.mockReturnValue(start.promise);
         fireEvent.click(await screen.findByRole('button', { name: 'Run now' }));
         mock.list.mockResolvedValue({ jobs: [] });
-        page.rerender(<SentinelTodoJobs owner={{ ...owner, processId: 'queue_other' }} items={[]} onFollowLink={follow} />);
+        page.rerender(<SentinelRefrains owner={{ ...owner, processId: 'queue_other' }} items={[]} onFollowLink={follow} />);
         await screen.findByText(/No refrains yet/);
         await act(async () => start.resolve(run()));
         expect(screen.queryByText('Daily review')).toBeNull();
@@ -298,7 +298,7 @@ describe('Sentinel To-do Jobs', () => {
         await screen.findByText(/Refrains unavailable: No connection/);
         expect(mock.list).not.toHaveBeenCalled();
         mock.route = { kind: 'unresolved-remote' };
-        page.rerender(<SentinelTodoJobs owner={owner} items={[]} onFollowLink={follow} />);
+        page.rerender(<SentinelRefrains owner={owner} items={[]} onFollowLink={follow} />);
         expect(screen.getByText(/owning server is not connected/)).toBeInTheDocument();
         expect(mock.list).not.toHaveBeenCalled();
     });
@@ -366,7 +366,7 @@ describe('Sentinel To-do Jobs', () => {
             expect(within(card).getByText('{"items":[1]}')).toBeInTheDocument();
             expect(within(card).queryByRole('button', { name: 'Resume gate' })).toBeNull();
             const plain = screen.getByRole('article', { name: 'Plain' });
-            expect(within(plain).queryByTestId('sentinel-job-gate')).toBeNull();
+            expect(within(plain).queryByTestId('sentinel-refrain-gate')).toBeNull();
             expect(within(plain).queryByRole('button', { name: 'Test gate' })).toBeNull();
         });
         it('truncates a long last result preview and keeps the full JSON as its title', async () => {
@@ -556,7 +556,7 @@ describe('Sentinel To-do Jobs', () => {
             applyRuntimeConfigPatch({ effortLevelsEnabled: false });
             mock.route = { kind: 'remote', baseUrl: 'https://example.invalid' };
             mock.request.mockResolvedValue({ features: { sentinelEnabled: true, sentinelTodoJobsEnabled: true, effortLevelsEnabled: true } });
-            render(<SentinelTodoJobs owner={{ ...owner, ownerRoutingRef: 'remote:server:ws-a' }} items={[]} onFollowLink={follow} />);
+            render(<SentinelRefrains owner={{ ...owner, ownerRoutingRef: 'remote:server:ws-a' }} items={[]} onFollowLink={follow} />);
             await openNew();
             expect(screen.getByTestId('effort-tier-trigger-btn')).toBeInTheDocument();
             expect(mock.tierReads.at(-1)).toEqual(['copilot', 'https://example.invalid', client]);
@@ -565,7 +565,7 @@ describe('Sentinel To-do Jobs', () => {
             applyRuntimeConfigPatch({ effortLevelsEnabled: true });
             mock.route = { kind: 'remote', baseUrl: 'https://example.invalid' };
             mock.request.mockResolvedValue({ features: { sentinelEnabled: true, sentinelTodoJobsEnabled: true, effortLevelsEnabled: false } });
-            render(<SentinelTodoJobs owner={{ ...owner, ownerRoutingRef: 'remote:server:ws-a' }} items={[]} onFollowLink={follow} />);
+            render(<SentinelRefrains owner={{ ...owner, ownerRoutingRef: 'remote:server:ws-a' }} items={[]} onFollowLink={follow} />);
             await openNew();
             expect(screen.queryByTestId('effort-tier-trigger-btn')).toBeNull();
             expect(screen.getByLabelText('Model')).toBeInTheDocument();

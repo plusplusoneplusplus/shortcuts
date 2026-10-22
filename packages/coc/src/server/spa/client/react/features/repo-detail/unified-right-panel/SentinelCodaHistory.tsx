@@ -2,7 +2,7 @@ import { useEffect, useId, useState, type MouseEvent } from 'react';
 import type { CocClient, SentinelScrubItemState, SentinelScrubRunDetail, SentinelScrubRunSummary, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
 import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/Spinner';
-import { ScrubFindingEvidence } from './SentinelTodoScrubFinding';
+import { ScrubFindingEvidence } from './SentinelCodaFinding';
 import type { SentinelTodoOwner } from './sentinelTodoPanelModel';
 
 type ChatLinkProps = {
@@ -11,7 +11,7 @@ type ChatLinkProps = {
     onFollowLink: (event: MouseEvent<HTMLAnchorElement>, key: string) => void;
 };
 
-export function ScrubRunChatLink({ owner, childProcessId, onFollowLink }: ChatLinkProps) {
+export function CodaRunChatLink({ owner, childProcessId, onFollowLink }: ChatLinkProps) {
     if (!childProcessId) return null;
     const key = `scrubber:${childProcessId}`;
     const href = `#repos/${encodeURIComponent(owner.ownerRoutingRef ?? owner.ownerWorkspaceId)}/chats/${encodeURIComponent(childProcessId)}`;
@@ -25,7 +25,7 @@ type Props = Omit<ChatLinkProps, 'childProcessId'> & {
     items: readonly SentinelTodoItem[];
 };
 
-export function SentinelTodoScrubHistory({ runs, ...props }: Props) {
+export function SentinelCodaHistory({ runs, ...props }: Props) {
     const [selected, setSelected] = useState<string | null>(null);
     const detailId = useId();
     const run = runs.find(entry => entry.id === selected);
@@ -41,7 +41,7 @@ export function SentinelTodoScrubHistory({ runs, ...props }: Props) {
                     {' · '}{entry.itemCount} assessed · {entry.deferredCount} deferred · {entry.awaitingReviewCount} awaiting Sentinel review</div>
                 {entry.error && <p className="text-[#c72e2e] dark:text-[#f48771]">{entry.error}</p>}
                 <div className="flex flex-wrap items-center gap-2">
-                    <ScrubRunChatLink {...props} childProcessId={entry.childProcessId} />
+                    <CodaRunChatLink {...props} childProcessId={entry.childProcessId} />
                     <Button size="sm" variant="secondary" aria-expanded={entry.id === run?.id} aria-controls={detailId}
                         onClick={() => setSelected(selected === entry.id ? null : entry.id)}>Details and change log</Button>
                 </div>
@@ -74,7 +74,7 @@ function RunDetail({ client, owner, items, summary, id, onFollowLink }: Omit<Pro
                 : <>
                     <p>{detail.trigger} · {detail.status.replaceAll('_', ' ')}
                         {detail.skipReason && <> · skipped: {detail.skipReason}</>}</p>
-                    <ScrubRunChatLink owner={owner} childProcessId={detail.childProcessId} onFollowLink={onFollowLink} />
+                    <CodaRunChatLink owner={owner} childProcessId={detail.childProcessId} onFollowLink={onFollowLink} />
                     {detail.startedAt && <p>Started <time dateTime={detail.startedAt}>{new Date(detail.startedAt).toLocaleString()}</time></p>}
                     {detail.finishedAt && <p>Finished <time dateTime={detail.finishedAt}>{new Date(detail.finishedAt).toLocaleString()}</time></p>}
                     {detail.error && <p className="text-[#c72e2e] dark:text-[#f48771]">{detail.error}</p>}

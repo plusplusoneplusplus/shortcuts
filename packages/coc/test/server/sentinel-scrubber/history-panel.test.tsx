@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { CocClient, type SentinelScrubFindingRecord, type SentinelScrubRunDetail, type SentinelScrubRunSummary } from '@plusplusoneplusplus/coc-client';
-import { SentinelTodoScrubHistory } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubHistory';
+import { SentinelCodaHistory } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelCodaHistory';
 
 const owner = { ownerWorkspaceId: 'group', processId: 'chat', ownerRoutingRef: 'remote:srv:group' };
 const at = '2026-10-11T09:00:00Z';
@@ -35,7 +35,7 @@ describe('Coda run history', () => {
     it('lists all retained statuses, counts and exclusions without detail I/O or mutation', () => {
         const transport = client(detail());
         const runs = ['completed', 'failed', 'timed_out', 'cancelled', 'interrupted', 'skipped', 'queued', 'running'] as const;
-        render(<SentinelTodoScrubHistory client={transport.api} owner={owner} items={[]} onFollowLink={follow}
+        render(<SentinelCodaHistory client={transport.api} owner={owner} items={[]} onFollowLink={follow}
             runs={runs.map((status, index) => summary({ id: `r${index}`, status,
                 ...(status === 'skipped' ? { skipReason: 'overlap' } : {}), ...(status === 'failed' ? { error: 'Model unavailable' } : {}) }))} />);
         expect(screen.getByText('Run history (8)')).toBeInTheDocument();
@@ -58,7 +58,7 @@ describe('Coda run history', () => {
         }] };
         const dismissed = { ...record('dismissed'), itemId: 'dismissed', audit: [{ action: 'dismissed' as const, actor: 'user' as const, at }] };
         const transport = client(detail({ findings: [applied, accepted, dismissed] }));
-        render(<SentinelTodoScrubHistory client={transport.api} owner={owner} runs={[summary()]} items={[]} onFollowLink={follow} />);
+        render(<SentinelCodaHistory client={transport.api} owner={owner} runs={[summary()]} items={[]} onFollowLink={follow} />);
         fireEvent.click(screen.getByRole('button', { name: 'Details and change log' }));
         const region = await screen.findByRole('region', { name: 'Coda run detail' });
         await within(region).findByText(/applied by scrubber/);
@@ -79,7 +79,7 @@ describe('Coda run history', () => {
         const pending = { ...record('pending'), audit: [] };
         pending.finding.evidence[0].ref = 'javascript:alert(1)';
         const transport = client(detail({ status: 'cancelled', findings: [pending] }));
-        render(<SentinelTodoScrubHistory client={transport.api} owner={owner} runs={[summary({ status: 'cancelled' })]} items={[]} onFollowLink={follow} />);
+        render(<SentinelCodaHistory client={transport.api} owner={owner} runs={[summary({ status: 'cancelled' })]} items={[]} onFollowLink={follow} />);
         fireEvent.click(screen.getByRole('button', { name: 'Details and change log' }));
         await screen.findByText('No findings applied by this run.');
         expect(screen.getByText('No changes recorded for this finding.')).toBeInTheDocument();
@@ -89,7 +89,7 @@ describe('Coda run history', () => {
     it('keeps detail failures explicit and retries only reads', async () => {
         const transport = client(detail());
         transport.fetch.mockResolvedValueOnce(Response.json({ message: 'offline' }, { status: 503 }));
-        render(<SentinelTodoScrubHistory client={transport.api} owner={owner} runs={[summary()]} items={[]} onFollowLink={follow} />);
+        render(<SentinelCodaHistory client={transport.api} owner={owner} runs={[summary()]} items={[]} onFollowLink={follow} />);
         fireEvent.click(screen.getByRole('button', { name: 'Details and change log' }));
         await screen.findByRole('alert');
         fireEvent.click(screen.getByRole('button', { name: 'Retry details' }));
@@ -102,7 +102,7 @@ describe('Coda run history', () => {
         const getRun = vi.spyOn(transport.api.sentinelTodos.scrubber, 'getRun');
         let resolve!: (response: Response) => void;
         transport.fetch.mockReturnValueOnce(new Promise<Response>(r => { resolve = r; }));
-        const view = render(<SentinelTodoScrubHistory client={transport.api} owner={owner}
+        const view = render(<SentinelCodaHistory client={transport.api} owner={owner}
             runs={[summary(), summary({ id: 'second' })]} items={[]} onFollowLink={follow} />);
         fireEvent.click(screen.getAllByRole('button', { name: 'Details and change log' })[0]);
         await waitFor(() => expect(transport.fetch).toHaveBeenCalledOnce());
@@ -120,13 +120,13 @@ describe('Coda run history', () => {
     it('refreshes selected details when summaries change and drops pruned runs', async () => {
         const transport = client(detail());
         const props = { client: transport.api, owner, items: [], onFollowLink: follow };
-        const view = render(<SentinelTodoScrubHistory {...props} runs={[summary()]} />);
+        const view = render(<SentinelCodaHistory {...props} runs={[summary()]} />);
         fireEvent.click(screen.getByRole('button', { name: 'Details and change log' }));
         await screen.findByText('No findings recorded.');
         transport.fetch.mockResolvedValue(Response.json(detail({ findings: [record()] })));
-        view.rerender(<SentinelTodoScrubHistory {...props} runs={[summary({ counts: { done: 0, proposals: 0, unverified: 0 } })]} />);
+        view.rerender(<SentinelCodaHistory {...props} runs={[summary({ counts: { done: 0, proposals: 0, unverified: 0 } })]} />);
         await screen.findByText(/undone by user/);
-        view.rerender(<SentinelTodoScrubHistory {...props} runs={[]} />);
+        view.rerender(<SentinelCodaHistory {...props} runs={[]} />);
         expect(screen.queryByRole('region', { name: 'Coda run detail' })).toBeNull();
         expect(screen.getByText('No Coda runs yet.')).toBeInTheDocument();
     });

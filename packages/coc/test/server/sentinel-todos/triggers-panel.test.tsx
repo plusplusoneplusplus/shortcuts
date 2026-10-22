@@ -32,11 +32,11 @@ vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', async import
     getCocClientForWorkspace: () => client,
 }));
 
-import { SentinelTodoTriggers } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoTriggers';
+import { SentinelOvertures } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelOvertures';
 import { UnifiedTodoTab } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedTodoTab';
 import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/utils/config';
 import { resolveCanonicalOriginId } from '../../../src/server/spa/client/react/repos/originScope';
-import { triggerError } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoTriggerModel';
+import { triggerError } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelOvertureModel';
 import { clearSentinelTodoExcursion } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoExcursion';
 
 const owner = { ownerWorkspaceId: 'ws-owner', ownerRoutingRef: 'remote:server:ws-owner', processId: 'queue_sentinel' };
@@ -62,7 +62,7 @@ function preview(status: PrTriggerPreview['snapshot']['status'] = 'open'): PrTri
 }
 function mount(items = [item()]) {
     const onItemLink = vi.fn();
-    return { ...render(<SentinelTodoTriggers owner={owner} items={items} onItemLink={onItemLink} />), onItemLink };
+    return { ...render(<SentinelOvertures owner={owner} items={items} onItemLink={onItemLink} />), onItemLink };
 }
 async function openEditor() {
     fireEvent.click(await screen.findByRole('button', { name: '+ Add overture' }));
@@ -131,7 +131,7 @@ describe('Sentinel To-do Triggers', () => {
         mocks.list.mockResolvedValue([dated({ id: 'dated' }), rule()]);
         mount();
         await screen.findByText('PR example/repo#7');
-        expect(screen.queryByTestId('sentinel-trigger-dated')).toBeNull();
+        expect(screen.queryByTestId('sentinel-overture-dated')).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: '+ Add overture' }));
         expect(screen.queryByLabelText('Overture type')).toBeNull();
         expect(screen.getByLabelText('PR URL')).toBeTruthy();
@@ -142,7 +142,7 @@ describe('Sentinel To-do Triggers', () => {
         mount();
         await screen.findByText('PR example/repo#7');
         expect(screen.getByRole('alert').textContent).toContain('Owner capability unavailable');
-        expect(screen.queryByTestId('sentinel-trigger-dated')).toBeNull();
+        expect(screen.queryByTestId('sentinel-overture-dated')).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Retry overture availability' }));
         await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
     });
@@ -162,7 +162,7 @@ describe('Sentinel To-do Triggers', () => {
         mocks.capabilities.mockReturnValueOnce(pendingCapabilities.promise);
         const rendered = mount();
         await waitFor(() => expect(mocks.capabilities).toHaveBeenCalledOnce());
-        rendered.rerender(<SentinelTodoTriggers owner={{ ...owner, processId: 'second-owner' }} items={[item()]} onItemLink={vi.fn()} />);
+        rendered.rerender(<SentinelOvertures owner={{ ...owner, processId: 'second-owner' }} items={[item()]} onItemLink={vi.fn()} />);
         await waitFor(() => expect(mocks.capabilities).toHaveBeenCalledTimes(2));
         await act(async () => pendingCapabilities.resolve({ dateTime: true }));
         fireEvent.click(screen.getByRole('button', { name: '+ Add overture' }));
@@ -248,8 +248,8 @@ describe('Sentinel To-do Triggers', () => {
             type: 'date-time', firesAt: '2020-01-01T00:00:00.000Z', timeZone: 'UTC',
         } })]);
         const { onItemLink } = mount();
-        const row = await screen.findByTestId('sentinel-trigger-rule-1');
-        expect(row.className).toContain('sentinel-trigger-row');
+        const row = await screen.findByTestId('sentinel-overture-rule-1');
+        expect(row.className).toContain('sentinel-overture-row');
         const instant = row.querySelector('time[datetime="2020-01-01T00:00:00.000Z"]')!;
         expect(instant.getAttribute('title')).toBe('UTC: 2020-01-01T00:00:00.000Z');
         expect(instant.textContent).toContain('(UTC)');
@@ -285,7 +285,7 @@ describe('Sentinel To-do Triggers', () => {
         }]);
         mount();
         await waitFor(() => expect(mocks.list).toHaveBeenCalledOnce());
-        expect(screen.queryByTestId('sentinel-trigger-automatic')).toBeNull();
+        expect(screen.queryByTestId('sentinel-overture-automatic')).toBeNull();
         expect(screen.queryByRole('button', { name: 'Run now' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
     });
@@ -293,7 +293,7 @@ describe('Sentinel To-do Triggers', () => {
     it('hides the section with no rules, but retains a first-add entry point', async () => {
         mount();
         await waitFor(() => expect(mocks.list).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId));
-        expect(screen.queryByTestId('sentinel-todo-triggers')).toBeNull();
+        expect(screen.queryByTestId('sentinel-overtures')).toBeNull();
         expect(screen.getByRole('button', { name: '+ Add overture' })).toBeTruthy();
         expect(mocks.refs).toContain(owner.ownerRoutingRef);
         expect(mocks.create).not.toHaveBeenCalled();
@@ -315,16 +315,16 @@ describe('Sentinel To-do Triggers', () => {
     it('sorts nonterminal first, uses outlined badges, links identities and items, and collapses', async () => {
         mocks.list.mockResolvedValue([rule({ id: 'terminal', outcome: 'fired', status: 'disarmed' }), rule()]);
         const { onItemLink } = mount();
-        const rows = await screen.findAllByTestId(/^sentinel-trigger-/);
-        expect(rows.map(row => row.dataset.testid)).toEqual(['sentinel-trigger-rule-1', 'sentinel-trigger-terminal']);
+        const rows = await screen.findAllByTestId(/^sentinel-overture-/);
+        expect(rows.map(row => row.dataset.testid)).toEqual(['sentinel-overture-rule-1', 'sentinel-overture-terminal']);
         const first = within(rows[0]);
-        expect(first.getByText('Waiting').className).toContain('sentinel-trigger-badge');
+        expect(first.getByText('Waiting').className).toContain('sentinel-overture-badge');
         const pr = first.getByRole('link', { name: 'PR example/repo#7' });
         expect(pr.getAttribute('href')).toBe(preview().pr.url);
         expect(pr.getAttribute('rel')).toContain('noopener');
         fireEvent.click(first.getByRole('link', { name: '→ Follow-up work' }));
         expect(onItemLink).toHaveBeenCalledWith('item-1');
-        expect(first.getByText('Run focused tests').className).toContain('sentinel-trigger-instruction');
+        expect(first.getByText('Run focused tests').className).toContain('sentinel-overture-instruction');
         expect(rows[0].textContent).toContain('Armed by Sentinel');
         fireEvent.click(screen.getByRole('button', { name: /Overtures \(2\)/ }));
         expect(screen.queryByText('Waiting')).toBeNull();
@@ -532,7 +532,7 @@ describe('Sentinel To-do Triggers', () => {
         await actions();
         fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
         await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith(owner.ownerWorkspaceId, owner.processId, 'rule-1', 4));
-        await waitFor(() => expect(screen.queryByTestId('sentinel-todo-triggers')).toBeNull());
+        await waitFor(() => expect(screen.queryByTestId('sentinel-overtures')).toBeNull());
         expect(mocks.runNow).not.toHaveBeenCalled();
         expect(mocks.create).not.toHaveBeenCalled();
     });
@@ -556,11 +556,11 @@ describe('Sentinel To-do Triggers', () => {
         await screen.findByText('Fired');
         expect(screen.getByText(/Delivery pending/)).toBeTruthy();
         const overlay = screen.getByText('⚠ Error · delivery retrying');
-        expect(overlay.className).toContain('sentinel-trigger-error');
+        expect(overlay.className).toContain('sentinel-overture-error');
         expect(overlay.title).toContain('Admission unavailable');
         expect(overlay.title).toContain('Last retry');
         expect(overlay.title).toContain('backoff');
-        expect(screen.getByText('Admission unavailable').className).toContain('sentinel-trigger-error');
+        expect(screen.getByText('Admission unavailable').className).toContain('sentinel-overture-error');
     });
     it('synchronously guards duplicate creates and reuses the same draft key after a lost response', async () => {
         let reject!: (error: Error) => void;
@@ -613,7 +613,7 @@ describe('Sentinel To-do Triggers', () => {
         expect(mocks.list).toHaveBeenCalledOnce();
         act(() => handler({ type: 'trigger-fired', workspaceId: owner.ownerWorkspaceId, processId: owner.processId }));
         await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2));
-        rerender(<SentinelTodoTriggers owner={{ ...owner, processId: 'queue_new' }} items={[item()]} onItemLink={vi.fn()} />);
+        rerender(<SentinelOvertures owner={{ ...owner, processId: 'queue_new' }} items={[item()]} onItemLink={vi.fn()} />);
         await waitFor(() => expect(mocks.list).toHaveBeenCalledWith(owner.ownerWorkspaceId, 'queue_new'));
         await act(async () => old.resolve([rule()]));
         expect(screen.queryByText('Waiting')).toBeNull();
@@ -640,7 +640,7 @@ describe('Sentinel To-do Triggers', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
         mocks.route.mockReturnValue({ kind: 'remote', baseUrl: 'https://replacement.example.test' });
         mocks.list.mockResolvedValue([]);
-        rerender(<SentinelTodoTriggers owner={owner} items={[item()]} onItemLink={vi.fn()} />);
+        rerender(<SentinelOvertures owner={owner} items={[item()]} onItemLink={vi.fn()} />);
         await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2));
         await act(async () => delayed.resolve(rule({ status: 'paused' })));
         expect(mocks.list).toHaveBeenCalledTimes(2);
@@ -650,12 +650,12 @@ describe('Sentinel To-do Triggers', () => {
         mocks.list.mockResolvedValue([rule()]);
         render(<UnifiedTodoTab owner={owner} />);
         const card = await screen.findByTestId('sentinel-todo-row-item-1');
-        const section = await screen.findByTestId('sentinel-todo-triggers');
+        const section = await screen.findByTestId('sentinel-overtures');
         expect(card.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         const scroll = vi.fn();
         card.scrollIntoView = scroll;
         fireEvent.click(screen.getByRole('link', { name: '→ Follow-up work' }));
-        await waitFor(() => expect(card.dataset.sentinelTriggerHighlight).toBe('true'));
+        await waitFor(() => expect(card.dataset.sentinelOvertureHighlight).toBe('true'));
         expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'nearest' });
         expect(screen.getByText('Tests pass')).toBeTruthy();
     });
@@ -686,7 +686,7 @@ describe('Sentinel To-do Triggers', () => {
             fireEvent.click(screen.getByTestId('sentinel-todo-manual-toggle'));
             fireEvent.click(link);
             const target = await screen.findByTestId('sentinel-todo-row-item-1');
-            await waitFor(() => expect(target.dataset.sentinelTriggerHighlight).toBe('true'));
+            await waitFor(() => expect(target.dataset.sentinelOvertureHighlight).toBe('true'));
             const button = within(target).getByRole('button', { pressed: true });
             expect(document.activeElement).toBe(button);
             expect(screen.getByRole('heading', { name: /Follow-up work/ })).toBeTruthy();
@@ -750,7 +750,7 @@ describe('Sentinel To-do Triggers', () => {
             link.focus();
             await user.keyboard('{Enter}');
             const target = await screen.findByTestId('sentinel-todo-row-item-1');
-            await waitFor(() => expect(target.dataset.sentinelTriggerHighlight).toBe('true'));
+            await waitFor(() => expect(target.dataset.sentinelOvertureHighlight).toBe('true'));
             expect(document.activeElement).toBe(within(target).getByRole('button', { name: /Follow-up work/, pressed: true }));
             expect(within(target).getByRole('button', { name: /Follow-up work/, pressed: true }).getAttribute('aria-pressed')).toBe('true');
             assertState();
@@ -773,7 +773,7 @@ describe('Sentinel To-do Triggers', () => {
         fireEvent.click(done);
         fireEvent.click(manualDone);
         fireEvent.click(link);
-        await waitFor(() => expect(screen.getByTestId('sentinel-todo-row-item-1').dataset.sentinelTriggerHighlight).toBe('true'));
+        await waitFor(() => expect(screen.getByTestId('sentinel-todo-row-item-1').dataset.sentinelOvertureHighlight).toBe('true'));
         expect(done.getAttribute('aria-expanded')).toBe('true');
         expect(manualDone.getAttribute('aria-expanded')).toBe('true');
         expect(within(screen.getByTestId('sentinel-todo-row-done')).getByRole('button', { name: /Done item/, pressed: false }).getAttribute('aria-pressed')).toBe('false');
@@ -824,7 +824,7 @@ describe('Sentinel To-do Triggers', () => {
         await screen.findByText('New owner item');
         expect(screen.queryByText('Stale target')).toBeNull();
         expect(scroll).not.toHaveBeenCalled();
-        expect(screen.getByTestId('sentinel-todo-row-item-1').dataset.sentinelTriggerHighlight).toBeUndefined();
+        expect(screen.getByTestId('sentinel-todo-row-item-1').dataset.sentinelOvertureHighlight).toBeUndefined();
         expect(within(screen.getByTestId('sentinel-todo-row-item-1')).getByRole('button', { name: /New owner item/ }).getAttribute('aria-pressed')).toBe('false');
         expect(screen.getByTestId('sentinel-todo-row-item-1').contains(document.activeElement)).toBe(false);
     });

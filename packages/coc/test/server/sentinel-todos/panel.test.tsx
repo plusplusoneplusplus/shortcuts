@@ -60,7 +60,7 @@ const fakeClient = {
 };
 
 import { UnifiedTodoTab } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedTodoTab';
-import { ScrubberFindingsContext } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubFinding';
+import { CodaFindingsContext } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelCodaFinding';
 import { useUnifiedPanelTabs } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useUnifiedPanelTabs';
 import { clearUnifiedPanelState, readUnifiedPanelState, writeUnifiedPanelState } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { openTab, EMPTY_UNIFIED_PANEL } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
@@ -175,16 +175,16 @@ describe('UnifiedTodoTab', () => {
     it('blocks Close for pending scrubber mutations but not unavailable finding actions', async () => {
         get.mockResolvedValue(ledger([item()]));
         const findings = { findings: new Map(), busy: true, proposalCount: 0, act: vi.fn(), acceptAll: vi.fn() };
-        const view = render(<ScrubberFindingsContext.Provider value={{ ...findings, mutationPending: true }}>
+        const view = render(<CodaFindingsContext.Provider value={{ ...findings, mutationPending: true }}>
             <UnifiedTodoTab owner={OWNER} />
-        </ScrubberFindingsContext.Provider>);
+        </CodaFindingsContext.Provider>);
         const row = await screen.findByTestId('sentinel-todo-row-i1');
         fireEvent.click(row.querySelector<HTMLButtonElement>('[data-todo-select]')!);
         const close = screen.getByRole('button', { name: 'Close To-do details' }) as HTMLButtonElement;
         expect(close.disabled).toBe(true);
-        view.rerender(<ScrubberFindingsContext.Provider value={{ ...findings, mutationPending: false }}>
+        view.rerender(<CodaFindingsContext.Provider value={{ ...findings, mutationPending: false }}>
             <UnifiedTodoTab owner={OWNER} />
-        </ScrubberFindingsContext.Provider>);
+        </CodaFindingsContext.Provider>);
         expect(close.disabled).toBe(false);
         fireEvent.click(close);
         expect(screen.getByTestId('sentinel-todo-detail-i1').hidden).toBe(true);
@@ -656,7 +656,7 @@ describe('UnifiedTodoTab', () => {
         expect(screen.queryByTestId('sentinel-todo-i1-details')).toBeNull();
         const row = screen.getByTestId('sentinel-todo-row-i1');
         if (entryPoint === 'row') fireEvent.click(within(row).getByRole('button', { name: 'Accept' }));
-        else fireEvent.click(within(entryPoint === 'strip' ? screen.getByTestId('sentinel-scrubber-strip')
+        else fireEvent.click(within(entryPoint === 'strip' ? screen.getByTestId('sentinel-coda-strip')
             : screen.getByRole('toolbar', { name: 'To-do actions' })).getByRole('button', { name: 'Accept all proposals' }));
         await waitFor(() => expect(screen.queryByText('◇ Proposal: Obsolete (high)')).toBeNull());
         expect(scrubAccept).toHaveBeenCalledExactlyOnceWith('ws-1', 'queue_sentinel', 'r1', 'i1', { expectedItemRevision: 1 });
@@ -671,13 +671,13 @@ describe('UnifiedTodoTab', () => {
         get.mockReturnValue(read.promise);
         scrubGet.mockResolvedValue({ config: { enabled: false, cron: '0 9 * * *', paused: false, consecutiveFailures: 0, revision: 0 }, runs: [] });
         render(<UnifiedTodoTab owner={OWNER} />);
-        expect(screen.queryByTestId('sentinel-scrubber-strip')).toBeNull();
+        expect(screen.queryByTestId('sentinel-coda-strip')).toBeNull();
         expect(scrubGet).not.toHaveBeenCalled();
         await act(async () => read.resolve(ledger([item()])));
         await screen.findByText('Manual only');
         expect(scrubGet).toHaveBeenCalledWith(OWNER.ownerWorkspaceId, OWNER.processId);
-        expect(screen.getAllByTestId('sentinel-scrubber-strip')).toHaveLength(1);
-        const strip = screen.getByTestId('sentinel-scrubber-strip');
+        expect(screen.getAllByTestId('sentinel-coda-strip')).toHaveLength(1);
+        const strip = screen.getByTestId('sentinel-coda-strip');
         const list = screen.getByTestId('sentinel-todo-list');
         const addTrigger = await within(list).findByRole('button', { name: '+ Add overture' });
         const follows = (a: Node, b: Node) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
@@ -697,7 +697,7 @@ describe('UnifiedTodoTab', () => {
         const history = within(list).getByRole('region', { name: 'Coda run history' });
         expect(follows(strip, history)).toBe(true);
         fireEvent.click(screen.getByRole('button', { name: /Fix login/ }));
-        expect(screen.getAllByTestId('sentinel-scrubber-strip')).toHaveLength(1);
+        expect(screen.getAllByTestId('sentinel-coda-strip')).toHaveLength(1);
         expect(scrubGet).toHaveBeenCalledOnce();
     });
 
@@ -2317,7 +2317,7 @@ describe('UnifiedTodoTab split layout', () => {
         render(<UnifiedTodoTab owner={OWNER} scopeWorkspaceId="ws-1" chatId={OWNER.processId} />);
         await screen.findByText('◇ Proposal: Obsolete (high)');
         select();
-        fireEvent.click(within(screen.getByTestId('sentinel-scrubber-strip')).getByRole('link', { name: 'Open chat' }));
+        fireEvent.click(within(screen.getByTestId('sentinel-coda-strip')).getByRole('link', { name: 'Open chat' }));
         expect(screen.getByRole('heading', { name: /Fix login/ })).toBeTruthy();
         expect(screen.getByRole('button', { pressed: true, name: /Fix login/ })).toBeTruthy();
         fireEvent.click(within(detail()).getByRole('button', { name: 'Accept' }));

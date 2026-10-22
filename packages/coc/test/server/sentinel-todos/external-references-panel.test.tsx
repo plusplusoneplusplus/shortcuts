@@ -19,15 +19,15 @@ vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', async import
 vi.mock('../../../src/server/spa/client/react/shared/file-path/browser-bridge', () => ({
     requestPanelBrowserTab: panelBrowser,
 }));
-vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubber', () => ({
-    SentinelTodoScrubber: ({ toolbar, children }: { toolbar: React.ReactNode; children: React.ReactNode | ((scrubber: React.ReactNode) => React.ReactNode) }) =>
+vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelCoda', () => ({
+    SentinelCoda: ({ toolbar, children }: { toolbar: React.ReactNode; children: React.ReactNode | ((scrubber: React.ReactNode) => React.ReactNode) }) =>
         <>{toolbar}{typeof children === 'function' ? children(null) : children}</>,
 }));
-vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubFinding', async importOriginal => ({
+vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelCodaFinding', async importOriginal => ({
     ...(await importOriginal<object>()),
-    AcceptAllScrubProposals: () => null, SentinelTodoScrubFinding: () => null,
+    AcceptAllCodaProposals: () => null, SentinelCodaFinding: () => null,
 }));
-vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoTriggers', () => ({ SentinelTodoTriggers: () => null }));
+vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelOvertures', () => ({ SentinelOvertures: () => null }));
 vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoDependencies', () => ({ SentinelTodoDependencies: () => null }));
 vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoPrOutcomes', () => ({ SentinelTodoPrOutcomes: () => null }));
 

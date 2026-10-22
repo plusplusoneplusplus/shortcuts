@@ -3,7 +3,7 @@ import type { SentinelScrubFinding, SentinelScrubFindingRecord, SentinelTodoItem
 import { Button } from '../../../ui/Button';
 
 type FindingAction = 'accept' | 'dismiss' | 'undo';
-export const ScrubberFindingsContext = createContext<{
+export const CodaFindingsContext = createContext<{
     findings: ReadonlyMap<string, SentinelScrubFindingRecord>;
     busy: boolean;
     mutationPending: boolean;
@@ -12,8 +12,8 @@ export const ScrubberFindingsContext = createContext<{
     acceptAll: () => Promise<void>;
 }>({ findings: new Map(), busy: false, mutationPending: false, act: async () => {}, proposalCount: 0, acceptAll: async () => {} });
 
-export function AcceptAllScrubProposals() {
-    const { proposalCount, busy, acceptAll } = useContext(ScrubberFindingsContext);
+export function AcceptAllCodaProposals() {
+    const { proposalCount, busy, acceptAll } = useContext(CodaFindingsContext);
     if (!proposalCount) return null;
     return <Button size="sm" variant="secondary" disabled={busy} onClick={() => { void acceptAll(); }}>Accept all proposals</Button>;
 }
@@ -30,8 +30,8 @@ function webLink(ref: string): string | undefined {
     catch { return undefined; }
 }
 
-export function SentinelTodoScrubFinding({ item }: { item: SentinelTodoItem }) {
-    const { findings, busy, act } = useContext(ScrubberFindingsContext);
+export function SentinelCodaFinding({ item }: { item: SentinelTodoItem }) {
+    const { findings, busy, act } = useContext(CodaFindingsContext);
     const record = findings.get(item.id);
     if (!record || !['applied', 'proposed', 'unverified'].includes(record.state)) return null;
     const appliedRevision = record.audit.find(entry => entry.action === 'applied')?.after?.revision;
