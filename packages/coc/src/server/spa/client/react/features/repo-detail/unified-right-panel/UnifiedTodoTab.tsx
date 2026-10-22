@@ -29,6 +29,7 @@ import { useCocClient } from '../../../repos/cloneRouting';
 import { SentinelTodoJobPreview } from './SentinelTodoJobPreview';
 import { SentinelTodoConversationReferences } from './SentinelTodoConversationReferences';
 import { SentinelTodoNotes } from './SentinelTodoNotes';
+import { SentinelTodoOrganizeNotes } from './SentinelTodoOrganizeNotes';
 import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/Spinner';
 import { cn } from '../../../ui/cn';
@@ -1091,8 +1092,9 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
     const [tagsBusy, setTagsBusy] = useState(false);
     const [dependenciesBusy, setDependenciesBusy] = useState(false);
     const [outcomesBusy, setOutcomesBusy] = useState(false);
+    const [organizeNotesBusy, setOrganizeNotesBusy] = useState(false);
     const { mutationPending: codaBusy } = useContext(CodaFindingsContext);
-    const closeBlocked = busy || tagsBusy || dependenciesBusy || outcomesBusy || codaBusy;
+    const closeBlocked = busy || tagsBusy || dependenciesBusy || outcomesBusy || codaBusy || organizeNotesBusy;
     useLayoutEffect(() => {
         onMenuBlocked(item.id, closeBlocked || editing !== null || statusDraft !== null);
     }, [item.id, closeBlocked, editing, statusDraft, onMenuBlocked]);
@@ -1298,13 +1300,18 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                             {item.notes && (
                                 <><dt className={MUTED}>Notes</dt>
                                     <dd className="min-w-0">
-                                        {foldNotes && (
-                                            <button type="button" aria-expanded={notesOpen} aria-controls={`${domId}-notes`}
-                                                onClick={() => setNotesOpen(open => !open)} data-testid={`sentinel-todo-notes-toggle-${item.id}`}
-                                                className="rounded text-[#0078d4] hover:underline focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:text-[#3794ff]">
-                                                {notesOpen ? 'Hide notes' : `Show notes (${sentinelTodoLineCount(item.notes)} lines)`}
-                                            </button>
-                                        )}
+                                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                                            {foldNotes && (
+                                                <button type="button" aria-expanded={notesOpen} aria-controls={`${domId}-notes`}
+                                                    onClick={() => setNotesOpen(open => !open)} data-testid={`sentinel-todo-notes-toggle-${item.id}`}
+                                                    className="rounded text-[#0078d4] hover:underline focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:text-[#3794ff]">
+                                                    {notesOpen ? 'Hide notes' : `Show notes (${sentinelTodoLineCount(item.notes)} lines)`}
+                                                </button>
+                                            )}
+                                            {!item.archived && <SentinelTodoOrganizeNotes owner={owner} item={item} active={!hidden}
+                                                blocked={busy || tagsBusy || dependenciesBusy || outcomesBusy || codaBusy || editing !== null || statusDraft !== null}
+                                                onBusyChange={setOrganizeNotesBusy} />}
+                                        </div>
                                         {(!foldNotes || notesOpen) && (
                                             <SentinelTodoNotes id={`${domId}-notes`} notes={item.notes} owner={owner} itemId={item.id} onFollowLink={onFollowLink} />
                                         )}
@@ -1330,7 +1337,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                     {!editing && !statusDraft && (
                         <div className="flex flex-col gap-1 border-t border-dashed border-[#e0e0e0] pt-1.5 dark:border-[#3c3c3c]">
                             {!item.archived && item.status !== 'done' && (
-                                <StatusChoices status={item.status} disabled={busy} itemId={item.id}
+                                <StatusChoices status={item.status} disabled={busy || organizeNotesBusy} itemId={item.id}
                                     onChoose={status => applyStatus(status, '')} />
                             )}
                             <div className="flex flex-wrap items-center gap-1">
@@ -1338,12 +1345,12 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                                     <TodoTime label="Created" iso={item.createdAt} testId={`sentinel-todo-created-${item.id}`} />
                                 </span>
                                 {!item.archived && (
-                                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => startEdit()}>Edit</Button>
+                                    <Button size="sm" variant="ghost" disabled={busy || organizeNotesBusy} onClick={() => startEdit()}>Edit</Button>
                                 )}
                                 {!item.archived && item.status === 'done' && (
-                                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => applyStatus('todo', '')}>Reopen</Button>
+                                    <Button size="sm" variant="ghost" disabled={busy || organizeNotesBusy} onClick={() => applyStatus('todo', '')}>Reopen</Button>
                                 )}
-                                <Button size="sm" variant="ghost" disabled={busy}
+                                <Button size="sm" variant="ghost" disabled={busy || organizeNotesBusy}
                                     onClick={() => { void run(() => onSave(item, { archived: !item.archived }), () => {}); }}>
                                     {item.archived ? 'Restore' : 'Archive'}
                                 </Button>

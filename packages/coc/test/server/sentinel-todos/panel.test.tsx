@@ -1301,6 +1301,9 @@ describe('UnifiedTodoTab', () => {
         await user.click(within(detail).getByRole('button', { name: 'Edit title' }));
         const input = within(detail).getByRole('textbox', { name: 'Title' });
         expect(document.activeElement).toBe(input);
+        const organize = within(detail).getByRole('button', { name: 'Organize notes' }) as HTMLButtonElement;
+        expect(organize.disabled).toBe(true);
+        expect(organize.title).toContain('Save or cancel pending edits');
         expect(within(detail).queryByLabelText('Notes')).toBeNull();
         expect(within(detail).getByText(before.notes)).toBeTruthy();
         fireEvent.change(input, { target: { value: '  Renamed title  ' } });
@@ -1463,6 +1466,7 @@ describe('UnifiedTodoTab', () => {
         fireEvent.click(await screen.findByRole('button', { name: 'Archived (1)' }));
         fireEvent.click(within(screen.getByTestId('sentinel-todo-row-i1')).getByRole('button', { pressed: false }));
         expect(within(screen.getByTestId('sentinel-todo-detail-i1')).queryByRole('button', { name: 'Edit title' })).toBeNull();
+        expect(within(screen.getByTestId('sentinel-todo-detail-i1')).queryByRole('button', { name: 'Organize notes' })).toBeNull();
         expect(update).toHaveBeenCalledTimes(1);
     });
 
