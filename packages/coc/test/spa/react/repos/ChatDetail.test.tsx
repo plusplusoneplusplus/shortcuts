@@ -31,13 +31,14 @@ import { resetNewChatSeedContext, drainNewChatSeedContext } from '../../../../sr
 import type { PrStatusCardItem } from '../../../../src/server/spa/client/react/features/chat/conversation/PrStatusCard';
 import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
 import { getBrowserControlScope } from '../../../../src/server/spa/client/react/shared/file-path/browser-control-scope';
-import { clearSentinelTodoExcursion, startSentinelTodoExcursion } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoExcursion';
+import { clearSentinelTodoExcursion, startSentinelTodoExcursion, getSentinelTodoExcursion } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoExcursion';
 
 // ── Module mocks (hoisted before imports) ──────────────────────────────────
 
 // Hoisted tracker for mock state
 const { mockState } = vi.hoisted(() => ({
     mockState: {
+        responseLinkHref: null as string | null,
         defaultChatStyle: 'default' as string,
         prItems: [] as PrStatusCardItem[],
         sessionContextAttachmentsEnabled: false,
@@ -314,6 +315,10 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/Conv
     ConversationTurnBubble: (props: any) => {
         const turnIndex = props.turn?.turnIndex;
         const children: React.ReactNode[] = [props.turn?.content ?? ''];
+        if (mockState.responseLinkHref && props.turn?.role === 'assistant') children.push(
+            React.createElement('div', { key: 'response-link', className: 'markdown-body' },
+                React.createElement('a', { href: mockState.responseLinkHref }, 'Open response chat')));
+
         if (props.onPinTurn && turnIndex != null) {
             children.push(React.createElement('button', {
                 key: 'pin',
@@ -336,6 +341,8 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/Conv
             }, 'Continue / retry'));
         }
         return React.createElement('div', {
+            className: `chat-message ${props.turn?.role}`,
+            'data-chat-id': props.taskId,
             'data-testid': `turn-${props.turn?.role}`,
             'data-turn-index': turnIndex,
             'data-conversation-mode': props.conversationMode,
@@ -411,7 +418,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/ImplementPlanCard
 }));
 
 import { ChatDetail } from '../../../../src/server/spa/client/react/features/chat/ChatDetail';
-import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
+import { registerCloneBaseUrls, resetCloneRegistryForTests, setActiveCloneForRouting } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 import { getCocClientFor } from '../../../../src/server/spa/client/react/api/cocClient';
 import { WorkspaceOwnerContext } from '../../../../src/server/spa/client/react/repos/workspaceOwnerContext';
 
@@ -537,6 +544,7 @@ beforeEach(() => {
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     resetCloneRegistryForTests();
+    mockState.responseLinkHref = null;
     mockState.defaultChatStyle = 'default';
     mockState.prItems = [];
     mockState.sessionContextAttachmentsEnabled = false;
@@ -4076,6 +4084,50 @@ describe('ChatDetail context-popover manual compaction', () => {
         expect(options.owningWorkspaceId).toBe(owner.workspaceId);
         fireEvent.click(button);
         expect(mockState.compactNow).toHaveBeenCalledTimes(disabled ? 0 : 1);
+        expect(mockState.sendFollowUp).not.toHaveBeenCalled();
+    });
+});
+
+
+describe('ChatDetail Sentinel response navigation', () => {
+    it.each([
+        { mode: 'sentinel', payloadMode: 'sentinel', remote: false, archived: false },
+        { mode: 'sentinel', payloadMode: 'ask', remote: true, archived: false },
+        { mode: 'ask', payloadMode: 'sentinel', remote: false, archived: false },
+        { mode: 'sentinel', payloadMode: 'sentinel', remote: false, archived: true },
+    ])('uses the loaded conversation owner and mode (%j)', async ({ mode, payloadMode, remote, archived }) => {
+        const owner = { workspaceId: 'ws-1', selectionId: remote ? 'remote:source:ws-1' : 'ws-1',
+            baseUrl: remote ? 'https://source.example' : undefined };
+        const scope = remote ? 'remote:source:group-services' : 'ws-1';
+        const hash = remote ? '#repos/remote%3Asource%3Agroup-services/chats/member/ws-1/proc-1' : '#repos/ws-1/chats/proc-1';
+        history.replaceState(null, '', hash);
+        mockState.responseLinkHref = '#repos/ws-1/chats/chat-a';
+        registerCloneBaseUrls([{ workspaceId: 'ws-1', serverId: 'source', baseUrl: 'https://source.example' }]);
+        setActiveCloneForRouting('remote:source:ws-1');
+        setupFetch({
+            '/processes/chat-a': { body: { process: { id: 'chat-a', type: 'chat', metadata: { workspaceId: 'ws-1' } } } },
+            '/queue/': { body: { task: makeTask({ archived, payload: { kind: 'chat', mode: payloadMode, workspaceId: 'ws-1' } }) } },
+            '/processes/': { body: { process: makeProcess({ archived, metadata: { mode, workspaceId: 'ws-1', sessionId: 'session' } }) } },
+            '/models': { body: [] },
+        });
+        render(<Wrap><WorkspaceOwnerContext.Provider value={owner}>
+            <UnifiedPanelHostProvider host={{ workspaceId: scope, chatId: 'task-1' }}>
+                <ChatDetail taskId="task-1" workspaceId="ws-1" sourceSelectionId={owner.selectionId} />
+            </UnifiedPanelHostProvider>
+        </WorkspaceOwnerContext.Provider></Wrap>);
+        const link = await screen.findByRole('link', { name: 'Open response chat' });
+        if (mode !== 'sentinel' || archived) {
+            link.addEventListener('click', event => { expect(event.defaultPrevented).toBe(false); event.preventDefault(); });
+            fireEvent.click(link);
+            expect(getSentinelTodoExcursion()).toBeNull();
+            return;
+        }
+        fireEvent.click(link);
+        await waitFor(() => expect(getSentinelTodoExcursion()).not.toBeNull());
+        expect(getSentinelTodoExcursion()?.origin).toMatchObject({
+            chatId: 'task-1', scopeWorkspaceId: scope, href: hash,
+            owner: { ownerWorkspaceId: 'ws-1', ownerRoutingRef: remote ? owner.selectionId : null, processId: 'proc-1' },
+        });
         expect(mockState.sendFollowUp).not.toHaveBeenCalled();
     });
 });

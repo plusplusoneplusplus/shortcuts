@@ -62,6 +62,7 @@ import { publishUnifiedChatCanvasActions, withdrawUnifiedChatCanvasActions, type
 import { whisperDiffTabInput } from '../repo-detail/unified-right-panel/unifiedDiffSources';
 import { publishUnifiedChatChanges, withdrawUnifiedChatChanges } from '../repo-detail/unified-right-panel/unifiedChatChanges';
 import { publishSentinelTodoChat, withdrawSentinelTodoChat } from '../repo-detail/unified-right-panel/sentinelTodoChats';
+import { useSentinelResponseLinks } from './hooks/useSentinelResponseLinks';
 import { SentinelTodoOriginBar } from '../repo-detail/unified-right-panel/SentinelTodoOriginBar';
 import { buildChatChangesContext } from './conversation/tool-calls/chatChangesModel';
 import { resolveChatFileLink, OPEN_PANEL_DIRECTORY_EVENT } from '../repo-detail/unified-right-panel/resolveChatFileLink';
@@ -423,6 +424,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         ? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId))
         : null);
     const metadataProcess = useMemo(() => buildMetadataProcess(task, processDetails, processId), [task, processId, processDetails]);
+    const loadedConversationMode = resolveLoadedTaskMode(task);
+    // Persisted/live conversation identity wins over the original queue payload
+    // and the draft mode. Sentinel dispatches implementation through tools.
+    // Remote owners resolve from their hydrated process, never a local ID match.
+    const liveConversation = scopedOwner || historyBaseUrl ? undefined : appState.processes.find(p => p.id === processId);
+    const effectiveConversationMode = normalizeChatMode(liveConversation?.metadata?.mode)
+        ?? normalizeChatMode(metadataProcess?.metadata?.mode)
+        ?? loadedConversationMode
+        ?? selectedMode;
     // A chat mounted without a workspaceId (pop-out opened with no `?workspace=`,
     // floated from a notification with none) still knows which repo it ran in:
     // the process carries it in metadata. Without this the chat has no canonical
@@ -786,16 +796,17 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // A hosted Sentinel publishes its to-do ledger owner — the chat's parent
     // workspace and process — so the panel can offer and auto-open its To-do
     // tab. The panel applies the feature flag; withdrawal follows the host.
-    const sentinelTodoOwnerWorkspaceId = resolveLoadedTaskMode(task) === 'sentinel' && processId
+    const sentinelTodoOwnerWorkspaceId = effectiveConversationMode === 'sentinel' && processId
         ? parseRemoteCloneKey(owningWorkspaceId ?? '')?.workspaceId
             ?? owningWorkspaceId ?? workspaceId ?? unifiedPanelHost?.workspaceId ?? null
         : null;
     const sentinelTodoOwner = useMemo(() => sentinelTodoOwnerWorkspaceId && processId ? {
         ownerWorkspaceId: sentinelTodoOwnerWorkspaceId,
-        ownerRoutingRef: resolveCloneRoute(sourceSelectionId ?? workspaceId).kind === 'local'
-            ? null : sourceSelectionId ?? workspaceId,
+        ownerRoutingRef: scopedOwner
+            ? (parseRemoteCloneKey(scopedOwner.selectionId) ? scopedOwner.selectionId : null)
+            : resolveCloneRoute(historyOwner).kind === 'local' ? null : historyOwner,
         processId,
-    } : null, [sentinelTodoOwnerWorkspaceId, owningWorkspaceId, processId, sourceSelectionId, workspaceId]);
+    } : null, [sentinelTodoOwnerWorkspaceId, processId, historyOwner, scopedOwner]);
     const chatTitle: string | undefined = (task?.customTitle as string | undefined) || title || task?.title || task?.displayName;
     useEffect(() => {
         if (chatChangesScopeId === null || sentinelTodoOwnerWorkspaceId === null || !processId) return;
@@ -2558,15 +2569,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // error toast for anything it still rejects.
     const rewindUnsupportedProvider = conversationProvider === 'codex';
     const rewindAction = planChatBusy || rewindUnsupportedProvider ? undefined : rewind.requestRewind;
-    const loadedConversationMode = resolveLoadedTaskMode(task);
-    // Persisted/live conversation identity wins over the original queue payload
-    // and the draft mode. Sentinel dispatches implementation through tools.
-    // Remote owners resolve from their hydrated process, never a local ID match.
-    const liveConversation = scopedOwner || historyBaseUrl ? undefined : appState.processes.find(p => p.id === processId);
-    const effectiveConversationMode = normalizeChatMode(liveConversation?.metadata?.mode)
-        ?? normalizeChatMode(metadataProcess?.metadata?.mode)
-        ?? loadedConversationMode
-        ?? selectedMode;
+    const followSentinelResponseLink = useSentinelResponseLinks(
+        !loading && historyOwnerAvailable && effectiveConversationMode === 'sentinel' && sentinelTodoOwner && chatChangesScopeId !== null
+            && !task?.archived && !metadataProcess?.archived
+            ? { owner: sentinelTodoOwner, scopeWorkspaceId: chatChangesScopeId, chatId: taskId,
+                title: chatTitle ?? null } : null,
+        message => addToast(message, 'error'),
+        JSON.stringify([historyOwner, historyBaseUrl]),
+    );
     const showImplementationBanners = !hidePlanBanners && effectiveConversationMode !== 'sentinel';
     const workflowOwnsProvider = !!getRalphContext(task)
         || !!forEachGeneration
@@ -2934,7 +2944,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     }, [hideHeader, headerMetadata, taskId]);
 
     return (
-        <div className="flex-1 flex flex-col min-h-0" data-testid="activity-chat-detail" {...(workspaceId ? { 'data-ws-id': workspaceId } : {})}>
+        <div onClickCapture={followSentinelResponseLink} className="flex-1 flex flex-col min-h-0" data-testid="activity-chat-detail" {...(workspaceId ? { 'data-ws-id': workspaceId } : {})}>
             {chatChangesScopeId !== null && (
                 <SentinelTodoOriginBar scopeWorkspaceId={chatChangesScopeId} chatId={taskId} title={chatTitle ?? null} />
             )}
