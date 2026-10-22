@@ -5,10 +5,10 @@ import type {
   TriggerDeleteResponse,
   TriggerMutationResponse,
   TriggerStatus,
-  CreateSentinelTodoTriggerRequest,
-  EditSentinelTodoTriggerRequest,
+  CreateSentinelOvertureRequest,
+  EditSentinelOvertureRequest,
   PrTriggerPreview,
-  SentinelTodoTriggerCapabilities,
+  SentinelOvertureCapabilities,
 } from '../contracts';
 import type { RequestAdapter } from '../types';
 import { encodePathSegment } from '../url';
@@ -85,7 +85,7 @@ export class TriggersClient {
     return result.triggers;
   }
 
-  sentinelTodoCapabilities(workspaceId: string, processId: string): Promise<SentinelTodoTriggerCapabilities> {
+  sentinelTodoCapabilities(workspaceId: string, processId: string): Promise<SentinelOvertureCapabilities> {
     return this.transport.request(sentinelPath(workspaceId, processId, '/capabilities'));
   }
 
@@ -95,14 +95,14 @@ export class TriggersClient {
     });
   }
 
-  async createSentinelTodo(workspaceId: string, processId: string, input: CreateSentinelTodoTriggerRequest): Promise<Trigger> {
+  async createSentinelTodo(workspaceId: string, processId: string, input: CreateSentinelOvertureRequest): Promise<Trigger> {
     const result = await this.transport.request<TriggerMutationResponse>(sentinelPath(workspaceId, processId), {
       method: 'POST', body: { ...input },
     });
     return result.trigger;
   }
 
-  async editSentinelTodo(workspaceId: string, processId: string, triggerId: string, input: EditSentinelTodoTriggerRequest): Promise<Trigger> {
+  async editSentinelTodo(workspaceId: string, processId: string, triggerId: string, input: EditSentinelOvertureRequest): Promise<Trigger> {
     const result = await this.transport.request<TriggerMutationResponse>(
       sentinelPath(workspaceId, processId, `/${encodePathSegment(triggerId)}`),
       { method: 'PATCH', body: { ...input } },

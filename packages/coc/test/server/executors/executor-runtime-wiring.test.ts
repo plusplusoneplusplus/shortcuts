@@ -216,14 +216,14 @@ describe('Executor runtime capability wiring', () => {
             const service = { list: vi.fn() };
             const triggers = { create: vi.fn() };
             runtime.getSentinelTodos.mockReturnValue(service as any);
-            runtime.getTriggerInfra.mockReturnValue({ sentinelTodoTriggers: triggers } as any);
+            runtime.getTriggerInfra.mockReturnValue({ sentinelOvertures: triggers } as any);
             for (const chat of [parts.chatExecutor, parts.followUpExecutor]) {
                 expect(chat.buildSentinelTodoDeps('owner-chat', 'owner-workspace', 'sentinel'))
                     .toEqual({ service, triggers, owner: { processId: 'owner-chat', workspaceId: 'owner-workspace' } });
                 expect(chat.buildSentinelTodoDeps('owner-chat', 'owner-workspace', 'ask')).toBeUndefined();
                 runtime.getTriggerInfra.mockReturnValue(undefined);
                 expect(chat.buildSentinelTodoDeps('owner-chat', 'owner-workspace', 'sentinel')?.triggers).toBeUndefined();
-                runtime.getTriggerInfra.mockReturnValue({ sentinelTodoTriggers: triggers } as any);
+                runtime.getTriggerInfra.mockReturnValue({ sentinelOvertures: triggers } as any);
             }
         });
 

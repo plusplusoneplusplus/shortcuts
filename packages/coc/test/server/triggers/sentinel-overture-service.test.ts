@@ -4,8 +4,8 @@ import { initializeDatabase, type AIProcess } from '@plusplusoneplusplus/forge';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { TriggerStore } from '../../../src/server/triggers/trigger-store';
-import { SentinelTodoTriggerService } from '../../../src/server/triggers/sentinel-todo-trigger-service';
-import { SentinelTodoTriggerFirer } from '../../../src/server/triggers/sentinel-todo-trigger-firer';
+import { SentinelOvertureService } from '../../../src/server/triggers/sentinel-overture-service';
+import { SentinelOvertureFirer } from '../../../src/server/triggers/sentinel-overture-firer';
 import { MAX_ACTIVE_TRIGGERS, type Trigger } from '../../../src/server/triggers/trigger-types';
 
 const owner = { workspaceId: 'ws-owner', processId: 'sentinel-owner' };
@@ -16,11 +16,11 @@ const process: AIProcess = {
     startTime: new Date(timestamp), metadata: { type: 'chat', mode: 'sentinel', workspaceId: owner.workspaceId },
 };
 
-describe('SentinelTodoTriggerService', () => {
+describe('SentinelOvertureService', () => {
     let db: NativeDatabase;
     let todos: SentinelTodoStore;
     let triggers: TriggerStore;
-    let service: SentinelTodoTriggerService;
+    let service: SentinelOvertureService;
     let itemId: string;
     const getProcess = vi.fn();
     const fetchPr = vi.fn();
@@ -28,7 +28,7 @@ describe('SentinelTodoTriggerService', () => {
     const arm = vi.fn();
     const disarm = vi.fn();
     const emit = vi.fn();
-    let firer: SentinelTodoTriggerFirer;
+    let firer: SentinelOvertureFirer;
 
     beforeEach(() => {
         vi.resetAllMocks();
@@ -42,12 +42,12 @@ describe('SentinelTodoTriggerService', () => {
         itemId = todos.create(owner, {
             title: 'Item', targetRepo: { workspaceId: 'remote-workspace', serverId: 'remote-server' },
         }, { actor: 'user' }).item.id;
-        firer = new SentinelTodoTriggerFirer({ triggers, todos, processes: { getProcess }, executor: { execute }, emit });
+        firer = new SentinelOvertureFirer({ triggers, todos, processes: { getProcess }, executor: { execute }, emit });
         service = build();
     });
     afterEach(() => db.close());
     function build(dateTime = false) {
-        return new SentinelTodoTriggerService({
+        return new SentinelOvertureService({
             triggers, todos, owners: new SentinelTodoService({ todos, store: { getProcess } }),
             manager: { arm, disarm }, firer, fetchPr, emit, now: () => Date.parse(timestamp),
             dateTimeEnabled: () => dateTime,
@@ -135,7 +135,7 @@ describe('SentinelTodoTriggerService', () => {
     it('replays an overdue keyed create but rejects a new or edited past date', async () => {
         service = build(true);
         const rule = await createDate(dateEvent, { idempotencyKey: 'date-draft' });
-        service = new SentinelTodoTriggerService({
+        service = new SentinelOvertureService({
             triggers, todos, owners: new SentinelTodoService({ todos, store: { getProcess } }),
             manager: { arm, disarm }, firer, fetchPr, enabled: true, dateTimeEnabled: () => true,
             now: () => Date.parse('2028-01-01T00:00:00.000Z'),

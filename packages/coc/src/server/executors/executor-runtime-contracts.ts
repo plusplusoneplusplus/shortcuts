@@ -46,7 +46,7 @@ import type { SentinelRefrainCommandSet } from '../llm-tools/sentinel-refrains-t
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { CreateTriggerFn } from '../triggers/create-trigger-service';
 import type { TriggerManager } from '../triggers/trigger-manager';
-import type { SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
+import type { SentinelOvertureService } from '../triggers/sentinel-overture-service';
 import type { SentinelPrOutcomeService } from '../triggers/sentinel-pr-outcome-service';
 import type { RegisterSentinelPrOutcome } from '../triggers/sentinel-pr-outcome-service';
 import type { TurnPerformanceRecorder } from './turn-performance-tracker';
@@ -81,7 +81,7 @@ export interface CronInfraDeps {
 export interface TriggerInfraDeps {
     manager: TriggerManager;
     createTrigger?: CreateTriggerFn;
-    sentinelTodoTriggers?: SentinelTodoTriggerService;
+    sentinelOvertures?: SentinelOvertureService;
     sentinelPrOutcomes?: SentinelPrOutcomeService;
 }
 

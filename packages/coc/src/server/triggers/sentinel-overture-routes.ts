@@ -2,13 +2,13 @@ import { sendJSON, sendError } from '../core/api-handler';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
 import { SentinelTodoError } from '../sentinel-todos/sentinel-todo-store';
-import { SentinelTodoTriggerError, type SentinelTodoTriggerService } from './sentinel-todo-trigger-service';
+import { SentinelOvertureError, type SentinelOvertureService } from './sentinel-overture-service';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 
 const base = '/api/workspaces/([^/]+)/sentinel-todos/([^/]+)/triggers';
 
-export function registerSentinelTodoTriggerRoutes(
-    routes: Route[], service: SentinelTodoTriggerService,
+export function registerSentinelOvertureRoutes(
+    routes: Route[], service: SentinelOvertureService,
 ): void {
     const register = (
         method: Route['method'], suffix: string,
@@ -24,7 +24,7 @@ export function registerSentinelTodoTriggerRoutes(
                 if (body === null) return;
                 sendJSON(res, status, await operation(owner, id, body));
             } catch (error) {
-                if (error instanceof SentinelTodoTriggerError) {
+                if (error instanceof SentinelOvertureError) {
                     return sendJSON(res, error.statusCode, {
                         error: error.message, ...(error.current ? { current: error.current } : {}),
                     });
@@ -33,7 +33,7 @@ export function registerSentinelTodoTriggerRoutes(
                     return sendError(res, error.code === 'not_found' ? 404 : 400, error.message);
                 }
                 if (error instanceof URIError) return sendError(res, 400, 'Invalid route encoding');
-                getLogger().error(LogCategory.AI, `[SentinelTodoTriggerRoutes] Operation failed: ${String(error)}`);
+                getLogger().error(LogCategory.AI, `[SentinelOvertureRoutes] Operation failed: ${String(error)}`);
                 sendError(res, 500, 'Overture operation failed');
             }
         },

@@ -166,7 +166,7 @@ describe('Sentinel trigger durable delivery infrastructure', () => {
         await vi.advanceTimersByTimeAsync(120_000);
         expect(queue.getAll()).toEqual([]);
         expect(triggers.getById(rule.id)?.status).toBe('active');
-        await expect(infra!.sentinelTodoTriggers.create(owner, {
+        await expect(infra!.sentinelOvertures.create(owner, {
             itemId: rule.binding!.itemId, event: { type: 'date-time', localTime: '2027-01-01T00:00', firesAt: '2027-01-01T00:00:00.000Z', timeZone: 'UTC' },
         }, 'user')).rejects.toThrow('disabled');
         dateTimeEnabled = true;
@@ -267,7 +267,7 @@ describe('Sentinel trigger durable delivery infrastructure', () => {
         // A second pending receipt is removed before reconciliation.
         seedPending();
         const removable = triggers.getById(rule.id)!;
-        await infra!.sentinelTodoTriggers.remove(owner, rule.id, { expectedRevision: removable.revision });
+        await infra!.sentinelOvertures.remove(owner, rule.id, { expectedRevision: removable.revision });
         await start();
         expect(triggers.getById(rule.id)?.delivery?.state).toBe('failed');
         expect(queue.getAll()).toHaveLength(1);

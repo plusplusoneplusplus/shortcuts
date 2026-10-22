@@ -5,9 +5,9 @@ import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { TriggerStore } from '../../../src/server/triggers/trigger-store';
-import { SentinelTodoTriggerService } from '../../../src/server/triggers/sentinel-todo-trigger-service';
-import { SentinelTodoTriggerFirer } from '../../../src/server/triggers/sentinel-todo-trigger-firer';
-import { registerSentinelTodoTriggerRoutes } from '../../../src/server/triggers/sentinel-todo-trigger-routes';
+import { SentinelOvertureService } from '../../../src/server/triggers/sentinel-overture-service';
+import { SentinelOvertureFirer } from '../../../src/server/triggers/sentinel-overture-firer';
+import { registerSentinelOvertureRoutes } from '../../../src/server/triggers/sentinel-overture-routes';
 import { registerTriggerRoutes } from '../../../src/server/triggers/trigger-handler';
 import { TriggerManager } from '../../../src/server/triggers/trigger-manager';
 import { ScheduleTimerRegistry } from '../../../src/server/schedule/schedule-timer-registry';
@@ -21,7 +21,7 @@ describe('Sentinel To-do trigger REST ownership and lifecycle', () => {
     let store: SqliteProcessStore;
     let todos: SentinelTodoStore;
     let triggers: TriggerStore;
-    let service: SentinelTodoTriggerService;
+    let service: SentinelOvertureService;
     let itemId: string;
     let routes: Route[];
     const fetchPr = vi.fn();
@@ -41,14 +41,14 @@ describe('Sentinel To-do trigger REST ownership and lifecycle', () => {
         itemId = todos.create(owner, { title: 'Item' }, { actor: 'user' }).item.id;
         fetchPr.mockResolvedValue({ status: 'open', title: 'Open PR', url: prUrl });
         execute.mockResolvedValue(undefined);
-        const firer = new SentinelTodoTriggerFirer({ triggers, todos, processes: store, executor: { execute }, emit: vi.fn() });
-        service = new SentinelTodoTriggerService({
+        const firer = new SentinelOvertureFirer({ triggers, todos, processes: store, executor: { execute }, emit: vi.fn() });
+        service = new SentinelOvertureService({
             triggers, todos, owners: new SentinelTodoService({ todos, store }), firer,
             manager: { arm: vi.fn(), disarm: vi.fn() }, fetchPr,
             dateTimeEnabled: () => dateTimeEnabled,
         });
         routes = [];
-        registerSentinelTodoTriggerRoutes(routes, service);
+        registerSentinelOvertureRoutes(routes, service);
     });
     afterEach(() => store.close());
 

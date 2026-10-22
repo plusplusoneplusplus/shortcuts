@@ -3,7 +3,7 @@ import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type { AIProcess } from '@plusplusoneplusplus/forge';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { TriggerStore } from '../../../src/server/triggers/trigger-store';
-import { SentinelTodoTriggerFirer } from '../../../src/server/triggers/sentinel-todo-trigger-firer';
+import { SentinelOvertureFirer } from '../../../src/server/triggers/sentinel-overture-firer';
 import type { Trigger } from '../../../src/server/triggers/trigger-types';
 import { ReviewDeliveryRejectedError } from '../../../src/server/processes/process-message-delivery-service';
 
@@ -15,12 +15,12 @@ const process: AIProcess = {
     metadata: { type: 'chat', mode: 'sentinel', workspaceId: owner.workspaceId },
 };
 
-describe('SentinelTodoTriggerFirer', () => {
+describe('SentinelOvertureFirer', () => {
     let db: NativeDatabase;
     let todos: SentinelTodoStore;
     let triggers: TriggerStore;
     let rule: Trigger;
-    let firer: SentinelTodoTriggerFirer;
+    let firer: SentinelOvertureFirer;
     const getProcess = vi.fn<() => Promise<AIProcess | undefined>>();
     const execute = vi.fn<() => Promise<void>>();
     const emit = vi.fn();
@@ -49,7 +49,7 @@ describe('SentinelTodoTriggerFirer', () => {
         triggers.insert(rule);
         getProcess.mockResolvedValue(process);
         execute.mockResolvedValue();
-        firer = new SentinelTodoTriggerFirer({
+        firer = new SentinelOvertureFirer({
             triggers, todos, processes: { getProcess }, executor: { execute }, emit,
             now: () => Date.parse(timestamp),
         });
@@ -61,7 +61,7 @@ describe('SentinelTodoTriggerFirer', () => {
     } = {}) {
         rule.binding!.delegatedPr = { jobId: 'job', receiptId: 'receipt' };
         triggers.update(rule);
-        return new SentinelTodoTriggerFirer({
+        return new SentinelOvertureFirer({
             triggers, todos, processes: { getProcess }, executor: { execute }, emit,
             outcomeCanDeliver: () => !options.paused?.(), validateOutcome: () => options.valid?.() ?? true,
         });
@@ -70,7 +70,7 @@ describe('SentinelTodoTriggerFirer', () => {
     function datedFirer(enabled = () => true) {
         rule.event = { type: 'date-time', firesAt: timestamp, timeZone: 'UTC' };
         triggers.update(rule);
-        return new SentinelTodoTriggerFirer({
+        return new SentinelOvertureFirer({
             triggers, todos, processes: { getProcess }, executor: { execute }, emit,
             now: () => Date.parse(timestamp), dateTimeEnabled: enabled,
         });

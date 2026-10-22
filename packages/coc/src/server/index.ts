@@ -478,7 +478,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         // lazily through this closure.
         () => triggerInfra ? {
             manager: triggerInfra.triggerManager, createTrigger: triggerInfra.createTrigger,
-            sentinelTodoTriggers: triggerInfra.sentinelTodoTriggers,
+            sentinelOvertures: triggerInfra.sentinelOvertures,
             sentinelPrOutcomes: triggerInfra.sentinelPrOutcomes,
         } : undefined,
         // Late-bound enqueue capability for the `send_to_conversation` tool;
@@ -851,7 +851,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         triggerStore: triggerInfra?.triggerStore,
         triggerManager: triggerInfra?.triggerManager,
         triggerEmit: triggerInfra?.emit,
-        sentinelTodoTriggers: triggerInfra?.sentinelTodoTriggers,
+        sentinelOvertures: triggerInfra?.sentinelOvertures,
         sentinelPrOutcomes: triggerInfra?.sentinelPrOutcomes,
         mcpOauthManager: mcpOauthInfra?.manager,
         resolveAiServiceForProvider,

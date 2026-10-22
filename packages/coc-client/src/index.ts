@@ -40,6 +40,12 @@ import type {
   SentinelCodaFindingActionRequest,
   SentinelCodaFindingWriteResponse,
   SentinelCodaFindingDismissResponse,
+  SentinelOvertureBinding,
+  SentinelOvertureCapabilities,
+  SentinelOvertureInput,
+  SentinelOvertureEventInput,
+  CreateSentinelOvertureRequest,
+  EditSentinelOvertureRequest,
 } from './contracts';
 
 /** @deprecated use SentinelRefrain */
@@ -92,3 +98,15 @@ export type SentinelScrubFindingDismissResponse = SentinelCodaFindingDismissResp
 export type SentinelScrubberClient = SentinelCodaClient;
 /** @deprecated use SentinelCodaChangedEvent */
 export type SentinelScrubberChangedEvent = SentinelCodaChangedEvent;
+/** @deprecated use SentinelOvertureBinding */
+export type SentinelTodoTriggerBinding = SentinelOvertureBinding;
+/** @deprecated use SentinelOvertureCapabilities */
+export type SentinelTodoTriggerCapabilities = SentinelOvertureCapabilities;
+/** @deprecated use SentinelOvertureInput */
+export type SentinelTodoTriggerInput = SentinelOvertureInput;
+/** @deprecated use SentinelOvertureEventInput */
+export type SentinelTodoTriggerEventInput = SentinelOvertureEventInput;
+/** @deprecated use CreateSentinelOvertureRequest */
+export type CreateSentinelTodoTriggerRequest = CreateSentinelOvertureRequest;
+/** @deprecated use EditSentinelOvertureRequest */
+export type EditSentinelTodoTriggerRequest = EditSentinelOvertureRequest;

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { z } from 'zod';
-import { dateTimeCandidates, type SentinelTodoTriggerCapabilities } from '@plusplusoneplusplus/coc-client';
+import { dateTimeCandidates, type SentinelOvertureCapabilities } from '@plusplusoneplusplus/coc-client';
 import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import type { SentinelTodoOwner, SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
 import type { TriggerManager, TriggerEventEmit, OneShotFirer } from './trigger-manager';
@@ -36,11 +36,11 @@ const editInput = ruleInput.extend({ expectedRevision: z.number().int().min(1) }
 const revisionInput = z.object({ expectedRevision: z.number().int().min(1), confirmed: z.literal(true).optional() }).strict();
 const runInput = revisionInput.extend({ confirmed: z.literal(true) }).strict();
 
-export class SentinelTodoTriggerError extends Error {
+export class SentinelOvertureError extends Error {
     constructor(readonly statusCode: number, message: string, readonly current?: Trigger) { super(message); }
 }
 
-export interface SentinelTodoTriggerServiceDeps {
+export interface SentinelOvertureServiceDeps {
     triggers: TriggerStore;
     todos: SentinelTodoStore;
     owners: Pick<SentinelTodoService, 'list'>;
@@ -53,12 +53,12 @@ export interface SentinelTodoTriggerServiceDeps {
 }
 
 /** One owner-scoped command surface for REST, Sentinel tools and the To-do editor. */
-export class SentinelTodoTriggerService {
-    constructor(private readonly deps: SentinelTodoTriggerServiceDeps) {}
+export class SentinelOvertureService {
+    constructor(private readonly deps: SentinelOvertureServiceDeps) {}
 
     isDateTimeEnabled(): boolean { return this.deps.dateTimeEnabled?.() === true; }
 
-    async capabilities(owner: SentinelTodoOwner): Promise<SentinelTodoTriggerCapabilities> {
+    async capabilities(owner: SentinelTodoOwner): Promise<SentinelOvertureCapabilities> {
         await this.assertOwner(owner);
         return { dateTime: this.isDateTimeEnabled() };
     }
@@ -74,14 +74,14 @@ export class SentinelTodoTriggerService {
         const body = parse(z.object({ prUrl: z.string().trim().min(1).max(2_000) }).strict(), input);
         const pr = parsePr(body.prUrl);
         try { return { pr, snapshot: await this.deps.fetchPr(pr) }; }
-        catch (error) { throw new SentinelTodoTriggerError(502, message(error)); }
+        catch (error) { throw new SentinelOvertureError(502, message(error)); }
     }
 
     async create(owner: SentinelTodoOwner, input: unknown, actor: 'user' | 'sentinel'): Promise<Trigger> {
         await this.assertOwner(owner);
         const body = parse(createInput, input);
         if (body.event?.type === 'date-time') this.assertDateTimeEnabled();
-        if (body.runNow && !body.confirmed) throw new SentinelTodoTriggerError(400, 'Run now requires confirmation');
+        if (body.runNow && !body.confirmed) throw new SentinelOvertureError(400, 'Run now requires confirmation');
         const replay = this.findCreation(owner, body.idempotencyKey);
         if (replay) return replay;
         this.assertEligible(owner, body.itemId);
@@ -154,7 +154,7 @@ export class SentinelTodoTriggerService {
             const current = this.requireMutable(owner, triggerId, body.expectedRevision);
             if (!paused) {
                 if (current.event.type === 'date-time' && Date.parse(current.event.firesAt) <= this.now() && !body.confirmed) {
-                    throw new SentinelTodoTriggerError(409, 'Overdue overture will wake Sentinel immediately; confirm resume', current);
+                    throw new SentinelOvertureError(409, 'Overdue overture will wake Sentinel immediately; confirm resume', current);
                 }
                 this.assertEligible(owner, current.binding!.itemId);
                 if (current.status !== 'active') this.assertCap();
@@ -201,12 +201,12 @@ export class SentinelTodoTriggerService {
         try { await this.deps.firer.fire(triggerId, 'run-now', body.expectedRevision); }
         catch (error) {
             if (error instanceof OneShotFireConflictError) {
-                throw new SentinelTodoTriggerError(409, error.message, this.deps.triggers.getById(triggerId) ?? undefined);
+                throw new SentinelOvertureError(409, error.message, this.deps.triggers.getById(triggerId) ?? undefined);
             }
             throw error;
         }
         const result = this.deps.triggers.getById(triggerId);
-        if (!result || !result.outcome) throw new SentinelTodoTriggerError(409, 'Overture changed before Run now', result ?? undefined);
+        if (!result || !result.outcome) throw new SentinelOvertureError(409, 'Overture changed before Run now', result ?? undefined);
         this.deps.manager.disarm(triggerId);
         if (result.delivery?.state === 'pending') this.deps.manager.arm(result);
         return result;
@@ -235,14 +235,14 @@ export class SentinelTodoTriggerService {
 
     private assertEligible(owner: SentinelTodoOwner, itemId: string): void {
         const item = this.deps.todos.get(owner).items.find(item => item.id === itemId);
-        if (!item) throw new SentinelTodoTriggerError(404, 'To-do item not found');
-        if (item.type === 'manual') throw new SentinelTodoTriggerError(400, 'Manual items cannot have overtures');
-        if (item.archived || item.status === 'done') throw new SentinelTodoTriggerError(409, 'Item is Done or archived');
+        if (!item) throw new SentinelOvertureError(404, 'To-do item not found');
+        if (item.type === 'manual') throw new SentinelOvertureError(400, 'Manual items cannot have overtures');
+        if (item.archived || item.status === 'done') throw new SentinelOvertureError(409, 'Item is Done or archived');
     }
 
     private assertCap(): void {
         if (this.deps.triggers.countActive() >= MAX_ACTIVE_TRIGGERS) {
-            throw new SentinelTodoTriggerError(409, `Server-wide active trigger limit reached (${MAX_ACTIVE_TRIGGERS})`);
+            throw new SentinelOvertureError(409, `Server-wide active trigger limit reached (${MAX_ACTIVE_TRIGGERS})`);
         }
     }
 
@@ -250,7 +250,7 @@ export class SentinelTodoTriggerService {
         if (!key) return;
         const existing = this.deps.triggers.getByWorkspace(owner.workspaceId).find(trigger =>
             trigger.processId === owner.processId && trigger.binding?.idempotencyKey === key);
-        if (existing?.binding?.removedAt) throw new SentinelTodoTriggerError(409, 'Overture was removed', existing);
+        if (existing?.binding?.removedAt) throw new SentinelOvertureError(409, 'Overture was removed', existing);
         return existing;
     }
 
@@ -258,9 +258,9 @@ export class SentinelTodoTriggerService {
         const current = this.deps.triggers.getById(triggerId);
         if (!current?.binding || current.binding.delegatedPr || current.binding.removedAt
             || current.workspaceId !== owner.workspaceId || current.processId !== owner.processId) {
-            throw new SentinelTodoTriggerError(404, 'Overture not found');
+            throw new SentinelOvertureError(404, 'Overture not found');
         }
-        if (current.revision !== revision) throw new SentinelTodoTriggerError(409, 'Overture revision conflict', current);
+        if (current.revision !== revision) throw new SentinelOvertureError(409, 'Overture revision conflict', current);
         if (current.event.type === 'date-time') this.assertDateTimeEnabled();
         return current;
     }
@@ -269,23 +269,23 @@ export class SentinelTodoTriggerService {
         const current = this.requireRule(owner, triggerId, revision);
         if (current.outcome || current.delivery
             || (current.status !== 'active' && current.status !== 'paused')) {
-            throw new SentinelTodoTriggerError(409, 'Terminal overtures cannot be edited, resumed or run again', current);
+            throw new SentinelOvertureError(409, 'Terminal overtures cannot be edited, resumed or run again', current);
         }
         return current;
     }
 
     private async readPr(pr: PrIdentity): Promise<PrStatusSnapshot> {
         try { return await this.deps.fetchPr(pr); }
-        catch (error) { throw new SentinelTodoTriggerError(502, message(error)); }
+        catch (error) { throw new SentinelOvertureError(502, message(error)); }
     }
     private assertDateTimeEnabled(): void {
-        if (!this.deps.dateTimeEnabled?.()) throw new SentinelTodoTriggerError(403, 'Date/time overtures are disabled');
+        if (!this.deps.dateTimeEnabled?.()) throw new SentinelOvertureError(403, 'Date/time overtures are disabled');
     }
     private assertAuthoringTime(event: TriggerEvent): void {
         if (event.type !== 'date-time') return;
         this.assertDateTimeEnabled();
         if (Date.parse(event.firesAt) <= this.now()) {
-            throw new SentinelTodoTriggerError(400, 'Date/time must be in the future; use confirmed Run now on a saved overture');
+            throw new SentinelOvertureError(400, 'Date/time must be in the future; use confirmed Run now on a saved overture');
         }
     }
     private async prepareEvent(body: z.infer<typeof ruleInput>, runNow = false): Promise<TriggerEvent> {
@@ -294,18 +294,18 @@ export class SentinelTodoTriggerService {
             const { firesAt, timeZone, localTime } = body.event;
             let candidates: string[];
             try { candidates = dateTimeCandidates(localTime, timeZone); }
-            catch (error) { throw new SentinelTodoTriggerError(400, message(error)); }
-            if (!candidates.length) throw new SentinelTodoTriggerError(400, 'Local time does not exist in this timezone (DST gap)');
-            if (!candidates.includes(firesAt)) throw new SentinelTodoTriggerError(400, 'Choose an explicit UTC instant matching the local time and timezone');
+            catch (error) { throw new SentinelOvertureError(400, message(error)); }
+            if (!candidates.length) throw new SentinelOvertureError(400, 'Local time does not exist in this timezone (DST gap)');
+            if (!candidates.includes(firesAt)) throw new SentinelOvertureError(400, 'Choose an explicit UTC instant matching the local time and timezone');
             const event: TriggerEvent = { type: 'date-time', firesAt, timeZone };
             this.assertAuthoringTime(event);
             return event;
         }
-        if (!body.prUrl) throw new SentinelTodoTriggerError(400, 'A PR URL or event is required');
+        if (!body.prUrl) throw new SentinelOvertureError(400, 'A PR URL or event is required');
         const pr = parsePr(body.prUrl, body);
         const snapshot = await this.readPr(pr);
-        if (snapshot.status === 'closed') throw new SentinelTodoTriggerError(409, 'PR closed without merging');
-        if (snapshot.status === 'merged' && !runNow) throw new SentinelTodoTriggerError(409, 'PR already merged; use Run now');
+        if (snapshot.status === 'closed') throw new SentinelOvertureError(409, 'PR closed without merging');
+        if (snapshot.status === 'merged' && !runNow) throw new SentinelOvertureError(409, 'PR already merged; use Run now');
         return {
             type: 'condition-monitor', monitor: 'pr-merged', pr,
             pollIntervalMs: DEFAULT_PR_MERGE_POLL_INTERVAL_MS, consecutiveErrors: 0,
@@ -321,13 +321,13 @@ export class SentinelTodoTriggerService {
     private timestamp(): string { return new Date(this.now()).toISOString(); }
     private emit(type: Parameters<TriggerEventEmit>[0]['type'], trigger: Trigger): void {
         try { this.deps.emit?.({ type, trigger }); }
-        catch (error) { getLogger().warn(LogCategory.AI, `[SentinelTodoTriggerService] Notification failed: ${message(error)}`); }
+        catch (error) { getLogger().warn(LogCategory.AI, `[SentinelOvertureService] Notification failed: ${message(error)}`); }
     }
 }
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
     const result = schema.safeParse(value);
-    if (!result.success) throw new SentinelTodoTriggerError(400, result.error.issues.map(issue => issue.message).join('; '));
+    if (!result.success) throw new SentinelOvertureError(400, result.error.issues.map(issue => issue.message).join('; '));
     return result.data;
 }
 function validRuleInput(body: z.infer<typeof ruleInput>): boolean {
@@ -335,7 +335,7 @@ function validRuleInput(body: z.infer<typeof ruleInput>): boolean {
 }
 function parsePr(url: string, provenance?: { workspaceId?: string; originId?: string }): PrIdentity {
     const pr = parsePullRequestUrl(url);
-    if (!pr) throw new SentinelTodoTriggerError(400, 'A supported GitHub or Azure DevOps PR URL is required');
+    if (!pr) throw new SentinelOvertureError(400, 'A supported GitHub or Azure DevOps PR URL is required');
     return { ...pr, ...(provenance?.workspaceId ? { workspaceId: provenance.workspaceId } : {}),
         ...(provenance?.originId ? { originId: provenance.originId } : {}) };
 }

@@ -7,7 +7,7 @@ import type { TriggerStore } from './trigger-store';
 import type { Trigger, TriggerDelivery } from './trigger-types';
 import { ReviewDeliveryRejectedError } from '../processes/process-message-delivery-service';
 
-export interface SentinelTodoTriggerFirerDeps {
+export interface SentinelOvertureFirerDeps {
     triggers: TriggerStore;
     /** Must share the trigger store's database handle. */
     todos: SentinelTodoStore;
@@ -27,8 +27,8 @@ export interface SentinelTodoTriggerFirerDeps {
  * Commits the one-shot decision and immutable wake prompt before delivery.
  * Item bookkeeping and delegation remain exclusively the Sentinel's responsibility.
  */
-export class SentinelTodoTriggerFirer implements OneShotFirer {
-    constructor(private readonly deps: SentinelTodoTriggerFirerDeps) {}
+export class SentinelOvertureFirer implements OneShotFirer {
+    constructor(private readonly deps: SentinelOvertureFirerDeps) {}
 
     async fire(triggerId: string, reason: TriggerDelivery['reason'], expectedRevision?: number): Promise<void> {
         const initial = this.deps.triggers.getById(triggerId);
@@ -184,7 +184,7 @@ export class SentinelTodoTriggerFirer implements OneShotFirer {
         try { this.deps.emit({ type, trigger }); }
         catch (error) {
             getLogger().warn(LogCategory.AI,
-                `[SentinelTodoTriggerFirer] Notification failed for ${trigger.id}: ${String(error)}`);
+                `[SentinelOvertureFirer] Notification failed for ${trigger.id}: ${String(error)}`);
         }
     }
 }

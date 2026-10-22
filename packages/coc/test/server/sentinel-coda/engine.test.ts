@@ -5,7 +5,7 @@ import { codaFindingInputSchema, type CodaFindingInput } from '../../../src/serv
 import { CodaStore, type CodaRunRecord } from '../../../src/server/sentinel-coda/coda-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { SentinelTodoStore, type SentinelTodoItem } from '../../../src/server/sentinel-todos/sentinel-todo-store';
-import { SentinelTodoTriggerService } from '../../../src/server/triggers/sentinel-todo-trigger-service';
+import { SentinelOvertureService } from '../../../src/server/triggers/sentinel-overture-service';
 import { TriggerStore } from '../../../src/server/triggers/trigger-store';
 import { createTodoTestDatabase, createTodoTestDirectory } from '../sentinel-todos/test-db';
 
@@ -54,7 +54,7 @@ beforeEach(() => {
     scrubber = new CodaStore(fixture.db);
     triggers = new TriggerStore(fixture.db);
     const getProcess = vi.fn<(id: string) => Promise<AIProcess>>();
-    const ruleService = new SentinelTodoTriggerService({
+    const ruleService = new SentinelOvertureService({
         triggers, todos, owners: new SentinelTodoService({ todos, store: { getProcess } }),
         manager: { arm: vi.fn(), disarm }, firer: { fire: vi.fn() } as never, fetchPr: vi.fn(), enabled: true, emit,
         now: () => now.getTime(),

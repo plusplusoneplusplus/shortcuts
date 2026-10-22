@@ -21,9 +21,9 @@ import {
 } from '../sentinel-todos/sentinel-todo-store';
 import type { SentinelTodoItemView, SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import type { SendToConversationTodoTracking } from './send-to-conversation-tool';
-import { SentinelTodoTriggerError, type SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
+import { SentinelOvertureError, type SentinelOvertureService } from '../triggers/sentinel-overture-service';
 import type { Trigger } from '../triggers/trigger-types';
-import type { SentinelTodoDependencyEvaluation, SentinelTodoPrProvenance, SentinelTodoTag, SentinelTodoTagLibrary, SentinelTodoExternalReference, SentinelTodoTriggerEventInput } from '@plusplusoneplusplus/coc-client';
+import type { SentinelTodoDependencyEvaluation, SentinelTodoPrProvenance, SentinelTodoTag, SentinelTodoTagLibrary, SentinelTodoExternalReference, SentinelOvertureEventInput } from '@plusplusoneplusplus/coc-client';
 import { SENTINEL_TODO_RECENT_LIMIT } from '@plusplusoneplusplus/coc-client';
 import { SENTINEL_COMPLETION_GUIDANCE, SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
 import { sentinelTodoRecentList } from '../sentinel-todos/sentinel-todo-list';
@@ -52,8 +52,8 @@ export interface SentinelTodosToolDeps {
     /** The invoking Sentinel chat; every call is scoped to this ledger. */
     owner: SentinelTodoOwner;
     /** Present when trigger infrastructure is available. */
-    triggers?: Pick<SentinelTodoTriggerService, 'list' | 'create' | 'edit' | 'setPaused' | 'remove' | 'runNow'>
-        & Partial<Pick<SentinelTodoTriggerService, 'isDateTimeEnabled'>>;
+    triggers?: Pick<SentinelOvertureService, 'list' | 'create' | 'edit' | 'setPaused' | 'remove' | 'runNow'>
+        & Partial<Pick<SentinelOvertureService, 'isDateTimeEnabled'>>;
 }
 
 interface TargetRepoArg { workspaceId: string; serverId?: string; label?: string }
@@ -88,7 +88,7 @@ export interface SentinelTodosArgs {
     conversationOffset?: number;
     triggerId?: string;
     prUrl?: string;
-    event?: SentinelTodoTriggerEventInput;
+    event?: SentinelOvertureEventInput;
     instruction?: string;
     confirmed?: true;
     dependsOn?: SentinelTodoDependency[];
@@ -576,7 +576,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                         return { error: 'Unsupported Sentinel bookkeeping action.', code: 'invalid' };
                 }
             } catch (err) {
-                if (err instanceof SentinelTodoTriggerError) {
+                if (err instanceof SentinelOvertureError) {
                     return {
                         error: err.message, code: err.statusCode === 409 ? 'conflict' : err.statusCode === 404 ? 'not_found' : 'invalid',
                         ...(err.current ? { current: err.current } : {}),

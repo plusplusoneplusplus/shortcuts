@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import type { CocClient, PrTriggerPreview, SentinelTodoItem, SentinelTodoTriggerInput, Trigger, WorkspaceInfo } from '@plusplusoneplusplus/coc-client';
+import type { CocClient, PrTriggerPreview, SentinelTodoItem, SentinelOvertureInput, Trigger, WorkspaceInfo } from '@plusplusoneplusplus/coc-client';
 import { dateTimeCandidates, triggerLocalTime, zonedTriggerTime } from '@plusplusoneplusplus/coc-client';
 import { Dialog } from '../../../ui/Dialog';
 import { Button } from '../../../ui/Button';
@@ -124,7 +124,7 @@ export function SentinelOvertureEditor({ client, owner, items, trigger, onClose,
         savingRef.current = true;
         setSaving(true);
         setError(null);
-        const input: SentinelTodoTriggerInput = kind === 'date-time'
+        const input: SentinelOvertureInput = kind === 'date-time'
             ? { itemId, instruction, event: { type: 'date-time', firesAt, timeZone, localTime } }
             : { itemId, prUrl: prUrl.trim(), instruction, ...picked };
         try {

@@ -193,8 +193,8 @@ import type { CronExecutor, CronEventEmit } from '../cron/cron-executor';
 import { registerTriggerRoutes } from '../triggers/trigger-handler';
 import { createPrRepairOwnerValidator } from '../triggers/pr-repair-owner';
 import { createProcessWorkspaceResolver } from '../processes/process-workspace-resolver';
-import { registerSentinelTodoTriggerRoutes } from '../triggers/sentinel-todo-trigger-routes';
-import type { SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
+import { registerSentinelOvertureRoutes } from '../triggers/sentinel-overture-routes';
+import type { SentinelOvertureService } from '../triggers/sentinel-overture-service';
 import type { TriggerStore } from '../triggers/trigger-store';
 import type { TriggerManager, TriggerEventEmit } from '../triggers/trigger-manager';
 import { registerMcpOauthRoutes } from '../mcp-oauth';
@@ -301,7 +301,7 @@ export interface RegisterRoutesOptions {
     triggerStore?: TriggerStore;
     triggerManager?: TriggerManager;
     triggerEmit?: TriggerEventEmit;
-    sentinelTodoTriggers?: SentinelTodoTriggerService;
+    sentinelOvertures?: SentinelOvertureService;
     mcpOauthManager?: McpOauthManager;
     resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
     cronEmit?: CronEventEmit;
@@ -670,7 +670,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     opts.setSentinelTodos?.(() => sentinelTodos);
     const getScrubberEnabled = () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoScrubber === true;
     const scrubber = new CodaStore(todoDb);
-    const scrubberEngine = new CodaEngine({ todos: todoStore, scrubber, triggers: opts.sentinelTodoTriggers });
+    const scrubberEngine = new CodaEngine({ todos: todoStore, scrubber, triggers: opts.sentinelOvertures });
     let scrubberScheduler: ScrubberScheduler | undefined;
     const scrubberChanged = (owner: import('../sentinel-todos/sentinel-todo-store').SentinelTodoOwner,
         change: { runId?: string; ledgerChanged?: boolean }) => {
@@ -688,7 +688,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             if (executor) { executor.cancelTask(taskId); return true; }
             return bridge.findManagerForTask(taskId)?.cancelTask(taskId) ?? false;
         },
-        listTriggers: opts.sentinelTodoTriggers ? owner => opts.sentinelTodoTriggers!.list(owner) : undefined,
+        listTriggers: opts.sentinelOvertures ? owner => opts.sentinelOvertures!.list(owner) : undefined,
         canStartScheduled: owner => {
             const config = scrubber.getConfig(owner);
             return scrubberScheduler?.canStart(owner) === true
@@ -1181,8 +1181,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             validatePrOwner: createPrRepairOwnerValidator(store, resolveProcessWorkspaceId),
         });
     }
-    if (opts.sentinelTodoTriggers) {
-        registerSentinelTodoTriggerRoutes(routes, opts.sentinelTodoTriggers);
+    if (opts.sentinelOvertures) {
+        registerSentinelOvertureRoutes(routes, opts.sentinelOvertures);
     }
 
     // MCP OAuth routes (feature-flagged via mcpOauth.enabled)
