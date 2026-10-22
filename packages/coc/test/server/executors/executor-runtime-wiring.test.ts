@@ -56,7 +56,7 @@ function makeSentinelRuntime() {
         getLaunchRalph: vi.fn(() => undefined),
         getSendToConversationRuntime: vi.fn(() => undefined),
         getSentinelTodos: vi.fn(() => undefined),
-        getSentinelScrubber: vi.fn(() => undefined),
+        getSentinelCoda: vi.fn(() => undefined),
         getSentinelRefrainCommands: vi.fn(() => undefined),
         getMcpOauthManager: vi.fn(() => undefined),
         getTurnPerformanceStore: vi.fn(() => undefined),
@@ -137,7 +137,7 @@ describe('Executor runtime capability wiring', () => {
             string,
             (parts: ReturnType<typeof internals>) => unknown,
         ]> = [
-            ['getSentinelScrubber', 'chat executors', p => p.chatExecutor.runtime.getSentinelScrubber],
+            ['getSentinelCoda', 'chat executors', p => p.chatExecutor.runtime.getSentinelCoda],
             ['getSentinelRefrainCommands', 'chat executors', p => p.chatExecutor.runtime.getSentinelRefrainCommands],
             ['getWsServer', 'chat executors', p => p.chatExecutor.runtime.getWsServer],
             ['getKustoRuntime', 'chat executors', p => p.chatExecutor.runtime.getKustoRuntime],
@@ -190,12 +190,12 @@ describe('Executor runtime capability wiring', () => {
             const task = { payload: { context: { sentinelScrub: {
                 workspaceId: 'ws', processId: 'parent', runId: 'run',
             } } } };
-            expect(() => chatExecutor.buildScrubFindingsTool(task)).toThrow('Sentinel Coda is disabled');
+            expect(() => chatExecutor.buildCodaFindingsTool(task)).toThrow('Sentinel Coda is disabled');
             const markRunning = vi.fn();
-            runtime.getSentinelScrubber.mockReturnValue({ markRunning } as any);
-            expect(chatExecutor.buildScrubFindingsTool(task)?.name).toBe('submit_scrub_findings');
+            runtime.getSentinelCoda.mockReturnValue({ markRunning } as any);
+            expect(chatExecutor.buildCodaFindingsTool(task)?.name).toBe('submit_scrub_findings');
             expect(markRunning).toHaveBeenCalledWith(task.payload.context.sentinelScrub);
-            expect(chatExecutor.buildScrubFindingsTool({ payload: {} })).toBeUndefined();
+            expect(chatExecutor.buildCodaFindingsTool({ payload: {} })).toBeUndefined();
         });
 
         it('passes the late-bound trigger creation capability to the PR tool', () => {

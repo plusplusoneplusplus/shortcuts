@@ -2,14 +2,14 @@ import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type { SentinelTodoOwner, SentinelTodoStatus } from '../sentinel-todos/sentinel-todo-store';
 import {
     MAX_SCRUB_RUNS, SCRUB_DEFAULT_CRON, SCRUB_FAILURE_PAUSE_THRESHOLD,
-    type ScrubFindingInput, type ScrubVerdict,
-} from './scrubber-model';
+    type CodaFindingInput, type CodaVerdict,
+} from './coda-model';
 
-export type ScrubRunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'timed_out' | 'cancelled' | 'interrupted' | 'skipped';
-export type ScrubTrigger = 'manual' | 'schedule';
-export const ACTIVE_SCRUB_STATUSES: readonly ScrubRunStatus[] = ['queued', 'running'];
+export type CodaRunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'timed_out' | 'cancelled' | 'interrupted' | 'skipped';
+export type CodaRunSource = 'manual' | 'schedule';
+export const ACTIVE_SCRUB_STATUSES: readonly CodaRunStatus[] = ['queued', 'running'];
 
-export interface ScrubberConfig {
+export interface CodaConfig {
     enabled: boolean;
     cron: string;
     paused: boolean;
@@ -19,10 +19,10 @@ export interface ScrubberConfig {
     lastInputFingerprint?: string;
 }
 
-export interface ScrubRunRecord {
+export interface CodaRunRecord {
     id: string;
-    trigger: ScrubTrigger;
-    status: ScrubRunStatus;
+    trigger: CodaRunSource;
+    status: CodaRunStatus;
     createdAt: string;
     startedAt?: string;
     finishedAt?: string;
@@ -41,19 +41,19 @@ export interface ScrubRunRecord {
 }
 
 /** The parts of an item a scrubber change can touch, before or after it. */
-export interface ScrubItemState {
+export interface CodaItemState {
     status: SentinelTodoStatus;
     outcome?: string;
     archived: boolean;
     revision: number;
 }
 
-export interface ScrubAuditEntry {
+export interface CodaAuditEntry {
     action: 'applied' | 'accepted' | 'dismissed' | 'undone';
     actor: 'scrubber' | 'user';
     at: string;
-    before?: ScrubItemState;
-    after?: ScrubItemState;
+    before?: CodaItemState;
+    after?: CodaItemState;
 }
 
 /**
@@ -62,23 +62,23 @@ export interface ScrubAuditEntry {
  * - `proposed`: waiting for the user's Accept/Dismiss.
  * - `suppressed`: matched an earlier dismissal/undo with the same evidence.
  */
-export type ScrubFindingState = 'pending' | 'applied' | 'proposed' | 'accepted' | 'dismissed' | 'undone'
+export type CodaFindingState = 'pending' | 'applied' | 'proposed' | 'accepted' | 'dismissed' | 'undone'
     | 'unchanged' | 'unverified' | 'suppressed';
-export type ScrubDemotion = 'superseded' | 'user_verdict' | 'manual' | 'evidence_gate';
+export type CodaDemotion = 'superseded' | 'user_verdict' | 'manual' | 'evidence_gate';
 
-export interface ScrubFindingRecord {
+export interface CodaFindingRecord {
     runId: string;
     itemId: string;
-    finding: ScrubFindingInput;
+    finding: CodaFindingInput;
     fingerprint: string;
     /** Item revision from the run snapshot. */
     itemRevision: number;
-    state: ScrubFindingState;
-    demotedBecause?: ScrubDemotion;
-    audit: ScrubAuditEntry[];
+    state: CodaFindingState;
+    demotedBecause?: CodaDemotion;
+    audit: CodaAuditEntry[];
 }
 
-export class ScrubberStoreError extends Error {
+export class CodaStoreError extends Error {
     constructor(readonly code: 'not_found' | 'conflict' | 'invalid', message: string) { super(message); }
 }
 
@@ -88,7 +88,7 @@ export class ScrubberStoreError extends Error {
  * the ledger owner `(workspaceId, parent processId)`; one owner can never
  * read or write another's rows. At most one run per owner is active.
  */
-export class ScrubberStore {
+export class CodaStore {
     constructor(private readonly db: NativeDatabase) {
         db.transaction(() => db.exec(`
             CREATE TABLE IF NOT EXISTS scrubber_config (
@@ -137,7 +137,7 @@ export class ScrubberStore {
         `))();
     }
 
-    getConfig(owner: SentinelTodoOwner): ScrubberConfig {
+    getConfig(owner: SentinelTodoOwner): CodaConfig {
         const row = this.db.prepare(`SELECT * FROM scrubber_config WHERE workspace_id = ? AND parent_process_id = ?`)
             .get<ConfigRow>(owner.workspaceId, owner.processId);
         if (!row) return { enabled: false, cron: SCRUB_DEFAULT_CRON, paused: false, consecutiveFailures: 0, revision: 0 };
@@ -159,20 +159,20 @@ export class ScrubberStore {
      * Saves the schedule when `expectedRevision` matches. Turning the schedule
      * on (or saving it again) resumes a paused schedule and clears failures.
      */
-    putConfig(owner: SentinelTodoOwner, input: { enabled: boolean; cron: string }, expectedRevision: number): ScrubberConfig {
+    putConfig(owner: SentinelTodoOwner, input: { enabled: boolean; cron: string }, expectedRevision: number): CodaConfig {
         return this.write(() => {
             const current = this.getConfig(owner);
-            if (current.revision !== expectedRevision) throw new ScrubberStoreError('conflict', 'The Coda schedule changed since it was loaded');
+            if (current.revision !== expectedRevision) throw new CodaStoreError('conflict', 'The Coda schedule changed since it was loaded');
             this.saveConfig(owner, { ...current, enabled: input.enabled, cron: input.cron.trim(), paused: false,
                 consecutiveFailures: 0, revision: current.revision + 1 });
             return this.getConfig(owner);
         });
     }
 
-    createRun(owner: SentinelTodoOwner, run: ScrubRunRecord): ScrubRunRecord {
+    createRun(owner: SentinelTodoOwner, run: CodaRunRecord): CodaRunRecord {
         return this.write(() => {
             if (ACTIVE_SCRUB_STATUSES.includes(run.status) && this.activeRun(owner)) {
-                throw new ScrubberStoreError('conflict', 'A scrub is already running for this ledger');
+                throw new CodaStoreError('conflict', 'A scrub is already running for this ledger');
             }
             this.db.prepare(`INSERT INTO scrubber_runs (workspace_id, parent_process_id, id, status, created_at, record)
                 VALUES (?, ?, ?, ?, ?, ?)`).run(owner.workspaceId, owner.processId, run.id, run.status, run.createdAt, JSON.stringify(run));
@@ -180,27 +180,27 @@ export class ScrubberStore {
         });
     }
 
-    activeRun(owner: SentinelTodoOwner): ScrubRunRecord | undefined {
+    activeRun(owner: SentinelTodoOwner): CodaRunRecord | undefined {
         const row = this.db.prepare(`SELECT record FROM scrubber_runs WHERE workspace_id = ? AND parent_process_id = ?
             AND status IN ('queued', 'running')`).get<{ record: string }>(owner.workspaceId, owner.processId);
         return row ? JSON.parse(row.record) : undefined;
     }
 
-    getRun(owner: SentinelTodoOwner, runId: string): ScrubRunRecord | undefined {
+    getRun(owner: SentinelTodoOwner, runId: string): CodaRunRecord | undefined {
         const row = this.db.prepare(`SELECT record FROM scrubber_runs WHERE workspace_id = ? AND parent_process_id = ? AND id = ?`)
             .get<{ record: string }>(owner.workspaceId, owner.processId, runId);
         return row ? JSON.parse(row.record) : undefined;
     }
 
     /** Newest first. */
-    listRuns(owner: SentinelTodoOwner): ScrubRunRecord[] {
+    listRuns(owner: SentinelTodoOwner): CodaRunRecord[] {
         return this.db.prepare(`SELECT record FROM scrubber_runs WHERE workspace_id = ? AND parent_process_id = ?
             ORDER BY created_at DESC, rowid DESC`).all<{ record: string }>(owner.workspaceId, owner.processId)
             .map(row => JSON.parse(row.record));
     }
 
     /** Active runs across all owners, for interrupting orphans at startup. */
-    listActiveRuns(): Array<{ owner: SentinelTodoOwner; run: ScrubRunRecord }> {
+    listActiveRuns(): Array<{ owner: SentinelTodoOwner; run: CodaRunRecord }> {
         return this.db.prepare(`SELECT workspace_id, parent_process_id, record FROM scrubber_runs WHERE status IN ('queued', 'running')`)
             .all<{ workspace_id: string; parent_process_id: string; record: string }>()
             .map(row => ({ owner: { workspaceId: row.workspace_id, processId: row.parent_process_id }, run: JSON.parse(row.record) }));
@@ -214,13 +214,13 @@ export class ScrubberStore {
     transitionRun(
         owner: SentinelTodoOwner,
         runId: string,
-        from: readonly ScrubRunStatus[],
-        patch: Partial<Omit<ScrubRunRecord, 'id' | 'trigger' | 'createdAt'>>,
-    ): ScrubRunRecord | undefined {
+        from: readonly CodaRunStatus[],
+        patch: Partial<Omit<CodaRunRecord, 'id' | 'trigger' | 'createdAt'>>,
+    ): CodaRunRecord | undefined {
         return this.write(() => {
             const current = this.getRun(owner, runId);
             if (!current || !from.includes(current.status)) return undefined;
-            const next: ScrubRunRecord = { ...current, ...patch };
+            const next: CodaRunRecord = { ...current, ...patch };
             this.db.prepare(`UPDATE scrubber_runs SET status = ?, record = ? WHERE workspace_id = ? AND parent_process_id = ? AND id = ?`)
                 .run(next.status, JSON.stringify(next), owner.workspaceId, owner.processId, runId);
             if (next.status !== current.status) this.countOutcome(owner, next);
@@ -240,24 +240,24 @@ export class ScrubberStore {
         });
     }
 
-    saveFindings(owner: SentinelTodoOwner, runId: string, findings: ScrubFindingRecord[]): void {
+    saveFindings(owner: SentinelTodoOwner, runId: string, findings: CodaFindingRecord[]): void {
         this.write(() => {
             const statement = this.db.prepare(`INSERT INTO scrubber_findings (workspace_id, parent_process_id, run_id, item_id, state, record)
                 VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT (workspace_id, parent_process_id, run_id, item_id) DO UPDATE SET state = excluded.state, record = excluded.record`);
             for (const finding of findings) {
-                if (finding.runId !== runId) throw new ScrubberStoreError('conflict', 'Finding belongs to another run');
+                if (finding.runId !== runId) throw new CodaStoreError('conflict', 'Finding belongs to another run');
                 statement.run(owner.workspaceId, owner.processId, runId, finding.itemId, finding.state, JSON.stringify(finding));
             }
         });
     }
 
-    listFindings(owner: SentinelTodoOwner, runId: string): ScrubFindingRecord[] {
+    listFindings(owner: SentinelTodoOwner, runId: string): CodaFindingRecord[] {
         return this.db.prepare(`SELECT record FROM scrubber_findings WHERE workspace_id = ? AND parent_process_id = ? AND run_id = ?
             ORDER BY rowid`).all<{ record: string }>(owner.workspaceId, owner.processId, runId).map(row => JSON.parse(row.record));
     }
 
-    getFinding(owner: SentinelTodoOwner, runId: string, itemId: string): ScrubFindingRecord | undefined {
+    getFinding(owner: SentinelTodoOwner, runId: string, itemId: string): CodaFindingRecord | undefined {
         const row = this.db.prepare(`SELECT record FROM scrubber_findings WHERE workspace_id = ? AND parent_process_id = ?
             AND run_id = ? AND item_id = ?`).get<{ record: string }>(owner.workspaceId, owner.processId, runId, itemId);
         return row ? JSON.parse(row.record) : undefined;
@@ -267,20 +267,20 @@ export class ScrubberStore {
      * Replaces a finding only while it is still in state `from`, so two
      * concurrent Accept/Dismiss clicks resolve to exactly one winner.
      */
-    updateFinding(owner: SentinelTodoOwner, from: ScrubFindingState, next: ScrubFindingRecord): boolean {
+    updateFinding(owner: SentinelTodoOwner, from: CodaFindingState, next: CodaFindingRecord): boolean {
         return this.db.prepare(`UPDATE scrubber_findings SET state = ?, record = ? WHERE workspace_id = ? AND parent_process_id = ?
             AND run_id = ? AND item_id = ? AND state = ?`)
             .run(next.state, JSON.stringify(next), owner.workspaceId, owner.processId, next.runId, next.itemId, from).changes === 1;
     }
 
     /** Remembers a dismissed (or undone) verdict until new evidence appears. */
-    suppress(owner: SentinelTodoOwner, itemId: string, verdict: ScrubVerdict, fingerprint: string): void {
+    suppress(owner: SentinelTodoOwner, itemId: string, verdict: CodaVerdict, fingerprint: string): void {
         this.db.prepare(`INSERT INTO scrubber_dismissals (workspace_id, parent_process_id, item_id, verdict, fingerprint, recorded_at)
             VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`)
             .run(owner.workspaceId, owner.processId, itemId, verdict, fingerprint, new Date().toISOString());
     }
 
-    isSuppressed(owner: SentinelTodoOwner, itemId: string, verdict: ScrubVerdict, fingerprint: string): boolean {
+    isSuppressed(owner: SentinelTodoOwner, itemId: string, verdict: CodaVerdict, fingerprint: string): boolean {
         return !!this.db.prepare(`SELECT 1 FROM scrubber_dismissals WHERE workspace_id = ? AND parent_process_id = ?
             AND item_id = ? AND verdict = ? AND fingerprint = ?`).get(owner.workspaceId, owner.processId, itemId, verdict, fingerprint);
     }
@@ -290,7 +290,7 @@ export class ScrubberStore {
         return this.write(fn);
     }
 
-    private countOutcome(owner: SentinelTodoOwner, run: ScrubRunRecord): void {
+    private countOutcome(owner: SentinelTodoOwner, run: CodaRunRecord): void {
         const config = this.getConfig(owner);
         // Without a saved schedule there is nothing to pause.
         if (config.revision === 0) return;
@@ -304,7 +304,7 @@ export class ScrubberStore {
         }
     }
 
-    private saveConfig(owner: SentinelTodoOwner, config: ScrubberConfig): void {
+    private saveConfig(owner: SentinelTodoOwner, config: CodaConfig): void {
         this.db.prepare(`INSERT INTO scrubber_config (workspace_id, parent_process_id, enabled, cron, paused, consecutive_failures, revision, last_input_fingerprint)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (workspace_id, parent_process_id) DO UPDATE SET enabled = excluded.enabled, cron = excluded.cron,

@@ -5,10 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRouter, type Route } from '../../../src/server/shared/router';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
-import { ScrubberStore } from '../../../src/server/sentinel-scrubber/scrubber-store';
-import { ScrubberEngine } from '../../../src/server/sentinel-scrubber/scrubber-engine';
-import { ScrubberRunService } from '../../../src/server/sentinel-scrubber/scrubber-runs';
-import { registerScrubberRoutes } from '../../../src/server/sentinel-scrubber/scrubber-routes';
+import { CodaStore } from '../../../src/server/sentinel-coda/coda-store';
+import { CodaEngine } from '../../../src/server/sentinel-coda/coda-engine';
+import { CodaRunService } from '../../../src/server/sentinel-coda/coda-runs';
+import { registerCodaRoutes } from '../../../src/server/sentinel-coda/coda-routes';
 import { createTodoTestDatabase, createTodoTestDirectory, failTodoWrites } from '../sentinel-todos/test-db';
 
 const owner = { workspaceId: 'ws-a', processId: 'queue_s1' };
@@ -21,10 +21,10 @@ const processes = {
 };
 let fixture: ReturnType<typeof createTodoTestDatabase>;
 let todos: SentinelTodoStore;
-let scrubber: ScrubberStore;
+let scrubber: CodaStore;
 let service: SentinelTodoService;
-let engine: ScrubberEngine;
-let runs: ScrubberRunService;
+let engine: CodaEngine;
+let runs: CodaRunService;
 let server: http.Server;
 let url: string;
 let enabled: boolean;
@@ -53,8 +53,8 @@ function settle(itemId: string, verdict: 'done' | 'obsolete' = 'obsolete') {
 beforeEach(async () => {
     fixture = createTodoTestDatabase(createTodoTestDirectory());
     todos = new SentinelTodoStore(fixture.db);
-    scrubber = new ScrubberStore(fixture.db);
-    engine = new ScrubberEngine({ todos, scrubber, now: () => new Date('2026-10-11T10:10:00.000Z') });
+    scrubber = new CodaStore(fixture.db);
+    engine = new CodaEngine({ todos, scrubber, now: () => new Date('2026-10-11T10:10:00.000Z') });
     service = new SentinelTodoService({ todos, store: {
         getProcess: async id => {
             const metadata = processes[id as keyof typeof processes];
@@ -63,11 +63,11 @@ beforeEach(async () => {
     } });
     enqueue = vi.fn(async (input: CreateTaskInput) => input.id!);
     cancelTask = vi.fn(() => true);
-    runs = new ScrubberRunService({ dataDir: fixture.dataDir, todos: service, scrubber, engine, enqueue, cancelTask });
+    runs = new CodaRunService({ dataDir: fixture.dataDir, todos: service, scrubber, engine, enqueue, cancelTask });
     enabled = true;
     onChange = vi.fn();
     const routes: Route[] = [];
-    registerScrubberRoutes({ routes, todos: service, scrubber, engine, runs, getEnabled: () => enabled, onChange });
+    registerCodaRoutes({ routes, todos: service, scrubber, engine, runs, getEnabled: () => enabled, onChange });
     server = http.createServer(createRouter({ routes, spaHtml: '' }));
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
     const address = server.address();

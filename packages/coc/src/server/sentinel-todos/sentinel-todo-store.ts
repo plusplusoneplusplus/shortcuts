@@ -914,7 +914,7 @@ export class SentinelTodoStore {
      * Marks a normal item Done for the To-do scrubber as `system`. The caller
      * owns the authority checks; this write never records a user verdict.
      */
-    recordScrubberDone(
+    recordCodaDone(
         owner: SentinelTodoOwner,
         itemId: string,
         expectedRevision: number,

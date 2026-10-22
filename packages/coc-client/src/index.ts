@@ -15,8 +15,33 @@ export * from './dashboard-discovery';
 export * from './date-time-trigger';
 
 // Deprecated names kept for one release after the Refrains/Coda/Overtures rename.
-import type { SentinelRefrain, SentinelRefrainGateTest, SentinelRefrainInput, SentinelRefrainRun } from './contracts';
-import type { SentinelRefrainsClient } from './domains';
+import type { SentinelCodaClient, SentinelRefrainsClient } from './domains';
+import type {
+  SentinelRefrain,
+  SentinelRefrainGateTest,
+  SentinelRefrainInput,
+  SentinelRefrainRun,
+  SentinelCodaChangedEvent,
+  SentinelCodaRunStatus,
+  SentinelCodaVerdict,
+  SentinelCodaConfig,
+  SentinelCodaEvidence,
+  SentinelCodaFinding,
+  SentinelCodaItemState,
+  SentinelCodaAuditEntry,
+  SentinelCodaFindingRecord,
+  SentinelCodaRun,
+  SentinelCodaRunSummary,
+  SentinelCodaRunDetail,
+  SentinelCodaResponse,
+  UpdateSentinelCodaConfigRequest,
+  StartSentinelCodaRequest,
+  StartSentinelCodaResponse,
+  SentinelCodaFindingActionRequest,
+  SentinelCodaFindingWriteResponse,
+  SentinelCodaFindingDismissResponse,
+} from './contracts';
+
 /** @deprecated use SentinelRefrain */
 export type SentinelScheduledJob = SentinelRefrain;
 /** @deprecated use SentinelRefrainInput */
@@ -27,3 +52,43 @@ export type SentinelScheduledJobRun = SentinelRefrainRun;
 export type SentinelScheduledJobGateTest = SentinelRefrainGateTest;
 /** @deprecated use SentinelRefrainsClient */
 export type SentinelScheduledJobsClient = SentinelRefrainsClient;
+/** @deprecated use SentinelCodaRunStatus */
+export type SentinelScrubRunStatus = SentinelCodaRunStatus;
+/** @deprecated use SentinelCodaVerdict */
+export type SentinelScrubVerdict = SentinelCodaVerdict;
+/** @deprecated use SentinelCodaConfig */
+export type SentinelScrubberConfig = SentinelCodaConfig;
+/** @deprecated use SentinelCodaEvidence */
+export type SentinelScrubEvidence = SentinelCodaEvidence;
+/** @deprecated use SentinelCodaFinding */
+export type SentinelScrubFinding = SentinelCodaFinding;
+/** @deprecated use SentinelCodaItemState */
+export type SentinelScrubItemState = SentinelCodaItemState;
+/** @deprecated use SentinelCodaAuditEntry */
+export type SentinelScrubAuditEntry = SentinelCodaAuditEntry;
+/** @deprecated use SentinelCodaFindingRecord */
+export type SentinelScrubFindingRecord = SentinelCodaFindingRecord;
+/** @deprecated use SentinelCodaRun */
+export type SentinelScrubRun = SentinelCodaRun;
+/** @deprecated use SentinelCodaRunSummary */
+export type SentinelScrubRunSummary = SentinelCodaRunSummary;
+/** @deprecated use SentinelCodaRunDetail */
+export type SentinelScrubRunDetail = SentinelCodaRunDetail;
+/** @deprecated use SentinelCodaResponse */
+export type SentinelScrubberResponse = SentinelCodaResponse;
+/** @deprecated use UpdateSentinelCodaConfigRequest */
+export type UpdateSentinelScrubberConfigRequest = UpdateSentinelCodaConfigRequest;
+/** @deprecated use StartSentinelCodaRequest */
+export type StartSentinelScrubRequest = StartSentinelCodaRequest;
+/** @deprecated use StartSentinelCodaResponse */
+export type StartSentinelScrubResponse = StartSentinelCodaResponse;
+/** @deprecated use SentinelCodaFindingActionRequest */
+export type SentinelScrubFindingActionRequest = SentinelCodaFindingActionRequest;
+/** @deprecated use SentinelCodaFindingWriteResponse */
+export type SentinelScrubFindingWriteResponse = SentinelCodaFindingWriteResponse;
+/** @deprecated use SentinelCodaFindingDismissResponse */
+export type SentinelScrubFindingDismissResponse = SentinelCodaFindingDismissResponse;
+/** @deprecated use SentinelCodaClient */
+export type SentinelScrubberClient = SentinelCodaClient;
+/** @deprecated use SentinelCodaChangedEvent */
+export type SentinelScrubberChangedEvent = SentinelCodaChangedEvent;

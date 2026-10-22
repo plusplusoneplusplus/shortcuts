@@ -1,9 +1,9 @@
 import type { SentinelTodoOwner } from '../sentinel-todos/sentinel-todo-store';
 import { nextCronTime } from '../schedule/cron-utils';
 import { ScheduleTimerRegistry } from '../schedule/schedule-timer-registry';
-import { validateScrubCron } from './scrubber-model';
-import type { ScrubberRunService } from './scrubber-runs';
-import type { ScrubberStore } from './scrubber-store';
+import { validateScrubCron } from './coda-model';
+import type { CodaRunService } from './coda-runs';
+import type { CodaStore } from './coda-store';
 
 /** Future-only, owner-scoped cron ticks. RunService owns overlap and unchanged skips. */
 export class ScrubberScheduler {
@@ -12,8 +12,8 @@ export class ScrubberScheduler {
     private disposed = false;
 
     constructor(private readonly deps: {
-        scrubber: Pick<ScrubberStore, 'getConfig' | 'listEnabledOwners'>;
-        runs: Pick<ScrubberRunService, 'start'>;
+        scrubber: Pick<CodaStore, 'getConfig' | 'listEnabledOwners'>;
+        runs: Pick<CodaRunService, 'start'>;
         getEnabled: () => boolean;
         assertOwner: (owner: SentinelTodoOwner) => Promise<void>;
         now?: () => Date;

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AIProcess } from '@plusplusoneplusplus/forge';
-import { ScrubberEngine } from '../../../src/server/sentinel-scrubber/scrubber-engine';
-import { scrubFindingInputSchema, type ScrubFindingInput } from '../../../src/server/sentinel-scrubber/scrubber-model';
-import { ScrubberStore, type ScrubRunRecord } from '../../../src/server/sentinel-scrubber/scrubber-store';
+import { CodaEngine } from '../../../src/server/sentinel-coda/coda-engine';
+import { codaFindingInputSchema, type CodaFindingInput } from '../../../src/server/sentinel-coda/coda-model';
+import { CodaStore, type CodaRunRecord } from '../../../src/server/sentinel-coda/coda-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { SentinelTodoStore, type SentinelTodoItem } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { SentinelTodoTriggerService } from '../../../src/server/triggers/sentinel-todo-trigger-service';
@@ -18,14 +18,14 @@ const pr = { kind: 'pr' as const, ref: 'https://github.com/o/r/pull/915', state:
 
 let fixture: ReturnType<typeof createTodoTestDatabase>;
 let todos: SentinelTodoStore;
-let scrubber: ScrubberStore;
+let scrubber: CodaStore;
 let triggers: TriggerStore;
-let engine: ScrubberEngine;
+let engine: CodaEngine;
 const disarm = vi.fn();
 const emit = vi.fn();
 
-function finding(itemId: string, patch: Partial<ScrubFindingInput> = {}): ScrubFindingInput {
-    return scrubFindingInputSchema.parse({
+function finding(itemId: string, patch: Partial<CodaFindingInput> = {}): CodaFindingInput {
+    return codaFindingInputSchema.parse({
         itemId, verdict: 'done', confidence: 'high', autoApply: true, summary: 'PR #915 merged', evidence: [pr], ...patch,
     });
 }
@@ -34,7 +34,7 @@ function item(title: string, patch: { type?: 'manual'; status?: 'in_progress' } 
     return todos.create(owner, { title, ...patch }, { actor: 'sentinel' }).item;
 }
 
-function startRun(items: SentinelTodoItem[], id = 'run-1'): ScrubRunRecord {
+function startRun(items: SentinelTodoItem[], id = 'run-1'): CodaRunRecord {
     scrubber.createRun(owner, {
         id, trigger: 'manual', status: 'running', createdAt: startedAt, startedAt,
         snapshot: items.map(entry => ({ itemId: entry.id, revision: entry.revision })),
@@ -51,7 +51,7 @@ beforeEach(() => {
     vi.resetAllMocks();
     fixture = createTodoTestDatabase(createTodoTestDirectory());
     todos = new SentinelTodoStore(fixture.db);
-    scrubber = new ScrubberStore(fixture.db);
+    scrubber = new CodaStore(fixture.db);
     triggers = new TriggerStore(fixture.db);
     const getProcess = vi.fn<(id: string) => Promise<AIProcess>>();
     const ruleService = new SentinelTodoTriggerService({
@@ -59,7 +59,7 @@ beforeEach(() => {
         manager: { arm: vi.fn(), disarm }, firer: { fire: vi.fn() } as never, fetchPr: vi.fn(), enabled: true, emit,
         now: () => now.getTime(),
     });
-    engine = new ScrubberEngine({ todos, scrubber, triggers: ruleService, now: () => now });
+    engine = new CodaEngine({ todos, scrubber, triggers: ruleService, now: () => now });
 });
 afterEach(() => fixture.dispose());
 
@@ -74,7 +74,7 @@ function armRule(itemId: string, id = 'rule-1') {
     } as never);
 }
 
-describe('ScrubberEngine.complete', () => {
+describe('CodaEngine.complete', () => {
     it('keeps Deferred despite newer completion evidence, then permits explicit user acceptance', () => {
         const deferred = todos.create(owner, { title: 'Postponed', status: 'deferred' }, { actor: 'user' }).item;
         startRun([deferred]);
@@ -192,18 +192,18 @@ describe('ScrubberEngine.complete', () => {
     });
 });
 
-describe('SentinelTodoStore.recordScrubberDone', () => {
+describe('SentinelTodoStore.recordCodaDone', () => {
     it('refuses manual items and stale revisions', () => {
         const manual = item('Manual', { type: 'manual' });
         const normal = item('Normal');
-        expect(() => todos.recordScrubberDone(owner, manual.id, manual.revision, 'done')).toThrow('Manual items accept proposals only');
-        expect(() => todos.recordScrubberDone(owner, normal.id, normal.revision + 1, 'done')).toThrow('changed since it was loaded');
-        expect(() => todos.recordScrubberDone(owner, normal.id, normal.revision, '')).toThrow();
+        expect(() => todos.recordCodaDone(owner, manual.id, manual.revision, 'done')).toThrow('Manual items accept proposals only');
+        expect(() => todos.recordCodaDone(owner, normal.id, normal.revision + 1, 'done')).toThrow('changed since it was loaded');
+        expect(() => todos.recordCodaDone(owner, normal.id, normal.revision, '')).toThrow();
         expect(todos.get(owner).items.map(entry => entry.status)).toEqual(['todo', 'todo']);
     });
 });
 
-describe('ScrubberEngine proposals', () => {
+describe('CodaEngine proposals', () => {
     it('accepts Obsolete as the user: done, outcome, archived, rule retired', () => {
         const c = item('Old investigation');
         armRule(c.id);

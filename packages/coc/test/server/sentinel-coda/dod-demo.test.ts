@@ -4,10 +4,10 @@ import type { CreateTaskInput, QueuedTask } from '@plusplusoneplusplus/forge';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { describeCron } from '../../../src/server/schedule/cron-utils';
 import { createRouter, type Route } from '../../../src/server/shared/router';
-import { ScrubberEngine } from '../../../src/server/sentinel-scrubber/scrubber-engine';
-import { registerScrubberRoutes } from '../../../src/server/sentinel-scrubber/scrubber-routes';
-import { ScrubberRunService, getScrubChildContext } from '../../../src/server/sentinel-scrubber/scrubber-runs';
-import { ScrubberStore } from '../../../src/server/sentinel-scrubber/scrubber-store';
+import { CodaEngine } from '../../../src/server/sentinel-coda/coda-engine';
+import { registerCodaRoutes } from '../../../src/server/sentinel-coda/coda-routes';
+import { CodaRunService, getCodaChildContext } from '../../../src/server/sentinel-coda/coda-runs';
+import { CodaStore } from '../../../src/server/sentinel-coda/coda-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { SentinelTodoStore, type SentinelTodoItem } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { createTodoTestDatabase, createTodoTestDirectory } from '../sentinel-todos/test-db';
@@ -23,8 +23,8 @@ const prA = 'https://github.com/o/r/pull/915';
 
 let fixture: ReturnType<typeof createTodoTestDatabase>;
 let todos: SentinelTodoStore;
-let scrubber: ScrubberStore;
-let runs: ScrubberRunService;
+let scrubber: CodaStore;
+let runs: CodaRunService;
 let server: http.Server;
 let client: CocClient['sentinelTodos']['scrubber'];
 let enqueued: CreateTaskInput[];
@@ -42,7 +42,7 @@ async function scrubNow(itemIds?: string[]) {
     const started = await client.start(ws, pid, itemIds ? { itemIds } : {});
     const input = enqueued.at(-1)!;
     expect(started.processId).toBe(`queue_${input.id}`);
-    const context = getScrubChildContext(input.payload)!;
+    const context = getCodaChildContext(input.payload)!;
     expect(runs.markRunning(context)?.status).toBe('running');
     return { runId: started.runId, input, context };
 }
@@ -50,20 +50,20 @@ async function scrubNow(itemIds?: string[]) {
 beforeEach(async () => {
     fixture = createTodoTestDatabase(createTodoTestDirectory());
     todos = new SentinelTodoStore(fixture.db);
-    scrubber = new ScrubberStore(fixture.db);
+    scrubber = new CodaStore(fixture.db);
     retireItemRules = vi.fn(() => () => undefined);
-    const engine = new ScrubberEngine({ todos, scrubber, triggers: { retireItemRules } });
+    const engine = new CodaEngine({ todos, scrubber, triggers: { retireItemRules } });
     const service = new SentinelTodoService({ todos, store: {
         getProcess: async id => id === pid ? { id, metadata: { workspaceId: ws, mode: 'sentinel' } } as never : undefined,
     } });
     enqueued = [];
     cancelTask = vi.fn(() => true);
-    runs = new ScrubberRunService({
+    runs = new CodaRunService({
         dataDir: fixture.dataDir, todos: service, scrubber, engine, cancelTask,
         enqueue: async input => { enqueued.push(input); return input.id!; },
     });
     const routes: Route[] = [];
-    registerScrubberRoutes({ routes, todos: service, scrubber, engine, runs, getEnabled: () => true });
+    registerCodaRoutes({ routes, todos: service, scrubber, engine, runs, getEnabled: () => true });
     server = http.createServer(createRouter({ routes, spaHtml: '' }));
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
     const address = server.address();

@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-    MAX_SCRUB_RUNS, SCRUB_CRON_PRESETS, SCRUB_DEFAULT_CRON, evidenceFingerprint, scrubFindingInputSchema, validateScrubCron,
-} from '../../../src/server/sentinel-scrubber/scrubber-model';
+    MAX_SCRUB_RUNS, SCRUB_CRON_PRESETS, SCRUB_DEFAULT_CRON, evidenceFingerprint, codaFindingInputSchema, validateScrubCron,
+} from '../../../src/server/sentinel-coda/coda-model';
 import {
-    ScrubberStore, ScrubberStoreError, type ScrubFindingRecord, type ScrubRunRecord,
-} from '../../../src/server/sentinel-scrubber/scrubber-store';
+    CodaStore, CodaStoreError, type CodaFindingRecord, type CodaRunRecord,
+} from '../../../src/server/sentinel-coda/coda-store';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { createSentinelTodosDomain } from '../../../src/server/storage/snapshot/delegated-jobs-domain';
 import { createTodoTestDatabase, createTodoTestDirectory } from '../sentinel-todos/test-db';
@@ -15,35 +15,35 @@ const now = '2026-10-11T10:00:00.000Z';
 const evidence = [{ kind: 'pr' as const, ref: 'https://github.com/o/r/pull/915', state: 'merged' as const, checkedAt: now }];
 
 let fixture: ReturnType<typeof createTodoTestDatabase>;
-let store: ScrubberStore;
+let store: CodaStore;
 
-function run(id: string, patch: Partial<ScrubRunRecord> = {}): ScrubRunRecord {
+function run(id: string, patch: Partial<CodaRunRecord> = {}): CodaRunRecord {
     return { id, trigger: 'manual', status: 'queued', createdAt: new Date(Date.parse(now) + Number(id.replace(/\D/g, '') || 0) * 1000).toISOString(),
         snapshot: [], deferredItemIds: [], awaitingReviewItemIds: [], ...patch };
 }
 
-function finding(runId: string, itemId: string, state: ScrubFindingRecord['state'] = 'proposed'): ScrubFindingRecord {
+function finding(runId: string, itemId: string, state: CodaFindingRecord['state'] = 'proposed'): CodaFindingRecord {
     return {
         runId, itemId, state, itemRevision: 1, fingerprint: evidenceFingerprint(evidence), audit: [],
-        finding: scrubFindingInputSchema.parse({ itemId, verdict: 'done', confidence: 'medium', summary: 'Merged', evidence }),
+        finding: codaFindingInputSchema.parse({ itemId, verdict: 'done', confidence: 'medium', summary: 'Merged', evidence }),
     };
 }
 
 beforeEach(() => {
     fixture = createTodoTestDatabase(createTodoTestDirectory());
-    store = new ScrubberStore(fixture.db);
+    store = new CodaStore(fixture.db);
 });
 afterEach(() => fixture.dispose());
 
 describe('scrubber model', () => {
     it('validates finding evidence and autoApply rules', () => {
-        expect(scrubFindingInputSchema.safeParse({ itemId: 'a', verdict: 'done', confidence: 'high', summary: 's' }).success).toBe(false);
-        expect(scrubFindingInputSchema.safeParse({ itemId: 'a', verdict: 'obsolete', confidence: 'high', summary: 's', evidence, autoApply: true }).success).toBe(false);
-        expect(scrubFindingInputSchema.safeParse({ itemId: 'a', verdict: 'unverified', confidence: 'low', summary: 's' }).success).toBe(false);
-        expect(scrubFindingInputSchema.parse({ itemId: 'a', verdict: 'unchanged', confidence: 'low', summary: 's' }))
+        expect(codaFindingInputSchema.safeParse({ itemId: 'a', verdict: 'done', confidence: 'high', summary: 's' }).success).toBe(false);
+        expect(codaFindingInputSchema.safeParse({ itemId: 'a', verdict: 'obsolete', confidence: 'high', summary: 's', evidence, autoApply: true }).success).toBe(false);
+        expect(codaFindingInputSchema.safeParse({ itemId: 'a', verdict: 'unverified', confidence: 'low', summary: 's' }).success).toBe(false);
+        expect(codaFindingInputSchema.parse({ itemId: 'a', verdict: 'unchanged', confidence: 'low', summary: 's' }))
             .toMatchObject({ autoApply: false, evidence: [], rationale: '' });
-        expect(scrubFindingInputSchema.safeParse({ itemId: 'a', verdict: 'done', confidence: 'high', summary: 's', evidence, extra: 1 }).success).toBe(false);
-        expect(scrubFindingInputSchema.safeParse({ itemId: 'a', verdict: 'done', confidence: 'high', summary: 'x'.repeat(301), evidence }).success).toBe(false);
+        expect(codaFindingInputSchema.safeParse({ itemId: 'a', verdict: 'done', confidence: 'high', summary: 's', evidence, extra: 1 }).success).toBe(false);
+        expect(codaFindingInputSchema.safeParse({ itemId: 'a', verdict: 'done', confidence: 'high', summary: 'x'.repeat(301), evidence }).success).toBe(false);
     });
 
     it('fingerprints evidence by kind, ref and state regardless of order or check time', () => {
@@ -85,12 +85,12 @@ describe('scrubber model', () => {
     });
 });
 
-describe('ScrubberStore', () => {
+describe('CodaStore', () => {
     it('defaults to a disabled, unsaved daily schedule and saves revision-checked config', () => {
         expect(store.getConfig(owner)).toEqual({ enabled: false, cron: SCRUB_DEFAULT_CRON, paused: false, consecutiveFailures: 0, revision: 0 });
         const saved = store.putConfig(owner, { enabled: true, cron: ' 0 */6 * * * ' }, 0);
         expect(saved).toMatchObject({ enabled: true, cron: '0 */6 * * *', revision: 1 });
-        expect(() => store.putConfig(owner, { enabled: false, cron: '0 */6 * * *' }, 0)).toThrow(ScrubberStoreError);
+        expect(() => store.putConfig(owner, { enabled: false, cron: '0 */6 * * *' }, 0)).toThrow(CodaStoreError);
         expect(store.listEnabledOwners()).toEqual([owner]);
         for (const other of others) expect(store.getConfig(other).revision).toBe(0);
     });
@@ -160,7 +160,7 @@ describe('ScrubberStore', () => {
         expect(store.updateFinding(owner, 'proposed', accepted)).toBe(true);
         expect(store.updateFinding(owner, 'proposed', { ...accepted, state: 'dismissed' })).toBe(false);
         expect(store.getFinding(owner, 'r1', 'a')?.state).toBe('accepted');
-        expect(() => store.saveFindings(owner, 'r1', [finding('r2', 'a')])).toThrow(ScrubberStoreError);
+        expect(() => store.saveFindings(owner, 'r1', [finding('r2', 'a')])).toThrow(CodaStoreError);
     });
 
     it('suppresses a dismissed verdict only for the same evidence and owner', () => {
@@ -176,7 +176,7 @@ describe('ScrubberStore', () => {
     it('persists across reopen with an idempotent schema', () => {
         store.putConfig(owner, { enabled: true, cron: SCRUB_DEFAULT_CRON }, 0);
         store.createRun(owner, run('r1'));
-        const reopened = new ScrubberStore(fixture.db);
+        const reopened = new CodaStore(fixture.db);
         expect(reopened.getConfig(owner).enabled).toBe(true);
         expect(reopened.activeRun(owner)?.id).toBe('r1');
     });
@@ -194,7 +194,7 @@ describe('ScrubberStore', () => {
         await domain.executeWipe(ctx as never, (await domain.planWipe(ctx as never)).plan, result);
         expect(result.errors).toEqual([]);
         fixture = createTodoTestDatabase(fixture.dataDir);
-        const wiped = new ScrubberStore(fixture.db);
+        const wiped = new CodaStore(fixture.db);
         expect(wiped.getConfig(owner).revision).toBe(0);
         expect(wiped.listRuns(owner)).toEqual([]);
         expect(wiped.isSuppressed(owner, 'a', 'done', 'fp')).toBe(false);

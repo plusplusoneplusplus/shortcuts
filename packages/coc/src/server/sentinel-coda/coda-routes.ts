@@ -6,10 +6,10 @@ import type { Route } from '../shared/router';
 import { isValidWorkspaceId } from '../tasks/comments/base-comments-manager';
 import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import { SentinelTodoError, type SentinelTodoOwner } from '../sentinel-todos/sentinel-todo-store';
-import type { ScrubberEngine } from './scrubber-engine';
-import { ScrubberCommands } from './scrubber-commands';
-import type { ScrubberRunService } from './scrubber-runs';
-import { ScrubberStoreError, type ScrubberStore } from './scrubber-store';
+import type { CodaEngine } from './coda-engine';
+import { CodaCommands } from './coda-commands';
+import type { CodaRunService } from './coda-runs';
+import { CodaStoreError, type CodaStore } from './coda-store';
 
 const BASE = '/api/workspaces/([^/]+)/sentinel-todos/([^/]+)/scrubber';
 const configSchema = z.object({
@@ -19,22 +19,22 @@ const startSchema = z.object({ itemIds: z.array(z.string().min(1).max(200)).min(
 const actionSchema = z.object({ expectedItemRevision: z.number().int().positive() }).strict();
 
 /** Owner-validated REST commands. Remote callers use their ledger's owning server. */
-export function registerScrubberRoutes(opts: {
+export function registerCodaRoutes(opts: {
     routes: Route[];
     todos: Pick<SentinelTodoService, 'assertOwner'>;
-    scrubber: ScrubberStore;
-    engine: Pick<ScrubberEngine, 'accept' | 'dismiss' | 'undo'>;
-    runs: Pick<ScrubberRunService, 'start' | 'cancel'>;
+    scrubber: CodaStore;
+    engine: Pick<CodaEngine, 'accept' | 'dismiss' | 'undo'>;
+    runs: Pick<CodaRunService, 'start' | 'cancel'>;
     /** True only when the scrubber flag is enabled. */
     getEnabled: () => boolean;
     onChange?: (owner: SentinelTodoOwner, change: { runId?: string; ledgerChanged?: boolean; configChanged?: boolean }) => void;
     /** Shared with the `sentinel_jobs` tool; built from the options above when omitted. */
-    commands?: ScrubberCommands;
+    commands?: CodaCommands;
 }): void {
     const { routes, todos, scrubber, engine } = opts;
-    const commands = opts.commands ?? new ScrubberCommands(opts);
+    const commands = opts.commands ?? new CodaCommands(opts);
     const fail = (res: http.ServerResponse, error: unknown) => {
-        if (error instanceof ScrubberStoreError || error instanceof SentinelTodoError) {
+        if (error instanceof CodaStoreError || error instanceof SentinelTodoError) {
             const status = { not_found: 404, conflict: 409, invalid: 400, limit: 400 }[error.code];
             return sendJSON(res, status, { error: error.message, code: error.code,
                 ...(error instanceof SentinelTodoError && error.current ? { current: error.current } : {}) });
@@ -86,7 +86,7 @@ export function registerScrubberRoutes(opts: {
     });
     add('GET', '/runs/([^/]+)', async (_req, res, owner, match) => {
         const run = scrubber.getRun(owner, decodeURIComponent(match[3]));
-        if (!run) throw new ScrubberStoreError('not_found', 'Scrub run not found');
+        if (!run) throw new CodaStoreError('not_found', 'Coda run not found');
         sendJSON(res, 200, { ...run, findings: scrubber.listFindings(owner, run.id) });
     });
     add('POST', '/runs/([^/]+)/cancel', async (_req, res, owner, match) => {

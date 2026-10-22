@@ -337,7 +337,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     let getSentinelTodosCapability: (() => import('./sentinel-todos/sentinel-todo-service').SentinelTodoService | undefined) | undefined;
     let getSentinelDependencyAdmissionCapability: import('./executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelDependencyAdmission'];
 
-    let getSentinelScrubberCapability: (() => import('./sentinel-scrubber/scrubber-runs').ScrubberRunService | undefined) | undefined;
+    let getSentinelCodaCapability: (() => import('./sentinel-coda/coda-runs').CodaRunService | undefined) | undefined;
     let getSentinelRefrainsCapability: (() => import('./sentinel-refrains/refrain-service').SentinelRefrainService | undefined) | undefined;
     let getSentinelRefrainCommandsCapability: import('./executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelRefrainCommands'];
 
@@ -504,7 +504,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         () => launchRalphCapability,
         () => getSentinelTodosCapability?.(),
         () => kustoRuntime,
-        () => getSentinelScrubberCapability?.(),
+        () => getSentinelCodaCapability?.(),
         () => getSentinelDependencyAdmissionCapability?.(),
         () => getBrowserRuntime?.(),
         () => browserState,
@@ -870,7 +870,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         setAskUserQuestionRelay: (relay) => { askUserQuestionRelay = relay; },
         setSentinelTodos: (get) => { getSentinelTodosCapability = get; },
         setSentinelDependencyAdmission: (get) => { getSentinelDependencyAdmissionCapability = get; },
-        setSentinelScrubber: (get) => { getSentinelScrubberCapability = get; },
+        setSentinelCoda: (get) => { getSentinelCodaCapability = get; },
         setSentinelRefrains: (get) => { getSentinelRefrainsCapability = get; },
         setSentinelRefrainCommands: (get) => { getSentinelRefrainCommandsCapability = get; },
         setSendToConversationRuntime: (runtime) => { sendToConversationRuntime = runtime; },

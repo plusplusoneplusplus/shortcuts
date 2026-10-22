@@ -5,11 +5,11 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CreateTaskInput, QueuedTask } from '@plusplusoneplusplus/forge';
 import { buildChatToolBundle } from '../../../src/server/executors/chat-tool-builder';
-import { createSubmitScrubFindingsTool } from '../../../src/server/llm-tools/submit-scrub-findings-tool';
-import { ScrubberEngine } from '../../../src/server/sentinel-scrubber/scrubber-engine';
-import { MAX_SCRUB_ITEMS } from '../../../src/server/sentinel-scrubber/scrubber-model';
-import { ScrubberRunService, buildScrubPrompt, getScrubChildContext, SUBMIT_SCRUB_FINDINGS_TOOL_NAME } from '../../../src/server/sentinel-scrubber/scrubber-runs';
-import { ScrubberStore } from '../../../src/server/sentinel-scrubber/scrubber-store';
+import { createSubmitCodaFindingsTool } from '../../../src/server/llm-tools/submit-coda-findings-tool';
+import { CodaEngine } from '../../../src/server/sentinel-coda/coda-engine';
+import { MAX_CODA_ITEMS } from '../../../src/server/sentinel-coda/coda-model';
+import { CodaRunService, buildCodaPrompt, getCodaChildContext, SUBMIT_CODA_FINDINGS_TOOL_NAME } from '../../../src/server/sentinel-coda/coda-runs';
+import { CodaStore } from '../../../src/server/sentinel-coda/coda-store';
 import type { SentinelTodoItemView, SentinelTodoLedgerView } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { SentinelTodoStore, type SentinelTodoItem } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import type { Trigger } from '../../../src/server/triggers/trigger-types';
@@ -25,8 +25,8 @@ const pr = { kind: 'pr', ref: 'https://github.com/o/r/pull/915', state: 'merged'
 
 let fixture: ReturnType<typeof createTodoTestDatabase>;
 let todos: SentinelTodoStore;
-let scrubber: ScrubberStore;
-let service: ScrubberRunService;
+let scrubber: CodaStore;
+let service: CodaRunService;
 let enqueued: CreateTaskInput[];
 let enqueue: ReturnType<typeof vi.fn<(input: CreateTaskInput) => Promise<string>>>;
 let cancelTask: ReturnType<typeof vi.fn<(taskId: string) => boolean>>;
@@ -46,8 +46,8 @@ function view(item: SentinelTodoItem): SentinelTodoItemView {
 }
 
 function createService(timeoutMs?: number) {
-    const engine = new ScrubberEngine({ todos, scrubber, now: () => new Date('2026-10-11T10:10:00.000Z') });
-    service = new ScrubberRunService({
+    const engine = new CodaEngine({ todos, scrubber, now: () => new Date('2026-10-11T10:10:00.000Z') });
+    service = new CodaRunService({
         now: () => new Date('2026-10-11T10:00:00.000Z'),
         dataDir: fixture.dataDir, scrubber, engine, enqueue, cancelTask, onChange,
         todos: { list: async ledgerOwner => {
@@ -76,7 +76,7 @@ function current(itemId: string): SentinelTodoItem {
 beforeEach(() => {
     fixture = createTodoTestDatabase(createTodoTestDirectory());
     todos = new SentinelTodoStore(fixture.db);
-    scrubber = new ScrubberStore(fixture.db);
+    scrubber = new CodaStore(fixture.db);
     enqueued = [];
     enqueue = vi.fn(async (input: CreateTaskInput) => { enqueued.push(input); return input.id!; });
     cancelTask = vi.fn(() => true);
@@ -92,7 +92,7 @@ afterEach(() => {
     fixture.dispose();
 });
 
-describe('ScrubberRunService.start', () => {
+describe('CodaRunService.start', () => {
     it.each(['manual', 'schedule'] as const)('resolves %s runs to medium without changing owner or model routing', async trigger => {
         for (const [ledgerOwner, provider, preferredEffort] of [
             [owner, 'copilot', 'high'], [other, 'codex', 'low'],
@@ -117,7 +117,7 @@ describe('ScrubberRunService.start', () => {
             expect(policy).toMatchObject({ modelId: 'gpt-5', reasoningEffort: 'medium' });
             expect(task.repoId).toBe(ledgerOwner.workspaceId);
             expect(task.payload.workspaceId).toBe(ledgerOwner.workspaceId);
-            expect(getScrubChildContext(task.payload)).toEqual({ ...ledgerOwner, runId: run.id });
+            expect(getCodaChildContext(task.payload)).toEqual({ ...ledgerOwner, runId: run.id });
             expect(scrubber.getConfig(ledgerOwner)).toEqual(scheduleBefore);
             expect(settings.models.providers[provider]?.reasoningEfforts['gpt-5']).toBe(preferredEffort);
         }
@@ -126,8 +126,8 @@ describe('ScrubberRunService.start', () => {
     it('cancels a scheduled admission disarmed during snapshot I/O without counting a failure', async () => {
         item('Work');
         service.dispose();
-        service = new ScrubberRunService({ dataDir: fixture.dataDir, scrubber,
-            engine: new ScrubberEngine({ todos, scrubber }), enqueue, cancelTask,
+        service = new CodaRunService({ dataDir: fixture.dataDir, scrubber,
+            engine: new CodaEngine({ todos, scrubber }), enqueue, cancelTask,
             todos: { list: async () => ({ ...todos.get(owner), items: todos.get(owner).items.map(view) }) },
             canStartScheduled: vi.fn().mockReturnValueOnce(true).mockReturnValue(false) });
         expect((await service.start(owner, { trigger: 'schedule' })).status).toBe('cancelled');
@@ -140,8 +140,8 @@ describe('ScrubberRunService.start', () => {
         let armed = true;
         let release!: () => void;
         service.dispose();
-        service = new ScrubberRunService({ dataDir: fixture.dataDir, scrubber,
-            engine: new ScrubberEngine({ todos, scrubber }), enqueue, cancelTask,
+        service = new CodaRunService({ dataDir: fixture.dataDir, scrubber,
+            engine: new CodaEngine({ todos, scrubber }), enqueue, cancelTask,
             todos: { list: async () => ({ ...todos.get(owner), items: todos.get(owner).items.map(view) }) },
             listTriggers: () => new Promise(resolve => { release = () => resolve([]); }),
             canStartScheduled: () => armed });
@@ -177,7 +177,7 @@ describe('ScrubberRunService.start', () => {
         const task = enqueued[0];
         expect(task).toMatchObject({ type: 'chat', priority: 'low', repoId: owner.workspaceId,
             payload: { kind: 'chat', mode: 'ask', workspaceId: owner.workspaceId } });
-        expect(getScrubChildContext(task.payload)).toEqual({ ...owner, runId: run.id });
+        expect(getCodaChildContext(task.payload)).toEqual({ ...owner, runId: run.id });
         // Never a Sentinel delegation: the child must not register as a delegated job.
         expect((task.payload.context as Record<string, unknown>).spawnedFromProcessId).toBeUndefined();
 
@@ -185,7 +185,7 @@ describe('ScrubberRunService.start', () => {
         expect(snapshotPath).toBe(path.join(fixture.dataDir, 'repos', owner.workspaceId, 'sentinel-scrubber',
             encodeURIComponent(owner.processId), run.id, 'snapshot.json'));
         expect(task.payload.prompt).toContain(snapshotPath);
-        expect(task.payload.prompt).toContain(SUBMIT_SCRUB_FINDINGS_TOOL_NAME);
+        expect(task.payload.prompt).toContain(SUBMIT_CODA_FINDINGS_TOOL_NAME);
         expect(task.payload.prompt).toContain(SENTINEL_COMPLETION_GUIDANCE);
         expect(task.payload.prompt).toContain('If closure is uncertain, report `unchanged` with the gap for the parent to ask the user; never auto-apply.');
         expect(task.payload.prompt).toContain('and its completion condition met');
@@ -197,14 +197,14 @@ describe('ScrubberRunService.start', () => {
     it('leaves items awaiting Sentinel review out of the snapshot and defers the newest beyond the cap', async () => {
         const awaiting = item('Pending job');
         pendingReview.add(awaiting.id);
-        const items = Array.from({ length: MAX_SCRUB_ITEMS + 2 }, (_, i) => item(`Item ${i}`));
+        const items = Array.from({ length: MAX_CODA_ITEMS + 2 }, (_, i) => item(`Item ${i}`));
         // Make the first two items the most recently updated.
         for (const recent of items.slice(0, 2)) todos.update(owner, recent.id, recent.revision, { notes: 'touched' }, 'sentinel');
 
         const run = await service.start(owner, { trigger: 'manual' });
 
         expect(run.awaitingReviewItemIds).toEqual([awaiting.id]);
-        expect(run.snapshot).toHaveLength(MAX_SCRUB_ITEMS);
+        expect(run.snapshot).toHaveLength(MAX_CODA_ITEMS);
         expect(run.snapshot.map(entry => entry.itemId)).not.toContain(awaiting.id);
         expect(run.deferredItemIds.sort()).toEqual(items.slice(0, 2).map(entry => entry.id).sort());
         const snapshot = JSON.parse(fs.readFileSync(service.snapshotPath(owner, run.id), 'utf-8'));
@@ -281,7 +281,7 @@ describe('ScrubberRunService.start', () => {
     });
 
     it('assesses deferred items on the next bounded run instead of treating the whole ledger as unchanged', async () => {
-        const entries = Array.from({ length: MAX_SCRUB_ITEMS + 2 }, (_, i) => item(`Deferred ${i}`));
+        const entries = Array.from({ length: MAX_CODA_ITEMS + 2 }, (_, i) => item(`Deferred ${i}`));
         scrubber.putConfig(owner, { enabled: true, cron: '0 9 * * *' }, 0);
         const first = await service.start(owner, { trigger: 'schedule' });
         service.markRunning({ ...owner, runId: first.id });
@@ -291,7 +291,7 @@ describe('ScrubberRunService.start', () => {
         await service.handleTaskTerminal(childTask(), 'completed');
         const next = await service.start(owner, { trigger: 'schedule' });
         expect(next.status).toBe('queued');
-        expect(next.snapshot).toHaveLength(MAX_SCRUB_ITEMS);
+        expect(next.snapshot).toHaveLength(MAX_CODA_ITEMS);
         expect(next.snapshot.slice(0, 2).map(entry => entry.itemId)).toEqual(first.deferredItemIds);
         expect(new Set([...first.snapshot, ...next.snapshot].map(entry => entry.itemId)).size).toBe(entries.length);
     });
@@ -310,7 +310,7 @@ describe('ScrubberRunService.start', () => {
         const a = item('Fast child', { status: 'in_progress' });
         enqueue.mockImplementation(async input => {
             enqueued.push(input);
-            const context = getScrubChildContext(input.payload)!;
+            const context = getCodaChildContext(input.payload)!;
             expect(scrubber.getRun(owner, context.runId)?.childProcessId).toBe(`queue_${input.id}`);
             service.markRunning(context);
             service.submit(context, [{ itemId: a.id, verdict: 'done', confidence: 'high', autoApply: true, summary: 'Merged', evidence: [pr] }]);
@@ -341,7 +341,7 @@ describe('ScrubberRunService.start', () => {
         const a = item('Cancelled during admission');
         enqueue.mockImplementation(async input => {
             enqueued.push(input);
-            const context = getScrubChildContext(input.payload)!;
+            const context = getCodaChildContext(input.payload)!;
             await service.cancel(owner, context.runId);
             expect(service.markRunning(context)?.status).toBe('cancelled');
             expect(() => service.submit(context, [])).toThrow('no longer active');
@@ -358,7 +358,7 @@ describe('ScrubberRunService.start', () => {
         const a = item('Rejected admission');
         enqueue.mockImplementation(async input => {
             enqueued.push(input);
-            service.markRunning(getScrubChildContext(input.payload)!);
+            service.markRunning(getCodaChildContext(input.payload)!);
             throw new Error('Admission failed');
         });
         expect((await service.start(owner, { trigger: 'manual' })).status).toBe('failed');
@@ -368,7 +368,7 @@ describe('ScrubberRunService.start', () => {
     });
 });
 
-describe('ScrubberRunService findings lifecycle', () => {
+describe('CodaRunService findings lifecycle', () => {
     it('accepts one findings batch and applies it only when the chat completes', async () => {
         const a = item('Chat pagination', { status: 'in_progress' });
         const run = await service.start(owner, { trigger: 'manual' });
@@ -497,7 +497,7 @@ describe('submit_scrub_findings tool', () => {
         const run = await service.start(owner, { trigger: 'manual' });
         const context = { ...owner, runId: run.id };
         service.markRunning(context);
-        const tool = createSubmitScrubFindingsTool({ service, context });
+        const tool = createSubmitCodaFindingsTool({ service, context });
         const invoke = (args: unknown) => (tool.handler as (args: unknown, inv: unknown) => Promise<unknown>)(args, {});
 
         await expect(invoke({ runId: 'other', findings: [] })).resolves.toEqual({ error: `runId must be "${run.id}"` });
@@ -506,8 +506,8 @@ describe('submit_scrub_findings tool', () => {
         await expect(invoke({ runId: run.id, findings: [] })).resolves.toMatchObject({ error: expect.stringContaining('already submitted') });
 
         const bundle = buildChatToolBundle({ store: {} as never, workspaceId: owner.workspaceId, processId: 'queue_task-1',
-            scrubFindings: tool, enqueueChat: vi.fn() as never, includeCanvasTools: true });
-        expect(bundle.tools.map(entry => entry.name)).toEqual([SUBMIT_SCRUB_FINDINGS_TOOL_NAME]);
+            codaFindings: tool, enqueueChat: vi.fn() as never, includeCanvasTools: true });
+        expect(bundle.tools.map(entry => entry.name)).toEqual([SUBMIT_CODA_FINDINGS_TOOL_NAME]);
         expect(bundle.toolGuidance).toBe('');
     });
 });
@@ -530,9 +530,9 @@ it('replaces queue subscriptions on reattach and removes them on disposal', asyn
 
 describe('Coda run prompt', () => {
     it('introduces the run as Coda and keeps the wire tool name', () => {
-        const prompt = buildScrubPrompt({ id: 'run-1' } as Parameters<typeof buildScrubPrompt>[0], '/tmp/snapshot.json');
+        const prompt = buildCodaPrompt({ id: 'run-1' } as Parameters<typeof buildCodaPrompt>[0], '/tmp/snapshot.json');
         expect(prompt).toMatch(/^You are Coda, this Sentinel's built-in to-do review \(run run-1\)\./);
-        expect(prompt).toContain(`call \`${SUBMIT_SCRUB_FINDINGS_TOOL_NAME}\``);
+        expect(prompt).toContain(`call \`${SUBMIT_CODA_FINDINGS_TOOL_NAME}\``);
         expect(prompt).not.toMatch(/Scrubber/);
     });
 });

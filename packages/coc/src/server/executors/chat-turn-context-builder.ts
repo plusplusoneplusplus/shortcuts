@@ -93,7 +93,7 @@ export interface ChatTurnContextInput {
     /** `sentinel_jobs` wiring; the owning Sentinel chat's attended turns only. */
     sentinelRefrains?: SentinelRefrainsToolDeps;
     /** A scrubber child chat's only tool; also skips Memory V2. */
-    scrubFindings?: Tool<any>;
+    codaFindings?: Tool<any>;
     /** Additional tool names to exclude beyond workspace preferences. */
     excludeTools?: string[];
     /** Told how each approval-gated LLM tool call was settled (timeline badge). */
@@ -191,7 +191,7 @@ const EMPTY_MEM_V2: MemoryV2Addon = Object.freeze({
  * ```
  */
 export async function buildChatTurnContext(input: ChatTurnContextInput): Promise<ChatTurnContext> {
-    const includeMemoryV2 = input.includeMemoryV2 !== false && !input.scrubFindings && !input.browserOnly
+    const includeMemoryV2 = input.includeMemoryV2 !== false && !input.codaFindings && !input.browserOnly
         && !input.sentinelPrOutcomeReview;
 
     const memoryV2: MemoryV2Addon = includeMemoryV2
@@ -224,7 +224,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         createPullRequest: input.createPullRequest,
         sentinelTodos: input.sentinelTodos,
         sentinelRefrains: input.sentinelRefrains,
-        scrubFindings: input.scrubFindings,
+        codaFindings: input.codaFindings,
         excludeTools: input.excludeTools,
         onLlmToolApprovalDecision: input.onLlmToolApprovalDecision,
         includeToolScripting: input.includeToolScripting,

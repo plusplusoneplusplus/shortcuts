@@ -1,8 +1,8 @@
 import { useEffect, useId, useState, type MouseEvent } from 'react';
-import type { CocClient, SentinelScrubItemState, SentinelScrubRunDetail, SentinelScrubRunSummary, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
+import type { CocClient, SentinelCodaItemState, SentinelCodaRunDetail, SentinelCodaRunSummary, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
 import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/Spinner';
-import { ScrubFindingEvidence } from './SentinelCodaFinding';
+import { CodaFindingEvidence } from './SentinelCodaFinding';
 import type { SentinelTodoOwner } from './sentinelTodoPanelModel';
 
 type ChatLinkProps = {
@@ -21,7 +21,7 @@ export function CodaRunChatLink({ owner, childProcessId, onFollowLink }: ChatLin
 
 type Props = Omit<ChatLinkProps, 'childProcessId'> & {
     client: CocClient;
-    runs: readonly SentinelScrubRunSummary[];
+    runs: readonly SentinelCodaRunSummary[];
     items: readonly SentinelTodoItem[];
 };
 
@@ -51,8 +51,8 @@ export function SentinelCodaHistory({ runs, ...props }: Props) {
     </section>;
 }
 
-function RunDetail({ client, owner, items, summary, id, onFollowLink }: Omit<Props, 'runs'> & { summary: SentinelScrubRunSummary; id: string }) {
-    const [detail, setDetail] = useState<SentinelScrubRunDetail | null>(null);
+function RunDetail({ client, owner, items, summary, id, onFollowLink }: Omit<Props, 'runs'> & { summary: SentinelCodaRunSummary; id: string }) {
+    const [detail, setDetail] = useState<SentinelCodaRunDetail | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [retry, setRetry] = useState(0);
     useEffect(() => {
@@ -90,7 +90,7 @@ function RunDetail({ client, owner, items, summary, id, onFollowLink }: Omit<Pro
                             <p>{record.finding.summary}</p>
                             {record.demotedBecause && <p>Proposal only: {record.demotedBecause.replaceAll('_', ' ')}</p>}
                             {record.finding.unverifiedReason && <p>Unverified: {record.finding.unverifiedReason}</p>}
-                            <ScrubFindingEvidence finding={record.finding} />
+                            <CodaFindingEvidence finding={record.finding} />
                             {!record.audit.length && <p>No changes recorded for this finding.</p>}
                             <ol className="flex flex-col gap-1">
                                 {record.audit.map((entry, index) => <li key={index}>
@@ -105,7 +105,7 @@ function RunDetail({ client, owner, items, summary, id, onFollowLink }: Omit<Pro
     </section>;
 }
 
-function AuditState({ label, state }: { label: string; state: SentinelScrubItemState }) {
+function AuditState({ label, state }: { label: string; state: SentinelCodaItemState }) {
     return <p>{label}: {state.status.replaceAll('_', ' ')} · {state.archived ? 'archived' : 'not archived'} · revision {state.revision}
         {' · '}Outcome: {state.outcome ?? 'None'}</p>;
 }

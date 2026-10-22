@@ -1,11 +1,11 @@
 import type { SentinelTodoStatus, SentinelTodoWriteResponse } from './sentinel-todos';
 
 /** Scrubber data is scoped to the ledger's workspace and Sentinel on its owning server. */
-export type SentinelScrubRunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'timed_out'
+export type SentinelCodaRunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'timed_out'
   | 'cancelled' | 'interrupted' | 'skipped';
-export type SentinelScrubVerdict = 'done' | 'obsolete' | 'in_progress' | 'deferred' | 'needs_attention' | 'unchanged' | 'unverified';
+export type SentinelCodaVerdict = 'done' | 'obsolete' | 'in_progress' | 'deferred' | 'needs_attention' | 'unchanged' | 'unverified';
 
-export interface SentinelScrubberConfig {
+export interface SentinelCodaConfig {
   enabled: boolean;
   cron: string;
   paused: boolean;
@@ -15,7 +15,7 @@ export interface SentinelScrubberConfig {
   nextRunAt?: string;
 }
 
-export interface SentinelScrubEvidence {
+export interface SentinelCodaEvidence {
   kind: 'pr' | 'commit' | 'job' | 'reference' | 'other';
   ref: string;
   state: 'merged' | 'open' | 'closed' | 'on_default_branch' | 'succeeded' | 'failed' | 'other';
@@ -23,49 +23,49 @@ export interface SentinelScrubEvidence {
   checkedAt: string;
 }
 
-export interface SentinelScrubFinding {
+export interface SentinelCodaFinding {
   itemId: string;
-  verdict: SentinelScrubVerdict;
+  verdict: SentinelCodaVerdict;
   confidence: 'high' | 'medium' | 'low';
   autoApply: boolean;
   summary: string;
   rationale: string;
   unverifiedReason?: string;
-  evidence: SentinelScrubEvidence[];
+  evidence: SentinelCodaEvidence[];
 }
 
-export interface SentinelScrubItemState {
+export interface SentinelCodaItemState {
   status: SentinelTodoStatus;
   outcome?: string;
   archived: boolean;
   revision: number;
 }
 
-export interface SentinelScrubAuditEntry {
+export interface SentinelCodaAuditEntry {
   action: 'applied' | 'accepted' | 'dismissed' | 'undone';
   actor: 'scrubber' | 'user';
   at: string;
-  before?: SentinelScrubItemState;
-  after?: SentinelScrubItemState;
+  before?: SentinelCodaItemState;
+  after?: SentinelCodaItemState;
 }
 
-export interface SentinelScrubFindingRecord {
+export interface SentinelCodaFindingRecord {
   runId: string;
   itemId: string;
-  finding: SentinelScrubFinding;
+  finding: SentinelCodaFinding;
   fingerprint: string;
   itemRevision: number;
   state: 'pending' | 'applied' | 'proposed' | 'accepted' | 'dismissed' | 'undone'
     | 'unchanged' | 'unverified' | 'suppressed';
   demotedBecause?: 'superseded' | 'user_verdict' | 'manual' | 'evidence_gate';
-  audit: SentinelScrubAuditEntry[];
+  audit: SentinelCodaAuditEntry[];
 }
 
 /** Queued and running records include snapshots, but findings are read from run detail. */
-export interface SentinelScrubRun {
+export interface SentinelCodaRun {
   id: string;
   trigger: 'manual' | 'schedule';
-  status: SentinelScrubRunStatus;
+  status: SentinelCodaRunStatus;
   createdAt: string;
   startedAt?: string;
   finishedAt?: string;
@@ -80,7 +80,7 @@ export interface SentinelScrubRun {
   findingsSubmittedAt?: string;
 }
 
-export interface SentinelScrubRunSummary extends Pick<SentinelScrubRun,
+export interface SentinelCodaRunSummary extends Pick<SentinelCodaRun,
   'id' | 'trigger' | 'status' | 'createdAt' | 'startedAt' | 'finishedAt' | 'childProcessId' | 'error' | 'skipReason'> {
   itemCount: number;
   deferredCount: number;
@@ -88,44 +88,44 @@ export interface SentinelScrubRunSummary extends Pick<SentinelScrubRun,
   counts: { done: number; proposals: number; unverified: number };
 }
 
-export interface SentinelScrubRunDetail extends SentinelScrubRun {
-  findings: SentinelScrubFindingRecord[];
+export interface SentinelCodaRunDetail extends SentinelCodaRun {
+  findings: SentinelCodaFindingRecord[];
 }
 
-export interface SentinelScrubberResponse {
-  config: SentinelScrubberConfig;
-  activeRun?: SentinelScrubRun;
-  runs: SentinelScrubRunSummary[];
+export interface SentinelCodaResponse {
+  config: SentinelCodaConfig;
+  activeRun?: SentinelCodaRun;
+  runs: SentinelCodaRunSummary[];
 }
 
-export interface UpdateSentinelScrubberConfigRequest {
+export interface UpdateSentinelCodaConfigRequest {
   enabled: boolean;
   cron: string;
   expectedRevision: number;
 }
 
-export interface StartSentinelScrubRequest {
+export interface StartSentinelCodaRequest {
   /** Omit to scrub all open items; a selection must contain at least one item. */
   itemIds?: string[];
 }
 
-export interface StartSentinelScrubResponse {
+export interface StartSentinelCodaResponse {
   runId: string;
   /** Owner-scoped child chat identity, when available. */
   processId?: string;
 }
 
-export interface SentinelScrubFindingActionRequest {
+export interface SentinelCodaFindingActionRequest {
   expectedItemRevision: number;
 }
 
 /** Accept and Undo return a stored item, without derived job execution. */
-export interface SentinelScrubFindingWriteResponse {
+export interface SentinelCodaFindingWriteResponse {
   item: SentinelTodoWriteResponse['item'];
-  finding: SentinelScrubFindingRecord;
+  finding: SentinelCodaFindingRecord;
 }
 
 /** Dismiss hides a finding and does not write a ledger item. */
-export interface SentinelScrubFindingDismissResponse {
-  finding: SentinelScrubFindingRecord;
+export interface SentinelCodaFindingDismissResponse {
+  finding: SentinelCodaFindingRecord;
 }

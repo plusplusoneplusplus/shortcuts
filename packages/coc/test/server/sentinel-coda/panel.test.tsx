@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { SentinelScrubberResponse, SentinelScrubRun, SentinelScrubFindingRecord, SentinelScrubRunDetail, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
+import type { SentinelCodaResponse, SentinelCodaRun, SentinelCodaFindingRecord, SentinelCodaRunDetail, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
 
 const mock = vi.hoisted(() => ({ getRun: vi.fn(), accept: vi.fn(), dismiss: vi.fn(), undo: vi.fn(), get: vi.fn(), start: vi.fn(), cancel: vi.fn(), updateConfig: vi.fn(), connect: vi.fn(), route: { kind: 'local' } as { kind: string; baseUrl?: string }, refs: [] as unknown[] }));
 vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({ useCocClient: (ref: unknown) => { mock.refs.push(ref); return client; } }));
@@ -13,14 +13,14 @@ import { applyRuntimeConfigPatch } from '../../../src/server/spa/client/react/ut
 
 const owner = { ownerWorkspaceId: 'ws-a', processId: 'queue_parent' };
 const follow = vi.fn();
-function response(patch: Partial<SentinelScrubberResponse> = {}): SentinelScrubberResponse {
+function response(patch: Partial<SentinelCodaResponse> = {}): SentinelCodaResponse {
     return { config: { enabled: false, cron: '0 9 * * *', paused: false, consecutiveFailures: 0, revision: 4 }, runs: [], ...patch };
 }
 function item(id: string, patch: Partial<SentinelTodoItem> = {}): SentinelTodoItem {
     return { id, title: `Item ${id}`, status: 'todo', archived: false, revision: 1, type: 'normal', priority: 'regular', completionCondition: '', notes: '', jobs: [],
         createdBy: 'user', updatedBy: 'user', createdAt: '2026-10-11T00:00:00Z', updatedAt: '2026-10-11T00:00:00Z', ...patch };
 }
-function active(status: 'queued' | 'running' = 'running'): SentinelScrubRun {
+function active(status: 'queued' | 'running' = 'running'): SentinelCodaRun {
     return { id: 'run-1', status, trigger: 'manual', createdAt: new Date().toISOString(), childProcessId: 'queue_child', snapshot: [{ itemId: 'a', revision: 1 }], deferredItemIds: [], awaitingReviewItemIds: [] };
 }
 function deferred<T>() {
@@ -217,7 +217,7 @@ describe('To-do Scrubber strip', () => {
     });
 
     it('discards delayed reads and writes after owner/endpoint changes', async () => {
-        const oldRead = deferred<SentinelScrubberResponse>();
+        const oldRead = deferred<SentinelCodaResponse>();
         mock.get.mockReturnValueOnce(oldRead.promise);
         const view = render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
         view.rerender(<SentinelCoda owner={{ ...owner, processId: 'other' }} items={[]} onFollowLink={follow} />);
@@ -245,12 +245,12 @@ describe('To-do Scrubber strip', () => {
     });
 });
 
-function finding(state: SentinelScrubFindingRecord['state'] = 'proposed', patch: Partial<SentinelScrubFindingRecord> = {}): SentinelScrubFindingRecord {
+function finding(state: SentinelCodaFindingRecord['state'] = 'proposed', patch: Partial<SentinelCodaFindingRecord> = {}): SentinelCodaFindingRecord {
     return { runId: 'result', itemId: 'a', state, itemRevision: 1, fingerprint: 'evidence', audit: [],
         finding: { itemId: 'a', verdict: 'done', confidence: 'high', autoApply: false, summary: 'Work landed', rationale: 'Completion condition met',
             evidence: [{ kind: 'pr', ref: 'https://example.com/pr/915', state: 'merged', checkedAt: '2026-10-11T01:00:00Z' }] }, ...patch };
 }
-function results(records: SentinelScrubFindingRecord[], runId = 'result') {
+function results(records: SentinelCodaFindingRecord[], runId = 'result') {
     const run = { ...active(), id: runId, status: 'completed' as const };
     return { summary: { ...run, itemCount: records.length, deferredCount: 0, awaitingReviewCount: 0, counts: { done: 0, proposals: 1, unverified: 0 } },
         detail: { ...run, findings: records } };
@@ -287,7 +287,7 @@ describe('Scrubber row findings', () => {
     });
 
     describe('Accept all scrubber proposals', () => {
-        function batch(records: SentinelScrubFindingRecord[], current = records.map(record => item(record.itemId))) {
+        function batch(records: SentinelCodaFindingRecord[], current = records.map(record => item(record.itemId))) {
             const result = results(records);
             mock.get.mockResolvedValue(response({ runs: [result.summary] }));
             mock.getRun.mockResolvedValue(result.detail);
@@ -482,7 +482,7 @@ describe('Scrubber row findings', () => {
 
     it('discards delayed finding reads and mutations when owner changes', async () => {
         setupFindings();
-        const pending = deferred<SentinelScrubRunDetail>();
+        const pending = deferred<SentinelCodaRunDetail>();
         mock.getRun.mockReturnValueOnce(pending.promise);
         const view = render(rows());
         await waitFor(() => expect(mock.getRun).toHaveBeenCalledOnce());

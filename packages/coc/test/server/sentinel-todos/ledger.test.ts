@@ -152,7 +152,7 @@ describe('SentinelTodoStore SQLite persistence', () => {
         store.recordGrillingResult(owner, job.processId, 'spec-later', ['plan']);
         row = store.get(owner).items[0];
         expect(row).toMatchObject({ status: 'deferred', statusReason: 'Next release' });
-        expectTodoError(() => store.recordScrubberDone(owner, row.id, row.revision, 'Merged'), 'invalid');
+        expectTodoError(() => store.recordCodaDone(owner, row.id, row.revision, 'Merged'), 'invalid');
         expectTodoError(() => store.update(owner, row.id, row.revision, { status: 'done', statusReason: 'Stale result' }, 'sentinel'), 'invalid');
     });
     it('starts empty, initializes additively and leaves the process schema/version intact', () => {

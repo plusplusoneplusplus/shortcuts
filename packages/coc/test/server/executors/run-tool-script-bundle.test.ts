@@ -73,7 +73,7 @@ describe('run_tool_script in buildChatToolBundle', () => {
     it.each([
         ['includeToolScripting false (Codex code mode, browser-only)', { includeToolScripting: false }],
         ['PR outcome review turns', { sentinelPrOutcomeReview: true }],
-        ['scrubber turns', { scrubFindings: { name: 'submit_scrub_findings', handler: vi.fn() } as never }],
+        ['scrubber turns', { codaFindings: { name: 'submit_scrub_findings', handler: vi.fn() } as never }],
     ])('is left out for %s', (_label, overrides) => {
         expect(names(build(overrides))).not.toContain('run_tool_script');
     });

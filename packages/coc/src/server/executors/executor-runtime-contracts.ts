@@ -41,7 +41,7 @@ import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } f
 import type { McpOauthManager } from '../mcp-oauth';
 import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
-import type { ScrubberRunService } from '../sentinel-scrubber/scrubber-runs';
+import type { CodaRunService } from '../sentinel-coda/coda-runs';
 import type { SentinelRefrainCommandSet } from '../llm-tools/sentinel-refrains-tool';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { CreateTriggerFn } from '../triggers/create-trigger-service';
@@ -164,7 +164,7 @@ export interface ExecutorRuntimeCapabilities {
      * `undefined` while `features.sentinelTodoScrubber` is off; a scrub child
      * chat then gets no findings tool and its run fails without changes.
      */
-    readonly getSentinelScrubber?: () => ScrubberRunService | undefined;
+    readonly getSentinelCoda?: () => CodaRunService | undefined;
     readonly getSentinelRefrains?: () => import('../sentinel-refrains/refrain-service').SentinelRefrainService | undefined;
     /**
      * Owner-validated job/scrubber commands REST uses, bound at the route layer.
@@ -250,7 +250,7 @@ export type ChatExecutorRuntime = Pick<
     | 'getLaunchRalph'
     | 'getSendToConversationRuntime'
     | 'getSentinelTodos'
-    | 'getSentinelScrubber'
+    | 'getSentinelCoda'
     | 'getSentinelRefrainCommands'
     | 'getDecisionService'
     | 'getMcpOauthManager'

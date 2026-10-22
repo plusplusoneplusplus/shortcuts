@@ -317,7 +317,7 @@ describe('buildChatToolBundle', () => {
         it('is never offered to PR outcome reviews or scrubber children', () => {
             writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
             expect(names(build({ sentinelPrOutcomeReview: true }))).not.toContain('sentinel_jobs');
-            expect(names(build({ scrubFindings: { name: 'submit_scrub_findings' } as never }))).toEqual(['submit_scrub_findings']);
+            expect(names(build({ codaFindings: { name: 'submit_scrub_findings' } as never }))).toEqual(['submit_scrub_findings']);
         });
 
         it('binds calls to the supplied owner', async () => {

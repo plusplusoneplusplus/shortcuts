@@ -334,7 +334,7 @@ export interface SentinelTodosChangedEvent {
 }
 
 /** Owner-scoped scrubber state invalidation; consumers refetch from the owning server. */
-export interface SentinelScrubberChangedEvent {
+export interface SentinelCodaChangedEvent {
   type: 'sentinel-scrubber-changed';
   workspaceId: string;
   processId: string;

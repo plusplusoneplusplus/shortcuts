@@ -116,7 +116,7 @@ export interface ChatToolBundleOptions {
      * other LLM tool, so the chat can neither write the ledger nor message
      * other chats.
      */
-    scrubFindings?: Tool<any>;
+    codaFindings?: Tool<any>;
     excludeTools?: string[];
     /** Background scripts omit ask_user and deny gated tools, including saved approvals. */
     unattendedScript?: boolean;
@@ -153,10 +153,10 @@ export interface ChatToolBundle {
  * in its unit tests.
  */
 export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBundle {
-    if (options.scrubFindings && !options.sentinelPrOutcomeReview) {
+    if (options.codaFindings && !options.sentinelPrOutcomeReview) {
         // Approval handles stay wired for the dangerous-command guard; the tool is not offered.
         const askUser = options.askUser && !options.unattendedScript ? buildAskUserAddon(options.askUser.enabled, options.askUser.deps) : undefined;
-        return { tools: [options.scrubFindings], toolGuidance: '', askUser };
+        return { tools: [options.codaFindings], toolGuidance: '', askUser };
     }
     const addons: ToolAddon[] = [];
     if (!options.sentinelPrOutcomeReview && options.browserRuntime?.getEnabled() && options.browserState && options.workspaceId && options.processId) {

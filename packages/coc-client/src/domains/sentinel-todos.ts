@@ -7,18 +7,18 @@ import type {
   WriteSentinelTodoTagRequest,
   DeleteSentinelTodoTagRequest,
   SuggestSentinelTodoTagsRequest,
-  SentinelScrubberResponse,
+  SentinelCodaResponse,
   SentinelPrOutcomesResponse,
   SentinelPrOutcomeControlRequest,
-  SentinelScrubberConfig,
-  UpdateSentinelScrubberConfigRequest,
-  StartSentinelScrubRequest,
-  StartSentinelScrubResponse,
-  SentinelScrubRun,
-  SentinelScrubRunDetail,
-  SentinelScrubFindingActionRequest,
-  SentinelScrubFindingWriteResponse,
-  SentinelScrubFindingDismissResponse,
+  SentinelCodaConfig,
+  UpdateSentinelCodaConfigRequest,
+  StartSentinelCodaRequest,
+  StartSentinelCodaResponse,
+  SentinelCodaRun,
+  SentinelCodaRunDetail,
+  SentinelCodaFindingActionRequest,
+  SentinelCodaFindingWriteResponse,
+  SentinelCodaFindingDismissResponse,
   AttachSentinelTodoReferenceRequest,
   BindSentinelTodoPrRequest,
   AcceptSentinelTodoArtifactRequest,
@@ -42,11 +42,11 @@ function ledgerPath(workspaceId: string, processId: string, suffix = ''): string
  * server's item.
  */
 export class SentinelTodosClient {
-  readonly scrubber: SentinelScrubberClient;
+  readonly scrubber: SentinelCodaClient;
   readonly jobs: SentinelRefrainsClient;
 
   constructor(private readonly transport: RequestAdapter) {
-    this.scrubber = new SentinelScrubberClient(transport);
+    this.scrubber = new SentinelCodaClient(transport);
     this.jobs = new SentinelRefrainsClient(transport);
   }
 
@@ -199,38 +199,38 @@ export class SentinelRefrainsClient {
 }
 
 /** Resolve the client from the owner workspace before accessing this resource. */
-export class SentinelScrubberClient {
+export class SentinelCodaClient {
   constructor(private readonly transport: RequestAdapter) {}
 
-  get(workspaceId: string, processId: string, options?: { signal?: AbortSignal }): Promise<SentinelScrubberResponse> {
+  get(workspaceId: string, processId: string, options?: { signal?: AbortSignal }): Promise<SentinelCodaResponse> {
     return this.transport.request(ledgerPath(workspaceId, processId, '/scrubber'), options);
   }
 
-  updateConfig(workspaceId: string, processId: string, request: UpdateSentinelScrubberConfigRequest): Promise<SentinelScrubberConfig> {
+  updateConfig(workspaceId: string, processId: string, request: UpdateSentinelCodaConfigRequest): Promise<SentinelCodaConfig> {
     return this.transport.request(ledgerPath(workspaceId, processId, '/scrubber/config'), { method: 'PUT', body: request });
   }
 
-  start(workspaceId: string, processId: string, request: StartSentinelScrubRequest = {}): Promise<StartSentinelScrubResponse> {
+  start(workspaceId: string, processId: string, request: StartSentinelCodaRequest = {}): Promise<StartSentinelCodaResponse> {
     return this.transport.request(ledgerPath(workspaceId, processId, '/scrubber/runs'), { method: 'POST', body: request });
   }
 
-  getRun(workspaceId: string, processId: string, runId: string, options?: { signal?: AbortSignal }): Promise<SentinelScrubRunDetail> {
+  getRun(workspaceId: string, processId: string, runId: string, options?: { signal?: AbortSignal }): Promise<SentinelCodaRunDetail> {
     return this.transport.request(this.runPath(workspaceId, processId, runId), options);
   }
 
-  cancel(workspaceId: string, processId: string, runId: string): Promise<SentinelScrubRun> {
+  cancel(workspaceId: string, processId: string, runId: string): Promise<SentinelCodaRun> {
     return this.transport.request(this.runPath(workspaceId, processId, runId) + '/cancel', { method: 'POST' });
   }
 
-  accept(workspaceId: string, processId: string, runId: string, itemId: string, request: SentinelScrubFindingActionRequest): Promise<SentinelScrubFindingWriteResponse> {
+  accept(workspaceId: string, processId: string, runId: string, itemId: string, request: SentinelCodaFindingActionRequest): Promise<SentinelCodaFindingWriteResponse> {
     return this.action(workspaceId, processId, runId, itemId, 'accept', request);
   }
 
-  dismiss(workspaceId: string, processId: string, runId: string, itemId: string, request: SentinelScrubFindingActionRequest): Promise<SentinelScrubFindingDismissResponse> {
+  dismiss(workspaceId: string, processId: string, runId: string, itemId: string, request: SentinelCodaFindingActionRequest): Promise<SentinelCodaFindingDismissResponse> {
     return this.action(workspaceId, processId, runId, itemId, 'dismiss', request);
   }
 
-  undo(workspaceId: string, processId: string, runId: string, itemId: string, request: SentinelScrubFindingActionRequest): Promise<SentinelScrubFindingWriteResponse> {
+  undo(workspaceId: string, processId: string, runId: string, itemId: string, request: SentinelCodaFindingActionRequest): Promise<SentinelCodaFindingWriteResponse> {
     return this.action(workspaceId, processId, runId, itemId, 'undo', request);
   }
 
@@ -239,7 +239,7 @@ export class SentinelScrubberClient {
   }
 
   private action<T>(workspaceId: string, processId: string, runId: string, itemId: string,
-    action: 'accept' | 'dismiss' | 'undo', request: SentinelScrubFindingActionRequest): Promise<T> {
+    action: 'accept' | 'dismiss' | 'undo', request: SentinelCodaFindingActionRequest): Promise<T> {
     return this.transport.request(
       this.runPath(workspaceId, processId, runId) + `/findings/${encodePathSegment(itemId)}/${action}`,
       { method: 'POST', body: request },

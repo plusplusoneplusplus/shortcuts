@@ -7,11 +7,11 @@
  */
 
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
-import type { SentinelRefrain, SentinelRefrainGateTest, SentinelRefrainInput, SentinelScrubberConfig } from '@plusplusoneplusplus/coc-client';
+import type { SentinelRefrain, SentinelRefrainGateTest, SentinelRefrainInput, SentinelCodaConfig } from '@plusplusoneplusplus/coc-client';
 import type { SentinelRefrainCommands } from '../sentinel-refrains/refrain-commands';
 import { RefrainError, type RefrainRunRecord } from '../sentinel-refrains/refrain-store';
-import type { ScrubberCommands, ScrubberView } from '../sentinel-scrubber/scrubber-commands';
-import { ScrubberStoreError, type ScrubRunRecord } from '../sentinel-scrubber/scrubber-store';
+import type { CodaCommands, CodaView } from '../sentinel-coda/coda-commands';
+import { CodaStoreError, type CodaRunRecord } from '../sentinel-coda/coda-store';
 import { SentinelTodoError, type SentinelTodoOwner } from '../sentinel-todos/sentinel-todo-store';
 
 export const SENTINEL_REFRAINS_TOOL_NAME = 'sentinel_jobs';
@@ -24,7 +24,7 @@ export interface SentinelRefrainsToolDeps {
     owner: SentinelTodoOwner;
     jobs: Pick<SentinelRefrainCommands, 'assertOwner' | 'list' | 'get' | 'create' | 'update' | 'start' | 'cancel' | 'testGate' | 'resumeGate'>;
     /** Present only when the scrubber feature is wired; commands still re-check the flag. */
-    scrubber?: Pick<ScrubberCommands, 'view' | 'putConfig' | 'start' | 'cancel'>;
+    scrubber?: Pick<CodaCommands, 'view' | 'putConfig' | 'start' | 'cancel'>;
     defaults: () => SentinelRefrainDefaults;
 }
 
@@ -43,12 +43,12 @@ export interface SentinelRefrainsArgs extends JobSettings {
 }
 
 export type SentinelRefrainsResult =
-    | { jobs: SentinelRefrain[]; scrubber?: ScrubberView | { unavailable: string } }
+    | { jobs: SentinelRefrain[]; scrubber?: CodaView | { unavailable: string } }
     | { job: SentinelRefrain }
-    | { scrubber: ScrubberView | SentinelScrubberConfig }
-    | { run: RefrainRunRecord | ScrubRunRecord }
+    | { scrubber: CodaView | SentinelCodaConfig }
+    | { run: RefrainRunRecord | CodaRunRecord }
     | { gateTest: SentinelRefrainGateTest }
-    | { error: string; code?: string; current?: SentinelRefrain | SentinelScrubberConfig };
+    | { error: string; code?: string; current?: SentinelRefrain | SentinelCodaConfig };
 
 const JOB_SETTINGS = ['name', 'instructions', 'provider', 'model', 'effort', 'mode', 'cron', 'enabled', 'autoCompactThreshold', 'gateScript'] as const;
 const SCRUBBER_SETTINGS = new Set<string>(['cron', 'enabled']);
@@ -135,7 +135,7 @@ export function createSentinelRefrainsTool(deps: SentinelRefrainsToolDeps) {
     async function writeScrubber(args: SentinelRefrainsArgs, enabled?: boolean) {
         const unsupported = JOB_SETTINGS.filter(key => args[key] !== undefined && !SCRUBBER_SETTINGS.has(key));
         if (unsupported.length) {
-            throw new ScrubberStoreError('invalid', `Coda only supports cron and enabled; unsupported: ${unsupported.join(', ')}`);
+            throw new CodaStoreError('invalid', `Coda only supports cron and enabled; unsupported: ${unsupported.join(', ')}`);
         }
         const config = (await scrubber!.view(owner)).config;
         return scrubber!.putConfig(owner, { enabled: enabled ?? args.enabled ?? config.enabled, cron: args.cron ?? config.cron },
@@ -189,7 +189,7 @@ export function createSentinelRefrainsTool(deps: SentinelRefrainsToolDeps) {
                 }
                 return { error: `Unsupported action: ${args.action}`, code: 'invalid' };
             } catch (err) {
-                if (err instanceof RefrainError || err instanceof ScrubberStoreError || err instanceof SentinelTodoError) {
+                if (err instanceof RefrainError || err instanceof CodaStoreError || err instanceof SentinelTodoError) {
                     const current = err.code === 'conflict' && kind ? await currentState(kind, args.jobId) : undefined;
                     return { error: err.message, code: err.code, ...(current ? { current } : {}) };
                 }

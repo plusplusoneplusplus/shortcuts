@@ -6,15 +6,15 @@
  */
 
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
-import type { ScrubberRunService, ScrubChildContext } from '../sentinel-scrubber/scrubber-runs';
-import { SUBMIT_SCRUB_FINDINGS_TOOL_NAME } from '../sentinel-scrubber/scrubber-runs';
+import type { CodaRunService, CodaChildContext } from '../sentinel-coda/coda-runs';
+import { SUBMIT_CODA_FINDINGS_TOOL_NAME } from '../sentinel-coda/coda-runs';
 
-export interface SubmitScrubFindingsToolDeps {
-    service: Pick<ScrubberRunService, 'submit'>;
-    context: ScrubChildContext;
+export interface SubmitCodaFindingsToolDeps {
+    service: Pick<CodaRunService, 'submit'>;
+    context: CodaChildContext;
 }
 
-interface SubmitScrubFindingsArgs {
+interface SubmitCodaFindingsArgs {
     runId?: string;
     findings?: unknown;
 }
@@ -31,8 +31,8 @@ const evidenceSchema = {
     required: ['kind', 'ref', 'state', 'checkedAt'],
 };
 
-export function createSubmitScrubFindingsTool(deps: SubmitScrubFindingsToolDeps) {
-    return defineTool<SubmitScrubFindingsArgs>(SUBMIT_SCRUB_FINDINGS_TOOL_NAME, {
+export function createSubmitCodaFindingsTool(deps: SubmitCodaFindingsToolDeps) {
+    return defineTool<SubmitCodaFindingsArgs>(SUBMIT_CODA_FINDINGS_TOOL_NAME, {
         description: 'Report this Coda run\'s findings, one per snapshot item. Call exactly once; later calls are rejected. '
             + 'The server applies auto-Done and records every other verdict as a proposal for the user.',
         parameters: {
@@ -59,7 +59,7 @@ export function createSubmitScrubFindingsTool(deps: SubmitScrubFindingsToolDeps)
             },
             required: ['runId', 'findings'],
         },
-        handler: async (args: SubmitScrubFindingsArgs) => {
+        handler: async (args: SubmitCodaFindingsArgs) => {
             if (args?.runId !== deps.context.runId) {
                 return { error: `runId must be "${deps.context.runId}"` };
             }

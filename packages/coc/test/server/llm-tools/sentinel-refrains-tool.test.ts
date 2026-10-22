@@ -4,10 +4,10 @@ import { createSentinelRefrainsTool, type SentinelRefrainDefaults, type Sentinel
 import { SentinelRefrainCommands } from '../../../src/server/sentinel-refrains/refrain-commands';
 import { SentinelRefrainService } from '../../../src/server/sentinel-refrains/refrain-service';
 import { SentinelRefrainStore } from '../../../src/server/sentinel-refrains/refrain-store';
-import { ScrubberCommands } from '../../../src/server/sentinel-scrubber/scrubber-commands';
-import { ScrubberEngine } from '../../../src/server/sentinel-scrubber/scrubber-engine';
-import { ScrubberRunService } from '../../../src/server/sentinel-scrubber/scrubber-runs';
-import { ScrubberStore } from '../../../src/server/sentinel-scrubber/scrubber-store';
+import { CodaCommands } from '../../../src/server/sentinel-coda/coda-commands';
+import { CodaEngine } from '../../../src/server/sentinel-coda/coda-engine';
+import { CodaRunService } from '../../../src/server/sentinel-coda/coda-runs';
+import { CodaStore } from '../../../src/server/sentinel-coda/coda-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { createTodoTestDatabase, createTodoTestDirectory } from '../sentinel-todos/test-db';
@@ -18,7 +18,7 @@ const otherWorkspace = { workspaceId: 'ws-b', processId: 'queue_s3' };
 
 let jobStore: SentinelRefrainStore;
 let todos: SentinelTodoStore;
-let scrubberStore: ScrubberStore;
+let scrubberStore: CodaStore;
 let processes: Map<string, AIProcess>;
 let jobsEnabled: boolean;
 let sentinelEnabled: boolean;
@@ -27,7 +27,7 @@ let enqueue: ReturnType<typeof vi.fn>;
 let scrubEnqueue: ReturnType<typeof vi.fn>;
 let onConfigChange: ReturnType<typeof vi.fn>;
 let jobCommands: SentinelRefrainCommands;
-let scrubberCommands: ScrubberCommands;
+let scrubberCommands: CodaCommands;
 let defaults: SentinelRefrainDefaults;
 let gateEnabled: boolean;
 let runGate: ReturnType<typeof vi.fn>;
@@ -55,7 +55,7 @@ beforeEach(() => {
     } as unknown as ProcessStore;
     jobStore = new SentinelRefrainStore(fixture.db);
     todos = new SentinelTodoStore(fixture.db);
-    scrubberStore = new ScrubberStore(fixture.db);
+    scrubberStore = new CodaStore(fixture.db);
     const todoService = new SentinelTodoService({ todos, store });
     jobsEnabled = true;
     sentinelEnabled = true;
@@ -69,9 +69,9 @@ beforeEach(() => {
         getEnabled: () => sentinelEnabled && jobsEnabled, getGateEnabled: () => gateEnabled, runGate,
         enqueue, cancelTask: vi.fn(() => true), getTask: () => undefined });
     jobCommands = new SentinelRefrainCommands({ jobs: jobStore, service, onConfigChange });
-    const runs = new ScrubberRunService({ dataDir: fixture.dataDir, todos: todoService, scrubber: scrubberStore,
-        engine: new ScrubberEngine({ todos, scrubber: scrubberStore }), enqueue: scrubEnqueue, cancelTask: vi.fn(() => true) });
-    scrubberCommands = new ScrubberCommands({ todos: todoService, scrubber: scrubberStore, runs, getEnabled: () => scrubberEnabled });
+    const runs = new CodaRunService({ dataDir: fixture.dataDir, todos: todoService, scrubber: scrubberStore,
+        engine: new CodaEngine({ todos, scrubber: scrubberStore }), enqueue: scrubEnqueue, cancelTask: vi.fn(() => true) });
+    scrubberCommands = new CodaCommands({ todos: todoService, scrubber: scrubberStore, runs, getEnabled: () => scrubberEnabled });
     defaults = { provider: 'copilot', model: 'gpt-5', effort: 'high' };
 });
 

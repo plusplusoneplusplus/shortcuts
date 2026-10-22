@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
-import { ScrubberCommands } from '../../../src/server/sentinel-scrubber/scrubber-commands';
-import { ScrubberEngine } from '../../../src/server/sentinel-scrubber/scrubber-engine';
-import { ScrubberRunService } from '../../../src/server/sentinel-scrubber/scrubber-runs';
-import { ScrubberStore } from '../../../src/server/sentinel-scrubber/scrubber-store';
+import { CodaCommands } from '../../../src/server/sentinel-coda/coda-commands';
+import { CodaEngine } from '../../../src/server/sentinel-coda/coda-engine';
+import { CodaRunService } from '../../../src/server/sentinel-coda/coda-runs';
+import { CodaStore } from '../../../src/server/sentinel-coda/coda-store';
 import { createTodoTestDatabase, createTodoTestDirectory } from '../sentinel-todos/test-db';
 
 const owner = { workspaceId: 'ws-a', processId: 'queue_s1' };
@@ -17,28 +17,28 @@ const processes: Record<string, { workspaceId: string; mode: string }> = {
 };
 
 let todos: SentinelTodoStore;
-let scrubber: ScrubberStore;
-let runs: ScrubberRunService;
+let scrubber: CodaStore;
+let runs: CodaRunService;
 let enabled: boolean;
 let onChange: ReturnType<typeof vi.fn>;
-let commands: ScrubberCommands;
+let commands: CodaCommands;
 
 beforeEach(() => {
     const fixture = createTodoTestDatabase(createTodoTestDirectory());
     todos = new SentinelTodoStore(fixture.db);
-    scrubber = new ScrubberStore(fixture.db);
-    const engine = new ScrubberEngine({ todos, scrubber });
+    scrubber = new CodaStore(fixture.db);
+    const engine = new CodaEngine({ todos, scrubber });
     const service = new SentinelTodoService({ todos, store: {
         getProcess: async id => processes[id] ? { id, metadata: processes[id] } as never : undefined,
     } });
-    runs = new ScrubberRunService({ dataDir: fixture.dataDir, todos: service, scrubber, engine,
+    runs = new CodaRunService({ dataDir: fixture.dataDir, todos: service, scrubber, engine,
         enqueue: vi.fn(async (input: CreateTaskInput) => input.id!), cancelTask: vi.fn(() => true) });
     enabled = true;
     onChange = vi.fn();
-    commands = new ScrubberCommands({ todos: service, scrubber, runs, getEnabled: () => enabled, onChange });
+    commands = new CodaCommands({ todos: service, scrubber, runs, getEnabled: () => enabled, onChange });
 });
 
-describe('ScrubberCommands', () => {
+describe('CodaCommands', () => {
     it('rejects every command while the scrubber flag is off', async () => {
         enabled = false;
         await expect(commands.view(owner)).rejects.toMatchObject({ code: 'not_found' });

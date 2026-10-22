@@ -1,21 +1,21 @@
 /** @vitest-environment jsdom */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { CocClient, type SentinelScrubFindingRecord, type SentinelScrubRunDetail, type SentinelScrubRunSummary } from '@plusplusoneplusplus/coc-client';
+import { CocClient, type SentinelCodaFindingRecord, type SentinelCodaRunDetail, type SentinelCodaRunSummary } from '@plusplusoneplusplus/coc-client';
 import { SentinelCodaHistory } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelCodaHistory';
 
 const owner = { ownerWorkspaceId: 'group', processId: 'chat', ownerRoutingRef: 'remote:srv:group' };
 const at = '2026-10-11T09:00:00Z';
-function summary(patch: Partial<SentinelScrubRunSummary> = {}): SentinelScrubRunSummary {
+function summary(patch: Partial<SentinelCodaRunSummary> = {}): SentinelCodaRunSummary {
     return { id: 'run-1', status: 'completed', trigger: 'manual', createdAt: at, childProcessId: 'queue_child',
         itemCount: 1, deferredCount: 2, awaitingReviewCount: 1, counts: { done: 1, proposals: 0, unverified: 0 }, ...patch };
 }
-function detail(patch: Partial<SentinelScrubRunDetail> = {}): SentinelScrubRunDetail {
+function detail(patch: Partial<SentinelCodaRunDetail> = {}): SentinelCodaRunDetail {
     return { id: 'run-1', status: 'completed', trigger: 'manual', createdAt: at, startedAt: at, finishedAt: at,
         childProcessId: 'queue_child', snapshot: [{ itemId: 'item', revision: 1 }],
         deferredItemIds: ['later'], awaitingReviewItemIds: ['review'], findings: [], ...patch };
 }
-function record(state: SentinelScrubFindingRecord['state'] = 'undone'): SentinelScrubFindingRecord {
+function record(state: SentinelCodaFindingRecord['state'] = 'undone'): SentinelCodaFindingRecord {
     return { runId: 'run-1', itemId: 'item', state, itemRevision: 1, fingerprint: 'hash',
         finding: { itemId: 'item', verdict: 'done', autoApply: true, confidence: 'high', summary: 'Landed',
             rationale: 'Completion verified', evidence: [{ kind: 'pr', ref: 'https://example.test/pull/1', state: 'merged', checkedAt: at }] },
@@ -24,7 +24,7 @@ function record(state: SentinelScrubFindingRecord['state'] = 'undone'): Sentinel
         { action: 'undone', actor: 'user', at, before: { status: 'done', archived: false, revision: 2, outcome: 'Landed' },
             after: { status: 'in_progress', archived: false, revision: 3, outcome: 'Original outcome' } }] };
 }
-function client(value: SentinelScrubRunDetail) {
+function client(value: SentinelCodaRunDetail) {
     const fetch = vi.fn(async (_input: RequestInfo | URL, _options?: RequestInit) => Response.json(value));
     return { fetch, api: new CocClient({ baseUrl: 'https://remote.test', fetch }) };
 }

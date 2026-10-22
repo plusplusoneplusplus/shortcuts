@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from 'react';
-import type { CocClient, SentinelScrubberConfig, SentinelScrubberResponse, SentinelScrubFindingRecord, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
+import type { CocClient, SentinelCodaConfig, SentinelCodaResponse, SentinelCodaFindingRecord, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled } from '../../../utils/config';
@@ -53,14 +53,14 @@ export function SentinelCoda(props: Props) {
 
 function CodaStrip({ owner, items, onFollowLink, client, children, toolbar, onLedgerChange, builtInRow }: Props & { client: CocClient }) {
     const id = useId();
-    const [findings, setFindings] = useState<ReadonlyMap<string, SentinelScrubFindingRecord>>(new Map());
-    const [data, setData] = useState<SentinelScrubberResponse | null>(null);
+    const [findings, setFindings] = useState<ReadonlyMap<string, SentinelCodaFindingRecord>>(new Map());
+    const [data, setData] = useState<SentinelCodaResponse | null>(null);
     const [findingsError, setFindingsError] = useState<string | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [batchResult, setBatchResult] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
-    const [schedule, setSchedule] = useState<SentinelScrubberConfig | null>(null);
+    const [schedule, setSchedule] = useState<SentinelCodaConfig | null>(null);
     const [selecting, setSelecting] = useState(false);
     const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
     const [historyOpen, setHistoryOpen] = useState(false);
@@ -79,7 +79,7 @@ function CodaStrip({ owner, items, onFollowLink, client, children, toolbar, onLe
             configLoaded = true;
             const details = await Promise.all(next.runs.filter(run => run.status === 'completed')
                 .map(run => api.getRun(owner.ownerWorkspaceId, owner.processId, run.id)));
-            const records = new Map<string, SentinelScrubFindingRecord>();
+            const records = new Map<string, SentinelCodaFindingRecord>();
             // Summaries are newest first; even suppressed findings supersede older badges.
             for (const detail of details) for (const record of detail.findings) {
                 if (!records.has(record.itemId)) records.set(record.itemId, record);
@@ -133,11 +133,11 @@ function CodaStrip({ owner, items, onFollowLink, client, children, toolbar, onLe
     const config = data?.config;
     const chatId = active?.childProcessId ?? last?.childProcessId;
     const cronError = useMemo(() => schedule ? validateScrubCron(schedule.cron) : undefined, [schedule?.cron]);
-    const saveConfig = (draft: SentinelScrubberConfig) => mutate(() => api.updateConfig(owner.ownerWorkspaceId, owner.processId, {
+    const saveConfig = (draft: SentinelCodaConfig) => mutate(() => api.updateConfig(owner.ownerWorkspaceId, owner.processId, {
         enabled: draft.enabled, cron: draft.cron.trim(), expectedRevision: draft.revision,
     }), () => setSchedule(null));
 
-    const findingAction = async (record: SentinelScrubFindingRecord, action: 'accept' | 'dismiss' | 'undo') => {
+    const findingAction = async (record: SentinelCodaFindingRecord, action: 'accept' | 'dismiss' | 'undo') => {
         if (busyRef.current) return;
         busyRef.current = true;
         sequence.current++;

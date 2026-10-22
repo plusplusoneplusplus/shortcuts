@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CocApiError, CocClient, CocNetworkError, SentinelTodosClient } from '../../src';
-import type { SentinelScrubRunDetail, SentinelScrubberResponse } from '../../src';
+import type { SentinelCodaRunDetail, SentinelCodaResponse } from '../../src';
 import { createMockAdapter } from './helpers';
 
 const ownerPath = '/workspaces/ws%20one/sentinel-todos/chat%23one/scrubber';
 
 describe('Sentinel scrubber client', () => {
   it('reads owner state and full findings without dropping audit or snapshot metadata', async () => {
-    const run: SentinelScrubRunDetail = {
+    const run: SentinelCodaRunDetail = {
       id: 'run/one', trigger: 'manual', status: 'completed', createdAt: '2026-10-11T09:00:00Z',
       snapshot: [{ itemId: 'item one', revision: 3 }], deferredItemIds: ['later'], awaitingReviewItemIds: ['pending'],
       findings: [{
@@ -20,7 +20,7 @@ describe('Sentinel scrubber client', () => {
         }, audit: [{ action: 'dismissed', actor: 'user', at: '2026-10-11T09:02:00Z' }],
       }],
     };
-    const state: SentinelScrubberResponse = {
+    const state: SentinelCodaResponse = {
       config: { enabled: false, cron: '0 9 * * *', paused: false, consecutiveFailures: 0, revision: 0 },
       runs: [],
     };

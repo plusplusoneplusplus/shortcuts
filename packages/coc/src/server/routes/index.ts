@@ -7,12 +7,12 @@ import { getOrCreateServerIdentity } from '../servers/server-identity';
 import * as fs from 'fs';
 import * as path from 'path';
 import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
-import { ScrubberStore } from '../sentinel-scrubber/scrubber-store';
-import { ScrubberEngine } from '../sentinel-scrubber/scrubber-engine';
-import { ScrubberRunService } from '../sentinel-scrubber/scrubber-runs';
-import { ScrubberScheduler } from '../sentinel-scrubber/scrubber-scheduler';
-import { registerScrubberRoutes } from '../sentinel-scrubber/scrubber-routes';
-import { ScrubberCommands } from '../sentinel-scrubber/scrubber-commands';
+import { CodaStore } from '../sentinel-coda/coda-store';
+import { CodaEngine } from '../sentinel-coda/coda-engine';
+import { CodaRunService } from '../sentinel-coda/coda-runs';
+import { ScrubberScheduler } from '../sentinel-coda/scrubber-scheduler';
+import { registerCodaRoutes } from '../sentinel-coda/coda-routes';
+import { CodaCommands } from '../sentinel-coda/coda-commands';
 import { SentinelRefrainStore } from '../sentinel-refrains/refrain-store';
 import { SentinelRefrainService } from '../sentinel-refrains/refrain-service';
 import { SentinelJobScheduler } from '../sentinel-refrains/job-scheduler';
@@ -345,7 +345,7 @@ export interface RegisterRoutesOptions {
     setSentinelTodos?: (get: () => SentinelTodoService | undefined) => void;
     sentinelPrOutcomes?: SentinelPrOutcomeService;
     setSentinelDependencyAdmission?: (get: NonNullable<import('../executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelDependencyAdmission']>) => void;
-    setSentinelScrubber?: (get: () => ScrubberRunService | undefined) => void;
+    setSentinelCoda?: (get: () => CodaRunService | undefined) => void;
     setSentinelRefrains?: (get: () => SentinelRefrainService | undefined) => void;
     setSentinelRefrainCommands?: (get: NonNullable<import('../executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelRefrainCommands']>) => void;
     /** Publish the WhatsApp/Teams ask_user question relay to the executor runtime. */
@@ -669,8 +669,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelPrOutcomeWake === true);
     opts.setSentinelTodos?.(() => sentinelTodos);
     const getScrubberEnabled = () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoScrubber === true;
-    const scrubber = new ScrubberStore(todoDb);
-    const scrubberEngine = new ScrubberEngine({ todos: todoStore, scrubber, triggers: opts.sentinelTodoTriggers });
+    const scrubber = new CodaStore(todoDb);
+    const scrubberEngine = new CodaEngine({ todos: todoStore, scrubber, triggers: opts.sentinelTodoTriggers });
     let scrubberScheduler: ScrubberScheduler | undefined;
     const scrubberChanged = (owner: import('../sentinel-todos/sentinel-todo-store').SentinelTodoOwner,
         change: { runId?: string; ledgerChanged?: boolean }) => {
@@ -680,7 +680,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         if (change.ledgerChanged) getWsServer().broadcastProcessEvent({ type: 'sentinel-todos-changed', ...owner,
             ledgerRevision: todoStore.get(owner).revision, timestamp: Date.now() });
     };
-    const scrubberRuns = new ScrubberRunService({
+    const scrubberRuns = new CodaRunService({
         dataDir, todos: sentinelTodos, scrubber, engine: scrubberEngine,
         enqueue: input => enqueueWithResolvedDefaults(input),
         cancelTask: taskId => {
@@ -768,10 +768,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         }
     };
     store.onProcessChange = scrubberProcessChange;
-    opts.setSentinelScrubber?.(() => getScrubberEnabled() ? scrubberRuns : undefined);
-    const scrubberCommands = new ScrubberCommands({ todos: sentinelTodos, scrubber,
+    opts.setSentinelCoda?.(() => getScrubberEnabled() ? scrubberRuns : undefined);
+    const scrubberCommands = new CodaCommands({ todos: sentinelTodos, scrubber,
         runs: scrubberRuns, getEnabled: getScrubberEnabled, onChange: scrubberChanged });
-    registerScrubberRoutes({ routes, todos: sentinelTodos, scrubber, engine: scrubberEngine,
+    registerCodaRoutes({ routes, todos: sentinelTodos, scrubber, engine: scrubberEngine,
         runs: scrubberRuns, getEnabled: getScrubberEnabled, onChange: scrubberChanged, commands: scrubberCommands });
     opts.setSentinelRefrainCommands?.(() => getJobsEnabled()
         ? { jobs: jobCommands, ...(getScrubberEnabled() ? { scrubber: scrubberCommands } : {}) } : undefined);

@@ -88,12 +88,12 @@ describe('createQueueInfrastructure', () => {
         try {
             // Inspect the runtime passed to repo executors; late binding must survive construction.
             const runtime = (result.bridge as any).defaultOptions.runtime;
-            expect(runtime.getSentinelScrubber).toBe(getScrubber);
-            expect(runtime.getSentinelScrubber()).toBeUndefined();
+            expect(runtime.getSentinelCoda).toBe(getScrubber);
+            expect(runtime.getSentinelCoda()).toBeUndefined();
             service = { markRunning: vi.fn(), submit: vi.fn() };
-            expect(runtime.getSentinelScrubber()).toBe(service);
+            expect(runtime.getSentinelCoda()).toBe(service);
             service = undefined;
-            expect(runtime.getSentinelScrubber()).toBeUndefined();
+            expect(runtime.getSentinelCoda()).toBeUndefined();
         } finally {
             result.queuePersistence.dispose();
             result.bridge.dispose();

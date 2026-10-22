@@ -10,9 +10,9 @@
 import { Readable } from 'stream';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { ScrubberStore } from '../../src/server/sentinel-scrubber/scrubber-store';
-import { ScrubberScheduler } from '../../src/server/sentinel-scrubber/scrubber-scheduler';
-import type { ScrubberRunService } from '../../src/server/sentinel-scrubber/scrubber-runs';
+import { CodaStore } from '../../src/server/sentinel-coda/coda-store';
+import { ScrubberScheduler } from '../../src/server/sentinel-coda/scrubber-scheduler';
+import type { CodaRunService } from '../../src/server/sentinel-coda/coda-runs';
 import { SentinelTodoStore } from '../../src/server/sentinel-todos/sentinel-todo-store';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -274,9 +274,9 @@ describe('registerAllRoutes', () => {
         const cancel = vi.fn();
         bridge.findExecutorForTask = vi.fn().mockReturnValue({ cancelTask: cancel });
         let getJobs!: () => SentinelRefrainService | undefined;
-        let getScrubber!: () => ScrubberRunService | undefined;
+        let getScrubber!: () => CodaRunService | undefined;
         const opts = makeOpts({ store, bridge, dataDir: tmpDir,
-            setSentinelRefrains: get => { getJobs = get; }, setSentinelScrubber: get => { getScrubber = get; } });
+            setSentinelRefrains: get => { getJobs = get; }, setSentinelCoda: get => { getScrubber = get; } });
         const config = opts.runtimeConfigService!.config as any;
         config.features.sentinelTodoScrubber = true;
         const disposed = vi.spyOn(SentinelJobScheduler.prototype, 'dispose');
@@ -454,9 +454,9 @@ describe('registerAllRoutes', () => {
             }
         }
         let getTodos!: () => SentinelTodoService | undefined;
-        let getScrubber!: () => ScrubberRunService | undefined;
+        let getScrubber!: () => CodaRunService | undefined;
         opts.setSentinelTodos = get => { getTodos = get; };
-        opts.setSentinelScrubber = get => { getScrubber = get; };
+        opts.setSentinelCoda = get => { getScrubber = get; };
         const routes: Route[] = [];
         const composition = registerAllRoutes(routes, opts);
         try {
@@ -505,7 +505,7 @@ describe('registerAllRoutes', () => {
             metadata: { ...owner, mode: 'sentinel' } });
         const todos = new SentinelTodoStore(store.getDatabase());
         const item = todos.create(owner, { title: 'Merged work' }, { actor: 'sentinel' }).item;
-        const scrubber = new ScrubberStore(store.getDatabase());
+        const scrubber = new CodaStore(store.getDatabase());
         scrubber.createRun(owner, { id: 'orphan', trigger: 'manual', status: 'running',
             childProcessId: 'queue_old', createdAt: new Date().toISOString(),
             snapshot: [{ itemId: item.id, revision: item.revision }], deferredItemIds: [], awaitingReviewItemIds: [] });
@@ -518,8 +518,8 @@ describe('registerAllRoutes', () => {
         const flags = opts.runtimeConfigService!.config.features as any;
         flags.sentinelTodoLedger = false; // Retired config must not gate the scrubber.
         flags.sentinelTodoScrubber = true;
-        let getScrubber!: () => ScrubberRunService | undefined;
-        opts.setSentinelScrubber = get => { getScrubber = get; };
+        let getScrubber!: () => CodaRunService | undefined;
+        opts.setSentinelCoda = get => { getScrubber = get; };
         const routes: Route[] = [];
         const composition = registerAllRoutes(routes, opts);
         const scrubberListener = bridge.registry.listeners('taskCompleted')[0];

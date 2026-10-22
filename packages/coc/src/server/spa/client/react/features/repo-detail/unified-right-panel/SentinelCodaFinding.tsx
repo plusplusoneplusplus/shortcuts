@@ -1,13 +1,13 @@
 import { createContext, useContext } from 'react';
-import type { SentinelScrubFinding, SentinelScrubFindingRecord, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
+import type { SentinelCodaFinding, SentinelCodaFindingRecord, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
 import { Button } from '../../../ui/Button';
 
 type FindingAction = 'accept' | 'dismiss' | 'undo';
 export const CodaFindingsContext = createContext<{
-    findings: ReadonlyMap<string, SentinelScrubFindingRecord>;
+    findings: ReadonlyMap<string, SentinelCodaFindingRecord>;
     busy: boolean;
     mutationPending: boolean;
-    act: (record: SentinelScrubFindingRecord, action: FindingAction) => Promise<void>;
+    act: (record: SentinelCodaFindingRecord, action: FindingAction) => Promise<void>;
     proposalCount: number;
     acceptAll: () => Promise<void>;
 }>({ findings: new Map(), busy: false, mutationPending: false, act: async () => {}, proposalCount: 0, acceptAll: async () => {} });
@@ -51,11 +51,11 @@ export function SentinelCodaFinding({ item }: { item: SentinelTodoItem }) {
         </div>
         {stale && <p role="status">Item changed since this proposal. Run Coda again.</p>}
         {record.demotedBecause && <p>{demotionLabels[record.demotedBecause]}</p>}
-        <ScrubFindingEvidence finding={finding} />
+        <CodaFindingEvidence finding={finding} />
     </div>;
 }
 
-export function ScrubFindingEvidence({ finding }: { finding: SentinelScrubFinding }) {
+export function CodaFindingEvidence({ finding }: { finding: SentinelCodaFinding }) {
     return <details>
         <summary className="cursor-pointer rounded focus-visible:ring-1 focus-visible:ring-[#0078d4]">Evidence</summary>
         <p>Confidence: {finding.confidence} · {finding.rationale}</p>

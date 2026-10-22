@@ -21,7 +21,7 @@ export { PullRequestsClient } from './pull-requests';
 export { QueueClient, type QueueRetryOptions } from './queue';
 export { SchedulesClient } from './schedules';
 export { SeenStateClient } from './seen-state';
-export { SentinelTodosClient, SentinelScrubberClient, SentinelRefrainsClient } from './sentinel-todos';
+export { SentinelTodosClient, SentinelCodaClient, SentinelRefrainsClient } from './sentinel-todos';
 export { ServersClient } from './servers';
 export { SkillsClient } from './skills';
 export { StatsClient } from './stats';

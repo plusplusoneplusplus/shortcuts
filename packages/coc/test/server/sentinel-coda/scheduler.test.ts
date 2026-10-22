@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ScrubberScheduler } from '../../../src/server/sentinel-scrubber/scrubber-scheduler';
-import { ScrubberStore, type ScrubRunRecord } from '../../../src/server/sentinel-scrubber/scrubber-store';
+import { ScrubberScheduler } from '../../../src/server/sentinel-coda/scrubber-scheduler';
+import { CodaStore, type CodaRunRecord } from '../../../src/server/sentinel-coda/coda-store';
 import { createTodoTestDatabase, createTodoTestDirectory } from '../sentinel-todos/test-db';
 
 const owner = { workspaceId: 'ws-a', processId: 'parent' };
 const others = [{ ...owner, workspaceId: 'ws-b' }, { ...owner, processId: 'other' }];
 let fixture: ReturnType<typeof createTodoTestDatabase>;
-let store: ScrubberStore;
+let store: CodaStore;
 let scheduler: ScrubberScheduler;
 let enabled: boolean;
 let exists: boolean;
@@ -18,7 +18,7 @@ function save(target = owner, cron = '0 * * * *', on = true) {
     scheduler.refresh(target);
 }
 function fail(id: string, status: 'failed' | 'timed_out' = 'failed') {
-    const run: ScrubRunRecord = { id, trigger: 'schedule', status: 'queued', createdAt: new Date().toISOString(),
+    const run: CodaRunRecord = { id, trigger: 'schedule', status: 'queued', createdAt: new Date().toISOString(),
         snapshot: [], deferredItemIds: [], awaitingReviewItemIds: [] };
     store.createRun(owner, run);
     store.transitionRun(owner, id, ['queued'], { status, finishedAt: new Date().toISOString() });
@@ -28,7 +28,7 @@ beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 9, 11, 10, 30));
     fixture = createTodoTestDatabase(createTodoTestDirectory());
-    store = new ScrubberStore(fixture.db);
+    store = new CodaStore(fixture.db);
     enabled = exists = true;
     start.mockReset().mockResolvedValue({});
     assertOwner.mockReset().mockImplementation(async () => { if (!exists) throw new Error('Missing owner'); });
