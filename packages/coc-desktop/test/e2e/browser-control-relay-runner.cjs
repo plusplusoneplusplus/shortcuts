@@ -69,6 +69,9 @@ sockets.attach(server);
 sockets.browserControl.setEnabledGetter(() => true);
 let win;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+// Teardown destroys the only window before the server drains; without a listener
+// Electron quits with code 0 there, before the report line is written.
+app.on('window-all-closed', () => {});
 
 (async () => {
     await app.whenReady();
@@ -137,8 +140,8 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
     sockets.closeAll();
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));
-    console.log('E2E::' + JSON.stringify({ ...report, disposed: true, serverClosed: true }));
-    app.exit(0);
+    // Piped stdout is asynchronous on Windows; exit only after the report flushes.
+    process.stdout.write('E2E::' + JSON.stringify({ ...report, disposed: true, serverClosed: true }) + '\n', () => app.exit(0));
 })().catch(async error => {
     console.error(error);
     await disposeBrowserViews().catch(() => {});
