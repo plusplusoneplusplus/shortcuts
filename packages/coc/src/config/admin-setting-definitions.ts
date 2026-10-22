@@ -630,6 +630,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.sentinelTargetAutocomplete', default: false, runtime: 'live', runtimeFlag: 'sentinelTargetAutocompleteEnabled',
+        ui: {
+            tab: 'sentinel', group: 'sentinelMode', order: 32.15, label: 'Sentinel # target autocomplete', badge: 'experimental',
+            hint: 'Select exact servers, repositories and repo groups as inline context in Sentinel messages. Selection grants no execution or delegation permission. Disabled by default.',
+            testId: 'toggle-sentinel-target-autocomplete',
+        },
+    }),
+    bool({
         key: 'features.sentinelNextSteps', default: true, runtime: 'live', runtimeFlag: 'sentinelNextStepsEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelMode', order: 32.1, label: 'Sentinel next steps', badge: 'experimental',

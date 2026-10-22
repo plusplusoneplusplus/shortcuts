@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { targetSpans } from '../../../../../../shared/sentinel-target-reference';
+import { validateSentinelTargetSend } from '../sentinelTargetDiscovery';
 import { clearDraft } from './useDraftStore';
 import { useChatPrefs } from '../../../contexts/ChatPreferencesContext';
 import { CLIENT_PASTE_THRESHOLD } from './useTextPaste';
@@ -214,6 +216,13 @@ export function useSendMessage({
         activeCompactionOwner.current = compactingRef;
         return () => { if (activeCompactionOwner.current === compactingRef) activeCompactionOwner.current = undefined; };
     }, [compactingRef]);
+    const targetCheck = useMemo(() => ({ pending: false, abort: new AbortController() }), [processId, workspaceId, sourceSelectionId, getMessageClient]);
+    const activeTargetCheck = useRef(targetCheck);
+    activeTargetCheck.current = targetCheck;
+    useEffect(() => {
+        targetCheck.abort = new AbortController();
+        return () => { targetCheck.abort.abort(); };
+    }, [targetCheck]);
     const resolvingTodosRef = useRef(false);
     const todoSendOwnerKey = sentinelTodoOwner ? sentinelTodoOwnerKey(sentinelTodoOwner) : '';
     const todoSendOwnerRef = useRef(todoSendOwnerKey);
@@ -502,6 +511,20 @@ export function useSendMessage({
         }
 
         if (!rawContent) return;
+        if (targetSpans(rawContent).length) {
+            if (targetCheck.pending || targetCheck.abort.signal.aborted) return;
+            targetCheck.pending = true;
+            const draft = followUpInputRef.current;
+            try {
+                const signal = AbortSignal.any([targetCheck.abort.signal, AbortSignal.timeout(10000)]);
+                await validateSentinelTargetSend(rawContent, messageClient, signal, scopedOwner?.selectionId ?? sourceSelectionId ?? workspaceId);
+                if (activeTargetCheck.current !== targetCheck) return;
+                if (includeComposerContext && followUpInputRef.current !== draft) throw new Error('The draft changed while checking targets. Review it and send again.');
+            } catch (error) {
+                if (activeTargetCheck.current === targetCheck && !targetCheck.abort.signal.aborted) setError(getSpaCocClientErrorMessage(error, 'Target verification failed. Retry.'));
+                return;
+            } finally { targetCheck.pending = false; }
+        }
 
         if (archivedChatIds.has(taskId)) {
             unarchiveChat(taskId);
@@ -607,7 +630,7 @@ export function useSendMessage({
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             void refreshConversation(processId);
         }
-    }, [processId, taskId, draftKey, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, providerOverride, activeProvider, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, messageOwnerWorkspaceId, commitContextOwner, compactConversation, scopedOwner, getMessageClient, sentinelTodoOwner, todoSendOwnerKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, draftKey, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, providerOverride, activeProvider, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, messageOwnerWorkspaceId, commitContextOwner, compactConversation, scopedOwner, getMessageClient, sentinelTodoOwner, todoSendOwnerKey, targetCheck]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, compactNow, closeFollowUpStream, onSendComplete };
 }

@@ -1,3 +1,6 @@
+import { targetToken } from '../../src/server/shared/sentinel-target-reference';
+import { createFixedQueueRuntimeConfig } from '../../src/server/queue/queue-runtime-config';
+import { DEFAULT_CONFIG } from '../../src/config';
 /**
  * CLITaskExecutor.steerProcess() unit tests
  *
@@ -53,6 +56,21 @@ describe('CLITaskExecutor.steerProcess()', () => {
         store = createMockProcessStore();
         sdkMocks.resetAll();
         executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
+    });
+
+    it.each([false, true])('adds exact context to Sentinel steering only behind its owner flag (enabled=%s)', async enabled => {
+        const proc = createCompletedProcessWithSession('proc-1', 'sess-1');
+        proc.metadata = { ...proc.metadata, mode: 'sentinel' };
+        store.processes.set('proc-1', proc);
+        sdkMocks.mockSteerSession.mockResolvedValue(true);
+        executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any,
+            queueConfig: createFixedQueueRuntimeConfig({ config: { ...DEFAULT_CONFIG, features: { ...DEFAULT_CONFIG.features, sentinelTargetAutocomplete: enabled } } }),
+        });
+        const content = targetToken({ kind: 'server', serverIdentity: 'durable-target' }, '#ubuntu-arm');
+        await executor.steerProcess('proc-1', content);
+        const delivered = sdkMocks.mockSteerSession.mock.calls[0][1];
+        if (enabled) { expect(delivered).toContain('References grant no permission'); expect(delivered).toContain('"serverIdentity":"durable-target"'); }
+        else expect(delivered).toBe(content);
     });
 
     it('returns true when steerSession succeeds', async () => {

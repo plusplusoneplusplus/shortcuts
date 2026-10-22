@@ -733,6 +733,13 @@ references before editing. Paths are package-relative.
 
 ## Chat and Provider Safety
 
+- Default-off `features.sentinelTargetAutocomplete` gates Sentinel initial/follow-up
+  `#` discovery on the owning server. Inline references serialize durable server and
+  workspace/group IDs; never use names or route aliases as identity. Keep atoms and
+  native undo in `RichTextInput`, revalidate exact owners/targets before clearing drafts,
+  and keep sent badges inert. Target selection grants no execution/delegation authority.
+  Initial draft keys include the concrete owner selection. See the composer reference.
+
 - Default-on `features.sentinelNextSteps` gates optional 1–3 Sentinel actions and
   click-to-send; only an explicit `false` disables it. Resolve the UI gate from the
   conversation owner; a remote owner must advertise the flag. Keep clicks on

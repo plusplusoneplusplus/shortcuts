@@ -8,7 +8,10 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { RichTextInput } from '../../shared/RichTextInput';
+import { SentinelTargetInput } from './SentinelTargetInput';
+import { validateSentinelTargetSend } from './sentinelTargetDiscovery';
+import { targetSpans } from '../../../../../shared/sentinel-target-reference';
+import { getCocClientFor } from '../../api/cocClient';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { AttachmentPreviews } from '../../ui/AttachmentPreviews';
 import { cn } from '../../ui/cn';
@@ -118,6 +121,7 @@ import { useContainerWidth } from './hooks/useContainerWidth';
 import { useUnifiedPanelHost } from '../repo-detail/unified-right-panel/unifiedPanelHost';
 import { queueJobHash } from '../../queue/queueJobRoute';
 import { resolveCloneRoute } from '../../repos/cloneRegistry';
+import { useWorkspaceOwner } from '../../repos/workspaceOwnerContext';
 import { inheritDraftPanelTabs } from '../repo-detail/unified-right-panel/unifiedPanelOpen';
 
 export interface NewChatAreaProps {
@@ -261,6 +265,7 @@ export function NewChatArea({ workspaceId, sourceSelectionId, onBack }: NewChatA
     // AC-07: enqueue the new chat onto the selected clone's server.
     const routeId = sourceSelectionId ?? workspaceId;
     const cloneClient = useCocClient(routeId);
+    const scopedComposerOwner = useWorkspaceOwner(routeId);
     const panelHost = useUnifiedPanelHost();
 
     function getSelectedWorkspaceRoot(): string | undefined {
@@ -394,6 +399,7 @@ export function InitialChatComposer({
     // AC-07: skills + per-repo chat preferences load from the selected clone's server.
     const routeId = sourceSelectionId ?? workspaceId;
     const cloneClient = useCocClient(routeId);
+    const scopedComposerOwner = useWorkspaceOwner(routeId);
     const commitContextOwner = useCommitContextOwner(workspaceId, sourceSelectionId);
     // AC-07: the owning clone's remote baseUrl (undefined for a local clone) —
     // threaded into the provider/model/effort hooks so their reads AND their
@@ -558,7 +564,7 @@ export function InitialChatComposer({
     // effortOverride is intentionally NOT restored from the draft — it is
     // always re-derived from the current provider/model preferences so that
     // Admin → AI Provider settings updated since the last draft take effect.
-    const draftStorageKey = useMemo(() => draftKey ?? newChatDraftKey(workspaceId), [draftKey, workspaceId]);
+    const draftStorageKey = useMemo(() => draftKey ?? newChatDraftKey(scopedComposerOwner?.selectionId ?? routeId), [draftKey, routeId, scopedComposerOwner?.selectionId]);
     useEffect(() => {
         const draft = getDraft(draftStorageKey);
         if (draft) {
@@ -959,6 +965,13 @@ export function InitialChatComposer({
         setSending(true);
         abortControllerRef.current = new AbortController();
         try {
+            if (targetSpans(trimmed).length) {
+                if (!sourceBaseUrl && !scopedComposerOwner && resolveCloneRoute(routeId).kind === 'unresolved-remote') throw new Error('The Sentinel owning server is unavailable.');
+                const originalDraft = input;
+                await validateSentinelTargetSend(trimmed, sourceBaseUrl ? getCocClientFor(sourceBaseUrl) : cloneClient, AbortSignal.any([abortControllerRef.current.signal, AbortSignal.timeout(10000)]), scopedComposerOwner?.selectionId ?? routeId);
+                if (!isCurrent()) return;
+                if (richTextRef.current?.getValue() !== originalDraft) throw new Error('The draft changed while checking targets. Review it and send again.');
+            }
             const workspaceRoot = getSelectedWorkspaceRoot();
             const attachmentPayload = toPayload();
             const parsed = slashCommands.parseAndExtract(trimmed);
@@ -1707,8 +1720,11 @@ export function InitialChatComposer({
                             Drop to copy context
                         </div>
                     )}
-                    <RichTextInput
+                    <SentinelTargetInput
                         ref={richTextRef}
+                        sentinel={selectedMode === 'sentinel'}
+                        ownerRef={routeId}
+                        sourceBaseUrl={sourceBaseUrl}
                         disabled={sending}
                         value={input}
                         // Backticked file paths (from a mention or a file drop) are

@@ -891,6 +891,7 @@ describe('feature toggle settings-tab placement', () => {
         // Sentinel
         'sentinel.enabled': 'sentinel',
         'features.sentinelNextSteps': 'sentinel',
+        'features.sentinelTargetAutocomplete': 'sentinel',
         'features.sentinelTodoDependencies': 'sentinel',
         'features.sentinelTodoTags': 'sentinel',
         'features.sentinelTodoExternalReferences': 'sentinel',

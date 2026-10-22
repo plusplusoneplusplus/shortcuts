@@ -50,6 +50,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
 });
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    getFeatureValue: () => false,
     isBrowserControlEnabled: () => mockBrowserEnabled.value,
     isComposerWordHintEnabled: () => false,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',

@@ -124,6 +124,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
     const [loading, setLoading] = useState(true);
     const [remoteWarnings, setRemoteWarnings] = useState<string[]>([]);
     const [remoteGroupWorkspaces, setRemoteGroupWorkspaces] = useState<RemoteWorkspaceInfo[]>([]);
+    const [targetServerSources, setTargetServerSources] = useState<AggregatedRemoteWorkspaces['sources']>([]);
     const [pageOriginIdentity, setPageOriginIdentity] = useState<string>();
     const [pageOriginObservation, setPageOriginObservation] = useState(0);
     const aggregatedChats = useRepoGroupAggregatedChatsEnabled();
@@ -170,8 +171,8 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             ...appState.workspaces,
             ...repos.filter(repo => isRemoteWorkspace(repo.workspace)).map(repo => repo.workspace),
             ...remoteGroupWorkspaces,
-        ], pageOriginIdentity);
-    }, [appState.selectedRepoId, appState.workspaces, repos, remoteGroupWorkspaces, pageOriginIdentity]);
+        ], pageOriginIdentity, targetServerSources);
+    }, [appState.selectedRepoId, appState.workspaces, repos, remoteGroupWorkspaces, pageOriginIdentity, targetServerSources]);
     useEffect(() => () => publishDashboardTopology(null, []), []);
 
     const selectedRepoIdRef = useRef<string | null>(null);
@@ -298,6 +299,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                 })),
             ]);
             setRemoteWarnings(remoteAggregate.warnings);
+            setTargetServerSources(remoteAggregate.sources);
             setRemoteGroupWorkspaces(remoteAggregate.groupWorkspaces ?? []);
             if (!Array.isArray(workspaces)) {
                 setRepos([]);

@@ -1,3 +1,4 @@
+import { withSentinelTargetContext } from '../shared/sentinel-target-reference';
 /**
  * Follow-Up Executor
  *
@@ -732,7 +733,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             const sendOptions = {
                 ...buildChatTurnSendOptions({
                     dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'),
-                    prompt: followUpMessage,
+                    prompt: currentMode === 'sentinel' && this.queueConfig.getSentinelTargetAutocompleteEnabled() ? withSentinelTargetContext(followUpMessage) : followUpMessage,
                     agentMode,
                     policy,
                     workingDirectory,

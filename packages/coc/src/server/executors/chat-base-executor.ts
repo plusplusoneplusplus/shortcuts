@@ -1,3 +1,4 @@
+import { withSentinelTargetContext } from '../shared/sentinel-target-reference';
 /**
  * Chat Mode Base Executor
  *
@@ -1382,6 +1383,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             await assertIncomingImageFiles(payloadRecord.attachments, payloadImages, preBuiltTempDir,
                 this.dataDir ?? path.join(os.homedir(), '.coc'), payload.workspaceId, turnAbort.signal);
             assertChatImageTransport(taskProvider, attachments, workingDirectory);
+            if (chatMode === 'sentinel' && this.queueConfig.getSentinelTargetAutocompleteEnabled()) effectivePrompt = withSentinelTargetContext(effectivePrompt);
             // Rewrite large prompts to file-path references
             const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
             const wsId = payload.workspaceId;

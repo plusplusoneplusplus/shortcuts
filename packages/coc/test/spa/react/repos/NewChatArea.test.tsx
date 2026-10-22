@@ -1,3 +1,5 @@
+import { targetToken } from '../../../../src/server/shared/sentinel-target-reference';
+import { publishDashboardTopology } from '../../../../src/server/spa/client/react/shared/dashboard-discovery/topology';
 /**
  * Tests for NewChatArea — the empty-state chat component on the Activity tab.
  */
@@ -135,6 +137,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '/api',
     getConfig: () => ({ apiBasePath: '/api' }),
+    getFeatureValue: () => mockSentinelEnabled.value,
     isRalphEnabled: () => mockRalphEnabled.value,
     isRalphMultiAgentGrillEnabled: () => false,
     isForEachEnabled: () => mockForEachEnabled.value,
@@ -157,6 +160,8 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => {
     const makeClient = (baseUrl?: string) => ({
         options: { baseUrl: baseUrl ?? '', apiBasePath: '/api' },
+        health: { get: async () => (await mockFetch(`${baseUrl ?? ''}/api/health`)).json() },
+        request: async (path: string) => (await mockFetch(`${baseUrl ?? ''}/api${path}`)).json(),
         queue: {
             // Record which server each enqueue went to so remote-routing tests can
             // assert the chat landed on the clone's own host, not the page origin.
@@ -447,6 +452,25 @@ afterEach(() => {
 });
 
 describe('NewChatArea', () => {
+    it('restores and sends exact inline targets from an initial Sentinel draft', async () => {
+        mockSentinelEnabled.value = true;
+        const token = targetToken({ kind: 'workspace', serverIdentity: 'local-durable', workspaceId: 'ws-1' }, '#Local / shortcuts');
+        const text = 'Discuss ' + token;
+        mockDraftStore.getDraft.mockReturnValue({ text, mode: 'sentinel', updatedAt: Date.now() } as any);
+        publishDashboardTopology('ws-1', [{ id: 'ws-1', name: 'shortcuts' } as any], 'local-durable');
+        mockFetch.mockImplementation(async (url: string) => ({ ok: true, json: async () =>
+            url.endsWith('/health') ? { serverIdentity: 'local-durable' }
+            : url.endsWith('/config/runtime') ? { features: { sentinelTargetAutocompleteEnabled: true } }
+            : { workspaces: [{ id: 'ws-1', name: 'shortcuts' }] } }));
+        const onSubmit = vi.fn().mockResolvedValue('created-chat');
+        render(<InitialChatComposer workspaceId="ws-1" onSubmit={onSubmit} />);
+        await waitFor(() => expect((screen.getByTestId('new-chat-input') as HTMLInputElement).value).toContain('#Local / shortcuts'));
+        fireEvent.keyDown(screen.getByTestId('new-chat-input'), { key: 'Enter', ctrlKey: true });
+        await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+        expect(onSubmit.mock.calls[0][0]).toMatchObject({ mode: 'sentinel', prompt: text });
+        expect(mockDraftStore.clearDraft).toHaveBeenCalled();
+    });
+
     it('reuses workspace preferences after provider availability arrives and on warm reopen', async () => {
         mockRepoPrefs.value = { lastChatProvider: 'codex' };
         mockAgentProvidersResponse.providers = [

@@ -1,6 +1,8 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { cn } from '../ui/cn';
 import { pasteHtmlToMarkdown } from './pasteHtmlToMarkdown';
+import { atomicFragment, atomicPoint, atomicSelection, readAtomicText, replaceAtomicRange } from './atomicTargetText';
+import { targetSpans, targetPlainText } from '../../../../shared/sentinel-target-reference';
 import { splitFilePathPills } from './richTextPills';
 
 export interface RichTextInputHandle {
@@ -8,10 +10,19 @@ export interface RichTextInputHandle {
     /** Set the text content. Pass cursorPos to place the cursor at that offset after setting. */
     setValue(text: string, cursorPos?: number): void;
     focus(): void;
+    /** Replace a raw serialized range as one native undo operation. */
+    replaceRange?(start: number, end: number, text: string): void;
 }
 
 export interface RichTextInputProps {
     value?: string;
+    atomicTargets?: boolean;
+    onCursorChange?: (position: number) => void;
+    role?: string;
+    'aria-label'?: string;
+    'aria-expanded'?: boolean;
+    'aria-controls'?: string;
+    'aria-activedescendant'?: string;
     onChange: (val: string, cursorPos: number) => void;
     onPaste?: (e: React.ClipboardEvent) => void;
     onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
@@ -55,15 +66,26 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
         const divRef = useRef<HTMLDivElement>(null);
 
         useImperativeHandle(ref, () => ({
-            getValue: () => (divRef.current?.innerText ?? '').replace(/\n+$/, ''),
+            getValue: () => readValue(),
+            replaceRange: (start, end, text) => {
+                if (!divRef.current) return;
+                replaceAtomicRange(divRef.current, start, end, text);
+                handleInput();
+            },
             setValue: (text, cursorPos) => {
                 const div = divRef.current;
                 if (!div) return;
-                div.innerText = text;
+                if (props.atomicTargets) div.replaceChildren(atomicFragment(text));
+                else div.innerText = text;
                 if (cursorPos == null) return;
                 const sel = window.getSelection?.();
                 if (!sel) return;
                 const range = document.createRange();
+                if (props.atomicTargets) {
+                    range.setStart(...atomicPoint(div, cursorPos));
+                    range.collapse(true); sel.removeAllRanges(); sel.addRange(range);
+                    return;
+                }
                 let remaining = cursorPos;
                 let placed = false;
                 const walk = (node: Node) => {
@@ -97,9 +119,13 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
 
         useEffect(() => {
             if (props.value != null && divRef.current) {
-                divRef.current.innerText = props.value;
+                if (props.atomicTargets) divRef.current.replaceChildren(atomicFragment(props.value));
+                else divRef.current.innerText = props.value;
             }
-        }, []); // eslint-disable-line react-hooks/exhaustive-deps
+        }, [props.atomicTargets]); // eslint-disable-line react-hooks/exhaustive-deps
+
+        const readValue = () => (props.atomicTargets && divRef.current
+            ? readAtomicText(divRef.current) : divRef.current?.innerText ?? '').replace(/\n+$/, '');
 
         const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
             props.onPaste?.(e);
@@ -116,6 +142,14 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
                     return '';
                 }
             };
+            const structured = props.atomicTargets ? getData('application/x-coc-sentinel-target-text') : '';
+            if (structured && targetSpans(structured).length && divRef.current) {
+                const range = atomicSelection(divRef.current);
+                if (range) {
+                    replaceAtomicRange(divRef.current, range.start, range.end, structured);
+                    handleInput(); return;
+                }
+            }
             const plain = getData('text/plain');
             // Rich pastes carry a text/html flavor: convert meaningful markup
             // to markdown source; trivial/absent HTML falls back to text/plain.
@@ -139,7 +173,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
         };
 
         const handleInput = () => {
-            const text = (divRef.current?.innerText ?? '').replace(/\n+$/, '');
+            const text = readValue();
             let cursorPos = text.length;
             try {
                 const sel = window.getSelection?.();
@@ -150,7 +184,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
                         const pre = document.createRange();
                         pre.selectNodeContents(divRef.current);
                         pre.setEnd(range.startContainer, range.startOffset);
-                        cursorPos = Math.min(pre.toString().length, text.length);
+                        cursorPos = Math.min(props.atomicTargets ? readAtomicText(pre.cloneContents()).length : pre.toString().length, text.length);
                     }
                 }
             } catch { /* fallback to text.length */ }
@@ -163,9 +197,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
         const pillTestId = props['data-testid']
             ? `${props['data-testid']}-pill`
             : 'rich-input-pill';
+        const displayValue = props.atomicTargets ? targetPlainText(props.value ?? '') : props.value ?? '';
         const segments = props.pillPaths
-            ? splitFilePathPills(props.value ?? '')
-            : [{ text: props.value ?? '', pill: false }];
+            ? splitFilePathPills(displayValue)
+            : [{ text: displayValue, pill: false }];
         // The overlay is shared by ghost text and path pills; it only mounts
         // when one of them actually has something to draw.
         const showOverlay = !props.disabled && props.value !== undefined
@@ -180,7 +215,45 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
                     data-placeholder={props.placeholder}
                     data-rich-input=""
                     onInput={handleInput}
-                    onKeyDown={props.onKeyDown}
+                    role={props.role ?? 'textbox'}
+                    aria-label={props['aria-label']}
+                    aria-multiline="true"
+                    aria-expanded={props['aria-expanded']}
+                    aria-controls={props['aria-controls']}
+                    aria-activedescendant={props['aria-activedescendant']}
+                    onKeyDown={e => {
+                        if (props.atomicTargets && divRef.current && !e.nativeEvent.isComposing) {
+                            const selected = atomicSelection(divRef.current);
+                            if (selected && selected.start === selected.end && (e.key === 'Backspace' || e.key === 'Delete')) {
+                                const span = targetSpans(readValue()).find(s => e.key === 'Backspace' ? s.end === selected.start : s.start === selected.start);
+                                if (span) { e.preventDefault(); replaceAtomicRange(divRef.current, span.start, span.end, ''); handleInput(); return; }
+                            }
+                        }
+                        props.onKeyDown?.(e);
+                    }}
+                    onKeyUp={() => { if (divRef.current) { const selection = atomicSelection(divRef.current); if (selection) props.onCursorChange?.(selection.end); } }}
+                    onMouseUp={() => { if (divRef.current) { const selection = atomicSelection(divRef.current); if (selection) props.onCursorChange?.(selection.end); } }}
+                    onCopy={e => {
+                        if (!props.atomicTargets) return;
+                        const selected = window.getSelection();
+                        if (!selected?.rangeCount) return;
+                        const text = readAtomicText(selected.getRangeAt(0).cloneContents());
+                        if (!targetSpans(text).length) return;
+                        e.preventDefault();
+                        e.clipboardData.setData('text/plain', targetPlainText(text));
+                        e.clipboardData.setData('application/x-coc-sentinel-target-text', text);
+                    }}
+                    onCut={e => {
+                        if (!props.atomicTargets || !divRef.current) return;
+                        const selected = atomicSelection(divRef.current);
+                        if (!selected || selected.start === selected.end) return;
+                        const text = readValue().slice(selected.start, selected.end);
+                        if (!targetSpans(text).length) return;
+                        e.preventDefault();
+                        e.clipboardData.setData('text/plain', targetPlainText(text));
+                        e.clipboardData.setData('application/x-coc-sentinel-target-text', text);
+                        replaceAtomicRange(divRef.current, selected.start, selected.end, ''); handleInput();
+                    }}
                     onPaste={handlePaste}
                     className={cn(
                         'w-full min-h-[34px] max-h-28 overflow-y-auto resize-y rounded border',

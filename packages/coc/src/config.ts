@@ -315,6 +315,8 @@ export interface CLIConfig {
         teamsMessageReaction?: boolean;
         /** Optional Sentinel next actions and click-to-send. Disabled by default. */
         sentinelNextSteps?: boolean;
+        /** Inline Sentinel target context discovery. Disabled by default. */
+        sentinelTargetAutocomplete?: boolean;
         /** Native prerequisite authoring and admission. Disabled by default. */
         sentinelTodoDependencies?: boolean;
         sentinelTodoTags?: boolean;
@@ -743,6 +745,7 @@ export interface ResolvedCLIConfig {
         teamsAiAnswerRelay: boolean;
         teamsMessageReaction: boolean;
         sentinelNextSteps: boolean;
+        sentinelTargetAutocomplete: boolean;
         sentinelTodoDependencies: boolean;
         sentinelTodoTags: boolean;
         sentinelTodoExternalReferences: boolean;
@@ -1088,6 +1091,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         teamsAiAnswerRelay: true,
         teamsMessageReaction: false,
         sentinelNextSteps: true,
+        sentinelTargetAutocomplete: false,
         sentinelTodoDependencies: false,
         sentinelTodoTags: false,
         sentinelTodoExternalReferences: false,

@@ -1,3 +1,4 @@
+import { withSentinelTargetContext } from '../shared/sentinel-target-reference';
 import type { ChatPayload, ChatMode, ChatProvider } from '../tasks/task-types';
 import { isChatPayload, isRalphFinalCheckRepairTurn, TaskDefs, getTaskDef, normalizeChatMode, resolveChatProviderOrDefault, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
 import { applyFollowUpToTask, truncateDisplayName } from '../shared/queue-utils';
@@ -870,7 +871,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             // SDK steering targets the already-running session; it cannot change
             // that live session's custom tool registry. Steering stays
             // same-provider, so the binding is the right pair to use.
-            return await this.getAiServiceForProvider(resolveRecordedProvider(proc)).steerSession(binding.sessionId, message);
+            return await this.getAiServiceForProvider(resolveRecordedProvider(proc)).steerSession(binding.sessionId, proc.metadata?.mode === 'sentinel' && this.queueConfig.getSentinelTargetAutocompleteEnabled() ? withSentinelTargetContext(message) : message);
         } catch (err) {
             getLogger().debug(LogCategory.AI, `[Bridge] Failed to steer session for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
             return false;
