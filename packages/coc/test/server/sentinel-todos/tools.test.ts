@@ -51,6 +51,17 @@ describe('sentinel_todos tool', () => {
     });
     afterEach(() => { database.dispose(); });
 
+    it('exposes Deferred in its schema and preserves a user verdict during bookkeeping', async () => {
+        const { tool } = createSentinelTodosTool({ service, owner });
+        expect((tool as any).parameters.properties.status.enum).toContain('deferred');
+        const created = await createItem({ status: 'deferred' });
+        expect((await call({ action: 'list' })).items[0].status).toBe('deferred');
+        const resumed = await call({ action: 'update', itemId: created.id, expectedRevision: created.revision, status: 'todo' });
+        const human = todos.update(owner, created.id, resumed.item.revision, { status: 'deferred' }, 'user').item;
+        expect((await call({ action: 'update', itemId: human.id, expectedRevision: human.revision, status: 'in_progress' })).code).toBe('invalid');
+        expect((await call({ action: 'update', itemId: human.id, expectedRevision: human.revision, notes: 'Result observed' })).item.status).toBe('deferred');
+        expect(SENTINEL_TODO_LEDGER_GUIDANCE).toContain('Preserve a user-set Deferred verdict');
+    });
     it('preserves destination/request identity when the tool links an admitted remote job', async () => {
         const item = await createItem();
         const tracking = createSentinelTodoTracking({ service, owner });
@@ -527,7 +538,7 @@ describe('buildSentinelTodosAddon', () => {
         expect(tool.description).toContain('only explicitly design-only/interview-only overall requests may finish at an artifact');
         expect(tool.description).toContain('honor manual user verdicts and latest instructions');
         expect(tool.description).toContain('inspect `unavailable` (remote) jobs in their owning chat');
-        expect((tool as any).parameters.properties.status.enum).toEqual(['todo', 'in_progress', 'needs_attention', 'done']);
+        expect((tool as any).parameters.properties.status.enum).toEqual(['todo', 'in_progress', 'deferred', 'needs_attention', 'done']);
         expect((tool as any).parameters.properties.notes.description).toContain('preserve prior notes');
         expect(Object.keys((tool as any).parameters.properties)).not.toContain('milestones');
     });

@@ -364,8 +364,9 @@ describe('AdminPanel — Workspace Features search', () => {
         await gotoFeaturesSubTab();
         const defs = ADMIN_SETTING_DEFINITIONS.filter(def => getFeatureSettingTab(def) === 'sentinel');
         // Presentation-only result cards live on Appearance, not Sentinel.
-        expect(defs).toHaveLength(13);
+        expect(defs).toHaveLength(14);
         expect(defs.some(def => def.key === 'features.sentinelResultCards')).toBe(false);
+        expect(defs.some(def => def.key === 'features.sentinelTargetAutocomplete')).toBe(true);
         expect(defs.some(def => def.key === 'features.sentinelRemoteResults')).toBe(true);
         expect(defs.some(def => def.key === 'features.sentinelTodoJobs')).toBe(true);
         expect(defs.some(def => def.key === 'features.sentinelAdditionalInstructions')).toBe(true);

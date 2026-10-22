@@ -1,10 +1,9 @@
 import * as fs from 'node:fs';
-import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { getRepoDataPath } from '../paths';
 import { atomicWriteJsonUnique } from '../shared/fs-utils';
 import { DelegatedJobStore, type DelegatedJob } from './delegated-job-store';
-import { remoteDelegationClaimSchema, sameRemoteDelegationBinding, type RemoteDelegationProof } from './remote-delegation-auth';
 
 export const REMOTE_DELEGATION_REQUESTS_FILE = 'remote-delegation-requests.json';
 const id = z.string().min(1).max(512).refine(value => !!value.trim());
@@ -25,7 +24,10 @@ const requestSchema = z.object({
     targetProcessId: id.optional(),
     /** SHA-256 of the exact execution request; prompt text is not stored here. */
     intentDigest: z.string().regex(/^[a-f0-9]{64}$/),
-    /** Private per-request credential; absent historical reservations cannot prove origin. */
+    /**
+     * Private per-request receipt secret, sent only in POST bodies to the destination,
+     * which binds its digest at first claim. Absent on historical rows: never polled.
+     */
     proofToken: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     title: z.string().min(1).max(80),
     messagingOrigin: z.object({
@@ -59,7 +61,8 @@ export type RemoteDelegationReservation = Omit<RemoteDelegationRequest,
  * Origin-owned admission journal, separate from terminal-result delivery.
  * Persist a dispatch claim before I/O. A claimed request is reconciliation-only,
  * even if the process dies before sending: an absent reply never permits replay.
- * Identities and digests are correlation data; callers must authenticate receipts.
+ * Identities and digests are correlation data; callers must verify receipt bindings.
+ * The origin exposes no endpoint for this journal: only it calls the destination.
  */
 export class RemoteDelegationRequestStore {
     constructor(private readonly dataDir: string, private readonly jobs = new DelegatedJobStore(dataDir)) {}
@@ -113,24 +116,6 @@ export class RemoteDelegationRequestStore {
         if (request.admission.state !== 'reserved') return;
         request.admission = { state: 'rejected', reason: 'Origin stopped before dispatch; no remote work was sent.' };
         this.save(workspaceId, rows);
-    }
-
-    /** Read-only proof, available after the durable dispatch claim, including recovery. */
-    proveOrigin(input: unknown): RemoteDelegationProof | undefined {
-        const parsed = remoteDelegationClaimSchema.safeParse(input);
-        if (!parsed.success) return undefined;
-        const claim = parsed.data;
-        const request = this.list(claim.parent.workspaceId).find(row => row.requestId === claim.requestId);
-        if (!request?.proofToken || !timingSafeEqual(Buffer.from(request.proofToken, 'hex'), Buffer.from(claim.proofToken, 'hex'))
-            || request.admission.state === 'reserved' || request.admission.state === 'rejected') return undefined;
-        const proof: RemoteDelegationProof = {
-            version: 1, requestId: request.requestId, originServerIdentity: request.originServerIdentity,
-            parent: request.parent,
-            destination: { serverIdentity: request.destination.serverIdentity, workspaceId: request.destination.workspaceId },
-            kind: request.kind, ...(request.targetProcessId ? { targetProcessId: request.targetProcessId } : {}),
-            intentDigest: request.intentDigest, admission: request.admission.state,
-        };
-        return sameRemoteDelegationBinding(claim, proof) ? proof : undefined;
     }
 
     /** The only transition that permits one execution POST. False means do not send. */

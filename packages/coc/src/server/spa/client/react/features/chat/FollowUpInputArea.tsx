@@ -6,7 +6,7 @@ import { useUnifiedPanelHostForChat } from '../repo-detail/unified-right-panel/u
 import { openUnifiedPasteTab } from '../repo-detail/unified-right-panel/unifiedPanelOpen';
 import { AttachedContextPreviews } from '../../ui/AttachedContextPreviews';
 import { cn } from '../../ui/cn';
-import { RichTextInput } from '../../shared/RichTextInput';
+import { SentinelTargetInput } from './SentinelTargetInput';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
@@ -1257,8 +1257,10 @@ export function FollowUpInputArea({
                         {browserModeVisible && <div className="px-2 pt-1">
                             <BrowserModePill active onRemove={() => { void clearBrowserMode().catch(() => {}); }} />
                         </div>}
-                        <RichTextInput
+                        <SentinelTargetInput
                             ref={richTextRef}
+                            sentinel={selectedMode === 'sentinel'}
+                            ownerRef={browserOwner?.routingRef ?? attachmentDestinationId ?? workspaceId}
                             disabled={inputDisabled}
                             value={followUpInput}
                             // Backticked file paths (from a mention or a file drop) are

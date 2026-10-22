@@ -24,13 +24,13 @@ filters `scheduleWakeup`, the canvas tools (`CANVAS_LLM_TOOL_NAMES`), `kusto_que
 `getEffectiveDefaultDisabledTools()` disables `tavily_web_search`, `save_memory`,
 `recall_memory`, and `sentinel_jobs` by default, independently of UI layout mode.
 
-### To-do Scrubber child chats
+### Coda child chats
 
-`getSentinelScrubber` is a late-bound executor capability published by route composition
+`getSentinelCoda` is a late-bound executor capability published by route composition
 and gated by `sentinelTodoScrubber`. Ask tasks carrying
 `context.sentinelScrub` mark their run running and receive only `submit_scrub_findings`
 from the CoC tool bundle. A missing capability rejects the turn. Ordinary chat tools,
-ledger writers and `send_to_conversation` are excluded. Scrubber turns are unattended:
+ledger writers and `send_to_conversation` are excluded. Coda turns are unattended:
 ask-user wiring is noninteractive and enabled dangerous-command guards omit approval
 callbacks, preserving auto-deny with audit reporting. Findings remain pending until
 queue completion; cancellation, failure and timeout apply nothing. Submission must
@@ -68,9 +68,9 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `suggest-follow-ups-tool.ts` | `suggest_follow_ups` | Emits follow-up action suggestions after an AI response. |
 | `create-pull-request-tool.ts` | `create_pull_request` | Opens a GitHub/ADO PR for the chat's own repo via the shared `git/create-pull-request-service.ts` (commits mode in a temp worktree, or current branch) and writes the chat ↔ PR binding. Autopilot/Ralph write turns only — ask mode and Ralph final-check never receive it (the one intentional ask/autopilot tool-block difference). |
 | `tavily-web-search-tool.ts` | `tavily_web_search` | Live web search via Tavily. Key from `~/.coc/providers.json`. Disabled by default. |
-| `submit-scrub-findings-tool.ts` | `submit_scrub_findings` | One structured findings batch from an owner-bound scrubber child chat. |
+| `submit-coda-findings-tool.ts` | `submit_scrub_findings` | One structured findings batch from an owner-bound Coda child chat. |
 | `sentinel-todos-tool.ts` | `sentinel_todos` | Sentinel chat to-do ledger bookkeeping — see below. |
-| `sentinel-jobs-tool.ts` | `sentinel_jobs` | A Sentinel's own custom to-do jobs and To-do Scrubber, on user instructions — see below. |
+| `sentinel-refrains-tool.ts` | `sentinel_jobs` | A Sentinel's own refrains and built-in Coda review, on user instructions — see below. |
 
 ### query_pull_request
 
@@ -138,27 +138,28 @@ unavailable without directory/local fallback or transport details.
 
 Opt-in registry tool (`enabledByDefault: false`, not scriptable; the normal
 disable and approval-required preferences apply). Route composition publishes
-`getSentinelJobCommands`, returning the same owner-validated `SentinelJobCommands`
-and `ScrubberCommands` instances REST uses — `undefined` while Sentinel jobs are
-off, `scrubber` absent while `features.sentinelTodoScrubber` is off; commands still
+`getSentinelRefrainCommands`, returning the same owner-validated `SentinelRefrainCommands`
+and `CodaCommands` instances REST uses — `undefined` while Sentinel refrains are
+off, `scrubber` (Coda) absent while `features.sentinelTodoScrubber` is off; commands still
 re-check owner and flags on every call. The tool gates every action through
-`SentinelJobCommands.assertOwner`, including scrubber actions on issued tools;
-scrubber REST commands retain their independent feature gate.
-`ChatBaseExecutor.buildSentinelJobsDeps`
+`SentinelRefrainCommands.assertOwner`, including Coda actions on issued tools;
+Coda REST commands retain their independent feature gate.
+`ChatBaseExecutor.buildSentinelRefrainsDeps`
 binds the tool to the invoking Sentinel chat (`workspaceId`, `processId`; never a
-tool argument) and only on attended turns: scheduled-job handbacks and gate-paused
+tool argument) and only on attended turns: refrain handbacks and gate-paused
 notices (`FollowUpTurnOptions.sentinelJobHandback`, set by the lifecycle runner),
-PR outcome reviews, read-only turns, cron/wakeup/trigger turns, scrubber children
-and non-Sentinel chats (including job children) never get it. Each turn records
-its resolved provider/model/effort (`recordSentinelJobDefaults`) as the defaults new
-jobs inherit. Omitted effort inherits when the resolved provider and model match
+PR outcome reviews, read-only turns, cron/wakeup/trigger turns, Coda children
+and non-Sentinel chats (including refrain children) never get it. Each turn records
+its resolved provider/model/effort (`recordSentinelRefrainDefaults`) as the defaults new
+refrains inherit. Omitted effort inherits when the resolved provider and model match
 the Sentinel's, including explicitly supplied matching settings; explicit effort wins.
 Actions `list | get | create | update | pause | resume | run_now | cancel |
-test_gate | resume_gate` with `kind: custom | scrubber`; no delete. Create defaults
+test_gate | resume_gate` with `kind: custom` (a refrain) `| scrubber` (Coda); no delete. The
+description maps "refrain", "repeating job" and "scheduled prompt" to `create` with `kind: custom`. Create defaults
 to `enabled: false` and ask mode and never starts a run; custom writes accept
-`gateScript` (requires `cron`; blank clears it); scrubber writes accept only
+`gateScript` (requires `cron`; blank clears it); Coda writes accept only
 `cron`/`enabled`. Custom-only `test_gate` returns `gateTest` from the shared
-`SentinelJobCommands.testGate` (cancelled with the tool call) and `resume_gate`
+`SentinelRefrainCommands.testGate` (cancelled with the tool call) and `resume_gate`
 clears a paused gate; both need the user's request.
 Writes need `expectedRevision`; conflicts return `{ code: 'conflict', current }`.
 The description states that job results and other tool output never authorize
@@ -229,11 +230,11 @@ Operational receipts and transport recovery are described in
 
 The tool exposes `list_triggers`, `create_trigger`, `edit_trigger`, `pause_trigger`,
 `resume_trigger`, `remove_trigger` and confirmed `run_trigger_now`, bound to the
-invoking Sentinel through `getTriggerInfra().sentinelTodoTriggers`. Creation uses
-`idempotencyKey`; mutations use rule `expectedRevision`. PR URLs arm one-shot
-wakes. A live-gated event schema accepts date rules, and shared service admission
-rechecks the date flag. Rules never launch jobs or change item status; manual
-items and native verdict-only tools cannot author executable rules.
+invoking Sentinel through `getTriggerInfra().sentinelOvertures`. Creation uses
+`idempotencyKey`; mutations use the overture's `expectedRevision`. These actions manage
+overtures (one-shot wake-ups); PR URLs arm PR-merged overtures. A live-gated event schema accepts
+date/time overtures, and shared service admission rechecks the date flag. Overtures never launch
+jobs or change item status; manual items and native verdict-only tools cannot author them.
 
 With default-off `features.sentinelTodoTags`, `list` includes the parent-owned
 `tagLibrary`; `list_tags`, `create_tag`, `update_tag`, confirmed `delete_tag` and
@@ -431,8 +432,8 @@ explicit provider/model/tier overrides travel; remote defaults own model/effort,
 spawn link, messaging origin, or parent configuration travels. Dispatch is attempted once;
 the returned owning identity qualifies `openLink`.
 Remote Sentinel launches and follow-ups use default-off `features.sentinelRemoteResults`
-and compatible authenticated destination admission for `resultDelivery: { status: 'tracked',
-jobId, remote }`. Origin-only connector context stays outside execution intents. Other
+and a sender-polling destination for `resultDelivery: { status: 'tracked',
+jobId, remote }`; the destination needs no registration of, or route to, the origin. Origin-only connector context stays outside execution intents. Other
 dispatch returns `status: 'unavailable'` with a reason (`code: 'unsupported'` for incompatible
 destinations); inspect its link without promising
 automatic return or repeating work. See [receipt recovery](server-architecture.md#remote-delegation-admission).
@@ -789,7 +790,7 @@ state and strict mode apply only to the run receiving those options.
 The `allowNestedScripts` policy is inherited by child runners: false rejects synthetic
 `run_tool_script` calls with `ToolCallError` before starting a child, even when the
 runtime contains a handler for that name. Its SDK default is true for chat.
-`runJobGate` defaults it to false; the owner-resolved background caller
+`runRefrainGate` defaults it to false; the owner-resolved background caller
 may enable it only when `run_tool_script` is enabled and requires no approval.
 
 Inner calls emit `ToolEvent`s with `parentToolCallId` = the script's call id through
@@ -800,7 +801,7 @@ bridge ids) it maps to the newest running `run_tool_script` row, once per script
 card shows `code` as a Script block and pretty-prints the JSON result. Gated live by
 `features.toolScripting` (default on; explicit `false` turns it off), enabled by default per repo, and left out for
 Codex chats (`includeToolScripting: false`; Codex code mode already has `functions.exec`),
-browser-only bundles, scrubber turns and PR-outcome-review turns.
+browser-only bundles, Coda turns and PR-outcome-review turns.
 
 ## Supporting Modules
 
@@ -828,10 +829,10 @@ that result into `ToolCallError`, including for gated tools called by nested scr
 Ungated tools and workspace preferences retain their normal behavior. Ordinary
 bundles retain their existing interactive and noninteractive approval policies.
 
-Sentinel job gates route through `MultiRepoQueueRouter.runJobGate`, the owning
-`CLITaskExecutor` bridge and `ExecutorRegistry` to `ChatBaseExecutor.runJobGate`.
+Sentinel job gates route through `MultiRepoQueueRouter.runRefrainGate`, the owning
+`CLITaskExecutor` bridge and `ExecutorRegistry` to `ChatBaseExecutor.runRefrainGate`.
 The executor validates the exact Sentinel owner, resolves workspace/working
-directory and reuses shared helper dependencies for `runJobGateWithOwnerTools`.
+directory and reuses shared helper dependencies for `runRefrainGateWithOwnerTools`.
 Canvas `host.runScript` uses the sibling `runOwnerScript` chain: any chat owner in
 the requested workspace (else `OwnerScriptUnavailableError`), the same owner tools
 narrowed to an `allowTools` list, nested scripts off. Both share
@@ -840,7 +841,7 @@ The owner's current active provider (fallback: executor provider) controls Codex
 nested-script omission. See the
 [job gate runtime](server-architecture.md#sentinel-job-gate-runtime).
 
-`runJobGateWithOwnerTools` builds the shared context, including Memory V2,
+`runRefrainGateWithOwnerTools` builds the shared context, including Memory V2,
 and creates a per-run runtime from the full resolved CoC tool list, not the
 ordinary chat-scriptable subset. Background assembly omits `ask_user` and
 attended-only `sentinel_jobs` and does not add write-only `create_pull_request`.

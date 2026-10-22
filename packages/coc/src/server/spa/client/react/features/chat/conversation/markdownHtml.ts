@@ -1,3 +1,4 @@
+import { parseTargetHref } from '../../../../../../shared/sentinel-target-reference';
 import { Marked } from 'marked';
 import { mathMarkedExtension } from '../../../../shared/math/mathMarkedExtension';
 import { linkifyFilePaths } from '../../../shared/file-path-utils';
@@ -141,6 +142,7 @@ function createChatMarked(
                 return raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
             },
             link(href: string, title: string | null | undefined, text: string): string {
+                if (parseTargetHref(href)) return `<span class="sentinel-target-token" style="border-radius:4px;background:rgba(20,184,166,.16);padding:1px 3px" title="Target context only">${text}</span>`;
                 if (inert) return `${text} (${escapeHtml(href ?? '')})`;
                 const safeHref = escapeAttr(href ?? '');
                 if (excalidrawEmbedEnabled && href && /^excalidraw:\/\//i.test(href)) {

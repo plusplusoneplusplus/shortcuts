@@ -6,11 +6,15 @@ import { getOrCreateServerIdentity } from '../servers/server-identity';
 import { atomicWriteJsonUnique } from '../shared/fs-utils';
 import { delegatedJobResultSchema, MAX_RESULT_SUMMARY, type DelegatedJobResult } from './delegated-job-store';
 import {
-    remoteDelegationBindingSchema, remoteDelegationProofSchema, sameRemoteDelegationBinding,
-    type RemoteDelegationBinding, type RemoteDelegationProof,
+    ownsRemoteDelegationReceipt, remoteDelegationBindingSchema, remoteDelegationClaimSchema, remoteDelegationTokenDigest,
+    sameRemoteDelegationBinding, type RemoteDelegationBinding, type RemoteDelegationClaim,
 } from './remote-delegation-auth';
 
 export const REMOTE_DELEGATION_ADMISSIONS_FILE = 'remote-delegation-admissions.json';
+/** The key is already claimed under another secret; this request admitted nothing. */
+export class RemoteDelegationReceiptOwnerError extends Error {
+    constructor() { super('Remote request is owned by another submitter'); }
+}
 const id = z.string().min(1).max(512).refine(value => !!value.trim());
 const terminalEventId = (binding: RemoteDelegationBinding) =>
     `remote:${JSON.stringify([binding.originServerIdentity, binding.parent.workspaceId, binding.requestId])}:terminal`;
@@ -24,6 +28,8 @@ const admissionSchema = z.discriminatedUnion('state', [
 const receiptSchema = remoteDelegationBindingSchema.extend({
     /** Destination-local task/relay identity, independent of colliding origin request IDs. */
     executionId: z.uuid(), createdAt: z.iso.datetime(), admission: admissionSchema,
+    /** SHA-256 of the submitter's private secret. Legacy rows without it are never readable. */
+    receiptTokenDigest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     terminal: z.object({ result: delegatedJobResultSchema, recordedAt: z.iso.datetime() }).strict().optional(),
 }).superRefine((row, context) => {
     if (row.terminal && row.admission.state !== 'accepted') {
@@ -50,9 +56,10 @@ const key = (binding: RemoteDelegationBinding) => JSON.stringify([
 ]);
 
 /**
- * Destination-owned execution claims. All methods require a previously authenticated
- * binding; storage validation itself is not authentication. A claimed request can
- * only be reconciled, even after a crash before dispatch. No prompt or token is saved.
+ * Destination-owned execution claims. The first claim binds the submitter's secret
+ * digest; `claim`/`owned` enforce it, other methods are destination-internal.
+ * A claimed request can only be reconciled, even after a crash before dispatch.
+ * No prompt or raw secret is saved.
  */
 export class RemoteDelegationAdmissionStore {
     readonly serverIdentity: string;
@@ -73,18 +80,29 @@ export class RemoteDelegationAdmissionStore {
     }
 
     /** Persist before execution. A duplicate never grants another execution attempt. */
-    claim(input: RemoteDelegationProof): { execute: boolean; receipt: RemoteDelegationAdmission } {
-        const proof = remoteDelegationProofSchema.parse(input);
-        const binding = this.binding(proof);
+    claim(input: RemoteDelegationClaim): { execute: boolean; receipt: RemoteDelegationAdmission } {
+        const claim = remoteDelegationClaimSchema.parse(input);
+        const binding = this.binding(claim);
         const rows = this.list(binding.destination.workspaceId);
         const existing = this.find(rows, binding);
-        if (existing) return { execute: false, receipt: existing };
-        // An origin which already accepted work may reconcile, never invent a lost child.
-        if (proof.admission === 'accepted') throw new Error('Accepted origin requires an existing destination receipt');
+        if (existing) {
+            if (!ownsRemoteDelegationReceipt(existing.receiptTokenDigest, claim.proofToken)) {
+                throw new RemoteDelegationReceiptOwnerError();
+            }
+            return { execute: false, receipt: existing };
+        }
         const receipt = receiptSchema.parse({ ...binding, executionId: randomUUID(),
-            createdAt: new Date().toISOString(), admission: { state: 'dispatching' } });
+            createdAt: new Date().toISOString(), admission: { state: 'dispatching' },
+            receiptTokenDigest: remoteDelegationTokenDigest(claim.proofToken) });
         this.save(binding.destination.workspaceId, [...rows, receipt]);
         return { execute: true, receipt };
+    }
+
+    /** Owner read: a missing, foreign or legacy row is indistinguishable. */
+    owned(input: RemoteDelegationClaim): RemoteDelegationAdmission | undefined {
+        const claim = remoteDelegationClaimSchema.parse(input);
+        const row = this.get(claim);
+        return row && ownsRemoteDelegationReceipt(row.receiptTokenDigest, claim.proofToken) ? row : undefined;
     }
 
     /** Read-only reconciliation, including receipts left dispatching by a crashed adapter. */

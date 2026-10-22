@@ -133,10 +133,11 @@ function CommitDetailBody({ workspaceId, attachmentDestinationId, hash, commit, 
         }
     }, [priorityNav.prevPath, reviewProgress]);
 
-    // Commit-level comments (only active when !rangeMode)
+    // Every comment of this commit across all files, whichever file is selected.
     const {
         comments: allCommitComments,
         loading: allCommentsLoading,
+        error: allCommentsError,
         resolveComment: resolveCommitComment,
         unresolveComment: unresolveCommitComment,
         deleteComment: deleteCommitComment,
@@ -215,7 +216,7 @@ function CommitDetailBody({ workspaceId, attachmentDestinationId, hash, commit, 
             { id: 'prev-priority', label: 'Previous priority file', icon: <span aria-hidden="true">↑</span>, onClick: handlePrevPriority, disabled: priorityNav.prevPath === null, testId: 'commit-prev-priority-btn' },
             { id: 'next-priority', label: 'Next priority file', icon: <span aria-hidden="true">↓</span>, onClick: handleNextPriority, disabled: priorityNav.nextPath === null, testId: 'commit-next-priority-btn' },
         ] : []),
-        { id: 'comments', label: 'Toggle comments', icon: <CommitDetailIcon name="chat" />, onClick: () => setSidebarOpen(open => !open), pressed: sidebarOpen, count: allCommitComments.length, testId: 'toggle-comments-btn' },
+        { id: 'comments', label: 'All comments in this commit', icon: <CommitDetailIcon name="chat" />, onClick: () => setSidebarOpen(open => !open), pressed: sidebarOpen, count: allCommitComments.length, testId: 'toggle-comments-btn' },
         { id: 'chat', label: 'Toggle AI chat', icon: <CommitDetailIcon name="spark" />, onClick: toggleChat, pressed: chatOpen, testId: 'toggle-chat-btn' },
         ...(!isPopOut && hash ? [{ id: 'popout', label: 'Open in new window', icon: <CommitDetailIcon name="out" />, onClick: handlePopOut, testId: 'commit-popout-btn' }] : []),
     ];
@@ -244,7 +245,9 @@ function CommitDetailBody({ workspaceId, attachmentDestinationId, hash, commit, 
                     <CommentSidebar
                         comments={allCommitComments}
                         loading={allCommentsLoading}
+                        error={allCommentsError}
                         showFilePath
+                        groupByFile
                         onResolve={(id) => {
                             const c = allCommitComments.find(x => x.id === id);
                             if (c) void resolveCommitComment(c);

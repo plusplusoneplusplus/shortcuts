@@ -9,7 +9,7 @@ import {
 import { ProcessMessageDeliveryService } from '../../../src/server/processes/process-message-delivery-service';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
-import { JOB_COMPACTION_INSTRUCTIONS } from '../../../src/server/sentinel-jobs/job-metadata';
+import { REFRAIN_COMPACTION_INSTRUCTIONS } from '../../../src/server/sentinel-refrains/refrain-metadata';
 import { isSentinelProcess } from '../../../src/server/processes/auto-compact';
 
 const sdk = createMockSDKService();
@@ -95,8 +95,8 @@ describe('Sentinel auto-compact lifecycle', () => {
         await enable();
         await respond({ currentTokens: 900, tokenLimit: LIMIT });
         expect(isSentinelProcess(await current())).toBe(false);
-        expect(queuedCompact()?.payload.customInstructions).toBe(JOB_COMPACTION_INSTRUCTIONS);
-        expect(JOB_COMPACTION_INSTRUCTIONS).toContain('has no authority to write its ledger');
+        expect(queuedCompact()?.payload.customInstructions).toBe(REFRAIN_COMPACTION_INSTRUCTIONS);
+        expect(REFRAIN_COMPACTION_INSTRUCTIONS).toContain('has no authority to write its ledger');
     });
 
     it('does not grant job compaction to an unscoped or cross-workspace marker', async () => {

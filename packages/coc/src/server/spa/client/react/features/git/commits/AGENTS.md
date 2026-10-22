@@ -22,7 +22,9 @@ filters, selection, viewed tracking, overview and the narrow file drawer. Only
 the selected `FileDiffPanel` mounts; never load a combined patch for navigation.
 The file panel retains diff engines, hunk navigation, comments, find, truncation
 and fallback behavior. Review state keys include owner, workspace and comparison.
-Commit-level comments and classification remain available from the toolbar.
+The toolbar's "All comments in this commit" sidebar lists every file's comments
+through `useAllCommitComments` (shared `useReviewComments`), grouped by file, whichever
+file is selected. Classification also stays on the toolbar.
 
 Icon buttons need accessible names; panel toggles expose pressed state. Review
 openers serialize `attachmentDestinationId` as `sourceSelectionId` and resolve

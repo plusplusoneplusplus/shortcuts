@@ -1,3 +1,5 @@
+import { targetToken } from '../../../../src/server/shared/sentinel-target-reference';
+import { publishDashboardTopology } from '../../../../src/server/spa/client/react/shared/dashboard-discovery/topology';
 /**
  * Tests for useSendMessage — follow-up message sending, slash commands, error handling.
  */
@@ -1035,5 +1037,57 @@ describe('useSendMessage', () => {
             expect(body.content.indexOf('<context')).toBeLessThan(body.content.indexOf('user text'));
             expect(body.content).toContain('pasted content');
         });
+    });
+});
+
+
+describe('Sentinel target send round trips', () => {
+    const token = targetToken({ kind: 'workspace', serverIdentity: 'owner-durable', workspaceId: 'ws' }, '#Local / shortcuts');
+    beforeEach(() => {
+        fetchMock.mockReset(); stubNoEventSource();
+        registerCloneBaseUrls([]); setActiveCloneForRouting('ws');
+        publishDashboardTopology('ws', [{ id: 'ws', name: 'shortcuts' } as any], 'owner-durable');
+        fetchMock.mockImplementation(async (url: string) => ({ ok: true, json: async () =>
+            url.includes('/config/runtime') ? { features: { sentinelTargetAutocompleteEnabled: true } }
+            : url.includes('/health') ? { serverIdentity: 'owner-durable' }
+            : url.endsWith('/workspaces') ? { workspaces: [{ id: 'ws', name: 'shortcuts' }] }
+            : {} }));
+    });
+    afterEach(() => { restoreEventSource(); vi.restoreAllMocks(); });
+    it.each([false, true])('preserves exact inline targets in ordinary and queued sends (active=%s)', async active => {
+        const opts = makeOptions({ workspaceId: 'ws', selectedMode: 'sentinel', selectedModeRef: { current: 'sentinel' }, isActiveGeneration: active });
+        opts.followUpInputRef.current = 'Discuss ' + token;
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp(undefined, 'enqueue'); });
+        const post = fetchMock.mock.calls.find(([url, init]) => String(url).includes('/message') && init?.method === 'POST');
+        expect(post).toBeDefined();
+        expect(JSON.parse(post![1].body).content).toBe('Discuss ' + token);
+        expect(opts.setFollowUpInput).toHaveBeenCalledWith('');
+    });
+    it('keeps drafts and does not send when an exact target is unavailable', async () => {
+        const opts = makeOptions({ workspaceId: 'ws', selectedMode: 'sentinel' });
+        opts.followUpInputRef.current = 'Discuss ' + token;
+        publishDashboardTopology('ws', [], 'different-owner');
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp(); });
+        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+        expect(opts.setFollowUpInput).not.toHaveBeenCalled();
+        expect(opts.setError).toHaveBeenCalledWith(expect.stringMatching(/unavailable/));
+    });
+    it('cancels pending verification when the owning conversation changes', async () => {
+        let resolve!: (value: any) => void;
+        fetchMock.mockImplementationOnce(() => new Promise(r => { resolve = r; }));
+        const opts = makeOptions({ workspaceId: 'ws', selectedMode: 'sentinel' });
+        opts.followUpInputRef.current = token;
+        const { result, rerender } = renderHook(props => useSendMessage(props), { initialProps: opts });
+        let pending!: Promise<void>;
+        act(() => { pending = result.current.sendFollowUp(); });
+        rerender({ ...opts, processId: 'another-process' });
+        await act(async () => {
+            resolve({ ok: true, json: async () => ({ features: { sentinelTargetAutocompleteEnabled: true } }) });
+            await pending;
+        });
+        expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+        expect(opts.setFollowUpInput).not.toHaveBeenCalled();
     });
 });

@@ -1,13 +1,14 @@
+import type * as http from 'http';
 import type { Route } from '../types';
 import { z } from 'zod';
 import { readJsonBody, send400, sendError, sendJson } from '../shared/router';
-import { REMOTE_DELEGATION_PROOF_PATH, remoteDelegationClaimSchema } from './remote-delegation-auth';
-import type { RemoteDelegationRequestStore } from './remote-delegation-request-store';
+import { RemoteDelegationRefusedError, remoteDelegationClaimSchema } from './remote-delegation-auth';
 import { captureRemoteDelegationIntent, RemoteDelegationAdmissionService } from './remote-delegation-admission';
-import type { RemoteDelegationAdmissionStore, RemoteDelegationAdmission } from './remote-delegation-admission-store';
+import {
+    RemoteDelegationReceiptOwnerError, type RemoteDelegationAdmissionStore, type RemoteDelegationAdmission,
+} from './remote-delegation-admission-store';
 import { emitDeliveryEvents, RemoteFollowUpRejectedError, type ProcessMessageDeliveryService } from '../processes/process-message-delivery-service';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import type { RemoteServerSource } from '../servers/workspace-directory';
 import { remoteChatLaunchBody, remoteRalphLaunchBody } from './remote-delegation-launch';
 import type { RemoteDelegationDispatch, RemoteDelegationFindChild } from './remote-delegation-admission';
 
@@ -28,20 +29,29 @@ function publicReceipt(row: RemoteDelegationAdmission) {
         intentDigest: row.intentDigest, admission: row.admission, ...(row.terminal ? { terminal: row.terminal } : {}) };
 }
 
-/** No capability is advertised until the complete result lifecycle is composed. */
+/** Pre-claim refusal (400) proves this request admitted nothing; a foreign owner (403) admitted nothing for this caller. */
+function sendAdmissionFailure(res: http.ServerResponse, error: unknown, unavailable: string): void {
+    if (error instanceof RemoteDelegationRefusedError) send400(res, 'Remote admission was refused before execution; no work was started.');
+    else if (error instanceof RemoteDelegationReceiptOwnerError) sendError(res, 403, 'Remote admission is unavailable for this request.');
+    else sendError(res, 503, unavailable);
+}
+
+/**
+ * Sender-polling admission: the destination never registers, connects to or calls the
+ * origin. No capability is advertised until the complete result lifecycle is composed.
+ */
 export function registerRemoteDelegationRoutes(routes: Route[], options: {
-    admissions: RemoteDelegationAdmissionStore; remotes: RemoteServerSource;
+    admissions: RemoteDelegationAdmissionStore;
     delivery: ProcessMessageDeliveryService; store: ProcessStore;
     launch?: { dispatch: RemoteDelegationDispatch; findChild: RemoteDelegationFindChild };
     results?: { ready: Promise<void>; capture: () => Promise<void> };
-    fetchImpl?: typeof fetch;
 }): void {
-    const gateway = new RemoteDelegationAdmissionService(options.admissions, { remotes: options.remotes, fetchImpl: options.fetchImpl });
+    const gateway = new RemoteDelegationAdmissionService(options.admissions);
     if (options.results && options.launch) routes.push({
         method: 'GET', pattern: '/api/remote-delegations/capabilities',
         handler: (_req, res) => {
             res.setHeader('Cache-Control', 'no-store');
-            sendJson(res, { version: 1, results: true, serverIdentity: options.admissions.serverIdentity });
+            sendJson(res, { version: 1, results: true, senderPolling: true, serverIdentity: options.admissions.serverIdentity });
         },
     });
     const capture = async () => {
@@ -65,7 +75,7 @@ export function registerRemoteDelegationRoutes(routes: Route[], options: {
                 const receipt = await gateway.admit(body.claim, body.intent, options.launch!.dispatch);
                 await capture();
                 sendJson(res, publicReceipt(options.admissions.get(receipt) ?? receipt), 202);
-            } catch { sendError(res, 503, 'Remote launch admission is unavailable; reconcile before any further action.'); }
+            } catch (error) { sendAdmissionFailure(res, error, 'Remote launch admission is unavailable; reconcile before any further action.'); }
         },
     });
     routes.push({
@@ -96,7 +106,7 @@ export function registerRemoteDelegationRoutes(routes: Route[], options: {
                 });
                 await capture();
                 sendJson(res, publicReceipt(options.admissions.get(receipt) ?? receipt), 202);
-            } catch { sendError(res, 503, 'Remote follow-up admission is unavailable; reconcile before any further action.'); }
+            } catch (error) { sendAdmissionFailure(res, error, 'Remote follow-up admission is unavailable; reconcile before any further action.'); }
         },
     });
     routes.push({
@@ -119,29 +129,9 @@ export function registerRemoteDelegationRoutes(routes: Route[], options: {
                 if (!receipt) { sendError(res, 404, 'Remote admission receipt is unavailable.'); return; }
                 await capture();
                 sendJson(res, publicReceipt(options.admissions.get(receipt) ?? receipt));
-            } catch { sendError(res, 503, 'Remote admission receipt is unavailable.'); }
-        },
-    });
-}
-
-/** Recovery proof stays available independently of the originating admission flag. */
-export function registerRemoteDelegationProofRoutes(routes: Route[], requests: RemoteDelegationRequestStore): void {
-    routes.push({
-        method: 'POST', pattern: REMOTE_DELEGATION_PROOF_PATH,
-        handler: async (req, res) => {
-            res.setHeader('Cache-Control', 'no-store');
-            let input: unknown;
-            try { input = await readJsonBody(req, 16_384); }
-            catch { send400(res, 'Invalid remote origin proof request.'); return; }
-            const parsed = remoteDelegationClaimSchema.safeParse(input);
-            if (!parsed.success) { send400(res, 'Invalid remote origin proof request.'); return; }
-            try {
-                const proof = requests.proveOrigin(parsed.data);
-                if (!proof) { sendError(res, 403, 'Remote origin proof is unavailable.'); return; }
-                sendJson(res, proof);
-            } catch {
-                // Storage paths, raw ledger contents and private tokens stay server-side.
-                sendError(res, 503, 'Remote origin proof is unavailable.');
+            } catch (error) {
+                if (error instanceof RemoteDelegationRefusedError) send400(res, 'Invalid remote admission receipt request.');
+                else sendError(res, 503, 'Remote admission receipt is unavailable.');
             }
         },
     });

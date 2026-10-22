@@ -315,14 +315,16 @@ export interface CLIConfig {
         teamsMessageReaction?: boolean;
         /** Optional Sentinel next actions and click-to-send. Disabled by default. */
         sentinelNextSteps?: boolean;
+        /** Inline Sentinel target context discovery. Disabled by default. */
+        sentinelTargetAutocomplete?: boolean;
         /** Native prerequisite authoring and admission. Disabled by default. */
         sentinelTodoDependencies?: boolean;
         sentinelTodoTags?: boolean;
         /** Typed display-only external references on Sentinel items. Disabled by default. */
         sentinelTodoExternalReferences?: boolean;
-        /** Sentinel To-do Scrubber (visible evidence checks, cron). Disabled by default. */
+        /** Sentinel Coda, the built-in to-do review (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber?: boolean;
-        /** Scheduled and on-demand Sentinel To-do jobs. Disabled by default. */
+        /** Sentinel Refrains: scheduled and on-demand prompts. Disabled by default. */
         sentinelTodoJobs?: boolean;
         /** Per-chat Sentinel additional instructions editor and context injection. Disabled by default. */
         sentinelAdditionalInstructions?: boolean;
@@ -333,7 +335,7 @@ export interface CLIConfig {
         sentinelPrOutcomeWake?: boolean;
         /** Return each tracked Sentinel post-mode turn result to the Sentinel. Disabled by default. */
         sentinelFollowUpResults?: boolean;
-        /** Return new remote Sentinel requests through authenticated durable receipts. Default off. */
+        /** Return new remote Sentinel requests by polling durable destination receipts. Default off. */
         sentinelRemoteResults?: boolean;
         sentinelTodoDateTimeTriggers?: boolean;
         sentinelDesktopMirror?: boolean;
@@ -743,12 +745,13 @@ export interface ResolvedCLIConfig {
         teamsAiAnswerRelay: boolean;
         teamsMessageReaction: boolean;
         sentinelNextSteps: boolean;
+        sentinelTargetAutocomplete: boolean;
         sentinelTodoDependencies: boolean;
         sentinelTodoTags: boolean;
         sentinelTodoExternalReferences: boolean;
-        /** Sentinel To-do Scrubber (visible evidence checks, cron). Disabled by default. */
+        /** Sentinel Coda, the built-in to-do review (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber: boolean;
-        /** Scheduled and on-demand Sentinel To-do jobs. Disabled by default. */
+        /** Sentinel Refrains: scheduled and on-demand prompts. Disabled by default. */
         sentinelTodoJobs: boolean;
         /** Per-chat Sentinel additional instructions editor and context injection. Disabled by default. */
         sentinelAdditionalInstructions: boolean;
@@ -1088,6 +1091,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         teamsAiAnswerRelay: true,
         teamsMessageReaction: false,
         sentinelNextSteps: true,
+        sentinelTargetAutocomplete: false,
         sentinelTodoDependencies: false,
         sentinelTodoTags: false,
         sentinelTodoExternalReferences: false,

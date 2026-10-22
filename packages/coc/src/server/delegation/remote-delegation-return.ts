@@ -32,7 +32,10 @@ class RemoteResultHttpError extends Error {
     constructor(readonly status: number) { super('Remote receipt unavailable'); }
 }
 
-/** Origin polling transfers durable receipts only. It never replays execution. */
+/**
+ * Sender-only transport: the origin submits admission, then polls the destination's
+ * receipt. The destination never calls back. Polling never replays execution.
+ */
 export class RemoteDelegationReturn {
     private timer?: ReturnType<typeof setInterval>;
     private pending: Promise<void> = Promise.resolve();
@@ -123,10 +126,12 @@ export class RemoteDelegationReturn {
                 ? 'Destination does not support authenticated remote result return. Inspect openLink for its outcome.'
                 : 'Compatible authenticated remote result support could not be verified; automatic result return is unavailable.',
         } }; }
+        // Older destinations verify origins by calling back; only sender-polling peers qualify.
         if (!supported || typeof supported !== 'object' || !('version' in supported) || supported.version !== 1
             || !('results' in supported) || supported.results !== true
+            || !('senderPolling' in supported) || supported.senderPolling !== true
             || !('serverIdentity' in supported) || supported.serverIdentity !== remote.serverIdentity) return { unavailable: {
-                status: 'unavailable' as const, code: 'unsupported' as const, reason: 'Destination does not support compatible authenticated remote result return. Inspect openLink for its outcome.',
+                status: 'unavailable' as const, code: 'unsupported' as const, reason: 'Destination does not support sender-polling remote result return; upgrade the destination server. Inspect openLink for its outcome.',
             } };
         if (this.deps.remotes.list().find(row => row.id === serverId)?.serverIdentity !== remote.serverIdentity) {
             throw new RemoteChatAdmissionError('Remote owning server changed. No work was sent.', 'not-started');
@@ -150,6 +155,13 @@ export class RemoteDelegationReturn {
             if (!job) throw new Error('Remote admission has not been confirmed');
             return this.tracked(request, job.child);
         } catch (error) {
+            // Only the first claimed POST can prove non-admission: the destination refuses
+            // with 400 before any durable claim, and no earlier send of this request exists.
+            if (claimed && error instanceof RemoteResultHttpError && error.status === 400) {
+                const reason = 'Remote destination refused the admission before execution; no work was started.';
+                this.deps.requests.settleDispatch(request.parent.workspaceId, request.requestId, 'rejected', reason);
+                throw new RemoteChatAdmissionError(reason, 'rejected');
+            }
             const current = this.deps.requests.list(request.parent.workspaceId).find(row => row.requestId === request.requestId)!;
             if (current.admission.state !== 'rejected') this.deps.requests.settleDispatch(request.parent.workspaceId, request.requestId,
                 'uncertain', 'Remote admission is uncertain; receipt recovery will not repeat execution.');
@@ -209,7 +221,7 @@ export class RemoteDelegationReturn {
                         this.deps.requests.recordTransfer(workspace.id, request.requestId);
                     } catch {
                         if (this.abort.signal.aborted) return;
-                        const reason = 'Remote result delivery is unavailable; authenticated receipt recovery will retry.';
+                        const reason = 'Remote result delivery is unavailable; receipt polling will retry.';
                         try {
                             this.deps.requests.recordTransfer(workspace.id, request.requestId, reason);
                             const current = job ?? this.deps.jobs.list(workspace.id).find(row => row.remote?.requestId === request.requestId);

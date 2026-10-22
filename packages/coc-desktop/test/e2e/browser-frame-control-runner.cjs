@@ -20,6 +20,9 @@ app.setPath('sessionData', path.join(data, 'session'));
 app.commandLine.appendSwitch('site-per-process');
 app.commandLine.appendSwitch('host-resolver-rules', 'MAP localhost 127.0.0.1');
 app.commandLine.appendSwitch('disable-background-networking');
+// cleanup() destroys the only window before the server drains; without a listener
+// Electron quits with code 0 there, before the report line is written.
+app.on('window-all-closed', () => {});
 let origin;
 let crossOrigin;
 let window;
@@ -583,8 +586,8 @@ async function cleanup() {
         containingBlockClipping: true, clippedKeysRejected: true, focusedSelectionPreserved: true,
     };
     await cleanup();
-    console.log('E2E::' + JSON.stringify(result));
-    app.exit(0);
+    // Piped stdout is asynchronous on Windows; exit only after the report flushes.
+    process.stdout.write('E2E::' + JSON.stringify(result) + '\n', () => app.exit(0));
 })().catch(async error => {
     console.error(error);
     try { await cleanup(); } catch (cleanupError) { console.error(cleanupError); }

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     RemoteDelegationAdmissionStore, REMOTE_DELEGATION_ADMISSIONS_FILE,
 } from '../../../src/server/delegation/remote-delegation-admission-store';
-import type { RemoteDelegationProof } from '../../../src/server/delegation/remote-delegation-auth';
+import { remoteDelegationTokenDigest, type RemoteDelegationClaim } from '../../../src/server/delegation/remote-delegation-auth';
 import { getRepoDataPath } from '../../../src/server/paths';
 import { createDelegatedJobsDomain } from '../../../src/server/storage/snapshot/delegated-jobs-domain';
 import type { StorageSnapshotContext } from '../../../src/server/storage/snapshot/types';
@@ -19,7 +19,7 @@ vi.mock('node:fs', async importOriginal => {
 describe('destination remote delegation admission', () => {
     let dataDir: string;
     let store: RemoteDelegationAdmissionStore;
-    let proof: RemoteDelegationProof;
+    let proof: RemoteDelegationClaim;
     const workspaceId = 'destination-repo';
     const file = () => getRepoDataPath(dataDir, workspaceId, REMOTE_DELEGATION_ADMISSIONS_FILE);
     const restart = () => new RemoteDelegationAdmissionStore(dataDir);
@@ -29,7 +29,7 @@ describe('destination remote delegation admission', () => {
         proof = { version: 1, requestId: randomUUID(), originServerIdentity: 'origin-owner',
             parent: { workspaceId: 'origin-repo', processId: 'sentinel-1' },
             destination: { serverIdentity: store.serverIdentity, workspaceId },
-            kind: 'launch', intentDigest: 'a'.repeat(64), admission: 'dispatching' };
+            kind: 'launch', intentDigest: 'a'.repeat(64), proofToken: 'b'.repeat(64) };
     });
     afterEach(() => {
         vi.restoreAllMocks();
@@ -39,7 +39,11 @@ describe('destination remote delegation admission', () => {
     it('publishes one private-mode claim before dispatch and never reclaims after restart', () => {
         const claim = store.claim(proof);
         expect(claim.execute).toBe(true);
-        expect(claim.receipt).toMatchObject({ ...proof, admission: { state: 'dispatching' } });
+        const { proofToken, ...binding } = proof;
+        expect(claim.receipt).toMatchObject({ ...binding, admission: { state: 'dispatching' } });
+        // Only a digest of the private secret persists.
+        expect(claim.receipt.receiptTokenDigest).toBe(remoteDelegationTokenDigest(proofToken));
+        expect(fs.readFileSync(file(), 'utf8')).not.toContain(proofToken);
         expect(claim.receipt.executionId).toMatch(/^[a-f0-9-]{36}$/);
         expect(restart().claim(proof)).toEqual({ execute: false, receipt: claim.receipt });
         expect(restart().get(proof)).toEqual(claim.receipt);
@@ -66,15 +70,15 @@ describe('destination remote delegation admission', () => {
         const accepted = restart().accept(proof, child);
         expect(accepted.admission).toEqual({ state: 'accepted', child });
         expect(restart().accept(proof, child)).toEqual(accepted);
-        expect(restart().claim({ ...proof, admission: 'accepted' })).toEqual({ execute: false, receipt: accepted });
+        expect(restart().claim(proof)).toEqual({ execute: false, receipt: accepted });
         expect(store.settle(proof, 'rejected')).toEqual(accepted);
         expect(store.settle(proof, 'uncertain')).toEqual(accepted);
         expect(() => store.accept(proof, { ...child, processId: 'another' })).toThrow();
         if (kind === 'ralph') expect(() => store.accept(proof, { ...child, sessionId: 'another' })).toThrow();
     });
 
-    it('never invents execution or a child when origin already accepted but destination receipt is missing', () => {
-        expect(() => store.claim({ ...proof, admission: 'accepted' })).toThrow('existing destination receipt');
+    it('never invents a child or owner read when the destination receipt is missing', () => {
+        expect(store.owned(proof)).toBeUndefined();
         expect(store.get(proof)).toBeUndefined();
         expect(() => store.accept(proof, { processId: 'invented' })).toThrow('not been claimed');
         expect(() => store.settle(proof, 'uncertain')).toThrow('not been claimed');

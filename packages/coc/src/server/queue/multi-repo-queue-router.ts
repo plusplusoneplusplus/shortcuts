@@ -477,7 +477,7 @@ export class MultiRepoQueueRouter extends EventEmitter {
     }
 
     /** Run a job gate on the owning Sentinel's repo bridge so its tools stay repo-scoped. */
-    readonly runJobGate: import('../sentinel-jobs/job-gate-owner-runner').JobGateOwnerRunner =
+    readonly runRefrainGate: import('../sentinel-refrains/refrain-gate-owner-runner').RefrainGateOwnerRunner =
         async request => {
             request.signal?.throwIfAborted();
             const owner = await this.store.getProcess(request.processId, request.workspaceId);
@@ -488,8 +488,8 @@ export class MultiRepoQueueRouter extends EventEmitter {
             request.signal?.throwIfAborted();
             if (!rootPath) throw new Error('Gate script owner workspace path is unavailable');
             const bridge = this.getOrCreateBridge(rootPath);
-            if (!bridge.runJobGate) throw new Error('Gate script owner runtime is unavailable');
-            return bridge.runJobGate(request);
+            if (!bridge.runRefrainGate) throw new Error('Gate script owner runtime is unavailable');
+            return bridge.runRefrainGate(request);
         };
 
     /** Run an owner-bound script (canvas `host.runScript`) on the owner chat's repo bridge. */

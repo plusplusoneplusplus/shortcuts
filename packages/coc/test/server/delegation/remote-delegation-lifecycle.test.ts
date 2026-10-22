@@ -16,12 +16,12 @@ import { RemoteDelegationReturn } from '../../../src/server/delegation/remote-de
 import { RemoteDelegationRequestStore } from '../../../src/server/delegation/remote-delegation-request-store';
 import { DelegatedJobStore } from '../../../src/server/delegation/delegated-job-store';
 import { DelegatedJobReviews, delegatedReviewReceipt } from '../../../src/server/delegation/delegated-job-reviews';
-import { registerRemoteDelegationProofRoutes, registerRemoteDelegationRoutes } from '../../../src/server/delegation/remote-delegation-routes';
+import { REMOTE_DELEGATION_LAUNCH_PATH, REMOTE_DELEGATION_RECEIPT_PATH, registerRemoteDelegationRoutes } from '../../../src/server/delegation/remote-delegation-routes';
 import { ProcessMessageDeliveryService } from '../../../src/server/processes/process-message-delivery-service';
 import { RalphSessionStore } from '../../../src/server/ralph/ralph-session-store';
 import { createRouter, sendJson, type Route } from '../../../src/server/shared/router';
 import type { RemoteServerWithRuntime } from '../../../src/server/servers/remote-server-types';
-import type { RemoteDelegationIntent } from '../../../src/server/delegation/remote-delegation-admission';
+import { captureRemoteDelegationIntent, type RemoteDelegationIntent } from '../../../src/server/delegation/remote-delegation-admission';
 import { MessagingJobNotices } from '../../../src/server/messaging/job-notices';
 
 // Raw workspace and process identities deliberately collide across both installations.
@@ -29,7 +29,7 @@ const workspaceId = 'shared-repo';
 const parentId = 'queue_shared-chat';
 type Infrastructure = ReturnType<typeof createQueueInfrastructure>;
 
-describe('remote Sentinel lifecycle over authenticated fixture HTTP', () => {
+describe('remote Sentinel lifecycle over sender-only fixture HTTP', () => {
     let directory: string;
     let originDir: string;
     let destinationDir: string;
@@ -46,15 +46,15 @@ describe('remote Sentinel lifecycle over authenticated fixture HTTP', () => {
     let notices: MessagingJobNotices;
     let returns: RemoteDelegationReturn;
     let originRemotes: RemoteServerWithRuntime[];
-    let destinationRemotes: RemoteServerWithRuntime[];
-    let originUrl: string;
     let destinationUrl: string;
+    /** Every real HTTP request either installation makes. */
+    let outbound: string[];
     let enabled: boolean;
     let disconnected: boolean;
     let loseAdmissionReply: boolean;
     let executionPosts: number;
     let receiptAttempts: number;
-    let tamper: 'binding' | 'links' | 'capped' | undefined;
+    let tamper: 'binding' | 'links' | 'capped' | 'intent' | undefined;
     let stalled: boolean;
     const servers: http.Server[] = [];
     const destinationRoutes: Route[] = [];
@@ -99,8 +99,9 @@ describe('remote Sentinel lifecycle over authenticated fixture HTTP', () => {
         destinationRoutes.splice(0);
         destinationRoutes.push({ method: 'GET', pattern: '/api/health',
             handler: (_req, res) => sendJson(res, { serverIdentity: admissions.serverIdentity }) });
+        // The destination has no remote registry: it cannot contact the origin.
         registerRemoteDelegationRoutes(destinationRoutes, { admissions, store: destination, delivery, launch,
-            remotes: { list: () => destinationRemotes }, results: { ready: capture.restore(), capture: () => capture.restore() } });
+            results: { ready: capture.restore(), capture: () => capture.restore() } });
     }
     function closeDestination() {
         capture.dispose(); destinationInfra.queuePersistence.dispose(); destinationInfra.bridge.dispose(); destination.close();
@@ -129,6 +130,11 @@ describe('remote Sentinel lifecycle over authenticated fixture HTTP', () => {
                 if (disconnected) throw new Error('Fixture disconnected');
                 const execution = String(url).endsWith('/launch') || String(url).endsWith('/follow-up');
                 if (execution) executionPosts++;
+                if (execution && tamper === 'intent') {
+                    const body = JSON.parse(String(options!.body));
+                    body.intent.body.content = 'Tampered in transit';
+                    options = { ...options, body: JSON.stringify(body) };
+                }
                 const response = await fetch(url, options);
                 if (execution && loseAdmissionReply) throw new Error('Fixture lost admission reply');
                 if (tamper && String(url).endsWith('/receipt')) {
@@ -171,7 +177,12 @@ describe('remote Sentinel lifecycle over authenticated fixture HTTP', () => {
         fs.mkdirSync(originDir); fs.mkdirSync(destinationDir); fs.mkdirSync(repo);
         enabled = true; disconnected = false; loseAdmissionReply = false; executionPosts = 0; receiptAttempts = 0;
         tamper = undefined; stalled = false; relay.mockReset().mockResolvedValue('fixture-message');
-        originRemotes = []; destinationRemotes = [];
+        originRemotes = []; outbound = [];
+        const realFetch = globalThis.fetch;
+        vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
+            outbound.push(String(url));
+            return realFetch(url, init);
+        });
         openOrigin(); openDestination();
         await origin.registerWorkspace({ id: workspaceId, name: 'Origin', rootPath: repo });
         await destination.registerWorkspace({ id: workspaceId, name: 'Destination', rootPath: repo });
@@ -179,16 +190,15 @@ describe('remote Sentinel lifecycle over authenticated fixture HTTP', () => {
             sdkSessionId: 'origin-session', workingDirectory: repo, metadata: { workspaceId, mode: 'sentinel', provider: 'copilot' } });
         await destination.addProcess({ id: parentId, type: 'chat', status: 'completed', startTime: new Date(), promptPreview: 'Target',
             sdkSessionId: 'destination-session', workingDirectory: repo, metadata: { workspaceId, mode: 'ask', provider: 'copilot' } });
-        const originRoutes: Route[] = [{ method: 'GET', pattern: '/api/health',
-            handler: (_req, res) => sendJson(res, { serverIdentity: jobs.serverIdentity }) }];
-        registerRemoteDelegationProofRoutes(originRoutes, requests);
-        originUrl = await listen(originRoutes); destinationUrl = await listen(destinationRoutes);
+        // The origin has no listening endpoint at all; only the destination listens.
+        destinationUrl = await listen(destinationRoutes);
         originRemotes = [{ id: 'destination-alias', kind: 'url', url: destinationUrl, effectiveUrl: destinationUrl,
             status: 'online', serverIdentity: admissions.serverIdentity, addedAt: 1, updatedAt: 1 }];
-        destinationRemotes = [{ id: 'origin-alias', kind: 'url', url: originUrl, effectiveUrl: originUrl,
-            status: 'online', serverIdentity: jobs.serverIdentity, addedAt: 1, updatedAt: 1 }];
     });
     afterEach(async () => {
+        // No reverse HTTP: every request in every case targets the destination.
+        expect(outbound.every(url => url.startsWith(`${destinationUrl}/`))).toBe(true);
+        vi.restoreAllMocks();
         for (const server of servers.splice(0)) {
             server.closeAllConnections();
             await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
@@ -348,18 +358,69 @@ describe('remote Sentinel lifecycle over authenticated fixture HTTP', () => {
         expect(jobs.list(workspaceId)[0].terminal?.result.outcome).toBe('completed');
     });
 
-    it('does not rerun execution when reciprocal authentication fails before destination admission', async () => {
-        const reciprocal = destinationRemotes;
-        destinationRemotes = [];
-        await expect(dispatch()).rejects.toMatchObject({ dispatchState: 'uncertain' });
+    it('admits and returns results with no receiver registration and no origin listener', async () => {
+        expect(servers).toHaveLength(1);
+        const result = await dispatch();
+        expect(result.resultDelivery.status).toBe('tracked');
+        await complete(result.resultDelivery.remote.requestId, 'completed');
+        await returns.recover(true);
+        expect(jobs.list(workspaceId)[0].terminal?.result.outcome).toBe('completed');
+        expect(outbound.length).toBeGreaterThan(0);
+        expect(outbound.some(url => url.endsWith('/api/remote-delegations/proof'))).toBe(false);
+        expect(executionPosts).toBe(1);
+    });
+
+    it('classifies a destination refusal of tampered intent as not started, without later execution', async () => {
+        tamper = 'intent';
+        await expect(dispatch()).rejects.toMatchObject({ dispatchState: 'rejected' });
+        tamper = undefined;
         expect(admissions.list(workspaceId)).toEqual([]);
-        destinationRemotes = reciprocal;
+        expect(requests.list(workspaceId)[0].admission).toMatchObject({ state: 'rejected', reason: expect.stringContaining('no work was started') });
         await returns.recover(true);
         expect(executionPosts).toBe(1);
+        expect(receiptAttempts).toBe(0);
+        expect(destinationInfra.queueFacade.getAll()).toEqual([]);
+    });
+
+    it('denies receipt reads and replays from a spoofed submitter without disclosing or executing', async () => {
+        const result = await dispatch();
+        await complete(result.resultDelivery.remote.requestId, 'completed');
+        const row = requests.list(workspaceId)[0];
+        const claim = { version: 1, requestId: row.requestId, originServerIdentity: row.originServerIdentity, parent: row.parent,
+            destination: { serverIdentity: row.destination.serverIdentity, workspaceId: row.destination.workspaceId },
+            kind: row.kind, intentDigest: row.intentDigest, proofToken: 'f'.repeat(64) };
+        const post = (route: string, body: unknown) => fetch(`${destinationUrl}${route}`, { method: 'POST', body: JSON.stringify(body) });
+        const read = await post(REMOTE_DELEGATION_RECEIPT_PATH, claim);
+        expect(read.status).toBe(404);
+        expect(await read.text()).not.toContain('Exact remote outcome');
+        expect((await post(REMOTE_DELEGATION_LAUNCH_PATH, { claim, intent: input })).status).toBe(403);
+        // Another claimed origin label with the real secret is a different key, not this receipt.
+        const spoofed = { ...claim, originServerIdentity: 'spoofed-origin', proofToken: row.proofToken };
+        expect((await post(REMOTE_DELEGATION_RECEIPT_PATH, spoofed)).status).toBe(404);
+        expect(admissions.list(workspaceId)).toHaveLength(1);
+        expect(destinationInfra.queueFacade.getAll()).toHaveLength(1);
+        await returns.recover(true);
+        expect(jobs.list(workspaceId)[0].terminal?.result.outcome).toBe('completed');
+    });
+
+    it('only polls a stored uncertain request the destination never claimed, and never executes it', async () => {
+        // Mirrors a launch refused by an older reverse-proof destination before its claim.
+        const { request } = requests.reserveDispatch({ parent: { workspaceId, processId: parentId }, title: 'Earlier work',
+            destination: { serverId: 'destination-alias', serverIdentity: admissions.serverIdentity, workspaceId },
+            kind: 'launch', intentDigest: captureRemoteDelegationIntent(input).digest });
+        requests.settleDispatch(workspaceId, request.requestId, 'uncertain', 'Remote admission is uncertain.');
+        await returns.recover(true);
+        closeOrigin(); openOrigin();
+        await returns.recover(true);
+        expect(receiptAttempts).toBe(2);
+        expect(executionPosts).toBe(0);
+        expect(requests.list(workspaceId)[0].admission.state).toBe('uncertain');
+        // Retrying the same request reconciles its receipt; it never resends execution.
+        await expect(dispatch(input, request.requestId)).rejects.toMatchObject({ dispatchState: 'uncertain' });
+        expect(receiptAttempts).toBe(3);
+        expect(executionPosts).toBe(0);
         expect(admissions.list(workspaceId)).toEqual([]);
-        expect(requests.list(workspaceId)[0]).toMatchObject({
-            admission: { state: 'uncertain' }, transfer: { error: expect.stringContaining('unavailable') },
-        });
+        expect(destinationInfra.queueFacade.getAll()).toEqual([]);
     });
 
     it('bounds an unresponsive receipt transport and later recovers without execution replay', async () => {
@@ -400,6 +461,16 @@ describe('remote Sentinel lifecycle over authenticated fixture HTTP', () => {
         expect(executionPosts).toBe(0);
         expect(requests.list(workspaceId)).toEqual([]);
         expect(admissions.list(workspaceId)).toEqual([]);
+    });
+
+    it('reports an older callback-verifying destination as unsupported before reserving work', async () => {
+        const index = destinationRoutes.findIndex(route => route.pattern === '/api/remote-delegations/capabilities');
+        destinationRoutes[index] = { ...destinationRoutes[index], handler: (_req, res) =>
+            sendJson(res, { version: 1, results: true, serverIdentity: admissions.serverIdentity }) };
+        expect(await returns.dispatch('destination-alias', input, { parent: { workspaceId, processId: parentId }, title: 'Fixture work' }))
+            .toMatchObject({ unavailable: { code: 'unsupported', reason: expect.stringContaining('upgrade the destination') } });
+        expect(executionPosts).toBe(0);
+        expect(requests.list(workspaceId)).toEqual([]);
     });
 
     it('returns a capped Ralph session once, with no iteration result or review', async () => {

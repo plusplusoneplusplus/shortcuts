@@ -11,7 +11,7 @@ Stacked layout: `RichTextInput` → toolbar → `ComposerMetaStrip`.
 
 ### RichTextInput paste
 
-Paste always inserts plain text via `execCommand('insertText')`, preserving undo. When the
+Ordinary paste inserts plain text via `execCommand('insertText')`, preserving undo. When the
 clipboard carries a meaningful `text/html` flavor, `shared/pasteHtmlToMarkdown.ts` converts
 it to markdown source first — a lean chat-specific turndown config (bold/italic/
 strikethrough, headings, lists, links, inline and fenced code, blockquotes, GFM tables;
@@ -89,6 +89,27 @@ available only from New Chat. The central mode registry supplies its shield icon
 accent. Server normalization recognizes it as a chat mode and maps its base instruction
 profile to Ask so dispatcher turns stay read-only. Any number of Sentinel chats may exist
 per workspace; New Chat submits them like any other mode.
+
+### Sentinel target references
+
+Default-off `features.sentinelTargetAutocomplete` enables `SentinelTargetInput` in initial
+and follow-up Sentinel composers. It resolves the owning server's runtime policy and searches
+`dashboard-discovery/topology` inventory, including cached offline rows and machines without
+repositories. Discovery verifies durable health identity around live workspace/group reads;
+owner/topology changes revoke results. Names, owner labels and routing endpoints stay separate.
+Server drill-down requires an explicit server-only selection; groups retain their own IDs.
+
+`shared/sentinel-target-reference.ts` serializes versioned `#sentinel-targets/v1/` Markdown
+links containing exact durable server and workspace/group IDs. `RichTextInput` paints them as
+noneditable inline spans, retaining serialized offsets, native undo, a private clipboard flavor
+and readable plain-text fallback. The text is the only reference state across draft restore,
+queued/ordinary sends and editing; initial draft keys include the concrete owner selection.
+Markdown code, headings, escaped hashes and URL fragments do not trigger discovery.
+
+Initial and follow-up sends verify owner identity/policy and exact selected targets before
+clearing drafts. Failed checks retain input. Sentinel executors and immediate steering expand
+links into provider-only structured context behind the owner flag; sent rendering uses inert
+badges. References grant no permission to send, navigate, launch, reassign, delegate or implement.
 
 ### Follow-up suggestions
 

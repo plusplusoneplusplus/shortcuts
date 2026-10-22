@@ -36,7 +36,7 @@ import { createSentinelMirrorOutboxDomain, createSentinelTodosDomain } from '../
 import { SENTINEL_MIRROR_OUTBOX_FILE, SentinelMirrorOutbox } from '../../src/server/messaging/sentinel-mirror-outbox';
 import { SentinelTodoStore } from '../../src/server/sentinel-todos/sentinel-todo-store';
 import { SentinelDependencyStore, type DependencyAdmissionRecord } from '../../src/server/sentinel-todos/sentinel-dependency-store';
-import { SentinelJobStore } from '../../src/server/sentinel-jobs/job-store';
+import { SentinelRefrainStore } from '../../src/server/sentinel-refrains/refrain-store';
 
 // ============================================================================
 // Helpers
@@ -224,7 +224,7 @@ describe('snapshot domain behavior', () => {
 
     it('sentinel-jobs: excludes local definitions, runs and snapshots from aggregate export/import and wipes them together', async () => {
         new SentinelTodoStore(store.getDatabase());
-        const jobs = new SentinelJobStore(store.getDatabase());
+        const jobs = new SentinelRefrainStore(store.getDatabase());
         const owner = { workspaceId: 'ws1', processId: 'p1' };
         const job = jobs.create(owner, { name: 'Local job', instructions: 'MACHINE_LOCAL_JOB_INSTRUCTIONS',
             provider: 'copilot', model: 'model' });

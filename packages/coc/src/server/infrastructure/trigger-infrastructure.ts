@@ -30,8 +30,8 @@ import type { TriggerEvent } from '../triggers/trigger-types';
 import type { QueueExecutorBridge } from '../core/api-handler';
 import { ProcessMessageDeliveryService } from '../processes/process-message-delivery-service';
 import { SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
-import { SentinelTodoTriggerFirer } from '../triggers/sentinel-todo-trigger-firer';
-import { SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
+import { SentinelOvertureFirer } from '../triggers/sentinel-overture-firer';
+import { SentinelOvertureService } from '../triggers/sentinel-overture-service';
 import { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import { createPrRepairOwnerValidator } from '../triggers/pr-repair-owner';
 import { createProcessWorkspaceResolver } from '../processes/process-workspace-resolver';
@@ -46,8 +46,8 @@ import { SentinelPrOutcomeService } from '../triggers/sentinel-pr-outcome-servic
 export interface TriggerInfrastructure {
     triggerStore: TriggerStore;
     triggerManager: TriggerManager;
-    sentinelTodoFirer: SentinelTodoTriggerFirer;
-    sentinelTodoTriggers: SentinelTodoTriggerService;
+    sentinelOvertureFirer: SentinelOvertureFirer;
+    sentinelOvertures: SentinelOvertureService;
     sentinelPrOutcomes: SentinelPrOutcomeService;
     /** Shared creation path for server tools. */
     createTrigger: CreateTriggerFn;
@@ -147,7 +147,7 @@ export async function createTriggerInfrastructure(
     const owners = new SentinelTodoService({
         todos, store, jobs: new DelegatedJobStore(dataDir), getTask: id => queueFacade.getTask(id),
     });
-    const sentinelTodoFirer: SentinelTodoTriggerFirer = new SentinelTodoTriggerFirer({
+    const sentinelOvertureFirer: SentinelOvertureFirer = new SentinelOvertureFirer({
         triggers: triggerStore, todos, processes: store,
         executor: actionExecutor, emit, now,
         dateTimeEnabled: options.getDateTimeEnabled,
@@ -165,21 +165,21 @@ export async function createTriggerInfrastructure(
             return event.monitor === 'ci-failure' ? ciFailureEvaluator : prMergedEvaluator;
         },
         actionExecutor,
-        oneShotFirer: sentinelTodoFirer,
+        oneShotFirer: sentinelOvertureFirer,
         dateTimeEnabled: options.getDateTimeEnabled,
         emit,
         ...(now ? { now } : {}),
     });
-    const sentinelTodoTriggers = new SentinelTodoTriggerService({
+    const sentinelOvertures = new SentinelOvertureService({
         triggers: triggerStore, todos,
         owners: new SentinelTodoService({ todos, store, getTask: id => queueFacade.getTask(id) }),
-        manager: triggerManager, firer: sentinelTodoFirer,
+        manager: triggerManager, firer: sentinelOvertureFirer,
         fetchPr: options.prStatusFetcher ?? createPrStatusFetcher({ dataDir }), emit, now,
         dateTimeEnabled: options.getDateTimeEnabled,
     });
     const sentinelPrOutcomes: SentinelPrOutcomeService = new SentinelPrOutcomeService({
         jobs: new DelegatedJobStore(dataDir), dataDir, processes: store, owners,
-        triggers: triggerStore, manager: triggerManager, firer: sentinelTodoFirer,
+        triggers: triggerStore, manager: triggerManager, firer: sentinelOvertureFirer,
         controls: new SentinelPrOutcomeControls(db),
         enabled: options.getPrOutcomeEnabled ?? (() => false),
         recoverPendingMessages: options.recoverPendingMessages,
@@ -267,7 +267,7 @@ export async function createTriggerInfrastructure(
     };
 
     return {
-        triggerStore, triggerManager, sentinelTodoFirer, sentinelTodoTriggers, sentinelPrOutcomes, timerRegistry, emit, dispose,
+        triggerStore, triggerManager, sentinelOvertureFirer, sentinelOvertures, sentinelPrOutcomes, timerRegistry, emit, dispose,
         createTrigger: (workspaceId, body, reuseCiMonitor) => createTrigger({
             store: triggerStore, manager: triggerManager, emit,
             resolveWorkspaceId, now: options.now,

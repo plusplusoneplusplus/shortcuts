@@ -254,9 +254,9 @@ policies. See [LLM tools](llm-tools.md#create_pull_request) for polling invarian
 | GET | `/api/workspaces/:workspaceId/triggers` | List monitor scope, persisted repair status and in-flight writer state |
 | PATCH/DELETE | `/api/workspaces/:workspaceId/triggers/:triggerId` | Pause/resume/disarm; preserves admitted repair ownership until completion |
 
-### Sentinel To-do trigger rules
+### Sentinel overtures
 
-Owner-scoped rules use `SentinelTodoTriggerService`. Date authoring/actions/arming require live, default-off `features.sentinelTodoDateTimeTriggers` (`403` off). Rules never expire and share the server's 50-active cap. Every operation validates the owning Sentinel workspace/process; foreign rules/items return `404`. Manual/Done/archived items are ineligible; terminal rules cannot edit/resume/refire. Generic `/triggers` APIs exclude bound rules and reject their mutation. Wakes never change item status, launch jobs or grant authorization.
+Overtures (one-shot wake-ups; the REST paths keep the `/triggers` name) use `SentinelOvertureService`. Date authoring/actions/arming require live, default-off `features.sentinelTodoDateTimeTriggers` (`403` off). Overtures never expire and share the server's 50-active cap. Every operation validates the owning Sentinel workspace/process; foreign rules/items return `404`. Manual/Done/archived items are ineligible; terminal rules cannot edit/resume/refire. Generic `/triggers` APIs exclude bound rules and reject their mutation. Wakes never change item status, launch jobs or grant authorization.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -274,9 +274,11 @@ Owner-scoped rules use `SentinelTodoTriggerService`. Date authoring/actions/armi
 `removeSentinelTodo` and `runSentinelTodoNow`. Every method requires the owner's
 workspace and Sentinel process; mutation methods carry the rule revision.
 
-### To-do prompt jobs
+### Refrains
 
-`client.sentinelTodos.jobs` uses the ledger owner's client and the base path `/api/workspaces/:workspaceId/sentinel-todos/:processId/jobs`. The owning server requires live `sentinel.enabled` and default-off `features.sentinelTodoJobs`; every command proves the Sentinel owner. Contracts live in `coc-client/src/contracts/sentinel-scheduled-jobs.ts`.
+Refrains (user prompts on demand or cron) keep the `/jobs` REST path and `jobId` fields.
+
+`client.sentinelTodos.jobs` uses the ledger owner's client and the base path `/api/workspaces/:workspaceId/sentinel-todos/:processId/jobs`. The owning server requires live `sentinel.enabled` and default-off `features.sentinelTodoJobs`; every command proves the Sentinel owner. Contracts live in `coc-client/src/contracts/sentinel-refrains.ts`.
 
 | Method | Suffix | Client operation |
 |---|---|---|
@@ -302,13 +304,15 @@ a tier drops stored model/effort, and a model-only patch drops a stored tier. Ea
 enqueues the tier for the owning server's normal provider tier resolution. The first run creates
 the persistent job chat before queue admission; every later run reuses it.
 
-### To-do Scrubber
+### Coda
 
-`sentinel-scrubber/scrubber-routes.ts` defines owner-validated commands below the ledger's `/scrubber` path: GET config/active run/history, PUT `/config`, POST `/runs`, GET `/runs/:runId`, POST `/runs/:runId/cancel`, and POST `/runs/:runId/findings/:itemId/{accept|dismiss|undo}`. Each request proves the Sentinel owner with the transcript-free `SentinelTodoService.assertOwner`, not a full ledger list. 
+Coda (the built-in to-do review) keeps the `/scrubber` REST path and `sentinel-scrubber-changed` event.
 
-`client.sentinelTodos.scrubber` exposes `get`, `updateConfig`, `start`, `getRun`, `cancel`, `accept`, `dismiss` and `undo`; contracts live in `coc-client/src/contracts/sentinel-scrubber.ts`. Each call requires the ledger workspace and Sentinel process and uses the chosen client's transport. Run detail includes snapshot revisions, deferred/awaiting-review IDs, evidence, demotion reasons and audit entries. Accept/Undo return a stored item plus finding; Dismiss returns only the finding.
+`sentinel-coda/coda-routes.ts` defines owner-validated commands below the ledger's `/scrubber` path: GET config/active run/history, PUT `/config`, POST `/runs`, GET `/runs/:runId`, POST `/runs/:runId/cancel`, and POST `/runs/:runId/findings/:itemId/{accept|dismiss|undo}`. Each request proves the Sentinel owner with the transcript-free `SentinelTodoService.assertOwner`, not a full ledger list. 
 
-Its injected gate requires `features.sentinelTodoScrubber`, which defaults off. Configuration uses `expectedRevision`; finding actions require `expectedItemRevision`. Accept/Undo reject stale items with `409` and the current item. Dismiss changes only finding/suppression state. Route composition shares the native ledger database and resolved-defaults enqueue path. It publishes the live-gated `getSentinelScrubber` capability, follows terminal registry events, and emits owner-scoped `sentinel-scrubber-changed` plus ledger invalidations. Server startup awaits `scrubberReady` recovery before activating restored queues; route disposal removes queue listeners and timeout timers.
+`client.sentinelTodos.scrubber` exposes `get`, `updateConfig`, `start`, `getRun`, `cancel`, `accept`, `dismiss` and `undo`; contracts live in `coc-client/src/contracts/sentinel-coda.ts`. Each call requires the ledger workspace and Sentinel process and uses the chosen client's transport. Run detail includes snapshot revisions, deferred/awaiting-review IDs, evidence, demotion reasons and audit entries. Accept/Undo return a stored item plus finding; Dismiss returns only the finding.
+
+Its injected gate requires `features.sentinelTodoScrubber`, which defaults off. Configuration uses `expectedRevision`; finding actions require `expectedItemRevision`. Accept/Undo reject stale items with `409` and the current item. Dismiss changes only finding/suppression state. Route composition shares the native ledger database and resolved-defaults enqueue path. It publishes the live-gated `getSentinelCoda` capability, follows terminal registry events, and emits owner-scoped `sentinel-scrubber-changed` plus ledger invalidations. Server startup awaits `codaReady` recovery before activating restored queues; route disposal removes queue listeners and timeout timers.
 
 Run admission persists the supplied child task id before enqueueing. Early execution/terminal events use that identity; cancellation after snapshot writes prevents enqueue, and cancellation during admission cancels the late-admitted child without applying findings.
 
@@ -769,10 +773,10 @@ Streams belong to the owning server/clone. SSE framing preserves split UTF-8 and
 | POST | `/api/servers/:id/connect` | Connect (DevTunnel) |
 | POST | `/api/servers/:id/disconnect` | Disconnect |
 | POST | `/api/servers/cherry-pick-transfer` | Export/apply oldest-first commit(s) across selected server/workspace pair; omitted/local server means current, remote must be online/registered. Propagate dirty/conflict/counts; omit effective URLs/local paths |
-| POST | `/api/remote-delegations/proof` | Private, read-only origin reservation proof after durable dispatch; exact owner/request/digest/token binding, 16 KiB body limit, no-store. Invalid body → 400, unavailable proof → 403, storage failure → 503. Does not dispatch work or advertise tracked execution support; [admission contract](server-architecture.md#remote-delegation-admission) |
-| POST | `/api/remote-delegations/follow-up` | Authenticated exact-owner queued admission `{ claim, intent }`; strict content/mode/model/effort body, destination-owned correlation, no steering/provider switch. Durable accepted/rejected/uncertain/dispatching receipt → 202; malformed body → 400, unavailable admission → 503. No tracking capability advertised |
-| POST | `/api/remote-delegations/launch` | Authenticated `{ claim, intent }` for ordinary chat or native Ralph grill/execute; strict content/goal/AI/title/priority body, destination-owned task/session/workspace root, normal queue/provider/Ralph policy. Receipt → 202; malformed body → 400, unavailable admission → 503. No tracking capability advertised |
-| POST | `/api/remote-delegations/receipt` | Private authenticated launch/follow-up/Ralph claim read, 16 KiB limit; repairs acceptance from exact durable domain evidence without executing; prepared Ralph journal alone is insufficient. No-store; missing receipt → 404, invalid/unsupported kind → 400, unavailable proof/storage → 503 |
+| GET | `/api/remote-delegations/capabilities` | No-store `{ version: 1, results: true, senderPolling: true, serverIdentity }` once the result lifecycle is composed; the origin requires `senderPolling` before reserving tracked work |
+| POST | `/api/remote-delegations/follow-up` | Sender-only exact-owner queued admission `{ claim, intent }`; first claim binds the secret digest; strict content/mode/model/effort body, destination-owned correlation, no steering/provider switch. Durable accepted/rejected/uncertain/dispatching receipt → 202; malformed/mismatched claim or intent → 400 (not admitted), key bound to another secret → 403, unavailable admission → 503 |
+| POST | `/api/remote-delegations/launch` | Sender-only `{ claim, intent }` for ordinary chat or native Ralph grill/execute; strict content/goal/AI/title/priority body, destination-owned task/session/workspace root, normal queue/provider/Ralph policy. Receipt → 202; malformed/mismatched → 400 (not admitted), foreign secret → 403, unavailable → 503 |
+| POST | `/api/remote-delegations/receipt` | Owner-secret launch/follow-up/Ralph claim read, 16 KiB limit; repairs acceptance from exact durable domain evidence without executing; prepared Ralph journal alone is insufficient. No-store; missing, foreign-secret or legacy receipt → 404, invalid/unsupported kind → 400, storage → 503 |
 
 ## Sync
 

@@ -813,7 +813,7 @@ item is included, then recently updated Done items fill a 50-item budget. Active
 counts above 50 stay complete; archived history follows Done. Saved fulfillment,
 not linked job completion, determines selection. Show older items reveals 50 more
 history items, with section ordering applied to the selected rows. Explicit prerequisite/rule links and restored
-open details reveal older rows. Dependencies, triggers and Scrubber projections
+open details reveal older rows. Dependencies, overtures and Coda projections
 receive the full snapshot independently of visible rows. The tab splits the visible items by type
 (`sentinelTodoType`; a missing type reads as normal) through
 `sentinelTodoSections(items, type)`. `sentinelTodoDisplayStatus` derives In review
@@ -857,11 +857,14 @@ on the actual panel. At 660px the compact selectable list and detail editor scro
 independently; below that width selection opens details and Back returns focus to
 the selected row. Detail Close clears selection, returns list focus and preserves
 owner-scoped deselection across refreshes/remounts. Pending item, tag, dependency
-and PR-outcome mutations, plus pending Scrubber actions, block Close. Native pressed buttons expose selection;
+and PR-outcome mutations, plus pending Coda actions, block Close. Native pressed buttons expose selection;
 arrows/Home/End move row focus without selecting. Visited editors stay mounted
 but hidden across selection and resizing, retaining drafts.
 List cards combine status, priority, wrapping title and an ellipsis menu in a compact header,
-with target/Updated/latest-job metadata below. Identical item/job titles use an
+with target/Updated/latest-job metadata below. The header is a `todo-card` container:
+the title takes the full width and the one-line repo/Updated row (ellipsized repo,
+unshrinkable time) sits under it; only at 28rem+ does that row move beside the title,
+capped at 40% so the title keeps most of the width. Identical item/job titles use an
 accessible Open job link; distinct job titles remain visible. Full job history,
 conversation references and editing controls live in the detail pane.
 Default-off `sentinelTodoTagsEnabled` adds named restrained tag chips, a tag filter
@@ -950,15 +953,21 @@ result reasons remain separate from the item verdict. The tab never starts,
 retries, or cancels jobs. Tests live in `test/server/sentinel-todos/` and the
 read-only `test/e2e/sentinel-todo-job-preview.spec.ts` native-style fixture.
 
-### To-do Scrubber
+### Refrains and Coda
 
-`SentinelTodoJobs` selects the automation presentation after a ledger loads.
+The panel's automation uses one music-form naming family: **Refrains** (user
+prompts run on demand or on a cron schedule), **Coda** (the built-in to-do
+review) and **Overtures** (one-shot PR-merged or date/time wake-ups). Wire names
+keep the older words: REST paths (`/jobs`, `/scrubber`, `/triggers`), event types,
+flag keys, tool names and `data-*` values outside these components.
+
+`SentinelRefrains` selects the automation presentation after a ledger loads.
 The owning server's live `sentinelEnabled` and `sentinelTodoJobsEnabled`
-capabilities enable a collapsible Jobs list using `client.sentinelTodos.jobs`.
+capabilities enable a collapsible Refrains list using `client.sentinelTodos.jobs`.
 Owner/endpoint remounts abort pending reads and discard late results; mutations
 retain their admission lock until the authoritative reload settles. Dialog
-drafts retain captured revisions on errors. User job history carries run timing
-and clone-qualified job/Sentinel turn links. Model catalogs and effort tiers use
+drafts retain captured revisions on errors. Refrain history carries run timing
+and clone-qualified refrain/Sentinel turn links. Model catalogs and effort tiers use
 the same owner client. When the owning server's `effortLevelsEnabled` is on and the
 provider has tiers, the dialog shows the shared `EffortTierSelector` and saves only
 `effortTier`; otherwise it keeps explicit Model/Effort and clears a stored tier.
@@ -972,12 +981,12 @@ and discards the late result. Resume gate appears only while paused and uses the
 mutation lock. History and the last-run line label `overlap`, `gate-empty` and
 `gate-unavailable` skips separately.
 
-With Jobs enabled, `SentinelTodoScrubber` supplies the pinned built-in row only
-when the independent scrubber flag is enabled, retaining its findings context,
-routes and execution engine. With Jobs disabled, it renders the existing strip.
+With Refrains enabled, `SentinelCoda` supplies the pinned built-in row only
+when the independent Coda flag (`sentinelTodoScrubberEnabled`) is enabled, retaining its findings context,
+routes and execution engine. With Refrains disabled, it renders the Coda strip.
 The wrapper is gated by the
-live, default-off scrubber flag. `UnifiedTodoTab` passes a function child that places
-the single strip (and its history) in the list column below triggers, beside the
+live, default-off Coda flag. `UnifiedTodoTab` passes a function child that places
+the single strip (and its history) in the list column below Overtures, beside the
 detail pane; a plain child renders the strip first. The strip is not sticky and its
 schedule editor and selection wrap inline. Its owner/endpoint-keyed strip uses
 `client.sentinelTodos.scrubber` and an exact workspace/process WebSocket filter;
@@ -992,25 +1001,25 @@ Completed run details feed an owner-local findings context shared by row badges,
 the strip and the To-do toolbar slot.
 The newest finding wins, including hidden dismissed/suppressed/undone findings;
 auto-Done attribution requires the item's exact applied revision. Accept uses the
-snapshot revision, Undo the applied revision, and conflicts require a fresh scrub.
+snapshot revision, Undo the applied revision, and conflicts require a fresh Coda run.
 Bulk acceptance shares the action busy guard and freezes the admitted snapshot
 revisions. It skips known stale proposals, continues past 409s without retries,
 stops on other errors, reports partial results and reloads ledger/findings.
 Owner/endpoint remounts or flag disabling stop remaining batch requests.
 Successful actions reload the ledger for derived job states. Evidence links allow
-HTTP(S) only; other references render as text. `SentinelTodoScrubHistory` lists
+HTTP(S) only; other references render as text. `SentinelCodaHistory` lists
 retained summaries after the strip and lazily reads owner-routed details.
 Run changes refresh selected details; switching, pruning or closing aborts reads
 and rejects late results. The read-only log retains all finding states and audit
 actors, timestamps, before/after revisions, outcomes, exclusions and evidence.
-Shared `ScrubRunChatLink` preserves the owning route and excursion behavior.
+Shared `CodaRunChatLink` preserves the owning route and excursion behavior.
 Tests use isolated mock clients in
-`test/server/sentinel-scrubber/panel.test.tsx` and `test/server/sentinel-todos/panel.test.tsx`.
+`test/server/sentinel-coda/panel.test.tsx` and `test/server/sentinel-todos/panel.test.tsx`.
 
-### To-do triggers
+### Overtures
 
-`SentinelTodoTriggers` lists intact, nondelegated To-do bindings through the ledger
-owner's typed `client.triggers` API. Rule status and delivery stay separate from
+`SentinelOvertures` lists intact, nondelegated To-do bindings through the ledger
+owner's typed `client.triggers` API. Overture status and delivery stay separate from
 item/job/review states. Rows link the canonical PR or show a zoned date with UTC
 tooltip.
 
@@ -1018,13 +1027,13 @@ The owner's `sentinelTodoCapabilities` controls date visibility, independently o
 page-origin flags; losing it closes date Run now and resume confirmations. Owner
 changes isolate async reads and dialogs. Lifecycle writes carry saved revisions.
 
-`SentinelTodoTriggerEditor` selects eligible normal items, PR URL/local picker or
+`SentinelOvertureEditor` selects eligible normal items, PR URL/local picker or
 one-time date/time, and optional guidance. Shared coc-client helpers validate
 local date/time and IANA zone, expose DST overlap offsets and preview UTC.
 Dialogs trap focus; one-shot Run now and overdue resume require confirmation.
 Item links reveal only the target and its containing groups, preserving unrelated
 expansion; missing targets retain unavailable feedback. Clearing retains receipts.
-Rules never expire, mark items Done, launch jobs directly or grant authorization.
+Overtures never expire, mark items Done, launch jobs directly or grant authorization.
 `triggers-panel.test.tsx` covers presentation, lifecycle, capabilities and ownership.
 
 ### To-do excursions

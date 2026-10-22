@@ -226,6 +226,72 @@ for (const dark of [false, true]) {
         });
     }
 
+    test(`compact cards keep the title primary and reflow repo/time beneath it in ${dark ? 'dark' : 'light'} theme`, async ({ page }) => {
+        // Regression: the title was squeezed into a narrow column beside a wide repo/"Updated" column.
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await mount(page, dark);
+        const title = 'Investigate why the long running sentinel delegation keeps getting stuck after review';
+        const label = 'very-long-repository-label-'.repeat(6);
+        await page.evaluate(({ title, label }) => {
+            const items = (window as Window & { todoFixtureItems: { id: string; title: string; targetRepo?: unknown }[] }).todoFixtureItems;
+            Object.assign(items.find(item => item.id === 'first')!, { title, targetRepo: { workspaceId: 'child', label } });
+            items.find(item => item.id === 'row-0')!.title = title;
+        }, { title, label });
+        await page.getByRole('button', { name: 'Refresh to-do list' }).click();
+        await expect(page.getByTestId('sentinel-todo-row-first')).toContainText(title);
+        const shapes = new Set<string>();
+        // Panel widths stand in for phones, narrow panels, browser zoom (fewer CSS pixels) and wide panels.
+        for (const pixels of [220, 360, 480, 659, 800, 1200]) {
+            await width(page, pixels);
+            for (const id of ['first', 'row-0']) {
+                const row = page.getByTestId(`sentinel-todo-row-${id}`);
+                const geometry = await row.evaluate((element, id) => {
+                    const box = (testId: string) => element.querySelector(`[data-testid="${testId}"]`)!.getBoundingClientRect();
+                    const header = box(`sentinel-todo-header-${id}`);
+                    const toggle = element.querySelector('[data-todo-select]')!.getBoundingClientRect();
+                    const meta = element.querySelector(`[data-testid="sentinel-todo-meta-${id}"]`)!;
+                    const metaBox = meta.getBoundingClientRect();
+                    const updated = box(`sentinel-todo-updated-${id}`);
+                    return {
+                        wide: header.width >= 28 * parseFloat(getComputedStyle(document.documentElement).fontSize),
+                        headerWidth: header.width, toggleWidth: toggle.width, toggleBottom: toggle.bottom,
+                        metaTop: metaBox.top, metaWidth: metaBox.width, metaRight: metaBox.right, headerRight: header.right,
+                        metaFits: meta.scrollWidth <= meta.clientWidth, rowFits: element.scrollWidth <= element.clientWidth,
+                        updatedInside: updated.left >= metaBox.left - 1 && updated.right <= metaBox.right + 1,
+                        oneMetaLine: metaBox.height < 2 * updated.height,
+                    };
+                }, id);
+                expect(geometry.rowFits).toBe(true);
+                expect(geometry.metaFits).toBe(true);
+                expect(geometry.updatedInside).toBe(true);
+                expect(geometry.oneMetaLine).toBe(true);
+                expect(geometry.metaRight).toBeLessThanOrEqual(geometry.headerRight + 1);
+                shapes.add(geometry.wide ? 'wide' : 'stacked');
+                if (geometry.wide) {
+                    // Beside the title, but capped so the title keeps most of the width.
+                    expect(geometry.toggleWidth).toBeGreaterThanOrEqual(geometry.headerWidth * 0.55 - 1);
+                    expect(geometry.metaWidth).toBeLessThanOrEqual(geometry.headerWidth * 0.4 + 1);
+                } else {
+                    // Title owns the whole header width; repo/time sit on their own line below it.
+                    expect(Math.abs(geometry.toggleWidth - geometry.headerWidth)).toBeLessThan(1);
+                    expect(geometry.metaTop).toBeGreaterThanOrEqual(geometry.toggleBottom - 1);
+                }
+            }
+            expect(await page.getByTestId('sentinel-todo-list').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+        }
+        expect([...shapes].sort()).toEqual(['stacked', 'wide']);
+        await width(page, 1200);
+        const row = page.getByTestId('sentinel-todo-row-first');
+        await expect(row.getByTestId('sentinel-todo-repo-first')).toHaveText(label);
+        await expect(row.getByTestId('sentinel-todo-repo-first')).toHaveAttribute('title', 'child');
+        const selection = row.locator('[data-todo-select]');
+        await selection.focus();
+        await page.keyboard.press('Enter');
+        await expect(selection).toHaveAttribute('aria-pressed', 'true');
+        await expect(row.getByRole('button', { name: 'More actions' })).toBeVisible();
+        expect(await page.evaluate(() => (window as Window & { reads: unknown[][] }).reads.filter(read => read[0] === 'update'))).toEqual([]);
+    });
+
     test(`refresh stays beside Add item in narrow and wide layouts in ${dark ? 'dark' : 'light'} theme`, async ({ page }) => {
         await page.setViewportSize({ width: 1280, height: 720 });
         await mount(page, dark);

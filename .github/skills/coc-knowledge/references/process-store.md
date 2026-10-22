@@ -232,7 +232,7 @@ Callers re-evaluate before using readiness; stale external-I/O snapshots conflic
 
 ### Sentinel prompt-job store
 
-`sentinel-jobs/job-store.ts` owns `sentinel_scheduled_jobs` and
+`sentinel-refrains/refrain-store.ts` owns `sentinel_scheduled_jobs` and
 `sentinel_scheduled_job_runs` in the shared native database, keyed by workspace,
 parent Sentinel and job. These definitions are distinct from the ledger's
 item-linked `sentinel_todo_jobs`. Transactions enforce the ten-job limit,
@@ -567,7 +567,7 @@ and pending manual or automatic compactions skip; settings saves and resume neve
 
 Ordinary Ask/Autopilot chats with owner-matching scheduled-job metadata use the same
 admission and failure rules. Jobs enable compaction at their configured absolute
-threshold (default 100000), with `JOB_COMPACTION_INSTRUCTIONS` retaining job context
+threshold (default 100000), with `REFRAIN_COMPACTION_INSTRUCTIONS` retaining job context
 without granting Sentinel identity or ledger-writing authority.
 
 Automatic attempts admit ordinary durable compaction tasks with `payload.trigger: 'auto'`,

@@ -27,7 +27,7 @@ const tagDeleteSchema = z.object({
 
 const id = z.string().min(1).max(200);
 export const todoTypeSchema = z.enum(['normal', 'manual']);
-export const todoStatusSchema = z.enum(['todo', 'in_progress', 'needs_attention', 'done']);
+export const todoStatusSchema = z.enum(['todo', 'in_progress', 'deferred', 'needs_attention', 'done']);
 /** Ledger metadata only, independent of status; it never affects job queue priority. */
 export const todoPrioritySchema = z.enum(['high', 'regular']);
 /** `system` marks server-recorded job outcomes; it is never a caller-supplied actor. */
@@ -358,7 +358,7 @@ export class SentinelTodoStore {
                 completion_condition TEXT NOT NULL,
                 notes TEXT NOT NULL,
                 target_repo TEXT,
-                status TEXT NOT NULL CHECK (status IN ('todo', 'in_progress', 'needs_attention', 'done')),
+                status TEXT NOT NULL CHECK (status IN ('todo', 'in_progress', 'deferred', 'needs_attention', 'done')),
                 status_reason TEXT,
                 priority TEXT NOT NULL CHECK (priority IN ('high', 'regular')),
                 outcome TEXT,
@@ -502,6 +502,7 @@ export class SentinelTodoStore {
                 db.exec("ALTER TABLE sentinel_todo_items ADD COLUMN external_references TEXT NOT NULL DEFAULT '[]'");
             }
         })();
+        migrateDeferredStatus(db);
     }
 
     get(owner: SentinelTodoOwner): SentinelTodoLedger {
@@ -600,6 +601,7 @@ export class SentinelTodoStore {
                 updatedBy: opts.actor,
                 jobs: [],
                 references: fields.externalReferences ?? [],
+                ...(opts.actor === 'user' && fields.status === 'deferred' ? { userVerdictRevision: 1, userEditedAt: now } : {}),
                 ...(fields.tagIds !== undefined ? { tagIds: fields.tagIds, tagOrigin: 'manual', tagRevision: 1 } : {}),
                 ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
             });
@@ -704,6 +706,9 @@ export class SentinelTodoStore {
             const changesVerdict = (fields.status !== undefined && fields.status !== current.status)
                 || fields.statusReason !== undefined || fields.outcome !== undefined
                 || (fields.archived !== undefined && fields.archived !== current.archived);
+            if (actor !== 'user' && current.status === 'deferred' && current.userVerdictRevision !== undefined && changesVerdict) {
+                throw new SentinelTodoError('invalid', "Preserve the user's Deferred verdict; only the user may change it");
+            }
             if (actor !== 'user' && current.type === 'normal' && changesVerdict
                 && current.jobs.some(link => link.result)
                 && (current.userVerdictRevision ?? 0) > latestLinkedRevision) {
@@ -724,9 +729,9 @@ export class SentinelTodoStore {
                 (current.userVerdictRevision ?? 0) > link.linkedRevision)) {
                 throw new SentinelTodoError('invalid', 'A newer user verdict supersedes this job; preserve it rather than applying a stale review');
             }
-            if (actor !== 'user' && reviewedLinks.length && (current.archived || current.status === 'done')
+            if (actor !== 'user' && reviewedLinks.length && (current.archived || current.status === 'done' || current.status === 'deferred')
                 && fields.status !== current.status) {
-                throw new SentinelTodoError('invalid', 'A result review cannot reopen an archived or Done item');
+                throw new SentinelTodoError('invalid', 'A result review cannot change an archived, Done or Deferred item');
             }
             const now = new Date().toISOString();
             const next: Record<string, unknown> = { ...current };
@@ -812,10 +817,10 @@ export class SentinelTodoStore {
             }
             const now = new Date().toISOString();
             const next: Record<string, unknown> = {
-                ...current, status: 'in_progress',
+                ...current, status: current.status === 'deferred' ? 'deferred' : 'in_progress',
                 jobs: [...current.jobs, { ...input, linkedAt: now, linkedRevision: current.revision + 1 }],
             };
-            delete next.statusReason;
+            if (current.status !== 'deferred') delete next.statusReason;
             return { ...this.commit(owner, ledger, index, next, 'sentinel', now), changed: true };
         });
     }
@@ -896,7 +901,7 @@ export class SentinelTodoStore {
                 || (!!current.userEditedAt && current.userEditedAt > link.linkedAt);
             const supersededByAttempt = current.jobs.slice(current.jobs.indexOf(link) + 1)
                 .some(job => job.result?.outcome === 'completed');
-            if (result.outcome !== 'completed' && !current.archived && current.status !== 'done'
+            if (result.outcome !== 'completed' && !current.archived && current.status !== 'done' && current.status !== 'deferred'
                 && !supersededByUser && !supersededByAttempt) {
                 next.status = 'needs_attention';
                 next.statusReason = describe(recorded).slice(0, 2_000);
@@ -906,10 +911,10 @@ export class SentinelTodoStore {
     }
 
     /**
-     * Marks a normal item Done for the To-do scrubber as `system`. The caller
+     * Marks a normal item Done for Coda as `system`. The caller
      * owns the authority checks; this write never records a user verdict.
      */
-    recordScrubberDone(
+    recordCodaDone(
         owner: SentinelTodoOwner,
         itemId: string,
         expectedRevision: number,
@@ -925,6 +930,7 @@ export class SentinelTodoStore {
                 throw new SentinelTodoError('conflict', 'The item changed since it was loaded', current);
             }
             if (current.type === 'manual') throw new SentinelTodoError('invalid', 'Manual items accept proposals only');
+            if (current.status === 'deferred') throw new SentinelTodoError('invalid', 'Deferred items accept proposals only');
             const now = new Date().toISOString();
             const next: Record<string, unknown> = {
                 ...current, status: 'done', outcome: { summary, recordedAt: now, recordedBy: 'system' },
@@ -954,7 +960,7 @@ export class SentinelTodoStore {
             const superseded = (current.userVerdictRevision ?? 0) > link.linkedRevision
                 || (!!current.userEditedAt && current.userEditedAt > link.linkedAt)
                 || current.jobs.indexOf(link) !== current.jobs.length - 1;
-            if (!current.archived && current.status !== 'done' && !superseded) {
+            if (!current.archived && current.status !== 'done' && current.status !== 'deferred' && !superseded) {
                 next.status = 'todo';
                 next.statusReason = 'Spec ready; awaiting implementation approval';
             }
@@ -1224,4 +1230,30 @@ function jobReceipts(value: string | null): Record<string, unknown> {
     const parsed = JSON.parse(value);
     return parsed.specReady || parsed.remote
         ? { result: parsed.execution, specReady: parsed.specReady, remote: parsed.remote } : { result: parsed };
+}
+
+/** Extend the status CHECK atomically, preserving child rows, indexes and triggers. */
+function migrateDeferredStatus(db: NativeDatabase): void {
+    const tableSql = () => db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sentinel_todo_items'").get<{ sql: string }>()!.sql;
+    if (tableSql().includes("'deferred'")) return;
+    const foreignKeys = db.pragma('foreign_keys', { simple: true });
+    db.pragma('foreign_keys = OFF');
+    try {
+        if (db.pragma('foreign_keys', { simple: true }) !== 0) throw new Error('Deferred status migration requires startup outside a transaction');
+        db.transaction(() => {
+            const sql = tableSql();
+            if (sql.includes("'deferred'")) return;
+            const extended = sql.replace(/CHECK \(status IN \(([^)]+)\)\)/i, "CHECK (status IN ($1, 'deferred'))");
+            if (extended === sql) throw new Error('Unrecognized Sentinel To-do status constraint');
+            const objects = db.prepare("SELECT sql FROM sqlite_master WHERE tbl_name = 'sentinel_todo_items' AND type IN ('index', 'trigger') AND sql IS NOT NULL").all<{ sql: string }>();
+            db.exec(extended.replace('sentinel_todo_items', 'sentinel_todo_items_deferred'));
+            db.exec('INSERT INTO sentinel_todo_items_deferred SELECT * FROM sentinel_todo_items');
+            db.exec('DROP TABLE sentinel_todo_items');
+            db.exec('ALTER TABLE sentinel_todo_items_deferred RENAME TO sentinel_todo_items');
+            for (const object of objects) db.exec(object.sql);
+            if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Sentinel To-do status migration failed foreign key validation');
+        })();
+    } finally {
+        db.pragma(`foreign_keys = ${foreignKeys}`);
+    }
 }

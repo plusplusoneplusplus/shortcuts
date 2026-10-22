@@ -25,7 +25,7 @@ import { normalizeChatMode } from '../tasks/task-types';
 import { compactProcess, type CompactionQueueBridge } from './compact-process';
 import { processOperationAdmission } from './process-operation-admission';
 import { APIError } from '../errors';
-import { isScheduledJobProcess } from '../sentinel-jobs/job-metadata';
+import { isRefrainProcess } from '../sentinel-refrains/refrain-metadata';
 
 export type AutoCompactSkipReason =
     | 'not-sentinel' | 'disabled' | 'paused' | 'no-response' | 'already-evaluated'
@@ -183,7 +183,7 @@ export async function maybeAutoCompactAfterResponse(
     try {
         return await processOperationAdmission.runExclusive(processId, async (): Promise<AutoCompactCheckResult> => {
             const proc = await store.getProcess(processId, workspaceId);
-            if (!proc || (!isSentinelProcess(proc) && !isScheduledJobProcess(proc))) return { action: 'skipped', reason: 'not-sentinel' };
+            if (!proc || (!isSentinelProcess(proc) && !isRefrainProcess(proc))) return { action: 'skipped', reason: 'not-sentinel' };
             const stored = readAutoCompact(proc.metadata);
             if (proc.metadata?.autoCompact !== undefined && !stored) {
                 getLogger().warn(LogCategory.AI, `[AutoCompact] Check failed for ${proc.id}: ${UNSUPPORTED_STATE_ERROR}`);

@@ -10,9 +10,9 @@
 import { Readable } from 'stream';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { ScrubberStore } from '../../src/server/sentinel-scrubber/scrubber-store';
-import { ScrubberScheduler } from '../../src/server/sentinel-scrubber/scrubber-scheduler';
-import type { ScrubberRunService } from '../../src/server/sentinel-scrubber/scrubber-runs';
+import { CodaStore } from '../../src/server/sentinel-coda/coda-store';
+import { ScrubberScheduler } from '../../src/server/sentinel-coda/scrubber-scheduler';
+import type { CodaRunService } from '../../src/server/sentinel-coda/coda-runs';
 import { SentinelTodoStore } from '../../src/server/sentinel-todos/sentinel-todo-store';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -38,9 +38,9 @@ import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import type { SendToConversationRuntimeOptions } from '../../src/server/llm-tools/send-to-conversation-tool';
 import { DEFAULT_CONFIG, mergeConfig } from '../../src/config';
-import { SentinelJobStore } from '../../src/server/sentinel-jobs/job-store';
-import type { SentinelJobService } from '../../src/server/sentinel-jobs/job-service';
-import { SentinelJobScheduler } from '../../src/server/sentinel-jobs/job-scheduler';
+import { SentinelRefrainStore } from '../../src/server/sentinel-refrains/refrain-store';
+import type { SentinelRefrainService } from '../../src/server/sentinel-refrains/refrain-service';
+import { SentinelJobScheduler } from '../../src/server/sentinel-refrains/job-scheduler';
 
 // ── Minimal stubs ─────────────────────────────────────────────────────────────
 
@@ -210,7 +210,7 @@ describe('registerAllRoutes', () => {
             await store.addProcess({ id: owner.processId, type: 'chat', status: 'completed', startTime: new Date(),
                 metadata: { ...owner, mode: 'sentinel', provider: 'copilot' } });
         }
-        const jobs = new SentinelJobStore(store.getDatabase());
+        const jobs = new SentinelRefrainStore(store.getDatabase());
         const input = { name: 'Review', instructions: 'Read evidence', provider: 'copilot', model: 'model', cron: '0 * * * *' };
         const a = jobs.create(owners[0], input);
         const b = jobs.create(owners[1], input);
@@ -221,16 +221,16 @@ describe('registerAllRoutes', () => {
         bridge.getTask = vi.fn();
         const cancel = vi.fn();
         bridge.findExecutorForTask = vi.fn().mockReturnValue({ cancelTask: cancel });
-        let getJobs!: () => SentinelJobService | undefined;
+        let getJobs!: () => SentinelRefrainService | undefined;
         const opts = makeOpts({ store, bridge, dataDir: tmpDir,
-            setSentinelScheduledJobs: get => { getJobs = get; } });
+            setSentinelRefrains: get => { getJobs = get; } });
         const config = opts.runtimeConfigService!.config as any;
         config.sentinel = { enabled: true };
         config.features.sentinelTodoJobs = true;
         const refresh = vi.spyOn(SentinelJobScheduler.prototype, 'refreshAll');
         const composition = registerAllRoutes([], opts);
         try {
-            await composition.scrubberReady;
+            await composition.codaReady;
             const runA = await getJobs()!.start(owners[0], a.id);
             const runB = await getJobs()!.start(owners[1], b.id);
             const handback = await getJobs()!.start(owners[0], notification.id);
@@ -250,7 +250,7 @@ describe('registerAllRoutes', () => {
             expect(jobs.get(owners[0], a.id).processId).toBeTruthy();
             await expect(getJobs()!.assertOwner(owners[0])).rejects.toBeDefined();
         } finally {
-            await composition.sentinelJobsShutdown();
+            await composition.sentinelRefrainsShutdown();
             composition.whatsappMessagingManager.dispose();
             store.close();
         }
@@ -262,7 +262,7 @@ describe('registerAllRoutes', () => {
         await store.registerWorkspace({ id: owner.workspaceId, name: 'Jobs', rootPath: tmpDir });
         await store.addProcess({ id: owner.processId, type: 'chat', status: 'completed', startTime: new Date(),
             promptPreview: 'Sentinel', metadata: { ...owner, mode: 'sentinel', provider: 'copilot' } });
-        const jobs = new SentinelJobStore(store.getDatabase());
+        const jobs = new SentinelRefrainStore(store.getDatabase());
         const job = jobs.create(owner, { name: 'Review', instructions: 'Read evidence', provider: 'copilot',
             model: 'model', cron: '0 * * * *' });
         const orphan = jobs.createRun(owner, job.id, 'manual', 'queue_orphan', new Date().toISOString());
@@ -273,10 +273,10 @@ describe('registerAllRoutes', () => {
         bridge.getTask = vi.fn();
         const cancel = vi.fn();
         bridge.findExecutorForTask = vi.fn().mockReturnValue({ cancelTask: cancel });
-        let getJobs!: () => SentinelJobService | undefined;
-        let getScrubber!: () => ScrubberRunService | undefined;
+        let getJobs!: () => SentinelRefrainService | undefined;
+        let getScrubber!: () => CodaRunService | undefined;
         const opts = makeOpts({ store, bridge, dataDir: tmpDir,
-            setSentinelScheduledJobs: get => { getJobs = get; }, setSentinelScrubber: get => { getScrubber = get; } });
+            setSentinelRefrains: get => { getJobs = get; }, setSentinelCoda: get => { getScrubber = get; } });
         const config = opts.runtimeConfigService!.config as any;
         config.features.sentinelTodoScrubber = true;
         const disposed = vi.spyOn(SentinelJobScheduler.prototype, 'dispose');
@@ -290,7 +290,7 @@ describe('registerAllRoutes', () => {
             return response;
         };
         try {
-            await composition.scrubberReady;
+            await composition.codaReady;
             expect(jobs.run(owner, job.id, orphan.id).status).toBe('interrupted');
             expect(cancel).toHaveBeenCalledWith('orphan-task');
             expect((await read()).statusCode).toBe(404);
@@ -318,10 +318,10 @@ describe('registerAllRoutes', () => {
             expect(next.taskId).not.toBe(active.taskId);
             expect(jobs.get(owner, job.id).processId).toBe(persistentProcessId);
             expect(await store.getProcess(persistentProcessId)).toBeDefined();
-            await composition.sentinelJobsShutdown();
+            await composition.sentinelRefrainsShutdown();
             expect(disposed).toHaveBeenCalledOnce();
         } finally {
-            await composition.sentinelJobsShutdown();
+            await composition.sentinelRefrainsShutdown();
             composition.whatsappMessagingManager.dispose();
             store.close();
         }
@@ -332,7 +332,7 @@ describe('registerAllRoutes', () => {
         await store.registerWorkspace({ id: owner.workspaceId, name: 'Gate', rootPath: tmpDir });
         await store.addProcess({ id: owner.processId, type: 'chat', status: 'completed', startTime: new Date(),
             promptPreview: 'Sentinel', metadata: { ...owner, mode: 'sentinel', provider: 'copilot' } });
-        const jobs = new SentinelJobStore(store.getDatabase());
+        const jobs = new SentinelRefrainStore(store.getDatabase());
         const job = jobs.create(owner, { name: 'Watch', instructions: 'Read evidence', provider: 'copilot',
             model: 'model', cron: '0 * * * *', gateScript: 'return state;' });
         const bridge = makeBridge();
@@ -340,23 +340,23 @@ describe('registerAllRoutes', () => {
         bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => input.id!);
         bridge.getTask = vi.fn();
         bridge.findExecutorForTask = vi.fn().mockReturnValue({ cancelTask: vi.fn() });
-        bridge.runJobGate = vi.fn(async () => []);
-        let getJobs!: () => SentinelJobService | undefined;
-        const opts = makeOpts({ store, bridge, dataDir: tmpDir, setSentinelScheduledJobs: get => { getJobs = get; } });
+        bridge.runRefrainGate = vi.fn(async () => []);
+        let getJobs!: () => SentinelRefrainService | undefined;
+        const opts = makeOpts({ store, bridge, dataDir: tmpDir, setSentinelRefrains: get => { getJobs = get; } });
         const config = opts.runtimeConfigService!.config as any;
         config.sentinel = { enabled: true };
         config.features.sentinelTodoJobs = true;
         const composition = registerAllRoutes([], opts);
         try {
-            await composition.scrubberReady;
+            await composition.codaReady;
             expect(await getJobs()!.tick(owner, job.id)).toMatchObject({ status: 'skipped', skipReason: 'gate-empty' });
-            expect(bridge.runJobGate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+            expect(bridge.runRefrainGate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
                 ...owner, code: 'return state;', state: null }));
             config.features.toolScripting = false;
             expect(await getJobs()!.tick(owner, job.id)).toMatchObject({ status: 'skipped', skipReason: 'gate-unavailable' });
-            expect(bridge.runJobGate).toHaveBeenCalledOnce();
+            expect(bridge.runRefrainGate).toHaveBeenCalledOnce();
         } finally {
-            await composition.sentinelJobsShutdown();
+            await composition.sentinelRefrainsShutdown();
             composition.whatsappMessagingManager.dispose();
             store.close();
         }
@@ -454,13 +454,13 @@ describe('registerAllRoutes', () => {
             }
         }
         let getTodos!: () => SentinelTodoService | undefined;
-        let getScrubber!: () => ScrubberRunService | undefined;
+        let getScrubber!: () => CodaRunService | undefined;
         opts.setSentinelTodos = get => { getTodos = get; };
-        opts.setSentinelScrubber = get => { getScrubber = get; };
+        opts.setSentinelCoda = get => { getScrubber = get; };
         const routes: Route[] = [];
         const composition = registerAllRoutes(routes, opts);
         try {
-            await composition.scrubberReady;
+            await composition.codaReady;
             expect(getTodos()).toBeDefined();
             expect(getScrubber()).toBeUndefined();
             for (const owner of owners) {
@@ -505,7 +505,7 @@ describe('registerAllRoutes', () => {
             metadata: { ...owner, mode: 'sentinel' } });
         const todos = new SentinelTodoStore(store.getDatabase());
         const item = todos.create(owner, { title: 'Merged work' }, { actor: 'sentinel' }).item;
-        const scrubber = new ScrubberStore(store.getDatabase());
+        const scrubber = new CodaStore(store.getDatabase());
         scrubber.createRun(owner, { id: 'orphan', trigger: 'manual', status: 'running',
             childProcessId: 'queue_old', createdAt: new Date().toISOString(),
             snapshot: [{ itemId: item.id, revision: item.revision }], deferredItemIds: [], awaitingReviewItemIds: [] });
@@ -518,13 +518,13 @@ describe('registerAllRoutes', () => {
         const flags = opts.runtimeConfigService!.config.features as any;
         flags.sentinelTodoLedger = false; // Retired config must not gate the scrubber.
         flags.sentinelTodoScrubber = true;
-        let getScrubber!: () => ScrubberRunService | undefined;
-        opts.setSentinelScrubber = get => { getScrubber = get; };
+        let getScrubber!: () => CodaRunService | undefined;
+        opts.setSentinelCoda = get => { getScrubber = get; };
         const routes: Route[] = [];
         const composition = registerAllRoutes(routes, opts);
         const scrubberListener = bridge.registry.listeners('taskCompleted')[0];
         try {
-            await composition.scrubberReady;
+            await composition.codaReady;
             expect(refreshAll).toHaveBeenCalledOnce();
             expect(scrubber.getRun(owner, 'orphan')?.status).toBe('interrupted');
             expect(bridge.findExecutorForTask).toHaveBeenCalledWith('old');

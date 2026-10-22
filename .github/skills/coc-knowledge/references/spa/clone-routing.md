@@ -253,13 +253,20 @@ requested process through failed reachability probes so ChatDetail can display
 the owning read error; unresolved remote owners skip local probes. Reloads,
 history and Sentinel returns use this same identity.
 
-`SentinelTodoConversationReferences` verifies durable remote references before
-applying the resolver's current clone-qualified href and starting a To-do
-excursion. Its ten-second deadline and navigation/owner/unmount cancellation
-suppress late results; failures retain the current chat with retry guidance.
-Same-server references use the ledger owner's clone route. Display labels and
-unverified badges are metadata only; opening does not write the ledger.
-Reference and Back-focus keys qualify server, workspace and process identity.
+`SentinelTodoConversationReferences` and hosted Sentinel assistant response links
+verify durable references through `resolveDashboardChatReference` before navigation
+starts the shared To-do excursion. Ten-second deadlines and navigation/owner/unmount
+cancellation suppress late results; failures retain the current chat with retry
+guidance. Display labels and unverified badges are metadata only; opening never
+writes ledger or parent state. Reference and Back-focus keys qualify owner identity.
+
+`useSentinelResponseLinks` admits plain response Markdown chat links only. Standard
+repo/group/member routes verify exact process, type and workspace on the concrete
+owner; remote sources qualify bare repo routes with their server. Artifact, external,
+user-turn and modified/new-tab links retain their handlers. Existing excursions keep
+the first origin while visiting linked chats, sharing the origin's remembered To-do
+view and transient pinned tab. Displayed mode and hydrated ownership identify the
+source Sentinel independently of its launch payload.
 
 `dashboardRoutes` reserves `#chat-references/<server>/<workspace>/<process>`
 without dispatching selection effects, including malformed links. Router renders

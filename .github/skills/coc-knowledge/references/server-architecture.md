@@ -144,25 +144,29 @@ of remote identity.
 `delegation/remote-delegation-request-store.ts` provides origin-side admission
 reservations in `repos/<parentWorkspaceId>/remote-delegation-requests.json`.
 It captures the parent, destination identity and connection hint, request kind,
-exact follow-up target, request digest, connector origin and private random proof
-token before a child exists. Atomic publication requests file mode `0600`.
+exact follow-up target, request digest, connector origin and private random receipt
+secret (`proofToken`) before a child exists. The origin exposes no endpoint for it.
+Atomic publication requests file mode `0600`.
 A durable dispatch claim permits one execution attempt; claimed or uncertain requests
 require receipt reconciliation. Verified acceptance persists before idempotent
 delegated-job registration. Machine-local receipts are excluded from snapshots and
 cleared with delegated jobs.
 
-`delegation/remote-delegation-auth.ts` verifies origin reservations through an online
-registered reciprocal relationship. Health identity checks bracket the origin's
-`POST /api/remote-delegations/proof`; endpoint/registry changes, redirects, timeout,
-cancellation and mismatching bindings reject. Proof binds both servers/workspaces,
-parent, request, kind, follow-up target and execution digest. The private token travels
-only in the POST body; proof replies omit it, connector data and routing aliases.
-Reads are bounded and never authorize execution replay.
+`delegation/remote-delegation-auth.ts` defines the sender-only trust model. Only the
+origin makes network requests; the destination never registers, connects to or calls it,
+so it works with zero destination remotes and an unreachable origin. Three concerns stay
+separate. Transport authorization is reaching the destination API (loopback, SSH or
+DevTunnel account access), the same boundary as ordinary remote `POST /api/queue`.
+Origin attribution: `originServerIdentity` is a caller-claimed label that scopes receipt
+keys and terminal event IDs, never authority. Receipt ownership: the first durable
+destination claim binds a SHA-256 digest of the origin's per-request secret; replays and
+receipt reads must present it (constant-time compare). The secret travels only in POST
+bodies; receipts omit it. Claims must name this destination and a different origin.
+The origin authenticates the destination through its registered connection, health
+identity brackets and the `senderPolling` capability.
 
-`delegation/remote-delegation-routes.ts` exposes read-only proof after a durable dispatch
-claim, including uncertain/accepted recovery states; reserved, rejected and tokenless
-rows cannot prove origin. Recovery proof is independent of admission flags. Destination
-follow-up admission accepts a strict scalar message body through the authenticated gateway.
+`delegation/remote-delegation-routes.ts` composes destination admission. Destination
+follow-up admission accepts a strict scalar message body through the gateway.
 `ProcessMessageDeliveryService.deliverRemoteFollowUpOnce` queues with the destination
 execution ID, preserves active provider/strict session resumption, and rechecks exact
 owner/visibility during queue routing. Sentinel/Ralph targets are excluded. No desktop
@@ -178,17 +182,20 @@ Workspace roots are rechecked after asynchronous policy resolution before queue 
 
 `delegation/remote-delegation-admission.ts` provides the destination gateway.
 It captures the exact versioned JSON execution envelope, hashes all keys
-canonically, checks kind/workspace/target/digest, then verifies the origin proof. The
-domain adapter receives that captured body and a destination-local execution ID.
+canonically and checks kind/workspace/target/digest; mismatches and invalid claims are
+refused before any claim (HTTP 400, provably not admitted). A key already bound to another
+secret returns 403. The domain adapter receives that captured body and a destination-local
+execution ID.
 Intent capture caps bytes, depth and node count; domain authorization remains separate.
 
 `delegation/remote-delegation-admission-store.ts` persists destination-owned receipts in
 `repos/<destinationWorkspaceId>/remote-delegation-admissions.json` with requested mode
 `0600`. Keys qualify origin server, parent workspace and request; destination execution
 IDs remain independent of colliding origin IDs. Durable `dispatching` claims admit one
-adapter call. Duplicate/uncertain/crash-window claims only reconcile; accepted origin
-proofs cannot create missing destination claims. Immutable accepted children enforce
-exact follow-up targets and whole Ralph sessions. Authenticated receipt reads repair
+adapter call. Duplicate/uncertain/crash-window claims only reconcile. Rows without a
+secret digest are never readable or rebindable; owner reads cannot tell missing, foreign
+and digestless rows apart. Immutable accepted children enforce
+exact follow-up targets and whole Ralph sessions. Owner receipt reads repair
 uncertain/dispatching acceptance from exact queue/process evidence for launches and
 queue/pending/user-turn evidence for follow-ups, without enqueueing. Conflicting owners,
 task kinds or Ralph sessions fail closed; prepared Ralph journals alone cannot prove admission.
@@ -202,9 +209,11 @@ First bounded outcomes persist in admissions. Startup captures before queue acti
 SQLite retains needed terminal tasks independently of capped history.
 
 `delegation/remote-delegation-return.ts` admits new Sentinel requests under default-off
-`features.sentinelRemoteResults` and compatible destination capabilities. Origin reservations
-precede execution. Authenticated receipt polling persists backoff and verifies both identities,
-request digest and bounded owner-qualified links. Recovery ignores the admission flag and
+`features.sentinelRemoteResults` and a destination advertising `senderPolling: true`; older
+callback-verifying destinations report `unsupported` before any reservation. Origin
+reservations precede execution. A 400 reply to the single claimed POST settles `rejected`
+(nothing started); other failures stay uncertain. Receipt polling persists backoff and
+verifies both identities, request digest and bounded owner-qualified links. Recovery ignores the admission flag and
 never resends work. Transfer state is independent of parent review delivery and To-do assessment.
 Existing review/connector receipts return assessed replies; missing/archived owners fail
 without revival. Trusted review context survives buffering; drain and execution recheck
@@ -226,7 +235,7 @@ the identity of the entire delegated session.
 
 ### Sentinel To-do trigger firing
 
-`triggers/sentinel-todo-trigger-service.ts` owns authoring for normal eligible items,
+`triggers/sentinel-overture-service.ts` owns authoring for normal eligible items,
 using exact owner checks, optimistic revisions and owner-scoped creation receipts.
 PR rules need no setting; date rules require default-off live
 `features.sentinelTodoDateTimeTriggers`. Rules share the active cap and never expire.
@@ -238,7 +247,7 @@ Only the absolute instant and display zone persist in the existing JSON event.
 Owner-qualified capabilities return `dateTime`, which also selects the Sentinel
 tool's date event schema.
 
-`triggers/sentinel-todo-trigger-firer.ts` commits one-shot PR/date decisions using
+`triggers/sentinel-overture-firer.ts` commits one-shot PR/date decisions using
 the trigger and to-do stores' shared database writer. It checks the rule revision
 and current owner-scoped item after asynchronous Sentinel lookup. Missing, manual,
 Done or archived items stop as Skipped. Eligible fires persist the terminal outcome,
@@ -261,24 +270,24 @@ Trigger firing never writes item status, calls delegation admission or selects a
 ### Sentinel job gate runtime
 
 Gate scripts on Sentinel scheduled jobs run without a provider session.
-`sentinel-jobs/job-gate-result.ts` supplies canonical result encoding: object keys
+`sentinel-refrains/refrain-gate-result.ts` supplies canonical result encoding: object keys
 sort lexically at every level, array order is significant and encoded UTF-8 JSON is
 capped at 16 KiB. Non-JSON values reject without invoking serialization hooks.
 Validation must precede any runner conversion that could silently drop fields or
-normalize non-JSON values. `sentinel-jobs/job-gate-runner.ts` passes state and strict
+normalize non-JSON values. `sentinel-refrains/refrain-gate-runner.ts` passes state and strict
 JSON validation to `runToolScript` with a 60-second abort deadline. The engine
 terminates workers and aborts in-flight tool calls on cancellation; the wrapper
 preserves the cancellation reason and clears its deadline timer on every outcome.
 
-Calls follow `MultiRepoQueueRouter.runJobGate` → owning `CLITaskExecutor` bridge →
-`ExecutorRegistry` → `ChatBaseExecutor.runJobGate` with an exact
+Calls follow `MultiRepoQueueRouter.runRefrainGate` → owning `CLITaskExecutor` bridge →
+`ExecutorRegistry` → `ChatBaseExecutor.runRefrainGate` with an exact
 `{ workspaceId, processId, code, state, signal }` request. The executor validates the
 exact Sentinel owner and resolves workspace/working directory; its shared helper
 dependencies supply the owner-bound unattended runtime through
-`runJobGateWithOwnerTools`, which disposes it after every outcome. Canvas
+`runRefrainGateWithOwnerTools`, which disposes it after every outcome. Canvas
 `host.runScript` follows the sibling `runOwnerScript` chain (any chat owner,
 `allowTools`-narrowed tools, no nesting); see [LLM tools](llm-tools.md).
-`SentinelJobService` is the caller: `routes/index.ts` injects `bridge.runJobGate` and
+`SentinelRefrainService` is the caller: `routes/index.ts` injects `bridge.runRefrainGate` and
 the live `features.toolScripting` flag. The service keeps one in-flight gate per
 owner/job, re-checks flags, owner and job revision before saving any outcome, and
 aborts the signal on `cancelGate` (edit/delete), `invalidate()` and `shutdown()`;

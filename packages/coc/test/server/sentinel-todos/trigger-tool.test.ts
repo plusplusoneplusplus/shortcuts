@@ -4,8 +4,8 @@ import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { SentinelTodoStore } from '../../../src/server/sentinel-todos/sentinel-todo-store';
 import { SentinelTodoService } from '../../../src/server/sentinel-todos/sentinel-todo-service';
 import { TriggerStore } from '../../../src/server/triggers/trigger-store';
-import { SentinelTodoTriggerService } from '../../../src/server/triggers/sentinel-todo-trigger-service';
-import { SentinelTodoTriggerFirer } from '../../../src/server/triggers/sentinel-todo-trigger-firer';
+import { SentinelOvertureService } from '../../../src/server/triggers/sentinel-overture-service';
+import { SentinelOvertureFirer } from '../../../src/server/triggers/sentinel-overture-firer';
 import { createSentinelTodosTool, type SentinelTodosArgs } from '../../../src/server/llm-tools/sentinel-todos-tool';
 
 const owner = { workspaceId: 'ws-owner', processId: 'sentinel-owner' };
@@ -16,7 +16,7 @@ describe('Sentinel PR-merge rule tool actions', () => {
     let todos: SentinelTodoStore;
     let store: TriggerStore;
     let service: SentinelTodoService;
-    let triggers: SentinelTodoTriggerService;
+    let triggers: SentinelOvertureService;
     let itemId: string;
     const execute = vi.fn();
     const fetchPr = vi.fn();
@@ -36,9 +36,9 @@ describe('Sentinel PR-merge rule tool actions', () => {
         };
         const processes = { getProcess: vi.fn(async () => process) };
         service = new SentinelTodoService({ todos, store: processes });
-        const firer = new SentinelTodoTriggerFirer({ triggers: store, todos, processes, executor: { execute }, emit: vi.fn(),
+        const firer = new SentinelOvertureFirer({ triggers: store, todos, processes, executor: { execute }, emit: vi.fn(),
             dateTimeEnabled: () => dateTimeEnabled });
-        triggers = new SentinelTodoTriggerService({
+        triggers = new SentinelOvertureService({
             triggers: store, todos, owners: service, firer, fetchPr,
             manager: { arm, disarm: vi.fn() },
             dateTimeEnabled: () => dateTimeEnabled,

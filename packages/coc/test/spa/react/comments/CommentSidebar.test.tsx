@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { CommentSidebar } from '../../../../src/server/spa/client/react/tasks/comments/CommentSidebar';
 import type { TaskComment } from '../../../../src/server/spa/client/comments/task-comments-types';
+import type { DiffComment } from '../../../../src/server/spa/client/comments/diff-comment-types';
 
 function makeComment(overrides: Partial<TaskComment> = {}): TaskComment {
     return {
@@ -225,12 +226,85 @@ describe('CommentSidebar', () => {
                     onCopyPrompt={onCopyPrompt}
                 />
             );
+            expect(screen.getByTestId('copy-prompt-btn').textContent).toBe('📋 Copy as prompt');
             fireEvent.click(screen.getByTestId('copy-prompt-btn'));
-            expect(screen.getByTestId('copy-prompt-btn').textContent).toBe('✓');
+            expect(screen.getByTestId('copy-prompt-btn').textContent).toBe('✓ Copied');
             act(() => { vi.advanceTimersByTime(2000); });
-            expect(screen.getByTestId('copy-prompt-btn').textContent).toBe('📋');
+            expect(screen.getByTestId('copy-prompt-btn').textContent).toBe('📋 Copy as prompt');
             vi.useRealTimers();
         });
+
+        it('shows Copied only after a returned promise resolves', async () => {
+            let finish: () => void = () => undefined;
+            const comments = [makeComment({ id: 'c1', status: 'open' })];
+            render(
+                <CommentSidebar
+                    taskId="task1" filePath="task1.md" comments={comments} loading={false}
+                    onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                    onAskAI={noop} onCommentClick={noop}
+                    onCopyPrompt={() => new Promise<void>(r => { finish = r; })}
+                />
+            );
+            fireEvent.click(screen.getByTestId('copy-prompt-btn'));
+            expect(screen.getByTestId('copy-prompt-btn').textContent).toBe('📋 Copy as prompt');
+            await act(async () => { finish(); });
+            expect(screen.getByTestId('copy-prompt-btn').textContent).toBe('✓ Copied');
+        });
+
+        it('shows Copy failed, not Copied, when the copy rejects', async () => {
+            const comments = [makeComment({ id: 'c1', status: 'open' })];
+            render(
+                <CommentSidebar
+                    taskId="task1" filePath="task1.md" comments={comments} loading={false}
+                    onResolve={noop} onUnresolve={noop} onDelete={noop} onEdit={noop}
+                    onAskAI={noop} onCommentClick={noop}
+                    onCopyPrompt={() => Promise.reject(new Error('denied'))}
+                />
+            );
+            await act(async () => { fireEvent.click(screen.getByTestId('copy-prompt-btn')); });
+            expect(screen.getByTestId('copy-prompt-btn').textContent).toBe('Copy failed');
+            expect(screen.getByTestId('copy-prompt-btn').getAttribute('data-copy-state')).toBe('failed');
+        });
+    });
+});
+
+// ============================================================================
+// Grouped (aggregated review) mode
+// ============================================================================
+
+describe('CommentSidebar groupByFile', () => {
+    function diffComment(id: string, filePath: string, line: number, status: DiffComment['status'] = 'open'): DiffComment {
+        return {
+            id, status, comment: `note ${id}`, selectedText: 'x',
+            context: { repositoryId: 'ws-1', filePath, oldRef: 'abc^', newRef: 'abc' },
+            selection: { diffLineStart: line, diffLineEnd: line, side: 'added', newLineStart: line, newLineEnd: line, startColumn: 0, endColumn: 1 },
+            createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
+        };
+    }
+    const props = { loading: false, onResolve: noop, onUnresolve: noop, onDelete: noop, onEdit: noop, onAskAI: noop, onCommentClick: noop };
+
+    it('groups comments under sorted per-file headers with counts and line locations', () => {
+        const comments = [diffComment('b1', 'src/b.ts', 3), diffComment('a2', 'src/a.ts', 20), diffComment('a1', 'src/a.ts', 5)];
+        render(<CommentSidebar {...props} comments={comments} showFilePath groupByFile />);
+        const groups = screen.getAllByTestId('comment-file-group');
+        expect(groups.map(g => g.getAttribute('aria-label'))).toEqual(['src/a.ts, 2 comment(s)', 'src/b.ts, 1 comment(s)']);
+        expect(screen.getAllByTestId('comment-location').map(e => e.textContent)).toEqual(['new line 5 (added)', 'new line 20 (added)', 'new line 3 (added)']);
+        expect(screen.getByText('Comments (3 · 2 files)')).toBeTruthy();
+    });
+
+    it('keeps the status filter working in grouped mode', () => {
+        const comments = [diffComment('a1', 'src/a.ts', 1), diffComment('b1', 'src/b.ts', 1, 'resolved')];
+        render(<CommentSidebar {...props} comments={comments} showFilePath groupByFile />);
+        fireEvent.click(screen.getByTestId('status-filter-resolved'));
+        expect(screen.getAllByTestId('comment-file-group').map(g => g.getAttribute('aria-label'))).toEqual(['src/b.ts, 1 comment(s)']);
+    });
+
+    it('shows a review empty state and a load error', () => {
+        const { rerender } = render(<CommentSidebar {...props} comments={[]} groupByFile />);
+        expect(screen.getByTestId('empty-comments').textContent).toContain('No comments yet');
+        rerender(<CommentSidebar {...props} comments={[]} groupByFile error="Failed to load comments" />);
+        expect(screen.getByRole('alert').textContent).toBe('Failed to load comments');
+        expect(screen.queryByTestId('empty-comments')).toBeNull();
     });
 });
 

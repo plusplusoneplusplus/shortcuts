@@ -167,7 +167,7 @@ export type TriggerAction = SendMessageAction;
  * Binds a trigger to an item of its owning Sentinel's to-do ledger.
  * The Sentinel chat is `trigger.processId`; the trigger never writes the item.
  */
-export interface SentinelTodoTriggerBinding {
+export interface SentinelOvertureBinding {
     kind: 'sentinel-todo';
     itemId: string;
     /** Optional "When it fires" guidance passed to the Sentinel verbatim. */
@@ -257,7 +257,7 @@ export interface Trigger {
     revision: number;
 
     /** Present on Sentinel To-do wake rules. */
-    binding?: SentinelTodoTriggerBinding;
+    binding?: SentinelOvertureBinding;
 
     /** Terminal one-shot result (set together with a terminal status). */
     outcome?: TriggerOutcome;

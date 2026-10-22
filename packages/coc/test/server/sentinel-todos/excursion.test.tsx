@@ -7,7 +7,7 @@
  * @vitest-environment jsdom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, renderHook, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, within, waitFor } from '@testing-library/react';
 import type { SentinelTodoItem, SentinelTodoConversationReference, WorkspaceInfo } from '@plusplusoneplusplus/coc-client';
 
 const get = vi.fn();
@@ -31,6 +31,7 @@ import {
     SENTINEL_TODO_EXCURSION_MAX_TRAIL,
     clearSentinelTodoExcursion,
     excursionStopIndex,
+    endSentinelTodoExcursion,
     getSentinelTodoExcursion,
     isPinnedSentinelTodo,
     pinnedSentinelTodoTabId,
@@ -50,6 +51,10 @@ import { publishDashboardTopology } from '../../../src/server/spa/client/react/s
 import { tagRemoteWorkspaces } from '../../../src/server/spa/client/react/repos/remoteWorkspaceAggregation';
 import { buildRemoteCloneKey } from '../../../src/server/spa/client/react/repos/cloneIdentity';
 import { queueReducer, type QueueContextState } from '../../../src/server/spa/client/react/contexts/QueueContext';
+
+import { useSentinelResponseLinks } from '../../../src/server/spa/client/react/features/chat/hooks/useSentinelResponseLinks';
+import { chatMarkdownToHtml } from '../../../src/server/spa/client/react/features/chat/conversation/markdownHtml';
+import { registerCloneBaseUrls, resetCloneRegistryForTests, setActiveCloneForRouting } from '../../../src/server/spa/client/react/repos/cloneRegistry';
 
 const OWNER = { ownerWorkspaceId: 'ws-1', ownerRoutingRef: null, processId: 'chat-s' };
 const ORIGIN: SentinelTodoExcursionOrigin = {
@@ -80,12 +85,14 @@ beforeEach(() => {
 
 afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
     cleanup();
     publishDashboardTopology(null, []);
     vi.unstubAllGlobals();
     clearSentinelTodoExcursion();
     clearSentinelTodoChats();
     clearUnifiedPanelState();
+    resetCloneRegistryForTests();
 });
 
 describe('excursion path rules', () => {
@@ -432,6 +439,225 @@ describe('SentinelTodoOriginBar', () => {
     it('ends the excursion when the origin chat is opened again from anywhere', () => {
         act(() => { startSentinelTodoExcursion(ORIGIN); visitSentinelTodoExcursionChat(stop('chat-a')); });
         renderBar('chat-s');
+        expect(getSentinelTodoExcursion()).toBeNull();
+    });
+});
+
+
+describe('Sentinel assistant response links', () => {
+    const notify = vi.fn();
+    function ResponseLinks({ href = '#repos/ws-1/chats/chat-a', origin = ORIGIN, role = 'assistant', target,
+        ownerKey = 'owner', image = false }: {
+        href?: string; origin?: SentinelTodoExcursionOrigin | null; role?: string; target?: string; ownerKey?: string; image?: boolean;
+    }) {
+        const follow = useSentinelResponseLinks(origin, notify, ownerKey);
+        return <div onClickCapture={follow}>
+            <div className={`chat-message ${role}`} data-chat-id={origin?.chatId ?? 'chat-s'} data-turn-index="1">
+                <div className="markdown-body" dangerouslySetInnerHTML={{ __html: target
+                    ? `<a href="${href}" target="${target}">Linked chat</a>`
+                    : chatMarkdownToHtml(`[${image ? '![image](img.png)' : 'Linked chat'}](${href})`) }} />
+            </div>
+        </div>;
+    }
+    const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+    const serve = (handler?: (url: URL) => unknown | Promise<unknown>) => {
+        const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+            const url = new URL(String(input), 'http://localhost:4000');
+            return json(await (handler ? handler(url) : { process: { id: 'chat-a', type: 'chat', metadata: { workspaceId: 'ws-1' } } }));
+        });
+        vi.stubGlobal('fetch', fetcher);
+        return fetcher;
+    };
+    beforeEach(() => { notify.mockReset(); history.replaceState(null, '', ORIGIN.href); });
+
+    it.each([
+        ['#repos/ws-1/chats/chat-a', null, 'ws-1', undefined],
+        ['#repos/ws-1/activity/chat-a?view=agents', null, 'ws-1', undefined],
+        ['#repos/ws-1/tasks/chat-a', null, 'ws-1', undefined],
+        ['#repos/group-services/chats/chat-a', null, 'group-services', undefined],
+        ['#repos/group-services/chats/member/ws-1/chat-a', null, 'ws-1', undefined],
+        ['#repos/ws-1/chats/chat-a', 'remote:source:ws-1', 'ws-1', 'https://source.example'],
+        ['#repos/group-services/chats/member/ws-1/chat-a', 'remote:source:ws-1', 'ws-1', 'https://source.example'],
+        ['#repos/remote%3Adestination%3Aws-1/chats/chat-a', 'remote:source:ws-1', 'ws-1', 'https://destination.example'],
+    ])('opens supported response route %s from %s on its exact owner', async (href, ownerRoutingRef, workspaceId, endpoint) => {
+        registerCloneBaseUrls([
+            { workspaceId: 'ws-1', serverId: 'source', baseUrl: 'https://source.example' },
+            { workspaceId: 'group-services', serverId: 'source', baseUrl: 'https://source.example' },
+            { workspaceId: 'ws-1', serverId: 'destination', baseUrl: 'https://destination.example' },
+        ]);
+        setActiveCloneForRouting('remote:destination:ws-1');
+        const fetcher = serve(() => ({ process: { id: 'chat-a', type: 'chat', metadata: { workspaceId } } }));
+        const origin = { ...ORIGIN, owner: { ...OWNER, ownerRoutingRef } };
+        render(<ResponseLinks href={href!} origin={origin} />);
+        fireEvent.click(screen.getByRole('link'));
+        await waitFor(() => expect(getSentinelTodoExcursion()).not.toBeNull());
+        expect(getSentinelTodoExcursion()?.origin.owner).toEqual(origin.owner);
+        expect(fetcher).toHaveBeenCalledTimes(1);
+        expect(fetcher.mock.calls[0][0]).toContain(`${endpoint ?? ''}/api/processes/chat-a`);
+        expect(fetcher.mock.calls[0][0]).toContain(`workspace=${workspaceId}`);
+        expect(notify).not.toHaveBeenCalled();
+    });
+
+    it('shows the existing return bar and pinned To-do, and restores the original view', async () => {
+        serve();
+        const viewState = { scrollTop: 91, selectedId: 'i1', detailOpen: true, expandedIds: ['i1'],
+            itemDrafts: { i1: { editing: null, statusDraft: { status: 'needs_attention' as const, reason: 'Waiting' }, error: null } } };
+        rememberSentinelTodoView(OWNER, viewState);
+        writeUnifiedPanelState('ws-1', openTab(EMPTY_UNIFIED_PANEL, sentinelTodoTabInput(OWNER, ORIGIN.chatId)));
+        const view = render(<ResponseLinks />);
+        fireEvent.click(screen.getByRole('link'));
+        await waitFor(() => expect(getSentinelTodoExcursion()).not.toBeNull());
+        expect(recallSentinelTodoView(OWNER)).toEqual(viewState);
+        view.rerender(<SentinelTodoOriginBar scopeWorkspaceId="ws-1" chatId="chat-a" title="Linked chat" />);
+        const tabs = renderHook(() => useUnifiedPanelTabs('ws-1', 'chat-a'));
+        expect(tabs.result.current.tabs.map(tab => tab.label)).toContain('To-do · Release coordination');
+        expect(readUnifiedPanelState('ws-1').chatTabs['chat-a'] ?? []).toEqual([]);
+        fireEvent.click(screen.getByTestId('sentinel-todo-origin-back'));
+        expect(location.hash).toBe(ORIGIN.href);
+        expect(getSentinelTodoExcursion()).toBeNull();
+        expect(tabs.result.current.pinnedId).toBeNull();
+        expect(recallSentinelTodoView(OWNER)).toEqual({ ...viewState, focusLinkKey: expect.stringContaining('response:1:') });
+    });
+
+    it('verifies durable references before starting an excursion, without using labels or local id collisions', async () => {
+        publishDashboardTopology('ws-1', [{ id: 'ws-1', name: 'Local collision' } as WorkspaceInfo,
+            ...tagRemoteWorkspaces({ id: 'destination', label: 'Remote', kind: 'url', serverIdentity: 'durable' },
+                'https://destination.example', [{ id: 'ws-1', name: 'Remote workspace' } as WorkspaceInfo])], 'local');
+        const fetcher = serve(url => url.pathname.endsWith('/health') ? { serverIdentity: 'durable' }
+            : { process: { id: 'chat-a', type: 'chat', metadata: { workspaceId: 'ws-1' } } });
+        render(<ResponseLinks href="#chat-references/durable/ws-1/chat-a" />);
+        fireEvent.click(screen.getByRole('link'));
+        expect(getSentinelTodoExcursion()).toBeNull();
+        await waitFor(() => expect(getSentinelTodoExcursion()).not.toBeNull());
+        expect(location.hash).toBe('#repos/remote%3Adestination%3Aws-1/chats/chat-a');
+        expect(fetcher.mock.calls.every(([url]) => String(url).startsWith('https://destination.example/'))).toBe(true);
+        expect(fetcher).toHaveBeenCalledTimes(3);
+    });
+
+    it.each(['page', 'away-and-back', 'owner', 'unmount', 'pagehide'])('discards a late response after %s', async change => {
+        let finish!: (value: unknown) => void;
+        serve(() => new Promise(resolve => { finish = resolve; }));
+        const view = render(<ResponseLinks />);
+        fireEvent.click(screen.getByRole('link'));
+        if (change === 'owner') view.rerender(<ResponseLinks ownerKey="replacement endpoint" />);
+        else if (change === 'unmount') view.unmount();
+        else if (change === 'pagehide') window.dispatchEvent(new Event('pagehide'));
+        else {
+            history.replaceState(null, '', '#repos/ws-other/chats');
+            window.dispatchEvent(new HashChangeEvent('hashchange'));
+            if (change === 'away-and-back') history.replaceState(null, '', ORIGIN.href);
+        }
+        const hash = location.hash;
+        await act(async () => { finish({ process: { id: 'chat-a', type: 'chat', metadata: { workspaceId: 'ws-1' } } }); });
+        expect(location.hash).toBe(hash);
+        expect(getSentinelTodoExcursion()).toBeNull();
+        expect(notify).not.toHaveBeenCalled();
+    });
+
+    it.each([undefined, { id: 'wrong', type: 'chat', metadata: { workspaceId: 'ws-1' } },
+        { id: 'chat-a', type: 'chat', metadata: { workspaceId: 'wrong' } },
+        { id: 'chat-a', type: 'workflow', metadata: { workspaceId: 'ws-1' } },
+    ])('leaves no return state when destination verification fails (%j)', async process => {
+        serve(() => ({ process }));
+        render(<ResponseLinks />);
+        fireEvent.click(screen.getByRole('link'));
+        await waitFor(() => expect(notify).toHaveBeenCalledTimes(1));
+        expect(location.hash).toBe(ORIGIN.href);
+        expect(getSentinelTodoExcursion()).toBeNull();
+    });
+
+    it('rejects an unavailable durable reference without changing selection or the To-do view', async () => {
+        publishDashboardTopology('ws-1', []);
+        const fetcher = serve();
+        render(<ResponseLinks href="#chat-references/missing/ws-1/chat-a" />);
+        fireEvent.click(screen.getByRole('link'));
+        await waitFor(() => expect(notify).toHaveBeenCalledTimes(1));
+        expect(fetcher).not.toHaveBeenCalled();
+        expect(getSentinelTodoExcursion()).toBeNull();
+        expect(location.hash).toBe(ORIGIN.href);
+    });
+
+    it('bounds pending resolution and rejects a late completion after the deadline', async () => {
+        vi.useFakeTimers();
+        let finish!: (value: unknown) => void;
+        serve(() => new Promise(resolve => { finish = resolve; }));
+        render(<ResponseLinks />);
+        fireEvent.click(screen.getByRole('link'));
+        await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+        expect(notify).toHaveBeenCalledTimes(1);
+        await act(async () => { finish({ process: { id: 'chat-a', type: 'chat', metadata: { workspaceId: 'ws-1' } } }); });
+        expect(getSentinelTodoExcursion()).toBeNull();
+        expect(location.hash).toBe(ORIGIN.href);
+        vi.useRealTimers();
+    });
+
+    it('lets a newer click supersede an unfinished reference without stale return state', async () => {
+        let finish!: (value: unknown) => void;
+        let reads = 0;
+        serve(() => ++reads === 1 ? new Promise(resolve => { finish = resolve; })
+            : { process: { id: 'chat-a', type: 'chat', metadata: { workspaceId: 'ws-1' } } });
+        const view = render(<ResponseLinks href="#repos/ws-1/chats/old-chat" />);
+        fireEvent.click(screen.getByRole('link'));
+        view.rerender(<ResponseLinks />);
+        fireEvent.click(screen.getByRole('link'));
+        await waitFor(() => expect(getSentinelTodoExcursion()).not.toBeNull());
+        const current = getSentinelTodoExcursion();
+        await act(async () => { finish({ process: { id: 'old-chat', type: 'chat', metadata: { workspaceId: 'ws-1' } } }); });
+        expect(getSentinelTodoExcursion()).toBe(current);
+        expect(location.hash).toBe('#repos/ws-1/chats/chat-a');
+        expect(notify).not.toHaveBeenCalled();
+    });
+
+    it('keeps the original Sentinel when a linked Sentinel response opens another chat', async () => {
+        startSentinelTodoExcursion(ORIGIN);
+        visitSentinelTodoExcursionChat(stop('child-sentinel'));
+        history.replaceState(null, '', '#repos/ws-1/chats/child-sentinel');
+        serve();
+        render(<ResponseLinks origin={{ ...ORIGIN, chatId: 'child-sentinel', owner: { ...OWNER, processId: 'child-sentinel' } }} />);
+        fireEvent.click(screen.getByRole('link'));
+        await waitFor(() => expect(location.hash).toBe('#repos/ws-1/chats/chat-a'));
+        expect(getSentinelTodoExcursion()?.origin).toEqual(ORIGIN);
+    });
+
+    it('does not restart an excursion closed while a linked Sentinel response is being verified', async () => {
+        startSentinelTodoExcursion(ORIGIN);
+        visitSentinelTodoExcursionChat(stop('child-sentinel'));
+        history.replaceState(null, '', '#repos/ws-1/chats/child-sentinel');
+        let finish!: (value: unknown) => void;
+        serve(() => new Promise(resolve => { finish = resolve; }));
+        render(<ResponseLinks origin={{ ...ORIGIN, chatId: 'child-sentinel', owner: { ...OWNER, processId: 'child-sentinel' } }} />);
+        fireEvent.click(screen.getByRole('link'));
+        act(() => endSentinelTodoExcursion());
+        await act(async () => { finish({ process: { id: 'chat-a', type: 'chat', metadata: { workspaceId: 'ws-1' } } }); });
+        expect(getSentinelTodoExcursion()).toBeNull();
+        expect(location.hash).toBe('#repos/ws-1/chats/child-sentinel');
+        expect(notify).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        { origin: null }, { role: 'user' }, { target: '_blank' },
+        { href: 'https://example.com' }, { href: '/tmp/report.md' }, { href: '#repos/ws-1/files/report.md' },
+        { href: '#chat-references/server/ws-1/chat-a/artifacts/%2Ftmp%2Freport.md' },
+        { href: '#repos/ws-1/chats/ralph/session' }, { href: '#repos/%broken/chats/chat-a' },
+    ])('leaves ordinary and unsupported links alone (%j)', props => {
+        const fetcher = serve();
+        render(<ResponseLinks {...props} />);
+        const link = screen.getByRole('link');
+        const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+        // Stop jsdom's default navigation after the capture handler is observed.
+        link.addEventListener('click', e => { expect(e.defaultPrevented).toBe(false); e.preventDefault(); });
+        fireEvent(link, event);
+        expect(fetcher).not.toHaveBeenCalled();
+        expect(getSentinelTodoExcursion()).toBeNull();
+    });
+
+    it.each([{ ctrlKey: true }, { metaKey: true }, { altKey: true }, { shiftKey: true }, { button: 1 }])('preserves browser modified-click behavior %j', init => {
+        const fetcher = serve();
+        render(<ResponseLinks />);
+        const link = screen.getByRole('link');
+        link.addEventListener('click', e => { expect(e.defaultPrevented).toBe(false); e.preventDefault(); });
+        fireEvent.click(link, init);
+        expect(fetcher).not.toHaveBeenCalled();
         expect(getSentinelTodoExcursion()).toBeNull();
     });
 });

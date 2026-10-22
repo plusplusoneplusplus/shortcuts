@@ -266,6 +266,7 @@ describe('QueueRuntimeConfig — restart boundary', () => {
             'getSensitiveInput',
             'getSentinelAdditionalInstructionsEnabled',
             'getSentinelNextStepsEnabled',
+            'getSentinelTargetAutocompleteEnabled',
             'getSkillFolders',
         ]);
     });
@@ -378,5 +379,18 @@ describe('Sentinel additional instructions queue gate', () => {
         expect(createFixedQueueRuntimeConfig({ config: { features: {} } as unknown as typeof DEFAULT_CONFIG }).getSentinelAdditionalInstructionsEnabled()).toBe(true);
         const off = { ...DEFAULT_CONFIG, features: { ...DEFAULT_CONFIG.features, sentinelAdditionalInstructions: false } };
         expect(createFixedQueueRuntimeConfig({ config: off }).getSentinelAdditionalInstructionsEnabled()).toBe(false);
+    });
+});
+
+
+describe('Sentinel target autocomplete owner policy', () => {
+    it('defaults off and reads live owner changes', () => {
+        expect(DEFAULT_QUEUE_RUNTIME_CONFIG.getSentinelTargetAutocompleteEnabled()).toBe(false);
+        const source = { config: { ...DEFAULT_CONFIG, features: { ...DEFAULT_CONFIG.features, sentinelTargetAutocomplete: false } } };
+        const live = createQueueRuntimeConfig(source);
+        expect(live.getSentinelTargetAutocompleteEnabled()).toBe(false);
+        source.config.features.sentinelTargetAutocomplete = true;
+        expect(live.getSentinelTargetAutocompleteEnabled()).toBe(true);
+        expect(createFixedQueueRuntimeConfig({ config: source.config }).getSentinelTargetAutocompleteEnabled()).toBe(true);
     });
 });

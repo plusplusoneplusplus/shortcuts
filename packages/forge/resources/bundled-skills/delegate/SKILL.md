@@ -27,6 +27,8 @@ Choose a chat with relevant context for the same task and owning workspace/serve
 
 For a new chat, omit `processId` and include a short, task-specific `title` plus self-contained `content` holding the context, constraints, decisions, and expected outcome. Use a non-empty title of at most 80 characters; surrounding whitespace is trimmed. The title stays the conversation's visible custom title across AI title generation and restarts. Prefer file path references over pasted file contents. Describe the actual work so the child does it rather than delegating it onward.
 
+Do not forward skill names or paths unless the user explicitly requests them. Describe the work; let the destination choose its own skills.
+
 Preserve required To-do/job tracking and user authorization. Tracked sends with `todoItemId` cannot use `processId`; existing remote-chat sends are also unsupported. Report these limitations and use a fresh explicitly authorized tracked launch when required. Never drop tracking to make reuse work, and never relaunch an uncertain send.
 
 Return the destination chat link plus a one-line summary of the task and its provider. A queued chat is queued, not finished — say so.

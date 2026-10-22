@@ -41,12 +41,12 @@ import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } f
 import type { McpOauthManager } from '../mcp-oauth';
 import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
-import type { ScrubberRunService } from '../sentinel-scrubber/scrubber-runs';
-import type { SentinelJobCommandSet } from '../llm-tools/sentinel-jobs-tool';
+import type { CodaRunService } from '../sentinel-coda/coda-runs';
+import type { SentinelRefrainCommandSet } from '../llm-tools/sentinel-refrains-tool';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { CreateTriggerFn } from '../triggers/create-trigger-service';
 import type { TriggerManager } from '../triggers/trigger-manager';
-import type { SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
+import type { SentinelOvertureService } from '../triggers/sentinel-overture-service';
 import type { SentinelPrOutcomeService } from '../triggers/sentinel-pr-outcome-service';
 import type { RegisterSentinelPrOutcome } from '../triggers/sentinel-pr-outcome-service';
 import type { TurnPerformanceRecorder } from './turn-performance-tracker';
@@ -81,7 +81,7 @@ export interface CronInfraDeps {
 export interface TriggerInfraDeps {
     manager: TriggerManager;
     createTrigger?: CreateTriggerFn;
-    sentinelTodoTriggers?: SentinelTodoTriggerService;
+    sentinelOvertures?: SentinelOvertureService;
     sentinelPrOutcomes?: SentinelPrOutcomeService;
 }
 
@@ -160,18 +160,18 @@ export interface ExecutorRuntimeCapabilities {
     /** Receipt-only admission stays available to finish running work when authoring is disabled. */
     readonly getSentinelDependencyAdmission?: () => Pick<NonNullable<SentinelTodoService['dependencyActions']>, 'guard'> | undefined;
     /**
-     * Sentinel To-do Scrubber runs, bound at the route layer. Returns
+     * Sentinel Coda runs, bound at the route layer. Returns
      * `undefined` while `features.sentinelTodoScrubber` is off; a scrub child
      * chat then gets no findings tool and its run fails without changes.
      */
-    readonly getSentinelScrubber?: () => ScrubberRunService | undefined;
-    readonly getSentinelScheduledJobs?: () => import('../sentinel-jobs/job-service').SentinelJobService | undefined;
+    readonly getSentinelCoda?: () => CodaRunService | undefined;
+    readonly getSentinelRefrains?: () => import('../sentinel-refrains/refrain-service').SentinelRefrainService | undefined;
     /**
      * Owner-validated job/scrubber commands REST uses, bound at the route layer.
      * Powers `sentinel_jobs`; `undefined` while Sentinel jobs are disabled, and
      * `scrubber` is absent while the scrubber is.
      */
-    readonly getSentinelJobCommands?: () => SentinelJobCommandSet | undefined;
+    readonly getSentinelRefrainCommands?: () => SentinelRefrainCommandSet | undefined;
     /** Shared decision service; powers the `system_one` tool. Absent → the tool is not offered. */
     readonly getDecisionService?: () => DecisionService | undefined;
     /** MCP OAuth manager used to surface an interactive authorization prompt. */
@@ -250,8 +250,8 @@ export type ChatExecutorRuntime = Pick<
     | 'getLaunchRalph'
     | 'getSendToConversationRuntime'
     | 'getSentinelTodos'
-    | 'getSentinelScrubber'
-    | 'getSentinelJobCommands'
+    | 'getSentinelCoda'
+    | 'getSentinelRefrainCommands'
     | 'getDecisionService'
     | 'getMcpOauthManager'
     | 'getTurnPerformanceStore'
@@ -263,7 +263,7 @@ export type ChatExecutorRuntime = Pick<
 >;
 
 /** Capabilities visible to {@link ProcessLifecycleRunner}. */
-export type LifecycleRuntime = Pick<ExecutorRuntimeCapabilities, 'getChatStyleSelectorEnabled' | 'getDefaultChatStyle' | 'getSentinelTodos' | 'getSentinelDependencyAdmission' | 'getTriggerInfra' | 'getSentinelScheduledJobs'>;
+export type LifecycleRuntime = Pick<ExecutorRuntimeCapabilities, 'getChatStyleSelectorEnabled' | 'getDefaultChatStyle' | 'getSentinelTodos' | 'getSentinelDependencyAdmission' | 'getTriggerInfra' | 'getSentinelRefrains'>;
 
 /** Capabilities visible to the Dreams task executor. */
 export type DreamRuntime = Pick<ExecutorRuntimeCapabilities, 'getDreamRunExecutor'>;

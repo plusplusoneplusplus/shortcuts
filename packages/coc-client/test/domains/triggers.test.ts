@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TriggersClient, type CreateTriggerRequest, type CreateSentinelTodoTriggerRequest, type Trigger } from '../../src';
+import { TriggersClient, type CreateTriggerRequest, type CreateSentinelOvertureRequest, type Trigger } from '../../src';
 import { createMockAdapter } from './helpers';
 
 function makeTrigger(overrides: Partial<Trigger> = {}): Trigger {

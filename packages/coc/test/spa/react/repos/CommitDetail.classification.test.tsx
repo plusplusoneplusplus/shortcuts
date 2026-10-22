@@ -243,11 +243,11 @@ describe('CommitDetail — classification toolbar (AC-05)', () => {
 
     it('names icon actions and reports the comments panel state', async () => {
         await renderDetail();
-        const comments = screen.getByRole('button', { name: 'Toggle comments' });
+        const comments = screen.getByRole('button', { name: 'All comments in this commit' });
         expect(comments.getAttribute('aria-pressed')).toBe('false');
         await act(async () => { fireEvent.click(comments); });
         expect(comments.getAttribute('aria-pressed')).toBe('true');
-        for (const name of ['Toggle comments', 'Toggle AI chat', 'Open in new window']) {
+        for (const name of ['All comments in this commit', 'Toggle AI chat', 'Open in new window']) {
             expect(screen.getByRole('button', { name }).querySelector('svg')!.getAttribute('aria-hidden')).toBe('true');
         }
     });

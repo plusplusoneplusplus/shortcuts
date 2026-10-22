@@ -3,7 +3,8 @@
  *  - initial fetch on mount
  *  - resolve / unresolve / delete / update operations dispatch correct PATCH/DELETE calls
  *  - state updates after each operation
- *  - WebSocket refresh on diff-comment-updated
+ *  - WebSocket refresh on diff-comment-updated (real server payload shape)
+ *  - stale reads after a commit switch are dropped
  *  - no-op when wsId or hash is empty
  */
 
@@ -262,15 +263,74 @@ describe('useAllCommitComments', () => {
         expect(ws).toBeTruthy();
 
         await act(async () => {
+            // Server shape: the context rides on the comment, not the message.
             ws.emit('message', {
                 data: JSON.stringify({
-                    type: 'diff-comment-updated',
-                    context: { oldRef: 'abc123^', newRef: 'abc123' },
+                    type: 'diff-comment-updated', action: 'added', workspaceId: 'ws-1', storageKey: 'k',
+                    comment: { id: 'c9', context: { ...mockCtx, filePath: 'src/other.ts' } },
                 }),
             });
         });
 
         await waitFor(() => expect(result.current.comments[0].comment).toBe('after ws update'));
+    });
+
+    it('re-fetches when a loaded comment is deleted (event carries only its id)', async () => {
+        fetchMock
+            .mockResolvedValueOnce(listResponse([makeComment({ id: 'c1' })]))
+            .mockResolvedValueOnce(listResponse([]));
+
+        const { result } = renderHook(() => useAllCommitComments('ws-1', 'abc123'));
+        await waitFor(() => expect(result.current.comments).toHaveLength(1));
+
+        await act(async () => {
+            MockWebSocket.instances[0].emit('message', {
+                data: JSON.stringify({ type: 'diff-comment-updated', action: 'deleted', workspaceId: 'ws-1', storageKey: 'k', commentId: 'c1' }),
+            });
+        });
+
+        await waitFor(() => expect(result.current.comments).toHaveLength(0));
+    });
+
+    it('ignores matching refs from another workspace', async () => {
+        fetchMock.mockResolvedValue(listResponse([makeComment()]));
+        const { result } = renderHook(() => useAllCommitComments('ws-1', 'abc123'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        const calls = fetchMock.mock.calls.length;
+
+        await act(async () => {
+            MockWebSocket.instances[0].emit('message', {
+                data: JSON.stringify({
+                    type: 'diff-comment-updated', action: 'added', workspaceId: 'ws-2', storageKey: 'k',
+                    comment: { id: 'c9', context: mockCtx },
+                }),
+            });
+        });
+
+        expect(fetchMock.mock.calls.length).toBe(calls);
+    });
+
+    it('drops a late response for the previous commit after a commit switch', async () => {
+        let resolveOld: (value: unknown) => void = () => undefined;
+        fetchMock
+            .mockImplementationOnce(() => new Promise(r => { resolveOld = r; }))
+            .mockResolvedValueOnce(listResponse([makeComment({ id: 'new', comment: 'new commit' })]));
+
+        const { result, rerender } = renderHook(({ hash }) => useAllCommitComments('ws-1', hash), { initialProps: { hash: 'old111' } });
+        rerender({ hash: 'abc123' });
+        await waitFor(() => expect(result.current.comments.map(c => c.id)).toEqual(['new']));
+
+        await act(async () => { resolveOld(listResponse([makeComment({ id: 'old', comment: 'old commit' })])); });
+
+        expect(result.current.comments.map(c => c.id)).toEqual(['new']);
+    });
+
+    it('exposes a load error instead of an empty success', async () => {
+        fetchMock.mockResolvedValueOnce({ ok: false, status: 500, statusText: 'boom', json: async () => ({ error: 'boom' }), text: async () => 'boom' });
+        const { result } = renderHook(() => useAllCommitComments('ws-1', 'abc123'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.comments).toEqual([]);
+        expect(result.current.error).toBeTruthy();
     });
 
     it('ignores diff-comment-updated events for a different commit', async () => {
@@ -287,8 +347,8 @@ describe('useAllCommitComments', () => {
         await act(async () => {
             ws.emit('message', {
                 data: JSON.stringify({
-                    type: 'diff-comment-updated',
-                    context: { oldRef: 'other^', newRef: 'other' }, // different commit
+                    type: 'diff-comment-updated', action: 'added', workspaceId: 'ws-1', storageKey: 'k',
+                    comment: { id: 'c9', context: { ...mockCtx, oldRef: 'other^', newRef: 'other' } }, // different commit
                 }),
             });
         });
@@ -308,7 +368,7 @@ describe('useAllCommitComments', () => {
         const { result } = renderHook(() => useAllCommitComments('ws-1', 'abc123'));
         await waitFor(() => expect(result.current.loading).toBe(false));
 
-        act(() => result.current.copyAllCommentsAsPrompt());
+        await act(async () => { await result.current.copyAllCommentsAsPrompt(); });
 
         expect(writeText).toHaveBeenCalledOnce();
         const written: string = writeText.mock.calls[0][0];
@@ -328,7 +388,7 @@ describe('useAllCommitComments', () => {
         const { result } = renderHook(() => useAllCommitComments('ws-1', 'abc123'));
         await waitFor(() => expect(result.current.loading).toBe(false));
 
-        act(() => result.current.copyAllCommentsAsPrompt());
+        await act(async () => { await result.current.copyAllCommentsAsPrompt(); });
 
         expect(writeText).not.toHaveBeenCalled();
     });
@@ -343,10 +403,20 @@ describe('useAllCommitComments', () => {
         const { result } = renderHook(() => useAllCommitComments('ws-1', 'deadbeef'));
         await waitFor(() => expect(result.current.loading).toBe(false));
 
-        act(() => result.current.copyAllCommentsAsPrompt());
+        await act(async () => { await result.current.copyAllCommentsAsPrompt(); });
 
         const written: string = writeText.mock.calls[0][0];
         expect(written).toContain('deadbeef');
+    });
+
+    it('copyAllCommentsAsPrompt rejects when the clipboard write fails', async () => {
+        Object.assign(navigator, { clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) } });
+        fetchMock.mockResolvedValueOnce(listResponse([makeComment()]));
+
+        const { result } = renderHook(() => useAllCommitComments('ws-1', 'abc123'));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        await expect(result.current.copyAllCommentsAsPrompt()).rejects.toThrow('denied');
     });
 
     it('closes WebSocket on unmount', async () => {

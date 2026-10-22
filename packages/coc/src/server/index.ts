@@ -136,7 +136,7 @@ interface CloseHandlerDeps {
     repoTreeService?: { dispose(): void };
     agentProvidersQuotaCache?: { dispose(): void };
     quotaPauseWatcher?: { dispose(): void };
-    sentinelJobsShutdown?: () => Promise<void>;
+    sentinelRefrainsShutdown?: () => Promise<void>;
     containerLink?: { stop(): void };
     activeSockets: Set<import('net').Socket>;
     server: http.Server;
@@ -160,7 +160,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         scheduleManager.dispose();
         deps.watchService.dispose();
         deps.scheduleInfraDispose();
-        await deps.sentinelJobsShutdown?.();
+        await deps.sentinelRefrainsShutdown?.();
         deps.cronExecutor?.shutdownAll();
         deps.cronInfraDispose?.();
         deps.turnPerformanceInfraDispose?.();
@@ -337,9 +337,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     let getSentinelTodosCapability: (() => import('./sentinel-todos/sentinel-todo-service').SentinelTodoService | undefined) | undefined;
     let getSentinelDependencyAdmissionCapability: import('./executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelDependencyAdmission'];
 
-    let getSentinelScrubberCapability: (() => import('./sentinel-scrubber/scrubber-runs').ScrubberRunService | undefined) | undefined;
-    let getSentinelScheduledJobsCapability: (() => import('./sentinel-jobs/job-service').SentinelJobService | undefined) | undefined;
-    let getSentinelJobCommandsCapability: import('./executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelJobCommands'];
+    let getSentinelCodaCapability: (() => import('./sentinel-coda/coda-runs').CodaRunService | undefined) | undefined;
+    let getSentinelRefrainsCapability: (() => import('./sentinel-refrains/refrain-service').SentinelRefrainService | undefined) | undefined;
+    let getSentinelRefrainCommandsCapability: import('./executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelRefrainCommands'];
 
     // Native Teams sign-in always needs pending lifecycle routes.
     const mcpOauthEnabled = resolvedConfig.mcpOauth.enabled === true;
@@ -478,7 +478,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         // lazily through this closure.
         () => triggerInfra ? {
             manager: triggerInfra.triggerManager, createTrigger: triggerInfra.createTrigger,
-            sentinelTodoTriggers: triggerInfra.sentinelTodoTriggers,
+            sentinelOvertures: triggerInfra.sentinelOvertures,
             sentinelPrOutcomes: triggerInfra.sentinelPrOutcomes,
         } : undefined,
         // Late-bound enqueue capability for the `send_to_conversation` tool;
@@ -504,7 +504,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         () => launchRalphCapability,
         () => getSentinelTodosCapability?.(),
         () => kustoRuntime,
-        () => getSentinelScrubberCapability?.(),
+        () => getSentinelCodaCapability?.(),
         () => getSentinelDependencyAdmissionCapability?.(),
         () => getBrowserRuntime?.(),
         () => browserState,
@@ -513,8 +513,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             ? triggerInfra?.sentinelPrOutcomes.registerSubmission ?? (async () => ({
                 registered: false, warning: 'Native PR outcome monitoring is unavailable because triggers are disabled.',
             })) : undefined,
-        () => getSentinelScheduledJobsCapability?.(),
-        () => getSentinelJobCommandsCapability?.(),
+        () => getSentinelRefrainsCapability?.(),
+        () => getSentinelRefrainCommandsCapability?.(),
     );
     // Owner workspace for cron automation: live queue task, then persisted process.
     const resolveProcessWorkspaceId = createProcessWorkspaceResolver(bridge, store);
@@ -828,7 +828,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     let localBaseUrl = formatLocalBaseUrl(host, port);
     const routes: Route[] = [];
-    const { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService, scrubberReady, sentinelJobsShutdown } = registerAllRoutes(routes, {
+    const { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService, codaReady, sentinelRefrainsShutdown } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
         dataDir, configPath: options.configPath,
@@ -851,7 +851,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         triggerStore: triggerInfra?.triggerStore,
         triggerManager: triggerInfra?.triggerManager,
         triggerEmit: triggerInfra?.emit,
-        sentinelTodoTriggers: triggerInfra?.sentinelTodoTriggers,
+        sentinelOvertures: triggerInfra?.sentinelOvertures,
         sentinelPrOutcomes: triggerInfra?.sentinelPrOutcomes,
         mcpOauthManager: mcpOauthInfra?.manager,
         resolveAiServiceForProvider,
@@ -870,13 +870,13 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         setAskUserQuestionRelay: (relay) => { askUserQuestionRelay = relay; },
         setSentinelTodos: (get) => { getSentinelTodosCapability = get; },
         setSentinelDependencyAdmission: (get) => { getSentinelDependencyAdmissionCapability = get; },
-        setSentinelScrubber: (get) => { getSentinelScrubberCapability = get; },
-        setSentinelScheduledJobs: (get) => { getSentinelScheduledJobsCapability = get; },
-        setSentinelJobCommands: (get) => { getSentinelJobCommandsCapability = get; },
+        setSentinelCoda: (get) => { getSentinelCodaCapability = get; },
+        setSentinelRefrains: (get) => { getSentinelRefrainsCapability = get; },
+        setSentinelRefrainCommands: (get) => { getSentinelRefrainCommandsCapability = get; },
         setSendToConversationRuntime: (runtime) => { sendToConversationRuntime = runtime; },
         notesSearchService,
     });
-    await scrubberReady;
+    await codaReady;
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });
     // Arm server-side git auto-pull for every repo whose preference enables it.
@@ -1134,7 +1134,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             mcpOauthDispose: mcpOauthInfra?.dispose,
             teamsMessagingManager,
             whatsappMessagingManager,
-            sentinelJobsShutdown,
+            sentinelRefrainsShutdown,
             syncEngines,
             workItemGitHubPullPoller,
             workItemAzureBoardsPullPoller,

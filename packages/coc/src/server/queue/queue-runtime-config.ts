@@ -81,6 +81,7 @@ export interface QueueRuntimeConfig {
     getFollowUpSuggestions(): QueueFollowUpSuggestionsConfig;
     /** Optional Sentinel next actions, read when building each turn. */
     getSentinelNextStepsEnabled(): boolean;
+    getSentinelTargetAutocompleteEnabled(): boolean;
     /** Sentinel per-chat additional instructions, read when Sentinel context is next built. */
     getSentinelAdditionalInstructionsEnabled(): boolean;
     /** Ask User policy for the next turn built. */
@@ -175,6 +176,7 @@ export function createQueueRuntimeConfig(source: QueueConfigSource): QueueRuntim
         getDefaultTimeoutMs: () => readFromSnapshot(source.config).timeoutMs,
         getDefaultIdleTimeoutMs: () => readFromSnapshot(source.config).idleTimeoutMs,
         getFollowUpSuggestions: () => readFromSnapshot(source.config).followUpSuggestions,
+        getSentinelTargetAutocompleteEnabled: () => source.config.features?.sentinelTargetAutocomplete === true,
         getSentinelNextStepsEnabled: () => (source.config.features?.sentinelNextSteps ?? DEFAULT_CONFIG.features.sentinelNextSteps) === true,
         getSentinelAdditionalInstructionsEnabled: () => (source.config.features?.sentinelAdditionalInstructions ?? DEFAULT_CONFIG.features.sentinelAdditionalInstructions) === true,
         getAskUser: () => readFromSnapshot(source.config).askUser,
@@ -245,6 +247,7 @@ export function createFixedQueueRuntimeConfig(overrides: {
         getDefaultIdleTimeoutMs: () => idleTimeoutMs,
         getFollowUpSuggestions: () => followUpSuggestions,
         getSentinelNextStepsEnabled: () => sentinelNextStepsEnabled,
+        getSentinelTargetAutocompleteEnabled: () => file?.features?.sentinelTargetAutocomplete === true,
         getSentinelAdditionalInstructionsEnabled: () => sentinelAdditionalInstructionsEnabled,
         getAskUser: () => askUser,
         getSkillFolders: () => skillFolders,

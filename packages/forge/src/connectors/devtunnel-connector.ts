@@ -21,6 +21,8 @@ interface ManagedConnection {
     child?: ManagedChildProcess;
     pending?: Promise<DevTunnelConnectionState>;
     intentionalStop?: boolean;
+    generation: number;
+    renewalTimer?: ReturnType<typeof setTimeout>;
     forwardedPort?: number;
     forwardBuffer?: string;
 }
@@ -59,6 +61,7 @@ function classifyCommandError(error: unknown): string {
 }
 
 export class DevTunnelConnector {
+    private disposed = false;
     private readonly connections = new Map<string, ManagedConnection>();
     private readonly commandRunner: DevTunnelCommandRunner;
     private readonly processStarter: ProcessStarter;
@@ -95,40 +98,39 @@ export class DevTunnelConnector {
             return { ...entry.state };
         }
 
-        entry.pending = this.connectInternal(tunnelId, entry).finally(() => {
-            entry.pending = undefined;
+        const generation = entry.generation;
+        const pending = this.connectInternal(tunnelId, entry, generation).finally(() => {
+            if (entry.pending === pending) {
+                entry.pending = undefined;
+            }
         });
-        return entry.pending;
+        entry.pending = pending;
+        return pending;
     }
 
     async connectConfigured(servers: RemoteServer[]): Promise<DevTunnelConnectionState[]> {
         const tunnelIds = Array.from(new Set(servers.filter((s): s is RemoteServer & { kind: 'devtunnel'; tunnelId: string } => s.kind === 'devtunnel').map(s => s.tunnelId)));
-        return Promise.all(tunnelIds.map(tunnelId => this.connect(tunnelId).catch(() => this.getState(tunnelId))));
+        return Promise.all(tunnelIds.map(tunnelId => this.connect(tunnelId).catch(() => {
+            // Shutdown can revoke a startup attempt and remove its entry.
+            return { ...(this.connections.get(tunnelId)?.state ?? { tunnelId, status: 'idle' as const }) };
+        })));
     }
 
     async reconnect(tunnelId: string): Promise<DevTunnelConnectionState> {
         const entry = this.getConnection(tunnelId);
 
-        entry.intentionalStop = true;
-        entry.child?.kill();
-        this.clearChild(entry);
-
-        entry.pending = undefined;
-
-        entry.state = {
-            tunnelId,
-            status: 'connecting',
-            lastChecked: Date.now(),
-        };
-
-        entry.pending = this.connectInternal(tunnelId, entry).finally(() => {
-            entry.pending = undefined;
-        });
-        return entry.pending;
+        // Manual requests and scheduled renewal share any attempt already in progress.
+        if (entry.pending) {
+            return entry.pending;
+        }
+        this.disconnect(tunnelId);
+        return this.connect(tunnelId);
     }
 
     disconnect(tunnelId: string): DevTunnelConnectionState {
         const entry = this.getConnection(tunnelId);
+        entry.generation++;
+        this.clearRenewal(entry);
         entry.intentionalStop = true;
         entry.child?.kill();
         this.clearChild(entry);
@@ -145,10 +147,11 @@ export class DevTunnelConnector {
         for (const tunnelId of this.connections.keys()) {
             this.disconnect(tunnelId);
         }
+        this.disposed = true;
         this.connections.clear();
     }
 
-    private async connectInternal(tunnelId: string, entry: ManagedConnection): Promise<DevTunnelConnectionState> {
+    private async connectInternal(tunnelId: string, entry: ManagedConnection, generation: number): Promise<DevTunnelConnectionState> {
         entry.state = {
             ...entry.state,
             tunnelId,
@@ -159,6 +162,7 @@ export class DevTunnelConnector {
 
         try {
             const { stdout, stderr } = await this.commandRunner('devtunnel', ['port', 'list', tunnelId]);
+            this.assertCurrent(tunnelId, entry, generation);
             const { port, publicUrl } = parseDevTunnelHttpPortInfo(`${stdout}\n${stderr}`);
 
             if (!entry.child) {
@@ -171,6 +175,8 @@ export class DevTunnelConnector {
                     if (entry.intentionalStop || entry.child !== child) {
                         return;
                     }
+                    entry.generation++;
+                    this.clearRenewal(entry);
                     this.clearChild(entry);
                     entry.state = {
                         ...entry.state,
@@ -180,9 +186,11 @@ export class DevTunnelConnector {
                     };
                 });
                 child.once('error', (error) => {
-                    if (entry.child !== child) {
+                    if (entry.intentionalStop || entry.child !== child) {
                         return;
                     }
+                    entry.generation++;
+                    this.clearRenewal(entry);
                     this.clearChild(entry);
                     entry.state = {
                         ...entry.state,
@@ -196,20 +204,27 @@ export class DevTunnelConnector {
             // `devtunnel connect` forwards the remote HTTP port to a possibly-different local port,
             // so health-check the actual forwarded local port (falling back to the configured port).
             const localPort = await this.resolveForwardedPort(entry, port);
+            this.assertCurrent(tunnelId, entry, generation);
             const effectiveUrl = `http://127.0.0.1:${localPort}`;
 
             await waitForHealth(effectiveUrl, this.healthChecker, this.readinessTimeoutMs, this.readinessPollMs, 'DevTunnel', this.healthRequestTimeoutMs);
+            this.assertCurrent(tunnelId, entry, generation);
             entry.state = {
                 tunnelId,
                 port: localPort,
                 effectiveUrl,
                 publicUrl,
                 status: 'online',
-                startedAt: entry.state.startedAt ?? Date.now(),
+                startedAt: Date.now(),
                 lastChecked: Date.now(),
             };
+            this.scheduleRenewal(tunnelId, entry, generation);
             return { ...entry.state };
         } catch (error) {
+            this.assertCurrent(tunnelId, entry, generation);
+            entry.intentionalStop = true;
+            entry.child?.kill();
+            this.clearChild(entry);
             entry.state = {
                 ...entry.state,
                 tunnelId,
@@ -221,6 +236,32 @@ export class DevTunnelConnector {
             };
             throw new Error(entry.state.lastError);
         }
+    }
+
+    private assertCurrent(tunnelId: string, entry: ManagedConnection, generation: number): void {
+        if (this.disposed || this.connections.get(tunnelId) !== entry || entry.generation !== generation) {
+            throw new Error('DevTunnel connection attempt cancelled');
+        }
+    }
+
+    private clearRenewal(entry: ManagedConnection): void {
+        clearTimeout(entry.renewalTimer);
+        entry.renewalTimer = undefined;
+    }
+
+    private scheduleRenewal(tunnelId: string, entry: ManagedConnection, generation: number): void {
+        this.clearRenewal(entry);
+        entry.renewalTimer = setTimeout(() => {
+            entry.renewalTimer = undefined;
+            if (this.disposed || this.connections.get(tunnelId) !== entry
+                || entry.generation !== generation || entry.state.status !== 'online') {
+                return;
+            }
+            // connectInternal publishes failures. Like other DevTunnel failures, recovery
+            // requires a subsequent explicit connect/health request; do not retry in a loop.
+            void this.reconnect(tunnelId).catch(() => {});
+        }, 6 * 60 * 60 * 1000);
+        entry.renewalTimer.unref();
     }
 
     private clearChild(entry: ManagedConnection): void {
@@ -258,9 +299,12 @@ export class DevTunnelConnector {
     }
 
     private getConnection(tunnelId: string): ManagedConnection {
+        if (this.disposed) {
+            throw new Error('DevTunnel connector is disposed');
+        }
         let entry = this.connections.get(tunnelId);
         if (!entry) {
-            entry = { state: { tunnelId, status: 'idle' } };
+            entry = { state: { tunnelId, status: 'idle' }, generation: 0 };
             this.connections.set(tunnelId, entry);
         }
         return entry;

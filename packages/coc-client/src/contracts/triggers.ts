@@ -80,7 +80,7 @@ export interface SendMessageAction {
 
 export type TriggerAction = SendMessageAction;
 
-export interface SentinelTodoTriggerBinding {
+export interface SentinelOvertureBinding {
   kind: 'sentinel-todo';
   itemId: string;
   instruction?: string;
@@ -117,7 +117,7 @@ export interface Trigger {
   lastTickAt: string | null;
   nextTickAt: string | null;
   revision: number;
-  binding?: SentinelTodoTriggerBinding;
+  binding?: SentinelOvertureBinding;
   outcome?: TriggerOutcome;
   outcomeReason?: string;
   delivery?: TriggerDelivery;
@@ -157,13 +157,13 @@ export interface TriggerDeleteResponse {
   trigger: Trigger;
 }
 
-export interface SentinelTodoTriggerCapabilities {
+export interface SentinelOvertureCapabilities {
   dateTime: boolean;
 }
 
-export type SentinelTodoTriggerEventInput = DateTimeTriggerEvent & { localTime: string };
+export type SentinelOvertureEventInput = DateTimeTriggerEvent & { localTime: string };
 
-export type SentinelTodoTriggerInput = {
+export type SentinelOvertureInput = {
   itemId: string;
   instruction?: string;
 } & ({
@@ -172,19 +172,19 @@ export type SentinelTodoTriggerInput = {
   originId?: string;
   event?: never;
 } | {
-  event: SentinelTodoTriggerEventInput;
+  event: SentinelOvertureEventInput;
   prUrl?: never;
   workspaceId?: never;
   originId?: never;
 });
 
-export type CreateSentinelTodoTriggerRequest = SentinelTodoTriggerInput & {
+export type CreateSentinelOvertureRequest = SentinelOvertureInput & {
   runNow?: boolean;
   confirmed?: true;
   idempotencyKey?: string;
 }
 
-export type EditSentinelTodoTriggerRequest = SentinelTodoTriggerInput & {
+export type EditSentinelOvertureRequest = SentinelOvertureInput & {
   expectedRevision: number;
 }
 

@@ -207,6 +207,7 @@ export interface SentinelTodoView {
     };
     itemDrafts?: Readonly<Record<string, {
         editing: {
+            titleOnly?: boolean;
             title: string; completionCondition: string; notes: string; priority: SentinelTodoPriority; baseRevision: number;
             externalReferences?: SentinelTodoExternalReference[];
             externalReferencesChanged?: boolean;

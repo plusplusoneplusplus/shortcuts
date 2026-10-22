@@ -38,7 +38,7 @@ import { SENTINEL_JOB_REVIEW_INSTRUCTIONS } from '../../../src/server/delegation
 import { saveImagesToTempFiles } from '../../../src/server/core/image-utils';
 import * as imageStore from '../../../src/server/executors/image-store';
 import { prepareIncomingImages } from '../../../src/server/messaging/incoming-images';
-import { createSubmitScrubFindingsTool } from '../../../src/server/llm-tools/submit-scrub-findings-tool';
+import { createSubmitCodaFindingsTool } from '../../../src/server/llm-tools/submit-coda-findings-tool';
 
 // ============================================================================
 // Mocks
@@ -153,8 +153,8 @@ describe('unattended scrubber chat approvals', () => {
         const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'scrub-approval-'));
         const context = { workspaceId: 'ws', processId: 'parent', runId: 'run' };
         class ScrubChatExecutor extends ChatExecutor {
-            protected override buildScrubFindingsTool() {
-                return createSubmitScrubFindingsTool({ context,
+            protected override buildCodaFindingsTool() {
+                return createSubmitCodaFindingsTool({ context,
                     service: { submit: () => ({ accepted: 0, ignoredItemIds: [] }) } });
             }
         }

@@ -1,0 +1,33 @@
+.sentinel-overture-root { flex-shrink: 0; }
+.sentinel-overture-section, .sentinel-overture-entry { border-top: 1px solid #e0e0e0; padding-top: 8px; }
+.sentinel-overture-heading, .sentinel-overture-summary, .sentinel-overture-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.sentinel-overture-heading { justify-content: space-between; }
+.sentinel-overture-heading h3 { margin: 0; font-size: 12px; }
+.sentinel-overture-heading button { text-align: left; }
+.sentinel-overture-list { list-style: none; margin: 6px 0 0; padding: 0; }
+.sentinel-overture-row { padding: 8px 4px; border-bottom: 1px solid #e0e0e0; overflow-wrap: anywhere; }
+.sentinel-overture-summary a { color: #0078d4; }
+.sentinel-overture-badge { display: inline-flex; align-items: center; gap: 4px; border: 1px solid currentColor; border-radius: 4px; padding: 1px 5px; font-size: 11px; background: transparent; }
+.sentinel-overture-waiting, .sentinel-overture-muted, .sentinel-overture-paused, .sentinel-overture-skipped { color: #616161; }
+.sentinel-overture-fired { color: #0078d4; }
+.sentinel-overture-closed { color: #946200; }
+.sentinel-overture-error { color: #c72e2e; }
+.sentinel-overture-instruction { margin: 4px 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sentinel-overture-muted { font-size: 11px; margin: 4px 0 0; }
+.sentinel-overture-menu { margin-left: auto; position: relative; }
+.sentinel-overture-menu summary { cursor: pointer; padding: 0 6px; list-style: none; }
+.sentinel-overture-menu[open] { display: flex; flex-wrap: wrap; }
+.sentinel-overture-editor, .sentinel-overture-picker { display: flex; flex-direction: column; gap: 6px; overflow: auto; font-size: 12px; }
+.sentinel-overture-editor input, .sentinel-overture-editor select, .sentinel-overture-editor textarea { border: 1px solid #c8c8c8; border-radius: 4px; padding: 6px; background: #fff; color: #1e1e1e; }
+.sentinel-overture-editor label { font-weight: 600; }
+.sentinel-overture-preview { border: 1px solid #c8c8c8; border-radius: 4px; padding: 8px; }
+.sentinel-overture-actions { justify-content: flex-end; margin-top: 8px; }
+.sentinel-overture-root button:focus-visible, .sentinel-overture-root summary:focus-visible, .sentinel-overture-root a:focus-visible { outline: 2px solid #0078d4; outline-offset: 2px; }
+[data-sentinel-overture-highlight="true"] { outline: 2px solid #0078d4; outline-offset: 2px; }
+.dark .sentinel-overture-section, .dark .sentinel-overture-entry, .dark .sentinel-overture-row { border-color: #3c3c3c; }
+.dark .sentinel-overture-muted, .dark .sentinel-overture-waiting, .dark .sentinel-overture-paused, .dark .sentinel-overture-skipped { color: #9d9d9d; }
+.dark .sentinel-overture-summary a, .dark .sentinel-overture-fired { color: #75beff; }
+.dark .sentinel-overture-closed { color: #cca700; }
+.dark .sentinel-overture-error { color: #f48771; }
+.dark .sentinel-overture-editor input, .dark .sentinel-overture-editor select, .dark .sentinel-overture-editor textarea { background: #1e1e1e; color: #ccc; border-color: #555; }
+.dark .sentinel-overture-preview { border-color: #555; }

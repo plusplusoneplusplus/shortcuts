@@ -10,8 +10,8 @@ import {
 import { buildSendToConversationAddon } from '../../../src/server/executors/prompt-builder';
 import { createTodoTestDatabase, createTodoTestDirectory, failTodoWrites } from './test-db';
 import { TriggerStore } from '../../../src/server/triggers/trigger-store';
-import { SentinelTodoTriggerFirer } from '../../../src/server/triggers/sentinel-todo-trigger-firer';
-import { SentinelTodoTriggerService } from '../../../src/server/triggers/sentinel-todo-trigger-service';
+import { SentinelOvertureFirer } from '../../../src/server/triggers/sentinel-overture-firer';
+import { SentinelOvertureService } from '../../../src/server/triggers/sentinel-overture-service';
 
 const owner = { workspaceId: 'ws-a', processId: 'queue_parent' };
 const other = { workspaceId: 'ws-b', processId: 'queue_other' };
@@ -333,11 +333,11 @@ describe('Sentinel to-do job links', () => {
                 const { call, enqueueChat, startRemoteChat } = makeTool();
                 const triggers = new TriggerStore(database.db);
                 const wake = vi.fn().mockResolvedValue(undefined);
-                const firer = new SentinelTodoTriggerFirer({
+                const firer = new SentinelOvertureFirer({
                     triggers, todos, processes: { getProcess: async id => processes.get(id) },
                     executor: { execute: wake }, emit: vi.fn(),
                 });
-                const rules = new SentinelTodoTriggerService({
+                const rules = new SentinelOvertureService({
                     triggers, todos, owners: service, firer,
                     manager: { arm: vi.fn(), disarm: vi.fn() },
                     fetchPr: async pr => ({ status: 'open', title: 'PR', url: pr.url }),

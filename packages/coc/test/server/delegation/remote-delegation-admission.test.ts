@@ -7,16 +7,15 @@ import {
     type RemoteDelegationDispatch, type RemoteDelegationIntent,
 } from '../../../src/server/delegation/remote-delegation-admission';
 import {
-    RemoteDelegationAdmissionStore, REMOTE_DELEGATION_ADMISSIONS_FILE,
+    RemoteDelegationAdmissionStore, RemoteDelegationReceiptOwnerError, REMOTE_DELEGATION_ADMISSIONS_FILE,
 } from '../../../src/server/delegation/remote-delegation-admission-store';
 import { RemoteDelegationRequestStore } from '../../../src/server/delegation/remote-delegation-request-store';
-import { REMOTE_DELEGATION_PROOF_PATH, type RemoteDelegationClaim } from '../../../src/server/delegation/remote-delegation-auth';
+import { RemoteDelegationRefusedError, type RemoteDelegationClaim } from '../../../src/server/delegation/remote-delegation-auth';
 import { DelegatedJobStore } from '../../../src/server/delegation/delegated-job-store';
 import { getRepoDataPath } from '../../../src/server/paths';
 
 const launch: RemoteDelegationIntent = { version: 1, kind: 'launch', workspaceId: 'destination-repo',
     body: { prompt: 'Fix the login', config: { model: 'model-1', effortTier: 'medium' }, mode: 'autopilot' } };
-const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
 
 describe('remote execution intent digest', () => {
     it('hashes all wire fields with stable object order and captures a separate JSON body', () => {
@@ -71,20 +70,16 @@ describe('remote execution intent digest', () => {
     });
 });
 
-describe('authenticated destination admission gateway', () => {
+describe('sender-only destination admission gateway', () => {
     let root: string;
     let origin: RemoteDelegationRequestStore;
     let destination: RemoteDelegationAdmissionStore;
     let claim: RemoteDelegationClaim;
-    let fetchImpl: ReturnType<typeof vi.fn<typeof fetch>>;
+    let fetchImpl: ReturnType<typeof vi.spyOn<typeof globalThis, 'fetch'>>;
     let dispatch: ReturnType<typeof vi.fn<RemoteDelegationDispatch>>;
     const restart = () => new RemoteDelegationAdmissionStore(path.join(root, 'destination'));
-    const service = (signal?: AbortSignal) => new RemoteDelegationAdmissionService(restart(), {
-        remotes: { list: () => [{ id: 'origin-alias', kind: 'url', label: 'Origin', url: 'https://origin.invalid',
-            effectiveUrl: 'https://origin.invalid', status: 'online', addedAt: 1, updatedAt: 1,
-            serverIdentity: origin.list('origin-repo')[0].originServerIdentity }] },
-        fetchImpl, signal,
-    });
+    const service = () => new RemoteDelegationAdmissionService(restart());
+    const file = () => getRepoDataPath(path.join(root, 'destination'), launch.workspaceId, REMOTE_DELEGATION_ADMISSIONS_FILE);
     function reserve(intent: RemoteDelegationIntent = launch) {
         const request = origin.reserve({ parent: { workspaceId: 'origin-repo', processId: 'sentinel-1' },
             destination: { serverId: 'destination-alias', serverIdentity: destination.serverIdentity, workspaceId: intent.workspaceId },
@@ -102,14 +97,8 @@ describe('authenticated destination admission gateway', () => {
         origin = new RemoteDelegationRequestStore(path.join(root, 'origin'));
         destination = restart();
         reserve();
-        fetchImpl = vi.fn(async (url, init) => {
-            if (String(url).endsWith('/api/health')) return json({ serverIdentity: origin.list('origin-repo')[0].originServerIdentity });
-            if (String(url).endsWith(REMOTE_DELEGATION_PROOF_PATH)) {
-                const proof = origin.proveOrigin(JSON.parse(init!.body as string));
-                return json(proof ?? {}, proof ? 200 : 403);
-            }
-            throw new Error('Unexpected network operation');
-        });
+        // The destination has no origin registration and must never call out.
+        fetchImpl = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected network operation'));
         dispatch = vi.fn(async ({ executionId }) => ({ state: 'accepted' as const, child: { processId: `queue_${executionId}` } }));
     });
     afterEach(() => {
@@ -143,9 +132,10 @@ describe('authenticated destination admission gateway', () => {
         expect(new DelegatedJobStore(path.join(root, 'origin')).list('origin-repo')).toHaveLength(1);
         const bytes = fs.readFileSync(getRepoDataPath(path.join(root, 'destination'), launch.workspaceId,
             REMOTE_DELEGATION_ADMISSIONS_FILE), 'utf8');
-        for (const privateValue of [claim.proofToken, 'Fix the login', 'model-1', 'destination-alias', 'origin.invalid']) {
+        for (const privateValue of [claim.proofToken, 'Fix the login', 'model-1', 'destination-alias']) {
             expect(bytes).not.toContain(privateValue);
         }
+        expect(fetchImpl).not.toHaveBeenCalled();
     });
 
     it('admits concurrent duplicates once while the execution adapter is still awaiting its reply', async () => {
@@ -171,7 +161,7 @@ describe('authenticated destination admission gateway', () => {
         expect((await service().admit(claim, launch, dispatch)).admission.state).toBe('uncertain');
         expect(dispatch).toHaveBeenCalledTimes(1);
         const nextClaim = reserve();
-        destination.claim(origin.proveOrigin(nextClaim)!); // Crash before execution adapter starts.
+        destination.claim(nextClaim); // Crash before execution adapter starts.
         expect((await service().admit(nextClaim, launch, dispatch)).admission.state).toBe('dispatching');
         expect(dispatch).toHaveBeenCalledTimes(1);
     });
@@ -208,7 +198,7 @@ describe('authenticated destination admission gateway', () => {
         expect(dispatch).toHaveBeenCalledTimes(2);
     });
 
-    it('captures caller JSON before asynchronous proof reads', async () => {
+    it('captures caller JSON before asynchronous execution', async () => {
         const input = structuredClone(launch);
         const originalClaim = structuredClone(claim);
         const pending = service().admit(claim, input, dispatch);
@@ -220,12 +210,12 @@ describe('authenticated destination admission gateway', () => {
     });
 
     it.each(['prompt', 'kind', 'workspace', 'target'])(
-        'rejects changed %s before authentication or execution', async change => {
+        'refuses changed %s before any claim or execution', async change => {
             const execution = change === 'prompt' ? { ...launch, body: { prompt: 'different' } }
                 : change === 'kind' ? { ...launch, kind: 'ralph' }
                 : change === 'workspace' ? { ...launch, workspaceId: 'other-repo' }
                 : { ...launch, kind: 'follow-up', targetProcessId: 'other-chat' };
-            await expect(service().admit(claim, execution, dispatch)).rejects.toThrow('does not match');
+            await expect(service().admit(claim, execution, dispatch)).rejects.toBeInstanceOf(RemoteDelegationRefusedError);
             expect(fetchImpl).not.toHaveBeenCalled();
             expect(dispatch).not.toHaveBeenCalled();
             expect(destination.list(launch.workspaceId)).toEqual([]);
@@ -242,27 +232,52 @@ describe('authenticated destination admission gateway', () => {
         expect(dispatch).not.toHaveBeenCalled();
     });
 
-    it('requires authenticated origin for both execution and receipt reads', async () => {
+    it('binds receipt ownership to the first submitter secret for replays and reads', async () => {
         await service().admit(claim, launch, dispatch);
-        const bytes = fs.readFileSync(getRepoDataPath(path.join(root, 'destination'), launch.workspaceId,
-            REMOTE_DELEGATION_ADMISSIONS_FILE), 'utf8');
+        const bytes = fs.readFileSync(file(), 'utf8');
         const wrongToken = { ...claim, proofToken: 'f'.repeat(64) };
-        await expect(service().admit(wrongToken, launch, dispatch)).rejects.toThrow('could not be authenticated');
-        await expect(service().reconcile(wrongToken)).rejects.toThrow('could not be authenticated');
+        await expect(service().admit(wrongToken, launch, dispatch)).rejects.toBeInstanceOf(RemoteDelegationReceiptOwnerError);
+        expect(await service().reconcile(wrongToken)).toBeUndefined();
         expect(dispatch).toHaveBeenCalledTimes(1);
-        expect(fs.readFileSync(getRepoDataPath(path.join(root, 'destination'), launch.workspaceId,
-            REMOTE_DELEGATION_ADMISSIONS_FILE), 'utf8')).toBe(bytes);
+        expect(fs.readFileSync(file(), 'utf8')).toBe(bytes);
+        expect(fetchImpl).not.toHaveBeenCalled();
     });
 
-    it('does not dispatch or disclose receipts after proof network failure or cancellation', async () => {
-        fetchImpl.mockRejectedValueOnce(new Error('private url and credentials'));
-        await expect(service().admit(claim, launch, dispatch)).rejects.toThrow('could not be authenticated');
-        const controller = new AbortController();
-        const reason = new Error('cancelled');
-        controller.abort(reason);
-        await expect(service(controller.signal).admit(claim, launch, dispatch)).rejects.toBe(reason);
+    it.each([
+        ['origin identity', { originServerIdentity: 'spoofed-origin' }],
+        ['parent workspace', { parent: { workspaceId: 'other-repo', processId: 'sentinel-1' } }],
+        ['destination workspace', { destination: { serverIdentity: 'x', workspaceId: 'other-repo' } }],
+    ])('does not disclose a receipt to a claim with another %s, even with the secret', async (_label, change) => {
+        await service().admit(claim, launch, dispatch);
+        const changed = { ...claim, ...change } as RemoteDelegationClaim;
+        if ('destination' in change) changed.destination = { ...change.destination, serverIdentity: destination.serverIdentity };
+        expect(await service().reconcile(changed)).toBeUndefined();
+        expect(dispatch).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['self origin', 'other destination', 'malformed'])('refuses a %s claim before storage', async problem => {
+        const input = problem === 'self origin' ? { ...claim, originServerIdentity: destination.serverIdentity }
+            : problem === 'other destination' ? { ...claim, destination: { ...claim.destination, serverIdentity: 'other-server' } }
+            : { ...claim, callbackUrl: 'http://attacker.invalid' };
+        await expect(service().admit(input, launch, dispatch)).rejects.toBeInstanceOf(RemoteDelegationRefusedError);
+        await expect(service().reconcile(input)).rejects.toBeInstanceOf(RemoteDelegationRefusedError);
         expect(dispatch).not.toHaveBeenCalled();
-        expect(destination.list(launch.workspaceId)).toEqual([]);
+        expect(fs.existsSync(file())).toBe(false);
+        expect(fetchImpl).not.toHaveBeenCalled();
+    });
+
+    it('never binds or replays a legacy reverse-proof receipt that has no secret digest', async () => {
+        dispatch.mockResolvedValueOnce({ state: 'rejected' });
+        await service().admit(claim, launch, dispatch);
+        const rows = JSON.parse(fs.readFileSync(file(), 'utf8'));
+        rows[0].admission = { state: 'uncertain' };
+        delete rows[0].receiptTokenDigest;
+        fs.writeFileSync(file(), JSON.stringify(rows));
+        const bytes = fs.readFileSync(file(), 'utf8');
+        await expect(service().admit(claim, launch, dispatch)).rejects.toBeInstanceOf(RemoteDelegationReceiptOwnerError);
+        expect(await service().reconcile(claim, async () => ({ processId: 'queue_guess' }))).toBeUndefined();
+        expect(fs.readFileSync(file(), 'utf8')).toBe(bytes);
+        expect(dispatch).toHaveBeenCalledTimes(1);
     });
 
     it('sanitizes claim/write errors and leaves a consumed claim if execution succeeded before a disk failure', async () => {

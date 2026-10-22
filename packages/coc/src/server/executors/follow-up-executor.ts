@@ -1,3 +1,4 @@
+import { withSentinelTargetContext } from '../shared/sentinel-target-reference';
 /**
  * Follow-Up Executor
  *
@@ -92,9 +93,9 @@ import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduc
  * changed since.
  */
 export interface FollowUpTurnOptions {
-    /** Native scheduled-job admission, checked by the lifecycle runner. Jobs have no run deadlines. */
+    /** Native refrain run admission, checked by the lifecycle runner. Refrains have no run deadlines. */
     sentinelScheduledJob?: boolean;
-    /** A scheduled-job handback or gate notice into its Sentinel; such turns never get `sentinel_jobs`. */
+    /** A refrain handback or gate notice into its Sentinel; such turns never get `sentinel_jobs`. */
     sentinelJobHandback?: boolean;
     /** Trusted native admission marker; never derived from prompt text or process metadata. */
     sentinelPrOutcomeReview?: boolean;
@@ -547,7 +548,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     ? this.buildCreatePullRequestDeps(processId, wsId, workingDirectory)
                     : undefined,
                 sentinelTodos: this.buildSentinelTodoDeps(processId, wsId, currentMode),
-                sentinelJobs: this.buildSentinelJobsDeps(processId, wsId, currentMode, sessionProvider,
+                sentinelRefrains: this.buildSentinelRefrainsDeps(processId, wsId, currentMode, sessionProvider,
                     reviewOnly || turnSource !== undefined || options?.sentinelJobHandback === true),
                 // Registered regardless of `currentMode` so toggling the mode
                 // pill mid-chat leaves the tool block byte-identical and the
@@ -700,7 +701,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     logger,
                 }),
             });
-            this.recordSentinelJobDefaults(processId, sessionProvider, policy.resolvedModel, policy.reasoningEffort);
+            this.recordSentinelRefrainDefaults(processId, sessionProvider, policy.resolvedModel, policy.reasoningEffort);
 
             await this.assertChatImageModel(sessionProvider, followUpAiService, policy.modelId, attachments);
             imagesAccepted = true;
@@ -732,7 +733,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             const sendOptions = {
                 ...buildChatTurnSendOptions({
                     dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'),
-                    prompt: followUpMessage,
+                    prompt: currentMode === 'sentinel' && this.queueConfig.getSentinelTargetAutocompleteEnabled() ? withSentinelTargetContext(followUpMessage) : followUpMessage,
                     agentMode,
                     policy,
                     workingDirectory,

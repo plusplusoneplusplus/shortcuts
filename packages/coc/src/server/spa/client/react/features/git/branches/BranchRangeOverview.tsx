@@ -65,11 +65,12 @@ function BranchReview({ workspaceId, attachmentDestinationId, range, files = [],
     }), [workspaceId, files, baseMode, range, revision, attachmentDestinationId]);
     useEffect(() => {
         let cancelled = false;
-        Promise.resolve().then(() => listDiffCommentsForRange(workspaceId, range.baseRef, range.headRef, getGitReviewClient(workspaceId, attachmentDestinationId === workspaceId ? null : attachmentDestinationId)))
+        // Range file comments are stored under fixed refs, not the resolved range refs.
+        Promise.resolve().then(() => listDiffCommentsForRange(workspaceId, 'branch-base', 'branch-head', getGitReviewClient(workspaceId, attachmentDestinationId === workspaceId ? null : attachmentDestinationId)))
             .then(comments => { if (!cancelled) setBranchCommentCount(comments.length); })
             .catch(() => { if (!cancelled) setBranchCommentCount(0); });
         return () => { cancelled = true; };
-    }, [workspaceId, attachmentDestinationId, range.baseRef, range.headRef]);
+    }, [workspaceId, attachmentDestinationId]);
     const handlePopOut = useCallback(() => {
         const cloneBaseUrl = attachmentDestinationId === workspaceId ? undefined : lookupCloneBaseUrl(attachmentDestinationId ?? workspaceId);
         const url = buildGitBranchRangePopOutUrl(workspaceId, cloneBaseUrl, baseMode, attachmentDestinationId);

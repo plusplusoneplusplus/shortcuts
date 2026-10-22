@@ -5,10 +5,10 @@
  * refreshed by that server's `sentinel-todos-changed` events. Every write
  * carries the item revision it was based on; a conflict reloads the current
  * ledger and keeps whatever the user typed. Job links only navigate; the
- * optional Jobs section manages persistent prompt jobs and the built-in Scrubber;
- * with Jobs disabled, the Scrubber strip controls its read-only assessment chats. Active normal items come first, then
+ * optional Refrains section manages persistent prompts and the built-in Coda review;
+ * with Refrains disabled, the Coda strip controls its read-only assessment chats. Active normal items come first, then
  * the chat's Manual tracking section with its own add form and groups, then the
- * normal Done and Archived sections, then triggers and Jobs or the Scrubber strip,
+ * normal Done and Archived sections, then Overtures and Refrains or the Coda strip,
  * all in the list column beside the detail pane.
  */
 
@@ -29,6 +29,7 @@ import { useCocClient } from '../../../repos/cloneRouting';
 import { SentinelTodoJobPreview } from './SentinelTodoJobPreview';
 import { SentinelTodoConversationReferences } from './SentinelTodoConversationReferences';
 import { SentinelTodoNotes } from './SentinelTodoNotes';
+import { SentinelTodoOrganizeNotes } from './SentinelTodoOrganizeNotes';
 import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/Spinner';
 import { cn } from '../../../ui/cn';
@@ -42,7 +43,7 @@ import { writePointerContextDragData } from '../../chat/sessionContextDrag';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { formatRelativeTime } from '../../../utils/format';
 import { getSentinelTodoChat, useSentinelTodoEvents } from './sentinelTodoChats';
-import { SentinelTodoTriggers } from './SentinelTodoTriggers';
+import { SentinelOvertures } from './SentinelOvertures';
 import { SentinelTodoDependencies } from './SentinelTodoDependencies';
 import { SentinelTodoPrOutcomes } from './SentinelTodoPrOutcomes';
 import { SentinelTodoTagChips, SentinelTodoTagPicker, SentinelTodoTagToolbar, sentinelTodoMatchesTag, useSentinelTodoTagsEnabled } from './SentinelTodoTags';
@@ -50,8 +51,8 @@ import { externalReferences, SentinelTodoExternalReferences, SentinelTodoExterna
 import { openUnifiedPanelTab } from './unifiedPanelOpen';
 import { resourcePathName } from './unifiedPanelOpenMenuModel';
 import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
-import { AcceptAllScrubProposals, ScrubberFindingsContext, SentinelTodoScrubFinding } from './SentinelTodoScrubFinding';
-import { SentinelTodoJobs } from './SentinelTodoJobs';
+import { AcceptAllCodaProposals, CodaFindingsContext, SentinelCodaFinding } from './SentinelCodaFinding';
+import { SentinelRefrains } from './SentinelRefrains';
 import { sentinelTodoRecentPage } from './sentinelTodoStatusModel';
 import {
     endSentinelTodoExcursion,
@@ -101,6 +102,7 @@ type FollowLink = (event: MouseEvent<HTMLAnchorElement>, linkKey: string, href?:
 
 type DraftFieldsValue = { title: string; completionCondition: string; notes: string; priority: SentinelTodoPriority };
 type Draft = DraftFieldsValue & {
+    titleOnly?: boolean;
     externalReferences?: SentinelTodoExternalReference[]; externalReferencesChanged?: boolean;
     initialFields?: DraftFieldsValue;
 };
@@ -109,6 +111,7 @@ const EMPTY_DRAFT: Draft = { title: '', completionCondition: '', notes: '', prio
 const STATUS_STYLES: Readonly<Record<SentinelTodoDisplayStatus, { dot: string; badge: string; mark: string }>> = {
     todo: { dot: 'border border-current', badge: 'bg-[#848484]/15 text-[#616161] dark:text-[#bbbbbb]', mark: '○' },
     in_progress: { dot: 'bg-current', badge: 'bg-[#0078d4]/15 text-[#0078d4] dark:text-[#3794ff]', mark: '◐' },
+    deferred: { dot: 'border border-current', badge: 'bg-[#848484]/10 text-[#616161] dark:text-[#9d9d9d]', mark: 'Ⅱ' },
     in_review: { dot: 'border border-current', badge: 'bg-[#8764b8]/15 text-[#7150a2] dark:text-[#c5a5ed]', mark: '◇' },
     needs_attention: { dot: 'bg-current', badge: 'bg-[#e8912d]/15 text-[#b5650f] dark:text-[#cca700]', mark: '!' },
     done: { dot: 'bg-current', badge: 'bg-[#16825d]/15 text-[#16825d] dark:text-[#89d185]', mark: '✓' },
@@ -147,13 +150,13 @@ function StatusBadge({ status }: { status: SentinelTodoDisplayStatus }) {
 }
 
 /** Ledger timestamp: relative text, exact local date/time on hover and for screen readers. */
-function TodoTime({ label, iso, testId }: { label: string; iso: string; testId: string }) {
+function TodoTime({ label, iso, testId, hideLabel = false }: { label: string; iso: string; testId: string; hideLabel?: boolean }) {
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return null;
     const exact = date.toLocaleString();
     return (
         <span className="whitespace-nowrap" data-testid={testId}>
-            {label}{' '}
+            <span className={hideLabel ? 'sr-only' : undefined}>{label}{' '}</span>
             <time dateTime={iso} title={exact}>
                 <span aria-hidden="true">{formatRelativeTime(iso)}</span>
                 <span className="sr-only">{exact}</span>
@@ -335,7 +338,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         pendingLoads.current += 1;
         setLoading(true);
         try {
-            // Dependencies, triggers and Scrubber projections need the full snapshot, not just visible rows.
+            // Dependencies, overtures and Coda projections need the full snapshot, not just visible rows.
             const next = await client.sentinelTodos.get(owner.ownerWorkspaceId, owner.processId, { full: true });
             if (!mounted.current || seq !== loadSeq.current) return;
             loadedRevision.current = next.revision;
@@ -452,7 +455,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     const highlightedRow = useRef<HTMLElement | null>(null);
     const currentView = useRef({ ownerKey, ledger });
     currentView.current = { ownerKey, ledger };
-    useEffect(() => () => { clearTimeout(highlightTimer.current); highlightedRow.current?.removeAttribute('data-sentinel-trigger-highlight'); }, [ownerKey, client]);
+    useEffect(() => () => { clearTimeout(highlightTimer.current); highlightedRow.current?.removeAttribute('data-sentinel-overture-highlight'); }, [ownerKey, client]);
     const followTriggerItem = (itemId: string) => {
         if (!mounted.current) return;
         if (currentView.current.ownerKey !== ownerKey) return;
@@ -471,7 +474,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         setExpanded(previous => new Set([...previous, itemId]));
         setSelectedId(itemId); setDetailOpen(true);
         clearTimeout(highlightTimer.current);
-        highlightedRow.current?.removeAttribute('data-sentinel-trigger-highlight');
+        highlightedRow.current?.removeAttribute('data-sentinel-overture-highlight');
         highlightTimer.current = setTimeout(() => {
             if (currentView.current.ownerKey !== ownerKey
                 || !currentView.current.ledger?.items.some(candidate => candidate.id === itemId)) return;
@@ -484,8 +487,8 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                 [...(panelRef.current?.querySelectorAll<HTMLElement>('[data-todo-heading]') ?? [])]
                     .find(heading => heading.dataset.todoHeading === itemId)?.focus({ preventScroll: true });
             } else row.querySelector<HTMLButtonElement>('button[aria-expanded], button[aria-pressed]')?.focus({ preventScroll: true });
-            row.setAttribute('data-sentinel-trigger-highlight', 'true');
-            highlightTimer.current = setTimeout(() => row.removeAttribute('data-sentinel-trigger-highlight'), 2500);
+            row.setAttribute('data-sentinel-overture-highlight', 'true');
+            highlightTimer.current = setTimeout(() => row.removeAttribute('data-sentinel-overture-highlight'), 2500);
         }, 0);
     };
     const scrollTop = useRef(restored.scrollTop ?? 0);
@@ -688,7 +691,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                         aria-label={`Unpin ${originTitle} To-do`}>Unpin</Button>
                 </div>
             )}
-            <SentinelTodoJobs owner={owner} ready={ledger !== null} items={ledger?.items ?? []} onFollowLink={followLink} onLedgerChange={load} toolbar={
+            <SentinelRefrains owner={owner} ready={ledger !== null} items={ledger?.items ?? []} onFollowLink={followLink} onLedgerChange={load} toolbar={
             <div role="toolbar" aria-label="To-do actions" className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold">To-do</span>
                 {ledger && sections.active.length > 0 && (
@@ -701,7 +704,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                     </span>
                 )}
                 <span className="flex-1" />
-                <AcceptAllScrubProposals />
+                <AcceptAllCodaProposals />
                 <div className="flex shrink-0 items-center gap-2">
                     <button type="button" aria-label="Refresh to-do list" title="Refresh to-do list"
                         aria-busy={loading} disabled={loading} onClick={refresh} data-testid="sentinel-todo-refresh"
@@ -833,7 +836,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                             Show older items ({ledger.items.length - recentItems.length})
                         </Button>
                     )}
-                    <SentinelTodoTriggers owner={owner} items={ledger.items} onItemLink={followTriggerItem} />
+                    <SentinelOvertures owner={owner} items={ledger.items} onItemLink={followTriggerItem} />
                     {scrubber}
                 </>
             )}
@@ -858,7 +861,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             </section>
             </div>
             </>}
-            </SentinelTodoJobs>
+            </SentinelRefrains>
         </div>
     );
 }
@@ -1003,7 +1006,7 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
         }
         return false;
     };
-    const { mutationPending } = useContext(ScrubberFindingsContext);
+    const { mutationPending } = useContext(CodaFindingsContext);
     const canReopen = !!onReopenDragStart && !menuDisabled && !mutationPending;
     const high = sentinelTodoPriority(item) === 'high';
     const reasonPreview = sentinelTodoDisplayStatus(item) === 'needs_attention' && item.statusReason ? <span
@@ -1016,7 +1019,11 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
         {high && <span aria-hidden="true" data-testid={`sentinel-todo-priority-band-${item.id}`}
             className="pointer-events-none absolute inset-y-0 left-0 w-1 rounded-l-[3px] bg-[#e51400] dark:bg-[#f14c4c]" />}
         <div className="flex items-start gap-1 px-1.5 pt-1 pb-0.5">
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+            {/* Title-first header: the title owns the full width and repo/time reflow beneath it;
+                only a wide card (container query, so panel width and zoom both count) puts them
+                beside the title, capped so they never squeeze it. */}
+            <div className="flex min-w-0 flex-1 flex-wrap items-start gap-x-2 gap-y-0.5 [container-type:inline-size] [container-name:todo-card]"
+                data-testid={`sentinel-todo-header-${item.id}`}>
                 <button type="button" aria-pressed={selected} data-todo-select={item.id} title={item.title}
                     onPointerDown={() => { selectedTextOnRelease.current = false; }}
                     onPointerUp={() => { selectedTextOnRelease.current = hasSelectedText(); }}
@@ -1025,16 +1032,19 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
                         if (event.detail > 0 && (selectedTextOnRelease.current || hasSelectedText())) return;
                         onSelect();
                     }}
-                    className="flex min-w-0 flex-1 basis-[8rem] select-text flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4]">
+                    className="flex min-w-0 flex-[1_1_100%] select-text flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] [@container_todo-card_(min-width:28rem)]:basis-[55%]">
                     <StatusBadge status={sentinelTodoDisplayStatus(item)} />
                     {high && <HighPriorityBadge itemId={item.id} />}
                     <span className={cn('min-w-0 flex-1 basis-[8rem] break-words [overflow-wrap:anywhere] font-medium', item.archived && 'line-through opacity-70')}>{item.title}</span>
                     {sentinelTodoType(item) === 'manual' && <span className={MUTED}>Tracking only</span>}
                 </button>
-                <div className={cn('ml-auto flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px]', MUTED)} data-testid={`sentinel-todo-meta-${item.id}`}>
-                    {item.targetRepo && <span className="min-w-0 max-w-full break-words [overflow-wrap:anywhere]" title={item.targetRepo.workspaceId}
+                <div className={cn('flex min-w-0 max-w-full basis-full items-center gap-x-1.5 whitespace-nowrap text-[11px]',
+                    '[@container_todo-card_(min-width:28rem)]:ml-auto [@container_todo-card_(min-width:28rem)]:max-w-[40%] [@container_todo-card_(min-width:28rem)]:basis-auto [@container_todo-card_(min-width:28rem)]:justify-end [@container_todo-card_(min-width:28rem)]:pt-0.5',
+                    MUTED)} data-testid={`sentinel-todo-meta-${item.id}`}>
+                    {item.targetRepo && <span className="min-w-0 max-w-full truncate" title={item.targetRepo.workspaceId}
                         data-testid={`sentinel-todo-repo-${item.id}`}>{item.targetRepo.label ?? item.targetRepo.workspaceId}</span>}
-                    <TodoTime label="Updated" iso={item.updatedAt} testId={`sentinel-todo-updated-${item.id}`} />
+                    {item.targetRepo && <span aria-hidden="true" className="shrink-0">·</span>}
+                    <TodoTime label="Updated" iso={item.updatedAt} testId={`sentinel-todo-updated-${item.id}`} hideLabel />
                 </div>
             </div>
             {(canAttach || canReopen) && <button type="button" draggable onDragStart={event => {
@@ -1056,7 +1066,7 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
             <TodoJobs item={item} owner={owner} currentWorkspaceId={currentWorkspaceId} onFollowLink={onFollowLink} reasonPreview={reasonPreview} />
         </div>}
         {attachError && <Notice tone="error" testId={`sentinel-todo-attach-error-${item.id}`}>{attachError}</Notice>}
-        <SentinelTodoScrubFinding item={item} />
+        <SentinelCodaFinding item={item} />
         <SentinelTodoExternalReferences item={item} />
     </li>;
 }
@@ -1065,6 +1075,16 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
     const referencesEnabled = useSentinelTodoExternalReferencesEnabled();
     const [restoredDraft] = useState(() => recallSentinelTodoView(owner).itemDrafts?.[item.id]);
     const [editing, setEditing] = useState<(Draft & { baseRevision: number }) | null>(restoredDraft?.editing ?? null);
+    const titleInput = useRef<HTMLInputElement>(null);
+    const titleEditButton = useRef<HTMLButtonElement>(null);
+    const wasEditingTitle = useRef(false);
+    useLayoutEffect(() => {
+        if (!hidden) {
+            if (editing?.titleOnly) titleInput.current?.focus();
+            else if (wasEditingTitle.current) titleEditButton.current?.focus();
+        }
+        wasEditingTitle.current = editing?.titleOnly === true;
+    }, [editing?.titleOnly, hidden]);
     const [statusDraft, setStatusDraft] = useState<{ status: SentinelTodoStatus; reason: string } | null>(restoredDraft?.statusDraft ?? null);
     const [error, setError] = useState<string | null>(restoredDraft?.error ?? null);
     const { canAttach, attach, attachError, drag } = useTodoAttachment(owner, item);
@@ -1072,8 +1092,9 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
     const [tagsBusy, setTagsBusy] = useState(false);
     const [dependenciesBusy, setDependenciesBusy] = useState(false);
     const [outcomesBusy, setOutcomesBusy] = useState(false);
-    const { mutationPending: scrubberBusy } = useContext(ScrubberFindingsContext);
-    const closeBlocked = busy || tagsBusy || dependenciesBusy || outcomesBusy || scrubberBusy;
+    const [organizeNotesBusy, setOrganizeNotesBusy] = useState(false);
+    const { mutationPending: codaBusy } = useContext(CodaFindingsContext);
+    const closeBlocked = busy || tagsBusy || dependenciesBusy || outcomesBusy || codaBusy || organizeNotesBusy;
     useLayoutEffect(() => {
         onMenuBlocked(item.id, closeBlocked || editing !== null || statusDraft !== null);
     }, [item.id, closeBlocked, editing, statusDraft, onMenuBlocked]);
@@ -1106,20 +1127,20 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
 
     const saveEdit = (event: FormEvent) => {
         event.preventDefault();
-        if (!editing || !editing.title.trim()) return;
+        if (!editing || busy || !editing.title.trim() || (editing.titleOnly && item.archived)) return;
         const draft = editing;
         const initial = draft.initialFields ?? { title: item.title, completionCondition: item.completionCondition,
             notes: item.notes, priority: sentinelTodoPriority(item) };
         const fieldsChanged = draft.title.trim() !== initial.title.trim() || draft.completionCondition.trim() !== initial.completionCondition.trim()
             || draft.notes !== initial.notes || draft.priority !== initial.priority;
         void run(() => onSave(item, {
-            ...(fieldsChanged ? {
+            ...(draft.titleOnly ? { title: draft.title.trim() } : fieldsChanged ? {
                 title: draft.title.trim(),
                 completionCondition: draft.completionCondition.trim(),
                 notes: draft.notes,
                 priority: draft.priority,
             } : {}),
-            ...(referencesEnabled && draft.externalReferencesChanged
+            ...(!draft.titleOnly && referencesEnabled && draft.externalReferencesChanged
                 && JSON.stringify(draft.externalReferences ?? []) !== JSON.stringify(externalReferences(item))
                 ? { externalReferences: draft.externalReferences ?? [] } : {}),
             ...(fieldsChanged && tagLibrary && matchMultiple ? { matchMultiple: true } : {}),
@@ -1127,6 +1148,15 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
         // Keep the typed text; the next save is knowingly based on the newer revision.
         current => setEditing(prev => prev && { ...prev, baseRevision: current?.revision ?? prev.baseRevision }));
     };
+
+    const startEdit = (titleOnly = false) => {
+        setError(null);
+        const fields = { title: item.title, completionCondition: item.completionCondition, notes: item.notes,
+            priority: sentinelTodoPriority(item) };
+        setEditing({ ...fields, titleOnly, baseRevision: item.revision,
+            externalReferences: externalReferences(item), initialFields: fields });
+    };
+    const cancelEdit = () => { setEditing(null); setError(null); };
 
     const applyStatus = (status: SentinelTodoStatus, reason: string, confirmed = false) => {
         const rule = sentinelTodoStatusReason(status);
@@ -1142,16 +1172,18 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
         }), () => setStatusDraft(null));
     };
 
-    // Menu choices enter the same validated status/reason and revision-aware save
-    // flow as the detail controls. Consume each choice once, including StrictMode.
+    // Dropdown choices save the human verdict directly; detail controls keep their
+    // reason forms. Consume each choice once, including StrictMode.
     const consumedMenuAction = useRef<TodoMenuAction | null>(null);
     useEffect(() => {
         if (!menuAction || consumedMenuAction.current === menuAction) return;
         consumedMenuAction.current = menuAction;
         onMenuActionConsumed();
         if (item.archived || closeBlocked || editing || statusDraft) return;
-        if ('status' in menuAction) applyStatus(menuAction.status, '');
-        else void run(() => onSave(item, { priority: menuAction.priority }), () => {});
+        const patch = 'status' in menuAction
+            ? { status: menuAction.status, statusReason: null }
+            : { priority: menuAction.priority };
+        void run(() => onSave(item, patch), () => {});
         // The request is an explicit user action, never replayed by ledger refreshes.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [menuAction]);
@@ -1171,13 +1203,41 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                     className="pointer-events-none absolute inset-y-0 left-0 w-1 rounded-l-[3px] bg-[#e51400] dark:bg-[#f14c4c]" />
             )}
             <div className="flex items-start">
-                <h2 id={titleId} tabIndex={-1} data-todo-heading={item.id}
-                    className="m-0 flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 break-words px-2 py-1 text-xs font-semibold focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4]">
-                    <span className="min-w-0 [overflow-wrap:anywhere]">{item.title}</span>
-                    <StatusBadge status={displayStatus} />
-                    {high && <HighPriorityBadge itemId={item.id} />}
-                    {sentinelTodoType(item) === 'manual' && <span className={MUTED}>Tracked only · never run</span>}
-                </h2>
+                <form onSubmit={saveEdit} aria-label={editing?.titleOnly ? 'Edit To-do title' : undefined}
+                    onKeyDown={event => {
+                        if (editing?.titleOnly && event.key === 'Escape') {
+                            event.preventDefault(); event.stopPropagation();
+                            if (!busy) cancelEdit();
+                        }
+                    }}
+                    className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+                    <h2 id={titleId} tabIndex={-1} data-todo-heading={item.id}
+                        aria-label={editing?.titleOnly ? item.title : undefined}
+                        className="m-0 flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 break-words px-2 py-1 text-xs font-semibold focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4]">
+                        {editing?.titleOnly ? <>
+                            <label className="sr-only" htmlFor={`${domId}-title`}>Title</label>
+                            <input ref={titleInput} id={`${domId}-title`} className={cn(INPUT, 'min-w-0 flex-1 basis-[8rem] font-semibold')}
+                                value={editing.title} maxLength={200} required disabled={busy || item.archived}
+                                onChange={event => setEditing({ ...editing, title: event.target.value })} />
+                        </> : <>
+                            <span className="min-w-0 [overflow-wrap:anywhere]">{item.title}</span>
+                            {!item.archived && <button ref={titleEditButton} type="button" aria-label="Edit title" title="Edit title"
+                                disabled={closeBlocked || editing !== null || statusDraft !== null} onClick={() => startEdit(true)}
+                                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[#848484] hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/[0.04]">
+                                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                                    <path d="m10 2 4 4-8 8H2v-4Z M8 4l4 4" />
+                                </svg>
+                            </button>}
+                        </>}
+                        <StatusBadge status={displayStatus} />
+                        {high && <HighPriorityBadge itemId={item.id} />}
+                        {sentinelTodoType(item) === 'manual' && <span className={MUTED}>Tracked only · never run</span>}
+                    </h2>
+                    {editing?.titleOnly && <div className="flex flex-wrap gap-1 px-2 pb-1">
+                        <Button size="sm" type="submit" disabled={!editing.title.trim() || item.archived} loading={busy}>Save</Button>
+                        <Button size="sm" variant="secondary" disabled={busy} onClick={cancelEdit}>Cancel</Button>
+                    </div>}
+                </form>
                 <button type="button" aria-label="Close To-do details" title="Close To-do details"
                     disabled={closeBlocked} onClick={() => { if (!closeBlocked) onClose(); }}
                     className="m-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-[#848484] hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/[0.04]">
@@ -1188,7 +1248,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
             </div>
             {tagLibrary && <SentinelTodoTagPicker item={item} owner={owner} client={tagClient} library={tagLibrary}
                 multiple={matchMultiple} onLedgerChange={onLedgerChange} onBusyChange={setTagsBusy} />}
-            <SentinelTodoScrubFinding item={item} />
+            <SentinelCodaFinding item={item} />
             <div className={cn('flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-2 pb-1.5 text-[11px]', MUTED)} data-testid={`sentinel-todo-meta-${item.id}`}>
                 {item.targetRepo && (
                     <span className="max-w-full truncate" title={item.targetRepo.workspaceId} data-testid={`sentinel-todo-repo-${item.id}`}>
@@ -1217,12 +1277,12 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                             Saved status: {SENTINEL_TODO_STATUS_LABELS[item.status]}.
                         </div>
                     )}
-                    {editing ? (
+                    {editing && !editing.titleOnly ? (
                         <form className="flex flex-col gap-1" onSubmit={saveEdit} data-testid={`sentinel-todo-edit-form-${item.id}`}>
                             <DraftFields draft={editing} onChange={draft => setEditing({ ...editing, ...draft })} idPrefix={`${domId}-edit`}
                                 manual={sentinelTodoType(item) === 'manual'} />
                             <div className="flex flex-wrap justify-end gap-1 pt-1">
-                                <Button size="sm" variant="secondary" onClick={() => { setEditing(null); setError(null); }}>Cancel</Button>
+                                <Button size="sm" variant="secondary" onClick={cancelEdit}>Cancel</Button>
                                 <Button size="sm" type="submit" disabled={!editing.title.trim()} loading={busy}>Save</Button>
                             </div>
                         </form>
@@ -1240,13 +1300,18 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                             {item.notes && (
                                 <><dt className={MUTED}>Notes</dt>
                                     <dd className="min-w-0">
-                                        {foldNotes && (
-                                            <button type="button" aria-expanded={notesOpen} aria-controls={`${domId}-notes`}
-                                                onClick={() => setNotesOpen(open => !open)} data-testid={`sentinel-todo-notes-toggle-${item.id}`}
-                                                className="rounded text-[#0078d4] hover:underline focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:text-[#3794ff]">
-                                                {notesOpen ? 'Hide notes' : `Show notes (${sentinelTodoLineCount(item.notes)} lines)`}
-                                            </button>
-                                        )}
+                                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                                            {foldNotes && (
+                                                <button type="button" aria-expanded={notesOpen} aria-controls={`${domId}-notes`}
+                                                    onClick={() => setNotesOpen(open => !open)} data-testid={`sentinel-todo-notes-toggle-${item.id}`}
+                                                    className="rounded text-[#0078d4] hover:underline focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:text-[#3794ff]">
+                                                    {notesOpen ? 'Hide notes' : `Show notes (${sentinelTodoLineCount(item.notes)} lines)`}
+                                                </button>
+                                            )}
+                                            {!item.archived && <SentinelTodoOrganizeNotes owner={owner} item={item} active={!hidden}
+                                                blocked={busy || tagsBusy || dependenciesBusy || outcomesBusy || codaBusy || editing !== null || statusDraft !== null}
+                                                onBusyChange={setOrganizeNotesBusy} />}
+                                        </div>
                                         {(!foldNotes || notesOpen) && (
                                             <SentinelTodoNotes id={`${domId}-notes`} notes={item.notes} owner={owner} itemId={item.id} onFollowLink={onFollowLink} />
                                         )}
@@ -1272,7 +1337,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                     {!editing && !statusDraft && (
                         <div className="flex flex-col gap-1 border-t border-dashed border-[#e0e0e0] pt-1.5 dark:border-[#3c3c3c]">
                             {!item.archived && item.status !== 'done' && (
-                                <StatusChoices status={item.status} disabled={busy} itemId={item.id}
+                                <StatusChoices status={item.status} disabled={busy || organizeNotesBusy} itemId={item.id}
                                     onChoose={status => applyStatus(status, '')} />
                             )}
                             <div className="flex flex-wrap items-center gap-1">
@@ -1280,18 +1345,12 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                                     <TodoTime label="Created" iso={item.createdAt} testId={`sentinel-todo-created-${item.id}`} />
                                 </span>
                                 {!item.archived && (
-                                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditing({
-                                        title: item.title, completionCondition: item.completionCondition, notes: item.notes,
-                                        priority: sentinelTodoPriority(item), baseRevision: item.revision,
-                                        externalReferences: externalReferences(item),
-                                        initialFields: { title: item.title, completionCondition: item.completionCondition,
-                                            notes: item.notes, priority: sentinelTodoPriority(item) },
-                                    })}>Edit</Button>
+                                    <Button size="sm" variant="ghost" disabled={busy || organizeNotesBusy} onClick={() => startEdit()}>Edit</Button>
                                 )}
                                 {!item.archived && item.status === 'done' && (
-                                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => applyStatus('todo', '')}>Reopen</Button>
+                                    <Button size="sm" variant="ghost" disabled={busy || organizeNotesBusy} onClick={() => applyStatus('todo', '')}>Reopen</Button>
                                 )}
-                                <Button size="sm" variant="ghost" disabled={busy}
+                                <Button size="sm" variant="ghost" disabled={busy || organizeNotesBusy}
                                     onClick={() => { void run(() => onSave(item, { archived: !item.archived }), () => {}); }}>
                                     {item.archived ? 'Restore' : 'Archive'}
                                 </Button>

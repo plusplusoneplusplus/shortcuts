@@ -16,15 +16,15 @@ vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', async import
     ...(await importOriginal<object>()),
     getCocClientForWorkspace: (reference: unknown) => { references.push(reference); return client; },
 }));
-vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubber', () => ({
-    SentinelTodoScrubber: ({ toolbar, children }: { toolbar: React.ReactNode; children: React.ReactNode | ((scrubber: React.ReactNode) => React.ReactNode) }) =>
+vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelCoda', () => ({
+    SentinelCoda: ({ toolbar, children }: { toolbar: React.ReactNode; children: React.ReactNode | ((scrubber: React.ReactNode) => React.ReactNode) }) =>
         <>{toolbar}{typeof children === 'function' ? children(null) : children}</>,
 }));
-vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoScrubFinding', async importOriginal => ({
+vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelCodaFinding', async importOriginal => ({
     ...(await importOriginal<object>()),
-    AcceptAllScrubProposals: () => null, SentinelTodoScrubFinding: () => null,
+    AcceptAllCodaProposals: () => null, SentinelCodaFinding: () => null,
 }));
-vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoTriggers', () => ({ SentinelTodoTriggers: () => null }));
+vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelOvertures', () => ({ SentinelOvertures: () => null }));
 vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoDependencies', () => ({ SentinelTodoDependencies: () => null }));
 vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelTodoPrOutcomes', () => ({ SentinelTodoPrOutcomes: () => null }));
 
@@ -701,6 +701,23 @@ describe('Sentinel to-do tags', () => {
         expect(screen.queryByRole('button', { name: 'Re-suggest tags' })).toBeNull();
         expect(api.suggestTags).toHaveBeenCalledTimes(1);
         expect((within(detail).getByLabelText('Title') as HTMLInputElement).value).toBe('Retained title');
+    });
+
+    it.each([false, true])('renames from the header with existing tag matching (multiple=%s) and preserves manual assignments', async multiple => {
+        snapshot.items[0] = { ...snapshot.items[0], tagOrigin: 'manual' };
+        render(<UnifiedTodoTab owner={owner} />);
+        await screen.findByTestId('sentinel-todo-row-item-one');
+        if (multiple) fireEvent.click(screen.getByRole('checkbox', { name: 'Match multiple tags' }));
+        const detail = selectItem();
+        fireEvent.click(within(detail).getByRole('button', { name: 'Edit title' }));
+        fireEvent.change(within(detail).getByLabelText('Title'), { target: { value: 'Revised title for matching' } });
+        fireEvent.click(within(detail).getByRole('button', { name: 'Save', exact: true }));
+        await waitFor(() => expect(within(detail).queryByLabelText('Title')).toBeNull());
+        expect(api.update).toHaveBeenCalledExactlyOnceWith(owner.ownerWorkspaceId, owner.processId, 'item-one', {
+            expectedRevision: 1, title: 'Revised title for matching', ...(multiple ? { matchMultiple: true } : {}),
+        });
+        expect(snapshot.items[0]).toMatchObject({ title: 'Revised title for matching', tagOrigin: 'manual', tagIds: ['tag-ui'] });
+        expect(api.suggestTags).not.toHaveBeenCalled();
     });
 
     it('only opts new item matching into multiple mode when enabled and selected', async () => {

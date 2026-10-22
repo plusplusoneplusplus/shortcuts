@@ -154,11 +154,18 @@ returning effective URLs or local paths.
 
 ## Reconnect behavior
 
-Reconnect (DevTunnel and SSH entries) marks the managed child process as intentionally stopped,
-kills it, clears any in-flight connection attempt, and re-runs the full connection flow
-(process start, health polling, plus port list for DevTunnel). Use it when the managed process
-is stale, the local listener stopped responding, or the public endpoint changed. SSH
-connections also auto-reconnect with exponential backoff when `ssh` exits unexpectedly.
+DevTunnel reconnect kills the managed `devtunnel connect` child and repeats port discovery,
+forwarded-port resolution and health readiness. Connect/reconnect requests share an in-flight
+attempt per tunnel ID across registered aliases and workspaces. Every successful connection
+arms an unref'ed six-hour renewal timer automatically, with no configuration. Manual reconnect
+resets that deadline. Renewal failures publish `failed` and `lastError`; subsequent connect or
+health requests can recover, without a background retry loop.
+
+Disconnect, last-alias removal/replacement, child failure and connector disposal cancel renewal.
+Generation checks prevent late discovery/readiness results from spawning a child or publishing
+state for a stopped or replaced attempt. Server shutdown disposes the connector. Direct URL
+servers have no renewal timer. SSH reconnect recreates `ssh -N` and repeats health readiness;
+unexpected SSH exits retain their exponential-backoff recovery.
 
 ## Common failure modes
 

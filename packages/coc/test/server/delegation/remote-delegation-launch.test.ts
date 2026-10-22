@@ -16,12 +16,10 @@ import { captureRemoteDelegationIntent, type RemoteDelegationIntent } from '../.
 import type { RemoteDelegationClaim } from '../../../src/server/delegation/remote-delegation-auth';
 import { createRemoteDelegationLaunch } from '../../../src/server/delegation/remote-delegation-launch';
 import { REMOTE_DELEGATION_LAUNCH_PATH, REMOTE_DELEGATION_RECEIPT_PATH,
-    registerRemoteDelegationRoutes, registerRemoteDelegationProofRoutes } from '../../../src/server/delegation/remote-delegation-routes';
+    registerRemoteDelegationRoutes } from '../../../src/server/delegation/remote-delegation-routes';
 import { RalphSessionStore } from '../../../src/server/ralph/ralph-session-store';
 import { RalphGrillingStore } from '../../../src/server/ralph/grilling-state';
-import { getOrCreateServerIdentity } from '../../../src/server/servers/server-identity';
-import { createRouter, sendJson, type Route } from '../../../src/server/shared/router';
-import type { RemoteServerWithRuntime } from '../../../src/server/servers/remote-server-types';
+import { createRouter, type Route } from '../../../src/server/shared/router';
 
 const workspaceId = 'destination-repo';
 const launch: RemoteDelegationIntent = { version: 1, kind: 'launch', workspaceId,
@@ -29,7 +27,7 @@ const launch: RemoteDelegationIntent = { version: 1, kind: 'launch', workspaceId
 const ralph = (entryPoint: 'grill' | 'execute'): RemoteDelegationIntent => ({ version: 1, kind: 'ralph', workspaceId,
     body: { goalSpec: '## Goal\nImplement the approved goal', entryPoint } });
 
-describe('authenticated destination launch HTTP admission', () => {
+describe('sender-only destination launch HTTP admission', () => {
     let directory: string;
     let store: SqliteProcessStore;
     let bridge: MultiRepoQueueRouter;
@@ -37,7 +35,6 @@ describe('authenticated destination launch HTTP admission', () => {
     let requests: RemoteDelegationRequestStore;
     let admissions: RemoteDelegationAdmissionStore;
     let results: RemoteDelegationResults | undefined;
-    let remotes: RemoteServerWithRuntime[];
     let destinationUrl: string;
     let ralphEnabled: boolean;
     const validateProvider = vi.fn();
@@ -69,7 +66,7 @@ describe('authenticated destination launch HTTP admission', () => {
             findChild: launchDomain.findChild }) : undefined;
         routes.splice(0);
         registerRemoteDelegationRoutes(routes, {
-            admissions, store, remotes: { list: () => remotes },
+            admissions, store,
             delivery: new ProcessMessageDeliveryService({ store, bridge }),
             launch: launchDomain,
             ...(results ? { results: { ready: results.restore(), capture: () => results!.restore() } } : {}),
@@ -106,12 +103,7 @@ describe('authenticated destination launch HTTP admission', () => {
         fs.mkdirSync(destinationDir()); fs.mkdirSync(repo());
         ralphEnabled = true;
         requests = new RemoteDelegationRequestStore(originDir());
-        const originRoutes: Route[] = [{ method: 'GET', pattern: '/api/health', handler: (_req, res) =>
-            sendJson(res, { serverIdentity: getOrCreateServerIdentity(originDir()) }) }];
-        registerRemoteDelegationProofRoutes(originRoutes, requests);
-        const originUrl = await listen(originRoutes);
-        remotes = [{ id: 'origin-alias', kind: 'url', label: 'Origin', url: originUrl, effectiveUrl: originUrl,
-            status: 'online', serverIdentity: getOrCreateServerIdentity(originDir()), addedAt: 1, updatedAt: 1 }];
+        // The destination has no registration for, or route to, any origin.
         openDestination();
         await store.registerWorkspace({ id: workspaceId, rootPath: repo(), name: 'Destination' });
         destinationUrl = await listen(routes);
@@ -208,7 +200,7 @@ describe('authenticated destination launch HTTP admission', () => {
 
     it.each([launch, ralph('grill'), ralph('execute')])('never replays a consumed $kind claim with no queue evidence', async intent => {
         const claim = reserve(intent);
-        admissions.claim(requests.proveOrigin(claim)!);
+        admissions.claim(claim);
         if (intent.kind === 'ralph') await new RalphSessionStore({ dataDir: destinationDir() }).initSession(workspaceId,
             `ralph-approved-${row(claim).executionId}`, { originalGoal: 'Prepared only', maxIterations: 2 });
         closeDestination(); openDestination();
@@ -292,7 +284,7 @@ describe('authenticated destination launch HTTP admission', () => {
 
     it.each([launch, ralph('grill'), ralph('execute')])('repairs $kind acceptance from an exact persisted process', async intent => {
         const claim = reserve(intent);
-        admissions.claim(requests.proveOrigin(claim)!);
+        admissions.claim(claim);
         const executionId = row(claim).executionId;
         const sessionId = `ralph-approved-${executionId}`;
         await store.addProcess({ id: toQueueProcessId(executionId), type: 'chat', status: 'completed', startTime: new Date(),
@@ -322,7 +314,7 @@ describe('authenticated destination launch HTTP admission', () => {
 
     it.each([launch, ralph('execute')])('recognizes an admitted $kind process after its root task is reused for a follow-up', async intent => {
         const claim = reserve(intent);
-        admissions.claim(requests.proveOrigin(claim)!);
+        admissions.claim(claim);
         const executionId = row(claim).executionId;
         const processId = toQueueProcessId(executionId);
         const sessionId = `ralph-approved-${executionId}`;
@@ -401,14 +393,14 @@ describe('authenticated destination launch HTTP admission', () => {
             expect(admissions.list(workspaceId)).toHaveLength(0);
         });
 
-    it('rejects mismatched intent, wrong authentication and unavailable relationships before execution', async () => {
+    it('refuses mismatched intent before any claim, then binds the first secret against replays', async () => {
         const claim = reserve();
-        expect((await admit(claim, { ...launch, body: { content: 'Other work' } })).status).toBe(503);
-        expect((await admit({ ...claim, proofToken: '0'.repeat(64) })).status).toBe(503);
-        remotes = [];
-        expect((await admit(claim)).status).toBe(503);
+        expect((await admit(claim, { ...launch, body: { content: 'Other work' } })).status).toBe(400);
         expect(admissions.list(workspaceId)).toHaveLength(0);
-        expect(queues()).toHaveLength(0);
+        expect((await admit(claim)).status).toBe(202);
+        expect((await admit({ ...claim, proofToken: '0'.repeat(64) })).status).toBe(403);
+        expect((await reconcile({ ...claim, proofToken: '0'.repeat(64) })).status).toBe(404);
+        expect(queues()).toHaveLength(1);
     });
 
     it('keeps distinct destination IDs for colliding origin UUIDs', async () => {
@@ -416,11 +408,6 @@ describe('authenticated destination launch HTTP admission', () => {
         const first = reserve(launch, requests, requestId);
         const otherDir = path.join(directory, 'other-origin');
         const other = new RemoteDelegationRequestStore(otherDir);
-        const otherRoutes: Route[] = [{ method: 'GET', pattern: '/api/health', handler: (_req, res) =>
-            sendJson(res, { serverIdentity: getOrCreateServerIdentity(otherDir) }) }];
-        registerRemoteDelegationProofRoutes(otherRoutes, other);
-        const url = await listen(otherRoutes);
-        remotes.push({ ...remotes[0], id: 'other-alias', serverIdentity: getOrCreateServerIdentity(otherDir), url, effectiveUrl: url });
         const second = reserve(launch, other, requestId);
         await admit(first); await admit(second);
         expect(row(first).executionId).not.toBe(row(second).executionId);

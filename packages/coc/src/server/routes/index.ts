@@ -7,17 +7,17 @@ import { getOrCreateServerIdentity } from '../servers/server-identity';
 import * as fs from 'fs';
 import * as path from 'path';
 import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
-import { ScrubberStore } from '../sentinel-scrubber/scrubber-store';
-import { ScrubberEngine } from '../sentinel-scrubber/scrubber-engine';
-import { ScrubberRunService } from '../sentinel-scrubber/scrubber-runs';
-import { ScrubberScheduler } from '../sentinel-scrubber/scrubber-scheduler';
-import { registerScrubberRoutes } from '../sentinel-scrubber/scrubber-routes';
-import { ScrubberCommands } from '../sentinel-scrubber/scrubber-commands';
-import { SentinelJobStore } from '../sentinel-jobs/job-store';
-import { SentinelJobService } from '../sentinel-jobs/job-service';
-import { SentinelJobScheduler } from '../sentinel-jobs/job-scheduler';
-import { registerSentinelJobRoutes } from '../sentinel-jobs/job-routes';
-import { SentinelJobCommands } from '../sentinel-jobs/job-commands';
+import { CodaStore } from '../sentinel-coda/coda-store';
+import { CodaEngine } from '../sentinel-coda/coda-engine';
+import { CodaRunService } from '../sentinel-coda/coda-runs';
+import { ScrubberScheduler } from '../sentinel-coda/scrubber-scheduler';
+import { registerCodaRoutes } from '../sentinel-coda/coda-routes';
+import { CodaCommands } from '../sentinel-coda/coda-commands';
+import { SentinelRefrainStore } from '../sentinel-refrains/refrain-store';
+import { SentinelRefrainService } from '../sentinel-refrains/refrain-service';
+import { SentinelJobScheduler } from '../sentinel-refrains/job-scheduler';
+import { registerSentinelRefrainRoutes } from '../sentinel-refrains/refrain-routes';
+import { SentinelRefrainCommands } from '../sentinel-refrains/refrain-commands';
 import type { Route } from '../types';
 import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker, CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { SqliteProcessStore, modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX, SDK_PROVIDER_OPENCODE, getLogger, LogCategory, toQueueProcessId, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
@@ -39,7 +39,7 @@ import { BrowserToolStateStore } from '../llm-tools/browser-tools';
 import { createSendMessageCapability } from '../processes/send-message-capability';
 import { DelegatedJobStore } from '../delegation/delegated-job-store';
 import { RemoteDelegationRequestStore } from '../delegation/remote-delegation-request-store';
-import { registerRemoteDelegationProofRoutes, registerRemoteDelegationRoutes } from '../delegation/remote-delegation-routes';
+import { registerRemoteDelegationRoutes } from '../delegation/remote-delegation-routes';
 import { RemoteDelegationAdmissionStore } from '../delegation/remote-delegation-admission-store';
 import { RemoteDelegationResults } from '../delegation/remote-delegation-results';
 import { RemoteDelegationReturn } from '../delegation/remote-delegation-return';
@@ -193,8 +193,8 @@ import type { CronExecutor, CronEventEmit } from '../cron/cron-executor';
 import { registerTriggerRoutes } from '../triggers/trigger-handler';
 import { createPrRepairOwnerValidator } from '../triggers/pr-repair-owner';
 import { createProcessWorkspaceResolver } from '../processes/process-workspace-resolver';
-import { registerSentinelTodoTriggerRoutes } from '../triggers/sentinel-todo-trigger-routes';
-import type { SentinelTodoTriggerService } from '../triggers/sentinel-todo-trigger-service';
+import { registerSentinelOvertureRoutes } from '../triggers/sentinel-overture-routes';
+import type { SentinelOvertureService } from '../triggers/sentinel-overture-service';
 import type { TriggerStore } from '../triggers/trigger-store';
 import type { TriggerManager, TriggerEventEmit } from '../triggers/trigger-manager';
 import { registerMcpOauthRoutes } from '../mcp-oauth';
@@ -301,7 +301,7 @@ export interface RegisterRoutesOptions {
     triggerStore?: TriggerStore;
     triggerManager?: TriggerManager;
     triggerEmit?: TriggerEventEmit;
-    sentinelTodoTriggers?: SentinelTodoTriggerService;
+    sentinelOvertures?: SentinelOvertureService;
     mcpOauthManager?: McpOauthManager;
     resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
     cronEmit?: CronEventEmit;
@@ -345,9 +345,9 @@ export interface RegisterRoutesOptions {
     setSentinelTodos?: (get: () => SentinelTodoService | undefined) => void;
     sentinelPrOutcomes?: SentinelPrOutcomeService;
     setSentinelDependencyAdmission?: (get: NonNullable<import('../executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelDependencyAdmission']>) => void;
-    setSentinelScrubber?: (get: () => ScrubberRunService | undefined) => void;
-    setSentinelScheduledJobs?: (get: () => SentinelJobService | undefined) => void;
-    setSentinelJobCommands?: (get: NonNullable<import('../executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelJobCommands']>) => void;
+    setSentinelCoda?: (get: () => CodaRunService | undefined) => void;
+    setSentinelRefrains?: (get: () => SentinelRefrainService | undefined) => void;
+    setSentinelRefrainCommands?: (get: NonNullable<import('../executors/executor-runtime-contracts').ExecutorRuntimeCapabilities['getSentinelRefrainCommands']>) => void;
     /** Publish the WhatsApp/Teams ask_user question relay to the executor runtime. */
     setAskUserQuestionRelay?: (relay: AskUserQuestionRelay) => void;
     /** Shared native Notes index lifecycle, validated by the composition root. */
@@ -355,7 +355,7 @@ export interface RegisterRoutesOptions {
     watchService?: import('../shared/native-watch-service').NativeWatchServiceLike;
 }
 
-export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; teamsMessagingManager: TeamsMessagingManager; whatsappMessagingManager: WhatsAppMessagingManager; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; autoPullManager: AutoPullManager; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler; repoTreeService: RepoTreeService; scrubberReady: Promise<number>; sentinelJobsShutdown: () => Promise<void> } {
+export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; teamsMessagingManager: TeamsMessagingManager; whatsappMessagingManager: WhatsAppMessagingManager; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; autoPullManager: AutoPullManager; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler; repoTreeService: RepoTreeService; codaReady: Promise<number>; sentinelRefrainsShutdown: () => Promise<void> } {
     const {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
@@ -543,7 +543,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // enqueue via the per-repo queue manager.
     const delegatedJobs = new DelegatedJobStore(dataDir);
     const remoteDelegationRequests = new RemoteDelegationRequestStore(dataDir, delegatedJobs);
-    registerRemoteDelegationProofRoutes(routes, remoteDelegationRequests);
     // Sentinel to-do ledger: always available for Sentinel bookkeeping, never job control.
     // Production borrows the process-store connection; stub stores use native
     // in-memory SQLite, like the queue infrastructure.
@@ -668,40 +667,40 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerSentinelPrOutcomeRoutes(routes, opts.sentinelPrOutcomes,
         () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelPrOutcomeWake === true);
     opts.setSentinelTodos?.(() => sentinelTodos);
-    const getScrubberEnabled = () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoScrubber === true;
-    const scrubber = new ScrubberStore(todoDb);
-    const scrubberEngine = new ScrubberEngine({ todos: todoStore, scrubber, triggers: opts.sentinelTodoTriggers });
-    let scrubberScheduler: ScrubberScheduler | undefined;
-    const scrubberChanged = (owner: import('../sentinel-todos/sentinel-todo-store').SentinelTodoOwner,
+    const getCodaEnabled = () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoScrubber === true;
+    const scrubber = new CodaStore(todoDb);
+    const codaEngine = new CodaEngine({ todos: todoStore, scrubber, triggers: opts.sentinelOvertures });
+    let codaScheduler: ScrubberScheduler | undefined;
+    const codaChanged = (owner: import('../sentinel-todos/sentinel-todo-store').SentinelTodoOwner,
         change: { runId?: string; ledgerChanged?: boolean }) => {
-        scrubberScheduler?.refresh(owner);
+        codaScheduler?.refresh(owner);
         getWsServer().broadcastProcessEvent({ type: 'sentinel-scrubber-changed', ...owner,
             runId: change.runId, timestamp: Date.now() });
         if (change.ledgerChanged) getWsServer().broadcastProcessEvent({ type: 'sentinel-todos-changed', ...owner,
             ledgerRevision: todoStore.get(owner).revision, timestamp: Date.now() });
     };
-    const scrubberRuns = new ScrubberRunService({
-        dataDir, todos: sentinelTodos, scrubber, engine: scrubberEngine,
+    const codaRuns = new CodaRunService({
+        dataDir, todos: sentinelTodos, scrubber, engine: codaEngine,
         enqueue: input => enqueueWithResolvedDefaults(input),
         cancelTask: taskId => {
             const executor = bridge.findExecutorForTask(taskId);
             if (executor) { executor.cancelTask(taskId); return true; }
             return bridge.findManagerForTask(taskId)?.cancelTask(taskId) ?? false;
         },
-        listTriggers: opts.sentinelTodoTriggers ? owner => opts.sentinelTodoTriggers!.list(owner) : undefined,
+        listTriggers: opts.sentinelOvertures ? owner => opts.sentinelOvertures!.list(owner) : undefined,
         canStartScheduled: owner => {
             const config = scrubber.getConfig(owner);
-            return scrubberScheduler?.canStart(owner) === true
-                && getScrubberEnabled() && config.enabled && !config.paused;
+            return codaScheduler?.canStart(owner) === true
+                && getCodaEnabled() && config.enabled && !config.paused;
         },
-        onChange: scrubberChanged,
+        onChange: codaChanged,
     });
-    scrubberRuns.attach(bridge.registry);
+    codaRuns.attach(bridge.registry);
     // Recovery completes before the composition root starts restored queues or accepts requests.
-    scrubberScheduler = new ScrubberScheduler({ scrubber, runs: scrubberRuns, getEnabled: getScrubberEnabled,
+    codaScheduler = new ScrubberScheduler({ scrubber, runs: codaRuns, getEnabled: getCodaEnabled,
         assertOwner: async owner => {
             if (!(await store.getWorkspaces()).some(workspace => workspace.id === owner.workspaceId)) {
-                throw new Error('Scrubber workspace not found');
+                throw new Error('Coda workspace not found');
             }
             await sentinelTodos.assertOwner(owner);
         } });
@@ -709,12 +708,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         const config = opts.runtimeConfigService?.config ?? opts.resolvedConfig;
         return config?.sentinel?.enabled === true && config?.features?.sentinelTodoJobs === true;
     };
-    const scheduledJobs = new SentinelJobStore(todoDb);
-    const scheduledJobService = new SentinelJobService({
+    const scheduledJobs = new SentinelRefrainStore(todoDb);
+    const refrainService = new SentinelRefrainService({
         jobs: scheduledJobs, todos: sentinelTodos, dataDir, store, getEnabled: getJobsEnabled,
         getGateEnabled: () => ((opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.toolScripting
             ?? DEFAULT_CONFIG.features.toolScripting) === true,
-        runGate: request => bridge.runJobGate(request),
+        runGate: request => bridge.runRefrainGate(request),
         enqueue: input => enqueueWithResolvedDefaults(input),
         getTask: id => bridge.getTask(id),
         cancelTask: id => {
@@ -723,28 +722,28 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             return bridge.findManagerForTask(id)?.cancelTask(id) ?? false;
         },
     });
-    scheduledJobService.attach(bridge.registry);
-    const jobScheduler = new SentinelJobScheduler({ jobs: scheduledJobs, service: scheduledJobService, getEnabled: getJobsEnabled });
+    refrainService.attach(bridge.registry);
+    const jobScheduler = new SentinelJobScheduler({ jobs: scheduledJobs, service: refrainService, getEnabled: getJobsEnabled });
     const previousJobsRemoveWorkspace = store.removeWorkspace;
     const jobsRemoveWorkspace: ProcessStore['removeWorkspace'] = async id => {
         const removed = await previousJobsRemoveWorkspace.call(store, id);
         if (removed) {
             jobScheduler.refreshAll();
-            await scheduledJobService.invalidate();
+            await refrainService.invalidate();
         }
         return removed;
     };
     store.removeWorkspace = jobsRemoveWorkspace;
-    opts.setSentinelScheduledJobs?.(() => scheduledJobService);
-    const jobCommands = new SentinelJobCommands({ jobs: scheduledJobs, service: scheduledJobService,
+    opts.setSentinelRefrains?.(() => refrainService);
+    const jobCommands = new SentinelRefrainCommands({ jobs: scheduledJobs, service: refrainService,
         onConfigChange: () => jobScheduler.refreshAll() });
-    registerSentinelJobRoutes({ routes, jobs: scheduledJobs, service: scheduledJobService, commands: jobCommands });
-    const sentinelJobsShutdown = async () => {
+    registerSentinelRefrainRoutes({ routes, jobs: scheduledJobs, service: refrainService, commands: jobCommands });
+    const sentinelRefrainsShutdown = async () => {
         jobScheduler.dispose();
-        await scheduledJobService.shutdown();
+        await refrainService.shutdown();
     };
-    const scrubberReady = Promise.all([scrubberRuns.interruptActive(), scheduledJobService.recover()]).then(async ([count]) => {
-        scrubberScheduler?.refreshAll();
+    const codaReady = Promise.all([codaRuns.interruptActive(), refrainService.recover()]).then(async ([count]) => {
+        codaScheduler?.refreshAll();
         jobScheduler.refreshAll();
         if (sentinelTodos.dependenciesEnabled()) for (const entry of dependencyReceipts.polls()) {
             try { await dependencyActions.poll(entry.owner); }
@@ -752,29 +751,29 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         }
         return count;
     });
-    const unsubscribeScrubberConfig = opts.runtimeConfigService?.onChange(() => {
-        scrubberScheduler?.refreshAll();
+    const unsubscribeCodaConfig = opts.runtimeConfigService?.onChange(() => {
+        codaScheduler?.refreshAll();
         jobScheduler.refreshAll();
-        void scheduledJobService.invalidate().catch(error => console.error('[sentinel-jobs] Config invalidation failed:', error));
+        void refrainService.invalidate().catch(error => console.error('[sentinel-jobs] Config invalidation failed:', error));
         opts.triggerManager?.refreshDependencyPolling();
     });
-    const previousScrubberProcessChange = store.onProcessChange;
-    const scrubberProcessChange: NonNullable<ProcessStore['onProcessChange']> = event => {
-        previousScrubberProcessChange?.(event);
+    const previousCodaProcessChange = store.onProcessChange;
+    const codaProcessChange: NonNullable<ProcessStore['onProcessChange']> = event => {
+        previousCodaProcessChange?.(event);
         if (event.type === 'process-removed' || event.type === 'processes-cleared') {
-            scrubberScheduler?.refreshAll();
+            codaScheduler?.refreshAll();
             jobScheduler.refreshAll();
-            void scheduledJobService.invalidate().catch(error => console.error('[sentinel-jobs] Owner invalidation failed:', error));
+            void refrainService.invalidate().catch(error => console.error('[sentinel-jobs] Owner invalidation failed:', error));
         }
     };
-    store.onProcessChange = scrubberProcessChange;
-    opts.setSentinelScrubber?.(() => getScrubberEnabled() ? scrubberRuns : undefined);
-    const scrubberCommands = new ScrubberCommands({ todos: sentinelTodos, scrubber,
-        runs: scrubberRuns, getEnabled: getScrubberEnabled, onChange: scrubberChanged });
-    registerScrubberRoutes({ routes, todos: sentinelTodos, scrubber, engine: scrubberEngine,
-        runs: scrubberRuns, getEnabled: getScrubberEnabled, onChange: scrubberChanged, commands: scrubberCommands });
-    opts.setSentinelJobCommands?.(() => getJobsEnabled()
-        ? { jobs: jobCommands, ...(getScrubberEnabled() ? { scrubber: scrubberCommands } : {}) } : undefined);
+    store.onProcessChange = codaProcessChange;
+    opts.setSentinelCoda?.(() => getCodaEnabled() ? codaRuns : undefined);
+    const codaCommands = new CodaCommands({ todos: sentinelTodos, scrubber,
+        runs: codaRuns, getEnabled: getCodaEnabled, onChange: codaChanged });
+    registerCodaRoutes({ routes, todos: sentinelTodos, scrubber, engine: codaEngine,
+        runs: codaRuns, getEnabled: getCodaEnabled, onChange: codaChanged, commands: codaCommands });
+    opts.setSentinelRefrainCommands?.(() => getJobsEnabled()
+        ? { jobs: jobCommands, ...(getCodaEnabled() ? { scrubber: codaCommands } : {}) } : undefined);
     const sentinelTodoHooks = createSentinelTodoDelegationHooks(sentinelTodos);
     // Bound after the WhatsApp connector is wired below.
     let autoCompactionOrigins: ReturnType<typeof createAutoCompactionOrigins> | undefined;
@@ -997,7 +996,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     const remoteResultsReady = remoteResults.restore();
     registerRemoteDelegationRoutes(routes, {
-        admissions: remoteAdmissions, remotes: remoteServerRuntime, store,
+        admissions: remoteAdmissions, store,
         delivery: remoteDelivery, launch: remoteLaunch,
         results: { ready: remoteResultsReady, capture: () => remoteResults.restore() },
     });
@@ -1181,8 +1180,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             validatePrOwner: createPrRepairOwnerValidator(store, resolveProcessWorkspaceId),
         });
     }
-    if (opts.sentinelTodoTriggers) {
-        registerSentinelTodoTriggerRoutes(routes, opts.sentinelTodoTriggers);
+    if (opts.sentinelOvertures) {
+        registerSentinelOvertureRoutes(routes, opts.sentinelOvertures);
     }
 
     // MCP OAuth routes (feature-flagged via mcpOauth.enabled)
@@ -1568,13 +1567,13 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         remoteResults.dispose();
         remoteReturn.dispose();
         delegatedJobReviews.dispose();
-        unsubscribeScrubberConfig?.();
-        scrubberScheduler?.dispose();
+        unsubscribeCodaConfig?.();
+        codaScheduler?.dispose();
         jobScheduler.dispose();
         disposeDependencyPolling?.();
-        if (store.onProcessChange === scrubberProcessChange) store.onProcessChange = previousScrubberProcessChange;
+        if (store.onProcessChange === codaProcessChange) store.onProcessChange = previousCodaProcessChange;
         if (store.removeWorkspace === jobsRemoveWorkspace) store.removeWorkspace = previousJobsRemoveWorkspace;
-        scrubberRuns.dispose();
+        codaRuns.dispose();
         if (!(store instanceof SqliteProcessStore)) todoDb.close();
     });
 
@@ -2185,5 +2184,5 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     );
 
     return { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService,
-        scrubberReady: Promise.all([scrubberReady, remoteResultsReady, remoteReturnReady]).then(([count]) => count), sentinelJobsShutdown };
+        codaReady: Promise.all([codaReady, remoteResultsReady, remoteReturnReady]).then(([count]) => count), sentinelRefrainsShutdown };
 }

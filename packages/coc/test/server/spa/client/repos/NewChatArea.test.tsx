@@ -61,6 +61,7 @@ let mockEffortLevelsEnabled = false;
 let mockEffortTiers: Record<string, { model: string; reasoningEffort?: string | null }> = {};
 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
+    getFeatureValue: () => false,
     isComposerWordHintEnabled: () => false,
     isContainerMode: () => false,
     getApiBase: () => 'http://localhost:4000/api',
