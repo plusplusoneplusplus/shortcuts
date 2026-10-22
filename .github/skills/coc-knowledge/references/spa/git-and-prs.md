@@ -262,7 +262,19 @@ The host retains the source’s concrete server route and raw member workspace.
 actions; sidebar navigation reveals and expands the editor thread. Each inline card's Copy
 resolve prompt action copies that one comment through `utils/diffCommentPrompt.ts`
 (`formatDiffCommentPrompt`), the same formatter as the sidebar's copy-all, using the
-comment's own file and refs; the card shows copied/failed feedback. Send to current chat
+comment's own file and refs; the card shows copied/failed feedback.
+
+Each review also has an all-comments view: the commit toolbar's "All comments in this
+commit" sidebar, the working-changes all-comments panel and the branch-range one. They
+share `useReviewComments`, which reads every comment of the review from the exact owner
+(commit `<hash>^`..`<hash>`, `branch-base`..`branch-head`, or `working-tree`), so files
+that are not selected, loaded or still present stay listed. Owner/review switches drop
+late reads; owner `diff-comment-updated` events (context on `comment.context`, or only
+`commentId` on delete) refresh it. `CommentSidebar` `groupByFile` groups by full path
+with line locations. Copy as prompt uses `formatReviewCommentsPrompt`: every unresolved
+comment with review context, file, location, working-tree stage and exact text; resolved
+ones are counted, not copied. Copy shows Copied only after the clipboard write succeeds.
+Send to current chat
 drafts the same prompt into the composer of the chat the hosting unified panel shows
 (`useCurrentChatInsertDraft` → that chat's `insertDraft`: appends after a blank line,
 focuses, never submits), never the source's review chat; it is disabled when no panel

@@ -68,7 +68,8 @@ export interface UseDiffCommentsReturn {
     resolving: boolean;
     refresh: () => Promise<void>;
     runRelocation: (lines: DiffLine[]) => Promise<void>;
-    copyAllCommentsAsPrompt: () => void;
+    /** Rejects when the clipboard write fails. */
+    copyAllCommentsAsPrompt: () => Promise<void>;
 }
 
 // ============================================================================
@@ -350,13 +351,13 @@ export function useDiffComments(
     // copies it to the clipboard so the user can paste it into an AI chat.
     // ------------------------------------------------------------------
 
-    const copyAllCommentsAsPrompt = useCallback((): void => {
+    const copyAllCommentsAsPrompt = useCallback(async (): Promise<void> => {
         const ctx = contextRef.current;
         if (!commentsRef.current.length || !ctx) return;
 
         const prompt = formatDiffCommentsPrompt(ctx, commentsRef.current);
 
-        void navigator.clipboard.writeText(prompt);
+        await navigator.clipboard.writeText(prompt);
     }, []); // commentsRef and contextRef are always up-to-date
 
     // ------------------------------------------------------------------

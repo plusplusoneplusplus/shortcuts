@@ -126,15 +126,14 @@ export function RepoGitDetailPane({
     }
 
     if (view?.type === 'working-tree-comments') {
-        return <WorkingTreeAllComments workspaceId={workspaceId} />;
+        return <WorkingTreeAllComments workspaceId={workspaceId} attachmentDestinationId={attachmentDestinationId} />;
     }
 
     if (view?.type === 'branch-range-comments') {
         return (
             <BranchRangeAllComments
                 workspaceId={workspaceId}
-                baseRef={branchRangeData!.baseRef}
-                headRef={branchRangeData!.headRef}
+                attachmentDestinationId={attachmentDestinationId}
                 branchLabel={branchRangeData!.branchName || branchRangeData!.headRef}
             />
         );

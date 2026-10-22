@@ -198,8 +198,33 @@ describe('CommitDetail — comment integration', () => {
         );
         await renderDetail({});
         fireEvent.click(screen.getByTestId('toggle-comments-btn'));
-        const copyBtn = await screen.findByTitle('Copy all comments as prompt');
+        const copyBtn = await screen.findByRole('button', { name: 'Copy all comments as prompt' });
         await act(async () => { fireEvent.click(copyBtn); });
         expect(mockCopy).toHaveBeenCalledTimes(1);
+    });
+
+    // Regression: the toolbar comments view lists every file's comments, not just the selected file's.
+    it('groups comments from every file while one file is selected', async () => {
+        const at = (id: string, filePath: string) => ({
+            id, context: { repositoryId: 'ws1', filePath, oldRef: 'abc123^', newRef: 'abc123' },
+            selection: { diffLineStart: 0, diffLineEnd: 0, side: 'added', newLineStart: 4, newLineEnd: 4 },
+            comment: `note ${id}`, status: 'open', createdAt: '', updatedAt: '', selectedText: '',
+        });
+        mockUseAllCommitComments.mockReturnValue(makeAllCommitHook({
+            comments: [at('a', 'src/a.ts'), at('b', 'src/not-loaded/b.ts'), at('gone', 'src/deleted.ts')],
+        }));
+        await renderDetail({ scrollToFilePath: 'src/a.ts' });
+        fireEvent.click(screen.getByRole('button', { name: 'All comments in this commit' }));
+        expect(screen.getAllByTestId('comment-file-group').map(g => g.getAttribute('aria-label'))).toEqual([
+            'src/a.ts, 1 comment(s)', 'src/deleted.ts, 1 comment(s)', 'src/not-loaded/b.ts, 1 comment(s)',
+        ]);
+        expect(screen.getByText('Comments (3 · 3 files)')).toBeTruthy();
+    });
+
+    it('shows the commit comments load error in the sidebar', async () => {
+        mockUseAllCommitComments.mockReturnValue(makeAllCommitHook({ error: 'Failed to load comments' }));
+        await renderDetail({});
+        fireEvent.click(screen.getByTestId('toggle-comments-btn'));
+        expect(screen.getByTestId('comments-error').textContent).toBe('Failed to load comments');
     });
 });

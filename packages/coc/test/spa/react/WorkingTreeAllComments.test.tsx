@@ -1,262 +1,173 @@
 /**
- * Validates source structure and the copyAllCommentsAsPrompt callback that
- * builds a multi-file prompt from all open DiffComments and passes it to
- * CommentSidebar as onCopyPrompt.
+ * WorkingTreeAllComments — every pending-changes comment (staged + unstaged)
+ * across all files, grouped by file, read from the exact review owner, with a
+ * Copy as prompt action that reports real clipboard success or failure.
  */
 
 // @vitest-environment jsdom
 import React from 'react';
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
-import * as fs from 'fs';
-import * as path from 'path';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 
-// ============================================================================
-// Source path
-// ============================================================================
-
-const COMPONENT_PATH = path.resolve(
-    __dirname, '../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeAllComments.tsx'
-);
-
-// ============================================================================
-// Module mocks (hoisted)
-// ============================================================================
-
 const mockListDiffComments = vi.fn();
+const defaultClient = { git: { listDiffComments: (...args: any[]) => mockListDiffComments('default', ...args) } };
+// Real clients are cached per owner; a fresh object per call would re-run the read effect forever.
+const ownerClients = new Map<string, unknown>();
+const mockGetGitReviewClient = vi.fn((_ws: string, target: string | null | undefined) => {
+    const key = String(target);
+    if (!ownerClients.has(key)) {
+        ownerClients.set(key, { git: { listDiffComments: (...args: any[]) => mockListDiffComments(`owner:${key}`, ...args) } });
+    }
+    return ownerClients.get(key);
+});
 
-vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({
-        git: {
-            listDiffComments: (...args: any[]) => mockListDiffComments(...args),
-        },
-    }),
+vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({
+    useCocClient: () => defaultClient,
 }));
-
-vi.mock('../../../src/server/spa/client/react/tasks/comments/CommentSidebar', () => ({
-    CommentSidebar: ({ onCopyPrompt, comments, 'data-testid': testId }: any) =>
-        React.createElement('div', { 'data-testid': testId ?? 'mock-comment-sidebar' },
-            onCopyPrompt
-                ? React.createElement('button', {
-                    'data-testid': 'copy-prompt-btn',
-                    onClick: onCopyPrompt,
-                }, '📋')
-                : null,
-            React.createElement('span', { 'data-testid': 'comment-count' }, String(comments?.length ?? 0)),
-        ),
+vi.mock('../../../src/server/spa/client/react/features/git/diff/diffSource', () => ({
+    getGitReviewClient: (ws: string, target: string | null | undefined) => mockGetGitReviewClient(ws, target),
 }));
 
 import { WorkingTreeAllComments } from '../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeAllComments';
 
-// ============================================================================
-// Helpers
-// ============================================================================
+type WsListener = (event: any) => void;
+class MockWebSocket {
+    static instances: MockWebSocket[] = [];
+    private listeners: Record<string, WsListener[]> = {};
+    constructor(public url: string) { MockWebSocket.instances.push(this); }
+    addEventListener(type: string, handler: WsListener) { (this.listeners[type] ??= []).push(handler); }
+    send() { /* not used */ }
+    close() { /* not used */ }
+    emit(data: unknown) { for (const h of this.listeners.message ?? []) h({ data: JSON.stringify(data) }); }
+}
 
-function makeDiffComment(overrides: Record<string, any> = {}) {
+function comment(id: string, filePath: string, overrides: Record<string, any> = {}) {
     return {
-        id: 'c1',
-        status: 'open',
-        comment: 'fix this',
-        selectedText: 'const x = 1;',
-        context: { filePath: 'src/foo.ts' },
-        selection: { diffLineStart: 10, diffLineEnd: 12, side: 'right' },
-        createdAt: '',
-        updatedAt: '',
+        id, status: 'open', comment: `fix ${id}`, selectedText: 'const x = 1;',
+        context: { repositoryId: 'ws1', filePath, oldRef: 'INDEX', newRef: 'working-tree' },
+        selection: { diffLineStart: 4, diffLineEnd: 4, side: 'added', newLineStart: 7, newLineEnd: 7, startColumn: 0, endColumn: 3 },
+        createdAt: '', updatedAt: '',
         ...overrides,
     };
 }
 
-async function renderComponent(workspaceId = 'ws1') {
+let writeText: ReturnType<typeof vi.fn>;
+
+beforeEach(() => {
+    mockListDiffComments.mockReset();
+    mockGetGitReviewClient.mockClear();
+    MockWebSocket.instances = [];
+    vi.stubGlobal('WebSocket', MockWebSocket);
+    writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+});
+
+afterEach(() => { vi.unstubAllGlobals(); });
+
+async function renderView(props: { workspaceId?: string; attachmentDestinationId?: string } = {}) {
     await act(async () => {
-        render(React.createElement(WorkingTreeAllComments, { workspaceId }));
+        render(<WorkingTreeAllComments workspaceId={props.workspaceId ?? 'ws1'} attachmentDestinationId={props.attachmentDestinationId} />);
     });
 }
 
-// ============================================================================
-// Source-level structural assertions
-// ============================================================================
-
-describe('WorkingTreeAllComments — source structure', () => {
-    let source: string;
-
-    beforeAll(() => {
-        source = fs.readFileSync(COMPONENT_PATH, 'utf-8');
-    });
-
-    it('exports WorkingTreeAllComments as a named export', () => {
-        expect(source).toContain('export function WorkingTreeAllComments');
-    });
-
-    it('accepts workspaceId prop', () => {
-        expect(source).toContain('workspaceId: string');
-    });
-
-    it('defines copyAllCommentsAsPrompt callback', () => {
-        expect(source).toContain('copyAllCommentsAsPrompt');
-    });
-
-    it('passes onCopyPrompt to CommentSidebar', () => {
-        expect(source).toContain('onCopyPrompt={copyAllCommentsAsPrompt}');
-    });
-
-    it('groups comments by filePath', () => {
-        expect(source).toContain('byFile');
-        expect(source).toContain('filePath');
-    });
-
-    it('filters only open comments', () => {
-        expect(source).toContain("status === 'open'");
-    });
-
-    it('writes to clipboard', () => {
-        expect(source).toContain('navigator.clipboard.writeText');
-    });
-});
-
-// ============================================================================
-// Integration: rendering states
-// ============================================================================
-
-describe('WorkingTreeAllComments — rendering', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-    });
-
-    it('shows loading state initially', async () => {
-        mockListDiffComments.mockReturnValue(new Promise(() => {})); // never resolves
-        await act(async () => {
-            render(React.createElement(WorkingTreeAllComments, { workspaceId: 'ws1' }));
-        });
+describe('WorkingTreeAllComments', () => {
+    it('shows loading, then every working-tree comment grouped by file', async () => {
+        let resolve: (v: unknown) => void = () => undefined;
+        mockListDiffComments.mockImplementationOnce(() => new Promise(r => { resolve = r; }));
+        await renderView();
         expect(screen.getByTestId('working-tree-all-comments-loading')).toBeTruthy();
-    });
 
-    it('shows error state when fetch fails', async () => {
-        mockListDiffComments.mockRejectedValue(new Error('Network error'));
-        await renderComponent();
-        await waitFor(() => expect(screen.getByTestId('working-tree-all-comments-error')).toBeTruthy());
-        expect(screen.getByTestId('working-tree-all-comments-error').textContent).toContain('Network error');
-    });
-
-    it('renders sidebar after successful fetch', async () => {
-        mockListDiffComments.mockResolvedValue({ comments: [makeDiffComment()] });
-        await renderComponent();
-        await waitFor(() => expect(screen.getByTestId('working-tree-all-comments-sidebar')).toBeTruthy());
-    });
-
-    it('passes comments to sidebar', async () => {
-        const comments = [makeDiffComment({ id: 'c1' }), makeDiffComment({ id: 'c2' })];
-        mockListDiffComments.mockResolvedValue({ comments });
-        await renderComponent();
-        await waitFor(() => expect(screen.getByTestId('comment-count').textContent).toBe('2'));
-    });
-});
-
-// ============================================================================
-// Integration: copyAllCommentsAsPrompt
-// ============================================================================
-
-describe('WorkingTreeAllComments — copyAllCommentsAsPrompt', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-        Object.assign(navigator, {
-            clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+        await act(async () => {
+            resolve({ comments: [
+                comment('u1', 'src/b.ts'),
+                comment('s1', 'src/a.ts', { context: { repositoryId: 'ws1', filePath: 'src/a.ts', oldRef: 'HEAD', newRef: 'working-tree' } }),
+                comment('d1', 'src/deleted.ts', { selection: { diffLineStart: 1, diffLineEnd: 2, side: 'removed', oldLineStart: 3, oldLineEnd: 4, startColumn: 0, endColumn: 1 } }),
+            ] });
         });
+
+        expect(mockListDiffComments).toHaveBeenCalledWith('default', 'ws1', { newRef: 'working-tree' });
+        expect(screen.getAllByTestId('comment-file-group').map(g => g.getAttribute('aria-label')))
+            .toEqual(['src/a.ts, 1 comment(s)', 'src/b.ts, 1 comment(s)', 'src/deleted.ts, 1 comment(s)']);
+        expect(screen.getByText('Comments (3 · 3 files)')).toBeTruthy();
     });
 
-    it('renders copy prompt button when there are open comments', async () => {
-        mockListDiffComments.mockResolvedValue({ comments: [makeDiffComment()] });
-        await renderComponent();
-        await waitFor(() => expect(screen.getByTestId('copy-prompt-btn')).toBeTruthy());
+    it('shows the load error', async () => {
+        mockListDiffComments.mockRejectedValueOnce(new Error('Network error'));
+        await renderView();
+        await waitFor(() => expect(screen.getByTestId('working-tree-all-comments-error').textContent).toContain('Network error'));
     });
 
-    it('calls clipboard.writeText when copy prompt button is clicked', async () => {
-        mockListDiffComments.mockResolvedValue({ comments: [makeDiffComment()] });
-        await renderComponent();
-        await waitFor(() => screen.getByTestId('copy-prompt-btn'));
-        fireEvent.click(screen.getByTestId('copy-prompt-btn'));
-        expect(navigator.clipboard.writeText).toHaveBeenCalledOnce();
+    it('shows the review empty state', async () => {
+        mockListDiffComments.mockResolvedValueOnce({});
+        await renderView();
+        expect(screen.getByTestId('empty-comments').textContent).toContain('No comments yet');
+        expect(screen.queryByTestId('copy-prompt-btn')).toBeNull();
     });
 
-    it('prompt contains file path', async () => {
-        mockListDiffComments.mockResolvedValue({ comments: [makeDiffComment({ context: { filePath: 'src/bar.ts' } })] });
-        await renderComponent();
-        await waitFor(() => screen.getByTestId('copy-prompt-btn'));
-        fireEvent.click(screen.getByTestId('copy-prompt-btn'));
-        const written = (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-        expect(written).toContain('src/bar.ts');
+    it('reads from the explicit review owner, and the page origin for a local owner', async () => {
+        mockListDiffComments.mockResolvedValue({ comments: [] });
+        await renderView({ attachmentDestinationId: 'member-ws' });
+        expect(mockGetGitReviewClient).toHaveBeenCalledWith('ws1', 'member-ws');
+        expect(mockListDiffComments).toHaveBeenCalledWith('owner:member-ws', 'ws1', { newRef: 'working-tree' });
+
+        mockListDiffComments.mockClear();
+        await renderView({ attachmentDestinationId: 'ws1' });
+        expect(mockListDiffComments).toHaveBeenCalledWith('owner:null', 'ws1', { newRef: 'working-tree' });
     });
 
-    it('prompt contains comment text', async () => {
-        mockListDiffComments.mockResolvedValue({ comments: [makeDiffComment({ comment: 'refactor me' })] });
-        await renderComponent();
-        await waitFor(() => screen.getByTestId('copy-prompt-btn'));
-        fireEvent.click(screen.getByTestId('copy-prompt-btn'));
-        const written = (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-        expect(written).toContain('refactor me');
+    it('never falls back to another owner when the remote owner is unresolved', async () => {
+        await renderView({ attachmentDestinationId: 'remote:unknown-server:ws1' });
+        expect(screen.getByTestId('working-tree-all-comments-error').textContent).toBe('Git review owner is unavailable');
+        expect(mockListDiffComments).not.toHaveBeenCalled();
     });
 
-    it('groups comments by file in the prompt', async () => {
-        const comments = [
-            makeDiffComment({ id: 'c1', context: { filePath: 'src/a.ts' }, comment: 'comment A' }),
-            makeDiffComment({ id: 'c2', context: { filePath: 'src/b.ts' }, comment: 'comment B' }),
-        ];
-        mockListDiffComments.mockResolvedValue({ comments });
-        await renderComponent();
-        await waitFor(() => screen.getByTestId('copy-prompt-btn'));
-        fireEvent.click(screen.getByTestId('copy-prompt-btn'));
-        const written = (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-        expect(written).toContain('## File: src/a.ts');
-        expect(written).toContain('## File: src/b.ts');
-        expect(written).toContain('2 file(s)');
+    it('copies every unresolved comment with file, location, stage and exact text', async () => {
+        mockListDiffComments.mockResolvedValueOnce({ comments: [
+            comment('u1', 'src/b.ts', { comment: 'Rename this.\nAlso add a test.' }),
+            comment('s1', 'src/a.ts', { context: { repositoryId: 'ws1', filePath: 'src/a.ts', oldRef: 'HEAD', newRef: 'working-tree' } }),
+            comment('r1', 'src/c.ts', { status: 'resolved', comment: 'already done' }),
+        ] });
+        await renderView();
+
+        await act(async () => { fireEvent.click(screen.getByTestId('copy-prompt-btn')); });
+
+        expect(writeText).toHaveBeenCalledOnce();
+        const prompt: string = writeText.mock.calls[0][0];
+        expect(prompt).toContain('You are reviewing the pending working-tree changes (staged and unstaged).');
+        expect(prompt).toContain('Resolve the following 2 unresolved review comment(s) across 2 file(s).');
+        expect(prompt).toContain('1 resolved comment(s) are not included.');
+        expect(prompt.indexOf('## File: src/a.ts')).toBeLessThan(prompt.indexOf('## File: src/b.ts'));
+        expect(prompt).toContain('File: src/a.ts\nLocation: new line 7 (added)\nChanges: staged');
+        expect(prompt).toContain('File: src/b.ts\nLocation: new line 7 (added)\nChanges: unstaged');
+        expect(prompt).toContain('Comment:\nRename this.\nAlso add a test.');
+        expect(prompt).not.toContain('already done');
+        expect(screen.getByTestId('copy-prompt-btn').textContent).toBe('✓ Copied');
     });
 
-    it('excludes resolved comments from the prompt', async () => {
-        const comments = [
-            makeDiffComment({ id: 'c1', status: 'open', comment: 'open comment' }),
-            makeDiffComment({ id: 'c2', status: 'resolved', comment: 'resolved comment' }),
-        ];
-        mockListDiffComments.mockResolvedValue({ comments });
-        await renderComponent();
-        await waitFor(() => screen.getByTestId('copy-prompt-btn'));
-        fireEvent.click(screen.getByTestId('copy-prompt-btn'));
-        const written = (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-        expect(written).toContain('open comment');
-        expect(written).not.toContain('resolved comment');
+    it('reports a failed clipboard write instead of success', async () => {
+        writeText.mockRejectedValueOnce(new Error('denied'));
+        mockListDiffComments.mockResolvedValueOnce({ comments: [comment('u1', 'src/b.ts')] });
+        await renderView();
+
+        await act(async () => { fireEvent.click(screen.getByTestId('copy-prompt-btn')); });
+
+        expect(screen.getByTestId('copy-prompt-btn').textContent).toBe('Copy failed');
     });
 
-    it('does not call clipboard.writeText when there are no open comments', async () => {
-        const comments = [makeDiffComment({ id: 'c1', status: 'resolved' })];
-        mockListDiffComments.mockResolvedValue({ comments });
-        await renderComponent();
-        // sidebar mock always renders copy-prompt-btn when onCopyPrompt is defined —
-        // trigger it directly to verify early return
-        await waitFor(() => screen.getByTestId('copy-prompt-btn'));
-        fireEvent.click(screen.getByTestId('copy-prompt-btn'));
-        expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
-    });
+    it('refreshes when a working-tree comment is added in a file diff', async () => {
+        mockListDiffComments
+            .mockResolvedValueOnce({ comments: [comment('u1', 'src/b.ts')] })
+            .mockResolvedValueOnce({ comments: [comment('u1', 'src/b.ts'), comment('u2', 'src/new.ts')] });
+        await renderView();
+        expect(screen.getAllByTestId('comment-file-group')).toHaveLength(1);
 
-    it('prompt includes line range and selected text', async () => {
-        const comments = [
-            makeDiffComment({
-                selection: { diffLineStart: 5, diffLineEnd: 8, side: 'left' },
-                selectedText: 'let y = 2;',
-            }),
-        ];
-        mockListDiffComments.mockResolvedValue({ comments });
-        await renderComponent();
-        await waitFor(() => screen.getByTestId('copy-prompt-btn'));
-        fireEvent.click(screen.getByTestId('copy-prompt-btn'));
-        const written = (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-        expect(written).toContain('Lines 5–8 (left)');
-        expect(written).toContain('let y = 2;');
-    });
+        await act(async () => {
+            MockWebSocket.instances[0].emit({
+                type: 'diff-comment-updated', action: 'added', workspaceId: 'ws1', storageKey: 'k',
+                comment: comment('u2', 'src/new.ts'),
+            });
+        });
 
-    it('prompt ends with "Please address these comments."', async () => {
-        mockListDiffComments.mockResolvedValue({ comments: [makeDiffComment()] });
-        await renderComponent();
-        await waitFor(() => screen.getByTestId('copy-prompt-btn'));
-        fireEvent.click(screen.getByTestId('copy-prompt-btn'));
-        const written = (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-        expect(written).toContain('Please address these comments.');
+        await waitFor(() => expect(screen.getAllByTestId('comment-file-group')).toHaveLength(2));
     });
 });
