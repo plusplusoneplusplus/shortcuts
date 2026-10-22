@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BrowserWebviewLayer } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/BrowserWebviewLayer';
@@ -11,6 +11,7 @@ import { closeBrowserPanelView } from '../../../../src/server/spa/client/react/f
 import { UnifiedBrowserTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedBrowserTab';
 import { UnifiedHtmlPageTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedHtmlPageTab';
 import type { BrowserOpenResult, DesktopBrowserBridge } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
+import { ToolCallView } from '../../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolCallView';
 
 const result: BrowserOpenResult = { ok: true, engine: 'electron', embed: 'webview', src: 'https://example.test/', partition: 'persist:coc-browser' };
 let bridge: DesktopBrowserBridge;
@@ -49,6 +50,29 @@ afterEach(() => {
 });
 
 describe('persistent browser webview layer', () => {
+    it('retains the visible Electron guest while a conversation result preview opens and dismisses', async () => {
+        const view = render(<><BrowserWebviewLayer /><UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="workspace"
+            url="https://example.test/" active visible onNavigate={vi.fn()} onPageState={vi.fn()} />
+            <ToolCallView toolCall={{ id: 'result', toolName: 'task', args: {}, status: 'completed', result: 'Tool result preview' }} /></>);
+        await waitFor(() => expect(guest()).toBeTruthy());
+        const original = guest();
+        const header = view.container.querySelector('.tool-call-header')!;
+        vi.mocked(bridge.hide).mockClear();
+        fireEvent.mouseEnter(header);
+        expect(await screen.findByTestId('tool-result-popover')).toHaveTextContent('Tool result preview');
+        expect(host().style.visibility).toBe('visible');
+        expect(guest()).toBe(original);
+        fireEvent.mouseLeave(header);
+        await waitFor(() => expect(screen.queryByTestId('tool-result-popover')).toBeNull());
+        expect(host().style.visibility).toBe('visible');
+        expect(guest()).toBe(original);
+        expect(bridge.hide).not.toHaveBeenCalled();
+        expect(bridge.open).toHaveBeenCalledExactlyOnceWith('view', 'https://example.test/', 'workspace', undefined);
+        expect(bridge.close).not.toHaveBeenCalled();
+        expect(bridge.navigate).not.toHaveBeenCalled();
+        expect(bridge.nav).not.toHaveBeenCalled();
+    });
+
     it('keeps Electron guests live under the actual history dropdown without reattachment or navigation', async () => {
         bridge.history = {
             suggest: vi.fn(async () => ({ ok: true, entries: [{ url: 'https://recent.test/', title: 'Recent',

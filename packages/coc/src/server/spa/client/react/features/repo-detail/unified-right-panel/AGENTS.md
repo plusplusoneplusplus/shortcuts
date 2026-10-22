@@ -769,11 +769,12 @@ keeps rendering for screenshots and input. Trusted input moves frame focus into
 the guest without a focus event, so while such a guest exists the layer polls and
 returns focus to the user's last focused element.
 
-WebView2 uses `useNativeViewPlacement`. Native views paint
-above DOM, so explicit panel overlays, modal dialogs, tab menus and
-`data-native-view-overlay` elements hide them. A 5x5 `elementFromPoint` grid
-detects other overlapping DOM content; `data-native-view-passthrough` exempts
-underlays. Without a desktop bridge the view offers Open in
+WebView2 uses `useNativeViewPlacement`. Native views paint above DOM: modal
+dialogs hide them, while tab menus and visible `data-native-view-overlay`
+elements hide only intersecting views, including overlaps between probe points.
+A 5x5 `elementFromPoint` grid detects other overlapping DOM content;
+`data-native-view-passthrough` exempts underlays. Dismissal restores placement;
+disposed placement callbacks cannot restore a previous owner. Without a desktop bridge the view offers Open in
 system browser (`openUrlInSystemBrowser`, `window.open` noopener) instead of
 embedded browsing.
 
