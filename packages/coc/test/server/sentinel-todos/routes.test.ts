@@ -81,6 +81,20 @@ describe('Sentinel to-do routes', () => {
     };
     const ledger = '/api/workspaces/ws-a/sentinel-todos/queue_s1';
 
+    it.each(['normal', 'manual'] as const)('accepts reason-free human dropdown verdicts for %s and preserves notes', async type => {
+        const s = await track(await startServer());
+        const client = new CocClient({ baseUrl: s.baseUrl });
+        let row = (await client.sentinelTodos.create('ws-a', 'queue_s1', { title: 'Human verdict', type, notes: 'Keep original notes' })).item;
+        for (const status of ['needs_attention', 'done', 'deferred'] as const) {
+            row = (await client.sentinelTodos.update('ws-a', 'queue_s1', row.id, {
+                expectedRevision: row.revision, status, statusReason: null,
+            })).item;
+            expect(row).toMatchObject({ status, type, notes: 'Keep original notes', archived: false, updatedBy: 'user', userVerdictRevision: row.revision });
+            expect(row.statusReason).toBeUndefined();
+            expect(row.outcome).toBeUndefined();
+            expect((await client.sentinelTodos.get('ws-a', 'queue_s1')).items.find(item => item.id === row.id)?.status).toBe(status);
+        }
+    });
     it.each(['normal', 'manual'] as const)('persists Deferred through REST/client writes and owner-scoped reads for %s', async type => {
         const s = await track(await startServer());
         const client = new CocClient({ baseUrl: s.baseUrl });

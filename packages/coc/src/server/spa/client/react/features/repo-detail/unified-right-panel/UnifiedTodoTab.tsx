@@ -1143,16 +1143,18 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
         }), () => setStatusDraft(null));
     };
 
-    // Menu choices enter the same validated status/reason and revision-aware save
-    // flow as the detail controls. Consume each choice once, including StrictMode.
+    // Dropdown choices save the human verdict directly; detail controls keep their
+    // reason forms. Consume each choice once, including StrictMode.
     const consumedMenuAction = useRef<TodoMenuAction | null>(null);
     useEffect(() => {
         if (!menuAction || consumedMenuAction.current === menuAction) return;
         consumedMenuAction.current = menuAction;
         onMenuActionConsumed();
         if (item.archived || closeBlocked || editing || statusDraft) return;
-        if ('status' in menuAction) applyStatus(menuAction.status, '');
-        else void run(() => onSave(item, { priority: menuAction.priority }), () => {});
+        const patch = 'status' in menuAction
+            ? { status: menuAction.status, statusReason: null }
+            : { priority: menuAction.priority };
+        void run(() => onSave(item, patch), () => {});
         // The request is an explicit user action, never replayed by ledger refreshes.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [menuAction]);
