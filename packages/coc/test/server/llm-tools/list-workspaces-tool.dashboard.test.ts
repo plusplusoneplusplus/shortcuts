@@ -39,7 +39,7 @@ describe('list_workspaces dashboard source', () => {
         expect(result).toEqual({
             source: 'dashboard',
             workspaces: rows.map(value => ({
-                ...value, target: { serverIdentity: value.serverIdentity, workspaceId: value.workspaceId },
+                ...value, ...(value.type === 'repo' ? { git: { state: 'unsupported' } } : {}), target: { serverIdentity: value.serverIdentity, workspaceId: value.workspaceId },
             })),
             total: 2, truncated: false,
         });

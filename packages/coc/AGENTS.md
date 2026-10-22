@@ -107,8 +107,12 @@ references before editing. Paths are package-relative.
 - `list_workspaces` defaults to registered dispatch targets; these, `send_to_conversation`
   remote targets and messaging `list remotes` share one route-layer
   `src/server/servers/workspace-directory.ts` (clone keys, per-server timeouts, last-known
-  offline entries). Remote create mode posts to the remote's own queue/Ralph API with no
-  local fallback; output never carries paths, URLs, or credentials. Successful remote
+  offline entries). Repo rows add a compact owner-scoped `git` summary after filtering
+  and capping: clean/dirty plus branch, detached marker and known upstream counts, or
+  explicit non-git/unavailable/unsupported/offline state. Groups omit Git. Collection
+  has four workers and one four-second deadline; dashboard status requires a known
+  installation identity matching this server or a registered remote. Remote create mode
+  posts to the remote's own queue/Ralph API with no local fallback; output never carries paths, URLs, or credentials. Successful remote
   launches expose tracked or unavailable parent result return through `resultDelivery`
   and canonical `#chat-references/<serverIdentity>/<workspaceId>/<processId>`
   links with independently encoded segments for inspecting the outcome. Local tool

@@ -548,7 +548,17 @@ Failed reads return last-known entries with `online: false`, or zero cached entr
 
 Registered entries carry `id`, `name`, repo/group `type`, optional group `members`,
 `server`, `serverKind`, `online` and observed `serverIdentity`; `servers` lists consulted
-servers. Explicit `source: dashboard` uses `getDashboardDiscovery` from the same runtime
+servers. Repo rows add `git: { state: "clean" | "dirty", branch }`; detached HEAD uses
+`branch: null, detached: true`. `ahead`/`behind` appear only with a known upstream.
+Other states are `non-git`, `unavailable`, `unsupported` and `offline`; groups omit Git.
+Status reads follow filtering and the cap, with four workers and one 4s collection
+deadline. Local reads use Forge repository status; remote reads use the owning
+server's registry/git-info APIs and validate the captured endpoint/identity. Failed
+reads never imply clean, and offline Git status is never cached. Dashboard Git
+requires durable identity matching this installation or a registered remote;
+unregistered/unknown owners report unsupported without a local fallback.
+
+Explicit `source: dashboard` uses `getDashboardDiscovery` from the same runtime
 bundle, resolving WebSocket infrastructure at call time. Owner scope comes from the
 invoking chat, never tool arguments. Dashboard observations include unregistered
 destinations and offline rows, with labels, raw workspace ID, optional identity and

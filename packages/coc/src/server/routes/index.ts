@@ -969,7 +969,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     const remoteReturnReady = delegatedResultsRestored.then(() => remoteReturn.recover());
     remoteReturn.start();
-    const workspaceDirectory = createWorkspaceDirectory({ store, dataDir, remoteServers: remoteServerRuntime, remoteResults: remoteReturn });
+    const workspaceDirectory = createWorkspaceDirectory({ store, dataDir, serverIdentity: getOrCreateServerIdentity(dataDir), remoteServers: remoteServerRuntime, remoteResults: remoteReturn });
     const remoteAdmissions = new RemoteDelegationAdmissionStore(dataDir);
     const remoteDelivery = new ProcessMessageDeliveryService({ store, bridge });
     const remoteLaunch = createRemoteDelegationLaunch({

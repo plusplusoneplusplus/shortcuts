@@ -1,3 +1,5 @@
+import { stat } from 'node:fs/promises';
+import { BranchService, resolvePathForHostFilesystem } from '@plusplusoneplusplus/forge';
 import { remoteChatLaunchBody, remoteRalphLaunchBody } from '../delegation/remote-delegation-launch';
 
 /**
@@ -135,7 +137,19 @@ export interface RemoteChatReadTarget {
     serverIdentity?: string;
 }
 
+export type WorkspaceGitSummary =
+    | { state: 'clean' | 'dirty'; branch: string | null; detached?: true; ahead?: number; behind?: number }
+    | { state: 'non-git' | 'unavailable' | 'unsupported' | 'offline' };
+
+export interface WorkspaceGitTarget {
+    id?: string;
+    serverIdentity?: string;
+    workspaceId?: string;
+    online: boolean;
+}
+
 export interface WorkspaceDirectory {
+    getGitSummary?(target: WorkspaceGitTarget, signal: AbortSignal): Promise<WorkspaceGitSummary>;
     list(): Promise<WorkspaceDirectoryListing>;
     isRemoteAutoProviderRoutingAvailable?(serverId: string): Promise<boolean>;
     validateRemoteProvider?(serverId: string, provider: ChatProvider): Promise<void>;
@@ -163,6 +177,7 @@ export interface RemoteServerSource {
 
 export interface WorkspaceDirectoryOptions {
     store: ProcessStore;
+    serverIdentity?: string;
     dataDir?: string;
     remoteServers?: RemoteServerSource;
     /** Per-request timeout for listing calls. Default 4s. */
@@ -267,8 +282,14 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
         url: string,
         timeoutMs: number,
         init?: { method: 'POST'; body: unknown },
+        signal?: AbortSignal,
     ): Promise<any> {
         const controller = new AbortController();
+        signal?.throwIfAborted();
+        let rejectAbort: ((reason: unknown) => void) | undefined;
+        const aborted = new Promise<never>((_, reject) => { rejectAbort = reject; });
+        const abort = () => { controller.abort(signal?.reason); rejectAbort?.(signal?.reason); };
+        signal?.addEventListener('abort', abort, { once: true });
         let timer: ReturnType<typeof setTimeout> | undefined;
         const timeout = new Promise<never>((_, reject) => {
             timer = setTimeout(() => {
@@ -286,8 +307,9 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
                         : {}),
                 }),
                 timeout,
+                aborted,
             ]);
-            const text = await Promise.race([res.text(), timeout]);
+            const text = await Promise.race([res.text(), timeout, aborted]);
             let body: any;
             try {
                 body = text ? JSON.parse(text) : undefined;
@@ -301,6 +323,7 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
             return body;
         } finally {
             clearTimeout(timer);
+            signal?.removeEventListener('abort', abort);
         }
     }
 
@@ -361,6 +384,72 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
     }
 
     return {
+        async getGitSummary(target, signal) {
+            if (!target.online) return { state: 'offline' };
+            signal.throwIfAborted();
+            if (target.id === undefined && !target.serverIdentity) return { state: 'unsupported' };
+            const clone = parseRemoteCloneKey(target.id);
+            const server = clone
+                ? options.remoteServers?.list().find(s => s.id === clone.serverId)
+                : target.id === undefined && target.serverIdentity !== options.serverIdentity
+                    ? options.remoteServers?.list().find(s => s.serverIdentity === target.serverIdentity && !!s.effectiveUrl)
+                    : undefined;
+            const workspaceId = clone?.workspaceId ?? target.workspaceId ?? target.id;
+            if (!workspaceId || isRepoGroupWorkspaceId(workspaceId)) return { state: 'unsupported' };
+            if (clone || server || target.id === undefined && (!target.serverIdentity || target.serverIdentity !== options.serverIdentity)) {
+                if (!server) return { state: 'unsupported' };
+                if (target.serverIdentity && server.serverIdentity !== target.serverIdentity) return { state: 'unavailable' };
+                if (!server.effectiveUrl) return { state: 'offline' };
+                const binding = { effectiveUrl: server.effectiveUrl, serverIdentity: server.serverIdentity };
+                try {
+                    // The owning server's registry distinguishes non-Git from status read failures,
+                    // including older git-info endpoints that encode a failed read as isGitRepo:false.
+                    const listed = await requestJson(`${binding.effectiveUrl}/api/workspaces`, listTimeoutMs, undefined, signal);
+                    assertCurrentTarget(server.id, binding);
+                    const rows = Array.isArray(listed) ? listed : listed?.workspaces;
+                    const ws = Array.isArray(rows) ? rows.find((row: RawWorkspace) => row.id === workspaceId) : undefined;
+                    if (!ws || ws.virtual) return { state: 'unavailable' };
+                    if (ws.isGitRepo === false) return { state: 'non-git' };
+                    const info = await requestJson(`${binding.effectiveUrl}/api/workspaces/${encodeURIComponent(workspaceId)}/git-info`, listTimeoutMs, undefined, signal);
+                    assertCurrentTarget(server.id, binding);
+                    signal.throwIfAborted();
+                    if (info?.isGitRepo !== true || typeof info.dirty !== 'boolean'
+                        || !(typeof info.branch === 'string' || info.branch === null)) return { state: 'unavailable' };
+                    return {
+                        state: info.dirty ? 'dirty' : 'clean', branch: info.detached === true ? null : info.branch,
+                        ...(info.detached === true ? { detached: true as const } : {}),
+                        ...(info.detached !== true && typeof info.upstream === 'string' && info.upstream
+                            && Number.isSafeInteger(info.ahead) && info.ahead >= 0
+                            && Number.isSafeInteger(info.behind) && info.behind >= 0
+                            ? { ahead: info.ahead, behind: info.behind } : {}),
+                    };
+                } catch (err) {
+                    signal.throwIfAborted();
+                    return { state: err instanceof RemoteRejectedError && err.status === 404 ? 'unsupported' : 'unavailable' };
+                }
+            }
+            const ws = (await options.store.getWorkspaces()).find(w => w.id === workspaceId);
+            if (!ws?.rootPath || ws.virtual) return { state: 'unavailable' };
+            try {
+                if (!(await stat(resolvePathForHostFilesystem(ws.rootPath))).isDirectory()) return { state: 'unavailable' };
+            } catch {
+                return { state: 'unavailable' };
+            }
+            try {
+                await stat(resolvePathForHostFilesystem(ws.rootPath, '.git'));
+            } catch (err) {
+                return { state: (err as NodeJS.ErrnoException).code === 'ENOENT' ? 'non-git' : 'unavailable' };
+            }
+            signal.throwIfAborted();
+            const status = await new BranchService().getRepositoryStatus(ws.rootPath);
+            signal.throwIfAborted();
+            if (!status) return { state: 'unavailable' };
+            return {
+                state: status.dirty ? 'dirty' : 'clean', branch: status.isDetached ? null : status.branch,
+                ...(status.isDetached ? { detached: true as const } : {}),
+                ...(!status.isDetached && status.trackingBranch ? { ahead: status.ahead, behind: status.behind } : {}),
+            };
+        },
         async list() {
             const localWorkspaces = (await options.store.getWorkspaces()) as RawWorkspace[];
             const entries = listLocal(localWorkspaces);
