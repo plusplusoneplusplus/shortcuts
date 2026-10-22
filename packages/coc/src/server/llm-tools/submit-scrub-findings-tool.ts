@@ -45,7 +45,7 @@ export function createSubmitScrubFindingsTool(deps: SubmitScrubFindingsToolDeps)
                         type: 'object',
                         properties: {
                             itemId: { type: 'string' },
-                            verdict: { type: 'string', enum: ['done', 'obsolete', 'in_progress', 'needs_attention', 'unchanged', 'unverified'] },
+                            verdict: { type: 'string', enum: ['done', 'obsolete', 'in_progress', 'deferred', 'needs_attention', 'unchanged', 'unverified'] },
                             confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
                             autoApply: { type: 'boolean', description: 'Only on done with high confidence.' },
                             summary: { type: 'string', description: 'One line, at most 300 characters.' },

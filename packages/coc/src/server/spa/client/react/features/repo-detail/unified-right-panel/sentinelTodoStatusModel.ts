@@ -35,6 +35,7 @@ export type SentinelTodoDisplayStatus = SentinelTodoStatus | 'in_review';
 export const SENTINEL_TODO_STATUS_LABELS: Readonly<Record<SentinelTodoDisplayStatus, string>> = {
     todo: 'To do',
     in_progress: 'In progress',
+    deferred: 'Deferred',
     in_review: 'In review',
     needs_attention: 'Needs attention',
     done: 'Done',
@@ -62,12 +63,13 @@ const ACTIVE_ORDER: Readonly<Record<SentinelTodoDisplayStatus, number>> = {
     in_review: 1,
     in_progress: 2,
     todo: 3,
-    done: 4,
+    deferred: 4,
+    done: 5,
 };
 
 /** Presentation only: durable assessment evidence never changes fulfillment or authorizes execution. */
 export function sentinelTodoDisplayStatus(item: SentinelTodoItem): SentinelTodoDisplayStatus {
-    if (item.archived || item.status === 'done' || sentinelTodoType(item) === 'manual') return item.status;
+    if (item.archived || item.status === 'done' || item.status === 'deferred' || sentinelTodoType(item) === 'manual') return item.status;
     const pending = item.jobs.filter(job => ((!job.serverId && job.kind !== 'remote') || job.remote) && 'review' in job.execution
         && job.execution.review?.assessment === 'pending');
     if (!pending.length) return item.status;

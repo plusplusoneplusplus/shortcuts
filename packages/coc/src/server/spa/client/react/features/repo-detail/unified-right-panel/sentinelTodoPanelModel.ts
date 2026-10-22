@@ -55,7 +55,7 @@ export function sentinelTodoDependencyChain(itemId: string, items: readonly Sent
 export * from './sentinelTodoStatusModel';
 
 /** Statuses a user can pick, in the order the select lists them. */
-export const SENTINEL_TODO_STATUSES: readonly SentinelTodoStatus[] = ['todo', 'in_progress', 'needs_attention', 'done'];
+export const SENTINEL_TODO_STATUSES: readonly SentinelTodoStatus[] = ['todo', 'in_progress', 'deferred', 'needs_attention', 'done'];
 
 export const SENTINEL_TODO_PRIORITY_LABELS: Readonly<Record<SentinelTodoPriority, string>> = {
     high: 'High',

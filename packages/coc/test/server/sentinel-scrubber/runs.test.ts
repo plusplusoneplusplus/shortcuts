@@ -60,7 +60,7 @@ function createService(timeoutMs?: number) {
     return service;
 }
 
-function item(title: string, patch: { status?: 'in_progress' | 'done'; statusReason?: string } = {}): SentinelTodoItem {
+function item(title: string, patch: { status?: 'in_progress' | 'deferred' | 'done'; statusReason?: string } = {}): SentinelTodoItem {
     return todos.create(owner, { title, ...patch }, { actor: 'sentinel' }).item;
 }
 
@@ -158,6 +158,13 @@ describe('ScrubberRunService.start', () => {
         expect((await manual).status).toBe('queued');
     });
 
+    it('keeps Deferred open without counting it as execution-deferred', async () => {
+        const postponed = item('Later', { status: 'deferred' });
+        const run = await service.start(owner, { trigger: 'manual' });
+        expect(run.snapshot).toEqual([{ itemId: postponed.id, revision: postponed.revision }]);
+        expect(run.deferredItemIds).toEqual([]);
+        expect(enqueued[0].payload.prompt).toContain('Preserve Deferred items as postponed');
+    });
     it('queues one low-priority ask child chat with the snapshot passed as a repo-scoped file path', async () => {
         const a = item('Chat pagination', { status: 'in_progress' });
         item('Shipped', { status: 'done', statusReason: 'Merged' });

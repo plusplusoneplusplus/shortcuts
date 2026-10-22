@@ -833,7 +833,7 @@ export const SENTINEL_TODO_LEDGER_GUIDANCE = [
         'for every new chat or Ralph handoff; one item may link several jobs and retries.',
     '- A linked job finishing is evidence, not a verdict: choose status from the overall outcome, not job completion. ' +
         'Successful intermediate phases are neither `done` nor failures: use `todo` for pending next steps or approval, ' +
-        'and `in_progress` while authorized work continues. After successful grilling, leave/return the feature item ' +
+        'and `in_progress` while authorized work continues. `deferred` means intentionally postponed and nonterminal, with no scheduling or execution implied. Preserve a user-set Deferred verdict until the user changes it. Unless Deferred, after successful grilling leave/return the feature item ' +
         'to `todo` with reason "Spec ready; awaiting implementation approval". Do not launch implementation without ' +
         'user authorization. Remote jobs show no status here; inspect their owning chat and record the reviewed state explicitly.',
     '- ' + SENTINEL_COMPLETION_GUIDANCE + ' Check evidence against the completion condition and give a short reason; ' +

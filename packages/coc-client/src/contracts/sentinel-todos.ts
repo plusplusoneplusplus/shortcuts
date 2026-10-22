@@ -6,7 +6,7 @@
  * the linked job's own state, derived on read and never a completion verdict.
  */
 
-export type SentinelTodoStatus = 'todo' | 'in_progress' | 'needs_attention' | 'done';
+export type SentinelTodoStatus = 'todo' | 'in_progress' | 'deferred' | 'needs_attention' | 'done';
 export const SENTINEL_TODO_RECENT_LIMIT = 50;
 export type SentinelTodoType = 'normal' | 'manual';
 /** Ledger metadata only, independent of status and of job queue priority. */

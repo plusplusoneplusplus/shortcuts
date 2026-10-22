@@ -78,6 +78,83 @@ afterEach(() => {
 });
 
 describe('SentinelTodoStore SQLite persistence', () => {
+
+    function legacyStatusConstraint() {
+        const sql = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'sentinel_todo_items'").get<{ sql: string }>()!.sql;
+        const objects = db.prepare("SELECT sql FROM sqlite_master WHERE tbl_name = 'sentinel_todo_items' AND type IN ('index', 'trigger') AND sql IS NOT NULL").all<{ sql: string }>();
+        db.pragma('foreign_keys = OFF');
+        db.exec(sql.replace('sentinel_todo_items', 'legacy_todos').replace(", 'deferred'", ''));
+        db.exec('INSERT INTO legacy_todos SELECT * FROM sentinel_todo_items');
+        db.exec('DROP TABLE sentinel_todo_items');
+        db.exec('ALTER TABLE legacy_todos RENAME TO sentinel_todo_items');
+        for (const object of objects) db.exec(object.sql);
+        db.pragma('foreign_keys = ON');
+    }
+    it('migrates the old status CHECK without losing child rows, custom objects or the process schema version', () => {
+        let item = linkedItem();
+        item = store.attachReference(owner, item.id, item.revision, {
+            processId: 'ref', workspaceId: 'ws-a', openLink: '#repos/ws-a/chats/ref',
+        }, 'user').item;
+        store.create(otherOwners[0], { title: 'Other owner', type: 'manual' }, { actor: 'user' });
+        db.exec('CREATE INDEX sentinel_todo_custom_title ON sentinel_todo_items(title)');
+        db.exec("CREATE TRIGGER sentinel_todo_custom_guard BEFORE UPDATE ON sentinel_todo_items WHEN NEW.title = 'forbidden' BEGIN SELECT RAISE(ABORT, 'custom guard'); END");
+        legacyStatusConstraint();
+        const before = store.get(owner);
+        const version = db.pragma('user_version', { simple: true });
+        store = new SentinelTodoStore(db);
+        expect(store.get(owner)).toEqual(before);
+        expect(store.get(otherOwners[0]).items[0].title).toBe('Other owner');
+        const next = store.update(owner, item.id, item.revision, { status: 'deferred' }, 'user').item;
+        expect(reopen().get(owner).items[0]).toEqual(next);
+        expect(db.pragma('user_version', { simple: true })).toBe(version);
+        expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+        expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+        expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'sentinel_todo_custom_title'").get()).toBeTruthy();
+        expect(() => store.update(owner, next.id, next.revision, { title: 'forbidden' }, 'user')).toThrow('custom guard');
+    });
+    it('rolls back a failed migration and restores foreign-key enforcement', () => {
+        const item = linkedItem();
+        legacyStatusConstraint();
+        const before = store.get(owner);
+        const execute = db.exec.bind(db);
+        const spy = vi.spyOn(db, 'exec').mockImplementation(sql => {
+            if (sql.startsWith('ALTER TABLE sentinel_todo_items_deferred')) throw new Error('migration failed');
+            return execute(sql);
+        });
+        expect(() => new SentinelTodoStore(db)).toThrow('migration failed');
+        expect(store.get(owner)).toEqual(before);
+        expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+        spy.mockRestore();
+        store = new SentinelTodoStore(db);
+        expect(store.update(owner, item.id, item.revision, { status: 'deferred' }, 'user').item.status).toBe('deferred');
+    });
+    it.each(['normal', 'manual'] as const)('creates, persists and transitions Deferred for %s with revision and owner checks', type => {
+        let row = store.create(owner, { title: 'Later', type, status: 'deferred' }, { actor: 'user' }).item;
+        expect(row.userVerdictRevision).toBe(1);
+        expect(reopen().get(owner).items[0].status).toBe('deferred');
+        for (const status of ['todo', 'in_progress', 'deferred', 'needs_attention', 'done', 'deferred'] as const) {
+            row = store.update(owner, row.id, row.revision, { status }, 'user').item;
+            expect(reopen().get(owner).items[0].status).toBe(status);
+        }
+        expectTodoError(() => store.update(owner, row.id, 1, { status: 'todo' }, 'user'), 'conflict');
+        expectTodoError(() => store.update(otherOwners[0], row.id, row.revision, { status: 'todo' }, 'user'), 'not_found');
+        expectTodoError(() => store.update(owner, row.id, row.revision, { status: 'in_progress' }, 'sentinel'), 'invalid');
+        expect(store.update(owner, row.id, row.revision, { notes: 'Evidence only' }, 'sentinel').item.status).toBe('deferred');
+    });
+    it('preserves Deferred through linking, failure receipts and spec-ready milestones', () => {
+        let row = store.create(owner, { title: 'Later', status: 'deferred', statusReason: 'Next release' }, { actor: 'user' }).item;
+        row = store.linkJob(owner, row.id, job).item;
+        expect(row).toMatchObject({ status: 'deferred', statusReason: 'Next release' });
+        store.recordJobResult(owner, job.processId, { terminalEventId: 'failed-later', outcome: 'failed' });
+        row = store.get(owner).items[0];
+        expect(row.status).toBe('deferred');
+        expect(row.jobs[0].result?.outcome).toBe('failed');
+        store.recordGrillingResult(owner, job.processId, 'spec-later', ['plan']);
+        row = store.get(owner).items[0];
+        expect(row).toMatchObject({ status: 'deferred', statusReason: 'Next release' });
+        expectTodoError(() => store.recordScrubberDone(owner, row.id, row.revision, 'Merged'), 'invalid');
+        expectTodoError(() => store.update(owner, row.id, row.revision, { status: 'done', statusReason: 'Stale result' }, 'sentinel'), 'invalid');
+    });
     it('starts empty, initializes additively and leaves the process schema/version intact', () => {
         const shared = new NativeDatabase(path.join(dataDir, 'schema.db'));
         handles.push(shared);

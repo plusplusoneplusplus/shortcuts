@@ -399,3 +399,16 @@ describe('notes folding', () => {
         expect(sentinelTodoFoldNotes('x'.repeat(161))).toBe(true);
     });
 });
+
+describe('Deferred To-do presentation', () => {
+    it.each(['normal', 'manual'] as const)('keeps %s Deferred open and sorted after To do', type => {
+        const postponed = item({ type, status: 'deferred', jobs: [job({ state: 'running' })] });
+        const sections = sentinelTodoSections([postponed, item({ type }), item({ type, status: 'in_progress' }),
+            item({ type, status: 'deferred', archived: true }), item({ type, status: 'done' })], type);
+        expect(sections.active.map(row => row.status)).toEqual(['in_progress', 'todo', 'deferred']);
+        expect(sections.done).toHaveLength(1);
+        expect(sections.archived).toHaveLength(1);
+        expect(sentinelTodoDisplayStatus(postponed)).toBe('deferred');
+        expect(sentinelTodoStatusReason('deferred')).toBeNull();
+    });
+});

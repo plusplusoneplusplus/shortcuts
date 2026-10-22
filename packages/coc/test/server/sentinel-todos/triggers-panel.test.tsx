@@ -662,9 +662,11 @@ describe('Sentinel To-do Triggers', () => {
 
     it.each([
         ['normal', 'todo', false, []],
+        ['normal', 'deferred', false, []],
         ['normal', 'done', false, ['done']],
         ['normal', 'done', true, ['archived']],
         ['manual', 'todo', false, ['manual']],
+        ['manual', 'deferred', false, ['manual']],
         ['manual', 'done', false, ['manual', 'manual-done']],
         ['manual', 'done', true, ['manual', 'manual-archived']],
     ] as const)('split navigation selects only the target and required %s / %s / archived=%s containers', async (type, status, archived, opened) => {
@@ -703,9 +705,11 @@ describe('Sentinel To-do Triggers', () => {
 
     it.each([
         ['normal', 'todo', false, []],
+        ['normal', 'deferred', false, []],
         ['normal', 'done', false, ['done']],
         ['normal', 'done', true, ['archived']],
         ['manual', 'todo', false, ['manual']],
+        ['manual', 'deferred', false, ['manual']],
         ['manual', 'done', false, ['manual', 'manual-done']],
         ['manual', 'done', true, ['manual', 'manual-archived']],
     ] as const)('reveals only the containers for %s / %s / archived=%s, including repeated keyboard activation', async (type, status, archived, opened) => {

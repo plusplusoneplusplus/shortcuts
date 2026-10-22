@@ -3,6 +3,14 @@ import { SentinelTodosClient } from '../../src';
 import { createMockAdapter } from './helpers';
 
 describe('SentinelTodosClient', () => {
+  it('serializes Deferred through exact encoded owner routes', async () => {
+    const adapter = createMockAdapter({ item: { id: 'i1', status: 'deferred' } });
+    const client = new SentinelTodosClient(adapter);
+    await client.create('owner ws', 'parent/a', { title: 'Later', status: 'deferred' });
+    await client.update('owner ws', 'parent/a', 'i1', { expectedRevision: 3, status: 'deferred' });
+    expect(adapter.calls[0]).toMatchObject({ path: '/workspaces/owner%20ws/sentinel-todos/parent%2Fa/items', options: { body: { status: 'deferred' } } });
+    expect(adapter.calls[1]).toMatchObject({ path: '/workspaces/owner%20ws/sentinel-todos/parent%2Fa/items/i1', options: { body: { expectedRevision: 3, status: 'deferred' } } });
+  });
   it.each(['pausePrOutcomes', 'resumePrOutcomes', 'checkPrOutcomes'] as const)('preserves cancellation and revisions for %s', async method => {
     const adapter = createMockAdapter({ paused: false, revision: 3, outcomes: [] });
     const client = new SentinelTodosClient(adapter);

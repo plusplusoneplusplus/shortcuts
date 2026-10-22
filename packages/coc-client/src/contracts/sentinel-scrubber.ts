@@ -3,7 +3,7 @@ import type { SentinelTodoStatus, SentinelTodoWriteResponse } from './sentinel-t
 /** Scrubber data is scoped to the ledger's workspace and Sentinel on its owning server. */
 export type SentinelScrubRunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'timed_out'
   | 'cancelled' | 'interrupted' | 'skipped';
-export type SentinelScrubVerdict = 'done' | 'obsolete' | 'in_progress' | 'needs_attention' | 'unchanged' | 'unverified';
+export type SentinelScrubVerdict = 'done' | 'obsolete' | 'in_progress' | 'deferred' | 'needs_attention' | 'unchanged' | 'unverified';
 
 export interface SentinelScrubberConfig {
   enabled: boolean;

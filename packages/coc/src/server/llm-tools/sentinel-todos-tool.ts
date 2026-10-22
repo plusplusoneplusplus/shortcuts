@@ -134,7 +134,7 @@ const DESCRIPTION =
     'reviewed outcome unless you pass `outcome`. ' + SENTINEL_COMPLETION_GUIDANCE + ' Check evidence against the completion ' +
     'condition. ' + SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE + ' Choose status from the overall outcome, not linked job completion: successful intermediate phases are ' +
     'neither `done` nor failures. Use `todo` for pending next steps/approval, `in_progress` for continuing authorized ' +
-    'work, and `needs_attention` for failed, cancelled, blocked, or incomplete final work. After successful grilling, ' +
+    'work, `deferred` for intentionally postponed nonterminal work (no scheduling or execution implied), and `needs_attention` for failed, cancelled, blocked, or incomplete final work. Preserve a user-set Deferred verdict; status changes need the user, while notes and evidence may still be recorded. Unless Deferred, after successful grilling, ' +
     'leave/return the feature item to `todo` with reason "Spec ready; awaiting implementation approval"; do not launch ' +
     'implementation without user authorization. Re-read before review updates and honor manual user verdicts and latest instructions. ' +
     'Linked `jobs` show each job\'s `execution` separately: a completed job is evidence to review, not a ' +
@@ -299,7 +299,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                     },
                     required: ['workspaceId'],
                 },
-                status: { type: 'string', enum: ['todo', 'in_progress', 'needs_attention', 'done'] },
+                status: { type: 'string', enum: ['todo', 'in_progress', 'deferred', 'needs_attention', 'done'] },
                 priority: {
                     type: 'string',
                     enum: ['high', 'regular'],

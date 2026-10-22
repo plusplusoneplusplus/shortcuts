@@ -10,7 +10,7 @@ export const MAX_SCRUB_RUNS = 20;
 export const SCRUB_FAILURE_PAUSE_THRESHOLD = 3;
 export const SCRUB_TIMEOUT_MS = 20 * 60_000;
 const id = z.string().min(1).max(200);
-export const scrubVerdictSchema = z.enum(['done', 'obsolete', 'in_progress', 'needs_attention', 'unchanged', 'unverified']);
+export const scrubVerdictSchema = z.enum(['done', 'obsolete', 'in_progress', 'deferred', 'needs_attention', 'unchanged', 'unverified']);
 export const scrubConfidenceSchema = z.enum(['high', 'medium', 'low']);
 export const scrubEvidenceSchema = z.object({
     kind: z.enum(['pr', 'commit', 'job', 'reference', 'other']),

@@ -52,7 +52,7 @@ export interface ScrubberRunServiceDeps {
     timeoutMs?: number;
 }
 
-const OPEN_STATUSES = new Set(['todo', 'in_progress', 'needs_attention']);
+const OPEN_STATUSES = new Set(['todo', 'in_progress', 'deferred', 'needs_attention']);
 const findingsSchema = z.array(scrubFindingInputSchema).max(MAX_SCRUB_ITEMS);
 
 /**
@@ -401,11 +401,12 @@ export function buildScrubPrompt(run: ScrubRunRecord, snapshotPath: string): str
         'Rules:',
         '- This chat is read-only. Never edit files, run write commands, or message other chats. The server applies results; you only report them.',
         '- For each item, check its linked jobs, references, PRs and commits in its target repo (use `gh`/`git` read-only commands).',
-        '- Verdicts: `done` (completion condition met), `obsolete` (no longer needed or superseded), `in_progress`, `needs_attention`, `unchanged` (status still right), `unverified` (evidence could not be checked: give `unverifiedReason`).',
+        '- Verdicts: `done` (completion condition met), `obsolete` (no longer needed or superseded), `in_progress`, `deferred` (intentionally postponed, still open), `needs_attention`, `unchanged` (status still right), `unverified` (evidence could not be checked: give `unverifiedReason`).',
         '- ' + SENTINEL_COMPLETION_GUIDANCE,
         '- If closure is uncertain, report `unchanged` with the gap for the parent to ask the user; never auto-apply.',
         '- Never guess. If gh auth fails, a remote server is offline or a repo is missing, use `unverified`.',
         '- Every verdict except `unchanged`/`unverified` needs at least one evidence entry, each with `checkedAt` set to when you checked it.',
+        '- Preserve Deferred items as postponed. Never auto-apply a status change to them; propose changes for the user instead. This status is separate from items deferred from a run due to active execution.',
         '- Set `autoApply: true` only on `done` with `confidence: "high"`: a merged PR or a commit on the default branch clearly tied to the item, and its completion condition met. A successful job with no landed artifact, or a commit found only by search, is usually medium.',
         '- Jobs listed as awaiting Sentinel review are not in the snapshot; do not assess them.',
         `- When done, call \`${SUBMIT_SCRUB_FINDINGS_TOOL_NAME}\` exactly once with runId "${run.id}" and one finding per item. Later calls are rejected.`,

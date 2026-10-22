@@ -75,6 +75,21 @@ function armRule(itemId: string, id = 'rule-1') {
 }
 
 describe('ScrubberEngine.complete', () => {
+    it('keeps Deferred despite newer completion evidence, then permits explicit user acceptance', () => {
+        const deferred = todos.create(owner, { title: 'Postponed', status: 'deferred' }, { actor: 'user' }).item;
+        startRun([deferred]);
+        const completed = engine.complete(owner, 'run-1', [finding(deferred.id, { evidence: [{ ...pr, observedAt: '2099-01-01T00:00:00Z' }] })])!;
+        expect(completed.findings[0]).toMatchObject({ state: 'proposed', demotedBecause: 'user_verdict' });
+        expect(current(deferred.id).status).toBe('deferred');
+        expect(engine.accept(owner, 'run-1', deferred.id, deferred.revision).item.status).toBe('done');
+    });
+    it('accepts a Deferred proposal only through the user action', () => {
+        const row = item('Postpone');
+        startRun([row]);
+        expect(engine.complete(owner, 'run-1', [finding(row.id, { verdict: 'deferred', autoApply: false })])!.findings[0].state).toBe('proposed');
+        expect(current(row.id).status).toBe('todo');
+        expect(engine.accept(owner, 'run-1', row.id, row.revision).item.status).toBe('deferred');
+    });
     it('auto-applies a strong Done as system without a user verdict and retires its PR rule', () => {
         const a = item('Chat pagination', { status: 'in_progress' });
         armRule(a.id);

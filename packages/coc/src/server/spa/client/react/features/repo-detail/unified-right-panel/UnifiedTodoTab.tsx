@@ -109,6 +109,7 @@ const EMPTY_DRAFT: Draft = { title: '', completionCondition: '', notes: '', prio
 const STATUS_STYLES: Readonly<Record<SentinelTodoDisplayStatus, { dot: string; badge: string; mark: string }>> = {
     todo: { dot: 'border border-current', badge: 'bg-[#848484]/15 text-[#616161] dark:text-[#bbbbbb]', mark: '○' },
     in_progress: { dot: 'bg-current', badge: 'bg-[#0078d4]/15 text-[#0078d4] dark:text-[#3794ff]', mark: '◐' },
+    deferred: { dot: 'border border-current', badge: 'bg-[#848484]/10 text-[#616161] dark:text-[#9d9d9d]', mark: 'Ⅱ' },
     in_review: { dot: 'border border-current', badge: 'bg-[#8764b8]/15 text-[#7150a2] dark:text-[#c5a5ed]', mark: '◇' },
     needs_attention: { dot: 'bg-current', badge: 'bg-[#e8912d]/15 text-[#b5650f] dark:text-[#cca700]', mark: '!' },
     done: { dot: 'bg-current', badge: 'bg-[#16825d]/15 text-[#16825d] dark:text-[#89d185]', mark: '✓' },

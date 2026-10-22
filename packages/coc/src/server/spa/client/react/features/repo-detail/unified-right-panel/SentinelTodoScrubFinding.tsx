@@ -18,7 +18,7 @@ export function AcceptAllScrubProposals() {
     return <Button size="sm" variant="secondary" disabled={busy} onClick={() => { void acceptAll(); }}>Accept all proposals</Button>;
 }
 
-const verdictLabels = { done: 'Done', obsolete: 'Obsolete', in_progress: 'In progress', needs_attention: 'Needs attention', unchanged: 'Unchanged', unverified: 'Unverified' };
+const verdictLabels = { done: 'Done', obsolete: 'Obsolete', in_progress: 'In progress', deferred: 'Deferred', needs_attention: 'Needs attention', unchanged: 'Unchanged', unverified: 'Unverified' };
 const demotionLabels = {
     superseded: 'Superseded: item changed during run', user_verdict: 'Newer user verdict',
     manual: 'Manual item: proposal only', evidence_gate: 'Evidence does not meet the auto-Done requirements',

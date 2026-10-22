@@ -185,6 +185,7 @@ export class ScrubberEngine {
 function demote(run: ScrubRunRecord, item: SentinelTodoItem, itemRevision: number, finding: ScrubFindingInput, now: Date):
     ScrubDemotion | undefined {
     if (item.type === 'manual') return 'manual';
+    if (item.status === 'deferred') return 'user_verdict';
     if (item.revision !== itemRevision) return 'superseded';
     if (userVerdictIsNewer(item, finding)) return 'user_verdict';
     const startedAt = Date.parse(run.startedAt ?? run.createdAt);
@@ -220,6 +221,7 @@ function proposalPatch(finding: ScrubFindingInput): SentinelTodoPatch {
     switch (finding.verdict) {
         case 'done': return { status: 'done', outcome: doneOutcome(finding) };
         case 'obsolete': return { status: 'done', outcome: `Obsolete: ${finding.summary}`.slice(0, OUTCOME_LIMIT), archived: true };
+        case 'deferred': return { status: 'deferred', statusReason: finding.summary };
         case 'in_progress': return { status: 'in_progress', statusReason: finding.summary };
         case 'needs_attention': return { status: 'needs_attention', statusReason: finding.summary };
         default: throw new ScrubberStoreError('conflict', `A ${finding.verdict} finding has nothing to accept`);
