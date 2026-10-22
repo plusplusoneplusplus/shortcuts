@@ -97,12 +97,12 @@ async function mount(page: Page, { dark = false, width = 800, enabled = true, re
 }
 for (const dark of [false, true]) {
     for (const width of [320, 800]) {
-        test(`Jobs create, run and cancel fits ${width}px in ${dark ? 'dark' : 'light'} theme`, async ({ page }, info) => {
+        test(`Refrains create, run and cancel fits ${width}px in ${dark ? 'dark' : 'light'} theme`, async ({ page }, info) => {
             const errors: string[] = [];
             page.on('pageerror', error => errors.push(error.message));
             page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
             await mount(page, { dark, width });
-            const jobs = page.getByRole('region', { name: 'Jobs', exact: true });
+            const jobs = page.getByRole('region', { name: 'Refrains', exact: true });
             await expect(jobs.getByText('Coda · built-in')).toBeVisible();
             await jobs.getByRole('button', { name: 'New refrain' }).click();
             const dialog = page.getByRole('dialog', { name: 'New refrain', exact: true });
@@ -134,7 +134,7 @@ for (const dark of [false, true]) {
         });
     }
 }
-test('flag-off keeps the Scrubber strip and makes no Jobs calls', async ({ page }) => {
+test('flag-off keeps the Coda strip and makes no Refrains calls', async ({ page }) => {
     await mount(page, { enabled: false });
     await expect(page.getByRole('button', { name: 'Run now' })).toBeVisible();
     await expect(page.getByTestId('sentinel-refrains')).toHaveCount(0);
