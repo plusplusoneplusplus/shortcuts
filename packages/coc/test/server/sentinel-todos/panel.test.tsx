@@ -1281,6 +1281,191 @@ describe('UnifiedTodoTab', () => {
         expect(screen.getByTestId('sentinel-todo-outcome-i1').textContent).toContain('Verified login test');
     });
 
+    it.each(['normal', 'manual'] as const)('renames only the %s title from the header on the exact owner and reloads the list', async type => {
+        const user = userEvent.setup();
+        registerCloneBaseUrls([{ workspaceId: 'ws-1', serverId: 'titles', baseUrl: 'https://titles.example' }]);
+        const owner = { ...OWNER, ownerRoutingRef: 'remote:titles:ws-1' };
+        let current = item({ type, status: 'deferred', priority: 'high', revision: 7, jobs: [{
+            processId: 'child', workspaceId: 'child-repo', kind: 'local', title: 'Original linked chat title',
+            openLink: '#repos/child-repo/chats/child', linkedAt: item().createdAt, execution: { state: 'running' },
+        }] });
+        const before = current;
+        get.mockImplementation(async () => ledger([current], current.revision));
+        update.mockImplementation(async (_ws, _process, _id, { expectedRevision, ...patch }) => {
+            current = { ...current, ...patch, revision: expectedRevision + 1 };
+            return { item: current, ledgerRevision: current.revision };
+        });
+        render(<UnifiedTodoTab owner={owner} scopeWorkspaceId="viewer-workspace" />);
+        fireEvent.click(within(await screen.findByTestId('sentinel-todo-row-i1')).getByRole('button', { pressed: false }));
+        const detail = screen.getByTestId('sentinel-todo-detail-i1');
+        await user.click(within(detail).getByRole('button', { name: 'Edit title' }));
+        const input = within(detail).getByRole('textbox', { name: 'Title' });
+        expect(document.activeElement).toBe(input);
+        expect(within(detail).queryByLabelText('Notes')).toBeNull();
+        expect(within(detail).getByText(before.notes)).toBeTruthy();
+        fireEvent.change(input, { target: { value: '  Renamed title  ' } });
+        await user.keyboard('{Enter}');
+        await waitFor(() => expect(within(detail).queryByRole('textbox', { name: 'Title' })).toBeNull());
+        expect(update).toHaveBeenCalledExactlyOnceWith('ws-1', 'queue_sentinel', 'i1', { expectedRevision: 7, title: 'Renamed title' });
+        expect(current).toEqual({ ...before, title: 'Renamed title', revision: 8 });
+        expect(within(screen.getByTestId('sentinel-todo-row-i1')).getByRole('button', { pressed: true }).title).toBe('Renamed title');
+        expect(within(detail).getByRole('heading', { name: /Renamed title/ })).toBeTruthy();
+        expect(within(detail).getByRole('link', { name: 'Original linked chat title' })).toBeTruthy();
+        expect(document.activeElement).toBe(within(detail).getByRole('button', { name: 'Edit title' }));
+        expect(clientRefs).toContain(owner.ownerRoutingRef);
+        expect(get).toHaveBeenLastCalledWith(owner.ownerWorkspaceId, owner.processId, { full: true });
+        expect(create).not.toHaveBeenCalled();
+    });
+
+    it('validates inline titles and cancels by Escape or Cancel without saving in a narrow pane', async () => {
+        vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(320);
+        const user = userEvent.setup();
+        const title = 'Long readable title ' + 'identifier'.repeat(16);
+        get.mockResolvedValue(ledger([item({ title })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        fireEvent.click(within(await screen.findByTestId('sentinel-todo-row-i1')).getByRole('button', { pressed: false }));
+        const detail = screen.getByTestId('sentinel-todo-detail-i1');
+        const edit = () => within(detail).getByRole('button', { name: 'Edit title' });
+        expect(within(detail).getByText(title).className).toContain('overflow-wrap:anywhere');
+        await user.click(edit());
+        const form = within(detail).getByRole('form', { name: 'Edit To-do title' });
+        const input = within(form).getByRole('textbox', { name: 'Title' }) as HTMLInputElement;
+        expect(input.maxLength).toBe(200);
+        expect(input.required).toBe(true);
+        expect(form.classList.contains('flex-wrap')).toBe(true);
+        fireEvent.change(input, { target: { value: '   ' } });
+        expect((within(form).getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
+        fireEvent.submit(form);
+        expect(update).not.toHaveBeenCalled();
+        fireEvent.change(input, { target: { value: 'Unsaved title' } });
+        await user.keyboard('{Escape}');
+        expect(within(detail).queryByRole('textbox')).toBeNull();
+        expect(document.activeElement).toBe(edit());
+        await user.keyboard('{Enter}');
+        fireEvent.change(within(detail).getByRole('textbox', { name: 'Title' }), { target: { value: 'Another draft' } });
+        await user.click(within(detail).getByRole('button', { name: 'Cancel' }));
+        expect(within(detail).getByText(title)).toBeTruthy();
+        expect(document.activeElement).toBe(edit());
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it.each(['failure', 'conflict'] as const)('retains a title draft after %s and saves only it against the correct revision', async kind => {
+        const user = userEvent.setup();
+        let current = item({ revision: 2 });
+        get.mockImplementation(async () => ledger([current], current.revision));
+        update.mockImplementationOnce(async () => {
+            if (kind === 'conflict') {
+                current = item({ title: 'Concurrent rename', notes: 'Concurrent notes', status: 'deferred', priority: 'high', revision: 3 });
+                throw conflict(current);
+            }
+            throw new Error('disk full');
+        }).mockImplementation(async (_ws, _process, _id, { expectedRevision, ...patch }) => {
+            current = { ...current, ...patch, revision: expectedRevision + 1 };
+            return { item: current, ledgerRevision: current.revision };
+        });
+        render(<UnifiedTodoTab owner={OWNER} />);
+        fireEvent.click(within(await screen.findByTestId('sentinel-todo-row-i1')).getByRole('button', { pressed: false }));
+        const detail = screen.getByTestId('sentinel-todo-detail-i1');
+        await user.click(within(detail).getByRole('button', { name: 'Edit title' }));
+        const input = within(detail).getByRole('textbox', { name: 'Title' });
+        fireEvent.change(input, { target: { value: 'My title' } });
+        await user.keyboard('{Enter}');
+        const error = await within(detail).findByRole('alert');
+        expect(error.textContent).toMatch(kind === 'conflict' ? /changed since you opened it/ : /disk full/);
+        expect((input as HTMLInputElement).value).toBe('My title');
+        expect(update).toHaveBeenCalledExactlyOnceWith('ws-1', 'queue_sentinel', 'i1', { expectedRevision: 2, title: 'My title' });
+        expect(within(error).getByRole('button', { name: 'Retry' })).toBeTruthy();
+        await user.click(input);
+        await user.keyboard('{Enter}');
+        await waitFor(() => expect(within(detail).queryByRole('textbox', { name: 'Title' })).toBeNull());
+        expect(update).toHaveBeenLastCalledWith('ws-1', 'queue_sentinel', 'i1', { expectedRevision: kind === 'conflict' ? 3 : 2, title: 'My title' });
+        if (kind === 'conflict') expect(current).toMatchObject({ notes: 'Concurrent notes', status: 'deferred', priority: 'high' });
+    });
+
+    it.each(['workspace', 'process', 'server'] as const)('keeps title drafts separate across items, remounts and a %s switch', async scope => {
+        registerCloneBaseUrls([
+            { workspaceId: 'ws-1', serverId: 'a', baseUrl: 'https://a.example' },
+            { workspaceId: 'ws-1', serverId: 'b', baseUrl: 'https://b.example' },
+        ]);
+        const owner = { ...OWNER, ownerRoutingRef: 'remote:a:ws-1' };
+        const nextOwner = scope === 'workspace' ? { ...OWNER, ownerWorkspaceId: 'ws-2' }
+            : scope === 'process' ? { ...owner, processId: 'other-parent' } : { ...owner, ownerRoutingRef: 'remote:b:ws-1' };
+        get.mockResolvedValue(ledger([item(), item({ id: 'i2', title: 'Second item' })]));
+        const mounted = render(<UnifiedTodoTab owner={owner} />);
+        fireEvent.click(within(await screen.findByTestId('sentinel-todo-row-i1')).getByRole('button', { pressed: false }));
+        const detail = screen.getByTestId('sentinel-todo-detail-i1');
+        fireEvent.click(within(detail).getByRole('button', { name: 'Edit title' }));
+        fireEvent.change(within(detail).getByLabelText('Title'), { target: { value: 'Owner A draft' } });
+        fireEvent.click(within(screen.getByTestId('sentinel-todo-row-i2')).getByRole('button', { pressed: false }));
+        expect(screen.queryByRole('textbox', { name: 'Title' })).toBeNull();
+        fireEvent.click(within(screen.getByTestId('sentinel-todo-row-i1')).getByRole('button', { pressed: false }));
+        expect((screen.getByRole('textbox', { name: 'Title' }) as HTMLInputElement).value).toBe('Owner A draft');
+        mounted.rerender(<UnifiedTodoTab owner={nextOwner} />);
+        fireEvent.click(within(await screen.findByTestId('sentinel-todo-row-i1')).getByRole('button', { pressed: false }));
+        fireEvent.click(screen.getByRole('button', { name: 'Edit title' }));
+        expect((screen.getByRole('textbox', { name: 'Title' }) as HTMLInputElement).value).toBe('Fix login');
+        fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), { target: { value: 'Owner B draft' } });
+        mounted.rerender(<UnifiedTodoTab owner={owner} />);
+        const restored = await screen.findByRole('textbox', { name: 'Title' });
+        expect((restored as HTMLInputElement).value).toBe('Owner A draft');
+        mounted.unmount();
+        render(<UnifiedTodoTab owner={owner} />);
+        expect((await screen.findByRole('textbox', { name: 'Title' }) as HTMLInputElement).value).toBe('Owner A draft');
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it('discards a late title save failure after switching owners', async () => {
+        const save = deferred<{ item: SentinelTodoItem; ledgerRevision: number }>();
+        get.mockResolvedValue(ledger([item()]));
+        update.mockReturnValue(save.promise);
+        const mounted = render(<UnifiedTodoTab owner={OWNER} />);
+        fireEvent.click(within(await screen.findByTestId('sentinel-todo-row-i1')).getByRole('button', { pressed: false }));
+        fireEvent.click(screen.getByRole('button', { name: 'Edit title' }));
+        fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Old owner title' } });
+        fireEvent.submit(screen.getByRole('form', { name: 'Edit To-do title' }));
+        mounted.rerender(<UnifiedTodoTab owner={{ ...OWNER, processId: 'new-parent' }} />);
+        fireEvent.click(within(await screen.findByTestId('sentinel-todo-row-i1')).getByRole('button', { pressed: false }));
+        await act(async () => save.reject(new Error('Old owner failure')));
+        expect(screen.queryByText(/Old owner failure/)).toBeNull();
+        expect(screen.queryByLabelText('Title')).toBeNull();
+        expect(screen.getByRole('button', { name: 'Edit title' }).hasAttribute('disabled')).toBe(false);
+        expect(update).toHaveBeenCalledExactlyOnceWith('ws-1', 'queue_sentinel', 'i1', { expectedRevision: 1, title: 'Old owner title' });
+    });
+
+    it('blocks competing title actions while saving and keeps archived headers read-only', async () => {
+        const save = deferred<{ item: SentinelTodoItem; ledgerRevision: number }>();
+        get.mockResolvedValue(ledger([item()]));
+        update.mockReturnValue(save.promise);
+        render(<UnifiedTodoTab owner={OWNER} />);
+        fireEvent.click(within(await screen.findByTestId('sentinel-todo-row-i1')).getByRole('button', { pressed: false }));
+        const detail = screen.getByTestId('sentinel-todo-detail-i1');
+        fireEvent.click(within(detail).getByRole('button', { name: 'Edit title' }));
+        const input = within(detail).getByRole('textbox', { name: 'Title' });
+        fireEvent.change(input, { target: { value: 'New title' } });
+        const form = within(detail).getByRole('form', { name: 'Edit To-do title' });
+        fireEvent.submit(form);
+        fireEvent.submit(form);
+        expect(update).toHaveBeenCalledTimes(1);
+        expect((input as HTMLInputElement).disabled).toBe(true);
+        expect((within(detail).getByRole('button', { name: 'Cancel' }) as HTMLButtonElement).disabled).toBe(true);
+        expect((within(detail).getByRole('button', { name: 'Close To-do details' }) as HTMLButtonElement).disabled).toBe(true);
+        const menu = within(screen.getByTestId('sentinel-todo-row-i1')).getByRole('button', { name: 'More actions' });
+        fireEvent.click(menu);
+        expect((screen.getByRole('menuitemradio', { name: 'Needs attention' }) as HTMLButtonElement).disabled).toBe(true);
+        fireEvent.keyDown(menu, { key: 'Escape' });
+        fireEvent.keyDown(input, { key: 'Escape' });
+        expect(within(detail).getByRole('textbox')).toBe(input);
+        await act(async () => save.resolve({ item: item({ title: 'New title', revision: 2 }), ledgerRevision: 1 }));
+        cleanup();
+        clearSentinelTodoExcursion();
+        get.mockResolvedValue(ledger([item({ archived: true })]));
+        render(<UnifiedTodoTab owner={OWNER} />);
+        fireEvent.click(await screen.findByRole('button', { name: 'Archived (1)' }));
+        fireEvent.click(within(screen.getByTestId('sentinel-todo-row-i1')).getByRole('button', { pressed: false }));
+        expect(within(screen.getByTestId('sentinel-todo-detail-i1')).queryByRole('button', { name: 'Edit title' })).toBeNull();
+        expect(update).toHaveBeenCalledTimes(1);
+    });
+
     it('edits with the base revision and keeps the draft on a conflict', async () => {
         const current = item({ title: 'Fix login (renamed)', revision: 3 });
         get.mockResolvedValueOnce(ledger([item({ revision: 2 })])).mockResolvedValue(ledger([current]));

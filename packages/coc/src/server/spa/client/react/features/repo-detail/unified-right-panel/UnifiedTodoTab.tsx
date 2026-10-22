@@ -101,6 +101,7 @@ type FollowLink = (event: MouseEvent<HTMLAnchorElement>, linkKey: string, href?:
 
 type DraftFieldsValue = { title: string; completionCondition: string; notes: string; priority: SentinelTodoPriority };
 type Draft = DraftFieldsValue & {
+    titleOnly?: boolean;
     externalReferences?: SentinelTodoExternalReference[]; externalReferencesChanged?: boolean;
     initialFields?: DraftFieldsValue;
 };
@@ -1066,6 +1067,16 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
     const referencesEnabled = useSentinelTodoExternalReferencesEnabled();
     const [restoredDraft] = useState(() => recallSentinelTodoView(owner).itemDrafts?.[item.id]);
     const [editing, setEditing] = useState<(Draft & { baseRevision: number }) | null>(restoredDraft?.editing ?? null);
+    const titleInput = useRef<HTMLInputElement>(null);
+    const titleEditButton = useRef<HTMLButtonElement>(null);
+    const wasEditingTitle = useRef(false);
+    useLayoutEffect(() => {
+        if (!hidden) {
+            if (editing?.titleOnly) titleInput.current?.focus();
+            else if (wasEditingTitle.current) titleEditButton.current?.focus();
+        }
+        wasEditingTitle.current = editing?.titleOnly === true;
+    }, [editing?.titleOnly, hidden]);
     const [statusDraft, setStatusDraft] = useState<{ status: SentinelTodoStatus; reason: string } | null>(restoredDraft?.statusDraft ?? null);
     const [error, setError] = useState<string | null>(restoredDraft?.error ?? null);
     const { canAttach, attach, attachError, drag } = useTodoAttachment(owner, item);
@@ -1107,20 +1118,20 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
 
     const saveEdit = (event: FormEvent) => {
         event.preventDefault();
-        if (!editing || !editing.title.trim()) return;
+        if (!editing || busy || !editing.title.trim() || (editing.titleOnly && item.archived)) return;
         const draft = editing;
         const initial = draft.initialFields ?? { title: item.title, completionCondition: item.completionCondition,
             notes: item.notes, priority: sentinelTodoPriority(item) };
         const fieldsChanged = draft.title.trim() !== initial.title.trim() || draft.completionCondition.trim() !== initial.completionCondition.trim()
             || draft.notes !== initial.notes || draft.priority !== initial.priority;
         void run(() => onSave(item, {
-            ...(fieldsChanged ? {
+            ...(draft.titleOnly ? { title: draft.title.trim() } : fieldsChanged ? {
                 title: draft.title.trim(),
                 completionCondition: draft.completionCondition.trim(),
                 notes: draft.notes,
                 priority: draft.priority,
             } : {}),
-            ...(referencesEnabled && draft.externalReferencesChanged
+            ...(!draft.titleOnly && referencesEnabled && draft.externalReferencesChanged
                 && JSON.stringify(draft.externalReferences ?? []) !== JSON.stringify(externalReferences(item))
                 ? { externalReferences: draft.externalReferences ?? [] } : {}),
             ...(fieldsChanged && tagLibrary && matchMultiple ? { matchMultiple: true } : {}),
@@ -1128,6 +1139,15 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
         // Keep the typed text; the next save is knowingly based on the newer revision.
         current => setEditing(prev => prev && { ...prev, baseRevision: current?.revision ?? prev.baseRevision }));
     };
+
+    const startEdit = (titleOnly = false) => {
+        setError(null);
+        const fields = { title: item.title, completionCondition: item.completionCondition, notes: item.notes,
+            priority: sentinelTodoPriority(item) };
+        setEditing({ ...fields, titleOnly, baseRevision: item.revision,
+            externalReferences: externalReferences(item), initialFields: fields });
+    };
+    const cancelEdit = () => { setEditing(null); setError(null); };
 
     const applyStatus = (status: SentinelTodoStatus, reason: string, confirmed = false) => {
         const rule = sentinelTodoStatusReason(status);
@@ -1174,13 +1194,41 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                     className="pointer-events-none absolute inset-y-0 left-0 w-1 rounded-l-[3px] bg-[#e51400] dark:bg-[#f14c4c]" />
             )}
             <div className="flex items-start">
-                <h2 id={titleId} tabIndex={-1} data-todo-heading={item.id}
-                    className="m-0 flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 break-words px-2 py-1 text-xs font-semibold focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4]">
-                    <span className="min-w-0 [overflow-wrap:anywhere]">{item.title}</span>
-                    <StatusBadge status={displayStatus} />
-                    {high && <HighPriorityBadge itemId={item.id} />}
-                    {sentinelTodoType(item) === 'manual' && <span className={MUTED}>Tracked only · never run</span>}
-                </h2>
+                <form onSubmit={saveEdit} aria-label={editing?.titleOnly ? 'Edit To-do title' : undefined}
+                    onKeyDown={event => {
+                        if (editing?.titleOnly && event.key === 'Escape') {
+                            event.preventDefault(); event.stopPropagation();
+                            if (!busy) cancelEdit();
+                        }
+                    }}
+                    className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+                    <h2 id={titleId} tabIndex={-1} data-todo-heading={item.id}
+                        aria-label={editing?.titleOnly ? item.title : undefined}
+                        className="m-0 flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5 break-words px-2 py-1 text-xs font-semibold focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4]">
+                        {editing?.titleOnly ? <>
+                            <label className="sr-only" htmlFor={`${domId}-title`}>Title</label>
+                            <input ref={titleInput} id={`${domId}-title`} className={cn(INPUT, 'min-w-0 flex-1 basis-[8rem] font-semibold')}
+                                value={editing.title} maxLength={200} required disabled={busy || item.archived}
+                                onChange={event => setEditing({ ...editing, title: event.target.value })} />
+                        </> : <>
+                            <span className="min-w-0 [overflow-wrap:anywhere]">{item.title}</span>
+                            {!item.archived && <button ref={titleEditButton} type="button" aria-label="Edit title" title="Edit title"
+                                disabled={closeBlocked || editing !== null || statusDraft !== null} onClick={() => startEdit(true)}
+                                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[#848484] hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/[0.04]">
+                                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                                    <path d="m10 2 4 4-8 8H2v-4Z M8 4l4 4" />
+                                </svg>
+                            </button>}
+                        </>}
+                        <StatusBadge status={displayStatus} />
+                        {high && <HighPriorityBadge itemId={item.id} />}
+                        {sentinelTodoType(item) === 'manual' && <span className={MUTED}>Tracked only · never run</span>}
+                    </h2>
+                    {editing?.titleOnly && <div className="flex flex-wrap gap-1 px-2 pb-1">
+                        <Button size="sm" type="submit" disabled={!editing.title.trim() || item.archived} loading={busy}>Save</Button>
+                        <Button size="sm" variant="secondary" disabled={busy} onClick={cancelEdit}>Cancel</Button>
+                    </div>}
+                </form>
                 <button type="button" aria-label="Close To-do details" title="Close To-do details"
                     disabled={closeBlocked} onClick={() => { if (!closeBlocked) onClose(); }}
                     className="m-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-[#848484] hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/[0.04]">
@@ -1220,12 +1268,12 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                             Saved status: {SENTINEL_TODO_STATUS_LABELS[item.status]}.
                         </div>
                     )}
-                    {editing ? (
+                    {editing && !editing.titleOnly ? (
                         <form className="flex flex-col gap-1" onSubmit={saveEdit} data-testid={`sentinel-todo-edit-form-${item.id}`}>
                             <DraftFields draft={editing} onChange={draft => setEditing({ ...editing, ...draft })} idPrefix={`${domId}-edit`}
                                 manual={sentinelTodoType(item) === 'manual'} />
                             <div className="flex flex-wrap justify-end gap-1 pt-1">
-                                <Button size="sm" variant="secondary" onClick={() => { setEditing(null); setError(null); }}>Cancel</Button>
+                                <Button size="sm" variant="secondary" onClick={cancelEdit}>Cancel</Button>
                                 <Button size="sm" type="submit" disabled={!editing.title.trim()} loading={busy}>Save</Button>
                             </div>
                         </form>
@@ -1283,13 +1331,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                                     <TodoTime label="Created" iso={item.createdAt} testId={`sentinel-todo-created-${item.id}`} />
                                 </span>
                                 {!item.archived && (
-                                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditing({
-                                        title: item.title, completionCondition: item.completionCondition, notes: item.notes,
-                                        priority: sentinelTodoPriority(item), baseRevision: item.revision,
-                                        externalReferences: externalReferences(item),
-                                        initialFields: { title: item.title, completionCondition: item.completionCondition,
-                                            notes: item.notes, priority: sentinelTodoPriority(item) },
-                                    })}>Edit</Button>
+                                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => startEdit()}>Edit</Button>
                                 )}
                                 {!item.archived && item.status === 'done' && (
                                     <Button size="sm" variant="ghost" disabled={busy} onClick={() => applyStatus('todo', '')}>Reopen</Button>

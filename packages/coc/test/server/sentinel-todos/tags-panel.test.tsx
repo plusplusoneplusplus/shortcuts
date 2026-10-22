@@ -703,6 +703,23 @@ describe('Sentinel to-do tags', () => {
         expect((within(detail).getByLabelText('Title') as HTMLInputElement).value).toBe('Retained title');
     });
 
+    it.each([false, true])('renames from the header with existing tag matching (multiple=%s) and preserves manual assignments', async multiple => {
+        snapshot.items[0] = { ...snapshot.items[0], tagOrigin: 'manual' };
+        render(<UnifiedTodoTab owner={owner} />);
+        await screen.findByTestId('sentinel-todo-row-item-one');
+        if (multiple) fireEvent.click(screen.getByRole('checkbox', { name: 'Match multiple tags' }));
+        const detail = selectItem();
+        fireEvent.click(within(detail).getByRole('button', { name: 'Edit title' }));
+        fireEvent.change(within(detail).getByLabelText('Title'), { target: { value: 'Revised title for matching' } });
+        fireEvent.click(within(detail).getByRole('button', { name: 'Save', exact: true }));
+        await waitFor(() => expect(within(detail).queryByLabelText('Title')).toBeNull());
+        expect(api.update).toHaveBeenCalledExactlyOnceWith(owner.ownerWorkspaceId, owner.processId, 'item-one', {
+            expectedRevision: 1, title: 'Revised title for matching', ...(multiple ? { matchMultiple: true } : {}),
+        });
+        expect(snapshot.items[0]).toMatchObject({ title: 'Revised title for matching', tagOrigin: 'manual', tagIds: ['tag-ui'] });
+        expect(api.suggestTags).not.toHaveBeenCalled();
+    });
+
     it('only opts new item matching into multiple mode when enabled and selected', async () => {
         api.create.mockResolvedValue({});
         render(<UnifiedTodoTab owner={owner} />);
