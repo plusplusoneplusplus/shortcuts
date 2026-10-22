@@ -40,7 +40,20 @@ function setup(uri = URI, size = 30) {
         editor: {
             getModel: (uri: any) => previews.get(uri.toString()) ?? null,
             createModel: (text: string, _language: string, uri: any) => {
-                const preview = { uri, setValue: vi.fn(), dispose: vi.fn() };
+                let next = 0;
+                const preview: any = {
+                    uri, setValue: vi.fn(), dispose: vi.fn(), disposed: false,
+                    decorations: new Map<string, any>(),
+                    isDisposed: () => preview.disposed,
+                    deltaDecorations: vi.fn((old: string[], added: any[]) => {
+                        for (const id of old) preview.decorations.delete(id);
+                        return added.map(decoration => {
+                            const id = `d${next++}`;
+                            preview.decorations.set(id, decoration);
+                            return id;
+                        });
+                    }),
+                };
                 previews.set(uri.toString(), preview);
                 return preview;
             },
@@ -89,6 +102,20 @@ describe('historical diff definition mount', () => {
         expect(s.loadSource.mock.calls.map(call => call[0])).toEqual(['src/b.ts', 'src/c.ts']);
         expect(s.previews.size).toBe(2);
         expect(s.unsubscribe).toHaveBeenCalledOnce();
+    });
+
+    it('tags each Peek target line as current code and removes the tags on disposal', async () => {
+        const s = setup();
+        await s.providers.definition.provideDefinition(s.model, position, s.token);
+        await s.providers.definition.provideDefinition(s.model, position, s.token);
+        const tagged = [...s.previews.values()].map(preview => [...preview.decorations.values()]);
+        expect(tagged.map(decorations => decorations.map((d: any) => [d.range.startLineNumber, d.options.after.content])))
+            .toEqual([[[8, 'current code']], [[12, 'current code']]]);
+        const [first, second] = [...s.previews.values()];
+        first.disposed = true;
+        s.cleanup();
+        expect(first.decorations.size).toBe(1);
+        expect(second.decorations.size).toBe(0);
     });
 
     it('answers only for its own model and only definitions and hover', async () => {

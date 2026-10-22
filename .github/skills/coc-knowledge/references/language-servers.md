@@ -286,7 +286,8 @@ lifetime is independent of the working-copy document path.
 ref-backed models within the size limit. It scopes providers to the exact model,
 prepares candidate models through the routed Explorer reader for Peek, and uses
 `definitionLinkCue` with a document-free resolver. Hover identifies current-code
-results. Each invocation owns cancellation; disposal revokes pending answers and
+results; Peek gets a `current code` injected-text decoration on each prepared
+target line (`.coc-current-code-tag`), removed by the mount on disposal. Each invocation owns cancellation; disposal revokes pending answers and
 releases providers, previews and the workspace attachment.
 
 Viewer hosts opt in with `historicalDefinitions` plus the concrete clone

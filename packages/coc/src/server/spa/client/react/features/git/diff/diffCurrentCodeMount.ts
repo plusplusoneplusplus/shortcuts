@@ -1,4 +1,5 @@
 /** Definition-only providers for a historical side; never opens an LSP document. */
+import type * as MonacoApi from 'monaco-editor';
 import type { CancellationToken, IPosition } from 'monaco-editor';
 import { browserDocumentUri } from '../../language-servers/documentStore';
 import { installDefinitionLinkCue, type DefinitionLinkCueEditor } from '../../language-servers/definitionLinkCue';
@@ -13,6 +14,11 @@ import { DIFF_LANGUAGE_MAX_CHARS } from './diffLanguageEligibility';
 import type { DiffDefinitionNavigate } from './diffLanguageMount';
 import type { DiffLanguageMountContext } from './monacoDiffController';
 import { DIFF_REF_URI_SCHEME } from './monacoDiffOptions';
+
+/** Appended to each Peek target line; Peek has no per-result label of its own. */
+export const CURRENT_CODE_TAG = 'current code';
+
+type MonacoPreviewModel = Pick<MonacoApi.editor.ITextModel, 'deltaDecorations'> & { isDisposed?(): boolean };
 
 export interface MountDiffCurrentCodeOptions extends DiffLanguageMountContext {
     workspaceId: string;
@@ -47,6 +53,23 @@ export function mountDiffCurrentCodeModel(options: MountDiffCurrentCodeOptions):
             return blob.content;
         }),
     });
+    // Peek shows the preview model, not the hover, so the provenance tag sits
+    // on the target line itself. Decorations are ours to remove; the model may
+    // belong to (or outlive us in) another surface.
+    const tags = new Map<string, { model: MonacoPreviewModel; ids: string[] }>();
+    const tagPreview = (uri: string, line: number) => {
+        const preview = monaco.editor.getModel(monaco.Uri.parse(uri));
+        if (!preview || preview.isDisposed?.()) return;
+        const previous = tags.get(uri);
+        const ids = preview.deltaDecorations(previous?.model === preview ? previous.ids : [], [{
+            range: { startLineNumber: line, endLineNumber: line, startColumn: 1, endColumn: 1 },
+            options: {
+                isWholeLine: true,
+                after: { content: CURRENT_CODE_TAG, inlineClassName: 'coc-current-code-tag' },
+            },
+        }]);
+        tags.set(uri, { model: preview, ids });
+    };
     const shadow = applyShadowLanguage(monaco as unknown as ShadowMonaco, model);
     const lookup = async (position: IPosition, signal: AbortSignal) => {
         const word = model.getWordAtPosition(position);
@@ -78,6 +101,7 @@ export function mountDiffCurrentCodeModel(options: MountDiffCurrentCodeOptions):
             const locations = await Promise.all(targets.map(async target => {
                 const uri = `${browserDocumentUri(workspaceId, target.path)}#${SYMBOL_CANDIDATE_FRAGMENT}`;
                 if (!await preview.prepare(uri, signal, { lineNumber: target.line, column: target.column }, true)) return null;
+                if (!disposed) tagPreview(uri, target.line);
                 return {
                     uri: monaco.Uri.parse(uri),
                     range: {
@@ -121,6 +145,10 @@ export function mountDiffCurrentCodeModel(options: MountDiffCurrentCodeOptions):
         cue.dispose();
         hover.dispose();
         definition.dispose();
+        for (const { model: tagged, ids } of tags.values()) {
+            if (!tagged.isDisposed?.()) tagged.deltaDecorations(ids, []);
+        }
+        tags.clear();
         preview.dispose();
         definitions.dispose();
         shadow?.revert();
