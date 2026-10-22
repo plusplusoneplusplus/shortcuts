@@ -326,7 +326,7 @@ test.describe('BranchRangeOverview — all comments panel', () => {
         await page.getByRole('button', { name: 'Show all branch comments', exact: true }).click();
         await expect(page.getByTestId('branch-range-all-comments')).toBeVisible({ timeout: 10_000 });
         await expect(page.getByTestId('branch-range-all-comments').getByTestId('empty-comments'))
-            .toHaveText('No comments match the current filter.');
+            .toHaveText('No comments yet. Comments you add in any file of this review appear here.');
         await expect(page.getByTestId('branch-range-review')).toHaveCount(0);
     });
 
