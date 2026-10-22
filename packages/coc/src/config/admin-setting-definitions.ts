@@ -847,6 +847,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'browserControl.navigationApprovalEnabled', default: true, runtime: 'live', runtimeFlag: 'browserNavigationApprovalEnabled',
+        ui: {
+            tab: 'browser', group: 'browserAutomation', order: 14, label: 'Ask before new sites',
+            hint: 'Ask before AI browser control loads a page from a new root domain (for example google.com). Turn off to allow every site.',
+            dependsOn: 'browserControl.enabled', badge: 'experimental', testId: 'toggle-browser-navigation-approval-enabled',
+        },
+    }),
+    bool({
         key: 'kusto.enabled', default: false, runtime: 'live', runtimeFlag: 'kustoEnabled',
         ui: {
             tab: 'integrations', group: 'review', order: 62, label: 'Kusto query canvas', badge: 'experimental',

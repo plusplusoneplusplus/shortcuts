@@ -46,6 +46,7 @@ interface DashboardConfig {
     browserFrameControlEnabled?: boolean;
     browserRichPasteEnabled?: boolean;
     browserBackgroundControlEnabled?: boolean;
+    browserNavigationApprovalEnabled?: boolean;
     mcpOauthEnabled?: boolean;
     focusedDiffEnabled?: boolean;
     sessionContextAttachmentsEnabled?: boolean;

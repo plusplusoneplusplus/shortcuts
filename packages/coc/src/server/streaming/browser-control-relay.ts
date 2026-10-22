@@ -31,6 +31,7 @@ export class BrowserControlRelay implements BrowserControlRuntime {
     private framesEnabled = () => false;
     private richPasteEnabled = () => false;
     private backgroundEnabled = () => false;
+    private navigationApprovalEnabled = () => true;
     private sequence = 0;
     private readonly clients = new Map<string, Capability>();
     private readonly pending = new Map<string, Pending>();
@@ -57,6 +58,9 @@ export class BrowserControlRelay implements BrowserControlRuntime {
         this.backgroundEnabled = getEnabled;
         this.syncBackgroundPolicy();
     }
+    /** Agent navigations to an unapproved root domain ask the user first; off allows every site. */
+    getNavigationApprovalEnabled(): boolean { return this.getEnabled() && this.navigationApprovalEnabled() !== false; }
+    setNavigationApprovalEnabledGetter(getEnabled: () => boolean): void { this.navigationApprovalEnabled = getEnabled; }
     /** Re-applies every live policy; call on runtime config change. */
     syncPolicies(): void {
         this.syncBackgroundPolicy();

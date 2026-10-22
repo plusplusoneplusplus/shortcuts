@@ -955,6 +955,7 @@ describe('feature toggle settings-tab placement', () => {
         'cron.enabled': 'features',
         'canvas.enabled': 'features',
         'browserControl.backgroundEnabled': 'browser',
+        'browserControl.navigationApprovalEnabled': 'browser',
         'browserControl.enabled': 'browser',
         'browserControl.framesEnabled': 'browser',
         'browserControl.richPasteEnabled': 'browser',
@@ -1058,12 +1059,14 @@ describe('feature toggle settings-tab placement', () => {
             ['browserControl.framesEnabled', 'browserAutomation', false, undefined, 'live', 'browserFrameControlEnabled', 'experimental', 'toggle-browser-frame-control-enabled'],
             ['browserControl.richPasteEnabled', 'browserAutomation', false, undefined, 'live', 'browserRichPasteEnabled', 'experimental', 'toggle-browser-rich-paste-enabled'],
             ['browserControl.backgroundEnabled', 'browserAutomation', false, undefined, 'live', 'browserBackgroundControlEnabled', 'experimental', 'toggle-browser-background-control-enabled'],
+            ['browserControl.navigationApprovalEnabled', 'browserAutomation', true, undefined, 'live', 'browserNavigationApprovalEnabled', 'experimental', 'toggle-browser-navigation-approval-enabled'],
             ['features.htmlPageTab', 'browserPages', true, undefined, 'live', 'htmlPageTabEnabled', undefined, 'toggle-html-page-tab-enabled'],
             ['features.sensitiveInput', 'browserAutomation', false, undefined, 'live', undefined, 'experimental', 'toggle-sensitive-input-enabled'],
         ]);
-        expect(getFeatureCardSettings('browserAutomation').map(d => d.key)).toEqual(['browserControl.enabled', 'browserControl.framesEnabled', 'browserControl.richPasteEnabled', 'browserControl.backgroundEnabled', 'features.sensitiveInput']);
+        expect(getFeatureCardSettings('browserAutomation').map(d => d.key)).toEqual(['browserControl.enabled', 'browserControl.framesEnabled', 'browserControl.richPasteEnabled', 'browserControl.backgroundEnabled', 'browserControl.navigationApprovalEnabled', 'features.sensitiveInput']);
         expect(getAdminSettingDefinition('browserControl.framesEnabled')?.ui?.dependsOn).toBe('browserControl.enabled');
         expect(getAdminSettingDefinition('browserControl.backgroundEnabled')?.ui?.dependsOn).toBe('browserControl.enabled');
+        expect(getAdminSettingDefinition('browserControl.navigationApprovalEnabled')?.ui?.dependsOn).toBe('browserControl.enabled');
         expect(getFeatureCardSettings('browserPages').map(d => d.key)).toEqual(['features.htmlPageTab']);
         expect(buildRuntimeFeatureFlags({ features: { panelReopenClosedTab: false } } as never)).not.toHaveProperty('panelReopenClosedTabEnabled');
         expect(FEATURE_CARD_GROUPS.filter(g => g.id.startsWith('browser')).map(g => g.heading)).toEqual(['AI Browser Control', 'Pages & Previews']);

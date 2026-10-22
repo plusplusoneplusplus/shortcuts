@@ -11,6 +11,20 @@ const frame = { id: 'f-one', origin: 'https://fixture.test', name: '', document:
 afterEach(() => vi.useRealTimers());
 
 describe('browser control relay', () => {
+    it('defaults navigation approval on, follows the live getter and is off when browser control is off', () => {
+        const relay = new BrowserControlRelay();
+        expect(relay.getNavigationApprovalEnabled()).toBe(false);
+        let on = true;
+        relay.setEnabledGetter(() => on);
+        expect(relay.getNavigationApprovalEnabled()).toBe(true);
+        let approval = false;
+        relay.setNavigationApprovalEnabledGetter(() => approval);
+        expect(relay.getNavigationApprovalEnabled()).toBe(false);
+        approval = true;
+        expect(relay.getNavigationApprovalEnabled()).toBe(true);
+        on = false;
+        expect(relay.getNavigationApprovalEnabled()).toBe(false);
+    });
     it('gates rich paste by owning-server policy and cancels it when disabled', async () => {
         const relay = enabled(), a = client('a');
         relay.advertise(a, 'w', true);

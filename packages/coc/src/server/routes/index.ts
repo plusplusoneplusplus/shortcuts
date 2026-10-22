@@ -905,6 +905,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         browserControl?.setBackgroundEnabledGetter(() => (
             opts.runtimeConfigService?.config ?? opts.resolvedConfig
         )?.browserControl?.backgroundEnabled === true);
+        browserControl?.setNavigationApprovalEnabledGetter(() => (
+            opts.runtimeConfigService?.config ?? opts.resolvedConfig
+        )?.browserControl?.navigationApprovalEnabled !== false);
         return browserControl;
     }, new BrowserToolStateStore(dataDir));
     // Async extension-canvas capabilities + host.complete. Live (admin toggle

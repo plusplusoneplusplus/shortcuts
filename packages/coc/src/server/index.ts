@@ -997,6 +997,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     wsServer.browserControl.setFramesEnabledGetter(() => runtimeConfigService.config.browserControl.framesEnabled === true);
     wsServer.browserControl.setRichPasteEnabledGetter(() => runtimeConfigService.config.browserControl.richPasteEnabled === true);
     wsServer.browserControl.setBackgroundEnabledGetter(() => runtimeConfigService.config.browserControl.backgroundEnabled === true);
+    wsServer.browserControl.setNavigationApprovalEnabledGetter(() => runtimeConfigService.config.browserControl.navigationApprovalEnabled !== false);
     runtimeConfigService.onChange(() => wsServer.browserControl.syncPolicies());
     const { taskWatcher, pipelineWatcher, templateWatcher, notesWatcher } =
         await createWatcherInfrastructure(store, dataDir, wsServer, bridge, notesSearchService, watchService);
