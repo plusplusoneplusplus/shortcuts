@@ -151,7 +151,7 @@ export function sameDiffModels(a: DiffModelsInput | null, b: DiffModelsInput | n
     return same(a.original, b.original) && same(a.modified, b.modified);
 }
 
-export type DiffEditorOptions = monacoEditor.IDiffEditorConstructionOptions;
+export type DiffEditorOptions = monacoEditor.IDiffEditorConstructionOptions & monacoEditor.IGlobalEditorOptions;
 
 /**
  * Whether the modified side may be edited: the host asked for it, the diff is

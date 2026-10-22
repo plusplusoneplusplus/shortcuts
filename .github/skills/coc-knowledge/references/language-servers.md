@@ -282,6 +282,14 @@ carry symbol-candidate provenance. Disposal releases the attachment and aborts
 pending lookups; cancellation suppresses late replies. Its workspace attachment
 lifetime is independent of the working-copy document path.
 
+`diffCurrentCodeMount.ts` provides a separate, definition-only Monaco mount for
+ref-backed models within the size limit. It scopes providers to the exact model,
+prepares candidate models through the routed Explorer reader for Peek, and uses
+`definitionLinkCue` with a document-free resolver. Hover identifies current-code
+results. Each invocation owns cancellation; disposal revokes pending answers and
+releases providers, previews and the workspace attachment. This mount is available
+to viewer hosts independently of the working-copy document mount.
+
 ### Retry
 
 Editor retry travels over `/ws/language-server`. Settings retry uses

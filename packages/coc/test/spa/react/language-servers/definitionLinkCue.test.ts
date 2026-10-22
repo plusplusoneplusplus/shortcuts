@@ -161,6 +161,24 @@ afterEach(() => {
 });
 
 describe('installDefinitionLinkCue', () => {
+    it.each([true, false])('supports a document-free resolver (resolved=%s)', async resolved => {
+        const editor = new FakeEditor();
+        const hasDefinition = vi.fn().mockResolvedValue(resolved);
+        const cue = installDefinitionLinkCue({
+            editor: editor.asEditor(),
+            model: { getWordAtPosition: () => ({ word: 'target', startColumn: 1, endColumn: 7 }) },
+            hasDefinition,
+            isEnabled: () => true,
+            platform: 'Linux',
+            globalEvents: null,
+        });
+        editor.emitMouse(4);
+        await finishDebounce();
+        expect(hasDefinition).toHaveBeenCalledWith({ lineNumber: 2, column: 4 }, expect.any(AbortSignal));
+        expect(editor.collection.set).toHaveBeenCalledTimes(resolved ? 1 : 0);
+        cue.dispose();
+    });
+
     it('decorates a word with Monaco’s definition-link class when a definition exists', async () => {
         const { editor, sendRequest } = setup();
 
