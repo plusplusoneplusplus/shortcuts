@@ -10,9 +10,11 @@
  *   - system    → admin-system-routes.ts (version / restart)
  *   - storage   → admin-storage-routes.ts (status / migration / directory import)
  *   - providers → admin-provider-routes.ts
+ *   - browser   → admin-browser-routes.ts (always-allowed sites)
  */
 
 import type { Route } from '../types';
+import { registerBrowserRoutes } from './admin-browser-routes';
 import { registerConfigRoutes } from './admin-config-routes';
 import { registerDataRoutes } from './admin-data-routes';
 import { registerProviderRoutes } from './admin-provider-routes';
@@ -61,4 +63,5 @@ export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions)
     registerSystemRoutes(routes, options);
     registerStorageRoutes(routes, options);
     registerProviderRoutes(routes, options);
+    registerBrowserRoutes(routes, options);
 }

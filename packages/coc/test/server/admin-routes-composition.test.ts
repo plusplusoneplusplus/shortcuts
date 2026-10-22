@@ -17,6 +17,7 @@ import { registerPromptRoutes } from '../../src/server/admin/admin-prompt-routes
 import { registerSystemRoutes } from '../../src/server/admin/admin-system-routes';
 import { registerStorageRoutes } from '../../src/server/admin/admin-storage-routes';
 import { registerProviderRoutes } from '../../src/server/admin/admin-provider-routes';
+import { registerBrowserRoutes } from '../../src/server/admin/admin-browser-routes';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { Route } from '../../src/server/types';
 import type { AdminRouteOptions } from '../../src/server/admin/admin-route-types';
@@ -48,6 +49,8 @@ const EXPECTED_ROUTES = [
     'GET /api/admin/storage/import-directory-token',
     'POST /api/admin/storage/import-directory',
     'GET /api/admin/providers/availability',
+    'GET /api/admin/browser-approved-sites',
+    'DELETE ^\\/api\\/admin\\/browser-approved-sites\\/([^/]+)$',
 ];
 
 describe('Admin Routes Composition', () => {
@@ -82,6 +85,7 @@ describe('Admin Routes Composition', () => {
         registerSystemRoutes(perDomain, options);
         registerStorageRoutes(perDomain, options);
         registerProviderRoutes(perDomain, options);
+        registerBrowserRoutes(perDomain, options);
 
         expect(new Set(perDomain.map(routeKey))).toEqual(new Set(composed.map(routeKey)));
         expect(perDomain).toHaveLength(composed.length);
@@ -95,6 +99,7 @@ describe('Admin Routes Composition', () => {
             ['system', registerSystemRoutes, 2],
             ['storage', registerStorageRoutes, 7],
             ['provider', registerProviderRoutes, 1],
+            ['browser', registerBrowserRoutes, 2],
         ];
         const seen = new Set<string>();
         for (const [, register, count] of domains) {
