@@ -87,6 +87,7 @@ describe('RemoteServerRuntimeService', () => {
     afterEach(async () => {
         if (remoteServer?.listening) await stop(remoteServer);
         fs.rmSync(dataDir, { recursive: true, force: true });
+        vi.useRealTimers();
         vi.restoreAllMocks();
     });
 
@@ -155,6 +156,45 @@ describe('RemoteServerRuntimeService', () => {
 
         expect(service.remove(second.id)).toBe(true);
         expect(disconnectSpy).toHaveBeenCalledWith('shared-tunnel');
+    });
+
+    it.each(['remove', 'replace'])('stops renewal after the final alias is %s, including an in-flight renewal', async action => {
+        vi.useFakeTimers();
+        const sixHours = 6 * 60 * 60 * 1000;
+        const children: FakeChild[] = [];
+        const commandRunner = vi.fn(async () => ({ stdout: '4000 http coc', stderr: '' }));
+        const connector = new DevTunnelConnector({
+            commandRunner,
+            processStarter: () => {
+                const child = new FakeChild();
+                children.push(child);
+                return child;
+            },
+            healthChecker: async () => true,
+        });
+        const { store, service } = createService({ connector });
+        try {
+            const first = store.create({ kind: 'devtunnel', label: 'Workspace A', tunnelId: 'shared-tunnel' });
+            const second = store.create({ kind: 'devtunnel', label: 'Workspace B', tunnelId: 'shared-tunnel' });
+            await Promise.all([service.connect(first.id), service.connect(second.id)]);
+            service.remove(first.id);
+            await vi.advanceTimersByTimeAsync(sixHours);
+            expect(commandRunner).toHaveBeenCalledTimes(2);
+            expect(service.runtimeById(second.id)).toMatchObject({ status: 'online', effectiveUrl: 'http://127.0.0.1:4000' });
+            let finish!: (value: { stdout: string; stderr: string }) => void;
+            commandRunner.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+            await vi.advanceTimersByTimeAsync(sixHours);
+            if (action === 'remove') service.remove(second.id);
+            else await service.update(second.id, { tunnelId: 'replacement-tunnel' });
+            const spawnCount = children.length;
+            finish({ stdout: '5000 http coc', stderr: '' });
+            await vi.advanceTimersByTimeAsync(sixHours - 1);
+            expect(connector.getState('shared-tunnel').status).toBe('idle');
+            expect(children).toHaveLength(spawnCount);
+            expect(commandRunner).toHaveBeenCalledTimes(action === 'remove' ? 3 : 4);
+        } finally {
+            connector.dispose();
+        }
     });
 
     it('disconnects stale SSH runtime before reconnecting when host settings change', async () => {

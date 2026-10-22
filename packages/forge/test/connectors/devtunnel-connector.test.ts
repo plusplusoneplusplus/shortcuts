@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { DevTunnelConnector } from '../../src/connectors/devtunnel-connector';
 import type { ManagedChildProcess } from '../../src/connectors/types';
 
@@ -229,5 +229,194 @@ describe('DevTunnelConnector', () => {
         connector.dispose();
         expect(child.killed).toBe(true);
         expect(connector.getStates()).toEqual([]);
+    });
+});
+
+describe('DevTunnel six-hour renewal', () => {
+    const sixHours = 6 * 60 * 60 * 1000;
+    const connectors: DevTunnelConnector[] = [];
+    afterEach(() => {
+        connectors.splice(0).forEach(connector => connector.dispose());
+        vi.useRealTimers();
+    });
+    function setup() {
+        vi.useFakeTimers();
+        const children: FakeChild[] = [];
+        const commandRunner = vi.fn(async (_command: string, _args: string[]) => ({ stdout: '4000 http coc', stderr: '' }));
+        const healthChecker = vi.fn(async () => true);
+        const processStarter = vi.fn(() => {
+            const child = new FakeChild();
+            children.push(child);
+            return child;
+        });
+        const connector = new DevTunnelConnector({ commandRunner, processStarter, healthChecker, readinessTimeoutMs: 10, readinessPollMs: 1 });
+        connectors.push(connector);
+        return { connector, children, commandRunner, processStarter, healthChecker };
+    }
+    it('renews at six hours, repeats, and refreshes endpoint and connection age', async () => {
+        const { connector, children, commandRunner, healthChecker } = setup();
+        const first = await connector.connect('t1');
+        expect((connector as any).connections.get('t1').renewalTimer.hasRef()).toBe(false);
+        await vi.advanceTimersByTimeAsync(sixHours - 1);
+        expect(commandRunner).toHaveBeenCalledTimes(1);
+        commandRunner.mockResolvedValue({ stdout: '5000 http coc', stderr: '' });
+        await vi.advanceTimersByTimeAsync(1);
+        expect(children[0].killed).toBe(true);
+        expect(commandRunner).toHaveBeenCalledTimes(2);
+        expect(healthChecker).toHaveBeenLastCalledWith('http://127.0.0.1:5000', expect.any(AbortSignal));
+        expect(connector.getState('t1')).toMatchObject({ status: 'online', port: 5000, startedAt: first.startedAt! + sixHours });
+        await vi.advanceTimersByTimeAsync(sixHours);
+        expect(commandRunner).toHaveBeenCalledTimes(3);
+        expect(children[1].killed).toBe(true);
+    });
+    it('uses the newly forwarded local port during renewal', async () => {
+        const { connector, processStarter, healthChecker } = setup();
+        await connector.connect('t1');
+        processStarter.mockImplementation(() => {
+            const child = new FakeChild();
+            (child as any).stdout = new EventEmitter();
+            setTimeout(() => (child as any).stdout.emit('data', 'Forwarding from 127.0.0.1:51234 to host port 4000'), 1);
+            return child;
+        });
+        await vi.advanceTimersByTimeAsync(sixHours + 2);
+        expect(healthChecker).toHaveBeenLastCalledWith('http://127.0.0.1:51234', expect.any(AbortSignal));
+        expect(connector.getState('t1').effectiveUrl).toBe('http://127.0.0.1:51234');
+    });
+    it('deduplicates aliases and excludes SSH and direct URL registrations', async () => {
+        const { connector, commandRunner } = setup();
+        await connector.connectConfigured([
+            { id: 'workspace-a', kind: 'devtunnel', tunnelId: 'shared' },
+            { id: 'workspace-b', kind: 'devtunnel', tunnelId: 'shared' },
+            { id: 'ssh', kind: 'ssh', host: 'example' },
+            { id: 'url', kind: 'url', url: 'https://example.com' },
+        ] as any);
+        await vi.advanceTimersByTimeAsync(sixHours);
+        expect(commandRunner).toHaveBeenCalledTimes(2);
+        expect(connector.getStates()).toHaveLength(1);
+        expect(commandRunner.mock.calls.every(call => call[1][2] === 'shared')).toBe(true);
+    });
+    it('manual reconnect resets the deadline and joins concurrent requests', async () => {
+        const { connector, commandRunner } = setup();
+        await connector.connect('t1');
+        await vi.advanceTimersByTimeAsync(sixHours - 1);
+        await Promise.all([connector.reconnect('t1'), connector.reconnect('t1'), connector.connect('t1')]);
+        expect(commandRunner).toHaveBeenCalledTimes(2);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(commandRunner).toHaveBeenCalledTimes(2);
+        await vi.advanceTimersByTimeAsync(sixHours - 1);
+        expect(commandRunner).toHaveBeenCalledTimes(3);
+    });
+    it('joins renewal in flight without overlapping or scheduling storms', async () => {
+        const { connector, commandRunner, processStarter } = setup();
+        await connector.connect('t1');
+        let finish!: (value: { stdout: string; stderr: string }) => void;
+        commandRunner.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        await vi.advanceTimersByTimeAsync(sixHours);
+        const manual = connector.reconnect('t1');
+        const connect = connector.connect('t1');
+        await vi.advanceTimersByTimeAsync(sixHours * 3);
+        expect(commandRunner).toHaveBeenCalledTimes(2);
+        expect(processStarter).toHaveBeenCalledTimes(1);
+        finish({ stdout: '4000 http coc', stderr: '' });
+        await Promise.all([manual, connect]);
+        await vi.advanceTimersByTimeAsync(sixHours - 1);
+        expect(commandRunner).toHaveBeenCalledTimes(2);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(commandRunner).toHaveBeenCalledTimes(3);
+    });
+    it.each(['command', 'health', 'spawn'])('surfaces %s failure without an unbounded retry loop', async failure => {
+        const { connector, commandRunner, processStarter, healthChecker, children } = setup();
+        await connector.connect('t1');
+        if (failure === 'command') commandRunner.mockRejectedValue(new Error('renewal failed'));
+        if (failure === 'spawn') processStarter.mockImplementation(() => { throw new Error('spawn failed'); });
+        if (failure === 'health') healthChecker.mockResolvedValue(false);
+        await vi.advanceTimersByTimeAsync(sixHours + 20);
+        expect(connector.getState('t1')).toMatchObject({ status: 'failed', lastError: expect.any(String) });
+        expect(children.every(child => child.killed)).toBe(true);
+        await vi.advanceTimersByTimeAsync(sixHours * 3);
+        expect(commandRunner).toHaveBeenCalledTimes(2);
+    });
+    it.each(['disconnect', 'dispose', 'exit', 'error'])('cancels renewal on %s', async action => {
+        const { connector, children, commandRunner } = setup();
+        await connector.connect('t1');
+        if (action === 'disconnect') connector.disconnect('t1');
+        if (action === 'dispose') connector.dispose();
+        if (action === 'exit') children[0].emit('exit', 1, null);
+        if (action === 'error') children[0].emit('error', new Error('lost tunnel'));
+        await vi.advanceTimersByTimeAsync(sixHours * 2);
+        expect(commandRunner).toHaveBeenCalledTimes(1);
+    });
+    it.each(['command', 'health'])('rejects late %s results after disconnect or replacement', async stage => {
+        const { connector, commandRunner, processStarter, healthChecker } = setup();
+        await connector.connect('t1');
+        let finish!: () => void;
+        if (stage === 'command') commandRunner.mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve({ stdout: '4000 http coc', stderr: '' }); }));
+        else healthChecker.mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve(true); }));
+        await vi.advanceTimersByTimeAsync(sixHours);
+        const stale = connector.connect('t1').catch(error => error);
+        connector.disconnect('t1');
+        const replacement = await connector.connect('t1');
+        const spawnCount = processStarter.mock.calls.length;
+        finish();
+        expect(await stale).toBeInstanceOf(Error);
+        expect(connector.getState('t1')).toEqual(replacement);
+        expect(processStarter).toHaveBeenCalledTimes(spawnCount);
+        await vi.advanceTimersByTimeAsync(sixHours);
+        expect(commandRunner).toHaveBeenCalledTimes(4);
+    });
+    it('a stale attempt cannot clear the replacement single-flight promise', async () => {
+        const { connector, commandRunner } = setup();
+        let finishOld!: (value: { stdout: string; stderr: string }) => void;
+        let finishNew!: (value: { stdout: string; stderr: string }) => void;
+        commandRunner.mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }));
+        const stale = connector.connect('t1').catch(error => error);
+        connector.disconnect('t1');
+        commandRunner.mockImplementationOnce(() => new Promise(resolve => { finishNew = resolve; }));
+        const replacement = connector.connect('t1');
+        finishOld({ stdout: '4000 http coc', stderr: '' });
+        expect(await stale).toBeInstanceOf(Error);
+        const joined = connector.reconnect('t1');
+        expect(commandRunner).toHaveBeenCalledTimes(2);
+        finishNew({ stdout: '5000 http coc', stderr: '' });
+        expect(await joined).toEqual(await replacement);
+    });
+    it.each(['exit', 'error'])('does not publish late readiness success after child %s', async event => {
+        const { connector, children, healthChecker } = setup();
+        let finish!: () => void;
+        healthChecker.mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve(true); }));
+        const pending = connector.connect('t1').catch(error => error);
+        await vi.advanceTimersByTimeAsync(0);
+        if (event === 'exit') children[0].emit('exit', 1, null);
+        else children[0].emit('error', new Error('child failed'));
+        finish();
+        expect(await pending).toBeInstanceOf(Error);
+        expect(connector.getState('t1').status).toBe('failed');
+        expect(vi.getTimerCount()).toBe(0);
+    });
+    it('settles configured startup safely when shutdown revokes port discovery', async () => {
+        const { connector, commandRunner, processStarter } = setup();
+        let finish!: () => void;
+        commandRunner.mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve({ stdout: '4000 http coc', stderr: '' }); }));
+        const startup = connector.connectConfigured([{ kind: 'devtunnel', tunnelId: 't1' }] as any);
+        connector.dispose();
+        finish();
+        await expect(startup).resolves.toEqual([{ tunnelId: 't1', status: 'idle' }]);
+        expect(processStarter).not.toHaveBeenCalled();
+        expect(connector.getStates()).toEqual([]);
+    });
+    it.each(['command', 'health'])('ignores late %s completion after shutdown', async stage => {
+        const { connector, commandRunner, healthChecker, processStarter } = setup();
+        await connector.connect('t1');
+        let finish!: () => void;
+        if (stage === 'command') commandRunner.mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve({ stdout: '4000 http coc', stderr: '' }); }));
+        else healthChecker.mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve(true); }));
+        await vi.advanceTimersByTimeAsync(sixHours);
+        connector.dispose();
+        const spawnCount = processStarter.mock.calls.length;
+        finish();
+        await vi.advanceTimersByTimeAsync(sixHours * 2);
+        expect(connector.getStates()).toEqual([]);
+        expect(processStarter).toHaveBeenCalledTimes(spawnCount);
+        await expect(connector.connect('t1')).rejects.toThrow('disposed');
     });
 });
