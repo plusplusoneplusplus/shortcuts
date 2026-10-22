@@ -44,8 +44,8 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getWarmClientTtlMs: () => 300000,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => {
+    const client = () => ({
         preferences: {
             getLlmToolsConfig: vi.fn().mockResolvedValue({
                 tools: [],
@@ -53,8 +53,11 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
                 conversationRetrievalAvailable: true,
             }),
         },
-    }),
-}));
+    });
+    // The composer resolves a per-clone client (remote clones route through
+    // getCocClientFor) even when Sentinel target autocomplete is inactive.
+    return { getSpaCocClient: client, getCocClientFor: client };
+});
 
 import { FollowUpInputArea } from '../../../../src/server/spa/client/react/features/chat/FollowUpInputArea';
 import type { FollowUpInputAreaProps } from '../../../../src/server/spa/client/react/features/chat/FollowUpInputArea';

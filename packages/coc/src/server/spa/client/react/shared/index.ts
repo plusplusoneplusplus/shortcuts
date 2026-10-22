@@ -9,6 +9,7 @@ export { RichTextInput } from './RichTextInput';
 export type { RichTextInputProps, RichTextInputHandle } from './RichTextInput';
 export { isFilePathCodeSpan, splitFilePathPills, hasFilePathPill } from './richTextPills';
 export type { RichTextSegment } from './richTextPills';
+export { atomicFragment, atomicPoint, atomicSelection, readAtomicText, replaceAtomicRange } from './atomicTargetText';
 export { MarkdownView } from './MarkdownView';
 export type { MarkdownViewProps } from './MarkdownView';
 export { InteractiveTable } from './InteractiveTable';
