@@ -83,6 +83,7 @@ import { createKustoClientRuntime } from './kusto/kusto-client-runtime';
 import { getDefaultSkillsToInstall } from './skills/default-skill-selection';
 import { CronStore } from './cron/cron-store';
 import { cancelLegacySentinelScanCrons } from './cron/legacy-sentinel-crons';
+import { BrowserNavigationApprovals } from './llm-tools/browser-navigation-approval';
 
 // ============================================================================
 // Close Handler Builder
@@ -979,6 +980,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         maxSessionsPerWorkspace: () => runtimeConfigService.config.languageServers.maxSessionsPerWorkspace,
     });
 
+    const browserNavigationApprovals = new BrowserNavigationApprovals(dataDir);
     wsServer = createWebSocketInfrastructure(
         server, store, bridge, registry, scheduleManager,
         terminalInfra?.terminalWsServer,
@@ -990,7 +992,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         },
         process => {
             const workspaceId = process.metadata?.workspaceId;
-            if (typeof workspaceId === 'string') browserState?.delete(workspaceId, process.id);
+            if (typeof workspaceId !== 'string') return;
+            browserState?.delete(workspaceId, process.id);
+            browserNavigationApprovals.forgetConversation(workspaceId, process.id);
         },
     );
     wsServer.browserControl.setEnabledGetter(() => runtimeConfigService.config.browserControl.enabled);
@@ -998,6 +1002,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     wsServer.browserControl.setRichPasteEnabledGetter(() => runtimeConfigService.config.browserControl.richPasteEnabled === true);
     wsServer.browserControl.setBackgroundEnabledGetter(() => runtimeConfigService.config.browserControl.backgroundEnabled === true);
     wsServer.browserControl.setNavigationApprovalEnabledGetter(() => runtimeConfigService.config.browserControl.navigationApprovalEnabled !== false);
+    wsServer.browserControl.setNavigationApprovals(browserNavigationApprovals);
     runtimeConfigService.onChange(() => wsServer.browserControl.syncPolicies());
     const { taskWatcher, pipelineWatcher, templateWatcher, notesWatcher } =
         await createWatcherInfrastructure(store, dataDir, wsServer, bridge, notesSearchService, watchService);

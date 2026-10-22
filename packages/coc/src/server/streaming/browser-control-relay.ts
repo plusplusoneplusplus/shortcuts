@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import type { BrowserCommand, BrowserCommandResult, BrowserControlRuntime } from '@plusplusoneplusplus/coc-client';
+import type { BrowserCommand, BrowserCommandResult, BrowserControlRuntime, BrowserNavigationPrompt } from '@plusplusoneplusplus/coc-client';
+import { browserApprovalSite } from '../llm-tools/browser-navigation-approval';
 
 export interface BrowserRelayClient {
     id: string;
@@ -14,15 +15,29 @@ interface Capability {
     focused: number;
 }
 
+/** Approval memory consulted before an agent navigation loads (see `BrowserNavigationApprovals`). */
+export interface BrowserNavigationApprovalStore {
+    isAllowed(workspaceId: string, processId: string, site: string): boolean;
+    allowOnce(workspaceId: string, processId: string, site: string): void;
+    allowAlways(site: string): void;
+}
+
+interface Prompt extends BrowserNavigationPrompt {
+    client: BrowserRelayClient;
+}
+
 interface Pending {
     client: BrowserRelayClient;
     workspaceId: string;
+    processId: string;
     framesEnabled: boolean;
     richPasteEnabled: boolean;
     cancel(): void;
     finish(error?: unknown, result?: BrowserCommandResult): void;
-    /** Pauses (`true`) or resumes the 60s timer while a background action waits on the Switch back notice. */
+    /** Pauses (`true`) or resumes the 60s timer while the action waits on the Switch back notice or a navigation prompt. */
     wait(waiting: boolean): void;
+    /** Waiting on the Switch back notice. */
+    switchBack?: boolean;
 }
 
 /** Targeted messages never enter the global broadcast/container event channel. */
@@ -37,12 +52,18 @@ export class BrowserControlRelay implements BrowserControlRuntime {
     private readonly pending = new Map<string, Pending>();
     private readonly turns = new WeakMap<AbortSignal, string>();
     private readonly activeTurns = new Map<string, { workspaceId: string; turnId: string; clients: Set<BrowserRelayClient> }>();
+    /** Navigation prompts awaiting the user, by check id. */
+    private readonly prompts = new Map<string, Prompt>();
+    private approvals: BrowserNavigationApprovalStore | undefined;
 
     finishProcess(workspaceId: string, processId: string): void {
         const key = JSON.stringify([workspaceId, processId]);
         const turn = this.activeTurns.get(key);
         if (!turn) return;
         this.activeTurns.delete(key);
+        for (const prompt of [...this.prompts.values()]) {
+            if (prompt.workspaceId === workspaceId && prompt.processId === processId) this.settle(prompt, false);
+        }
         for (const client of turn.clients) {
             try { client.send(JSON.stringify({ type: 'browser-turn-finished', workspaceId, processId, turnId: turn.turnId })); }
             catch { /* disconnected */ }
@@ -60,11 +81,21 @@ export class BrowserControlRelay implements BrowserControlRuntime {
     }
     /** Agent navigations to an unapproved root domain ask the user first; off allows every site. */
     getNavigationApprovalEnabled(): boolean { return this.getEnabled() && this.navigationApprovalEnabled() !== false; }
-    setNavigationApprovalEnabledGetter(getEnabled: () => boolean): void { this.navigationApprovalEnabled = getEnabled; }
+    setNavigationApprovalEnabledGetter(getEnabled: () => boolean): void {
+        this.navigationApprovalEnabled = getEnabled;
+        this.syncNavigationApprovalPolicy();
+    }
+    setNavigationApprovals(approvals: BrowserNavigationApprovalStore): void { this.approvals = approvals; }
     /** Re-applies every live policy; call on runtime config change. */
     syncPolicies(): void {
         this.syncBackgroundPolicy();
         this.syncFramesPolicy();
+        this.syncNavigationApprovalPolicy();
+    }
+    /** Turning approval off allows every navigation still waiting on the user. */
+    syncNavigationApprovalPolicy(): void {
+        if (this.getNavigationApprovalEnabled()) return;
+        for (const prompt of [...this.prompts.values()]) this.settle(prompt, true);
     }
     /** With background control off, sockets serve only their selected workspace. */
     syncBackgroundPolicy(): void {
@@ -131,6 +162,9 @@ export class BrowserControlRelay implements BrowserControlRuntime {
 
     /** Rejects the socket's pending calls and turn routes for the given workspaces (all when null). */
     private drop(client: BrowserRelayClient, workspaces: Set<string> | null): void {
+        for (const prompt of [...this.prompts.values()]) {
+            if (prompt.client === client && (!workspaces || workspaces.has(prompt.workspaceId))) this.settle(prompt, false);
+        }
         for (const [key, turn] of this.activeTurns) {
             if (workspaces && !workspaces.has(turn.workspaceId)) continue;
             turn.clients.delete(client);
@@ -164,7 +198,80 @@ export class BrowserControlRelay implements BrowserControlRuntime {
         if (typeof id !== 'string' || typeof waiting !== 'boolean') return;
         const pending = this.pending.get(id);
         if (!pending || pending.client !== client || waiting && !this.getBackgroundEnabled()) return;
-        pending.wait(waiting);
+        pending.switchBack = waiting;
+        pending.wait(waiting || this.asking(pending.workspaceId, pending.processId));
+    }
+
+    /**
+     * The desktop host holds an agent-driven top-level navigation of an active turn.
+     * Approved, exempt or ungated sites resume at once; otherwise the user is asked in
+     * the conversation's chat and the turn's pending actions stop counting toward 60s.
+     */
+    navigationCheck(client: BrowserRelayClient, message: unknown): void {
+        if (!message || typeof message !== 'object') return;
+        const { checkId, workspaceId, processId, turnId, url } = message as Record<string, unknown>;
+        if (!handle(checkId) || this.prompts.has(checkId)) return;
+        const decide = (allow: boolean) => {
+            try { client.send(JSON.stringify({ type: 'browser-navigation-decision', checkId, allow })); } catch { /* disconnected */ }
+        };
+        if (typeof workspaceId !== 'string' || typeof processId !== 'string' || typeof turnId !== 'string'
+            || typeof url !== 'string' || url.length > 8192) return decide(false);
+        const turn = this.activeTurns.get(JSON.stringify([workspaceId, processId]));
+        if (!turn || turn.turnId !== turnId || !turn.clients.has(client)) return decide(false);
+        const site = browserApprovalSite(url);
+        if (!this.getNavigationApprovalEnabled() || !site || this.approvals?.isAllowed(workspaceId, processId, site)) return decide(true);
+        const prompt: Prompt = { client, checkId, workspaceId, processId, turnId, site, url };
+        this.prompts.set(checkId, prompt);
+        this.syncPromptWaits(workspaceId, processId);
+        try { client.send(JSON.stringify({ type: 'browser-navigation-prompt', prompt: { checkId, workspaceId, processId, turnId, site, url } })); }
+        catch { this.settle(prompt, false); }
+    }
+
+    /** The user's answer from the prompt card; "Deny" fails the turn's pending actions. */
+    navigationAnswer(client: BrowserRelayClient, checkId: unknown, answer: unknown): void {
+        const prompt = typeof checkId === 'string' ? this.prompts.get(checkId) : undefined;
+        if (!prompt || prompt.client !== client || !['once', 'always', 'deny'].includes(answer as string)) return;
+        if (answer === 'deny') {
+            this.settle(prompt, false);
+            for (const pending of [...this.pending.values()]) {
+                if (pending.client !== client || pending.workspaceId !== prompt.workspaceId || pending.processId !== prompt.processId) continue;
+                pending.cancel();
+                pending.finish(new Error(`user denied access to ${prompt.site}`));
+            }
+            return;
+        }
+        if (answer === 'always') this.approvals?.allowAlways(prompt.site);
+        else this.approvals?.allowOnce(prompt.workspaceId, prompt.processId, prompt.site);
+        this.settle(prompt, true);
+        // Other held navigations of this conversation to the same site no longer need asking.
+        for (const other of [...this.prompts.values()]) {
+            if (other.site === prompt.site && other.workspaceId === prompt.workspaceId && other.processId === prompt.processId) this.settle(other, true);
+        }
+    }
+
+    /** Resolves a held navigation and removes its card. */
+    private settle(prompt: Prompt, allow: boolean): void {
+        if (!this.prompts.delete(prompt.checkId)) return;
+        for (const message of [
+            { type: 'browser-navigation-decision', checkId: prompt.checkId, allow },
+            { type: 'browser-navigation-prompt-cleared', checkId: prompt.checkId },
+        ]) {
+            try { prompt.client.send(JSON.stringify(message)); } catch { /* disconnected */ }
+        }
+        this.syncPromptWaits(prompt.workspaceId, prompt.processId);
+    }
+
+    private asking(workspaceId: string, processId: string): boolean {
+        for (const prompt of this.prompts.values()) if (prompt.workspaceId === workspaceId && prompt.processId === processId) return true;
+        return false;
+    }
+
+    /** A conversation's actions wait without a time limit while one of its navigations awaits the user. */
+    private syncPromptWaits(workspaceId: string, processId: string): void {
+        const asking = this.asking(workspaceId, processId);
+        for (const pending of this.pending.values()) {
+            if (pending.workspaceId === workspaceId && pending.processId === processId) pending.wait(asking || pending.switchBack === true);
+        }
     }
 
     execute(workspaceId: string, processId: string, command: BrowserCommand, selectedTab?: string, signal?: AbortSignal, controllingTurnId?: string): Promise<BrowserCommandResult> {
@@ -232,7 +339,8 @@ export class BrowserControlRelay implements BrowserControlRuntime {
                     reject(new Error('Unsupported desktop capability: browser frame control requires frame-aware results'));
                 } else resolve(result!);
             };
-            this.pending.set(id, { client, workspaceId, framesEnabled, richPasteEnabled, cancel, finish, wait });
+            this.pending.set(id, { client, workspaceId, processId, framesEnabled, richPasteEnabled, cancel, finish, wait });
+            if (this.asking(workspaceId, processId)) wait(true);
             signal?.addEventListener('abort', abort, { once: true });
             try { client.send(JSON.stringify({ type: 'browser-command', request: { id, turnId, workspaceId, processId, command, selectedTab, framesEnabled, ...(richPasteEnabled ? { richPasteEnabled: true } : {}) } })); }
             catch (error) { finish(error); }
