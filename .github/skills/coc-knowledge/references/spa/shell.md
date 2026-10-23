@@ -243,7 +243,7 @@ be at most 2048 UTF-16 units, without credentials, fragments or whitespace.
 Browser profiles, cookies and OS-account SSO remain engine-owned. Windows deployment
 performs its own authentication; browser cookies are not transferred. Missing
 handlers, unsupported platforms, cancellation and activation failures are explicit.
-Success means Windows accepted the request, not that the application opened.
+Accepted requests stay silent; acceptance means Windows took the request, not that the application opened.
 Timeout/process failure has an unknown outcome and must not auto-retry.
 Live engine tests stub activation; `--clickonce-check` probes the system DLL/export
 without installing or launching an application.

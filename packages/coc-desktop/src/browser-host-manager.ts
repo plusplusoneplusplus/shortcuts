@@ -577,7 +577,6 @@ export class BrowserHostManager {
                 const live = () => !this.disposed && !entry.closed && entry.hostGeneration === generation && this.entry(entry.ownerId, entry.viewId) === entry && current();
                 applicationPending = true;
                 void dispatchClickOnce(this.options.clickOnce, request, live, entry.ownerId).then(result => {
-                    if (live() && result === 'accepted') this.options.clickOnce!.report(entry.ownerId, 'Windows accepted the activation request. The application may still require installation or approval.');
                     if (live() && result === 'disabled') this.options.clickOnce!.report(entry.ownerId, 'ClickOnce is disabled. Enable it in Desktop Preferences and open a new tab.');
                     if (live() && result === 'cancelled') this.options.clickOnce!.report(entry.ownerId, 'ClickOnce activation was cancelled.');
                 }).catch(error => {
