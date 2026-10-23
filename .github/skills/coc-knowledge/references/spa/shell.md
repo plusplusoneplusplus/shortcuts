@@ -335,6 +335,22 @@ is foreground again, waiting requests re-run. Turn finish, tab close, server
 cancel, flag off, socket close and dispose reject and clear them. Other background
 errors return unchanged. With the flag off, switching cancels as before.
 
+Site approval (live `browserControl.navigationApprovalEnabled`, default on) gates
+agent-driven main-frame loads while a control turn is active on the view, its
+control popout or a tab `open` is creating. Electron holds the profile session's
+mainFrame `webRequest.onBeforeRequest` callback (before any request, per redirect
+hop, POST bodies kept); WebView2 cancels cross-host http(s) new documents in
+native `NavigationStarting` and re-issues `navigate {approved:true}` on Allow
+(back/forward/reload and same-host loads pass; a re-issued POST becomes GET).
+Main sends `coc-desktop:browser-control-navigation-check` to the routing window and
+accepts `...-navigation-decision` only from it; a held check pauses the view queue
+and that conversation's 60s deadlines (`ControlDeadline`). Turn finish, tab/popout
+or owner close and dispose deny held checks. The SPA relay forwards
+source-matched checks as `browser-navigation-check`, denies when disconnected or on
+close/dispose, and shows server prompts as `BrowserNavigationApprovalCard`
+(Allow once / Always allow / Deny) inline in the conversation, or floating when
+that chat is not mounted. Manual navigation, iframes and file previews never ask.
+
 With default-off `browserControl.framesEnabled`, a main-owned per-view registry
 maps opaque frame handles to default-world contexts and private OOPIF sessions.
 Electron debugger events and WebView2 native event receivers supply lifecycle

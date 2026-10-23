@@ -759,6 +759,8 @@ Origin `/execute`, `/submit-pr`, `/ai-review`, `/resolve-comments` require same-
 | POST | `/api/admin/storage/import-directory` | Import (SSE streaming) |
 | GET | `/api/admin/db/tables` | SQLite table list |
 | GET | `/api/admin/db/tables/:name` | Query table data |
+| GET | `/api/admin/browser-approved-sites` | Always-allowed browser control sites |
+| DELETE | `/api/admin/browser-approved-sites/:site` | Remove an always-allowed site (404 if absent) |
 
 ## Real-Time
 

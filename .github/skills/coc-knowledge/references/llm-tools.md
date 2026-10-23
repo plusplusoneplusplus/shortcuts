@@ -727,6 +727,18 @@ hidden tab without focus or selection changes. Actions that need the screen
 relay shows a Switch back notice, sends `browser-command-waiting` so the server
 pauses that call's 60s timer, and waits without timeout. See `spa/shell.md`.
 
+Site approval: with live `browserControl.navigationApprovalEnabled` (default on,
+requires browser control) the desktop asks before an agent-driven top-level load
+reaches a new root domain. `browserApprovalSite(url)` in
+`llm-tools/browser-navigation-approval.ts` maps hosts to eTLD+1 with `tldts`
+(private suffixes on, so `user.github.io` stays whole); non-http(s), `localhost`,
+`*.localhost`, 127/8 and `::1` never ask, other IPs match exactly.
+`BrowserNavigationApprovals(dataDir)` keeps "Allow once" sites per
+[workspaceId, processId] in memory (dropped on process delete) and "Always allow"
+sites in global `<dataDir>/browser-approved-sites.json`, listed and removable in
+Admin → Browser. While a prompt waits, the conversation's pending actions pause
+their 60s timers; Deny fails them with `user denied access to <site>`.
+
 ### kusto_query
 
 Runs a KQL query server-side against Azure Data Explorer using the official
