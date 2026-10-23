@@ -334,6 +334,18 @@ describe('groupReposByRemote with remote checkouts', () => {
     const URL = 'https://github.com/acme/app.git';
     const OTHER = 'https://github.com/acme/other.git';
 
+    it('keys no-URL clones by exact local/server identity, preserving saved ordering', () => {
+        const repos = ['box-a', 'box-b'].map(serverId => ({ workspace: {
+            id: 'same-id', name: serverId, baseUrl: `https://${serverId}.example`,
+            remote: { serverId },
+        } }));
+        const groups = groupReposByRemote([{ workspace: { id: 'same-id', name: 'Local' } }, ...repos], {});
+        expect(groups.map(groupKey)).toEqual([
+            'workspace:same-id', 'workspace:remote:box-a:same-id', 'workspace:remote:box-b:same-id',
+        ]);
+        expect(applyGroupOrder(groups, ['workspace:remote:box-b:same-id']).map(group => group.label)).toEqual(['box-b', 'Local', 'box-a']);
+    });
+
     it('(a) folds a remote clone into the local group by normalized URL', () => {
         // Local + remote checkout of the SAME origin → one group, two clones.
         const groups = groupReposByRemote([localRepo('local', URL), remoteRepo('remote', URL)], {});

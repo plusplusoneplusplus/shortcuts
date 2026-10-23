@@ -100,8 +100,10 @@ const ReposContext = createContext<ReposContextValue | null>(null);
 function buildRemoteRepoData(aggregate: AggregatedRemoteWorkspaces): RepoData[] {
     return aggregate.workspaces.map((ws): RepoData => {
         const selectionId = getWorkspaceSelectionId(ws);
-        const git = aggregate.gitInfo[selectionId] ?? aggregate.gitInfo[ws.id];
-        const workflows = aggregate.workflows?.[selectionId] ?? aggregate.workflows?.[ws.id] ?? [];
+        // Missing or null data belongs to this clone; a bare id can name a
+        // different server's workspace and must not supply its Git identity.
+        const git = aggregate.gitInfo[selectionId];
+        const workflows = aggregate.workflows?.[selectionId] ?? [];
         return {
             workspace: ws,
             gitInfo: git ?? { isGitRepo: !!ws.isGitRepo, branch: null, dirty: false },

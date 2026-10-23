@@ -6,6 +6,7 @@
 // normalizeRemoteUrl is the single source of truth in forge.
 // Imported here so the SPA can reuse the same canonical implementation.
 import { normalizeRemoteUrl } from '@plusplusoneplusplus/forge/git/normalize-url';
+import { getRepoSelectionId } from './cloneIdentity';
 export { normalizeRemoteUrl };
 
 export interface WorkflowInfo {
@@ -299,10 +300,10 @@ export function truncatePath(p: string, max: number): string {
 /**
  * Stable key for a group:
  * - normalizedUrl for multi-repo groups
- * - 'workspace:{id}' for ungrouped (no remote URL) repos
+ * - 'workspace:{selectionId}' for ungrouped repos, including the owning server
  */
 export function groupKey(group: RepoGroup): string {
-    return group.normalizedUrl ?? `workspace:${group.repos[0]?.workspace.id ?? 'unknown'}`;
+    return group.normalizedUrl ?? `workspace:${group.repos[0] ? getRepoSelectionId(group.repos[0]) : 'unknown'}`;
 }
 
 /**

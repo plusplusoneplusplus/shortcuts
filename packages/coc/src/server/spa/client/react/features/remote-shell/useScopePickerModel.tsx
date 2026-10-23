@@ -204,7 +204,7 @@ export function useScopePickerModel(repos: RepoData[], options?: ScopePickerMode
     const { onClose, addTargetRepo } = options ?? {};
     const { state: queueState } = useQueue();
     const { state: appState, dispatch } = useApp();
-    const { fetchRepos, unseenCounts: processUnseenCounts, badgeCounts, badgePartial, remoteGroupWorkspaces } = useRepos();
+    const { fetchRepos, loading: reposLoading, unseenCounts: processUnseenCounts, badgeCounts, badgePartial, remoteGroupWorkspaces } = useRepos();
     const unseenCounts = badgeCounts ?? processUnseenCounts;
     const { selectClone } = useShellNavigation();
     const { goToMyWork, goToMyLife } = useScopeNavigation();
@@ -248,7 +248,7 @@ export function useScopePickerModel(repos: RepoData[], options?: ScopePickerMode
 
     const { recentGroups, remainingGroups, recordUse } = useRecentRemotes(groups);
     const pinnedScopesEnabled = usePinnedScopesEnabled();
-    const { pins, toggle: togglePin, full: pinsFull } = usePinnedScopes();
+    const { pins, toggle: togglePin, full: pinsFull } = usePinnedScopes(reposLoading ? undefined : groups);
     const isPinned = useCallback((ref: PinnedScopeRef) => isPinnedScope(pins, ref), [pins]);
 
     // Remember which clone of the active cluster the user is on, so the picker

@@ -89,45 +89,11 @@ clicking or popping out a pin lands on the clone you were last on, not the clust
 primary. `usePinnedScopes.ts` is a
 module-level store rather than per-hook state so the pin toggles on the picker rows
 (`scope-pin-toggle`, `data-pin-kind` / `data-pin-key`, in `WorkspaceIdentityChip`) and
-the segments in `ScopeSlideSwitcher` stay in sync without a common owner.
-
-An active pin takes the thumb from the workspace segment (`data-active-pin` on the
-container). Because a pin and the chip must never show the same identity twice: a
-pinned *group* suppresses the chip's `groupIdentity`, so the chip falls back to the
-remembered repo with the usual switch-back split button; a pinned *remote* sets
-`identitySuppressed`, collapsing the chip to a bare chevron picker trigger
-(`data-identity-suppressed`).
-
-### Pinned scope segments
-
-`features.pinnedScopes` (runtime `pinnedScopesEnabled`, `isPinnedScopesEnabled()`, hook
-`usePinnedScopesEnabled`; on by default, only meaningful with `scopeSwitcher`) adds
-user-pinned segments between the virtual scopes and the workspace chip, bracketed by
-`scope-pin-divider` on each side. A pin renders as `scope-segment` with
-`data-scope="pin"`, `data-pin-id`, `data-pin-kind`, an unread badge
-(`scope-pin-unseen-badge`), the shared pop-out icon, the shared right-click menu, and
-the hover control `scope-pin-unpin`. The hover controls (unpin and pop-out) are
-revealed with `hidden group-hover:inline-flex group-focus-within:inline-flex`, so an
-idle pin collapses to dot + label + badge and reserves no width for them. Reordering
-lives in the right-click menu as `scope-pin-move-left` / `scope-pin-move-right`, each
-item omitted when that direction is unavailable (first / last pin).
-Below `xl` a pin drops to icon-only; below `lg` the whole strip
-(`scope-pin-strip`) is hidden.
-
-Pins persist in the global preference `pinnedScopes` (cap 8, same shape as
-`recentRemotes`). Each entry is a prefixed, discriminated key because the two things the
-UI calls a "repo group" have separate key spaces: `repo:<groupKey>` is a git-remote
-`RepoGroup`, `group:<workspaceId>` a repo-group virtual workspace. `pinnedScopes.ts`
-holds the pure model (`parsePinnedScope` splits on the first colon so a
-`repo:workspace:<id>` key survives; `resolvePinnedScopes` drops pins whose target is
-missing from the rendered set only, never from storage). A `repo:` pin's `targetId` /
-`workspaceId` come from the same `pickCloneForGroup` the picker uses, fed
-`lastCloneByRemote` through `PinnedScopeResolveContext` so the module stays pure — so
-clicking or popping out a pin lands on the clone you were last on, not the cluster's
-primary. `usePinnedScopes.ts` is a
-module-level store rather than per-hook state so the pin toggles on the picker rows
-(`scope-pin-toggle`, `data-pin-kind` / `data-pin-key`, in `WorkspaceIdentityChip`) and
-the segments in `ScopeSlideSwitcher` stay in sync without a common owner.
+the segments in `ScopeSlideSwitcher` stay in sync without a common owner. Pin
+intent during initial loading replays over saved pins before persistence, preserving
+stored order and the cap. Once repository loading completes, unambiguous no-URL
+workspace pins gain their server-qualified key; ambiguous keys remain stored without
+guessing an owner.
 
 An active pin takes the thumb from the workspace segment (`data-active-pin` on the
 container). Because a pin and the chip must never show the same identity twice: a
@@ -145,7 +111,10 @@ forward `hideIdentity` so identity renders exactly once. Virtual-scope navigatio
 
 `shellModel.ts` and `repoGrouping.ts` hold the shared behavior. Aggregated remote
 checkouts fold into the matching local origin's tab by normalized git URL; a
-remote-only repo gets its own group. `groupReposByRemote` sorts clones **local-first**,
+remote-only repo gets its own group. Missing Git-info/workflows stay on their exact
+clone key in `ReposContext`; raw workspace IDs never supply another server's data.
+Without a Git URL, `groupKey` uses `workspace:<selectionId>`, retaining server identity
+and local workspace keys. `groupReposByRemote` sorts clones **local-first**,
 so the default clone is local when one exists. `partitionShellTabs` keeps page tabs in
 source order and excludes the workspace aliases. Work Items and Pull Requests use
 owner-qualified right-panel tools, including member targets inside repo groups.

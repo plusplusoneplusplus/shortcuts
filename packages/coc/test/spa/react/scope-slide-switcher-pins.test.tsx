@@ -8,7 +8,7 @@
  * @vitest-environment jsdom
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const mockSelectClone = vi.fn();
 const mockSwitchSubTab = vi.fn();
@@ -551,6 +551,42 @@ describe('pinned segments — reorder and unpin', () => {
 });
 
 describe('pinned segments — pinning from the picker', () => {
+    it('pins a local/multi-server cluster during preference loading and restores it after reload', async () => {
+        let finishLoad!: (preferences: unknown) => void;
+        const loading = new Promise(resolve => { finishLoad = resolve; });
+        getGlobal.mockReturnValue(loading);
+        const remoteClones = ['box-a', 'box-b'].map(serverId => ({
+            ...repo('same', `Clone on ${serverId}`, SHORTCUTS),
+            workspace: { ...repo('same', '', SHORTCUTS).workspace, baseUrl: `https://${serverId}.example`, remote: { serverId } },
+        }));
+        mockRepos.push(...remoteClones);
+        mockAppState.lastCloneByRemote = { 'github.com/acme/shortcuts': 'remote:box-b:same' };
+        const mounted = render(<ScopeSlideSwitcher repo={mockRepos[2]} repos={mockRepos} />);
+        fireEvent.click(screen.getByTestId('remote-chip'));
+        const toggle = screen.getAllByTestId('scope-pin-toggle')
+            .find(el => el.getAttribute('data-pin-key') === 'github.com/acme/shortcuts')!;
+        fireEvent.click(toggle);
+        expect(toggle).toHaveAttribute('aria-pressed', 'true');
+        expect(mockSelectClone).not.toHaveBeenCalled();
+        await act(async () => { finishLoad({ pinnedScopes: [FORGE_PIN] }); });
+        expect(pinSegments().map(el => el.getAttribute('data-pin-id'))).toEqual([FORGE_PIN, SHORTCUTS_PIN]);
+        expect(patchGlobal).toHaveBeenLastCalledWith({ pinnedScopes: [FORGE_PIN, SHORTCUTS_PIN] });
+        fireEvent.click(pinSegment(SHORTCUTS_PIN)!);
+        expect(mockSelectClone).toHaveBeenLastCalledWith('remote:box-b:same');
+        mounted.unmount();
+        __resetPinnedScopesStore();
+        getGlobal.mockResolvedValue({ pinnedScopes: [FORGE_PIN, SHORTCUTS_PIN] });
+        render(<ScopeSlideSwitcher repo={mockRepos[2]} repos={mockRepos} />);
+        await waitFor(() => expect(pinSegments().map(el => el.getAttribute('data-pin-id'))).toEqual([FORGE_PIN, SHORTCUTS_PIN]));
+        fireEvent.click(screen.getByTestId('remote-chip'));
+        const restored = screen.getAllByTestId('scope-pin-toggle')
+            .find(el => el.getAttribute('data-pin-key') === 'github.com/acme/shortcuts')!;
+        expect(restored).toHaveAttribute('aria-pressed', 'true');
+        fireEvent.click(restored);
+        expect(pinSegments().map(el => el.getAttribute('data-pin-id'))).toEqual([FORGE_PIN]);
+        expect(patchGlobal).toHaveBeenLastCalledWith({ pinnedScopes: [FORGE_PIN] });
+    });
+
     it('pinning a remote row adds its segment immediately', async () => {
         getGlobal.mockResolvedValue({ pinnedScopes: [] });
         render(<ScopeSlideSwitcher repo={mockRepos[2]} repos={mockRepos} />);
