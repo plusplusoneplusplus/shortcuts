@@ -8,6 +8,7 @@ import { Dialog } from '../../../ui/Dialog';
 import { formatRelativeTime } from '../../../utils/format';
 import { sentinelTodoOwnerKey, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 import { SentinelOvertureEditor } from './SentinelOvertureEditor';
+import { SentinelAutomationInfo } from './SentinelAutomationInfo';
 import { eligibleTriggerItems, isTerminalTrigger, triggerError } from './sentinelOvertureModel';
 import './sentinelOvertures.css';
 
@@ -123,9 +124,12 @@ function TriggerSection({ owner, items, client, onItemLink }: {
         </div>}
         {sorted.length > 0 ? <section aria-labelledby={`${id}-heading`} className="sentinel-overture-section" data-testid="sentinel-overtures">
             <div className="sentinel-overture-heading">
-                <h3><button id={`${id}-heading`} type="button" aria-expanded={open} aria-controls={`${id}-body`} onClick={() => setOpen(value => !value)}>
-                    <span aria-hidden="true">{open ? '▾' : '▸'}</span> Overtures ({sorted.length})
-                </button></h3>{add}
+                <div className="flex min-w-0 flex-wrap items-center gap-1">
+                    <h3><button id={`${id}-heading`} type="button" aria-expanded={open} aria-controls={`${id}-body`} onClick={() => setOpen(value => !value)}>
+                        <span aria-hidden="true">{open ? '▾' : '▸'}</span> Overtures ({sorted.length})
+                    </button></h3>
+                    <SentinelAutomationInfo term="Overtures" />
+                </div>{add}
             </div>
             {open && <ul id={`${id}-body`} className="sentinel-overture-list">
                 {sorted.map(rule => {
@@ -170,7 +174,7 @@ function TriggerSection({ owner, items, client, onItemLink }: {
                     </li>;
                 })}
             </ul>}
-        </section> : <div className="sentinel-overture-entry">{add}</div>}
+        </section> : <div className="sentinel-overture-entry flex flex-wrap items-center gap-1">{add}<SentinelAutomationInfo term="Overtures" /></div>}
         {editor && <SentinelOvertureEditor client={client} owner={owner} items={items} dateTimeEnabled={dateTimeEnabled} trigger={editor === 'new' ? undefined : editor} onClose={() => setEditor(null)}
             onSaved={() => { setEditor(null); void load(); }} onConflict={() => { void load(); }} />}
         {runNow && <Dialog open trapFocus disableClose={busy} title="Run overture now" onClose={() => { if (!busy) setRunNow(null); }}>

@@ -79,6 +79,56 @@ async function fillNew() {
 }
 
 describe('Sentinel Refrains', () => {
+    it.each([
+        { refrains: true, coda: true }, { refrains: true, coda: false },
+        { refrains: false, coda: true }, { refrains: false, coda: false },
+    ])('explains available automation without changing sections or running anything ($refrains/$coda)', async ({ refrains, coda }) => {
+        applyRuntimeConfigPatch({ sentinelTodoJobsEnabled: refrains, sentinelTodoScrubberEnabled: coda });
+        view();
+        if (refrains) await screen.findByText(/No refrains yet/);
+        if (coda) await screen.findByRole('button', { name: 'Run now' });
+        expect(!!screen.queryByRole('button', { name: 'About Refrains' })).toBe(refrains);
+        expect(!!screen.queryByRole('button', { name: 'About Coda' })).toBe(coda);
+        if (refrains) {
+            const toggle = screen.getByRole('button', { name: /Refrains \(0\/10\)/ });
+            const info = screen.getByRole('button', { name: 'About Refrains' });
+            expect(toggle.contains(info)).toBe(false);
+            fireEvent.click(info);
+            const dialog = screen.getByRole('dialog', { name: 'About Refrains' });
+            expect(dialog.textContent).toContain('An optional gate decides whether a run should start');
+            expect(dialog.textContent).toContain('Results return to this Sentinel');
+            expect(toggle.getAttribute('aria-expanded')).toBe('true');
+            fireEvent.keyDown(dialog, { key: 'Escape' });
+        }
+        if (coda) {
+            fireEvent.click(screen.getByRole('button', { name: 'About Coda' }));
+            const dialog = screen.getByRole('dialog', { name: 'About Coda' });
+            expect(dialog.textContent).toContain('Done results may apply automatically');
+            expect(dialog.textContent).toContain('manual and Deferred items need your approval');
+            expect(dialog.textContent).toContain('does not carry out the tasks');
+            if (refrains) expect(screen.getByTestId('sentinel-refrains-built-in')).toBeTruthy();
+            else expect(screen.queryByRole('region', { name: 'Refrains' })).toBeNull();
+        }
+        for (const mutation of [mock.create, mock.start, mock.update, mock.delete, mock.cancel, mock.testGate, mock.resumeGate,
+            mock.scrubStart, mock.scrubUpdate]) expect(mutation).not.toHaveBeenCalled();
+    });
+
+    it.each(['workspace', 'process', 'server'] as const)('drops open help when the exact remote %s owner changes', async change => {
+        mock.route = { kind: 'remote', baseUrl: 'https://owner.test' };
+        const own = { ...owner, ownerRoutingRef: 'remote:server-a:ws-a' };
+        const mounted = view(own);
+        fireEvent.click(await screen.findByRole('button', { name: 'About Refrains' }));
+        expect(screen.getByRole('dialog', { name: 'About Refrains' })).toBeTruthy();
+        const next = change === 'workspace' ? { ...own, ownerWorkspaceId: 'ws-other', ownerRoutingRef: 'remote:server-a:ws-other' }
+            : change === 'process' ? { ...own, processId: 'queue_other' } : { ...own, ownerRoutingRef: 'remote:server-b:ws-a' };
+        mounted.rerender(<SentinelRefrains owner={next} items={[]} onFollowLink={follow} />);
+        await screen.findByRole('button', { name: 'About Refrains' });
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(mock.refs).toContain(next.ownerRoutingRef);
+        expect(mock.create).not.toHaveBeenCalled();
+        expect(mock.start).not.toHaveBeenCalled();
+    });
+
     it('keeps the existing Scrubber strip and makes no jobs reads with the flag off', async () => {
         applyRuntimeConfigPatch({ sentinelTodoJobsEnabled: false, sentinelTodoScrubberEnabled: true });
         view();
