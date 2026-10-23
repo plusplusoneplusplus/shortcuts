@@ -75,6 +75,31 @@ describe('Coda run history', () => {
             expect.objectContaining({ method: 'GET', signal: expect.any(AbortSignal) }));
     });
 
+    it.each(['unchanged', 'unverified'] as const)('retains %s diagnostics and evidence in read-only history', async state => {
+        const entry = { ...record(state), audit: [] };
+        entry.finding = { ...entry.finding, verdict: state, autoApply: false, summary: 'No actionable assessment',
+            ...(state === 'unverified' ? { unverifiedReason: 'Remote server offline' } : {}) };
+        entry.finding.evidence.push({ kind: 'other', ref: 'javascript:alert(1)', state: 'other', checkedAt: at });
+        const transport = client(detail({ findings: [entry] }));
+        render(<SentinelCodaHistory client={transport.api} owner={owner}
+            runs={[summary({ counts: { done: 0, proposals: 0, unverified: state === 'unverified' ? 1 : 0 } })]}
+            items={[]} onFollowLink={follow} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Details and change log' }));
+        const region = await screen.findByRole('region', { name: 'Coda run detail' });
+        await within(region).findByText(`${state} · ${state} · snapshot revision 1`);
+        expect(within(region).getByText('No actionable assessment')).toBeInTheDocument();
+        if (state === 'unverified') expect(within(region).getByText('Unverified: Remote server offline')).toBeInTheDocument();
+        fireEvent.click(within(region).getByText('Evidence'));
+        expect(within(region).getByText('Confidence: high · Completion verified')).toBeInTheDocument();
+        expect(within(region).getByRole('link', { name: 'https://example.test/pull/1' })).toBeInTheDocument();
+        expect(within(region).getByText(/javascript:alert\(1\)/)).toBeInTheDocument();
+        expect(within(region).queryByRole('link', { name: 'javascript:alert(1)' })).toBeNull();
+        expect(within(region).getByText('No changes recorded for this finding.')).toBeInTheDocument();
+        for (const name of ['Accept', 'Dismiss', 'Undo', 'Accept all proposals']) expect(within(region).queryByRole('button', { name })).toBeNull();
+        expect(transport.fetch).toHaveBeenCalledExactlyOnceWith('https://remote.test/api/workspaces/group/sentinel-todos/chat/scrubber/runs/run-1',
+            expect.objectContaining({ method: 'GET' }));
+    });
+
     it('explains cancellation and pending findings without claiming changes applied', async () => {
         const pending = { ...record('pending'), audit: [] };
         pending.finding.evidence[0].ref = 'javascript:alert(1)';

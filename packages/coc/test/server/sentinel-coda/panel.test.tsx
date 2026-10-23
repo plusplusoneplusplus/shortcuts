@@ -393,8 +393,8 @@ describe('Scrubber row findings', () => {
             expect(screen.queryByText('Accepted 1 proposal.')).toBeNull();
         });
 
-        it('uses newest hidden findings to exclude older proposals from bulk acceptance', async () => {
-            const newest = results([finding('suppressed')], 'new');
+        it.each(['suppressed', 'unchanged', 'unverified'] as const)('uses newest %s findings to exclude older proposals from bulk acceptance', async state => {
+            const newest = results([finding(state)], 'new');
             const older = results([proposal('a')], 'old');
             mock.get.mockResolvedValue(response({ runs: [newest.summary, older.summary] }));
             mock.getRun.mockImplementation((_ws, _pid, runId) => Promise.resolve(runId === 'new' ? newest.detail : older.detail));
@@ -443,16 +443,19 @@ describe('Scrubber row findings', () => {
         expect(mock.accept).toHaveBeenCalledTimes(1);
     });
 
-    it('shows unverified reasons without actions and treats unsafe evidence refs as text', async () => {
-        const record = finding('unverified');
-        record.finding = { ...record.finding, verdict: 'unverified', unverifiedReason: 'Remote server offline',
-            evidence: [{ kind: 'other', ref: 'javascript:alert(1)', state: 'other', checkedAt: '2026-10-11T01:00:00Z' }] };
+    it.each(['unchanged', 'unverified'] as const)('hides %s findings on cards without mutating or dismissing the assessment', async state => {
+        const record = finding(state);
+        record.finding = { ...record.finding, verdict: state, summary: 'No actionable assessment',
+            ...(state === 'unverified' ? { unverifiedReason: 'Remote server offline' } : {}) };
+        const before = structuredClone(record);
         setupFindings(record);
-        render(rows());
-        await screen.findByText('? Unverified');
-        expect(screen.getByText('· Remote server offline')).toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
-        expect(screen.queryByRole('link', { name: 'javascript:alert(1)' })).toBeNull();
+        await act(async () => { render(rows()); });
+        expect(mock.getRun).toHaveBeenCalledExactlyOnceWith(owner.ownerWorkspaceId, owner.processId, 'result');
+        expect(screen.queryByRole('group', { name: 'Coda finding for Item a' })).toBeNull();
+        expect(screen.queryByText(/No actionable assessment|Remote server offline|Unverified/)).toBeNull();
+        for (const name of ['Accept', 'Dismiss', 'Undo', 'Accept all proposals']) expect(screen.queryByRole('button', { name })).toBeNull();
+        for (const action of [mock.accept, mock.dismiss, mock.undo, mock.start, mock.cancel, mock.updateConfig]) expect(action).not.toHaveBeenCalled();
+        expect(record).toEqual(before);
     });
 
     it('keeps run controls available when findings fail to load and disables stale finding actions', async () => {
@@ -470,8 +473,8 @@ describe('Scrubber row findings', () => {
         await waitFor(() => expect(screen.getByRole('button', { name: 'Accept' })).toBeEnabled());
     });
 
-    it('lets the newest suppressed finding hide older applied badges', async () => {
-        const newest = results([finding('suppressed')], 'new');
+    it.each(['suppressed', 'unchanged', 'unverified'] as const)('lets the newest %s finding hide older applied badges', async state => {
+        const newest = results([finding(state)], 'new');
         const old = results([finding('applied', { audit: [{ action: 'applied', actor: 'scrubber', at: '2026-10-11T01:00:00Z', after: { status: 'done', archived: false, revision: 1 } }] })], 'old');
         mock.get.mockResolvedValue(response({ runs: [newest.summary, old.summary] }));
         mock.getRun.mockImplementation((_ws, _pid, runId) => Promise.resolve(runId === 'new' ? newest.detail : old.detail));

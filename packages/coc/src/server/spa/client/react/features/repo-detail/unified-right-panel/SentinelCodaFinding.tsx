@@ -33,16 +33,16 @@ function webLink(ref: string): string | undefined {
 export function SentinelCodaFinding({ item }: { item: SentinelTodoItem }) {
     const { findings, busy, act } = useContext(CodaFindingsContext);
     const record = findings.get(item.id);
-    if (!record || !['applied', 'proposed', 'unverified'].includes(record.state)) return null;
+    if (!record || (record.state !== 'applied' && record.state !== 'proposed')) return null;
     const appliedRevision = record.audit.find(entry => entry.action === 'applied')?.after?.revision;
     if (record.state === 'applied' && (appliedRevision === undefined || appliedRevision !== item.revision)) return null;
     const stale = record.state === 'proposed' && record.itemRevision !== item.revision;
     const finding = record.finding;
     return <div role="group" aria-label={`Coda finding for ${item.title}`} className="flex flex-col gap-1 px-2 pb-1.5 text-[11px]">
         <div className="flex flex-wrap items-center gap-1">
-            <span>{record.state === 'applied' ? '✓ Done by Coda' : record.state === 'proposed'
-                ? `◇ Proposal: ${verdictLabels[finding.verdict]} (${finding.confidence})` : '? Unverified'}</span>
-            <span>· {record.state === 'unverified' ? finding.unverifiedReason ?? finding.summary : finding.summary}</span>
+            <span>{record.state === 'applied' ? '✓ Done by Coda'
+                : `◇ Proposal: ${verdictLabels[finding.verdict]} (${finding.confidence})`}</span>
+            <span>· {finding.summary}</span>
             {record.state === 'proposed' && <>
                 <Button size="sm" variant="secondary" disabled={busy || stale} onClick={() => { void act(record, 'accept'); }}>Accept</Button>
                 <Button size="sm" variant="ghost" disabled={busy} onClick={() => { void act(record, 'dismiss'); }}>Dismiss</Button>
