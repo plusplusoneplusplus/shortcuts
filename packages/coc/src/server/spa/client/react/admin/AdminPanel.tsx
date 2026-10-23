@@ -24,6 +24,7 @@ import { PromptsPanel } from './PromptsPanel';
 import { ProviderTokensSection } from './ProviderTokensSection';
 import { SettingsCard } from './SettingsCard';
 import { BrowserSectionNav, DesktopBrowserPreferences } from './DesktopBrowserPreferences';
+import { BrowserApprovedSites } from './BrowserApprovedSites';
 import { AdminRow, AdminToggle, SourceBadge } from './adminControls';
 
 import { isContainerMode } from '../utils/config';
@@ -827,6 +828,7 @@ export function AdminPanel() {
                                         'Browser features',
                                         'AI browser control and in-app page behavior. Saved to this server\'s config, separately from the desktop preferences.',
                                     )}
+                                    <BrowserApprovedSites />
                                 </>
                             )}
 
