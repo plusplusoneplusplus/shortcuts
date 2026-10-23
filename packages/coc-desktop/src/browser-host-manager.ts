@@ -15,7 +15,7 @@ import type { BrowserControlPage } from './browser-control-page';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { BrowserCommandRequest, BrowserCommandResult, BrowserControlTab } from '@plusplusoneplusplus/coc-client';
-import { BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FOCUSED_CHANNEL, BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_STOP_CHANNEL, type BrowserControlActivityEvent, validateBrowserCommandRequest } from './browser-control-command';
+import { BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FOCUSED_CHANNEL, BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_STOP_CHANNEL, BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL, type BrowserControlActivityEvent, type BrowserNavigationCheckEvent, validateBrowserCommandRequest } from './browser-control-command';
 
 interface Entry {
     ownerId: number;
@@ -33,10 +33,29 @@ interface Entry {
     commitRevision?: number;
     control?: BrowserControlQueue;
     popout?: boolean;
-    activity?: BrowserControlActivityEvent & { routingOwnerId: number };
+    activity?: ControlActivity;
     /** CDP focus emulation is on so a background tab takes input without window focus. */
     focusEmulated?: boolean;
     hostGeneration?: object;
+}
+
+type ControlActivity = BrowserControlActivityEvent & { routingOwnerId: number };
+
+interface NavigationCheck {
+    entry: Entry;
+    popoutViewId?: string;
+    event: BrowserNavigationCheckEvent;
+    routingOwnerId: number;
+    resolve(allow: boolean): void;
+    /** Paused 60s deadlines of this conversation's commands. */
+    releases: (() => void)[];
+}
+
+interface CommandHold {
+    routingOwnerId: number;
+    workspaceId: string;
+    processId: string;
+    hold(): () => void;
 }
 
 function throwRejected(results: PromiseSettledResult<unknown>[]): void {
@@ -70,6 +89,11 @@ export class BrowserHostManager {
     private disposed = false;
     private readonly imports = new Map<BrowserEngine, Set<Promise<BrowserCookieImportResult>>>();
     private zoomUpdate: Promise<unknown> = Promise.resolve();
+    /** Held agent-driven navigations, keyed by check id, answered by the routing window. */
+    private readonly navigationChecks = new Map<string, NavigationCheck>();
+    /** A tab `open` is creating: its first load is gated before the turn activates the tab. */
+    private readonly pendingActivity = new Map<string, ControlActivity>();
+    private readonly commandHolds = new Set<CommandHold>();
 
     constructor(private readonly options: BrowserManagerOptions) {}
 
@@ -123,6 +147,7 @@ export class BrowserHostManager {
             this.finishedTurns.set(activity.routingOwnerId, turns);
         }
         entry.activity = undefined;
+        this.pruneNavigationChecks();
         this.options.send(entry.ownerId, BROWSER_CONTROL_ACTIVITY_CHANNEL, { ...activity, active: false, finished });
         this.nativeActivity(entry);
         if (activity.background) void this.backgroundControl(entry, false).catch(error => console.error('[coc-desktop] Browser background control cleanup failed:', error));
@@ -233,8 +258,27 @@ export class BrowserHostManager {
             !entry.closed && entry.sourceKind === 'url' && entry.sessionKey === scope.sessionKey);
     }
 
-    async executeControl(ownerId: number, input: BrowserCommandRequest, signal?: AbortSignal, routingRef?: string): Promise<BrowserCommandResult> {
+    /**
+     * `hold` pauses the caller's own 60s deadline while a navigation of this conversation waits
+     * for the user's approval; the per-view queue deadline pauses as well.
+     */
+    async executeControl(ownerId: number, input: BrowserCommandRequest, signal?: AbortSignal, routingRef?: string, hold?: () => () => void): Promise<BrowserCommandResult> {
         const request = validateBrowserCommandRequest(input);
+        const commandHold: CommandHold | undefined = hold && { routingOwnerId: ownerId, workspaceId: request.workspaceId, processId: request.processId, hold };
+        if (commandHold) {
+            this.commandHolds.add(commandHold);
+            for (const check of this.navigationChecks.values()) if (this.holdsCommand(check, commandHold)) check.releases.push(commandHold.hold());
+        }
+        const pendingKeys: string[] = [];
+        try { return await this.runControl(ownerId, request, signal, routingRef, pendingKeys); }
+        finally {
+            if (commandHold) this.commandHolds.delete(commandHold);
+            for (const key of pendingKeys) this.pendingActivity.delete(key);
+            if (pendingKeys.length) this.pruneNavigationChecks();
+        }
+    }
+
+    private async runControl(ownerId: number, request: BrowserCommandRequest, signal: AbortSignal | undefined, routingRef: string | undefined, pendingKeys: string[]): Promise<BrowserCommandResult> {
         signal?.throwIfAborted();
         if (this.finishedTurns.get(ownerId)?.has(request.turnId ?? request.processId)) throw new Error('Browser conversation turn has finished');
         const scope = this.controlScope(ownerId, request.workspaceId, routingRef);
@@ -261,6 +305,10 @@ export class BrowserHostManager {
         if (target && !entry && command.action !== 'open') throw new Error('Browser tab not found in this workspace');
         if (command.action === 'open' && (command.newTab || !entry)) {
             const viewId = `browser-${randomUUID()}`;
+            const pendingKey = JSON.stringify([ownerId, viewId]);
+            this.pendingActivity.set(pendingKey, { workspaceId: request.workspaceId, processId: request.processId, turnId: request.turnId ?? request.processId,
+                routingRef: scope.sessionKey, viewId, active: true, routingOwnerId: ownerId });
+            pendingKeys.push(pendingKey);
             const opened = this.open(ownerId, viewId, command.url!, scope.sessionKey);
             // Publish through the existing unified panel before Electron waits for guest adoption.
             this.options.send(ownerId, BROWSER_CONTROL_REVEAL_CHANNEL, {
@@ -595,6 +643,7 @@ export class BrowserHostManager {
                 if (!popout?.popout) return;
                 this.clearControlEntry(popout, false);
                 popout.closed = true;
+                this.pruneNavigationChecks();
                 popout.control?.cancel(new Error('Browser popout closed'));
                 this.owners.get(entry.ownerId)?.delete(viewId);
             },
@@ -605,6 +654,7 @@ export class BrowserHostManager {
                 const popout = this.entry(entry.ownerId, viewId);
                 if (popout?.popout && !popout.closed) this.stopControl(popout, turnId);
             },
+            navigationGate: (url, popoutViewId) => this.navigationGate(entry, url, popoutViewId),
         });
         if (entry.closed) {
             await view.close();
@@ -616,6 +666,58 @@ export class BrowserHostManager {
             catch (error) { await view.close(); entry.view = undefined; throw error; }
         }
         return view;
+    }
+
+    /** The control turn driving a view: its popout's, its own, or the `open` that is creating it. */
+    private gateActivity(entry: Entry, popoutViewId?: string): ControlActivity | undefined {
+        const popout = popoutViewId === undefined ? undefined : this.entry(entry.ownerId, popoutViewId);
+        if (popout?.popout && !popout.closed && popout.activity) return popout.activity;
+        return entry.activity ?? this.pendingActivity.get(JSON.stringify([entry.ownerId, entry.viewId]));
+    }
+
+    /** Manual navigation passes; an agent-driven one waits for the routing window's server to decide. */
+    private navigationGate(entry: Entry, url: string, popoutViewId?: string): boolean | Promise<boolean> {
+        const activity = this.gateActivity(entry, popoutViewId);
+        if (!activity || entry.sourceKind !== 'url' || !validateBrowserUrl(url).ok) return true;
+        if (this.disposed || entry.closed) return false;
+        const event: BrowserNavigationCheckEvent = { checkId: randomUUID(), workspaceId: activity.workspaceId, processId: activity.processId,
+            turnId: activity.turnId, routingRef: activity.routingRef, url };
+        return new Promise<boolean>(resolve => {
+            const check: NavigationCheck = { entry, popoutViewId, event, routingOwnerId: activity.routingOwnerId, resolve, releases: [] };
+            if (entry.control) check.releases.push(entry.control.hold());
+            const popout = popoutViewId === undefined ? undefined : this.entry(entry.ownerId, popoutViewId);
+            if (popout?.control) check.releases.push(popout.control.hold());
+            for (const commandHold of this.commandHolds) if (this.holdsCommand(check, commandHold)) check.releases.push(commandHold.hold());
+            this.navigationChecks.set(event.checkId, check);
+            this.options.send(activity.routingOwnerId, BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL, event);
+        });
+    }
+
+    private holdsCommand(check: NavigationCheck, hold: CommandHold): boolean {
+        return hold.routingOwnerId === check.routingOwnerId && hold.workspaceId === check.event.workspaceId && hold.processId === check.event.processId;
+    }
+
+    private settleNavigation(check: NavigationCheck, allow: boolean): void {
+        if (this.navigationChecks.get(check.event.checkId) !== check) return;
+        this.navigationChecks.delete(check.event.checkId);
+        for (const release of check.releases) release();
+        check.resolve(allow);
+    }
+
+    /** Only the window that received a check can answer it. */
+    decideNavigation(ownerId: number, checkId: unknown, allow: unknown): void {
+        const check = typeof checkId === 'string' ? this.navigationChecks.get(checkId) : undefined;
+        if (check && check.routingOwnerId === ownerId && typeof allow === 'boolean') this.settleNavigation(check, allow);
+    }
+
+    /** A held navigation whose tab closed or whose turn ended is blocked. */
+    private pruneNavigationChecks(): void {
+        for (const check of [...this.navigationChecks.values()]) {
+            const current = this.gateActivity(check.entry, check.popoutViewId);
+            if (this.disposed || check.entry.closed || current?.turnId !== check.event.turnId || current.processId !== check.event.processId) {
+                this.settleNavigation(check, false);
+            }
+        }
     }
 
     async adopt(ownerId: number, viewId: unknown, guestId: unknown): Promise<BrowserOperationResult> {
@@ -744,6 +846,7 @@ export class BrowserHostManager {
         if (!entry || entry.closed) { return; }
         this.clearControlEntry(entry, false);
         entry.closed = true;
+        this.pruneNavigationChecks();
         entry.control?.cancel(new BrowserHostError('not-found', 'Browser tab closed'));
         const current = this.owners.get(entry.ownerId);
         if (current?.get(entry.viewId) === entry) { current.delete(entry.viewId); }
@@ -792,6 +895,7 @@ export class BrowserHostManager {
 
     async dispose(): Promise<void> {
         this.disposed = true;
+        this.pruneNavigationChecks();
         const closed = await Promise.allSettled([...this.owners.keys()].map(id => this.closeOwner(id)));
         const disposed = await Promise.allSettled([...Object.values(this.options.hosts), this.options.fileHost].map(host => host.dispose()));
         const history = await Promise.allSettled([this.options.history.flush()]);

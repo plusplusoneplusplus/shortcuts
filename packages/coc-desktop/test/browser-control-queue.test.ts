@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BrowserControlQueue } from '../src/browser-control-queue';
+import { BrowserControlQueue, ControlDeadline } from '../src/browser-control-queue';
 
 function deferred<T>() {
     let resolve!: (value: T) => void;
@@ -158,6 +158,50 @@ describe('browser command queue', () => {
         gate.resolve({});
         await queue.run(async () => {});
         expect(operation).not.toHaveBeenCalled();
+    });
+
+    it('pauses the 60s deadline of running and newly queued commands while held, resuming with the time left', async () => {
+        vi.useFakeTimers();
+        const gate = deferred<unknown>();
+        const queue = new BrowserControlQueue(() => gate.promise);
+        let settled = false;
+        const active = queue.run(page => page.scroll('down')).then(() => null, error => { settled = true; return error; });
+        await vi.advanceTimersByTimeAsync(50_000);
+        const release = queue.hold();
+        const queued = queue.run(async () => {}).catch(error => error);
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        expect(settled).toBe(false);
+        release();
+        release();
+        await vi.advanceTimersByTimeAsync(9_999);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(await active).toEqual(new Error('Browser command timed out after 60s'));
+        // The command queued while held had its whole minute paused, so it is still alive.
+        await vi.advanceTimersByTimeAsync(49_999);
+        expect(vi.getTimerCount()).toBe(1);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(await queued).toEqual(new Error('Browser command timed out after 60s'));
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('nests deadline holds and ignores holds after expiry', async () => {
+        vi.useFakeTimers();
+        const expire = vi.fn();
+        const deadline = new ControlDeadline(1_000, expire);
+        const first = deadline.hold();
+        const second = deadline.hold();
+        await vi.advanceTimersByTimeAsync(5_000);
+        first();
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(expire).not.toHaveBeenCalled();
+        second();
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(expire).toHaveBeenCalledOnce();
+        deadline.hold()();
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(expire).toHaveBeenCalledOnce();
+        expect(vi.getTimerCount()).toBe(0);
     });
 
     it('cancels every pending command on close/crash and ignores late rejection', async () => {

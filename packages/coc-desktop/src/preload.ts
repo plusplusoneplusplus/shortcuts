@@ -10,7 +10,7 @@
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { BrowserCommandRequest, BrowserCommandResult } from '@plusplusoneplusplus/coc-client';
-import type { BrowserControlActivityEvent } from './browser-control-command';
+import type { BrowserControlActivityEvent, BrowserNavigationCheckEvent } from './browser-control-command';
 
 // The preload runs SANDBOXED (Electron sandboxes preloads by default since v20):
 // its `require` can only load the 'electron' builtin, and a relative import —
@@ -32,6 +32,8 @@ const BROWSER_CONTROL_ACTIVITY_CHANNEL = 'coc-desktop:browser-control-activity';
 const BROWSER_CONTROL_FINISH_CHANNEL = 'coc-desktop:browser-control-finish';
 const BROWSER_CONTROL_STOP_CHANNEL = 'coc-desktop:browser-control-stop';
 const BROWSER_CONTROL_VISIBLE_CHANNEL = 'coc-desktop:browser-control-visible';
+const BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL = 'coc-desktop:browser-control-navigation-check';
+const BROWSER_CONTROL_NAVIGATION_DECISION_CHANNEL = 'coc-desktop:browser-control-navigation-decision';
 const BROWSER_HISTORY_SUGGEST_CHANNEL = 'coc-desktop:browser-history-suggest';
 const BROWSER_HISTORY_DELETE_CHANNEL = 'coc-desktop:browser-history-delete';
 const BROWSER_HISTORY_CLEAR_CHANNEL = 'coc-desktop:browser-history-clear';
@@ -262,6 +264,9 @@ const browser = {
         setVisible: (visible: boolean, routingRef: string): void => ipcRenderer.send(BROWSER_CONTROL_VISIBLE_CHANNEL, visible, routingRef),
         onActivity: (callback: (event: BrowserControlActivityEvent) => void) => subscribe(BROWSER_CONTROL_ACTIVITY_CHANNEL, callback),
         onStop: (callback: (event: BrowserControlActivityEvent) => void) => subscribe(BROWSER_CONTROL_STOP_CHANNEL, callback),
+        /** Agent-driven top-level navigations held during an active turn until the server decides. */
+        onNavigationCheck: (callback: (event: BrowserNavigationCheckEvent) => void) => subscribe(BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL, callback),
+        decideNavigation: (checkId: string, allow: boolean): void => ipcRenderer.send(BROWSER_CONTROL_NAVIGATION_DECISION_CHANNEL, checkId, allow),
         onFocused: (callback: () => void) => {
             const listener = () => callback();
             ipcRenderer.on(BROWSER_CONTROL_FOCUSED_CHANNEL, listener);

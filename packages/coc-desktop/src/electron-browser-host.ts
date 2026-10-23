@@ -68,6 +68,8 @@ interface BrowserEntry {
 const entries = new Set<BrowserEntry>();
 /** Any webContents (tab view or pop-up) id → the tab entry it belongs to. */
 const entryByContents = new Map<number, BrowserEntry>();
+/** Control popout view ids by popup `webContents` id, so a held navigation names its popout. */
+const popoutByContents = new Map<number, string>();
 let profileSession: Electron.Session | undefined;
 let profileLock: NativeDatabase | undefined;
 
@@ -128,9 +130,12 @@ function configureProfile(): void {
         const id = details.webContentsId;
         const entry = id === undefined ? undefined : entryByContents.get(id);
         const wc = id === undefined ? undefined : entry?.contents && entry.contents.id === id ? entry.contents : webContents.fromId(id);
-        const cancel = !!entry && !!wc && details.resourceType === 'mainFrame'
-            && interceptApplication(entry, wc, { kind: 'navigation', url: details.url });
-        callback({ cancel });
+        if (!entry || !wc || details.resourceType !== 'mainFrame') { callback({ cancel: false }); return; }
+        if (interceptApplication(entry, wc, { kind: 'navigation', url: details.url })) { callback({ cancel: true }); return; }
+        // Every main-frame request, including each redirect hop, is held here before it is sent.
+        const gate = entry.sink.navigationGate?.(details.url, popoutByContents.get(wc.id)) ?? true;
+        if (gate === true || gate === false) { callback({ cancel: !gate }); return; }
+        gate.then(allow => callback({ cancel: !allow }), () => callback({ cancel: true }));
     });
     ses.on('will-download', (event, item, wc) => {
         event.preventDefault();
@@ -199,6 +204,8 @@ function wireNavigation(entry: BrowserEntry, wc: WebContents): void {
         entry.popups.add(popup);
         const viewId = `browser-popout-${randomUUID()}`;
         const contents = popup.webContents;
+        const contentsId = contents.id;
+        popoutByContents.set(contentsId, viewId);
         const cdp = entry.sink.controlPopoutOpened ? new ElectronBrowserCdp(contents) : undefined;
         const setControlActivity = browserPopupChrome(popup, turnId => entry.sink.controlStopRequested?.(viewId, turnId));
         contents.setZoomFactor(entry.pageZoom / 100);
@@ -229,6 +236,7 @@ function wireNavigation(entry: BrowserEntry, wc: WebContents): void {
             close: () => { if (!popup.isDestroyed()) popup.close(); },
         });
         popup.once('closed', () => {
+            popoutByContents.delete(contentsId);
             cdp?.dispose();
             entry.popups.delete(popup);
             entry.sink.controlPopoutClosed?.(viewId);

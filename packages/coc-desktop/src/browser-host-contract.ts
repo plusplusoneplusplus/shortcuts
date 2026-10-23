@@ -57,6 +57,12 @@ export interface BrowserEventSink {
     controlPopoutClosed?(viewId: string): void;
     controlFocused?(): void;
     controlStopRequested?(viewId: string, turnId: string): void;
+    /**
+     * A main-frame request (initial load, link, form post or redirect hop) is about to be sent.
+     * `true` lets it go; a promise holds it until the user decides. `popoutViewId` names the
+     * control popout that issued it.
+     */
+    navigationGate?(url: string, popoutViewId?: string): boolean | Promise<boolean>;
 }
 
 export interface BrowserHostedView {

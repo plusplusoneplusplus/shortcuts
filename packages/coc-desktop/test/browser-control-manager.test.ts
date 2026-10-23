@@ -4,22 +4,33 @@ import { BrowserControlPage } from '../src/browser-control-page';
 import type { RichClipboard } from '../src/browser-rich-clipboard';
 import type { BrowserCommand } from '@plusplusoneplusplus/coc-client';
 import type { BrowserEngineHost, BrowserHostedView, BrowserEventSink } from '../src/browser-host-contract';
-import { BROWSER_CONTROL_REVEAL_CHANNEL } from '../src/browser-control-command';
+import { BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL } from '../src/browser-control-command';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
-function harness(redirectTo?: string, richClipboard?: RichClipboard) {
+/** `gated` hosts hold every main-frame load at the sink's navigation gate, like Electron's onBeforeRequest. */
+function harness(redirectTo?: string, richClipboard?: RichClipboard, gated = false) {
     const views: BrowserHostedView[] = [];
     const sinks: BrowserEventSink[] = [];
+    const loads: string[] = [];
     const host: BrowserEngineHost = {
         engine: 'electron', availability: async () => ({ engine: 'electron', available: true }),
         clearData: async () => {}, dispose: async () => {},
         create: async (request, sink) => {
             sinks.push(sink);
-            let url = redirectTo ?? request.url;
+            let url = gated ? '' : redirectTo ?? request.url;
+            let loading = false;
+            const load = (next: string) => {
+                loading = true;
+                return Promise.resolve(sink.navigationGate?.(next) ?? true).then(allow => {
+                    loading = false;
+                    if (allow) { url = next; loads.push(next); }
+                });
+            };
+            if (gated) void load(request.url);
             const view: BrowserHostedView = {
-                snapshot: () => ({ viewId: request.viewId, engine: 'electron', url, title: 'Fixture', canGoBack: true, canGoForward: false, loading: false }),
-                navigate: vi.fn(async next => { url = next; }), nav: vi.fn(),
+                snapshot: () => ({ viewId: request.viewId, engine: 'electron', url, title: 'Fixture', canGoBack: true, canGoForward: false, loading }),
+                navigate: vi.fn(async next => { if (gated) await load(next); else url = next; }), nav: vi.fn(),
                 setBounds: vi.fn(), focus: vi.fn(), close: vi.fn(),
                 cdp: vi.fn(async (method, params) => {
                     if (method === 'Runtime.evaluate') {
@@ -53,7 +64,7 @@ function harness(redirectTo?: string, richClipboard?: RichClipboard) {
     manager.bindControlScope(3, 'other', 'other');
     const run = (command: BrowserCommand, selectedTab?: string, processId = 'p', signal?: AbortSignal) =>
         manager.executeControl(1, { id: 'r', workspaceId: 'w', processId, command, selectedTab }, signal);
-    return { manager, run, views, sinks, send };
+    return { manager, run, views, sinks, send, loads };
 }
 
 describe('main browser control scope and selection', () => {
@@ -393,5 +404,106 @@ describe('main browser control scope and selection', () => {
         await expect(waiting).rejects.toThrow('Stopped');
         await expect(evalResult).resolves.toMatchObject({ valueJson: '42', valueTruncated: false });
         await h.manager.dispose();
+    });
+});
+
+describe('agent-driven navigation approval gate', () => {
+    const checks = (send: ReturnType<typeof vi.fn>) => send.mock.calls
+        .filter(call => call[1] === BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL).map(call => ({ ownerId: call[0], ...call[2] }));
+
+    it('holds the first load of a tab that open creates until the routing window allows it', async () => {
+        const h = harness(undefined, undefined, true);
+        try {
+            const opened = h.manager.executeControl(1, { id: 'r', workspaceId: 'w', processId: 'p', turnId: 't', command: { action: 'open', url: 'https://new.test/a' } }, undefined, 'w');
+            await vi.waitFor(() => expect(checks(h.send)).toHaveLength(1));
+            const [check] = checks(h.send);
+            expect(check).toMatchObject({ ownerId: 1, workspaceId: 'w', processId: 'p', turnId: 't', routingRef: 'w', url: 'https://new.test/a' });
+            expect(h.loads).toEqual([]);
+            // Only the routing window may answer.
+            h.manager.decideNavigation(2, check.checkId, true);
+            h.manager.decideNavigation(1, check.checkId, 'yes');
+            await Promise.resolve();
+            expect(h.loads).toEqual([]);
+            h.manager.decideNavigation(1, check.checkId, true);
+            await expect(opened).resolves.toMatchObject({ url: 'https://new.test/a' });
+            expect(h.loads).toEqual(['https://new.test/a']);
+        } finally {
+            await h.manager.dispose();
+        }
+    });
+
+    it('never asks for manual navigation, and asks for each agent-driven hop during an active turn', async () => {
+        const h = harness(undefined, undefined, true);
+        try {
+            await h.manager.open(1, 'manual', 'https://manual.test/', 'w');
+            expect(await h.manager.navigate(1, 'manual', 'https://elsewhere.test/')).toMatchObject({ ok: true });
+            await vi.waitFor(() => expect(h.loads).toEqual(['https://manual.test/', 'https://elsewhere.test/']));
+            expect(checks(h.send)).toEqual([]);
+            // A command activates the tab for turn t; a click's navigation and its redirect hop are then held.
+            await h.manager.executeControl(1, { id: 'r', workspaceId: 'w', processId: 'p', turnId: 't', command: { action: 'read' }, selectedTab: 't1:manual' }, undefined, 'w');
+            const sink = h.sinks[0];
+            const click = sink.navigationGate!('https://other.test/login');
+            expect(click).toBeInstanceOf(Promise);
+            const [first] = checks(h.send);
+            expect(first.url).toBe('https://other.test/login');
+            h.manager.decideNavigation(1, first.checkId, true);
+            await expect(click).resolves.toBe(true);
+            const redirect = sink.navigationGate!('https://sso.example.com/start');
+            const second = checks(h.send)[1];
+            h.manager.decideNavigation(1, second.checkId, false);
+            await expect(redirect).resolves.toBe(false);
+            // about:blank and data: never ask.
+            expect(sink.navigationGate!('about:blank')).toBe(true);
+            expect(sink.navigationGate!('data:text/html,x')).toBe(true);
+            // After the turn finishes, navigation is manual again.
+            h.manager.finishControl(1, 't');
+            expect(sink.navigationGate!('https://later.test/')).toBe(true);
+        } finally {
+            await h.manager.dispose();
+        }
+    });
+
+    it('denies a held navigation when its turn finishes or its tab closes, keeping the previous page', async () => {
+        const h = harness(undefined, undefined, true);
+        try {
+            await h.manager.open(1, 'tab', 'https://start.test/', 'w');
+            await vi.waitFor(() => expect(h.loads).toEqual(['https://start.test/']));
+            await h.manager.executeControl(1, { id: 'r', workspaceId: 'w', processId: 'p', turnId: 't', command: { action: 'read' }, selectedTab: 't1:tab' }, undefined, 'w');
+            const navigated = h.views[0].navigate('https://blocked.test/');
+            await vi.waitFor(() => expect(checks(h.send)).toHaveLength(1));
+            h.manager.finishControl(1, 't');
+            await navigated;
+            expect(h.views[0].snapshot().url).toBe('https://start.test/');
+            await h.manager.executeControl(1, { id: 'r2', workspaceId: 'w', processId: 'p', turnId: 't2', command: { action: 'read' }, selectedTab: 't1:tab' }, undefined, 'w');
+            const held = h.sinks[0].navigationGate!('https://closing.test/');
+            await h.manager.close(1, 'tab');
+            await expect(held).resolves.toBe(false);
+            expect(h.loads).toEqual(['https://start.test/']);
+        } finally {
+            await h.manager.dispose();
+        }
+    });
+
+    it('pauses the caller and per-view 60s deadlines of the conversation while a navigation is held', async () => {
+        const h = harness(undefined, undefined, true);
+        try {
+            await h.manager.open(1, 'tab', 'https://start.test/', 'w');
+            await vi.waitFor(() => expect(h.loads).toHaveLength(1));
+            const release = vi.fn();
+            const hold = vi.fn(() => release);
+            const other = vi.fn(() => vi.fn());
+            const opened = h.manager.executeControl(1, { id: 'r', workspaceId: 'w', processId: 'p', turnId: 't', command: { action: 'open', url: 'https://next.test/' }, selectedTab: 't1:tab' }, undefined, 'w', hold);
+            const unrelated = h.manager.executeControl(1, { id: 'u', workspaceId: 'w', processId: 'q', command: { action: 'tabs' } }, undefined, 'w', other);
+            await vi.waitFor(() => expect(checks(h.send)).toHaveLength(1));
+            await unrelated;
+            expect(hold).toHaveBeenCalledOnce();
+            expect(other).not.toHaveBeenCalled();
+            expect(release).not.toHaveBeenCalled();
+            h.manager.decideNavigation(1, checks(h.send)[0].checkId, true);
+            await expect(opened).resolves.toMatchObject({ url: 'https://next.test/' });
+            expect(release).toHaveBeenCalledOnce();
+        } finally {
+            await h.manager.dispose();
+        }
     });
 });

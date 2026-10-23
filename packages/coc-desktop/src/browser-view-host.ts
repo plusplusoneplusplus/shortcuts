@@ -3,13 +3,14 @@ import { defaultDataDir } from './server-controller';
 import { browserProfilePath, readBrowserEngine, writeBrowserEngine, readBrowserPageZoom, writeBrowserPageZoom, readBrowserClickOnce, writeBrowserClickOnce } from './browser-preferences';
 import { activateClickOnce, ClickOnceError } from './browser-clickonce';
 import { BrowserHostManager } from './browser-host-manager';
+import { ControlDeadline } from './browser-control-queue';
 import { BrowserHistoryStore, sanitizeHistoryUrl } from './browser-history';
 import { ElectronBrowserHost } from './electron-browser-host';
 import { ElectronFilePreviewHost } from './file-preview-host';
 import { installBrowserWebviewGuard, isBrowserEmbedder, registerBrowserEmbedder as registerEmbedder } from './browser-webview-guard';
 import { WebView2BrowserHost } from './webview2-browser-host';
 import { toHtmlPageViewBounds } from './html-page-policy';
-import { BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_RETAIN_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL, validateBrowserCommandRequest } from './browser-control-command';
+import { BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_RETAIN_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL, BROWSER_CONTROL_NAVIGATION_DECISION_CHANNEL, validateBrowserCommandRequest } from './browser-control-command';
 import {
     BROWSER_ADDRESS_MENU_CHANNEL,
     BROWSER_CLICKONCE_SET_CHANNEL,
@@ -203,15 +204,15 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         if (requests.has(request.id)) throw new Error('Duplicate browser request');
         const controller = new AbortController();
         requests.set(request.id, { controller, sessionKey });
-        const timeout = setTimeout(() => controller.abort(new Error('Browser command timed out after 60s')), 60_000);
+        const deadline = new ControlDeadline(60_000, () => controller.abort(new Error('Browser command timed out after 60s')));
         let aborted!: () => void;
         const cancellation = new Promise<never>((_resolve, reject) => {
             aborted = () => reject(controller.signal.reason);
             controller.signal.addEventListener('abort', aborted, { once: true });
         });
-        try { return await Promise.race([manager!.executeControl(event.sender.id, request, controller.signal, sessionKey), cancellation]); }
+        try { return await Promise.race([manager!.executeControl(event.sender.id, request, controller.signal, sessionKey, () => deadline.hold()), cancellation]); }
         finally {
-            clearTimeout(timeout);
+            deadline.clear();
             controller.signal.removeEventListener('abort', aborted);
             requests.delete(request.id);
         }
@@ -227,6 +228,9 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     });
     ipcMain.on(BROWSER_CONTROL_VISIBLE_CHANNEL, (event, visible: unknown, routingRef: unknown) => {
         if (historyWindow(event) && typeof visible === 'boolean' && typeof routingRef === 'string') manager!.setControlVisible(event.sender.id, visible, routingRef);
+    });
+    ipcMain.on(BROWSER_CONTROL_NAVIGATION_DECISION_CHANNEL, (event, checkId: unknown, allow: unknown) => {
+        if (historyWindow(event)) manager!.decideNavigation(event.sender.id, checkId, allow);
     });
     const historyHandler = (operation: (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>) =>
         async (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => {
