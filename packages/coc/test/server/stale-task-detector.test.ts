@@ -66,6 +66,76 @@ describe('StaleTaskDetector', () => {
         detector?.dispose();
     });
 
+    describe('timeout semantics across both detection passes', () => {
+        beforeEach(() => {
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date('2026-10-23T12:00:00Z'));
+        });
+
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        it.each([
+            { config: { timeoutMs: 0 }, defaultTimeoutMs: 1_000 },
+            { config: {}, defaultTimeoutMs: 0 },
+        ])('never marks or finalizes an unlimited task ($config, default $defaultTimeoutMs)', async ({ config, defaultTimeoutMs }) => {
+            detector = new StaleTaskDetector(queueManager, mockStore, { defaultTimeoutMs });
+            const id = queueManager.enqueue(createTestTask({ config }));
+            queueManager.markStarted(id);
+            const task = queueManager.getTask(id)!;
+            task.processId = `queue_${id}`;
+            const startedAt = task.startedAt!;
+
+            for (const elapsed of [1, 300_000, 300_001, 24 * 60 * 60_000]) {
+                vi.setSystemTime(startedAt + elapsed);
+                expect(await detector.detectAndMarkStale()).toBe(0);
+                expect(await detector.detectAndFailStale()).toBe(0);
+                expect(queueManager.getRunning()).toHaveLength(1);
+            }
+            expect(mockStore.updateProcess).not.toHaveBeenCalled();
+            expect(mockStore.getProcess).not.toHaveBeenCalled();
+            expect(mockStore.emitProcessComplete).not.toHaveBeenCalled();
+
+            // Unlimited elapsed time does not disable explicit cancellation.
+            expect(queueManager.cancelTask(id)).toBe(true);
+            expect(queueManager.getTask(id)?.status).toBe('cancelled');
+        });
+
+        it.each([
+            { config: { timeoutMs: 1_000 }, timeout: 1_000 },
+            { config: {}, timeout: 2_000 },
+            { config: undefined, timeout: 2_000 },
+        ])('keeps finite deadlines and grace with $config', async ({ config, timeout }) => {
+            detector = new StaleTaskDetector(queueManager, mockStore, {
+                defaultTimeoutMs: 2_000, gracePeriodMs: 300_000,
+            });
+            const id = queueManager.enqueue(createTestTask({ config }));
+            queueManager.markStarted(id);
+            const task = queueManager.getTask(id)!;
+            task.processId = `queue_${id}`;
+            const startedAt = task.startedAt!;
+
+            vi.setSystemTime(startedAt + timeout);
+            expect(await detector.detectAndMarkStale()).toBe(0);
+            expect(await detector.detectAndFailStale()).toBe(0);
+
+            vi.setSystemTime(startedAt + timeout + 1);
+            expect(await detector.detectAndMarkStale()).toBe(1);
+            expect(mockStore.updateProcess).toHaveBeenCalledWith(task.processId, { stale: true });
+            expect(await detector.detectAndFailStale()).toBe(0);
+
+            vi.setSystemTime(startedAt + timeout + 300_000);
+            expect(await detector.detectAndFailStale()).toBe(0);
+            vi.setSystemTime(startedAt + timeout + 300_001);
+            expect(await detector.detectAndMarkStale()).toBe(0);
+            expect(await detector.detectAndFailStale()).toBe(1);
+            expect(queueManager.getTask(id)?.status).toBe('failed');
+            expect(mockStore.updateProcess).toHaveBeenCalledWith(task.processId,
+                expect.objectContaining({ status: 'failed', error: expect.stringContaining('Task stale') }));
+        });
+    });
+
     // ========================================================================
     // detectAndFailStale
     // ========================================================================

@@ -1403,7 +1403,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 throw new Error(`${label} SDK not available: ${availability.error || 'unknown reason'}`);
             }
 
-            const timeoutMs = task.config.timeoutMs || this.defaultTimeoutMs;
+            const timeoutMs = task.config.timeoutMs ?? this.defaultTimeoutMs;
             const idleTimeoutMs = this.defaultIdleTimeoutMs;
             const taskWorkspaceId = payload.workspaceId;
             const { skillDirectories, disabledSkills } = await this.resolveSkillConfigFn(taskWorkspaceId, workingDirectory);
