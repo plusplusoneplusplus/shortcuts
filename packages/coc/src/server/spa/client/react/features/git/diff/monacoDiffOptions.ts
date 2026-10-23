@@ -17,7 +17,11 @@ import { browserDocumentUri } from '../../language-servers/documentStore';
 import { getMonacoLanguage } from '../../../shared/file-viewer/monacoLanguage';
 import type { DiffViewMode } from '../hooks/useDiffViewMode';
 
-/** Two-sided diff kinds with distinct working-copy eligibility. */
+/**
+ * Two-sided diff kinds with distinct working-copy eligibility. `branch-range`
+ * covers every immutable snapshot whose head may be the working copy (local
+ * commits and branch ranges).
+ */
 export type MonacoDiffStage = 'staged' | 'unstaged' | 'branch-range';
 
 /** Git ref a synthetic side is read from. */

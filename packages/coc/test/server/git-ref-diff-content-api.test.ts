@@ -8,7 +8,7 @@ import type { AddressInfo } from 'net';
 import { createRouter } from '../../src/server/shared/router';
 import { registerApiRoutes } from '../../src/server/core/api-handler';
 import { gitCache } from '../../src/server/git/git-cache';
-import { branchRangeMatchesWorkingCopy, parseRefFileChanges } from '../../src/server/git/ref-file-content';
+import { branchRangeMatchesWorkingCopy, commitMatchesWorkingCopy, parseRefFileChanges } from '../../src/server/git/ref-file-content';
 import {
     loadGitBlobFileContent,
     MAX_WORKING_TREE_CONTENT_BYTES,
@@ -146,8 +146,50 @@ describe('commit and branch-range full-text diff content', () => {
             path: 'modified.txt', fileName: 'modified.txt', language: 'txt',
             base: { content: 'base\r\nlast\r\n', ref: rootHash, exists: true },
             head: { content: 'head\r\nlast\r\n', ref: headHash, exists: true },
-            binary: false, tooLarge: false,
+            binary: false, tooLarge: false, modifiedMatchesWorkingCopy: false,
         });
+    });
+
+    it('flags a commit side that equals the clean working copy, rechecked on cached snapshots', async () => {
+        const file = path.join(a.root, 'added.ts');
+        const before = fs.readFileSync(file);
+        try {
+            expect((await request(headHash, 'added.ts')).data.modifiedMatchesWorkingCopy).toBe(true);
+            a.write('added.ts', 'export const value = 2;');
+            expect((await request(headHash, 'added.ts')).data.modifiedMatchesWorkingCopy).toBe(false);
+            a.git('add', 'added.ts');
+            // Disk restored but the index still differs: not clean.
+            a.write('added.ts', before);
+            expect((await request(headHash, 'added.ts')).data.modifiedMatchesWorkingCopy).toBe(false);
+            a.git('add', 'added.ts');
+            expect((await request(headHash, 'added.ts')).data.modifiedMatchesWorkingCopy).toBe(true);
+        } finally {
+            a.write('added.ts', before);
+            a.git('add', 'added.ts');
+        }
+        // Deleted, binary, and oversized commit sides never qualify.
+        expect((await request(headHash, 'deleted.txt')).data.modifiedMatchesWorkingCopy).toBe(false);
+        expect((await request(headHash, 'binary.bin')).data.modifiedMatchesWorkingCopy).toBe(false);
+        expect((await request(headHash, 'large.txt')).data.modifiedMatchesWorkingCopy).toBe(false);
+        // An older commit whose text no longer matches disk does not qualify.
+        expect((await request(rootHash, 'modified.txt')).data.modifiedMatchesWorkingCopy).toBe(false);
+    });
+
+    it('accepts a commit side that matches a clean file whatever HEAD is; branch heads still need HEAD', async () => {
+        const text = 'export const value = 1;';
+        const io: WorkingTreeContentIO = {
+            resolveHead: vi.fn().mockResolvedValue('some-later-head'), headEntry: vi.fn(), indexEntry: vi.fn(),
+            blobSize: vi.fn(), readBlob: vi.fn(),
+            statDisk: vi.fn().mockResolvedValue({ size: text.length, isFile: true }),
+            readDisk: vi.fn().mockResolvedValue(Buffer.from(text, 'utf8')),
+        };
+        const content: WorkingTreeFileContent = {
+            path: 'added.ts', fileName: 'added.ts', language: 'ts', binary: false, tooLarge: false,
+            base: { content: '', ref: rootHash, exists: false },
+            head: { content: text, ref: headHash, exists: true },
+        };
+        expect(await commitMatchesWorkingCopy(a.root, 'added.ts', content, io)).toBe(true);
+        expect(await branchRangeMatchesWorkingCopy(a.root, 'added.ts', content, io)).toBe(false);
     });
 
     it('uses an empty original side for a root commit', async () => {

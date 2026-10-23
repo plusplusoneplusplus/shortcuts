@@ -86,7 +86,11 @@ export interface DiffSource {
      * Optional so patch-only sources continue to use the classic viewer.
      */
     fetchFileContent?(filePath: string): Promise<GitFileDiffContentResponse>;
-    /** Branch ranges may expose their head as the real document when the server confirms it. */
+    /**
+     * Local commits and branch ranges may expose their new side as the real
+     * document (full language server) when the server confirms it equals the
+     * clean working copy. PR sources never set it.
+     */
     readonly supportsWorkingCopyLanguage?: boolean;
     /**
      * Local commit/range reviews offer best-effort current-code definitions on
@@ -170,6 +174,7 @@ export function createCommitDiffSource(
     const client = () => getGitReviewClient(workspaceId, options?.routingTarget);
     return {
         routingTarget: options?.routingTarget,
+        supportsWorkingCopyLanguage: true,
         supportsCurrentCodeDefinitions: true,
         label: `Commit ${shortHash}`,
         shortRef: shortHash,

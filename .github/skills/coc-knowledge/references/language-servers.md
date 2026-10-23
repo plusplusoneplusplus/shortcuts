@@ -267,9 +267,12 @@ syntax colors.
 
 `MonacoFileDiffViewer` shares the explorer's reference-counted
 `LanguageDocumentStore` only for real modified working-copy models: unstaged
-diffs and server-confirmed clean branch-range heads. Branch-range eligibility
-requires checked-out HEAD, a clean index/file, and byte-identical disk content;
-the server rechecks it outside the immutable snapshot cache.
+diffs and server-confirmed clean local commit or branch-range heads
+(`supportsWorkingCopyLanguage` sources render with stage `branch-range`).
+Eligibility needs a clean index/file and byte-identical disk content; branch
+ranges also require checked-out HEAD, while a commit qualifies whatever HEAD is
+(`commitMatchesWorkingCopy`), so an unchanged file in an older commit gets the
+full language server. The server rechecks it outside the immutable snapshot cache.
 `diffLanguageEligibility` and the owned editor adapter reject synthetic or
 foreign URIs. An unsaved explorer buffer disables diff language features without
 overwriting that buffer, and closing a diff releases only its own document reference.

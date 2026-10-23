@@ -599,15 +599,16 @@ it('restores classification on automatic fallback and clears fallback state for 
 });
 
 it.each<SourceKind>(['commit', 'branch-range', 'pull-request'])(
-    '%s registers only an eligible branch head, never either immutable side', async kind => {
+    '%s registers only an eligible commit or branch head, never either immutable side', async kind => {
         const original = makeSource(kind);
         const source: DiffSource = { ...original, fetchFileContent: async filePath => ({
             ...await original.fetchFileContent!(filePath), modifiedMatchesWorkingCopy: true,
         }) };
         const view = await mount(source);
         expect(fake().models[0].original.uri).toMatch(/^coc-diff-ref:/);
-        expect(languageStore.documentCount).toBe(kind === 'branch-range' ? 1 : 0);
-        if (kind === 'branch-range') {
+        const local = kind !== 'pull-request';
+        expect(languageStore.documentCount).toBe(local ? 1 : 0);
+        if (local) {
             const uri = browserDocumentUri('ws-a', PATH);
             expect(fake().models[0].modified.uri).toBe(uri);
             expect(fake().languageMounts.filter(m => m.live)).toEqual([{ uri, live: true }]);
@@ -643,8 +644,8 @@ it('keeps an explorer-owned branch head open when its diff closes', async () => 
     expect(attachment.methods()).toContain('textDocument/didClose');
 });
 
-it('leaves an ineligible branch head synthetic without registering a language document', async () => {
-    await mount(makeSource('branch-range'));
+it.each<SourceKind>(['commit', 'branch-range'])('leaves an ineligible %s head synthetic without registering a language document', async kind => {
+    await mount(makeSource(kind));
     expect(languageStore.documentCount).toBe(0);
     expect(fake().models[0].modified.uri).toMatch(/^coc-diff-ref:/);
     expect(fake().languageMounts).toEqual([]);

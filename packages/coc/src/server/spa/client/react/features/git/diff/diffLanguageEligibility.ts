@@ -3,9 +3,9 @@
  * language server (AC-06).
  *
  * Only a real modified working-copy model qualifies: an unstaged diff or a
- * server-confirmed clean branch head. It carries the explorer's `coc-file:`
- * URI. Base sides, staged files, commits, PRs, and ineligible branch heads
- * remain synthetic `coc-diff-ref:` models and never register.
+ * server-confirmed clean commit/branch head. It carries the explorer's
+ * `coc-file:` URI. Base sides, staged files, PRs, and ineligible commit or
+ * branch heads remain synthetic `coc-diff-ref:` models and never register.
  *
  * Pure: no Monaco, no React, no store. The editor adapter repeats the URI check
  * against the model Monaco actually holds (see `attachModifiedLanguage`).

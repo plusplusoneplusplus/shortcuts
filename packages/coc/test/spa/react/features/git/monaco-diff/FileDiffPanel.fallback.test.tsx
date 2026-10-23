@@ -157,6 +157,21 @@ describe('historical definition surfaces', () => {
     });
 });
 
+describe('commit hybrid resolution', () => {
+    it.each([true, false])('a commit head matching the working copy (%s) switches between full LSP and current-code lookup', async matches => {
+        const fetchContent = vi.fn(async () => content({ modifiedMatchesWorkingCopy: matches }));
+        const source = { ...makeSource('commit', fetchContent), supportsWorkingCopyLanguage: true, supportsCurrentCodeDefinitions: true };
+        await mount(source);
+        await act(async () => {});
+        const models = fakes[0].models.at(-1)!;
+        expect(models.original.uri).toMatch(/^coc-diff-ref:/);
+        expect(models.modified.uri.startsWith('coc-diff-ref:')).toBe(!matches);
+        // The parent side always uses the current-code lookup; the head only when it is not the working copy.
+        expect(fakes[0].historicalMounts.map(m => m.side)).toEqual(matches ? ['original'] : ['original', 'modified']);
+        expect(currentCodeMounts.every(m => m.uri.startsWith('coc-diff-ref:'))).toBe(true);
+    });
+});
+
 describe('definition routing', () => {
     const panelHost = { workspaceId: 'group-1', chatId: 'chat-1', routingRef: null };
     const jumpFrom = (side: 'original' | 'modified') => currentCodeMounts[side === 'original' ? currentCodeMounts.length - 2 : currentCodeMounts.length - 1];
