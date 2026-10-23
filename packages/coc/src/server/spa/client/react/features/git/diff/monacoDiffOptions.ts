@@ -37,7 +37,7 @@ export interface DiffModelDescriptor {
     /**
      * True only for a modified side that is the on-disk file: an unstaged
      * diff, a staged diff whose disk equals the index, or a server-confirmed
-     * clean branch head. Only that side may be edited or use a language server.
+     * disk-matching commit or branch head. Only that side may be edited or use a language server.
      */
     isWorkingCopy: boolean;
 }

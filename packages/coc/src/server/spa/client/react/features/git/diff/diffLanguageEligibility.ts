@@ -3,7 +3,7 @@
  * language server (AC-06).
  *
  * Only a real modified working-copy model qualifies: an unstaged diff, a staged
- * index matching disk, or a server-confirmed clean commit/branch head. It carries
+ * index matching disk, or a server-confirmed disk-matching commit/branch head. It carries
  * the explorer's `coc-file:` URI. Base sides, nonmatching staged files, PRs, and
  * ineligible commit or branch heads stay synthetic `coc-diff-ref:` models.
  *

@@ -139,12 +139,12 @@ export async function branchRangeMatchesWorkingCopy(
     content: WorkingTreeFileContent,
     io: WorkingTreeContentIO = createWorkingTreeContentIO(repoRoot),
 ): Promise<boolean> {
-    return snapshotMatchesWorkingCopy(repoRoot, filePath, content, io, true);
+    return snapshotMatchesWorkingCopy(repoRoot, filePath, content, io);
 }
 
 /**
  * A commit's new side qualifies for the real document when its text equals a
- * clean working copy, whichever commit HEAD is on: the language server then
+ * working copy, whichever commit HEAD is on: the language server then
  * sees exactly the text shown.
  */
 export async function commitMatchesWorkingCopy(
@@ -153,7 +153,7 @@ export async function commitMatchesWorkingCopy(
     content: WorkingTreeFileContent,
     io: WorkingTreeContentIO = createWorkingTreeContentIO(repoRoot),
 ): Promise<boolean> {
-    return snapshotMatchesWorkingCopy(repoRoot, filePath, content, io, false);
+    return snapshotMatchesWorkingCopy(repoRoot, filePath, content, io);
 }
 
 async function snapshotMatchesWorkingCopy(
@@ -161,18 +161,12 @@ async function snapshotMatchesWorkingCopy(
     filePath: string,
     content: WorkingTreeFileContent,
     io: WorkingTreeContentIO,
-    requireHead: boolean,
 ): Promise<boolean> {
     if (content.binary || content.tooLarge || !content.head.exists) return false;
-    if (requireHead && await io.resolveHead() !== content.head.ref) return false;
     const absPath = resolveWorkingTreePath(repoRoot, filePath);
     if (!absPath) throw badRequest('Path is outside the workspace or invalid');
     const disk = await io.statDisk(absPath);
     if (!disk?.isFile || disk.size > MAX_WORKING_TREE_CONTENT_BYTES) return false;
     const bytes = await io.readDisk(absPath);
-    if (!bytes.equals(Buffer.from(content.head.content, 'utf8'))) return false;
-    const changes = await execGitAsync([
-        '--literal-pathspecs', 'status', '--porcelain=v1', '-z', '--untracked-files=no', '--', filePath,
-    ], repoRoot);
-    return changes.length === 0 && (!requireHead || await io.resolveHead() === content.head.ref);
+    return bytes.equals(Buffer.from(content.head.content, 'utf8'));
 }

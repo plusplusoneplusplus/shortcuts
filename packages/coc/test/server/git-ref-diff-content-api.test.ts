@@ -150,7 +150,7 @@ describe('commit and branch-range full-text diff content', () => {
         });
     });
 
-    it('flags a commit side that equals the clean working copy, rechecked on cached snapshots', async () => {
+    it('flags a commit side that equals disk regardless of index state, rechecked on cached snapshots', async () => {
         const file = path.join(a.root, 'added.ts');
         const before = fs.readFileSync(file);
         try {
@@ -158,9 +158,9 @@ describe('commit and branch-range full-text diff content', () => {
             a.write('added.ts', 'export const value = 2;');
             expect((await request(headHash, 'added.ts')).data.modifiedMatchesWorkingCopy).toBe(false);
             a.git('add', 'added.ts');
-            // Disk restored but the index still differs: not clean.
+            // The index may differ: the language server sees the matching disk text.
             a.write('added.ts', before);
-            expect((await request(headHash, 'added.ts')).data.modifiedMatchesWorkingCopy).toBe(false);
+            expect((await request(headHash, 'added.ts')).data.modifiedMatchesWorkingCopy).toBe(true);
             a.git('add', 'added.ts');
             expect((await request(headHash, 'added.ts')).data.modifiedMatchesWorkingCopy).toBe(true);
         } finally {
@@ -175,7 +175,20 @@ describe('commit and branch-range full-text diff content', () => {
         expect((await request(rootHash, 'modified.txt')).data.modifiedMatchesWorkingCopy).toBe(false);
     });
 
-    it('accepts a commit side that matches a clean file whatever HEAD is; branch heads still need HEAD', async () => {
+    it('uses full-language eligibility for an older commit restored into a dirty working file', async () => {
+        const file = path.join(a.root, 'modified.txt');
+        const before = fs.readFileSync(file);
+        try {
+            a.write('modified.txt', 'base\r\nlast\r\n');
+            expect(a.git('status', '--porcelain', '--', 'modified.txt')).not.toBe('');
+            expect((await request(rootHash, 'modified.txt')).data.modifiedMatchesWorkingCopy).toBe(true);
+            expect((await request(headHash, 'modified.txt')).data.modifiedMatchesWorkingCopy).toBe(false);
+        } finally {
+            a.write('modified.txt', before);
+        }
+    });
+
+    it('accepts matching commit and range text independently of HEAD', async () => {
         const text = 'export const value = 1;';
         const io: WorkingTreeContentIO = {
             resolveHead: vi.fn().mockResolvedValue('some-later-head'), headEntry: vi.fn(), indexEntry: vi.fn(),
@@ -189,7 +202,8 @@ describe('commit and branch-range full-text diff content', () => {
             head: { content: text, ref: headHash, exists: true },
         };
         expect(await commitMatchesWorkingCopy(a.root, 'added.ts', content, io)).toBe(true);
-        expect(await branchRangeMatchesWorkingCopy(a.root, 'added.ts', content, io)).toBe(false);
+        expect(await branchRangeMatchesWorkingCopy(a.root, 'added.ts', content, io)).toBe(true);
+        expect(io.resolveHead).not.toHaveBeenCalled();
     });
 
     it('uses an empty original side for a root commit', async () => {
@@ -317,9 +331,9 @@ describe('commit and branch-range full-text diff content', () => {
             c.write('range.txt', 'unstaged\r\n');
             expect((await rangeRequest('range.txt', mode)).data.modifiedMatchesWorkingCopy).toBe(false);
             c.git('add', 'range.txt');
-            // Even with disk restored to HEAD, a staged change must disqualify it.
+            // A differing index does not change the matching text shown to the LSP.
             c.write('range.txt', 'local\r\n');
-            expect((await rangeRequest('range.txt', mode)).data.modifiedMatchesWorkingCopy).toBe(false);
+            expect((await rangeRequest('range.txt', mode)).data.modifiedMatchesWorkingCopy).toBe(true);
             c.git('add', 'range.txt');
             expect((await rangeRequest('range.txt', mode)).data.modifiedMatchesWorkingCopy).toBe(true);
             c.write('range.txt', 'local\n');
@@ -370,7 +384,7 @@ describe('commit and branch-range full-text diff content', () => {
 });
 
 describe('shared git snapshot guards', () => {
-    it('refuses a range head different from checked-out HEAD without touching disk', async () => {
+    it('checks disk size before reading even when the snapshot differs from HEAD', async () => {
         const io: WorkingTreeContentIO = {
             resolveHead: vi.fn().mockResolvedValue('different-head'), headEntry: vi.fn(), indexEntry: vi.fn(),
             blobSize: vi.fn(), readBlob: vi.fn(), statDisk: vi.fn(), readDisk: vi.fn(),
@@ -380,10 +394,6 @@ describe('shared git snapshot guards', () => {
             base: { content: 'base\n', ref: 'base', exists: true },
             head: { content: 'head\n', ref: 'range-head', exists: true },
         };
-        expect(await branchRangeMatchesWorkingCopy(process.cwd(), 'a.ts', content, io)).toBe(false);
-        expect(io.statDisk).not.toHaveBeenCalled();
-        expect(io.readDisk).not.toHaveBeenCalled();
-        io.resolveHead = vi.fn().mockResolvedValue('range-head');
         io.statDisk = vi.fn().mockResolvedValue({ size: MAX_WORKING_TREE_CONTENT_BYTES + 1, isFile: true });
         expect(await branchRangeMatchesWorkingCopy(process.cwd(), 'a.ts', content, io)).toBe(false);
         expect(io.readDisk).not.toHaveBeenCalled();
