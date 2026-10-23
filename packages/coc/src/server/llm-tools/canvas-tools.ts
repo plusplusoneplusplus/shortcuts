@@ -29,6 +29,7 @@ import {
     MAX_EXTENSION_CAPABILITIES_BYTES,
 } from '../canvas/canvas-store';
 import type {
+    CanvasRecord,
     CanvasEdit,
     CanvasType,
     CanvasCapabilityMeta,
@@ -263,9 +264,9 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
     const defaultCompleteFactory = (attribution: { workspaceId: string; canvasId: string; capability: string; processId?: string }): CapabilityCompleteFn =>
         createCanvasCompleteFn(deps.dataDir, attribution);
 
-    const emitUpdate = (canvasId: string, title: string, revision: number): void => {
+    const emitUpdate = (canvas: CanvasRecord): void => {
         if (deps.processStore && deps.processId) {
-            emitCanvasUpdated(deps.processStore, deps.processId, { canvasId, title, revision, editor: 'ai' });
+            emitCanvasUpdated(deps.processStore, deps.processId, { canvasId: canvas.id, title: canvas.title, revision: canvas.revision, editor: 'ai', canvasType: canvas.type });
         }
     };
 
@@ -368,7 +369,7 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                         }
                         return { success: false, error: result.error };
                     }
-                    emitUpdate(result.canvas.id, result.canvas.title, result.canvas.revision);
+                    emitUpdate(result.canvas);
                     return {
                         success: true,
                         canvasId: result.canvas.id,
@@ -412,7 +413,7 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                     processId: deps.processId,
                     editor: 'ai',
                 });
-                emitUpdate(canvas.id, canvas.title, canvas.revision);
+                emitUpdate(canvas);
                 return { success: true, canvasId: canvas.id, title: canvas.title, type: canvas.type, ...(canvas.language ? { language: canvas.language } : {}), ...(canvas.type === 'excalidraw' ? { embed: `canvas://${canvas.id}` } : {}), revision: canvas.revision, created: true };
             } catch (err) {
                 return { success: false, error: err instanceof Error ? err.message : String(err) };
@@ -667,7 +668,7 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                 if (outcome.kind === 'conflict') {
                     return { success: false, error: 'The canvas state changed while the capability ran — call read_canvas and retry.' };
                 }
-                emitUpdate(outcome.canvas.id, outcome.canvas.title, outcome.canvas.revision);
+                emitUpdate(outcome.canvas);
                 return { success: true, canvasId: outcome.canvas.id, revision: outcome.canvas.revision, ...truncateState(outcome.canvas.content) };
             }
 
@@ -751,7 +752,7 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                     if (!updated) {
                         return { success: false, error: `Extension canvas not found: ${a.canvasId}` };
                     }
-                    emitUpdate(updated.id, updated.title, updated.revision);
+                    emitUpdate(updated);
                     return {
                         success: true,
                         canvasId: updated.id,
@@ -786,7 +787,7 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                     capabilitiesJs: a.capabilitiesJs!,
                 }, 'ai');
                 const record = withExtension ?? canvas;
-                emitUpdate(record.id, record.title, record.revision);
+                emitUpdate(record);
                 return {
                     success: true,
                     canvasId: record.id,

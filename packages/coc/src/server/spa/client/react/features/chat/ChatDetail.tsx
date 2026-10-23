@@ -1866,9 +1866,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== data.requestId));
         },
         onCanvasUpdated: (data) => {
-            // An AI create or update activates the canvas's tab in the shared
-            // right panel — reopening the panel and recreating a tab the user
-            // closed. The chat itself never grows a canvas column from this.
+            // Document updates activate their shared-panel tab. Kusto result
+            // updates only reconcile mounted views, preserving selection and
+            // panel visibility. The chat never grows a canvas column from this.
             //
             // The host is null for a background chat and for a chat with no
             // panel at all (a pop-out, an embedded chat, a note-side chat). Both

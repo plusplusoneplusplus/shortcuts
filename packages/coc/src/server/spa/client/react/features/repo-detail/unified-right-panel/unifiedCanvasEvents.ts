@@ -1,20 +1,11 @@
 /**
- * unifiedCanvasEvents — AC-06: an AI canvas create/update always becomes the
- * active tab in the panel showing the chat that produced it.
+ * unifiedCanvasEvents — route document updates and reconcile every canvas kind.
  *
- * A `canvas-updated` event arrives on a chat's SSE stream, inside a transcript
- * subtree that has no path to the panel. Two separate things have to happen
- * with it, and they are separate on purpose:
- *
- *  - **Routing** (`routeUnifiedCanvasUpdate`) files or refocuses the canvas tab
- *    and reveals the panel. It runs through `openUnifiedPanelTab`, so a tab the
- *    user closed is recreated and a collapsed panel reopens — the goal asks for
- *    that on every update, not only the first creation.
- *  - **Reconciliation** (`publishUnifiedCanvasEvent` /`useUnifiedCanvasEvent`)
- *    hands the event to whichever `CanvasPanel` is mounted for that canvas, so
- *    it refreshes in place when clean and raises its existing conflict UI when
- *    the user has a local draft. The panel's tab bodies are nowhere near the
- *    chat that received the event, hence the small store.
+ * Kusto result events only publish: background query results must preserve the
+ * selected tab and panel visibility. Explicit embed/menu actions still open them.
+ * Other canvas updates open or refocus their tab through `openUnifiedPanelTab`.
+ * Reconciliation uses a small store because the panel lives outside the chat's
+ * SSE subtree; mounted views refresh in place or retain their dirty-draft UI.
  *
  * Identity is `(owning clone, canvas id)`, never the title: a similarly named
  * canvas in another workspace is a different resource, and the descriptor's
@@ -151,8 +142,9 @@ export function canvasEventTabInput(args: UnifiedCanvasUpdateArgs): OpenUnifiedT
 
 /**
  * Show the canvas an AI event just touched: publish the event for a mounted
- * view, then open/activate its tab and reveal the panel. Returns the tab id, or
- * null when the event names nothing this panel can own.
+ * view. Kusto results preserve panel state; other kinds open/activate their tab
+ * and reveal the panel. Returns the opened tab id, or null for a passive update
+ * or an event this panel cannot own.
  *
  * Publishing first is deliberate — a tab that is already mounted starts
  * reconciling in the same tick it is focused, so the user never sees the
@@ -162,5 +154,6 @@ export function routeUnifiedCanvasUpdate(args: UnifiedCanvasUpdateArgs): string 
     const input = canvasEventTabInput(args);
     if (!input) return null;
     publishUnifiedCanvasEvent(args.ownerWorkspaceId, args.event);
+    if (args.event.canvasType === 'kusto') return null;
     return openUnifiedPanelTab(args.scopeWorkspaceId, input);
 }

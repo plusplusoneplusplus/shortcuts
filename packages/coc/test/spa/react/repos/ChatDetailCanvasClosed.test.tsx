@@ -1020,6 +1020,30 @@ describe('ChatDetail — AI canvas updates with the unified right panel (AC-06)'
         });
     }
 
+    it.each(['task-A', 'task-B'])('keeps a browser selected on late Kusto events while the panel hosts %s', async selectedChat => {
+        const group = 'group-results';
+        updateUnifiedPanelState(group, prev => openTab(prev, {
+            kind: 'browser', ownerWorkspaceId: WS_ID, chatId: null,
+            resourceId: 'browser-session', label: 'Browser', url: 'https://example.com/current',
+        }));
+        localStorage.setItem(workspaceDockOpenStorageKey(group), '0');
+        const before = readUnifiedPanelState(group);
+        const { rerender } = renderHostedChat('task-A', 'task-A', group);
+        // useChatSSE holds the callback from stream creation. Change selection
+        // before invoking it to cover the ref-based host check on late events.
+        const callback = mockState.sseOpts.onCanvasUpdated;
+        rerender(<Wrap><UnifiedPanelHostProvider host={{ workspaceId: group, chatId: selectedChat }}>
+            <ChatDetail taskId="task-A" workspaceId={WS_ID} />
+        </UnifiedPanelHostProvider></Wrap>);
+        for (const revision of [1, 2]) {
+            act(() => callback({ canvasId: 'query-result', title: 'Results', revision, editor: 'ai', canvasType: 'kusto' }));
+        }
+        expect(readUnifiedPanelState(group)).toBe(before);
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+        expect(localStorage.getItem(workspaceDockOpenStorageKey(group))).toBe('0');
+        expect(screen.queryByTestId('canvas-panel-mock')).toBeNull();
+    });
+
     it('activates the canvas as a panel tab, with no canvas column in the chat', async () => {
         renderHostedChat('task-A');
         fireCanvasUpdate('canvas-A2', 1);

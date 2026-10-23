@@ -55,6 +55,7 @@ export function createCanvasUpdateNotifier({ getWsServer, processStore }: Canvas
             if (processStore && canvas.processId) {
                 emitCanvasUpdated(processStore, canvas.processId, {
                     canvasId: canvas.id,
+                    canvasType: canvas.type,
                     title: canvas.title,
                     revision: canvas.revision,
                     editor,

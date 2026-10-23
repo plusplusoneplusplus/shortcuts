@@ -1085,17 +1085,18 @@ chat state and never send messages.
 
 ## AI canvas updates (`unifiedCanvasEvents.ts`)
 
-Split in two. **Routing** goes through `openUnifiedPanelTab`, so a later update
-reopens a collapsed panel and recreates a tab the user dismissed — activation is
-required on every update, not only on creation. **Reconciliation** goes through a
-`useSyncExternalStore` registry (`publishUnifiedCanvasEvent` /
-`useUnifiedCanvasEvent`), because the mounted `CanvasPanel` lives in the panel
-tree, far from the chat SSE stream. Identity is `(owning clone, canvas id)`, never
-the title; revision is the ordering, and a non-advancing event is dropped.
+**Routing** opens non-Kusto canvas updates through `openUnifiedPanelTab`,
+including recreating dismissed tabs and revealing collapsed panels. Kusto
+updates carry `canvasType: 'kusto'` from tools and route mutations through
+`useChatSSE`; they only reconcile, preserving selected tabs and panel visibility.
+Users open results through existing embed actions and the `+` menu.
+**Reconciliation** uses `publishUnifiedCanvasEvent` / `useUnifiedCanvasEvent`
+because `CanvasPanel` lives outside the chat SSE tree. Identity is
+`(owning clone, canvas id)`; non-advancing revisions are dropped.
 
 `useChatSSE` captures its callbacks when it opens the EventSource and does not
 re-subscribe when they change, so this handler reads the host and workspace list
-through refs. **Any future SSE-driven entry point must do the same.** With no
+through refs. The transport discards canvas events from abandoned streams. **Any future SSE-driven entry point must do the same.** With no
 host (a background chat, or a chat with no panel) the event is still *published*
 so a mounted view reconciles, but nothing is opened or activated.
 

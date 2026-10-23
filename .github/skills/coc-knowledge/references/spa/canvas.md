@@ -7,10 +7,12 @@ read-only **source canvas** (`features/chat/source-canvas/`). Chat list and lens
 The AI canvas has **no chat-side column**. It lives in the unified right panel as a
 `canvas` tab (`UnifiedCanvasTab`), in the standalone pop-out window, or as an inline
 embed; the chat itself renders no rail, resize handle, or reserved width for it. An AI
-`canvas-updated` event activates that tab and reveals the panel — with no panel hosting
-the chat, the event only refreshes an already-mounted view. The panel supplies
-`liveEvent` from its own `useSyncExternalStore` relay, since the SSE stream arrives far
-from the mounted view. See `features/repo-detail/unified-right-panel/AGENTS.md`.
+`canvas-updated` event activates that tab and reveals the panel for non-Kusto kinds.
+Kusto events carry `canvasType: 'kusto'` and only refresh mounted views, preserving
+the selected tab and panel visibility; result links and the `+` menu open them explicitly.
+With no panel hosting the chat, every kind only refreshes mounted views. The panel
+supplies `liveEvent` through its `useSyncExternalStore` relay. See
+`features/repo-detail/unified-right-panel/AGENTS.md`.
 
 The initial and follow-up composers expose `/canvas` while `canvas.enabled` is on.
 It is a skill-backed prompt directive: the composer removes the token, selects the
