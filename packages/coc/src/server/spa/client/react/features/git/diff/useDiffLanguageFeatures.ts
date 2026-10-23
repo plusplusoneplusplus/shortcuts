@@ -1,6 +1,6 @@
 /**
  * useDiffLanguageFeatures — the language document behind the modified side of
- * an unstaged diff or server-confirmed clean branch-range head.
+ * an unstaged diff, disk-matching staged index, or server-confirmed disk-matching commit/branch-range head.
  *
  * It joins the explorer's shared buffer through `useLanguageDocument` (one
  * document per path per workspace, ref-counted), so a file open in both the
@@ -31,6 +31,7 @@ import type { DiffLanguageMount } from './monacoDiffController';
 import type { DiffModelsInput, MonacoDiffStage } from './monacoDiffOptions';
 import { resolveDiffLanguageTarget } from './diffLanguageEligibility';
 import { mountDiffLanguageModel, type DiffDefinitionNavigate } from './diffLanguageMount';
+import type { DiffNoDefinition } from './diffDefinitionFeedback';
 
 export interface DiffLanguageFeatures {
     /** The working-copy document URI; the adapter mounts only on this model. */
@@ -50,6 +51,8 @@ export interface UseDiffLanguageFeaturesOptions {
     /** Injected in tests; defaults to the per-workspace store. */
     store?: LanguageDocumentStore;
     onNavigate?: DiffDefinitionNavigate;
+    /** A Ctrl/Cmd+Click that resolved no definition. */
+    onNoDefinition?: DiffNoDefinition;
     /** The editor's text after the latest edit; null/undefined = unedited. */
     editedText?: string | null;
     /** What the last successful save wrote; null/undefined = `models.modified.text`. */
@@ -57,7 +60,7 @@ export interface UseDiffLanguageFeaturesOptions {
 }
 
 export function useDiffLanguageFeatures(options: UseDiffLanguageFeaturesOptions): DiffLanguageFeatures | null {
-    const { workspaceId, relativePath, stage, models, enabled = true, store, onNavigate, editedText, savedText } = options;
+    const { workspaceId, relativePath, stage, models, enabled = true, store, onNavigate, onNoDefinition, editedText, savedText } = options;
     const target = resolveDiffLanguageTarget({ workspaceId, relativePath, stage, models });
     const text = models.modified.text;
     const language = models.modified.language;
@@ -116,6 +119,8 @@ export function useDiffLanguageFeatures(options: UseDiffLanguageFeaturesOptions)
     // does not tear the providers down with it.
     const navigateRef = useRef(onNavigate);
     navigateRef.current = onNavigate;
+    const noDefinitionRef = useRef(onNoDefinition);
+    noDefinitionRef.current = onNoDefinition;
     const mount = useCallback<DiffLanguageMount>(
         context => (view
             ? mountDiffLanguageModel({
@@ -123,7 +128,8 @@ export function useDiffLanguageFeatures(options: UseDiffLanguageFeaturesOptions)
                 view,
                 workspaceId,
                 languageId: language,
-                onNavigate: target => navigateRef.current?.(target) ?? false,
+                onNavigate: target => navigateRef.current?.(target, 'modified') ?? false,
+                onNoDefinition: word => noDefinitionRef.current?.(word),
             })
             : undefined),
         [view, workspaceId, language],

@@ -847,6 +847,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'browserControl.navigationApprovalEnabled', default: true, runtime: 'live', runtimeFlag: 'browserNavigationApprovalEnabled',
+        ui: {
+            tab: 'browser', group: 'browserAutomation', order: 14, label: 'Ask before new sites',
+            hint: 'Ask before AI browser control loads a page from a new root domain (for example google.com). Turn off to allow every site.',
+            dependsOn: 'browserControl.enabled', badge: 'experimental', testId: 'toggle-browser-navigation-approval-enabled',
+        },
+    }),
+    bool({
         key: 'kusto.enabled', default: false, runtime: 'live', runtimeFlag: 'kustoEnabled',
         ui: {
             tab: 'integrations', group: 'review', order: 62, label: 'Kusto query canvas', badge: 'experimental',
@@ -1295,6 +1303,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             tab: 'appearance', group: 'editorFiles', order: 40, label: 'Panel tab reordering', badge: 'experimental',
             hint: 'Reorder mixed resource tabs by dragging, Alt+Left/Right, or the tab menu. Saves order per workspace and chat without moving content between owners. Enabled by default.',
             testId: 'toggle-panel-tab-reordering-enabled',
+        },
+    }),
+    bool({
+        key: 'features.panelTabGroups', default: false, runtime: 'live', runtimeFlag: 'panelTabGroupsEnabled',
+        ui: {
+            tab: 'appearance', group: 'editorFiles', order: 45, label: 'Panel tab groups', badge: 'experimental',
+            hint: 'Group right-panel tabs into Tools, Files, Web, and Canvas, with three visible tabs per group and searchable overflow. Disabled by default.',
+            testId: 'toggle-panel-tab-groups-enabled',
         },
     }),
     bool({

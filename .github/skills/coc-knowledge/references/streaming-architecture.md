@@ -260,6 +260,17 @@ ignored. Disabling admission allows an already admitted request to finish.
 The SPA forwards structured requests through preload, not raw debugger messages;
 desktop ownership and tab validation are described in [spa/shell.md](spa/shell.md).
 
+Site approval rides the same socket. The SPA sends `browser-navigation-check
+{checkId, workspaceId, processId, turnId, url}`; checks are tied to the active
+turn (not a command), and a socket not serving it gets `allow:false`. Allowed or
+exempt sites answer at once with `browser-navigation-decision {checkId, allow}`;
+otherwise the server pushes `browser-navigation-prompt {prompt}` to that socket and
+pauses the conversation's pending action timers. Only that socket's
+`browser-navigation-answer {checkId, answer: once|always|deny}` is accepted;
+once/always also settle other held prompts for the site, and
+`browser-navigation-prompt-cleared` retracts the card. Turn finish/abort and socket
+drop deny; turning the flag off allows.
+
 ## Cross-Origin Policy (REST + WS) — loopback only
 
 The SPA may talk directly to a *different* CoC server forwarded at

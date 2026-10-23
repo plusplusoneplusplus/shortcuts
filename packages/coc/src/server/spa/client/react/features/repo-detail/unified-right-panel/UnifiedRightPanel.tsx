@@ -57,7 +57,7 @@ import { useFileIdentityOpen } from '../../language-servers/useFileIdentityOpen'
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { cn } from '../../../ui/cn';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled } from '../../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled, isPanelTabGroupsEnabled } from '../../../utils/config';
 import { useContainerWidth } from '../../chat/hooks/useContainerWidth';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import {
@@ -85,6 +85,7 @@ import {
 import { isEditableTarget } from '../../../hooks/useScopedFindShortcut';
 import { closeTabOutcome, closeTabShortcut, shouldCollapseAfterClose } from './closeTabRouting';
 import { findFilterOwner, findFilterShortcut } from './findRouting';
+import { returnToDiffDefinitionOrigin } from '../../git/diff/diffDefinitionReturn';
 import {
     keyboardNavigationDirection,
     mouseNavigationDirection,
@@ -104,6 +105,7 @@ import { UnifiedPanelOpenMenu } from './UnifiedPanelOpenMenu';
 import { UnifiedPanelRepoPicker } from './UnifiedPanelRepoPicker';
 import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
 import { compressedCanvasTabs, UnifiedPanelCanvasStack } from './UnifiedPanelCanvasStack';
+import { toggleGroupFolded, useUnifiedTabGroupState } from './unifiedPanelTabGroupStore';
 import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
 import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
 import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
@@ -250,11 +252,14 @@ export function UnifiedRightPanel({
 }: UnifiedRightPanelProps) {
     const { isOpen, mode, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
     const [reorderEnabled, setReorderEnabled] = useState(() => isPanelTabReorderingEnabled());
+    const [groupsEnabled, setGroupsEnabled] = useState(() => isPanelTabGroupsEnabled());
+    const foldedGroups = useUnifiedTabGroupState(workspaceId);
     const [splitEnabled, setSplitEnabled] = useState(() => isPanelSourceSplitEnabled());
     const settingsOwner = useWorkspaceSettingsOwner();
     useEffect(() => {
         const update = () => {
             setReorderEnabled(isPanelTabReorderingEnabled());
+            setGroupsEnabled(isPanelTabGroupsEnabled());
             setSplitEnabled(isPanelSourceSplitEnabled());
         };
         window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
@@ -264,7 +269,7 @@ export function UnifiedRightPanel({
         state, tabs, activeId, active, pinnedId, open, openPreview, previewToReplace, promote, activate, close, move,
         updateNotesSelection,
         updateBrowser,
-    } = useUnifiedPanelTabs(workspaceId, chatId, reorderEnabled);
+    } = useUnifiedPanelTabs(workspaceId, chatId, reorderEnabled || groupsEnabled);
 
     // Reconcile only at the chat-selection boundary. Resource entry points still
     // reveal the panel themselves, and a user may explicitly keep an empty panel
@@ -380,7 +385,7 @@ export function UnifiedRightPanel({
     }, [tabs, mountedIds, retainedScope]);
     // A collapsed canvas burst: the active canvas carries the switcher chip in
     // its own header, next to the title (the strip shows it otherwise).
-    const stackedCanvasTabs = useMemo(() => compressedCanvasTabs(tabs, activeId).canvasTabs, [tabs, activeId]);
+    const stackedCanvasTabs = useMemo(() => groupsEnabled ? [] : compressedCanvasTabs(tabs, activeId).canvasTabs, [tabs, activeId, groupsEnabled]);
 
     const targetOptions = targets ?? dock.targets;
     const targetLabel = useMemo(
@@ -1085,6 +1090,8 @@ export function UnifiedRightPanel({
             || action === 'close-right'
             || action === 'close-saved'
             || action === 'close-all'
+            || action === 'close-group'
+            || action === 'close-others-in-group'
         ) {
             requestBulkClose(unifiedPanelBulkCloseTargets(tabs, tabId, action, dirtyIds));
             return;
@@ -1623,13 +1630,16 @@ export function UnifiedRightPanel({
                     && root.contains(focused),
                 activeFile: active?.kind === 'file',
             })) return;
-            if (!navigateFileHistory(direction)) return;
+            // A file a diff's go to definition opened goes back to that diff first.
+            const handled = (direction === 'back' && active !== null && returnToDiffDefinitionOrigin(workspaceId, active.id))
+                || navigateFileHistory(direction);
+            if (!handled) return;
             event.preventDefault();
             event.stopPropagation();
         };
         document.addEventListener('keydown', onKeyDown, true);
         return () => document.removeEventListener('keydown', onKeyDown, true);
-    }, [active?.kind, isOpen, navigateFileHistory]);
+    }, [active, isOpen, navigateFileHistory, workspaceId]);
 
     // Browser/Electron auxiliary buttons are 3 (Back) and 4 (Forward). A
     // successful mousedown performs the step and claims its matching mouseup;
@@ -1995,6 +2005,9 @@ export function UnifiedRightPanel({
                     onCloseMany={requestBulkClose}
                     onMove={move}
                     reorderEnabled={reorderEnabled}
+                    groupsEnabled={groupsEnabled}
+                    foldedGroups={foldedGroups}
+                    onToggleGroup={group => toggleGroupFolded(workspaceId, group)}
                     reorderScope={JSON.stringify([workspaceId, routingRef, chatId])}
                     pinnedId={pinnedId}
                     onPromote={promote}

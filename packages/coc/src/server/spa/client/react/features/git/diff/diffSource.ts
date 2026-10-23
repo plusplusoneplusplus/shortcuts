@@ -72,6 +72,8 @@ export interface DiffSource {
     readonly routingTarget?: string | null;
     /** Human-readable label, e.g. "Commit abc1234" or "Branch diff". */
     readonly label: string;
+    /** Short revision for compact cues, e.g. "abc1234"; absent when there is none. */
+    readonly shortRef?: string;
 
     /**
      * Build the API URL for a single-file diff.
@@ -84,8 +86,17 @@ export interface DiffSource {
      * Optional so patch-only sources continue to use the classic viewer.
      */
     fetchFileContent?(filePath: string): Promise<GitFileDiffContentResponse>;
-    /** Branch ranges may expose their head as the real document when the server confirms it. */
+    /**
+     * Local commits and branch ranges may expose their new side as the real
+     * document (full language server) when the server confirms it equals the
+     * clean working copy. PR sources never set it.
+     */
     readonly supportsWorkingCopyLanguage?: boolean;
+    /**
+     * Local commit/range reviews offer best-effort current-code definitions on
+     * ref-backed sides. PR sources never set it.
+     */
+    readonly supportsCurrentCodeDefinitions?: boolean;
 
     /**
      * Build the API URL for a full-file-context diff.
@@ -163,7 +174,10 @@ export function createCommitDiffSource(
     const client = () => getGitReviewClient(workspaceId, options?.routingTarget);
     return {
         routingTarget: options?.routingTarget,
+        supportsWorkingCopyLanguage: true,
+        supportsCurrentCodeDefinitions: true,
         label: `Commit ${shortHash}`,
+        shortRef: shortHash,
 
         fileDiffUrl(filePath: string, full?: boolean): string {
             const base = getCocClientForWorkspace(workspaceId).git.commitFileDiffPath(workspaceId, hash, filePath);
@@ -230,10 +244,12 @@ export function createBranchRangeDiffSource(
     return {
         routingTarget: options?.routingTarget,
         supportsWorkingCopyLanguage: true,
+        supportsCurrentCodeDefinitions: true,
         ...(range ? { fileContextRefs: { baseRef: range.mergeBase ?? range.baseSha ?? range.baseRef, headRef: range.headSha ?? range.headRef } } : {}),
         ...(range ? { diffSelectionRef: { type: 'range' as const, baseRef: range.baseRef, headRef: range.headRef } } : {}),
 
         label: baseMode === 'upstream' ? 'Unpushed diff' : 'Branch diff',
+        ...(range?.headSha ? { shortRef: range.headSha.slice(0, 7) } : {}),
 
         fileDiffUrl(filePath: string, full?: boolean): string {
             const path = getCocClientForWorkspace(workspaceId).git.branchRangeFileDiffPath(workspaceId, filePath);

@@ -25,9 +25,11 @@ import {
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import {
     closeTab,
+    openTab,
     visibleTabs,
+    unifiedPanelStorageKey,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
-import { updateUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
+import { openUnifiedPanelTab, updateUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 import { workspaceDockOpenStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
 
 const WS = 'ws-canvas-events';
@@ -160,6 +162,59 @@ describe('routeUnifiedCanvasUpdate', () => {
     function isDockOpen(workspaceId: string): boolean {
         return localStorage.getItem(workspaceDockOpenStorageKey(workspaceId)) === '1';
     }
+
+    it.each(['0', '1'])('keeps browser selection and panel visibility %s across Kusto creates and updates', visibility => {
+        updateUnifiedPanelState(WS, prev => openTab(prev, {
+            kind: 'browser', ownerWorkspaceId: WS, chatId: null,
+            resourceId: 'browser-session', label: 'Browser', url: 'https://example.com/current',
+        }));
+        localStorage.setItem(workspaceDockOpenStorageKey(WS), visibility);
+        const before = readUnifiedPanelState(WS);
+        const persisted = localStorage.getItem(unifiedPanelStorageKey(WS));
+        render(<Probe workspaceId={WS} canvasId="canvas-1" />);
+        for (const revision of [1, 2, 2, 1, 3]) {
+            act(() => {
+                expect(routeUnifiedCanvasUpdate(args({ event: { ...event({ revision }), canvasType: 'kusto' } }))).toBeNull();
+            });
+            expect(readUnifiedPanelState(WS)).toBe(before);
+            expect(localStorage.getItem(workspaceDockOpenStorageKey(WS))).toBe(visibility);
+            expect(localStorage.getItem(unifiedPanelStorageKey(WS))).toBe(persisted);
+        }
+        expect(screen.getByTestId('probe').getAttribute('data-revision')).toBe('3');
+    });
+
+    it('refreshes an explicitly opened Kusto tab without selecting it again or recreating it after close', () => {
+        const input = canvasEventTabInput(args())!;
+        const tabId = openUnifiedPanelTab(WS, input);
+        updateUnifiedPanelState(WS, prev => openTab(prev, {
+            kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'terminal', label: 'Terminal',
+        }));
+        const before = readUnifiedPanelState(WS);
+        routeUnifiedCanvasUpdate(args({ event: { ...event({ revision: 2 }), canvasType: 'kusto' } }));
+        expect(readUnifiedPanelState(WS)).toBe(before);
+        updateUnifiedPanelState(WS, prev => closeTab(prev, tabId));
+        const closed = readUnifiedPanelState(WS);
+        routeUnifiedCanvasUpdate(args({ event: { ...event({ revision: 3 }), canvasType: 'kusto' } }));
+        expect(readUnifiedPanelState(WS)).toBe(closed);
+        expect(visibleTabs(closed, CHAT).some(tab => tab.id === tabId)).toBe(false);
+        // The existing menu/embed descriptor still explicitly opens the same tab.
+        expect(openUnifiedPanelTab(WS, input)).toBe(tabId);
+        expect(readUnifiedPanelState(WS).activeByScope[CHAT]).toBe(tabId);
+    });
+
+    it('publishes Kusto updates only to the concrete owning clone and leaves both panels untouched', () => {
+        const owner = 'remote:server-a:ws-member';
+        render(<><Probe workspaceId={owner} canvasId="canvas-1" /><Probe workspaceId="remote:server-b:ws-member" canvasId="canvas-1" /></>);
+        const group = readUnifiedPanelState('group');
+        const member = readUnifiedPanelState(owner);
+        act(() => { routeUnifiedCanvasUpdate(args({
+            ownerWorkspaceId: owner, scopeWorkspaceId: 'group',
+            event: { ...event({ revision: 4 }), canvasType: 'kusto' },
+        })); });
+        expect(screen.getAllByTestId('probe').map(node => node.getAttribute('data-revision'))).toEqual(['4', 'none']);
+        expect(readUnifiedPanelState('group')).toBe(group);
+        expect(readUnifiedPanelState(owner)).toBe(member);
+    });
 
     it('opens the canvas tab, activates it, and reveals a collapsed panel', () => {
         localStorage.setItem(workspaceDockOpenStorageKey(WS), '0');

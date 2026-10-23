@@ -9,7 +9,7 @@ import { atomicWriteJsonUnique } from '../shared/fs-utils';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import { formatTeamsAnswerChunks } from './teams-answer-format';
 import { TeamsMessageNotSentError } from './teams-messaging-manager';
-import { escapeTeamsHtml, formatTeamsQuestion } from './teams-outbound-format';
+import { escapeTeamsHtml, formatTeamsQuestionChunks } from './teams-outbound-format';
 import type { QuestionTransport } from './ask-user-relay';
 import { formatJobNotice, type JobNoticeTransport } from './job-notices';
 import { queuedChatTask } from './local-topics';
@@ -1299,7 +1299,16 @@ export class TeamsAnswerRelay {
                     || teamsQuestionChatKey(current.teamId, current.channelId) !== target.chatKey) {
                     throw new TeamsMessageNotSentError();
                 }
-                return this.deps.send(formatTeamsQuestion(layout), target.threadId);
+                let id = '';
+                for (const part of formatTeamsQuestionChunks(layout)) {
+                    if (this.disposed || !this.deps.isEnabled() || !this.deps.target().connected
+                        || this.deps.target().teamId !== current.teamId || this.deps.target().channelId !== current.channelId) {
+                        throw new TeamsMessageNotSentError();
+                    }
+                    id = await this.deps.send(part, target.threadId);
+                    if (!id) throw new TeamsMessageNotSentError();
+                }
+                return id;
             },
         };
     }

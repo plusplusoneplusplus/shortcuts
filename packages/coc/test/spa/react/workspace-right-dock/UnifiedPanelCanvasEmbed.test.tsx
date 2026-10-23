@@ -44,6 +44,8 @@ import {
     clearUnifiedPanelState,
     readUnifiedPanelState,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
+import { workspaceDockOpenStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
 import { visibleTabs } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 
 function renderEmbed({
@@ -84,6 +86,28 @@ describe('canvas embed → unified panel canvas tab', () => {
         cleanup();
         clearUnifiedPanelState();
         localStorage.clear();
+    });
+
+    it('loads a Kusto result without touching the browser or dock, then opens only on click', async () => {
+        mockCanvasesGet.mockResolvedValue({ id: 'canvas-9', title: 'Query result', type: 'kusto', content: '{}' });
+        openUnifiedPanelTab('group-acme', {
+            kind: 'browser', ownerWorkspaceId: 'ws-member', chatId: null,
+            resourceId: 'browser-session', label: 'Browser', url: 'https://example.com/current',
+        });
+        localStorage.setItem(workspaceDockOpenStorageKey('group-acme'), '0');
+        const before = readUnifiedPanelState('group-acme');
+        renderEmbed({ host: { workspaceId: 'group-acme', chatId: 'task-A' }, workspaceId: 'ws-member' });
+        await screen.findByTestId('mock-kusto-view');
+        expect(mockCanvasesGet).toHaveBeenCalledWith('ws-member', 'canvas-9');
+        expect(readUnifiedPanelState('group-acme')).toBe(before);
+        expect(localStorage.getItem(workspaceDockOpenStorageKey('group-acme'))).toBe('0');
+        await act(async () => { screen.getByTestId('canvas-embed-open-in-panel').click(); });
+        const opened = readUnifiedPanelState('group-acme');
+        const result = visibleTabs(opened, 'task-A').find(tab => tab.kind === 'canvas')!;
+        expect(result).toMatchObject({ resourceId: 'canvas-9', ownerWorkspaceId: 'ws-member', chatId: 'task-A' });
+        expect(opened.activeByScope['task-A']).toBe(result.id);
+        expect(localStorage.getItem(workspaceDockOpenStorageKey('group-acme'))).toBe('1');
+        expect(visibleTabs(opened, 'task-A').find(tab => tab.kind === 'browser')).toEqual(before.workspaceTabs[0]);
     });
 
     it.each(['sentinel', 'ask'])('opens a collapsed %s embed as a chat-owned tab in the hosting panel', async conversationMode => {

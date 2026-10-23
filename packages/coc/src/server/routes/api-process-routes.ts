@@ -46,6 +46,7 @@ import type { ApiRouteContext } from './api-shared';
 import { createRoute, asString } from './route-utils';
 import { buildMetadataProcess, buildJobPreviewProcess } from '../processes/process-metadata-read-model';
 import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
+import { textareaAnswerError } from '../shared/ask-user-textarea';
 import { parseSensitiveInputReceipt } from '../llm-tools/ask-user-tool';
 import { normalizeRelativeNotePath, noteSectionPath } from '../notes/note-chat-bindings-handler';
 import { getRepoDataPath } from '../paths';
@@ -1566,6 +1567,16 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
 
             if (!bridge) {
                 return void handleAPIError(res, notFound('Bridge not available'));
+            }
+
+            const process = await resolveProcess(store, id);
+            const questions = process?.pendingAskUser?.filter(question => question.batchId === body.batchId) ?? [];
+            for (const answer of answers) {
+                if (answer.skipped === true || answer.deferred === true) continue;
+                if (questions.some(question => question.questionId === answer.questionId && question.type === 'textarea')) {
+                    const error = textareaAnswerError(answer.answer);
+                    if (error) return void handleAPIError(res, badRequest(error));
+                }
             }
 
             const resolved = await bridge.answerAskUserQuestions?.(id, body.batchId as string, answers.map(normalizeAskUserRouteAnswer)) ?? false;

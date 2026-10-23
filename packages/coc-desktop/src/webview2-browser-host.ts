@@ -33,6 +33,9 @@ interface NativeEntry {
     cdpGeneration: number;
     cdpError?: Error;
     documentGeneration: number;
+    /** This view's own control turn gate; a popup is also gated while its root is. */
+    navigationGate: boolean;
+    gateSequence: number;
 }
 
 /** Never-placed background views get an ordinary desktop viewport. */
@@ -103,6 +106,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         const entry: NativeEntry = {
             nativeId: id, request, sink, parent, window, bounds: null, background: false, fullscreen: false, wasFullscreen: window.isFullScreen(), pageZoom: request.pageZoomPercent ?? 100,
             cdpListeners: new Set(), cdpSessions: new Map(), cdpReady: Promise.resolve(), cdpGeneration: 0, documentGeneration: 0,
+            navigationGate: request.navigationGate === true, gateSequence: 0,
             state: { viewId: request.viewId, engine: 'webview2', url: request.url, title: '', canGoBack: false, canGoForward: false, loading: true },
             reposition: () => {
                 if (entry.bounds && !window.isDestroyed()) { void this.process.request('bounds', { viewId: id, bounds: this.bounds(entry) }).catch(error => this.viewFailure(entry, error)); }
@@ -112,7 +116,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         window.on('move', entry.reposition);
         window.on('resize', entry.reposition);
         try { await this.process.request('open', { viewId: id, url: request.url, parent, pageZoomPercent: entry.pageZoom,
-            ...(request.clickOnceEnabled ? { clickOnceEnabled: true } : {}) }); }
+            ...(request.clickOnceEnabled ? { clickOnceEnabled: true } : {}), ...(entry.navigationGate ? { navigationGate: true } : {}) }); }
         catch (error) {
             this.remove(id, entry);
             throw error;
@@ -157,6 +161,12 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             setControlActivity: turnId => entry.root && this.views.get(id) === entry
                 ? this.process.request('control-activity', { viewId: id, turnId })
                 : undefined,
+            setNavigationGate: async enabled => {
+                if (this.views.get(id) !== entry || entry.navigationGate === enabled) { return; }
+                entry.navigationGate = enabled;
+                const views = entry.root ? [entry] : [entry, ...[...this.views.values()].filter(view => view.root === entry)];
+                await Promise.all(views.map(view => this.process.request('navigation-gate', { viewId: view.nativeId, navigationGate: this.gated(view) })));
+            },
             importCookies: cookies => this.process.request('import-cookies', { viewId: id, cookies }),
             snapshot: () => ({ ...entry.state }),
             navigate: async url => {
@@ -170,7 +180,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
                     if (this.process.running) { await this.process.request('close', { viewId: id }); }
                     entry.state = { ...entry.state, error: undefined, errorCode: undefined, loading: true };
                     await this.process.request('open', { viewId: id, url: entry.request.url, parent: entry.parent, pageZoomPercent: entry.pageZoom,
-                        ...(entry.request.clickOnceEnabled ? { clickOnceEnabled: true } : {}) });
+                        ...(entry.request.clickOnceEnabled ? { clickOnceEnabled: true } : {}), ...(this.gated(entry) ? { navigationGate: true } : {}) });
                     await this.process.request('bounds', { viewId: id, bounds: this.bounds(entry) });
                 } else { await this.process.request('nav', { viewId: id, action }); }
             },
@@ -204,6 +214,25 @@ export class WebView2BrowserHost implements BrowserEngineHost {
                 if (this.process.running) { await this.process.request('close', { viewId: id }); }
             },
         };
+    }
+
+    private gated(entry: NativeEntry): boolean {
+        return entry.navigationGate || !!entry.root?.navigationGate;
+    }
+
+    /** Native code cancelled the navigation before any request; re-issue it only once approved. */
+    private navigationGate(entry: NativeEntry, url: string): void {
+        const sequence = ++entry.gateSequence;
+        const generation = entry.documentGeneration;
+        const decision = entry.root
+            ? entry.root.sink.navigationGate?.(url, entry.request.viewId)
+            : entry.sink.navigationGate?.(url);
+        void Promise.resolve(decision ?? true).then(allow => {
+            if (!allow || this.views.get(entry.nativeId) !== entry || entry.gateSequence !== sequence || entry.documentGeneration !== generation
+                || entry.state.errorCode === 'runtime-crashed' || !this.process.running) { return; }
+            entry.documentGeneration++;
+            return this.process.request('navigate', { viewId: entry.nativeId, url, approved: true });
+        }).catch(error => console.error('[coc-desktop] WebView2 approved navigation failed:', error));
     }
 
     private clearCdp(entry: NativeEntry): void {
@@ -287,7 +316,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
                 ...root, root, nativeId: message.viewId,
                 request: { ...root.request, viewId, url: message.url },
                 state: { ...root.state, viewId, url: message.url, title: '', loading: true, canGoBack: false, canGoForward: false, error: undefined, errorCode: undefined },
-                bounds: null, background: false, fullscreen: false,
+                bounds: null, background: false, fullscreen: false, navigationGate: false, gateSequence: 0,
                 cdpListeners: new Set(), cdpSessions: new Map(), cdpReady: Promise.resolve(), cdpGeneration: 0, cdpError: undefined,
             };
             this.views.set(message.viewId, popup);
@@ -296,6 +325,10 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         }
         const entry = this.views.get(message.viewId);
         if (!entry) { return; }
+        if (message.event === 'navigation-gate') {
+            if (typeof message.url === 'string' && validateBrowserUrl(message.url).ok) { this.navigationGate(entry, message.url); }
+            return;
+        }
         if (message.event === 'document-starting') {
             entry.documentGeneration++;
             return;

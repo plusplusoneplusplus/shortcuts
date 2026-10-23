@@ -1226,3 +1226,57 @@ describe('AskUserInline', () => {
         });
     });
 });
+
+
+describe('textarea draft editing', () => {
+    const draft = 'Hi Alex,\n\nThanks!';
+    const batch = () => makeBatch([makeQuestion({ type: 'textarea', options: undefined, defaultValue: draft })]);
+    const mount = () => render(<AskUserInline batch={batch()} processId="textarea-process" onAnswered={vi.fn()} />);
+
+    it('prefills the draft, keeps plain Enter local, and restores edits across remounts', async () => {
+        const view = mount();
+        const input = screen.getByTestId('ask-user-textarea-input');
+        expect(input).toHaveValue(draft);
+        expect(fireEvent.keyDown(input, { key: 'Enter' })).toBe(true);
+        expect(mocks.processes.askUserResponse).not.toHaveBeenCalled();
+        fireEvent.change(input, { target: { value: draft + '\nEdited' } });
+        view.unmount();
+        mount();
+        expect(screen.getByTestId('ask-user-textarea-input')).toHaveValue(draft + '\nEdited');
+        fireEvent.click(screen.getByText('Reset to draft'));
+        expect(screen.getByTestId('ask-user-textarea-input')).toHaveValue(draft);
+        expect(screen.queryByText('Reset to draft')).not.toBeInTheDocument();
+    });
+
+    it.each([{ ctrlKey: true }, { metaKey: true }])('submits the exact edited answer with %j+Enter', async modifier => {
+        mount();
+        const input = screen.getByTestId('ask-user-textarea-input');
+        const answer = '  Hi Alex,\n\nEdited text  ';
+        fireEvent.change(input, { target: { value: answer } });
+        fireEvent.keyDown(input, { key: 'Enter', ...modifier });
+        await waitFor(() => expect(mocks.processes.askUserResponse).toHaveBeenCalledWith('textarea-process', {
+            batchId: 'batch-1', answers: [{ questionId: 'q-1', answer }],
+        }));
+    });
+
+    it('blocks IME, 229, repeat, empty and oversized submissions', () => {
+        mount();
+        const input = screen.getByTestId('ask-user-textarea-input');
+        fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true, isComposing: true });
+        fireEvent.keyDown(input, { key: 'Enter', metaKey: true, keyCode: 229 });
+        fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true, repeat: true });
+        expect(mocks.processes.askUserResponse).not.toHaveBeenCalled();
+        for (const value of ['', 'é'.repeat(16385)]) {
+            fireEvent.change(input, { target: { value } });
+            expect(screen.getByTestId('ask-user-submit-all-btn')).toBeDisabled();
+            fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
+            expect(mocks.processes.askUserResponse).not.toHaveBeenCalled();
+        }
+    });
+
+    it('requires an answer when no draft exists', () => {
+        render(<AskUserInline batch={makeBatch([makeQuestion({ type: 'textarea', options: undefined })])} processId="empty" onAnswered={vi.fn()} />);
+        expect(screen.getByTestId('ask-user-textarea-input')).toHaveValue('');
+        expect(screen.getByTestId('ask-user-submit-all-btn')).toBeDisabled();
+    });
+});

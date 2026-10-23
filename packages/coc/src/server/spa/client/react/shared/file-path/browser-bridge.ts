@@ -85,6 +85,10 @@ export interface DesktopBrowserBridge {
         onStop?(callback: (event: BrowserControlActivityEvent) => void): () => void;
         onFocused?(callback: () => void): () => void;
         onReveal(callback: (event: BrowserControlReveal) => void): () => void;
+        /** Agent-driven top-level navigations held during an active turn; absent on older desktops. */
+        onNavigationCheck?(callback: (event: BrowserNavigationCheckEvent) => void): () => void;
+        /** Resumes (`allow`) or blocks a held navigation. */
+        decideNavigation?(checkId: string, allow: boolean): void;
     };
     /** Installation-wide history; absent on older desktop hosts. */
     history?: DesktopBrowserHistory;
@@ -129,6 +133,16 @@ export interface BrowserControlReveal {
     turnId?: string;
     /** The view belongs to a retained background scope; the window must not switch to it. */
     background?: boolean;
+}
+
+/** A top-level navigation the desktop holds until the owning server decides. */
+export interface BrowserNavigationCheckEvent {
+    checkId: string;
+    workspaceId: string;
+    processId: string;
+    turnId: string;
+    routingRef: string;
+    url: string;
 }
 
 export interface BrowserControlActivityEvent {

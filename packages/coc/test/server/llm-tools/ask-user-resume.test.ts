@@ -177,3 +177,17 @@ describe('buildPendingAskUserAnswerRecord sensitive-input', () => {
         expect(record!.answers[0]).toMatchObject({ skipped: true, answer: null });
     });
 });
+
+
+describe('textarea answers after restart', () => {
+    it('validates text and computes edited while preserving the final text', () => {
+        const pending = [question({ questionId: 'q', type: 'textarea', defaultValue: 'Hi\r\nAlex' })];
+        const record = buildPendingAskUserAnswerRecord(pending, 'batch-1', [{ questionId: 'q', answer: 'Hi\nAlex' }], 'ts');
+        expect(record?.answers[0]).toMatchObject({ answer: 'Hi\nAlex', edited: false });
+        expect(buildAskUserResumeMessage(record!)).toContain('Hi\nAlex');
+        expect(buildPendingAskUserAnswerRecord(pending, 'batch-1', [{ questionId: 'q', answer: ' Hi\nAlex ' }], 'ts')?.answers[0]).toMatchObject({ edited: true });
+        for (const answer of ['', true, [], 'é'.repeat(16385)]) {
+            expect(buildPendingAskUserAnswerRecord(pending, 'batch-1', [{ questionId: 'q', answer }], 'ts')).toBeNull();
+        }
+    });
+});

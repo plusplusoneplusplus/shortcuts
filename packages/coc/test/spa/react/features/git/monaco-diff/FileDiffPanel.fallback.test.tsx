@@ -69,7 +69,25 @@ vi.mock('../../../../../../src/server/spa/client/react/features/git/diff/SideByS
     }),
 }));
 
+type NavigateTarget = { workspaceId: string; path: string; line: number; column: number; symbolCandidate?: true };
+const currentCodeMounts = vi.hoisted(() => [] as { uri: string; routingRef: unknown; onNavigate: (target: NavigateTarget) => boolean }[]);
+vi.mock('../../../../../../src/server/spa/client/react/features/git/diff/diffCurrentCodeMount', () => ({
+    mountDiffCurrentCodeModel: (options: { model: { uri: { toString(): string } }; routingRef: unknown; onNavigate: (target: NavigateTarget) => boolean }) => {
+        currentCodeMounts.push({ uri: options.model.uri.toString(), routingRef: options.routingRef, onNavigate: options.onNavigate });
+        return () => {};
+    },
+}));
+const openUnifiedPanelTab = vi.hoisted(() => vi.fn(() => 'tab-id'));
+vi.mock('../../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen', async importOriginal => ({
+    ...(await importOriginal<object>()),
+    openUnifiedPanelTab,
+}));
+
 import { FileDiffPanel } from '../../../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel';
+import {
+    getDiffDefinitionReturn, resetDiffDefinitionReturns, returnToDiffDefinitionOrigin,
+} from '../../../../../../src/server/spa/client/react/features/git/diff/diffDefinitionReturn';
+import { UnifiedPanelHostProvider } from '../../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
 
 function content(extra: Partial<GitFileDiffContentResponse> = {}): GitFileDiffContentResponse {
     return {
@@ -81,7 +99,7 @@ function content(extra: Partial<GitFileDiffContentResponse> = {}): GitFileDiffCo
 }
 
 type SourceKind = 'commit' | 'branch-range' | 'pull-request';
-function makeSource(kind: SourceKind, fetchFileContent = vi.fn(async () => content())): DiffSource {
+function makeSource(kind: SourceKind, fetchFileContent: DiffSource['fetchFileContent'] = vi.fn(async () => content())): DiffSource {
     const [oldRef, newRef] = kind === 'commit' ? ['abc123^', 'abc123']
         : kind === 'branch-range' ? ['branch-base', 'branch-head'] : ['pr-42-base', 'pr-42-head'];
     return {
@@ -124,6 +142,188 @@ beforeEach(() => {
     comments = [];
     classicProps = null;
     fakes = [];
+    currentCodeMounts.length = 0;
+});
+
+describe('historical definition surfaces', () => {
+    it.each([
+        ['commit', true],
+        ['branch-range', true],
+        ['pull-request', false],
+    ] as const)('%s source mounts current-code definitions: %s', async (kind, expected) => {
+        const source = { ...makeSource(kind), routingTarget: 'remote:srv:ws-a', supportsCurrentCodeDefinitions: kind !== 'pull-request' };
+        await mount(source);
+        await act(async () => {});
+        expect(fakes).toHaveLength(1);
+        expect(fakes[0].historicalMounts.map(m => m.side)).toEqual(expected ? ['original', 'modified'] : []);
+        expect(currentCodeMounts.map(m => m.routingRef)).toEqual(expected ? ['remote:srv:ws-a', 'remote:srv:ws-a'] : []);
+    });
+});
+
+describe('commit hybrid resolution', () => {
+    it.each([true, false])('a commit head matching the working copy (%s) switches between full LSP and current-code lookup', async matches => {
+        const fetchContent = vi.fn(async () => content({ modifiedMatchesWorkingCopy: matches }));
+        const source = { ...makeSource('commit', fetchContent), supportsWorkingCopyLanguage: true, supportsCurrentCodeDefinitions: true };
+        await mount(source);
+        await act(async () => {});
+        const models = fakes[0].models.at(-1)!;
+        expect(models.original.uri).toMatch(/^coc-diff-ref:/);
+        expect(models.modified.uri.startsWith('coc-diff-ref:')).toBe(!matches);
+        // The parent side always uses the current-code lookup; the head only when it is not the working copy.
+        expect(fakes[0].historicalMounts.map(m => m.side)).toEqual(matches ? ['original'] : ['original', 'modified']);
+        expect(currentCodeMounts.every(m => m.uri.startsWith('coc-diff-ref:'))).toBe(true);
+    });
+});
+
+describe('definition routing', () => {
+    const panelHost = { workspaceId: 'group-1', chatId: 'chat-1', routingRef: null };
+    const jumpFrom = (side: 'original' | 'modified') => currentCodeMounts[side === 'original' ? currentCodeMounts.length - 2 : currentCodeMounts.length - 1];
+    const target = (path: string, extra: Partial<NavigateTarget> = {}): NavigateTarget => ({ workspaceId: 'ws-a', path, line: 9, column: 3, ...extra });
+    const commitSource = () => ({ ...makeSource('commit'), supportsCurrentCodeDefinitions: true });
+    function panel(source: DiffSource, filePath: string, onNavigateToFile: (path: string, hunk: 'first' | 'last') => void, host = true) {
+        const body = <FileDiffPanel workspaceId="ws-a" filePath={filePath} source={source} createDiffEditor={createEditor}
+            onNavigateToFile={onNavigateToFile} initialHunkTarget="first" />;
+        return host ? <UnifiedPanelHostProvider host={panelHost}>{body}</UnifiedPanelHostProvider> : body;
+    }
+
+    it('reveals a same-file target on the side the jump started from', async () => {
+        const source = commitSource();
+        const onNavigateToFile = vi.fn();
+        await act(async () => { render(panel(source, 'src/a.ts', onNavigateToFile)); });
+        let handled: boolean | undefined;
+        act(() => { handled = jumpFrom('original').onNavigate(target('src/a.ts')); });
+        expect(handled).toBe(true);
+        expect(fakes[0].revealedPositions).toEqual([{ side: 'original', line: 9, column: 3 }]);
+        expect(onNavigateToFile).not.toHaveBeenCalled();
+        expect(openUnifiedPanelTab).not.toHaveBeenCalled();
+    });
+
+    it('switches to a changed file of the review and reveals there instead of the first hunk', async () => {
+        const fetchContent = vi.fn(async (path: string) => content({ path, base: { content: `${path} old\n`, ref: 'base', exists: true } }));
+        const source = { ...makeSource('commit', fetchContent), supportsCurrentCodeDefinitions: true };
+        const onNavigateToFile = vi.fn();
+        let view!: ReturnType<typeof render>;
+        await act(async () => { view = render(panel(source, 'src/a.ts', onNavigateToFile)); });
+        act(() => { jumpFrom('modified').onNavigate(target('src/b.ts')); });
+        expect(onNavigateToFile).toHaveBeenCalledWith('src/b.ts', 'first');
+        expect(fakes[0].revealedPositions).toEqual([]);
+        await act(async () => { view.rerender(panel(source, 'src/b.ts', onNavigateToFile)); });
+        await act(async () => {});
+        expect(fakes[0].models.at(-1)?.original.text).toBe('src/b.ts old\n');
+        expect(fakes[0].revealedPositions).toEqual([{ side: 'modified', line: 9, column: 3 }]);
+        act(() => { fakes[0].finishDiff([{ originalStartLineNumber: 1, originalEndLineNumber: 1, modifiedStartLineNumber: 1, modifiedEndLineNumber: 1 }]); });
+        expect(fakes[0].adapter.revealModifiedLine).not.toHaveBeenCalled();
+    });
+
+    it('a later file change drops a reveal that was not for it', async () => {
+        const source = commitSource();
+        const onNavigateToFile = vi.fn();
+        let view!: ReturnType<typeof render>;
+        await act(async () => { view = render(panel(source, 'src/a.ts', onNavigateToFile)); });
+        act(() => { jumpFrom('modified').onNavigate(target('src/b.ts')); });
+        await act(async () => { view.rerender(panel(source, 'src/c.ts', onNavigateToFile)); });
+        await act(async () => { view.rerender(panel(source, 'src/b.ts', onNavigateToFile)); });
+        await act(async () => {});
+        expect(fakes[0].revealedPositions).toEqual([]);
+    });
+
+    it('opens any other file in the Explorer panel at the definition line', async () => {
+        const source = { ...commitSource(), routingTarget: 'remote:srv:ws-a' };
+        await act(async () => { render(panel(source, 'src/a.ts', vi.fn())); });
+        let handled: boolean | undefined;
+        act(() => { handled = jumpFrom('original').onNavigate(target('lib/util.ts', { symbolCandidate: true })); });
+        expect(handled).toBe(true);
+        expect(openUnifiedPanelTab).toHaveBeenCalledWith('group-1', expect.objectContaining({
+            kind: 'file', ownerWorkspaceId: 'ws-a', ownerRoutingRef: 'remote:srv:ws-a', chatId: 'chat-1',
+            resourceId: 'lib/util.ts', line: 9, column: 3, symbolCandidate: true,
+        }));
+        expect(fakes[0].revealedPositions).toEqual([]);
+    });
+
+    it('an Explorer jump leaves a way back to the exact diff file, side and scroll spot', async () => {
+        resetDiffDefinitionReturns();
+        const fetchContent = vi.fn(async (path: string) => content({ path, base: { content: `${path} old\n`, ref: 'base', exists: true } }));
+        const source = { ...makeSource('commit', fetchContent), supportsCurrentCodeDefinitions: true, shortRef: 'abc1234' };
+        const onNavigateToFile = vi.fn();
+        let view!: ReturnType<typeof render>;
+        await act(async () => { view = render(panel(source, 'src/a.ts', onNavigateToFile)); });
+        fakes[0].viewPositions.original = { line: 7, column: 2, scrollTop: 220 };
+        act(() => { jumpFrom('original').onNavigate(target('lib/util.ts')); });
+        expect(getDiffDefinitionReturn('group-1', 'tab-id')).toMatchObject({ label: 'abc1234 · a.ts', chatId: 'chat-1' });
+        // The diff moved on to another file while Explorer was showing.
+        await act(async () => { view.rerender(panel(source, 'src/b.ts', onNavigateToFile)); });
+        await act(async () => {});
+        let returned = false;
+        act(() => { returned = returnToDiffDefinitionOrigin('group-1', 'tab-id'); });
+        expect(returned).toBe(true);
+        expect(onNavigateToFile).toHaveBeenLastCalledWith('src/a.ts', 'first');
+        await act(async () => { view.rerender(panel(source, 'src/a.ts', onNavigateToFile)); });
+        await act(async () => {});
+        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side: 'original', line: 7, column: 2, scrollTop: 220 });
+        expect(getDiffDefinitionReturn('group-1', 'tab-id')).toBeNull();
+        // The in-diff chip is for in-diff jumps only.
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+    });
+
+    it('falls back to the Explorer deep link without a unified panel', async () => {
+        location.hash = '';
+        await act(async () => { render(panel(commitSource(), 'src/a.ts', vi.fn(), false)); });
+        act(() => { jumpFrom('modified').onNavigate(target('lib/util.ts')); });
+        expect(location.hash).toBe(`#repos/ws-a/explorer/${encodeURIComponent('lib/util.ts')}`);
+        expect(openUnifiedPanelTab).not.toHaveBeenCalled();
+        location.hash = '';
+    });
+
+    it('Alt+← and the back chip return to the exact file, side and scroll spot', async () => {
+        const fetchContent = vi.fn(async (path: string) => content({ path, base: { content: `${path} old\n`, ref: 'base', exists: true } }));
+        const source = { ...makeSource('commit', fetchContent), supportsCurrentCodeDefinitions: true, shortRef: 'abc1234' };
+        const onNavigateToFile = vi.fn();
+        let view!: ReturnType<typeof render>;
+        await act(async () => { view = render(panel(source, 'src/a.ts', onNavigateToFile)); });
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+
+        // Same-file jump from the old side, then back with Alt+←.
+        fakes[0].viewPositions.original = { line: 4, column: 6, scrollTop: 140 };
+        act(() => { jumpFrom('original').onNavigate(target('src/a.ts')); });
+        expect(screen.getByTestId('diff-definition-back-chip').textContent).toBe('← Back to abc1234 · a.ts');
+        const key = new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, bubbles: true, cancelable: true });
+        act(() => { screen.getByTestId('file-diff-panel').dispatchEvent(key); });
+        expect(key.defaultPrevented).toBe(true);
+        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side: 'original', line: 4, column: 6, scrollTop: 140 });
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+
+        // Cross-file jump from the new side, then the chip switches back.
+        fakes[0].viewPositions.modified = { line: 12, column: 1, scrollTop: 400 };
+        act(() => { jumpFrom('modified').onNavigate(target('src/b.ts')); });
+        await act(async () => { view.rerender(panel(source, 'src/b.ts', onNavigateToFile)); });
+        await act(async () => {});
+        expect(screen.getByTestId('diff-definition-back-chip').textContent).toBe('← Back to abc1234 · a.ts');
+        act(() => { fireEvent.click(screen.getByTestId('diff-definition-back-chip')); });
+        expect(onNavigateToFile).toHaveBeenLastCalledWith('src/a.ts', 'first');
+        await act(async () => { view.rerender(panel(source, 'src/a.ts', onNavigateToFile)); });
+        await act(async () => {});
+        expect(fakes[0].models.at(-1)?.original.text).toBe('src/a.ts old\n');
+        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side: 'modified', line: 12, column: 1, scrollTop: 400 });
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+    });
+
+    it('leaves Alt+← to the editor when there is nothing to go back to, and Explorer jumps add no history', async () => {
+        await act(async () => { render(panel(commitSource(), 'src/a.ts', vi.fn())); });
+        fakes[0].viewPositions.modified = { line: 1, column: 1, scrollTop: 0 };
+        act(() => { jumpFrom('modified').onNavigate(target('lib/util.ts')); });
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+        const key = new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, bubbles: true, cancelable: true });
+        act(() => { screen.getByTestId('file-diff-panel').dispatchEvent(key); });
+        expect(key.defaultPrevented).toBe(false);
+    });
+
+    it('declines a target in another workspace', async () => {
+        await act(async () => { render(panel(commitSource(), 'src/a.ts', vi.fn())); });
+        let handled: boolean | undefined;
+        act(() => { handled = jumpFrom('modified').onNavigate(target('src/b.ts', { workspaceId: 'ws-b' })); });
+        expect(handled).toBe(false);
+        expect(openUnifiedPanelTab).not.toHaveBeenCalled();
+    });
 });
 
 describe.each<SourceKind>(['commit', 'branch-range', 'pull-request'])('%s fallback wiring', kind => {

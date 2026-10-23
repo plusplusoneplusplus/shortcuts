@@ -1,7 +1,7 @@
 /**
- * AC-06 eligibility: only the real modified side of an unstaged diff may be
+ * AC-06 eligibility: only a real modified working-copy model may be
  * offered to a language server. Every synthetic URI, the original side and
- * both sides of a staged diff are refused — as data, never as an error.
+ * staged sides that differ from disk are refused — as data, never as an error.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -70,6 +70,17 @@ describe('resolveDiffLanguageTarget', () => {
         }
     });
 
+    it.each([true, false])('accepts a staged right side only when the index matches disk: %s', modifiedMatchesWorkingCopy => {
+        const models = buildDiffModels({
+            workspaceId: 'ws-1', relativePath: 'src/a.ts', stage: 'staged',
+            original: 'base\n', modified: 'index\n', modifiedMatchesWorkingCopy,
+        });
+        expect(resolveDiffLanguageTarget({ workspaceId: 'ws-1', relativePath: 'src/a.ts', stage: 'staged', models }).eligible)
+            .toBe(modifiedMatchesWorkingCopy);
+        expect(isDiffRefUri(models.original.uri)).toBe(true);
+        expect(models.original.isWorkingCopy).toBe(false);
+    });
+
     it('never offers the original (index) side, even when mislabelled as the working copy', () => {
         const unstaged = input('unstaged');
         const swapped: DiffModelsInput = { original: unstaged.models.modified, modified: { ...unstaged.models.original, isWorkingCopy: true } };
@@ -128,10 +139,10 @@ describe('AC-06 source assertions', () => {
         expect(adapter).toMatch(/setModels\(models\) \{[\s\S]*?unmountLanguage\(\);[\s\S]*?releaseLeases\(\);/);
     });
 
-    it('the eligibility rule is keyed on the synthetic scheme and the unstaged stage', () => {
+    it('the eligibility rule checks synthetic URIs and staged working-copy identity', () => {
         const rule = read('diffLanguageEligibility.ts');
         expect(rule).toMatch(/isDiffRefUri\(modified\.uri\)/);
-        expect(rule).toMatch(/stage !== 'unstaged'/);
+        expect(rule).toMatch(/stage === 'staged' && !models.modified.isWorkingCopy/);
     });
 
     it('the original side is never editable, the modified side only via isEditableDiff, and the engine default is monaco', () => {

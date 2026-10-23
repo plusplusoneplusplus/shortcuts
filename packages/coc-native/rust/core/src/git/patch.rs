@@ -288,11 +288,13 @@ fn patch_args(
 
 /// First-parent provider comparison, including a root commit's empty left side.
 /// diff-tree resolves the parent itself and supports the repository's hash format.
+/// `--diff-merges=first-parent` keeps merges and stash entries to one comparison;
+/// diff-tree ignores `--first-parent`, so `-m` alone diffs every parent.
 pub fn commit_patch_args(commit: &str, path: Option<&str>, context: Option<u32>) -> Vec<String> {
     let mut args = patch_args("diff-tree", &[commit.into()], path, context);
     args.splice(
         2..2,
-        ["--root", "--first-parent", "-m", "-r", "-p", "--no-commit-id"].map(String::from),
+        ["--root", "--diff-merges=first-parent", "-r", "-p", "--no-commit-id"].map(String::from),
     );
     args
 }

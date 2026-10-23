@@ -37,6 +37,18 @@ export const BROWSER_CONTROL_ACTIVITY_CHANNEL = 'coc-desktop:browser-control-act
 export const BROWSER_CONTROL_FINISH_CHANNEL = 'coc-desktop:browser-control-finish';
 export const BROWSER_CONTROL_STOP_CHANNEL = 'coc-desktop:browser-control-stop';
 export const BROWSER_CONTROL_VISIBLE_CHANNEL = 'coc-desktop:browser-control-visible';
+export const BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL = 'coc-desktop:browser-control-navigation-check';
+export const BROWSER_CONTROL_NAVIGATION_DECISION_CHANNEL = 'coc-desktop:browser-control-navigation-decision';
+
+/** A top-level navigation held during an active control turn until the owning server decides. */
+export interface BrowserNavigationCheckEvent {
+    checkId: string;
+    workspaceId: string;
+    processId: string;
+    turnId: string;
+    routingRef: string;
+    url: string;
+}
 
 export interface BrowserControlActivityEvent {
     routingOwnerId?: number;

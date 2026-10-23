@@ -144,9 +144,18 @@ export function createWhatsAppQuestionTransport(
             if ((!request.origin && !binding) || !deps.connected() || deps.groupJid() !== target.chatKey) {
                 throw new WhatsAppNotConnectedError();
             }
-            const id = await deps.send(formatWhatsAppQuestion(layout), binding?.inboundId);
-            if (id && binding) deps.bindings.recordQuestion(binding, id);
-            else if (id) deps.bindings.recordOutbound(id);
+            const parts = chunkWhatsAppText(formatWhatsAppQuestion({ ...layout, hint: '' }));
+            const last = parts.length - 1;
+            if (parts[last].length + layout.hint.length <= 4096) parts[last] += layout.hint;
+            else parts.push(layout.hint);
+            let id = '';
+            for (const part of parts) {
+                if (!deps.connected() || deps.groupJid() !== target.chatKey) throw new WhatsAppNotConnectedError();
+                id = await deps.send(part, binding?.inboundId);
+                if (!id) throw new WhatsAppNotConnectedError();
+                if (binding) deps.bindings.recordQuestion(binding, id);
+                else deps.bindings.recordOutbound(id);
+            }
             return id;
         },
         isPastQuestion: messageId => deps.bindings.isQuestionMessage(messageId),

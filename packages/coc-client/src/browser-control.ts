@@ -94,6 +94,24 @@ export type BrowserCommandReply =
     | { id: string; ok: true; result: BrowserCommandResult }
     | { id: string; ok: false; error: string };
 
+/** The user's answer to a navigation approval prompt. */
+export type BrowserNavigationAnswer = 'once' | 'always' | 'deny';
+
+/**
+ * An agent-driven top-level navigation, held by the desktop host, to a root domain
+ * the conversation has not approved yet. The owning server sends it to the window
+ * running the turn, which shows it in that conversation's chat.
+ */
+export interface BrowserNavigationPrompt {
+    checkId: string;
+    workspaceId: string;
+    processId: string;
+    turnId: string;
+    /** Root domain (eTLD+1) or exact IP host the answer applies to. */
+    site: string;
+    url: string;
+}
+
 export interface BrowserControlRuntime {
     getEnabled(): boolean;
     getFramesEnabled?(): boolean;

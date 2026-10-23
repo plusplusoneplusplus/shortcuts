@@ -83,6 +83,21 @@ export function isPinnedScope(pins: readonly PinnedScopeRef[], ref: PinnedScopeR
     return pins.some(p => serializePinnedScope(p) === id);
 }
 
+/** Qualify old no-URL pins only when their stored raw id identifies one remote clone. */
+export function qualifyWorkspacePins(pins: PinnedScopeRef[], groups: readonly RepoGroup[]): PinnedScopeRef[] {
+    const keys = new Set(groups.map(groupKey));
+    let changed = false;
+    const qualified = pins.map(pin => {
+        if (pin.kind !== 'repo' || !pin.key.startsWith('workspace:') || keys.has(pin.key)) return pin;
+        const id = pin.key.slice('workspace:'.length);
+        const candidates = groups.filter(group => group.normalizedUrl === null && group.repos[0]?.workspace.id === id);
+        if (candidates.length !== 1) return pin;
+        changed = true;
+        return { ...pin, key: groupKey(candidates[0]) };
+    });
+    return changed ? parsePinnedScopes(qualified.map(serializePinnedScope)) : pins;
+}
+
 /**
  * Pin (append) or unpin (remove). Appending past `max` is a no-op rather than an
  * eviction: pins are deliberate, so silently dropping the user's oldest one is

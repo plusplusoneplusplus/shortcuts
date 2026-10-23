@@ -115,6 +115,14 @@ aggregate feeds refresh their rows/counts. `ReposContext` refreshes native badge
 under concrete selection keys, rejecting obsolete count responses. Failed writes
 publish no success event; failed count reads retain the last known value.
 
+`RailUnreadChats` projects the mounted list into a collapsed-rail preview through
+`RailHoverPreview`, including zero and partial states. Native rows reuse
+`useUnseenChat` IDs, archive preferences and tab/type visibility. Aggregated groups
+supply their existing feed's counts and `isUnseenGroupChat` rows through
+`RepoChatTab.renderUnreadRail`. Rows retain native selection or owner-qualified
+member navigation. Preview entry adds no reads, polling or read-state writes;
+selection keeps the list's intentional read behavior. Owner changes dispose previews.
+
 ### ChatListPane
 
 Grouped expansion state is local to the mounted view; Ralph sessions, For Each runs, Map

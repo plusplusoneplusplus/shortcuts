@@ -13,6 +13,7 @@ import {
     movePinnedScope,
     parsePinnedScope,
     parsePinnedScopes,
+    qualifyWorkspacePins,
     resolvePinnedScopes,
     serializePinnedScope,
     togglePinnedScope,
@@ -120,6 +121,33 @@ describe('resolvePinnedScopes', () => {
         cloneStatus: {},
         unseenCounts: {},
         ...over,
+    });
+
+    it('keeps equal raw workspace ids on separate servers distinct without a Git URL', () => {
+        const groups = groupReposByRemote([
+            repo('same', 'Local'),
+            ...['box-a', 'box-b'].map(serverId => ({ workspace: {
+                id: 'same', name: serverId, baseUrl: `https://${serverId}.example`, remote: { serverId },
+            } })),
+        ], {});
+        const stored = parsePinnedScopes([
+            'repo:workspace:remote:box-b:same', 'repo:workspace:same', 'repo:workspace:remote:box-a:same',
+        ]);
+        const resolved = resolvePinnedScopes(stored, ctx({ groups }));
+        expect(resolved.map(pin => pin.targetId)).toEqual(['remote:box-b:same', 'same', 'remote:box-a:same']);
+        expect(resolvePinnedScopes(togglePinnedScope(stored, repoPin('workspace:remote:box-a:same')), ctx({ groups }))
+            .map(pin => pin.targetId)).toEqual(['remote:box-b:same', 'same']);
+    });
+
+    it('qualifies only unambiguous no-URL remote pins, preserving local and Git/group keys', () => {
+        const localPins = [repoPin('workspace:same'), repoPin('github.com/acme/shortcuts'), groupPin('group-ai')];
+        const remotes = ['box-a', 'box-b'].map(serverId => ({ workspace: { id: 'same', name: serverId, remote: { serverId } } }));
+        const remoteGroups = groupReposByRemote(remotes, {});
+        expect(qualifyWorkspacePins(localPins, remoteGroups)).toBe(localPins); // ambiguous: never guess a server
+        expect(qualifyWorkspacePins(localPins, groupReposByRemote([repo('same', 'Local'), ...remotes], {}))).toBe(localPins);
+        expect(qualifyWorkspacePins(localPins, groupReposByRemote([remotes[1]], {}))).toEqual([
+            repoPin('workspace:remote:box-b:same'), localPins[1], localPins[2],
+        ]);
     });
 
     it('resolves a repo pin to its cluster label and primary clone as the click target', () => {

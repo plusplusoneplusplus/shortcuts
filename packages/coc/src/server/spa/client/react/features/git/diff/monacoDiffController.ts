@@ -71,7 +71,7 @@ export interface GlyphWidgetSpec {
 }
 
 /**
- * The modified editor and its model, handed to a language host (AC-06). Monaco
+ * A side editor and its model, handed to a language host (AC-06). Monaco
  * values, typed only: this module never touches them.
  */
 export interface DiffLanguageMountContext {
@@ -115,6 +115,14 @@ export interface DiffEditorAdapter {
     /** Scroll `side` so `line` is centred. */
     revealLine(side: DiffEditorSide, line: number): void;
     /**
+     * Centre `line` on `side`, clamped to that model, and put the cursor at
+     * `column`. With `scrollTop`, restore that scroll offset instead of
+     * centring. Optional; the controller falls back to `revealLine`.
+     */
+    revealPosition?(side: DiffEditorSide, line: number, column: number, scrollTop?: number): void;
+    /** Cursor and scroll offset of `side`; null with no model. Optional. */
+    getViewPosition?(side: DiffEditorSide): DiffEditorPosition | null;
+    /**
      * Mount language features on the modified model, but only when that model
      * is exactly `documentUri` (the real working-copy document). Returns null
      * and mounts nothing for any other model: a synthetic ref side, a conflict
@@ -122,6 +130,13 @@ export interface DiffEditorAdapter {
      * on dispose, whichever comes first.
      */
     attachModifiedLanguage(documentUri: string, mount: DiffLanguageMount): Disposable | null;
+    /**
+     * Mount definition-only features on one side, but only when that side's
+     * model is a ref-backed `coc-diff-ref:` snapshot; a working-copy document
+     * never qualifies. One mount per side, undone before the next model swap
+     * and on dispose. Optional for adapters without historical navigation.
+     */
+    attachHistoricalLanguage?(side: DiffEditorSide, mount: DiffLanguageMount): Disposable | null;
     /**
      * Publish language diagnostics on the modified model; `[]` clears them.
      * Ignored unless that model is exactly `documentUri`.
@@ -135,6 +150,15 @@ export interface DiffEditorAdapter {
     addSaveCommand(run: () => void): Disposable;
     /** Dispose the editor and every model it owns. */
     dispose(): void;
+}
+
+/** One-based position on one diff side. */
+export interface DiffEditorPosition {
+    side: DiffEditorSide;
+    line: number;
+    column: number;
+    /** Exact scroll offset to restore (a "back" jump); centred when absent. */
+    scrollTop?: number;
 }
 
 export interface MonacoDiffControllerCallbacks {
@@ -158,6 +182,13 @@ export interface MonacoDiffController {
     setTheme(theme: DiffEditorTheme): void;
     layout(size: EditorSize): void;
     navigate(intent: HunkIntent): void;
+    /**
+     * Reveal a position in the current models. Held until the editor exists;
+     * dropped when other models replace the current ones first.
+     */
+    reveal(position: DiffEditorPosition): void;
+    /** Cursor and scroll offset of `side` in the applied models; null before then. */
+    capturePosition(side: DiffEditorSide): DiffEditorPosition | null;
     isAttached(): boolean;
     /** The attached editor, for comment overlays; null before attach and after dispose. */
     getEditor(): DiffEditorAdapter | null;
@@ -188,6 +219,7 @@ export function createMonacoDiffController(
     let options: DiffEditorOptions | null = null;
     let theme: DiffEditorTheme | null = null;
     let size: EditorSize | null = null;
+    let pendingReveal: DiffEditorPosition | null = null;
 
     const navigator: HunkNavigator = createHunkNavigator((hunk) => {
         adapter?.revealModifiedLine(hunk.revealLine);
@@ -201,6 +233,15 @@ export function createMonacoDiffController(
         // Monaco may already hold a result (e.g. identical models); otherwise
         // this is null and readiness waits for `onDidUpdateDiff`.
         readDiff();
+        flushReveal();
+    };
+
+    const flushReveal = () => {
+        if (!adapter || !appliedModels || !pendingReveal) return;
+        const { side, line, column, scrollTop } = pendingReveal;
+        pendingReveal = null;
+        if (adapter.revealPosition) adapter.revealPosition(side, line, column, scrollTop);
+        else adapter.revealLine(side, line);
     };
 
     const readDiff = () => {
@@ -234,6 +275,7 @@ export function createMonacoDiffController(
             // Reset on set, not on apply: a hunk request made right after
             // setModels, before the editor exists, must survive the attach.
             navigator.reset();
+            pendingReveal = null;
             models = next;
             applyModels();
         },
@@ -256,6 +298,15 @@ export function createMonacoDiffController(
             if (disposed) return;
             navigator.request(intent);
         },
+        reveal(position) {
+            if (disposed) return;
+            pendingReveal = position;
+            flushReveal();
+        },
+        capturePosition(side) {
+            if (disposed || !adapter || !appliedModels) return null;
+            return adapter.getViewPosition?.(side) ?? null;
+        },
         isAttached: () => adapter !== null && !disposed,
         getEditor: () => (disposed ? null : adapter),
         isHunkNavigationReady: () => navigator.isReady(),
@@ -266,6 +317,7 @@ export function createMonacoDiffController(
             if (disposed) return;
             disposed = true;
             navigator.reset();
+            pendingReveal = null;
             diffListener?.dispose();
             diffListener = null;
             adapter?.dispose();

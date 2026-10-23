@@ -33,6 +33,7 @@ import {
 } from './unifiedPanelTabsModel';
 import { readUnifiedTreeState, writeUnifiedTreeState } from './unifiedPanelTree';
 import { clearUnifiedPanelNavigationHistory } from './unifiedPanelNavigationStore';
+import { clearUnifiedTabGroupState } from './unifiedPanelTabGroupStore';
 import { clearPasteSnapshots, prunePasteSnapshots } from './unifiedPasteTabs';
 import { removeBrowserWebview } from './browserWebviewLayerStore';
 import { HTML_PAGE_VIEW_PREFIX } from '../../../shared/file-path/html-page-bridge';
@@ -205,6 +206,7 @@ export function useUnifiedPanelState(
  * (used to isolate tests). Subscribers re-render against the empty panel.
  */
 export function clearUnifiedPanelState(workspaceId?: string): void {
+    clearUnifiedTabGroupState(workspaceId);
     clearUnifiedPanelNavigationHistory(workspaceId);
     clearPasteSnapshots(workspaceId);
     const keys = workspaceId === undefined

@@ -581,3 +581,36 @@ fn transported_metadata_matches_host_for_root_ordinary_and_merge_commits() {
     let batch = commit_files_args("--all");
     assert!(coc_native_core::git::run_git(dir.path(), &batch[2], &options()).is_err());
 }
+
+/// Merges and stash entries list and patch only first-parent changes; diffing
+/// every parent repeated files that also differ from the later parents.
+#[test]
+fn merge_and_stash_metadata_and_patches_compare_only_the_first_parent() {
+    let (dir, first, second) = repo_with_history();
+    write(dir.path(), "c.txt", "merged\n");
+    git(dir.path(), &["add", "c.txt"]);
+    let tree = git_stdout(dir.path(), &["write-tree"]);
+    let merge =
+        git_stdout(dir.path(), &["commit-tree", &tree, "-p", &second, "-p", &first, "-m", "merge"]);
+    let files = commit_files(dir.path(), &merge, &options()).unwrap().files;
+    assert_eq!(files.iter().map(|file| file.path.as_str()).collect::<Vec<_>>(), vec!["c.txt"]);
+    assert_eq!(
+        commit_diff(dir.path(), &merge, &options()).unwrap().matches("diff --git").count(),
+        1
+    );
+
+    git(dir.path(), &["reset", "-q", "--hard", &second]);
+    write(dir.path(), "a.txt", "stashed\n");
+    git(dir.path(), &["stash", "push", "-q"]);
+    let stash = git_stdout(dir.path(), &["rev-parse", "stash@{0}"]);
+    let files = commit_files(dir.path(), &stash, &options()).unwrap();
+    assert_eq!(files.parent_hash, second);
+    assert_eq!(
+        files.files.iter().map(|file| file.path.as_str()).collect::<Vec<_>>(),
+        vec!["a.txt"]
+    );
+    assert_eq!(
+        commit_diff(dir.path(), &stash, &options()).unwrap().matches("diff --git").count(),
+        1
+    );
+}

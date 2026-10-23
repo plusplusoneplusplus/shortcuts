@@ -583,7 +583,7 @@ export interface PendingAskUserQuestion {
     batchId: string;
     questionId: string;
     question: string;
-    type: 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text' | 'sensitive-input';
+    type: 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text' | 'textarea' | 'sensitive-input';
     options?: Array<{ value: string; label: string; description?: string }>;
     defaultValue?: string | string[];
     /**
@@ -608,6 +608,7 @@ export interface PendingAskUserAnswerEntry {
     /** Snapshot of the question prompt, so the synthesized resume message can quote it. */
     question: string;
     answer: string | string[] | null;
+    edited?: boolean;
     skipped: boolean;
     deferred: boolean;
     reason?: 'needs-context';

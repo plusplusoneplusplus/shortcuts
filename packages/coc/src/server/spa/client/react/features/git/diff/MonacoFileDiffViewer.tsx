@@ -19,12 +19,14 @@
  * the hunks live, and Ctrl/Cmd+S calls `onSave`. The original side stays
  * read-only.
  *
- * Unstaged modified sides and server-confirmed clean branch heads share the
- * explorer's language features through `useDiffLanguageFeatures`.
- * Ref-backed sides never register.
+ * Unstaged modified sides, disk-matching staged indexes and disk-matching commit/branch heads share the
+ * explorer's language features through `useDiffLanguageFeatures`. With
+ * `historicalDefinitions`, every ref-backed side instead gets best-effort
+ * current-code go-to-definition (`mountDiffCurrentCodeModel`), which never
+ * opens a language document.
  */
 
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
+import { forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Spinner } from '../../../ui';
 import { useTheme } from '../../../layout/ThemeProvider';
 import type { DiffLine, UnifiedDiffViewerHandle } from './UnifiedDiffViewer';
@@ -38,7 +40,7 @@ import {
     type MonacoDiffCommentLayerHandle,
     type MonacoDiffCommentState,
 } from './MonacoDiffCommentLayer';
-import type { DiffEditorAdapter } from './monacoDiffController';
+import type { DiffEditorAdapter, DiffEditorPosition } from './monacoDiffController';
 import {
     buildDiffEditorOptions,
     buildDiffModels,
@@ -52,6 +54,10 @@ import { synthesizeDiffLines } from './monacoDiffLineShim';
 import type { LanguageDocumentStore } from '../../language-servers/documentStore';
 import { useDiffLanguageFeatures } from './useDiffLanguageFeatures';
 import type { DiffDefinitionNavigate } from './diffLanguageMount';
+import { mountDiffCurrentCodeModel } from './diffCurrentCodeMount';
+import { noDefinitionMessage, type DiffNoDefinition } from './diffDefinitionFeedback';
+import { ToastContext } from '../../../contexts/ToastContext';
+import type { DiffEditorSide } from './diffCoords';
 import { MonacoDiffSelectionAttachPill } from './MonacoDiffSelectionAttachPill';
 import type { DiffSelectionDragSource } from './diffSelectionContext';
 import { registerSelectionEditor } from '../../../shared/monaco/focusedSelection';
@@ -64,6 +70,8 @@ export type MonacoFileDiffViewerHandle = Pick<
     isHunkNavigationReady: () => boolean;
     /** Scrolls to a comment's thread and expands it; false when not shown here. */
     revealComment: (id: string) => boolean;
+    /** Cursor and scroll offset of one side, for a later `revealTarget` back jump. */
+    capturePosition: (side: DiffEditorSide) => DiffEditorPosition | null;
 };
 
 export interface MonacoFileDiffViewerProps extends MonacoDiffCommentHandlers {
@@ -101,8 +109,25 @@ export interface MonacoFileDiffViewerProps extends MonacoDiffCommentHandlers {
     languageFeatures?: boolean;
     /** Language document store; tests inject one. Defaults to the workspace's. */
     languageStore?: LanguageDocumentStore;
+    /**
+     * A position to reveal in the current models (a definition jump). Each new
+     * object reveals once; hosts pass it only once its file's models are shown.
+     */
+    revealTarget?: DiffEditorPosition | null;
     /** Opens a go-to-definition target in another file of this workspace. */
     onNavigateDefinition?: DiffDefinitionNavigate;
+    /**
+     * A Ctrl/Cmd+Click that resolved no definition; defaults to a
+     * "No definition found" toast when a toast provider is mounted.
+     */
+    onNoDefinition?: DiffNoDefinition;
+    /**
+     * Best-effort current-code definitions on ref-backed sides. Hosts opt in
+     * for local reviews only; PR snapshots must leave it off. Default false.
+     */
+    historicalDefinitions?: boolean;
+    /** Concrete clone route for historical lookups; null/undefined = workspace's own. */
+    routingRef?: string | null;
     /** Enables dragging a selected range into chat context. */
     diffSelectionDragSource?: DiffSelectionDragSource;
     /** Lets the user edit an on-disk modified side. Default false. */
@@ -130,9 +155,10 @@ function prefersDarkScheme(): boolean {
 export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, MonacoFileDiffViewerProps>(
     function MonacoFileDiffViewer({
         workspaceId, relativePath, stage, modelIdentity, modifiedMatchesWorkingCopy, original, modified, viewMode, initialHunkTarget,
-        onLineChanges, onLinesReady, onEditorError, createEditor = createDefaultDiffEditor,
+        onLineChanges, onLinesReady, onEditorError, createEditor = createDefaultDiffEditor, revealTarget,
         comments, renderCommentThread, onAddComment, onAskAI, onCopyAsContext,
-        languageFeatures = true, languageStore, onNavigateDefinition, diffSelectionDragSource,
+        languageFeatures = true, languageStore, onNavigateDefinition, onNoDefinition, historicalDefinitions = false, routingRef,
+        diffSelectionDragSource,
         editable: editableRequested = false, onModifiedChange, onSave, editedText, savedText,
         'data-testid': testId = 'monaco-file-diff-viewer',
     }, ref) {
@@ -156,6 +182,15 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
             [workspaceId, relativePath, stage, modelIdentity, modifiedMatchesWorkingCopy, original, modified],
         );
         const editable = isEditableDiff(editableRequested, stage, models);
+        // Never a silent no-op: an empty Ctrl/Cmd+Click says so.
+        const toast = useContext(ToastContext);
+        const noDefinitionRef = useRef({ onNoDefinition, toast });
+        noDefinitionRef.current = { onNoDefinition, toast };
+        const reportNoDefinition = useCallback((word: string) => {
+            const { onNoDefinition: report, toast: current } = noDefinitionRef.current;
+            if (report) report(word);
+            else current?.addToast(noDefinitionMessage(word), 'info');
+        }, []);
         const options = useMemo(() => buildDiffEditorOptions(viewMode, editable, wordWrap), [viewMode, editable, wordWrap]);
         const language = useDiffLanguageFeatures({
             workspaceId,
@@ -165,6 +200,7 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
             enabled: languageFeatures && !identical,
             store: languageStore,
             onNavigate: onNavigateDefinition,
+            onNoDefinition: reportNoDefinition,
             editedText: editable ? editedText : null,
             savedText: editable ? savedText : null,
         });
@@ -228,6 +264,11 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
             if (target) controller.navigate({ kind: target });
         }, [models, identical]);
 
+        // After the models effect, so a target for a newly shown file lands on it.
+        useEffect(() => {
+            if (revealTarget) controllerRef.current?.reveal(revealTarget);
+        }, [revealTarget, identical]);
+
         useEffect(() => { controllerRef.current?.setOptions(options); }, [options, identical]);
 
         useEffect(() => {
@@ -258,6 +299,31 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
             const mounted = editor.attachModifiedLanguage(languageUri, languageMount);
             return () => mounted?.dispose();
         }, [editor, modelsVersion, languageUri, languageMount]);
+
+        // Current-code definitions on each ref-backed side; the adapter refuses
+        // the working-copy document, which keeps the full language mount above.
+        const navigateRef = useRef(onNavigateDefinition);
+        navigateRef.current = onNavigateDefinition;
+        const historicalEnabled = historicalDefinitions && !identical;
+        useEffect(() => {
+            if (!editor?.attachHistoricalLanguage || !historicalEnabled) return;
+            const attach = editor.attachHistoricalLanguage.bind(editor);
+            // Best effort: a lookup that cannot start leaves a plain diff.
+            const mounted = (['original', 'modified'] as const satisfies readonly DiffEditorSide[]).map(side => attach(side, context => {
+                try {
+                    return mountDiffCurrentCodeModel({
+                        ...context,
+                        workspaceId,
+                        routingRef,
+                        onNavigate: target => navigateRef.current?.(target, side) ?? false,
+                        onNoDefinition: reportNoDefinition,
+                    });
+                } catch {
+                    return undefined;
+                }
+            }));
+            return () => { for (const mount of mounted) mount?.dispose(); };
+        }, [editor, modelsVersion, historicalEnabled, workspaceId, routingRef, reportNoDefinition]);
 
         // Diagnostics as markers; cleared when features go away (an unsaved
         // explorer edit, a refused session) so stale squiggles never linger.
@@ -305,6 +371,7 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
             getCurrentHunkIndex: () => controllerRef.current?.getCurrentHunkIndex() ?? -1,
             isHunkNavigationReady: () => (controllerRef.current ? controllerRef.current.isHunkNavigationReady() : true),
             revealComment: (id: string) => commentLayerRef.current?.revealComment(id) ?? false,
+            capturePosition: (side: DiffEditorSide) => controllerRef.current?.capturePosition(side) ?? null,
         }), []);
 
         if (identical) {

@@ -78,6 +78,9 @@ struct View {
     cdp_subscriptions: RefCell<HashMap<String, (ICoreWebView2DevToolsProtocolEventReceiver, i64)>>,
     cdp_sessions: RefCell<protocol::CdpSessions>,
     cdp_error: RefCell<Option<String>>,
+    navigation_gate: Cell<bool>,
+    /// One approved URL the next non-redirected navigation may load without asking again.
+    gate_bypass: RefCell<Option<String>>,
 }
 
 impl View {
@@ -980,6 +983,16 @@ fn dispatch(state: &State, command: Command) {
     let result = unsafe {
         match command.op.as_str() {
             "control-activity" => view.control_activity(command.turn_id),
+            "navigation-gate" => match command.navigation_gate {
+                Some(enabled) if !view.closed.get() => {
+                    view.navigation_gate.set(enabled);
+                    if !enabled {
+                        view.gate_bypass.borrow_mut().take();
+                    }
+                    Ok(())
+                }
+                _ => Err(windows::core::Error::from(E_INVALIDARG)),
+            },
             "page-zoom" => {
                 if let Some(percent) = command
                     .page_zoom_percent
@@ -996,6 +1009,8 @@ fn dispatch(state: &State, command: Command) {
                 if let Some(url) = command.url.filter(|url| allowed_url(url, false)) {
                     *view.requested.borrow_mut() = url.clone();
                     *view.error.borrow_mut() = None;
+                    *view.gate_bypass.borrow_mut() =
+                        (command.approved == Some(true)).then(|| url.clone());
                     view.navigate(|| view.webview.Navigate(&HSTRING::from(url)))
                 } else {
                     Err(windows::core::Error::from(E_INVALIDARG))
@@ -1287,6 +1302,8 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                             cdp_subscriptions: RefCell::new(HashMap::new()),
                             cdp_sessions: RefCell::new(protocol::CdpSessions::default()),
                             cdp_error: RefCell::new(None),
+                            navigation_gate: Cell::new(command.navigation_gate == Some(true)),
+                            gate_bypass: RefCell::new(None),
                         });
                         view.controller.SetIsVisible(false)?;
                         view.webview.Settings()?.SetIsWebMessageEnabled(false)?;
@@ -1505,6 +1522,30 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                             .unwrap_or_else(|| url.clone());
                         protocol::emit(json!({ "event": "application", "viewId": view.id, "kind": "navigation", "url": original, "deploymentUrl": url }));
                         view.push();
+                        return Ok(());
+                    }
+                }
+                if view.navigation_gate.get() {
+                    let mut redirected = BOOL(0);
+                    args.IsRedirected(&mut redirected)?;
+                    let mut kind = COREWEBVIEW2_NAVIGATION_KIND_NEW_DOCUMENT;
+                    if let Ok(args) = args.cast::<ICoreWebView2NavigationStartingEventArgs3>() {
+                        args.NavigationKind(&mut kind)?;
+                    }
+                    let bypass = view.gate_bypass.borrow_mut().take();
+                    let approved = !redirected.as_bool() && bypass.as_deref() == Some(url.as_str());
+                    let mut current = PWSTR::null();
+                    view.webview.Source(&mut current)?;
+                    let current = CoTaskMemPWSTR::from(current).to_string();
+                    let new_document = redirected.as_bool()
+                        || (kind != COREWEBVIEW2_NAVIGATION_KIND_BACK_OR_FORWARD
+                            && kind != COREWEBVIEW2_NAVIGATION_KIND_RELOAD);
+                    if !approved && protocol::gate_navigation(&current, &url, new_document) {
+                        // WebView2 has no navigation deferral: block before any request and let
+                        // the TypeScript host re-issue the URL once the user approves it.
+                        args.SetCancel(true)?;
+                        view.history.borrow_mut().started(navigation_id);
+                        protocol::emit(json!({ "event": "navigation-gate", "viewId": view.id, "url": url }));
                         return Ok(());
                     }
                 }
@@ -1829,6 +1870,8 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                     session_id: None,
                     enabled: None,
                     click_once_enabled: Some(view.click_once_enabled),
+                    navigation_gate: Some(view.navigation_gate.get()),
+                    approved: None,
                 };
                 start_controller(&callback_state, command, Some((args, deferral, view.clone())));
                 Ok(())

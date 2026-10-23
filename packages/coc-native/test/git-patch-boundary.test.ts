@@ -200,7 +200,7 @@ describe('parseGitPatch worker boundary', () => {
         expect(typeof pending.then).toBe('function');
         const args = await pending;
         expect(args).toEqual([
-            '--literal-pathspecs', 'diff-tree', '--root', '--first-parent', '-m', '-r', '-p',
+            '--literal-pathspecs', 'diff-tree', '--root', '--diff-merges=first-parent', '-r', '-p',
             '--no-commit-id', '-M', '-C', '--no-color', '--src-prefix=a/', '--dst-prefix=b/',
             '-U0', '--end-of-options', 'HEAD', '--', '[ab].txt',
         ]);
@@ -210,7 +210,7 @@ describe('parseGitPatch worker boundary', () => {
         const batch = await api.prepareGitCommitFiles('HEAD');
         expect(batch).toHaveLength(3);
         batch.slice(0, 2).forEach(args => {
-            expect(args).toEqual(expect.arrayContaining(['--root', '--first-parent', '-z', '--end-of-options']));
+            expect(args).toEqual(expect.arrayContaining(['--root', '--diff-merges=first-parent', '-z', '--end-of-options']));
             expect(args).not.toContain('-p');
         });
         expect(batch[0]).toContain('--name-status');
@@ -343,7 +343,7 @@ describe('prepareGitRevisionPatch worker boundary', () => {
     it.each(['commit', 'show', 'range', 'comparison'] as const)(
         'plans %s with literal paths, option boundaries and nullable defaults', async mode => {
             const prefix = mode === 'commit'
-                ? ['diff-tree', '--root', '--first-parent', '-m', '-r', '-p', '--no-commit-id']
+                ? ['diff-tree', '--root', '--diff-merges=first-parent', '-r', '-p', '--no-commit-id']
                 : mode === 'show' ? ['show', '--format=', '--patch'] : ['diff'];
             for (const options of [
                 { base: 'base', head: 'head', file: undefined, context: undefined },

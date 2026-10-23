@@ -71,7 +71,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.pullRequests.autoClassifyTeam).toBe(false);
             expect(DEFAULT_CONFIG.forEach).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.mapReduce).toEqual({ enabled: false });
-            expect(DEFAULT_CONFIG.browserControl).toEqual({ enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false });
+            expect(DEFAULT_CONFIG.browserControl).toEqual({ enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false, navigationApprovalEnabled: true });
             expect(DEFAULT_CONFIG.sentinel).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.dreams).toEqual({
                 enabled: false,
@@ -1097,6 +1097,7 @@ timeout: 300
                 '  framesEnabled: true',
                 '  richPasteEnabled: true',
                 '  backgroundEnabled: true',
+                '  navigationApprovalEnabled: false',
                 'dangerousCommandGuard:',
                 '  enabled: true',
                 'vimNavigation:',
@@ -1215,6 +1216,7 @@ timeout: 300
                 '  markdownPanelPreview: false',
                 '  panelSourceSplit: false',
                 '  panelTabReordering: true',
+                '  panelTabGroups: true',
                 '  htmlPageTab: false',
                 '  chatStyleSelector: true',
                 '  defaultChatStyle: direct',
@@ -1252,12 +1254,13 @@ timeout: 300
             expect(notFromFile).toEqual([]);
             expect(result.resolved.browserControl.enabled).toBe(true);
             expect(result.resolved.browserControl.backgroundEnabled).toBe(true);
+            expect(result.resolved.browserControl.navigationApprovalEnabled).toBe(false);
         });
 
         describe.each([
             'sentinelTodoDependencies', 'sentinelResultCards', 'sentinelPrOutcomeWake', 'sentinelFollowUpResults', 'sentinelRemoteResults',
             'sentinelTodoExternalReferences', 'railManualRefresh', 'railStatusActions',
-            'explorerDelete', 'panelTabReordering',
+            'explorerDelete', 'panelTabReordering', 'panelTabGroups',
         ] as const)('%s', feature => {
             it.each([undefined, false, true])('resolves its value and source (%s)', value => {
                 const configPath = path.join(tmpDir, `${feature}.yaml`);
@@ -1469,6 +1472,7 @@ timeout: 300
                     "backgroundEnabled": false,
                     "enabled": false,
                     "framesEnabled": false,
+                    "navigationApprovalEnabled": true,
                     "richPasteEnabled": false,
                   },
                   "canvas": {
@@ -1545,6 +1549,7 @@ timeout: 300
                     "markdownPanelPreview": true,
                     "nativeCliSessions": false,
                     "panelSourceSplit": true,
+                    "panelTabGroups": false,
                     "panelTabReordering": true,
                     "pinnedScopes": true,
                     "queryPullRequestTool": true,
@@ -1735,6 +1740,7 @@ timeout: 300
                   "browserControl.backgroundEnabled": "default",
                   "browserControl.enabled": "default",
                   "browserControl.framesEnabled": "default",
+                  "browserControl.navigationApprovalEnabled": "default",
                   "browserControl.richPasteEnabled": "default",
                   "canvas.enabled": "default",
                   "chat.askUser.enabled": "file",
@@ -1785,6 +1791,7 @@ timeout: 300
                   "features.markdownPanelPreview": "default",
                   "features.nativeCliSessions": "default",
                   "features.panelSourceSplit": "default",
+                  "features.panelTabGroups": "default",
                   "features.panelTabReordering": "default",
                   "features.pinnedScopes": "default",
                   "features.queryPullRequestTool": "default",

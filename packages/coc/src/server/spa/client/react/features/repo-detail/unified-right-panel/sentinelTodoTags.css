@@ -5,9 +5,9 @@
     gap: 6px;
     min-width: 0;
 }
-.sentinel-tags-toolbar { padding: 2px 0 6px; font-size: 11px; }
+.sentinel-tags-toolbar { max-width: 100%; font-size: 11px; }
+.sentinel-tags-filter { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
 .sentinel-tags-toolbar select { max-width: min(100%, 180px); }
-.sentinel-tags-multiple { margin-left: auto; }
 .sentinel-tags-chips { display: inline-flex; gap: 4px; }
 .sentinel-tag-chip {
     display: inline-block;

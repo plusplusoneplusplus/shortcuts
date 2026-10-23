@@ -251,6 +251,32 @@ describe('Electron ClickOnce routing', () => {
         await h.hosted.close();
         expect(beforeClose()).toBe(false);
     });
+    it('holds main-frame requests at the navigation gate and sends them only when allowed', async () => {
+        const h = await opened(false);
+        let decide!: (allow: boolean) => void;
+        h.sink.navigationGate = vi.fn((_url: string) => new Promise<boolean>(resolve => { decide = resolve; }));
+        const callback = vi.fn();
+        const target = 'https://other.test/after-redirect';
+        mocks.beforeRequest!({ webContentsId: mocks.contents.id, resourceType: 'mainFrame', url: target }, callback);
+        expect(h.sink.navigationGate).toHaveBeenCalledWith(target, undefined);
+        await Promise.resolve();
+        expect(callback).not.toHaveBeenCalled();
+        decide(true);
+        await vi.waitFor(() => expect(callback).toHaveBeenLastCalledWith({ cancel: false }));
+        callback.mockClear();
+        mocks.beforeRequest!({ webContentsId: mocks.contents.id, resourceType: 'mainFrame', url: target }, callback);
+        decide(false);
+        await vi.waitFor(() => expect(callback).toHaveBeenLastCalledWith({ cancel: true }));
+        // Synchronous answers (manual navigation) and subresources never wait.
+        vi.mocked(h.sink.navigationGate!).mockReturnValue(true);
+        mocks.beforeRequest!({ webContentsId: mocks.contents.id, resourceType: 'mainFrame', url: target }, callback);
+        expect(callback).toHaveBeenLastCalledWith({ cancel: false });
+        vi.mocked(h.sink.navigationGate!).mockClear();
+        mocks.beforeRequest!({ webContentsId: mocks.contents.id, resourceType: 'subFrame', url: target }, callback);
+        expect(h.sink.navigationGate).not.toHaveBeenCalled();
+        await h.hosted.close();
+    });
+
     it('handles initial main-frame requests but not foreign guests or ordinary downloads', async () => {
         const h = await opened();
         const callback = vi.fn();

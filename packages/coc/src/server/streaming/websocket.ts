@@ -22,7 +22,7 @@ import { projectBotControl } from '../processes/bot-control-read-model';
 import { BrowserControlRelay } from './browser-control-relay';
 import { DashboardDiscoveryRelay } from './dashboard-discovery-relay';
 import type { DashboardDiscoveryServerEvent, DashboardDiscoveryClientEvent } from '@plusplusoneplusplus/coc-client';
-import type { BrowserCommandRequest, BrowserCommandReply } from '@plusplusoneplusplus/coc-client';
+import type { BrowserCommandRequest, BrowserCommandReply, BrowserNavigationPrompt } from '@plusplusoneplusplus/coc-client';
 
 // ============================================================================
 // Types
@@ -121,6 +121,9 @@ export type ServerMessage = DashboardDiscoveryServerEvent
     | { type: 'browser-command'; request: BrowserCommandRequest }
     | { type: 'browser-command-cancel'; id: string }
     | { type: 'browser-turn-finished'; workspaceId: string; processId: string; turnId: string }
+    | { type: 'browser-navigation-decision'; checkId: string; allow: boolean }
+    | { type: 'browser-navigation-prompt'; prompt: BrowserNavigationPrompt }
+    | { type: 'browser-navigation-prompt-cleared'; checkId: string }
     | { type: 'welcome'; clientId: string; timestamp: number }
     | { type: 'pong' }
     | { type: 'process-added'; process: ProcessSummary }
@@ -180,6 +183,8 @@ export type ClientMessage = DashboardDiscoveryClientEvent
     | { type: 'browser-capability-clear'; background?: string[] }
     | { type: 'browser-command-result'; reply: BrowserCommandReply }
     | { type: 'browser-command-waiting'; id: string; waiting: boolean }
+    | { type: 'browser-navigation-check'; checkId: string; workspaceId: string; processId: string; turnId: string; url: string }
+    | { type: 'browser-navigation-answer'; checkId: string; answer: string }
     | { type: 'ping' }
     | { type: 'subscribe'; workspaceId: string }
     | { type: 'subscribe-wiki'; wikiId: string }
@@ -462,6 +467,12 @@ export class ProcessWebSocketServer {
                 break;
             case 'browser-command-waiting':
                 this.browserControl.waiting(client, message.id, message.waiting);
+                break;
+            case 'browser-navigation-check':
+                this.browserControl.navigationCheck(client, message);
+                break;
+            case 'browser-navigation-answer':
+                this.browserControl.navigationAnswer(client, message.checkId, message.answer);
                 break;
             case 'ping':
                 client.send(JSON.stringify({ type: 'pong' }));

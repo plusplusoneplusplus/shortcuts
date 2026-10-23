@@ -377,10 +377,12 @@ describe('registerAllRoutes', () => {
             let framesEnabled = () => false;
             let richPasteEnabled = () => false;
             let backgroundEnabled = () => false;
+            let navigationApprovalEnabled = () => false;
             const broker = { setEnabledGetter: (get: () => boolean) => { enabled = get; },
                 setFramesEnabledGetter: (get: () => boolean) => { framesEnabled = get; },
                 setRichPasteEnabledGetter: (get: () => boolean) => { richPasteEnabled = get; },
                 setBackgroundEnabledGetter: (get: () => boolean) => { backgroundEnabled = get; },
+                setNavigationApprovalEnabledGetter: (get: () => boolean) => { navigationApprovalEnabled = get; },
                 getEnabled: () => enabled(), execute: vi.fn() };
             socket = { ...makeWsServer(), browserControl: broker };
             expect(getRuntime()).toBe(broker);
@@ -396,6 +398,10 @@ describe('registerAllRoutes', () => {
             expect(backgroundEnabled()).toBe(false);
             (opts.runtimeConfigService!.config as any).browserControl.backgroundEnabled = true;
             expect(backgroundEnabled()).toBe(true);
+            // Absent navigationApprovalEnabled means the default-on gate.
+            expect(navigationApprovalEnabled()).toBe(true);
+            (opts.runtimeConfigService!.config as any).browserControl.navigationApprovalEnabled = false;
+            expect(navigationApprovalEnabled()).toBe(false);
             expect(getRuntime()).toBe(broker);
         } finally {
             composition.whatsappMessagingManager.dispose();

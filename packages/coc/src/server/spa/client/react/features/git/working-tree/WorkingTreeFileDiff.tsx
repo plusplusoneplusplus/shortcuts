@@ -39,6 +39,11 @@ import { resolveDiffEngineSelection, type DiffContentLoadState } from '../diff/d
 import { useDiffEngine } from '../hooks/useDiffEngine';
 import { MonacoFileDiffViewer, type MonacoFileDiffViewerHandle } from '../diff/MonacoFileDiffViewer';
 import type { DiffEditorFactory } from '../diff/monacoDiffEditorAdapter';
+import type { DiffEditorPosition } from '../diff/monacoDiffController';
+import type { DiffDefinitionNavigate } from '../diff/diffLanguageMount';
+import { resolveDiffDefinitionRoute } from '../diff/diffDefinitionRoute';
+import { openDiffDefinitionInExplorer } from '../diff/diffDefinitionExplorer';
+import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
 import { DiffMiniMap } from '../diff/DiffMiniMap';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
@@ -212,6 +217,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     // Editing the modified (disk) side. `savedText` is what the last successful
     // save wrote; `editedText` the editor's text after the latest edit.
     const relativePath = repoRoot ? repoRelative(filePath, repoRoot) : filePath;
+    const ownerRoute = attachmentDestinationId && attachmentDestinationId !== workspaceId ? attachmentDestinationId : null;
     const diskMatchesIndex = currentContent?.status === 'loaded' && currentContent.diskMatchesIndex;
     const editable = stage === 'unstaged' || (stage === 'staged' && diskMatchesIndex);
     const [editedText, setEditedText] = useState<string | null>(null);
@@ -308,6 +314,55 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
         onRegisterSave(handleSaveEdits);
         return () => onRegisterSave(null);
     }, [stage, canSave, onRegisterSave, handleSaveEdits]);
+
+    // ── Go to definition: same diff side, else the current file in Explorer ──
+    // The working tree is not a review, so another changed file opens in Explorer too.
+    const panelHost = useUnifiedPanelHost();
+    const [definitionReveal, setDefinitionReveal] = useState<DiffEditorPosition | null>(null);
+    const [definitionBack, setDefinitionBack] = useState<DiffEditorPosition[]>([]);
+    // A return from Explorer may land after this diff unmounted.
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
+    useEffect(() => {
+        setDefinitionBack([]);
+        setDefinitionReveal(null);
+    }, [workspaceId, ownerRoute, relativePath, stage]);
+    const handleNavigateDefinition = useCallback<DiffDefinitionNavigate>((target, side) => {
+        const route = resolveDiffDefinitionRoute({ workspaceId, filePath: relativePath, reviewFiles: [], target, side });
+        if (!route) return false;
+        if (route.kind === 'same-file') {
+            const origin = monacoViewerRef.current?.capturePosition(route.side);
+            if (origin) setDefinitionBack(stack => [...stack, origin].slice(-50));
+            setDefinitionReveal({ side: route.side, line: route.line, column: route.column });
+            return true;
+        }
+        if (route.kind !== 'explorer') return false;
+        // Explorer may cover this diff (the panel's Git tab); its chip and Back come here.
+        const origin = side ? monacoViewerRef.current?.capturePosition(side) : null;
+        return openDiffDefinitionInExplorer({
+            route, workspaceId, ownerRoutingRef: ownerRoute, panelHost,
+            returnTo: {
+                label: `${stage === 'staged' ? 'Staged' : 'Unstaged'} · ${relativePath.split('/').pop()}`,
+                restore: () => { if (mountedRef.current && origin) setDefinitionReveal(origin); },
+            },
+        });
+    }, [workspaceId, relativePath, ownerRoute, panelHost, stage]);
+
+    const goBackFromDefinition = useCallback(() => {
+        const origin = definitionBack[definitionBack.length - 1];
+        if (!origin) return;
+        setDefinitionBack(stack => stack.slice(0, -1));
+        setDefinitionReveal(origin);
+    }, [definitionBack]);
+    const handleDefinitionBackKey = useCallback((event: React.KeyboardEvent) => {
+        if (!definitionBack.length || event.key !== 'ArrowLeft' || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        event.preventDefault();
+        event.stopPropagation();
+        goBackFromDefinition();
+    }, [definitionBack.length, goBackFromDefinition]);
 
     const handleEditorError = useCallback(() => setEditorFailedKey(contentKey), [contentKey]);
     const retryEditor = useCallback(() => setEditorAttempt(a => a + 1), []);
@@ -482,7 +537,8 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     ), [resolveComment, unresolveComment, updateComment, deleteComment, handleAskAI, aiLoadingIds, aiErrors, clearAiError, resolvingIds, deletingIds, insertDraftIntoCurrentChat]);
 
     return (
-        <div className="working-tree-file-diff flex flex-col h-full overflow-hidden" data-testid="working-tree-file-diff">
+        <div className="working-tree-file-diff flex flex-col h-full overflow-hidden" data-testid="working-tree-file-diff"
+            onKeyDownCapture={handleDefinitionBackKey}>
             {/* Header bar */}
             <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="working-tree-file-diff-header">
                 <div className="flex items-center gap-2">
@@ -506,6 +562,17 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                             data-testid="working-tree-file-diff-save-btn"
                         >
                             Save
+                        </button>
+                    )}
+                    {definitionBack.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={goBackFromDefinition}
+                            title="Back to where go to definition started (Alt+←)"
+                            className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                            data-testid="diff-definition-back-chip"
+                        >
+                            ← Back to {stage === 'staged' ? 'Staged' : 'Unstaged'} · {relativePath.split('/').pop()}
                         </button>
                     )}
                     <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />
@@ -583,8 +650,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                             <PreviewPane
                                 key={attachmentDestinationId ?? workspaceId}
                                 repoId={workspaceId}
-                                routingRef={attachmentDestinationId && attachmentDestinationId !== workspaceId
-                                    ? attachmentDestinationId : null}
+                                routingRef={ownerRoute}
                                 filePath={relativePath}
                                 fileName={filePath.split('/').pop() ?? filePath}
                                 onNotFound={handlePreviewNotFound}
@@ -601,6 +667,10 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                             stage={stage as 'staged' | 'unstaged'}
                             editable={editable}
                             modifiedMatchesWorkingCopy={stage === 'staged' ? diskMatchesIndex : undefined}
+                            historicalDefinitions
+                            routingRef={ownerRoute}
+                            onNavigateDefinition={handleNavigateDefinition}
+                            revealTarget={definitionReveal}
                             onModifiedChange={setEditedText}
                             onSave={() => { void handleSaveEdits(); }}
                             editedText={editedText}

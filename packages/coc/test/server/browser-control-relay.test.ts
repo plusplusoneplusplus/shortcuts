@@ -3,6 +3,10 @@ import { BrowserControlRelay } from '../../src/server/streaming/browser-control-
 import { ProcessWebSocketServer } from '../../src/server/streaming/websocket';
 import { createServer } from 'node:http';
 import { WebSocket } from 'ws';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { BrowserNavigationApprovals } from '../../src/server/llm-tools/browser-navigation-approval';
 
 const client = (id: string) => ({ id, send: vi.fn<(data: string) => void>() });
 const request = (client: ReturnType<typeof client>) => JSON.parse(client.send.mock.calls.at(-1)![0]).request;
@@ -11,6 +15,20 @@ const frame = { id: 'f-one', origin: 'https://fixture.test', name: '', document:
 afterEach(() => vi.useRealTimers());
 
 describe('browser control relay', () => {
+    it('defaults navigation approval on, follows the live getter and is off when browser control is off', () => {
+        const relay = new BrowserControlRelay();
+        expect(relay.getNavigationApprovalEnabled()).toBe(false);
+        let on = true;
+        relay.setEnabledGetter(() => on);
+        expect(relay.getNavigationApprovalEnabled()).toBe(true);
+        let approval = false;
+        relay.setNavigationApprovalEnabledGetter(() => approval);
+        expect(relay.getNavigationApprovalEnabled()).toBe(false);
+        approval = true;
+        expect(relay.getNavigationApprovalEnabled()).toBe(true);
+        on = false;
+        expect(relay.getNavigationApprovalEnabled()).toBe(false);
+    });
     it('gates rich paste by owning-server policy and cancels it when disabled', async () => {
         const relay = enabled(), a = client('a');
         relay.advertise(a, 'w', true);
@@ -369,6 +387,14 @@ describe('real existing WebSocket protocol', () => {
             ws.send(JSON.stringify({ type: 'browser-command-waiting', id: 'call', waiting: true }));
             await pong();
             expect(waiting).toHaveBeenCalledWith(expect.anything(), 'call', true);
+            const check = vi.spyOn(sockets.browserControl, 'navigationCheck');
+            const answer = vi.spyOn(sockets.browserControl, 'navigationAnswer');
+            const checkMessage = { type: 'browser-navigation-check', checkId: 'c1', workspaceId: 'w', processId: 'p', turnId: 't', url: 'https://example.com/' };
+            ws.send(JSON.stringify(checkMessage));
+            ws.send(JSON.stringify({ type: 'browser-navigation-answer', checkId: 'c1', answer: 'deny' }));
+            await pong();
+            expect(check).toHaveBeenCalledWith(expect.anything(), checkMessage);
+            expect(answer).toHaveBeenCalledWith(expect.anything(), 'c1', 'deny');
             ws.removeAllListeners('message');
             const inflight = sockets.browserControl.execute('w', 'p', { action: 'tabs' });
             ws.close();
@@ -378,5 +404,129 @@ describe('real existing WebSocket protocol', () => {
             sockets.closeAll();
             await new Promise<void>(resolve => server.close(() => resolve()));
         }
+    });
+});
+
+describe('browser navigation approval relay', () => {
+    const sent = (c: ReturnType<typeof client>) => c.send.mock.calls.map(([data]) => JSON.parse(data));
+    const decisions = (c: ReturnType<typeof client>) => sent(c).filter(message => message.type === 'browser-navigation-decision');
+    const setup = () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-nav-approval-'));
+        const approvals = new BrowserNavigationApprovals(dir);
+        const relay = enabled(), win = client('win');
+        relay.setNavigationApprovals(approvals);
+        relay.advertise(win, 'w', true);
+        const call = relay.execute('w', 'p', { action: 'open', url: 'https://mail.google.com/' });
+        const { id, turnId } = request(win);
+        const check = (checkId: string, url: string, from = win, processId = 'p') =>
+            relay.navigationCheck(from, { type: 'browser-navigation-check', checkId, workspaceId: 'w', processId, turnId, url });
+        return { dir, approvals, relay, win, call, id, turnId, check };
+    };
+    afterEach(() => vi.useRealTimers());
+
+    it('allows exempt, approved and ungated sites at once and prompts for a new root domain', async () => {
+        const { dir, relay, win, call, id, turnId, check } = setup();
+        check('c-local', 'http://localhost:4000/');
+        check('c-blank', 'about:blank');
+        expect(decisions(win)).toEqual([
+            { type: 'browser-navigation-decision', checkId: 'c-local', allow: true },
+            { type: 'browser-navigation-decision', checkId: 'c-blank', allow: true },
+        ]);
+        check('c-mail', 'https://mail.google.com/inbox');
+        expect(sent(win).at(-1)).toEqual({ type: 'browser-navigation-prompt', prompt: {
+            checkId: 'c-mail', workspaceId: 'w', processId: 'p', turnId,
+            site: 'google.com', url: 'https://mail.google.com/inbox',
+        } });
+        expect(decisions(win)).toHaveLength(2);
+        relay.navigationAnswer(win, 'c-mail', 'once');
+        expect(sent(win).slice(-2)).toEqual([
+            { type: 'browser-navigation-decision', checkId: 'c-mail', allow: true },
+            { type: 'browser-navigation-prompt-cleared', checkId: 'c-mail' },
+        ]);
+        // A same-root sub-page no longer asks.
+        check('c-docs', 'https://docs.google.com/');
+        expect(sent(win).at(-1)).toEqual({ type: 'browser-navigation-decision', checkId: 'c-docs', allow: true });
+        relay.setNavigationApprovalEnabledGetter(() => false);
+        check('c-off', 'https://example.org/');
+        expect(sent(win).at(-1)).toEqual({ type: 'browser-navigation-decision', checkId: 'c-off', allow: true });
+        relay.reply(win, { id, ok: true, result: { url: 'https://mail.google.com/' } });
+        await expect(call).resolves.toEqual({ url: 'https://mail.google.com/' });
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('keeps "Allow once" to the conversation and "Always allow" global and persistent', () => {
+        const { dir, approvals, relay, win, check } = setup();
+        check('c1', 'https://news.bbc.co.uk/');
+        relay.navigationAnswer(win, 'c1', 'once');
+        expect(approvals.isAllowed('w', 'p', 'bbc.co.uk')).toBe(true);
+        expect(approvals.isAllowed('w', 'other', 'bbc.co.uk')).toBe(false);
+        check('c2', 'https://user.github.io/');
+        relay.navigationAnswer(win, 'c2', 'always');
+        expect(new BrowserNavigationApprovals(dir).isAllowed('x', 'y', 'user.github.io')).toBe(true);
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('denies with the tool error, blocks the navigation and ignores answers from other sockets', async () => {
+        const { dir, relay, win, call, id, check } = setup();
+        const other = client('other');
+        check('c1', 'https://evil.example.com/');
+        relay.navigationAnswer(other, 'c1', 'once');
+        relay.navigationAnswer(win, 'c1', 'maybe');
+        expect(decisions(win)).toEqual([]);
+        relay.navigationAnswer(win, 'c1', 'deny');
+        await expect(call).rejects.toThrow('user denied access to example.com');
+        expect(sent(win).slice(-3)).toEqual([
+            { type: 'browser-navigation-decision', checkId: 'c1', allow: false },
+            { type: 'browser-navigation-prompt-cleared', checkId: 'c1' },
+            { type: 'browser-command-cancel', id },
+        ]);
+        relay.navigationAnswer(win, 'c1', 'once');
+        expect(decisions(win)).toHaveLength(1);
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('pauses the 60s limit while asking and resumes it with the remaining time', async () => {
+        vi.useFakeTimers();
+        const { dir, relay, win, call, check } = setup();
+        const assertion = expect(call).rejects.toThrow('timed out after 60s');
+        await vi.advanceTimersByTimeAsync(20_000);
+        check('c1', 'https://example.com/');
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        expect(sent(win).some(message => message.type === 'browser-command-cancel')).toBe(false);
+        relay.navigationAnswer(win, 'c1', 'once');
+        await vi.advanceTimersByTimeAsync(39_999);
+        expect(sent(win).some(message => message.type === 'browser-command-cancel')).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        await assertion;
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('blocks checks outside the active turn and settles prompts on stop, turn finish, disconnect and disable', async () => {
+        const { dir, relay, win, call, turnId, check } = setup();
+        const stranger = client('stranger');
+        check('c-other', 'https://a.example/', stranger);
+        check('c-proc', 'https://a.example/', win, 'q');
+        relay.navigationCheck(win, { checkId: 'c-turn', workspaceId: 'w', processId: 'p', turnId: 'nope', url: 'https://a.example/' });
+        relay.navigationCheck(win, { checkId: 'bad id', workspaceId: 'w', processId: 'p', turnId, url: 'https://a.example/' });
+        expect(decisions(stranger)).toEqual([{ type: 'browser-navigation-decision', checkId: 'c-other', allow: false }]);
+        expect(decisions(win).map(message => [message.checkId, message.allow])).toEqual([['c-proc', false], ['c-turn', false]]);
+
+        check('c-stop', 'https://stop.example/');
+        relay.finishProcess('w', 'p');
+        expect(decisions(win).at(-1)).toEqual({ type: 'browser-navigation-decision', checkId: 'c-stop', allow: false });
+        expect(sent(win)).toContainEqual({ type: 'browser-navigation-prompt-cleared', checkId: 'c-stop' });
+
+        const next = relay.execute('w', 'p', { action: 'tabs' });
+        const nextTurn = request(win).turnId;
+        relay.navigationCheck(win, { checkId: 'c-off', workspaceId: 'w', processId: 'p', turnId: nextTurn, url: 'https://off.example/' });
+        relay.setNavigationApprovalEnabledGetter(() => false);
+        expect(decisions(win).at(-1)).toEqual({ type: 'browser-navigation-decision', checkId: 'c-off', allow: true });
+        relay.setNavigationApprovalEnabledGetter(() => true);
+        relay.navigationCheck(win, { checkId: 'c-drop', workspaceId: 'w', processId: 'p', turnId: nextTurn, url: 'https://drop.example/' });
+        relay.disconnect(win);
+        expect(decisions(win).at(-1)).toEqual({ type: 'browser-navigation-decision', checkId: 'c-drop', allow: false });
+        await expect(next).rejects.toThrow('disconnected');
+        void call.catch(() => undefined);
+        fs.rmSync(dir, { recursive: true, force: true });
     });
 });

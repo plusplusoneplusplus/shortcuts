@@ -8,7 +8,7 @@ import type { AddressInfo } from 'net';
 import { createRouter } from '../../src/server/shared/router';
 import { registerApiRoutes } from '../../src/server/core/api-handler';
 import { gitCache } from '../../src/server/git/git-cache';
-import { branchRangeMatchesWorkingCopy, parseRefFileChanges } from '../../src/server/git/ref-file-content';
+import { branchRangeMatchesWorkingCopy, commitMatchesWorkingCopy, parseRefFileChanges } from '../../src/server/git/ref-file-content';
 import {
     loadGitBlobFileContent,
     MAX_WORKING_TREE_CONTENT_BYTES,
@@ -146,8 +146,64 @@ describe('commit and branch-range full-text diff content', () => {
             path: 'modified.txt', fileName: 'modified.txt', language: 'txt',
             base: { content: 'base\r\nlast\r\n', ref: rootHash, exists: true },
             head: { content: 'head\r\nlast\r\n', ref: headHash, exists: true },
-            binary: false, tooLarge: false,
+            binary: false, tooLarge: false, modifiedMatchesWorkingCopy: false,
         });
+    });
+
+    it('flags a commit side that equals disk regardless of index state, rechecked on cached snapshots', async () => {
+        const file = path.join(a.root, 'added.ts');
+        const before = fs.readFileSync(file);
+        try {
+            expect((await request(headHash, 'added.ts')).data.modifiedMatchesWorkingCopy).toBe(true);
+            a.write('added.ts', 'export const value = 2;');
+            expect((await request(headHash, 'added.ts')).data.modifiedMatchesWorkingCopy).toBe(false);
+            a.git('add', 'added.ts');
+            // The index may differ: the language server sees the matching disk text.
+            a.write('added.ts', before);
+            expect((await request(headHash, 'added.ts')).data.modifiedMatchesWorkingCopy).toBe(true);
+            a.git('add', 'added.ts');
+            expect((await request(headHash, 'added.ts')).data.modifiedMatchesWorkingCopy).toBe(true);
+        } finally {
+            a.write('added.ts', before);
+            a.git('add', 'added.ts');
+        }
+        // Deleted, binary, and oversized commit sides never qualify.
+        expect((await request(headHash, 'deleted.txt')).data.modifiedMatchesWorkingCopy).toBe(false);
+        expect((await request(headHash, 'binary.bin')).data.modifiedMatchesWorkingCopy).toBe(false);
+        expect((await request(headHash, 'large.txt')).data.modifiedMatchesWorkingCopy).toBe(false);
+        // An older commit whose text no longer matches disk does not qualify.
+        expect((await request(rootHash, 'modified.txt')).data.modifiedMatchesWorkingCopy).toBe(false);
+    });
+
+    it('uses full-language eligibility for an older commit restored into a dirty working file', async () => {
+        const file = path.join(a.root, 'modified.txt');
+        const before = fs.readFileSync(file);
+        try {
+            a.write('modified.txt', 'base\r\nlast\r\n');
+            expect(a.git('status', '--porcelain', '--', 'modified.txt')).not.toBe('');
+            expect((await request(rootHash, 'modified.txt')).data.modifiedMatchesWorkingCopy).toBe(true);
+            expect((await request(headHash, 'modified.txt')).data.modifiedMatchesWorkingCopy).toBe(false);
+        } finally {
+            a.write('modified.txt', before);
+        }
+    });
+
+    it('accepts matching commit and range text independently of HEAD', async () => {
+        const text = 'export const value = 1;';
+        const io: WorkingTreeContentIO = {
+            resolveHead: vi.fn().mockResolvedValue('some-later-head'), headEntry: vi.fn(), indexEntry: vi.fn(),
+            blobSize: vi.fn(), readBlob: vi.fn(),
+            statDisk: vi.fn().mockResolvedValue({ size: text.length, isFile: true }),
+            readDisk: vi.fn().mockResolvedValue(Buffer.from(text, 'utf8')),
+        };
+        const content: WorkingTreeFileContent = {
+            path: 'added.ts', fileName: 'added.ts', language: 'ts', binary: false, tooLarge: false,
+            base: { content: '', ref: rootHash, exists: false },
+            head: { content: text, ref: headHash, exists: true },
+        };
+        expect(await commitMatchesWorkingCopy(a.root, 'added.ts', content, io)).toBe(true);
+        expect(await branchRangeMatchesWorkingCopy(a.root, 'added.ts', content, io)).toBe(true);
+        expect(io.resolveHead).not.toHaveBeenCalled();
     });
 
     it('uses an empty original side for a root commit', async () => {
@@ -163,6 +219,35 @@ describe('commit and branch-range full-text diff content', () => {
         expect(status).toBe(200);
         expect(data.base).toEqual({ content: 'head\r\nlast\r\n', ref: headHash, exists: true });
         expect(data.head).toEqual({ content: 'base\r\nlast\r\n', ref: merge, exists: true });
+    });
+
+    it('serves a stash entry through the commit surface with hybrid working-copy eligibility', async () => {
+        const file = path.join(a.root, 'modified.txt');
+        const before = fs.readFileSync(file);
+        const head = a.git('rev-parse', 'HEAD');
+        try {
+            a.write('modified.txt', 'stashed\r\nlast\r\n');
+            a.git('stash', 'push', '-q', '--', 'modified.txt');
+            const stash = a.git('rev-parse', 'stash@{0}');
+            const filesRes = await fetch(`${baseUrl}/api/workspaces/ws-a/git/commits/${stash}/files`);
+            expect(filesRes.status).toBe(200);
+            const files = await filesRes.json() as { files?: { path: string }[] } | { path: string }[];
+            const list = Array.isArray(files) ? files : files.files ?? [];
+            expect(list.map(entry => entry.path)).toEqual(['modified.txt']);
+
+            const stashed = (await request(stash, 'modified.txt')).data;
+            expect(stashed.base).toEqual({ content: 'head\r\nlast\r\n', ref: head, exists: true });
+            expect(stashed.head).toEqual({ content: 'stashed\r\nlast\r\n', ref: stash, exists: true });
+            // Disk is back at HEAD, so the stash side stays historical (current-code lookup).
+            expect(stashed.modifiedMatchesWorkingCopy).toBe(false);
+            a.git('stash', 'apply', '-q');
+            // Once applied, the stash side equals disk and uses the full language server.
+            expect((await request(stash, 'modified.txt')).data.modifiedMatchesWorkingCopy).toBe(true);
+        } finally {
+            a.git('stash', 'clear');
+            a.write('modified.txt', before);
+            a.git('add', 'modified.txt');
+        }
     });
 
     it('handles added and deleted sides, including a file without a final newline', async () => {
@@ -275,9 +360,9 @@ describe('commit and branch-range full-text diff content', () => {
             c.write('range.txt', 'unstaged\r\n');
             expect((await rangeRequest('range.txt', mode)).data.modifiedMatchesWorkingCopy).toBe(false);
             c.git('add', 'range.txt');
-            // Even with disk restored to HEAD, a staged change must disqualify it.
+            // A differing index does not change the matching text shown to the LSP.
             c.write('range.txt', 'local\r\n');
-            expect((await rangeRequest('range.txt', mode)).data.modifiedMatchesWorkingCopy).toBe(false);
+            expect((await rangeRequest('range.txt', mode)).data.modifiedMatchesWorkingCopy).toBe(true);
             c.git('add', 'range.txt');
             expect((await rangeRequest('range.txt', mode)).data.modifiedMatchesWorkingCopy).toBe(true);
             c.write('range.txt', 'local\n');
@@ -328,7 +413,7 @@ describe('commit and branch-range full-text diff content', () => {
 });
 
 describe('shared git snapshot guards', () => {
-    it('refuses a range head different from checked-out HEAD without touching disk', async () => {
+    it('checks disk size before reading even when the snapshot differs from HEAD', async () => {
         const io: WorkingTreeContentIO = {
             resolveHead: vi.fn().mockResolvedValue('different-head'), headEntry: vi.fn(), indexEntry: vi.fn(),
             blobSize: vi.fn(), readBlob: vi.fn(), statDisk: vi.fn(), readDisk: vi.fn(),
@@ -338,10 +423,6 @@ describe('shared git snapshot guards', () => {
             base: { content: 'base\n', ref: 'base', exists: true },
             head: { content: 'head\n', ref: 'range-head', exists: true },
         };
-        expect(await branchRangeMatchesWorkingCopy(process.cwd(), 'a.ts', content, io)).toBe(false);
-        expect(io.statDisk).not.toHaveBeenCalled();
-        expect(io.readDisk).not.toHaveBeenCalled();
-        io.resolveHead = vi.fn().mockResolvedValue('range-head');
         io.statDisk = vi.fn().mockResolvedValue({ size: MAX_WORKING_TREE_CONTENT_BYTES + 1, isFile: true });
         expect(await branchRangeMatchesWorkingCopy(process.cwd(), 'a.ts', content, io)).toBe(false);
         expect(io.readDisk).not.toHaveBeenCalled();

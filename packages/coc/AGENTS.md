@@ -1117,7 +1117,11 @@ references before editing. Paths are package-relative.
   questions stay dashboard-only; failed posts resolve `unavailable`; turn end
   clears pending ones; approvals stay dashboard-only. Ordinary replies preserve
   recognized choice/boolean/array mappings and pass other non-empty text to the
-  AI unchanged apart from trimming. Only exact `skip` skips; empty replies reject.
+  AI unchanged apart from trimming. `textarea` drafts preserve reply whitespace and
+  line breaks; exact `send` accepts a supplied default. Drafts and answers cap at
+  32 KiB UTF-8; the server computes `edited` after CRLF normalization. Long questions
+  use connector chunks with the reply hint last. Only exact `skip` skips; empty
+  replies reject.
 - Local ordinary connector handoffs carry `metadata.messagingOrigin` and use
   `messaging/job-notices.ts` for direct completion notices. Sentinel first-turn notices
   wait for matching parent delegation at the same connector/group/thread. Suppress only

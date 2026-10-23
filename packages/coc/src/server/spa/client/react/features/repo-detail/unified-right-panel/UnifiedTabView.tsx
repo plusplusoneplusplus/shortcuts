@@ -60,6 +60,7 @@ import { UnifiedPasteTab } from './UnifiedPasteTab';
 import { UnifiedTodoTab } from './UnifiedTodoTab';
 import { UnifiedWorkResourceTab } from './UnifiedWorkResourceTab';
 import { useUnifiedPanelHost } from './unifiedPanelHost';
+import { DiffDefinitionReturnChip } from '../../git/diff/DiffDefinitionReturnChip';
 import { WorkspaceSettingsSlot } from '../../repo-settings/WorkspaceSettingsHost';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, isMarkdownPanelPreviewEnabled } from '../../../utils/config';
@@ -227,7 +228,8 @@ export function UnifiedTabView({
                 />
             );
         case 'file':
-            return (
+            return (<>
+                <DiffDefinitionReturnChip scopeWorkspaceId={scopeWorkspaceId} tabId={tab.id} />
                 <PreviewPane
                     editingScope={JSON.stringify([scopeWorkspaceId, tab.chatId])}
                     repoId={tab.ownerWorkspaceId}
@@ -250,7 +252,7 @@ export function UnifiedTabView({
                     onNavigationLocation={handleNavigationLocation}
                     onModelShare={onSourceModelChange ? handleModelShare : undefined}
                 />
-            );
+            </>);
         case 'external':
             return (
                 <ExternalSourcePane

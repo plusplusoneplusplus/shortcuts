@@ -361,3 +361,27 @@ describe('AskUserQuestionRelayHub', () => {
         expect(shared.pendingCount('group')).toBe(1);
     });
 });
+
+
+describe('textarea relay contract', () => {
+    const question = { type: 'textarea' as const, defaultValue: 'Hi Alex,\n\nThanks!' };
+    it('accepts send, preserves edited whitespace, and supports skip', () => {
+        expect(parseQuestionReply(question, 'SeNd')).toEqual({ kind: 'answer', value: question.defaultValue, edited: false });
+        expect(parseQuestionReply(question, ' Hi Alex,\nNew text  ')).toEqual({ kind: 'answer', value: ' Hi Alex,\nNew text  ', edited: true });
+        expect(parseQuestionReply(question, question.defaultValue.replace(/\n/g, '\r\n'))).toMatchObject({ edited: false });
+        expect(parseQuestionReply(question, 'SKIP')).toEqual({ kind: 'skip' });
+        expect(parseQuestionReply(question, '')).toMatchObject({ kind: 'invalid' });
+        expect(parseQuestionReply(question, 'é'.repeat(16385))).toMatchObject({ kind: 'invalid' });
+    });
+    it('treats send as text without a default and omits the accept hint', () => {
+        expect(parseQuestionReply({ type: 'textarea' }, 'send')).toEqual({ kind: 'answer', value: 'send', edited: true });
+        const layout = buildQuestionLayout({ batchId: 'b', questionId: 'q', question: 'Review', type: 'textarea', turnIndex: 0, index: 0, batchSize: 1 }, 0, 1);
+        expect(layout.hint).not.toContain('"send"');
+        expect(layout.draft).toBeUndefined();
+    });
+    it('includes the full draft and the send hint in layout', () => {
+        const layout = buildQuestionLayout({ ...question, batchId: 'b', questionId: 'q', question: 'Review', turnIndex: 0, index: 0, batchSize: 1 }, 0, 1);
+        expect(layout.draft).toBe(question.defaultValue);
+        expect(layout.hint).toContain('"send"');
+    });
+});

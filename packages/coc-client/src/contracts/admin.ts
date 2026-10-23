@@ -288,6 +288,7 @@ export interface RuntimeDashboardConfig {
     browserFrameControlEnabled?: boolean;
     browserRichPasteEnabled?: boolean;
     browserBackgroundControlEnabled?: boolean;
+    browserNavigationApprovalEnabled?: boolean;
     mcpOauthEnabled: boolean;
     focusedDiffEnabled: boolean;
     containerDefaultAgentEnabled: boolean;
@@ -366,6 +367,8 @@ export interface RuntimeDashboardConfig {
     markdownPanelPreviewEnabled: boolean;
     /** Mixed-type resource tab ordering; defaults off. */
     panelTabReorderingEnabled: boolean;
+    /** Fixed inline right-panel tab groups (`features.panelTabGroups`); defaults off. */
+    panelTabGroupsEnabled: boolean;
     /** Desktop: open local .html/.htm chat links as a rendered page tab (`features.htmlPageTab`). */
     htmlPageTabEnabled: boolean;
     /**

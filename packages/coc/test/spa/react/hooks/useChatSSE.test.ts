@@ -86,6 +86,27 @@ function makeOptions(overrides: Partial<UseChatSSEOptions> = {}): UseChatSSEOpti
 }
 
 describe('useChatSSE', () => {
+    it.each(['kusto', 'markdown', undefined])('forwards canvas kind %s from the actual SSE payload', kind => {
+        const onCanvasUpdated = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ onCanvasUpdated })));
+        const payload = { canvasId: 'query-result', canvasType: kind, title: 'Result', revision: 2, editor: 'ai' };
+        act(() => MockEventSource.last._emit('canvas-updated', payload));
+        expect(onCanvasUpdated).toHaveBeenCalledWith(payload);
+    });
+
+    it('ignores canvas events from an abandoned workspace stream', () => {
+        const onCanvasUpdated = vi.fn();
+        const options = makeOptions({ onCanvasUpdated });
+        const { rerender } = renderHook(({ workspaceId }) => useChatSSE({ ...options, workspaceId }), { initialProps: { workspaceId: 'ws-a' } });
+        const abandoned = MockEventSource.last;
+        rerender({ workspaceId: 'ws-b' });
+        const payload = { canvasId: 'query-result', canvasType: 'kusto', title: 'Result', revision: 2, editor: 'ai' };
+        act(() => abandoned._emit('canvas-updated', payload));
+        expect(onCanvasUpdated).not.toHaveBeenCalled();
+        act(() => MockEventSource.last._emit('canvas-updated', payload));
+        expect(onCanvasUpdated).toHaveBeenCalledWith(payload);
+    });
+
     it.each(['completed', 'failed', 'cancelled'])('clears browser turn activity on terminal SSE %s without affecting other workspaces', async status => {
         startBrowserControlActivity({ workspaceId: 'workspace-a', processId: 'pid-1', tabId: 'tab-a' });
         startBrowserControlActivity({ workspaceId: 'workspace-b', processId: 'pid-1', tabId: 'tab-b' });

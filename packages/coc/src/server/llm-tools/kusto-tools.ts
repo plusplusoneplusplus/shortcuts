@@ -85,7 +85,7 @@ export function createKustoTools(deps: KustoToolsDeps): { kustoQuery: Tool<unkno
 
     const emitUpdate = (canvasId: string, title: string, revision: number): void => {
         if (deps.processStore && deps.processId) {
-            emitCanvasUpdated(deps.processStore, deps.processId, { canvasId, title, revision, editor: 'ai' });
+            emitCanvasUpdated(deps.processStore, deps.processId, { canvasId, title, revision, editor: 'ai', canvasType: 'kusto' });
         }
     };
 

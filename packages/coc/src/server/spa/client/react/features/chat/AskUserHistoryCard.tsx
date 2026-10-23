@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { AskUserMarkdown } from './AskUserMarkdown';
 
 interface AskUserOption {
@@ -18,6 +19,7 @@ interface AskUserHistoryAnswer {
     questionId?: string;
     answer?: unknown;
     skipped?: boolean;
+    edited?: boolean;
     deferred?: boolean;
     reason?: string;
     note?: string;
@@ -101,6 +103,7 @@ function parseAnswers(result: unknown): AskUserHistoryAnswer[] {
         return parsed.filter(isRecord).map((answer) => ({
             ...(typeof answer.questionId === 'string' && answer.questionId ? { questionId: answer.questionId } : {}),
             ...(answer.answer !== undefined ? { answer: answer.answer } : {}),
+            ...(typeof answer.edited === 'boolean' ? { edited: answer.edited } : {}),
             ...(typeof answer.skipped === 'boolean' ? { skipped: answer.skipped } : {}),
             ...(typeof answer.deferred === 'boolean' ? { deferred: answer.deferred } : {}),
             ...(typeof answer.reason === 'string' && answer.reason ? { reason: answer.reason } : {}),
@@ -151,6 +154,16 @@ function formatAnswer(question: AskUserHistoryQuestion, answer: unknown): string
     if (typeof answer === 'string') return optionLabel(question, answer);
     if (typeof answer === 'number') return String(answer);
     return JSON.stringify(answer);
+}
+
+function DraftAnswer({ text }: { text: string }) {
+    const [expanded, setExpanded] = useState(false);
+    const long = text.split('\n').length > 6;
+    return <>
+        <pre className="whitespace-pre-wrap break-words font-[inherit]" style={!expanded && long ? { maxHeight: '9em', overflow: 'hidden' } : undefined}>{text}</pre>
+        {long && <button type="button" className="text-xs text-[#0078d4] hover:underline" aria-expanded={expanded}
+            onClick={() => setExpanded(value => !value)}>{expanded ? 'Show less' : 'Show more'}</button>}
+    </>;
 }
 
 export function AskUserHistoryCard({ toolCall }: { toolCall: AskUserHistoryToolCall }) {
@@ -238,9 +251,12 @@ export function AskUserHistoryCard({ toolCall }: { toolCall: AskUserHistoryToolC
                                     {skipped ? 'Skipped' : deferred ? 'Need context' : 'Answer'}
                                 </span>
                                 <div className="min-w-0 whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
-                                    <span>
-                                        {skipped ? 'Question skipped' : deferred ? 'Need more context' : formatAnswer(question, answer?.answer)}
-                                    </span>
+                                    {question.type === 'textarea' && !skipped && !deferred && typeof answer?.answer === 'string' ? (
+                                        <>
+                                            {typeof answer.edited === 'boolean' && <span className="inline-block rounded-full bg-[#0078d4]/10 px-2 text-[11px]">{answer.edited ? 'Edited' : 'Sent as drafted'}</span>}
+                                            <DraftAnswer text={answer.answer} />
+                                        </>
+                                    ) : <span>{skipped ? 'Question skipped' : deferred ? 'Need more context' : formatAnswer(question, answer?.answer)}</span>}
                                     {deferred && answer?.note && (
                                         <p className="mt-1 text-[11px] text-[#6b7280] dark:text-[#9aa0a6]" data-testid="ask-user-history-deferred-note">
                                             Note: {answer.note}

@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { createCanvasUpdateNotifier } from '../../../src/server/canvas/canvas-update-notifier';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as os from 'os';
@@ -52,6 +54,17 @@ describe('canvas routes', () => {
     let store: CanvasStore;
     let handler: ReturnType<typeof createRouter>;
     let broadcastProcessEvent: ReturnType<typeof vi.fn>;
+
+    it('includes the persisted Kusto kind in route mutation SSE notifications', () => {
+        const emitProcessEvent = vi.fn();
+        const notifier = createCanvasUpdateNotifier({ processStore: { emitProcessEvent } as unknown as ProcessStore });
+        const canvas = store.createCanvas({ workspaceId: WS, title: 'Query', type: 'kusto', content: '{}', processId: 'query-chat' });
+        notifier.canvasUpdated(WS, canvas, 'user');
+        expect(emitProcessEvent).toHaveBeenCalledWith('query-chat', {
+            type: 'canvas-updated',
+            canvasUpdate: { canvasId: canvas.id, title: 'Query', revision: canvas.revision, editor: 'user', canvasType: 'kusto' },
+        });
+    });
 
     beforeEach(() => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-canvas-routes-'));

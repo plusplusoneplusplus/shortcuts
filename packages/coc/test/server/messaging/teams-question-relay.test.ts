@@ -10,7 +10,7 @@ import { registerTeamsMessagingRoutes } from '../../../src/server/messaging/team
 import { AskUserQuestionRelayHub, QUESTION_RELAY_TEXT } from '../../../src/server/messaging/ask-user-relay';
 import { teamsQuestionChatKey } from '../../../src/server/messaging/teams-answer-relay';
 import type { MessagingJobOrigin } from '../../../src/server/messaging/job-notices';
-import { formatTeamsQuestion } from '../../../src/server/messaging/teams-outbound-format';
+import { formatTeamsQuestion, formatTeamsQuestionChunks, escapeTeamsHtml } from '../../../src/server/messaging/teams-outbound-format';
 import { createAskUserTool, type AskUserQuestion, type AskUserResponse } from '../../../src/server/llm-tools/ask-user-tool';
 
 const teamId = 'team-1';
@@ -107,6 +107,27 @@ describe('Teams ask_user question relay', () => {
     const jobRequest = (threadId?: string) => ({
         processId: 'handed-off-job', requestId: 'job-turn',
         origin: { connector: 'teams' as const, chatKey: teamsQuestionChatKey(teamId, channelId), threadId },
+    });
+
+    it('preserves a non-empty whitespace-only draft answer', async () => {
+        const { result } = ask(jobRequest('root'), [{ type: 'textarea', question: 'Review', defaultValue: 'Draft' }]);
+        await vi.waitFor(() => expect(hub.pendingCount()).toBe(1));
+        await handle(inbound('whitespace-draft', '  \n ', 'root'));
+        expect((await result)[0]).toMatchObject({ answer: '  \n ', edited: true });
+    });
+
+    it('chunks and escapes the full draft, keeps the hint last, and accepts an edited reply', async () => {
+        const draft = '<Alex> & draft\n'.repeat(700);
+        const { result } = ask(jobRequest('root'), [{ type: 'textarea', question: 'Review', defaultValue: draft }]);
+        await vi.waitFor(() => expect(hub.pendingCount()).toBe(1));
+        const parts = questionCalls().map(([text]) => text as string);
+        expect(parts.length).toBeGreaterThan(1);
+        expect(parts.every(part => part.length <= 3000)).toBe(true);
+        expect(parts.join('')).toContain('&lt;Alex&gt; &amp; draft');
+        expect(parts.at(-1)).toContain('Reply &quot;send&quot;');
+        const edited = 'Hi Alex,\n\nEdited draft';
+        await handle(inbound('draft-answer', edited, 'root'));
+        expect((await result)[0]).toMatchObject({ answer: edited, edited: true });
     });
 
     it('records the dispatcher thread root in the hand-off origin', async () => {
@@ -315,4 +336,14 @@ describe('formatTeamsQuestion', () => {
         expect(formatTeamsQuestion({ question: 'Name?', options: [], hint: 'Reply: your answer or "skip"' }))
             .toBe('<p><strong>Name?</strong></p><p>Reply: your answer or &quot;skip&quot;</p>');
     });
+});
+
+
+it('keeps every escaped draft character across bounded Teams question chunks', () => {
+    const draft = '  <Alex> & "draft" 😀\n\n'.repeat(1200);
+    const parts = formatTeamsQuestionChunks({ question: 'Review', options: [], draft, hint: 'Reply "send" or "skip"' });
+    expect(parts.every(part => part.length <= 3000)).toBe(true);
+    const quoted = parts.flatMap(part => [...part.matchAll(/<blockquote><pre>([\s\S]*?)<\/pre><\/blockquote>/g)].map(match => match[1])).join('');
+    expect(quoted).toBe(escapeTeamsHtml(draft));
+    expect(parts.at(-1)).toBe('<p>Reply &quot;send&quot; or &quot;skip&quot;</p>');
 });

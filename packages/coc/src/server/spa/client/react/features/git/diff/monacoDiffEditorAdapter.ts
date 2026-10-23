@@ -14,7 +14,7 @@ import type { DiffEditorAdapter, Disposable, CommentDecorationKind } from './mon
 import { LANGUAGE_MARKER_OWNER } from '../../language-servers/monacoBridge';
 import type { DiffEditorSide } from './diffCoords';
 import type { MonacoRange } from '../../language-servers/monacoBridge';
-import type { DiffEditorOptions } from './monacoDiffOptions';
+import { DIFF_REF_URI_SCHEME, type DiffEditorOptions } from './monacoDiffOptions';
 import { createModelRegistry, type ModelLease, type ModelRegistry } from './monacoDiffModelRegistry';
 
 type Monaco = typeof MonacoApi;
@@ -109,6 +109,16 @@ export function createMonacoDiffEditorAdapter(
         cleanup?.();
     };
 
+    // Historical (ref-backed) mounts, at most one per side.
+    const historicalCleanup: Record<DiffEditorSide, (() => void) | null> = { original: null, modified: null };
+    const unmountHistorical = () => {
+        for (const side of SIDES) {
+            const cleanup = historicalCleanup[side];
+            historicalCleanup[side] = null;
+            cleanup?.();
+        }
+    };
+
     const releaseLeases = () => {
         for (const lease of leases) lease.release();
         leases = [];
@@ -121,6 +131,7 @@ export function createMonacoDiffEditorAdapter(
             // its real URI back instead of a conflict variant. Language
             // providers go before their model can be disposed.
             unmountLanguage();
+            unmountHistorical();
             clearOverlays();
             editor.setModel(null);
             releaseLeases();
@@ -219,6 +230,23 @@ export function createMonacoDiffEditorAdapter(
         revealLine(side, line) {
             sideEditor(side).revealLineInCenter(line);
         },
+        revealPosition(side, line, column, scrollTop) {
+            const ed = sideEditor(side);
+            const model = ed.getModel();
+            if (!model) return;
+            const lineNumber = Math.min(Math.max(1, line), model.getLineCount());
+            const position = { lineNumber, column: Math.min(Math.max(1, column), model.getLineMaxColumn(lineNumber)) };
+            ed.setPosition(position);
+            if (scrollTop === undefined) ed.revealPositionInCenter(position);
+            else ed.setScrollTop(scrollTop);
+            ed.focus();
+        },
+        getViewPosition(side) {
+            const ed = sideEditor(side);
+            const position = ed.getPosition();
+            if (!ed.getModel() || !position) return null;
+            return { side, line: position.lineNumber, column: position.column, scrollTop: ed.getScrollTop() };
+        },
         attachModifiedLanguage(documentUri, mount): Disposable | null {
             unmountLanguage();
             const modifiedEditor = editor.getModifiedEditor();
@@ -230,6 +258,22 @@ export function createMonacoDiffEditorAdapter(
                 dispose: () => {
                     if (languageCleanup !== cleanup) return;
                     unmountLanguage();
+                },
+            };
+        },
+        attachHistoricalLanguage(side, mount): Disposable | null {
+            historicalCleanup[side]?.();
+            historicalCleanup[side] = null;
+            const sideEditorInstance = sideEditor(side);
+            const model = sideEditorInstance.getModel();
+            if (!model || model.uri.scheme !== DIFF_REF_URI_SCHEME) return null;
+            const cleanup = mount({ editor: sideEditorInstance, monaco, model }) ?? (() => {});
+            historicalCleanup[side] = cleanup;
+            return {
+                dispose: () => {
+                    if (historicalCleanup[side] !== cleanup) return;
+                    historicalCleanup[side] = null;
+                    cleanup();
                 },
             };
         },
@@ -257,6 +301,7 @@ export function createMonacoDiffEditorAdapter(
         },
         dispose() {
             unmountLanguage();
+            unmountHistorical();
             clearOverlays();
             editor.setModel(null);
             editor.dispose();

@@ -2,8 +2,9 @@
  * UnifiedPanelTabStrip — the Cursor-style resource tab strip at the top of the
  * unified right panel.
  *
- * Renders the session owned by `useUnifiedPanelTabs`. Mixed-type ordering is
- * opt-in; grouped ordering draws a divider derived from each tab's kind.
+ * Renders the session owned by `useUnifiedPanelTabs`. Inline kind groups cap
+ * visible slots without changing saved order. With groups disabled, the mixed
+ * ordering flag selects free ordering or sections separated by a divider.
  *
  * Three details that are easy to lose:
  *  - **Reorder is reachable without a mouse.** Drag is the fast path, but
@@ -19,7 +20,7 @@
  *    scrolling row so labels truncate at a sane width instead of collapsing to
  *    nothing, and the trailing "+" sits outside that row so it stays reachable
  *    no matter how many tabs are open.
- *  - **Canvas bursts collapse.** Four or more canvas tabs render as the active
+ *  - **Canvas bursts collapse with groups disabled.** Four or more canvas tabs render as the active
  *    canvas only. While a canvas is active its header carries the count chip
  *    (wired by `UnifiedRightPanel`); otherwise the chip sits here so hidden
  *    canvases stay reachable. The chip opens the complete searchable list;
@@ -44,6 +45,9 @@ import { displayGroupForKind, scopeForKind, type UnifiedPanelTab, type UnifiedTa
 import { UnifiedPanelTabContextMenu } from './UnifiedPanelTabContextMenu';
 import { dirtyCloseLabel } from './unifiedDirtyClose';
 import { compressedCanvasTabs, UnifiedPanelCanvasStack } from './UnifiedPanelCanvasStack';
+import { groupStripTabs, isGroupBoundaryMove, stripGroupForKind, type UnifiedTabStripGroup } from './unifiedPanelTabGroups';
+import { TAB_GROUP_LABELS, UnifiedPanelTabGroupLabel } from './UnifiedPanelTabGroupLabel';
+import { UnifiedPanelTabOverflowMenu } from './UnifiedPanelTabOverflowMenu';
 import {
     unifiedPanelTabMenuItems,
     type UnifiedPanelFileActionAvailability,
@@ -177,6 +181,7 @@ const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
 };
 
 const EMPTY_TAB_IDS: ReadonlySet<string> = new Set<string>();
+const EMPTY_FOLDED_GROUPS: ReadonlySet<UnifiedTabStripGroup> = new Set();
 
 export interface UnifiedPanelTabStripProps {
     /** Visible tabs in presentation order. */
@@ -197,6 +202,9 @@ export interface UnifiedPanelTabStripProps {
     onMove: (id: string, beforeId: string | null) => void;
     /** Mixed-type presentation ordering, gated by the panel's live feature flag. */
     reorderEnabled?: boolean;
+    groupsEnabled?: boolean;
+    foldedGroups?: ReadonlySet<UnifiedTabStripGroup>;
+    onToggleGroup?: (group: UnifiedTabStripGroup) => void;
     /** Changing panel/chat scope cancels an in-flight gesture. */
     reorderScope?: string;
     /** Transient excursion tab, excluded from persisted moves. */
@@ -242,7 +250,10 @@ export function UnifiedPanelTabStrip({
     onClose,
     onCloseMany,
     onMove,
-    reorderEnabled = false,
+    reorderEnabled: mixedReorderEnabled = false,
+    groupsEnabled = false,
+    foldedGroups = EMPTY_FOLDED_GROUPS,
+    onToggleGroup,
     reorderScope,
     pinnedId,
     onPromote,
@@ -254,6 +265,7 @@ export function UnifiedPanelTabStrip({
     leadingControls,
     className,
 }: UnifiedPanelTabStripProps) {
+    const reorderEnabled = mixedReorderEnabled || groupsEnabled;
     const tabRefs = useRef(new Map<string, HTMLDivElement>());
     const draggingId = useRef<string | null>(null);
     const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -273,12 +285,18 @@ export function UnifiedPanelTabStrip({
         setDropIndicator(null);
     }, []);
     const [contextMenu, setContextMenu] = useState<{ tabId: string; x: number; y: number } | null>(null);
+    const groups = useMemo(() => groupsEnabled ? groupStripTabs(tabs, {
+        activeId, previewId: tabs.find(tab => tab.preview)?.id ?? null, pinnedId,
+        cap: 3, folded: foldedGroups, narrow: false, dirtyIds, errorIds,
+    }) : [], [groupsEnabled, tabs, activeId, pinnedId, foldedGroups, dirtyIds, errorIds]);
     const { visibleTabs: stripTabs, canvasTabs: stackedCanvasTabs } = useMemo(
-        () => compressedCanvasTabs(tabs, activeId),
-        [activeId, tabs],
+        () => groupsEnabled
+            ? { visibleTabs: groups.flatMap(group => group.shown), canvasTabs: [] }
+            : compressedCanvasTabs(tabs, activeId),
+        [activeId, tabs, groupsEnabled, groups],
     );
     const { listRef, thumb, onThumbPointerDown } = useOverlayScrollbar(stripTabs);
-    useEffect(() => { cancelDrag(); setContextMenu(null); }, [reorderScope, reorderEnabled, cancelDrag]);
+    useEffect(() => { cancelDrag(); setContextMenu(null); }, [reorderScope, reorderEnabled, groupsEnabled, cancelDrag]);
     useEffect(() => {
         if (draggedId && !stripTabs.some(tab => tab.id === draggedId)) cancelDrag();
         if (dropIndicator && !stripTabs.some(tab => tab.id === dropIndicator.id)) setDropIndicator(null);
@@ -320,6 +338,7 @@ export function UnifiedPanelTabStrip({
 
     /** The contiguous run of tabs sharing `tab`'s scope and display group — its own section. */
     const sectionOf = (tab: UnifiedPanelTab) => {
+        if (groupsEnabled) return tabs.filter(entry => entry.id !== pinnedId && stripGroupForKind(entry.kind) === stripGroupForKind(tab.kind));
         if (reorderEnabled) return tabs.filter(entry => entry.id !== pinnedId);
         const scope = scopeForKind(tab.kind);
         const group = displayGroupForKind(tab.kind);
@@ -330,7 +349,14 @@ export function UnifiedPanelTabStrip({
         onMove(id, beforeId);
         setLiveMessage(message);
         queueMicrotask(() => {
-            const node = tabRefs.current.get(id);
+            const tab = tabs.find(entry => entry.id === id);
+            const groupNode = groupsEnabled && tab
+                ? listRef.current?.querySelector<HTMLElement>(`[data-strip-group="${stripGroupForKind(tab.kind)}"]`)
+                : null;
+            // Reordering a non-active tab can move it beyond the visible cap.
+            const node = tabRefs.current.get(id)
+                ?? groupNode?.querySelector<HTMLElement>('[data-group-overflow]')
+                ?? groupNode?.querySelector<HTMLElement>('[data-strip-stop]');
             node?.focus();
             node?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
         });
@@ -375,6 +401,7 @@ export function UnifiedPanelTabStrip({
             if (tab.preview) onPromote?.(tab.id);
             return;
         }
+        if (groupsEnabled) return;
         const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
         if (step !== 0) {
             event.preventDefault();
@@ -409,36 +436,63 @@ export function UnifiedPanelTabStrip({
                 aria-orientation="horizontal"
                 className="scrollbar-hide flex min-w-0 flex-1 items-stretch overflow-x-auto overflow-y-hidden"
                 data-testid="unified-panel-tab-list"
+                onKeyDown={event => {
+                    if (!groupsEnabled || event.altKey || event.ctrlKey || event.metaKey) return;
+                    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                    const target = (event.target as HTMLElement).closest<HTMLElement>('[data-strip-stop]');
+                    if (!target || !event.currentTarget.contains(target)) return;
+                    const stops = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[data-strip-stop]'));
+                    const index = stops.indexOf(target);
+                    const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? stops.length - 1
+                        : (index + (event.key === 'ArrowRight' ? 1 : -1) + stops.length) % stops.length;
+                    event.preventDefault();
+                    const next = stops[nextIndex];
+                    next?.focus();
+                    if (next?.dataset.tabId) onActivate(next.dataset.tabId);
+                }}
                 onDragLeave={event => {
                     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropIndicator(null);
                 }}
                 onDragOver={event => {
                     if (!reorderEnabled || !draggingId.current) return;
+                    if (groupsEnabled) {
+                        const targetId = (event.target as HTMLElement).closest<HTMLElement>('[data-tab-id]')?.dataset.tabId;
+                        if (!targetId || targetId === pinnedId || isGroupBoundaryMove(tabs, draggingId.current, targetId)) {
+                            setDropIndicator(null);
+                            if (event.dataTransfer) event.dataTransfer.dropEffect = 'none';
+                            return;
+                        }
+                    }
                     event.preventDefault();
                     const list = event.currentTarget;
                     const rect = list.getBoundingClientRect();
                     if (event.clientX < rect.left + 28) list.scrollLeft -= 24;
                     else if (event.clientX > rect.right - 28) list.scrollLeft += 24;
                     if (event.target === list) {
+                        if (groupsEnabled) {
+                            setDropIndicator(null);
+                            return;
+                        }
                         const last = stripTabs.filter(tab => tab.id !== pinnedId).at(-1);
                         if (last) setDropIndicator({ id: last.id, position: 'after' });
                     }
                 }}
                 onDrop={event => {
-                    if (!reorderEnabled || event.target !== event.currentTarget || !draggingId.current) return;
+                    if (groupsEnabled || !reorderEnabled || event.target !== event.currentTarget || !draggingId.current) return;
                     event.preventDefault();
                     moveAndFocus(draggingId.current, null, 'Tab order updated.');
                     cancelDrag();
                 }}
             >
-                {stripTabs.map((tab, index) => {
+                {(groupsEnabled ? groups : [{ group: null, shown: stripTabs }]).map(section => {
+                    const tabNodes = section.shown.map((tab, index) => {
                     const isActive = tab.id === activeId;
                     const isDirty = dirtyIds?.has(tab.id) ?? false;
                     const hasError = errorIds?.has(tab.id) ?? false;
                     // The divider marks where tools (Terminal, Notes, Git, and
                     // the chat's canvases) end and resources (files, diffs)
                     // begin — derived, never passed in.
-                    const startsResourceSection = !reorderEnabled && index > 0
+                    const startsResourceSection = !groupsEnabled && !reorderEnabled && index > 0
                         && displayGroupForKind(tab.kind) === 'resources'
                         && displayGroupForKind(stripTabs[index - 1].kind) === 'tools';
                     return (
@@ -466,6 +520,7 @@ export function UnifiedPanelTabStrip({
                             title={unifiedTabTooltip(tab)}
                             data-testid={`unified-panel-tab-${tab.id}`}
                             data-tab-id={tab.id}
+                            data-strip-stop={groupsEnabled ? '' : undefined}
                             data-kind={tab.kind}
                             data-scope={scopeForKind(tab.kind)}
                             data-active={isActive || undefined}
@@ -503,7 +558,8 @@ export function UnifiedPanelTabStrip({
                             onDragEnd={cancelDrag}
                             onDragOver={event => {
                                 if (reorderEnabled) {
-                                    if (!draggingId.current || tab.id === pinnedId || tab.id === draggingId.current) {
+                                    if (!draggingId.current || tab.id === pinnedId || tab.id === draggingId.current
+                                        || (groupsEnabled && isGroupBoundaryMove(tabs, draggingId.current, tab.id))) {
                                         setDropIndicator(null);
                                         return;
                                     }
@@ -516,10 +572,15 @@ export function UnifiedPanelTabStrip({
                                 event.preventDefault();
                                 event.stopPropagation();
                                 const from = draggingId.current;
+                                if (groupsEnabled && from && isGroupBoundaryMove(tabs, from, tab.id)) {
+                                    cancelDrag();
+                                    return;
+                                }
                                 if (reorderEnabled && from && tab.id !== pinnedId && from !== tab.id) {
                                     const position = getHorizontalDropPosition(event);
-                                    const index = tabs.findIndex(entry => entry.id === tab.id);
-                                    const beforeId = position === 'before' ? tab.id : (tabs[index + 1]?.id ?? null);
+                                    const movable = sectionOf(tab);
+                                    const index = movable.findIndex(entry => entry.id === tab.id);
+                                    const beforeId = position === 'before' ? tab.id : (movable[index + 1]?.id ?? null);
                                     moveAndFocus(from, beforeId, 'Tab order updated.');
                                     cancelDrag();
                                     return;
@@ -617,6 +678,38 @@ export function UnifiedPanelTabStrip({
                         </div>
                         </Fragment>
                     );
+                    });
+                    if (section.group === null) return tabNodes;
+                    const group = section.group;
+                    return (
+                        <div key={group} role="group" data-strip-group={group}
+                            aria-label={`${TAB_GROUP_LABELS[group]}, ${section.tabs.length} tabs, ${section.hidden.length} hidden`}
+                            className="flex flex-shrink-0 items-stretch">
+                            <UnifiedPanelTabGroupLabel group={group} count={section.tabs.length}
+                                active={section.hasActive} folded={foldedGroups?.has(group) ?? false}
+                                onToggle={() => {
+                                    onToggleGroup?.(group);
+                                    setLiveMessage(`${TAB_GROUP_LABELS[group]} ${foldedGroups?.has(group) ? 'expanded' : 'folded'}.`);
+                                }} />
+                            {tabNodes}
+                            {!foldedGroups?.has(group) && section.hidden.length > 0 && (
+                                <UnifiedPanelTabOverflowMenu
+                                    title={`${TAB_GROUP_LABELS[group]} tabs`}
+                                    tabs={section.tabs} activeId={activeId}
+                                    dirtyIds={dirtyIds ?? EMPTY_TAB_IDS} errorIds={errorIds ?? EMPTY_TAB_IDS}
+                                    onActivate={onActivate} onClose={onClose} onCloseMany={onCloseMany}
+                                    trigger={<button type="button" data-strip-stop data-group-overflow
+                                        data-testid={`unified-panel-group-overflow-${group}`}
+                                        aria-label={`Show ${section.hidden.length} hidden ${TAB_GROUP_LABELS[group]} tabs`}
+                                        className="mx-1 my-1 flex flex-shrink-0 items-center gap-1 rounded border border-[#b6b6b6] px-2 text-[11px] text-[#616161] dark:border-[#555] dark:text-[#b8b8b8]">
+                                        +{section.hidden.length} <span aria-hidden="true">{'\u25BE'}</span>
+                                        {section.hiddenDirty && <span data-testid={`unified-panel-group-dirty-${group}`} aria-label="Hidden unsaved changes">{'\u25CF'}</span>}
+                                        {section.hiddenError && <span aria-label="Hidden unavailable tabs">{'\u26A0'}</span>}
+                                    </button>}
+                                />
+                            )}
+                        </div>
+                    );
                 })}
             </div>
             {thumb && (
@@ -676,7 +769,8 @@ export function UnifiedPanelTabStrip({
                     tabs,
                     dirtyIds ?? new Set<string>(),
                     fileActionAvailability?.(tab),
-                    reorderEnabled ? tabs.filter(entry => entry.id !== pinnedId).map(entry => entry.id) : undefined,
+                    reorderEnabled ? sectionOf(tab).map(entry => entry.id) : undefined,
+                    groupsEnabled,
                 );
                 return (
                     <UnifiedPanelTabContextMenu

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { groupStripTabs } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabGroups';
 import {
     ALL_UNIFIED_TAB_KINDS, EMPTY_UNIFIED_PANEL, activateTab, activeTabId, closeTab, findTab, inheritDraftTabs,
     moveVisibleTab, openPreviewTab, openTab, parseUnifiedPanelState, serializeUnifiedPanelState,
@@ -21,6 +22,22 @@ function id(state: UnifiedPanelState, kind: UnifiedTabKind, chatId: string | nul
 }
 
 describe('mixed panel tab ordering', () => {
+    it('partitions saved mixed order after group-local moves without rehoming tabs', () => {
+        let state = mixed();
+        state = openTab(state, {
+            kind: 'file', ownerWorkspaceId: 'member', chatId: 'chat-a',
+            resourceId: 'second.ts', label: 'second.ts',
+        });
+        const before = visibleTabs(state, 'chat-a');
+        const files = before.filter(tab => tab.kind === 'file');
+        const next = moveVisibleTab(state, 'chat-a', files[1].id, files[0].id);
+        const groups = groupStripTabs(visibleTabs(next, 'chat-a'), { folded: new Set(), narrow: false });
+        expect(groups.map(group => group.group)).toEqual(['tools', 'files', 'web']);
+        expect(groups.find(group => group.group === 'files')?.tabs).toEqual([files[1], files[0]]);
+        expect(next.workspaceTabs).toBe(state.workspaceTabs);
+        expect(next.chatTabs).toBe(state.chatTabs);
+        expect(next.activeByScope).toBe(state.activeByScope);
+    });
     it.each(ALL_UNIFIED_TAB_KINDS)('reorders %s without rehoming its descriptor', kind => {
         let state = mixed();
         state = openTab(state, {

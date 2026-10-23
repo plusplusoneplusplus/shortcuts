@@ -17,7 +17,11 @@ import { browserDocumentUri } from '../../language-servers/documentStore';
 import { getMonacoLanguage } from '../../../shared/file-viewer/monacoLanguage';
 import type { DiffViewMode } from '../hooks/useDiffViewMode';
 
-/** Two-sided diff kinds with distinct working-copy eligibility. */
+/**
+ * Two-sided diff kinds with distinct working-copy eligibility. `branch-range`
+ * covers every immutable snapshot whose head may be the working copy (local
+ * commits and branch ranges).
+ */
 export type MonacoDiffStage = 'staged' | 'unstaged' | 'branch-range';
 
 /** Git ref a synthetic side is read from. */
@@ -33,7 +37,7 @@ export interface DiffModelDescriptor {
     /**
      * True only for a modified side that is the on-disk file: an unstaged
      * diff, a staged diff whose disk equals the index, or a server-confirmed
-     * clean branch head. Only that side may be edited or use a language server.
+     * disk-matching commit or branch head. Only that side may be edited or use a language server.
      */
     isWorkingCopy: boolean;
 }
@@ -151,7 +155,7 @@ export function sameDiffModels(a: DiffModelsInput | null, b: DiffModelsInput | n
     return same(a.original, b.original) && same(a.modified, b.modified);
 }
 
-export type DiffEditorOptions = monacoEditor.IDiffEditorConstructionOptions;
+export type DiffEditorOptions = monacoEditor.IDiffEditorConstructionOptions & monacoEditor.IGlobalEditorOptions;
 
 /**
  * Whether the modified side may be edited: the host asked for it, the diff is

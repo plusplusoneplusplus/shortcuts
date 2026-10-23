@@ -53,7 +53,7 @@ describe('commit WSL transport using Rust planning and processing', () => {
             const call = calls[0];
             expect(call[1]).toEqual(expect.arrayContaining([
                 index ? 'Debian' : 'Ubuntu', `/home/${marker}/repo`,
-                '--literal-pathspecs', 'diff-tree', '--root', '--first-parent', 'HEAD',
+                '--literal-pathspecs', 'diff-tree', '--root', '--diff-merges=first-parent', 'HEAD',
             ]));
             expect(call[1]).not.toContain('show');
         }
@@ -73,7 +73,7 @@ describe('commit WSL transport using Rust planning and processing', () => {
             const call = vi.mocked(execFileAsync).mock.calls.find(call => call[1]?.includes(distro))!;
             expect(call[1]).toContain(`/home/${index === 0 ? 'one' : 'two'}/repo`);
             expect(call[1]).toContain('diff-tree');
-            expect(call[1]).toContain('--first-parent');
+            expect(call[1]).toContain('--diff-merges=first-parent');
             expect(call[1]).toContain('--root');
             expect(call[1]).toContain('--literal-pathspecs');
         }
@@ -95,7 +95,7 @@ describe('commit WSL transport using Rust planning and processing', () => {
         expect(args).toContain('show');
         expect(args).toContain('--format=');
         expect(args).toContain('-U99999');
-        expect(args).not.toContain('--first-parent');
+        expect(args).not.toContain('--diff-merges=first-parent');
     });
 
     it('routes metadata batches by distro and joins literal paths in Rust', async () => {
@@ -114,7 +114,7 @@ describe('commit WSL transport using Rust planning and processing', () => {
         for (const distro of ['Ubuntu', 'Debian']) {
             const calls = vi.mocked(execFileAsync).mock.calls.filter(call => call[1]?.includes(distro) && call[1]?.includes('-z'));
             expect(calls).toHaveLength(2);
-            calls.forEach(call => expect(call[1]).toEqual(expect.arrayContaining(['--root', '--first-parent', '--literal-pathspecs'])));
+            calls.forEach(call => expect(call[1]).toEqual(expect.arrayContaining(['--root', '--diff-merges=first-parent', '--literal-pathspecs'])));
         }
     });
 

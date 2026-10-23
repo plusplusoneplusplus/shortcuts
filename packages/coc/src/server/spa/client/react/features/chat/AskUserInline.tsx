@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 're
 import type { AskUserResponseRequest } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import type { AskUserBatch, AskUserQuestion } from './hooks/useChatSSE';
+import { textareaAnswerError, isDraftEdited } from '../../../../../shared/ask-user-textarea';
 import { AskUserMarkdown } from './AskUserMarkdown';
 import { DangerousCommandApprovalCard } from './DangerousCommandApprovalCard';
 import { LlmToolApprovalCard } from './LlmToolApprovalCard';
@@ -66,7 +67,7 @@ interface QuestionGroup {
 function initialValue(question: AskUserQuestion): AnswerValue {
     if (question.type === 'yes-no' || question.type === 'confirm') return null;
     if (question.type === 'multi-select') return (question.defaultValue as string[] | undefined) ?? [];
-    if (question.type === 'text') return (question.defaultValue as string | undefined) ?? '';
+    if (question.type === 'text' || question.type === 'textarea') return (question.defaultValue as string | undefined) ?? '';
     return (question.defaultValue as string | undefined) ?? null;
 }
 
@@ -102,6 +103,7 @@ function initialAnswers(batch: AskUserBatch, processId: string): Record<string, 
 
 function isAnswerComplete(question: AskUserQuestion, state: QuestionState): boolean {
     if (state.disposition !== 'answer') return true;
+    if (question.type === 'textarea') return !textareaAnswerError(state.value);
     if (question.type === 'text') return typeof state.value === 'string' && state.value.trim().length > 0;
     if (question.type === 'select') {
         if (state.value === CUSTOM_OPTION_VALUE) return state.customText.trim().length > 0;
@@ -565,6 +567,40 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                                     </span>
                                                 </label>
                                             ))}
+                                        </div>
+                                    )}
+
+                                    {question.type === 'textarea' && (
+                                        <div className="mt-1 space-y-1">
+                                            <textarea
+                                                rows={4}
+                                                value={typeof state.value === 'string' ? state.value : ''}
+                                                ref={element => {
+                                                    if (element) {
+                                                        element.style.height = 'auto';
+                                                        element.style.height = `${Math.max(96, Math.min(336, element.scrollHeight))}px`;
+                                                    }
+                                                }}
+                                                onChange={e => updateQuestion(question.questionId, { value: e.target.value })}
+                                                disabled={inputDisabled}
+                                                aria-label={question.question}
+                                                className="w-full resize-y overflow-y-auto px-2 py-1 text-[13px] leading-5 rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
+                                                style={{ minHeight: 96, maxHeight: 336 }}
+                                                onKeyDown={event => {
+                                                    if (event.ctrlKey || event.metaKey) handleReplyKeyDown(event);
+                                                }}
+                                                data-testid="ask-user-textarea-input"
+                                            />
+                                            {isDraftEdited(typeof state.value === 'string' ? state.value : '', question.defaultValue) && (
+                                                <button type="button" disabled={inputDisabled}
+                                                    className="text-xs text-[#0078d4] hover:underline"
+                                                    onClick={() => updateQuestion(question.questionId, { value: initialValue(question) })}>
+                                                    Reset to draft
+                                                </button>
+                                            )}
+                                            {typeof state.value === 'string' && state.value.length > 0 && textareaAnswerError(state.value) && (
+                                                <p role="alert" className="text-xs text-red-600">{textareaAnswerError(state.value)}</p>
+                                            )}
                                         </div>
                                     )}
 

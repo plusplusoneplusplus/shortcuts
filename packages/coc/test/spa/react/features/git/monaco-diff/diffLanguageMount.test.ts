@@ -301,4 +301,58 @@ describe('mountDiffLanguageModel — semantic tokens', () => {
         cleanup();
         expect(fm.live()).toEqual([]);
     });
+
+    it('peeks on Ctrl/Cmd+Alt+Click through the language server instead of leaving the diff', () => {
+        const view = store.open({ path: 'src/a.ts', text: 'const a = 1;\n' });
+        client.get('src/a.ts').attach({ state: readyState(CAPS) });
+        const listeners = new Map<string, (event: unknown) => void>();
+        const container = {
+            addEventListener: (type: string, listener: (event: unknown) => void) => { listeners.set(type, listener); },
+            removeEventListener: (type: string) => { listeners.delete(type); },
+        };
+        const fe = fakeEditor();
+        const trigger = vi.fn();
+        const editor = {
+            ...fe.editor, getContainerDomNode: () => container, trigger, setPosition: vi.fn(), focus: vi.fn(),
+            getTargetAtClientPoint: () => ({ type: 6, position: { lineNumber: 1, column: 7 } }),
+        };
+        const m = { ...model(), getWordAtPosition: () => ({ word: 'a', startColumn: 7, endColumn: 8 }) };
+        const context = { editor, monaco: fakeMonaco().monaco, model: m } as unknown as DiffLanguageMountContext;
+        const cleanup = mountDiffLanguageModel({ ...context, view, workspaceId: 'ws-1', languageId: 'typescript', loadSource: async () => '' });
+        listeners.get('mousedown')!({
+            type: 'mousedown', button: 0, altKey: true, ctrlKey: true, metaKey: true, clientX: 0, clientY: 0,
+            stopPropagation: vi.fn(), preventDefault: vi.fn(),
+        });
+        expect(trigger).toHaveBeenCalledWith('mouse', 'editor.action.peekDefinition', null);
+        cleanup();
+        expect(listeners.size).toBe(0);
+    });
+
+    it('reports a Ctrl/Cmd+Click the language server cannot resolve', async () => {
+        const view = store.open({ path: 'src/a.ts', text: 'const a = 1;\n' });
+        const attachment = client.get('src/a.ts');
+        attachment.attach({ state: readyState(CAPS) });
+        let definitions: unknown = [];
+        attachment.respond('textDocument/definition', () => definitions);
+        let mouseUp: (event: unknown) => void = () => {};
+        const fe = fakeEditor();
+        const editor = { ...fe.editor, onMouseUp: (listener: typeof mouseUp) => { mouseUp = listener; return fe.disposable; } };
+        const m = { ...model(), getWordAtPosition: () => ({ word: 'a', startColumn: 7, endColumn: 8 }) };
+        const onNoDefinition = vi.fn();
+        const context = { editor, monaco: fakeMonaco().monaco, model: m } as unknown as DiffLanguageMountContext;
+        const cleanup = mountDiffLanguageModel({ ...context, view, workspaceId: 'ws-1', languageId: 'typescript', onNoDefinition, loadSource: async () => '' });
+        const click = () => mouseUp({
+            event: { leftButton: true, ctrlKey: true, metaKey: true },
+            target: { type: 6, position: { lineNumber: 1, column: 7 } },
+        });
+
+        click();
+        await vi.waitFor(() => expect(onNoDefinition).toHaveBeenCalledWith('a'));
+        definitions = [{ uri: URI, range: { start: { line: 0, character: 6 }, end: { line: 0, character: 7 } } }];
+        click();
+        await vi.waitFor(() => expect(attachment.requests.filter(r => r.method === 'textDocument/definition').length).toBe(2));
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(onNoDefinition).toHaveBeenCalledOnce();
+        cleanup();
+    });
 });

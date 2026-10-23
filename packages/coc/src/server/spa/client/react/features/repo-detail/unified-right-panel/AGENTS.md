@@ -34,15 +34,21 @@ Chat-owned tabs opened while no chat is selected belong to the draft
 `@workspace` scope. When that draft creates a chat, its tabs are copied into the
 new chat in strip order with rebuilt ids and the same active/preview state; the
 draft originals remain available for the next new conversation.
-Display grouping is separate from ownership: `displayGroupForKind` puts
-`canvas`, `git`, and `todo` with workspace kinds as `tools` and
-`file | diff | external | paste` in `resources`. With default-on
-`features.panelTabReordering` set to `false`, the strip groups workspace tools, chat
-tools and resources, and confines moves to a section. Enabled, `moveVisibleTab`
-stores a mixed id order in `orderByScope` for the selected chat/draft within the
-owner-qualified panel storage scope. Drag target halves, Alt+Left/Right and
-Move left/right menu actions share that order; the divider is omitted. Ordering
-never changes descriptors, ownership, selection or keyed live views. The strip
+Display grouping is separate from ownership. Default-off `features.panelTabGroups`
+partitions the saved order into Tools, Files, Web and Canvas in one row, with
+three visible slots per group. Pinned To-do, active and preview tabs take priority;
+promoted active/preview tabs occupy trailing slots without changing saved order.
+Folded groups retain the active and pinned tabs. Fold state belongs to the panel
+scope, not the chat, in `unified-right-panel:<scope>:groups`. Searchable overflow
+menus expose the full group and preserve dirty/error marks and guarded bulk closing.
+Drag, Alt+Arrow and menu moves stay within the kind group.
+
+With groups off, `displayGroupForKind` puts `canvas`, `git`, and `todo` with
+workspace kinds as `tools`, and `file | diff | external | paste` in `resources`.
+Default-on `features.panelTabReordering` uses `moveVisibleTab` and per-chat/draft
+`orderByScope` in the owner-qualified panel scope; disabling it confines moves to
+workspace-tool, chat-tool and resource sections and shows the tools/resources
+divider. Both flags preserve descriptors, ownership, selection and keyed views. The strip
 accepts only its own native HTML drag session, auto-scrolls overflow near its
 edges and cancels on Escape, drag end, source close or scope/flag changes.
 Transient excursion tabs are excluded. Native HTML dragging does not add touch
@@ -91,7 +97,10 @@ model. A dock target change keeps explicit member opens valid within that panel.
 | `unifiedPanelNavigationHistory.ts` | Pure file-location history: panel-scope/tab identity, VS Code-style ten-line coalescing, branching, the 50-entry bound, replay suppression, missing-file drop, and the versioned codec. Each entry carries its file's reopen descriptor, so closing a tab keeps its entries; Back/Forward onto a closed file reopens it as a preview (through the preview slot's unsaved-edits guard) in the current chat's view, and never steps onto another scope's entries. |
 | `unifiedPanelNavigationStore.ts` + `fileNavigationRouting.ts` | History per panel scope, cached in memory and persisted to `unified-right-panel:<scope>:navigation` (unreadable or entry-less-reopen-data is dropped on load), plus pure Go Back/Forward key (Alt+Arrow, or Ctrl+-/Ctrl+Shift+- on macOS) and auxiliary mouse-button classification. |
 | `quickOpenRouting.ts`, `closeTabRouting.ts`, `findRouting.ts` | Pure ownership rules for the panel's document-level keyboard shortcuts. Find ownership is scoped to focus inside the Explorer navigator column. |
-| `UnifiedPanelTabStrip.tsx` + `UnifiedPanelCanvasStack.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip, native drag insertion markers and accessible tab menu. Four or more canvases compress into the active canvas plus a searchable count chip; switching and guarded closing preserve stored order. Grouped ordering draws a tools/resources divider. File tabs share Explorer's `FileNameIcon` and show the bare filename: no repo badge, with `unifiedTabTooltip` giving the `dirtyCloseLabel` repo-qualified path and the repo kept in screen-reader text; other kinds use fixed icons and keep their `repoLabel` badge. The menu model owns per-kind availability, move boundaries, local-only absolute paths and visible-order bulk targets. |
+| `UnifiedPanelTabStrip.tsx` + `UnifiedPanelCanvasStack.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip, native drag insertion markers and accessible tab menu. With tab groups off, four or more canvases compress into the active canvas plus a searchable count chip in the active canvas header or strip. With groups on, Canvas uses the group's cap and overflow menu, without the header chip or tools/resources divider. File tabs share Explorer's `FileNameIcon` and show the bare filename: no repo badge, with `unifiedTabTooltip` giving the `dirtyCloseLabel` repo-qualified path and the repo kept in screen-reader text; other kinds use fixed icons and keep their `repoLabel` badge. The menu model owns per-kind availability, group move boundaries, local-only absolute paths and visible-order bulk targets. |
+| `unifiedPanelTabGroups.ts` + `UnifiedPanelTabGroupLabel.tsx` | Pure kind partition, priority slots, hidden dirty/error summaries and move boundaries; the label renders count, active highlight and fold state. |
+| `unifiedPanelTabGroupStore.ts` | Panel-scope fold state through `useSyncExternalStore`, separate from tab descriptors and ordering; panel-state clearing also clears folds. |
+| `UnifiedPanelTabOverflowMenu.tsx` | Shared searchable portal for group overflow and canvas compression, including keyboard navigation, focus return, row closing and bulk-close callbacks. `data-native-view-overlay` hides overlapping native browser views. |
 | `unifiedPanelSourceSplit.ts` + `UnifiedSourceMirror.tsx` | The two-pane source split (see "Source split"): pure drop/reconcile/width rules and the session-only split store, plus the second Monaco view used when one file fills both panes. |
 | `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab, an in-place directory picker, and the Search/Explorer navigator controls. The model decides whether the path can use repo browsing. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
 | `UnifiedPanelRepoPicker.tsx` | The dock target, as a button + listbox on the tab strip left of the `+` (the strip's `leadingControls`). Renders nothing below two targets. The label comes from the `target` prop, so a refused switch (`onSelectTarget` returning `false`) keeps reporting the real scope; below 340px of strip width the label drops to a chevron via a container query. |
@@ -1085,17 +1094,18 @@ chat state and never send messages.
 
 ## AI canvas updates (`unifiedCanvasEvents.ts`)
 
-Split in two. **Routing** goes through `openUnifiedPanelTab`, so a later update
-reopens a collapsed panel and recreates a tab the user dismissed — activation is
-required on every update, not only on creation. **Reconciliation** goes through a
-`useSyncExternalStore` registry (`publishUnifiedCanvasEvent` /
-`useUnifiedCanvasEvent`), because the mounted `CanvasPanel` lives in the panel
-tree, far from the chat SSE stream. Identity is `(owning clone, canvas id)`, never
-the title; revision is the ordering, and a non-advancing event is dropped.
+**Routing** opens non-Kusto canvas updates through `openUnifiedPanelTab`,
+including recreating dismissed tabs and revealing collapsed panels. Kusto
+updates carry `canvasType: 'kusto'` from tools and route mutations through
+`useChatSSE`; they only reconcile, preserving selected tabs and panel visibility.
+Users open results through existing embed actions and the `+` menu.
+**Reconciliation** uses `publishUnifiedCanvasEvent` / `useUnifiedCanvasEvent`
+because `CanvasPanel` lives outside the chat SSE tree. Identity is
+`(owning clone, canvas id)`; non-advancing revisions are dropped.
 
 `useChatSSE` captures its callbacks when it opens the EventSource and does not
 re-subscribe when they change, so this handler reads the host and workspace list
-through refs. **Any future SSE-driven entry point must do the same.** With no
+through refs. The transport discards canvas events from abandoned streams. **Any future SSE-driven entry point must do the same.** With no
 host (a background chat, or a chat with no panel) the event is still *published*
 so a mounted view reconciles, but nothing is opened or activated.
 

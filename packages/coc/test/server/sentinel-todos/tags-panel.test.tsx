@@ -108,6 +108,64 @@ afterEach(() => {
 });
 
 describe('Sentinel to-do tags', () => {
+    it.each([900, 320])('shares one wrapping toolbar with keyboard access, retained state and exact owner writes at %ipx', async width => {
+        vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(width);
+        const user = userEvent.setup();
+        const remote = { ...owner, ownerRoutingRef: 'remote:server-a:ws-owner' };
+        registerCloneBaseUrls([{ cloneKey: remote.ownerRoutingRef, workspaceId: owner.ownerWorkspaceId, baseUrl: 'https://server-a.test' }]);
+        snapshot.tagLibrary!.tags[0].name = 'A long tag name ' + 'identifier'.repeat(20);
+        api.create.mockImplementation(async (_ws, _parent, draft) => {
+            const created = item('new-item', { title: draft.title });
+            snapshot = { ...snapshot, revision: snapshot.revision + 1, items: [...snapshot.items, created] };
+            return { item: created, ledgerRevision: snapshot.revision, created: true };
+        });
+        render(<UnifiedTodoTab owner={remote} scopeWorkspaceId="different-viewer" />);
+        await screen.findByTestId('sentinel-todo-row-item-one');
+        const toolbar = screen.getByRole('toolbar', { name: 'To-do actions' });
+        expect(toolbar.classList.contains('flex-wrap')).toBe(true);
+        expect(toolbar.classList.contains('min-w-0')).toBe(true);
+        expect(within(toolbar).getByText('To-do')).toBeTruthy();
+        expect(within(toolbar).getByTestId('sentinel-todo-active-count').textContent).toBe('1 active');
+        const filter = within(toolbar).getByRole('combobox', { name: 'Tag' }) as HTMLSelectElement;
+        const manage = within(toolbar).getByRole('button', { name: 'Manage tags' });
+        const multiple = within(toolbar).getByRole('checkbox', { name: 'Match multiple tags' }) as HTMLInputElement;
+        const refresh = within(toolbar).getByRole('button', { name: 'Refresh to-do list' });
+        const add = within(toolbar).getByRole('button', { name: 'Add item' });
+        expect(filter.closest('.sentinel-tags-toolbar')?.parentElement).toBe(toolbar);
+        expect(filter.closest('label')?.classList.contains('sentinel-tags-filter')).toBe(true);
+        filter.focus();
+        await user.tab();
+        expect(document.activeElement).toBe(manage);
+        await user.tab();
+        expect(document.activeElement).toBe(multiple);
+        await user.keyboard(' ');
+        expect(multiple.checked).toBe(true);
+        await user.tab();
+        expect(document.activeElement).toBe(refresh);
+        await user.tab();
+        expect(document.activeElement).toBe(add);
+        fireEvent.change(filter, { target: { value: 'tag-ui' } });
+        fireEvent.click(manage);
+        expect(screen.getByRole('dialog', { name: 'Manage tags' })).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: 'Close tags' }));
+        fireEvent.click(refresh);
+        await waitFor(() => expect(refresh.getAttribute('aria-busy')).toBe('false'));
+        expect(filter.value).toBe('tag-ui');
+        expect(multiple.checked).toBe(true);
+        expect(api.get).toHaveBeenLastCalledWith(owner.ownerWorkspaceId, owner.processId, { full: true });
+        fireEvent.click(add);
+        const form = screen.getByTestId('sentinel-todo-add-form');
+        fireEvent.change(within(form).getByLabelText('Title'), { target: { value: 'New toolbar item' } });
+        fireEvent.click(within(form).getByRole('button', { name: 'Add', exact: true }));
+        await waitFor(() => expect(screen.queryByTestId('sentinel-todo-add-form')).toBeNull());
+        expect(api.create).toHaveBeenCalledExactlyOnceWith(owner.ownerWorkspaceId, owner.processId,
+            expect.objectContaining({ title: 'New toolbar item', matchMultiple: true }));
+        expect(references).toContain(remote.ownerRoutingRef);
+        expect(filter.value).toBe('tag-ui');
+        expect(multiple.checked).toBe(true);
+        expect(api.update).not.toHaveBeenCalled();
+    });
+
     it.each([false, true])('keeps tags, suggestion state and every action in a wrapping summary (tagged=%s)', async tagged => {
         snapshot.items = [item('item-one', { tagIds: tagged ? ['tag-ui'] : [], tagOrigin: 'suggested',
             tagMatch: { state: tagged ? 'unavailable' : 'no_match', message: tagged ? 'Owning server unavailable' : undefined } })];

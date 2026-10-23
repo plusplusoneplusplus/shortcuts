@@ -249,7 +249,7 @@ export interface CLIConfig {
         enabled?: boolean;
     };
     /** Desktop browser control. Disabled by default. */
-    browserControl?: { enabled?: boolean; framesEnabled?: boolean; richPasteEnabled?: boolean; backgroundEnabled?: boolean };
+    browserControl?: { enabled?: boolean; framesEnabled?: boolean; richPasteEnabled?: boolean; backgroundEnabled?: boolean; navigationApprovalEnabled?: boolean };
     /** Kusto query canvas (interactive KQL query + charts). Disabled by default. */
     kusto?: {
         enabled?: boolean;
@@ -382,6 +382,7 @@ export interface CLIConfig {
         /** Two-pane source file split in the unified right panel. Enabled by default. */
         panelSourceSplit?: boolean;
         panelTabReordering?: boolean;
+        panelTabGroups?: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab?: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
@@ -668,7 +669,7 @@ export interface ResolvedCLIConfig {
         enabled: boolean;
     };
     /** Desktop browser control. */
-    browserControl: { enabled: boolean; framesEnabled: boolean; richPasteEnabled: boolean; backgroundEnabled: boolean };
+    browserControl: { enabled: boolean; framesEnabled: boolean; richPasteEnabled: boolean; backgroundEnabled: boolean; navigationApprovalEnabled: boolean };
     /** Kusto query canvas (interactive KQL query + charts). */
     kusto: {
         enabled: boolean;
@@ -807,6 +808,7 @@ export interface ResolvedCLIConfig {
         /** Two-pane source file split in the unified right panel. Enabled by default. */
         panelSourceSplit: boolean;
         panelTabReordering: boolean;
+        panelTabGroups: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
@@ -1023,7 +1025,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
         azureCli: { account: '', tenant: '', subscription: '' },
     },
-    browserControl: { enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false },
+    browserControl: { enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false, navigationApprovalEnabled: true },
     LLMToolSystemOne: {
         enabled: true,
     },
@@ -1128,6 +1130,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         markdownPanelPreview: true,
         panelSourceSplit: true,
         panelTabReordering: true,
+        panelTabGroups: false,
         htmlPageTab: true,
         chatStyleSelector: true,
         chatProviderSwitching: false,

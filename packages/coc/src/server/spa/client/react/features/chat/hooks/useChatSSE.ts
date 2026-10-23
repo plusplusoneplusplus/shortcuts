@@ -43,7 +43,7 @@ export interface AskUserQuestion {
     batchId: string;
     questionId: string;
     question: string;
-    type: 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text' | 'sensitive-input';
+    type: 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text' | 'textarea' | 'sensitive-input';
     options?: Array<{ value: string; label: string; description?: string }>;
     defaultValue?: string | string[];
     /** Set on `sensitive-input`: where the dashboard sends the pasted secret. */
@@ -115,6 +115,8 @@ export interface AskUserBatch {
 /** Live canvas create/update notification for the canvas side panel. */
 export interface CanvasUpdatedEvent {
     canvasId: string;
+    /** Persisted kind; Kusto updates refresh without opening or selecting a panel tab. */
+    canvasType?: string;
     title: string;
     revision: number;
     editor: 'ai' | 'user';
@@ -615,11 +617,13 @@ export function useChatSSE({
         });
 
         es.addEventListener('canvas-updated', (event: Event) => {
+            if (eventSourceRef.current !== es) return;
             try {
                 const data = JSON.parse((event as MessageEvent).data);
                 if (typeof data?.canvasId === 'string' && typeof data?.revision === 'number') {
                     onCanvasUpdated?.({
                         canvasId: data.canvasId,
+                        ...(typeof data.canvasType === 'string' ? { canvasType: data.canvasType } : {}),
                         title: typeof data.title === 'string' ? data.title : '',
                         revision: data.revision,
                         editor: data.editor === 'user' ? 'user' : 'ai',

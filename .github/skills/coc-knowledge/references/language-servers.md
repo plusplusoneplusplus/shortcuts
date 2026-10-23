@@ -267,12 +267,94 @@ syntax colors.
 
 `MonacoFileDiffViewer` shares the explorer's reference-counted
 `LanguageDocumentStore` only for real modified working-copy models: unstaged
-diffs and server-confirmed clean branch-range heads. Branch-range eligibility
-requires checked-out HEAD, a clean index/file, and byte-identical disk content;
-the server rechecks it outside the immutable snapshot cache.
+diffs, staged index sides verified equal to disk, and server-confirmed local commit or branch-range heads
+(`supportsWorkingCopyLanguage` sources render with stage `branch-range`).
+Snapshot eligibility requires byte-identical disk content regardless of index
+state or checked-out HEAD (`commitMatchesWorkingCopy` and
+`branchRangeMatchesWorkingCopy`), so matching text in an older snapshot gets the
+full language server. The server rechecks it outside the immutable snapshot cache.
 `diffLanguageEligibility` and the owned editor adapter reject synthetic or
 foreign URIs. An unsaved explorer buffer disables diff language features without
 overwriting that buffer, and closing a diff releases only its own document reference.
+
+`currentCodeDefinitions.ts` supplies the ref-backed diff lookup primitive through
+a routed workspace attachment, without opening an LSP document. It queries
+capable workspace-symbol servers, accepts exact names only, validates each
+result's workspace URI before normalization, and deduplicates positions. Results
+carry symbol-candidate provenance. Disposal releases the attachment and aborts
+pending lookups; cancellation suppresses late replies. Its workspace attachment
+lifetime is independent of the working-copy document path.
+
+`diffCurrentCodeMount.ts` provides a separate, definition-only Monaco mount for
+ref-backed models within the size limit. It scopes providers to the exact model,
+prepares candidate models through the routed Explorer reader for Peek, and uses
+`definitionLinkCue` with a document-free resolver. Hover identifies current-code
+results; Peek gets a `current code` injected-text decoration on each prepared
+target line (`.coc-current-code-tag`), removed by the mount on disposal. Each invocation owns cancellation; disposal revokes pending answers and
+releases providers, previews and the workspace attachment.
+
+Viewer hosts opt in with `historicalDefinitions` plus the concrete clone
+`routingRef`. The adapter's `attachHistoricalLanguage(side, mount)` mounts on a
+side only while its model is `coc-diff-ref:`, so the working-copy document keeps
+the full mount and ref-backed models never open one. Mounts are per side and
+undone on model swap and dispose; a mount that cannot start leaves a plain diff.
+Local commit and branch-range `DiffSource`s set `supportsCurrentCodeDefinitions`
+(PR sources never do); `WorkingTreeFileDiff` opts in for the HEAD/index sides of
+staged and unstaged diffs. `DiffDefinitionNavigate` receives the initiating side.
+Stash entries have no dedicated review: they open as commits by SHA (commit deep
+link, popout or chat context), so they use the commit source. The shared Rust
+commit plan uses `--diff-merges=first-parent` (diff-tree ignores
+`--first-parent`), so stash and merge reviews compare only against the first
+parent instead of listing files once per parent.
+
+`diffDefinitionRoute.ts` decides where a diff jump lands: the shown file reveals
+on the initiating side, another changed file of the review switches the review
+there (same side), and any other file opens its current version at the line in
+the unified panel's Explorer file tab (the `#repos/:id/explorer/:path` deep link
+without a panel; `diffDefinitionExplorer.ts`). Foreign-workspace targets are
+declined. `FileDiffPanel` holds the reveal until that file's models are displayed
+and suppresses the hunk target for it; the viewer's `revealTarget` goes through
+the controller's `reveal`, which waits for attach and is dropped by a model swap.
+`WorkingTreeFileDiff` is not a review: it routes both its full-language and
+ref-backed jumps to a same-file reveal or Explorer only. Peek stays Monaco's own.
+
+Before an in-review jump (same file or review file), `FileDiffPanel` captures the
+initiating side's cursor and scroll offset through the viewer handle's
+`capturePosition` (controller → adapter `getViewPosition`) and pushes it on a
+per-review back stack (reset when workspace, source label or `shortRef` change).
+The header chip `Back to <shortRef ?? label> · <file>` and Alt+← (captured on the
+panel before Monaco, only while the stack is non-empty) pop it: switch file via
+`onNavigateToFile` if needed, then reveal with `scrollTop`, which the adapter
+restores exactly instead of centring. `WorkingTreeFileDiff` keeps a bounded
+same-file stack with the same cursor/scroll capture and chip/Alt+← restore;
+workspace, clone, file or stage changes clear that stack and its pending reveal.
+
+Explorer jumps add nothing to those in-diff stacks. Instead, when a panel hosts
+the target, `openDiffDefinitionInExplorer` reads the panel's active tab (often
+the kept-alive Git tab holding the diff) before opening and records a
+`diffDefinitionReturn.ts` entry keyed by panel scope and the Explorer tab id:
+chip label, origin tab, chat and a restore callback carrying the captured side,
+cursor and scroll (a no-op once the diff unmounted; `FileDiffPanel` switches
+back to the jump's file first). `UnifiedTabView` renders
+`DiffDefinitionReturnChip` above file tabs, and the panel's Back key
+(`keyboardNavigationDirection`: Alt+← or Ctrl+- on macOS) takes that entry
+before stepping file history. Taking it refocuses the origin tab and restores;
+closing the Explorer tab forgets it. The deep-link fallback records nothing and
+relies on browser Back.
+
+Monaco mutes its empty-result message for Ctrl/Cmd+Click, so both diff mounts
+install `diffDefinitionFeedback.ts`: a modifier left-click on a word re-asks the
+mount's own resolver (LSP definition or current-code lookup) and reports a word
+with no result or a failed lookup; superseded clicks and disposal stay quiet.
+The viewer forwards it to `onNoDefinition` or, by default, a
+`No definition found for '<word>'` toast from `ToastContext` when one is mounted.
+Keyboard F12/Alt+F12 keep Monaco's inline message.
+
+Monaco reads Ctrl/Cmd+Alt+Click as "open to the side", which would route the
+jump out of the diff. Both mounts also install `diffDefinitionPeekClick.ts`: a
+capture-phase listener on the side editor's container swallows that gesture on
+a word and runs `editor.action.peekDefinition` there instead (once, on
+mousedown). Alt+F12 is Monaco's own Peek.
 
 ### Retry
 

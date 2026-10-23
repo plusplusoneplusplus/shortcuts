@@ -15,6 +15,7 @@ import type {
     PendingAskUserAnswerEntry,
     PendingAskUserQuestion,
 } from '@plusplusoneplusplus/forge';
+import { textareaAnswerError, isDraftEdited } from '../shared/ask-user-textarea';
 import type { AskUserAnswerInput } from './ask-user-tool';
 import { buildSensitiveInputReceipt, parseSensitiveInputReceipt, SENSITIVE_INPUT_SINKS } from './ask-user-tool';
 
@@ -97,6 +98,7 @@ export function buildPendingAskUserAnswerRecord(
         } else {
             if (answer.receipt !== undefined || answer.reason === 'unavailable') return null;
             if (!skipped && !deferred && answer.answer === undefined) return null;
+            if (!skipped && !deferred && question.type === 'textarea' && textareaAnswerError(answer.answer)) return null;
             if (!skipped && !deferred) durableAnswer = coerceDurableAnswer(answer.answer);
         }
 
@@ -107,6 +109,8 @@ export function buildPendingAskUserAnswerRecord(
             answer: durableAnswer,
             skipped,
             deferred,
+            ...(question.type === 'textarea' && !skipped && !deferred
+                ? { edited: isDraftEdited(answer.answer as string, question.defaultValue) } : {}),
             ...(deferred ? { reason: 'needs-context' as const } : {}),
             ...(note ? { note } : {}),
         });

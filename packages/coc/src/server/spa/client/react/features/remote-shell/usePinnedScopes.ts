@@ -3,8 +3,8 @@
  * segments in the `ScopeSlideSwitcher`.
  *
  * Reads/writes `preferences.getGlobal()` / `patchGlobal({ pinnedScopes })`,
- * following `useRecentRemotes` exactly (same client, same fire-and-forget patch,
- * same "load once, keep local state authoritative afterwards" shape).
+ * using the page-origin preferences client. Early clicks replay over the loaded
+ * list before persistence, keeping saved pins and the user's latest intent.
  *
  * Unlike `useRecentRemotes` the state is held in a tiny module-level store
  * rather than per-hook `useState`: the pin *toggles* live on the picker rows
@@ -19,10 +19,13 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { getSpaCocClient } from '../../api/cocClient';
+import type { RepoGroup } from '../../repos/repoGrouping';
 import {
     MAX_PINNED_SCOPES,
+    isPinnedScope,
     movePinnedScope,
     parsePinnedScopes,
+    qualifyWorkspacePins,
     serializePinnedScope,
     togglePinnedScope,
     type PinnedScopeRef,
@@ -31,6 +34,8 @@ import {
 let pins: PinnedScopeRef[] = [];
 let loaded = false;
 let loading: Promise<void> | null = null;
+type PinMutation = (current: PinnedScopeRef[]) => PinnedScopeRef[];
+let pendingMutations: PinMutation[] = [];
 const listeners = new Set<() => void>();
 
 function emit(): void {
@@ -42,7 +47,25 @@ function ensureLoaded(): void {
     loading = getSpaCocClient().preferences.getGlobal()
         .then(prefs => { pins = parsePinnedScopes((prefs as { pinnedScopes?: unknown }).pinnedScopes); })
         .catch(() => { pins = []; })
-        .finally(() => { loaded = true; loading = null; emit(); });
+        .finally(() => {
+            const pending = pendingMutations;
+            pendingMutations = [];
+            pins = pending.reduce((current, mutate) => mutate(current), pins);
+            loaded = true;
+            loading = null;
+            if (pending.length) write(pins);
+            else emit();
+        });
+}
+
+function mutatePins(mutate: PinMutation): void {
+    if (!loaded) {
+        // Keep early clicks visible, then replay their intent over stored pins.
+        // Writing this partial list now would discard pins still being loaded.
+        pendingMutations.push(mutate);
+        pins = mutate(pins);
+        emit();
+    } else write(mutate(pins));
 }
 
 function write(next: PinnedScopeRef[]): void {
@@ -58,6 +81,7 @@ export function __resetPinnedScopesStore(): void {
     pins = [];
     loaded = false;
     loading = null;
+    pendingMutations = [];
     listeners.clear();
 }
 
@@ -72,7 +96,7 @@ export interface UsePinnedScopes {
     full: boolean;
 }
 
-export function usePinnedScopes(): UsePinnedScopes {
+export function usePinnedScopes(groups?: readonly RepoGroup[]): UsePinnedScopes {
     const [snapshot, setSnapshot] = useState(() => ({ pins, loaded }));
 
     useEffect(() => {
@@ -84,8 +108,17 @@ export function usePinnedScopes(): UsePinnedScopes {
         return () => { listeners.delete(listener); };
     }, []);
 
-    const toggle = useCallback((ref: PinnedScopeRef) => { write(togglePinnedScope(pins, ref)); }, []);
-    const move = useCallback((ref: PinnedScopeRef, delta: -1 | 1) => { write(movePinnedScope(pins, ref, delta)); }, []);
+    useEffect(() => {
+        if (!snapshot.loaded || !groups) return;
+        const qualified = qualifyWorkspacePins(pins, groups);
+        if (qualified !== pins) write(qualified);
+    }, [groups, snapshot.loaded, snapshot.pins]);
+
+    const toggle = useCallback((ref: PinnedScopeRef) => {
+        const shouldPin = !isPinnedScope(pins, ref);
+        mutatePins(current => isPinnedScope(current, ref) === shouldPin ? current : togglePinnedScope(current, ref));
+    }, []);
+    const move = useCallback((ref: PinnedScopeRef, delta: -1 | 1) => { mutatePins(current => movePinnedScope(current, ref, delta)); }, []);
 
     return {
         pins: snapshot.pins,

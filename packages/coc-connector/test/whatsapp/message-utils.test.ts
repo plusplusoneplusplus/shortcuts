@@ -45,3 +45,8 @@ describe('formatWhatsAppQuestion', () => {
             .toBe('*Name the repo*\n\n*for the release*\n\nReply: your answer or "skip"');
     });
 });
+
+it('quotes every draft line without trimming and puts the reply hint last', () => {
+    expect(formatWhatsAppQuestion({ question: 'Review', options: [], draft: ' Hi Alex,\n\nThanks!  ', hint: 'Reply "send" or "skip"' }))
+        .toBe('*Review*\n\n>  Hi Alex,\n> \n> Thanks!  \n\nReply "send" or "skip"');
+});

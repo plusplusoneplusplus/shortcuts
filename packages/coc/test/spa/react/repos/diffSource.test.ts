@@ -732,3 +732,23 @@ describe('focused review source lifetimes', () => {
     });
 
 });
+
+describe('current-code definition support', () => {
+    it('is offered by local commit and branch-range sources, never PR sources', () => {
+        expect(createCommitDiffSource('ws1', 'abc1234').supportsCurrentCodeDefinitions).toBe(true);
+        expect(createBranchRangeDiffSource('ws1').supportsCurrentCodeDefinitions).toBe(true);
+        expect(createPrDiffSource('ws1', 'repo-1', '42', { originId: 'origin-1' }).supportsCurrentCodeDefinitions).toBeUndefined();
+    });
+
+    it('lets local commit and branch-range heads use the working-copy language server, never PR heads', () => {
+        expect(createCommitDiffSource('ws1', 'abc1234').supportsWorkingCopyLanguage).toBe(true);
+        expect(createBranchRangeDiffSource('ws1').supportsWorkingCopyLanguage).toBe(true);
+        expect(createPrDiffSource('ws1', 'repo-1', '42', { originId: 'origin-1' }).supportsWorkingCopyLanguage).toBeUndefined();
+    });
+
+    it('exposes a short revision for the definition back chip', () => {
+        expect(createCommitDiffSource('ws1', 'abc1234def5678').shortRef).toBe('abc1234');
+        expect(createBranchRangeDiffSource('ws1', { range: { baseRef: 'main', headRef: 'feat', headSha: 'fedcba9876543' } }).shortRef).toBe('fedcba9');
+        expect(createBranchRangeDiffSource('ws1').shortRef).toBeUndefined();
+    });
+});

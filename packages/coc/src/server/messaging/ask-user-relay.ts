@@ -13,6 +13,7 @@
  * never time out; the turn's `cancelAll` clears them.
  */
 
+import { textareaAnswerError, isDraftEdited } from '../shared/ask-user-textarea';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { AskUserAnswerValue, AskUserEmitControl, AskUserSSEPayload } from '../llm-tools/ask-user-tool';
 import type { MessagingJobOrigin } from './job-notices';
@@ -22,11 +23,11 @@ import type { MessagingJobOrigin } from './job-notices';
 // ============================================================================
 
 export type QuestionReply =
-    | { kind: 'answer'; value: AskUserAnswerValue }
+    | { kind: 'answer'; value: AskUserAnswerValue; edited?: boolean }
     | { kind: 'skip' }
     | { kind: 'invalid'; error: string };
 
-type QuestionShape = Pick<AskUserSSEPayload, 'type' | 'options'>;
+type QuestionShape = Pick<AskUserSSEPayload, 'type' | 'options' | 'defaultValue'>;
 
 function hasOptions(question: QuestionShape): boolean {
     return (question.type === 'select' || question.type === 'multi-select') && !!question.options?.length;
@@ -40,6 +41,12 @@ function optionByText(question: QuestionShape, text: string) {
 
 /** Parse a chat reply into an answer for `question`. */
 export function parseQuestionReply(question: QuestionShape, text: string): QuestionReply {
+    if (question.type === 'textarea') {
+        if (/^skip$/i.test(text)) return { kind: 'skip' };
+        const value = /^send$/i.test(text) && typeof question.defaultValue === 'string' ? question.defaultValue : text;
+        const error = textareaAnswerError(value);
+        return error ? { kind: 'invalid', error } : { kind: 'answer', value, edited: isDraftEdited(value, question.defaultValue) };
+    }
     const reply = text.trim();
     if (!reply) return { kind: 'invalid', error: 'Please reply with your answer.' };
     if (/^skip$/i.test(reply)) return { kind: 'skip' };
@@ -75,11 +82,17 @@ export interface QuestionLayout {
     question: string;
     /** One entry per option, already numbered (`1. Postgres`). */
     options: string[];
+    draft?: string;
     /** One-line reply hint, e.g. `Reply: 2 or "skip"`. */
     hint: string;
 }
 
 export function questionHint(question: QuestionShape): string {
+    if (question.type === 'textarea') {
+        return typeof question.defaultValue === 'string'
+            ? 'Reply "send" to use this draft, reply with your full edited text, or "skip"'
+            : 'Reply with your full text, or "skip"';
+    }
     const count = question.options?.length ?? 0;
     const example = question.type === 'yes-no' || question.type === 'confirm' ? 'yes / no'
         : hasOptions(question) && question.type === 'multi-select' ? (count > 1 ? '1,2' : '1')
@@ -96,6 +109,7 @@ export function buildQuestionLayout(question: AskUserSSEPayload, index: number, 
             ? question.options!.map((option, i) =>
                 `${i + 1}. ${option.label}${option.description ? ` — ${option.description}` : ''}`)
             : [],
+        ...(question.type === 'textarea' && typeof question.defaultValue === 'string' ? { draft: question.defaultValue } : {}),
         hint: questionHint(question),
     };
 }

@@ -38,6 +38,15 @@ describe('canvas LLM tools', () => {
         });
     }
 
+    it('preserves the Kusto kind when write_canvas edits an existing query result', async () => {
+        const canvas = store.createCanvas({ workspaceId: WS, title: 'Query', type: 'kusto', content: '{}', processId: PROCESS_ID });
+        const result: any = await buildTools().write.handler({ canvasId: canvas.id, expectedRevision: canvas.revision, title: 'Renamed query' });
+        expect(result.success).toBe(true);
+        expect(emitProcessEvent).toHaveBeenCalledWith(PROCESS_ID, expect.objectContaining({
+            canvasUpdate: expect.objectContaining({ canvasId: canvas.id, canvasType: 'kusto' }),
+        }));
+    });
+
     it('registers three consolidated canvas tool names', () => {
         const { write, read, extension } = buildTools();
         expect(write.name).toBe('write_canvas');

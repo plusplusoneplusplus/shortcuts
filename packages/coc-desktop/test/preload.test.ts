@@ -48,6 +48,7 @@ import {
     POPOUT_STATE_CHANNEL,
 } from '../src/popout-chrome';
 import { MENU_COPY_CHANNEL, MENU_COPY_HANDLED_CHANNEL } from '../src/terminal-copy';
+import { BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL, BROWSER_CONTROL_NAVIGATION_DECISION_CHANNEL } from '../src/browser-control-command';
 import {
     HTML_PAGE_SESSION_KEY,
     HTML_PAGE_VIEW_PREFIX,
@@ -171,6 +172,21 @@ describe('preload bridge', () => {
         unsubscribe();
         expect(removeListener).toHaveBeenLastCalledWith('coc-desktop:browser-control-reveal', listener);
         expect(control.cdp).toBeUndefined();
+    });
+
+    it('forwards held navigation checks and decisions on the channels the main process uses', () => {
+        const { control } = exposedApi().browser;
+        const callback = vi.fn();
+        const unsubscribe = control.onNavigationCheck(callback);
+        expect(on).toHaveBeenLastCalledWith(BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL, expect.any(Function));
+        const listener = on.mock.calls.at(-1)![1] as Function;
+        const payload = { checkId: 'c', workspaceId: 'w', processId: 'p', turnId: 't', routingRef: 'w', url: 'https://fixture.test/' };
+        listener({}, payload);
+        expect(callback).toHaveBeenCalledWith(payload);
+        unsubscribe();
+        expect(removeListener).toHaveBeenLastCalledWith(BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL, listener);
+        control.decideNavigation('c', true);
+        expect(send).toHaveBeenLastCalledWith(BROWSER_CONTROL_NAVIGATION_DECISION_CHANNEL, 'c', true);
     });
 
     it('returns native keyboard focus to the host on pointer and DOM focus changes, without intercepting keys', () => {

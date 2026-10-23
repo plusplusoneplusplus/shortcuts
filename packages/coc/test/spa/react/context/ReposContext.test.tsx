@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { useRef, useLayoutEffect, type ReactNode } from 'react';
 import type { HealthResponse } from '@plusplusoneplusplus/coc-client';
+import { groupKey, groupReposByRemote } from '../../../../src/server/spa/client/react/repos/repoGrouping';
 
 // Mock heavy dependencies before importing the context
 const webSocketMock = vi.hoisted(() => ({
@@ -79,6 +80,7 @@ import {
 } from '../../../../src/server/spa/client/react/repos/lastLocalWorkspacePersistence';
 import {
     buildRemoteCloneKey,
+    getWorkspaceSelectionId,
     legacyPathOnlyWorkspaceIdForRootPath,
 } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 import { getCocClientFor } from '../../../../src/server/spa/client/react/api/cocClient';
@@ -793,6 +795,35 @@ describe('ReposContext', () => {
 
     // ── AC-08: remote-clone selection persistence across reload ──────────────
     describe('remote workflow lists', () => {
+        it.each([null, undefined])('keeps an unavailable clone out of another server\'s Git group (git=%s)', async unavailableGit => {
+            repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce([]);
+            const a = remoteAggregate('box-a', 'https://box-a.example', 'same');
+            const b = remoteAggregate('box-b', 'https://box-b.example', 'same');
+            for (const url of ['https://box-a.example', 'https://box-b.example']) {
+                vi.spyOn(getCocClientFor(url).workspaces, 'ralphAttention').mockResolvedValue({ count: 0 });
+            }
+            const bKey = buildRemoteCloneKey('box-b', 'same');
+            const aKey = buildRemoteCloneKey('box-a', 'same');
+            const git = { isGitRepo: true, branch: 'main', dirty: false, remoteUrl: 'https://github.com/acme/b.git' };
+            aggregateRemoteWorkspacesMock.mockResolvedValueOnce({
+                ...a, workspaces: [...a.workspaces, ...b.workspaces],
+                gitInfo: { same: git, [bKey]: git, ...(unavailableGit === null ? { [aKey]: null } : {}) },
+                workflows: { same: [{ name: 'Other owner' }], [bKey]: [{ name: 'Other owner' }] },
+            });
+            function GroupProbe() {
+                const { repos } = useRepos();
+                return <>
+                    <div data-testid="owner-groups">{groupReposByRemote(repos, {}).map(group =>
+                        `${groupKey(group)}=${group.repos.map(repo => getWorkspaceSelectionId(repo.workspace)).join(',')}`).join('|')}</div>
+                    <div data-testid="owner-workflows">{repos.map(repo =>
+                        `${getWorkspaceSelectionId(repo.workspace)}=${(repo.workflows ?? []).map(workflow => workflow.name).join(',')}`).join('|')}</div>
+                </>;
+            }
+            render(<Wrapper><ReposProvider><GroupProbe /></ReposProvider></Wrapper>);
+            await waitFor(() => expect(screen.getByTestId('owner-groups')).toHaveTextContent(aKey));
+            expect(screen.getByTestId('owner-groups').textContent).toBe(`github.com/acme/b=${bKey}|workspace:${aKey}=${aKey}`);
+            expect(screen.getByTestId('owner-workflows').textContent).toBe(`${aKey}=|${bKey}=Other owner`);
+        });
         function WorkflowCountConsumer() {
             const { repos, loading } = useRepos();
             if (loading) return <div data-testid="loading">Loading</div>;
@@ -820,7 +851,7 @@ describe('ReposContext', () => {
         it('carries a remote clone\'s aggregated workflows into its repo row', async () => {
             repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce([]);
             const aggregate = remoteAggregate('srv-1', 'http://127.0.0.1:4000', 'remote-ws');
-            aggregate.workflows = { 'remote-ws': [{ name: 'triage', path: 'p/triage.yaml', isValid: true }] };
+            aggregate.workflows = { [buildRemoteCloneKey('srv-1', 'remote-ws')]: [{ name: 'triage', path: 'p/triage.yaml', isValid: true }] };
             aggregateRemoteWorkspacesMock.mockResolvedValueOnce(aggregate);
 
             renderWorkflowCounts();

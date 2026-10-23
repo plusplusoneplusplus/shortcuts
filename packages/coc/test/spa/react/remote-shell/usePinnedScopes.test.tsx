@@ -23,6 +23,7 @@ import {
     usePinnedScopes,
 } from '../../../../src/server/spa/client/react/features/remote-shell/usePinnedScopes';
 import { MAX_PINNED_SCOPES, type PinnedScopeRef } from '../../../../src/server/spa/client/react/features/remote-shell/pinnedScopes';
+import { groupReposByRemote } from '../../../../src/server/spa/client/react/repos/repoGrouping';
 
 const repoPin = (key: string): PinnedScopeRef => ({ kind: 'repo', key });
 const groupPin = (key: string): PinnedScopeRef => ({ kind: 'group', key });
@@ -50,6 +51,58 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('usePinnedScopes — load', () => {
+    it.each([true, false])('replays the intended pin state over loaded pins (pin=%s)', async shouldPin => {
+        let resolveLoad!: (prefs: unknown) => void;
+        getGlobal.mockImplementationOnce(() => new Promise(resolve => { resolveLoad = resolve; }));
+        render(<Probe testId="p" />);
+        act(() => {
+            api!.toggle(repoPin('already-stored'));
+            if (!shouldPin) api!.toggle(repoPin('already-stored'));
+        });
+        expect(patchGlobal).not.toHaveBeenCalled();
+        await act(async () => { resolveLoad({ pinnedScopes: ['repo:already-stored', 'group:group-other'] }); });
+        expect(screen.getByTestId('p').textContent).toBe(shouldPin ? 'repo:already-stored,group:group-other' : 'group:group-other');
+    });
+
+    it('keeps the stored cap and ordering when a new pin is clicked before loading completes', async () => {
+        let resolveLoad!: (prefs: unknown) => void;
+        getGlobal.mockImplementationOnce(() => new Promise(resolve => { resolveLoad = resolve; }));
+        const stored = Array.from({ length: MAX_PINNED_SCOPES }, (_, i) => `repo:r${i}`);
+        render(<Probe testId="p" />);
+        act(() => api!.toggle(repoPin('extra')));
+        await act(async () => { resolveLoad({ pinnedScopes: stored }); });
+        expect(screen.getByTestId('p').textContent).toBe(stored.join(','));
+        expect(patchGlobal).toHaveBeenLastCalledWith({ pinnedScopes: stored });
+    });
+
+    it('qualifies an unambiguous stored no-URL remote pin and saves it for reload', async () => {
+        getGlobal.mockResolvedValue({ pinnedScopes: ['repo:workspace:same', 'group:group-other'] });
+        const groups = groupReposByRemote([{ workspace: { id: 'same', name: 'Remote', remote: { serverId: 'box' } } }], {});
+        function QualifiedProbe() {
+            const value = usePinnedScopes(groups);
+            return <div data-testid="qualified">{value.pins.map(p => p.key).join(',')}</div>;
+        }
+        render(<QualifiedProbe />);
+        await waitFor(() => expect(screen.getByTestId('qualified')).toHaveTextContent('workspace:remote:box:same,group-other'));
+        expect(patchGlobal).toHaveBeenLastCalledWith({ pinnedScopes: ['repo:workspace:remote:box:same', 'group:group-other'] });
+    });
+
+    it('merges a pin clicked during preference loading and persists the merged order on reload', async () => {
+        let resolveLoad!: (prefs: unknown) => void;
+        getGlobal.mockImplementationOnce(() => new Promise(resolve => { resolveLoad = resolve; }));
+        const mounted = render(<Probe testId="p" />);
+        act(() => api!.toggle(repoPin('github.com/acme/multi-clone')));
+        expect(screen.getByTestId('p')).toHaveTextContent('repo:github.com/acme/multi-clone');
+        await act(async () => { resolveLoad({ pinnedScopes: ['group:group-existing'] }); });
+        expect(screen.getByTestId('p').textContent).toBe('group:group-existing,repo:github.com/acme/multi-clone');
+        expect(patchGlobal).toHaveBeenLastCalledWith({ pinnedScopes: ['group:group-existing', 'repo:github.com/acme/multi-clone'] });
+        mounted.unmount();
+        __resetPinnedScopesStore();
+        getGlobal.mockResolvedValue(patchGlobal.mock.calls.at(-1)![0]);
+        render(<Probe testId="reloaded" />);
+        await waitFor(() => expect(screen.getByTestId('reloaded').textContent).toBe('group:group-existing,repo:github.com/acme/multi-clone'));
+    });
+
     it('loads and parses the stored list', async () => {
         getGlobal.mockResolvedValue({ pinnedScopes: ['repo:github.com/a/b', 'group:group-ai'] });
         render(<Probe testId="p" />);

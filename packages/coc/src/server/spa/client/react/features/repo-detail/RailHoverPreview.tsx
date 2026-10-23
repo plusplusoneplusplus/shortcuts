@@ -48,6 +48,10 @@ export interface RailPreviewControl {
     /** Show `(count)` after the heading. Defaults to true. */
     headingCount?: boolean;
     closeLabel?: string;
+    /** Keep an empty-state control and preview available at zero. */
+    showWhenEmpty?: boolean;
+    /** Click/tap opens the preview rather than expanding the sidebar. */
+    clickOpensPreview?: boolean;
 }
 
 interface Props extends RailControls {
@@ -72,7 +76,7 @@ export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand,
     const previewable = scopeLabel !== undefined;
     const current = controls.find(control => control.key === active);
     const count = current?.count ?? 0;
-    const open = !!current && count > 0 && previewable;
+    const open = !!current && (count > 0 || current.showWhenEmpty === true) && previewable;
     const portal = usePortalContainer(open);
 
     const clearTimers = useCallback(() => {
@@ -109,11 +113,11 @@ export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand,
     useHoverPopoverDismissal(open, triggerRef, panelRef, dismiss, escape);
     useEffect(() => () => clearTimers(), [clearTimers]);
     useEffect(() => {
-        if (active && count === 0) {
+        if (active && count === 0 && !current?.showWhenEmpty) {
             dismiss();
             triggerRef.current = null;
         }
-    }, [active, count, dismiss]);
+    }, [active, count, current?.showWhenEmpty, dismiss]);
 
     const show = (next: string) => {
         clearTimers();
@@ -152,16 +156,19 @@ export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand,
             panelRef.current?.querySelector<HTMLElement>('button, a')?.focus();
         }
     }, [open, portal, active]);
+    const enterPreview = (next: string) => {
+        suppressed.current = false;
+        enterActions.current = true;
+        show(next);
+        if (open && active === next) {
+            enterActions.current = false;
+            panelRef.current?.querySelector<HTMLElement>('button, a')?.focus();
+        }
+    };
     const keyDown = (event: KeyboardEvent<HTMLButtonElement>, next: string) => {
         if (previewable && (event.key === 'ArrowRight' || event.key === 'ArrowDown' || (event.key === 'Tab' && !event.shiftKey && open))) {
             event.preventDefault();
-            suppressed.current = false;
-            enterActions.current = true;
-            show(next);
-            if (open && active === next) {
-                enterActions.current = false;
-                panelRef.current?.querySelector<HTMLElement>('button, a')?.focus();
-            }
+            enterPreview(next);
         }
     };
     const anchor = triggerRef.current?.getBoundingClientRect();
@@ -170,7 +177,7 @@ export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand,
     const bridgeRight = anchor ? (position.left >= anchor.right ? position.left : anchor.left) : 0;
     return (
         <>
-            {controls.map(control => control.count > 0 && (
+            {controls.map(control => (control.count > 0 || control.showWhenEmpty) && (
                 <button
                     key={control.key}
                     ref={node => { triggers.current[control.key] = node; }}
@@ -211,6 +218,10 @@ export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand,
                     onBlur={blur}
                     onKeyDown={event => keyDown(event, control.key)}
                     onClick={() => {
+                        if (control.clickOpensPreview && previewable) {
+                            enterPreview(control.key);
+                            return;
+                        }
                         dismiss();
                         (control.onClick ?? onExpand)();
                     }}

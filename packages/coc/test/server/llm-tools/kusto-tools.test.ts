@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -68,6 +69,29 @@ describe('kusto_query tool', () => {
         expect(reloaded.query).toBe('T | take 3');
         expect(reloaded.rows).toEqual([[1], [2], [3]]);
         expect(reloaded.lastRun?.status).toBe('success');
+    });
+
+    it.each([false, true])('emits typed result events on create and update (query failure: %s)', async fails => {
+        const emitProcessEvent = vi.fn();
+        const tool = createKustoTools({
+            dataDir, workspaceId: WS, processId: 'query-chat',
+            processStore: { emitProcessEvent } as unknown as ProcessStore,
+            canvasStore: store,
+            clientFactory: fails ? () => ({ execute: async () => { throw new Error('query failed'); } }) : mockFactory([[9]]),
+        }).kustoQuery;
+        const inputs = { query: 'T', clusterUrl: 'https://c.kusto.windows.net', database: 'DB' };
+        const created: any = await tool.handler!(inputs);
+        const updated: any = await tool.handler!({ ...inputs, canvasId: created.canvasId });
+        expect(updated.embed).toBe(`canvas://${created.canvasId}`);
+        expect(store.listCanvases(WS, { processId: 'query-chat' })).toHaveLength(1);
+        expect(emitProcessEvent).toHaveBeenCalledTimes(2);
+        for (const [index, result] of [created, updated].entries()) {
+            expect(emitProcessEvent).toHaveBeenNthCalledWith(index + 1, 'query-chat', {
+                type: 'canvas-updated',
+                canvasUpdate: { canvasId: result.canvasId, title: 'Kusto Query', revision: result.revision, editor: 'ai', canvasType: 'kusto' },
+            });
+        }
+        expect(updated.revision).toBeGreaterThan(created.revision);
     });
 
     it('caps the returned row sample at KUSTO_QUERY_ROW_SAMPLE but stores the full count', async () => {

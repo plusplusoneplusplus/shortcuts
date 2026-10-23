@@ -79,6 +79,20 @@ vi.mock('../../../../../../src/server/spa/client/react/repos/cloneRouting', () =
     useCocClient: (workspaceId: string) => clients[workspaceId],
 }));
 
+type NavigateTarget = { workspaceId: string; path: string; line: number; column: number; symbolCandidate?: true };
+const currentCodeMounts = vi.hoisted(() => [] as { uri: string; onNavigate: (target: NavigateTarget) => boolean }[]);
+vi.mock('../../../../../../src/server/spa/client/react/features/git/diff/diffCurrentCodeMount', () => ({
+    mountDiffCurrentCodeModel: (options: { model: { uri: { toString(): string } }; onNavigate: (target: NavigateTarget) => boolean }) => {
+        currentCodeMounts.push({ uri: options.model.uri.toString(), onNavigate: options.onNavigate });
+        return () => {};
+    },
+}));
+const openUnifiedPanelTab = vi.hoisted(() => vi.fn(() => 'tab-id'));
+vi.mock('../../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen', async importOriginal => ({
+    ...(await importOriginal<object>()),
+    openUnifiedPanelTab,
+}));
+
 import { WorkingTreeFileDiff } from '../../../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff';
 import {
     DIFF_ENGINE_STORAGE_KEY,
@@ -86,6 +100,10 @@ import {
 } from '../../../../../../src/server/spa/client/react/features/git/hooks/useDiffEngine';
 import type { DiffEditorFactory } from '../../../../../../src/server/spa/client/react/features/git/diff/monacoDiffEditorAdapter';
 import { __resetDiffWordWrapForTesting } from '../../../../../../src/server/spa/client/react/features/git/hooks/useDiffWordWrap';
+import { UnifiedPanelHostProvider } from '../../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
+import {
+    getDiffDefinitionReturn, resetDiffDefinitionReturns, returnToDiffDefinitionOrigin,
+} from '../../../../../../src/server/spa/client/react/features/git/diff/diffDefinitionReturn';
 
 let fakes: FakeDiffEditor[];
 const createDiffEditor: DiffEditorFactory = async (_host, options) => {
@@ -114,6 +132,8 @@ async function renderDiff(props: Partial<React.ComponentProps<typeof WorkingTree
 
 beforeEach(() => {
     fakes = [];
+    currentCodeMounts.length = 0;
+    openUnifiedPanelTab.mockClear();
     localStorage.clear();
     __resetDiffEngineForTesting();
     __resetDiffWordWrapForTesting();
@@ -241,4 +261,125 @@ it.each(['ws-a', 'remote:one:ws-a', 'remote:two:ws-a'])('forwards working-tree s
     view.rerender(<WorkingTreeFileDiff workspaceId="ws-a" attachmentDestinationId="remote:next:ws-a"
         filePath="/repo/src/a.ts" stage="unstaged" repoRoot="/repo" createDiffEditor={createDiffEditor} />);
     expect(selectionPill).toHaveBeenLastCalledWith(expect.objectContaining({ workspaceId: 'ws-a', destinationId: 'remote:next:ws-a' }));
+});
+
+describe('WorkingTreeFileDiff — historical definitions', () => {
+    it('serves the left (index) side of an unstaged diff, never the disk document', async () => {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
+        await renderDiff({ stage: 'unstaged' });
+        expect(fakes).toHaveLength(1);
+        expect(fakes[0].historicalMounts.filter(m => m.live).map(m => m.side)).toEqual(['original']);
+    });
+
+    it('serves the HEAD side of a staged diff', async () => {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
+        await renderDiff({ stage: 'staged' });
+        expect(fakes).toHaveLength(1);
+        const sides = fakes[0].historicalMounts.filter(m => m.live).map(m => m.side);
+        expect(sides[0]).toBe('original');
+        expect(fakes[0].historicalMounts.every(m => m.uri.startsWith('coc-diff-ref://'))).toBe(true);
+    });
+});
+
+describe('WorkingTreeFileDiff — definition routing', () => {
+    const target = (path: string, extra: Partial<NavigateTarget> = {}): NavigateTarget => ({ workspaceId: 'ws-a', path, line: 7, column: 2, ...extra });
+    async function renderHosted(props: Partial<React.ComponentProps<typeof WorkingTreeFileDiff>> = {}) {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
+        await act(async () => {
+            render(
+                <UnifiedPanelHostProvider host={{ workspaceId: 'group-1', chatId: 'chat-1', routingRef: null }}>
+                    <WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/a.ts" repoRoot="/repo" stage="unstaged"
+                        createDiffEditor={createDiffEditor} {...props} />
+                </UnifiedPanelHostProvider>,
+            );
+        });
+        await act(async () => {});
+        expect(currentCodeMounts).toHaveLength(1);
+        return currentCodeMounts[0];
+    }
+
+    it('reveals a same-file target on the left side the jump started from', async () => {
+        const mount = await renderHosted();
+        let handled: boolean | undefined;
+        act(() => { handled = mount.onNavigate(target('src/a.ts')); });
+        expect(handled).toBe(true);
+        expect(fakes[0].revealedPositions).toEqual([{ side: 'original', line: 7, column: 2 }]);
+        expect(openUnifiedPanelTab).not.toHaveBeenCalled();
+    });
+
+    it.each(['original', 'modified'] as const)('restores %s cursor and exact scroll through the chip and Alt+←', async side => {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
+        clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValueOnce(content('a\n', 'b\n', {
+            base: { content: 'a\n', ref: 'HEAD', exists: true },
+            head: { content: 'b\n', ref: 'INDEX', exists: true },
+        })).mockResolvedValueOnce(content('b\n', 'disk differs\n'));
+        await renderDiff({ stage: 'staged' });
+        const mount = currentCodeMounts[side === 'original' ? 0 : 1];
+        expect(mount).toBeDefined();
+        const origin = { line: 3, column: 4, scrollTop: 183.5 };
+        fakes[0].viewPositions[side] = origin;
+        act(() => { mount.onNavigate(target('src/a.ts')); });
+        expect(screen.getByTestId('diff-definition-back-chip').textContent).toContain('Back to Staged · a.ts');
+        fakes[0].viewPositions[side] = { line: 7, column: 2, scrollTop: 500 };
+        act(() => { mount.onNavigate(target('src/a.ts', { line: 12 })); });
+        fireEvent.keyDown(screen.getByTestId('working-tree-file-diff'), { key: 'ArrowLeft', altKey: true });
+        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side, line: 7, column: 2, scrollTop: 500 });
+        fireEvent.click(screen.getByTestId('diff-definition-back-chip'));
+        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side, ...origin });
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+        const count = fakes[0].revealedPositions.length;
+        fireEvent.keyDown(screen.getByTestId('working-tree-file-diff'), { key: 'ArrowLeft', altKey: true });
+        expect(fakes[0].revealedPositions).toHaveLength(count);
+    });
+
+    it('clears return history and pending reveal when the selected file changes', async () => {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
+        const view = await renderDiff();
+        fakes[0].viewPositions.original = { line: 2, column: 1, scrollTop: 70 };
+        act(() => { currentCodeMounts[0].onNavigate(target('src/a.ts')); });
+        expect(screen.getByTestId('diff-definition-back-chip')).toBeTruthy();
+        await act(async () => {
+            view.rerender(<WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/b.ts" repoRoot="/repo"
+                stage="unstaged" createDiffEditor={createDiffEditor} />);
+        });
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+        expect(fakes.flatMap(fake => fake.revealedPositions)).toEqual([{ side: 'original', line: 7, column: 2 }]);
+    });
+
+    it('opens another file, even a changed one, in Explorer at the definition line', async () => {
+        const onNavigateToFile = vi.fn();
+        const mount = await renderHosted({ attachmentDestinationId: 'remote:srv:ws-a', onNavigateToFile, workingTreeFiles: ['/repo/src/a.ts', '/repo/src/b.ts'] });
+        let handled: boolean | undefined;
+        act(() => { handled = mount.onNavigate(target('src/b.ts', { symbolCandidate: true })); });
+        expect(handled).toBe(true);
+        expect(onNavigateToFile).not.toHaveBeenCalled();
+        expect(openUnifiedPanelTab).toHaveBeenCalledWith('group-1', expect.objectContaining({
+            kind: 'file', ownerWorkspaceId: 'ws-a', ownerRoutingRef: 'remote:srv:ws-a', chatId: 'chat-1',
+            resourceId: 'src/b.ts', line: 7, column: 2, symbolCandidate: true,
+        }));
+        expect(fakes[0].revealedPositions).toEqual([]);
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+    });
+
+    it('an Explorer jump leaves a way back to the exact side and scroll spot', async () => {
+        resetDiffDefinitionReturns();
+        const mount = await renderHosted();
+        fakes[0].viewPositions.original = { line: 5, column: 3, scrollTop: 90 };
+        act(() => { mount.onNavigate(target('lib/util.ts')); });
+        expect(getDiffDefinitionReturn('group-1', 'tab-id')).toMatchObject({ label: 'Unstaged · a.ts', chatId: 'chat-1' });
+        let returned = false;
+        act(() => { returned = returnToDiffDefinitionOrigin('group-1', 'tab-id'); });
+        expect(returned).toBe(true);
+        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side: 'original', line: 5, column: 3, scrollTop: 90 });
+        expect(getDiffDefinitionReturn('group-1', 'tab-id')).toBeNull();
+    });
+
+    it('declines a target in another workspace', async () => {
+        const mount = await renderHosted();
+        let handled: boolean | undefined;
+        act(() => { handled = mount.onNavigate(target('src/a.ts', { workspaceId: 'ws-b' })); });
+        expect(handled).toBe(false);
+        expect(fakes[0].revealedPositions).toEqual([]);
+        expect(openUnifiedPanelTab).not.toHaveBeenCalled();
+    });
 });

@@ -86,7 +86,10 @@ export async function loadCommitFileDiffContent(
     if (!headRef) throw notFound('Commit');
     const cacheKey = `${workspaceId}:commit-file-diff-content:${headRef}:${filePath}`;
     const cached = cache.get<WorkingTreeFileContent>(cacheKey);
-    if (cached) return { ...cached, path: requestPath };
+    if (cached) return {
+        ...cached, path: requestPath,
+        modifiedMatchesWorkingCopy: await commitMatchesWorkingCopy(repoRoot, filePath, cached),
+    };
 
     const args = baseRef
         ? ['diff', '--name-status', '-z', '-M', '-C', baseRef, headRef, '--']
@@ -96,7 +99,7 @@ export async function loadCommitFileDiffContent(
     if (!change) throw notFound('Changed commit file');
     const result = await loadRefFileContent(repoRoot, requestPath, baseRef, headRef, change);
     cache.set(cacheKey, result);
-    return result;
+    return { ...result, modifiedMatchesWorkingCopy: await commitMatchesWorkingCopy(repoRoot, filePath, result) };
 }
 
 export async function loadBranchRangeFileDiffContent(
@@ -136,16 +139,34 @@ export async function branchRangeMatchesWorkingCopy(
     content: WorkingTreeFileContent,
     io: WorkingTreeContentIO = createWorkingTreeContentIO(repoRoot),
 ): Promise<boolean> {
+    return snapshotMatchesWorkingCopy(repoRoot, filePath, content, io);
+}
+
+/**
+ * A commit's new side qualifies for the real document when its text equals a
+ * working copy, whichever commit HEAD is on: the language server then
+ * sees exactly the text shown.
+ */
+export async function commitMatchesWorkingCopy(
+    repoRoot: string,
+    filePath: string,
+    content: WorkingTreeFileContent,
+    io: WorkingTreeContentIO = createWorkingTreeContentIO(repoRoot),
+): Promise<boolean> {
+    return snapshotMatchesWorkingCopy(repoRoot, filePath, content, io);
+}
+
+async function snapshotMatchesWorkingCopy(
+    repoRoot: string,
+    filePath: string,
+    content: WorkingTreeFileContent,
+    io: WorkingTreeContentIO,
+): Promise<boolean> {
     if (content.binary || content.tooLarge || !content.head.exists) return false;
-    if (await io.resolveHead() !== content.head.ref) return false;
     const absPath = resolveWorkingTreePath(repoRoot, filePath);
     if (!absPath) throw badRequest('Path is outside the workspace or invalid');
     const disk = await io.statDisk(absPath);
     if (!disk?.isFile || disk.size > MAX_WORKING_TREE_CONTENT_BYTES) return false;
     const bytes = await io.readDisk(absPath);
-    if (!bytes.equals(Buffer.from(content.head.content, 'utf8'))) return false;
-    const changes = await execGitAsync([
-        '--literal-pathspecs', 'status', '--porcelain=v1', '-z', '--untracked-files=no', '--', filePath,
-    ], repoRoot);
-    return changes.length === 0 && await io.resolveHead() === content.head.ref;
+    return bytes.equals(Buffer.from(content.head.content, 'utf8'));
 }

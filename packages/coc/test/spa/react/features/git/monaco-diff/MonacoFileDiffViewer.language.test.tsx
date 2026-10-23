@@ -1,6 +1,6 @@
 /**
  * AC-06 wiring: MonacoFileDiffViewer opens the working copy's language
- * document only for unstaged diffs, mounts providers on the real modified
+ * document for disk-matching sides, mounts providers on the real modified
  * model, forwards diagnostics as markers, shares the explorer's document, and
  * degrades to a plain read-only diff when the server is unavailable, refuses
  * capacity, the file is too large, or the explorer buffer has unsaved edits.
@@ -119,6 +119,26 @@ describe('MonacoFileDiffViewer — language features (AC-06)', () => {
         expect(h.fake().adapter.attachModifiedLanguage).not.toHaveBeenCalled();
         expect(h.fake().markerLog).toEqual([]);
         expect(screen.getByTestId('monaco-file-diff-viewer-host')).toBeTruthy();
+    });
+
+    it('switches staged right-side language features with disk equality while the left stays historical', async () => {
+        const h = harness({ stage: 'staged', modifiedMatchesWorkingCopy: true });
+        await act(flush);
+        expect(store.documentCount).toBe(1);
+        expect(liveMounts(h.fake())).toEqual([{ uri: URI, live: true }]);
+        expect(isDiffRefUri(h.fake().models.at(-1)!.original.uri)).toBe(true);
+
+        h.rerender({ stage: 'staged', modifiedMatchesWorkingCopy: false });
+        await act(flush);
+        expect(liveMounts(h.fake())).toEqual([]);
+        expect(store.documentCount).toBe(0);
+        expect(isDiffRefUri(h.fake().models.at(-1)!.modified.uri)).toBe(true);
+
+        h.rerender({ stage: 'staged', modifiedMatchesWorkingCopy: true });
+        await act(flush);
+        expect(store.documentCount).toBe(1);
+        expect(liveMounts(h.fake())).toEqual([{ uri: URI, live: true }]);
+        for (const [uri] of vi.mocked(h.fake().adapter.attachModifiedLanguage).mock.calls) expect(uri).toBe(URI);
     });
 
     it('never asks the adapter to mount a synthetic URI', async () => {

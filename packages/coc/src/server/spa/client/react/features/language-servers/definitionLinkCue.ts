@@ -35,21 +35,24 @@ interface MonacoLinkContribution extends monacoEditor.IEditorContribution {
 /** The slice of `window` the cue watches the modifier on. */
 export type DefinitionLinkCueGlobalEvents = Pick<Window, 'addEventListener' | 'removeEventListener'>;
 
-export interface InstallDefinitionLinkCueOptions {
+export type InstallDefinitionLinkCueOptions = {
     editor: DefinitionLinkCueEditor;
     model: Pick<monacoEditor.ITextModel, 'getWordAtPosition'>;
-    view: Pick<LanguageDocumentView, 'documentParams' | 'sendRequest'>;
     isEnabled: () => boolean;
     /** Overridable for tests; defaults to the browser platform. */
     platform?: string;
     /** Overridable for tests; defaults to the page's window, `null` off-browser. */
     globalEvents?: DefinitionLinkCueGlobalEvents | null;
-}
+} & (
+    | { view: Pick<LanguageDocumentView, 'documentParams' | 'sendRequest'>; hasDefinition?: never }
+    | { view?: never; hasDefinition: (position: { lineNumber: number; column: number }, signal: AbortSignal) => Promise<boolean> }
+);
 
 export function installDefinitionLinkCue({
     editor,
     model,
     view,
+    hasDefinition,
     isEnabled,
     platform,
     globalEvents = typeof window === 'undefined' ? null : window,
@@ -117,11 +120,13 @@ export function installDefinitionLinkCue({
             const controller = new AbortController();
             requestController = controller;
             try {
-                const result = await view.sendRequest(
-                    'textDocument/definition',
-                    view.documentParams({ position: toLspPosition(position) }),
-                    { signal: controller.signal },
-                );
+                const resolved = hasDefinition
+                    ? await hasDefinition(position, controller.signal)
+                    : toLocationLinks(await view.sendRequest(
+                        'textDocument/definition',
+                        view.documentParams({ position: toLspPosition(position) }),
+                        { signal: controller.signal },
+                    )).length > 0;
                 if (
                     disposed
                     || controller.signal.aborted
@@ -129,7 +134,7 @@ export function installDefinitionLinkCue({
                     || currentWordKey !== wordKey
                     || !modifierHeld
                     || !isEnabled()
-                    || toLocationLinks(result).length === 0
+                    || !resolved
                 ) {
                     return;
                 }

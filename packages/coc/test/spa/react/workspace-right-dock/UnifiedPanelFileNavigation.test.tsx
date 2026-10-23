@@ -207,6 +207,9 @@ import {
     writeUnifiedPanelNavigationHistory,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelNavigationStore';
 import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
+import {
+    recordDiffDefinitionReturn, resetDiffDefinitionReturns,
+} from '../../../../src/server/spa/client/react/features/git/diff/diffDefinitionReturn';
 import { clearUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 
@@ -603,6 +606,29 @@ describe('unified panel file navigation history', () => {
         await waitFor(() => expect(
             screen.getByTestId(`unified-panel-tab-${fileId('b.ts')}`),
         ).toHaveAttribute('aria-selected', 'true'));
+    });
+
+    it('goes back to the diff a go to definition came from before stepping file history', async () => {
+        writeUnifiedPanelState(WS, openTab(openTab(EMPTY_UNIFIED_PANEL, {
+            kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'host.ts', label: 'host.ts',
+        }), { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'a.ts', label: 'a.ts' }));
+        const restore = vi.fn();
+        recordDiffDefinitionReturn(WS, fileId('a.ts'), { label: 'abc1234 · x.ts', originTabId: fileId('host.ts'), chatId: CHAT, restore });
+        try {
+            renderPanel();
+            const a = await screen.findByTestId('mock-file-a.ts');
+            expect(screen.getByTestId('diff-definition-return-chip').textContent).toBe('← Back to abc1234 · x.ts');
+            act(() => a.focus());
+
+            expect(pressHistory('back').defaultPrevented).toBe(true);
+            await waitFor(() => expect(
+                screen.getByTestId(`unified-panel-tab-${fileId('host.ts')}`),
+            ).toHaveAttribute('aria-selected', 'true'));
+            expect(restore).toHaveBeenCalledTimes(1);
+            expect(screen.queryByTestId('diff-definition-return-chip')).toBeNull();
+        } finally {
+            resetDiffDefinitionReturns();
+        }
     });
 
     it('preserves native behavior outside the panel, when hidden, and at a boundary', async () => {

@@ -335,6 +335,22 @@ is foreground again, waiting requests re-run. Turn finish, tab close, server
 cancel, flag off, socket close and dispose reject and clear them. Other background
 errors return unchanged. With the flag off, switching cancels as before.
 
+Site approval (live `browserControl.navigationApprovalEnabled`, default on) gates
+agent-driven main-frame loads while a control turn is active on the view, its
+control popout or a tab `open` is creating. Electron holds the profile session's
+mainFrame `webRequest.onBeforeRequest` callback (before any request, per redirect
+hop, POST bodies kept); WebView2 cancels cross-host http(s) new documents in
+native `NavigationStarting` and re-issues `navigate {approved:true}` on Allow
+(back/forward/reload and same-host loads pass; a re-issued POST becomes GET).
+Main sends `coc-desktop:browser-control-navigation-check` to the routing window and
+accepts `...-navigation-decision` only from it; a held check pauses the view queue
+and that conversation's 60s deadlines (`ControlDeadline`). Turn finish, tab/popout
+or owner close and dispose deny held checks. The SPA relay forwards
+source-matched checks as `browser-navigation-check`, denies when disconnected or on
+close/dispose, and shows server prompts as `BrowserNavigationApprovalCard`
+(Allow once / Always allow / Deny) inline in the conversation, or floating when
+that chat is not mounted. Manual navigation, iframes and file previews never ask.
+
 With default-off `browserControl.framesEnabled`, a main-owned per-view registry
 maps opaque frame handles to default-world contexts and private OOPIF sessions.
 Electron debugger events and WebView2 native event receivers supply lifecycle
@@ -715,10 +731,18 @@ ephemeral request to `TerminalView`. Successful session hydration precedes empty
 creation through the canonical PTY lifecycle; pending creates coalesce repeated
 requests. Existing sessions receive focus, and passive mounting/restoration only
 hydrates. Failed hydration surfaces a terminal notice and retries on a new request.
-With default-on `features.panelTabReordering` set to `false`, the strip divides
-tools from resources and confines moves to a section. Enabled, native drag,
-Alt+Arrow and tab-menu moves share `moveVisibleTab`: per-chat `orderByScope`
-interleaves stable ids without changing ownership, activation or keyed views.
+Default-off `features.panelTabGroups` partitions saved order into fixed Tools,
+Files, Web and Canvas groups in one strip row. The cap is three, with pinned,
+active and preview priority; overflow uses the full saved group in a searchable
+native-view-overlay portal shared with canvas compression. Fold state persists
+per panel scope at `unified-right-panel:<scope>:groups`, independently of chats.
+Moves stay within the kind group and bulk closes retain the panel's guards.
+Canvas uses group overflow without a header count chip.
+
+With groups off and default-on `features.panelTabReordering` set to `false`, the
+strip divides tools from resources and confines moves to a section. With either
+flag enabled, native drag, Alt+Arrow and tab-menu moves share `moveVisibleTab`:
+per-chat `orderByScope` orders stable ids without changing ownership, activation or keyed views.
 The panel's owner-qualified storage prunes stale/ephemeral ids and retains
 preview replacement slots; ordering does not broaden tab restoration.
 It has a searchable `+` menu and one right-edge navigator that switches between

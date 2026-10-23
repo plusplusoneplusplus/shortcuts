@@ -512,9 +512,10 @@ Read-only git commands and generic prose are ignored.
 Live unanswered batches stay owned by `ChatDetail`/`ConversationArea` through
 `processDetails.pendingAskUser` and `AskUserInline`. Each question offers Answer, Skip, or
 Need context; the deferred choice marks the question complete for batch submission.
-Reply fields submit the whole valid batch on Enter through the clone-routed button
-submission path. Need context notes allow Shift+Enter multiline input and remain
-optional. Composition/229 and repeated keydowns do not submit. Synchronous admission
+Reply fields submit the whole valid batch through the clone-routed button path.
+`textarea` drafts preserve whitespace, use Enter for newlines and Ctrl/Cmd+Enter to
+submit, and support restoring the supplied draft; one-line fields submit on Enter.
+Need context notes allow Shift+Enter multiline input and remain optional. Composition/229 and repeated keydowns do not submit. Synchronous admission
 blocks in-flight and accepted duplicates; failed delivery retains the draft for retry.
 
 Unsubmitted live-batch drafts are saved in `localStorage` scoped by process id and batch
@@ -534,7 +535,8 @@ consolidation chips, and coverage warnings — all one batch submission.
 
 Completed calls render read-only through `AskUserHistoryCard` inside
 `ConversationTurnBubble`: persisted `args.questions[]` plus the answer/skip/deferred
-result, with a compatibility unwrap for older Codex MCP captures stored as
+result. Textarea answers retain line breaks, collapse long text, and show the server
+`edited` marker. There is a compatibility unwrap for older Codex MCP captures stored as
 `args.arguments.questions[]`. History cards stay visible outside whisper collapse; generic
 `ToolCallView` is the fallback, summarizing `args.questions[0].question`.
 
