@@ -1,6 +1,6 @@
 /**
  * useDiffLanguageFeatures — the language document behind the modified side of
- * an unstaged diff or server-confirmed clean commit/branch-range head.
+ * an unstaged diff, disk-matching staged index, or server-confirmed clean commit/branch-range head.
  *
  * It joins the explorer's shared buffer through `useLanguageDocument` (one
  * document per path per workspace, ref-counted), so a file open in both the

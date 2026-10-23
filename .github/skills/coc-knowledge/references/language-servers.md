@@ -267,7 +267,7 @@ syntax colors.
 
 `MonacoFileDiffViewer` shares the explorer's reference-counted
 `LanguageDocumentStore` only for real modified working-copy models: unstaged
-diffs and server-confirmed clean local commit or branch-range heads
+diffs, staged index sides verified equal to disk, and server-confirmed clean local commit or branch-range heads
 (`supportsWorkingCopyLanguage` sources render with stage `branch-range`).
 Eligibility needs a clean index/file and byte-identical disk content; branch
 ranges also require checked-out HEAD, while a commit qualifies whatever HEAD is

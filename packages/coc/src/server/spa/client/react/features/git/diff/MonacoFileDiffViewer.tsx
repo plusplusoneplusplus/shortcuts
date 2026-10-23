@@ -19,7 +19,7 @@
  * the hunks live, and Ctrl/Cmd+S calls `onSave`. The original side stays
  * read-only.
  *
- * Unstaged modified sides and server-confirmed clean commit/branch heads share the
+ * Unstaged modified sides, disk-matching staged indexes and clean commit/branch heads share the
  * explorer's language features through `useDiffLanguageFeatures`. With
  * `historicalDefinitions`, every ref-backed side instead gets best-effort
  * current-code go-to-definition (`mountDiffCurrentCodeModel`), which never
