@@ -67,15 +67,15 @@ const DESCRIPTION =
     '`enabled: true` because the user asked for recurring runs. `update` changes only the fields you pass (custom: ' +
     'name, instructions, provider, model, effort, mode, cron, enabled, autoCompactThreshold, gateScript; Coda: ' +
     'cron and enabled only). A refrain\'s optional `gateScript` (set only when the user asks for one; needs ' +
-    '`cron`) runs unattended with this Sentinel\'s tools on each tick before any run: a non-empty JSON result ' +
-    'starts a run with that result in the prompt, an empty one (null, false, "", [], {}) skips the tick, and ' +
+    '`cron`) runs unattended with this Sentinel\'s tools before scheduled runs and run_now: a non-empty JSON result ' +
+    'starts a run with that result in the prompt, an empty one (null, false, "", [], {}) skips the run, and ' +
     '`state` is the previous result. Changing the script resets its gate state. Five failures in a row pause the ' +
     'gate. `test_gate` (custom, on the user\'s request) runs the gate once with its saved state and returns ' +
     '`gateTest: { ok, result, empty, error }`; it starts no run, saves nothing and works while paused. ' +
     '`resume_gate` (only when the user asks) clears a paused gate and its failure count. `pause`/`resume` toggle the ' +
     'schedule without cancelling an active run; resuming Coda clears its auto-pause. Writes need the current `revision` as `expectedRevision`; a `conflict` returns the newer ' +
     '`current` state — re-read and only reapply if it still makes sense. Refrains with an active run or pending ' +
-    'handback can only be paused/resumed until the run finishes. `run_now` queues a run (Coda: optional ' +
+    'handback can only be paused/resumed until the run finishes. `run_now` evaluates a configured gate and returns a skipped run for an empty result; a paused gate or gate error rejects it. Refrain prompts use saved instructions and current gate JSON, without automatic To-do context. `run_now` queues an admitted run (Coda: optional ' +
     '`itemIds` of open items, default all eligible) and returns its id and status; queued is not completed — results ' +
     'arrive through the normal handback. `cancel` needs `runId` (and `jobId` for custom). Deleting refrains and reviewing ' +
     'Coda findings are user actions in the Refrains panel. Report failures to the user as-is.';

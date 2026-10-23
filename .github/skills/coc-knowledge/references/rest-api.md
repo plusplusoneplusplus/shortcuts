@@ -298,7 +298,14 @@ A `gateScript` requires `cron`. Gate state fields (`gateLastResult`,
 `gateConsecutiveFailures`, `gateLastError`, `gatePaused`) are read-only and reset when
 the script changes; only Resume gate writes them directly. Gate actions on an ungated
 job return `400 invalid`. Run `skipReason` is `overlap`, `gate-empty` or `gate-unavailable`
-(`features.toolScripting` off at the tick); Run now never runs the gate.
+(`features.toolScripting` off), preserving `manual` or `schedule` attribution.
+Run now and scheduled runs evaluate the current gate. Empty results return a skipped
+run record; zero admits. A paused gate, evaluation error/timeout, cancellation or an
+in-flight evaluation rejects manual admission with an explicit error (`409` for gate
+conflicts/errors); scheduled admission creates no run for these outcomes. Successful
+manual evaluations save gate state and reset failures using the same rules as ticks.
+Refrain prompts use saved instructions and current gate JSON with job-role/handback
+framing. Coda owns automatic To-do review; gates may return selected To-do data.
 A job stores either an explicit `model` (with optional `effort`) or an `effortTier`;
 a tier drops stored model/effort, and a model-only patch drops a stored tier. Each run
 enqueues the tier for the owning server's normal provider tier resolution. The first run creates

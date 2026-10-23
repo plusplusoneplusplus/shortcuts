@@ -138,6 +138,19 @@ describe('Sentinel job REST routes', () => {
         expect(cleared.body.cron).toBeUndefined();
         expect((await request('GET')).body.jobs).toHaveLength(1);
     });
+    it('returns concrete manual skips and gate errors without ungated fallback', async () => {
+        const { body: job } = await request('POST', base, { ...input, cron: '0 * * * *', gateScript: 'return state;' });
+        runGate.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('Gate deadline exceeded'));
+        expect(await request('POST', `${base}/${job.id}/runs`)).toMatchObject({ status: 202,
+            body: { trigger: 'manual', status: 'skipped', skipReason: 'gate-empty' } });
+        expect(await request('POST', `${base}/${job.id}/runs`)).toMatchObject({ status: 409,
+            body: { code: 'conflict', error: 'Gate deadline exceeded' } });
+        jobStore.updateGate(owner, job.id, 'return state;', () => ({ gatePaused: true }));
+        expect(await request('POST', `${base}/${job.id}/runs`)).toMatchObject({ status: 409,
+            body: { error: expect.stringContaining('gate is paused') } });
+        expect(enqueue).not.toHaveBeenCalled();
+    });
+
     it('tests a paused gate without starting a run or saving state, then resumes it', async () => {
         const gateScript = 'return state;';
         const { body: job } = await request('POST', base, { ...input, cron: '0 * * * *', gateScript });

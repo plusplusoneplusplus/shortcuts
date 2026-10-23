@@ -979,7 +979,10 @@ preview (full JSON in its title). Test gate calls `jobs.testGate` outside the
 mutation lock and shows the outcome inline; a changed script or unmount aborts it
 and discards the late result. Resume gate appears only while paused and uses the
 mutation lock. History and the last-run line label `overlap`, `gate-empty` and
-`gate-unavailable` skips separately.
+`gate-unavailable` skips separately, including manual skips. Run now refreshes the
+owner's history after gate admission and displays returned gate errors, including
+409 pause/overlap failures. Gate enforcement applies to scheduled runs and Run now;
+a paused gate requires Resume gate before either can launch.
 
 With Refrains enabled, `SentinelCoda` supplies the pinned built-in row only
 when the independent Coda flag (`sentinelTodoScrubberEnabled`) is enabled, retaining its findings context,

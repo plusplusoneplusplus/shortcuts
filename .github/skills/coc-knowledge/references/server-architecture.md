@@ -269,7 +269,7 @@ Trigger firing never writes item status, calls delegation admission or selects a
 
 ### Sentinel job gate runtime
 
-Gate scripts on Sentinel scheduled jobs run without a provider session.
+Gate scripts on Sentinel Refrains run without a provider session before scheduled runs and Run now.
 `sentinel-refrains/refrain-gate-result.ts` supplies canonical result encoding: object keys
 sort lexically at every level, array order is significant and encoded UTF-8 JSON is
 capped at 16 KiB. Non-JSON values reject without invoking serialization hooks.
@@ -289,7 +289,13 @@ dependencies supply the owner-bound unattended runtime through
 `allowTools`-narrowed tools, no nesting); see [LLM tools](llm-tools.md).
 `SentinelRefrainService` is the caller: `routes/index.ts` injects `bridge.runRefrainGate` and
 the live `features.toolScripting` flag. The service keeps one in-flight gate per
-owner/job, re-checks flags, owner and job revision before saving any outcome, and
+owner/job shared by both admission paths. Each prompt uses saved instructions and
+its current nonempty gate JSON, with job-role/handback framing. Gates may return
+selected To-do data; Coda owns automatic To-do review inputs. Empty results save
+state and record a skip with the original trigger; zero admits. A paused schedule
+permits manual gate admission, while a paused gate blocks it. Manual gate errors
+and overlapping evaluations return explicit errors. The service rechecks flags,
+owner and job revision before saving any outcome, and
 aborts the signal on `cancelGate` (edit/delete), `invalidate()` and `shutdown()`;
 a cancelled gate never counts as a failure. `testGate` shares the evaluation path
 with the saved state but never saves, counts or starts a run; the caller's signal,

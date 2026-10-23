@@ -20,7 +20,7 @@ export interface SentinelRefrainInput {
   autoCompactThreshold?: number;
   /**
    * Optional gate: the body of an async JS function receiving `tools` and
-   * `state` (the previous result). Each cron tick runs it first; a non-empty
+   * `state` (the previous result). Scheduled runs and Run now evaluate it first; a non-empty
    * JSON result starts a run with that result in the prompt. Needs `cron`.
    * Empty string clears it on update.
    */
@@ -41,7 +41,7 @@ export interface SentinelRefrainRun {
   sentinelFollowUpHref?: string;
   error?: string;
   /**
-   * Why a tick started no run: `overlap` (a run was active), `gate-empty`
+   * Why admission started no run: `overlap` (a run was active), `gate-empty`
    * (the gate returned null, false, "", [] or {}) or `gate-unavailable`
    * (`features.toolScripting` was off, so the gate could not run).
    */
@@ -57,7 +57,7 @@ export interface SentinelRefrain extends Omit<SentinelRefrainInput, 'mode' | 'en
   gateLastResult?: string;
   gateConsecutiveFailures: number;
   gateLastError?: { message: string; at: string };
-  /** Set after five gate failures in a row; scheduled ticks skip until resumed. */
+  /** Set after five gate failures in a row; scheduled runs and Run now are blocked until resumed. */
   gatePaused: boolean;
   revision: number;
   processId?: string;

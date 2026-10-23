@@ -421,23 +421,28 @@ references before editing. Paths are package-relative.
   `gateConsecutiveFailures`, `gateLastError`, `gatePaused`) lives in the job record,
   is never a user setting, and resets when the script changes or clears;
   `updateGate` writes it without a revision bump only while the evaluated script is
-  still current. Scheduled ticks use `SentinelRefrainService.tick`: an active run records
-  an `overlap` skip before any gate runs and that skip never claims a run, so a gated
-  job's scheduled run only starts with a gate result. Tick liveness is job-scoped
-  (flag, disposal, own revision/enabled/cron), never the scheduler's global refresh;
-  a saved non-empty result claims its run in the same synchronous step; a paused gate skips silently and
-  `features.toolScripting` off records `gate-unavailable`. The gate receives the
-  parsed `gateLastResult` as `state`; an empty result (`null`, `false`, `""`, `[]`,
-  `{}`) records `gate-empty`, anything else starts the run with the canonical JSON
-  fenced after the instructions. Five consecutive failures pause the gate and queue
-  one `notice` Sentinel turn that, like handbacks, never gets `sentinel_jobs`. Edits
-  and deletes (`cancelGate`), owner/flag invalidation and shutdown abort in-flight
-  gates without counting a failure. Run now (`start`) never runs the gate. Test gate
+  still current. Scheduled ticks (`tick`) and Run now (`start`) share gate admission
+  and one in-flight evaluation per owner/job. Scheduled overlap records an `overlap`
+  skip; manual overlap conflicts. Admission rechecks ownership, flags, disposal and
+  the job revision; scheduled admission also checks enabled/cron liveness. A saved
+  nonempty result claims its run synchronously. A paused gate prevents both paths;
+  manual requests return an explicit error. Paused schedules permit Run now with
+  gate enforcement. `features.toolScripting` off records `gate-unavailable` with the
+  original trigger. The gate receives parsed `gateLastResult` as `state`; empty
+  results (`null`, `false`, `""`, `[]`, `{}`) save state and record `gate-empty`.
+  Zero admits. Run prompts contain saved instructions, the current nonempty gate
+  result as fenced canonical JSON, and job-role/handback framing. Gate-returned
+  To-do data passes through unchanged. Coda owns automatic To-do review inputs.
+  Successful evaluations reset failures; five consecutive failures pause the gate
+  and queue one `notice` Sentinel turn that, like handbacks, never gets `sentinel_jobs`.
+  Manual errors/timeouts/cancellation return explicit errors without stale-result
+  fallback. Edits/deletes (`cancelGate`), owner/flag invalidation and shutdown revoke
+  late results without counting failures. Test gate
   (`testGate`, REST `gate/test`, tool `test_gate`) evaluates once with the saved
   state and never saves, counts or starts a run, even while paused; Resume gate
   (`resumeGate`) clears the pause and failure count. The first run persists one ordinary
   Ask/Autopilot chat; later runs retain it, including after cancellation or failure.
-  Snapshot paths stay repo-scoped and read-only. Runs and handbacks use the existing
+  Historical snapshots remain until explicit job deletion cleanup. Runs and handbacks use the existing
   low-priority task queue; job metadata grants compaction, never Sentinel identity.
   Active runs and pending handbacks block edits/deletion, but schedule-only
   pause/resume remains available. Cron is future-only, local-time and at most hourly.
