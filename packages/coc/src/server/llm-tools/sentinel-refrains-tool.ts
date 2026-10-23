@@ -66,7 +66,11 @@ const DESCRIPTION =
     'defaults to ask, and creation never starts a run. A new refrain is only scheduled when you pass `cron` and ' +
     '`enabled: true` because the user asked for recurring runs. `update` changes only the fields you pass (custom: ' +
     'name, instructions, provider, model, effort, mode, cron, enabled, autoCompactThreshold, gateScript; Coda: ' +
-    'cron and enabled only). A refrain\'s optional `gateScript` (set only when the user asks for one; needs ' +
+    'cron and enabled only). ' +
+    'When creating or updating instructions, write the complete, self-contained task as it should run now. ' +
+    'Integrate user adjustments into that description; remove superseded requirements and do not append change history, ' +
+    'amendments or references to earlier conversations. Preserve all still-applicable requirements. ' +
+    'A refrain\'s optional `gateScript` (set only when the user asks for one; needs ' +
     '`cron`) runs unattended with this Sentinel\'s tools before scheduled runs and run_now: a non-empty JSON result ' +
     'starts a run with that result in the prompt, an empty one (null, false, "", [], {}) skips the run, and ' +
     '`state` is the previous result. Changing the script resets its gate state. Five failures in a row pause the ' +

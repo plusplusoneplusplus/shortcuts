@@ -101,6 +101,25 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('Sentinel Overtures', () => {
+    it.each([false, true])('explains overtures beside the empty entry or heading without creating, running or toggling (populated=%s)', async populated => {
+        mocks.list.mockResolvedValue(populated ? [rule()] : []);
+        mount([]);
+        await waitFor(() => expect(screen.queryByText('Loading overtures…')).toBeNull());
+        const info = screen.getByRole('button', { name: 'About Overtures' });
+        expect(info.parentElement?.closest('button')).toBeNull();
+        if (!populated) expect(info.closest('.sentinel-overture-entry')?.contains(screen.getByRole('button', { name: '+ Add overture' }))).toBe(true);
+        const toggle = screen.queryByRole('button', { name: /Overtures \(1\)/ });
+        fireEvent.click(info);
+        const dialog = screen.getByRole('dialog', { name: 'About Overtures' });
+        expect(within(dialog).getByText(/when a watched PR merges or at a chosen time/)).toBeTruthy();
+        expect(dialog.textContent).toContain('does not automatically launch work or grant new permission');
+        if (toggle) expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(screen.queryByLabelText('PR URL')).toBeNull();
+        for (const mutation of [mocks.create, mocks.runNow, mocks.edit, mocks.pause, mocks.resume, mocks.remove]) expect(mutation).not.toHaveBeenCalled();
+        fireEvent.keyDown(dialog, { key: 'Escape' });
+        expect(document.activeElement).toBe(info);
+    });
+
     const dated = (overrides: Partial<Trigger> = {}) => rule({
         event: { type: 'date-time', firesAt: '2027-11-07T06:30:00.000Z', timeZone: 'America/New_York' },
         ...overrides,

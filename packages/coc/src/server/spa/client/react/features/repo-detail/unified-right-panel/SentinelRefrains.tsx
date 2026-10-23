@@ -10,6 +10,7 @@ import { Dialog } from '../../../ui/Dialog';
 import { Spinner } from '../../../ui/Spinner';
 import { SentinelRefrainDialog } from './SentinelRefrainDialog';
 import { SentinelCoda, type SentinelCodaProps } from './SentinelCoda';
+import { SentinelAutomationInfo } from './SentinelAutomationInfo';
 import { sentinelTodoOwnerKey, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 
 const MUTED = 'text-[#616161] dark:text-[#9d9d9d]';
@@ -170,9 +171,12 @@ function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFol
     };
     return <section aria-label="Refrains" data-testid="sentinel-refrains" className="mt-2 flex min-w-0 flex-col gap-2 border-t border-[#e0e0e0] pt-2 text-xs dark:border-[#3c3c3c]">
         <div className="flex flex-wrap items-center gap-2">
-            <h3 className="mr-auto font-semibold"><button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(value => !value)}>
-                {open ? '\u25be' : '\u25b8'} Refrains{jobs && ` (${jobs.length}/10)`}
-            </button></h3>
+            <div className="mr-auto flex min-w-0 flex-wrap items-center gap-1">
+                <h3 className="font-semibold"><button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(value => !value)}>
+                    {open ? '\u25be' : '\u25b8'} Refrains{jobs && ` (${jobs.length}/10)`}
+                </button></h3>
+                <SentinelAutomationInfo term="Refrains" />
+            </div>
             <Button size="sm" variant="secondary" disabled={!jobs || busy || !!readError || jobs.length >= 10} onClick={() => setEditor('new')}>New refrain</Button>
         </div>
         <div id={id} hidden={!open} className="flex min-w-0 flex-col gap-2">

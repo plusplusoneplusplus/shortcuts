@@ -115,6 +115,22 @@ describe('sentinel_jobs executor wiring', () => {
         fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
+    it.each([
+        { timeoutMs: 0, expected: 0 },
+        { timeoutMs: 15_000, expected: 15_000 },
+        { timeoutMs: undefined, expected: 30_000 },
+    ])('preserves the first-turn task timeout $timeoutMs without replacing zero', async ({ timeoutMs, expected }) => {
+        await new ChatExecutor(createMockProcessStore(), makeOptions(), dataDir)
+            .execute(makeTask('ask', 'task-timeout', {}, { timeoutMs }), 'Hello');
+        expect(lastCall().timeoutMs).toBe(expected);
+    });
+
+    it.each(['ask', 'autopilot'] as const)('keeps %s Refrain follow-ups unlimited despite finite defaults', async mode => {
+        const call = await followUp(undefined, { sentinelScheduledJob: true }, 'queue_job', 'ws-2', mode);
+        expect(call.timeoutMs).toBe(0);
+        expect(call.idleTimeoutMs).toBe(0);
+    });
+
     it('binds a sentinel first turn to its own chat and inherits the resolved settings', async () => {
         const commands = makeCommands();
         const executor = new ChatExecutor(createMockProcessStore(),

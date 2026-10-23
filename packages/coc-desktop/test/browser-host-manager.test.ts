@@ -8,7 +8,7 @@ import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type B
 import { BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL, type BrowserEngine } from '../src/browser-view-policy';
 import { htmlPageFileUrl, toHtmlPageLoadState, toHtmlPageOpenResult } from '../src/html-page-policy';
 import { BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_STOP_CHANNEL } from '../src/browser-control-command';
-import type { ClickOncePolicy } from '../src/browser-clickonce';
+import { ClickOnceError, type ClickOncePolicy } from '../src/browser-clickonce';
 
 function deferred<T>() {
     let resolve!: (value: T) => void;
@@ -77,11 +77,11 @@ describe('owner-bound ClickOnce requests', () => {
         h.created[1].sink.application!(request, () => true);
         h.created[1].sink.application!(request, () => true);
         expect(h.clickOnce.ownerCurrent).toHaveBeenCalledExactlyOnceWith(2);
-        await vi.waitFor(() => expect(h.clickOnce.report).toHaveBeenCalledWith(2, expect.stringContaining('accepted')));
-        expect(h.clickOnce.activate).toHaveBeenCalledExactlyOnceWith(request.url);
+        await vi.waitFor(() => expect(h.clickOnce.activate).toHaveBeenCalledExactlyOnceWith(request.url));
+        await new Promise(resolve => setTimeout(resolve, 0));
         expect(h.history.recordVisit).not.toHaveBeenCalled();
         expect(h.send).not.toHaveBeenCalled();
-        expect(h.clickOnce.report).toHaveBeenCalledWith(2, expect.stringContaining('accepted'));
+        expect(h.clickOnce.report).not.toHaveBeenCalled();
         await h.manager.dispose();
     });
     it.each(['close', 'reload', 'replace', 'dispose', 'document', 'owner'] as const)('rejects a source request after %s', async action => {
@@ -112,6 +112,24 @@ describe('owner-bound ClickOnce requests', () => {
         await new Promise(resolve => setTimeout(resolve, 0));
         expect(h.clickOnce.report).not.toHaveBeenCalled();
         expect(h.clickOnce.activate).toHaveBeenCalledOnce();
+        await h.manager.dispose();
+    });
+    it('launches accepted activations silently while cancellation and failures stay visible', async () => {
+        const h = setup();
+        await h.manager.open(1, 'view', 'https://fixture.test/', 'local');
+        h.created[0].sink.application!(request, () => true);
+        await vi.waitFor(() => expect(h.clickOnce.activate).toHaveBeenCalledOnce());
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(h.clickOnce.report).not.toHaveBeenCalled();
+        vi.mocked(h.clickOnce.activate).mockResolvedValueOnce('cancelled');
+        h.created[0].sink.application!(request, () => true);
+        await vi.waitFor(() => expect(h.clickOnce.report).toHaveBeenCalledExactlyOnceWith(1, 'ClickOnce activation was cancelled.'));
+        vi.mocked(h.clickOnce.activate).mockRejectedValueOnce(new ClickOnceError('failed'));
+        const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+        h.created[0].sink.application!(request, () => true);
+        await vi.waitFor(() => expect(h.clickOnce.report).toHaveBeenCalledTimes(2));
+        expect(h.clickOnce.report).toHaveBeenLastCalledWith(1, 'Windows rejected ClickOnce activation.');
+        log.mockRestore();
         await h.manager.dispose();
     });
     it('gates default-off requests and sanitizes unexpected activation failures', async () => {

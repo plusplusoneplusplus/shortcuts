@@ -10,6 +10,7 @@ import { Spinner } from '../../../ui/Spinner';
 import { SCRUB_CRON_PRESETS, validateScrubCron } from '../../../../../../schedule/scrub-cron';
 import { AcceptAllCodaProposals, CodaFindingsContext } from './SentinelCodaFinding';
 import { CodaRunChatLink, SentinelCodaHistory } from './SentinelCodaHistory';
+import { SentinelAutomationInfo } from './SentinelAutomationInfo';
 import { sentinelTodoOwnerKey, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 
 function subscribeConfig(listener: () => void) {
@@ -218,7 +219,10 @@ function CodaStrip({ owner, items, onFollowLink, client, children, toolbar, onLe
         <section aria-label="Coda" data-testid="sentinel-coda-strip"
             className="flex min-w-0 flex-col gap-1 break-words rounded border border-[#e0e0e0] bg-white p-2 [overflow-wrap:anywhere] dark:border-[#3c3c3c] dark:bg-[#1e1e1e]">
             <div className="flex flex-wrap items-center gap-1">
-                <strong className="mr-auto">{builtInRow ? 'Coda · built-in' : 'Coda'}</strong>
+                <span className="mr-auto inline-flex min-w-0 flex-wrap items-center gap-1">
+                    <strong>{builtInRow ? 'Coda · built-in' : 'Coda'}</strong>
+                    <SentinelAutomationInfo term="Coda" />
+                </span>
                 <AcceptAllCodaProposals />
                 <Button size="sm" disabled={!data || !!active || busy || !!loadError} onClick={() => { void start(); }}>Run now</Button>
                 {builtInRow && config && <Button size="sm" variant="secondary" disabled={busy || !!loadError}

@@ -2,6 +2,7 @@
  * Periodically checks for running queue tasks that appear stuck/stale
  * and force-fails them. A task is considered stale when it has been
  * running for longer than its configured timeout plus a grace period.
+ * A zero timeout is unlimited and exempt from elapsed-time detection.
  *
  * This handles the case where tasks are killed externally (e.g., server
  * killed via signal, process crash) without going through the normal
@@ -90,6 +91,7 @@ export class StaleTaskDetector {
             if (!task.startedAt) continue;
 
             const taskTimeout = task.config?.timeoutMs ?? this.defaultTimeoutMs;
+            if (taskTimeout === 0) continue;
             const staleThreshold = taskTimeout + this.gracePeriodMs;
             const elapsed = now - task.startedAt;
 
@@ -125,6 +127,7 @@ export class StaleTaskDetector {
             if (!task.startedAt) continue;
 
             const taskTimeout = task.config?.timeoutMs ?? this.defaultTimeoutMs;
+            if (taskTimeout === 0) continue;
             const staleThreshold = taskTimeout + this.gracePeriodMs;
             const elapsed = now - task.startedAt;
 
