@@ -221,6 +221,35 @@ describe('commit and branch-range full-text diff content', () => {
         expect(data.head).toEqual({ content: 'base\r\nlast\r\n', ref: merge, exists: true });
     });
 
+    it('serves a stash entry through the commit surface with hybrid working-copy eligibility', async () => {
+        const file = path.join(a.root, 'modified.txt');
+        const before = fs.readFileSync(file);
+        const head = a.git('rev-parse', 'HEAD');
+        try {
+            a.write('modified.txt', 'stashed\r\nlast\r\n');
+            a.git('stash', 'push', '-q', '--', 'modified.txt');
+            const stash = a.git('rev-parse', 'stash@{0}');
+            const filesRes = await fetch(`${baseUrl}/api/workspaces/ws-a/git/commits/${stash}/files`);
+            expect(filesRes.status).toBe(200);
+            const files = await filesRes.json() as { files?: { path: string }[] } | { path: string }[];
+            const list = Array.isArray(files) ? files : files.files ?? [];
+            expect(list.map(entry => entry.path)).toEqual(['modified.txt']);
+
+            const stashed = (await request(stash, 'modified.txt')).data;
+            expect(stashed.base).toEqual({ content: 'head\r\nlast\r\n', ref: head, exists: true });
+            expect(stashed.head).toEqual({ content: 'stashed\r\nlast\r\n', ref: stash, exists: true });
+            // Disk is back at HEAD, so the stash side stays historical (current-code lookup).
+            expect(stashed.modifiedMatchesWorkingCopy).toBe(false);
+            a.git('stash', 'apply', '-q');
+            // Once applied, the stash side equals disk and uses the full language server.
+            expect((await request(stash, 'modified.txt')).data.modifiedMatchesWorkingCopy).toBe(true);
+        } finally {
+            a.git('stash', 'clear');
+            a.write('modified.txt', before);
+            a.git('add', 'modified.txt');
+        }
+    });
+
     it('handles added and deleted sides, including a file without a final newline', async () => {
         const added = (await request(headHash, 'added.ts')).data;
         expect(added.base).toEqual({ content: '', ref: rootHash, exists: false });

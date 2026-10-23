@@ -301,6 +301,11 @@ undone on model swap and dispose; a mount that cannot start leaves a plain diff.
 Local commit and branch-range `DiffSource`s set `supportsCurrentCodeDefinitions`
 (PR sources never do); `WorkingTreeFileDiff` opts in for the HEAD/index sides of
 staged and unstaged diffs. `DiffDefinitionNavigate` receives the initiating side.
+Stash entries have no dedicated review: they open as commits by SHA (commit deep
+link, popout or chat context), so they use the commit source. The shared Rust
+commit plan uses `--diff-merges=first-parent` (diff-tree ignores
+`--first-parent`), so stash and merge reviews compare only against the first
+parent instead of listing files once per parent.
 
 `diffDefinitionRoute.ts` decides where a diff jump lands: the shown file reveals
 on the initiating side, another changed file of the review switches the review
