@@ -1,10 +1,12 @@
-import { useContext, type ReactNode } from 'react';
+import { useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import type { CocClient } from '@plusplusoneplusplus/coc-client';
 import { useApp } from '../../contexts/AppContext';
+import { ToastContext } from '../../contexts/ToastContext';
 import { useOptionalChatPrefs } from '../../contexts/chatPrefsConsumer';
 import { queueJobHash } from '../../queue/queueJobRoute';
 import { RailControlsContext, RailHoverPreview } from '../repo-detail/RailHoverPreview';
 import { compareChatRecency, getChatRowTitle } from './latestSentinelChat';
-import { isChatTask, taskMatchesFilter } from './task-type-filter';
+import { markNativeUnreadRead, unreadRailTaskVisible } from './unreadMarkAllRead';
 import type { RailPinnedTab } from './rail-pinned-jobs';
 
 export interface UnreadRailRow {
@@ -16,14 +18,47 @@ export interface UnreadRailRow {
 }
 
 /** A projection of the mounted list's unread state. Opening this UI performs no reads or writes. */
-export function RailUnreadChats({ scopeKey, scopeLabel, rows, count = rows.length, partial = false }: {
+export function RailUnreadChats({ scopeKey, scopeLabel, rows, count = rows.length, partial = false, onMarkAllRead, markAllReadDisabledReason }: {
     scopeKey: string;
     scopeLabel: string;
     rows: readonly UnreadRailRow[];
     count?: number;
     partial?: boolean;
+    onMarkAllRead?: (signal: AbortSignal) => Promise<void>;
+    markAllReadDisabledReason?: string;
 }) {
     const rail = useContext(RailControlsContext);
+    const toast = useContext(ToastContext);
+    const flight = useRef<AbortController | null>(null);
+    const [pendingScope, setPendingScope] = useState<string | null>(null);
+    const [failure, setFailure] = useState<{ scope: string; message: string } | null>(null);
+    useEffect(() => {
+        setPendingScope(null);
+        setFailure(null);
+        return () => { flight.current?.abort(); flight.current = null; };
+    }, [scopeKey]);
+    const busy = pendingScope === scopeKey;
+    const markAllRead = async () => {
+        if (flight.current || !onMarkAllRead || count === 0 || markAllReadDisabledReason) return;
+        const controller = new AbortController();
+        flight.current = controller;
+        setPendingScope(scopeKey);
+        setFailure(null);
+        try {
+            await onMarkAllRead(controller.signal);
+        } catch (error) {
+            if (!controller.signal.aborted) {
+                const message = error instanceof Error ? error.message : 'Could not mark conversations read.';
+                setFailure({ scope: scopeKey, message });
+                toast?.addToast(message, 'error');
+            }
+        } finally {
+            if (flight.current === controller) {
+                flight.current = null;
+                setPendingScope(null);
+            }
+        }
+    };
     if (!rail) return null;
     return <RailHoverPreview key={scopeKey} {...rail} scopeLabel={scopeLabel} controls={[{
         key: 'unread', count,
@@ -36,7 +71,14 @@ export function RailUnreadChats({ scopeKey, scopeLabel, rows, count = rows.lengt
         className: 'border-[#d0d7de] bg-white text-[#0078d4] hover:bg-[#eaf4ff] dark:border-[#3c3c3c] dark:bg-[#252526] dark:text-[#3794ff] dark:hover:bg-[#19384f]',
         badgeClassName: 'bg-[#0078d4] dark:bg-[#3794ff]',
         icon: <span aria-hidden="true">●</span>,
+        headerActions: onMarkAllRead && <button type="button" onClick={() => { void markAllRead(); }}
+            disabled={busy || count === 0 || !!markAllReadDisabledReason} aria-busy={busy}
+            title={markAllReadDisabledReason}
+            className="rounded text-[10px] text-[#0078d4] hover:underline focus-visible:outline focus-visible:outline-[#007acc] disabled:cursor-default disabled:opacity-50 dark:text-[#3794ff]">
+            {busy ? 'Marking…' : 'Mark all read'}
+        </button>,
         renderRows: dismiss => <>
+            {failure?.scope === scopeKey && <li role="alert" className="px-3 py-2 text-xs text-red-600 dark:text-red-400">{failure.message}</li>}
             {partial && <li role="status" className="px-3 py-2 text-xs text-[#848484]">Partial unread list.</li>}
             {rows.length === 0 && <li className="px-3 py-3 text-xs text-[#848484]">
                 {count > 0 || partial ? 'No unread conversations in the loaded list.' : 'No unread conversations.'}
@@ -58,7 +100,7 @@ export function RailUnreadChats({ scopeKey, scopeLabel, rows, count = rows.lengt
 }
 
 /** Reuses the native list's seen ids, archive preferences, tab and type exclusions. */
-export function NativeRailUnreadChats({ history, unseenProcessIds, routeId, tab, onOpen, scopeKey, scopeLabel }: {
+export function NativeRailUnreadChats({ history, unseenProcessIds, routeId, tab, onOpen, scopeKey, scopeLabel, client, workspaceId }: {
     history: readonly any[];
     unseenProcessIds: ReadonlySet<string>;
     routeId: string;
@@ -66,14 +108,16 @@ export function NativeRailUnreadChats({ history, unseenProcessIds, routeId, tab,
     onOpen: (task: any) => void;
     scopeKey: string;
     scopeLabel: string;
+    client: CocClient;
+    workspaceId: string;
 }) {
     const prefs = useOptionalChatPrefs();
     const { state } = useApp();
     const excluded = new Set(state.myWorkExcludedTypes ?? []);
     const rows = history.filter(task => unseenProcessIds.has(task.id)
-        && !prefs?.archivedChatIds.has(task.id) && taskMatchesFilter(task, excluded)
-        && (tab === 'activity' || (tab === 'chats' ? isChatTask(task) : !isChatTask(task))))
+        && unreadRailTaskVisible(task, tab, excluded, prefs?.archivedChatIds))
         .sort(compareChatRecency)
         .map(task => ({ key: task.id, title: getChatRowTitle(task), href: queueJobHash(routeId, task, tab), open: () => onOpen(task) }));
-    return <RailUnreadChats scopeKey={scopeKey} scopeLabel={scopeLabel} rows={rows} />;
+    return <RailUnreadChats scopeKey={`${scopeKey}:${tab}:${JSON.stringify([...excluded].sort())}`} scopeLabel={scopeLabel} rows={rows}
+        onMarkAllRead={signal => markNativeUnreadRead({ client, workspaceId, tab, excluded, archived: prefs?.archivedChatIds, signal })} />;
 }

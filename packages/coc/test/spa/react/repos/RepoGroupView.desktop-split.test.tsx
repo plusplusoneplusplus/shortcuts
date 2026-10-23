@@ -25,6 +25,10 @@ let mockAppState: any = {};
 let mockQueueMap: Record<string, { running: any[]; queued: any[] }> = {};
 const mockGetRepoGroup = vi.fn();
 const mockSelectNativeChat = vi.fn();
+const mockMarkGroupRead = vi.fn();
+vi.mock('../../../../src/server/spa/client/react/features/chat/unreadMarkAllRead', async importOriginal => ({
+    ...await importOriginal<object>(), markGroupUnreadRead: (...args: unknown[]) => mockMarkGroupRead(...args),
+}));
 let mockUnreadFeed: any = null;
 let mockRemoteGroupWorkspaces: any[] = [];
 vi.mock('../../../../src/server/spa/client/react/repos/useRepoGroupChatFeed', async importOriginal => {
@@ -149,6 +153,7 @@ beforeEach(() => {
     mockUnreadFeed = null;
     mockRemoteGroupWorkspaces = [];
     mockSelectNativeChat.mockReset();
+    mockMarkGroupRead.mockReset().mockResolvedValue(undefined);
     mockGetRepoGroup.mockReset();
     mockGetRepoGroup.mockResolvedValue({
         id: GROUP_ID,
@@ -178,6 +183,7 @@ describe('RepoGroupView — desktop split Workspace panel', () => {
             remote: { serverId: 'server-remote', cloneKey: selectionId },
         }];
         localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey(GROUP_ID), '1');
+        localStorage.setItem(`coc.group-chat-filters:${selectionId}`, JSON.stringify({ owners: ['r1'], q: 'answer' }));
         const row = (ownerWorkspaceId: string, title: string) => ({
             key: `${ownerWorkspaceId}|queue_same`, ownerWorkspaceId, canonicalId: 'queue_same',
             section: 'history', ownerName: ownerWorkspaceId,
@@ -187,12 +193,19 @@ describe('RepoGroupView — desktop split Workspace panel', () => {
         const memberRow = row('r1', 'Member unread');
         mockUnreadFeed = { status: 'ready', refresh: vi.fn(), loadMore: vi.fn(), model: {
             history: [groupRow, memberRow, { ...row('r2', 'Read answer'), item: { ...memberRow.item, seenAt: memberRow.item.endTime } }],
-            running: [], queued: [], sources: [], counts: { unread: 2, total: 3, partial: false }, hasMore: false,
+            membershipKey: 'members-a', running: [], queued: [], sources: [], counts: { unread: 2, total: 3, partial: false }, hasMore: false,
         } };
         const { rerender } = render(<RepoGroupView workspaceId={GROUP_ID} selectionId={selectionId} />);
         const unread = await screen.findByTestId('split-workspace-left-unread');
         expect(unread).toHaveAccessibleName('2 unread conversations');
         fireEvent.click(unread);
+        expect(mockMarkGroupRead).not.toHaveBeenCalled();
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Mark all read' })); });
+        expect(mockMarkGroupRead).toHaveBeenCalledWith({
+            groupId: GROUP_ID, baseUrl: remote ? 'http://remote:3000' : undefined,
+            serverKey: remote ? 'server-remote' : 'local', membershipKey: 'members-a', signal: expect.any(AbortSignal),
+        });
+        expect(mockUnreadFeed.refresh).toHaveBeenCalledTimes(1);
         expect(screen.queryByRole('link', { name: /Read answer/ })).toBeNull();
         const groupLink = screen.getByRole('link', { name: /Group unread/ });
         expect(groupLink.getAttribute('href')).toBe(`#repos/${encodeURIComponent(selectionId)}/chats/queue_same`);
@@ -205,6 +218,12 @@ describe('RepoGroupView — desktop split Workspace panel', () => {
         expect(location.hash).toBe(`#repos/${encodeURIComponent(selectionId)}/chats/member/r1/queue_same`);
         expect(mockSelectNativeChat).toHaveBeenCalledTimes(1);
         expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey(GROUP_ID))).toBe('1');
+        mockUnreadFeed = { ...mockUnreadFeed, model: { ...mockUnreadFeed.model, counts: { unread: 2, partial: true } } };
+        rerender(<RepoGroupView workspaceId={GROUP_ID} selectionId={selectionId} />);
+        fireEvent.click(unread);
+        expect(screen.getByRole('button', { name: 'Mark all read' })).toBeDisabled();
+        fireEvent.click(screen.getByRole('button', { name: 'Mark all read' }));
+        expect(mockMarkGroupRead).toHaveBeenCalledTimes(1);
         mockUnreadFeed = { ...mockUnreadFeed, model: { ...mockUnreadFeed.model, history: [], counts: { unread: 0, partial: false } } };
         rerender(<RepoGroupView workspaceId={GROUP_ID} selectionId={selectionId} />);
         expect(unread).toHaveAccessibleName('0 unread conversations');

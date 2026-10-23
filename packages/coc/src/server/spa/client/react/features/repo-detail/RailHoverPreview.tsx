@@ -52,6 +52,7 @@ export interface RailPreviewControl {
     showWhenEmpty?: boolean;
     /** Click/tap opens the preview rather than expanding the sidebar. */
     clickOpensPreview?: boolean;
+    headerActions?: ReactNode;
 }
 
 interface Props extends RailControls {
@@ -153,7 +154,7 @@ export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand,
     useEffect(() => {
         if (open && portal && enterActions.current) {
             enterActions.current = false;
-            panelRef.current?.querySelector<HTMLElement>('button, a')?.focus();
+            panelRef.current?.querySelector<HTMLElement>('button:not([disabled]), a')?.focus();
         }
     }, [open, portal, active]);
     const enterPreview = (next: string) => {
@@ -162,7 +163,7 @@ export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand,
         show(next);
         if (open && active === next) {
             enterActions.current = false;
-            panelRef.current?.querySelector<HTMLElement>('button, a')?.focus();
+            panelRef.current?.querySelector<HTMLElement>('button:not([disabled]), a')?.focus();
         }
     };
     const keyDown = (event: KeyboardEvent<HTMLButtonElement>, next: string) => {
@@ -264,7 +265,7 @@ export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand,
                             // Embedded controls (such as the branch picker) own handled keys.
                             if (event.defaultPrevented) return;
                             if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-                            const actions = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button, a'));
+                            const actions = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), a'));
                             const index = actions.findIndex(action => action === document.activeElement);
                             const next = actions[index + (event.key === 'ArrowDown' ? 1 : -1)];
                             if (next) { event.preventDefault(); next.focus(); }
@@ -277,7 +278,10 @@ export function RailHoverPreview({ controls, scopeLabel, hoverEnabled, onExpand,
                                 </div>
                                 <div className="mt-0.5 break-words text-[11px] text-[#656d76] dark:text-[#aaa]">{scopeLabel}</div>
                             </div>
-                            <button type="button" aria-label={current.closeLabel ?? 'Close job preview'} className="h-[22px] w-[22px] flex-shrink-0 rounded text-xs text-[#848484] hover:bg-[#f3f3f3] focus-visible:outline focus-visible:outline-[#007acc] dark:hover:bg-[#333]" onClick={() => dismiss(true)}>x</button>
+                            <div className="flex flex-shrink-0 items-center gap-2">
+                                {current.headerActions}
+                                <button type="button" aria-label={current.closeLabel ?? 'Close job preview'} className="h-[22px] w-[22px] flex-shrink-0 rounded text-xs text-[#848484] hover:bg-[#f3f3f3] focus-visible:outline focus-visible:outline-[#007acc] dark:hover:bg-[#333]" onClick={() => dismiss(true)}>x</button>
+                            </div>
                         </header>
                         <ul>{current.renderRows(close, focusAfterRemoval)}</ul>
                     </div>

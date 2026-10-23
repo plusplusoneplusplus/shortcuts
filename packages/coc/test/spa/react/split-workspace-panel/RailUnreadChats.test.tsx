@@ -2,6 +2,8 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { ToastContext } from '../../../../src/server/spa/client/react/contexts/ToastContext';
 import { RailUnreadChats, NativeRailUnreadChats } from '../../../../src/server/spa/client/react/features/chat/RailUnreadChats';
 import { RailControlsContext } from '../../../../src/server/spa/client/react/features/repo-detail/RailHoverPreview';
 import { ChatPreferencesContext } from '../../../../src/server/spa/client/react/contexts/chatPrefsConsumer';
@@ -13,11 +15,14 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
 const expand = vi.fn();
 const preview = vi.fn();
 const open = vi.fn();
+const addToast = vi.fn();
 const rows = [{ key: 'a', title: 'Unread answer', href: '#repos/a/chats/queue_a', open }];
 function panel(props: Partial<React.ComponentProps<typeof RailUnreadChats>> = {}, hoverEnabled = true) {
-    return <RailControlsContext.Provider value={{ hoverEnabled, onExpand: expand, onPreview: preview }}>
-        <RailUnreadChats scopeKey="local:a" scopeLabel="Alpha" rows={rows} {...props} />
-    </RailControlsContext.Provider>;
+    return <ToastContext.Provider value={{ addToast, removeToast: vi.fn(), toasts: [] }}>
+        <RailControlsContext.Provider value={{ hoverEnabled, onExpand: expand, onPreview: preview }}>
+            <RailUnreadChats scopeKey="local:a" scopeLabel="Alpha" rows={rows} {...props} />
+        </RailControlsContext.Provider>
+    </ToastContext.Provider>;
 }
 const trigger = () => screen.getByTestId('split-workspace-left-unread');
 const tick = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
@@ -36,6 +41,111 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('Unread rail preview', () => {
+    it('offers Mark all read in the header without mutating on hover, and prevents duplicate busy clicks', async () => {
+        let finish!: () => void;
+        const onMarkAllRead = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+        const { rerender } = render(panel({ onMarkAllRead }));
+        fireEvent.pointerEnter(trigger(), { pointerType: 'mouse' });
+        tick(200);
+        const action = screen.getByRole('button', { name: 'Mark all read' });
+        expect(action.closest('header')).toBeTruthy();
+        expect(onMarkAllRead).not.toHaveBeenCalled();
+        fireEvent.pointerLeave(trigger());
+        fireEvent.pointerEnter(action);
+        tick(300);
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        act(() => action.focus());
+        expect(onMarkAllRead).not.toHaveBeenCalled();
+        fireEvent.click(action);
+        expect(screen.getByRole('button', { name: 'Marking…' })).toBeDisabled();
+        fireEvent.click(action);
+        expect(onMarkAllRead).toHaveBeenCalledTimes(1);
+        await act(async () => { finish(); });
+        expect(screen.getByRole('button', { name: 'Mark all read' })).toBeEnabled();
+        rerender(panel({ rows: [], onMarkAllRead }));
+        expect(trigger()).toHaveAccessibleName('0 unread conversations');
+        expect(screen.getByRole('button', { name: 'Mark all read' })).toBeDisabled();
+        fireEvent.keyDown(trigger(), { key: 'ArrowDown' });
+        expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close unread preview' }));
+        expect(open).not.toHaveBeenCalled();
+        expect(expand).not.toHaveBeenCalled();
+    });
+
+    it.each(['keyboard', 'touch'])('activates the header action with %s and preserves the preview', async input => {
+        vi.useRealTimers();
+        const onMarkAllRead = vi.fn().mockResolvedValue(undefined);
+        render(panel({ onMarkAllRead }));
+        if (input === 'keyboard') {
+            const user = userEvent.setup();
+            act(() => trigger().focus());
+            await user.keyboard('{ArrowRight}');
+            expect(screen.getByRole('button', { name: 'Mark all read' })).toHaveFocus();
+            expect(onMarkAllRead).not.toHaveBeenCalled();
+            await user.keyboard('{Enter}');
+        } else {
+            fireEvent.pointerDown(trigger(), { pointerType: 'touch' });
+            fireEvent.click(trigger());
+            const action = screen.getByRole('button', { name: 'Mark all read' });
+            fireEvent.pointerDown(action, { pointerType: 'touch' });
+            await act(async () => { fireEvent.click(action); });
+        }
+        expect(onMarkAllRead).toHaveBeenCalledTimes(1);
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        expect(open).not.toHaveBeenCalled();
+        expect(expand).not.toHaveBeenCalled();
+        fireEvent.keyDown(screen.getByRole('button', { name: 'Close unread preview' }), { key: 'Escape' });
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(trigger()).toHaveFocus();
+    });
+
+    it('keeps unread rows visible after failure and disables unavailable partial scopes', async () => {
+        const onMarkAllRead = vi.fn().mockRejectedValue(new Error('Some repositories failed; unread conversations remain.'));
+        const { rerender } = render(panel({ onMarkAllRead }));
+        fireEvent.click(trigger());
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Mark all read' })); });
+        expect(screen.getByRole('alert')).toHaveTextContent('unread conversations remain');
+        expect(addToast).toHaveBeenCalledWith('Some repositories failed; unread conversations remain.', 'error');
+        expect(screen.getByRole('link', { name: 'Unread answer' })).toBeTruthy();
+        expect(trigger()).toHaveAccessibleName('1 unread conversation');
+        rerender(panel({ onMarkAllRead, partial: true, markAllReadDisabledReason: 'Some repos are offline.' }));
+        const action = screen.getByRole('button', { name: 'Mark all read' });
+        expect(action).toBeDisabled();
+        expect(action).toHaveAttribute('title', 'Some repos are offline.');
+        fireEvent.click(action);
+        expect(onMarkAllRead).toHaveBeenCalledTimes(1);
+    });
+
+    it('aborts old-scope work and ignores its late failure without blocking a new owner', async () => {
+        let reject!: (error: Error) => void;
+        const oldAction = vi.fn((_signal: AbortSignal) => new Promise<void>((_resolve, fail) => { reject = fail; }));
+        const nextAction = vi.fn().mockResolvedValue(undefined);
+        const { rerender } = render(panel({ onMarkAllRead: oldAction }));
+        fireEvent.click(trigger());
+        fireEvent.click(screen.getByRole('button', { name: 'Mark all read' }));
+        rerender(panel({ scopeKey: 'remote:other:a', onMarkAllRead: nextAction }));
+        expect(oldAction.mock.calls[0][0].aborted).toBe(true);
+        await act(async () => { reject(new Error('Old owner failure')); });
+        fireEvent.click(trigger());
+        expect(screen.queryByRole('alert')).toBeNull();
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Mark all read' })); });
+        expect(nextAction).toHaveBeenCalledTimes(1);
+    });
+
+    it('clears an aborted busy state when returning to a prior scope before its response arrives', async () => {
+        const oldAction = vi.fn(() => new Promise<void>(() => {}));
+        const nextAction = vi.fn().mockResolvedValue(undefined);
+        const { rerender } = render(panel({ onMarkAllRead: oldAction }));
+        fireEvent.click(trigger());
+        fireEvent.click(screen.getByRole('button', { name: 'Mark all read' }));
+        rerender(panel({ scopeKey: 'remote:other:a', onMarkAllRead: nextAction }));
+        rerender(panel({ onMarkAllRead: nextAction }));
+        fireEvent.click(trigger());
+        const action = screen.getByRole('button', { name: 'Mark all read' });
+        expect(action).toBeEnabled();
+        await act(async () => { fireEvent.click(action); });
+        expect(nextAction).toHaveBeenCalledTimes(1);
+    });
+
     it('opens after hover delay, bridges to the scrollable preview and dismisses after leave', () => {
         render(panel());
         fireEvent.pointerEnter(trigger(), { pointerType: 'mouse' });
@@ -128,6 +238,7 @@ describe('Unread rail preview', () => {
             render(<RailControlsContext.Provider value={{ hoverEnabled: true, onExpand: expand, onPreview: preview }}>
                 <ChatPreferencesContext.Provider value={prefs}>
                     <NativeRailUnreadChats history={history} unseenProcessIds={unseen} routeId={routeId} tab="chats"
+                        workspaceId="ws-a" client={{ options: {} } as any}
                         onOpen={open} scopeKey={routeId} scopeLabel="Alpha" />
                 </ChatPreferencesContext.Provider>
             </RailControlsContext.Provider>);
