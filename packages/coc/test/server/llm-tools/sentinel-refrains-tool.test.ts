@@ -111,6 +111,17 @@ describe('sentinel_jobs tool schema', () => {
         expect(tool.description).toMatch(/a refrain, a repeating job or a scheduled prompt, use `create` with `kind: custom`/);
         expect(tool.description).not.toMatch(/Scrubber|scrubber findings|Jobs panel/);
     });
+
+    it('requires complete current instructions rather than appended change history', () => {
+        const tool = createSentinelRefrainsTool({ owner, jobs: jobCommands, scrubber: codaCommands, defaults: () => defaults }) as any;
+        expect(tool.description).toContain(
+            'cron and enabled only). ' +
+            'When creating or updating instructions, write the complete, self-contained task as it should run now. ' +
+            'Integrate user adjustments into that description; remove superseded requirements and do not append change history, ' +
+            'amendments or references to earlier conversations. Preserve all still-applicable requirements. ' +
+            'A refrain\'s optional `gateScript`',
+        );
+    });
 });
 
 describe('custom jobs', () => {
