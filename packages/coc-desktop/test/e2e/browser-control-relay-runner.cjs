@@ -66,6 +66,10 @@ const server = createServer((request, response) => {
 });
 const sockets = new ProcessWebSocketServer();
 sockets.attach(server);
+// Answer site approval checks late, so the open and popup loads are always held while the turn's
+// next actions run, instead of only on slow runners.
+const navigationCheck = sockets.browserControl.navigationCheck.bind(sockets.browserControl);
+sockets.browserControl.navigationCheck = (client, message) => { setTimeout(() => navigationCheck(client, message), 250); };
 sockets.browserControl.setEnabledGetter(() => true);
 let win;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -84,9 +88,12 @@ app.on('window-all-closed', () => {});
     registerBrowserEmbedder(win, origin);
     win.webContents.on('console-message', event => console.error('Renderer:', event.message));
     await win.loadURL(origin);
+    // One agent turn drives every action, as a chat turn's signal does. Without it each call
+    // starts a new turn, and finishing the previous one denies the popup load it still holds.
+    const turn = new AbortController();
     let tabs;
     for (let attempt = 0; attempt < 200; attempt++) {
-        try { tabs = await sockets.browserControl.execute('fixture-workspace', 'fixture-process', { action: 'tabs' }); break; }
+        try { tabs = await sockets.browserControl.execute('fixture-workspace', 'fixture-process', { action: 'tabs' }, undefined, turn.signal); break; }
         catch (error) {
             if (!error.message.includes('No CoC desktop')) throw error;
             await pause(25);
@@ -95,7 +102,7 @@ app.on('window-all-closed', () => {});
     if (!tabs) throw new Error('Fixture capability was not advertised');
     const execute = async (command, tab) => {
         console.error('Fixture action:', command.action);
-        try { return await sockets.browserControl.execute('fixture-workspace', 'fixture-process', command, tab); }
+        try { return await sockets.browserControl.execute('fixture-workspace', 'fixture-process', command, tab, turn.signal); }
         catch (error) {
             console.error('Fixture DOM:', await win.webContents.executeJavaScript('document.body.innerHTML'));
             throw error;
