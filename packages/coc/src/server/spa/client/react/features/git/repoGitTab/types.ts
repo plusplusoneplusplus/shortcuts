@@ -15,6 +15,7 @@ export type RightPanelView =
     | { type: 'branch-range' }
     | { type: 'branch-file'; filePath: string }
     | { type: 'working-tree-file'; filePath: string; stage: 'staged' | 'unstaged' | 'untracked' }
+    | { type: 'working-tree-all' }
     | { type: 'working-tree-comments' }
     | { type: 'branch-range-comments' }
     | { type: 'multi-commit'; commits: GitCommitItem[] };
@@ -30,6 +31,7 @@ export type PersistedGitView =
     | { type: 'branch-range' }
     | { type: 'branch-file'; filePath: string }
     | { type: 'working-tree-file'; filePath: string; stage: 'staged' | 'unstaged' | 'untracked' }
+    | { type: 'working-tree-all' }
     | { type: 'working-tree-comments' }
     | { type: 'branch-range-comments' }
     | { type: 'multi-commit'; hashes: string[] };

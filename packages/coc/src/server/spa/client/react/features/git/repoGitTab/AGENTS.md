@@ -70,7 +70,8 @@ refresh, and the two layouts. Everything else lives here.
   `hydrateFromInitialLoad` (called by the data hook's `onInitialLoad`); a later
   link resolves in the routed-navigation effect. Both go through the single
   `applyRoute` resolver and fall back to `getCommit` only when `gitCommitLookup`
-  is on and the string is SHA-shaped (`isLookupCandidate`). Direct SHA lookups
+  is on and the string is SHA-shaped (`isLookupCandidate`). The `branch-range`
+  and `working-changes` sentinels name non-commit views. Direct SHA lookups
   select the detail view; the sidebar lists paginated history only.
   A transient `SET_GIT_ROUTE.knownCommit` can supply a commit already read by
   another surface, including rail pages beyond the initial history page. Consume

@@ -46,6 +46,15 @@ describe('real branch comparison scope', () => {
         expect(second.comparisonKey).not.toBe(first.comparisonKey);
         expect(second.source.fileDiffUrl('src/app.ts')).not.toBe(first.source.fileDiffUrl('src/app.ts'));
     });
+    it('gives the header row and its native selects dark-mode text colors', () => {
+        render(<BranchRangeOverview workspaceId="ws" range={range} files={files} onBaseModeChange={vi.fn()} />);
+        expect(screen.getByTestId('branch-commit-strip-header').className).toContain('dark:text-[#cccccc]');
+        for (const label of ['Comparison base', 'Commit scope']) {
+            const select = screen.getByLabelText(label);
+            expect(select.className).toContain('text-inherit');
+            expect(select.className).toContain('dark:[color-scheme:dark]');
+        }
+    });
     it('keeps missing scope metadata explicit while retaining real file navigation', () => {
         render(<BranchRangeOverview workspaceId="ws" range={{ ...range, commits: undefined }} files={files} />);
         expect((screen.getByRole('option', { name: 'Commit scope unavailable' }) as HTMLOptionElement).disabled).toBe(true);

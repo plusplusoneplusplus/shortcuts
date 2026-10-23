@@ -1112,6 +1112,7 @@ export function parsePersistedGitView(raw: unknown): PersistedGitView | null {
                 ? { type: 'commit-file', hash: value.hash, filePath: value.filePath }
                 : null;
         case 'branch-range':
+        case 'working-tree-all':
         case 'working-tree-comments':
         case 'branch-range-comments':
             return { type: value.type };

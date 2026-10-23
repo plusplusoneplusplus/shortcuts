@@ -37,7 +37,7 @@ describe('SuggestionChips', () => {
             <SuggestionChips suggestions={['Hello']} onSelect={vi.fn()} />
         );
         const button = screen.getByTestId('suggestion-chip');
-        expect(button.getAttribute('title')).toBe('Click to edit · Ctrl+Click to send');
+        expect(button.getAttribute('title')).toBe('Hello\nClick to edit · Ctrl+Click to send');
     });
 
     it('calls onSelect with correct text on click', () => {
@@ -97,16 +97,17 @@ describe('SuggestionChips', () => {
         render(
             <SuggestionChips suggestions={['Animated']} onSelect={vi.fn()} />
         );
-        const container = screen.getByTestId('suggestion-chips');
-        expect(container.style.animation).toContain('suggestionFadeIn');
+        const wrapper = screen.getByTestId('suggestion-chips').parentElement!;
+        expect(wrapper.style.animation).toContain('suggestionFadeIn');
     });
 
-    it('uses flex-wrap layout so chips reflow on narrow screens', () => {
+    it('keeps chips on one horizontally scrolling row', () => {
         render(
             <SuggestionChips suggestions={['Chip A', 'Chip B', 'Chip C']} onSelect={vi.fn()} />
         );
         const container = screen.getByTestId('suggestion-chips');
-        expect(container.className).toContain('flex-wrap');
+        expect(container.className).toContain('flex-nowrap');
+        expect(container.className).toContain('overflow-x-auto');
         expect(container.className).not.toContain('flex-col');
     });
 
@@ -125,7 +126,7 @@ describe('SuggestionChips', () => {
                 <SuggestionChips suggestions={['Hello']} onSelect={vi.fn()} ctrlHeld />
             );
             const button = screen.getByTestId('suggestion-chip');
-            expect(button.getAttribute('title')).toBe('Click to send');
+            expect(button.getAttribute('title')).toBe('Hello\nClick to send');
         });
 
         it('applies blue send-mode styling when ctrlHeld is true', () => {

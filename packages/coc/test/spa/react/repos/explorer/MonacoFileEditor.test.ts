@@ -62,6 +62,12 @@ describe('getMonacoLanguage', () => {
         expect(getMonacoLanguage('build.bash')).toBe('shell');
     });
 
+    it('maps PowerShell scripts, modules, and manifests', () => {
+        expect(getMonacoLanguage('build.ps1')).toBe('powershell');
+        expect(getMonacoLanguage('Tools.psm1')).toBe('powershell');
+        expect(getMonacoLanguage('Tools.PSD1')).toBe('powershell');
+    });
+
     it('maps Markdown', () => {
         expect(getMonacoLanguage('README.md')).toBe('markdown');
         expect(getMonacoLanguage('docs.mdx')).toBe('markdown');
@@ -91,8 +97,10 @@ describe('getMonacoLanguage', () => {
         expect(getMonacoLanguage('objc.mm')).toBe('cpp');
     });
 
-    it('maps C#', () => {
+    it('maps C# source, scripts, and Cake builds', () => {
         expect(getMonacoLanguage('Program.cs')).toBe('csharp');
+        expect(getMonacoLanguage('setup.csx')).toBe('csharp');
+        expect(getMonacoLanguage('build.cake')).toBe('csharp');
     });
 
     it('maps Java', () => {

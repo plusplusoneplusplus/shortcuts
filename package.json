@@ -60,10 +60,10 @@
       "nanoid@4": "5.1.16"
     },
     "mermaid": {
-      "dompurify@3": "3.4.12"
+      "dompurify@3": "3.4.17"
     },
     "monaco-editor": {
-      "dompurify@3": "3.4.12"
+      "dompurify@3": "3.4.17"
     }
   },
   "packageManager": "npm@11.13.0"

@@ -77,15 +77,15 @@ function BranchReview({ workspaceId, attachmentDestinationId, range, files = [],
         if (popOutOpened(window.open(url, `coc-git-review-branch-${workspaceId}`, 'width=1200,height=800'))) markPoppedOut(gitReviewBranchPopOutKey(workspaceId));
     }, [workspaceId, attachmentDestinationId, baseMode, markPoppedOut]);
     return <div className="commit-detail flex flex-col h-full min-w-0 overflow-hidden" data-testid="branch-range-review">
-        <div className="flex shrink-0 flex-wrap items-center gap-1 px-2 py-1 text-[11px] border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="branch-commit-strip-header">
+        <div className="flex shrink-0 flex-wrap items-center gap-1 px-2 py-1 text-[11px] text-[#1e1e1e] dark:text-[#cccccc] border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="branch-commit-strip-header">
             <span className="truncate max-w-[180px] font-medium" draggable={!!sessionContextPayload}
                 data-session-context-source={sessionContextPayload ? 'true' : undefined} data-session-context-kind={sessionContextPayload ? 'range' : undefined}
                 onDragStart={sessionContextPayload ? event => writePointerContextDragData(event.dataTransfer, sessionContextPayload) : undefined}
                 title={sessionContextPayload ? `${sessionContextPayload.label} - drag to attach as range context` : range.headRef}>{range.branchName || range.headRef}</span>
-            {onBaseModeChange ? <select className="bg-transparent min-h-7 max-w-[190px]" aria-label="Comparison base" value={baseMode} onChange={event => onBaseModeChange(event.target.value as GitRangeBaseMode)}>
+            {onBaseModeChange ? <select className="bg-transparent text-inherit dark:[color-scheme:dark] min-h-7 max-w-[190px]" aria-label="Comparison base" value={baseMode} onChange={event => onBaseModeChange(event.target.value as GitRangeBaseMode)}>
                 <option value="default-branch">vs {baseMode === 'default-branch' ? range.baseRef : 'default branch'}</option><option value="upstream">Unpushed{baseMode === 'upstream' ? ` · ${range.baseRef}` : ''}</option>
             </select> : <span className="text-[#848484]">vs {range.baseRef}</span>}
-            <select className="bg-transparent min-h-7 max-w-[260px]" aria-label="Commit scope" value={scope} onChange={event => setScope(event.target.value)}>
+            <select className="bg-transparent text-inherit dark:[color-scheme:dark] min-h-7 max-w-[260px]" aria-label="Commit scope" value={scope} onChange={event => setScope(event.target.value)}>
                 <option value="">All {range.commitCount} commits</option>{!commits.length && range.commitCount > 0 && <option disabled>Commit scope unavailable</option>}{range.commitCount > commits.length && commits.length > 0 && <option disabled>Showing newest {commits.length} commits</option>}{commits.map(commit => <option key={commit.hash} value={commit.hash}>{commit.shortHash} {commit.subject}</option>)}
             </select>
             <span className="text-[#16825d]">+{range.additions}</span><span className="text-[#d32f2f]">−{range.deletions}</span>

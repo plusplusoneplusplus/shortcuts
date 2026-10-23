@@ -61,4 +61,57 @@ describe('SuggestionChips', () => {
         );
         expect(screen.getByTestId('suggestion-chips')).toBeTruthy();
     });
+
+    it('keeps all chips on one non-wrapping row', () => {
+        render(
+            <SuggestionChips suggestions={['A long first suggestion', 'B', 'C']} onSelect={vi.fn()} />
+        );
+        const row = screen.getByTestId('suggestion-chips');
+        expect(row.className).toContain('flex-nowrap');
+        expect(row.className).toContain('overflow-x-auto');
+        expect(row.className).not.toContain('flex-wrap ');
+    });
+
+    it('truncates long chips and puts the full text in the tooltip', () => {
+        const text = 'Make Open write the file into the URL too and keep the selection';
+        render(<SuggestionChips suggestions={[text]} onSelect={vi.fn()} />);
+        const chip = screen.getByTestId('suggestion-chip');
+        expect(chip.className).toContain('truncate');
+        expect(chip.className).toContain('max-w-[16rem]');
+        expect(chip.className).toContain('text-xs');
+        expect(chip.title).toBe(`${text}\nClick to edit · Ctrl+Click to send`);
+    });
+
+    it('uses an outline style in the send state', () => {
+        render(<SuggestionChips suggestions={['Go']} onSelect={vi.fn()} ctrlHeld />);
+        const chip = screen.getByTestId('suggestion-chip');
+        expect(chip.className).toContain('bg-transparent');
+        expect(chip.title).toBe('Go\nClick to send');
+    });
+
+    it('omits the dismiss button without onDismiss', () => {
+        render(<SuggestionChips suggestions={['A']} onSelect={vi.fn()} />);
+        expect(screen.queryByTestId('dismiss-suggestions-btn')).toBeNull();
+    });
+
+    it('renders the dismiss button inline after the chips and calls onDismiss', () => {
+        const onDismiss = vi.fn();
+        render(<SuggestionChips suggestions={['A']} onSelect={vi.fn()} onDismiss={onDismiss} />);
+        const dismiss = screen.getByTestId('dismiss-suggestions-btn');
+        const row = screen.getByTestId('suggestion-chips');
+        expect(dismiss.className).not.toContain('absolute');
+        expect(row.parentElement).toBe(dismiss.parentElement);
+        expect(row.compareDocumentPosition(dismiss) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        fireEvent.click(dismiss);
+        expect(onDismiss).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the dismiss button clickable while chips are disabled', () => {
+        const onDismiss = vi.fn();
+        render(<SuggestionChips suggestions={['A']} onSelect={vi.fn()} disabled onDismiss={onDismiss} />);
+        const dismiss = screen.getByTestId('dismiss-suggestions-btn');
+        expect(dismiss.hasAttribute('disabled')).toBe(false);
+        fireEvent.click(dismiss);
+        expect(onDismiss).toHaveBeenCalledTimes(1);
+    });
 });

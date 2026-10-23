@@ -1023,7 +1023,7 @@ describe('Sentinel suggestion activation', () => {
         render(<FollowUpInputArea {...makeProps({ selectedMode: 'sentinel', sentinelNextStepsEnabled: true, suggestions: ['Finish safeguards', 'Run checks', 'Commit changes'].slice(0, count), onSend })} />);
         expect(screen.getAllByTestId('suggestion-chip')).toHaveLength(count);
         expect(onSend).not.toHaveBeenCalled();
-        expect(screen.getAllByTestId('suggestion-chip')[0].title).toBe('Click to send');
+        expect(screen.getAllByTestId('suggestion-chip')[0].title).toBe('Finish safeguards\nClick to send');
     });
 
     it.each([0, 1])('sends only the named action once on activation (detail %i)', async detail => {

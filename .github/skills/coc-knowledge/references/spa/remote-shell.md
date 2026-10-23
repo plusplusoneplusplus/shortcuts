@@ -344,7 +344,7 @@ clone-routed workspace id.
 
 **The group owns the page, the member owns the data.** `RepoGitTab` takes
 `routeWorkspaceId` (the group) alongside `workspaceId` (the member), so its URLs
-read `#repos/<groupId>/git/member/<memberId>[/<sha|branch-range>[/<file>]]` and
+read `#repos/<groupId>/git/member/<memberId>[/<sha|branch-range|working-changes>[/<file>]]` and
 the group stays the selected workspace while you browse a member's history.
 `layout/gitRoute.ts` is the single parser/builder for that shape (and the plain
 `#repos/<repoId>/git/...` form); the `member` marker is structural only for
