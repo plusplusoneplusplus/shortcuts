@@ -70,12 +70,13 @@ function request(
 }
 
 describe('api-process-routes ask-user response', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
     let server: http.Server;
     let baseUrl: string;
     let answerAskUserQuestions: ReturnType<typeof vi.fn>;
 
     beforeAll(async () => {
-        const store = createMockProcessStore();
+        store = createMockProcessStore();
         answerAskUserQuestions = vi.fn().mockResolvedValue(true);
         const bridge: QueueExecutorBridge = {
             executeFollowUp: vi.fn().mockResolvedValue(undefined),
@@ -106,6 +107,18 @@ describe('api-process-routes ask-user response', () => {
 
     beforeEach(() => {
         answerAskUserQuestions.mockClear().mockResolvedValue(true);
+    });
+
+    it.each(['', 'é'.repeat(16385)])('returns a clear validation error for an invalid textarea answer', async answer => {
+        vi.mocked(store.getProcess).mockResolvedValueOnce({
+            id: 'p1', pendingAskUser: [{ questionId: 'q1', batchId: 'batch-1', type: 'textarea' }],
+        } as any);
+        const res = await request(baseUrl, '/api/processes/p1/ask-user-response', {
+            method: 'POST', body: JSON.stringify({ batchId: 'batch-1', answers: [{ questionId: 'q1', answer }] }),
+        });
+        expect(res.status).toBe(400);
+        expect(res.body).toMatch(/Textarea answers must/);
+        expect(answerAskUserQuestions).not.toHaveBeenCalled();
     });
 
     it('passes deferred need-more-context answers through to the bridge', async () => {

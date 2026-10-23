@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { AskUserHistoryCard } from '../../../../../src/server/spa/client/react/features/chat/AskUserHistoryCard';
 import type { AskUserHistoryToolCall } from '../../../../../src/server/spa/client/react/features/chat/AskUserHistoryCard';
 
@@ -123,5 +123,24 @@ describe('AskUserHistoryCard compact layout', () => {
         const deferredRow = screen.getByTestId('ask-user-history-answer');
         expect(deferredRow.getAttribute('data-deferred')).toBe('true');
         expect(screen.getByTestId('ask-user-history-deferred-note')).toHaveTextContent('Read the router first.');
+    });
+});
+
+
+describe('textarea answer history', () => {
+    it.each([true, false])('shows literal multi-line text and edited=%s', edited => {
+        const text = ' Hi <Alex>\n\n**literal**  ';
+        render(<AskUserHistoryCard toolCall={makeToolCall([{ question: 'Review draft', type: 'textarea', defaultValue: text }], [{ answer: text, edited }])} />);
+        expect(screen.getByText(edited ? 'Edited' : 'Sent as drafted')).toBeInTheDocument();
+        expect(screen.getByTestId('ask-user-history-answer').querySelector('pre')?.textContent).toBe(text);
+    });
+
+    it('collapses long drafts and lets the user expand them', () => {
+        render(<AskUserHistoryCard toolCall={makeToolCall([{ question: 'Review draft', type: 'textarea' }], [{ answer: 'line\n'.repeat(10), edited: true }])} />);
+        const pre = screen.getByTestId('ask-user-history-answer').querySelector('pre');
+        expect(pre).toHaveStyle({ overflow: 'hidden' });
+        fireEvent.click(screen.getByText('Show more'));
+        expect(screen.getByText('Show less')).toHaveAttribute('aria-expanded', 'true');
+        expect(pre).not.toHaveStyle({ overflow: 'hidden' });
     });
 });

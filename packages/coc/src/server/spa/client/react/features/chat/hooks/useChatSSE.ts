@@ -43,7 +43,7 @@ export interface AskUserQuestion {
     batchId: string;
     questionId: string;
     question: string;
-    type: 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text' | 'sensitive-input';
+    type: 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text' | 'textarea' | 'sensitive-input';
     options?: Array<{ value: string; label: string; description?: string }>;
     defaultValue?: string | string[];
     /** Set on `sensitive-input`: where the dashboard sends the pasted secret. */

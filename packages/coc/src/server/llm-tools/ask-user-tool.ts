@@ -12,13 +12,14 @@
  */
 
 import { randomUUID } from 'crypto';
+import { ASK_USER_TEXTAREA_MAX_BYTES, textareaAnswerError, isDraftEdited } from '../shared/ask-user-textarea';
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export type AskUserQuestionType = 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text' | 'sensitive-input';
+export type AskUserQuestionType = 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text' | 'textarea' | 'sensitive-input';
 
 /**
  * Where a `sensitive-input` value goes. The dashboard hands the pasted value
@@ -158,6 +159,7 @@ export interface AskUserResponse {
     /** A `sensitive-input` question answers with its redacted receipt. */
     answer: AskUserAnswerValue | SensitiveInputReceipt | null;
     skipped: boolean;
+    edited?: boolean;
     reason?: AskUserResponseReason;
     deferred?: boolean;
     note?: string;
@@ -322,7 +324,7 @@ function unavailableResponse(questionId: string, type?: AskUserQuestionType): As
     };
 }
 
-const BASE_QUESTION_TYPES: AskUserQuestionType[] = ['select', 'multi-select', 'yes-no', 'confirm', 'text'];
+const BASE_QUESTION_TYPES: AskUserQuestionType[] = ['select', 'multi-select', 'yes-no', 'confirm', 'text', 'textarea'];
 
 /**
  * Reject a `sensitive-input` question the host cannot take: flag off, unknown
@@ -373,6 +375,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
     const pending = new Map<string, {
         resolve: (response: AskUserResponse) => void;
         type: AskUserQuestionType;
+        defaultValue?: string | string[];
         /** Set on `sensitive-input` questions; the receipt is built from it. */
         sensitive?: { sink: SensitiveInputSink; domain: string };
     }>();
@@ -385,6 +388,9 @@ export function createAskUserTool(deps: AskUserToolDeps) {
         const entry = pending.get(questionId);
         if (!entry) return false;
         pending.delete(questionId);
+        if (entry.type === 'textarea' && !response.skipped && !response.deferred && typeof response.answer === 'string') {
+            response.edited = isDraftEdited(response.answer, entry.defaultValue);
+        }
         entry.resolve(response);
         const listeners = settleListeners.get(questionId) ?? [];
         settleListeners.delete(questionId);
@@ -413,6 +419,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
         description:
             'Ask the user one or more questions and wait for their answers. Use when you need ' +
             'clarification, confirmation, or choices before proceeding. ' +
+            'Use textarea for multi-line drafts the user may edit; use the returned answer as the final text, not the original draft. Drafts and answers are limited to 32 KiB UTF-8. ' +
             'Do NOT use it for a simple yes/no that can be inferred from context. ' +
             'If a response has deferred=true and reason="needs-context", the user needs more context; explain and re-ask the question if still needed instead of treating it as skipped. ' +
             'Only use when a human is present to answer; never in unattended or automated runs (cron ticks, headless queue runs, background loops).' +
@@ -436,7 +443,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
                             type: {
                                 type: 'string',
                                 enum: sensitiveInputInSchema ? [...BASE_QUESTION_TYPES, 'sensitive-input'] : BASE_QUESTION_TYPES,
-                                description: 'Question type: select (single choice), multi-select (multiple choices), yes-no, confirm (Confirm/Cancel), text (free-text input)' +
+                                description: 'Question type: select (single choice), multi-select (multiple choices), yes-no, confirm (Confirm/Cancel), text (one-line input), textarea (editable multi-line draft)' +
                                     (sensitiveInputInSchema ? ', sensitive-input (masked secret delivered to `sink`; requires sink and sinkArgs).' : '.'),
                             },
                             options: {
@@ -453,7 +460,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
                                 description: 'Options for select/multi-select. Required when type is select or multi-select.',
                             },
                             defaultValue: {
-                                description: 'Pre-selected default value(s).',
+                                description: 'Pre-selected default value(s); textarea defaults must be strings of at most 32 KiB UTF-8.',
                             },
                             ...(sensitiveInputInSchema ? {
                                 sink: {
@@ -484,6 +491,15 @@ export function createAskUserTool(deps: AskUserToolDeps) {
                 throw new Error('ask_user requires at least one question');
             }
             for (const question of args.questions) {
+                if (question?.type === 'textarea') {
+                    if (question.options !== undefined) throw new Error('ask_user textarea does not accept options');
+                    if (question.defaultValue !== undefined) {
+                        if (typeof question.defaultValue !== 'string') throw new Error('ask_user textarea defaultValue must be a string');
+                        if (Buffer.byteLength(question.defaultValue, 'utf8') > ASK_USER_TEXTAREA_MAX_BYTES) {
+                            throw new Error('ask_user textarea defaultValue must be at most 32 KiB UTF-8');
+                        }
+                    }
+                }
                 if (question?.type === 'sensitive-input') {
                     validateSensitiveInputQuestion(question, isSensitiveInputEnabled());
                 }
@@ -521,6 +537,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
                 pending.set(payload.questionId, {
                     resolve,
                     type: payload.type,
+                    defaultValue: payload.defaultValue,
                     ...(payload.sink && payload.sinkArgs
                         ? { sensitive: { sink: payload.sink, domain: payload.sinkArgs.domain } }
                         : {}),
@@ -600,6 +617,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
         // A sensitive question only takes a receipt through `answerQuestions`;
         // a plain answer (e.g. from the messaging relay) would be the secret.
         if (pending.get(questionId)?.sensitive) return false;
+        if (pending.get(questionId)?.type === 'textarea' && textareaAnswerError(answer)) return false;
         return settle(questionId, { questionId, answer, skipped: false });
     }
 
@@ -625,6 +643,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
             } else {
                 if (response.receipt !== undefined) return false;
                 if (answered && response.answer === undefined) return false;
+                if (answered && pending.get(response.questionId)!.type === 'textarea' && textareaAnswerError(response.answer)) return false;
             }
         }
         for (const response of responses) {

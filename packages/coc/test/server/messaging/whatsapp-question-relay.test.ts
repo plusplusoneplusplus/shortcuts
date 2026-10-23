@@ -93,6 +93,29 @@ describe('WhatsApp ask_user question relay', () => {
         return { tool, result, emitted };
     }
 
+    it.each([4000, 4020, 4050, 4090])('keeps the whole reply hint in the final chunk at draft length %s', async length => {
+        const { result } = await askFromRequest([{ type: 'textarea', question: 'Review', defaultValue: 'x'.repeat(length) }]);
+        await vi.waitFor(() => expect(hub.pendingCount()).toBe(1));
+        const parts = send.mock.calls.map(([text]) => text as string);
+        expect(parts.at(-1)).toContain('Reply "send" to use this draft, reply with your full edited text, or "skip"');
+        expect(parts.every(part => part.length <= 4096)).toBe(true);
+        await router.handle(inbound('send', 'draft-answer', `sent-${sent}`));
+        expect((await result)[0]).toMatchObject({ edited: false });
+    });
+
+    it('chunks long drafts with the hint last and accepts send unchanged', async () => {
+        const draft = 'Hi Alex,\n' + 'Full draft line\n'.repeat(700);
+        const { result } = await askFromRequest([{ type: 'textarea', question: 'Review this draft', defaultValue: draft }]);
+        await vi.waitFor(() => expect(hub.pendingCount()).toBe(1));
+        const parts = send.mock.calls.map(([text]) => text as string).filter(text => text.includes('Review this draft') || text.includes('> ') || text.includes('"send"'));
+        expect(parts.length).toBeGreaterThan(1);
+        expect(parts.every(part => part.length <= 4096)).toBe(true);
+        expect(parts.join('')).toContain(draft.split('\n').map(line => `> ${line}`).join('\n'));
+        expect(parts.at(-1)).toContain('Reply "send"');
+        await router.handle(inbound('send', 'draft-answer', `sent-${sent}`));
+        expect((await result)[0]).toMatchObject({ answer: draft, edited: false });
+    });
+
     it('relays jobs without connector receipts, keeps selection, and answers two jobs by question id', async () => {
         bindings.selectTopic('ws-a', 'dispatcher');
         const a = askFromJob('job-a');

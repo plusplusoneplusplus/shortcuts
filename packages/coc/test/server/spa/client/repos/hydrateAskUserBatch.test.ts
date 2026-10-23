@@ -70,3 +70,9 @@ describe('hydrateAskUserBatch', () => {
         expect(result!.questions[0].questionId).toBe('fresh');
     });
 });
+
+
+it('preserves a multi-line textarea default when hydrating a pending batch', () => {
+    const question = q({ type: 'textarea', defaultValue: 'Hi Alex,\n\nDraft  ', options: undefined });
+    expect(hydrateAskUserBatch([question], null)?.questions[0]).toEqual(question);
+});

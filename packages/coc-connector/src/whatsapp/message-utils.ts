@@ -19,6 +19,7 @@ export interface WhatsAppQuestion {
     progress?: string;
     question: string;
     options: string[];
+    draft?: string;
     hint: string;
 }
 
@@ -26,7 +27,7 @@ export interface WhatsAppQuestion {
 export function formatWhatsAppQuestion(q: WhatsAppQuestion): string {
     // WhatsApp bold cannot span a newline, so each question line is bolded on its own.
     const question = q.question.split('\n').map(line => line.trim() ? `*${line.trim()}*` : '').join('\n');
-    return [...(q.progress ? [q.progress] : []), question, ...q.options, '', q.hint].join('\n');
+    return [...(q.progress ? [q.progress] : []), question, ...q.options, ...(q.draft !== undefined ? ['', ...q.draft.split('\n').map(line => `> ${line}`)] : []), '', q.hint].join('\n');
 }
 
 /** Split on natural boundaries when possible, retaining every character of the message. */

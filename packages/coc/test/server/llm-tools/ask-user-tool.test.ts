@@ -276,7 +276,7 @@ describe('createAskUserTool sensitive-input', () => {
         for (const deps of [{}, { isSensitiveInputEnabled: () => false }]) {
             const params = createAskUserTool({ emitQuestions: vi.fn(), computeTurnIndex: () => 0, ...deps }).tool.parameters as any;
             const item = params.properties.questions.items;
-            expect(item.properties.type.enum).toEqual(['select', 'multi-select', 'yes-no', 'confirm', 'text']);
+            expect(item.properties.type.enum).toEqual(['select', 'multi-select', 'yes-no', 'confirm', 'text', 'textarea']);
             expect(item.properties.sink).toBeUndefined();
             expect(item.properties.sinkArgs).toBeUndefined();
         }
@@ -469,5 +469,46 @@ describe('parseSensitiveInputReceipt', () => {
         [null, null],
     ])('parses %j as %j', (input, expected) => {
         expect(parseSensitiveInputReceipt(input)).toEqual(expected);
+    });
+});
+
+
+describe('textarea drafts', () => {
+    it.each([123, [], null, 'é'.repeat(16385)])('rejects invalid defaultValue %j', async defaultValue => {
+        const emitQuestions = vi.fn();
+        const { tool } = createAskUserTool({ emitQuestions, computeTurnIndex: () => 0 });
+        await expect(tool.handler({ questions: [{ type: 'textarea', question: 'Draft', defaultValue }] } as any)).rejects.toThrow(/defaultValue/);
+        expect(emitQuestions).not.toHaveBeenCalled();
+    });
+
+    it('rejects options, including an empty array', async () => {
+        const { tool } = createAskUserTool({ emitQuestions: vi.fn(), computeTurnIndex: () => 0 });
+        await expect(tool.handler({ questions: [{ type: 'textarea', question: 'Draft', options: [] }] })).rejects.toThrow(/options/);
+    });
+
+    it.each([
+        ['Hi\r\nAlex', 'Hi\nAlex', false],
+        ['Hi Alex', ' Hi Alex ', true],
+        [undefined, 'New\nmessage', true],
+        ['é'.repeat(16384), 'é'.repeat(16384), false],
+    ])('computes edited and preserves the returned text', async (defaultValue, answer, edited) => {
+        let questionId = '';
+        const instance = createAskUserTool({ computeTurnIndex: () => 0, emitQuestions: questions => { questionId = questions[0].questionId; } });
+        const result = instance.tool.handler({ questions: [{ type: 'textarea', question: 'Draft', defaultValue: defaultValue as string | undefined }] });
+        expect(instance.answerQuestion(questionId, answer as string)).toBe(true);
+        await expect(result).resolves.toEqual([{ questionId, answer, skipped: false, edited }]);
+    });
+
+    it('rejects empty, non-string and oversized answers without settling any batch question', async () => {
+        let ids: string[] = [];
+        const instance = createAskUserTool({ computeTurnIndex: () => 0, emitQuestions: questions => { ids = questions.map(q => q.questionId); } });
+        const result = instance.tool.handler({ questions: [{ type: 'text', question: 'Other' }, { type: 'textarea', question: 'Draft', defaultValue: 'Draft' }] });
+        for (const answer of ['', true, [], '😀'.repeat(8193)]) {
+            expect(instance.answerQuestion(ids[1], answer)).toBe(false);
+            expect(instance.answerQuestions([{ questionId: ids[0], answer: 'ok' }, { questionId: ids[1], answer }])).toBe(false);
+            expect(instance.hasPending()).toBe(true);
+        }
+        expect(instance.answerQuestions([{ questionId: ids[0], answer: 'ok' }, { questionId: ids[1], answer: 'Draft' }])).toBe(true);
+        expect((await result)[1]).toMatchObject({ edited: false });
     });
 });

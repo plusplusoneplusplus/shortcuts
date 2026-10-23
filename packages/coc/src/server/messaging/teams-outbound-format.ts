@@ -168,7 +168,35 @@ export interface TeamsQuestion {
     progress?: string;
     question: string;
     options: string[];
+    draft?: string;
     hint: string;
+}
+
+/** Split questions into bounded HTML posts, keeping the reply hint in the last post. */
+export function formatTeamsQuestionChunks(q: TeamsQuestion): string[] {
+    const html = formatTeamsQuestion(q);
+    if (html.length <= 3000) return [html];
+    const sections = [
+        ...(q.progress ? [{ text: q.progress, open: '<p><em>', close: '</em></p>' }] : []),
+        { text: q.question, open: '<p><strong>', close: '</strong></p>' },
+        ...(q.draft !== undefined ? [{ text: q.draft, open: '<blockquote><pre>', close: '</pre></blockquote>' }] : []),
+        ...q.options.map(text => ({ text, open: '<p>', close: '</p>' })),
+        { text: q.hint, open: '<p>', close: '</p>' },
+    ];
+    const parts: string[] = [];
+    for (const section of sections) {
+        let body = '';
+        for (const char of section.text) {
+            const escaped = char === '\n' && section.open !== '<blockquote><pre>' ? '<br>' : escapeTeamsHtml(char);
+            if (section.open.length + body.length + escaped.length + section.close.length > 3000) {
+                parts.push(section.open + body + section.close);
+                body = '';
+            }
+            body += escaped;
+        }
+        if (body) parts.push(section.open + body + section.close);
+    }
+    return parts;
 }
 
 /** Phone-readable relayed question as safe Teams HTML (send with source `html`). */
@@ -177,6 +205,7 @@ export function formatTeamsQuestion(q: TeamsQuestion): string {
     return [
         ...(q.progress ? [`<p><em>${escapeTeamsHtml(q.progress)}</em></p>`] : []),
         `<p><strong>${lines(q.question)}</strong></p>`,
+        ...(q.draft !== undefined ? [`<blockquote><pre>${escapeTeamsHtml(q.draft)}</pre></blockquote>`] : []),
         ...(q.options.length ? [`<p>${q.options.map(escapeTeamsHtml).join('<br>')}</p>`] : []),
         `<p>${escapeTeamsHtml(q.hint)}</p>`,
     ].join('');

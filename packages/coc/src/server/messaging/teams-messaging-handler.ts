@@ -368,7 +368,7 @@ export function registerTeamsMessagingRoutes(
                                 : 'unknown error');
                 });
             }
-            if (relay && opts.questionRelay && getAnswerRelayEnabled() && msg.text.trim()
+            if (relay && opts.questionRelay && getAnswerRelayEnabled() && msg.text.length > 0
                 && parseMessagingCommand(msg.text).type !== 'git-status'
                 && !router.hasPendingImageInstructions(msg)
                 && !msg.images?.length && !msg.botAuthored && !msg.initializationReplay && !msg.historicalSelectionReplay) {
