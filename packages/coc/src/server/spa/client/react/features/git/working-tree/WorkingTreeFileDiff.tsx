@@ -319,16 +319,36 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     // The working tree is not a review, so another changed file opens in Explorer too.
     const panelHost = useUnifiedPanelHost();
     const [definitionReveal, setDefinitionReveal] = useState<DiffEditorPosition | null>(null);
+    const [definitionBack, setDefinitionBack] = useState<DiffEditorPosition[]>([]);
+    useEffect(() => {
+        setDefinitionBack([]);
+        setDefinitionReveal(null);
+    }, [workspaceId, ownerRoute, relativePath, stage]);
     const handleNavigateDefinition = useCallback<DiffDefinitionNavigate>((target, side) => {
         const route = resolveDiffDefinitionRoute({ workspaceId, filePath: relativePath, reviewFiles: [], target, side });
         if (!route) return false;
         if (route.kind === 'same-file') {
+            const origin = monacoViewerRef.current?.capturePosition(route.side);
+            if (origin) setDefinitionBack(stack => [...stack, origin].slice(-50));
             setDefinitionReveal({ side: route.side, line: route.line, column: route.column });
             return true;
         }
         if (route.kind !== 'explorer') return false;
         return openDiffDefinitionInExplorer({ route, workspaceId, ownerRoutingRef: ownerRoute, panelHost });
     }, [workspaceId, relativePath, ownerRoute, panelHost]);
+
+    const goBackFromDefinition = useCallback(() => {
+        const origin = definitionBack[definitionBack.length - 1];
+        if (!origin) return;
+        setDefinitionBack(stack => stack.slice(0, -1));
+        setDefinitionReveal(origin);
+    }, [definitionBack]);
+    const handleDefinitionBackKey = useCallback((event: React.KeyboardEvent) => {
+        if (!definitionBack.length || event.key !== 'ArrowLeft' || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        event.preventDefault();
+        event.stopPropagation();
+        goBackFromDefinition();
+    }, [definitionBack.length, goBackFromDefinition]);
 
     const handleEditorError = useCallback(() => setEditorFailedKey(contentKey), [contentKey]);
     const retryEditor = useCallback(() => setEditorAttempt(a => a + 1), []);
@@ -503,7 +523,8 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     ), [resolveComment, unresolveComment, updateComment, deleteComment, handleAskAI, aiLoadingIds, aiErrors, clearAiError, resolvingIds, deletingIds, insertDraftIntoCurrentChat]);
 
     return (
-        <div className="working-tree-file-diff flex flex-col h-full overflow-hidden" data-testid="working-tree-file-diff">
+        <div className="working-tree-file-diff flex flex-col h-full overflow-hidden" data-testid="working-tree-file-diff"
+            onKeyDownCapture={handleDefinitionBackKey}>
             {/* Header bar */}
             <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="working-tree-file-diff-header">
                 <div className="flex items-center gap-2">
@@ -527,6 +548,17 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                             data-testid="working-tree-file-diff-save-btn"
                         >
                             Save
+                        </button>
+                    )}
+                    {definitionBack.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={goBackFromDefinition}
+                            title="Back to where go to definition started (Alt+←)"
+                            className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                            data-testid="diff-definition-back-chip"
+                        >
+                            ← Back to {stage === 'staged' ? 'Staged' : 'Unstaged'} · {relativePath.split('/').pop()}
                         </button>
                     )}
                     <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />

@@ -321,7 +321,9 @@ The header chip `Back to <shortRef ?? label> · <file>` and Alt+← (captured on
 panel before Monaco, only while the stack is non-empty) pop it: switch file via
 `onNavigateToFile` if needed, then reveal with `scrollTop`, which the adapter
 restores exactly instead of centring. Explorer jumps leave the diff in place and
-record nothing.
+record nothing. `WorkingTreeFileDiff` keeps a bounded same-file stack with the
+same cursor/scroll capture and chip/Alt+← restore; workspace, clone, file or stage
+changes clear that stack and its pending reveal.
 
 Monaco mutes its empty-result message for Ctrl/Cmd+Click, so both diff mounts
 install `diffDefinitionFeedback.ts`: a modifier left-click on a word re-asks the
