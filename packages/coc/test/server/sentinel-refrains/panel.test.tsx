@@ -92,6 +92,21 @@ describe('Sentinel Refrains', () => {
         expect(mock.list).not.toHaveBeenCalled();
         expect(screen.queryByRole('region', { name: 'Refrains' })).toBeNull();
     });
+    it('refreshes manual gate skips and shows gate conflicts as returned', async () => {
+        const gated = job({ cron: '0 * * * *', gateScript: 'return [];' });
+        mock.list.mockResolvedValue({ jobs: [gated] });
+        view();
+        const button = await screen.findByRole('button', { name: 'Run now' });
+        mock.start.mockResolvedValueOnce(run({ status: 'skipped', skipReason: 'gate-empty' }));
+        mock.list.mockResolvedValue({ jobs: [{ ...gated, runs: [run({ status: 'skipped', skipReason: 'gate-empty' })] }] });
+        fireEvent.click(button);
+        await screen.findByText('Last run #1: skipped: gate result empty');
+        await waitFor(() => expect(button).not.toBeDisabled());
+        mock.start.mockRejectedValueOnce(Object.assign(new Error('Refrain gate is paused; resume the gate before Run now'), { status: 409 }));
+        fireEvent.click(button);
+        expect(await screen.findByRole('alert')).toHaveTextContent('Refrain gate is paused; resume the gate before Run now');
+    });
+
     it('renders loading and empty states, and collapses the section', async () => {
         const pending = deferred<{ jobs: SentinelRefrain[] }>();
         mock.list.mockReturnValue(pending.promise);

@@ -17,12 +17,12 @@ export { getRefrainTaskContext } from './refrain-metadata';
 export interface RefrainServiceDeps {
     dataDir: string;
     jobs: SentinelRefrainStore;
-    todos: Pick<SentinelTodoService, 'list' | 'assertOwner'>;
+    todos: Pick<SentinelTodoService, 'assertOwner'>;
     store: ProcessStore;
     getEnabled: () => boolean;
-    /** Live `features.toolScripting`; gated jobs skip their ticks while it is off. */
+    /** Live `features.toolScripting`; gated runs skip admission while it is off. */
     getGateEnabled?: () => boolean;
-    /** Owner-scoped gate runtime (no provider turn); required for gated ticks to run. */
+    /** Owner-scoped gate runtime (no provider turn); required for gated runs. */
     runGate?: RefrainGateOwnerRunner;
     enqueue: (input: CreateTaskInput) => Promise<string>;
     cancelTask: (id: string) => boolean | Promise<boolean>;
@@ -43,7 +43,7 @@ const href = (owner: SentinelTodoOwner, processId: string, turnIndex = 0) =>
 export class SentinelRefrainService {
     private disposed = false;
     private readonly admissions = new Set<Promise<unknown>>();
-    /** In-flight scheduled gates; aborting one cancels it without counting a failure. */
+    /** In-flight admission gates; aborting one cancels it without counting a failure. */
     private readonly gates = new Map<string, AbortController>();
     /** In-flight Test gate runs; shutdown and the tool-scripting flag abort them. */
     private readonly gateTests = new Set<AbortController>();
@@ -74,9 +74,11 @@ export class SentinelRefrainService {
             ...(next ? { nextRunAt: next.toISOString() } : {}) };
     }
 
-    /** Run now: always starts directly, without the gate or its state. */
+    /** Run now evaluates the current gate, even while the schedule is paused. */
     async start(owner: SentinelTodoOwner, jobId: string): Promise<RefrainRunRecord> {
-        return this.track(this.startRun(owner, jobId, 'manual'));
+        const run = await this.track(this.admission(owner, jobId, 'manual'));
+        if (!run) throw new RefrainError('conflict', 'Refrain gate did not admit a run');
+        return run;
     }
 
     /**
@@ -85,7 +87,7 @@ export class SentinelRefrainService {
      * tick ended without a run record (paused, failed or cancelled gate).
      */
     async tick(owner: SentinelTodoOwner, jobId: string, scheduleCurrent?: () => boolean): Promise<RefrainRunRecord | undefined> {
-        return this.track(this.tickRun(owner, jobId, scheduleCurrent));
+        return this.track(this.admission(owner, jobId, 'schedule', scheduleCurrent));
     }
 
     /** Test gate: one evaluation with the saved state. It starts no run, saves nothing and ignores a pause. */
@@ -93,7 +95,7 @@ export class SentinelRefrainService {
         return this.track(this.runGateTest(owner, jobId, signal));
     }
 
-    /** Clears a paused gate and its failure count so scheduled ticks run it again. */
+    /** Clears a paused gate and its failure count so admission can run it again. */
     async resumeGate(owner: SentinelTodoOwner, jobId: string): Promise<RefrainRecord> {
         const job = await this.gatedJob(owner, jobId);
         const resumed = this.deps.jobs.updateGate(owner, jobId, job.gateScript!, () => ({ gatePaused: false, gateConsecutiveFailures: 0 }))!;
@@ -101,25 +103,35 @@ export class SentinelRefrainService {
         return resumed;
     }
 
-    /** Cancels a job's in-flight scheduled gate after an edit or delete. */
+    /** Cancels a job's in-flight admission gate after an edit or delete. */
     cancelGate(owner: SentinelTodoOwner, jobId: string): void {
         this.gates.get(gateKey(owner, jobId))?.abort(new RefrainError('conflict', 'Refrain changed during its gate'));
     }
 
-    private async tickRun(owner: SentinelTodoOwner, jobId: string, scheduleCurrent?: () => boolean): Promise<RefrainRunRecord | undefined> {
+    private async admission(owner: SentinelTodoOwner, jobId: string, trigger: RefrainRunRecord['trigger'], scheduleCurrent?: () => boolean): Promise<RefrainRunRecord | undefined> {
         await this.assertOwner(owner);
         if (scheduleCurrent?.() === false) throw new RefrainError('conflict', 'Refrain schedule changed during admission');
         const job = this.deps.jobs.get(owner, jobId);
         const script = job.gateScript;
-        if (!script) return this.startRun(owner, jobId, 'schedule', scheduleCurrent);
-        if (!job.enabled) throw new RefrainError('conflict', 'Refrain schedule is paused');
+        if (!script) return this.startRun(owner, jobId, trigger, scheduleCurrent);
+        if (!job.enabled && trigger === 'schedule') throw new RefrainError('conflict', 'Refrain schedule is paused');
         // Overlap is checked and recorded in one synchronous step that never claims a run, so a busy job
         // never evaluates its gate and a run that settles meanwhile cannot let this tick start without it.
         if (this.deps.jobs.runs(owner, jobId).some(run => ACTIVE.includes(run.status as typeof ACTIVE[number]))) {
-            return this.skip(owner, jobId, 'overlap');
+            if (trigger === 'manual') throw new RefrainError('conflict', 'Refrain already has an active run');
+            return this.skip(owner, jobId, trigger, 'overlap');
         }
-        if (job.gatePaused || this.gates.has(gateKey(owner, jobId))) return undefined;
-        if (!this.gateEnabled()) return this.skip(owner, jobId, 'gate-unavailable');
+        if (job.gatePaused || this.gates.has(gateKey(owner, jobId))) {
+            if (trigger === 'manual') throw new RefrainError('conflict', job.gatePaused
+                ? 'Refrain gate is paused; resume the gate before Run now' : 'Refrain gate evaluation is already in flight');
+            return undefined;
+        }
+        if (!this.gateEnabled()) return this.skip(owner, jobId, trigger, 'gate-unavailable');
+        const current = () => {
+            const live = this.deps.jobs.list(owner).find(value => value.id === jobId);
+            return live?.revision === job.revision && live.gateScript === script
+                && (trigger === 'manual' || live.enabled) && scheduleCurrent?.() !== false;
+        };
         const controller = new AbortController();
         const { signal } = controller;
         // The gate stays cancellable until its outcome is recorded.
@@ -129,20 +141,24 @@ export class SentinelRefrainService {
             try {
                 result = await this.evaluateGate(owner, job, signal);
             } catch (error) {
-                if (await this.gateLive(owner, signal, scheduleCurrent) && this.gateCurrent(signal, scheduleCurrent)) {
+                if (await this.gateLive(owner, signal, current) && this.gateCurrent(signal, current)) {
                     await this.gateFailed(owner, jobId, script, message(error));
                 }
+                if (trigger === 'manual') throw signal.reason ?? new RefrainError('conflict', message(error));
                 return undefined;
             }
-            if (!(await this.gateLive(owner, signal, scheduleCurrent)) || !this.gateCurrent(signal, scheduleCurrent)) return undefined;
+            if (!(await this.gateLive(owner, signal, current)) || !this.gateCurrent(signal, current)) {
+                if (trigger === 'manual') throw signal.reason ?? new RefrainError('conflict', 'Refrain gate admission became unavailable or changed');
+                return undefined;
+            }
             // Save and claim in one synchronous step: a saved non-empty result always starts its run
             // or leaves a run record (an overlap skip, or a run that fails its admission).
             const saved = this.deps.jobs.updateGate(owner, jobId, script, () => ({
                 gateLastResult: result, gateConsecutiveFailures: 0, gateLastError: undefined,
             }));
             if (!saved) return undefined;
-            if (EMPTY_GATE_RESULTS.has(result)) return this.skip(owner, jobId, 'gate-empty');
-            return this.admit(owner, jobId, 'schedule', scheduleCurrent, result);
+            if (EMPTY_GATE_RESULTS.has(result)) return this.skip(owner, jobId, trigger, 'gate-empty');
+            return await this.admit(owner, jobId, trigger, current, result, signal);
         } finally {
             if (this.gates.get(gateKey(owner, jobId)) === controller) this.gates.delete(gateKey(owner, jobId));
         }
@@ -222,7 +238,7 @@ export class SentinelRefrainService {
                 provider: target.provider,
                 prompt: `[Job: ${job.name}] gate script paused after ${GATE_FAILURE_LIMIT} consecutive failures. `
                     + `Last error: ${job.gateLastError?.message ?? 'unknown'}\n\n`
-                    + 'Scheduled ticks will not run the gate or start runs until the user resumes the gate. '
+                    + 'Scheduled ticks and Run now cannot start runs until the user resumes the gate. '
                     + 'This notice is informational: it grants no authority to edit, test or resume the gate script.',
                 relayRequestId: `sentinel-job-gate-notice:${taskId}`, context: { sentinelScheduledJob: context } },
             config: { retryAttempts: 0, retryOnFailure: false }, displayName: `[Job: ${job.name}] gate paused`,
@@ -230,8 +246,8 @@ export class SentinelRefrainService {
         if (this.disposed || !this.deps.getEnabled()) await this.deps.cancelTask(taskId);
     }
 
-    private skip(owner: SentinelTodoOwner, jobId: string, reason: NonNullable<RefrainRunRecord['skipReason']>): RefrainRunRecord {
-        const run = this.deps.jobs.createRun(owner, jobId, 'schedule', undefined, this.now().toISOString(), reason);
+    private skip(owner: SentinelTodoOwner, jobId: string, trigger: RefrainRunRecord['trigger'], reason: NonNullable<RefrainRunRecord['skipReason']>): RefrainRunRecord {
+        const run = this.deps.jobs.createRun(owner, jobId, trigger, undefined, this.now().toISOString(), reason);
         this.changed(owner);
         return run;
     }
@@ -242,8 +258,8 @@ export class SentinelRefrainService {
         if (scheduleCurrent?.() === false) throw new RefrainError('conflict', 'Refrain schedule changed during admission');
         const job = this.deps.jobs.get(owner, jobId);
         if (!job.enabled && trigger === 'schedule') throw new RefrainError('conflict', 'Refrain schedule is paused');
-        // A gated job's scheduled run needs its gate result; a script added during admission ends the tick.
-        if (trigger === 'schedule' && job.gateScript) throw new RefrainError('conflict', 'Refrain schedule changed during admission');
+        // A gated run needs its current gate result; a script added during admission ends the tick.
+        if (job.gateScript) throw new RefrainError('conflict', 'Refrain schedule changed during admission');
         return this.admit(owner, jobId, trigger, scheduleCurrent);
     }
 
@@ -252,9 +268,9 @@ export class SentinelRefrainService {
      * finishes the run record, so a claim made right after saving a gate result is never lost silently.
      */
     private async admit(owner: SentinelTodoOwner, jobId: string, trigger: RefrainRunRecord['trigger'],
-        scheduleCurrent?: () => boolean, gateResult?: string): Promise<RefrainRunRecord> {
+        scheduleCurrent?: () => boolean, gateResult?: string, gateSignal?: AbortSignal): Promise<RefrainRunRecord> {
         const taskId = randomUUID();
-        // Claim single-flight before reading the snapshot or awaiting filesystem I/O.
+        // Claim single-flight before asynchronous chat admission.
         const run = this.deps.jobs.createRun(owner, jobId, trigger, toQueueProcessId(taskId), this.now().toISOString());
         this.changed(owner);
         if (run.status === 'skipped') return run;
@@ -262,23 +278,21 @@ export class SentinelRefrainService {
         try {
             let job = this.deps.jobs.get(owner, jobId);
             await this.ensureChat(owner, job);
-            const ledger = await this.deps.todos.list(owner);
-            const snapshotPath = this.snapshotPath(owner, jobId, run.id);
-            await fs.mkdir(path.dirname(snapshotPath), { recursive: true });
-            await fs.writeFile(snapshotPath, JSON.stringify({ owner, jobId, runId: run.id,
-                createdAt: run.createdAt, readOnly: true, ledger }, null, 2), { flag: 'wx', mode: 0o400 });
-            await this.pruneSnapshots(owner, jobId);
             await this.assertOwner(owner);
-            if (scheduleCurrent?.() === false) throw new RefrainError('conflict', 'Refrain schedule changed during admission');
             job = this.deps.jobs.get(owner, jobId);
+            if (!job.enabled && trigger === 'schedule') throw new RefrainError('conflict', 'Refrain schedule is paused');
+            if (scheduleCurrent?.() === false) throw new RefrainError('conflict', 'Refrain changed during admission');
             if (this.deps.jobs.run(owner, jobId, run.id).status !== 'queued') {
                 return this.deps.jobs.run(owner, jobId, run.id);
             }
-            if (!job.enabled && trigger === 'schedule') throw new RefrainError('conflict', 'Refrain schedule is paused');
             const process = await this.deps.store.getProcess(job.processId!, owner.workspaceId);
             if (!process) throw new RefrainError('conflict', 'Persistent refrain chat was removed');
             await this.assertOwner(owner);
             if (this.deps.jobs.run(owner, jobId, run.id).status !== 'queued') return this.deps.jobs.run(owner, jobId, run.id);
+            if (scheduleCurrent?.() === false) throw new RefrainError('conflict', 'Refrain changed during admission');
+            if (gateSignal && !this.gateCurrent(gateSignal, scheduleCurrent)) {
+                throw gateSignal.reason ?? new RefrainError('conflict', 'Refrain gate admission became unavailable');
+            }
             const context: RefrainTaskContext = { ...owner, jobId, runId: run.id, kind: 'run' };
             await this.deps.enqueue({
                 id: taskId, type: 'chat', priority: 'low', repoId: owner.workspaceId, processId: job.processId,
@@ -288,8 +302,6 @@ export class SentinelRefrainService {
                     prompt: [
                         job.instructions, '',
                         ...(gateResult === undefined ? [] : ['Gate script result (JSON):', fenced(gateResult), '']),
-                        `Fresh read-only Sentinel to-do snapshot: ${snapshotPath}`,
-                        'Read that file for this run; never modify the snapshot or the Sentinel ledger.',
                         'You are a job chat, not the owning Sentinel. You have no ledger-writing authority.',
                         'Return the result in your final response. The server queues the handback to the Sentinel.',
                     ].join('\n'),
@@ -584,16 +596,6 @@ export class SentinelRefrainService {
     async removeSnapshots(owner: SentinelTodoOwner, id: string): Promise<void> {
         try { await fs.rm(path.dirname(this.snapshotPath(owner, id, 'unused')), { recursive: true, force: true }); }
         catch (error) { console.error('[sentinel-jobs] Could not remove old snapshots:', error); }
-    }
-
-    private async pruneSnapshots(owner: SentinelTodoOwner, id: string): Promise<void> {
-        const directory = path.dirname(this.snapshotPath(owner, id, 'unused'));
-        const retained = new Set(this.deps.jobs.runs(owner, id).map(run => `${run.id}.json`));
-        for (const filename of await fs.readdir(directory)) {
-            if (filename.endsWith('.json') && !retained.has(filename)) {
-                await fs.rm(path.join(directory, filename), { force: true });
-            }
-        }
     }
 
     private async ensureChat(owner: SentinelTodoOwner, job: RefrainRecord): Promise<void> {

@@ -69,7 +69,7 @@ export function SentinelRefrainDialog({ job, client, baseUrl, effortLevelsEnable
             <label htmlFor={`${id}-instructions`}>Instructions</label>
             <textarea id={`${id}-instructions`} className={`${INPUT} min-h-[100px]`} value={draft.instructions} maxLength={32_000} required disabled={busy}
                 onChange={event => update('instructions', event.target.value)} />
-            <p className="text-xs text-[#616161] dark:text-[#9d9d9d]">Each run receives a fresh read-only To-do snapshot by file path. Sentinel reviews the result and updates its list.</p>
+            <p className="text-xs text-[#616161] dark:text-[#9d9d9d]">Each run receives your instructions and the current gate result, when configured. Coda handles automatic To-do review.</p>
             <div className="grid grid-cols-2 gap-2">
                 <div><label htmlFor={`${id}-provider`}>Provider</label>
                     <select id={`${id}-provider`} className={INPUT} value={draft.provider} disabled={busy}
@@ -117,7 +117,7 @@ export function SentinelRefrainDialog({ job, client, baseUrl, effortLevelsEnable
                 spellCheck={false} aria-invalid={!!gateError} aria-describedby={`${id}-gate-help`} placeholder="return items.length ? { items } : null;"
                 onChange={event => update('gateScript', event.target.value)} />
             <p id={`${id}-gate-help`} role={gateError ? 'alert' : undefined} className="text-xs">{gateError
-                ?? 'Async JS body run before each scheduled tick with tools and state (its previous result). Return a non-empty JSON value to start a run with it in the prompt; null, false, "", [] or {} skips. Run now skips the gate.'}</p>
+                ?? 'Async JS body run before scheduled runs and Run now with tools and state (its previous result). Return a non-empty JSON value to start a run with it in the prompt; null, false, "", [] or {} skips. Empty results skip both scheduled runs and Run now.'}</p>
             <label className="text-xs"><input type="checkbox" checked={draft.enabled} disabled={busy} onChange={event => update('enabled', event.target.checked)} /> Enabled</label>
             {error && <p role="alert" className="text-xs text-[#c72e2e] dark:text-[#f48771]">{error}</p>}
             <div className="mt-2 flex justify-end gap-2"><Button variant="secondary" disabled={busy} onClick={onClose}>Cancel</Button>

@@ -154,6 +154,17 @@ describe('Sentinel scheduled jobs client', () => {
     });
   });
 
+  it('returns manual gate skips and preserves gate conflict errors', async () => {
+    const skipped: SentinelRefrainRun = { id: 'skip', runNumber: 1, trigger: 'manual',
+      status: 'skipped', skipReason: 'gate-empty', createdAt: '2026-10-18T19:27:15Z' };
+    const client = new SentinelTodosClient(createMockAdapter(skipped)).jobs;
+    expect(await client.start('ws', 'sentinel', 'job')).toEqual(skipped);
+    const fetch = vi.fn(async () => Response.json({ code: 'conflict', error: 'Refrain gate is paused' }, { status: 409 }));
+    const remote = new CocClient({ baseUrl: 'https://remote.test', fetch });
+    await expect(remote.sentinelTodos.jobs.start('ws', 'sentinel', 'job')).rejects.toMatchObject({
+      status: 409, message: 'Refrain gate is paused' });
+  });
+
   it('cancels an active job run', async () => {
     const cancelled: SentinelRefrainRun = {
       id: 'run-001',

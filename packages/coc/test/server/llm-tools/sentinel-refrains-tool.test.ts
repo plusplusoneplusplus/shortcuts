@@ -199,6 +199,16 @@ describe('custom jobs', () => {
         expect(enqueue).not.toHaveBeenCalled();
     });
 
+    it('run_now reports manual gate skips and preserves gate errors', async () => {
+        const job = await createJob({ cron: '0 9 * * *', gateScript: 'return state;' });
+        runGate.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('Gate timed out'));
+        expect(await call({ action: 'run_now', kind: 'custom', jobId: job.id })).toMatchObject({
+            run: { trigger: 'manual', status: 'skipped', skipReason: 'gate-empty' } });
+        expect(await call({ action: 'run_now', kind: 'custom', jobId: job.id })).toMatchObject({
+            code: 'conflict', error: 'Gate timed out' });
+        expect(enqueue).not.toHaveBeenCalled();
+    });
+
     it('tests a paused gate with its saved state and the call signal, then resumes it', async () => {
         const gateScript = 'return state;';
         const job = await createJob({ cron: '0 9 * * *', gateScript });

@@ -137,7 +137,7 @@ function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFol
         const timer = setInterval(() => { if (document.visibilityState !== 'hidden') void load(); }, 30_000);
         return () => { live.current = false; sequence.current++; read.current?.abort(); connection.close(); clearInterval(timer); };
     }, [client, load, owner.ownerWorkspaceId, owner.processId]);
-    const mutate = async (action: () => Promise<unknown>, success?: () => void): Promise<boolean> => {
+    const mutate = async (action: () => Promise<unknown>, success?: () => void, showConflictDraft = true): Promise<boolean> => {
         if (pending.current || !live.current) return false;
         pending.current = true;
         read.current?.abort();
@@ -153,7 +153,7 @@ function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFol
         } catch (failure) {
             if (live.current) {
                 const conflict = failure !== null && typeof failure === 'object' && 'status' in failure && failure.status === 409;
-                setActionError(conflict ? 'Refrain changed. Review the refreshed refrain before trying again; your draft is preserved.'
+                setActionError(conflict && showConflictDraft ? 'Refrain changed. Review the refreshed refrain before trying again; your draft is preserved.'
                     : failure instanceof Error ? failure.message : String(failure));
             }
         } finally {
@@ -185,7 +185,7 @@ function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFol
             {jobs?.length === 10 && <p role="status" className={MUTED}>10-refrain limit reached. Delete a refrain before creating another.</p>}
             {jobs?.map(job => <JobRow key={job.id} job={job} owner={owner} onFollowLink={onFollowLink} disabled={busy || !!readError}
                 onEdit={() => { setActionError(null); setEditor(job); }} onDelete={() => { setActionError(null); setDeleting(job); }}
-                onRun={() => void mutate(() => api.start(owner.ownerWorkspaceId, owner.processId, job.id))}
+                onRun={() => void mutate(() => api.start(owner.ownerWorkspaceId, owner.processId, job.id), undefined, false)}
                 onCancel={() => { if (job.activeRun) void mutate(() => api.cancel(owner.ownerWorkspaceId, owner.processId, job.id, job.activeRun!.id)); }}
                 onToggle={() => void mutate(() => api.update(owner.ownerWorkspaceId, owner.processId, job.id, { enabled: !job.enabled, expectedRevision: job.revision }))}
                 onTestGate={signal => api.testGate(owner.ownerWorkspaceId, owner.processId, job.id, { signal })}
@@ -283,7 +283,7 @@ function RefrainGate({ job, disabled, onTestGate, onResumeGate }: GateTestProps 
     const failure = test && 'error' in test ? test.error : outcome && !outcome.ok ? outcome.error ?? 'Unknown error' : undefined;
     return <div data-testid="sentinel-refrain-gate" className="flex min-w-0 flex-col gap-1">
         <p className={job.gatePaused ? ERROR : MUTED}>{job.gatePaused
-            ? `Gate paused after ${job.gateConsecutiveFailures} failures in a row. Scheduled ticks skip it until you resume it.`
+            ? `Gate paused after ${job.gateConsecutiveFailures} failures in a row. Scheduled runs and Run now are blocked until you resume it.`
             : `Gate active${job.gateConsecutiveFailures ? ` · ${job.gateConsecutiveFailures} failed in a row` : ''}`}</p>
         {job.gateLastError && <p className={ERROR}>Last gate error (<time dateTime={job.gateLastError.at}>{new Date(job.gateLastError.at).toLocaleString()}</time>): {job.gateLastError.message}</p>}
         {job.gateLastResult !== undefined && <p className={`${MUTED} break-all`} title={job.gateLastResult}>Last gate result: <code>{preview(job.gateLastResult)}</code></p>}
