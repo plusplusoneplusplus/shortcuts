@@ -102,6 +102,38 @@ describe('unified panel tab menu model', () => {
             .toEqual([workspace.id, firstChat.id, secondChat.id]);
     });
 
+    it('offers group-only closes behind the flag and retains saved order and dirty tabs', () => {
+        const first = tab('file', 'first.ts');
+        const note = tab('note', 'note.md');
+        const last = tab('diff', 'last.diff');
+        const tabs = [first, tab('browser', 'web'), note, tab('canvas', 'canvas'), last];
+        const dirty = new Set([last.id]);
+        expect(unifiedPanelBulkCloseTargets(tabs, note.id, 'close-group', dirty))
+            .toEqual([first.id, note.id, last.id]);
+        expect(unifiedPanelBulkCloseTargets(tabs, note.id, 'close-others-in-group', dirty))
+            .toEqual([first.id, last.id]);
+        const off = unifiedPanelTabMenuItems(note, tabs, dirty);
+        expect(off.some(item => item.action === 'close-group')).toBe(false);
+        const on = unifiedPanelTabMenuItems(note, tabs, dirty, undefined, undefined, true);
+        expect(on.find(item => item.action === 'close-group')?.disabled).toBe(false);
+        expect(on.find(item => item.action === 'close-others-in-group')?.disabled).toBe(false);
+        const singleton = unifiedPanelTabMenuItems(tabs[1], tabs, dirty, undefined, undefined, true);
+        expect(singleton.find(item => item.action === 'close-others-in-group')?.disabled).toBe(true);
+    });
+
+    it('bounds grouped menu moves even when given mixed movable ids', () => {
+        const first = tab('file', 'first.ts');
+        const last = tab('note', 'last.md');
+        const tabs = [tab('terminal', 'terminal'), first, tab('browser', 'web'), last, tab('canvas', 'canvas')];
+        const ids = tabs.map(item => item.id);
+        const firstItems = unifiedPanelTabMenuItems(first, tabs, new Set(), undefined, ids, true);
+        expect(firstItems.find(item => item.action === 'move-left')?.disabled).toBe(true);
+        expect(firstItems.find(item => item.action === 'move-right')?.disabled).toBe(false);
+        const lastItems = unifiedPanelTabMenuItems(last, tabs, new Set(), undefined, ids, true);
+        expect(lastItems.find(item => item.action === 'move-left')?.disabled).toBe(false);
+        expect(lastItems.find(item => item.action === 'move-right')?.disabled).toBe(true);
+    });
+
     it('never targets tabs hidden under another chat', () => {
         let state = openTab(EMPTY_UNIFIED_PANEL, {
             kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'terminal', label: 'Terminal',

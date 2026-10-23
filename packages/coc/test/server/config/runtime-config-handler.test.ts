@@ -114,6 +114,7 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.repoGroupAggregatedChatsEnabled).toBe(false);
         expect((result.features as Record<string, unknown>).vimNavigationEnabled).toBe(false);
         expect(result.features.panelTabReorderingEnabled).toBe(true);
+        expect(result.features.panelTabGroupsEnabled).toBe(false);
         expect(result.features.explorerDeleteEnabled).toBe(true);
         expect(result.features.chatHistoryPagingEnabled).toBe(false);
         expect(result.features.railManualRefreshEnabled).toBe(true);
@@ -123,6 +124,11 @@ describe('buildRuntimeDashboardConfig', () => {
     it.each([false, true])('exposes explicit panel tab reordering without a restart (%s)', enabled => {
         const svc = createMockRuntimeConfigService({ features: { panelTabReordering: enabled } });
         expect(buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.panelTabReorderingEnabled).toBe(enabled);
+    });
+
+    it.each([false, true])('exposes explicit panel tab groups without a restart (%s)', enabled => {
+        const svc = createMockRuntimeConfigService({ features: { panelTabGroups: enabled } });
+        expect(buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.panelTabGroupsEnabled).toBe(enabled);
     });
 
     it.each([false, true])('retains explicit collapsed-sidebar settings in runtime config (%s)', enabled => {

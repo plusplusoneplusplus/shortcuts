@@ -1216,6 +1216,7 @@ timeout: 300
                 '  markdownPanelPreview: false',
                 '  panelSourceSplit: false',
                 '  panelTabReordering: true',
+                '  panelTabGroups: true',
                 '  htmlPageTab: false',
                 '  chatStyleSelector: true',
                 '  defaultChatStyle: direct',
@@ -1259,7 +1260,7 @@ timeout: 300
         describe.each([
             'sentinelTodoDependencies', 'sentinelResultCards', 'sentinelPrOutcomeWake', 'sentinelFollowUpResults', 'sentinelRemoteResults',
             'sentinelTodoExternalReferences', 'railManualRefresh', 'railStatusActions',
-            'explorerDelete', 'panelTabReordering',
+            'explorerDelete', 'panelTabReordering', 'panelTabGroups',
         ] as const)('%s', feature => {
             it.each([undefined, false, true])('resolves its value and source (%s)', value => {
                 const configPath = path.join(tmpDir, `${feature}.yaml`);
@@ -1548,6 +1549,7 @@ timeout: 300
                     "markdownPanelPreview": true,
                     "nativeCliSessions": false,
                     "panelSourceSplit": true,
+                    "panelTabGroups": false,
                     "panelTabReordering": true,
                     "pinnedScopes": true,
                     "queryPullRequestTool": true,
@@ -1789,6 +1791,7 @@ timeout: 300
                   "features.markdownPanelPreview": "default",
                   "features.nativeCliSessions": "default",
                   "features.panelSourceSplit": "default",
+                  "features.panelTabGroups": "default",
                   "features.panelTabReordering": "default",
                   "features.pinnedScopes": "default",
                   "features.queryPullRequestTool": "default",

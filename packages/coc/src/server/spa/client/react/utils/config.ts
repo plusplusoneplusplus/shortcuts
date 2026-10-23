@@ -131,6 +131,8 @@ interface DashboardConfig {
     panelSourceSplitEnabled?: boolean;
     /** Whether unified right-panel resource tabs can be reordered. Default true. */
     panelTabReorderingEnabled?: boolean;
+    /** Whether fixed inline right-panel tab groups are enabled. Default false. */
+    panelTabGroupsEnabled?: boolean;
     /** Whether the owning server allows confirmed permanent Explorer deletion. Default true. */
     explorerDeleteEnabled?: boolean;
     /** Desktop: whether local .html/.htm chat links open as a rendered page tab. Default true. */
@@ -347,6 +349,10 @@ export function isHtmlPageTabEnabled(): boolean {
 /** Unified right-panel tab reordering (`features.panelTabReordering`); on unless the server says off. */
 export function isPanelTabReorderingEnabled(): boolean {
     return getConfig().panelTabReorderingEnabled !== false;
+}
+
+export function isPanelTabGroupsEnabled(): boolean {
+    return getConfig().panelTabGroupsEnabled === true;
 }
 
 /** Rendered Markdown in unified right-panel file tabs (`features.markdownPanelPreview`); on unless the server says off. */

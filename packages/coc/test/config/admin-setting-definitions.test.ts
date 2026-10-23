@@ -837,6 +837,25 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { explorerDelete: false } }).explorerDeleteEnabled).toBe(false);
     });
 
+    it('exposes panel tab groups as a live, experimental default-off Appearance toggle', () => {
+        const def = getAdminSettingDefinition('features.panelTabGroups')!;
+        expect(def.value).toEqual({ kind: 'boolean' });
+        expect(def.default).toBe(false);
+        expect(def.runtime).toBe('live');
+        expect(def.runtimeFlag).toBe('panelTabGroupsEnabled');
+        expect(def.ui).toMatchObject({
+            tab: 'appearance', group: 'editorFiles', order: 45, badge: 'experimental',
+            testId: 'toggle-panel-tab-groups-enabled',
+        });
+        expect(DEFAULT_CONFIG.features.panelTabGroups).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).panelTabGroupsEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({ features: {} }).panelTabGroupsEnabled).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).panelTabGroupsEnabled).toBe(false);
+        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
+            features: { panelTabGroups: true },
+        })).panelTabGroupsEnabled).toBe(true);
+    });
+
     // Repo-group aggregated chats: a default-off live toggle that gates the
     // group's combined chat list; the read-only feed route ships regardless.
     it('exposes repo-group aggregated chats as a default-off experimental feature', () => {
@@ -923,6 +942,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.schedulerDelayHint': 'appearance',
         'features.explorerDelete': 'appearance',
         'features.panelTabReordering': 'appearance',
+        'features.panelTabGroups': 'appearance',
         'features.htmlPageTab': 'browser',
         'scratchpad.layout': 'appearance',
         // Editors (functional editor behavior only)

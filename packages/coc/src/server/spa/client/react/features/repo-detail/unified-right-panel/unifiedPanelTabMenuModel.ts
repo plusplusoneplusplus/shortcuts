@@ -1,11 +1,14 @@
 import { TRUSTED_PATH_PREFIX } from '../explorer/ExactOpen';
 import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
+import { isGroupBoundaryMove, stripGroupForKind } from './unifiedPanelTabGroups';
 
 export type UnifiedPanelBulkCloseAction =
     | 'close-others'
     | 'close-right'
     | 'close-saved'
+    | 'close-group'
+    | 'close-others-in-group'
     | 'close-all';
 
 export type UnifiedPanelTabMenuAction =
@@ -43,6 +46,12 @@ export function unifiedPanelBulkCloseTargets(
     const sourceIndex = tabs.findIndex(tab => tab.id === sourceId);
     if (sourceIndex < 0) return [];
     switch (action) {
+        case 'close-group':
+        case 'close-others-in-group': {
+            const group = stripGroupForKind(tabs[sourceIndex].kind);
+            return tabs.filter(tab => stripGroupForKind(tab.kind) === group
+                && (action === 'close-group' || tab.id !== sourceId)).map(tab => tab.id);
+        }
         case 'close-others':
             return tabs.filter(tab => tab.id !== sourceId).map(tab => tab.id);
         case 'close-right':
@@ -64,13 +73,17 @@ export function unifiedPanelTabMenuItems(
         revealInExplorer: false,
     },
     movableIds?: readonly string[],
+    groupsEnabled = false,
 ): UnifiedPanelTabMenuItem[] {
     const items: UnifiedPanelTabMenuItem[] = [];
     if (movableIds) {
-        const index = movableIds.indexOf(tab.id);
+        const permittedIds = groupsEnabled
+            ? movableIds.filter(id => !isGroupBoundaryMove(tabs, tab.id, id))
+            : movableIds;
+        const index = permittedIds.indexOf(tab.id);
         items.push(
             { action: 'move-left', label: 'Move left', group: 'move', disabled: index <= 0 },
-            { action: 'move-right', label: 'Move right', group: 'move', disabled: index < 0 || index >= movableIds.length - 1 },
+            { action: 'move-right', label: 'Move right', group: 'move', disabled: index < 0 || index >= permittedIds.length - 1 },
         );
     }
     if (tab.preview) {
@@ -103,6 +116,13 @@ export function unifiedPanelTabMenuItems(
             disabled: unifiedPanelBulkCloseTargets(tabs, tab.id, 'close-all', dirtyIds).length === 0,
         },
     );
+    if (groupsEnabled) {
+        items.push(
+            { action: 'close-group', label: 'Close all in group', group: 'close', disabled: false },
+            { action: 'close-others-in-group', label: 'Close others in group', group: 'close',
+                disabled: unifiedPanelBulkCloseTargets(tabs, tab.id, 'close-others-in-group', dirtyIds).length === 0 },
+        );
+    }
     if (tab.kind === 'file') {
         if (fileActions.openToSide) {
             items.push({ action: 'open-to-side', label: 'Open to the Right', group: 'file', disabled: false });

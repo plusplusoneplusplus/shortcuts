@@ -207,6 +207,155 @@ describe('UnifiedRightPanel', () => {
         delete (window as { cocDesktop?: unknown }).cocDesktop;
     });
 
+    describe('grouped resource tab shell', () => {
+        afterEach(() => { _resetRuntimeConfig(); });
+
+        function seedCanvasBurst() {
+            let state = openTab(EMPTY_UNIFIED_PANEL, {
+                kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'shell', label: 'Shell',
+            });
+            state = openTab(state, {
+                kind: 'file', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'src/a.ts', label: 'a.ts',
+            });
+            for (let index = 1; index <= 5; index++) {
+                state = openTab(state, {
+                    kind: 'canvas', ownerWorkspaceId: WS, chatId: 'chat-a',
+                    resourceId: `canvas-${index}`, label: `Canvas ${index}`,
+                });
+            }
+            writeUnifiedPanelState(WS, state);
+            return state;
+        }
+
+        it('renders grouped tabs and replaces the active canvas header count chip with group overflow', async () => {
+            applyRuntimeConfigPatch({ panelTabGroupsEnabled: true });
+            const state = seedCanvasBurst();
+            const activeId = state.activeByScope['chat-a'];
+            renderPanel({ chatId: 'chat-a' });
+
+            expect(screen.getByRole('button', { name: 'Tools, 1 tabs' })).toHaveAttribute('aria-expanded', 'true');
+            expect(screen.getByRole('button', { name: 'Files, 1 tabs' })).toHaveAttribute('aria-expanded', 'true');
+            expect(screen.getByRole('button', { name: 'Canvas, 5 tabs' })).toHaveAttribute('aria-expanded', 'true');
+            expect(screen.getByTestId('unified-panel-group-overflow-canvas')).toHaveTextContent('+2');
+            expect(screen.queryByTestId('unified-panel-canvas-stack')).toBeNull();
+            expect(screen.getByTestId(`unified-panel-tab-${activeId}`)).toHaveAttribute('aria-selected', 'true');
+            await waitFor(() => expect(screen.getByTestId(`unified-panel-view-${activeId}`)).toBeTruthy());
+            expect(readUnifiedPanelState(WS)).toBe(state);
+        });
+
+        it('reacts to live grouping config changes without replacing the active view or saved tab state', async () => {
+            applyRuntimeConfigPatch({ panelTabGroupsEnabled: false });
+            const state = seedCanvasBurst();
+            const activeId = state.activeByScope['chat-a'];
+            renderPanel({ chatId: 'chat-a' });
+            await waitFor(() => expect(screen.getByTestId('unified-panel-canvas-stack')).toHaveTextContent('Canvases 5'));
+            const view = screen.getByTestId(`unified-panel-view-${activeId}`);
+            expect(screen.queryByTestId('unified-panel-group-canvas')).toBeNull();
+
+            act(() => { applyRuntimeConfigPatch({ panelTabGroupsEnabled: true }); });
+            expect(screen.getByRole('button', { name: 'Canvas, 5 tabs' })).toBeTruthy();
+            expect(screen.getByTestId('unified-panel-group-overflow-canvas')).toHaveTextContent('+2');
+            expect(screen.queryByTestId('unified-panel-canvas-stack')).toBeNull();
+            expect(screen.getByTestId(`unified-panel-view-${activeId}`)).toBe(view);
+            expect(readUnifiedPanelState(WS)).toBe(state);
+
+            act(() => { applyRuntimeConfigPatch({ panelTabGroupsEnabled: false }); });
+            expect(screen.queryByTestId('unified-panel-group-canvas')).toBeNull();
+            expect(screen.getByTestId('unified-panel-canvas-stack')).toHaveTextContent('Canvases 5');
+            expect(screen.getByTestId(`unified-panel-view-${activeId}`)).toBe(view);
+            expect(readUnifiedPanelState(WS)).toBe(state);
+        });
+
+        it('persists folds across chat switches and remounts while keeping panel workspaces isolated', async () => {
+            applyRuntimeConfigPatch({ panelTabGroupsEnabled: true });
+            function seedFiles(workspaceId: string) {
+                let state = EMPTY_UNIFIED_PANEL;
+                for (const chatId of ['chat-a', 'chat-b']) {
+                    for (const resourceId of ['src/first.ts', 'src/second.ts']) {
+                        state = openTab(state, {
+                            kind: 'file', ownerWorkspaceId: workspaceId, chatId, resourceId, label: resourceId,
+                        });
+                    }
+                }
+                writeUnifiedPanelState(workspaceId, state);
+                return state;
+            }
+            const firstState = seedFiles(WS);
+            const otherState = seedFiles('other-workspace');
+            const { rerender, unmount } = renderPanel({ chatId: 'chat-a' });
+            fireEvent.click(screen.getByRole('button', { name: 'Files, 2 tabs' }));
+            expect(screen.getByRole('button', { name: 'Files, 2 tabs' })).toHaveAttribute('aria-expanded', 'false');
+            expect(screen.getAllByRole('tab')).toHaveLength(1);
+            expect(screen.getByTestId(`unified-panel-tab-${firstState.activeByScope['chat-a']}`)).toHaveAttribute('aria-selected', 'true');
+
+            rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-b" dock={dockStub()} />);
+            expect(screen.getByRole('button', { name: 'Files, 2 tabs' })).toHaveAttribute('aria-expanded', 'false');
+            expect(screen.getAllByRole('tab')).toHaveLength(1);
+            expect(screen.getByTestId(`unified-panel-tab-${firstState.activeByScope['chat-b']}`)).toHaveAttribute('aria-selected', 'true');
+
+            rerender(<UnifiedRightPanel workspaceId="other-workspace" chatId="chat-b"
+                dock={dockStub({ target: 'other-workspace' })} />);
+            expect(screen.getByRole('button', { name: 'Files, 2 tabs' })).toHaveAttribute('aria-expanded', 'true');
+            expect(screen.getAllByRole('tab')).toHaveLength(2);
+            expect(readUnifiedPanelState('other-workspace')).toBe(otherState);
+            unmount();
+            renderPanel({ chatId: 'chat-a' });
+            expect(screen.getByRole('button', { name: 'Files, 2 tabs' })).toHaveAttribute('aria-expanded', 'false');
+            expect(screen.getAllByRole('tab')).toHaveLength(1);
+            await waitFor(() => expect(readUnifiedPanelState(WS)).toBe(firstState));
+        });
+
+        it('retains fold preferences while live grouping is disabled and re-enabled', () => {
+            applyRuntimeConfigPatch({ panelTabGroupsEnabled: true });
+            seedCanvasBurst();
+            renderPanel({ chatId: 'chat-a' });
+            fireEvent.click(screen.getByRole('button', { name: 'Canvas, 5 tabs' }));
+            expect(screen.getByRole('button', { name: 'Canvas, 5 tabs' })).toHaveAttribute('aria-expanded', 'false');
+
+            act(() => { applyRuntimeConfigPatch({ panelTabGroupsEnabled: false }); });
+            expect(screen.queryByTestId('unified-panel-group-canvas')).toBeNull();
+            act(() => { applyRuntimeConfigPatch({ panelTabGroupsEnabled: true }); });
+            expect(screen.getByRole('button', { name: 'Canvas, 5 tabs' })).toHaveAttribute('aria-expanded', 'false');
+            expect(screen.queryByTestId('unified-panel-group-overflow-canvas')).toBeNull();
+            expect(screen.getAllByRole('tab').filter(node => node.getAttribute('data-kind') === 'canvas')).toHaveLength(1);
+        });
+
+        it.each(['Alt+ArrowRight', 'Move right menu'] as const)(
+            'restores focus to group overflow when %s moves a nonactive tab beyond the cap',
+            async gesture => {
+                applyRuntimeConfigPatch({ panelTabGroupsEnabled: true });
+                let state = EMPTY_UNIFIED_PANEL;
+                for (let index = 1; index <= 5; index++) {
+                    state = openTab(state, {
+                        kind: 'file', ownerWorkspaceId: WS, chatId: 'chat-a',
+                        resourceId: `src/file-${index}.ts`, label: `file-${index}.ts`,
+                    });
+                }
+                writeUnifiedPanelState(WS, state);
+                const files = state.chatTabs['chat-a'];
+                renderPanel({ chatId: 'chat-a' });
+                const origin = screen.getByTestId(`unified-panel-tab-${files[1].id}`);
+                origin.focus();
+                expect(document.activeElement).toBe(origin);
+                if (gesture === 'Alt+ArrowRight') {
+                    fireEvent.keyDown(origin, { key: 'ArrowRight', altKey: true });
+                } else {
+                    fireEvent.contextMenu(origin);
+                    fireEvent.click(screen.getByRole('menuitem', { name: 'Move right' }));
+                }
+
+                await waitFor(() => {
+                    expect(screen.queryByTestId(`unified-panel-tab-${files[1].id}`)).toBeNull();
+                    expect(document.activeElement).toBe(screen.getByTestId('unified-panel-group-overflow-files'));
+                });
+                expect(readUnifiedPanelState(WS).orderByScope?.['chat-a']).toEqual([
+                    files[0].id, files[2].id, files[1].id, files[3].id, files[4].id,
+                ]);
+                expect(screen.getByTestId(`unified-panel-tab-${files[4].id}`)).toHaveAttribute('aria-selected', 'true');
+            },
+        );
+    });
+
     it('keeps closed work-resource drafts inside their hosting panel scope', async () => {
         const rendered = renderPanel({ dock: dockStub({ target: 'member-a' }) });
         await openViaMenu('unified-panel-open-work-items');
