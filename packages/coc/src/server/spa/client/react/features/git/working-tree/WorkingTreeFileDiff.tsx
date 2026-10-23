@@ -320,6 +320,12 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
     const panelHost = useUnifiedPanelHost();
     const [definitionReveal, setDefinitionReveal] = useState<DiffEditorPosition | null>(null);
     const [definitionBack, setDefinitionBack] = useState<DiffEditorPosition[]>([]);
+    // A return from Explorer may land after this diff unmounted.
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
     useEffect(() => {
         setDefinitionBack([]);
         setDefinitionReveal(null);
@@ -334,8 +340,16 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
             return true;
         }
         if (route.kind !== 'explorer') return false;
-        return openDiffDefinitionInExplorer({ route, workspaceId, ownerRoutingRef: ownerRoute, panelHost });
-    }, [workspaceId, relativePath, ownerRoute, panelHost]);
+        // Explorer may cover this diff (the panel's Git tab); its chip and Back come here.
+        const origin = side ? monacoViewerRef.current?.capturePosition(side) : null;
+        return openDiffDefinitionInExplorer({
+            route, workspaceId, ownerRoutingRef: ownerRoute, panelHost,
+            returnTo: {
+                label: `${stage === 'staged' ? 'Staged' : 'Unstaged'} · ${relativePath.split('/').pop()}`,
+                restore: () => { if (mountedRef.current && origin) setDefinitionReveal(origin); },
+            },
+        });
+    }, [workspaceId, relativePath, ownerRoute, panelHost, stage]);
 
     const goBackFromDefinition = useCallback(() => {
         const origin = definitionBack[definitionBack.length - 1];

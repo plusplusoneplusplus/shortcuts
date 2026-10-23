@@ -85,6 +85,7 @@ import {
 import { isEditableTarget } from '../../../hooks/useScopedFindShortcut';
 import { closeTabOutcome, closeTabShortcut, shouldCollapseAfterClose } from './closeTabRouting';
 import { findFilterOwner, findFilterShortcut } from './findRouting';
+import { returnToDiffDefinitionOrigin } from '../../git/diff/diffDefinitionReturn';
 import {
     keyboardNavigationDirection,
     mouseNavigationDirection,
@@ -1623,13 +1624,16 @@ export function UnifiedRightPanel({
                     && root.contains(focused),
                 activeFile: active?.kind === 'file',
             })) return;
-            if (!navigateFileHistory(direction)) return;
+            // A file a diff's go to definition opened goes back to that diff first.
+            const handled = (direction === 'back' && active !== null && returnToDiffDefinitionOrigin(workspaceId, active.id))
+                || navigateFileHistory(direction);
+            if (!handled) return;
             event.preventDefault();
             event.stopPropagation();
         };
         document.addEventListener('keydown', onKeyDown, true);
         return () => document.removeEventListener('keydown', onKeyDown, true);
-    }, [active?.kind, isOpen, navigateFileHistory]);
+    }, [active, isOpen, navigateFileHistory, workspaceId]);
 
     // Browser/Electron auxiliary buttons are 3 (Back) and 4 (Forward). A
     // successful mousedown performs the step and claims its matching mouseup;

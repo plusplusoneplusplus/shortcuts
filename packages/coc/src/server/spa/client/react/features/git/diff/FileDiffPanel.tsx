@@ -474,6 +474,15 @@ export function FileDiffPanel({
         const origin = side ? monacoViewerRef.current?.capturePosition(side) : null;
         if (origin) setDefinitionBack(stack => [...stack, { ...origin, path: filePath }].slice(-DEFINITION_BACK_LIMIT));
     }, [filePath]);
+    // A return from Explorer may land after this panel moved on or unmounted.
+    const definitionReturnRef = useRef({ mounted: true, filePath, onNavigateToFile });
+    definitionReturnRef.current.filePath = filePath;
+    definitionReturnRef.current.onNavigateToFile = onNavigateToFile;
+    useEffect(() => {
+        const live = definitionReturnRef.current;
+        live.mounted = true;
+        return () => { live.mounted = false; };
+    }, []);
     const handleNavigateDefinition = useCallback<DiffDefinitionNavigate>((target, side) => {
         const route = resolveDiffDefinitionRoute({ workspaceId, filePath, reviewFiles: allFiles, target, side });
         if (!route) return false;
@@ -492,8 +501,22 @@ export function FileDiffPanel({
             kind: 'explorer' as const, path: route.path, line: route.line, column: route.column,
             ...(target.symbolCandidate ? { symbolCandidate: true as const } : {}),
         };
-        return openDiffDefinitionInExplorer({ route: explorerRoute, workspaceId, ownerRoutingRef, panelHost });
-    }, [workspaceId, filePath, allFiles, onNavigateToFile, panelHost, ownerRoutingRef, rememberDefinitionOrigin]);
+        // Explorer may cover this diff (the panel's Git tab); its chip and Back come here.
+        const origin = side ? monacoViewerRef.current?.capturePosition(side) : null;
+        const returnLocation = origin ? { ...origin, path: filePath } : null;
+        return openDiffDefinitionInExplorer({
+            route: explorerRoute, workspaceId, ownerRoutingRef, panelHost,
+            returnTo: {
+                label: `${source.shortRef ?? source.label} · ${reviewFileParts(filePath).name}`,
+                restore: () => {
+                    const live = definitionReturnRef.current;
+                    if (!live.mounted || !returnLocation) return;
+                    setDefinitionReveal(returnLocation);
+                    if (returnLocation.path !== live.filePath) live.onNavigateToFile?.(returnLocation.path, 'first');
+                },
+            },
+        });
+    }, [workspaceId, filePath, allFiles, onNavigateToFile, panelHost, ownerRoutingRef, rememberDefinitionOrigin, source.shortRef, source.label]);
     const backFromDefinition = definitionBack[definitionBack.length - 1] ?? null;
     const goBackFromDefinition = useCallback(() => {
         if (!backFromDefinition) return;

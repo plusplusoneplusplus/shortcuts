@@ -84,6 +84,9 @@ vi.mock('../../../../../../src/server/spa/client/react/features/repo-detail/unif
 }));
 
 import { FileDiffPanel } from '../../../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel';
+import {
+    getDiffDefinitionReturn, resetDiffDefinitionReturns, returnToDiffDefinitionOrigin,
+} from '../../../../../../src/server/spa/client/react/features/git/diff/diffDefinitionReturn';
 import { UnifiedPanelHostProvider } from '../../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
 
 function content(extra: Partial<GitFileDiffContentResponse> = {}): GitFileDiffContentResponse {
@@ -235,6 +238,31 @@ describe('definition routing', () => {
             resourceId: 'lib/util.ts', line: 9, column: 3, symbolCandidate: true,
         }));
         expect(fakes[0].revealedPositions).toEqual([]);
+    });
+
+    it('an Explorer jump leaves a way back to the exact diff file, side and scroll spot', async () => {
+        resetDiffDefinitionReturns();
+        const fetchContent = vi.fn(async (path: string) => content({ path, base: { content: `${path} old\n`, ref: 'base', exists: true } }));
+        const source = { ...makeSource('commit', fetchContent), supportsCurrentCodeDefinitions: true, shortRef: 'abc1234' };
+        const onNavigateToFile = vi.fn();
+        let view!: ReturnType<typeof render>;
+        await act(async () => { view = render(panel(source, 'src/a.ts', onNavigateToFile)); });
+        fakes[0].viewPositions.original = { line: 7, column: 2, scrollTop: 220 };
+        act(() => { jumpFrom('original').onNavigate(target('lib/util.ts')); });
+        expect(getDiffDefinitionReturn('group-1', 'tab-id')).toMatchObject({ label: 'abc1234 · a.ts', chatId: 'chat-1' });
+        // The diff moved on to another file while Explorer was showing.
+        await act(async () => { view.rerender(panel(source, 'src/b.ts', onNavigateToFile)); });
+        await act(async () => {});
+        let returned = false;
+        act(() => { returned = returnToDiffDefinitionOrigin('group-1', 'tab-id'); });
+        expect(returned).toBe(true);
+        expect(onNavigateToFile).toHaveBeenLastCalledWith('src/a.ts', 'first');
+        await act(async () => { view.rerender(panel(source, 'src/a.ts', onNavigateToFile)); });
+        await act(async () => {});
+        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side: 'original', line: 7, column: 2, scrollTop: 220 });
+        expect(getDiffDefinitionReturn('group-1', 'tab-id')).toBeNull();
+        // The in-diff chip is for in-diff jumps only.
+        expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
     });
 
     it('falls back to the Explorer deep link without a unified panel', async () => {

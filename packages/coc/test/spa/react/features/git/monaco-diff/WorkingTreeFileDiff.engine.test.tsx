@@ -101,6 +101,9 @@ import {
 import type { DiffEditorFactory } from '../../../../../../src/server/spa/client/react/features/git/diff/monacoDiffEditorAdapter';
 import { __resetDiffWordWrapForTesting } from '../../../../../../src/server/spa/client/react/features/git/hooks/useDiffWordWrap';
 import { UnifiedPanelHostProvider } from '../../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
+import {
+    getDiffDefinitionReturn, resetDiffDefinitionReturns, returnToDiffDefinitionOrigin,
+} from '../../../../../../src/server/spa/client/react/features/git/diff/diffDefinitionReturn';
 
 let fakes: FakeDiffEditor[];
 const createDiffEditor: DiffEditorFactory = async (_host, options) => {
@@ -356,6 +359,19 @@ describe('WorkingTreeFileDiff — definition routing', () => {
         }));
         expect(fakes[0].revealedPositions).toEqual([]);
         expect(screen.queryByTestId('diff-definition-back-chip')).toBeNull();
+    });
+
+    it('an Explorer jump leaves a way back to the exact side and scroll spot', async () => {
+        resetDiffDefinitionReturns();
+        const mount = await renderHosted();
+        fakes[0].viewPositions.original = { line: 5, column: 3, scrollTop: 90 };
+        act(() => { mount.onNavigate(target('lib/util.ts')); });
+        expect(getDiffDefinitionReturn('group-1', 'tab-id')).toMatchObject({ label: 'Unstaged · a.ts', chatId: 'chat-1' });
+        let returned = false;
+        act(() => { returned = returnToDiffDefinitionOrigin('group-1', 'tab-id'); });
+        expect(returned).toBe(true);
+        expect(fakes[0].revealedPositions.at(-1)).toEqual({ side: 'original', line: 5, column: 3, scrollTop: 90 });
+        expect(getDiffDefinitionReturn('group-1', 'tab-id')).toBeNull();
     });
 
     it('declines a target in another workspace', async () => {

@@ -320,10 +320,22 @@ per-review back stack (reset when workspace, source label or `shortRef` change).
 The header chip `Back to <shortRef ?? label> · <file>` and Alt+← (captured on the
 panel before Monaco, only while the stack is non-empty) pop it: switch file via
 `onNavigateToFile` if needed, then reveal with `scrollTop`, which the adapter
-restores exactly instead of centring. Explorer jumps leave the diff in place and
-record nothing. `WorkingTreeFileDiff` keeps a bounded same-file stack with the
-same cursor/scroll capture and chip/Alt+← restore; workspace, clone, file or stage
-changes clear that stack and its pending reveal.
+restores exactly instead of centring. `WorkingTreeFileDiff` keeps a bounded
+same-file stack with the same cursor/scroll capture and chip/Alt+← restore;
+workspace, clone, file or stage changes clear that stack and its pending reveal.
+
+Explorer jumps add nothing to those in-diff stacks. Instead, when a panel hosts
+the target, `openDiffDefinitionInExplorer` reads the panel's active tab (often
+the kept-alive Git tab holding the diff) before opening and records a
+`diffDefinitionReturn.ts` entry keyed by panel scope and the Explorer tab id:
+chip label, origin tab, chat and a restore callback carrying the captured side,
+cursor and scroll (a no-op once the diff unmounted; `FileDiffPanel` switches
+back to the jump's file first). `UnifiedTabView` renders
+`DiffDefinitionReturnChip` above file tabs, and the panel's Back key
+(`keyboardNavigationDirection`: Alt+← or Ctrl+- on macOS) takes that entry
+before stepping file history. Taking it refocuses the origin tab and restores;
+closing the Explorer tab forgets it. The deep-link fallback records nothing and
+relies on browser Back.
 
 Monaco mutes its empty-result message for Ctrl/Cmd+Click, so both diff mounts
 install `diffDefinitionFeedback.ts`: a modifier left-click on a word re-asks the
