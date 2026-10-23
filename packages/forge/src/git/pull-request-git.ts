@@ -2,7 +2,7 @@ import { execGitAsync, type ExecGitOptions } from './exec';
 import { resolveWorkspaceExecutionContext, translatePathForExecution, translatePathForHostFilesystem } from '../utils/workspace-execution';
 
 const LOCAL_TIMEOUT = 30_000;
-const NETWORK_TIMEOUT = 600_000;
+const LONG_RUNNING_TIMEOUT = 600_000;
 const PROBE_TIMEOUT = 15_000;
 const NO_PROMPT = { GIT_TERMINAL_PROMPT: '0' };
 
@@ -62,14 +62,14 @@ export function createPullRequestGit(run: PullRequestGitRunner = runNative) {
             } catch { return false; }
         },
         fetchBranch: (repoRoot: string, base: string): Promise<string> => run(repoRoot, ['fetch', 'origin', base], {
-            timeout: NETWORK_TIMEOUT, env: NO_PROMPT,
+            timeout: LONG_RUNNING_TIMEOUT, env: NO_PROMPT,
         }),
         shortSha: (repoRoot: string, sha: string): Promise<string> => run(repoRoot, ['rev-parse', '--short', sha]),
         commitSubject: (repoRoot: string, sha: string): Promise<string> => run(repoRoot, ['log', '-1', '--pretty=%s', sha]),
         async addWorktree(repoRoot: string, branch: string, filePath: string, base: string): Promise<string> {
             const executionPath = worktreePath(repoRoot, filePath);
             const hostPath = translatePathForHostFilesystem(executionPath, resolveWorkspaceExecutionContext(repoRoot));
-            await run(repoRoot, ['worktree', 'add', '-b', branch, executionPath, `origin/${base}`]);
+            await run(repoRoot, ['worktree', 'add', '-b', branch, executionPath, `origin/${base}`], { timeout: LONG_RUNNING_TIMEOUT });
             // A Windows temp directory still belongs to this distro's Git worktree.
             // Its UNC alias keeps all subsequent operations on the WSL path.
             return hostPath;
@@ -77,14 +77,14 @@ export function createPullRequestGit(run: PullRequestGitRunner = runNative) {
         removeWorktree: (repoRoot: string, filePath: string): Promise<string> =>
             run(repoRoot, ['worktree', 'remove', '--force', worktreePath(repoRoot, filePath)]),
         deleteBranch: (repoRoot: string, branch: string): Promise<string> => run(repoRoot, ['branch', '-D', branch]),
-        cherryPick: (repoRoot: string, sha: string): Promise<string> => run(repoRoot, ['cherry-pick', sha], { timeout: NETWORK_TIMEOUT }),
-        skipCherryPick: (repoRoot: string): Promise<string> => run(repoRoot, ['cherry-pick', '--skip'], { timeout: NETWORK_TIMEOUT }),
+        cherryPick: (repoRoot: string, sha: string): Promise<string> => run(repoRoot, ['cherry-pick', sha], { timeout: LONG_RUNNING_TIMEOUT }),
+        skipCherryPick: (repoRoot: string): Promise<string> => run(repoRoot, ['cherry-pick', '--skip'], { timeout: LONG_RUNNING_TIMEOUT }),
         abortCherryPick: (repoRoot: string): Promise<string> => run(repoRoot, ['cherry-pick', '--abort']),
         status: (repoRoot: string): Promise<string> => run(repoRoot, ['status', '--porcelain']),
-        rebase: (repoRoot: string, base: string): Promise<string> => run(repoRoot, ['rebase', `origin/${base}`], { timeout: NETWORK_TIMEOUT }),
+        rebase: (repoRoot: string, base: string): Promise<string> => run(repoRoot, ['rebase', `origin/${base}`], { timeout: LONG_RUNNING_TIMEOUT }),
         abortRebase: (repoRoot: string): Promise<string> => run(repoRoot, ['rebase', '--abort']),
         pushBranch: (repoRoot: string, branch: string): Promise<string> => run(repoRoot, ['push', '-u', 'origin', branch], {
-            timeout: NETWORK_TIMEOUT, env: NO_PROMPT,
+            timeout: LONG_RUNNING_TIMEOUT, env: NO_PROMPT,
         }),
         currentBranch: (repoRoot: string): Promise<string> => run(repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD']),
         headSha: (repoRoot: string): Promise<string> => run(repoRoot, ['rev-parse', 'HEAD']),

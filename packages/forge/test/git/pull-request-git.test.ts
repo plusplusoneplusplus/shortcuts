@@ -39,7 +39,7 @@ const cases: Array<[string, () => Promise<unknown>, string[], number, boolean]> 
     ['fetch', () => pullRequestGit.fetchBranch(repo, 'main'), ['fetch', 'origin', 'main'], 600_000, true],
     ['short SHA', () => pullRequestGit.shortSha(repo, 'a'), ['rev-parse', '--short', 'a'], 30_000, false],
     ['subject', () => pullRequestGit.commitSubject(repo, 'a'), ['log', '-1', '--pretty=%s', 'a'], 30_000, false],
-    ['add worktree', () => pullRequestGit.addWorktree(repo, 'topic', '/temp/worktree', 'main'), ['worktree', 'add', '-b', 'topic', '/temp/worktree', 'origin/main'], 30_000, false],
+    ['add worktree', () => pullRequestGit.addWorktree(repo, 'topic', '/temp/worktree', 'main'), ['worktree', 'add', '-b', 'topic', '/temp/worktree', 'origin/main'], 600_000, false],
     ['remove worktree', () => pullRequestGit.removeWorktree(repo, '/temp/worktree'), ['worktree', 'remove', '--force', '/temp/worktree'], 30_000, false],
     ['delete branch', () => pullRequestGit.deleteBranch(repo, 'topic'), ['branch', '-D', 'topic'], 30_000, false],
     ['pick', () => pullRequestGit.cherryPick(repo, 'a'), ['cherry-pick', 'a'], 600_000, false],
@@ -79,6 +79,13 @@ for (const transport of ['host', 'wsl']) {
             native.mockResolvedValue('origin/release\n');
             vi.mocked(execFileAsync).mockResolvedValue({ stdout: 'origin/release\n', stderr: '' });
             expect(await pullRequestGit.defaultBranch(repo)).toBe('release');
+            expect(transport === 'host' ? native : execFileAsync).toHaveBeenCalledTimes(1);
+        });
+        it('propagates worktree creation failures without running follow-up commands', async () => {
+            native.mockRejectedValue(new Error('worktree failed'));
+            vi.mocked(execFileAsync).mockRejectedValue({ stderr: 'worktree failed' });
+            await expect(pullRequestGit.addWorktree(repo, 'topic', '/temp/worktree', 'main'))
+                .rejects.toThrow('worktree failed');
             expect(transport === 'host' ? native : execFileAsync).toHaveBeenCalledTimes(1);
         });
         it('probes remote HEAD with no prompt and a 15s deadline', async () => {
@@ -139,9 +146,11 @@ it('keeps the exact commands and deadlines when a caller injects its own runner'
     const git = createPullRequestGit(run);
     expect(await git.defaultBranch(repo)).toBe('release');
     await git.pushBranch(repo, 'topic');
+    expect(await git.addWorktree(repo, 'topic', '/temp/worktree', 'release')).toBe('/temp/worktree');
     expect(run.mock.calls).toEqual([
         [repo, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']],
         [repo, ['push', '-u', 'origin', 'topic'], { timeout: 600_000, env: { GIT_TERMINAL_PROMPT: '0' } }],
+        [repo, ['worktree', 'add', '-b', 'topic', '/temp/worktree', 'origin/release'], { timeout: 600_000 }],
     ]);
     expect(native).not.toHaveBeenCalled();
     expect(execFileAsync).not.toHaveBeenCalled();
