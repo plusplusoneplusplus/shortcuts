@@ -10,6 +10,7 @@ import { explorerApi } from '../../repo-detail/explorer/explorerApi';
 import { getMonacoLanguage } from '../../../shared/file-viewer/monacoLanguage';
 import { createCurrentCodeDefinitions, type CurrentCodeDefinitions } from './currentCodeDefinitions';
 import { installNoDefinitionFeedback, type DiffNoDefinition } from './diffDefinitionFeedback';
+import { installPeekDefinitionClick } from './diffDefinitionPeekClick';
 import { DIFF_LANGUAGE_MAX_CHARS } from './diffLanguageEligibility';
 import type { DiffDefinitionNavigate } from './diffLanguageMount';
 import type { DiffLanguageMountContext } from './monacoDiffController';
@@ -131,6 +132,7 @@ export function mountDiffCurrentCodeModel(options: MountDiffCurrentCodeOptions):
         onNoDefinition: options.onNoDefinition,
         resolve: async (position, signal) => (await lookup(position, signal)).length > 0,
     });
+    const peekClick = installPeekDefinitionClick({ editor, model });
     const navigation = registerEditorNavigator(model, target => {
         if (isExternalNavigationTarget(target) || target.workspaceId !== workspaceId || !onNavigate) return false;
         return onNavigate(target) !== false;
@@ -142,6 +144,7 @@ export function mountDiffCurrentCodeModel(options: MountDiffCurrentCodeOptions):
         pending.clear();
         navigation.dispose();
         feedback.dispose();
+        peekClick.dispose();
         cue.dispose();
         hover.dispose();
         definition.dispose();

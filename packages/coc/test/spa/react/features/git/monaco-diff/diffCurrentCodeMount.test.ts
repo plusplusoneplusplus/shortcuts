@@ -63,7 +63,15 @@ function setup(uri = URI, size = 30) {
     const subscribe = () => ({ dispose: vi.fn() });
     let mouseUp: (event: unknown) => void = () => {};
     const onNoDefinition = vi.fn();
+    const domListeners = new Map<string, (event: unknown) => void>();
+    const container = {
+        addEventListener: vi.fn((type: string, listener: (event: unknown) => void) => { domListeners.set(type, listener); }),
+        removeEventListener: vi.fn((type: string) => { domListeners.delete(type); }),
+    };
     const editor = {
+        getContainerDomNode: () => container,
+        getTargetAtClientPoint: () => ({ type: 6, position }),
+        setPosition: vi.fn(), focus: vi.fn(), trigger: vi.fn(),
         onMouseUp: (listener: (event: unknown) => void) => { mouseUp = listener; return { dispose: vi.fn() }; },
         createDecorationsCollection: () => ({ clear() {}, set() {} }),
         onDidChangeModelContent: subscribe, onDidScrollChange: subscribe,
@@ -84,7 +92,7 @@ function setup(uri = URI, size = 30) {
     };
     return { providers, disposed, definitions, lookup, loadSource, model, previews, monaco,
         onNavigate, cleanup, token, cancel: () => cancel(), unsubscribe, opener: () => opener,
-        onNoDefinition, click: () => mouseUp({
+        onNoDefinition, editor, domListeners, click: () => mouseUp({
             event: { leftButton: true, ctrlKey: true, metaKey: true },
             target: { type: 6, position },
         }) };
@@ -190,6 +198,17 @@ describe('historical diff definition mount', () => {
         const s = setup(uri, size);
         expect(s.providers).toEqual({});
         expect(s.lookup).not.toHaveBeenCalled();
+    });
+
+    it('peeks on Ctrl/Cmd+Alt+Click instead of leaving the diff, until disposed', () => {
+        const s = setup();
+        const swallowed = { stopPropagation: vi.fn(), preventDefault: vi.fn() };
+        const mouse = { type: 'mousedown', button: 0, altKey: true, ctrlKey: true, metaKey: true, clientX: 1, clientY: 2 };
+        s.domListeners.get('mousedown')!({ ...mouse, ...swallowed });
+        expect(swallowed.stopPropagation).toHaveBeenCalledOnce();
+        expect(s.editor.trigger).toHaveBeenCalledWith('mouse', 'editor.action.peekDefinition', null);
+        s.cleanup();
+        expect(s.domListeners.size).toBe(0);
     });
 
     it('reports a Ctrl/Cmd+Click the current code cannot resolve, and only that', async () => {

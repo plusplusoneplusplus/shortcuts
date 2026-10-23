@@ -350,6 +350,12 @@ The viewer forwards it to `onNoDefinition` or, by default, a
 `No definition found for '<word>'` toast from `ToastContext` when one is mounted.
 Keyboard F12/Alt+F12 keep Monaco's inline message.
 
+Monaco reads Ctrl/Cmd+Alt+Click as "open to the side", which would route the
+jump out of the diff. Both mounts also install `diffDefinitionPeekClick.ts`: a
+capture-phase listener on the side editor's container swallows that gesture on
+a word and runs `editor.action.peekDefinition` there instead (once, on
+mousedown). Alt+F12 is Monaco's own Peek.
+
 ### Retry
 
 Editor retry travels over `/ws/language-server`. Settings retry uses

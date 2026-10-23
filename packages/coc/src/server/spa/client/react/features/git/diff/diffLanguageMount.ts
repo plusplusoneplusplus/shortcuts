@@ -36,6 +36,7 @@ import {
 import type { DiffLanguageMountContext } from './monacoDiffController';
 import type { DiffEditorSide } from './diffCoords';
 import { installNoDefinitionFeedback, type DiffNoDefinition } from './diffDefinitionFeedback';
+import { installPeekDefinitionClick } from './diffDefinitionPeekClick';
 import { toLocationLinks } from '../../language-servers/languageFeatures';
 import { toLspPosition } from '../../language-servers/monacoBridge';
 
@@ -110,6 +111,7 @@ export function mountDiffLanguageModel(options: MountDiffLanguageOptions): () =>
             { signal },
         )).length > 0,
     });
+    const peekClick = installPeekDefinitionClick({ editor, model });
     // A diff has no tab strip for external sources; those jumps, and any into
     // another workspace, are declined so Monaco falls through.
     const navigation = registerEditorNavigator(model, (target) => {
@@ -120,6 +122,7 @@ export function mountDiffLanguageModel(options: MountDiffLanguageOptions): () =>
     return () => {
         navigation.dispose();
         feedback.dispose();
+        peekClick.dispose();
         linkCue.dispose();
         registration.dispose();
         previewSource.dispose();
