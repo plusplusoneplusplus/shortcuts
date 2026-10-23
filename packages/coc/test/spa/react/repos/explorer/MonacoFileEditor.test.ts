@@ -62,6 +62,12 @@ describe('getMonacoLanguage', () => {
         expect(getMonacoLanguage('build.bash')).toBe('shell');
     });
 
+    it('maps PowerShell scripts, modules, and manifests', () => {
+        expect(getMonacoLanguage('build.ps1')).toBe('powershell');
+        expect(getMonacoLanguage('Tools.psm1')).toBe('powershell');
+        expect(getMonacoLanguage('Tools.PSD1')).toBe('powershell');
+    });
+
     it('maps Markdown', () => {
         expect(getMonacoLanguage('README.md')).toBe('markdown');
         expect(getMonacoLanguage('docs.mdx')).toBe('markdown');
