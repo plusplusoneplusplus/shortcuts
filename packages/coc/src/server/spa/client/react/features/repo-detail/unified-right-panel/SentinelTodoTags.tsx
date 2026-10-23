@@ -84,12 +84,13 @@ export function SentinelTodoTagToolbar({ filter, onFilter, multiple, onMultiple,
     const id = useId();
     const [manage, setManage] = useState(false);
     return <div className="sentinel-tags-toolbar">
-        <label htmlFor={`${id}-filter`}>Tag</label>
-        <select id={`${id}-filter`} value={filter} onChange={event => onFilter(event.target.value)} disabled={!library}>
-            <option value="">All tags</option>
-            <option value="untagged">Untagged</option>
-            {library?.tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
-        </select>
+        <label className="sentinel-tags-filter" htmlFor={`${id}-filter`}>Tag
+            <select id={`${id}-filter`} value={filter} onChange={event => onFilter(event.target.value)} disabled={!library}>
+                <option value="">All tags</option>
+                <option value="untagged">Untagged</option>
+                {library?.tags.map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
+            </select>
+        </label>
         <Button size="sm" variant="secondary" disabled={!library} onClick={() => setManage(true)}>Manage tags</Button>
         <label className="sentinel-tags-multiple">
             <input type="checkbox" checked={multiple} disabled={!library} onChange={event => onMultiple(event.target.checked)} />

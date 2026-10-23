@@ -692,37 +692,40 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                 </div>
             )}
             <SentinelRefrains owner={owner} ready={ledger !== null} items={ledger?.items ?? []} onFollowLink={followLink} onLedgerChange={load} toolbar={
-            <div role="toolbar" aria-label="To-do actions" className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold">To-do</span>
-                {ledger && sections.active.length > 0 && (
-                    <span className={MUTED} data-testid="sentinel-todo-active-count">{sections.active.length} active</span>
-                )}
-                {attentionCount > 0 && (
-                    <span className="rounded-full bg-[#e8912d]/15 px-1.5 text-[11px] font-medium text-[#b5650f] dark:text-[#cca700]"
-                        data-testid="sentinel-todo-attention-count">
-                        {attentionCount} need{attentionCount === 1 ? 's' : ''} attention
-                    </span>
-                )}
-                <span className="flex-1" />
-                <AcceptAllCodaProposals />
-                <div className="flex shrink-0 items-center gap-2">
-                    <button type="button" aria-label="Refresh to-do list" title="Refresh to-do list"
-                        aria-busy={loading} disabled={loading} onClick={refresh} data-testid="sentinel-todo-refresh"
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-[#848484] transition-colors hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc]/50 disabled:opacity-50 disabled:cursor-not-allowed">
-                        <svg className={cn(loading && 'motion-safe:animate-spin')} width="14" height="14" viewBox="0 0 16 16"
-                            fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
-                            <path d="M13 6a5.2 5.2 0 1 0 .1 4M13 2v4H9" />
-                        </svg>
-                    </button>
-                    {!addForm.adding && normalCount > 0 && (
-                        <Button size="sm" variant="secondary" onClick={openAddForm} data-testid="sentinel-todo-add">Add item</Button>
+            <div role="toolbar" aria-label="To-do actions" className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                    <span className="font-semibold">To-do</span>
+                    {ledger && sections.active.length > 0 && (
+                        <span className={MUTED} data-testid="sentinel-todo-active-count">{sections.active.length} active</span>
                     )}
+                    {attentionCount > 0 && (
+                        <span className="rounded-full bg-[#e8912d]/15 px-1.5 text-[11px] font-medium text-[#b5650f] dark:text-[#cca700]"
+                            data-testid="sentinel-todo-attention-count">
+                            {attentionCount} need{attentionCount === 1 ? 's' : ''} attention
+                        </span>
+                    )}
+                </div>
+                {tagsEnabled && <SentinelTodoTagToolbar owner={owner} client={client} library={tagLibrary} onLedgerChange={load}
+                    loading={loading} loadError={loadError} onRetry={refresh}
+                    filter={effectiveTagFilter} onFilter={setTagFilter} multiple={matchMultiple} onMultiple={setMatchMultiple} />}
+                <div className="ml-auto flex max-w-full flex-wrap items-center gap-2">
+                    <AcceptAllCodaProposals />
+                    <div className="flex shrink-0 items-center gap-2">
+                        <button type="button" aria-label="Refresh to-do list" title="Refresh to-do list"
+                            aria-busy={loading} disabled={loading} onClick={refresh} data-testid="sentinel-todo-refresh"
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-[#848484] transition-colors hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc]/50 disabled:opacity-50 disabled:cursor-not-allowed">
+                            <svg className={cn(loading && 'motion-safe:animate-spin')} width="14" height="14" viewBox="0 0 16 16"
+                                fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+                                <path d="M13 6a5.2 5.2 0 1 0 .1 4M13 2v4H9" />
+                            </svg>
+                        </button>
+                        {!addForm.adding && normalCount > 0 && (
+                            <Button size="sm" variant="secondary" onClick={openAddForm} data-testid="sentinel-todo-add">Add item</Button>
+                        )}
+                    </div>
                 </div>
             </div>}>
             {scrubber => <>
-            {tagsEnabled && <SentinelTodoTagToolbar owner={owner} client={client} library={tagLibrary} onLedgerChange={load}
-                loading={loading} loadError={loadError} onRetry={refresh}
-                filter={effectiveTagFilter} onFilter={setTagFilter} multiple={matchMultiple} onMultiple={setMatchMultiple} />}
             {loadError && (
                 <Notice tone="error" testId="sentinel-todo-load-error" onRetry={() => { void load(); }}>
                     Could not load the to-do list: {loadError}
