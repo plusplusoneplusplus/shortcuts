@@ -3,6 +3,7 @@
  *
  * A pure switch over `RightPanelView`: commit detail, a commit's file diff, the
  * branch-range overview, a branch-range file diff, a working-tree file diff,
+ * all working changes,
  * either all-comments view, a multi-commit summary, or the empty state.
  *
  * Commit review keeps one chat host across overview/file navigation. The same
@@ -17,6 +18,7 @@ import { BranchRangeOverview } from '../branches/BranchRangeOverview';
 import { BranchRangeAllComments } from '../branches/BranchRangeAllComments';
 import { WorkingTreeFileDiff } from '../working-tree/WorkingTreeFileDiff';
 import { WorkingTreeAllComments } from '../working-tree/WorkingTreeAllComments';
+import { WorkingTreeAllFilesDiff } from '../working-tree/WorkingTreeAllFilesDiff';
 import type { BranchRangeInfo } from '../branches/BranchChanges';
 import type { GitRangeBaseMode } from '@plusplusoneplusplus/coc-client';
 import type { HunkTarget, RightPanelView } from './types';
@@ -37,6 +39,8 @@ export interface RepoGitDetailPaneProps {
     onNavigateToBranchFile: (filePath: string, target: 'first' | 'last') => void;
     onNavigateToCommitFile: (hash: string, filePath: string, target: 'first' | 'last') => void;
     onNavigateToWorkingTreeFile: (filePath: string, target: 'first' | 'last') => void;
+    /** Opens one file from the all-working-changes view. */
+    onWorkingTreeFileSelect: (filePath: string, stage: 'staged' | 'unstaged' | 'untracked') => void;
     /** Refreshes the working-tree list when a selected untracked file no longer exists on disk. */
     onWorkingTreeFileMissing?: () => void;
     /** An edited working-tree diff reports unsaved edits and its save function here. */
@@ -54,7 +58,7 @@ export interface RepoGitDetailPaneProps {
 export function RepoGitDetailPane({
     workspaceId, attachmentDestinationId, view, commits, unpushedCount, branchRangeData, branchRangeFiles,
     baseMode, onBaseModeChange, repoRoot, hunkTarget, onBranchFileSelect,
-    onNavigateToBranchFile, onNavigateToCommitFile, onNavigateToWorkingTreeFile,
+    onNavigateToBranchFile, onNavigateToCommitFile, onNavigateToWorkingTreeFile, onWorkingTreeFileSelect,
     onWorkingTreeFileMissing, onDetailDirtyChange, onDetailRegisterSave, workingChangesRefreshKey, onWorkingTreeFileSaved, onAllBranchCommentsClick, onBranchAskAI, onCommitClassified,
 }: RepoGitDetailPaneProps) {
     if (view?.type === 'commit' || view?.type === 'commit-file') {
@@ -121,6 +125,16 @@ export function RepoGitDetailPane({
                 onRegisterSave={onDetailRegisterSave}
                 refreshKey={workingChangesRefreshKey}
                 onSaved={onWorkingTreeFileSaved}
+            />
+        );
+    }
+
+    if (view?.type === 'working-tree-all') {
+        return (
+            <WorkingTreeAllFilesDiff
+                workspaceId={workspaceId}
+                onFileSelect={onWorkingTreeFileSelect}
+                refreshKey={workingChangesRefreshKey}
             />
         );
     }

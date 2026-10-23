@@ -70,6 +70,7 @@ export interface RepoGitListPaneProps {
     selectedWorkingTreeFile: string | null;
     onWorkingTreeFileSelect: (filePath: string, stage: 'staged' | 'unstaged' | 'untracked') => void;
     onAllWorkingCommentsClick: () => void;
+    onAllWorkingChangesClick: () => void;
 
     // Conflict banner
     repoState: GitRepoStateInfo | null;
@@ -306,6 +307,7 @@ export function RepoGitListPane(props: RepoGitListPaneProps) {
                     selectedFilePath={props.selectedWorkingTreeFile}
                     refreshKey={props.workingChangesRefreshKey}
                     onAllCommentsClick={props.onAllWorkingCommentsClick}
+                    onAllChangesClick={props.onAllWorkingChangesClick}
                     compact={isSplitWorkspace}
                 />
                 <WorktreeList

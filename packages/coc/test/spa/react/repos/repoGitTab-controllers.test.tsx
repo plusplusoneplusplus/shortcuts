@@ -369,6 +369,17 @@ describe('useRepoGitSelection', () => {
         expect(location.hash).toBe(`#repos/${WS}/git/aaaaaaaaaaaa/${encodeURIComponent('src/a b.ts')}`);
     });
 
+    it('opens all working changes and writes the working-changes link', () => {
+        const { result } = setup();
+        act(() => result.current.selectWorkingTreeAll());
+        expect(result.current.view).toEqual({ type: 'working-tree-all' });
+        expect(location.hash).toBe(`#repos/${WS}/git/working-changes`);
+        expect(appDispatch).toHaveBeenCalledWith({
+            type: 'SET_GIT_ROUTE', routeWorkspaceId: WS, workspaceId: WS,
+            commitHash: 'working-changes', filePath: null,
+        });
+    });
+
     it('collapses a one-commit multi-select to a normal commit selection', () => {
         const a = commit('aaaaaaaaaaaa');
         const { result } = setup([a]);
@@ -396,6 +407,13 @@ describe('useRepoGitSelection', () => {
             const { result } = setup();
             act(() => result.current.hydrateFromInitialLoad([]));
             expect(result.current.view).toEqual({ type: 'branch-range' });
+        });
+
+        it('opens all working changes for the working-changes sentinel', () => {
+            appState = { ...appState, selectedGitCommitHash: 'working-changes' };
+            const { result } = setup();
+            act(() => result.current.hydrateFromInitialLoad([]));
+            expect(result.current.view).toEqual({ type: 'working-tree-all' });
         });
 
         it('opens a branch-range file when the link carries a path', () => {
@@ -536,6 +554,9 @@ describe('useRepoGitSelection — hosted by a repo group', () => {
 
         act(() => result.current.navigateToBranchFile('src/a.ts', 'first'));
         expect(location.hash).toBe(`${base}/branch-range/${encodeURIComponent('src/a.ts')}`);
+
+        act(() => result.current.selectWorkingTreeAll());
+        expect(location.hash).toBe(`${base}/working-changes`);
     });
 
     it('routes the SHA lookup to the member client and never to the group', async () => {

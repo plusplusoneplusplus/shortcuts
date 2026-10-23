@@ -122,6 +122,7 @@ describe('reconcileSelectionAfterRefresh', () => {
             { type: 'branch-range' },
             { type: 'branch-file', filePath: 'src/a.ts' },
             { type: 'working-tree-file', filePath: 'src/a.ts', stage: 'unstaged' },
+            { type: 'working-tree-all' },
             { type: 'working-tree-comments' },
             { type: 'branch-range-comments' },
         ])('leaves a $type view untouched', (view) => {

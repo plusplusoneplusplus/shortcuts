@@ -1265,6 +1265,7 @@ describe('git tab kind', () => {
             { type: 'branch-range' },
             { type: 'branch-file', filePath: 'b.ts' },
             { type: 'working-tree-file', filePath: 'c.ts', stage: 'staged' },
+            { type: 'working-tree-all' },
             { type: 'working-tree-comments' },
             { type: 'branch-range-comments' },
             { type: 'multi-commit', hashes: ['a1', 'b2'] },

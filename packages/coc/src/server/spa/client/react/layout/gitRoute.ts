@@ -7,8 +7,8 @@
  * history) and the workspace that owns the git DATA (the member). A group route
  * therefore serializes the member as a `member/<id>` segment pair:
  *
- *   #repos/{repoId}/git[/{sha|branch-range}[/{filePath}]]
- *   #repos/{groupId}/git[/member/{memberId}[/{sha|branch-range}[/{filePath}]]]
+ *   #repos/{repoId}/git[/{sha|branch-range|working-changes}[/{filePath}]]
+ *   #repos/{groupId}/git[/member/{memberId}[/{sha|branch-range|working-changes}[/{filePath}]]]
  *
  * The `member` marker is structural only for group ids, so an ordinary repo can
  * still have a ref literally called `member` and a group link can never mistake
@@ -31,7 +31,7 @@ export interface GitRouteDescriptor {
      * entry that still needs the host to resolve a member.
      */
     workspaceId: string | null;
-    /** A commit SHA, the `branch-range` sentinel, or null for plain history. */
+    /** A commit SHA, the `branch-range` / `working-changes` sentinel, or null for plain history. */
     commitHash: string | null;
     filePath: string | null;
 }

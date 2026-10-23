@@ -247,6 +247,7 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repo
             guard(rawSelection.selectWorkingTreeFile)(filePath, stage);
         },
         navigateToWorkingTreeFile: guard(rawSelection.navigateToWorkingTreeFile),
+        selectWorkingTreeAll: guard(rawSelection.selectWorkingTreeAll),
         selectWorkingTreeComments: guard(rawSelection.selectWorkingTreeComments),
         selectBranchRangeComments: guard(rawSelection.selectBranchRangeComments),
         lookupCommit: guard(rawSelection.lookupCommit),
@@ -254,7 +255,7 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repo
         guard, rawSelection.selectCommit, rawSelection.selectCommits, rawSelection.selectCommitFile,
         rawSelection.navigateToCommitFile, rawSelection.selectBranchRange, rawSelection.selectBranchFile,
         rawSelection.navigateToBranchFile, rawSelection.selectWorkingTreeFile, rawSelection.getView,
-        rawSelection.navigateToWorkingTreeFile, rawSelection.selectWorkingTreeComments,
+        rawSelection.navigateToWorkingTreeFile, rawSelection.selectWorkingTreeAll, rawSelection.selectWorkingTreeComments,
         rawSelection.selectBranchRangeComments, rawSelection.lookupCommit,
     ]);
     const selection = { ...rawSelection, ...guardedSelectors };
@@ -705,6 +706,7 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repo
             onNavigateToBranchFile={selection.navigateToBranchFile}
             onNavigateToCommitFile={selection.navigateToCommitFile}
             onNavigateToWorkingTreeFile={selection.navigateToWorkingTreeFile}
+            onWorkingTreeFileSelect={selection.selectWorkingTreeFile}
             onWorkingTreeFileMissing={data.bumpWorkingChanges}
             onDetailDirtyChange={handleDetailDirtyChange}
             onDetailRegisterSave={handleDetailRegisterSave}
@@ -790,6 +792,7 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repo
             selectedWorkingTreeFile={selectedWorkingTreeFile}
             onWorkingTreeFileSelect={selection.selectWorkingTreeFile}
             onAllWorkingCommentsClick={selection.selectWorkingTreeComments}
+            onAllWorkingChangesClick={selection.selectWorkingTreeAll}
             repoState={data.repoState}
             onConflictResolveAI={() => { void skillActions.resolveConflictsWithAI(); }}
             onConflictContinue={() => { void actions.conflictContinue(); }}

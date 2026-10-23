@@ -39,6 +39,9 @@ const SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
 /** The sentinel `selectedGitCommitHash` uses for "the branch range", not a SHA. */
 export const BRANCH_RANGE_DEEP_LINK = 'branch-range';
 
+/** The sentinel `selectedGitCommitHash` uses for "all working changes", not a SHA. */
+export const WORKING_CHANGES_DEEP_LINK = 'working-changes';
+
 export function isLookupCandidate(sha: string): boolean {
     return SHA_PATTERN.test(sha);
 }
@@ -119,6 +122,7 @@ export interface UseRepoGitSelectionReturn {
     navigateToBranchFile: (filePath: string, target: 'first' | 'last') => void;
     selectWorkingTreeFile: (filePath: string, stage: 'staged' | 'unstaged' | 'untracked') => void;
     navigateToWorkingTreeFile: (filePath: string, target: 'first' | 'last') => void;
+    selectWorkingTreeAll: () => void;
     selectWorkingTreeComments: () => void;
     selectBranchRangeComments: () => void;
     /** Mobile "back to list" — clears the detail so the list shows again. */
@@ -281,6 +285,12 @@ export function useRepoGitSelection({
         setView({ type: 'working-tree-file', filePath, stage: currentStage });
     }, []);
 
+    const selectWorkingTreeAll = useCallback(() => {
+        setHunkTarget(undefined);
+        setView({ type: 'working-tree-all' });
+        publishRoute(WORKING_CHANGES_DEEP_LINK, null);
+    }, [publishRoute]);
+
     const selectWorkingTreeComments = useCallback(() => setView({ type: 'working-tree-comments' }), []);
     const selectBranchRangeComments = useCallback(() => setView({ type: 'branch-range-comments' }), []);
     const clearSelection = useCallback(() => {
@@ -351,7 +361,8 @@ export function useRepoGitSelection({
     /**
      * Turn one routed selection into a detail view. Shared by mount-time
      * hydration and later navigation so both understand the same cases:
-     * history (no selection), the branch range and its files, a loaded commit
+     * history (no selection), the branch range and its files, all working
+     * changes, a loaded commit
      * and its files, and a SHA that needs a direct lookup.
      */
     const applyRoute = useCallback((
@@ -367,6 +378,10 @@ export function useRepoGitSelection({
         }
         if (commitHash === BRANCH_RANGE_DEEP_LINK) {
             setView(filePath ? { type: 'branch-file', filePath } : { type: 'branch-range' });
+            return;
+        }
+        if (commitHash === WORKING_CHANGES_DEEP_LINK) {
+            setView({ type: 'working-tree-all' });
             return;
         }
         const target = loaded.find(c => c.hash.startsWith(commitHash))
@@ -501,7 +516,7 @@ export function useRepoGitSelection({
         view, setView, getView, hunkTarget, selectedHashes, selectedCommit,
         selectCommit, selectCommits, selectCommitFile, navigateToCommitFile,
         selectBranchRange, selectBranchFile, navigateToBranchFile,
-        selectWorkingTreeFile, navigateToWorkingTreeFile,
+        selectWorkingTreeFile, navigateToWorkingTreeFile, selectWorkingTreeAll,
         selectWorkingTreeComments, selectBranchRangeComments, clearSelection,
         commitLookupLoading, commitLookupError, clearCommitLookupError,
         lookupCommit, initialCommitHash: routeCommitHash, hydrateFromInitialLoad, restoreNotFound,

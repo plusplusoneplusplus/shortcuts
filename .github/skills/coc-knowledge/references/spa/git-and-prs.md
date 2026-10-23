@@ -84,7 +84,12 @@ passes its rect to `onBranchClick`; `RepoGitTab` keeps that rect as
 cherry-pick target picker passes no anchor and stays a centered modal. In
 compact mode the working-tree header shows `+staged ~modified ?untracked` (or
 `✓ clean`) via `CompactWorkingTreeSummary` with no total file badge, and each
-commit row leads with its short hash before the subject.
+commit row leads with its short hash before the subject. The working-tree
+header's all-diffs button opens the `working-tree-all` view
+(`WorkingTreeAllFilesDiff`, deep link `working-changes`): staged, unstaged and
+untracked files grouped by section, collapsed rows that lazy-load one file's
+diff (untracked content renders as an all-added diff), and "Open →" into the
+single-file `working-tree-file` view.
 
 ### Commit tooltips
 

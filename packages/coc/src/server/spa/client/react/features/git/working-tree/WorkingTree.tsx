@@ -46,6 +46,8 @@ interface WorkingTreeProps {
     refreshKey?: number;
     /** Callback when the "all comments" button is clicked in the header. */
     onAllCommentsClick?: () => void;
+    /** Callback when the "all changes" button is clicked — opens every diff in one view. */
+    onAllChangesClick?: () => void;
     /**
      * Dense split-workspace skin: flat row instead of a padded card, "Local"
      * tag, shortened summary and file-count. Full text stays in the tooltips.
@@ -337,7 +339,7 @@ export function CompactWorkingTreeSummary({ staged, modified, untracked }: { sta
     );
 }
 
-export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFilePath, refreshKey, onAllCommentsClick, compact }: WorkingTreeProps) {
+export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFilePath, refreshKey, onAllCommentsClick, onAllChangesClick, compact }: WorkingTreeProps) {
     const [changes, setChanges] = useState<WorkingTreeChange[]>([]);
     const [changesLoaded, setChangesLoaded] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -632,6 +634,16 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
                         >
                             {`${totalCount} files`}
                         </span>
+                    )}
+                    {onAllChangesClick && totalCount > 0 && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onAllChangesClick(); }}
+                            title="Show all working changes in one view"
+                            className="ml-1 inline-flex items-center gap-1 text-[10.5px] px-1.5 py-0.5 rounded border border-transparent hover:border-[#0078d4]/35 dark:hover:border-[#3794ff]/35 text-[#616161] dark:text-[#9d9d9d] hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors flex-shrink-0"
+                            data-testid="working-tree-all-changes-btn"
+                        >
+                            {compact ? '≡' : '≡ All diffs'}
+                        </button>
                     )}
                     {onAllCommentsClick && (
                         <button

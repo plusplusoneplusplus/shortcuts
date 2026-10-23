@@ -16,6 +16,7 @@ const REFRESH_STABLE_VIEWS: ReadonlySet<RightPanelView['type']> = new Set([
     'branch-file',
     'branch-range',
     'working-tree-file',
+    'working-tree-all',
     'working-tree-comments',
     'branch-range-comments',
 ]);
