@@ -24,6 +24,8 @@ export interface BrowserViewRequest {
     url: string;
     pageZoomPercent?: number;
     clickOnceEnabled?: boolean;
+    /** A control turn is already driving the view (`open`): gate its first navigation. */
+    navigationGate?: boolean;
 }
 
 /** A local HTML preview: `path` is validated by `validateHtmlPagePath` before it gets here. */
@@ -81,6 +83,11 @@ export interface BrowserHostedView {
     waitForControlReady?(signal: AbortSignal): Promise<void>;
     /** Trusted native popup chrome only; never injected into the page. */
     setControlActivity?(turnId: string | null): void | Promise<void>;
+    /**
+     * Engines that cannot hold a request in flight (WebView2) cancel gated main-frame navigations
+     * natively while a control turn drives the view, ask `navigationGate`, then re-issue on Allow.
+     */
+    setNavigationGate?(enabled: boolean): void | Promise<void>;
     /** Web content only; file previews deliberately omit this capability. */
     setPageZoom?(percent: number): void | Promise<void>;
     setBounds(bounds: HtmlPageBounds | null): void | Promise<void>;

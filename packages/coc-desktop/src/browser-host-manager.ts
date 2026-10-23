@@ -150,6 +150,7 @@ export class BrowserHostManager {
         this.pruneNavigationChecks();
         this.options.send(entry.ownerId, BROWSER_CONTROL_ACTIVITY_CHANNEL, { ...activity, active: false, finished });
         this.nativeActivity(entry);
+        this.nativeNavigationGate(entry);
         if (activity.background) void this.backgroundControl(entry, false).catch(error => console.error('[coc-desktop] Browser background control cleanup failed:', error));
     }
 
@@ -174,6 +175,13 @@ export class BrowserHostManager {
             routingRef: entry.sessionKey, viewId: entry.viewId, active: true, routingOwnerId, ...(background ? { background: true } : {}) };
         this.options.send(entry.ownerId, BROWSER_CONTROL_ACTIVITY_CHANNEL, entry.activity);
         this.nativeActivity(entry);
+        this.nativeNavigationGate(entry);
+    }
+
+    /** Engines without in-flight request holds cancel gated navigations natively only during a turn. */
+    private nativeNavigationGate(entry: Entry): void {
+        void Promise.resolve().then(() => entry.closed ? undefined : entry.view?.setNavigationGate?.(!!this.gateActivity(entry)))
+            .catch(error => console.error('[coc-desktop] Browser navigation gate update failed:', error));
     }
 
     private stopControl(entry: Entry, turnId: string): void {
@@ -273,7 +281,12 @@ export class BrowserHostManager {
         try { return await this.runControl(ownerId, request, signal, routingRef, pendingKeys); }
         finally {
             if (commandHold) this.commandHolds.delete(commandHold);
-            for (const key of pendingKeys) this.pendingActivity.delete(key);
+            for (const key of pendingKeys) {
+                this.pendingActivity.delete(key);
+                const [owner, viewId] = JSON.parse(key) as [number, string];
+                const entry = this.entry(owner, viewId);
+                if (entry) this.nativeNavigationGate(entry);
+            }
             if (pendingKeys.length) this.pruneNavigationChecks();
         }
     }
@@ -550,6 +563,7 @@ export class BrowserHostManager {
             ownerId: entry.ownerId, viewId: entry.viewId, sessionKey: entry.sessionKey, url,
             pageZoomPercent: this.options.getPageZoom(),
             ...(this.options.clickOnce?.enabled() ? { clickOnceEnabled: true } : {}),
+            ...(this.gateActivity(entry) ? { navigationGate: true } : {}),
         }, sink));
     }
 

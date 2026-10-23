@@ -70,6 +70,10 @@ pub struct Command {
     pub session_id: Option<String>,
     pub enabled: Option<bool>,
     pub click_once_enabled: Option<bool>,
+    /// `open`/`navigation-gate`: hold agent-driven cross-host navigations for site approval.
+    pub navigation_gate: Option<bool>,
+    /// `navigate`: resume a navigation the gate held after the user approved it.
+    pub approved: Option<bool>,
 }
 
 pub const CDP_EVENTS: &[&str] = &[
@@ -214,6 +218,59 @@ pub fn control_content_top(height: i32, dpi: i32, active: bool) -> i32 {
         (40 * dpi.max(96) / 96).min(height.max(0))
     } else {
         0
+    }
+}
+
+/// While a control turn drives the view, a new document on another host must wait for site
+/// approval. Same-host loads stay on an already-shown site; back/forward and reload are not
+/// new pages unless they redirect. Non-HTTP(S) targets are never asked about.
+pub fn gate_navigation(current: &str, target: &str, new_document: bool) -> bool {
+    if !new_document || !allowed_url(target, false) {
+        return false;
+    }
+    let host = |value: &str| {
+        url::Url::parse(value)
+            .ok()
+            .filter(|url| matches!(url.scheme(), "http" | "https"))
+            .and_then(|url| url.host_str().map(str::to_ascii_lowercase))
+    };
+    host(current).is_none() || host(current) != host(target)
+}
+
+#[cfg(test)]
+mod navigation_gate_tests {
+    use super::*;
+
+    #[test]
+    fn gates_new_documents_on_another_host_only() {
+        assert!(gate_navigation("about:blank", "https://example.com/", true));
+        assert!(gate_navigation("", "https://example.com/", true));
+        assert!(gate_navigation("https://google.com/", "https://mail.google.com/", true));
+        assert!(gate_navigation("https://a.test/", "http://b.test/form", true));
+        assert!(!gate_navigation("https://a.test/x", "https://A.test:8443/y", true));
+        assert!(!gate_navigation("https://a.test/", "https://b.test/", false));
+        assert!(!gate_navigation("https://a.test/", "about:blank", true));
+        assert!(!gate_navigation("https://a.test/", "data:text/html,x", true));
+        assert!(!gate_navigation("https://a.test/", "file:///C:/x.html", true));
+    }
+
+    #[test]
+    fn gate_commands_parse() {
+        let open: Command = serde_json::from_str(
+            r#"{"id":1,"op":"open","viewId":"7:tab:1","url":"https://a.test/","parent":"1","navigationGate":true}"#,
+        )
+        .unwrap();
+        assert_eq!(open.navigation_gate, Some(true));
+        let toggle: Command = serde_json::from_str(
+            r#"{"id":2,"op":"navigation-gate","viewId":"7:tab:1","navigationGate":false}"#,
+        )
+        .unwrap();
+        assert_eq!(toggle.navigation_gate, Some(false));
+        let resume: Command = serde_json::from_str(
+            r#"{"id":3,"op":"navigate","viewId":"7:tab:1","url":"https://b.test/","approved":true}"#,
+        )
+        .unwrap();
+        assert_eq!(resume.approved, Some(true));
     }
 }
 

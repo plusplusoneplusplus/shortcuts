@@ -989,3 +989,92 @@ describe('WebView2 explicit history events', () => {
         } finally { fs.rmSync(directory, { recursive: true, force: true }); }
     });
 });
+
+describe('WebView2 agent navigation approval gate', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mocks.request.mockReset().mockResolvedValue(undefined);
+        mocks.running = true;
+    });
+
+    async function opened(navigationGate?: (url: string, popoutViewId?: string) => boolean | Promise<boolean>) {
+        const popups = new Map<string, BrowserHostedView>();
+        const gateSink: BrowserEventSink = { ...sink, navigationGate: vi.fn(navigationGate ?? (() => true)),
+            controlPopoutOpened: vi.fn((id, popup) => popups.set(id, popup)), controlPopoutClosed: vi.fn(id => popups.delete(id)) };
+        const host = new WebView2BrowserHost('profile');
+        const root = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: 'https://start.test/', navigationGate: true }, gateSink);
+        return { host, root, sink: gateSink, popups };
+    }
+    const navigates = () => mocks.request.mock.calls.filter(call => call[0] === 'navigate');
+
+    it('opens gated, toggles root and popup gates natively, and keeps popups gated while their root is', async () => {
+        const h = await opened();
+        expect(mocks.request).toHaveBeenCalledWith('open', expect.objectContaining({ viewId: '7:tab:1', navigationGate: true }));
+        mocks.onEvent({ event: 'popup-opened', viewId: '7:tab:1:popup:1', rootId: '7:tab:1', url: 'https://start.test/popup' });
+        const [, popup] = [...h.popups][0];
+        mocks.request.mockClear();
+        await popup.setNavigationGate!(true);
+        expect(mocks.request).toHaveBeenLastCalledWith('navigation-gate', { viewId: '7:tab:1:popup:1', navigationGate: true });
+        await popup.setNavigationGate!(false);
+        expect(mocks.request).toHaveBeenLastCalledWith('navigation-gate', { viewId: '7:tab:1:popup:1', navigationGate: true });
+        mocks.request.mockClear();
+        await h.root.setNavigationGate!(false);
+        expect(mocks.request.mock.calls).toEqual([
+            ['navigation-gate', { viewId: '7:tab:1', navigationGate: false }],
+            ['navigation-gate', { viewId: '7:tab:1:popup:1', navigationGate: false }],
+        ]);
+        mocks.request.mockClear();
+        await h.root.setNavigationGate!(false);
+        expect(mocks.request).not.toHaveBeenCalled();
+        await h.host.dispose();
+    });
+
+    it('re-issues a natively cancelled navigation only after the sink allows it', async () => {
+        let decide!: (allow: boolean) => void;
+        const h = await opened(() => new Promise<boolean>(resolve => { decide = resolve; }));
+        mocks.onEvent({ event: 'navigation-gate', viewId: '7:tab:1', url: 'https://other.test/login' });
+        expect(h.sink.navigationGate).toHaveBeenCalledExactlyOnceWith('https://other.test/login');
+        await Promise.resolve();
+        expect(navigates()).toEqual([]);
+        decide(true);
+        await vi.waitFor(() => expect(navigates()).toEqual([['navigate', { viewId: '7:tab:1', url: 'https://other.test/login', approved: true }]]));
+        // Deny leaves the previous page: nothing is re-issued.
+        mocks.onEvent({ event: 'navigation-gate', viewId: '7:tab:1', url: 'https://blocked.test/' });
+        decide(false);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(navigates()).toHaveLength(1);
+        await h.host.dispose();
+    });
+
+    it('asks through the root sink with the public popout id for popup navigations', async () => {
+        const h = await opened();
+        mocks.onEvent({ event: 'popup-opened', viewId: '7:tab:1:popup:1', rootId: '7:tab:1', url: 'https://start.test/popup' });
+        const [id] = [...h.popups][0];
+        mocks.onEvent({ event: 'navigation-gate', viewId: '7:tab:1:popup:1', url: 'https://sso.test/' });
+        expect(h.sink.navigationGate).toHaveBeenCalledExactlyOnceWith('https://sso.test/', id);
+        await vi.waitFor(() => expect(navigates()).toEqual([['navigate', { viewId: '7:tab:1:popup:1', url: 'https://sso.test/', approved: true }]]));
+        await h.host.dispose();
+    });
+
+    it('drops late approvals after a newer navigation, a newer gate, closure, or invalid events', async () => {
+        const decisions: Array<(allow: boolean) => void> = [];
+        const h = await opened(() => new Promise<boolean>(resolve => { decisions.push(resolve); }));
+        mocks.onEvent({ event: 'navigation-gate', viewId: '7:tab:1', url: 'https://first.test/' });
+        await h.root.navigate('https://typed.test/');
+        decisions[0](true);
+        mocks.onEvent({ event: 'navigation-gate', viewId: '7:tab:1', url: 'https://older.test/' });
+        mocks.onEvent({ event: 'navigation-gate', viewId: '7:tab:1', url: 'https://newer.test/' });
+        decisions[1](true);
+        for (const message of [{ url: 'file:///C:/x.html' }, { url: 42 }, { viewId: 'foreign', url: 'https://x.test/' }]) {
+            mocks.onEvent({ event: 'navigation-gate', viewId: '7:tab:1', ...message });
+        }
+        expect(decisions).toHaveLength(3);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(navigates()).toEqual([['navigate', { viewId: '7:tab:1', url: 'https://typed.test/' }]]);
+        await h.root.close();
+        decisions[2](true);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(navigates()).toHaveLength(1);
+        await h.host.dispose();
+    });
+});

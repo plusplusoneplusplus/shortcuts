@@ -3,7 +3,7 @@ import { BrowserHostManager } from '../src/browser-host-manager';
 import { BrowserControlPage } from '../src/browser-control-page';
 import type { RichClipboard } from '../src/browser-rich-clipboard';
 import type { BrowserCommand } from '@plusplusoneplusplus/coc-client';
-import type { BrowserEngineHost, BrowserHostedView, BrowserEventSink } from '../src/browser-host-contract';
+import type { BrowserEngineHost, BrowserHostedView, BrowserEventSink, BrowserViewRequest } from '../src/browser-host-contract';
 import { BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL } from '../src/browser-control-command';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
@@ -13,11 +13,13 @@ function harness(redirectTo?: string, richClipboard?: RichClipboard, gated = fal
     const views: BrowserHostedView[] = [];
     const sinks: BrowserEventSink[] = [];
     const loads: string[] = [];
+    const requests: BrowserViewRequest[] = [];
     const host: BrowserEngineHost = {
         engine: 'electron', availability: async () => ({ engine: 'electron', available: true }),
         clearData: async () => {}, dispose: async () => {},
         create: async (request, sink) => {
             sinks.push(sink);
+            requests.push(request);
             let url = gated ? '' : redirectTo ?? request.url;
             let loading = false;
             const load = (next: string) => {
@@ -31,7 +33,7 @@ function harness(redirectTo?: string, richClipboard?: RichClipboard, gated = fal
             const view: BrowserHostedView = {
                 snapshot: () => ({ viewId: request.viewId, engine: 'electron', url, title: 'Fixture', canGoBack: true, canGoForward: false, loading }),
                 navigate: vi.fn(async next => { if (gated) await load(next); else url = next; }), nav: vi.fn(),
-                setBounds: vi.fn(), focus: vi.fn(), close: vi.fn(),
+                setBounds: vi.fn(), focus: vi.fn(), close: vi.fn(), setNavigationGate: vi.fn(),
                 cdp: vi.fn(async (method, params) => {
                     if (method === 'Runtime.evaluate') {
                         if (String(params?.expression).includes('"action":"snapshot"')) return { result: { value: { title: 'Fixture', url, elements: [], nextRef: 1 } } };
@@ -64,7 +66,7 @@ function harness(redirectTo?: string, richClipboard?: RichClipboard, gated = fal
     manager.bindControlScope(3, 'other', 'other');
     const run = (command: BrowserCommand, selectedTab?: string, processId = 'p', signal?: AbortSignal) =>
         manager.executeControl(1, { id: 'r', workspaceId: 'w', processId, command, selectedTab }, signal);
-    return { manager, run, views, sinks, send, loads };
+    return { manager, run, views, sinks, send, loads, requests };
 }
 
 describe('main browser control scope and selection', () => {
@@ -458,6 +460,26 @@ describe('agent-driven navigation approval gate', () => {
             // After the turn finishes, navigation is manual again.
             h.manager.finishControl(1, 't');
             expect(sink.navigationGate!('https://later.test/')).toBe(true);
+        } finally {
+            await h.manager.dispose();
+        }
+    });
+
+    it('tells engines without request holds when a turn gates a view, including the tab open creates', async () => {
+        const h = harness(undefined, undefined, true);
+        try {
+            await h.manager.open(1, 'manual', 'https://manual.test/', 'w');
+            expect(h.requests[0].navigationGate).toBeUndefined();
+            await h.manager.executeControl(1, { id: 'r', workspaceId: 'w', processId: 'p', turnId: 't', command: { action: 'read' }, selectedTab: 't1:manual' }, undefined, 'w');
+            await vi.waitFor(() => expect(h.views[0].setNavigationGate).toHaveBeenLastCalledWith(true));
+            h.manager.finishControl(1, 't');
+            await vi.waitFor(() => expect(h.views[0].setNavigationGate).toHaveBeenLastCalledWith(false));
+            const opened = h.manager.executeControl(1, { id: 'r2', workspaceId: 'w', processId: 'p', turnId: 't2', command: { action: 'open', url: 'https://new.test/', newTab: true } }, undefined, 'w');
+            await vi.waitFor(() => expect(checks(h.send)).toHaveLength(1));
+            expect(h.requests[1].navigationGate).toBe(true);
+            h.manager.decideNavigation(1, checks(h.send)[0].checkId, true);
+            await opened;
+            await vi.waitFor(() => expect(h.views[1].setNavigationGate).toHaveBeenLastCalledWith(true));
         } finally {
             await h.manager.dispose();
         }
