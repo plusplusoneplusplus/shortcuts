@@ -113,7 +113,9 @@ badges. References grant no permission to send, navigate, launch, reassign, dele
 
 ### Follow-up suggestions
 
-`FollowUpInputArea` reuses `SuggestionChips`; ordinary clicks fill the composer and
+`FollowUpInputArea` reuses `SuggestionChips`: one non-wrapping, horizontally scrolling
+row of compact outline pills (long text truncated, full text in the tooltip) with the
+dismiss button inline at the row end. Ordinary clicks fill the composer and
 Ctrl/Meta clicks send. With default-on `features.sentinelNextSteps`, Sentinel clicks
 send the named action through the same `onSend` / `useSendMessage` owner-qualified
 flow, including draft, attachment and pending-context guards. A synchronous guard

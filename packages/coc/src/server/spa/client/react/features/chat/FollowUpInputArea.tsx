@@ -1133,36 +1133,25 @@ export function FollowUpInputArea({
                 </Button>
             )}
             {suggestions.length > 0 && !sending && !isActiveGeneration && !suggestionsDismissed && (
-                <div className="relative">
-                    <SuggestionChips
-                        suggestions={suggestions}
-                        onSelect={(text, e) => {
-                            if (sendSuggestionsOnClick) {
-                                if (inputDisabled || sending || isActiveGeneration || suggestionSendPending.current) return;
-                                suggestionSendPending.current = true;
-                                void onSend(text).finally(() => { suggestionSendPending.current = false; });
-                            } else if (e.ctrlKey || e.metaKey) {
-                                void onSend(text);
-                            } else {
-                                setFollowUpInput(text);
-                                richTextRef.current?.setValue(text);
-                                richTextRef.current?.focus();
-                            }
-                        }}
-                        disabled={inputDisabled}
-                        ctrlHeld={sendSuggestionsOnClick || chipsCtrlHeld}
-                    />
-                    <button
-                        type="button"
-                        className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center rounded-full bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#c8c8c8] dark:hover:bg-[#4e4e4e] text-[10px] leading-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#0078d4]/50"
-                        onClick={() => setSuggestionsDismissed(true)}
-                        aria-label="Dismiss suggestions"
-                        title="Dismiss suggestions"
-                        data-testid="dismiss-suggestions-btn"
-                    >
-                        ✕
-                    </button>
-                </div>
+                <SuggestionChips
+                    suggestions={suggestions}
+                    onSelect={(text, e) => {
+                        if (sendSuggestionsOnClick) {
+                            if (inputDisabled || sending || isActiveGeneration || suggestionSendPending.current) return;
+                            suggestionSendPending.current = true;
+                            void onSend(text).finally(() => { suggestionSendPending.current = false; });
+                        } else if (e.ctrlKey || e.metaKey) {
+                            void onSend(text);
+                        } else {
+                            setFollowUpInput(text);
+                            richTextRef.current?.setValue(text);
+                            richTextRef.current?.focus();
+                        }
+                    }}
+                    disabled={inputDisabled}
+                    ctrlHeld={sendSuggestionsOnClick || chipsCtrlHeld}
+                    onDismiss={() => setSuggestionsDismissed(true)}
+                />
             )}
             {attachedContext && onRemoveAttachedContext && (
                 <AttachedContextPreviews items={attachedContext} onRemove={id => {
