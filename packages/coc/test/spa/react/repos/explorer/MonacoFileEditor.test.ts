@@ -97,8 +97,10 @@ describe('getMonacoLanguage', () => {
         expect(getMonacoLanguage('objc.mm')).toBe('cpp');
     });
 
-    it('maps C#', () => {
+    it('maps C# source, scripts, and Cake builds', () => {
         expect(getMonacoLanguage('Program.cs')).toBe('csharp');
+        expect(getMonacoLanguage('setup.csx')).toBe('csharp');
+        expect(getMonacoLanguage('build.cake')).toBe('csharp');
     });
 
     it('maps Java', () => {

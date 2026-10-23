@@ -41,6 +41,8 @@ const EXT_TO_MONACO_LANG: Record<string, string> = {
     cuh: 'cpp',
     mm: 'cpp',
     cs: 'csharp',
+    csx: 'csharp',
+    cake: 'csharp',
     swift: 'swift',
     kt: 'kotlin',
     scala: 'scala',
