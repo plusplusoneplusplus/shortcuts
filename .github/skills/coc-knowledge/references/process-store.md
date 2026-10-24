@@ -237,8 +237,9 @@ Callers re-evaluate before using readiness; stale external-I/O snapshots conflic
 parent Sentinel and job. These definitions are distinct from the ledger's
 item-linked `sentinel_todo_jobs`. Transactions enforce the ten-job limit,
 expected revisions and a single active run per job. The public history contains
-the last 20 runs; active or pending-delivery records remain protected from pruning.
-Run records retain queue/turn/delivery identities. Gate runtime state stays in the
+the last 20 runs; active records remain protected from pruning.
+Run records retain queue/turn identities; startup recovery clears handback fields
+left by older servers. Gate runtime state stays in the
 job's JSON record; `updateGate` applies it without a revision bump only while the
 evaluated `gateScript` is unchanged. Definitions and snapshot files
 are machine-local, excluded from snapshot export/import and cleared by ledger wipe.

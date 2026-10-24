@@ -146,8 +146,8 @@ re-check owner and flags on every call. The tool gates every action through
 Coda REST commands retain their independent feature gate.
 `ChatBaseExecutor.buildSentinelRefrainsDeps`
 binds the tool to the invoking Sentinel chat (`workspaceId`, `processId`; never a
-tool argument) and only on attended turns: refrain handbacks and gate-paused
-notices (`FollowUpTurnOptions.sentinelJobHandback`, set by the lifecycle runner),
+tool argument) and only on attended turns: refrain gate-paused notices
+(`FollowUpTurnOptions.sentinelJobNotice`, set by the lifecycle runner),
 PR outcome reviews, read-only turns, cron/wakeup/trigger turns, Coda children
 and non-Sentinel chats (including refrain children) never get it. Each turn records
 its resolved provider/model/effort (`recordSentinelRefrainDefaults`) as the defaults new

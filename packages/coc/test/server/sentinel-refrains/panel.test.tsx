@@ -96,7 +96,8 @@ describe('Sentinel Refrains', () => {
             fireEvent.click(info);
             const dialog = screen.getByRole('dialog', { name: 'About Refrains' });
             expect(dialog.textContent).toContain('An optional gate decides whether a run should start');
-            expect(dialog.textContent).toContain('Results return to this Sentinel');
+            expect(dialog.textContent).toContain("Results stay in each refrain's job chat and are not sent to this Sentinel");
+            expect(dialog.textContent).not.toContain('Results return to this Sentinel');
             expect(toggle.getAttribute('aria-expanded')).toBe('true');
             fireEvent.keyDown(dialog, { key: 'Escape' });
         }
@@ -390,11 +391,11 @@ describe('Sentinel Refrains', () => {
         await screen.findByText(/No refrains yet/);
         expect(screen.getByRole('button', { name: 'New refrain' })).not.toBeDisabled();
     });
-    it('renders bounded history with timings, failure/overlap and owner-qualified turn links', async () => {
+    it('renders bounded history with timings, failure/overlap and an owner-qualified job-turn link', async () => {
         mock.route = { kind: 'remote', baseUrl: 'https://example.invalid' };
         mock.list.mockResolvedValue({ jobs: [job({ mode: 'autopilot', runs: [
             run({ status: 'completed', startedAt: '2026-10-18T12:00:01Z', finishedAt: '2026-10-18T12:00:02Z', durationMs: 1000,
-                jobTurnHref: '#repos/ws-a/chats/queue_job?turn=2', sentinelFollowUpHref: '#repos/ws-a/chats/queue_sentinel?turn=4' }),
+                jobTurnHref: '#repos/ws-a/chats/queue_job?turn=2' }),
             run({ id: 'r2', runNumber: 2, status: 'skipped', trigger: 'schedule', skipReason: 'overlap' }),
         ] })] });
         render(<SentinelRefrains owner={{ ...owner, ownerRoutingRef: 'remote:server:ws-a' }} items={[]} onFollowLink={follow} />);
@@ -406,7 +407,7 @@ describe('Sentinel Refrains', () => {
         expect(link).toHaveAttribute('href', '#repos/remote%3Aserver%3Aws-a/chats/queue_job?turn=2');
         fireEvent.click(link);
         expect(follow).toHaveBeenCalledWith(expect.anything(), 'sentinel-job:queue_job:?turn=2');
-        expect(screen.getByRole('link', { name: 'Sentinel follow-up' })).toHaveAttribute('href', '#repos/remote%3Aserver%3Aws-a/chats/queue_sentinel?turn=4');
+        expect(screen.queryByRole('link', { name: 'Sentinel follow-up' })).not.toBeInTheDocument();
     });
     it('uses owning-server feature policy even when local jobs are off', async () => {
         applyRuntimeConfigPatch({ sentinelEnabled: false, sentinelTodoJobsEnabled: false });

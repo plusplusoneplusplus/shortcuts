@@ -1,6 +1,6 @@
 /**
  * Executor wiring for `sentinel_jobs`: only the owning Sentinel chat's attended turns receive the tool, bound to
- * that chat and workspace, with the turn's resolved settings as job defaults. Handbacks, PR outcome reviews,
+ * that chat and workspace, with the turn's resolved settings as job defaults. Gate notices, PR outcome reviews,
  * automation turns, other modes and disabled features get nothing.
  */
 
@@ -181,7 +181,7 @@ describe('sentinel_jobs executor wiring', () => {
     });
 
     it.each<[string, FollowUpTurnOptions]>([
-        ['job handbacks', { sentinelJobHandback: true }],
+        ['refrain gate notices', { sentinelJobNotice: true }],
         ['PR outcome reviews', { sentinelPrOutcomeReview: true }],
         ['read-only turns', { readonly: true }],
     ])('withholds the tool from %s', async (_label, options) => {
@@ -197,7 +197,7 @@ describe('sentinel_jobs executor wiring', () => {
         expect(jobsTool(await followUp(makeCommands(), undefined, 'queue_parent', 'ws-1', 'sentinel', { source }))).toBeUndefined();
     });
 
-    it.each([['handback', { sentinelJobHandback: true }], ['notice', { sentinelJobHandback: true }],
+    it.each([['notice', { sentinelJobNotice: true }],
         ['run', { sentinelScheduledJob: true }]] as const)(
         'marks scheduled-job %s follow-ups for the executor', async (kind, expected) => {
             const store = createMockProcessStore();
@@ -208,7 +208,7 @@ describe('sentinel_jobs executor wiring', () => {
                 id: `task-${kind}`, type: 'chat', priority: 'low', status: 'running', createdAt: Date.now(), processId: 'queue_parent',
                 payload: { kind: 'chat', mode: 'sentinel', workspaceId: 'ws-1', processId: 'queue_parent', prompt: 'result',
                     context: { sentinelScheduledJob: { workspaceId: 'ws-1', processId: 'queue_parent', jobId: 'j1', runId: 'r1', kind } } },
-                config: {}, displayName: 'handback',
+                config: {}, displayName: kind,
             } as unknown as QueuedTask, {
                 cancelledTasks: new Set(), executeFollowUpFn,
                 executeByTypeFn: async () => ({ response: 'done.' }), getWorkingDirectoryFn: () => undefined,
@@ -216,6 +216,6 @@ describe('sentinel_jobs executor wiring', () => {
             expect(result.error?.message).toBeUndefined();
             const options = (executeFollowUpFn.mock.calls[0] as unknown[]).at(-1) as Record<string, unknown>;
             expect(options).toMatchObject(expected);
-            expect(options[kind === 'run' ? 'sentinelJobHandback' : 'sentinelScheduledJob']).toBeUndefined();
+            expect(options[kind === 'run' ? 'sentinelJobNotice' : 'sentinelScheduledJob']).toBeUndefined();
         });
 });

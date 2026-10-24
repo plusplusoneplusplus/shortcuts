@@ -199,7 +199,7 @@ function makeOpts(overrides: Partial<RegisterRoutesOptions> = {}): RegisterRoute
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('registerAllRoutes', () => {
-    it.each(['sentinel', 'workspace'])('revokes jobs and handbacks immediately after %s removal without affecting another workspace', async removed => {
+    it.each(['sentinel', 'workspace'])('revokes jobs immediately after %s removal without affecting another workspace', async removed => {
         const store = new SqliteProcessStore({ dbPath: path.join(tmpDir, 'processes.db') });
         const owners = [
             { workspaceId: 'ws-jobs-a', processId: 'queue_owner_a' },
@@ -214,7 +214,6 @@ describe('registerAllRoutes', () => {
         const input = { name: 'Review', instructions: 'Read evidence', provider: 'copilot', model: 'model', cron: '0 * * * *' };
         const a = jobs.create(owners[0], input);
         const b = jobs.create(owners[1], input);
-        const notification = jobs.create(owners[0], input);
         const bridge = makeBridge();
         bridge.registry = new EventEmitter();
         bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => input.id!);
@@ -233,18 +232,12 @@ describe('registerAllRoutes', () => {
             await composition.codaReady;
             const runA = await getJobs()!.start(owners[0], a.id);
             const runB = await getJobs()!.start(owners[1], b.id);
-            const handback = await getJobs()!.start(owners[0], notification.id);
-            jobs.patchRun(owners[0], notification.id, handback.id, {
-                status: 'completed', handbackState: 'queued', handbackTaskId: 'pending-handback',
-            });
             const previousRefreshes = refresh.mock.calls.length;
             if (removed === 'workspace') await store.removeWorkspace(owners[0].workspaceId);
             else await store.removeProcess(owners[0].processId);
             await vi.waitFor(() => expect(jobs.run(owners[0], a.id, runA.id).status).toBe('cancelled'));
             expect(refresh.mock.calls.length).toBeGreaterThan(previousRefreshes);
             expect(cancel).toHaveBeenCalledWith(runA.taskId);
-            expect(cancel).toHaveBeenCalledWith('pending-handback');
-            expect(jobs.run(owners[0], notification.id, handback.id).handbackState).toBe('suppressed');
             expect(jobs.run(owners[1], b.id, runB.id).status).toBe('queued');
             expect(cancel).not.toHaveBeenCalledWith(runB.taskId);
             expect(jobs.get(owners[0], a.id).processId).toBeTruthy();

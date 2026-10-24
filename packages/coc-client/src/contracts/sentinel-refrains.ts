@@ -38,7 +38,6 @@ export interface SentinelRefrainRun {
   durationMs?: number;
   turnIndex?: number;
   jobTurnHref?: string;
-  sentinelFollowUpHref?: string;
   error?: string;
   /**
    * Why admission started no run: `overlap` (a run was active), `gate-empty`

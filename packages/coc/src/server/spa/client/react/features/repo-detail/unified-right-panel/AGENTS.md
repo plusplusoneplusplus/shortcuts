@@ -979,7 +979,7 @@ drafts retain captured revisions on errors. Create/edit thresholds use K-token
 drafts with up to three decimals through `utils/autoCompactThreshold.ts`; API and
 storage values stay positive safe integer tokens, preserving non-round thresholds.
 Refrain history carries run timing
-and clone-qualified refrain/Sentinel turn links. Model catalogs and effort tiers use
+and a clone-qualified job-turn link; run results stay in the job chat. Model catalogs and effort tiers use
 the same owner client. When the owning server's `effortLevelsEnabled` is on and the
 provider has tiers, the dialog shows the shared `EffortTierSelector` and saves only
 `effortTier`; otherwise it keeps explicit Model/Effort and clears a stored tier.

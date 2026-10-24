@@ -798,7 +798,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
 
     /**
      * `sentinel_jobs` wiring for one turn: only the Sentinel chat that owns the
-     * jobs, and only on turns a person started — handbacks, PR outcome reviews,
+     * jobs, and only on turns a person started — gate notices, PR outcome reviews,
      * read-only and automation (cron/wakeup/trigger) turns get no new job
      * authority. Every call is still owner- and flag-checked server-side.
      */

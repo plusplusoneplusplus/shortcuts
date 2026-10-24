@@ -290,7 +290,7 @@ dependencies supply the owner-bound unattended runtime through
 `SentinelRefrainService` is the caller: `routes/index.ts` injects `bridge.runRefrainGate` and
 the live `features.toolScripting` flag. The service keeps one in-flight gate per
 owner/job shared by both admission paths. Each prompt uses saved instructions and
-its current nonempty gate JSON, with job-role/handback framing. Gates may return
+its current nonempty gate JSON, with job-role framing. Gates may return
 selected To-do data; Coda owns automatic To-do review inputs. Empty results save
 state and record a skip with the original trigger; zero admits. A paused schedule
 permits manual gate admission, while a paused gate blocks it. Manual gate errors

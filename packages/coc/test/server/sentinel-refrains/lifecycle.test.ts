@@ -132,16 +132,15 @@ describe('scheduled job queue and lifecycle integration', () => {
             const run = await response.json() as { id: string };
             const task = queue.getTask(jobs.run(owner, job.id, run.id).taskId!)!;
             await execute(task);
-            await vi.waitFor(() => expect(jobs.run(owner, job.id, run.id).handbackState).toBe('queued'));
-            await execute(queue.getTask(jobs.run(owner, job.id, run.id).handbackTaskId!)!);
-            await vi.waitFor(() => expect(jobs.run(owner, job.id, run.id).handbackState).toBe('delivered'));
+            await vi.waitFor(() => expect(jobs.run(owner, job.id, run.id).status).toBe('completed'));
+            expect(queue.peek()).toBeUndefined(); // completion queues no Sentinel turn
             const result = await (await fetch(base)).json() as { jobs: Array<{ processId: string; runs: unknown[] }> };
             expect(result.jobs[0].processId).toBe(task.processId);
             expect(result.jobs[0].runs).toEqual([expect.objectContaining({
                 status: 'completed', turnIndex: 0,
                 jobTurnHref: `#repos/${owner.workspaceId}/chats/${task.processId}?turn=0`,
-                sentinelFollowUpHref: `#repos/${owner.workspaceId}/chats/${owner.processId}?turn=0`,
             })]);
+            expect(result.jobs[0].runs[0]).not.toHaveProperty('sentinelFollowUpHref');
 
             const nextResponse = await fetch(`${base}/${job.id}/runs`, { method: 'POST' });
             expect(nextResponse.status).toBe(202);
@@ -153,8 +152,7 @@ describe('scheduled job queue and lifecycle integration', () => {
             expect((await fetch(`${base}/${job.id}/runs`, { method: 'POST' })).status).toBe(404);
             await execute(nextTask);
             await vi.waitFor(() => expect(jobs.run(owner, job.id, next.id).status).toBe('failed'));
-            expect(jobs.run(owner, job.id, next.id).handbackState).toBe('suppressed');
-            expect(options.executeFollowUpFn).toHaveBeenCalledTimes(2);
+            expect(options.executeFollowUpFn).toHaveBeenCalledTimes(1);
             expect(options.executeByTypeFn).not.toHaveBeenCalled();
             enabled = true;
             expect((await fetch(base)).status).toBe(200);
@@ -163,7 +161,7 @@ describe('scheduled job queue and lifecycle integration', () => {
         }
     });
 
-    it('runs jobs in parallel, serializes handbacks behind the Sentinel, and adds turns to a stable chat', async () => {
+    it('runs jobs in parallel beside an active Sentinel, never queues a Sentinel turn, and adds turns to a stable chat', async () => {
         const sentinelTurn = queue.enqueue({ id: 'sentinel-active', processId: owner.processId, repoId: owner.workspaceId,
             type: 'chat', priority: 'normal', payload: { kind: 'chat', mode: 'sentinel',
                 processId: owner.processId, workspaceId: owner.workspaceId, prompt: 'Busy' }, config: {} });
@@ -181,17 +179,13 @@ describe('scheduled job queue and lifecycle integration', () => {
         const result = await runner.run(taskA, options);
         expect(result.success).toBe(true);
         queue.markCompleted(taskA.id, result.result);
-        await vi.waitFor(() => expect(jobs.run(owner, a.id, runA.id).handbackState).toBe('queued'));
-        expect(queue.peek()?.id).toBe(taskB.id); // handback cannot run alongside the active Sentinel
+        await vi.waitFor(() => expect(jobs.run(owner, a.id, runA.id).status).toBe('completed'));
+        expect(queue.peek()?.id).toBe(taskB.id);
         await execute(taskB);
-        await vi.waitFor(() => expect(jobs.run(owner, b.id, runB.id).handbackState).toBe('queued'));
-        expect(queue.peek()).toBeUndefined();
+        await vi.waitFor(() => expect(jobs.run(owner, b.id, runB.id).status).toBe('completed'));
         queue.markCompleted(sentinelTurn, 'done');
-        const handbackA = queue.getTask(jobs.run(owner, a.id, runA.id).handbackTaskId!)!;
-        expect(queue.peek()?.id).toBe(handbackA.id);
-        await execute(handbackA);
-        await vi.waitFor(() => expect(jobs.run(owner, a.id, runA.id).handbackState).toBe('delivered'));
-        expect(jobs.run(owner, a.id, runA.id).sentinelFollowUpHref).toContain('?turn=0');
+        expect(queue.peek()).toBeUndefined();
+        expect((await store.getProcess(owner.processId))?.conversationTurns).toEqual([]);
         const next = await service.start(owner, a.id);
         await execute(queue.getTask(next.taskId!)!);
         await vi.waitFor(() => expect(jobs.run(owner, a.id, next.id).status).toBe('completed'));
@@ -200,8 +194,25 @@ describe('scheduled job queue and lifecycle integration', () => {
         expect((await store.getProcess(persistentId))?.conversationTurns?.map(turn => turn.role))
             .toEqual(['user', 'assistant', 'user', 'assistant']);
         expect(jobs.run(owner, a.id, next.id).jobTurnHref).toContain('?turn=2');
+        expect(options.executeFollowUpFn).toHaveBeenCalledTimes(3);
+        expect(vi.mocked(options.executeFollowUpFn!).mock.calls.map(([id]) => id)).not.toContain(owner.processId);
         expect(options.executeByTypeFn).not.toHaveBeenCalled();
         expect(getRefrainTaskContext(taskA)?.kind).toBe('run');
+    });
+
+    it('fails a restored legacy handback task before the Sentinel provider runs', async () => {
+        const job = jobs.create(owner, { name: 'A', instructions: 'Read', provider: 'copilot', model: 'model' });
+        const run = jobs.createRun(owner, job.id, 'manual', 'queue_job', new Date().toISOString());
+        jobs.patchRun(owner, job.id, run.id, { status: 'completed', handbackState: 'queued', handbackTaskId: 'legacy-handback' });
+        queue.enqueue({ id: 'legacy-handback', processId: owner.processId, repoId: owner.workspaceId, type: 'chat', priority: 'low',
+            payload: { kind: 'chat', mode: 'sentinel', processId: owner.processId, workspaceId: owner.workspaceId,
+                prompt: '[Job: A] run #1 finished — old result',
+                context: { sentinelScheduledJob: { ...owner, jobId: job.id, runId: run.id, kind: 'handback' } } }, config: {} });
+        await execute(queue.getTask('legacy-handback')!);
+        expect(queue.getTask('legacy-handback')?.status).toBe('failed');
+        expect(options.executeFollowUpFn).not.toHaveBeenCalled();
+        expect((await store.getProcess(owner.processId))?.conversationTurns).toEqual([]);
+        expect(jobs.run(owner, job.id, run.id).status).toBe('completed');
     });
 
     it('checks live gates in the real lifecycle before invoking the provider', async () => {
@@ -213,7 +224,7 @@ describe('scheduled job queue and lifecycle integration', () => {
         expect(options.executeFollowUpFn).not.toHaveBeenCalled();
         expect(queue.getTask(task.id)?.status).toBe('failed');
         await vi.waitFor(() => expect(jobs.run(owner, job.id, run.id).status).toBe('failed'));
-        expect(jobs.run(owner, job.id, run.id).handbackState).toBe('suppressed');
+        expect(queue.peek()).toBeUndefined();
     });
 
     it('keeps restart interruption authoritative even when cancelling a restored task emits a terminal event', async () => {

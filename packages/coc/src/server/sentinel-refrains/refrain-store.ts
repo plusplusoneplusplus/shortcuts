@@ -25,16 +25,17 @@ export type RefrainGateState = Pick<RefrainRecord, 'gateLastResult' | 'gateConse
 const FRESH_GATE: RefrainGateState = { gateConsecutiveFailures: 0, gatePaused: false };
 export interface RefrainRunRecord extends SentinelRefrainRun {
     taskId?: string;
+    /** Sentinel handback bookkeeping from older servers; startup recovery cancels and clears it. */
     handbackTaskId?: string;
-    handbackState?: 'pending' | 'queued' | 'delivered' | 'suppressed' | 'failed';
+    handbackState?: string;
     result?: string;
+    sentinelFollowUpHref?: string;
 }
 export class RefrainError extends Error {
     constructor(public readonly code: 'invalid' | 'not_found' | 'conflict' | 'limit', message: string) { super(message); }
 }
 type Row = { workspace_id: string; parent_process_id: string; record: string };
 const active = (run: RefrainRunRecord) => run.status === 'queued' || run.status === 'running';
-const pending = (run: RefrainRunRecord) => run.handbackState === 'pending' || run.handbackState === 'queued';
 
 /** Additive tables on the ledger's processes.db connection; every key includes its owner. */
 export class SentinelRefrainStore {
@@ -182,8 +183,8 @@ export class SentinelRefrainStore {
     private mutable(owner: SentinelTodoOwner, id: string, revision: number, togglingSchedule = false): RefrainRecord {
         const job = this.get(owner, id);
         if (job.revision !== revision) throw new RefrainError('conflict', 'Refrain changed since it was loaded');
-        if (!togglingSchedule && this.runs(owner, id).some(run => active(run) || pending(run))) {
-            throw new RefrainError('conflict', 'Cancel the active run and wait for its Sentinel handback before editing or deleting');
+        if (!togglingSchedule && this.runs(owner, id).some(active)) {
+            throw new RefrainError('conflict', 'Cancel the active run or wait for it to finish before editing or deleting');
         }
         return job;
     }
@@ -218,7 +219,7 @@ export class SentinelRefrainStore {
 
     private prune(owner: SentinelTodoOwner, id: string): void {
         const runs = this.runs(owner, id);
-        for (const run of runs.slice(20).filter(run => !active(run) && !pending(run))) {
+        for (const run of runs.slice(20).filter(run => !active(run))) {
             this.db.prepare('DELETE FROM sentinel_scheduled_job_runs WHERE workspace_id = ? AND parent_process_id = ? AND job_id = ? AND id = ?')
                 .run(owner.workspaceId, owner.processId, id, run.id);
         }

@@ -219,8 +219,9 @@ happen in one synchronous step, so the result always starts a run or leaves a ru
 Multiple selected minutes are rejected even for dates beyond the validation horizon.
 
 `SentinelRefrainService` queues each run at low priority into one persistent Ask/Autopilot
-chat, with a fresh read-only snapshot path. Terminal events queue a receipt-keyed
-Sentinel handback behind its active turn. Job turns have no timeouts or retries;
-failure does not pause the schedule. Restart interrupts active runs and reconciles
-undelivered handbacks. Live gate/owner removal revokes timers and admitted work;
+chat, with a fresh read-only snapshot path. Terminal events settle the run record
+only; results stay in the job chat and nothing is queued for the Sentinel. Job turns
+have no timeouts or retries; failure does not pause the schedule. Restart interrupts
+active runs and cancels handback tasks left by older servers without delivering them.
+Live gate/owner removal revokes timers and admitted work;
 shutdown stops timers and drains asynchronous admission.
