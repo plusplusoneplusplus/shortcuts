@@ -548,7 +548,7 @@ out of the system message and the `chatModeContext` marker, is not disclosed in 
 and grants no permissions. Provider-native background compaction is not surfaced, so it does
 not trigger re-injection.
 
-### Sentinel auto-compact
+### Chat auto-compact
 
 `processes/compact-process.ts` resolves `SENTINEL_COMPACTION_INSTRUCTIONS` from
 authoritative `metadata.mode` for automatic and unfocused manual compaction. Nonblank
@@ -557,10 +557,10 @@ Queued payloads and compaction metadata persist the resolved instruction. Copilo
 forwards it to the history RPC; Claude uses the native `/compact` argument; Codex
 ignores custom instructions and warns.
 
-`processes/auto-compact.ts` owns `metadata.autoCompact`, default off per Sentinel conversation.
-The default `thresholdTokens` is 700000, a finite positive safe integer. The lifecycle
-runner's `onResponseCompleted` hook checks after a completed, persisted response,
-before pending-message drain. One mutation admission claims the latest non-display-only
+`processes/auto-compact.ts` owns `metadata.autoCompact`, default off per conversation in
+every chat mode (Ask, Autopilot, Ralph, Sentinel). The default `thresholdTokens` is 700000,
+a finite positive safe integer. The lifecycle runner's `onResponseCompleted` hook checks
+after a completed, persisted first or follow-up response, before pending-message drain. One mutation admission claims the latest non-display-only
 assistant turn and admits its task (`lastEvaluatedTurnIndex`, one attempt per response) only when
 `currentTokens > thresholdTokens`, independently of `tokenLimit`. Unknown usage, pauses
 and pending manual or automatic compactions skip; settings saves and resume never trigger.
@@ -568,7 +568,9 @@ and pending manual or automatic compactions skip; settings saves and resume neve
 Ordinary Ask/Autopilot chats with owner-matching scheduled-job metadata use the same
 admission and failure rules. Jobs enable compaction at their configured absolute
 threshold (default 100000), with `REFRAIN_COMPACTION_INSTRUCTIONS` retaining job context
-without granting Sentinel identity or ledger-writing authority.
+without granting Sentinel identity or ledger-writing authority. The job owns that setting
+(`autoCompactSettingsLockedReason`): the settings PUT rejects, resume stays allowed. Other
+chats compact with provider-default instructions.
 
 Automatic attempts admit ordinary durable compaction tasks with `payload.trigger: 'auto'`,
 always queued. The owning queue's `enqueue(..., { beforeQueuedProcessTasks: true })`

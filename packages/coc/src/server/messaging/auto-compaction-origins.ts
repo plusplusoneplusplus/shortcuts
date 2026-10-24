@@ -1,5 +1,5 @@
 /**
- * Destinations for automatic Sentinel compaction notices (`job-notices.ts`).
+ * Destinations for automatic chat compaction notices (`job-notices.ts`).
  *
  * Only the request whose response triggered the compaction decides: its own
  * WhatsApp request receipt, or its desktop-mirror capture while the mirror is

@@ -1,5 +1,5 @@
 /**
- * Sentinel auto-compact section of the composer context-usage popover, driven
+ * Chat auto-compact section of the composer context-usage popover, driven
  * in a real browser against the isolated e2e server. The process record and the
  * auto-compact endpoints are route-stubbed, so no conversation is compacted.
  */
@@ -221,15 +221,21 @@ test.describe('Sentinel auto-compact popover', () => {
         } finally { cleanup(); }
     });
 
-    test('SAC.3 non-Sentinel chats get no auto-compact controls', async ({ page, serverUrl, dataDir }) => {
+    test('SAC.3 ordinary Ask chats get the same auto-compact controls, default OFF', async ({ page, serverUrl, dataDir }) => {
         const { wsId, taskId, cleanup } = await setup(serverUrl, dataDir, 'sac3', 'ask');
         try {
-            const { writes, processId } = await stubProcess(page, wsId, taskId, 'ask');
-            await gotoChat(page, serverUrl, wsId, processId);
+            const transport = await stubProcess(page, wsId, taskId, 'ask');
+            await gotoChat(page, serverUrl, wsId, transport.processId);
             await page.getByRole('button', { name: /Context window/ }).click();
             await expect(page.getByTestId('composer-ctx-breakdown-popover')).toContainText('Total');
-            await expect(page.getByTestId('auto-compact-panel')).toHaveCount(0);
-            expect(writes).toHaveLength(0);
+            await expect(page.getByRole('region', { name: 'Auto-compact for this chat' })).toBeVisible();
+            const toggle = page.getByRole('switch', { name: 'Auto-compact', exact: true });
+            await expect(toggle).toHaveAttribute('aria-checked', 'false');
+            expect(transport.writes).toHaveLength(0);
+            await toggle.focus();
+            await page.keyboard.press('Space');
+            await expect(page.getByTestId('auto-compact-status')).toContainText('Saved');
+            expect(transport.getSaved()).toMatchObject({ enabled: true, thresholdTokens: 700_000 });
         } finally { cleanup(); }
     });
 

@@ -21,7 +21,7 @@ vi.mock('@plusplusoneplusplus/forge', async importOriginal => ({
 
 const LIMIT = 1000;
 
-describe('Sentinel auto-compact lifecycle', () => {
+describe('Chat auto-compact lifecycle', () => {
     let store: ReturnType<typeof createMockProcessStore>;
     let queue: TaskQueueManager;
     let executor: CLITaskExecutor;
@@ -99,38 +99,51 @@ describe('Sentinel auto-compact lifecycle', () => {
         expect(REFRAIN_COMPACTION_INSTRUCTIONS).toContain('has no authority to write its ledger');
     });
 
-    it('does not grant job compaction to an unscoped or cross-workspace marker', async () => {
+    it('treats a cross-workspace job marker as an ordinary chat without job instructions', async () => {
         await store.updateProcess(proc.id, { metadata: { ...proc.metadata!, mode: 'ask',
             sentinelScheduledJob: { workspaceId: 'ws-other', processId: 'queue_owner', jobId: 'job-one' } } });
         await enable();
         await respond({ currentTokens: 900, tokenLimit: LIMIT });
-        expect(compactTasks()).toHaveLength(0);
+        expect(compactTasks()).toHaveLength(1);
+        expect(queuedCompact()?.payload.customInstructions).toBeUndefined();
     });
 
-    it.each(['copilot', 'claude'] as const)('queues one background %s compaction with the Sentinel default after exceeding the threshold', async provider => {
-        await store.updateProcess(proc.id, { metadata: { ...proc.metadata!, provider } });
-        await enable();
+    it.each(['ask', 'autopilot', 'ralph'])('stays off by default and then compacts an ordinary %s chat on first and follow-up responses', async mode => {
+        await store.updateProcess(proc.id, { metadata: { ...proc.metadata!, mode } });
+        await respond({ currentTokens: 900, tokenLimit: LIMIT });
+        expect(compactTasks()).toHaveLength(0);
+        expect(await autoState()).toBeUndefined();
+
+        await enable(800);
+        // Exactly at the threshold does not fire; one token above does.
         await respond({ currentTokens: 800, tokenLimit: LIMIT });
         expect(compactTasks()).toHaveLength(0);
-        await respond({ currentTokens: 900, tokenLimit: LIMIT });
+        await respond({ currentTokens: 801, tokenLimit: LIMIT });
         const task = queuedCompact()!;
-        expect(task.payload).toMatchObject({ kind: 'compact', trigger: 'auto', processId: proc.id, workspaceId: 'ws-a',
-            customInstructions: SENTINEL_COMPACTION_INSTRUCTIONS });
-        expect(await autoState()).toMatchObject({ taskId: task.id, lastEvaluatedTurnIndex: 1 });
-        expect((await current()).metadata?.compaction).toMatchObject({ state: 'queued', taskId: task.id,
-            customInstructions: SENTINEL_COMPACTION_INSTRUCTIONS });
-        expect(compactSession).not.toHaveBeenCalled();
-
+        expect(task.payload).toMatchObject({ kind: 'compact', trigger: 'auto', processId: proc.id, workspaceId: 'ws-a' });
+        // Ordinary chats keep provider-default compaction instructions.
+        expect(task.payload.customInstructions).toBeUndefined();
         await run(task);
-        expect(compactSession).toHaveBeenCalledWith('session-1', SENTINEL_COMPACTION_INSTRUCTIONS);
-        const state = await autoState();
-        expect(state).toMatchObject({ consecutiveFailures: 0, lastResult: { outcome: 'succeeded', tokensBefore: 900, tokensAfter: 300, tokenLimit: LIMIT, turnIndex: 1 } });
-        expect(state?.taskId).toBeUndefined();
-        // The display-only result turn is not a response: no recursive trigger.
-        expect(await maybeAutoCompactAfterResponse(store as any, bridge, proc.id)).toEqual({ action: 'skipped', reason: 'already-evaluated' });
+        expect(compactSession).toHaveBeenCalledWith('session-1', undefined);
+        expect(await autoState()).toMatchObject({ consecutiveFailures: 0, lastResult: { outcome: 'succeeded', turnIndex: 2 } });
+
+        // A later follow-up response is evaluated again with the same saved setting.
+        await respond({ currentTokens: 950, tokenLimit: LIMIT });
+        expect(compactTasks()).toHaveLength(2);
+        expect(isSentinelProcess(await current())).toBe(false);
     });
 
-    it('skips non-Sentinel chats and unknown usage, independently of model limits', async () => {
+    it('stores exact non-round integer thresholds and fires only above them', async () => {
+        await store.updateProcess(proc.id, { metadata: { ...proc.metadata!, mode: 'ask' } });
+        await enable(123_457);
+        expect(await autoState()).toMatchObject({ thresholdTokens: 123_457 });
+        await respond({ currentTokens: 123_457, tokenLimit: 200_000 });
+        expect(compactTasks()).toHaveLength(0);
+        await respond({ currentTokens: 123_458, tokenLimit: 200_000 });
+        expect(compactTasks()).toHaveLength(1);
+    });
+
+    it('skips unknown usage, independently of model limits', async () => {
         await enable();
         await respond({});
         expect(await maybeAutoCompactAfterResponse(store as any, bridge, proc.id)).toEqual({ action: 'skipped', reason: 'unknown-usage' });
@@ -141,8 +154,7 @@ describe('Sentinel auto-compact lifecycle', () => {
         await respond({ currentTokens: 900, tokenLimit: undefined });
         expect(compactTasks()).toHaveLength(1);
 
-        await store.updateProcess(proc.id, { metadata: { ...(await current()).metadata!, mode: 'ask' } });
-        expect(await maybeAutoCompactAfterResponse(store as any, bridge, proc.id)).toEqual({ action: 'skipped', reason: 'not-sentinel' });
+        expect(await maybeAutoCompactAfterResponse(store as any, bridge, 'missing')).toEqual({ action: 'skipped', reason: 'not-found' });
     });
 
     it.each([undefined, 0, -1, NaN, Infinity, 100, 100000])('queues known usage with any model limit (%s)', async tokenLimit => {

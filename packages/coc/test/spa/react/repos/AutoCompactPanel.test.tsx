@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { CocClient, type ProcessAutoCompactState } from '@plusplusoneplusplus/coc-client';
 import { ComposerMetaStrip } from '../../../../src/server/spa/client/react/features/chat/ComposerMetaStrip';
 import { ContextWindowIndicator } from '../../../../src/server/spa/client/react/ui/ContextWindowIndicator';
-import { deriveAutoCompactStatus, describeAutoCompact, useSentinelAutoCompact, type AutoCompactPanelProps } from '../../../../src/server/spa/client/react/features/chat/AutoCompactPanel';
+import { deriveAutoCompactStatus, describeAutoCompact, isJobManagedChat, useChatAutoCompact, type AutoCompactPanelProps } from '../../../../src/server/spa/client/react/features/chat/AutoCompactPanel';
 import { formatThresholdInput, parseThresholdInput } from '../../../../src/server/spa/client/react/utils/autoCompactThreshold';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -24,11 +24,14 @@ function deferred() {
     return { promise, resolve, reject };
 }
 
-function Harness({ client, isSentinel = true, initial, compaction, processId = 'queue_s', workspaceId = 'ws-remote',
+function Harness({ client, available = true, jobManaged, readOnly, providerUnsupported, initial, compaction, processId = 'queue_s', workspaceId = 'ws-remote',
     tokenLimit = 922_000, onCancel = vi.fn(async () => {}), renderer = 'composer', onState, manualCompact }: {
     manualCompact?: AutoCompactPanelProps['manualCompact'];
     client: CocClient;
-    isSentinel?: boolean;
+    available?: boolean;
+    jobManaged?: boolean;
+    readOnly?: boolean;
+    providerUnsupported?: boolean;
     initial?: ProcessAutoCompactState;
     compaction?: { state: string; taskId?: string };
     processId?: string;
@@ -39,8 +42,8 @@ function Harness({ client, isSentinel = true, initial, compaction, processId = '
     renderer?: 'composer' | 'indicator';
 }) {
     const [state, setState] = useState(initial);
-    const autoCompact = useSentinelAutoCompact({
-        manualCompact, isSentinel, processId, workspaceId, client, metadata: { autoCompact: state, compaction },
+    const autoCompact = useChatAutoCompact({
+        manualCompact, available, jobManaged, readOnly, providerUnsupported, processId, workspaceId, client, metadata: { autoCompact: state, compaction },
         usedTokens: 720_000, tokenLimit,
         onState: value => { setState(value); onState?.(value); }, onCancelQueued: onCancel,
     });
@@ -95,9 +98,9 @@ describe('auto-compact helpers', () => {
     });
 });
 
-describe('approved Sentinel auto-compact popover', () => {
-    it('renders no new controls for non-Sentinel chats', () => {
-        render(<Harness client={makeClient()} isSentinel={false} />);
+describe('approved chat auto-compact popover', () => {
+    it('renders no new controls before a chat conversation is loaded', () => {
+        render(<Harness client={makeClient()} available={false} />);
         openPopover();
         expect(screen.getByTestId('composer-ctx-breakdown-popover').textContent).toContain('System prompt');
         expect(screen.queryByTestId('auto-compact-panel')).toBeNull();
@@ -452,8 +455,8 @@ describe('approved Sentinel auto-compact popover', () => {
 
     it('returns controls even when usage and context limit are unknown', () => {
         const client = makeClient();
-        const { result } = renderHook(() => useSentinelAutoCompact({
-            isSentinel: true, processId: 'queue_s', workspaceId: 'ws-remote', client,
+        const { result } = renderHook(() => useChatAutoCompact({
+            available: true, processId: 'queue_s', workspaceId: 'ws-remote', client,
             metadata: undefined, usedTokens: undefined, tokenLimit: undefined, onState: vi.fn(), onCancelQueued: vi.fn(),
         }));
         expect(result.current?.status).toBe('off');
@@ -461,6 +464,101 @@ describe('approved Sentinel auto-compact popover', () => {
     });
 });
 
+describe('auto-compact across chat types', () => {
+    it.each(['composer', 'indicator'] as const)('gives every chat the same accessible row, labels and keyboard save in %s', async renderer => {
+        const client = makeClient();
+        render(<Harness client={client} renderer={renderer} processId="queue_ask" workspaceId="ws-a" />);
+        openPopover();
+        expect(screen.getByRole('region', { name: 'Auto-compact for this chat' })).toBeTruthy();
+        const toggle = screen.getByRole('switch', { name: 'Auto-compact' });
+        expect(toggle.getAttribute('aria-describedby')).toBe(status().id);
+        expect(screen.getByLabelText('Auto-compact threshold in k tokens')).toBe(input());
+        fireEvent.click(toggle);
+        await waitFor(() => expect(status().textContent).toMatch(/Saved/));
+        fireEvent.change(input(), { target: { value: '123.457' } });
+        fireEvent.keyDown(input(), { key: 'Enter' });
+        await waitFor(() => expect(client.processes.updateAutoCompact).toHaveBeenLastCalledWith('queue_ask',
+            { enabled: true, thresholdTokens: 123_457 }, { workspace: 'ws-a' }));
+    });
+
+    it('shows a Refrain job chat setting read-only and never writes it, while Resume stays available', async () => {
+        const client = makeClient();
+        const { unmount } = render(<Harness client={client} jobManaged initial={{ enabled: true, thresholdTokens: 100_000 }} />);
+        openPopover();
+        const toggle = screen.getByRole('switch') as HTMLButtonElement;
+        expect(toggle.getAttribute('aria-checked')).toBe('true');
+        expect(toggle.disabled).toBe(true);
+        expect(input().disabled).toBe(true);
+        expect(input().value).toBe('100');
+        expect(status().textContent).toBe('Set by this job. Edit the job to change it.');
+        fireEvent.click(toggle);
+        fireEvent.blur(input());
+        expect(client.processes.updateAutoCompact).not.toHaveBeenCalled();
+
+        unmount();
+        render(<Harness client={client} jobManaged initial={{ enabled: true, thresholdTokens: 100_000, paused: { reason: 'failures', at: '' } }} processId="queue_job2" />);
+        openPopover();
+        fireEvent.click(screen.getByTestId('auto-compact-resume'));
+        await waitFor(() => expect(client.processes.resumeAutoCompact).toHaveBeenCalledWith('queue_job2', { workspace: 'ws-remote' }));
+    });
+
+    it('never writes, resumes or cancels from a read-only or owner-unresolved view', () => {
+        const client = makeClient();
+        const onCancel = vi.fn(async () => {});
+        const { unmount } = render(<Harness client={client} readOnly />);
+        openPopover();
+        expect((screen.getByRole('switch') as HTMLButtonElement).disabled).toBe(true);
+        expect(input().disabled).toBe(true);
+        expect(status().textContent).toBe('Read-only in this view.');
+        unmount();
+
+        const paused = { ...enabled, paused: { reason: 'failures' as const, at: '' } };
+        const view = render(<Harness client={client} readOnly initial={paused} processId="queue_ro" />);
+        openPopover();
+        const resume = screen.getByTestId('auto-compact-resume') as HTMLButtonElement;
+        expect(resume.disabled).toBe(true);
+        fireEvent.click(resume);
+        view.unmount();
+
+        render(<Harness client={client} readOnly initial={{ ...enabled, taskId: 'auto-1' }} compaction={{ state: 'queued', taskId: 'auto-1' }}
+            processId="queue_ro2" onCancel={onCancel} />);
+        openPopover();
+        const cancel = screen.getByTestId('auto-compact-cancel') as HTMLButtonElement;
+        expect(cancel.disabled).toBe(true);
+        fireEvent.click(cancel);
+        expect(onCancel).not.toHaveBeenCalled();
+        expect(client.processes.updateAutoCompact).not.toHaveBeenCalled();
+        expect(client.processes.resumeAutoCompact).not.toHaveBeenCalled();
+    });
+
+    it('blocks turning on for a provider without compaction but still allows turning off', async () => {
+        const client = makeClient();
+        const { unmount } = render(<Harness client={client} providerUnsupported />);
+        openPopover();
+        expect((screen.getByRole('switch') as HTMLButtonElement).disabled).toBe(true);
+        expect(status().textContent).toBe('This provider does not support compaction.');
+        unmount();
+
+        render(<Harness client={client} providerUnsupported initial={enabled} processId="queue_on" />);
+        openPopover();
+        const toggle = screen.getByRole('switch') as HTMLButtonElement;
+        expect(toggle.disabled).toBe(false);
+        expect(status().textContent).toBe('This provider does not support compaction.');
+        fireEvent.click(toggle);
+        await waitFor(() => expect(client.processes.updateAutoCompact).toHaveBeenCalledWith('queue_on',
+            { enabled: false, thresholdTokens: 700_000 }, { workspace: 'ws-remote' }));
+    });
+
+    it('recognises only owner-matching Ask/Autopilot job chats as job-managed', () => {
+        const job = { workspaceId: 'ws-a', processId: 'queue_owner', jobId: 'job-1' };
+        expect(isJobManagedChat({ workspaceId: 'ws-a', mode: 'ask', sentinelScheduledJob: job })).toBe(true);
+        expect(isJobManagedChat({ workspaceId: 'ws-a', mode: 'autopilot', sentinelScheduledJob: job })).toBe(true);
+        expect(isJobManagedChat({ workspaceId: 'ws-a', mode: 'sentinel', sentinelScheduledJob: job })).toBe(false);
+        expect(isJobManagedChat({ workspaceId: 'ws-b', mode: 'ask', sentinelScheduledJob: job })).toBe(false);
+        expect(isJobManagedChat({ workspaceId: 'ws-a', mode: 'ask' })).toBe(false);
+        expect(isJobManagedChat(undefined)).toBe(false);
+    });
+});
 
 describe('Compact now in the context popover', () => {
     it.each(['composer', 'indicator'] as const)('shares the inline action without changing auto settings in %s', async renderer => {

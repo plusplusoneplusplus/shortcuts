@@ -2553,6 +2553,13 @@ describe('ProcessLifecycleRunner — post-response hook', () => {
         expect(calls).toEqual([`response:queue_${task.id}`, 'drain']);
     });
 
+    it.each(['ask', 'autopilot', 'ralph', 'sentinel'])('fires after a completed first %s turn (auto-compact is not mode-gated)', async mode => {
+        const task = makeTask({ payload: { kind: 'chat', mode, prompt: 'go', workspaceId: 'ws-abc' } });
+        const hook = vi.fn().mockResolvedValue(undefined);
+        await runner.run(task, makeOpts({ onResponseCompleted: hook }));
+        expect(hook).toHaveBeenCalledExactlyOnceWith(`queue_${task.id}`);
+    });
+
     it('waits for persisted response and absolute usage before firing, never during execution', async () => {
         let finish!: (result: { response: string }) => void;
         const response = new Promise<{ response: string }>(resolve => { finish = resolve; });

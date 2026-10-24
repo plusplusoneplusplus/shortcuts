@@ -230,11 +230,15 @@ references before editing. Paths are package-relative.
   automatic and unfocused manual compaction; explicit manual focus overrides it verbatim.
   Ordinary chats retain provider defaults. Copilot and Claude accept the instruction;
   Codex ignores custom instructions and warns.
-  Sentinel auto-compact (`processes/auto-compact.ts`) is opt-in per chat and server-side only:
-  checks `currentTokens > thresholdTokens` after a persisted response, one attempt per
-  response, always queued; model limits never rescale the absolute threshold. The default
-  is OFF with a 700k input matching the mock design. Both context popovers use one switch/k
-  input row, Enter/blur auto-save and one status line; owner-bound drafts survive failures.
+  Auto-compact (`processes/auto-compact.ts`) is opt-in per chat in every mode (Ask,
+  Autopilot, Ralph, Sentinel) and server-side only: checks `currentTokens > thresholdTokens`
+  after a persisted first or follow-up response, one attempt per response, always queued;
+  model limits never rescale the absolute threshold. The default is OFF with a 700k input
+  matching the mock design. Refrain job chats follow their job threshold: settings PUT
+  rejects `422 AUTO_COMPACT_JOB_MANAGED`, resume stays allowed. Both context popovers use
+  one switch/k input row, Enter/blur auto-save and one status line; owner-bound drafts
+  survive failures. Job, read-only and owner-unresolved views lock writes; OpenCode cannot
+  be turned on.
   Unknown or at/above-limit thresholds warn without capping. It adds no deadline or abort
   to running compactions. Only its own endpoints write `metadata.autoCompact`.
 

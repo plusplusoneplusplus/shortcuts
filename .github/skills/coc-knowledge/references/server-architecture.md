@@ -845,11 +845,11 @@ top-level `CoC ·`-attributed safe-HTML message and saves a `teams-thread-roots`
 replies route to the job by root (a reply inside the dispatcher's thread would route to the
 dispatcher) and user selection is untouched.
 
-Automatic Sentinel compaction notices (WhatsApp only) track `payload.trigger: 'auto'` tasks on
+Automatic chat compaction notices (WhatsApp only) track `payload.trigger: 'auto'` tasks on
 `taskAdded`. `messaging/auto-compaction-origins.ts` picks the destination from the request whose
 response triggered it: that request's own WhatsApp receipt (current group, not released or
 notice-only), else its desktop-mirror capture while the mirror is enabled. Nothing is sent
-for unbound, manual, non-Sentinel or other-workspace cases. `taskStarted` records one
+for unbound, manual, Refrain job or other-workspace cases. `taskStarted` records one
 `<taskId>:start` notice only while the compaction record still names the task. The outcome
 follows on the existing terminal path: fixed wording plus removed-message/freed-token counts,
 never summaries, errors or history. Cancellation before start says it never ran. An unsent

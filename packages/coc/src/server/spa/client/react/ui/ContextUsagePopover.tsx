@@ -23,7 +23,7 @@ export interface ContextAutoCompact {
     thresholdTokens: number;
     /** Short status phrase appended to the gauge's accessible label. */
     label: string;
-    /** The popover section (Sentinel chats only). */
+    /** The popover section (chat auto-compact). */
     panel: React.ReactNode;
 }
 

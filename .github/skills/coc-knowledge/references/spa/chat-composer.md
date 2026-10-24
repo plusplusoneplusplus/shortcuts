@@ -216,10 +216,17 @@ breakdown table + model footer, and `useContextUsagePopover` (hover previews; tr
 click/tap/Enter or any click inside pins, a second trigger click closes; focus inside keeps
 it open; Escape closes, refocusing the trigger when focus was inside; outside press unpins).
 `CONTEXT_POPOVER_CLASS` draws a transparent `after:` bridge over the `mb-2` gap so pointer
-travel from the gauge into a hover preview never leaves the container. Sentinel chats pass `autoCompact` from `useSentinelAutoCompact`
-(`features/chat/AutoCompactPanel.tsx`, owned by `ChatDetail` so drafts survive closing
-the popover). Its single row contains a switch and numeric k-token input; the switch
-saves immediately and the input commits on Enter/blur. One status line includes queued
+travel from the gauge into a hover preview never leaves the container.
+
+### Auto-compact control
+
+Every `ChatDetail` chat (all modes and embedded chat panels) passes `autoCompact` from
+`useChatAutoCompact` (`features/chat/AutoCompactPanel.tsx`, owned by `ChatDetail` so drafts
+survive closing the popover). Refrain job chats (`isJobManagedChat`) show the job's setting
+read-only; `readOnly` and owner-unresolved views block writes, resume and cancel; OpenCode
+blocks turning on but allows turning off. Native Copilot CLI sessions have no control.
+
+The single row contains a switch and numeric k-token input; the switch saves immediately and the input commits on Enter/blur. One status line includes queued
 Cancel or paused Resume. The per-chat default is OFF, with 700k matching the mock design.
 The absolute `thresholdTokens` survives model changes; unknown limits and thresholds
 at/above the context limit show warnings without capping or disabling the setting.
@@ -228,7 +235,7 @@ Saves serialize through clone-routed `processes.updateAutoCompact`; drafts, in-f
 results and actions belong to the exact client/workspace/process owner. Enter plus
 blur deduplicates, newer drafts survive earlier saves, and failed saves retain edits.
 Live state arrives through `useBotControlUpdates`. Both popovers preserve the usage
-breakdown and model footer and expose Sentinel settings when the context limit is
+breakdown and model footer and expose auto-compact settings when the context limit is
 unknown; gauge ticks derive from absolute tokens only when below a known limit.
 
 `WarmIndicatorDot` reflects this conversation process's backend warm-client state, with

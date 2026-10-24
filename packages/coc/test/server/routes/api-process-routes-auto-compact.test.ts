@@ -133,6 +133,10 @@ describe('auto-compact settings routes', () => {
             metadata: { type: 'chat', workspaceId: 'ws-a', mode: 'sentinel' } });
         await store.addProcess({ id: 'plain', type: 'chat', status: 'completed', startTime: new Date(), promptPreview: 'p',
             metadata: { type: 'chat', workspaceId: 'ws-a', mode: 'ask' } });
+        await store.addProcess({ id: 'job', type: 'chat', status: 'completed', startTime: new Date(), promptPreview: 'j',
+            metadata: { type: 'chat', workspaceId: 'ws-a', mode: 'autopilot',
+                sentinelScheduledJob: { workspaceId: 'ws-a', processId: 'sentinel', jobId: 'job-1' },
+                autoCompact: { enabled: true, thresholdTokens: 100000 } } });
     });
 
     const put = (id: string, body: unknown, ws = 'ws-a') => request(baseUrl, `/api/processes/${id}/auto-compact?workspace=${ws}`,
@@ -147,10 +151,34 @@ describe('auto-compact settings routes', () => {
         expect((await store.getProcess('sentinel'))!.metadata!.compaction).toBeUndefined();
     });
 
-    it('rejects non-Sentinel chats, other workspaces and invalid thresholds', async () => {
-        const plain = await put('plain', { enabled: true, thresholdTokens: 700000 });
-        expect(plain.status).toBe(422);
-        expect(plain.body).toContain('AUTO_COMPACT_SENTINEL_ONLY');
+    it.each(['ask', 'autopilot', 'ralph'])('saves exact settings on an ordinary %s chat and keeps them per chat', async mode => {
+        const meta = (await store.getProcess('plain'))!.metadata!;
+        await store.updateProcess('plain', { metadata: { ...meta, mode } });
+        const res = await put('plain', { enabled: true, thresholdTokens: 123457 });
+        expect(res.status).toBe(200);
+        expect(res.json().autoCompact).toMatchObject({ enabled: true, thresholdTokens: 123457 });
+        expect((await store.getProcess('plain'))!.metadata!.autoCompact).toMatchObject({ enabled: true, thresholdTokens: 123457 });
+        // No leakage into sibling chats in the same workspace.
+        expect((await store.getProcess('sentinel'))!.metadata!.autoCompact).toBeUndefined();
+        expect((await put('plain', { enabled: false, thresholdTokens: 123457 })).json().autoCompact).toMatchObject({ enabled: false });
+        expect(mockCompactSession).not.toHaveBeenCalled();
+    });
+
+    it('rejects edits on Refrain job chats but lets them resume a pause', async () => {
+        const res = await put('job', { enabled: false, thresholdTokens: 5 });
+        expect(res.status).toBe(422);
+        expect(res.json()).toMatchObject({ code: 'AUTO_COMPACT_JOB_MANAGED', error: expect.stringContaining('Edit the job') });
+        expect((await store.getProcess('job'))!.metadata!.autoCompact).toEqual({ enabled: true, thresholdTokens: 100000 });
+        const meta = (await store.getProcess('job'))!.metadata!;
+        await store.updateProcess('job', { metadata: { ...meta, autoCompact: { enabled: true, thresholdTokens: 100000,
+            consecutiveFailures: 2, paused: { reason: 'failures', at: '2026-10-01T00:00:00Z' } } } });
+        const resume = await request(baseUrl, '/api/processes/job/auto-compact/resume?workspace=ws-a', { method: 'POST', body: '{}' });
+        expect(resume.status).toBe(200);
+        expect(resume.json().autoCompact).toEqual({ enabled: true, thresholdTokens: 100000, consecutiveFailures: 0 });
+    });
+
+    it('rejects other workspaces and invalid thresholds', async () => {
+        expect((await put('plain', { enabled: true, thresholdTokens: 700000 }, 'ws-b')).status).toBe(404);
         expect((await put('sentinel', { enabled: true, thresholdTokens: 700000 }, 'ws-b')).status).toBe(404);
         for (const thresholdTokens of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, null, '700000']) {
             expect((await put('sentinel', { enabled: true, thresholdTokens })).status).toBe(400);
