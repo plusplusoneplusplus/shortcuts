@@ -975,7 +975,10 @@ The owning server's live `sentinelEnabled` and `sentinelTodoJobsEnabled`
 capabilities enable a collapsible Refrains list using `client.sentinelTodos.jobs`.
 Owner/endpoint remounts abort pending reads and discard late results; mutations
 retain their admission lock until the authoritative reload settles. Dialog
-drafts retain captured revisions on errors. Refrain history carries run timing
+drafts retain captured revisions on errors. Create/edit thresholds use K-token
+drafts with up to three decimals through `utils/autoCompactThreshold.ts`; API and
+storage values stay positive safe integer tokens, preserving non-round thresholds.
+Refrain history carries run timing
 and clone-qualified refrain/Sentinel turn links. Model catalogs and effort tiers use
 the same owner client. When the owning server's `effortLevelsEnabled` is on and the
 provider has tiers, the dialog shows the shared `EffortTierSelector` and saves only

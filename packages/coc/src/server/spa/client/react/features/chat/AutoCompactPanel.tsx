@@ -12,6 +12,7 @@ import {
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { cn } from '../../ui/cn';
 import { formatTokenCount, type ContextAutoCompact, type ContextAutoCompactStatus } from '../../ui/ContextUsagePopover';
+import { formatThresholdInput, parseThresholdInput } from '../../utils/autoCompactThreshold';
 
 interface CompactionRecord { state?: string; taskId?: string; error?: string }
 
@@ -26,19 +27,6 @@ export function deriveAutoCompactStatus(state: ProcessAutoCompactState | undefin
     if (!validState(state)?.enabled) return 'off';
     if (state?.taskId && compaction?.taskId === state.taskId && (compaction.state === 'queued' || compaction.state === 'running')) return compaction.state;
     return state?.paused ? 'paused' : 'enabled';
-}
-
-/** k input accepts whole tokens (up to three decimal places), without rounding. */
-export function parseThresholdInput(value: string): number | undefined {
-    if (!/^\d+(?:\.\d{1,3})?$/.test(value.trim())) return undefined;
-    const [whole, fraction = ''] = value.trim().split('.');
-    const tokens = Number(`${whole}${fraction.padEnd(3, '0')}`);
-    return Number.isSafeInteger(tokens) && tokens > 0 ? tokens : undefined;
-}
-
-function formatThresholdInput(tokens: number): string {
-    const remainder = tokens % 1000;
-    return `${Math.floor(tokens / 1000)}${remainder ? `.${String(remainder).padStart(3, '0').replace(/0+$/, '')}` : ''}`;
 }
 
 export function describeAutoCompact(state: ProcessAutoCompactState | undefined, status: ContextAutoCompactStatus, usedTokens: number | undefined): string | undefined {

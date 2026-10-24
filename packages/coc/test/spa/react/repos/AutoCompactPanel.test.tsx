@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { CocClient, type ProcessAutoCompactState } from '@plusplusoneplusplus/coc-client';
 import { ComposerMetaStrip } from '../../../../src/server/spa/client/react/features/chat/ComposerMetaStrip';
 import { ContextWindowIndicator } from '../../../../src/server/spa/client/react/ui/ContextWindowIndicator';
-import { deriveAutoCompactStatus, describeAutoCompact, parseThresholdInput, useSentinelAutoCompact, type AutoCompactPanelProps } from '../../../../src/server/spa/client/react/features/chat/AutoCompactPanel';
+import { deriveAutoCompactStatus, describeAutoCompact, useSentinelAutoCompact, type AutoCompactPanelProps } from '../../../../src/server/spa/client/react/features/chat/AutoCompactPanel';
+import { formatThresholdInput, parseThresholdInput } from '../../../../src/server/spa/client/react/utils/autoCompactThreshold';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
@@ -62,6 +63,14 @@ describe('auto-compact helpers', () => {
         expect(parseThresholdInput('9007199254740.991')).toBe(Number.MAX_SAFE_INTEGER);
         for (const value of ['0', '-1', 'Infinity', 'NaN', '', 'abc', '0.0001', '9007199254740.992', '1e3'])
             expect(parseThresholdInput(value)).toBeUndefined();
+    });
+
+    it.each([
+        [100_000, '100'], [100_001, '100.001'], [100_010, '100.01'], [100_100, '100.1'],
+        [1_001, '1.001'], [1, '0.001'], [Number.MAX_SAFE_INTEGER, '9007199254740.991'],
+    ])('roundtrips %i tokens through the exact K draft %s', (tokens, draft) => {
+        expect(formatThresholdInput(tokens)).toBe(draft);
+        expect(parseThresholdInput(formatThresholdInput(tokens))).toBe(tokens);
     });
 
     it('derives pill status only from the owning automatic compaction', () => {

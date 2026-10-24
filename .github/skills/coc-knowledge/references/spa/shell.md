@@ -852,7 +852,9 @@ The automation names are **Refrains** (user prompts), **Coda** (built-in to-do r
 With the owning server's Refrains flags on, `SentinelRefrains` lists refrains
 and hosts Coda as its pinned built-in row. Refrain dialogs, gate status,
 Test gate/Resume gate and skip labels are described in the unified-right-panel
-`AGENTS.md`.
+`AGENTS.md`. Create/edit auto-compact thresholds use K-token drafts with up to
+three decimals; shared `utils/autoCompactThreshold.ts` converts exactly at the UI
+boundary while API/storage retain positive safe integer tokens.
 
 `SentinelCoda` mounts after the ledger loads when both live ledger and
 Coda flags are enabled; its function child places one inline strip and history in

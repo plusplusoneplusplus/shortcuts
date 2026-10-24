@@ -8,6 +8,7 @@ import { Button } from '../../../ui/Button';
 import { Dialog } from '../../../ui/Dialog';
 import { SCRUB_CRON_PRESETS, validateScrubCron } from '../../../../../../schedule/scrub-cron';
 import { describeCron } from '../../../utils/cron';
+import { formatThresholdInput, parseThresholdInput } from '../../../utils/autoCompactThreshold';
 
 const INPUT = 'w-full min-w-0 rounded border border-[#e0e0e0] bg-transparent px-2 py-1 text-xs dark:border-[#3c3c3c]';
 type Draft = {
@@ -38,7 +39,7 @@ export function SentinelRefrainDialog({ job, client, baseUrl, effortLevelsEnable
     const [draft, setDraft] = useState<Draft>(() => ({
         name: job?.name ?? '', instructions: job?.instructions ?? '', provider: concreteProvider(job?.provider),
         model: job?.model ?? '', effort: job?.effort ?? '', effortTier: tierKey(job?.effortTier), mode: job?.mode ?? 'ask',
-        cron: job?.cron ?? '', enabled: job?.enabled ?? true, threshold: String(job?.autoCompactThreshold ?? 100_000),
+        cron: job?.cron ?? '', enabled: job?.enabled ?? true, threshold: formatThresholdInput(job?.autoCompactThreshold ?? 100_000),
         gateScript: job?.gateScript ?? '',
     }));
     const { models, loading, error: modelError, reload } = useProviderModels(draft.provider, { baseUrl, client });
@@ -48,8 +49,8 @@ export function SentinelRefrainDialog({ job, client, baseUrl, effortLevelsEnable
     const selectedTier = resolveEffectiveTier(desiredTier(draft, tiers), tiers);
     const aiValid = tierMode ? !tiersLoading && !!tiers[selectedTier]?.model : !!draft.model.trim();
     const cronError = draft.cron.trim() ? validateScrubCron(draft.cron) : undefined;
-    const threshold = Number(draft.threshold);
-    const thresholdError = !Number.isSafeInteger(threshold) || threshold <= 0;
+    const threshold = parseThresholdInput(draft.threshold);
+    const thresholdError = threshold === undefined;
     const gateError = draft.gateScript.trim() && !draft.cron.trim() ? 'A gate script needs a cron schedule.' : undefined;
     const valid = !!draft.name.trim() && !!draft.instructions.trim() && aiValid && !cronError && !thresholdError && !gateError;
     const update = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft(previous => ({ ...previous, [key]: value }));
@@ -108,10 +109,17 @@ export function SentinelRefrainDialog({ job, client, baseUrl, effortLevelsEnable
             <input id={`${id}-cron`} className={INPUT} value={draft.cron} maxLength={200} disabled={busy}
                 aria-invalid={!!cronError} aria-describedby={`${id}-cron-help`} placeholder="0 9 * * *" onChange={event => update('cron', event.target.value)} />
             <p id={`${id}-cron-help`} role={cronError ? 'alert' : undefined} className="text-xs">{cronError ?? (draft.cron ? describeCron(draft.cron) || draft.cron : 'Run now only')}. Owning server local time.</p>
-            <label htmlFor={`${id}-threshold`}>Auto-compact threshold (tokens)</label>
-            <input id={`${id}-threshold`} className={INPUT} type="number" min="1" step="1" required value={draft.threshold} disabled={busy}
-                aria-invalid={thresholdError} onChange={event => update('threshold', event.target.value)} />
-            {thresholdError && <p role="alert">Enter a positive whole number of tokens.</p>}
+            <label htmlFor={`${id}-threshold`}>Auto-compact threshold (K tokens)</label>
+            <span className="inline-flex w-40 max-w-full min-w-0 items-center rounded border border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <input id={`${id}-threshold`} className={`${INPUT} border-0 text-right tabular-nums`} type="text" inputMode="decimal"
+                    required value={draft.threshold} disabled={busy} aria-invalid={thresholdError} aria-describedby={`${id}-threshold-help`}
+                    onChange={event => update('threshold', event.target.value)} />
+                <span aria-hidden="true" className="pr-2 text-xs text-[#616161] dark:text-[#9d9d9d]">K</span>
+            </span>
+            <p id={`${id}-threshold-help`} role={thresholdError ? 'alert' : undefined} className="text-xs">
+                {thresholdError ? 'Enter a positive K value, up to 3 decimals, within the safe integer token range.'
+                    : '1K = 1,000 tokens; up to 3 decimals.'}
+            </p>
             <label htmlFor={`${id}-gate`}>Gate script (optional)</label>
             <textarea id={`${id}-gate`} className={`${INPUT} min-h-[80px] font-mono`} value={draft.gateScript} maxLength={32_000} disabled={busy}
                 spellCheck={false} aria-invalid={!!gateError} aria-describedby={`${id}-gate-help`} placeholder="return items.length ? { items } : null;"
