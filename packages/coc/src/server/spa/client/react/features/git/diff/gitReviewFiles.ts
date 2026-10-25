@@ -1,4 +1,4 @@
-import type { GitFileChange } from '@plusplusoneplusplus/coc-client';
+import type { FileChange } from './FileTree';
 import { normalizeStatus } from './FileTree';
 
 export function reviewFileStatus(status: string) { return normalizeStatus(status).replace(/^([RC])\d+$/, '$1'); }
@@ -13,7 +13,7 @@ export function reviewFileKind(path: string): Exclude<ReviewFileKind, 'all'> {
     if (/(^|\/)(docs?|notes)(\/|$)|\.(mdx?|rst|txt)$/i.test(path)) return 'docs';
     return 'source';
 }
-export function filterReviewFiles(files: GitFileChange[], query: string, kind: ReviewFileKind,
+export function filterReviewFiles(files: FileChange[], query: string, kind: ReviewFileKind,
     status: string, hideViewed: boolean, viewed: ReadonlySet<string>) {
     const needle = query.trim().toLowerCase();
     return files.filter(file => (!needle || `${file.path}\n${file.oldPath ?? ''}`.toLowerCase().includes(needle))
@@ -21,8 +21,8 @@ export function filterReviewFiles(files: GitFileChange[], query: string, kind: R
         && (status === 'all' || reviewFileStatus(file.status) === status)
         && (!hideViewed || !viewed.has(file.path)));
 }
-export function groupReviewFiles(files: GitFileChange[]) {
-    const groups = new Map<string, GitFileChange[]>();
+export function groupReviewFiles(files: FileChange[]) {
+    const groups = new Map<string, FileChange[]>();
     for (const file of files) {
         const { directory } = reviewFileParts(file.path);
         const group = groups.get(directory);

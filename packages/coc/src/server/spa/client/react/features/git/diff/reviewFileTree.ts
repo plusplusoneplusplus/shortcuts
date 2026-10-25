@@ -1,5 +1,5 @@
 /**
- * File-tree helper for the PR "Files changed" panel.
+ * File-tree model for shared review navigators.
  *
  * Builds a folder tree from a flat list of `FileChange`s, then
  * collapses single-child folder chains the way common source browsers do
@@ -10,7 +10,7 @@
  * to unit test independently of the React rendering layer.
  */
 
-import type { FileChange } from '../git/diff/FileTree';
+import type { FileChange } from './FileTree';
 
 export type FileTreeNode = FileTreeFolder | FileTreeFile;
 
@@ -139,8 +139,8 @@ function aggregate(folder: MutableFolder): void {
     }
     for (const f of files) {
         folder.fileCount += 1;
-        folder.additions += f.file.additions;
-        folder.deletions += f.file.deletions;
+        folder.additions += f.file.additions ?? 0;
+        folder.deletions += f.file.deletions ?? 0;
         folder.children.push(f);
     }
 }

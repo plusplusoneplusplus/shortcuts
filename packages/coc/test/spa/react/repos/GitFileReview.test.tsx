@@ -34,6 +34,18 @@ describe('compact focused Git review', () => {
         expect(screen.getByTestId('focused-diff').textContent).toContain('src/99.ts');
         expect(screen.getAllByTestId('focused-diff')).toHaveLength(1);
     });
+    it('shares tree and flat order with the file diff source after filtering', () => {
+        render(<GitFileReview {...props} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Tree', exact: true }));
+        expect(panel.mock.calls.at(-1)![0].source.files).toEqual(['docs/README.md', 'src/a.ts', 'src/z.ts', 'test/a.test.ts']);
+        fireEvent.click(screen.getByRole('button', { name: 'Flat', exact: true }));
+        expect(panel.mock.calls.at(-1)![0].source.files).toEqual(files.map(file => file.path));
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'src/' } });
+        expect(panel.mock.calls.at(-1)![0].source.files).toEqual(['src/z.ts', 'src/a.ts']);
+        open('src/z.ts');
+        fireEvent.click(screen.getByRole('button', { name: 'Next file', exact: true }));
+        expect(panel.mock.calls.at(-1)![0].filePath).toBe('src/a.ts');
+    });
     it('groups directories, leads with basename, and searches old rename paths', () => {
         render(<GitFileReview {...props} />);
         expect(within(nav()).getByRole('button', { name: /src 2/ }).getAttribute('aria-expanded')).toBe('true');
@@ -162,12 +174,12 @@ describe('mark viewed navigation', () => {
         expect(onSelect).not.toHaveBeenCalled();
         expect(screen.getByTestId('focused-diff').textContent).toContain('docs/README.md');
     });
-    it('ignores delayed completion after switching owner/comparison', async () => {
+    it.each(['owner/comparison', 'source'])('ignores delayed completion after switching %s', async change => {
         let complete!: () => void;
         const onSelect = vi.fn();
         const view = render(<GitFileReview {...props} onSelect={onSelect} onToggleReviewed={() => new Promise<void>(resolve => { complete = resolve; })} />);
         fireEvent.click(screen.getByRole('button', { name: 'Mark viewed' }));
-        view.rerender(<GitFileReview {...props} attachmentDestinationId="remote:other:ws" comparisonKey="other" onSelect={onSelect} />);
+        view.rerender(<GitFileReview {...props} {...(change === 'source' ? { source: { ...source, cacheKey: 'new-source' } } : { attachmentDestinationId: "remote:other:ws", comparisonKey: "other" })} onSelect={onSelect} />);
         onSelect.mockClear();
         await act(async () => complete());
         expect(onSelect).not.toHaveBeenCalled();

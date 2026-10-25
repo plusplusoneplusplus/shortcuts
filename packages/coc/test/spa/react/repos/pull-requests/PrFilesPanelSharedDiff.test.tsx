@@ -155,6 +155,10 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+function fileRows() {
+    return Array.from(screen.getByRole('complementary', { name: 'Changed files' }).querySelectorAll<HTMLElement>('[data-file-path]'));
+}
+
 describe('PrFilesPanel — desktop adopts the shared FileDiffPanel', () => {
     it('keeps local and colliding remote owners distinct across mounted owner and file changes', () => {
         const props = { files: parsedFiles, diffText, workspaceId: 'ws-1', diffSource: makeSource() };
@@ -163,7 +167,7 @@ describe('PrFilesPanel — desktop adopts the shared FileDiffPanel', () => {
             view.rerender(<PrFilesPanel {...props} attachmentDestinationId={destination} />);
             expect(lastPanelProps.attachmentDestinationId).toBe(destination);
             expect(lastPanelProps.workspaceId).toBe('ws-1');
-            const row = screen.getAllByTestId('pr-file-row').find(r => r.getAttribute('data-file-path') === 'two.ts');
+            const row = fileRows().find(r => r.getAttribute('data-file-path') === 'two.ts');
             fireEvent.click(row as HTMLElement);
             expect(lastPanelProps.attachmentDestinationId).toBe(destination);
             expect(lastPanelProps.filePath).toBe('two.ts');
@@ -221,7 +225,7 @@ describe('PrFilesPanel — desktop adopts the shared FileDiffPanel', () => {
     it('switches the shared panel to the file the reviewer selects', () => {
         render(<PrFilesPanel files={parsedFiles} diffText={diffText} workspaceId="ws-1" diffSource={makeSource()} />);
 
-        const twoRow = screen.getAllByTestId('pr-file-row')
+        const twoRow = fileRows()
             .find(r => r.getAttribute('data-file-path') === 'two.ts');
         fireEvent.click(twoRow as HTMLElement);
 
@@ -310,17 +314,17 @@ describe('PrFilesPanel review navigation order', () => {
         const files = ['src/a.ts', 'root.ts', 'src/b.ts'].map(path => ({ path, status: 'M' }));
         const source = makeSource();
         render(<PrFilesPanel files={files} workspaceId="ws-1" attachmentDestinationId="remote:server:ws-1" diffSource={source} headSha="head" />);
-        if (mode === 'flat') fireEvent.click(screen.getByTestId('pr-file-view-flat'));
-        if (mode === 'search') fireEvent.change(screen.getByTestId('pr-file-search'), { target: { value: 'src/' } });
+        if (mode === 'flat') fireEvent.click(screen.getByRole('button', { name: 'Flat', exact: true }));
+        if (mode === 'search') fireEvent.change(screen.getByRole('textbox', { name: 'Search changed files by name or path' }), { target: { value: 'src/' } });
         act(() => lastPanelProps.onToggleReviewed());
         expect(lastPanelProps.filePath).toBe(mode === 'flat' ? 'root.ts' : 'src/b.ts');
         expect(lastPanelProps.attachmentDestinationId).toBe('remote:server:ws-1');
-        expect(lastPanelProps.source).toBe(source);
-        expect(screen.getAllByTestId('pr-file-row').find(row => row.getAttribute('data-file-path') === lastPanelProps.filePath)?.className).toContain('bg-blue');
+        expect(lastPanelProps.source).toMatchObject({ ...source, files: mode === 'search' ? ['src/a.ts', 'src/b.ts'] : mode === 'flat' ? files.map(file => file.path) : ['src/a.ts', 'src/b.ts', 'root.ts'] });
+        expect(fileRows().find(row => row.getAttribute('data-file-path') === lastPanelProps.filePath)?.className).toContain('selected');
     });
     it('stays on the last displayed file', () => {
         render(<PrFilesPanel files={parsedFiles} workspaceId="ws-1" diffSource={makeSource()} />);
-        fireEvent.click(screen.getAllByTestId('pr-file-row').find(row => row.getAttribute('data-file-path') === 'two.ts')!);
+        fireEvent.click(fileRows().find(row => row.getAttribute('data-file-path') === 'two.ts')!);
         act(() => lastPanelProps.onToggleReviewed());
         expect(lastPanelProps.filePath).toBe('two.ts');
         expect(lastPanelProps.isReviewed).toBe(true);
@@ -362,7 +366,7 @@ describe('PrFilesPanel — mark reviewed / review progress (AC-04)', () => {
         renderWithProgress();
         await act(async () => { await Promise.resolve(); });
 
-        const twoRow = screen.getAllByTestId('pr-file-row')
+        const twoRow = fileRows()
             .find(r => r.getAttribute('data-file-path') === 'two.ts');
         fireEvent.click(twoRow as HTMLElement);
 
@@ -379,11 +383,11 @@ describe('PrFilesPanel — mark reviewed / review progress (AC-04)', () => {
 
         expect(lastPanelProps.filePath).toBe('two.ts');
         expect(lastPanelProps.isReviewed).toBe(false);
-        expect(screen.getByTestId('pr-file-reviewed-one.ts')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /one.ts, .*viewed/ })).toBeInTheDocument();
         // Reviewed supersedes the visited dot.
         expect(screen.queryByTestId('pr-file-visited-one.ts')).not.toBeInTheDocument();
 
-        fireEvent.click(screen.getAllByTestId('pr-file-row').find(row => row.getAttribute('data-file-path') === 'one.ts')!);
+        fireEvent.click(fileRows().find(row => row.getAttribute('data-file-path') === 'one.ts')!);
         expect(lastPanelProps.isReviewed).toBe(true);
         act(() => { lastPanelProps.onToggleReviewed(); });
         expect(lastPanelProps.isReviewed).toBe(false);
@@ -405,7 +409,7 @@ describe('PrFilesPanel — mark reviewed / review progress (AC-04)', () => {
             });
             await act(async () => fail(new Error('offline')));
             expect(lastPanelProps.filePath).toBe('two.ts');
-            expect(screen.getByTestId('pr-file-reviewed-one.ts')).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: /one.ts, .*viewed/ })).toBeInTheDocument();
         } finally { vi.useRealTimers(); }
     });
 
@@ -428,7 +432,7 @@ describe('PrFilesPanel — mark reviewed / review progress (AC-04)', () => {
         renderWithProgress();
         await act(async () => { await Promise.resolve(); });
 
-        expect(screen.getByTestId('pr-file-reviewed-two.ts')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /two.ts, .*viewed/ })).toBeInTheDocument();
     });
 
     it('keeps progress in-memory when no persistence key is supplied', async () => {
@@ -445,6 +449,70 @@ describe('PrFilesPanel — mark reviewed / review progress (AC-04)', () => {
 
         expect(fetchReviewProgressMock).not.toHaveBeenCalled();
         act(() => { lastPanelProps.onToggleReviewed(); });
-        expect(screen.getByTestId('pr-file-reviewed-one.ts')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /one.ts, .*viewed/ })).toBeInTheDocument();
+    });
+});
+
+
+describe('PR shared navigator regressions', () => {
+    const nav = () => screen.getByRole('complementary', { name: 'Changed files' });
+    it.each(['gh_org_repo', 'ado_org_project_repo'])('preserves %s source capabilities, rename metadata and filtered navigation', origin => {
+        const files = [
+            { path: 'src/new.ts', oldPath: 'old/name.ts', status: 'renamed', additions: 1, deletions: 2 },
+            { path: 'src/gone.ts', status: 'deleted', additions: 0, deletions: 3 },
+            { path: 'assets/image.bin', status: 'added' },
+            { path: 'test/new.test.ts', status: 'modified' },
+        ];
+        const source = { ...makeSource(), cacheKey: `pr:${origin}:7:head` };
+        render(<PrFilesPanel files={files} workspaceId="ws-1" attachmentDestinationId="remote:server:ws-1" diffSource={source} />);
+        expect(nav().querySelector('[data-file-path="src/new.ts"]')).toHaveAttribute('title', 'old/name.ts → src/new.ts');
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'old/name' } });
+        expect(lastPanelProps.source.files).toEqual(['src/new.ts']);
+        expect(lastPanelProps.source.fileDiffUrl).toBe(source.fileDiffUrl);
+        expect(lastPanelProps.source.commentContext).toBe(source.commentContext);
+        expect(lastPanelProps.source.cacheKey).toBe(source.cacheKey);
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: '' } });
+        fireEvent.change(screen.getByLabelText('Change status filter'), { target: { value: 'D' } });
+        expect(lastPanelProps.filePath).toBe('src/gone.ts');
+        expect(lastPanelProps.source.files).toEqual(['src/gone.ts']);
+        fireEvent.change(screen.getByLabelText('Change status filter'), { target: { value: 'A' } });
+        expect(lastPanelProps.filePath).toBe('assets/image.bin');
+        expect(lastPanelProps.source.files).toEqual(['assets/image.bin']);
+        expect(lastPanelProps.attachmentDestinationId).toBe('remote:server:ws-1');
+    });
+    it('shares resize, drawer focus, keyboard selection and owner-scoped filter reset', () => {
+        const props = { files: parsedFiles, workspaceId: 'ws-1', diffSource: makeSource() };
+        const view = render(<PrFilesPanel {...props} />);
+        const separator = screen.getByRole('separator', { name: 'Resize changed files list' });
+        fireEvent.keyDown(separator, { key: 'End' });
+        expect(separator).toHaveAttribute('aria-valuenow', '560');
+        fireEvent.doubleClick(separator);
+        const trigger = screen.getByRole('button', { name: 'Files · 2' });
+        fireEvent.click(trigger);
+        expect(screen.getByRole('textbox')).toHaveFocus();
+        const one = nav().querySelector('[data-file-path="one.ts"]')!;
+        fireEvent.keyDown(one, { key: 'ArrowDown' });
+        expect(lastPanelProps.filePath).toBe('two.ts');
+        expect(nav().querySelector('[data-file-path="two.ts"]')).toHaveFocus();
+        fireEvent.keyDown(nav(), { key: 'Escape' });
+        expect(trigger).toHaveFocus();
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'two' } });
+        view.rerender(<PrFilesPanel {...props} attachmentDestinationId="remote:other:ws-1" />);
+        expect(screen.getByRole('textbox')).toHaveValue('');
+        expect(lastPanelProps.filePath).toBe('one.ts');
+    });
+    it('uses kind and hide-viewed filters for mark-to-next, retaining the last selected file', () => {
+        const files = ['src/a.ts', 'src/b.ts', 'test/a.test.ts'].map(path => ({ path, status: 'M' }));
+        render(<PrFilesPanel files={files} workspaceId="ws-1" diffSource={{ ...makeSource(), fetchFileList: vi.fn() }} />);
+        fireEvent.click(screen.getByRole('button', { name: 'Source 2', exact: true }));
+        fireEvent.click(screen.getByLabelText('Hide viewed'));
+        act(() => lastPanelProps.onToggleReviewed());
+        expect(lastPanelProps.filePath).toBe('src/b.ts');
+        expect(lastPanelProps.source.files).toEqual(['src/b.ts']);
+        act(() => lastPanelProps.onToggleReviewed());
+        expect(lastPanelProps.filePath).toBe('src/b.ts');
+        expect(lastPanelProps.isReviewed).toBe(true);
+        expect(nav().querySelectorAll('[data-file-path]')).toHaveLength(0);
+        expect(lastPanelProps.source.fetchFileList).toBeUndefined();
     });
 });

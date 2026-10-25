@@ -144,9 +144,18 @@ The commit menu never derives its membership from paginated sidebar history.
 keys by workspace/base mode, and Refresh drops every mode for the workspace.
 No-upstream fallback reports `baseModeFallback`; pop-out URLs serialize the mode.
 
-Commit and branch review share `GitFileReview`: searchable directory groups,
-kind/status/viewed filters, overview, file navigation and a narrow drawer around
-one `FileDiffPanel`. A vertical `role="separator"` between navigator and diff
+Commit and branch review use `GitFileReview`; inline PR files use `PrFilesPanel`.
+Both adapt to `ReviewFiles`, which owns search, kind/status/viewed filters,
+selection, directory/tree/flat layouts, overview, progress and the narrow drawer.
+`reviewFileTree` supplies sorted compact directory trees. Typed render, row metadata
+and drag capabilities keep Git revision attachments and PR classification/visited
+markers consumer-owned. Each host keys the shell by owner and comparison identity.
+Displayed-order paths reach `FileDiffPanel` through a source copy, preserving all
+patch/content loaders, comment context and transport; the supplied paths replace
+the source’s fallback file-list loader. PR mobile/patch-only views retain the slim
+inline renderer.
+
+A vertical `role="separator"` between navigator and diff
 resizes the navigator via `useResizablePanel` (drag, arrows ±16/Shift ±64,
 Home/End, double-click reset; 180–560px, default 262, global
 `git-review-nav-width`); a `ResizeObserver` caps it to leave the diff 320px

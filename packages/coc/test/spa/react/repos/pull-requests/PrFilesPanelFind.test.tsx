@@ -80,8 +80,7 @@ function openFind() {
 }
 
 function selectFile(path: string) {
-    const row = screen
-        .getAllByTestId('pr-file-row')
+    const row = fileRows()
         .find(el => (el.getAttribute('title') ?? el.textContent ?? '').includes(path));
     expect(row).toBeTruthy();
     fireEvent.click(row!);
@@ -97,6 +96,10 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+function fileRows() {
+    return Array.from(screen.getByRole('complementary', { name: 'Changed files' }).querySelectorAll<HTMLElement>('[data-file-path]'));
+}
+
 describe('PrFilesPanel — Ctrl+F find widget', () => {
     it('opens the find widget on Ctrl+F inside the PR diff container', () => {
         renderPanel();
@@ -110,7 +113,7 @@ describe('PrFilesPanel — Ctrl+F find widget', () => {
         makeVisible(screen.getByTestId('pr-diff-panel-scroll'));
 
         // The file-path filter input lives outside the diff scroll container.
-        const outside = screen.getByTestId('pr-file-search');
+        const outside = screen.getByRole('textbox', { name: 'Search changed files by name or path' });
         expect(pressCtrlF(outside)).toBe(false);
         expect(screen.queryByTestId('diff-find-widget')).toBeNull();
     });
