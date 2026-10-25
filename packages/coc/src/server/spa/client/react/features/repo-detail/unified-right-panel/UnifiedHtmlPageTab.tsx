@@ -4,7 +4,7 @@ import {
     HTML_PAGE_VIEW_PREFIX,
     type HtmlPageLoadState,
 } from '../../../shared/file-path/html-page-bridge';
-import { NativeViewNavButtons, NativeViewTab, nativeViewToolbarButton as toolbarButton } from './NativeViewTab';
+import { NativeViewNavButtons, NativeViewTab, nativeViewAddressField, nativeViewToolbar, nativeViewToolbarButton as toolbarButton } from './NativeViewTab';
 import { desktopBrowserBridge } from '../../../shared/file-path/browser-bridge';
 import { prepareBrowserWebview, useBrowserWebviewError } from './browserWebviewLayerStore';
 
@@ -82,7 +82,7 @@ export function UnifiedHtmlPageTab({
     };
 
     const toolbar = (
-        <div className="flex flex-shrink-0 items-center gap-1 overflow-x-auto whitespace-nowrap border-b border-[#e5e5e5] px-2 py-1 text-xs dark:border-[#333]">
+        <div className={`flex overflow-x-auto whitespace-nowrap ${nativeViewToolbar}`} data-testid="html-page-toolbar">
             <NativeViewNavButtons
                 canGoBack={Boolean(bridge?.nav && loadState?.canGoBack)}
                 canGoForward={Boolean(bridge?.nav && loadState?.canGoForward)}
@@ -90,7 +90,7 @@ export function UnifiedHtmlPageTab({
                 testIdPrefix="html-page"
             />
             <span
-                className="min-w-0 flex-1 truncate px-1 text-[#616161] dark:text-[#9d9d9d]"
+                className={`truncate leading-[26px] text-[#616161] dark:text-[#9d9d9d] ${nativeViewAddressField}`}
                 title={filePath}
                 data-testid="html-page-path"
             >

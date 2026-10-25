@@ -6,7 +6,7 @@ import { BrowserAddressBar } from './BrowserAddressBar';
 import { BrowserControlBadge } from '../../../shared/file-path/BrowserControlBadge';
 import { isMacPlatform } from '../../../utils/composerKeyboardShortcuts';
 import { normalizeBrowserUrl } from './unifiedBrowserTabs';
-import { NativeViewNavButtons, NativeViewTab, nativeViewToolbarButton as toolbarButton } from './NativeViewTab';
+import { NativeViewNavButtons, NativeViewTab, nativeViewToolbar, nativeViewToolbarButton as toolbarButton } from './NativeViewTab';
 import { prepareBrowserWebview, useBrowserWebviewError } from './browserWebviewLayerStore';
 import {
     desktopBrowserBridge,
@@ -167,7 +167,8 @@ export function UnifiedBrowserTab({
 
     const toolbar = (
         <div
-            className="flex min-w-0 flex-shrink-0 flex-wrap items-center gap-1 border-b border-[#e5e5e5] px-2 py-1 text-xs dark:border-[#333]"
+            className={`flex min-w-0 flex-wrap ${nativeViewToolbar}`}
+            data-testid="browser-toolbar"
             onKeyDown={event => {
                 const mac = isMacPlatform();
                 if (!active || !visible || event.defaultPrevented || event.key.toLowerCase() !== 'l'

@@ -246,6 +246,48 @@ describe('browser tab engine-neutral controls', () => {
 });
 
 
+describe('browser toolbar navigation capsule', () => {
+    it('groups back/forward/reload in one capsule with a separator before reload and swaps Stop while loading', async () => {
+        tab();
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
+        const capsule = screen.getByRole('group', { name: 'Page navigation' });
+        expect(capsule).toHaveClass('rounded-full');
+        const children = Array.from(capsule.children);
+        expect(children.map(child => child.getAttribute('data-testid')))
+            .toEqual(['browser-back', 'browser-forward', 'browser-nav-separator', 'browser-reload']);
+        expect(screen.getByTestId('browser-nav-separator')).toHaveAttribute('aria-hidden', 'true');
+        for (const name of ['Back', 'Forward', 'Reload']) {
+            const button = screen.getByRole('button', { name });
+            expect(button).toHaveAttribute('title', name);
+            expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+            expect(button.textContent).toBe('');
+        }
+        expect(screen.getByLabelText('Back')).toBeDisabled();
+        expect(screen.getByLabelText('Forward')).toBeDisabled();
+        const emit = vi.mocked(mocks.bridge!.onState).mock.calls[0][0];
+        act(() => emit({ viewId: 'view', engine: 'electron', url: 'https://example.test/', title: '', loading: true, canGoBack: true, canGoForward: false }));
+        expect(screen.getByLabelText('Back')).not.toBeDisabled();
+        expect(screen.getByLabelText('Forward')).toBeDisabled();
+        expect(screen.queryByLabelText('Reload')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+        expect(mocks.bridge!.nav).toHaveBeenCalledWith('view', 'stop');
+        expect(capsule.lastElementChild).toBe(screen.getByTestId('browser-stop'));
+    });
+
+    it('renders the address as an editable pill on a quiet toolbar with the round options button', async () => {
+        tab();
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
+        const address = screen.getByLabelText('Address') as HTMLInputElement;
+        expect(address).toHaveClass('rounded-full', 'flex-1', 'min-w-0');
+        expect(address.readOnly).toBe(false);
+        expect(address.value).toBe('https://example.test/');
+        expect(screen.getByTestId('browser-toolbar')).toHaveClass('flex-wrap', 'bg-[#f8f8f8]', 'dark:bg-[#252526]');
+        const options = screen.getByRole('button', { name: 'Browser options' });
+        expect(options).toHaveClass('rounded-full');
+        expect(options.querySelector('svg')).not.toBeNull();
+    });
+});
+
 describe('browser toolbar overflow', () => {
     it.each(['electron', 'webview2'] as const)('keeps %s information and the live external action in the menu above the native view', async engine => {
         open.mockResolvedValue({ ok: true, engine });

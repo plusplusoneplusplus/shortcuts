@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import type { BrowserHistorySuggestion, BrowserViewState, DesktopBrowserBridge, DesktopBrowserHistory } from '../../../shared/file-path/browser-bridge';
 import { escapeHtml } from '../../../utils/format';
 import { normalizeBrowserUrl } from './unifiedBrowserTabs';
+import { nativeViewAddressField } from './NativeViewTab';
 
 /** Editing stays local; matching, ranking and persistence belong to main. */
 export function BrowserAddressBar({ inputRef, url, committedPage, history, enabled, ownerKey, invalid, onEdit, onOpen, onCopyError, showAddressMenu, onMenuError }: {
@@ -320,7 +321,7 @@ export function BrowserAddressBar({ inputRef, url, committedPage, history, enabl
                 spellCheck={false}
                 autoComplete="off"
                 autoFocus={!url}
-                className="min-w-0 flex-1 rounded border border-[#c8c8c8] bg-transparent px-2 py-1 outline-none focus:border-[#007acc] dark:border-[#3c3c3c]"
+                className={`${nativeViewAddressField} outline-none placeholder:text-[#8a8a8a] hover:border-[#c8c8c8] focus:border-[#007acc] focus:ring-1 focus:ring-[#007acc]/30 aria-[invalid=true]:border-[#a1260d] dark:hover:border-[#4a4a4a] dark:focus:border-[#007acc] dark:aria-[invalid=true]:border-[#f48771]`}
                 data-testid="browser-address"
             />
         </form>

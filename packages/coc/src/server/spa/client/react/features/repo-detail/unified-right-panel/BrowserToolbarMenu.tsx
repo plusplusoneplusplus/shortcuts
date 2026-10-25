@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { BrowserEngine, BrowserPreferences, DesktopBrowserBridge } from '../../../shared/file-path/browser-bridge';
-import { nativeViewToolbarButton } from './NativeViewTab';
+import { NativeViewIcon, nativeViewIconButton, nativeViewToolbarButton } from './NativeViewTab';
 
 export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal, onOpenExternal, onImportCookies, onHistory, bridge }: {
     open: boolean;
@@ -99,7 +99,7 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
         <button
             ref={triggerRef}
             type="button"
-            className={`flex-shrink-0 ${nativeViewToolbarButton}`}
+            className={nativeViewIconButton}
             aria-label="Browser options"
             title="Browser options"
             aria-haspopup="menu"
@@ -112,7 +112,9 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
                     onOpenChange(true);
                 }
             }}
-        >…</button>
+        >
+            <NativeViewIcon><path d="M3.5 8h.01M8 8h.01M12.5 8h.01" strokeWidth="2.2" /></NativeViewIcon>
+        </button>
         {open && createPortal(
             <div
                 ref={panelRef}
