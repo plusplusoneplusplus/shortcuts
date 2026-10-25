@@ -1,8 +1,8 @@
-import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type FilePreviewHost } from './browser-host-contract';
+import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserSiteFacts, type FilePreviewHost } from './browser-host-contract';
 import {
     BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_DOWNLOAD_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL,
     BROWSER_PAGE_ZOOM, isBrowserPageZoom, isBrowserEngine, isValidBrowserSessionKey, isValidBrowserViewId, toBrowserSource, validateBrowserUrl,
-    type BrowserEngine, type BrowserFailureReason, type BrowserNavAction, type BrowserCookieImportResult, type BrowserOpenResult, type BrowserOperationResult, type BrowserPreferences,
+    type BrowserEngine, type BrowserFailureReason, type BrowserNavAction, type BrowserCookieImportResult, type BrowserSiteConnection, type BrowserSiteInfo, type BrowserSiteInfoResult, type BrowserOpenResult, type BrowserOperationResult, type BrowserPreferences,
     type BrowserSourceKind, type BrowserViewState,
 } from './browser-view-policy';
 import { parseBrowserCookies } from './browser-cookie-import';
@@ -782,6 +782,48 @@ export class BrowserHostManager {
         this.imports.set(engine, pending);
         pending.add(operation);
         try { return await operation; } finally { pending.delete(operation); }
+    }
+
+    /**
+     * Read-only site information for the exact owner/view/session. It describes the committed
+     * document, never an address draft, and is refused once a newer document or failure replaces it.
+     */
+    async siteInfo(ownerId: number, viewId: unknown, sessionKey: unknown): Promise<BrowserSiteInfoResult> {
+        const entry = this.entry(ownerId, viewId);
+        if (!entry || entry.closed || entry.popout || this.disposed) return { ok: false, reason: 'not-found' };
+        if (!isValidBrowserSessionKey(sessionKey) || entry.sessionKey !== sessionKey) return { ok: false, reason: 'bad-session' };
+        let view: BrowserHostedView;
+        try { view = await entry.ready; } catch (error) { return this.failure(error, 'not-found'); }
+        if (entry.closed || this.disposed) return { ok: false, reason: 'not-found' };
+        const state = view.snapshot();
+        const host = (() => { try { return new URL(state.url).hostname; } catch { return ''; } })();
+        if (entry.sourceKind === 'file') {
+            return { ok: true, info: { viewId: entry.viewId, engine: entry.engine, sourceKind: 'file', url: state.url, host,
+                connection: 'local-file', cookies: { available: false, reason: 'not-applicable' } } };
+        }
+        const committed = this.state(entry, state).committedPage;
+        let facts: BrowserSiteFacts | undefined;
+        try { facts = await view.siteFacts?.(committed?.url); }
+        catch { facts = undefined; }
+        const now = view.snapshot();
+        if (entry.closed || this.disposed || now.url !== state.url || now.loading !== state.loading || now.error !== state.error
+            || this.state(entry, now).committedPage?.revision !== committed?.revision) {
+            return { ok: false, reason: 'busy', message: 'The page changed. Open site information again.' };
+        }
+        const connection: BrowserSiteConnection = state.loading ? 'loading'
+            : state.error ? (facts?.certificateError ? 'certificate-error' : 'failed')
+            : !committed ? 'unknown'
+            : committed.url.startsWith('http:') ? 'insecure'
+            : facts?.rejectsInvalidCertificates ? 'secure' : 'https-unverified';
+        const info: BrowserSiteInfo = {
+            viewId: entry.viewId, engine: entry.engine, sourceKind: 'url', url: committed?.url ?? state.url, host, connection,
+            ...(connection === 'secure' && facts?.certificate ? { certificate: facts.certificate } : {}),
+            cookies: !committed ? { available: false, reason: 'not-applicable' }
+                : facts?.cookieCount !== undefined ? { available: true, count: facts.cookieCount }
+                : { available: false, reason: view.siteFacts ? 'failed' : 'unsupported' },
+            ...(committed ? { revision: committed.revision } : {}),
+        };
+        return { ok: true, info };
     }
 
     async navigate(ownerId: number, viewId: unknown, url: unknown): Promise<BrowserOpenResult> {

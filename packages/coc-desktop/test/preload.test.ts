@@ -74,6 +74,7 @@ import {
     BROWSER_PREFERENCES_SET_CHANNEL,
     BROWSER_PAGE_ZOOM_SET_CHANNEL,
     BROWSER_IMPORT_COOKIES_CHANNEL,
+    BROWSER_SITE_INFO_CHANNEL,
     BROWSER_CLEAR_DATA_CHANNEL,
     BROWSER_PREFERENCES_CHANGED_CHANNEL,
     BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL,
@@ -220,6 +221,8 @@ describe('preload bridge', () => {
         expect(invoke).toHaveBeenCalledWith(BROWSER_IMPORT_COOKIES_CHANNEL, 'view', 'app.example.com', 'session=token', undefined);
         await api.importCookies(null, 'app.example.com', 'session=token', 'webview2');
         expect(invoke).toHaveBeenCalledWith(BROWSER_IMPORT_COOKIES_CHANNEL, null, 'app.example.com', 'session=token', 'webview2');
+        await api.siteInfo('view', 'remote-workspace');
+        expect(invoke).toHaveBeenCalledWith(BROWSER_SITE_INFO_CHANNEL, 'view', 'remote-workspace');
         await api.clearData('electron');
         expect(invoke).toHaveBeenCalledWith(BROWSER_CLEAR_DATA_CHANNEL, 'electron');
         api.focus('view');

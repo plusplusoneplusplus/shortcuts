@@ -8,7 +8,7 @@ export const nativeViewToolbar = 'flex-shrink-0 items-center gap-1.5 border-b bo
 /** A round icon-only button, used in the navigation capsule and for toolbar menus. */
 export const nativeViewIconButton = 'inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[#424242] hover:bg-[#e8e8e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:text-[#c5c5c5] dark:hover:bg-[#37373d]';
 /** The pill around an address, editable (browser) or read-only (HTML page path). */
-export const nativeViewAddressField = 'h-7 min-w-0 flex-1 rounded-full border border-[#e0e0e0] bg-white px-3 shadow-[0_1px_1px_rgba(0,0,0,0.03)] dark:border-[#3c3c3c] dark:bg-[#1e1e1e]';
+export const nativeViewAddressField = 'h-7 min-w-0 flex-1 rounded-full border border-[#e0e0e0] bg-white shadow-[0_1px_1px_rgba(0,0,0,0.03)] dark:border-[#3c3c3c] dark:bg-[#1e1e1e]';
 
 /** The part of a desktop view bridge that places a native view. */
 export interface NativeViewBridge {

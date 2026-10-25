@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
     attach: undefined as undefined | (() => void),
     expire: undefined as undefined | (() => void),
     beforeRequest: undefined as undefined | ((details: any, callback: any) => void),
+    verifyProc: undefined as undefined | ((request: any, callback: (result: number) => void) => void),
     download: undefined as undefined | ((event: any, item: any, wc: any) => void),
     external: vi.fn().mockResolvedValue(undefined),
     revoke: vi.fn(),
@@ -18,10 +19,11 @@ const mocks = vi.hoisted(() => ({
     profile: {
         getUserAgent: () => 'Electron/42', setUserAgent: vi.fn(),
         setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn(), on: vi.fn(),
+        setCertificateVerifyProc: vi.fn((proc: any) => { mocks.verifyProc = proc; }),
         clearData: vi.fn().mockResolvedValue(undefined),
         clearAuthCache: vi.fn().mockResolvedValue(undefined),
         clearCodeCaches: vi.fn().mockResolvedValue(undefined),
-        cookies: { set: vi.fn().mockResolvedValue(undefined), flushStore: vi.fn().mockResolvedValue(undefined) },
+        cookies: { set: vi.fn().mockResolvedValue(undefined), flushStore: vi.fn().mockResolvedValue(undefined), get: vi.fn().mockResolvedValue([]) },
         flushStorageData: vi.fn(),
         webRequest: { onBeforeRequest: vi.fn() },
     },
@@ -87,6 +89,54 @@ beforeEach(() => {
 function emit(name: string, ...args: any[]) {
     for (const handler of mocks.handlers.get(name) ?? []) { handler({}, ...args); }
 }
+
+describe('Electron site information facts', () => {
+    const sink: BrowserEventSink = { state() {}, newTab() {}, download() {}, closeRequested() {}, openMenuRequested() {} };
+    const certificate = (subjectName: string) => ({ subjectName, issuerName: 'Fixture CA', validStart: 100, validExpiry: 200 });
+
+    it('observes Chromium certificate verification without changing its result', async () => {
+        const view = await new ElectronBrowserHost('profile').create({ ownerId: 7, viewId: 'cert', sessionKey: 'w', url: 'https://secure.test/' }, sink);
+        try {
+            const callback = vi.fn();
+            mocks.verifyProc!({ hostname: 'secure.test', errorCode: 0, verificationResult: 'net::OK',
+                certificate: certificate('leaf'), validatedCertificate: certificate('secure.test') }, callback);
+            mocks.verifyProc!({ hostname: 'broken.test', errorCode: -202, verificationResult: 'net::ERR_CERT_AUTHORITY_INVALID',
+                certificate: certificate('broken.test'), validatedCertificate: certificate('broken.test') }, callback);
+            expect(callback.mock.calls).toEqual([[-3], [-3]]);
+            mocks.profile.cookies.get.mockResolvedValueOnce([{ name: 'sid', value: 'secret' }, { name: 'pref', value: 'x' }]);
+            const facts = await view.siteFacts!('https://secure.test/page');
+            expect(facts).toEqual({ rejectsInvalidCertificates: true, certificateError: false, cookieCount: 2,
+                certificate: { subject: 'secure.test', issuer: 'Fixture CA', validStart: 100, validExpiry: 200 } });
+            expect(JSON.stringify(facts)).not.toContain('secret');
+            expect(mocks.profile.cookies.get).toHaveBeenCalledWith({ url: 'https://secure.test/page' });
+            expect((await view.siteFacts!('https://broken.test/')).certificate).toBeUndefined();
+            expect((await view.siteFacts!('http://secure.test/')).certificate).toBeUndefined();
+            expect(await view.siteFacts!()).toEqual({ rejectsInvalidCertificates: true, certificateError: false });
+        } finally {
+            await view.close();
+        }
+    });
+
+    it('flags only certificate failures of the current main-frame load and hides cookie read errors', async () => {
+        const view = await new ElectronBrowserHost('profile').create({ ownerId: 7, viewId: 'fail', sessionKey: 'w', url: 'https://bad.test/' }, sink);
+        try {
+            emit('did-fail-load', -202, 'ERR_CERT_AUTHORITY_INVALID', 'https://bad.test/', true);
+            expect((await view.siteFacts!()).certificateError).toBe(true);
+            emit('did-start-loading');
+            expect((await view.siteFacts!()).certificateError).toBe(false);
+            emit('did-fail-load', -105, 'ERR_NAME_NOT_RESOLVED', 'https://bad.test/', true);
+            expect((await view.siteFacts!()).certificateError).toBe(false);
+            emit('did-fail-load', -201, 'ERR_CERT_DATE_INVALID', 'https://bad.test/frame', false);
+            expect((await view.siteFacts!()).certificateError).toBe(false);
+            mocks.profile.cookies.get.mockRejectedValueOnce(new Error('secret=value'));
+            const facts = await view.siteFacts!('https://bad.test/');
+            expect(facts.cookieCount).toBeUndefined();
+            expect(JSON.stringify(facts)).not.toContain('secret');
+        } finally {
+            await view.close();
+        }
+    });
+});
 
 describe('Electron browser profile cleanup', () => {
     it('activates the owner before focusing the exact guest', async () => {

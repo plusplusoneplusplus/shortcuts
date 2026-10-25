@@ -19,12 +19,13 @@ import { BrowserWindow, WebContents, session, shell, webContents } from 'electro
 import * as fs from 'node:fs';
 import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { lockElectronProfile } from './browser-profile-lock';
-import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserViewRequest } from './browser-host-contract';
+import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserSiteFacts, type BrowserViewRequest } from './browser-host-contract';
 import {
     BROWSER_VIEW_DOWNLOAD_CHANNEL,
     BROWSER_VIEW_NEW_TAB_CHANNEL,
     BROWSER_VIEW_STATE_CHANNEL,
     BrowserDownloadEvent,
+    BrowserSiteCertificate,
     BrowserViewState,
     browserUserAgent,
     classifyBrowserNavigation,
@@ -58,6 +59,8 @@ interface BrowserEntry {
     requestedUrl: string;
     error?: string;
     errorCode?: BrowserViewState['errorCode'];
+    /** Chromium net error of the current main-frame failure. */
+    netError?: number;
     popups: Set<BrowserWindow>;
     sink: BrowserEventSink;
     closed: boolean;
@@ -72,6 +75,25 @@ const entryByContents = new Map<number, BrowserEntry>();
 const popoutByContents = new Map<number, string>();
 let profileSession: Electron.Session | undefined;
 let profileLock: NativeDatabase | undefined;
+/** Certificates Chromium verified this process lifetime, by hostname; bounded, newest last. */
+const verifiedCertificates = new Map<string, BrowserSiteCertificate>();
+const MAX_VERIFIED_CERTIFICATES = 256;
+
+/** net::ERR_CERT_* codes occupy -200 to -299. */
+function isCertificateNetError(code: number | undefined): boolean {
+    return code !== undefined && code <= -200 && code > -300;
+}
+
+function recordCertificate(request: Electron.Request): void {
+    verifiedCertificates.delete(request.hostname);
+    if (request.errorCode !== 0) return;
+    const certificate = request.validatedCertificate ?? request.certificate;
+    verifiedCertificates.set(request.hostname, {
+        subject: certificate.subjectName, issuer: certificate.issuerName,
+        validStart: certificate.validStart, validExpiry: certificate.validExpiry,
+    });
+    if (verifiedCertificates.size > MAX_VERIFIED_CERTIFICATES) verifiedCertificates.delete(verifiedCertificates.keys().next().value!);
+}
 
 function send(entry: BrowserEntry, channel: string, payload: unknown): void {
     if (entry.closed) { return; }
@@ -126,6 +148,11 @@ function configureProfile(): void {
     ses.setUserAgent(browserUserAgent(ses.getUserAgent()));
     ses.setPermissionRequestHandler((_wc, permission, callback) => callback(isBrowserPermissionAllowed(permission)));
     ses.setPermissionCheckHandler((_wc, permission) => isBrowserPermissionAllowed(permission));
+    // Observe only: -3 keeps Chromium's own verification result, so invalid certificates still fail.
+    ses.setCertificateVerifyProc((request, callback) => {
+        recordCertificate(request);
+        callback(-3);
+    });
     ses.webRequest.onBeforeRequest((details, callback) => {
         const id = details.webContentsId;
         const entry = id === undefined ? undefined : entryByContents.get(id);
@@ -357,6 +384,7 @@ function wireView(entry: BrowserEntry): void {
     wc.on('did-start-loading', () => {
         entry.error = undefined;
         entry.errorCode = undefined;
+        entry.netError = undefined;
         update();
     });
     wc.on('did-stop-loading', update);
@@ -368,6 +396,7 @@ function wireView(entry: BrowserEntry): void {
         if (isMainFrame && errorCode !== -3) {
             entry.error = errorDescription || `Load failed (${errorCode})`;
             entry.errorCode = 'navigation-failed';
+            entry.netError = errorCode;
             if (validatedURL) {
                 entry.requestedUrl = validatedURL;
             }
@@ -392,6 +421,7 @@ function load(entry: BrowserEntry, url: string): void {
     entry.requestedUrl = url;
     entry.error = undefined;
     entry.errorCode = undefined;
+    entry.netError = undefined;
     void entry.contents.loadURL(url).catch(() => {
         /* surfaced by did-fail-load */
     });
@@ -521,6 +551,7 @@ export class ElectronBrowserHost implements BrowserEngineHost {
                 pushState(entry);
             },
             importCookies: cookies => this.importCookies(cookies),
+            siteFacts: url => this.siteFacts(entry, url),
             snapshot: () => snapshot(entry),
             navigate: url => load(entry, url),
             nav: action => runNav(entry, action),
@@ -575,7 +606,20 @@ export class ElectronBrowserHost implements BrowserEngineHost {
         await this.profile().cookies.flushStore();
     }
 
+    /** Electron has no certificate-error bypass, so a loaded HTTPS page passed Chromium's verification. */
+    private async siteFacts(entry: BrowserEntry, url: string | undefined): Promise<BrowserSiteFacts> {
+        const facts: BrowserSiteFacts = { rejectsInvalidCertificates: true, certificateError: isCertificateNetError(entry.netError) };
+        if (!url) return facts;
+        const hostname = new URL(url).hostname;
+        const certificate = url.startsWith('https:') ? verifiedCertificates.get(hostname) : undefined;
+        if (certificate) facts.certificate = certificate;
+        try { facts.cookieCount = (await this.profile().cookies.get({ url })).length; }
+        catch { /* reported as unavailable; cookie errors are never surfaced */ }
+        return facts;
+    }
+
     async clearData(): Promise<void> {
+        verifiedCertificates.clear();
         const profile = this.profile();
         // Clear the complete browsing-data set, including the network cookie store.
         await profile.clearData();

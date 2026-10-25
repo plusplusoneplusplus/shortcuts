@@ -4,8 +4,8 @@ import * as path from 'node:path';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { BrowserHostManager } from '../src/browser-host-manager';
 import { BrowserHistoryStore } from '../src/browser-history';
-import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserViewRequest, type FilePreviewHost, type FileViewRequest } from '../src/browser-host-contract';
-import { BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL, type BrowserEngine } from '../src/browser-view-policy';
+import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserSiteFacts, type BrowserViewRequest, type FilePreviewHost, type FileViewRequest } from '../src/browser-host-contract';
+import { BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL, type BrowserEngine, type BrowserViewState } from '../src/browser-view-policy';
 import { htmlPageFileUrl, toHtmlPageLoadState, toHtmlPageOpenResult } from '../src/html-page-policy';
 import { BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_STOP_CHANNEL } from '../src/browser-control-command';
 import { ClickOnceError, type ClickOncePolicy } from '../src/browser-clickonce';
@@ -997,6 +997,18 @@ describe('file previews', () => {
         expect(h.send).toHaveBeenLastCalledWith(1, BROWSER_VIEW_STATE_CHANNEL, expect.objectContaining({ viewId: 'preview', engine: 'electron', sourceKind: 'file' }));
     });
 
+    it('describes a file preview as local, without engine site facts or cookies', async () => {
+        const h = harness();
+        await h.manager.openFile(1, 'preview', page, 'workspace-a');
+        h.files[0].view.siteFacts = vi.fn();
+        expect(await h.manager.siteInfo(1, 'preview', 'workspace-b')).toEqual({ ok: false, reason: 'bad-session' });
+        expect(await h.manager.siteInfo(1, 'preview', 'workspace-a')).toEqual({ ok: true, info: {
+            viewId: 'preview', engine: 'electron', sourceKind: 'file', url: htmlPageFileUrl(page), host: '',
+            connection: 'local-file', cookies: { available: false, reason: 'not-applicable' },
+        } });
+        expect(h.files[0].view.siteFacts).not.toHaveBeenCalled();
+    });
+
     it('rejects invalid paths with the html-page policy reasons before creating a view', async () => {
         const h = harness();
         expect(await h.manager.openFile(1, 'p', 'index.html', 'owner')).toEqual({ ok: false, reason: 'not-absolute' });
@@ -1236,6 +1248,91 @@ describe.each<BrowserEngine>(['electron', 'webview2'])('%s cookie imports', engi
         const reply = await h.manager.importCookies(1, 'view', 'app.example.com', 'a=b');
         expect(reply).toMatchObject({ ok: false, reason: 'invalid' });
         expect(JSON.stringify(reply)).not.toContain('secret');
+    });
+});
+
+describe.each<BrowserEngine>(['electron', 'webview2'])('%s site information', engine => {
+    async function setup(url = 'https://app.example.com/page', facts: Partial<BrowserSiteFacts> = {}) {
+        const h = harness(engine);
+        await h.manager.open(1, 'view', url, 'workspace-a');
+        const { view, sink } = h.created[0];
+        let state: BrowserViewState = { viewId: 'view', engine, url, title: 'Fixture', loading: false, canGoBack: false, canGoForward: false };
+        view.snapshot = () => ({ ...state });
+        const setState = (patch: Partial<BrowserViewState>) => { state = { ...state, ...patch }; };
+        view.siteFacts = vi.fn(async (committed?: string) => ({
+            rejectsInvalidCertificates: engine === 'electron', certificateError: false, ...(committed ? { cookieCount: 3 } : {}), ...facts,
+        }));
+        return { h, view, sink, setState };
+    }
+
+    it('describes the committed page for the exact owner and session only', async () => {
+        const { h, view, sink } = await setup();
+        sink.documentCommitted!('https://app.example.com/page', 'App');
+        expect(await h.manager.siteInfo(2, 'view', 'workspace-a')).toEqual({ ok: false, reason: 'not-found' });
+        expect(await h.manager.siteInfo(1, 'view', 'workspace-b')).toEqual({ ok: false, reason: 'bad-session' });
+        expect(await h.manager.siteInfo(1, 'other', 'workspace-a')).toEqual({ ok: false, reason: 'not-found' });
+        expect(view.siteFacts).not.toHaveBeenCalled();
+        const reply = await h.manager.siteInfo(1, 'view', 'workspace-a');
+        expect(reply).toEqual({ ok: true, info: {
+            viewId: 'view', engine, sourceKind: 'url', url: 'https://app.example.com/page', host: 'app.example.com',
+            connection: engine === 'electron' ? 'secure' : 'https-unverified',
+            cookies: { available: true, count: 3 }, revision: 1,
+        } });
+        expect(view.siteFacts).toHaveBeenCalledWith('https://app.example.com/page');
+    });
+
+    it('never calls HTTPS secure without an engine that rejects invalid certificates', async () => {
+        const certificate = { subject: 'app.example.com', issuer: 'Fixture CA', validStart: 1, validExpiry: 2 };
+        const verified = await setup('https://app.example.com/', { rejectsInvalidCertificates: true, certificate });
+        verified.sink.documentCommitted!('https://app.example.com/', '');
+        expect(await verified.h.manager.siteInfo(1, 'view', 'workspace-a')).toMatchObject({ ok: true, info: { connection: 'secure', certificate } });
+        const unverified = await setup('https://app.example.com/', { rejectsInvalidCertificates: false, certificate });
+        unverified.sink.documentCommitted!('https://app.example.com/', '');
+        const reply = await unverified.h.manager.siteInfo(1, 'view', 'workspace-a');
+        expect(reply).toMatchObject({ ok: true, info: { connection: 'https-unverified' } });
+        expect(reply.ok && reply.info.certificate).toBeFalsy();
+        const plain = await setup('http://app.example.com/', { rejectsInvalidCertificates: true });
+        plain.sink.documentCommitted!('http://app.example.com/', '');
+        expect(await plain.h.manager.siteInfo(1, 'view', 'workspace-a')).toMatchObject({ ok: true, info: { connection: 'insecure', cookies: { available: true, count: 3 } } });
+    });
+
+    it('distinguishes loading, uncommitted, certificate and other failures without counting cookies', async () => {
+        const { h, view, setState } = await setup();
+        expect(await h.manager.siteInfo(1, 'view', 'workspace-a')).toMatchObject({ ok: true, info: { connection: 'unknown', cookies: { available: false, reason: 'not-applicable' } } });
+        setState({ loading: true });
+        expect(await h.manager.siteInfo(1, 'view', 'workspace-a')).toMatchObject({ ok: true, info: { connection: 'loading', host: 'app.example.com' } });
+        setState({ loading: false, error: 'ERR_CERT_AUTHORITY_INVALID', errorCode: 'navigation-failed' });
+        vi.mocked(view.siteFacts!).mockResolvedValueOnce({ rejectsInvalidCertificates: true, certificateError: true });
+        expect(await h.manager.siteInfo(1, 'view', 'workspace-a')).toMatchObject({ ok: true, info: { connection: 'certificate-error' } });
+        setState({ error: 'ERR_NAME_NOT_RESOLVED' });
+        expect(await h.manager.siteInfo(1, 'view', 'workspace-a')).toMatchObject({ ok: true, info: { connection: 'failed', cookies: { available: false, reason: 'not-applicable' } } });
+        expect(vi.mocked(view.siteFacts!).mock.calls.every(([url]) => url === undefined)).toBe(true);
+    });
+
+    it('refuses a reply once a newer document replaces the one it described', async () => {
+        const { h, view, sink, setState } = await setup();
+        sink.documentCommitted!('https://app.example.com/page', 'App');
+        const pending = deferred<BrowserSiteFacts>();
+        vi.mocked(view.siteFacts!).mockReturnValueOnce(pending.promise);
+        const reply = h.manager.siteInfo(1, 'view', 'workspace-a');
+        await vi.waitFor(() => expect(view.siteFacts).toHaveBeenCalled());
+        setState({ url: 'https://next.example.com/' });
+        sink.documentCommitted!('https://next.example.com/', 'Next');
+        pending.resolve({ rejectsInvalidCertificates: true, certificateError: false, cookieCount: 9 });
+        expect(await reply).toEqual({ ok: false, reason: 'busy', message: 'The page changed. Open site information again.' });
+        await h.manager.close(1, 'view');
+        expect(await h.manager.siteInfo(1, 'view', 'workspace-a')).toEqual({ ok: false, reason: 'not-found' });
+    });
+
+    it('reports unavailable cookies explicitly and never forwards engine errors', async () => {
+        const { h, view, sink } = await setup();
+        sink.documentCommitted!('https://app.example.com/page', 'App');
+        vi.mocked(view.siteFacts!).mockRejectedValueOnce(new Error('secret=cookie-value'));
+        const failed = await h.manager.siteInfo(1, 'view', 'workspace-a');
+        expect(failed).toMatchObject({ ok: true, info: { connection: 'https-unverified', cookies: { available: false, reason: 'failed' } } });
+        expect(JSON.stringify(failed)).not.toContain('secret');
+        delete view.siteFacts;
+        expect(await h.manager.siteInfo(1, 'view', 'workspace-a')).toMatchObject({ ok: true, info: { cookies: { available: false, reason: 'unsupported' } } });
     });
 });
 

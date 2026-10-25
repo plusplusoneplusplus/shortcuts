@@ -3,6 +3,7 @@ import { BrowserCookieImportDialog } from './BrowserCookieImportDialog';
 import { BrowserToolbarMenu } from './BrowserToolbarMenu';
 import { BrowserHistoryPanel } from './BrowserHistoryPanel';
 import { BrowserAddressBar } from './BrowserAddressBar';
+import { BrowserSiteInfoButton, type BrowserSiteInfoSource } from './BrowserSiteInfo';
 import { BrowserControlBadge } from '../../../shared/file-path/BrowserControlBadge';
 import { isMacPlatform } from '../../../utils/composerKeyboardShortcuts';
 import { normalizeBrowserUrl } from './unifiedBrowserTabs';
@@ -164,6 +165,12 @@ export function UnifiedBrowserTab({
         });
     };
     const nav = (action: 'back' | 'forward' | 'reload' | 'stop') => bridge?.nav(viewId, action);
+    // The live document, never the address draft: a new commit, load or failure closes site information.
+    const siteScope = JSON.stringify([pageOwner, url ?? '', page?.url ?? '', page?.committedPage?.revision ?? null, page?.loading ?? null, page?.error ?? null]);
+    const siteSource: BrowserSiteInfoSource = !bridge ? { kind: 'unavailable', message: 'Site information is available for pages open in the CoC desktop app.' }
+        : !bridge.siteInfo ? { kind: 'unavailable', message: 'This desktop version cannot report site information.' }
+        : !url || !opened ? { kind: 'unavailable', message: 'Open a page to see its site information.' }
+        : { kind: 'web', load: () => bridge.siteInfo!(viewId, sessionKey) };
 
     const toolbar = (
         <div
@@ -206,6 +213,7 @@ export function UnifiedBrowserTab({
                 onCopyError={() => setNotice('Rich link copy unavailable. Using standard selection copy.')}
                 showAddressMenu={bridge?.showAddressMenu}
                 onMenuError={() => setNotice('Address menu unavailable. Use the keyboard to copy or edit.')}
+                leading={<BrowserSiteInfoButton source={siteSource} scopeKey={siteScope} enabled={active && visible} />}
             />
             <BrowserToolbarMenu
                 key={`${sessionKey}:${viewId}`}

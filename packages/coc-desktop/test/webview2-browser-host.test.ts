@@ -1078,3 +1078,38 @@ describe('WebView2 agent navigation approval gate', () => {
         await h.host.dispose();
     });
 });
+
+describe('WebView2 site information facts', () => {
+    beforeEach(() => { vi.clearAllMocks(); mocks.request.mockReset().mockResolvedValue(undefined); });
+
+    it('recognizes only the native helper certificate statuses', async () => {
+        const { isWebView2CertificateError } = await import('../src/webview2-browser-host');
+        expect([1, 2, 3, 4, 5].every(status => isWebView2CertificateError(`Navigation failed (${status})`))).toBe(true);
+        for (const error of [undefined, '', 'Navigation failed (0)', 'Navigation failed (6)', 'Navigation failed (12)', 'Certificate (2)', 'Navigation failed (2) extra']) {
+            expect(isWebView2CertificateError(error)).toBe(false);
+        }
+    });
+
+    it('counts cookies through the view CDP transport, never claims certificate verification, and hides failures', async () => {
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'site', sessionKey: 'workspace', url: 'https://fixture.test/' }, sink);
+        mocks.request.mockReset().mockImplementation(async (op: string) => op === 'cdp'
+            ? { cookies: [{ name: 'sid', value: 'secret' }, { name: 'pref', value: 'x' }] } : undefined);
+        const facts = await view.siteFacts!('https://fixture.test/page');
+        expect(facts).toEqual({ rejectsInvalidCertificates: false, certificateError: false, cookieCount: 2 });
+        expect(JSON.stringify(facts)).not.toContain('secret');
+        expect(mocks.request).toHaveBeenCalledExactlyOnceWith('cdp', { viewId: '7:site:1', method: 'Network.getCookies', params: { urls: ['https://fixture.test/page'] } });
+        mocks.request.mockClear();
+        expect(await view.siteFacts!()).toEqual({ rejectsInvalidCertificates: false, certificateError: false });
+        expect(mocks.request).not.toHaveBeenCalled();
+        const failed = { url: 'https://fixture.test/', title: '', loading: false, canGoBack: false, canGoForward: false, errorCode: 'navigation-failed' };
+        mocks.onEvent({ event: 'state', viewId: '7:site:1', state: { ...failed, error: 'Navigation failed (2)' } });
+        expect((await view.siteFacts!()).certificateError).toBe(true);
+        mocks.onEvent({ event: 'state', viewId: '7:site:1', state: { ...failed, error: 'Navigation failed (9)' } });
+        expect((await view.siteFacts!()).certificateError).toBe(false);
+        mocks.request.mockRejectedValueOnce(new Error('secret=value'));
+        const hidden = await view.siteFacts!('https://fixture.test/');
+        expect(hidden.cookieCount).toBeUndefined();
+        expect(JSON.stringify(hidden)).not.toContain('secret');
+    });
+});

@@ -89,6 +89,17 @@ describe('desktop history IPC', () => {
         expect([...mocks.handlers.keys()].filter(channel => /activate|launch/.test(channel))).toEqual([]);
         expect(invoke(policy.BROWSER_CLICKONCE_SET_CHANNEL, spa.event, false)).toEqual({ ok: true });
     });
+    it('answers site information only to the exact registered SPA main frame that owns the view', async () => {
+        const spa = owner(1), other = owner(2), foreign = owner(3, 'http://localhost:4000/foreign');
+        await invoke(policy.BROWSER_VIEW_OPEN_CHANNEL, spa.event, 'site', 'https://fixture.test/', 'w');
+        expect(await invoke(policy.BROWSER_SITE_INFO_CHANNEL, spa.event, 'site', 'w')).toMatchObject({ ok: true, info: {
+            viewId: 'site', host: 'fixture.test', connection: 'unknown', cookies: { available: false, reason: 'not-applicable' } } });
+        expect(await invoke(policy.BROWSER_SITE_INFO_CHANNEL, spa.event, 'site', 'other-workspace')).toEqual({ ok: false, reason: 'bad-session' });
+        expect(await invoke(policy.BROWSER_SITE_INFO_CHANNEL, other.event, 'site', 'w')).toEqual({ ok: false, reason: 'not-found' });
+        for (const event of [foreign.event, { ...spa.event, senderFrame: {} }]) {
+            expect(await invoke(policy.BROWSER_SITE_INFO_CHANNEL, event, 'site', 'w')).toEqual({ ok: false, reason: 'no-window' });
+        }
+    });
     it('wires address-menu Copy to native copy in the requesting SPA, preserving cut and editing', () => {
         const spa = owner(1), other = owner(2), foreign = owner(3, 'http://localhost:4000/foreign');
         expect(invoke(policy.BROWSER_ADDRESS_MENU_CHANNEL, spa.event, true)).toEqual({ ok: true });

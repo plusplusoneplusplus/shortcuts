@@ -11,6 +11,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { BrowserCommandRequest, BrowserCommandResult } from '@plusplusoneplusplus/coc-client';
 import type { BrowserControlActivityEvent, BrowserNavigationCheckEvent } from './browser-control-command';
+import type { BrowserSiteInfoResult } from './browser-view-policy';
 
 // The preload runs SANDBOXED (Electron sandboxes preloads by default since v20):
 // its `require` can only load the 'electron' builtin, and a relative import —
@@ -82,6 +83,7 @@ const BROWSER_PAGE_ZOOM_SET_CHANNEL = 'coc-desktop:browser-page-zoom-set';
 const BROWSER_CLICKONCE_SET_CHANNEL = 'coc-desktop:browser-clickonce-set';
 const BROWSER_PREFERENCES_CHANGED_CHANNEL = 'coc-desktop:browser-preferences-changed';
 const BROWSER_IMPORT_COOKIES_CHANNEL = 'coc-desktop:browser-import-cookies';
+const BROWSER_SITE_INFO_CHANNEL = 'coc-desktop:browser-site-info';
 const BROWSER_CLEAR_DATA_CHANNEL = 'coc-desktop:browser-clear-data';
 const BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL = 'coc-desktop:browser-view-close-requested';
 const BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL = 'coc-desktop:browser-view-focus-address-requested';
@@ -290,6 +292,8 @@ const browser = {
     sources: BROWSER_SOURCE_KINDS,
     importCookies: (viewId: string | null, domain: string, cookies: string, engine?: BrowserEngine): Promise<BrowserCookieImportResult> =>
         ipcRenderer.invoke(BROWSER_IMPORT_COOKIES_CHANNEL, viewId, domain, cookies, engine),
+    siteInfo: (viewId: string, sessionKey: string): Promise<BrowserSiteInfoResult> =>
+        ipcRenderer.invoke(BROWSER_SITE_INFO_CHANNEL, viewId, sessionKey),
     open: (viewId: string, source: BrowserSource | string, sessionKey: string, relatedEngine?: BrowserEngine): Promise<BrowserOpenResult> =>
         ipcRenderer.invoke(BROWSER_VIEW_OPEN_CHANNEL, viewId, source, sessionKey, relatedEngine),
     adopt: (viewId: string, guestId: number): Promise<BrowserOperationResult> =>

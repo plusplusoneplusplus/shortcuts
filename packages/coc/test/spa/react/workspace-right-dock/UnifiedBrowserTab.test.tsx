@@ -278,13 +278,66 @@ describe('browser toolbar navigation capsule', () => {
         tab();
         await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
         const address = screen.getByLabelText('Address') as HTMLInputElement;
-        expect(address).toHaveClass('rounded-full', 'flex-1', 'min-w-0');
+        expect(address.form).toBe(screen.getByTestId('browser-address-pill'));
+        expect(address.form).toHaveClass('rounded-full', 'flex-1', 'min-w-0');
+        expect(address).toHaveClass('flex-1', 'min-w-0');
         expect(address.readOnly).toBe(false);
         expect(address.value).toBe('https://example.test/');
         expect(screen.getByTestId('browser-toolbar')).toHaveClass('flex-wrap', 'bg-[#f8f8f8]', 'dark:bg-[#252526]');
         const options = screen.getByRole('button', { name: 'Browser options' });
         expect(options).toHaveClass('rounded-full');
         expect(options.querySelector('svg')).not.toBeNull();
+    });
+});
+
+describe('browser site information', () => {
+    const committed = { viewId: 'view', engine: 'electron' as const, sourceKind: 'url' as const, url: 'https://example.test/', title: 'Example',
+        committedPage: { url: 'https://example.test/', title: 'Example', revision: 1 }, loading: false, canGoBack: false, canGoForward: false };
+
+    it('asks main about the owned view, never the address draft, and closes when the document changes', async () => {
+        const siteInfo = vi.fn(async () => ({ ok: true as const, info: { viewId: 'view', engine: 'electron' as const, sourceKind: 'url' as const,
+            url: 'https://example.test/', host: 'example.test', connection: 'secure' as const, cookies: { available: true as const, count: 1 }, revision: 1 } }));
+        mocks.bridge!.siteInfo = siteInfo;
+        tab();
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
+        const emit = vi.mocked(mocks.bridge!.onState).mock.calls[0][0];
+        act(() => emit(committed));
+        const address = screen.getByLabelText('Address') as HTMLInputElement;
+        const pill = screen.getByTestId('browser-address-pill');
+        expect(pill.firstElementChild).toBe(screen.getByRole('button', { name: 'View site information' }));
+        fireEvent.change(address, { target: { value: 'https://draft.test/' } });
+        fireEvent.click(screen.getByRole('button', { name: 'View site information' }));
+        expect(await screen.findByRole('dialog', { name: 'example.test' })).toHaveTextContent('1 cookie is sent to this page.');
+        expect(siteInfo).toHaveBeenCalledExactlyOnceWith('view', 'remote-workspace');
+        expect(screen.getByRole('dialog')).not.toHaveTextContent('draft.test');
+        act(() => emit({ ...committed, title: 'Renamed', committedPage: { ...committed.committedPage, title: 'Renamed' } }));
+        expect(screen.getByRole('dialog')).toBeTruthy();
+        act(() => emit({ ...committed, url: 'https://next.test/', committedPage: undefined, loading: true }));
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('closes when the owner changes and states why information is unavailable', async () => {
+        mocks.bridge!.siteInfo = vi.fn(async () => ({ ok: true as const, info: { viewId: 'view', engine: 'electron' as const, sourceKind: 'url' as const,
+            url: 'https://example.test/', host: 'example.test', connection: 'secure' as const, cookies: { available: true as const, count: 0 } } }));
+        const view = tab();
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
+        fireEvent.click(screen.getByRole('button', { name: 'View site information' }));
+        await screen.findByRole('dialog', { name: 'example.test' });
+        view.rerender(<UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="other-owner" url="https://example.test/" active visible onNavigate={vi.fn()} onPageState={vi.fn()} />);
+        expect(screen.queryByRole('dialog')).toBeNull();
+        cleanup();
+
+        delete mocks.bridge!.siteInfo;
+        tab();
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
+        fireEvent.click(screen.getByRole('button', { name: 'View site information' }));
+        expect(screen.getByTestId('site-info-unavailable')).toHaveTextContent('This desktop version cannot report site information.');
+        cleanup();
+
+        mocks.bridge = undefined;
+        tab();
+        fireEvent.click(screen.getByRole('button', { name: 'View site information' }));
+        expect(screen.getByTestId('site-info-unavailable')).toHaveTextContent('CoC desktop app');
     });
 });
 

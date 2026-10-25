@@ -7,6 +7,7 @@ import {
 import { NativeViewNavButtons, NativeViewTab, nativeViewAddressField, nativeViewToolbar, nativeViewToolbarButton as toolbarButton } from './NativeViewTab';
 import { desktopBrowserBridge } from '../../../shared/file-path/browser-bridge';
 import { prepareBrowserWebview, useBrowserWebviewError } from './browserWebviewLayerStore';
+import { BrowserSiteInfoButton } from './BrowserSiteInfo';
 
 export interface UnifiedHtmlPageTabProps {
     tabId: string;
@@ -89,13 +90,20 @@ export function UnifiedHtmlPageTab({
                 onNav={nav}
                 testIdPrefix="html-page"
             />
-            <span
-                className={`truncate leading-[26px] text-[#616161] dark:text-[#9d9d9d] ${nativeViewAddressField}`}
-                title={filePath}
-                data-testid="html-page-path"
-            >
-                {filePath}
-            </span>
+            <div className={`flex items-center pl-0.5 ${nativeViewAddressField}`} data-testid="html-page-path-pill">
+                <BrowserSiteInfoButton
+                    source={bridge ? { kind: 'local-file', path: filePath } : { kind: 'unavailable', message: 'Local previews run in the CoC desktop app.' }}
+                    scopeKey={JSON.stringify([pageId, filePath])}
+                    enabled={active && visible}
+                />
+                <span
+                    className="min-w-0 flex-1 truncate pl-1 pr-3 text-[#616161] dark:text-[#9d9d9d]"
+                    title={filePath}
+                    data-testid="html-page-path"
+                >
+                    {filePath}
+                </span>
+            </div>
             <button className={toolbarButton} type="button" onClick={viewSource}>View source</button>
             <button className={toolbarButton} type="button" onClick={() => bridge?.openExternal(pageId)}>Open in system browser</button>
         </div>
