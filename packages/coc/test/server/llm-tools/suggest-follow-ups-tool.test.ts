@@ -24,6 +24,20 @@ describe('createSuggestFollowUpsTool', () => {
         expect(tool.description).toMatch(/full answer as normal visible text before calling this tool/);
     });
 
+    it.each([false, true])('forbids narrating the suggestions in text (sentinel=%s)', sentinel => {
+        // Regression: models announced ("Here are some suggestions"), re-listed, or
+        // commented after the call ("I suggested three follow-ups") even though the
+        // tool already renders the chips.
+        const { description } = createSuggestFollowUpsTool(sentinel);
+        expect(description).toContain('The tool shows the suggestions to the user directly, so never mention them in your text');
+        expect(description).toMatch(/no lead-in/);
+        expect(description).toMatch(/no list or recap of them/);
+        expect(description).toMatch(/no comment after the call/);
+        expect(description).toContain('call the tool with no filler text');
+        expect(description).toContain('keep task details the user needs in your answer');
+        expect(description).not.toMatch(/always call this tool/);
+    });
+
     it('parameters match the expected JSON schema', () => {
         const tool = createSuggestFollowUpsTool();
         const params = tool.parameters as Record<string, unknown>;

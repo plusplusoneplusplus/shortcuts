@@ -7,7 +7,11 @@
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 
 const FOLLOW_UP_ACTION_GUIDANCE =
-    'Write your full answer as normal visible text before calling this tool — never leave the answer only in your reasoning. Each suggestion is a short imperative action phrase, not a question. Never list follow-ups in your response text — always call this tool instead.';
+    'Write your full answer as normal visible text before calling this tool — never leave the answer only in your reasoning. ' +
+    'The tool shows the suggestions to the user directly, so never mention them in your text: no lead-in such as "Here are some suggestions", ' +
+    'no list or recap of them, and no comment after the call such as "I suggested three follow-ups". ' +
+    'If the suggestions are all you have to add, call the tool with no filler text. This covers only the suggestions; keep task details the user needs in your answer. ' +
+    'Each suggestion is a short imperative action phrase, not a question.';
 
 /** Tool description; also shown read-only in the admin prompt catalog. */
 export const SUGGEST_FOLLOW_UPS_DESCRIPTION =
