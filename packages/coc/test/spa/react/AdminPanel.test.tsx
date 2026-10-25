@@ -1451,6 +1451,8 @@ describe('AdminPanel', () => {
             'toggle-teams-bridge-observability-enabled',
             'toggle-teams-ai-answer-relay-enabled',
             'toggle-teams-message-reaction-enabled',
+            'toggle-teams-ic3-own-commands-enabled',
+            'select-teams-ic3-command-workspace',
         ];
         const INTEGRATIONS_TOGGLES = [
             'toggle-kusto-enabled', 'toggle-mcp-oauth-enabled',
@@ -1495,6 +1497,7 @@ describe('AdminPanel', () => {
             expect(screen.getByTestId('admin-tab-messaging').textContent).toContain('Teams');
             const card = screen.getByTestId('settings-tab-features-teams');
             expect(card.textContent).toContain('Teams features');
+            expect(screen.getByTestId('teams-ic3-status').textContent).toContain('IC3 connectivity');
             await waitFor(() => expect(screen.getByTestId('teams-connection-card')).toBeDefined());
             for (const id of TEAMS_TOGGLES) expect(screen.getAllByTestId(id), id).toHaveLength(1);
             for (const id of INTEGRATIONS_TOGGLES) expect(screen.queryByTestId(id), id).toBeNull();
@@ -1503,6 +1506,10 @@ describe('AdminPanel', () => {
             }
             expect((screen.getByTestId('toggle-teams-ai-answer-relay-enabled') as HTMLInputElement).checked).toBe(true);
             expect((screen.getByTestId('toggle-teams-message-reaction-enabled') as HTMLInputElement).checked).toBe(false);
+            expect((screen.getByTestId('toggle-teams-ic3-own-commands-enabled') as HTMLInputElement).checked).toBe(false);
+            expect(card.textContent).toContain('Your new Teams @coc <prompt> messages start Ask chats');
+            expect(screen.queryByTestId('select-teams-ic3-own-command-region')).toBeNull();
+            expect(screen.getByLabelText('IC3 region')).toBeDefined();
         });
 
         it('links Features search results for Teams settings to Connectors → Teams', async () => {
@@ -1545,6 +1552,8 @@ describe('AdminPanel', () => {
                 'features.teamsBridgeObservability': false,
                 'features.teamsAiAnswerRelay': false,
                 'features.teamsMessageReaction': true,
+                'features.teamsIc3OwnCommands': false,
+                'teamsIc3OwnCommands.workspaceId': '',
             });
             await waitFor(() => expect((screen.getByTestId('settings-tab-features-teams-save') as HTMLButtonElement).disabled).toBe(true));
 

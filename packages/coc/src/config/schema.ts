@@ -65,6 +65,7 @@ const chatStylePromptsSchema = z.object({
 const CUSTOM_FILE_SCHEMAS: Record<string, z.ZodTypeAny> = {
     'agentProviderRouting.auto': autoProviderRoutingSchema,
     'features.chatStylePrompts': chatStylePromptsSchema,
+    'teamsIc3OwnCommands.workspaceId': z.string().max(256).regex(/^[a-zA-Z0-9_-]*$/, 'Expected a local workspace ID'),
 };
 
 // ============================================================================
@@ -152,13 +153,14 @@ function mergeSchemaTrees(base: SchemaTree, overlay: SchemaTree): SchemaTree {
     return merged;
 }
 
-/** Convert a schema tree to a zod object: every field optional, objects passthrough. */
-function treeToZodObject(tree: SchemaTree): z.ZodTypeAny {
+/** Optional config leaves; the own-command namespace rejects credential/consent fields. */
+function treeToZodObject(tree: SchemaTree, namespace = ''): z.ZodTypeAny {
     const shape: Record<string, z.ZodTypeAny> = {};
     for (const [key, value] of Object.entries(tree)) {
-        shape[key] = (isZodType(value) ? value : treeToZodObject(value)).optional();
+        shape[key] = (isZodType(value) ? value : treeToZodObject(value, namespace ? `${namespace}.${key}` : key)).optional();
     }
-    return z.object(shape).passthrough();
+    const object = z.object(shape);
+    return namespace === 'teamsIc3OwnCommands' ? object.strict() : object.passthrough();
 }
 
 /**

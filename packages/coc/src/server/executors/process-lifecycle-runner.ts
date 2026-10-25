@@ -908,6 +908,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 turnIndex: 0,
                 timeline: [],
                 images: payloadImages?.length > 0 ? payloadImages : undefined,
+                ...(payload?.relayRequestId ? { relayRequestId: payload.relayRequestId } : {}),
                 ...(processModel !== undefined ? { model: processModel } : {}),
                 ...(normalizedPayloadMode !== undefined ? { mode: normalizedPayloadMode } : {}),
             },

@@ -4,7 +4,7 @@
  * Uses port 0 (OS-assigned) for test isolation.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -68,19 +68,29 @@ describe('Prompt Handler', () => {
     let server: ExecutionServer | undefined;
     let dataDir: string;
     let workspaceDir: string;
+    let homeDir: string;
 
     beforeEach(() => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'prompt-handler-test-'));
         workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'prompt-workspace-'));
+        homeDir = path.join(dataDir, 'home');
+        fs.mkdirSync(homeDir);
+        // Isolate config and automatic skill discovery on Windows and POSIX.
+        vi.stubEnv('HOME', homeDir);
+        vi.stubEnv('USERPROFILE', homeDir);
     });
 
     afterEach(async () => {
-        if (server) {
-            await server.close();
-            server = undefined;
+        try {
+            if (server) {
+                await server.close();
+                server = undefined;
+            }
+            fs.rmSync(dataDir, { recursive: true, force: true });
+            fs.rmSync(workspaceDir, { recursive: true, force: true });
+        } finally {
+            vi.unstubAllEnvs();
         }
-        fs.rmSync(dataDir, { recursive: true, force: true });
-        fs.rmSync(workspaceDir, { recursive: true, force: true });
     });
 
     async function startServer(): Promise<ExecutionServer> {
@@ -135,6 +145,35 @@ describe('Prompt Handler', () => {
             expect(body.skills).toEqual([]);
         });
 
+        it('should discover configured and automatic skills from the isolated home', async () => {
+            const configDir = path.join(homeDir, '.coc');
+            fs.mkdirSync(configDir);
+            fs.writeFileSync(path.join(configDir, 'config.yaml'),
+                'skills:\n  globalExtraFolders:\n    - "~/configured-skills"\n');
+            for (const [folder, name] of [
+                [path.join(homeDir, 'configured-skills'), 'configured-skill'],
+                [path.join(homeDir, 'OneDrive', 'skills'), 'onedrive-skill'],
+            ]) {
+                const skillDir = path.join(folder, name);
+                fs.mkdirSync(skillDir, { recursive: true });
+                fs.writeFileSync(path.join(skillDir, 'SKILL.md'), `# ${name}`);
+            }
+            createSkill('workspace-skill', '# Workspace skill');
+
+            const srv = await startServer();
+            const wsId = await registerWorkspace(srv, workspaceDir);
+            const res = await request(`${srv.url}/api/workspaces/${encodeURIComponent(wsId)}/skills`);
+
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body)).toMatchObject({
+                skills: [
+                    { name: 'workspace-skill', source: 'repo' },
+                    { name: 'configured-skill', source: 'global-extra-folder' },
+                    { name: 'onedrive-skill', source: 'extra-folder' },
+                ],
+            });
+        });
+
         it('should discover skill with description from frontmatter', async () => {
             createSkill('go-deep', '---\ndescription: Deep research\n---\n# Go Deep');
             const srv = await startServer();
@@ -168,7 +207,7 @@ describe('Prompt Handler', () => {
             const res = await request(`${srv.url}/api/workspaces/${encodeURIComponent(wsId)}/skills`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            expect(body.skills[0].name).toBe('a-skill');
+            expect(body.skills.map((skill: { name: string }) => skill.name)).toEqual(['a-skill', 'z-skill']);
         });
 
         it('should only list directories with SKILL.md', async () => {

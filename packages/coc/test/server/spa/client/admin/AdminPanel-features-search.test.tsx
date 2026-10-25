@@ -157,6 +157,10 @@ function defaultFetchImpl(url: string, opts?: any) {
     }
     if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse());
     if (url.includes('/admin/data/stats')) return Promise.resolve(mockStatsResponse());
+    if (url.endsWith('/workspaces')) return Promise.resolve({ ok: true, json: async () => ({ workspaces: [] }) });
+    if (url.endsWith('/ic3-own-commands/status')) return Promise.resolve({
+        ok: true, json: async () => ({ state: 'disabled', trouter: { state: 'disabled', error: null } }),
+    });
     if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
     return Promise.resolve({ ok: true, json: async () => ({}) });
 }
@@ -336,6 +340,7 @@ describe('AdminPanel — Workspace Features search', () => {
         const defs = ADMIN_SETTING_DEFINITIONS.filter(def => def.ui && getFeatureSettingTab(def) === 'teams');
         expect(defs.map(def => def.key)).toEqual([
             'features.teamsBridgeObservability', 'features.teamsAiAnswerRelay', 'features.teamsMessageReaction',
+            'features.teamsIc3OwnCommands', 'teamsIc3OwnCommands.workspaceId',
         ]);
         for (const def of defs) {
             expect(screen.queryByTestId(def.ui!.testId)).toBeNull();

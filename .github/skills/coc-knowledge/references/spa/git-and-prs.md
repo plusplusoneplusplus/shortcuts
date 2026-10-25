@@ -213,6 +213,11 @@ native EditContext divs and textarea inputs on both diff sides. Explorer and Git
 slash-search handlers yield to these surfaces, form fields, rich text, composition
 and handled events; only unmodified `/` outside text entry activates search.
 
+Classic Unified and Split viewers share `diff/observeOffsetUntilCleanup.ts`,
+which delegates offset reads to TanStack and closes its callback gate before
+native listener cleanup. Pending trailing scroll-stop timers can finish without
+notifying disposed viewers; replacement observers retain independent live gates.
+
 Selection pills receive a concrete attachment destination separately from the
 raw payload workspace id. RepoDetail passes its source clone identity through
 RepoGitTab and RepoGitDetailPane to FileDiffPanel and WorkingTreeFileDiff. Group

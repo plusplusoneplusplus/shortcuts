@@ -102,6 +102,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `teamsBridgeObservability` | off | Normal Teams channel-bridge connection history collection and inspection, independent of the container relay |
 | `teamsAiAnswerRelay` | on | Admin -> Connectors -> Teams exposes the live relay opt-out beside bridge observability and message reaction. Missing settings resolve on; explicit false stops answer relay and thread reply polling without restart/reconnect. A connected normal bridge saves per-workspace receipts and relays completed Ask answers or safe terminal notices for new requests to their captured original threads; connectivity, Trouter, Likes and observability remain independent |
 | `teamsMessageReaction` | off | Live Teams channel message Like attempts before routing, independent of answer relay and bridge observability |
+| `teamsIc3OwnCommands` | off | Native Azure CLI own-user `@coc <prompt>` launcher; configured under Connectors -> Teams |
 | `sentinelTodoDependencies` | off | Live gate for native owner-scoped prerequisite authoring; publishes `sentinelTodoDependenciesEnabled`, and grants no execution authority |
 | `sentinelTodoExternalReferences` | off | Live gate for typed PR/email/web display references in item create/update, tool and panel; publishes `sentinelTodoExternalReferencesEnabled`; preserves conversation attachments and grants no authority |
 | `sentinelTodoJobs` | off | Live experimental opt-in for Sentinel Refrains (Admin label "Sentinel Refrains"); publishes `sentinelTodoJobsEnabled`. The Admin row requires `sentinel.enabled`; Coda (`sentinelTodoScrubber`, label "Sentinel Coda") retains its independent flag. Keys keep the older names on purpose |
@@ -134,6 +135,17 @@ The setting is both a SPA seed and a server-side fallback, so an API caller or a
 The injection baseline stays `DEFAULT_CHAT_STYLE`, not the configured default: a new conversation has recorded nothing, so comparing against the configured default would make it equal to itself and never inject on turn 1.
 
 `features.chatProviderSwitching` (Admin -> Configure -> Chat -> Features, live, default off, runtime flag `chatProviderSwitchingEnabled`) gates concrete provider changes between idle Ask/Autopilot follow-up turns. The follow-up REST route reads the flag live and rejects cross-provider requests while it is off. The dashboard resolves the capability from the server that owns the conversation; an absent flag on an older remote server means unsupported.
+
+### IC3 own-command configuration
+
+`features.teamsIc3OwnCommands` (default off) enables the independent native Azure CLI
+[Ask launcher](server-architecture.md#ic3-own-command-launcher). Its live
+`teamsIc3OwnCommands.workspaceId` selects a registered local workspace on the owning
+server. The Teams connection card's `ic3Region` in `teams-messaging.json` supplies
+the shared explicit `amer`, `emea` or `apac` region for IC3 operations. Saving a
+region change restarts own-command reads; an unset region blocks connection.
+Own-user mentions share one Ask conversation per account, Teams chat and workspace,
+returning each request's answer to its source chat. Interactive questions stay in the dashboard.
 
 ## Copilot One-Shot Transport
 

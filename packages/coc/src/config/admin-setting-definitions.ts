@@ -73,7 +73,7 @@ export type AdminSettingValueSpec =
 
 // ── UI specs (admin Features card) ────────────────────────────────────────────
 
-export type FeatureGroupId = 'dashboard' | 'uiGeneral' | 'uiChat' | 'editorFiles' | 'editorNotes' | 'devTools' | 'workItems' | 'aiModes' | 'review' | 'infrastructure' | 'sentinelMode' | 'sentinelTodos' | 'sentinelMessaging' | 'browserAutomation' | 'browserPages';
+export type FeatureGroupId = 'dashboard' | 'uiGeneral' | 'uiChat' | 'editorFiles' | 'editorNotes' | 'devTools' | 'workItems' | 'aiModes' | 'review' | 'infrastructure' | 'sentinelMode' | 'sentinelTodos' | 'sentinelMessaging' | 'browserAutomation' | 'browserPages' | 'teamsOwnCommands';
 
 export interface FeatureGroupSpec {
     id: FeatureGroupId;
@@ -98,6 +98,7 @@ export const FEATURE_CARD_GROUPS: readonly FeatureGroupSpec[] = [
     { id: 'infrastructure', heading: 'Infrastructure', testId: 'feature-group-infrastructure' },
     { id: 'browserAutomation', heading: 'AI Browser Control', testId: 'feature-group-browser-automation' },
     { id: 'browserPages', heading: 'Pages & Previews', testId: 'feature-group-browser-pages' },
+    { id: 'teamsOwnCommands', heading: 'IC3 @coc own commands', testId: 'feature-group-teams-own-commands' },
 ];
 
 export type AdminSettingBadge = 'restart' | 'experimental' | 'preview';
@@ -124,7 +125,7 @@ export interface AdminSettingUiSpec {
     /** Only render when this other (boolean) setting is currently on. */
     dependsOn?: string;
     /** Defaults to a toggle when omitted. */
-    control?: { type: 'select'; options: readonly { value: string; label: string }[] };
+    control?: { type: 'select'; options: readonly { value: string; label: string }[] } | { type: 'workspace' };
     testId: string;
 }
 
@@ -1024,6 +1025,28 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-teams-message-reaction-enabled',
         },
     }),
+    bool({
+        key: 'features.teamsIc3OwnCommands', default: false, runtime: 'live',
+        ui: {
+            tab: 'teams', group: 'teamsOwnCommands', order: 10, label: 'Enable IC3 @coc own commands', badge: 'experimental',
+            hint: 'Teams @coc <prompt> messages share one Ask conversation per Teams chat in the selected workspace and return each answer through IC3. Requires the IC3 region saved in the Teams connection card. Trouter notifications trigger chat reads, with background fallback scans and native Azure CLI authentication. Interactive questions stay in the dashboard.',
+            testId: 'toggle-teams-ic3-own-commands-enabled',
+        },
+    }),
+    {
+        key: 'teamsIc3OwnCommands.workspaceId',
+        value: {
+            kind: 'custom',
+            validate: value => typeof value === 'string' && value.length <= 256 && /^[a-zA-Z0-9_-]*$/.test(value)
+                ? undefined : 'Select a local workspace ID registered on this server.',
+        },
+        default: '', runtime: 'live',
+        ui: {
+            tab: 'teams', group: 'teamsOwnCommands', order: 20, label: 'Command workspace',
+            hint: 'Required. Teams commands run in this registered local workspace on the configured machine, not the dashboard selection.',
+            control: { type: 'workspace' }, testId: 'select-teams-ic3-command-workspace',
+        },
+    },
     bool({
         key: 'features.sentinelDesktopMirror', default: false, runtime: 'live', runtimeFlag: 'sentinelDesktopMirrorEnabled',
         ui: {

@@ -30,9 +30,20 @@ export const FEATURES_CARD_SETTINGS: readonly AdminSettingDefinition[] =
 export function readFeatureValues(resolved: unknown): FeatureValues {
     const values: FeatureValues = {};
     for (const def of FEATURES_CARD_SETTINGS) {
-        values[def.key] = readAdminSettingValue(def, resolved) as boolean | string;
+        values[def.key] = (readAdminSettingValue(def, resolved) ?? '') as boolean | string;
     }
     return values;
+}
+
+function configUpdate(values: FeatureValues): Record<string, boolean | string | null> {
+    if (values['features.teamsIc3OwnCommands'] === true
+        && !values['teamsIc3OwnCommands.workspaceId']) {
+        throw new Error('Select a command workspace before enabling own commands.');
+    }
+    return Object.fromEntries(Object.entries(values).map(([key, value]) => {
+        const spec = FEATURES_CARD_SETTINGS.find(def => def.key === key)?.value;
+        return [key, value === '' && spec?.kind === 'enum' && spec.nullable ? null : value];
+    }));
 }
 
 export function readRuntimeFeatureValues(values: FeatureValues): Record<string, unknown> {
@@ -102,7 +113,7 @@ export function useAdminFeatureSettings(options: UseAdminFeatureSettingsOptions)
     const handleSaveFeatures = useCallback(async () => {
         setFeaturesSaving(true);
         try {
-            await adminServer.client.admin.updateConfig({ ...featureValues });
+            await adminServer.client.admin.updateConfig(configUpdate(featureValues));
             addToast('Settings saved', 'success');
             if (!adminServer.isRemote) invalidateDisplaySettings();
             if (!adminServer.isRemote) applyRuntimeConfigPatch(readRuntimeFeatureValues(featureValues));
@@ -133,7 +144,7 @@ export function useAdminFeatureSettings(options: UseAdminFeatureSettingsOptions)
         for (const def of defs) saved[def.key] = featureValues[def.key];
         setSavingTab(tab);
         try {
-            await adminServer.client.admin.updateConfig({ ...saved });
+            await adminServer.client.admin.updateConfig(configUpdate(saved));
             addToast('Settings saved', 'success');
             if (!adminServer.isRemote) invalidateDisplaySettings();
             const runtimeValues: Record<string, unknown> = {};

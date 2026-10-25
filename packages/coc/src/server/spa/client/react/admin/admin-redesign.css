@@ -2051,6 +2051,9 @@
     flex: 1;
   }
 }
+.admin-redesign .ar-workspace-select { display: grid; gap: 8px; min-width: 0; max-width: 280px; }
+.admin-redesign .ar-workspace-select .ar-select { width: 100%; min-width: 0; }
+.admin-redesign .ar-workspace-select .ar-btn { justify-self: start; }
 .admin-redesign .ar-teams { display: grid; gap: 16px; padding: 16px 20px; min-width: 0; }
 .admin-redesign .ar-teams p { margin: 0; overflow-wrap: anywhere; }
 .admin-redesign .ar-teams-hint { color: var(--ar-text-mute); font-size: 12px; line-height: 1.6; }

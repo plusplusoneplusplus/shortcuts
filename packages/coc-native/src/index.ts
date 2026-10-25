@@ -24,6 +24,11 @@ export {
     resetNativeAddonCache,
 } from './loader';
 export type { NativeAddon, NativeAddonStatus } from './types';
+export { decodeNativeTeamsError, loadNativeTeams, NativeTeamsError, TeamsIc3Session } from './teams';
+export type {
+    NativeTeamsDelivery, NativeTeamsErrorCode, TeamsIc3Account, TeamsIc3SessionOptions,
+    TeamsIc3Chat, TeamsIc3Cursor, TeamsIc3Message, TeamsIc3Page, TeamsIc3ReadOptions,
+} from './teams';
 export { loadWebView2Binary, webview2BinaryCandidates, WEBVIEW2_BINARY_NAME } from './webview2';
 export { loadNativeGitHubAuth, readGitHubCredential } from './github-auth';
 export type { GitHubAccount, GitHubCredentialOptions, GitHubCredentialSnapshot } from './github-auth';

@@ -351,8 +351,8 @@ function TeamsTargetConfig({ status, onSaved, setError }: { status: TeamsStatus;
                 </select>
             </div>
             <p className="text-[10px] text-[#616161] dark:text-[#999]">
-                IC3 writes require your account's configured region. MCP polling and sends work unconfigured.
-                Automatic discovery is not available. Save, then reconnect (restart if the bridge is not initialized).
+                IC3 writes and @coc own commands share this account region. MCP polling and sends work unconfigured.
+                Automatic discovery is not available. Save to restart own commands; reconnect the bridge.
             </p>
             {dirty && (
                 <Button
