@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { SentinelRefrain, SentinelRefrainGateTest, SentinelRefrainInput, SentinelRefrainRun } from '@plusplusoneplusplus/coc-client';
 
 const mock = vi.hoisted(() => ({
@@ -724,5 +725,76 @@ describe('Sentinel Refrains', () => {
             view();
             expect(await screen.findByText(/copilot \/ high effort tier/)).toBeInTheDocument();
         });
+    });
+});
+
+describe('Refrains section collapse under the dashboard stylesheet', () => {
+    let style: HTMLStyleElement;
+    beforeEach(() => {
+        // Tailwind 3 preflight followed by an equal-specificity display utility, in dashboard stylesheet order.
+        style = document.createElement('style');
+        style.textContent = '[hidden]:where(:not([hidden="until-found"])) { display: none; }\n.flex { display: flex; }';
+        document.head.append(style);
+        mock.list.mockResolvedValue({ jobs: [job()] });
+    });
+    afterEach(() => style.remove());
+    const toggle = () => screen.getByRole('button', { name: /Refrains \(1\/10\)/ });
+    // jest-dom's toBeVisible treats every [hidden] element as invisible, so read the cascaded display instead.
+    const rendered = (element: Element) => {
+        for (let node: Element | null = element; node; node = node.parentElement) if (getComputedStyle(node).display === 'none') return false;
+        return true;
+    };
+
+    it('hides and shows the contents by pointer, Enter and Space, with the chevron and aria-expanded matching', async () => {
+        const user = userEvent.setup();
+        view();
+        const row = await screen.findByTestId('sentinel-refrain-j1');
+        const info = screen.getByRole('button', { name: 'About Refrains' });
+        expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+        expect(toggle()).toHaveTextContent('\u25be Refrains (1/10)');
+        expect(rendered(row)).toBe(true);
+
+        await user.click(toggle());
+        expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+        expect(toggle()).toHaveTextContent('\u25b8 Refrains (1/10)');
+        expect(rendered(row)).toBe(false);
+        expect(rendered(screen.getByText(/Results stay in each refrain/))).toBe(false);
+
+        await user.keyboard('{Enter}');
+        expect(toggle()).toHaveFocus();
+        expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+        expect(rendered(row)).toBe(true);
+        await user.keyboard(' ');
+        expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+        expect(rendered(row)).toBe(false);
+        expect(screen.getByTestId('sentinel-refrain-j1')).toBe(row); // collapsed contents stay mounted
+
+        // Adjacent heading controls stay outside the toggle, visible and inert to it.
+        expect(toggle().contains(info)).toBe(false);
+        expect(toggle().querySelector('button, a, input, select, textarea')).toBeNull();
+        expect(rendered(screen.getByRole('button', { name: 'New refrain' }))).toBe(true);
+        await user.click(info);
+        expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+        await user.keyboard('{Escape}');
+        await user.click(screen.getByRole('button', { name: 'New refrain' }));
+        expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('stays collapsed across owner reloads and parent rerenders, and does not leak to another owner', async () => {
+        const page = view();
+        await screen.findByTestId('sentinel-refrain-j1');
+        fireEvent.click(toggle());
+        mock.list.mockResolvedValue({ jobs: [job({ name: 'Renamed' })] });
+        const options = mock.connect.mock.calls[0][0];
+        await act(async () => options.onMessage({ type: 'sentinel-jobs-changed', workspaceId: owner.ownerWorkspaceId, processId: owner.processId }));
+        await waitFor(() => expect(screen.getByTestId('sentinel-refrain-j1')).toHaveAttribute('aria-label', 'Renamed'));
+        page.rerender(<SentinelRefrains owner={{ ...owner }} items={[]} onFollowLink={follow} />);
+        expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+        expect(rendered(screen.getByTestId('sentinel-refrain-j1'))).toBe(false);
+
+        page.rerender(<SentinelRefrains owner={{ ownerWorkspaceId: 'ws-b', processId: 'queue_other' }} items={[]} onFollowLink={follow} />);
+        await waitFor(() => expect(mock.list).toHaveBeenLastCalledWith('ws-b', 'queue_other', expect.anything()));
+        await waitFor(() => expect(rendered(screen.getByTestId('sentinel-refrain-j1'))).toBe(true));
+        expect(toggle()).toHaveAttribute('aria-expanded', 'true');
     });
 });

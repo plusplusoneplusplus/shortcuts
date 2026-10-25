@@ -173,13 +173,15 @@ function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFol
         <div className="flex flex-wrap items-center gap-2">
             <div className="mr-auto flex min-w-0 flex-wrap items-center gap-1">
                 <h3 className="font-semibold"><button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(value => !value)}>
-                    {open ? '\u25be' : '\u25b8'} Refrains{jobs && ` (${jobs.length}/10)`}
+                    <span aria-hidden="true">{open ? '\u25be' : '\u25b8'}</span> Refrains{jobs && ` (${jobs.length}/10)`}
                 </button></h3>
                 <SentinelAutomationInfo term="Refrains" />
             </div>
             <Button size="sm" variant="secondary" disabled={!jobs || busy || !!readError || jobs.length >= 10} onClick={() => setEditor('new')}>New refrain</Button>
         </div>
-        <div id={id} hidden={!open} className="flex min-w-0 flex-col gap-2">
+        {/* A display utility would override Tailwind's [hidden] rule, so it applies only while open.
+            Collapsed contents stay mounted to keep row, gate-test and Coda state. */}
+        <div id={id} hidden={!open} className={open ? 'flex min-w-0 flex-col gap-2' : undefined}>
             {scrubber && <div data-testid="sentinel-refrains-built-in">{scrubber}</div>}
             <p className={MUTED}>Results stay in each refrain&apos;s job chat and are not sent to this Sentinel. Schedules use the owning server&apos;s local time; missed runs are not caught up.</p>
             {readError && <p role="alert">Could not load refrains: {readError} <Button size="sm" variant="secondary" onClick={() => void load()}>Refresh refrains</Button></p>}

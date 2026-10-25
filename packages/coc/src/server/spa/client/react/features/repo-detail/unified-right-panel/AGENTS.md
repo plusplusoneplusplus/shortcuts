@@ -973,6 +973,9 @@ flag keys, tool names and `data-*` values outside these components.
 `SentinelRefrains` selects the automation presentation after a ledger loads.
 The owning server's live `sentinelEnabled` and `sentinelTodoJobsEnabled`
 capabilities enable a collapsible Refrains list using `client.sentinelTodos.jobs`.
+Collapsed contents stay mounted behind `hidden`, so display utilities such as
+`flex` apply only while open (they override Tailwind's `[hidden]` rule); the
+expansion state survives reloads and rerenders and resets per owner mount.
 Owner/endpoint remounts abort pending reads and discard late results; mutations
 retain their admission lock until the authoritative reload settles. Dialog
 drafts retain captured revisions on errors. Create/edit thresholds use K-token
