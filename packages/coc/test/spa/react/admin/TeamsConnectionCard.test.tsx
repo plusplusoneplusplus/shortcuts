@@ -19,6 +19,32 @@ const status = {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('TeamsConnectionCard', () => {
+    it.each(['connecting', 'registered', 'retrying', 'stopped'])('shows live Trouter %s outside collapsed settings', async state => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({
+            ...status, enableTrouter: true, notificationStatus: { state, error: null },
+        }) })));
+        render(<TeamsConnectionCard />);
+        await screen.findByDisplayValue(status.serverUrl);
+        const notification = screen.getByTestId('teams-notification-status');
+        expect(notification.textContent).toContain(`Channel bridge Trouter: ${state}`);
+        expect(notification.closest('details')).toBeNull();
+    });
+
+    it('shows Trouter disabled instead of hiding notification status', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ ...status, enableTrouter: false }) })));
+        render(<TeamsConnectionCard />);
+        await screen.findByDisplayValue(status.serverUrl);
+        expect(screen.getByTestId('teams-notification-status').textContent).toContain('Channel bridge Trouter: disabled');
+        expect(screen.getByTestId('teams-notification-status').textContent).not.toContain('fallback');
+    });
+
+    it('does not invent a stopped Trouter state when enabled status is missing', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ ...status, enableTrouter: true }) })));
+        render(<TeamsConnectionCard />);
+        await screen.findByDisplayValue(status.serverUrl);
+        expect(screen.getByTestId('teams-notification-status').textContent).toContain('Status unavailable');
+    });
+
     it('groups setup separately from collapsed optional settings and history', async () => {
         vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
             ok: true, json: async () => url.endsWith('/status')
@@ -53,6 +79,7 @@ describe('TeamsConnectionCard', () => {
             expect((screen.getByLabelText(name) as HTMLInputElement).disabled).toBe(true);
         }
         expect(screen.getByRole('button', { name: 'Refresh status' })).toBeDefined();
+        expect(screen.getByTestId('teams-notification-status').textContent).toContain('Status unavailable');
     });
 
     it('offers an off-by-default notification opt-in and persists it before reconnect', async () => {

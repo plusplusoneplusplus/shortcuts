@@ -117,27 +117,28 @@ describe('IC3 channel Like', () => {
     });
 
     it('aborts an unresponsive request and reports the timeout', async () => {
-        const controller = new AbortController();
-        vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+        vi.useFakeTimers();
         fetchMock.mockImplementationOnce((_url, init) => new Promise((_resolve, reject) => {
             init?.signal?.addEventListener('abort', () => reject(new Error('private abort detail')));
         }));
         const client = new Ic3ReactionClient({ region: 'amer', acquireToken: async () => token() });
         const pending = client.reactToChannelMessage({ channelId: 'channel', messageId: 'message', text: 'ask' });
-        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-        controller.abort();
-        await expect(pending).rejects.toThrow('Teams channel Like reaction timed out');
+        const rejected = expect(pending).rejects.toThrow('Teams channel Like reaction timed out');
+        await vi.advanceTimersByTimeAsync(10_000);
+        await rejected;
+        vi.useRealTimers();
     });
 
     it('bounds credential acquisition under the same deadline', async () => {
-        const controller = new AbortController();
-        vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+        vi.useFakeTimers();
         const client = new Ic3ReactionClient({ region: 'amer', acquireToken: signal => new Promise((_resolve, reject) => {
             signal.addEventListener('abort', () => reject(new Error('private credential detail')));
         }) });
         const pending = client.reactToChannelMessage({ channelId: 'channel', messageId: 'message', text: 'ask' });
-        controller.abort();
-        await expect(pending).rejects.toThrow('Teams channel Like reaction timed out');
+        const rejected = expect(pending).rejects.toThrow('Teams channel Like reaction timed out');
+        await vi.advanceTimersByTimeAsync(10_000);
+        await rejected;
         expect(fetchMock).not.toHaveBeenCalled();
+        vi.useRealTimers();
     });
 });

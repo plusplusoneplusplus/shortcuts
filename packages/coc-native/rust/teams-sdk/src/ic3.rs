@@ -49,6 +49,9 @@ impl Session {
         let Conversation::Chat(chat) = &reference.conversation else {
             return Err(Error::new(ErrorCode::Unsupported));
         };
+        if chat.as_str() == SELF_CHAT_ID {
+            return Err(Error::new(ErrorCode::Unsupported));
+        }
         if cursor.is_some() {
             return Err(Error::new(ErrorCode::UnsafeCursor));
         }
@@ -120,6 +123,10 @@ impl Session {
         let info = self.get(Backend::Ic3, url, ctx).await?;
         if info["id"].as_str() != Some(chat.as_str()) {
             return Err(protocol());
+        }
+        // Notes is an account-scoped stream, not an ordinary chat thread.
+        if chat.as_str() == SELF_CHAT_ID {
+            return Ok(());
         }
         if info["threadProperties"]["threadType"].as_str() != Some("chat")
             || !matches!(
@@ -331,9 +338,13 @@ pub(crate) fn normalize(
         return Err(protocol());
     }
     if !deleted
-        && ["ThreadActivity/", "Event/", "Control/"]
+        && (["ThreadActivity/", "Event/", "Control/"]
             .iter()
             .any(|prefix| kind.starts_with(prefix))
+            || matches!(
+                kind,
+                "RichText/Media_CallRecording" | "RichText/Media_CallTranscript"
+            ))
     {
         return Ok(None);
     }

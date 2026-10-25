@@ -24,6 +24,7 @@ import { FileBannerRow } from './FileBannerRow';
 import { writeDiffSelectionDragStart, type DiffSelectionDragSource } from './diffSelectionContext';
 import { parseFileBanners, buildBannerIndex, buildPreambleIndex, type FileBanner } from './fileBannerModel';
 import { useDockedFileBanner } from './useDockedFileBanner';
+import { observeOffsetUntilCleanup } from './observeOffsetUntilCleanup';
 
 export interface UnifiedDiffViewerProps {
     diff: string;
@@ -1092,6 +1093,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         estimateSize: (i) => (isBlankRow(i) ? 0 : DIFF_LINE_ESTIMATE_PX),
         overscan: 24,
         scrollMargin,
+        observeElementOffset: observeOffsetUntilCleanup,
         measureElement: (el) => {
             const node = el as HTMLElement;
             // A dropped row renders nothing, so its wrapper is genuinely empty

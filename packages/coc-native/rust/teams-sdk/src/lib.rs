@@ -1,6 +1,7 @@
 //! Standalone Teams access. Message bodies are transient and never logged or cached.
 //! Tokens come from a trusted, account-aware provider; this crate does not validate JWT signatures.
 pub mod auth;
+pub mod azure_cli;
 pub mod capabilities;
 pub mod client;
 mod constants;

@@ -14,7 +14,7 @@ const { updateConfig, applyRuntimeConfigPatch, invalidateDisplaySettings } = vi.
 }));
 
 vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({ admin: { updateConfig } }),
+    getSpaCocClient: () => ({ admin: { updateConfig }, workspaces: { list: async () => ({ workspaces: [] }) } }),
     getSpaCocClientErrorMessage: (_e: unknown, fallback: string) => fallback,
 }));
 vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({

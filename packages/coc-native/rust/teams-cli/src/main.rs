@@ -1,5 +1,4 @@
 //! Read-only Teams CLI with explicit credentials or source-pinned Azure CLI authentication.
-mod azure;
 mod constants;
 use async_trait::async_trait;
 use constants::*;
@@ -445,14 +444,14 @@ async fn execute() -> CliResult<()> {
             )?;
             (account, Arc::new(credentials))
         } else {
-            let credentials = azure::AzureCredentials::new(
+            let credentials = azure_cli::AzureCliCredentials::new(
                 tenant,
                 user,
                 audience,
-                Arc::new(auth_sdk::microsoft::Dependencies::default()),
+                &OperationContext::default(),
             )
             .await?;
-            (credentials.account.clone(), Arc::new(credentials))
+            (credentials.account().clone(), Arc::new(credentials))
         };
     let client = options
         .configure(TeamsClient::builder(credentials))?

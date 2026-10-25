@@ -1107,6 +1107,23 @@ references before editing. Paths are package-relative.
   `-v`; no Markdown list syntax so Teams keeps the numbering). `localTopicsReply`
   and `resolveLocalTopic` share owner-qualified selection refs; cancelled or missing
   queued targets reject selection and delivery.
+- `features.teamsIc3OwnCommands` (default off) routes new own-user `@coc <prompt>`
+  messages to one Ask conversation per account, Teams chat and explicit local
+  `teamsIc3OwnCommands.workspaceId`, using the shared Teams connection `ic3Region`.
+  Stable hashed conversation IDs reuse saved chats across restarts. First turns use
+  medium effort; ordered follow-ups retain conversation policy and correlate answers
+  by request ID.
+  Reply chains serialize per conversation, not across chats; shutdown drains every
+  active chain. Timing info logs correlate hashed request IDs across detection,
+  admission, queue/execution and reply delivery without source identities or bodies.
+  Saving a region change restarts the own-command runtime. Account-pinned Trouter hints wake
+  authoritative native reads; native `Unsupported` rejects non-self notification
+  targets without retries or read-health changes. Fallback scans, admission and IC3-only source replies
+  share cancellation; an enqueue past the final caller check may finish. Never replay
+  uncertain admissions or sends. Keep read, reply and notification health separate;
+  route Admin reads through `useAdminServer`.
+  See the [IC3 runtime contract](../../.github/skills/coc-knowledge/references/server-architecture.md#ic3-own-command-launcher)
+  for read windows, deduplication, reply deadlines and safe-retry rules.
 - Ask/sentinel turns started from WhatsApp/Teams and jobs carrying
   `metadata.messagingOrigin` (every turn, including autopilot) relay
   `ask_user` questions one at a time to the originating group/thread through

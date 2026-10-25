@@ -24,6 +24,29 @@ pub struct ProcessCliRunner {
     pub executable: Option<PathBuf>,
 }
 
+#[cfg(windows)]
+fn azure_cli_executable() -> Option<PathBuf> {
+    let on_path = std::env::var_os("PATH").and_then(|path| {
+        std::env::split_paths(&path).map(|dir| dir.join("az.cmd")).find(|file| file.is_file())
+    });
+    on_path.or_else(|| {
+        // Long-lived hosts can retain PATH from before Azure CLI was installed.
+        ["ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"]
+            .into_iter()
+            .filter_map(std::env::var_os)
+            .filter(|directory| !directory.is_empty())
+            .map(|directory| {
+                PathBuf::from(directory)
+                    .join("Microsoft SDKs")
+                    .join("Azure")
+                    .join("CLI2")
+                    .join("wbin")
+                    .join("az.cmd")
+            })
+            .find(|file| file.is_file())
+    })
+}
+
 #[async_trait]
 impl CliRunner for ProcessCliRunner {
     async fn run(&self, arguments: &[String]) -> Result<CliOutput> {
@@ -32,13 +55,7 @@ impl CliRunner for ProcessCliRunner {
             let executable = self
                 .executable
                 .clone()
-                .or_else(|| {
-                    std::env::var_os("PATH").and_then(|path| {
-                        std::env::split_paths(&path)
-                            .map(|dir| dir.join("az.cmd"))
-                            .find(|file| file.is_file())
-                    })
-                })
+                .or_else(azure_cli_executable)
                 .ok_or_else(|| AuthError::new(ErrorCode::CliUnavailable))?;
             if executable.extension().is_some_and(|e| e.eq_ignore_ascii_case("cmd")) {
                 let executable =

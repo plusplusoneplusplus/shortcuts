@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { boundedIc3, Ic3CredentialStore } from './ic3/ic3-credential';
 import type { Ic3TokenProvider } from './ic3/ic3-direct-message-config';
 
-const ENDPOINT = 'wss://go-msit.trouter.teams.microsoft.com/v4/c/';
+const ENDPOINT = 'wss://go.trouter.teams.microsoft.com/v4/c/';
 const REGISTRAR = 'https://teams.cloud.microsoft/registrar/prod/V2/registrations';
 const VERSION = '1415/26043019216';
 const MAX_FRAME = 256 * 1024;
@@ -86,7 +86,7 @@ export interface TrouterEffects {
 }
 
 /** Notifications carry no admission authority, even when source identity is missing. */
-export function parseTrouterFrame(raw: string, target: string): TrouterEffects {
+export function parseTrouterFrame(raw: string, target: ((conversationId: string) => boolean) | null): TrouterEffects {
     if (Buffer.byteLength(raw) > MAX_FRAME) throw new Error('Trouter frame exceeds limit');
     const match = /^([0-8]):([^:]*):([^:]*)(?::([\s\S]*))?$/.exec(raw);
     if (!match) throw new Error('Invalid Trouter frame');
@@ -119,10 +119,9 @@ export function parseTrouterFrame(raw: string, target: string): TrouterEffects {
         const activity = object(object(resource.properties).activity);
         const source = text(activity.sourceThreadId);
         const stream = text(resource.to, body.to, resource.conversationLink, body.conversationLink, body.resourceLink);
-        const candidate = source ? conversation(source) : stream ? conversation(stream) : undefined;
-        const id = candidate && !candidate.toLowerCase().startsWith('48:') ? candidate : undefined;
-        // Unknown/synthetic streams cannot activate a conversation.
-        if (id === target) result.wake = {
+        const id = source ? conversation(source) : stream ? conversation(stream) : undefined;
+        if (id && (!id.toLowerCase().startsWith('48:') || id === '48:notes')
+            && target?.(id)) result.wake = {
             cause: 'message', conversationId: id,
             rootMessageId: text(activity.sourceReplyChainId, body.parentmessageid, body.parentMessageId,
                 resource.parentmessageid, resource.parentMessageId, resource.replyToId),
@@ -143,7 +142,7 @@ export class TrouterClient {
 
     constructor(private readonly options: TeamsTrouterOptions & {
         expectedAccount: { tenantId: string; objectId: string };
-        target: () => string | null;
+        target: () => ((conversationId: string) => boolean) | null;
         onWake: (wake: TrouterWake) => void;
         socketFactory?: (url: string) => TrouterSocket;
         fetch?: typeof fetch;
@@ -284,7 +283,7 @@ export class TrouterClient {
                     if (!active()) return;
                     try {
                         if (typeof event.data !== 'string') throw new Error('Invalid Trouter data');
-                        const effects = parseTrouterFrame(event.data, this.options.target() ?? '');
+                        const effects = parseTrouterFrame(event.data, this.options.target());
                         idle();
                         effects.send.forEach(send);
                         if (effects.wake) this.wake(effects.wake);

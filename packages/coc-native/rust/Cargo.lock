@@ -3310,13 +3310,11 @@ name = "teams-cli"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "auth-sdk",
  "clap",
  "reqwest",
  "serde_json",
  "teams-sdk",
  "tokio",
- "uuid",
 ]
 
 [[package]]
@@ -3324,6 +3322,7 @@ name = "teams-sdk"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "auth-sdk",
  "chrono",
  "futures-util",
  "html-escape",

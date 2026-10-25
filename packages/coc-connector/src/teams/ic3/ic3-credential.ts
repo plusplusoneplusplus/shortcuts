@@ -18,6 +18,7 @@ interface Credential {
 interface Attempt {
     signal: AbortSignal;
     writeStarted: boolean;
+    startWrite(): void;
 }
 
 const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -41,7 +42,8 @@ export function ic3HttpError(response: Response): TeamsOperationError {
     // A server error does not prove the write was rolled back.
     return new TeamsOperationError(`rejected (HTTP ${response.status}); not retried; check IC3 region configuration and account access`, 'ic3', code,
         response.status >= 500 || response.status === 408 ? 'unknown' : 'rejected',
-        Number.isFinite(delay) ? Math.max(0, delay) : undefined);
+        Number.isFinite(delay) ? Math.max(0, delay) : undefined,
+        response.status === 401 || response.status === 429);
 }
 
 /** Instance-scoped IC3 credentials, never MCP or Graph credentials. */
@@ -89,27 +91,38 @@ export class Ic3CredentialStore {
         this.clear();
     }
 
-    async run<T>(operation: (attempt: Attempt) => Promise<T>, caller?: AbortSignal): Promise<T> {
+    async run<T>(operation: (attempt: Attempt) => Promise<T>, caller?: AbortSignal,
+        timeoutMs = IC3_DIRECT_MESSAGE_TIMEOUT_MS): Promise<T> {
         this.requireRegion();
         if (this.lifetime.signal.aborted) {
             throw new TeamsOperationError('unavailable: disposed', 'ic3', 'unavailable', 'not-attempted');
         }
-        const deadline = AbortSignal.timeout(IC3_DIRECT_MESSAGE_TIMEOUT_MS);
-        const signal = AbortSignal.any([deadline, this.lifetime.signal, ...(caller ? [caller] : [])]);
-        const attempt: Attempt = { signal, writeStarted: false };
+        const deadline = new AbortController();
+        const timer = setTimeout(() => deadline.abort(), timeoutMs).unref();
+        let writeTimer: ReturnType<typeof setTimeout> | undefined;
+        const signal = AbortSignal.any([deadline.signal, this.lifetime.signal, ...(caller ? [caller] : [])]);
+        const attempt: Attempt = { signal, writeStarted: false, startWrite: () => {
+            signal.throwIfAborted();
+            attempt.writeStarted = true;
+            writeTimer = setTimeout(() => deadline.abort(), IC3_DIRECT_MESSAGE_TIMEOUT_MS).unref();
+        } };
         try {
             signal.throwIfAborted();
             return await operation(attempt);
         } catch (error) {
             this.clear();
             if (signal.aborted) {
-                const timedOut = deadline.aborted;
+                const timedOut = deadline.signal.aborted;
                 throw new TeamsOperationError(timedOut ? 'timed out' : 'cancelled',
-                    'ic3', timedOut ? 'timeout' : 'unavailable', attempt.writeStarted ? 'unknown' : 'not-attempted');
+                    'ic3', timedOut ? 'timeout' : 'unavailable', attempt.writeStarted ? 'unknown' : 'not-attempted',
+                    undefined, timedOut && !attempt.writeStarted);
             }
             if (error instanceof TeamsOperationError) throw error;
             throw new TeamsOperationError('failed; delivery may be unknown', 'ic3', 'network',
                 attempt.writeStarted ? 'unknown' : 'not-attempted');
+        } finally {
+            clearTimeout(timer);
+            clearTimeout(writeTimer);
         }
     }
 
@@ -139,7 +152,8 @@ export class Ic3CredentialStore {
                 }
                 const reason = error instanceof AuthError ? ` (${error.code})` : '';
                 throw new TeamsOperationError(`unavailable: IC3 credential could not be acquired${reason}`,
-                    'ic3', 'authentication', 'not-attempted');
+                    'ic3', 'authentication', 'not-attempted', undefined,
+                    error instanceof AuthError && ['TimedOut', 'TokenExpired', 'LoginRequired', 'StorageLocked'].includes(error.code));
             }
             let claims: { aud?: unknown; exp?: unknown; oid?: unknown; tid?: unknown; name?: unknown };
             try {

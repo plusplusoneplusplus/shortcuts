@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto';
-import { IC3_SELF_CHAT, type Ic3DirectMessageOptions } from './ic3-direct-message-config';
+import { IC3_SELF_CHAT, IC3_SOURCE_REPLY_TIMEOUT_MS, type Ic3DirectMessageOptions } from './ic3-direct-message-config';
 import { boundedIc3, ic3HttpError, Ic3CredentialStore } from './ic3-credential';
 import { TeamsOperationError, type TeamsFailureCode, type TeamsDestination } from '../operations';
 import type { TransportSendOptions } from '../types';
+import { NativeTeamsError } from '@plusplusoneplusplus/coc-native';
 
 export type { Ic3DirectMessageOptions, Ic3DirectMessageRegion, Ic3TokenProvider }
     from './ic3-direct-message-config';
@@ -10,13 +11,13 @@ export type { Ic3DirectMessageOptions, Ic3DirectMessageRegion, Ic3TokenProvider 
 /** IC3 sends are never replayed: a failed response can still mean delivery. */
 export class TeamsIc3SendError extends TeamsOperationError {
     constructor(message: string, code: TeamsFailureCode = 'network',
-        outcome: 'not-attempted' | 'rejected' | 'unknown' = 'unknown', retryAfterMs?: number) {
-        super(`Teams IC3 direct send ${message}`, 'ic3', code, outcome, retryAfterMs);
+        outcome: 'not-attempted' | 'rejected' | 'unknown' = 'unknown', retryAfterMs?: number, retryable = false) {
+        super(`Teams IC3 direct send ${message}`, 'ic3', code, outcome, retryAfterMs, retryable);
         this.name = 'TeamsIc3SendError';
     }
 }
 
-/** Experimental chatsvc sender; ordinary 1:1 targets require an authoritative connection-scoped read. */
+/** Experimental chatsvc sender with distinct verified-recipient and source-chat reply entry points. */
 export class Ic3DirectMessageClient {
     private readonly credentials: Ic3CredentialStore;
     private readonly options: Ic3DirectMessageOptions;
@@ -27,7 +28,7 @@ export class Ic3DirectMessageClient {
             this.credentials = credentials ?? new Ic3CredentialStore(options);
         } catch (error) {
             if (error instanceof TeamsOperationError) {
-                throw new TeamsIc3SendError(error.message, error.code, error.outcome, error.retryAfterMs);
+                throw new TeamsIc3SendError(error.message, error.code, error.outcome, error.retryAfterMs, error.retryable);
             }
             throw error;
         }
@@ -43,10 +44,29 @@ export class Ic3DirectMessageClient {
 
     async send(target: string | Extract<TeamsDestination, { kind: 'chat' }>, text: string,
         opts?: TransportSendOptions, caller?: AbortSignal): Promise<string> {
+        return this.sendMessage(target, text, opts, caller);
+    }
+
+    /** Trusted inbound owners recheck exact source access on their pinned reader before each reply. */
+    async sendToSourceChat(chatId: string, text: string,
+        verifyAccess: (signal: AbortSignal) => Promise<void>, caller?: AbortSignal): Promise<string> {
+        if (!this.options.expectedAccount || typeof verifyAccess !== 'function') {
+            throw new TeamsIc3SendError('source replies require a pinned account and a live source access check',
+                'authentication', 'not-attempted');
+        }
+        if (chatId !== IC3_SELF_CHAT && !/^19:[^\s/\\?#]+@(?:thread\.v2|unq\.gbl\.spaces)$/.test(chatId)) {
+            throw new TeamsIc3SendError('invalid source chat', 'invalid-target', 'not-attempted');
+        }
+        return this.sendMessage(chatId, text, undefined, caller, verifyAccess);
+    }
+
+    private async sendMessage(target: string | Extract<TeamsDestination, { kind: 'chat' }>, text: string,
+        opts?: TransportSendOptions, caller?: AbortSignal,
+        sourceAccess?: (signal: AbortSignal) => Promise<void>): Promise<string> {
         const destination = typeof target === 'string' ? undefined : { ...target };
         const conversationId = typeof target === 'string' ? target : target.chatId;
         if (opts?.replyToId !== undefined || opts?.mentions !== undefined
-            || (!destination && conversationId !== IC3_SELF_CHAT)) {
+            || (!destination && conversationId !== IC3_SELF_CHAT && !sourceAccess)) {
             throw new TeamsIc3SendError('unavailable: only self-chat 48:notes without replies or mentions is supported',
                 'unsupported', 'not-attempted');
         }
@@ -69,12 +89,25 @@ export class Ic3DirectMessageClient {
                 const { signal } = attempt;
                 const credential = await this.credentials.get(signal, true);
                 signal.throwIfAborted();
-                if (destination) {
+                if (destination || sourceAccess) {
                     const account = this.options.expectedAccount!;
                     if (credential.objectId?.toLowerCase() !== account.objectId.toLowerCase()
                         || credential.tenantId?.toLowerCase() !== account.tenantId.toLowerCase()) {
                         throw new TeamsOperationError('IC3 account identity mismatch', 'ic3', 'authentication', 'not-attempted');
                     }
+                }
+                if (sourceAccess) {
+                    try {
+                        await boundedIc3(sourceAccess(signal), signal);
+                    } catch (error) {
+                        throw new TeamsOperationError('Source chat access could not be verified',
+                            'ic3', 'unavailable', 'not-attempted',
+                            error instanceof NativeTeamsError ? error.retryAfterMs : undefined,
+                            error instanceof NativeTeamsError && ['Authentication', 'Network', 'Timeout', 'RateLimited'].includes(error.code));
+                    }
+                    signal.throwIfAborted();
+                }
+                if (destination) {
                     let verified: Awaited<ReturnType<NonNullable<Ic3DirectMessageOptions['verifyChat']>>>;
                     try {
                         verified = await boundedIc3(this.options.verifyChat!(conversationId, signal), signal);
@@ -110,7 +143,7 @@ export class Ic3DirectMessageClient {
                         formatVariant: 'TEAMS',
                     },
                 });
-                attempt.writeStarted = true;
+                attempt.startWrite();
                 const response = await boundedIc3(fetch(
                     `https://teams.cloud.microsoft/api/chatsvc/${this.credentials.region}/v1/users/ME/conversations/${encodeURIComponent(conversationId)}/messages`,
                     {
@@ -142,10 +175,10 @@ export class Ic3DirectMessageClient {
                         'ic3', 'protocol', 'unknown');
                 }
                 return String(id);
-            }, caller);
+            }, caller, sourceAccess ? IC3_SOURCE_REPLY_TIMEOUT_MS : undefined);
         } catch (error) {
             if (error instanceof TeamsOperationError) {
-                throw new TeamsIc3SendError(error.message, error.code, error.outcome, error.retryAfterMs);
+                throw new TeamsIc3SendError(error.message, error.code, error.outcome, error.retryAfterMs, error.retryable);
             }
             throw new TeamsIc3SendError('failed; delivery may be unknown');
         }

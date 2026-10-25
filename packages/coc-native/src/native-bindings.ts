@@ -102,6 +102,27 @@ export declare class NativeStatementHandle {
   iterate(values?: Array<number | string | Buffer | null>, names?: string[]): Array<Record<string, number | string | Buffer | null>>
 }
 
+/** Native-owned continuation: no URL, token or cross-session reconstruction. */
+export declare class NativeTeamsIc3Cursor {
+
+}
+
+/** One read per handle. Cancelling it leaves other reads and the account usable. */
+export declare class NativeTeamsIc3Read {
+  readChats(cursor?: NativeTeamsIc3Cursor | undefined | null): Promise<TeamsIc3ChatPage>
+  readHistory(chatId: string, cursor?: NativeTeamsIc3Cursor | undefined | null): Promise<TeamsIc3HistoryPage>
+  cancel(): void
+}
+
+/** Account-pinned IC3 access; connection alone does not establish live authorization. */
+export declare class NativeTeamsIc3Session {
+  constructor(options: TeamsIc3SessionOptions)
+  /** One initialization attempt per handle. A failed attempt requires a new handle. */
+  connect(): Promise<TeamsIc3Account>
+  dispose(): void
+  beginRead(): NativeTeamsIc3Read
+}
+
 export declare class NativeWatchService {
   constructor(onBatch: (arg: WatchBatch) => void)
   subscribe(options: NativeWatchSubscriptionOptions): number
@@ -1250,6 +1271,50 @@ export interface SearchContentOptions {
   maxFileSizeBytes?: number
   /** Lines of context on each side of a match. Defaults to 1. */
   contextLines?: number
+}
+
+export interface TeamsIc3Account {
+  tenantId: string
+  userId: string
+}
+
+export interface TeamsIc3Chat {
+  chatId: string
+  kind: string
+}
+
+export interface TeamsIc3ChatPage {
+  items: Array<TeamsIc3Chat>
+  next?: NativeTeamsIc3Cursor
+  rawCount: number
+}
+
+export interface TeamsIc3HistoryPage {
+  items: Array<TeamsIc3Message>
+  next?: NativeTeamsIc3Cursor
+  rawCount: number
+}
+
+export interface TeamsIc3Message {
+  chatId: string
+  messageId: string
+  createdAt: string
+  modifiedAt: string
+  deleted: boolean
+  authorKind: string
+  authorId?: string
+  text: string
+  textTruncated: boolean
+  untrustedHtml?: string
+  htmlTruncated: boolean
+  mentionedUserIds?: Array<string>
+}
+
+export interface TeamsIc3SessionOptions {
+  region: string
+  expectedTenantId?: string
+  expectedUserId?: string
+  timeoutMs?: number
 }
 
 /**

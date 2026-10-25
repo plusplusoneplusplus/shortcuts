@@ -103,8 +103,8 @@ the committed bindings, N-API addon and symbol-server executable. Windows x64
 also builds the `coc-webview2` desktop helper with a statically linked loader; other platforms
 do not initialize WebView2.
 Native builds retain Cargo artifacts and napi-rs's per-crate declaration cache.
-Bindings are written only when their contents change. Incomplete napi-rs journal
-metadata fails before compilation; recovery and publication locking belong to napi-rs.
+Bindings are written only when their contents change. Native build journal handling
+and recovery follow the [native contracts](../../../../packages/coc-native/AGENTS.md).
 `ensure:native` recursively checks the native Rust tree, including `teams-sdk`,
 for stale binaries, and can provision Rust;
 `COC_NATIVE_AUTO_INSTALL_RUST=0` disables provisioning.
@@ -249,6 +249,8 @@ and always includes MCP and IC3/Trouter; Graph is a default feature.
 It is installed separately with `cargo install --locked --path teams-cli` from the
 native Rust workspace. Usage and authentication contracts belong in the
 [Teams SDK instructions](../../../../packages/coc-native/rust/teams-sdk/AGENTS.md).
+The addon's `src/teams.ts` exposes native Azure CLI-backed IC3 reads; see the
+[Teams boundary contract](../../../../packages/coc-native/AGENTS.md#teams-capability).
 
 The loader accepts `COC_NATIVE_PATH`, local binaries and target-specific prebuilts.
 N-API binaries work in Node and Electron. Desktop packaging unpacks native

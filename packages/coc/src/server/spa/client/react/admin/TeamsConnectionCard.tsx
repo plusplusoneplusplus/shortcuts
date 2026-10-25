@@ -293,9 +293,11 @@ export function TeamsConnectionCard() {
                     <Button size="sm" variant="ghost" className="ar-btn ar-btn-ghost ar-btn-sm"
                         disabled={busy} onClick={() => void load()}>Refresh status</Button>
                 </div>
-                {status?.enableTrouter && <p role="status" className="ar-teams-hint" data-testid="teams-notification-status">
-                    Notifications: {status.notificationStatus?.state ?? 'stopped'} · 60-second fallback reads
-                </p>}
+                <p role="status" className="ar-teams-hint" data-testid="teams-notification-status">
+                    Channel bridge Trouter: {!status ? 'Status unavailable' : status.enableTrouter
+                        ? status.notificationStatus?.state ?? 'Status unavailable' : 'disabled'}
+                    {status?.enableTrouter && ' · 60-second fallback reads'}
+                </p>
                 {status?.enableTrouter && status.notificationStatus?.error
                     && <p role="alert" className="ar-teams-warning">{status.notificationStatus.error.message}</p>}
                 {status?.error && <p role="alert" className="ar-teams-error">{status.error}</p>}
@@ -377,8 +379,8 @@ export function TeamsConnectionCard() {
                                 </select>
                             </label>
                             <p id="teams-region-hint" className="ar-teams-hint">
-                                Required for optional IC3 Likes and self sends only; Graph reads and ordinary sends work unconfigured.
-                                Choose your account's region; automatic discovery is not available. Save changes, then reconnect.
+                                Shared by IC3 Likes, self sends and @coc own commands; Graph reads and ordinary sends work unconfigured.
+                                Choose your account's region; automatic discovery is not available. Save to restart own commands; reconnect the bridge.
                             </p>
                             <label className="ar-teams-checkbox">
                                 <input type="checkbox" checked={enableTrouter} disabled={busy || !status}

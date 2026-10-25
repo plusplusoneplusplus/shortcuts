@@ -124,6 +124,22 @@ describe('TeamsMessagingManager', () => {
         expect(expected).toMatch(/^CoC-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*$/);
     });
 
+    it('publishes shared IC3 region changes only when the saved region changes', async () => {
+        const listener = vi.fn(() => {
+            expect(new TeamsMessagingManager(tmpDir).getIc3Region()).toBe(manager.getIc3Region());
+        });
+        const unsubscribe = manager.onIc3RegionChange(listener);
+        await manager.updateConfig({ ic3Region: 'amer' });
+        expect(listener).toHaveBeenCalledOnce();
+        await manager.updateConfig({ ic3Region: 'amer', botName: 'Fixture' });
+        expect(listener).toHaveBeenCalledOnce();
+        await manager.updateConfig({ ic3Region: null });
+        expect(listener).toHaveBeenCalledTimes(2);
+        unsubscribe();
+        await manager.updateConfig({ ic3Region: 'emea' });
+        expect(listener).toHaveBeenCalledTimes(2);
+    });
+
     it('updateConfig persists changes', async () => {
         await manager.updateConfig({ enabled: true, botName: 'TestBot' });
         const status = manager.getStatus();

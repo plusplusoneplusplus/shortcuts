@@ -15,11 +15,13 @@ fn options() -> MicrosoftOAuthRefreshOptions {
     }
 }
 
+type RecordedRequest = (String, Vec<(String, String)>);
+
 struct SyntheticHttp {
     status: u16,
     body: String,
     delay: Duration,
-    requests: Mutex<Vec<(String, Vec<(String, String)>)>>,
+    requests: Mutex<Vec<RecordedRequest>>,
     active: Arc<AtomicUsize>,
 }
 

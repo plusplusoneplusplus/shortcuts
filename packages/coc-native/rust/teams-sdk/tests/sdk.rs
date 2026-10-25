@@ -1235,6 +1235,226 @@ mod ic3_tests {
     fn chat_info(id: &str) -> Step {
         reply(json!({"id":id,"threadProperties":{"threadType":"chat","productThreadType":"Chat"}}))
     }
+    fn ic3_message(chat: &str, id: &str, sender: &str) -> Value {
+        json!({
+            "id":id, "conversationid":chat, "version":"1767225600000",
+            "originalarrivaltime":"2026-01-01T00:00:00Z", "messagetype":"Text",
+            "from":sender, "content":"synthetic message", "properties":{"mentions":"[]"}
+        })
+    }
+    fn ic3_chat(session: &Session, id: &str) -> ConversationRef {
+        session
+            .conversation(Backend::Ic3, Conversation::Chat(ChatId::new(id).unwrap()))
+            .unwrap()
+    }
+    #[tokio::test]
+    async fn ic3_history_skips_call_artifacts_without_losing_messages_or_pagination() {
+        for kind in [
+            "RichText/Media_CallRecording",
+            "RichText/Media_CallTranscript",
+        ] {
+            let artifact = json!({
+                "id":"artifact", "conversationid":"chat", "version":"1767225600000",
+                "messagetype":kind
+            });
+            let mut deleted = artifact.clone();
+            deleted["id"] = json!("deleted");
+            deleted["properties"] = json!({"isdeleted":true});
+            let (session, mock) = ic3_session(vec![
+                chat_info("chat"),
+                reply(json!({"messages":[
+                    ic3_message("chat", "before", "8:orgid:sender"),
+                    artifact,
+                    deleted,
+                    ic3_message("chat", "after", "8:orgid:sender")
+                ], "_metadata":{"backwardLink":
+                    "https://teams.cloud.microsoft/api/chatsvc/emea/v1/users/ME/conversations/chat/messages?cursor=next"}})),
+                chat_info("chat"),
+                reply(json!({"messages":[ic3_message("chat", "next", "8:orgid:sender")]})),
+            ]);
+            let reference = chat(&session, Backend::Ic3);
+            let ctx = OperationContext::default();
+            let page = session.history(&reference, None, &ctx).await.unwrap();
+            assert_eq!(page.raw_count, 4);
+            assert_eq!(
+                page.items
+                    .iter()
+                    .map(|item| item.metadata.reference.id().as_str())
+                    .collect::<Vec<_>>(),
+                ["before", "deleted", "after"]
+            );
+            assert!(page.items[1].metadata.deleted);
+            assert!(page.items[1].metadata.author.is_none());
+            assert!(page.next.is_some());
+            let next = session
+                .history(&reference, page.next.as_ref(), &ctx)
+                .await
+                .unwrap();
+            assert_eq!(next.raw_count, 1);
+            assert_eq!(next.items[0].metadata.reference.id().as_str(), "next");
+            assert!(next.next.is_none());
+            assert_eq!(mock.count(), 4);
+        }
+    }
+    #[tokio::test]
+    async fn ic3_call_artifacts_do_not_relax_envelope_or_unknown_type_validation() {
+        for patch in [
+            json!({"messagetype":"RichText/Media_Unknown"}),
+            json!({"messagetype":"RichText/Media_CallRecording","conversationid":"other"}),
+            json!({"messagetype":"RichText/Media_CallTranscript","version":"invalid"}),
+            json!({"messagetype":"RichText/Media_CallRecording","id":null}),
+        ] {
+            let mut message = ic3_message("chat", "artifact", "8:orgid:sender");
+            message
+                .as_object_mut()
+                .unwrap()
+                .extend(patch.as_object().unwrap().clone());
+            let (session, mock) = ic3_session(vec![
+                chat_info("chat"),
+                reply(json!({"messages":[message]})),
+            ]);
+            assert_eq!(
+                error(
+                    session
+                        .history(
+                            &chat(&session, Backend::Ic3),
+                            None,
+                            &OperationContext::default()
+                        )
+                        .await
+                )
+                .code,
+                ErrorCode::Protocol
+            );
+            assert_eq!(mock.count(), 2);
+        }
+    }
+    #[tokio::test]
+    async fn ic3_self_history_pages_and_detail_use_exact_account_scoped_collection() {
+        let own_sender = format!(
+            "https://teams.cloud.microsoft/api/chatsvc/emea/v1/users/ME/contacts/8%3Aorgid%3A{}",
+            account().user.as_str()
+        );
+        let mut edited = ic3_message("48:notes", "edited", &own_sender);
+        edited["version"] = json!("1767229200000");
+        let (session, mock) = ic3_session(vec![
+            reply(json!({"id":"48:notes"})),
+            reply(json!({"messages":[edited], "_metadata":{"backwardLink":
+                "https://teams.cloud.microsoft/api/chatsvc/emea/v1/users/ME/conversations/48%3Anotes/messages?pageSize=50&cursor=next"}})),
+            reply(json!({"id":"48:notes"})),
+            reply(
+                json!({"messages":[{"id":"deleted","conversationid":"48:notes",
+                "version":"1767229200000","properties":{"isdeleted":true}}]}),
+            ),
+            reply(json!({"id":"48:notes"})),
+            reply(ic3_message("48:notes", "detail", &own_sender)),
+        ]);
+        let reference = ic3_chat(&session, "48:notes");
+        let ctx = OperationContext::default();
+        let first = session.history(&reference, None, &ctx).await.unwrap();
+        assert!(first.items[0].metadata.modified_at > first.items[0].metadata.created_at);
+        assert!(
+            matches!(&first.items[0].metadata.author, Some(Author::User(user)) if user == &account().user)
+        );
+        assert!(first.next.is_some());
+        let second = session
+            .history(&reference, first.next.as_ref(), &ctx)
+            .await
+            .unwrap();
+        assert!(second.items[0].metadata.deleted);
+        assert!(second.items[0].metadata.author.is_none());
+        assert!(second.next.is_none());
+        let message = session
+            .message_ref(&reference, MessageId::new("detail").unwrap())
+            .unwrap();
+        let detail = session.detail(&message, &ctx).await.unwrap();
+        assert_eq!(detail.metadata.reference, message);
+        assert!(
+            matches!(&detail.metadata.author, Some(Author::User(user)) if user == &account().user)
+        );
+        let requests = mock.requests.lock().unwrap();
+        assert_eq!(requests.len(), 6);
+        assert!(requests.iter().all(|request| request.method == Method::GET
+            && request.url.starts_with(
+                "https://teams.cloud.microsoft/api/chatsvc/emea/v1/users/ME/conversations/48"
+            )));
+        assert!(requests[3].url.contains("cursor=next"));
+        assert!(requests[5].url.ends_with("/messages/detail"));
+    }
+    #[tokio::test]
+    async fn ic3_self_history_does_not_relax_ordinary_chat_validation_or_allow_rosters() {
+        for (target, response, expected) in [
+            ("48:notes", json!({"id":"48:other"}), ErrorCode::Protocol),
+            ("48:notes", json!({}), ErrorCode::Protocol),
+            ("48:NOTES", json!({"id":"48:NOTES"}), ErrorCode::Unsupported),
+            (
+                "48:notes-other",
+                json!({"id":"48:notes-other"}),
+                ErrorCode::Unsupported,
+            ),
+            ("ordinary", json!({"id":"ordinary"}), ErrorCode::Unsupported),
+            (
+                "group",
+                json!({"id":"group","threadProperties":{"threadType":"channel","productThreadType":"Chat"}}),
+                ErrorCode::Unsupported,
+            ),
+            (
+                "ordinary",
+                json!({"id":"ordinary","threadProperties":{"threadType":"chat","productThreadType":"Unknown"}}),
+                ErrorCode::Unsupported,
+            ),
+        ] {
+            let (session, mock) = ic3_session(vec![reply(response)]);
+            let reference = ic3_chat(&session, target);
+            assert_eq!(
+                error(
+                    session
+                        .history(&reference, None, &OperationContext::default())
+                        .await
+                )
+                .code,
+                expected
+            );
+            assert_eq!(mock.count(), 1);
+        }
+        let (session, mock) = ic3_session(vec![]);
+        let reference = ic3_chat(&session, "48:notes");
+        assert_eq!(
+            error(
+                session
+                    .participants(&reference, None, &OperationContext::default())
+                    .await
+            )
+            .code,
+            ErrorCode::Unsupported
+        );
+        assert_eq!(mock.count(), 0);
+    }
+    #[tokio::test]
+    async fn ic3_self_history_rejects_missing_untrusted_or_cross_chat_sender_evidence() {
+        for (conversation, sender) in [
+            ("48:notes", Value::Null),
+            ("48:notes", json!("")),
+            ("48:notes", json!("unknown:sender")),
+            ("48:notes", json!("https://example.invalid/contacts/8:orgid:sender")),
+            ("48:notes", json!("https://teams.cloud.microsoft/api/chatsvc/amer/v1/users/ME/contacts/8:orgid:sender")),
+            ("48:notes", json!("https://teams.cloud.microsoft/api/chatsvc/emea/v1/users/other/contacts/8:orgid:sender")),
+            ("other-chat", json!("8:orgid:sender")),
+        ] {
+            let mut message = ic3_message(conversation, "one", "8:orgid:sender");
+            message["from"] = sender;
+            let (session, mock) = ic3_session(vec![
+                reply(json!({"id":"48:notes"})),
+                reply(json!({"messages":[message]})),
+            ]);
+            let reference = ic3_chat(&session, "48:notes");
+            assert_eq!(
+                error(session.history(&reference, None, &OperationContext::default()).await).code,
+                ErrorCode::Protocol
+            );
+            assert_eq!(mock.count(), 2);
+        }
+    }
     #[tokio::test]
     async fn ic3_dispatch_rejects_unsupported_discovery_and_replies_without_requests() {
         let mock = Mock::new(vec![]);

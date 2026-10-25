@@ -91,7 +91,7 @@ export function buildNative(options = {}) {
     // so this scratch file has to live inside the package.
     const dts = `.napi-dts-${process.pid}.d.ts`;
 
-    assertTransactionReady(root);
+    assertTransactionReady(root, logger);
     const args = buildArgs({ profile, target, dts });
 
     const destination = path.join(root, nativeBinaryName());
@@ -153,8 +153,8 @@ export function buildNative(options = {}) {
     (options.buildWebView2 ?? buildWebView2)({ profile, target });
 }
 
-/** Leave recovery to napi-rs, but detect incomplete journals before compilation. */
-export function assertTransactionReady(root) {
+/** Clear empty cleanup remnants; leave transaction recovery to napi-rs. */
+export function assertTransactionReady(root, logger = console) {
     const journalName = '.napi-rs-filesystem-transaction.swp';
     const journal = path.join(root, journalName);
     let stats;
@@ -173,6 +173,26 @@ export function assertTransactionReady(root) {
         );
     };
     if (!stats.isDirectory() || stats.isSymbolicLink()) fail('');
+    // napi-rs publishes complete metadata atomically. Empty scaffolding carries
+    // no recovery data; non-recursive rmdir also refuses files added concurrently.
+    const entries = fs.readdirSync(journal);
+    if (entries.every(entry => {
+        if (entry !== 'backups' && entry !== 'inputs') return false;
+        const directory = path.join(journal, entry);
+        const metadata = fs.lstatSync(directory);
+        return metadata.isDirectory() && !metadata.isSymbolicLink()
+            && fs.readdirSync(directory).length === 0;
+    })) {
+        for (const directory of [...entries.map(entry => path.join(journal, entry)), journal]) {
+            try {
+                fs.rmdirSync(directory);
+            } catch (error) {
+                if (error.code !== 'ENOENT') throw error;
+            }
+        }
+        logger.log('native addon: removed empty napi-rs transaction journal; continuing build');
+        return;
+    }
     for (const entry of ['owner.json', 'state.json']) {
         let metadata;
         try {

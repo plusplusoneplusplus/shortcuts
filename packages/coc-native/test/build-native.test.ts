@@ -313,6 +313,80 @@ describe('native build execution', () => {
         expect(fs.readFileSync(retained, 'utf-8')).toBe('keep this');
     });
 
+    it.each([
+        { directories: [] },
+        { directories: ['backups'] },
+        { directories: ['inputs'] },
+        { directories: ['backups', 'inputs'] },
+    ])(
+        'clears empty transaction scaffolding $directories and builds repeatedly',
+        ({ directories }) => {
+            const { options } = fixture();
+            const journal = path.join(root, '.napi-rs-filesystem-transaction.swp');
+            fs.mkdirSync(journal);
+            for (const directory of directories) fs.mkdirSync(path.join(journal, directory));
+            buildNative(options);
+            buildNative(options);
+            expect(fs.existsSync(journal)).toBe(false);
+            expect(options.run).toHaveBeenCalledTimes(2);
+            expect(options.logger.log).toHaveBeenCalledWith(
+                'native addon: removed empty napi-rs transaction journal; continuing build',
+            );
+        },
+    );
+
+    it.each([
+        [['backups', 'artifact'], false], [['inputs', 'artifact'], false], [['unexpected', 'artifact'], false],
+        [['unexpected'], true], [['backups'], false], [['backups'], 'link'],
+    ] as const)('preserves unsafe transaction entry %s (%s)', (entry, kind) => {
+        const { options } = fixture();
+        const journal = path.join(root, '.napi-rs-filesystem-transaction.swp');
+        const retained = path.join(journal, ...entry);
+        fs.mkdirSync(path.dirname(retained), { recursive: true });
+        if (kind === 'link') fs.symlinkSync(path.join(root, 'src'), retained, 'junction');
+        else if (kind) fs.mkdirSync(retained);
+        else fs.writeFileSync(retained, 'keep this');
+        expect(() => buildNative(options)).toThrow('Incomplete napi-rs filesystem transaction');
+        expect(options.run).not.toHaveBeenCalled();
+        if (kind === 'link') {
+            expect(fs.lstatSync(retained).isSymbolicLink()).toBe(true);
+            expect(fs.existsSync(path.join(root, 'src'))).toBe(true);
+        } else if (kind) expect(fs.lstatSync(retained).isDirectory()).toBe(true);
+        else expect(fs.readFileSync(retained, 'utf-8')).toBe('keep this');
+    });
+
+    it('refuses cleanup when a concurrent writer adds recovery data', () => {
+        const { options } = fixture();
+        const journal = path.join(root, '.napi-rs-filesystem-transaction.swp');
+        fs.mkdirSync(path.join(journal, 'backups'), { recursive: true });
+        const remove = fs.rmdirSync;
+        vi.spyOn(fs, 'rmdirSync').mockImplementation(directory => {
+            fs.writeFileSync(path.join(journal, 'backups', 'artifact'), 'keep this');
+            return remove(directory);
+        });
+        expect(() => buildNative(options)).toThrow();
+        expect(options.run).not.toHaveBeenCalled();
+        expect(fs.readFileSync(path.join(journal, 'backups', 'artifact'), 'utf-8')).toBe('keep this');
+    });
+
+    it.each(['ENOENT', 'EACCES'])('handles journal cleanup %s before compilation', code => {
+        const { options } = fixture();
+        const journal = path.join(root, '.napi-rs-filesystem-transaction.swp');
+        fs.mkdirSync(journal);
+        const remove = fs.rmdirSync;
+        vi.spyOn(fs, 'rmdirSync').mockImplementation(directory => {
+            if (code === 'ENOENT') remove(directory);
+            throw Object.assign(new Error('synthetic cleanup error'), { code });
+        });
+        if (code === 'ENOENT') {
+            buildNative(options);
+            expect(options.run).toHaveBeenCalledOnce();
+        } else {
+            expect(() => buildNative(options)).toThrow('synthetic cleanup error');
+            expect(options.run).not.toHaveBeenCalled();
+        }
+    });
+
     it('leaves a complete journal for napi-rs to validate and recover', () => {
         const { options } = fixture();
         const journal = path.join(root, '.napi-rs-filesystem-transaction.swp');

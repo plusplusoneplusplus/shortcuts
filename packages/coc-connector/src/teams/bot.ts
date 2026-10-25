@@ -201,7 +201,10 @@ export class TeamsBot implements MessagingConnector {
             if (account && this.notificationScheduler) {
                 this.trouter = new TrouterClient({
                     ...this.opts.trouterOptions, expectedAccount: account,
-                    target: () => this._channelId,
+                    target: () => {
+                        const channelId = this._channelId;
+                        return channelId ? id => id === channelId : null;
+                    },
                     onWake: wake => this.notificationScheduler?.wake(wake),
                 });
                 this.trouter.start();

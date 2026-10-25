@@ -611,6 +611,7 @@ Server-global connection settings. IC3 direct operations require an explicit reg
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/messaging/teams/status` | Server-global bridge/MCP/OAuth status, fixed `channelReadBackend: graph`, `outboundBackend` (`graph` default / `mcp`), current `connectionId` (null while disconnected), and observability flag; `ic3Region: null` means unconfigured. Live answer-relay opt-out is `features.teamsAiAnswerRelay` in admin config (default on, runtime flag `teamsAiAnswerRelayEnabled`); it does not enable/connect the bridge |
+| GET | `/api/messaging/teams/ic3-own-commands/status` | Read-only, no-store native IC3 own-command connectivity snapshot: state, last-check/last-connected timestamps, safe error code and independent `trouter` health. Reflects background reads; never authenticates, probes or sends. Independent of channel-bridge status; read success does not prove write access |
 | GET | `/api/messaging/teams/attempts` | Flag-gated (`features.teamsBridgeObservability`) newest-first safe connection summaries; `?offset=0&limit=20` (limit 1–100) returns `{attempts,total,nextOffset}`. Disabled → 404; invalid pagination → 400 |
 | GET | `/api/messaging/teams/attempts/:id` | Flag-gated safe attempt detail: phases, bounded non-routine events, aggregate totals and poll/send health. Unknown UUID → 404; invalid ID → 400 |
 | POST | `/api/messaging/teams/server` | Register or update the global `Microsoft Teams` HTTP MCP endpoint; body `{url}` (HTTPS) |

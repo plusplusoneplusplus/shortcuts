@@ -313,20 +313,14 @@ describe('against a real repository', () => {
     });
 
     it('legacyBranchPage pages the same way with and without the shell pipeline', () => {
-        // The cmd.exe branch never runs on this box, and it is where the paging
-        // moves from `head` into JavaScript.
-        const posix = legacyBranchPage(repo, 5, false);
+        // Windows lacks `head`; POSIX hosts exercise both paging paths.
+        const posix = legacyBranchPage(repo, 5, process.platform === 'win32');
         const windows = legacyBranchPage(repo, 5, true);
         expect(posix.branches).toHaveLength(5);
-        // `lastCommitDate` is git's `%(committerdate:relative)`, re-evaluated on
-        // each shell-out, so the two calls straddling a second boundary read
-        // "0 seconds ago" and "1 second ago" off the same commit. Compare the
-        // stable fields and assert the date is populated separately.
-        type Branch = { name: string; isCurrent: boolean; isRemote: boolean; lastCommitSubject: string; lastCommitDate: string };
-        const stable = ({ name, isCurrent, isRemote, lastCommitSubject }: Branch) =>
-            ({ name, isCurrent, isRemote, lastCommitSubject });
+        // Relative dates can change between calls; compare stable fields.
+        const stable = ({ lastCommitDate, ...branch }: typeof posix.branches[number]) => branch;
         expect(windows.branches.map(stable)).toEqual(posix.branches.map(stable));
-        for (const branch of [...posix.branches, ...windows.branches] as Branch[]) {
+        for (const branch of [...posix.branches, ...windows.branches]) {
             expect(branch.lastCommitDate).not.toBe('');
         }
         expect(windows.totalCount).toBe(posix.totalCount);

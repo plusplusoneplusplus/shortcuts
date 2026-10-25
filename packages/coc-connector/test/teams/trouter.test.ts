@@ -4,7 +4,8 @@ import { IC3_RESOURCE } from '../../src/teams/ic3/ic3-direct-message-config';
 
 const account = { tenantId: '11111111-1111-4111-8111-111111111111', objectId: '22222222-2222-4222-8222-222222222222' };
 const target = '19:channel@thread.tacv2';
-const path = 'https://go-msit.trouter.teams.microsoft.com/v4/a/endpoint';
+const acceptTarget = (id: string) => id === target;
+const path = 'https://go.trouter.teams.microsoft.com/v4/a/endpoint';
 const event = (name: string, args: unknown[] = [], ack = '') => `5:${ack}::${JSON.stringify({ name, args })}`;
 const connected = () => event('trouter.connected', [{ surl: path }], '7+');
 const jwt = (claims: object = {}, expiresIn = 3600) => `header.${Buffer.from(JSON.stringify({
@@ -31,11 +32,11 @@ class Socket implements TrouterSocket {
 
 describe('Trouter protocol', () => {
     it('responds to heartbeat and event ACKs', () => {
-        expect(parseTrouterFrame('2::', target).send).toEqual(['2::']);
-        expect(parseTrouterFrame(connected(), target)).toEqual({ send: ['6:::7+[]'], registrationPath: path });
+        expect(parseTrouterFrame('2::', acceptTarget).send).toEqual(['2::']);
+        expect(parseTrouterFrame(connected(), acceptTarget)).toEqual({ send: ['6:::7+[]'], registrationPath: path });
     });
     it('ACKs HTTP before ignoring unrelated notifications', () => {
-        const result = parseTrouterFrame(notification({ to: '19:unrelated@thread.tacv2' }), target);
+        const result = parseTrouterFrame(notification({ to: '19:unrelated@thread.tacv2' }), acceptTarget);
         expect(result.send).toEqual(['3:::{"id":"request","status":200,"headers":{}}']);
         expect(result.wake).toBeUndefined();
     });
@@ -44,38 +45,57 @@ describe('Trouter protocol', () => {
             to: '48:notifications', properties: { activity: {
                 sourceThreadId: encodeURIComponent(target), sourceReplyChainId: 'root',
             } },
-        }), target);
+        }), acceptTarget);
         expect(result.wake).toEqual({ cause: 'message', conversationId: target, rootMessageId: 'root' });
     });
     it('never lets synthetic or missing source activate the configured channel', () => {
-        expect(parseTrouterFrame(notification({ to: '48:notifications' }), target).wake).toBeUndefined();
-        expect(parseTrouterFrame(notification({}), target).wake).toBeUndefined();
+        expect(parseTrouterFrame(notification({ to: '48:notifications' }), acceptTarget).wake).toBeUndefined();
+        expect(parseTrouterFrame(notification({}), acceptTarget).wake).toBeUndefined();
         expect(parseTrouterFrame(notification({ to: target, properties: {
             activity: { sourceThreadId: '19:unrelated@thread.tacv2' },
-        } }), target).wake).toBeUndefined();
+        } }), acceptTarget).wake).toBeUndefined();
     });
     it('normalizes conversation URLs and JSON string envelopes', () => {
         const body = JSON.stringify({ type: 'EventMessage', resourceType: 'NewMessage',
             resource: JSON.stringify({ conversationLink: `https://example.test/conversations/${encodeURIComponent(target)}/messages/message`,
                 parentMessageId: 'root' }) });
-        expect(parseTrouterFrame(`3:::${JSON.stringify({ id: 42, body })}`, target).wake)
+        expect(parseTrouterFrame(`3:::${JSON.stringify({ id: 42, body })}`, acceptTarget).wake)
             .toMatchObject({ conversationId: target, rootMessageId: 'root' });
     });
     it('message loss forces reconciliation', () => {
-        expect(parseTrouterFrame(event('trouter.message_loss'), target).wake).toEqual({ cause: 'message-loss' });
+        expect(parseTrouterFrame(event('trouter.message_loss'), acceptTarget).wake).toEqual({ cause: 'message-loss' });
+    });
+    it('supports an explicit multi-chat policy without accepting channels or synthetic notification streams', () => {
+        const accept = (id: string) => id === '48:notes' || /^19:[\w-]+@thread\.v2$/.test(id);
+        for (const id of ['48:notes', '19:direct@thread.v2', '19:group@thread.v2']) {
+            expect(parseTrouterFrame(notification({ to: id }), accept).wake)
+                .toMatchObject({ cause: 'message', conversationId: id });
+        }
+        for (const id of ['48:notifications', '48:unknown', target]) {
+            expect(parseTrouterFrame(notification({ to: id }), accept).wake).toBeUndefined();
+        }
+        expect(parseTrouterFrame(notification({ to: '48:notes' }), acceptTarget).wake).toBeUndefined();
+    });
+    it.each(['48:notes', target])('ACKs %s without waking when the target is inactive', id => {
+        const result = parseTrouterFrame(notification({ to: id }), null);
+        expect(result.send).toEqual(['3:::{"id":"request","status":200,"headers":{}}']);
+        expect(result.wake).toBeUndefined();
+    });
+    it.each(['48:notifications', '48:unknown'])('excludes synthetic %s even with a permissive predicate', id => {
+        expect(parseTrouterFrame(notification({ to: id }), () => true).wake).toBeUndefined();
     });
     it.each(['garbage', '3:::{}', '3:::not-json', '5:::{}broken', '0::', '7:::error',
         notification({ to: '%ZZ' }), '3:::' + 'x'.repeat(256 * 1024)])('rejects malformed/oversized frames', raw => {
-        expect(() => parseTrouterFrame(raw, target)).toThrow();
+        expect(() => parseTrouterFrame(raw, acceptTarget)).toThrow();
     });
-    it.each(['http://go-msit.trouter.teams.microsoft.com/path', 'ftp://example.test/path',
+    it.each(['http://go.trouter.teams.microsoft.com/path', 'ftp://example.test/path',
         'https://example.test/\u0000path',
-        'https://user:pass@go-msit.trouter.teams.microsoft.com/path'])('rejects unsafe registrar forwarding paths', surl => {
-        expect(() => parseTrouterFrame(event('trouter.connected', [{ surl }]), target)).toThrow();
+        'https://user:pass@go.trouter.teams.microsoft.com/path'])('rejects unsafe registrar forwarding paths', surl => {
+        expect(() => parseTrouterFrame(event('trouter.connected', [{ surl }]), acceptTarget)).toThrow();
     });
     it('accepts opaque HTTPS forwarding paths without using them as fetch targets', () => {
         const forwardingPath = 'https://example.test/opaque';
-        expect(parseTrouterFrame(event('trouter.connected', [{ surl: forwardingPath }]), target).registrationPath)
+        expect(parseTrouterFrame(event('trouter.connected', [{ surl: forwardingPath }]), acceptTarget).registrationPath)
             .toBe(forwardingPath);
     });
     it('reader identity must be present and valid independently of audience', () => {
@@ -91,13 +111,13 @@ describe('Trouter lifecycle', () => {
     afterEach(async () => { await Promise.all(clients.splice(0).map(client => client.stop())); vi.restoreAllMocks(); vi.useRealTimers(); });
 
     function setup(options: { acquireToken?: () => Promise<string>; fetch?: any; onState?: any; onError?: any;
-        target?: () => string | null } = {}) {
+        target?: () => ((id: string) => boolean) | null } = {}) {
         const sockets: Socket[] = [];
         const wake = vi.fn();
         const acquireToken = options.acquireToken ?? vi.fn(async () => jwt());
         const fetch = options.fetch ?? vi.fn(async () => new Response(null, { status: 201 }));
         const client = new TrouterClient({
-            target: options.target ?? (() => target), expectedAccount: account, onWake: wake,
+            target: options.target ?? (() => acceptTarget), expectedAccount: account, onWake: wake,
             acquireToken, fetch, onState: options.onState, onError: options.onError,
             socketFactory: () => { const socket = new Socket(); sockets.push(socket); return socket; },
         });
@@ -113,6 +133,38 @@ describe('Trouter lifecycle', () => {
         await flush();
     }
 
+    it('uses one account registration for multiple explicitly accepted chat sources', async () => {
+        const first = '19:first@thread.v2';
+        const second = '19:second@thread.v2';
+        const s = setup({ target: () => id => [first, second, '48:notes'].includes(id) });
+        await register(s.sockets);
+        s.wake.mockClear();
+        for (const to of [first, second, '48:notes', target, '48:notifications']) {
+            s.sockets[0].emit('message', notification({ to }));
+        }
+        expect(s.wake.mock.calls.map(([wake]) => wake.conversationId)).toEqual([first, second, '48:notes']);
+        expect(s.fetch).toHaveBeenCalledOnce();
+        expect(s.sockets).toHaveLength(1);
+    });
+    it('applies live target changes without reconnecting or waking while inactive', async () => {
+        let selected: string | null = target;
+        const s = setup({ target: () => {
+            const id = selected;
+            return id ? candidate => candidate === id : null;
+        } });
+        await register(s.sockets);
+        s.wake.mockClear();
+        s.sockets[0].emit('message', notification({ to: target }));
+        selected = '19:another@thread.tacv2';
+        s.sockets[0].emit('message', notification({ to: target }));
+        s.sockets[0].emit('message', notification({ to: selected }));
+        selected = null;
+        s.sockets[0].emit('message', event('trouter.message_loss'));
+        s.sockets[0].emit('message', notification({ to: target }));
+        expect(s.wake.mock.calls.map(([wake]) => wake.conversationId)).toEqual([target, '19:another@thread.tacv2']);
+        expect(s.fetch).toHaveBeenCalledOnce();
+        expect(s.sockets).toHaveLength(1);
+    });
     it('authenticates with separate IC3 credentials and registers TTL without any message write', async () => {
         const s = setup();
         await register(s.sockets);

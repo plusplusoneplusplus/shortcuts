@@ -81,6 +81,17 @@ export interface TeamsMessagingStatus {
 }
 
 export class TeamsMessagingManager {
+    private readonly ic3RegionListeners = new Set<() => void>();
+
+    getIc3Region(): Ic3DirectMessageRegion | null {
+        return this.config.ic3Region ?? null;
+    }
+
+    onIc3RegionChange(listener: () => void): () => void {
+        this.ic3RegionListeners.add(listener);
+        return () => { this.ic3RegionListeners.delete(listener); };
+    }
+
     private config: TeamsMessagingConfig;
     private bot: TeamsBot | null = null;
     private _status: BotStatus = 'disconnected';
@@ -203,7 +214,7 @@ export class TeamsMessagingManager {
             notificationStatus: this.bot?.getNotificationStatus?.() ?? {
                 state: this.config.enableTrouter === true ? 'stopped' : 'disabled', error: null,
             },
-            ic3Region: this.config.ic3Region ?? null,
+            ic3Region: this.getIc3Region(),
             enabled: this.config.enabled,
             status: this._status,
             error: this._lastError,
@@ -221,6 +232,7 @@ export class TeamsMessagingManager {
 
     /** Connection-scoped target, backend and notification changes require reconnect. */
     async updateConfig(patch: Partial<TeamsMessagingConfig>): Promise<void> {
+        const previousRegion = this.config.ic3Region ?? null;
         if (this.invalidOutboundBackend && patch.outboundBackend === undefined) {
             throw new RangeError('Configure a valid outboundBackend before updating Teams settings');
         }
@@ -248,6 +260,9 @@ export class TeamsMessagingManager {
         Object.assign(this.config, patch);
         if (patch.outboundBackend !== undefined) this.invalidOutboundBackend = false;
         this.saveConfig();
+        if ((this.config.ic3Region ?? null) !== previousRegion) {
+            for (const listener of this.ic3RegionListeners) listener();
+        }
     }
 
     /** Register the global MCP endpoint used by OAuth and discovery. */

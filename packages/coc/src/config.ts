@@ -250,6 +250,10 @@ export interface CLIConfig {
     };
     /** Desktop browser control. Disabled by default. */
     browserControl?: { enabled?: boolean; framesEnabled?: boolean; richPasteEnabled?: boolean; backgroundEnabled?: boolean; navigationApprovalEnabled?: boolean };
+    /** Target for native Azure CLI IC3 own-user Ask commands. */
+    teamsIc3OwnCommands?: {
+        workspaceId?: string;
+    };
     /** Kusto query canvas (interactive KQL query + charts). Disabled by default. */
     kusto?: {
         enabled?: boolean;
@@ -313,6 +317,8 @@ export interface CLIConfig {
         teamsBridgeObservability?: boolean;
         teamsAiAnswerRelay?: boolean;
         teamsMessageReaction?: boolean;
+        /** Own-user @coc prompts start Ask chats. Disabled by default. */
+        teamsIc3OwnCommands?: boolean;
         /** Optional Sentinel next actions and click-to-send. Disabled by default. */
         sentinelNextSteps?: boolean;
         /** Inline Sentinel target context discovery. Disabled by default. */
@@ -670,6 +676,9 @@ export interface ResolvedCLIConfig {
     };
     /** Desktop browser control. */
     browserControl: { enabled: boolean; framesEnabled: boolean; richPasteEnabled: boolean; backgroundEnabled: boolean; navigationApprovalEnabled: boolean };
+    teamsIc3OwnCommands: {
+        workspaceId: string;
+    };
     /** Kusto query canvas (interactive KQL query + charts). */
     kusto: {
         enabled: boolean;
@@ -745,6 +754,7 @@ export interface ResolvedCLIConfig {
         teamsBridgeObservability: boolean;
         teamsAiAnswerRelay: boolean;
         teamsMessageReaction: boolean;
+        teamsIc3OwnCommands: boolean;
         sentinelNextSteps: boolean;
         sentinelTargetAutocomplete: boolean;
         sentinelTodoDependencies: boolean;
@@ -1026,6 +1036,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         azureCli: { account: '', tenant: '', subscription: '' },
     },
     browserControl: { enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false, navigationApprovalEnabled: true },
+    teamsIc3OwnCommands: { workspaceId: '' },
     LLMToolSystemOne: {
         enabled: true,
     },
@@ -1092,6 +1103,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         teamsBridgeObservability: false,
         teamsAiAnswerRelay: true,
         teamsMessageReaction: false,
+        teamsIc3OwnCommands: false,
         sentinelNextSteps: true,
         sentinelTargetAutocomplete: false,
         sentinelTodoDependencies: false,

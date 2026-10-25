@@ -44,6 +44,143 @@ beforeEach(() => {
 afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
+});
+
+describe('IC3 replies to verified inbound source chats', () => {
+    const sourceChat = '19:source@unq.gbl.spaces';
+    const clients: Ic3DirectMessageClient[] = [];
+    function create(options: Ic3DirectMessageOptions = {}) {
+        const client = new Ic3DirectMessageClient({
+            region: 'amer', expectedAccount: { tenantId, objectId: senderId }, ...options,
+        });
+        clients.push(client);
+        return client;
+    }
+    afterEach(() => { clients.splice(0).forEach(client => client.dispose()); });
+
+    it.each(['48:notes', sourceChat, '19:source@thread.v2', '19:source-group@thread.v2'])('checks live source access and sends only through IC3: %s', async chatId => {
+        fetchMock.mockResolvedValue(success());
+        const verify = vi.fn(async () => { expect(fetchMock).not.toHaveBeenCalled(); });
+        expect(await create().sendToSourceChat(chatId, '<p>CoC answer</p>', verify)).toBe('1790000000123');
+        expect(verify).toHaveBeenCalledWith(expect.any(AbortSignal));
+        expect(fetchMock).toHaveBeenCalledOnce();
+        expect(fetchMock.mock.calls[0][0]).toBe(
+            `https://teams.cloud.microsoft/api/chatsvc/amer/v1/users/ME/conversations/${encodeURIComponent(chatId)}/messages`);
+        expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
+            conversationid: chatId, content: '<p>CoC answer</p>', from: `8:orgid:${senderId}`,
+        });
+        expect(acquireAzureCliToken).toHaveBeenCalledWith(resource, expect.any(AbortSignal));
+    });
+
+    it.each([false, true])('reserves preparation time and bounds the write (hanging: %s)', async hanging => {
+        vi.useFakeTimers();
+        acquireAzureCliToken.mockImplementation(async () => {
+            await new Promise(resolve => setTimeout(resolve, 9000));
+            return token();
+        });
+        const verify = vi.fn(async () => { await new Promise(resolve => setTimeout(resolve, 10_000)); });
+        fetchMock.mockImplementation(() => hanging ? new Promise(() => {}) : Promise.resolve(success()));
+        const pending = create().sendToSourceChat('48:notes', 'answer', verify);
+        const settled = hanging
+            ? expect(pending).rejects.toMatchObject({ code: 'timeout', outcome: 'unknown', retryable: false })
+            : expect(pending).resolves.toBe('1790000000123');
+        await vi.advanceTimersByTimeAsync(19_000);
+        expect(verify).toHaveBeenCalledOnce();
+        expect(fetchMock).toHaveBeenCalledOnce();
+        const signal = fetchMock.mock.calls[0][1]!.signal!;
+        if (hanging) {
+            await vi.advanceTimersByTimeAsync(9999);
+            expect(signal.aborted).toBe(false);
+            await vi.advanceTimersByTimeAsync(1);
+            expect(signal.aborted).toBe(true);
+        }
+        await settled;
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it.each([
+        '19:channel@thread.tacv2', '48:other', '../chat', '19:wrong/path@thread.v2',
+        '19:wrong/path@unq.gbl.spaces', '19:wrong\\path@unq.gbl.spaces',
+        '19:wrong?query@unq.gbl.spaces', '19:wrong#fragment@unq.gbl.spaces',
+        '19:wrong space@unq.gbl.spaces', '19:@unq.gbl.spaces', '19:source@unq.gbl.spaces.evil', '',
+    ])('rejects unsupported source %s before credentials or verification', async chatId => {
+        const verify = vi.fn(async () => {});
+        await expect(create().sendToSourceChat(chatId, 'answer', verify))
+            .rejects.toMatchObject({ code: 'invalid-target', outcome: 'not-attempted' });
+        expect(verify).not.toHaveBeenCalled();
+        expect(acquireAzureCliToken).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it.each(['credential', 'source'] as const)('bounds hanging %s preparation and suppresses late source dispatch', async stage => {
+        vi.useFakeTimers();
+        let finish!: () => void;
+        if (stage === 'credential') acquireAzureCliToken.mockImplementation(() => new Promise(() => {}));
+        const verify = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+        const rejected = expect(create().sendToSourceChat('48:notes', 'answer', verify))
+            .rejects.toMatchObject({ code: 'timeout', outcome: 'not-attempted', retryable: true });
+        await vi.advanceTimersByTimeAsync(70_000);
+        await rejected;
+        finish?.();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('rejects missing account pins before reading credentials', async () => {
+        await expect(create({ expectedAccount: undefined }).sendToSourceChat(sourceChat, 'answer', async () => {}))
+            .rejects.toMatchObject({ code: 'authentication', outcome: 'not-attempted', retryable: false });
+        expect(acquireAzureCliToken).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('checks the exact credential account before verifying or sending', async () => {
+        acquireAzureCliToken.mockResolvedValue(token({ oid: tenantId }));
+        const verify = vi.fn(async () => {});
+        await expect(create().sendToSourceChat(sourceChat, 'answer', verify))
+            .rejects.toMatchObject({ code: 'authentication', outcome: 'not-attempted', retryable: false });
+        expect(verify).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it.each([0, 1])('rechecks access and retains %s confirmed chunks when access is revoked', async confirmed => {
+        const client = create();
+        const verify = vi.fn(async () => {});
+        fetchMock.mockResolvedValue(success());
+        for (let i = 0; i < confirmed; i++) await client.sendToSourceChat(sourceChat, 'first', verify);
+        verify.mockRejectedValueOnce(new Error('Private denial'));
+        await expect(client.sendToSourceChat(sourceChat, 'answer', verify))
+            .rejects.toMatchObject({ code: 'unavailable', outcome: 'not-attempted', retryable: false });
+        expect(verify).toHaveBeenCalledTimes(confirmed + 1);
+        expect(fetchMock).toHaveBeenCalledTimes(confirmed);
+    });
+
+    it.each(['cancel', 'dispose'])('suppresses late access results after %s', async event => {
+        let finish!: () => void;
+        const verify = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+        const controller = new AbortController();
+        const client = create();
+        const sending = client.sendToSourceChat(sourceChat, 'answer', verify, controller.signal);
+        const rejected = expect(sending).rejects.toMatchObject({ outcome: 'not-attempted', retryable: false });
+        await vi.waitFor(() => expect(verify).toHaveBeenCalledOnce());
+        if (event === 'cancel') controller.abort();
+        else client.dispose();
+        await rejected;
+        finish();
+        await Promise.resolve();
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it.each([401, 403, 429, 500])('never replays or changes protocol after HTTP %s', async status => {
+        fetchMock.mockResolvedValue(new Response(null, { status }));
+        await expect(create().sendToSourceChat(sourceChat, 'answer', async () => {}))
+            .rejects.toMatchObject({
+                backend: 'ic3', outcome: status === 500 ? 'unknown' : 'rejected',
+                retryable: status === 401 || status === 429,
+            });
+        expect(fetchMock).toHaveBeenCalledOnce();
+    });
 });
 
 describe('IC3 verified self-DM send', () => {
@@ -265,8 +402,7 @@ describe('IC3 verified self-DM send', () => {
     });
 
     it.each(['credential', 'request', 'response'])('bounds a hanging %s even if it ignores abort', async stage => {
-        const controller = new AbortController();
-        vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+        vi.useFakeTimers();
         const acquire = vi.fn(() => stage === 'credential' ? new Promise<string>(() => {}) : Promise.resolve(token()));
         const client = new Ic3DirectMessageClient({ region: 'amer', acquireToken: acquire });
         if (stage === 'request') fetchMock.mockImplementation(() => new Promise(() => {}));
@@ -274,23 +410,23 @@ describe('IC3 verified self-DM send', () => {
             ok: true, json: () => new Promise(() => {}),
         } as unknown as Response);
         const pending = client.send('48:notes', 'test');
-        if (stage !== 'credential') await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-        controller.abort();
-        await expect(pending).rejects.toThrow('timed out');
+        const rejected = expect(pending).rejects.toThrow('timed out');
+        await vi.advanceTimersByTimeAsync(10_000);
+        await rejected;
         expect(fetchMock).toHaveBeenCalledTimes(stage === 'credential' ? 0 : 1);
     });
 
     it('does not write if a credential resolves after the deadline', async () => {
-        const controller = new AbortController();
-        vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+        vi.useFakeTimers();
         let resolve!: (value: string) => void;
         const client = new Ic3DirectMessageClient({
             region: 'amer',
             acquireToken: () => new Promise(done => { resolve = done; }),
         });
         const pending = client.send('48:notes', 'test');
-        controller.abort();
-        await expect(pending).rejects.toThrow('timed out');
+        const rejected = expect(pending).rejects.toThrow('timed out');
+        await vi.advanceTimersByTimeAsync(10_000);
+        await rejected;
         resolve(token());
         await Promise.resolve();
         expect(fetchMock).not.toHaveBeenCalled();

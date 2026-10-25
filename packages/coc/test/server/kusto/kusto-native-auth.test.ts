@@ -20,6 +20,7 @@ const owners: Array<{ dispose(): void }> = [];
 const originalPath = process.env.PATH;
 afterEach(() => {
     owners.splice(0).forEach(owner => owner.dispose());
+    vi.unstubAllEnvs();
     if (originalPath === undefined) delete process.env.PATH;
     else process.env.PATH = originalPath;
     roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true }));
@@ -74,6 +75,11 @@ describe('Kusto production adapter with the actual Rust addon and synthetic CLI'
         const root = mkdtempSync(path.join(tmpdir(), 'kusto-missing-cli-fixture-'));
         roots.push(root);
         process.env.PATH = root;
+        if (process.platform === 'win32') {
+            for (const variable of ['ProgramW6432', 'ProgramFiles', 'ProgramFiles(x86)']) {
+                vi.stubEnv(variable, root);
+            }
+        }
         const missing = new RustKustoCredential(config, `fixture-${randomUUID()}`);
         owners.push(missing);
         await expect(missing.getToken(`${resource}/.default`)).rejects.toThrow('CliUnavailable');

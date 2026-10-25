@@ -571,7 +571,7 @@ describe('Features card UI metadata', () => {
         for (const def of uiDefs) {
             expect(def.ui!.label.length, def.key).toBeGreaterThan(0);
             expect(def.ui!.hint.length, def.key).toBeGreaterThan(0);
-            const prefix = def.ui!.control?.type === 'select' ? 'select-' : 'toggle-';
+            const prefix = def.ui!.control ? 'select-' : 'toggle-';
             expect(def.ui!.testId.startsWith(prefix), `${def.key} testId should start with '${prefix}'`).toBe(true);
         }
     });
@@ -593,6 +593,7 @@ describe('Features card UI metadata', () => {
             expect(def.value.kind).toBe('enum');
             const values = def.value.kind === 'enum' ? def.value.values : [];
             for (const option of def.ui!.control.options) {
+                if (option.value === '' && def.value.kind === 'enum' && def.value.nullable) continue;
                 expect(values, `${def.key} select option ${option.value}`).toContain(option.value);
             }
         }
@@ -951,6 +952,8 @@ describe('feature toggle settings-tab placement', () => {
         'features.teamsBridgeObservability': 'teams',
         'features.teamsAiAnswerRelay': 'teams',
         'features.teamsMessageReaction': 'teams',
+        'features.teamsIc3OwnCommands': 'teams',
+        'teamsIc3OwnCommands.workspaceId': 'teams',
         // Integrations (bot-managed conversations also covers WhatsApp)
         'features.botManagedConversations': 'integrations',
         'mcpOauth.enabled': 'integrations',
@@ -1063,9 +1066,11 @@ describe('feature toggle settings-tab placement', () => {
             ['features.teamsBridgeObservability', false, 'live', 'teamsBridgeObservabilityEnabled', 'experimental'],
             ['features.teamsAiAnswerRelay', true, 'live', 'teamsAiAnswerRelayEnabled', 'experimental'],
             ['features.teamsMessageReaction', false, 'live', 'teamsMessageReactionEnabled', 'experimental'],
+            ['features.teamsIc3OwnCommands', false, 'live', undefined, 'experimental'],
+            ['teamsIc3OwnCommands.workspaceId', '', 'live', undefined, undefined],
         ]);
         expect(uiDefs.filter(d => /^features\.teams/.test(d.key)).map(d => d.key).sort())
-            .toEqual(teamsDefs.map(d => d.key).sort());
+            .toEqual(teamsDefs.filter(d => d.key.startsWith('features.')).map(d => d.key).sort());
         expect(uiDefs.filter(d => getFeatureSettingTab(d) === 'integrations').some(d => /teams/i.test(d.key))).toBe(false);
     });
 

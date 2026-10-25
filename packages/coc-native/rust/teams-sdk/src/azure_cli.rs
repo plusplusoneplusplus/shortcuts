@@ -1,23 +1,25 @@
+//! Optional Azure CLI credentials shared by native hosts and the standalone CLI.
+use crate::{
+    auth::{AccessToken, Audience, TokenProvider},
+    Account, CancellationToken, Error, ErrorCode, OperationContext, Result, TenantId, UserId,
+};
 use async_trait::async_trait;
 use auth_sdk::microsoft::{
     AzureCliOptions, AzureCliSelection, CliRunner, Dependencies, MicrosoftTokenProvider,
     MicrosoftTokenSource, ProviderOptions,
 };
 use std::{
+    future::Future,
     sync::Arc,
     time::{Duration, UNIX_EPOCH},
-};
-use teams_sdk::{
-    auth::{AccessToken, Audience, TokenProvider},
-    Account, CancellationToken, Error, ErrorCode, Result, TenantId, UserId,
 };
 
 /// The CLI username and Teams object ID are separate identities. Only trusted CLI
 /// signed-in-user evidence binds them, bracketed by SDK active-account checks.
-pub(crate) struct AzureCredentials {
+pub struct AzureCliCredentials {
     provider: MicrosoftTokenProvider,
     runner: Arc<dyn CliRunner>,
-    pub(crate) account: Account,
+    account: Account,
     audience: Audience,
     resource: String,
 }
@@ -26,12 +28,50 @@ fn authentication(_: impl std::fmt::Display) -> Error {
     Error::new(ErrorCode::Authentication)
 }
 
-impl AzureCredentials {
-    pub(crate) async fn new(
+impl AzureCliCredentials {
+    /// Bind the active Azure CLI user to a verified Teams object identity.
+    pub async fn new(
+        tenant: Option<TenantId>,
+        user: Option<UserId>,
+        audience: Audience,
+        ctx: &OperationContext,
+    ) -> Result<Self> {
+        Self::with_dependencies(
+            tenant,
+            user,
+            audience,
+            Arc::new(Dependencies::default()),
+            ctx,
+        )
+        .await
+    }
+
+    /// Trusted native dependency injection; never an untrusted transport override.
+    pub async fn with_dependencies(
         tenant: Option<TenantId>,
         user: Option<UserId>,
         audience: Audience,
         dependencies: Arc<Dependencies>,
+        ctx: &OperationContext,
+    ) -> Result<Self> {
+        let ctx = ctx.bounded(Duration::from_secs(30));
+        wait(
+            &ctx,
+            Self::connect(tenant, user, audience, dependencies, &ctx.cancellation),
+        )
+        .await
+    }
+
+    pub fn account(&self) -> &Account {
+        &self.account
+    }
+
+    async fn connect(
+        tenant: Option<TenantId>,
+        user: Option<UserId>,
+        audience: Audience,
+        dependencies: Arc<Dependencies>,
+        cancel: &CancellationToken,
     ) -> Result<Self> {
         if !matches!(audience, Audience::Graph | Audience::Ic3) {
             return Err(Error::new(ErrorCode::Unsupported));
@@ -43,7 +83,7 @@ impl AzureCredentials {
         let provider = MicrosoftTokenProvider::with_dependencies(
             ProviderOptions::new(
                 MicrosoftTokenSource::AzureCli(AzureCliOptions {
-                    namespace: "teams-cli".into(),
+                    namespace: "teams".into(),
                     resource: resource.clone(),
                     selection: AzureCliSelection::ActiveAccount,
                 }),
@@ -52,9 +92,8 @@ impl AzureCredentials {
             dependencies.clone(),
         )
         .map_err(authentication)?;
-        let cancel = CancellationToken::new();
         let token = provider
-            .get_token(false, &cancel)
+            .get_token(false, cancel)
             .await
             .map_err(authentication)?;
         if tenant
@@ -71,7 +110,7 @@ impl AzureCredentials {
             return Err(Error::new(ErrorCode::Authentication));
         }
         provider
-            .get_token(false, &cancel)
+            .get_token(false, cancel)
             .await
             .map_err(authentication)?;
         Ok(Self {
@@ -84,9 +123,8 @@ impl AzureCredentials {
     }
 
     async fn object_id(runner: &dyn CliRunner) -> Result<UserId> {
-        let output = tokio::time::timeout(
-            Duration::from_secs(30),
-            runner.run(
+        let output = runner
+            .run(
                 &[
                     "ad",
                     "signed-in-user",
@@ -98,11 +136,9 @@ impl AzureCredentials {
                     "--only-show-errors",
                 ]
                 .map(String::from),
-            ),
-        )
-        .await
-        .map_err(authentication)?
-        .map_err(authentication)?;
+            )
+            .await
+            .map_err(authentication)?;
         if !output.success {
             return Err(Error::new(ErrorCode::Authentication));
         }
@@ -113,20 +149,36 @@ impl AzureCredentials {
 }
 
 #[async_trait]
-impl TokenProvider for AzureCredentials {
+impl TokenProvider for AzureCliCredentials {
     async fn acquire(
         &self,
         account: &Account,
         audience: Audience,
         force_refresh: bool,
     ) -> Result<AccessToken> {
+        let ctx = OperationContext::default();
+        wait(
+            &ctx,
+            self.acquire_token(account, audience, force_refresh, &ctx.cancellation),
+        )
+        .await
+    }
+}
+
+impl AzureCliCredentials {
+    async fn acquire_token(
+        &self,
+        account: &Account,
+        audience: Audience,
+        force_refresh: bool,
+        cancel: &CancellationToken,
+    ) -> Result<AccessToken> {
         if account != &self.account || audience != self.audience {
             return Err(Error::new(ErrorCode::Authentication));
         }
-        let cancel = CancellationToken::new();
         let token = self
             .provider
-            .get_token(force_refresh, &cancel)
+            .get_token(force_refresh, cancel)
             .await
             .map_err(authentication)?;
         if token.source != "azure-cli"
@@ -144,7 +196,7 @@ impl TokenProvider for AzureCredentials {
         }
         let token = self
             .provider
-            .get_token(false, &cancel)
+            .get_token(false, cancel)
             .await
             .map_err(authentication)?;
         Ok(AccessToken {
@@ -156,6 +208,27 @@ impl TokenProvider for AzureCredentials {
             secret: token.access_token.expose().to_owned(),
         })
     }
+}
+
+async fn wait<T>(ctx: &OperationContext, future: impl Future<Output = Result<T>>) -> Result<T> {
+    let check = || {
+        if ctx.cancellation.is_cancelled() {
+            Err(Error::new(ErrorCode::Cancelled))
+        } else if tokio::time::Instant::now() >= ctx.deadline {
+            Err(Error::new(ErrorCode::Timeout))
+        } else {
+            Ok(())
+        }
+    };
+    check()?;
+    let result = tokio::select! {
+        biased;
+        _ = ctx.cancellation.cancelled() => Err(Error::new(ErrorCode::Cancelled)),
+        _ = tokio::time::sleep_until(ctx.deadline) => Err(Error::new(ErrorCode::Timeout)),
+        result = future => result,
+    };
+    check()?;
+    result
 }
 
 #[cfg(test)]
@@ -188,6 +261,8 @@ mod tests {
         denied: AtomicBool,
         hang: Mutex<Option<String>>,
         pending: AtomicUsize,
+        entered: tokio::sync::Notify,
+        cancel_on_identity: Mutex<Option<CancellationToken>>,
     }
     impl Fake {
         fn new() -> Arc<Self> {
@@ -205,6 +280,8 @@ mod tests {
                 denied: AtomicBool::new(false),
                 hang: Mutex::default(),
                 pending: AtomicUsize::new(0),
+                entered: tokio::sync::Notify::new(),
+                cancel_on_identity: Mutex::default(),
             })
         }
         fn dependencies(self: &Arc<Self>) -> Arc<Dependencies> {
@@ -215,10 +292,16 @@ mod tests {
                 cli: self.clone(),
             })
         }
-        async fn credentials(self: &Arc<Self>, audience: Audience) -> AzureCredentials {
-            AzureCredentials::new(None, None, audience, self.dependencies())
-                .await
-                .unwrap()
+        async fn credentials(self: &Arc<Self>, audience: Audience) -> AzureCliCredentials {
+            AzureCliCredentials::with_dependencies(
+                None,
+                None,
+                audience,
+                self.dependencies(),
+                &OperationContext::default(),
+            )
+            .await
+            .unwrap()
         }
     }
     impl Clock for Fake {
@@ -266,6 +349,7 @@ mod tests {
             if hang {
                 self.pending.fetch_add(1, Ordering::SeqCst);
                 let _pending = Pending(&self.pending);
+                self.entered.notify_one();
                 std::future::pending::<()>().await;
             }
             let stdout = match args[1].as_str() {
@@ -275,6 +359,9 @@ mod tests {
                 })
                 .to_string(),
                 "signed-in-user" => {
+                    if let Some(cancel) = self.cancel_on_identity.lock().unwrap().as_ref() {
+                        cancel.cancel();
+                    }
                     if self.switch_on_identity.load(Ordering::SeqCst) {
                         *self.subscription.lock().unwrap() = OTHER.into();
                     }
@@ -302,6 +389,171 @@ mod tests {
                 success: !self.denied.load(Ordering::SeqCst),
                 stdout: Secret::new(stdout),
             })
+        }
+    }
+
+    #[tokio::test]
+    async fn cancelled_expired_and_unsupported_construction_never_dispatch_cli() {
+        for code in [
+            ErrorCode::Cancelled,
+            ErrorCode::Timeout,
+            ErrorCode::Unsupported,
+        ] {
+            let fake = Fake::new();
+            let mut ctx = OperationContext::default();
+            let audience = match code {
+                ErrorCode::Cancelled => {
+                    ctx.cancellation.cancel();
+                    Audience::Ic3
+                }
+                ErrorCode::Timeout => {
+                    ctx.deadline = tokio::time::Instant::now();
+                    Audience::Ic3
+                }
+                _ => Audience::TeamsMcp,
+            };
+            let error = AzureCliCredentials::with_dependencies(
+                None,
+                None,
+                audience,
+                fake.dependencies(),
+                &ctx,
+            )
+            .await
+            .err()
+            .unwrap();
+            assert_eq!(error.code, code);
+            assert!(fake.calls.lock().unwrap().is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn construction_cancellation_drops_every_cli_phase() {
+        for command in ["show", "get-access-token", "signed-in-user"] {
+            let fake = Fake::new();
+            *fake.hang.lock().unwrap() = Some(command.into());
+            let ctx = OperationContext::default();
+            let (result, ()) = tokio::join!(
+                AzureCliCredentials::with_dependencies(
+                    None,
+                    None,
+                    Audience::Ic3,
+                    fake.dependencies(),
+                    &ctx,
+                ),
+                async {
+                    fake.entered.notified().await;
+                    ctx.cancellation.cancel();
+                },
+            );
+            assert_eq!(result.err().unwrap().code, ErrorCode::Cancelled);
+            assert_eq!(fake.pending.load(Ordering::SeqCst), 0);
+            let calls = fake.calls.lock().unwrap().len();
+            tokio::task::yield_now().await;
+            assert_eq!(fake.calls.lock().unwrap().len(), calls);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn construction_deadline_bounds_all_phases_and_caps_caller_timeout() {
+        for command in ["show", "get-access-token", "signed-in-user"] {
+            for seconds in [1, 300] {
+                let fake = Fake::new();
+                *fake.hang.lock().unwrap() = Some(command.into());
+                let ctx = OperationContext::with_timeout(Duration::from_secs(seconds));
+                let start = tokio::time::Instant::now();
+                let error = AzureCliCredentials::with_dependencies(
+                    None,
+                    None,
+                    Audience::Ic3,
+                    fake.dependencies(),
+                    &ctx,
+                )
+                .await
+                .err()
+                .unwrap();
+                assert_eq!(error.code, ErrorCode::Timeout);
+                assert_eq!(start.elapsed(), Duration::from_secs(seconds.min(30)));
+                assert_eq!(fake.pending.load(Ordering::SeqCst), 0);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn cancellation_during_ready_identity_result_never_publishes_credentials() {
+        let fake = Fake::new();
+        let ctx = OperationContext::default();
+        *fake.cancel_on_identity.lock().unwrap() = Some(ctx.cancellation.clone());
+        let error = AzureCliCredentials::with_dependencies(
+            None,
+            None,
+            Audience::Ic3,
+            fake.dependencies(),
+            &ctx,
+        )
+        .await
+        .err()
+        .unwrap();
+        assert_eq!(error.code, ErrorCode::Cancelled);
+        assert_eq!(fake.acquisitions.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn direct_acquisition_deadline_drops_identity_and_token_work() {
+        for command in ["show", "get-access-token", "signed-in-user"] {
+            let fake = Fake::new();
+            let credentials = fake.credentials(Audience::Ic3).await;
+            *fake.hang.lock().unwrap() = Some(command.into());
+            let start = tokio::time::Instant::now();
+            let error = credentials
+                .acquire(credentials.account(), Audience::Ic3, true)
+                .await
+                .err()
+                .unwrap();
+            assert_eq!(error.code, ErrorCode::Timeout);
+            assert_eq!(start.elapsed(), Duration::from_secs(30));
+            assert_eq!(fake.pending.load(Ordering::SeqCst), 0);
+            *fake.hang.lock().unwrap() = None;
+            assert!(credentials
+                .acquire(credentials.account(), Audience::Ic3, true)
+                .await
+                .is_ok());
+        }
+    }
+
+    #[tokio::test]
+    async fn ic3_session_close_cancels_credentials_before_any_teams_request() {
+        struct NoTeamsHttp;
+        #[async_trait]
+        impl crate::http::HttpTransport for NoTeamsHttp {
+            async fn execute(
+                &self,
+                _: crate::http::HttpRequest,
+            ) -> Result<crate::http::HttpResponse> {
+                panic!("revoked credential work cannot reach Teams");
+            }
+        }
+        for command in ["show", "get-access-token", "signed-in-user"] {
+            let fake = Fake::new();
+            let credentials = fake.credentials(Audience::Ic3).await;
+            // Expire the cached token so this also exercises acquisition cancellation.
+            fake.now.fetch_add(3_600_000, Ordering::SeqCst);
+            *fake.hang.lock().unwrap() = Some(command.into());
+            let account = credentials.account().clone();
+            let client = crate::TeamsClient::builder(Arc::new(credentials))
+                .transport(Arc::new(NoTeamsHttp))
+                .ic3_region(crate::ic3::Region::Americas)
+                .build()
+                .unwrap();
+            let session = client.session(account);
+            let ctx = OperationContext::default();
+            let (result, ()) =
+                tokio::join!(session.chats(crate::Backend::Ic3, None, &ctx), async {
+                    fake.entered.notified().await;
+                    session.close();
+                },);
+            assert_eq!(result.err().unwrap().code, ErrorCode::Closed);
+            assert_eq!(fake.pending.load(Ordering::SeqCst), 0);
         }
     }
 
@@ -370,11 +622,12 @@ mod tests {
         ] {
             let fake = Fake::new();
             *fake.object.lock().unwrap() = object.into();
-            let error = AzureCredentials::new(
+            let error = AzureCliCredentials::with_dependencies(
                 tenant.map(|t| TenantId::new(t).unwrap()),
                 user.map(|u| UserId::new(u).unwrap()),
                 Audience::Graph,
                 fake.dependencies(),
+                &OperationContext::default(),
             )
             .await
             .err()
@@ -383,11 +636,12 @@ mod tests {
             assert!(!error.to_string().contains("synthetic-secret"));
         }
         let fake = Fake::new();
-        let credentials = AzureCredentials::new(
+        let credentials = AzureCliCredentials::with_dependencies(
             Some(TenantId::new(TENANT.to_uppercase()).unwrap()),
             Some(UserId::new(OBJECT.to_uppercase()).unwrap()),
             Audience::Graph,
             fake.dependencies(),
+            &OperationContext::default(),
         )
         .await
         .unwrap();
@@ -437,11 +691,15 @@ mod tests {
     async fn initial_identity_race_and_invalid_token_metadata_fail_without_fallback() {
         let fake = Fake::new();
         fake.switch_on_identity.store(true, Ordering::SeqCst);
-        assert!(
-            AzureCredentials::new(None, None, Audience::Ic3, fake.dependencies())
-                .await
-                .is_err()
-        );
+        assert!(AzureCliCredentials::with_dependencies(
+            None,
+            None,
+            Audience::Ic3,
+            fake.dependencies(),
+            &OperationContext::default()
+        )
+        .await
+        .is_err());
         for (field, value) in [
             ("tenant", serde_json::json!(OTHER)),
             ("subscription", serde_json::json!(OTHER)),
@@ -462,23 +720,35 @@ mod tests {
             });
             token[field] = value;
             *fake.token_override.lock().unwrap() = Some(token);
-            let error = AzureCredentials::new(None, None, Audience::Ic3, fake.dependencies())
-                .await
-                .err()
-                .unwrap();
+            let error = AzureCliCredentials::with_dependencies(
+                None,
+                None,
+                Audience::Ic3,
+                fake.dependencies(),
+                &OperationContext::default(),
+            )
+            .await
+            .err()
+            .unwrap();
             assert_eq!(error.code, ErrorCode::Authentication);
             assert!(!error.to_string().contains("synthetic-secret"));
             assert_eq!(fake.acquisitions.load(Ordering::SeqCst), 1);
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn dropping_initial_refresh_and_identity_work_cancels_io_and_allows_retry() {
         let fake = Fake::new();
         *fake.hang.lock().unwrap() = Some("get-access-token".into());
         assert!(tokio::time::timeout(
             Duration::from_millis(20),
-            AzureCredentials::new(None, None, Audience::Ic3, fake.dependencies()),
+            AzureCliCredentials::with_dependencies(
+                None,
+                None,
+                Audience::Ic3,
+                fake.dependencies(),
+                &OperationContext::default()
+            ),
         )
         .await
         .is_err());
@@ -502,59 +772,71 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "graph")]
     #[tokio::test]
     async fn teams_read_401_forces_one_sdk_renewal_and_403_does_not() {
-        use teams_sdk::{Backend, OperationContext, TeamsClient};
+        use crate::{Backend, TeamsClient};
         struct TeamsHttp {
             first_status: u16,
             calls: AtomicUsize,
+            backend: Backend,
         }
         #[async_trait]
-        impl teams_sdk::http::HttpTransport for TeamsHttp {
+        impl crate::http::HttpTransport for TeamsHttp {
             async fn execute(
                 &self,
-                request: teams_sdk::http::HttpRequest,
-            ) -> Result<teams_sdk::http::HttpResponse> {
+                request: crate::http::HttpRequest,
+            ) -> Result<crate::http::HttpResponse> {
                 let index = self.calls.fetch_add(1, Ordering::SeqCst);
                 let expected = format!("Bearer synthetic-token-{}", index + 1);
                 assert!(request.headers.iter().any(|(name, value)| name
                     .as_str()
                     .eq_ignore_ascii_case("authorization")
                     && value == expected.as_str()));
-                Ok(teams_sdk::http::HttpResponse {
+                Ok(crate::http::HttpResponse {
                     status: if index == 0 { self.first_status } else { 200 },
                     headers: Default::default(),
-                    body: br#"{"value":[]}"#.to_vec(),
+                    body: if self.backend == Backend::Ic3 {
+                        br#"{"conversations":[]}"#.to_vec()
+                    } else {
+                        br#"{"value":[]}"#.to_vec()
+                    },
                 })
             }
         }
-        for status in [401, 403] {
-            let fake = Fake::new();
-            let credentials = fake.credentials(Audience::Graph).await;
-            let account = credentials.account.clone();
-            let http = Arc::new(TeamsHttp {
-                first_status: status,
-                calls: AtomicUsize::new(0),
-            });
-            let client = TeamsClient::builder(Arc::new(credentials))
-                .transport(http.clone())
-                .build()
-                .unwrap();
-            let session = client.session(account);
-            let result = session
-                .chats(Backend::Graph, None, &OperationContext::default())
-                .await;
-            assert_eq!(result.is_ok(), status == 401);
-            assert_eq!(
-                fake.acquisitions.load(Ordering::SeqCst),
-                if status == 401 { 2 } else { 1 }
-            );
-            assert_eq!(
-                http.calls.load(Ordering::SeqCst),
-                if status == 401 { 2 } else { 1 }
-            );
-            session.close();
+        let mut backends = vec![(Backend::Ic3, Audience::Ic3)];
+        if cfg!(feature = "graph") {
+            backends.push((Backend::Graph, Audience::Graph));
+        }
+        for (backend, audience) in backends {
+            for status in [401, 403] {
+                let fake = Fake::new();
+                let credentials = fake.credentials(audience).await;
+                let account = credentials.account.clone();
+                let http = Arc::new(TeamsHttp {
+                    first_status: status,
+                    calls: AtomicUsize::new(0),
+                    backend,
+                });
+                let client = TeamsClient::builder(Arc::new(credentials))
+                    .transport(http.clone())
+                    .ic3_region(crate::ic3::Region::Americas)
+                    .build()
+                    .unwrap();
+                let session = client.session(account);
+                let result = session
+                    .chats(backend, None, &OperationContext::default())
+                    .await;
+                assert_eq!(result.is_ok(), status == 401);
+                assert_eq!(
+                    fake.acquisitions.load(Ordering::SeqCst),
+                    if status == 401 { 2 } else { 1 }
+                );
+                assert_eq!(
+                    http.calls.load(Ordering::SeqCst),
+                    if status == 401 { 2 } else { 1 }
+                );
+                session.close();
+            }
         }
     }
 }

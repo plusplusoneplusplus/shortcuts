@@ -127,6 +127,7 @@ interface CloseHandlerDeps {
     triggerInfraDispose?: () => void;
     mcpOauthDispose?: () => void;
     teamsMessagingManager?: { disconnect(): Promise<void>; disconnectForShutdown?(): Promise<void>; dispose?(): void };
+    teamsIc3OwnCommands?: { dispose(): Promise<void> };
     whatsappMessagingManager?: { disconnect(): Promise<void>; disconnectForShutdown?(): Promise<void>; dispose(): void };
     syncEngines?: Map<string, SyncEngine>;
     autoPullManager?: { dispose(): void };
@@ -148,6 +149,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         const { staleDetector, outputPruner, taskWatcher, pipelineWatcher, templateWatcher, notesWatcher,
                 wikiManager, scheduleManager, bridge, queuePersistence, wsServer, activeSockets, server } = deps;
 
+        await deps.teamsIc3OwnCommands?.dispose();
         staleDetector.dispose();
         outputPruner.stopListening();
         deps.heapMonitor.dispose();
@@ -829,7 +831,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     let localBaseUrl = formatLocalBaseUrl(host, port);
     const routes: Route[] = [];
-    const { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService, codaReady, sentinelRefrainsShutdown } = registerAllRoutes(routes, {
+    const { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService, codaReady, sentinelRefrainsShutdown, teamsIc3OwnCommands } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
         dataDir, configPath: options.configPath,
@@ -1139,6 +1141,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             triggerInfraDispose: triggerInfra?.dispose,
             mcpOauthDispose: mcpOauthInfra?.dispose,
             teamsMessagingManager,
+            teamsIc3OwnCommands,
             whatsappMessagingManager,
             sentinelRefrainsShutdown,
             syncEngines,
