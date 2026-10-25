@@ -760,6 +760,11 @@ Missing relay settings resolve on; explicit false stops reply polling and answer
 without restart/reconnect. Connectivity, Likes and Trouter require their own enablement.
 The connector's standalone defaults remain independent.
 
+Graph channel deletion tombstones retain message IDs and pagination without
+admitting text or images. Null body content requires a valid `deletedDateTime`;
+malformed ordinary messages still fail the page. Deleted roots retain readable
+surviving replies.
+
 Connector `receiveImages` exposes lazy inline/file image descriptors on hybrid
 Graph roots/replies. Scoped hosted content uses fixed v1.0 paths; HTTPS SharePoint
 image references encode into fixed beta `/shares/u!…/driveItem/contentStream` paths.
