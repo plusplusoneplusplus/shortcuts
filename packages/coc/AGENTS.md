@@ -1200,8 +1200,11 @@ references before editing. Paths are package-relative.
   the Connections card displays notification degradation while fallback remains connected.
   Private Trouter is best-effort, not durable catch-up; container relay settings are separate.
 - Teams setup uses scoped admin styles and native disclosures for advanced settings,
-  routing help, and connection history. Keep status/errors visible outside disclosures
-  and preserve separate endpoint/channel saves and unsaved-change connect gating.
+  routing help, and connection history. Connections → Teams puts channel/OAuth and
+  notification status beside independent IC3 status in a responsive overview before
+  configuration and feature controls. Missing status is unavailable, not disabled;
+  saved backends do not prove delivery health. Keep errors outside disclosures and
+  preserve separate endpoint/channel saves and unsaved-change connect gating.
 - Delegated Teams sends use safe HTML with `CoC ·` assistant attribution in the first
   text block; the authenticated user's native sender identity stays unchanged.
   Markdown tables share a safe renderer for outbound messages and AI answers;

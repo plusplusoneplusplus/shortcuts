@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../ui';
 import { McpOAuthFlowController } from '../features/skills/mcpOAuthFlowController';
 import { SettingsCard } from './SettingsCard';
@@ -112,7 +112,7 @@ async function request<T>(admin: AdminServerAccess, path: string, body?: object)
     return response.json() as Promise<T>;
 }
 
-export function TeamsConnectionCard() {
+export function TeamsConnectionCard({ children }: { children?: ReactNode }) {
     const adminServer = useAdminServer();
     const [status, setStatus] = useState<TeamsStatus | null>(null);
     const [serverUrl, setServerUrl] = useState('');
@@ -279,29 +279,47 @@ export function TeamsConnectionCard() {
     };
 
     return (
-        <SettingsCard title="Microsoft Teams" description="Connect a Teams channel to your CoC workspaces." badge="Global" data-testid="teams-connection-card">
-            <div className="ar-teams">
-                <div className="ar-teams-overview">
-                    <div role="status" className="ar-teams-status">
-                        <span className={`ar-badge ${status?.status === 'connected' ? 'ar-badge-success' : status?.status === 'error' ? 'ar-badge-danger' : ''}`}>
-                            Connection: {status?.status ?? 'Loading…'}
-                        </span>
-                        <span className={`ar-badge ${status?.authStatus === 'authenticated' ? 'ar-badge-success' : 'ar-badge-warning'}`}>
-                            OAuth: {status?.authStatus ?? 'not configured'}
-                        </span>
+        <>
+            <section className="ar-teams-status-grid" aria-label="Teams status">
+                <SettingsCard title="Channel bridge status" description="Channel connection, Microsoft sign-in and inbound notifications."
+                    data-testid="teams-bridge-status">
+                    <div className="ar-teams">
+                        <div className="ar-teams-overview">
+                            <div role="status" className="ar-teams-status">
+                                <span className={`ar-badge ${status?.status === 'connected' ? 'ar-badge-success' : status?.status === 'error' ? 'ar-badge-danger' : ''}`}>
+                                    Connection: {status?.status ?? 'Loading…'}
+                                </span>
+                                <span className={`ar-badge ${status?.authStatus === 'authenticated' ? 'ar-badge-success' : 'ar-badge-warning'}`}>
+                                    OAuth: {status ? status.authStatus ?? 'not configured' : 'Loading…'}
+                                </span>
+                            </div>
+                            <Button size="sm" variant="ghost" className="ar-btn ar-btn-ghost ar-btn-sm"
+                                disabled={busy} onClick={() => void load()}>Refresh status</Button>
+                        </div>
+                        <p role="status" className="ar-teams-hint" data-testid="teams-notification-status">
+                            Channel bridge Trouter: {!status ? 'Status unavailable' : status.enableTrouter
+                                ? status.notificationStatus?.state ?? 'Status unavailable' : 'disabled'}
+                            {status?.enableTrouter && ' · 60-second fallback reads'}
+                        </p>
+                        {status?.enableTrouter && status.notificationStatus?.error
+                            && <p role="alert" className="ar-teams-warning">{status.notificationStatus.error.message}</p>}
+                        {status?.error && <p role="alert" className="ar-teams-error">{status.error}</p>}
+                        {error && <p role="alert" className="ar-teams-error">{error}</p>}
+                        <dl className="ar-teams-status-facts">
+                            <div><dt>Bridge</dt><dd>{status ? status.enabled ? 'Enabled' : 'Disabled' : 'Loading…'}</dd></div>
+                            <div><dt>Channel reads</dt><dd>{status ? 'Microsoft Graph' : 'Loading…'}</dd></div>
+                            <div><dt>Channel writes</dt><dd>{status ? status.outboundBackend === 'mcp' ? 'MCP' : 'Microsoft Graph' : 'Loading…'}</dd></div>
+                            <div><dt>Channel</dt><dd>{status ? `${status.teamName} / ${status.channelName}` : 'Loading…'}</dd></div>
+                            <div><dt>IC3 region</dt><dd>{status ? status.ic3Region ?? 'Unconfigured' : 'Loading…'}</dd></div>
+                        </dl>
+                        <p className="ar-teams-hint">Read and write backends show the saved configuration, not a delivery test.</p>
                     </div>
-                    <Button size="sm" variant="ghost" className="ar-btn ar-btn-ghost ar-btn-sm"
-                        disabled={busy} onClick={() => void load()}>Refresh status</Button>
-                </div>
-                <p role="status" className="ar-teams-hint" data-testid="teams-notification-status">
-                    Channel bridge Trouter: {!status ? 'Status unavailable' : status.enableTrouter
-                        ? status.notificationStatus?.state ?? 'Status unavailable' : 'disabled'}
-                    {status?.enableTrouter && ' · 60-second fallback reads'}
-                </p>
-                {status?.enableTrouter && status.notificationStatus?.error
-                    && <p role="alert" className="ar-teams-warning">{status.notificationStatus.error.message}</p>}
-                {status?.error && <p role="alert" className="ar-teams-error">{status.error}</p>}
-                {error && <p role="alert" className="ar-teams-error">{error}</p>}
+                </SettingsCard>
+                {children}
+            </section>
+        <SettingsCard title="Microsoft Teams configuration" description="Set up sign-in, channel routing and optional transports."
+            badge="Global" data-testid="teams-connection-card">
+            <div className="ar-teams">
                 <section className="ar-teams-section" aria-label="Endpoint and sign-in">
                     <h4><span className="ar-teams-step" aria-hidden="true">1</span> Endpoint &amp; sign-in</h4>
                     <p className="ar-teams-hint">Save your global Teams MCP endpoint, then sign in with Microsoft.</p>
@@ -432,7 +450,7 @@ export function TeamsConnectionCard() {
                     <p className="ar-teams-hint">
                         This bridge reads a team channel for inbound messages; it does not relay agent output to a self-chat.
                         AI answer relay is enabled by default for a connected bridge: completed Ask answers and safe terminal
-                        notices return to the original Teams thread. Turn it off in Configure &gt; Integrations to stop
+                        notices return to the original Teams thread. Turn it off in Teams features below to stop
                         answer relay and thread reply polling without restarting or reconnecting.
                         Users can run <code>/list repos</code> and <code>/select repo &lt;name&gt;</code> to choose their workspace.
                     </p>
@@ -499,5 +517,6 @@ export function TeamsConnectionCard() {
                 )}
             </div>
         </SettingsCard>
+        </>
     );
 }
