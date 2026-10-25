@@ -5,7 +5,7 @@ import { Socket } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getLogger, toQueueProcessId, type AIProcess, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
 import { NativeTeamsError } from '@plusplusoneplusplus/coc-native';
-import { TeamsOperationError, type TrouterClient } from '@plusplusoneplusplus/coc-connector/teams';
+import { TeamsOperationError, type Ic3DirectMessageOptions, type TrouterClient } from '@plusplusoneplusplus/coc-connector/teams';
 import type { TeamsIc3Chat, TeamsIc3Message, TeamsIc3Page } from '@plusplusoneplusplus/coc-native';
 import { DEFAULT_CONFIG, mergeConfig, type CLIConfig } from '../../../src/config';
 import { createTeamsIc3OwnCommandsRuntime } from '../../../src/server/messaging/teams-ic3-own-commands-runtime';
@@ -39,6 +39,11 @@ describe('basic IC3 own-command launcher', () => {
     const notification = { start: vi.fn(), stop: vi.fn(async () => {}),
         getStatus: vi.fn(() => ({ state: 'registered' as const, error: null })) };
     const createTrouter = vi.fn((_options: ConstructorParameters<typeof TrouterClient>[0]) => notification);
+    const reactions = {
+        acknowledgeSourceMessage: vi.fn<(...args: [string, string, AbortSignal?]) => Promise<void>>(),
+        dispose: vi.fn(),
+    };
+    const createReactions = vi.fn((_options: Ic3DirectMessageOptions) => reactions);
     const events = new EventEmitter();
     const queue: ScheduleQueueEventBus = {
         on: (event, listener) => { events.on(event, listener); },
@@ -70,7 +75,7 @@ describe('basic IC3 own-command launcher', () => {
                 change = () => listener(config, 1);
                 return vi.fn();
             } },
-            store, queue, launch, createSession, createTrouter, sendReply, routes,
+            store, queue, launch, createSession, createTrouter, createReactions, sendReply, routes,
         });
     }
     async function update(patch: CLIConfig) {
@@ -85,6 +90,7 @@ describe('basic IC3 own-command launcher', () => {
         vi.mocked(queue.getTask).mockReset();
         store.getProcess.mockReset();
         sendReply.mockReset().mockResolvedValue(undefined);
+        reactions.acknowledgeSourceMessage.mockReset().mockResolvedValue(undefined);
         launch.mockResolvedValue(undefined);
         histories = new Map();
         routes = [];
@@ -109,6 +115,7 @@ describe('basic IC3 own-command launcher', () => {
         expect(store.getWorkspaces).not.toHaveBeenCalled();
         expect(launch).not.toHaveBeenCalled();
         expect(createTrouter).not.toHaveBeenCalled();
+        expect(createReactions).not.toHaveBeenCalled();
         expect(service.getStatus()).toEqual({ state: 'disabled', trouter: { state: 'disabled', error: null } });
     });
 
@@ -174,6 +181,81 @@ describe('basic IC3 own-command launcher', () => {
         listener.onWake({ cause: 'message', conversationId: notifiedChat });
         await vi.advanceTimersByTimeAsync(0);
         expect(launch).toHaveBeenCalledOnce();
+        expect(reactions.acknowledgeSourceMessage).toHaveBeenCalledOnce();
+    });
+
+    it.each(['48:notes', 'direct', 'group'])('acknowledges each new %s mention before initial and follow-up admission', async chatId => {
+        histories.set(chatId, [message('first', chatId)]);
+        start();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(createReactions).toHaveBeenCalledExactlyOnceWith({
+            region, expectedAccount: { tenantId: account.tenantId, objectId: account.userId },
+        });
+        expect(reactions.acknowledgeSourceMessage).toHaveBeenNthCalledWith(1, chatId, 'first', expect.any(AbortSignal));
+        expect(reactions.acknowledgeSourceMessage.mock.invocationCallOrder[0]).toBeLessThan(launch.mock.invocationCallOrder[0]);
+        histories.set(chatId, [message('follow-up', chatId), message('first', chatId)]);
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(reactions.acknowledgeSourceMessage).toHaveBeenNthCalledWith(2, chatId, 'follow-up', expect.any(AbortSignal));
+        expect(reactions.acknowledgeSourceMessage.mock.invocationCallOrder[1]).toBeLessThan(launch.mock.invocationCallOrder[1]);
+        expect(launch).toHaveBeenCalledTimes(2);
+        expect(launch.mock.calls[0][4]).toBe(launch.mock.calls[1][4]);
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(reactions.acknowledgeSourceMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it('waits for acknowledgement settlement but admits the mention after a safe logged failure', async () => {
+        let fail!: () => void;
+        reactions.acknowledgeSourceMessage.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => {
+            fail = () => reject(new TeamsOperationError('private payload', 'ic3', 'network', 'unknown'));
+        }));
+        histories.set('direct', [message('first')]);
+        start();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(launch).not.toHaveBeenCalled();
+        fail();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(launch).toHaveBeenCalledOnce();
+        expect(service.getStatus().state).toBe('connected');
+        const log = JSON.stringify(vi.mocked(getLogger().warn).mock.calls);
+        expect(log).toContain('acknowledgement failed (network/unknown)');
+        expect(log).not.toContain('private payload');
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(reactions.acknowledgeSourceMessage).toHaveBeenCalledOnce();
+        expect(launch).toHaveBeenCalledOnce();
+    });
+
+    it('does not acknowledge ignored or historical messages', async () => {
+        histories.set('direct', [
+            message('old', 'direct', { createdAt: '2025-01-01T00:00:00Z' }),
+            message('foreign', 'direct', { authorId: 'foreign-user' }),
+            message('plain', 'direct', { text: 'not a mention' }),
+            message('edited', 'direct', { modifiedAt: '2026-01-01T00:00:02Z' }),
+        ]);
+        start();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(createReactions).not.toHaveBeenCalled();
+        expect(launch).not.toHaveBeenCalled();
+    });
+
+    it.each(['shutdown', 'reconfiguration'])('cancels acknowledgement on %s and rejects its late admission', async action => {
+        let finish!: () => void;
+        reactions.acknowledgeSourceMessage.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+        histories.set('48:notes', [message('first', '48:notes')]);
+        start();
+        await vi.advanceTimersByTimeAsync(0);
+        const signal = reactions.acknowledgeSourceMessage.mock.calls[0][2]!;
+        let disposal: Promise<void> | undefined;
+        if (action === 'shutdown') disposal = service.dispose();
+        else {
+            histories.clear();
+            await update({ teamsIc3OwnCommands: { workspaceId: 'workspace-beta' } });
+        }
+        expect(signal.aborted).toBe(true);
+        expect(reactions.dispose).toHaveBeenCalledOnce();
+        finish();
+        await disposal;
+        await vi.advanceTimersByTimeAsync(0);
+        expect(launch).not.toHaveBeenCalled();
     });
 
     it.each(['19:fixture@thread.v2', '48:notes'])('reads notified %s before continuing a slow fallback sweep', async chatId => {
@@ -774,6 +856,7 @@ describe('basic IC3 own-command launcher', () => {
         const logs = vi.mocked(getLogger().info).mock.calls.map(([, text]) => JSON.parse(text.split('timing ')[1]));
         expect(logs).toEqual([
             { requestId: id, stage: 'detected', detectionLagMs: 200, readMs: 300 },
+            { requestId: id, stage: 'acknowledged', acknowledgementMs: 0 },
             { requestId: id, stage: 'admitted', admissionMs: 200 },
             { requestId: id, stage: 'completed', sinceDetectionMs: 1200, queueMs: 200, executionMs: 800 },
             { requestId: id, stage: 'reply-start', replyWaitMs: 0 },

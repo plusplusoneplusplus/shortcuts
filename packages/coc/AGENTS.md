@@ -1112,7 +1112,11 @@ references before editing. Paths are package-relative.
   `teamsIc3OwnCommands.workspaceId`, using the shared Teams connection `ic3Region`.
   Stable hashed conversation IDs reuse saved chats across restarts. First turns use
   medium effort; ordered follow-ups retain conversation policy and correlate answers
-  by request ID.
+  by request ID. Each new admitted mention attempts a standard Eyes acknowledgement
+  (`1f440_eyes`) on its original message before queue admission, without extra
+  history reads or custom emoji configuration.
+  Acknowledgements are bounded, deduplicated and best-effort; failures log safely
+  and still admit the request, while cancellation prevents late admission.
   Reply chains serialize per conversation, not across chats; shutdown drains every
   active chain. Timing info logs correlate hashed request IDs across detection,
   admission, queue/execution and reply delivery without source identities or bodies.

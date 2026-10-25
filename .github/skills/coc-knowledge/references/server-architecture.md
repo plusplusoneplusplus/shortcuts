@@ -690,6 +690,13 @@ serializes by conversation. Account/chat/message hashes, queue evidence and pers
 user-turn request IDs prevent duplicates. Mark attempts before admission; uncertain
 outcomes never retry.
 
+Each new eligible mention attempts a standard Eyes (`1f440_eyes`) acknowledgement
+on its exact source message before queue admission, including follow-ups. The
+account-pinned reaction client sends directly without discovery reads or custom
+emoji configuration. Failed writes log sanitized failures but do not discard the
+command. The ten-second total deadline,
+cancellation and no-replay policy apply independently of channel Likes.
+
 Memory-only pending replies capture source identity before enqueue and consume it
 on queue terminal events. Delivery serializes within each conversation; different
 chats deliver independently. Shutdown drains all active reply chains; reconfiguration
@@ -717,7 +724,7 @@ publish immediately; history failures stay degraded through a scan while success
 advance last-connected. Outer poll failures are error. Expose only safe codes;
 admission/reply failures do not affect read health. Status reads trigger no I/O
 and prove no write access. `[IC3 commands] timing` info logs correlate hashed request
-IDs across detection, admission, completion and reply delivery/failure. Durations
+IDs across detection, acknowledgement, admission, completion and reply delivery/failure. Durations
 separate message age at detection, history reads, admission, queue/execution when
 queue timestamps exist, reply-chain wait and delivery. Logs exclude message bodies,
 raw chat IDs and account identities. See [configuration](admin-config.md#ic3-own-command-configuration).

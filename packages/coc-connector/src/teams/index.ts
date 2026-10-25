@@ -10,6 +10,7 @@ export { GraphClient } from './graph/graph-client';
 export { GraphTransport } from './graph/transport-graph';
 export { McpTransport, TeamsMcpSendRejectedError } from './mcp/transport-mcp';
 export { Ic3DirectMessageClient, TeamsIc3SendError } from './ic3/ic3-direct-message';
+export { Ic3ReactionClient } from './ic3/ic3-reaction';
 export * from './operations';
 export { McpOperations } from './mcp/operations-mcp';
 export type { McpOperationsOptions } from './mcp/operations-mcp';
