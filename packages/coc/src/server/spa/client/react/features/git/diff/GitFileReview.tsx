@@ -12,7 +12,7 @@ import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
 import { useCloneBaseUrl } from '../../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 
-type Props = Pick<FileDiffPanelProps, 'workspaceId' | 'attachmentDestinationId' | 'source' | 'reviewChat' | 'getHunkClassification' | 'hunkActiveFilters' | 'onDiffEngineChange' | 'focusComment'> & {
+type Props = Pick<FileDiffPanelProps, 'workspaceId' | 'attachmentDestinationId' | 'source' | 'reviewChat' | 'getHunkClassification' | 'hunkActiveFilters' | 'onDiffEngineChange' | 'focusComment' | 'createDiffEditor'> & {
     comparisonKey: string;
     files: GitFileChange[];
     selectedPath?: string | null;
@@ -56,6 +56,6 @@ function GitReviewDiff({ context, ...props }: Props & { context: ReviewFileRende
     const source = useMemo(() => ({ ...props.source, files: paths, fetchFileList: undefined }), [props.source, paths]);
     return <FileDiffPanel workspaceId={props.workspaceId} attachmentDestinationId={props.attachmentDestinationId}
         reviewChat={props.reviewChat} getHunkClassification={props.getHunkClassification} hunkActiveFilters={props.hunkActiveFilters}
-        onDiffEngineChange={props.onDiffEngineChange} focusComment={props.focusComment} source={source} filePath={file.path} onNavigateToFile={select}
+        onDiffEngineChange={props.onDiffEngineChange} focusComment={props.focusComment} createDiffEditor={props.createDiffEditor} source={source} filePath={file.path} onNavigateToFile={select}
         initialHunkTarget={target} showSourceLabel={false} showChatToggle={!props.reviewChat} />;
 }
