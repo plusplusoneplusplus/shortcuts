@@ -34,10 +34,11 @@ export interface GraphMessageAttachment {
 
 export interface GraphMessage {
     id: string;
-    body: { content: string; contentType?: string };
+    body: { content: string | null; contentType?: string };
     from?: { user?: { displayName?: string; id?: string }; application?: { id?: string } };
     createdDateTime: string;
     lastModifiedDateTime?: string;
+    deletedDateTime?: string | null;
     replyToId?: string;
     attachments?: GraphMessageAttachment[] | null;
 }
@@ -371,8 +372,11 @@ export class GraphClient {
         if (!page || !Array.isArray(page.value) || page.value.some(message =>
             !message || typeof message.id !== 'string' || !message.id.trim()
             || (message.createdDateTime !== undefined && typeof message.createdDateTime !== 'string')
+            || (message.deletedDateTime != null && (typeof message.deletedDateTime !== 'string'
+                || !Number.isFinite(Date.parse(message.deletedDateTime))))
             || (message.body !== undefined && (typeof message.body !== 'object' || message.body === null
-                || typeof message.body.content !== 'string')))
+                || (typeof message.body.content !== 'string'
+                    && !(message.body.content === null && message.deletedDateTime)))))
             || (page['@odata.nextLink'] !== undefined
                 && (typeof page['@odata.nextLink'] !== 'string' || !page['@odata.nextLink']))) {
             throw new GraphProtocolError();

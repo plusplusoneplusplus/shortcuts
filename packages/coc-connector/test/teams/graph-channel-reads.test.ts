@@ -42,6 +42,44 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('hybrid Graph channel reads', () => {
+    it.each([undefined, 'root'])('accepts deleted tombstones in %s pages and retains pagination and message identity', async rootId => {
+        const reader = new GraphChannelReader(account, { acquireToken: async () => token() }, true);
+        const next = `${rootId ? replyUrl(rootId) : rootsUrl}?page=2`;
+        vi.stubGlobal('fetch', vi.fn(async () => response([
+            { ...message('deleted-null'), deletedDateTime: '2026-01-01T00:00:02Z', body: { content: null } },
+            { ...message('deleted-content', '<p>/ask stale command</p><img src="../hostedContents/image/$value">'),
+                deletedDateTime: '2026-01-01T00:00:02Z',
+                attachments: [{ id: 'file', contentType: 'reference',
+                    contentUrl: 'https://tenant.sharepoint.com/sites/Team/photo.png', name: 'photo.png' }] },
+            message('active', '/list repos'),
+        ], next)));
+        try {
+            const page = await reader.page('team', 'channel', rootId);
+            expect(page.nextLink).toBe(next);
+            expect(page.messages.map(msg => [msg.messageId, msg.text])).toEqual([
+                ['deleted-null', ''], ['deleted-content', ''], ['active', '/list repos'],
+            ]);
+            expect(page.messages.slice(0, 2).every(msg => msg.images?.length === 0)).toBe(true);
+            expect(page.messages.every(msg => msg.replyToMessageId === rootId)).toBe(true);
+        } finally { reader.stop(); }
+    });
+
+    it.each([
+        { body: { content: null } },
+        { body: { content: null }, deletedDateTime: null },
+        { body: { content: null }, deletedDateTime: '' },
+        { body: { content: null }, deletedDateTime: 'invalid' },
+        { body: { content: null }, deletedDateTime: 123 },
+        { body: { content: 123 }, deletedDateTime: '2026-01-01T00:00:02Z' },
+        { body: null, deletedDateTime: '2026-01-01T00:00:02Z' },
+    ])('keeps malformed non-tombstone responses rejected: %j', async patch => {
+        const reader = new GraphChannelReader(account, { acquireToken: async () => token() });
+        vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ value: [{ ...message('invalid'), ...patch }] }))));
+        try {
+            await expect(reader.page('team', 'channel')).rejects.toThrow('Graph returned an invalid message response');
+        } finally { reader.stop(); }
+    });
+
     it('reads beta roots and fully paginated beta replies with chronological IDs and authorship', async () => {
         const discovered = vi.fn(async (_root: InboundTeamsMessage) => {});
         const credential = token();
@@ -396,6 +434,32 @@ describe('Graph pages through durable channel admission', () => {
         bot.setChannelId('channel');
         return { bot, onMessage, fetch };
     }
+
+    it('continues polling past deleted roots and replies without admitting their text or images', async () => {
+        const onError = vi.fn();
+        const s = botSetup({ receiveImages: true, onError });
+        await s.bot.start();
+        s.fetch.mockImplementation(async url => {
+            const path = new URL(url).pathname;
+            if (path.endsWith('/messages')) return response([
+                { ...message('deleted-root'), deletedDateTime: '2026-01-01T00:00:02Z', body: { content: null } },
+                message('active-root', '/list repos'),
+            ]);
+            if (path === new URL(replyUrl('tracked')).pathname) return response([
+                { ...message('deleted-reply', '/ask do not execute'), deletedDateTime: '2026-01-01T00:00:02Z' },
+                message('active-reply', '/ask explain'),
+            ]);
+            return response([]);
+        });
+        try {
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(s.onMessage.mock.calls.map(([msg]) => msg.messageId)).toEqual(['active-root', 'active-reply']);
+            expect(onError).not.toHaveBeenCalled();
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(s.onMessage).toHaveBeenCalledTimes(2);
+            expect(s.fetch.mock.calls.some(([url]) => String(url).startsWith(replyUrl('deleted-root')))).toBe(true);
+        } finally { await s.bot.stop(); }
+    });
 
     it.each(['inline', 'file'])('admits captionless/captioned %s images without downloading skipped history or duplicates', async kind => {
         const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
