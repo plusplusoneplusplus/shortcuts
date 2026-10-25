@@ -12,7 +12,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { createProcessEventBus } from './process-event-bus';
 
-import { ProcessStore, ProcessFilter, ProcessIndexEntry, WorkspaceInfo, WikiInfo, ProcessChangeCallback, ProcessOutputEvent, StorageStats } from './process-store';
+import { ProcessStore, ProcessFilter, ProcessIndexEntry, WorkspaceInfo, ProcessChangeCallback, ProcessOutputEvent, StorageStats } from './process-store';
 import {
     AIProcess,
     AIProcessStatus,
@@ -67,7 +67,6 @@ export class FileProcessStore implements ProcessStore {
     private readonly maxProcesses: number;
     private readonly processesDir: string;
     private readonly workspacesPath: string;
-    private readonly wikisPath: string;
     private writeQueue: Promise<void>;
     private readonly bus = createProcessEventBus();
     private readonly flushHandlers: Map<string, () => Promise<void>> = new Map();
@@ -81,7 +80,6 @@ export class FileProcessStore implements ProcessStore {
         this.maxProcesses = options?.maxProcesses ?? 500;
         this.processesDir = path.join(this.dataDir, 'repos');
         this.workspacesPath = path.join(this.dataDir, 'workspaces.json');
-        this.wikisPath = path.join(this.dataDir, 'wikis.json');
         this.writeQueue = Promise.resolve();
         this.onPrune = options?.onPrune;
     }
@@ -1019,59 +1017,6 @@ export class FileProcessStore implements ProcessStore {
         }
     }
 
-    // --- Wiki CRUD ---
-
-    async registerWiki(wiki: WikiInfo): Promise<void> {
-        await this.enqueueWrite(async () => {
-            await ensureDataDir(this.dataDir);
-            const wikis = await this.readWikis();
-            const idx = wikis.findIndex(w => w.id === wiki.id);
-            if (idx >= 0) {
-                wikis[idx] = wiki;
-            } else {
-                wikis.push(wiki);
-            }
-            await this.writeWikis(wikis);
-        });
-    }
-
-    async getWikis(): Promise<WikiInfo[]> {
-        return this.readWikis();
-    }
-
-    async removeWiki(id: string): Promise<boolean> {
-        let found = false;
-        await this.enqueueWrite(async () => {
-            const wikis = await this.readWikis();
-            const idx = wikis.findIndex(w => w.id === id);
-            if (idx >= 0) {
-                wikis.splice(idx, 1);
-                await this.writeWikis(wikis);
-                found = true;
-            }
-        });
-        return found;
-    }
-
-    async updateWiki(id: string, updates: Partial<Omit<WikiInfo, 'id'>>): Promise<WikiInfo | undefined> {
-        let updated: WikiInfo | undefined;
-        await this.enqueueWrite(async () => {
-            const wikis = await this.readWikis();
-            const idx = wikis.findIndex(w => w.id === id);
-            if (idx >= 0) {
-                if (updates.name !== undefined) { wikis[idx].name = updates.name; }
-                if (updates.wikiDir !== undefined) { wikis[idx].wikiDir = updates.wikiDir; }
-                if (updates.repoPath !== undefined) { wikis[idx].repoPath = updates.repoPath; }
-                if (updates.color !== undefined) { wikis[idx].color = updates.color; }
-                if (updates.aiEnabled !== undefined) { wikis[idx].aiEnabled = updates.aiEnabled; }
-                if (updates.registeredAt !== undefined) { wikis[idx].registeredAt = updates.registeredAt; }
-                updated = { ...wikis[idx] };
-                await this.writeWikis(wikis);
-            }
-        });
-        return updated;
-    }
-
     // --- Admin: bulk clear & stats ---
 
     async clearAllWorkspaces(): Promise<number> {
@@ -1086,38 +1031,19 @@ export class FileProcessStore implements ProcessStore {
         return count;
     }
 
-    async clearAllWikis(): Promise<number> {
-        let count = 0;
-        await this.enqueueWrite(async () => {
-            const wikis = await this.readWikis();
-            count = wikis.length;
-            if (count > 0) {
-                await this.writeWikis([]);
-            }
-        });
-        return count;
-    }
-
     async getStorageStats(): Promise<StorageStats> {
         // Use getProcessSummaries() instead of getAllProcesses() to avoid reading every process file
-        const [summaries, wikis, workspaceDirIds] = await Promise.all([
+        const [summaries, workspaceDirIds] = await Promise.all([
             this.getProcessSummaries(),
-            this.getWikis(),
             this.listWorkspaceDirs(),
         ]);
 
-        // Stat meta files in parallel
-        const metaSizes = await Promise.all(
-            [this.workspacesPath, this.wikisPath].map(async (filePath) => {
-                try {
-                    const stat = await fs.stat(filePath);
-                    return stat.size;
-                } catch {
-                    return 0;
-                }
-            })
-        );
-        let storageSize = metaSizes.reduce((sum, size) => sum + size, 0);
+        let storageSize = 0;
+        try {
+            storageSize += (await fs.stat(this.workspacesPath)).size;
+        } catch {
+            // workspaces.json may not exist yet
+        }
 
         // Sum file sizes in each workspace dir
         try {
@@ -1147,7 +1073,6 @@ export class FileProcessStore implements ProcessStore {
         return {
             totalProcesses: summaries.total,
             totalWorkspaces: workspaceDirIds.length,
-            totalWikis: wikis.length,
             storageSize,
         };
     }
@@ -1424,23 +1349,6 @@ export class FileProcessStore implements ProcessStore {
         await this.retryAtomicWrite(tmpPath, async () => {
             await fs.writeFile(tmpPath, JSON.stringify(workspaces, null, 2), 'utf-8');
             await fs.rename(tmpPath, this.workspacesPath);
-        });
-    }
-
-    private async readWikis(): Promise<WikiInfo[]> {
-        try {
-            const data = await fs.readFile(this.wikisPath, 'utf-8');
-            return JSON.parse(data) as WikiInfo[];
-        } catch {
-            return [];
-        }
-    }
-
-    private async writeWikis(wikis: WikiInfo[]): Promise<void> {
-        const tmpPath = this.wikisPath + '.tmp';
-        await this.retryAtomicWrite(tmpPath, async () => {
-            await fs.writeFile(tmpPath, JSON.stringify(wikis, null, 2), 'utf-8');
-            await fs.rename(tmpPath, this.wikisPath);
         });
     }
 

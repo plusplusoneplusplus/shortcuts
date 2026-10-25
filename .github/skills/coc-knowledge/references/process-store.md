@@ -641,7 +641,7 @@ partial output is never replayed.
 
 On startup, in order — all idempotent and non-destructive:
 
-1. `migrateWorkspaceRegistryIfNeeded()` — workspace/wiki registries from JSON to SQLite
+1. `migrateWorkspaceRegistryIfNeeded()` — workspace registry from JSON to SQLite
 2. `migrateProcessHistoryIfNeeded()` — file-based processes to SQLite
 3. `migrateWorkspaceIdsToV2IfNeeded()` — physical `ws-*` workspace IDs to machine-scoped
    `ws-v2-*` IDs, moving `~/.coc/repos/<oldId>/` to `<newId>/` when safe and surfacing

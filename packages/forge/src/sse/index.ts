@@ -50,7 +50,7 @@ export function writeNamedEvent(res: ServerResponse, event: string, data: unknow
     return true;
 }
 
-/** Wiki/data-only streams also tolerate a write racing with disconnection. */
+/** Data-only streams also tolerate a write racing with disconnection. */
 export function writeDataEvent(res: ServerResponse, data: Record<string, unknown>): boolean {
     if (res.destroyed || res.writableEnded) return false;
     try {

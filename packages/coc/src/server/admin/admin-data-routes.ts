@@ -56,10 +56,7 @@ export function registerDataRoutes(routes: Route[], options: AdminRouteOptions):
         method: 'GET',
         pattern: '/api/admin/data/stats',
         handler: async (req, res) => {
-            const parsed = url.parse(req.url || '/', true);
-            const includeWikis = parsed.query.includeWikis === 'true';
-
-            const summary = await wiper.getDryRunSummary({ includeWikis });
+            const summary = await wiper.getDryRunSummary();
             sendJSON(res, 200, summary);
         },
     });
@@ -73,7 +70,6 @@ export function registerDataRoutes(routes: Route[], options: AdminRouteOptions):
         handler: async (req, res) => {
             const parsed = url.parse(req.url || '/', true);
             const confirmToken = typeof parsed.query.confirm === 'string' ? parsed.query.confirm : '';
-            const includeWikis = parsed.query.includeWikis === 'true';
 
             if (!confirmToken) {
                 return handleAPIError(res, badRequest('Missing confirmation token. GET /api/admin/data/wipe-token first.'));
@@ -83,7 +79,7 @@ export function registerDataRoutes(routes: Route[], options: AdminRouteOptions):
                 return handleAPIError(res, forbidden('Invalid or expired confirmation token'));
             }
 
-            const result = await wiper.wipeData({ includeWikis });
+            const result = await wiper.wipeData();
 
             // Broadcast wipe event to all WebSocket clients
             broadcast({ type: 'data-wiped', timestamp: Date.now() });
@@ -158,7 +154,6 @@ export function registerDataRoutes(routes: Route[], options: AdminRouteOptions):
                 preview: {
                     processCount: payload.metadata.processCount,
                     workspaceCount: payload.metadata.workspaceCount,
-                    wikiCount: payload.metadata.wikiCount,
                     queueFileCount: payload.metadata.queueFileCount,
                     sampleProcessIds: payload.processes.slice(0, 5).map(p => p.id),
                 },

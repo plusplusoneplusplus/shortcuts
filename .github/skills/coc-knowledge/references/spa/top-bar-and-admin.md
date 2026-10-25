@@ -196,7 +196,7 @@ dialog itself):
   `if (await page.locator('#view-admin').isVisible()) return;`.
 - Opening admin does not unmount the view underneath — that is the whole point — so it
   cannot be used to make another view go away. Navigate to a real non-admin tab
-  (`location.hash = '#wiki'`) instead.
+  (`location.hash = '#reports'`) instead.
 
 ## Skills Config panel
 

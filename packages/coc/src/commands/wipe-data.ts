@@ -1,6 +1,6 @@
 /**
  * Implements the `coc admin wipe-data` CLI command.
- * Deletes all runtime data (processes, workspaces, wikis, queues, preferences)
+ * Deletes all runtime data (processes, workspaces, queues, preferences)
  * while preserving system configuration files.
  */
 
@@ -30,8 +30,6 @@ import type { WipeResult } from '../server/storage/data-wiper';
 export interface WipeDataCommandOptions {
     /** Auto-confirm without interactive prompt. */
     confirm?: boolean;
-    /** Include wiki output directories in the wipe. */
-    includeWikis?: boolean;
     /** Preview what would be deleted without executing. */
     dryRun?: boolean;
     /** Data directory (default: ~/.coc). */
@@ -72,19 +70,11 @@ function printSummary(result: WipeResult, dryRun: boolean): void {
     printInfo(`${prefix}${bold('Wipe Summary:')}`);
     printInfo(`  Processes:    ${verb} ${cyan(String(result.deletedProcesses))}`);
     printInfo(`  Workspaces:   ${verb} ${cyan(String(result.deletedWorkspaces))}`);
-    printInfo(`  Wikis:        ${verb} ${cyan(String(result.deletedWikis))}`);
     printInfo(`  Queue files:  ${verb} ${cyan(String(result.deletedQueues))}`);
     printInfo(`  Schedules:    ${verb} ${cyan(String(result.deletedSchedules))}`);
     printInfo(`  Git ops:      ${verb} ${cyan(String(result.deletedGitOps))}`);
     printInfo(`  Repo prefs:   ${verb} ${cyan(String(result.deletedRepoPreferences))}`);
     printInfo(`  Preferences:  ${result.deletedPreferences ? verb : 'None to delete'}`);
-
-    if (result.deletedWikiDirs.length > 0) {
-        printInfo(`  Wiki dirs:    ${verb} ${cyan(String(result.deletedWikiDirs.length))} directory(ies)`);
-        for (const dir of result.deletedWikiDirs) {
-            printInfo(`    - ${dim(dir)}`);
-        }
-    }
 
     if (result.preservedFiles.length > 0) {
         printInfo('');
@@ -116,11 +106,10 @@ export async function executeWipeData(options: WipeDataCommandOptions): Promise<
 
     try {
         // Always show preview first
-        const preview = await wiper.getDryRunSummary({ includeWikis: options.includeWikis ?? false });
+        const preview = await wiper.getDryRunSummary();
 
         const totalItems = preview.deletedProcesses
             + preview.deletedWorkspaces
-            + preview.deletedWikis
             + preview.deletedQueues
             + (preview.deletedPreferences ? 1 : 0);
 
@@ -153,9 +142,7 @@ export async function executeWipeData(options: WipeDataCommandOptions): Promise<
             }
         }
 
-        const result = await wiper.wipeData({
-            includeWikis: options.includeWikis ?? false,
-        });
+        const result = await wiper.wipeData();
 
         printSummary(result, false);
 

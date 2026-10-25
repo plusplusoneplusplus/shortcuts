@@ -154,10 +154,6 @@ vi.mock('../../../../src/server/spa/client/react/features/git/RepoGitTab', () =>
     RepoGitTab: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoWikiTab', () => ({
-    RepoWikiTab: () => null,
-}));
-
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoCopilotTab', () => ({
     RepoCopilotTab: () => null,
 }));
@@ -369,7 +365,6 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
             reposSidebarCollapsed: false,
             activeRepoSubTab: 'settings',
             workspaces: [],
-            wikis: [],
             repoSubTabNavState: {},
         };
         const mod = await vi.importActual<any>(

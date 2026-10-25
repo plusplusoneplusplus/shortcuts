@@ -196,7 +196,7 @@ describe('StorageSection — migration progress', () => {
                 .mockResolvedValueOnce({
                     done: false,
                     value: new TextEncoder().encode(
-                        'data: {"type":"done","success":true,"processes":5,"workspaces":1,"wikis":0,"archivedProcesses":0}\n\n'
+                        'data: {"type":"done","success":true,"processes":5,"workspaces":1,"archivedProcesses":0}\n\n'
                     ),
                 })
                 .mockResolvedValueOnce({ done: true, value: undefined }),

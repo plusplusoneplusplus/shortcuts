@@ -62,7 +62,7 @@ describe('AdminPanel', () => {
             if (url.includes('/admin/data/stats')) {
                 return Promise.resolve({
                     ok: true,
-                    json: () => Promise.resolve({ processCount: 42, wikiCount: 5, totalBytes: 1048576 }),
+                    json: () => Promise.resolve({ processCount: 42, totalBytes: 1048576 }),
                 });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -73,7 +73,6 @@ describe('AdminPanel', () => {
         });
 
         expect(screen.queryByTestId('stat-processes')).toBeNull();
-        expect(screen.queryByTestId('stat-wikis')).toBeNull();
         expect(screen.queryByTestId('stat-disk')).toBeNull();
     });
 
@@ -808,7 +807,6 @@ describe('AdminPanel', () => {
                     hasSeenWelcome: false,
                     onboardingProgress: {
                         hasRunWorkflow: false,
-                        hasOpenedWiki: false,
                         hasUsedChat: false,
                         settingsVisited: false,
                         dismissed: false,

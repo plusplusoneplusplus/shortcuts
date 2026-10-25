@@ -250,7 +250,7 @@ describe('readPreferences / writePreferences', () => {
     });
 
     it('round-trips onboardingProgress', () => {
-        const progress = { hasUsedChat: true, hasRunWorkflow: false, hasOpenedWiki: true, settingsVisited: false, dismissed: false };
+        const progress = { hasUsedChat: true, hasRunWorkflow: false, settingsVisited: false, dismissed: false };
         writePreferences(tmpDir, { global: { onboardingProgress: progress } });
         const result = readPreferences(tmpDir);
         expect(result.global?.onboardingProgress).toEqual(progress);
@@ -1483,9 +1483,14 @@ describe('validateGlobalPreferences', () => {
     });
 
     it('round-trips new onboardingProgress keys', () => {
-        const input = { hasUsedChat: true, hasRunWorkflow: true, hasOpenedWiki: true };
+        const input = { hasUsedChat: true, hasRunWorkflow: true };
         const result = validateGlobalPreferences({ onboardingProgress: input });
         expect(result).toEqual({ onboardingProgress: input });
+    });
+
+    it('strips the retired hasOpenedWiki onboarding key', () => {
+        const result = validateGlobalPreferences({ onboardingProgress: { hasUsedChat: true, hasOpenedWiki: true } });
+        expect(result).toEqual({ onboardingProgress: { hasUsedChat: true } });
     });
 
     it('round-trips hasCompletedTour in onboardingProgress', () => {

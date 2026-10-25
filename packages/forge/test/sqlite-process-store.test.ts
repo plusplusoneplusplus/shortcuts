@@ -1,5 +1,5 @@
 /**
- * Validates process CRUD, filtering, summaries, workspace/wiki management,
+ * Validates process CRUD, filtering, summaries, workspace management,
  * event bus, and storage stats through the ProcessStore interface.
  * All tests use a temp directory with an isolated SQLite database.
  */
@@ -16,7 +16,6 @@ import {
     ConversationTurn,
     ProcessOutputEvent,
     WorkspaceInfo,
-    WikiInfo,
     SqliteTaskGroupStore,
     CHAT_FOLDER_GROUP_TYPE,
 } from '../src/index';
@@ -734,82 +733,6 @@ describe('SqliteProcessStore — Workspace CRUD', () => {
 });
 
 // ============================================================================
-// Wiki CRUD
-// ============================================================================
-
-describe('SqliteProcessStore — Wiki CRUD', () => {
-    const makeWiki = (id: string, overrides?: Partial<WikiInfo>): WikiInfo => ({
-        id,
-        name: `Wiki ${id}`,
-        wikiDir: `/wikis/${id}`,
-        aiEnabled: true,
-        registeredAt: new Date().toISOString(),
-        ...overrides,
-    });
-
-    it('registerWiki + getWikis round-trip', async () => {
-        await store.registerWiki(makeWiki('w-1', {
-            repoPath: '/repo',
-            color: '#0000ff',
-        }));
-
-        const wikis = await store.getWikis();
-        expect(wikis).toHaveLength(1);
-        expect(wikis[0].id).toBe('w-1');
-        expect(wikis[0].name).toBe('Wiki w-1');
-        expect(wikis[0].wikiDir).toBe('/wikis/w-1');
-        expect(wikis[0].repoPath).toBe('/repo');
-        expect(wikis[0].color).toBe('#0000ff');
-        expect(wikis[0].aiEnabled).toBe(true);
-    });
-
-    it('registerWiki with duplicate ID updates existing', async () => {
-        await store.registerWiki(makeWiki('w-dup', { name: 'Original' }));
-        await store.registerWiki(makeWiki('w-dup', { name: 'Updated' }));
-
-        const wikis = await store.getWikis();
-        expect(wikis).toHaveLength(1);
-        expect(wikis[0].name).toBe('Updated');
-    });
-
-    it('updateWiki modifies fields, returns updated wiki', async () => {
-        await store.registerWiki(makeWiki('w-mod'));
-
-        const updated = await store.updateWiki('w-mod', {
-            name: 'New Wiki Name',
-            aiEnabled: false,
-        });
-
-        expect(updated).toBeDefined();
-        expect(updated!.name).toBe('New Wiki Name');
-        expect(updated!.aiEnabled).toBe(false);
-        expect(updated!.wikiDir).toBe('/wikis/w-mod');
-    });
-
-    it('updateWiki with unknown ID returns undefined', async () => {
-        const result = await store.updateWiki('ghost', { name: 'nope' });
-        expect(result).toBeUndefined();
-    });
-
-    it('removeWiki returns true on success, false on unknown', async () => {
-        await store.registerWiki(makeWiki('w-rm'));
-
-        expect(await store.removeWiki('w-rm')).toBe(true);
-        expect(await store.removeWiki('w-rm')).toBe(false);
-        expect(await store.getWikis()).toHaveLength(0);
-    });
-
-    it('clearAllWikis returns count, empties list', async () => {
-        await store.registerWiki(makeWiki('w-a'));
-        await store.registerWiki(makeWiki('w-b'));
-
-        const count = await store.clearAllWikis();
-        expect(count).toBe(2);
-        expect(await store.getWikis()).toHaveLength(0);
-    });
-});
-
-// ============================================================================
 // EventEmitter Bus
 // ============================================================================
 
@@ -928,17 +851,14 @@ describe('SqliteProcessStore — Storage stats', () => {
         const stats0 = await store.getStorageStats();
         expect(stats0.totalProcesses).toBe(0);
         expect(stats0.totalWorkspaces).toBe(0);
-        expect(stats0.totalWikis).toBe(0);
 
         await store.addProcess(makeProcess('st-1'));
         await store.addProcess(makeProcess('st-2'));
         await store.registerWorkspace({ id: 'ws-1', name: 'WS', rootPath: '/p' });
-        await store.registerWiki({ id: 'w-1', name: 'W', wikiDir: '/w', aiEnabled: true, registeredAt: new Date().toISOString() });
 
         const stats1 = await store.getStorageStats();
         expect(stats1.totalProcesses).toBe(2);
         expect(stats1.totalWorkspaces).toBe(1);
-        expect(stats1.totalWikis).toBe(1);
         expect(stats1.storageSize).toBeGreaterThan(0);
 
         await store.removeProcess('st-1');

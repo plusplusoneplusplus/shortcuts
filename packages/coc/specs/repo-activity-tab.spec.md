@@ -394,7 +394,7 @@ These properties **must hold at all times**. Any change that violates an invaria
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  [Repo Name]   Activity* │ Git │ Wiki │ Schedules │ ...             │
+│  [Repo Name]   Activity* │ Git │ Schedules │ ...                    │
 ├────────────────────────┬────────────────────────────────────────────┤
 │                        │                                            │
 │  [🔍 Search...  ] [▼]  │  [Task Title]           [↗] [⬜] [✕]     │

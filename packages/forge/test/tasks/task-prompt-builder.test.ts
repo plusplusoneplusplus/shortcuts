@@ -132,14 +132,14 @@ describe('buildCreateTaskPromptWithName', () => {
 
     describe('with autoFolderContext', () => {
         const tasksRoot = '/workspace/data/repos/abc/tasks';
-        const existingFolders = ['coc', 'coc/chat', 'deep-wiki'];
+        const existingFolders = ['coc', 'coc/chat', 'forge'];
 
         it('should include save-location and folder options when name is provided', () => {
             const ctx: AutoFolderContext = { tasksRoot, existingFolders };
             const prompt = buildCreateTaskPromptWithName('retry-logic', 'Add retry', tasksRoot, ctx);
             expect(prompt).toContain('Save location:');
             expect(prompt).toContain('Folder options:');
-            expect(prompt).toContain('coc, coc/chat, deep-wiki');
+            expect(prompt).toContain('coc, coc/chat, forge');
             expect(prompt).toContain(`${tasksRoot}/<chosen-folder>/retry-logic.plan.md`);
             expect(prompt).toContain('Rules:');
         });
@@ -149,7 +149,7 @@ describe('buildCreateTaskPromptWithName', () => {
             const prompt = buildCreateTaskPromptWithName(undefined, 'Some task', tasksRoot, ctx);
             expect(prompt).toContain('Save location:');
             expect(prompt).toContain('Folder options:');
-            expect(prompt).toContain('coc, coc/chat, deep-wiki');
+            expect(prompt).toContain('coc, coc/chat, forge');
             expect(prompt).toContain('<descriptive-name>.plan.md');
         });
 
@@ -163,24 +163,24 @@ describe('buildCreateTaskPromptWithName', () => {
         it('should exclude "archive" folder from folder options', () => {
             const ctx: AutoFolderContext = {
                 tasksRoot,
-                existingFolders: ['coc', 'archive', 'deep-wiki'],
+                existingFolders: ['coc', 'archive', 'forge'],
             };
             const prompt = buildCreateTaskPromptWithName('my-task', 'desc', tasksRoot, ctx);
             expect(prompt).not.toContain('archive');
             expect(prompt).toContain('coc');
-            expect(prompt).toContain('deep-wiki');
+            expect(prompt).toContain('forge');
         });
 
         it('should exclude "archive/*" sub-folders from folder options', () => {
             const ctx: AutoFolderContext = {
                 tasksRoot,
-                existingFolders: ['coc', 'archive/coc', 'archive/coc-sdk', 'deep-wiki'],
+                existingFolders: ['coc', 'archive/coc', 'archive/coc-sdk', 'forge'],
             };
             const prompt = buildCreateTaskPromptWithName(undefined, 'desc', tasksRoot, ctx);
             expect(prompt).not.toContain('archive/coc');
             expect(prompt).not.toContain('archive/coc-sdk');
             expect(prompt).toContain('coc');
-            expect(prompt).toContain('deep-wiki');
+            expect(prompt).toContain('forge');
         });
 
         it('should show (none yet) when only archive folders remain after filtering', () => {
@@ -537,10 +537,10 @@ describe('buildPlanGenerationSystemPrompt', () => {
             targetPath: '/tmp/tasks',
             autoFolder: true,
             tasksRoot: '/tmp/tasks',
-            existingFolders: ['coc', 'deep-wiki'],
+            existingFolders: ['coc', 'forge'],
         });
         expect(prompt).toContain('<chosen-folder>');
-        expect(prompt).toContain('coc, deep-wiki');
+        expect(prompt).toContain('coc, forge');
         expect(prompt).not.toContain('EXACT directory');
     });
 
@@ -591,13 +591,13 @@ describe('buildPlanGenerationSystemPrompt', () => {
 
 describe('buildAutoFolderLocationBlock', () => {
     it('should include tasksRoot in the save location line', () => {
-        const block = buildAutoFolderLocationBlock('/tmp/tasks', ['coc', 'deep-wiki']);
+        const block = buildAutoFolderLocationBlock('/tmp/tasks', ['coc', 'forge']);
         expect(block).toContain('/tmp/tasks/<chosen-folder>/<descriptive-name>.plan.md');
     });
 
     it('should list existing folders', () => {
-        const block = buildAutoFolderLocationBlock('/tmp/tasks', ['coc', 'deep-wiki']);
-        expect(block).toContain('coc, deep-wiki');
+        const block = buildAutoFolderLocationBlock('/tmp/tasks', ['coc', 'forge']);
+        expect(block).toContain('coc, forge');
     });
 
     it('should show (none yet) when existingFolders is empty', () => {

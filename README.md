@@ -11,7 +11,6 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/@plusplusoneplusplus/coc"><img src="https://img.shields.io/npm/v/@plusplusoneplusplus/coc.svg" alt="npm version" /></a>
   <a href="https://www.npmjs.com/package/@plusplusoneplusplus/forge"><img src="https://img.shields.io/npm/v/@plusplusoneplusplus/forge.svg?label=forge" alt="forge version" /></a>
-  <a href="https://www.npmjs.com/package/@plusplusoneplusplus/deep-wiki"><img src="https://img.shields.io/npm/v/@plusplusoneplusplus/deep-wiki.svg?label=deep-wiki" alt="deep-wiki version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" /></a>
 </p>
 
@@ -185,7 +184,6 @@ sidecar? See [`deploy/tenant/`](deploy/tenant/README.md).
 |---------|-------------|-----|
 | [`coc`](packages/coc/) | CLI + dashboard for YAML AI workflows | [`@plusplusoneplusplus/coc`](https://www.npmjs.com/package/@plusplusoneplusplus/coc) |
 | [`forge`](packages/forge/) | Core AI engine: map-reduce, git CLI, diff providers, process store, review helpers | [`@plusplusoneplusplus/forge`](https://www.npmjs.com/package/@plusplusoneplusplus/forge) |
-| [`deep-wiki`](packages/deep-wiki/) | Auto-generates comprehensive wikis for any codebase | [`@plusplusoneplusplus/deep-wiki`](https://www.npmjs.com/package/@plusplusoneplusplus/deep-wiki) |
 | [`coc-workflow`](packages/coc-workflow/) | Pure DAG workflow compiler and executor | [`@plusplusoneplusplus/coc-workflow`](https://www.npmjs.com/package/@plusplusoneplusplus/coc-workflow) |
 | [`coc-agent-sdk`](packages/coc-agent-sdk/) | Provider-neutral SDK wrapper (Copilot, Codex, Claude) | [`@plusplusoneplusplus/coc-agent-sdk`](https://www.npmjs.com/package/@plusplusoneplusplus/coc-agent-sdk) |
 | [`coc-client`](packages/coc-client/) | TypeScript client library for the CoC server API | [`@plusplusoneplusplus/coc-client`](https://www.npmjs.com/package/@plusplusoneplusplus/coc-client) |

@@ -56,7 +56,7 @@ describe('MarkdownView process deep-links', () => {
     });
 
     it.each([
-        ['#/wiki/page-1', 'Wiki page'],
+        ['#/notes/page-1', 'Notes page'],
         ['#/process', 'Missing process id'],
         ['https://example.com/process/abc', 'External link'],
     ])('leaves non-process links alone: %s', (href, label) => {

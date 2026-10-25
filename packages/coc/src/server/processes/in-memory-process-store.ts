@@ -40,15 +40,10 @@ export function createStubStore(): ProcessStore {
         removeWorkspace: async () => false,
         updateWorkspace: async () => undefined,
         renameWorkspaceId: async () => false,
-        getWikis: async () => [],
-        registerWiki: async () => {},
-        removeWiki: async () => false,
-        updateWiki: async () => undefined,
         clearAllWorkspaces: async () => 0,
-        clearAllWikis: async () => 0,
         getProcessCount: async () => processes.size,
         getProcessIds: async () => Array.from(processes.keys()),
-        getStorageStats: async () => ({ totalProcesses: 0, totalWorkspaces: 0, totalWikis: 0, storageSize: 0 }),
+        getStorageStats: async () => ({ totalProcesses: 0, totalWorkspaces: 0, storageSize: 0 }),
         ...createProcessEventBus(),
         appendConversationTurn: async (processId, makeTurn, options) => {
             const existing = processes.get(processId);

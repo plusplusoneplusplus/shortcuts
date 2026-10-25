@@ -94,7 +94,7 @@ fn shares_canonical_roots_and_removes_only_the_requested_workspace() {
 }
 
 #[test]
-fn workflows_templates_and_wiki_subscriptions_share_one_root_and_preserve_path_case() {
+fn workflows_templates_and_docs_subscriptions_share_one_root_and_preserve_path_case() {
     let root = directory();
     std::fs::create_dir_all(root.path().join(".vscode/workflows")).unwrap();
     let (service, receiver) = service();
@@ -107,23 +107,23 @@ fn workflows_templates_and_wiki_subscriptions_share_one_root_and_preserve_path_c
     // Canonical paths and caller aliases must agree, including macOS temp roots
     // reached through a symlink and Windows casing aliases.
     let canonical = root.path().canonicalize().unwrap();
-    let mut wiki = options(&canonical, "workspace");
-    wiki.debounce_ms = 60;
-    wiki.filter = WatchFilter {
+    let mut docs = options(&canonical, "workspace");
+    docs.debounce_ms = 60;
+    docs.filter = WatchFilter {
         extensions: vec!["md".into()],
         ignore_dirs: vec!["node_modules".into()],
         respect_gitignore: true,
     };
-    let wiki_id = service.subscribe(wiki).unwrap();
+    let docs_id = service.subscribe(docs).unwrap();
     assert_eq!(service.root_count().unwrap(), 1);
-    settle(&receiver, root.path(), "md", &[workflows_id, templates_id, wiki_id]);
+    settle(&receiver, root.path(), "md", &[workflows_id, templates_id, docs_id]);
     std::fs::write(root.path().join(".vscode/workflows/task.yaml"), "name: task").unwrap();
-    std::fs::write(root.path().join("MixedCase.md"), "wiki").unwrap();
+    std::fs::write(root.path().join("MixedCase.md"), "docs").unwrap();
     let mut delivered = std::collections::BTreeSet::new();
     while delivered.len() < 3 {
         let batch = receive(&receiver, |batch| batch.paths.contains(&"MixedCase.md".into()));
         assert!(!batch.rescan);
-        if batch.subscription_id == wiki_id {
+        if batch.subscription_id == docs_id {
             assert_eq!(batch.paths, ["MixedCase.md"]);
         } else {
             assert!([workflows_id, templates_id].contains(&batch.subscription_id));

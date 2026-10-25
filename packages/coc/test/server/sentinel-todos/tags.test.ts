@@ -202,7 +202,7 @@ describe('Sentinel to-do tags', () => {
         todos.writeTag({ ...owner, processId: 'another-parent' }, undefined, tagBody);
         const domain = createSentinelTodosDomain();
         const processes = new SqliteProcessStore({ dbPath: path.join(directory, 'processes.db') });
-        const context = { dataDir: directory, store: processes, includeWikis: false } as unknown as StorageSnapshotContext;
+        const context = { dataDir: directory, store: processes } as unknown as StorageSnapshotContext;
         try {
             expect(await domain.collect(context)).toEqual({ data: {}, metadata: {}, warnings: [] });
             const before = todos.get(owner);

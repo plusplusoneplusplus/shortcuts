@@ -1,6 +1,6 @@
 /**
- * Automatically migrates workspace and wiki registry entries from legacy
- * JSON files (workspaces.json, wikis.json) into the SQLite process store
+ * Automatically migrates workspace registry entries from the legacy
+ * workspaces.json file into the SQLite process store
  * on server startup. This covers the upgrade path where someone pulls
  * new code (with SQLite default) without running the full admin migration.
  *
@@ -12,7 +12,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ProcessStore, WorkspaceInfo, WikiInfo } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 
 const PREFIX = '[WorkspaceMigration]';
@@ -20,7 +20,6 @@ const PREFIX = '[WorkspaceMigration]';
 export interface MigrationResult {
     migrated: boolean;
     workspaceCount: number;
-    wikiCount: number;
 }
 
 function readJsonFileSafe<T>(filePath: string): T | undefined {
@@ -43,14 +42,14 @@ function renameToMigrated(filePath: string): void {
 }
 
 /**
- * Detect and migrate workspace/wiki registries from legacy JSON files
+ * Detect and migrate the workspace registry from the legacy JSON file
  * into the SQLite process store. Safe to call on every startup.
  */
 export async function migrateWorkspaceRegistryIfNeeded(
     dataDir: string,
     store: ProcessStore,
 ): Promise<MigrationResult> {
-    const noOp: MigrationResult = { migrated: false, workspaceCount: 0, wikiCount: 0 };
+    const noOp: MigrationResult = { migrated: false, workspaceCount: 0 };
 
     // Only migrate when using SQLite backend
     if (!(store instanceof SqliteProcessStore)) {
@@ -78,24 +77,7 @@ export async function migrateWorkspaceRegistryIfNeeded(
     }
     renameToMigrated(workspacesPath);
 
-    // --- Migrate wikis (independent of workspace migration) ---
-    let wikiCount = 0;
-    const wikisPath = path.join(dataDir, 'wikis.json');
-    if (fs.existsSync(wikisPath)) {
-        const wikis = readJsonFileSafe<WikiInfo[]>(wikisPath);
-        if (wikis && Array.isArray(wikis)) {
-            for (const wiki of wikis) {
-                await store.registerWiki(wiki);
-            }
-            wikiCount = wikis.length;
-            process.stderr.write(`${PREFIX} Migrated ${wikiCount} wiki(s)\n`);
-        } else {
-            process.stderr.write(`${PREFIX} Warning: wikis.json is malformed — skipping wiki migration\n`);
-        }
-        renameToMigrated(wikisPath);
-    }
-
     process.stderr.write(`${PREFIX} Migration complete\n`);
 
-    return { migrated: true, workspaceCount, wikiCount };
+    return { migrated: true, workspaceCount };
 }

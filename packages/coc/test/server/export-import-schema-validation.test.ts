@@ -20,10 +20,9 @@ function validBase() {
     return {
         version: EXPORT_SCHEMA_VERSION,
         exportedAt: new Date().toISOString(),
-        metadata: { processCount: 0, workspaceCount: 0, wikiCount: 0, queueFileCount: 0 },
+        metadata: { processCount: 0, workspaceCount: 0, queueFileCount: 0 },
         processes: [],
         workspaces: [],
-        wikis: [],
         queueHistory: [],
         preferences: {},
     };
@@ -209,11 +208,11 @@ describe('validateExportPayload — Section 2: Required Fields', () => {
         expect(result.error).toContain('workspaces');
     });
 
-    it('rejects missing "wikis" field', () => {
-        const payload = validBase() as any;
-        delete payload.wikis;
-        const result = validateExportPayload(payload);
-        expect(result.valid).toBe(false);
-        expect(result.error).toContain('wikis');
+    it('accepts payloads without wiki fields and legacy payloads that still carry them', () => {
+        expect(validateExportPayload(validBase())).toEqual({ valid: true });
+        const legacy = validBase() as any;
+        legacy.wikis = [];
+        legacy.metadata.wikiCount = 0;
+        expect(validateExportPayload(legacy)).toEqual({ valid: true });
     });
 });

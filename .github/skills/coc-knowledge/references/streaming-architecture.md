@@ -23,8 +23,7 @@ block at HTTP EOF.
 
 `SSE_HEADERS` and `writeSseHeaders` set the stream content type, no-cache, keep-alive,
 and disabled proxy buffering. `writeNamedEvent` emits named JSON events;
-`writeDataEvent` emits data-only JSON for wiki/storage consumers, with `sendSSE` exported
-as its alias from `wiki/ask-handler.ts`. CoC imports the writers through
+`writeDataEvent` emits data-only JSON for storage consumers. CoC imports the writers through
 `server/shared/sse-writer.ts`; the container imports forge directly. Both writers return
 false on destroyed/ended responses and true for successful writes even under backpressure.
 Data-only writes catch write errors; named writes propagate them. Header flushing belongs
@@ -34,9 +33,8 @@ to each endpoint.
 
 The SPA's `react/utils/readSseStream.ts` wraps `parseSseBuffer` in an async generator,
 preserves split UTF-8 characters, and releases the reader lock on completion or error.
-Early consumer returns cancel the reader. Wiki ask opts into parsing a final unterminated
-frame. Wiki admin, storage, and task generation consume complete frames and own their
-existing payload dispatch. Raw `EventSource` chat hooks keep their own reconnection and
+Early consumer returns cancel the reader; an unterminated final frame is dropped. Storage
+and task generation consume complete frames and own their existing payload dispatch. Raw `EventSource` chat hooks keep their own reconnection and
 replay behavior.
 
 `coc-client/test/realtime/sse.test.ts` compares actual `ProcessSseClient` listener names
@@ -344,7 +342,6 @@ ProcessStore
 | `turn-pinned` / `turn-archived` | turn-actions-handler |
 | `memory-promoted` / `memory-promotion-failed` | auto-promote, memory-promote-executor |
 | `server-restarting`, `config-changed` | admin-handler |
-| `wiki-reload/rebuilding/error` | `broadcastWikiEvent()` |
 | `comment-added/updated/deleted` | diff-comments-handler |
 | `canvas-updated` | `CanvasUpdateNotifier` — the single fanout every canvas mutation (user save, capability, Kusto create/run) goes through. It emits this WS event AND a ProcessStore/SSE update on the canvas's `processId`; no route emits either on its own |
 
@@ -391,7 +388,7 @@ WebSocket.
 ### Event forwarding path
 
 When a container link is active, broadcasts fan out via `wsServer.onBroadcast()`:
-`broadcastProcessEvent()` / `broadcastGitChanged()` / `broadcastWikiEvent()` sends to local
+`broadcastProcessEvent()` / `broadcastGitChanged()` sends to local
 browser WS clients and passes the same serialized data to registered `onBroadcast` listeners.
 `server/index.ts` subscribes the container link
 (`wsServer.onBroadcast(data => containerLink.forwardEvent(data))`);

@@ -44,7 +44,6 @@ spa/client/react/
 ├── tasks/         # Task/plan management, inline comments
 ├── ui/            # Primitives (Button, Card, Dialog, Spinner, Badge, Toast)
 ├── welcome/       # WelcomeTour, FirstStepsCard, FeatureTip
-├── wiki/          # WikiView, WikiAsk, WikiGraph
 ├── types/ utils/  # Types and utility modules
 └── featureFlags.ts
 ```
@@ -972,7 +971,7 @@ session ID, phase, and ordered child process IDs).
 ## coc-client integration
 
 The SPA consumes `@plusplusoneplusplus/coc-client` for typed REST transport. Domains:
-admin, processes, queue, schedules, tasks, notes, workflows, wiki, memory, memoryV2,
+admin, processes, queue, schedules, tasks, notes, workflows, memory, memoryV2,
 skills, preferences, seen-state, work-items, agentProviders, git. The git domain covers
 commit/diff/branch helpers, operation history, the patch-transfer export/apply methods
 behind cross-clone cherry-pick, and the worktree-execution `listWorktrees` /

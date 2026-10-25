@@ -29,12 +29,6 @@ const STEPS: Step[] = [
         helper: 'Define and execute reusable AI pipelines with YAML.',
         progressKey: 'hasRunWorkflow',
     },
-    {
-        id: 'open-wiki',
-        title: 'Explore the wiki',
-        helper: 'Browse auto-generated documentation for your codebase.',
-        progressKey: 'hasOpenedWiki',
-    },
 ];
 
 export { STEPS };
@@ -45,7 +39,7 @@ export interface FirstStepsCardProps {
 }
 
 export function FirstStepsCard({ onAddRepo }: FirstStepsCardProps) {
-    const { state, dispatch } = useApp();
+    const { state } = useApp();
     const { updateOnboarding } = useOnboardingPreferences();
     const { workspaces, onboardingProgress } = state;
 
@@ -149,20 +143,6 @@ export function FirstStepsCard({ onAddRepo }: FirstStepsCardProps) {
                                         onClick={onAddRepo}
                                     >
                                         + Add Repository
-                                    </Button>
-                                )}
-                                {!done && step.id === 'open-wiki' && (
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="mt-1"
-                                        data-testid="first-steps-open-wiki"
-                                        onClick={() => {
-                                            dispatch({ type: 'SET_ACTIVE_TAB', tab: 'wiki' });
-                                            void updateOnboarding({ hasOpenedWiki: true }).catch(() => {});
-                                        }}
-                                    >
-                                        Open Wiki
                                     </Button>
                                 )}
                             </div>

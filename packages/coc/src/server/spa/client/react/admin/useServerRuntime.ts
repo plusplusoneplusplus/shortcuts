@@ -75,7 +75,7 @@ export function useServerRuntime({ addToast, onSaved }: UseServerRuntimeOptions)
             const poll = () => {
                 setTimeout(async () => {
                     try {
-                        await adminServer.client.admin.getDataStats(undefined, { signal: AbortSignal.timeout(2000) });
+                        await adminServer.client.admin.getDataStats({ signal: AbortSignal.timeout(2000) });
                         setRestartStatus('Server is back!');
                         // Only the connected server's restart invalidates this page.
                         if (adminServer.isRemote) setRestarting(false);

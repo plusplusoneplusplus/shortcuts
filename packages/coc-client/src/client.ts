@@ -1,4 +1,4 @@
-import { AdminClient, AgentProvidersClient, CanvasesClient, DbBrowserClient, DecisionsClient, DreamsClient, ExplorerClient, ForEachClient, GitClient, HealthClient, CronsClient, LanguageServersClient, MapReduceClient, MemoryClient, MemoryV2Client, MyWorkClient, NativeCliSessionsClient, NativeCopilotSessionsClient, NotesClient, PreferencesClient, ProcessesClient, PromptHistoryClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, SentinelTodosClient, ServersClient, SkillsClient, StatsClient, SuggestionsClient, SyncClient, TaskGroupsClient, TasksClient, TemplatesClient, TriggersClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
+import { AdminClient, AgentProvidersClient, CanvasesClient, DbBrowserClient, DecisionsClient, DreamsClient, ExplorerClient, ForEachClient, GitClient, HealthClient, CronsClient, LanguageServersClient, MapReduceClient, MemoryClient, MemoryV2Client, MyWorkClient, NativeCliSessionsClient, NativeCopilotSessionsClient, NotesClient, PreferencesClient, ProcessesClient, PromptHistoryClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, SentinelTodosClient, ServersClient, SkillsClient, StatsClient, SuggestionsClient, SyncClient, TaskGroupsClient, TasksClient, TemplatesClient, TriggersClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
 import { HttpTransport, normalizeOptions } from './http';
 import { EventsClient } from './realtime';
 import type { CocClientOptions, CocRequestOptions, NormalizedCocClientOptions } from './types';
@@ -36,7 +36,6 @@ export class CocClient {
   readonly taskGroups: TaskGroupsClient;
   readonly tasks: TasksClient;
   readonly templates: TemplatesClient;
-  readonly wiki: WikiClient;
   readonly workflow: WorkflowClient;
   readonly workItems: WorkItemsClient;
   readonly workspaces: WorkspacesClient;
@@ -84,7 +83,6 @@ export class CocClient {
     this.taskGroups = new TaskGroupsClient(this.transport);
     this.tasks = new TasksClient(this.transport);
     this.templates = new TemplatesClient(this.transport);
-    this.wiki = new WikiClient(this.transport, this.options);
     this.workflow = new WorkflowClient(this.transport);
     this.workItems = new WorkItemsClient(this.transport);
     this.workspaces = new WorkspacesClient(this.transport);

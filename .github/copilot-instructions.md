@@ -9,7 +9,6 @@
 
 ## Project Principles
 - CoC (Copilot of Copilot) is a standalone Node CLI/server and web dashboard.
-- CoC is independent of the deep-wiki CLI, but may invoke it as a child process.
 - run `npm run build` to build the workspace packages
 - run `npm run test` to run all the tests
 - Do not reinvent the wheel. Use the existing code and documentation to build the new features if possible.

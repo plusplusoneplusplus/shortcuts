@@ -88,11 +88,9 @@ describe('TopBar responsive behavior', () => {
         delete (window as any).__DASHBOARD_CONFIG__;
     });
 
-    it('tab bar is not rendered when TABS is empty (repos is implicit default, wiki hidden)', () => {
+    it('renders no text tab bar (repos is the implicit default)', () => {
         viewportCleanup = mockViewport(1024);
         render(<TopBar />);
-        // With repos removed from ALL_TABS and wiki hidden by SHOW_WIKI_TAB flag,
-        // TABS is empty and the <nav id="tab-bar"> is not rendered
         const tabBar = document.getElementById('tab-bar');
         expect(tabBar).toBeNull();
     });

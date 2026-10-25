@@ -742,15 +742,6 @@ Origin `/execute`, `/submit-pr`, `/ai-review`, `/resolve-comments` require same-
 |--------|------|-------------|
 | GET/PUT | `/api/workspaces/:id/llm-tools-config` | Get / update tool config |
 
-## Wiki
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/wiki` | List registered wikis |
-| POST | `/api/wiki/ask` | Ask wiki question |
-| POST | `/api/wiki/explore` | Explore wiki topic |
-| POST | `/api/wiki/generate` | Generate wiki |
-
 ## Admin
 
 | Method | Path | Description |

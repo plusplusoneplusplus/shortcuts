@@ -58,7 +58,7 @@ Use this skill when the user asks you to **implement** a change in the codebase 
    - Review the final document for consistency and unnecessary growth. Each addition must provide necessary, non-duplicated guidance.
 
 8. **Update `coc-knowledge` skill if needed**
-   - If the change touches any CoC subsystem covered by a reference file under `.github/skills/coc-knowledge/references/` (server, memory system, LLM tools, SDK wrapper, process store, workflow engine, deep-wiki, dashboard SPA, admin config, MCP settings, REST API, etc.), update the relevant reference file(s) to reflect the new behavior.
+   - If the change touches any CoC subsystem covered by a reference file under `.github/skills/coc-knowledge/references/` (server, memory system, LLM tools, SDK wrapper, process store, workflow engine, dashboard SPA, admin config, MCP settings, REST API, etc.), update the relevant reference file(s) to reflect the new behavior.
    - Apply the documentation rule in step 7: reconcile affected sections rather than accumulating new notes.
 
 9. **If a plan file exists, keep it updated**

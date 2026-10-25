@@ -11,11 +11,11 @@ Guidance for AI agents working in this repository. NEVER create document files u
 
 ## Repo Layout (one-liner)
 
-npm workspaces monorepo for published Node packages including `coc-workflow`, `forge`, `coc`, `coc-client`, `coc-agent-sdk`, `coc-memory`, `deep-wiki`, `coccontainer`, and `coc-connector` (consolidated Teams + WhatsApp messaging connectors). The root `Dockerfile` + `docker/` + `deploy/tenant/` ship the server as `ghcr.io/plusplusoneplusplus/coc` (loopback-bound by policy; see `packages/coc/test/docker/`).
+npm workspaces monorepo for published Node packages including `coc-workflow`, `forge`, `coc`, `coc-client`, `coc-agent-sdk`, `coc-memory`, `coccontainer`, and `coc-connector` (consolidated Teams + WhatsApp messaging connectors). The root `Dockerfile` + `docker/` + `deploy/tenant/` ship the server as `ghcr.io/plusplusoneplusplus/coc` (loopback-bound by policy; see `packages/coc/test/docker/`).
 
 ## Load the CoC Knowledge Skill
 
-For anything touching CoC, forge, deep-wiki, coc-client, the dashboard SPA, REST API, workflow engine, memory system, LLM tools, process store, admin config, MCP settings, Ralph, loops, EnDev, the Windows service, monorepo layout, build/test/release flow, or repo conventions — **load `.github/skills/coc-knowledge/SKILL.md` and read the relevant `references/*.md` files** before responding or editing.
+For anything touching CoC, forge, coc-client, the dashboard SPA, REST API, workflow engine, memory system, LLM tools, process store, admin config, MCP settings, Ralph, loops, EnDev, the Windows service, monorepo layout, build/test/release flow, or repo conventions — **load `.github/skills/coc-knowledge/SKILL.md` and read the relevant `references/*.md` files** before responding or editing.
 
 ## Hard Invariants (apply even before reading the skill)
 

@@ -1,7 +1,7 @@
 /**
  * Validates exportAllData():
  * - Empty store returns valid payload with zero counts
- * - Seeded processes/workspaces/wikis are included
+ * - Seeded processes/workspaces are included
  * - Queue files are included when present
  * - Preferences are included when present
  * - Server config is included when config.yaml exists
@@ -66,7 +66,6 @@ describe('exportAllData', () => {
         expect(payload.metadata).toEqual({
             processCount: 0,
             workspaceCount: 0,
-            wikiCount: 0,
             queueFileCount: 0,
             blobFileCount: 0,
             repoPreferenceCount: 0,
@@ -74,7 +73,7 @@ describe('exportAllData', () => {
         });
         expect(payload.processes).toEqual([]);
         expect(payload.workspaces).toEqual([]);
-        expect(payload.wikis).toEqual([]);
+        expect(payload).not.toHaveProperty('wikis');
         expect(payload.queueHistory).toEqual([]);
         expect(payload.preferences).toEqual({});
         expect(payload.serverConfig).toBeUndefined();
@@ -86,10 +85,10 @@ describe('exportAllData', () => {
     });
 
     // ========================================================================
-    // Seeded processes, workspaces, wikis
+    // Seeded processes and workspaces
     // ========================================================================
 
-    it('includes seeded processes, workspaces, and wikis', async () => {
+    it('includes seeded processes and workspaces', async () => {
         await store.addProcess({
             id: 'p1', type: 'clarification', promptPreview: 'test',
             fullPrompt: 'test full', status: 'completed', startTime: new Date(),
@@ -99,19 +98,13 @@ describe('exportAllData', () => {
             fullPrompt: 'test2 full', status: 'running', startTime: new Date(),
         });
         await store.registerWorkspace({ id: 'ws1', name: 'WS1', rootPath: '/tmp/ws1' });
-        await store.registerWiki({
-            id: 'w1', name: 'Wiki1', wikiDir: '/tmp/wiki-out',
-            aiEnabled: false, registeredAt: new Date().toISOString(),
-        });
 
         const payload = await exportAllData({ store, dataDir });
 
         expect(payload.metadata.processCount).toBe(2);
         expect(payload.metadata.workspaceCount).toBe(1);
-        expect(payload.metadata.wikiCount).toBe(1);
         expect(payload.processes).toHaveLength(2);
         expect(payload.workspaces).toHaveLength(1);
-        expect(payload.wikis).toHaveLength(1);
 
         const validation = validateExportPayload(payload);
         expect(validation).toEqual({ valid: true });

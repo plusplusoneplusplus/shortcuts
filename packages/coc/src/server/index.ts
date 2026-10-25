@@ -1,7 +1,5 @@
 /**
  * Creates and manages an HTTP server for the `coc serve` command.
- *
- * Mirrors packages/deep-wiki/src/server/index.ts pattern.
  */
 
 import * as http from 'http';
@@ -108,7 +106,6 @@ interface CloseHandlerDeps {
     notesSearchService: { dispose(): void };
     watchService: NativeWatchServiceLike;
     notesSearchPreferencesDispose: () => void;
-    wikiManager: { disposeAll(): void } | undefined;
     scheduleManager: { dispose(): void };
     scheduleInfraDispose: () => void;
     notesGitTimerManager: NotesGitTimerManager;
@@ -147,7 +144,7 @@ interface CloseHandlerDeps {
 function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) => Promise<{ drainOutcome?: 'completed' | 'timeout' }> {
     return async (closeOptions) => {
         const { staleDetector, outputPruner, taskWatcher, pipelineWatcher, templateWatcher, notesWatcher,
-                wikiManager, scheduleManager, bridge, queuePersistence, wsServer, activeSockets, server } = deps;
+                scheduleManager, bridge, queuePersistence, wsServer, activeSockets, server } = deps;
 
         await deps.teamsIc3OwnCommands?.dispose();
         staleDetector.dispose();
@@ -159,7 +156,6 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         notesWatcher.closeAll();
         deps.notesSearchPreferencesDispose();
         deps.notesSearchService.dispose();
-        wikiManager?.disposeAll();
         scheduleManager.dispose();
         deps.watchService.dispose();
         deps.scheduleInfraDispose();
@@ -653,7 +649,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const heapMonitor = new HeapMonitor(resolvedConfig.monitoring.heapCheck);
     heapMonitor.start();
 
-    // Auto-migrate legacy workspace/wiki registries from JSON to SQLite
+    // Auto-migrate legacy workspace registries from JSON to SQLite
     await migrateWorkspaceRegistryIfNeeded(dataDir, store);
 
     // Auto-migrate legacy file-based process histories to SQLite
@@ -831,7 +827,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     let localBaseUrl = formatLocalBaseUrl(host, port);
     const routes: Route[] = [];
-    const { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService, codaReady, sentinelRefrainsShutdown, teamsIc3OwnCommands } = registerAllRoutes(routes, {
+    const { teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService, codaReady, sentinelRefrainsShutdown, teamsIc3OwnCommands } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
         dataDir, configPath: options.configPath,
@@ -839,7 +835,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         globalWorkspaceRootPath: globalWorkspace.rootPath,
         resolvedAiService, getWsServer: () => wsServer,
         decisionService,
-        queuePersistence, wikiOptions: options.wiki, watchService,
+        queuePersistence,
         aiInvoker,
         getTerminalSessionManager: () => terminalInfra?.terminalSessionManager,
         resolvedConfig,
@@ -960,7 +956,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             // feature flags, making the embedded values bootstrap-only.
             const liveConfig = runtimeConfigService.config;
             return generateDashboardHtml({
-                enableWiki: true,
                 hostname: liveConfig.serve?.serverName || shortenHostname(rawHostname),
                 features: buildRuntimeFeatures(liveConfig),
                 bindAddress: host,
@@ -1128,7 +1123,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             staleDetector, outputPruner, heapMonitor, taskWatcher, pipelineWatcher, templateWatcher, notesWatcher,
             notesSearchService, watchService,
             notesSearchPreferencesDispose,
-            wikiManager, scheduleManager, scheduleInfraDispose, notesGitTimerManager, autoPullManager, bridge, queuePersistence, wsServer,
+            scheduleManager, scheduleInfraDispose, notesGitTimerManager, autoPullManager, bridge, queuePersistence, wsServer,
             terminalWsServer: terminalInfra?.terminalWsServer,
             terminalSessionManager: terminalInfra?.terminalSessionManager,
             languageServerInfra,
@@ -1162,7 +1157,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 // Public API
 // ============================================================================
 
-export type { ExecutionServerOptions, ExecutionServer, Route, WikiServerOptions, ServerCloseOptions, ServeCommandOptions } from './types';
+export type { ExecutionServerOptions, ExecutionServer, Route, ServerCloseOptions, ServeCommandOptions } from './types';
 export type { ProcessStore } from '@plusplusoneplusplus/forge';
 
 // Runtime Config Service
@@ -1272,13 +1267,6 @@ export type { UserPreferences } from './preferences-handler';
 // Prompts
 export { discoverPromptFiles, readPromptFileContent } from './prompts/prompt-utils';
 export type { PromptFileInfo } from './prompts/prompt-utils';
-
-// Wiki
-export { registerWikiRoutes } from './wiki';
-export type { WikiRouteOptions } from './wiki';
-export { FileWatcher } from './wiki/file-watcher';
-export { WikiData } from './wiki/wiki-data';
-export type { ComponentAnalysis, ComponentGraph } from './wiki/types';
 
 // Logging
 export { captureEntry, clearLogBuffer } from './logging/server-log-capture';

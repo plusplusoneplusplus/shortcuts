@@ -10,7 +10,7 @@
  * - Cancellation during backup deletes backup dir
  * - Cancellation during phase 3
  * - Empty workspace handled gracefully
- * - Missing workspaces.json / wikis.json handled gracefully
+ * - Missing workspaces.json handled gracefully; a legacy wikis.json is left alone
  * - Progress events emitted in order
  * - config.yaml updated correctly
  * - JSON cleanup selective (non-process files preserved)
@@ -32,7 +32,6 @@ import {
 import type {
     ProcessIndexEntry,
     WorkspaceInfo,
-    WikiInfo,
     StoredProcessEntry,
     SerializedAIProcess,
     SerializedConversationTurn,
@@ -126,11 +125,8 @@ function buildFixtures(dataDir: string): void {
     ];
     writeJSON(path.join(dataDir, 'workspaces.json'), workspaces);
 
-    // wikis.json (1 entry)
-    const wikis: WikiInfo[] = [
-        { id: 'wiki1', name: 'Test Wiki', wikiDir: '/path/to/wiki', repoPath: '/path/to/repo', aiEnabled: true, registeredAt: '2024-01-01T00:00:00.000Z' },
-    ];
-    writeJSON(path.join(dataDir, 'wikis.json'), wikis);
+    // Legacy wikis.json — not migrated, must stay untouched
+    writeJSON(path.join(dataDir, 'wikis.json'), [{ id: 'wiki1', name: 'Legacy Wiki', wikiDir: '/path/to/wiki' }]);
 
     // ws1: 3 active processes + 1 pruned
     const proc1 = makeProcess('proc-1', 'ws1', {
@@ -230,7 +226,7 @@ describe('StorageMigrationEngine', () => {
         expect(summary.processes).toBe(5);
         expect(summary.archivedProcesses).toBe(1);
         expect(summary.workspaces).toBe(2);
-        expect(summary.wikis).toBe(1);
+        expect(summary).not.toHaveProperty('wikis');
         expect(summary.durationMs).toBeGreaterThan(0);
 
         // Verify SQLite data
@@ -245,8 +241,8 @@ describe('StorageMigrationEngine', () => {
             const wsCount = (db.prepare('SELECT COUNT(*) AS cnt FROM workspaces').get() as { cnt: number }).cnt;
             expect(wsCount).toBe(2);
 
-            const wikiCount = (db.prepare('SELECT COUNT(*) AS cnt FROM wikis').get() as { cnt: number }).cnt;
-            expect(wikiCount).toBe(1);
+            const wikiTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='wikis'").get();
+            expect(wikiTable).toBeUndefined();
 
             // Verify specific process
             const proc1 = db.prepare('SELECT * FROM processes WHERE id = ?').get('proc-1') as Record<string, unknown>;
@@ -404,18 +400,17 @@ describe('StorageMigrationEngine', () => {
     });
 
     // ========================================================================
-    // Missing workspaces.json / wikis.json
+    // Missing workspaces.json
     // ========================================================================
 
-    it('handles missing workspaces.json and wikis.json gracefully', async () => {
+    it('handles missing workspaces.json gracefully', async () => {
         writeFile(path.join(dataDir, 'config.yaml'), 'model: gpt-4\n');
-        // No workspaces.json or wikis.json
+        // No workspaces.json
 
         const engine = createEngine();
         const summary = await engine.run();
 
         expect(summary.workspaces).toBe(0);
-        expect(summary.wikis).toBe(0);
     });
 
     // ========================================================================
@@ -486,7 +481,7 @@ describe('StorageMigrationEngine', () => {
         expect(fs.existsSync(path.join(dataDir, 'repos', 'ws1', 'paste-context', 'ctx.txt'))).toBe(true);
         expect(fs.existsSync(path.join(dataDir, 'memory', 'data.json'))).toBe(true);
 
-        // workspaces.json and wikis.json should be preserved (backup)
+        // workspaces.json and the legacy wikis.json should be preserved
         expect(fs.existsSync(path.join(dataDir, 'workspaces.json'))).toBe(true);
         expect(fs.existsSync(path.join(dataDir, 'wikis.json'))).toBe(true);
     });
@@ -573,7 +568,6 @@ describe('StorageMigrationEngine', () => {
         expect(summary.processes).toBe(0);
         expect(summary.archivedProcesses).toBe(0);
         expect(summary.workspaces).toBe(0);
-        expect(summary.wikis).toBe(0);
     });
 
     // ========================================================================
@@ -649,7 +643,7 @@ describe('StorageMigrationEngine', () => {
         // Top-level files
         expect(fs.existsSync(path.join(backupDir, 'config.yaml'))).toBe(true);
         expect(fs.existsSync(path.join(backupDir, 'workspaces.json'))).toBe(true);
-        expect(fs.existsSync(path.join(backupDir, 'wikis.json'))).toBe(true);
+        expect(fs.existsSync(path.join(backupDir, 'wikis.json'))).toBe(false);
 
         // Workspace process directories
         expect(fs.existsSync(path.join(backupDir, 'repos', 'ws1', 'processes', 'index.json'))).toBe(true);
@@ -768,7 +762,7 @@ describe('StorageMigrationEngine', () => {
     });
 
     it('backup handles missing source files gracefully', async () => {
-        // Only config.yaml, no workspaces.json or wikis.json
+        // Only config.yaml, no workspaces.json
         writeFile(path.join(dataDir, 'config.yaml'), 'model: gpt-4\n');
 
         const engine = createEngine();
@@ -903,7 +897,7 @@ describe('StorageMigrationEngine', () => {
         expect(summary.processes).toBe(5);
         expect(summary.archivedProcesses).toBe(1);
         expect(summary.workspaces).toBe(2);
-        expect(summary.wikis).toBe(1);
+        expect(summary).not.toHaveProperty('wikis');
 
         // Phase 5 should emit a single "skipped" message, not validation checks
         const phase5Events = events.filter(e => e.phase === 5);

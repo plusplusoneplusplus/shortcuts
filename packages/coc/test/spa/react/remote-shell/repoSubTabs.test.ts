@@ -42,9 +42,9 @@ describe('Workspace tabs', () => {
         const tabs = computeVisibleSubTabs({ ...allOn, schedulesInScheduledSlideEnabled: true });
         expect(tabs.map(t => t.key)).toEqual(['activity', 'dreams', 'workflows', 'tasks']);
     });
-    it('keeps wiki in definitions but hidden by default, and CLI Sessions off the strip', () => {
-        expect(SUB_TABS.find(t => t.key === 'wiki')).toBeDefined();
-        expect(VISIBLE_SUB_TABS.find(t => t.key === 'wiki')).toBeUndefined();
+    it('defines no wiki or CLI Sessions sub-tab', () => {
+        expect(SUB_TABS.find(t => (t.key as string) === 'wiki')).toBeUndefined();
+        expect(VISIBLE_SUB_TABS).toBe(SUB_TABS);
         expect(SUB_TABS.find(t => t.key === 'cli-sessions')).toBeUndefined();
     });
 });

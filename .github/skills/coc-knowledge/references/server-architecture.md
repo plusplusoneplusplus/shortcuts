@@ -47,7 +47,6 @@ This table locates boundaries, not individual implementation classes.
 | `memory/` | Memory integration; [memory system](memory-system.md) |
 | `ralph/`, `for-each/`, `map-reduce/`, `dreams/` | Iterative, sequential, parallel and background orchestration; [Ralph](ralph.md), [admin gates](admin-config.md) |
 | `decisions/` | Shared structured-decision service for routes and tools |
-| `wiki/` | Wiki manager and request adapters; [wiki serving](wiki-serving.md) |
 | `canvas/`, `kusto/` | Canvas persistence and query execution; [canvas](spa/canvas.md) |
 | `streaming/` | Process SSE and dashboard WebSockets; [streaming](streaming-architecture.md) |
 | `terminal/`, `language-servers/` | PTY and language-server lifecycles; [language servers](language-servers.md) |

@@ -59,10 +59,6 @@ vi.mock('../../../../src/server/spa/client/react/repos', () => ({
     ReposView: () => <div id="view-repos" />,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/wiki/WikiView', () => ({
-    WikiView: () => <div id="view-wiki" />,
-}));
-
 vi.mock('../../../../src/server/spa/client/react/features/memory/MemoryView', () => ({
     MemoryView: () => <div id="view-memory" />,
 }));

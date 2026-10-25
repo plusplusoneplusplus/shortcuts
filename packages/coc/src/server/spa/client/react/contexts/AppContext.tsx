@@ -1,11 +1,11 @@
 /**
- * AppContext — centralised state for the processes/repos/wiki UI.
+ * AppContext — centralised state for the processes/repos UI.
  * Replaces the global mutable appState singleton from state.ts.
  */
 
 import { createContext, useContext, useReducer, useEffect, useRef, type ReactNode, type Dispatch } from 'react';
 import type { GitCommit } from '@plusplusoneplusplus/coc-client';
-import type { DashboardTab, RepoSubTab, SettingsSection, WikiViewMode, ConversationCacheEntry, WikiProjectTab, WikiAdminTab, MemorySubTab, SkillsSubTab, AdminSubTab, TasksPanelNavState } from '../types/dashboard';
+import type { DashboardTab, RepoSubTab, SettingsSection, ConversationCacheEntry, MemorySubTab, SkillsSubTab, AdminSubTab, TasksPanelNavState } from '../types/dashboard';
 import { REPO_SUB_TAB_VALUES } from '../types/dashboard';
 import type { WsStatus } from '../hooks/useWebSocket';
 import { getSpaCocClient } from '../api/cocClient';
@@ -187,7 +187,6 @@ export interface GitRouteScope {
 
 export interface OnboardingProgress {
     hasRunWorkflow: boolean;
-    hasOpenedWiki: boolean;
     hasUsedChat: boolean;
     settingsVisited: boolean;
     dismissed: boolean;
@@ -220,17 +219,6 @@ export interface AppContextState {
     currentAgentId: string | null;
     activeRepoSubTab: RepoSubTab;
     reposSidebarCollapsed: boolean;
-    selectedWikiId: string | null;
-    selectedWikiComponentId: string | null;
-    wikiView: WikiViewMode;
-    wikiDetailInitialTab: string | null;
-    wikiDetailInitialAdminTab: string | null;
-    wikiAutoGenerate: boolean;
-    wikis: any[];
-    selectedRepoWikiId: string | null;
-    repoWikiInitialTab: WikiProjectTab | null;
-    repoWikiInitialAdminTab: WikiAdminTab | null;
-    repoWikiInitialComponentId: string | null;
     selectedWorkflowName: string | null;
     selectedWorkflowRunProcessId: string | null;
     selectedSkillTemplateId: string | null;
@@ -278,8 +266,6 @@ export interface AppContextState {
     lastCloneByRemote: Record<string, string>;
     /** Per-workspace remembered note path (in-memory only, resets on page refresh). */
     notePathState: Record<string, string | null>;
-    /** Per-wiki remembered project tab (in-memory only, resets on page refresh). */
-    wikiTabState: Record<string, string>;
     /** Per-repo per-sub-tab navigation state, keyed by `${repoId}::${subTab}` (in-memory only). */
     repoSubTabNavState: Record<string, TasksPanelNavState>;
     /** Currently active section within the Settings tab (Info / Preferences / MCP / Skills / Instructions). */
@@ -309,17 +295,6 @@ const initialState: AppContextState = {
     currentAgentId: null,
     activeRepoSubTab: 'chats',
     reposSidebarCollapsed: getInitialSidebarCollapsed(),
-    selectedWikiId: null,
-    selectedWikiComponentId: null,
-    wikiView: 'list',
-    wikiDetailInitialTab: null,
-    wikiDetailInitialAdminTab: null,
-    wikiAutoGenerate: false,
-    wikis: [],
-    selectedRepoWikiId: null,
-    repoWikiInitialTab: null,
-    repoWikiInitialAdminTab: null,
-    repoWikiInitialComponentId: null,
     selectedWorkflowName: null,
     selectedWorkflowRunProcessId: null,
     selectedSkillTemplateId: null,
@@ -346,11 +321,10 @@ const initialState: AppContextState = {
     repoGroupGitMemberState: getInitialRepoGroupGitMemberState(),
     lastCloneByRemote: getInitialLastCloneByRemote(),
     notePathState: {},
-    wikiTabState: {},
     repoSubTabNavState: {},
     settingsSection: 'info',
     hasSeenWelcome: false,
-    onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false, settingsVisited: false, dismissed: false, hasCompletedTour: false },
+    onboardingProgress: { hasRunWorkflow: false, hasUsedChat: false, settingsVisited: false, dismissed: false, hasCompletedTour: false },
     dismissedTips: [],
     preferencesLoaded: false,
     preferencesLoadFailed: false,
@@ -386,19 +360,6 @@ export type AppAction =
     | { type: 'RECORD_REMOTE_CLONE'; groupKey: string; cloneId: string }
     | { type: 'TOGGLE_REPOS_SIDEBAR' }
     | { type: 'SET_REPOS_SIDEBAR_COLLAPSED'; value: boolean }
-    | { type: 'SET_WIKI_VIEW'; wikiId: string | null; componentId: string | null; view: WikiViewMode }
-    | { type: 'SET_WIKIS'; wikis: any[] }
-    | { type: 'SELECT_WIKI'; wikiId: string | null }
-    | { type: 'SELECT_WIKI_WITH_TAB'; wikiId: string; tab: string; adminTab?: string | null; componentId?: string | null }
-    | { type: 'SELECT_WIKI_COMPONENT'; componentId: string | null }
-    | { type: 'CLEAR_WIKI_INITIAL_TAB' }
-    | { type: 'SET_WIKI_AUTO_GENERATE'; value: boolean }
-    | { type: 'ADD_WIKI'; wiki: any }
-    | { type: 'UPDATE_WIKI'; wiki: any }
-    | { type: 'REMOVE_WIKI'; wikiId: string }
-    | { type: 'WIKI_RELOAD'; wiki: any }
-    | { type: 'WIKI_REBUILDING'; wikiId: string }
-    | { type: 'WIKI_ERROR'; wikiId: string; error: string }
     | { type: 'TOGGLE_GROUP'; key: string }
     | { type: 'CACHE_CONVERSATION'; processId: string; turns: any[]; paged?: boolean }
     | { type: 'APPEND_TURN'; processId: string; turn: any }
@@ -427,9 +388,6 @@ export type AppAction =
     | { type: 'CLEAR_GIT_FILE_PATH' }
     | { type: 'SET_WORKFLOW_PROCESS'; processId: string | null }
     | { type: 'SET_WS_STATUS'; status: WsStatus }
-    | { type: 'SET_REPO_WIKI_ID'; wikiId: string | null }
-    | { type: 'SET_REPO_WIKI_DEEP_LINK'; wikiId: string; tab?: WikiProjectTab | null; adminTab?: WikiAdminTab | null; componentId?: string | null }
-    | { type: 'CLEAR_REPO_WIKI_INITIAL' }
     | { type: 'SET_EXPLORER_PATH'; path: string | null }
     | { type: 'SET_SELECTED_NOTE_PATH'; notePath: string | null }
     | { type: 'SET_MEMORY_SUB_TAB'; tab: MemorySubTab }
@@ -437,7 +395,6 @@ export type AppAction =
     | { type: 'SET_SKILLS_SUB_TAB'; tab: SkillsSubTab }
     | { type: 'SET_ADMIN_SUB_TAB'; tab: AdminSubTab }
     | { type: 'SET_ADMIN_DB_DEEP_LINK'; table: string | null; page: number; sort: string | null; order: 'asc' | 'desc' | null }
-    | { type: 'SET_WIKI_TAB'; wikiId: string; tab: string }
     | { type: 'SET_TASKS_NAV_STATE'; repoId: string; navState: TasksPanelNavState }
     | { type: 'SET_SETTINGS_SECTION'; section: SettingsSection }
     | { type: 'SET_WELCOME_PREFERENCES'; payload: { hasSeenWelcome?: boolean; onboardingProgress?: Partial<OnboardingProgress>; dismissedTips?: string[]; activityFilters?: { workspace?: string; myWorkExcludedTypes?: string[] } } }
@@ -520,14 +477,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, searchResults: action.results };
         case 'SET_SEARCH_LOADING':
             return { ...state, searchLoading: action.loading };
-        case 'SET_ACTIVE_TAB': {
-            const newState = { ...state, activeTab: action.tab };
-            if (action.tab === 'wiki' && !state.onboardingProgress.hasOpenedWiki) {
-                const merged = { ...state.onboardingProgress, hasOpenedWiki: true };
-                return { ...newState, onboardingProgress: merged };
-            }
-            return newState;
-        }
+        case 'SET_ACTIVE_TAB':
+            return { ...state, activeTab: action.tab };
         case 'SET_SELECTED_REPO': {
             // Save current repo's active sub-tab before switching
             const savedTabState = state.selectedRepoId
@@ -610,56 +561,6 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
         }
         case 'SET_REPOS_SIDEBAR_COLLAPSED':
             return state.reposSidebarCollapsed === action.value ? state : { ...state, reposSidebarCollapsed: action.value };
-        case 'SET_WIKI_VIEW':
-            return { ...state, selectedWikiId: action.wikiId, selectedWikiComponentId: action.componentId, wikiView: action.view };
-        case 'SET_WIKIS':
-            return { ...state, wikis: action.wikis };
-        case 'SELECT_WIKI':
-            return { ...state, selectedWikiId: action.wikiId, selectedWikiComponentId: null, wikiView: action.wikiId ? 'detail' : 'list', wikiDetailInitialTab: null, wikiDetailInitialAdminTab: null };
-        case 'SELECT_WIKI_WITH_TAB':
-            return { ...state, selectedWikiId: action.wikiId, selectedWikiComponentId: action.componentId ?? null, wikiView: 'detail', wikiDetailInitialTab: action.tab, wikiDetailInitialAdminTab: action.adminTab ?? null };
-        case 'SELECT_WIKI_COMPONENT':
-            return { ...state, selectedWikiComponentId: action.componentId };
-        case 'CLEAR_WIKI_INITIAL_TAB':
-            return { ...state, wikiDetailInitialTab: null, wikiDetailInitialAdminTab: null };
-        case 'SET_WIKI_AUTO_GENERATE':
-            return { ...state, wikiAutoGenerate: action.value };
-        case 'ADD_WIKI':
-            return { ...state, wikis: [...state.wikis, action.wiki] };
-        case 'UPDATE_WIKI': {
-            const idx = state.wikis.findIndex((w: any) => w.id === action.wiki.id);
-            if (idx < 0) return state;
-            const updated = [...state.wikis];
-            updated[idx] = { ...updated[idx], ...action.wiki };
-            return { ...state, wikis: updated };
-        }
-        case 'REMOVE_WIKI': {
-            const filtered = state.wikis.filter((w: any) => w.id !== action.wikiId);
-            const clearSelected = state.selectedWikiId === action.wikiId;
-            return { ...state, wikis: filtered, ...(clearSelected ? { selectedWikiId: null, selectedWikiComponentId: null, wikiView: 'list' as WikiViewMode } : {}) };
-        }
-        case 'WIKI_RELOAD': {
-            const idx = state.wikis.findIndex((w: any) => w.id === action.wiki?.id);
-            if (idx < 0 && action.wiki) return { ...state, wikis: [...state.wikis, action.wiki] };
-            if (idx < 0) return state;
-            const updated = [...state.wikis];
-            updated[idx] = { ...updated[idx], ...action.wiki };
-            return { ...state, wikis: updated };
-        }
-        case 'WIKI_REBUILDING': {
-            const idx = state.wikis.findIndex((w: any) => w.id === action.wikiId);
-            if (idx < 0) return state;
-            const updated = [...state.wikis];
-            updated[idx] = { ...updated[idx], status: 'generating' };
-            return { ...state, wikis: updated };
-        }
-        case 'WIKI_ERROR': {
-            const idx = state.wikis.findIndex((w: any) => w.id === action.wikiId);
-            if (idx < 0) return state;
-            const updated = [...state.wikis];
-            updated[idx] = { ...updated[idx], status: 'error', errorMessage: action.error };
-            return { ...state, wikis: updated };
-        }
         case 'TOGGLE_GROUP':
             return { ...state, expandedGroups: { ...state.expandedGroups, [action.key]: !state.expandedGroups[action.key] } };
         case 'CACHE_CONVERSATION': {
@@ -734,18 +635,6 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, selectedWorkflowProcessId: action.processId };
         case 'SET_WS_STATUS':
             return state.wsStatus === action.status ? state : { ...state, wsStatus: action.status };
-        case 'SET_REPO_WIKI_ID':
-            return { ...state, selectedRepoWikiId: action.wikiId };
-        case 'SET_REPO_WIKI_DEEP_LINK':
-            return {
-                ...state,
-                selectedRepoWikiId: action.wikiId,
-                repoWikiInitialTab: action.tab ?? null,
-                repoWikiInitialAdminTab: action.adminTab ?? null,
-                repoWikiInitialComponentId: action.componentId ?? null,
-            };
-        case 'CLEAR_REPO_WIKI_INITIAL':
-            return { ...state, repoWikiInitialTab: null, repoWikiInitialAdminTab: null, repoWikiInitialComponentId: null };
         case 'SET_EXPLORER_PATH':
             return { ...state, selectedExplorerPath: action.path };
         case 'SET_SELECTED_NOTE_PATH': {
@@ -765,8 +654,6 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, activeAdminSubTab: action.tab };
         case 'SET_ADMIN_DB_DEEP_LINK':
             return { ...state, adminDbTable: action.table, adminDbPage: action.page, adminDbSort: action.sort, adminDbOrder: action.order };
-        case 'SET_WIKI_TAB':
-            return { ...state, wikiTabState: { ...state.wikiTabState, [action.wikiId]: action.tab } };
         case 'SET_TASKS_NAV_STATE': {
             const key = `${action.repoId}::tasks`;
             if (areTasksPanelNavStatesEqual(state.repoSubTabNavState[key], action.navState)) {

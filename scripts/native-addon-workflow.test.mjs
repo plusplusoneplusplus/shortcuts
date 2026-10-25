@@ -136,7 +136,7 @@ test("Windows desktop CI launches the real app against a late-ready forked serve
 // REQUIRED_BUILD_WORKSPACES order prebuild.test.ts checks against the real
 // package.json dependency edges. scripts/shared-build-workflow.test.mjs pins
 // that those jobs really do go through prebuild.
-const BUILDS_THE_SDK = ["forge-test", "deep-wiki-test"];
+const BUILDS_THE_SDK = ["forge-test"];
 
 test("every job that builds coc-agent-sdk builds the addon package first", () => {
     for (const name of BUILDS_THE_SDK) {
@@ -149,10 +149,10 @@ test("every job that builds coc-agent-sdk builds the addon package first", () =>
     }
 });
 
-// The forge and deep-wiki suites read git through the addon, and it has no
+// The forge suite reads git through the addon, and it has no
 // JavaScript lane — without the binary every git test throws
 // NativeAddonLoadError instead of running.
-const READS_GIT_NATIVELY = ["forge-test", "deep-wiki-test"];
+const READS_GIT_NATIVELY = ["forge-test"];
 
 test("the suites that read git natively download the addon", () => {
     for (const name of READS_GIT_NATIVELY) {

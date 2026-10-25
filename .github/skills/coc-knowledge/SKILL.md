@@ -2,9 +2,9 @@
 name: coc-knowledge
 description: >-
   Comprehensive reference for CoC (Copilot of Copilot) architecture — server,
-  memory system, LLM tools, SDK wrapper, process store, workflow engine, deep-wiki,
-  and dashboard SPA. Use whenever the user asks anything related to CoC (Copilot of
-  Copilot), forge, deep-wiki, coc-client, the CoC server, dashboard, workflow engine,
+  memory system, LLM tools, SDK wrapper, process store, workflow engine, and
+  dashboard SPA. Use whenever the user asks anything related to CoC (Copilot of
+  Copilot), forge, coc-client, the CoC server, dashboard, workflow engine,
   memory system, LLM tools, process store, or any of their subsystems. Also use
   whenever you need background knowledge to answer a question, plan a change, or
   ground your reasoning in this codebase — read the relevant reference file(s) under
@@ -15,7 +15,7 @@ description: >-
 # CoC Codebase Knowledge
 
 CoC is a standalone Node.js CLI + HTTP server for executing YAML-based AI workflows.
-It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client library (`coc-client`).
+Its core packages are `coc` and `forge`, plus a shared client library (`coc-client`).
 
 ## Architecture Index
 
@@ -37,7 +37,6 @@ It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client
 | SDK Wrapper | [sdk-wrapper.md](references/sdk-wrapper.md) | `coc-agent-sdk` package: Copilot + Codex providers, `ISDKService`, `SDKServiceRegistry`, session lifecycle, streaming state machine, MCP config, model registry |
 | Process Store | [process-store.md](references/process-store.md) | SQLite schema, FTS5 search, seen-state, pin/archive, prompt autocomplete |
 | Workflow Engine | [workflow-engine.md](references/workflow-engine.md) | DAG executor, compiler, node types, concurrency, skill resolution |
-| Deep Wiki | [deep-wiki.md](references/deep-wiki.md) | Six-phase pipeline, caching, themes, CLI commands, core concepts |
 | REST API | [rest-api.md](references/rest-api.md) | Endpoint catalog organized by domain |
 | Streaming & Real-Time | [streaming-architecture.md](references/streaming-architecture.md) | SSE, WebSocket, ProcessStore event channels, container relay |
 | Dashboard SPA · Shell | [spa/shell.md](references/spa/shell.md) | Entry point, module tree, routing, contexts, hooks, pop-outs, feature flags, coc-client |
@@ -54,8 +53,6 @@ It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client
 | Dashboard SPA · Routes | [spa/routes.md](references/spa/routes.md) | Onboarding, My Work Today, Activity, Dreams, CLI Sessions, Memory |
 | Prompt Autocomplete | [prompt-autocomplete.md](references/prompt-autocomplete.md) | Inline ghost-text, AI/history modes, caching, REST API, privacy |
 | Chat Prompt History | [chat-prompt-history.md](references/chat-prompt-history.md) | Up/Down arrow navigation, workspace-scoped history, REST API |
-| Wiki Serving | [wiki-serving.md](references/wiki-serving.md) | Architecture, module map, object lifecycle, `WikiManager`/`WikiData`/`ContextBuilder` API |
-| Wiki Serving · API | [wiki-serving-api.md](references/wiki-serving-api.md) | Ask/Explore/Generate/Admin routes, TF-IDF retrieval, conversation sessions, file watching |
 | Remote Servers | [remote-servers.md](references/remote-servers.md) | DevTunnel integration, connection lifecycle, server registry |
 | Task Comments | [task-comments.md](references/task-comments.md) | Inline commenting, categories, anchoring, AI prompt generation |
 | Notes Sync | [sync.md](references/sync.md) | Git-backed My Work/My Life sync, AI conflict resolution, periodic scheduling |
@@ -104,7 +101,7 @@ resolve.
 ## Build & Test
 
 ```bash
-npm run build:packages    # Build all packages (forge, coc, deep-wiki, coc-client, coc-agent-sdk)
+npm run build:packages    # Build all packages (forge, coc, coc-client, coc-agent-sdk, ...)
 npm run test:run          # Vitest (in any package dir)
 cd packages/coc && npm run build && npm link  # Debug CoC locally
 ```

@@ -526,7 +526,7 @@ The **Repository Git Tab** provides a full-featured git interface for browsing c
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│  [Repo Name]   Activity │ Git* │ Wiki │ Schedules │ ...                         │
+│  [Repo Name]   Activity │ Git* │ Schedules │ ...                                │
 ├────────────────────────┬────────────────────────────────────────┬───────────────┤
 │                        │                                        │               │
 │  [🌿 main ▼] [↕ 0/2]  │  [Commit Subject]              [🤖]   │  💬 Commit    │

@@ -26,7 +26,7 @@ describe('scheduled job definitions and durable runs', () => {
         store.createRun(owner, job.id, 'manual', 'queue_job', new Date().toISOString());
         fixture.close();
         const domain = createSentinelTodosDomain();
-        const context = { dataDir: fixture.dataDir, store: undefined, includeWikis: false };
+        const context = { dataDir: fixture.dataDir, store: undefined };
         expect(await domain.collect(context as never)).toMatchObject({ data: {}, metadata: {}, warnings: [] });
         const result = { errors: [] as string[] };
         await domain.executeWipe(context as never, (await domain.planWipe(context as never)).plan, result);

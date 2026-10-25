@@ -2,8 +2,7 @@
  * Tablet Layout Tests — verify hybrid behavior at 768×1024.
  */
 import { test, expect } from '../fixtures/server-fixture';
-import { seedWorkspace, seedQueueTasks, seedWiki } from '../fixtures/seed';
-import { createWikiFixture } from '../fixtures/wiki-fixtures';
+import { seedWorkspace, seedQueueTasks } from '../fixtures/seed';
 import { TABLET } from './viewports';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -94,37 +93,4 @@ test.describe('Tablet Layout', () => {
         expect(panelBox!.width).toBeLessThan(768);
     });
 
-    test('tablet: wiki list uses multi-column grid', async ({ page, serverUrl }) => {
-        let tmpDir: string | undefined;
-        try {
-            tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tab-wiki-'));
-            const wikiDir1 = path.join(tmpDir, 'wiki-1');
-            const wikiDir2 = path.join(tmpDir, 'wiki-2');
-            createWikiFixture(wikiDir1);
-            createWikiFixture(wikiDir2);
-            await seedWiki(serverUrl, 'tab-wiki-1', wikiDir1, undefined, 'Tab Wiki One');
-            await seedWiki(serverUrl, 'tab-wiki-2', wikiDir2, undefined, 'Tab Wiki Two');
-        } catch { /* wiki seeding may fail; test is best-effort */ }
-
-        await page.goto(`${serverUrl}/#wiki`);
-        await expect(page.locator('#view-wiki')).toBeVisible({ timeout: 10000 });
-
-        // If multiple wiki cards, check multi-column layout
-        const cards = page.locator('.wiki-card');
-        if (await cards.count() > 1) {
-            const box1 = await cards.nth(0).boundingBox();
-            const box2 = await cards.nth(1).boundingBox();
-            if (box1 && box2) {
-                // Multi-column: cards in the same row have different x
-                const sameRow = Math.abs(box1.y - box2.y) < 10;
-                if (sameRow) {
-                    expect(box2.x).toBeGreaterThan(box1.x);
-                }
-            }
-        }
-
-        if (tmpDir) {
-            try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
-        }
-    });
 });

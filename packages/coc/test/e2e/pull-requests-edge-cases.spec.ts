@@ -255,7 +255,7 @@ test.describe('Pull Requests — cache edge cases', () => {
 
             // Leave the workspace to unmount the panel, without reloading the
             // SPA's module cache. Closing only its PR tab keeps it mounted.
-            await page.evaluate(() => { location.hash = '#wiki'; });
+            await page.evaluate(() => { location.hash = '#reports'; });
             await expect(page.locator('[data-testid="pr-list"]')).not.toBeVisible({ timeout: 5000 });
 
             // Navigate back — should fetch again (error was not cached)

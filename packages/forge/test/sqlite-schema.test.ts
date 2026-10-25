@@ -28,7 +28,7 @@ describe('sqlite-schema', () => {
         expect(tables).toContain('processes');
         expect(tables).toContain('conversation_turns');
         expect(tables).toContain('workspaces');
-        expect(tables).toContain('wikis');
+        expect(tables).not.toContain('wikis');
         expect(tables).toContain('queue_tasks');
         expect(tables).toContain('queue_repo_state');
         expect(tables).toContain('commit_chat_bindings');
@@ -229,12 +229,22 @@ describe('sqlite-schema', () => {
         expect(tables).toContain('processes');
         expect(tables).toContain('conversation_turns');
         expect(tables).toContain('workspaces');
-        expect(tables).toContain('wikis');
+        expect(tables).not.toContain('wikis');
         expect(tables).toContain('queue_tasks');
         expect(tables).toContain('queue_repo_state');
         expect(tables).toContain('task_groups');
         expect(tables).toContain('task_group_members');
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+    });
+
+    it('leaves a legacy wikis table and its rows untouched', () => {
+        db.exec(`CREATE TABLE wikis (id TEXT PRIMARY KEY, name TEXT NOT NULL)`);
+        db.prepare('INSERT INTO wikis (id, name) VALUES (?, ?)').run('w-1', 'Legacy');
+
+        initializeDatabase(db);
+
+        const rows = db.prepare('SELECT id, name FROM wikis').all();
+        expect(rows).toEqual([{ id: 'w-1', name: 'Legacy' }]);
     });
 
     it('enforces FK constraint — conversation_turns rejects nonexistent process_id', () => {

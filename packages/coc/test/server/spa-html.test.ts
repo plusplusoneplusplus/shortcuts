@@ -39,28 +39,16 @@ describe('generateDashboardHtml', () => {
         expect(html).not.toContain('<title>Test <script></title>');
     });
 
-    it('always includes highlight.js CDN for review editor and wiki', () => {
+    it('includes highlight.js CDN but no eager mermaid or marked scripts', () => {
         const html = generateDashboardHtml();
         // highlight.js is always loaded for the review editor's code block rendering
         expect(html).toContain('highlight.min.js');
         expect(html).toContain('github.min.css');
-        // Mermaid and marked are wiki-only and should NOT be present without enableWiki
+        // mermaid loads lazily via useMermaid; marked is bundled
         const mermaidMatch = html.match(/<script\s+src="[^"]*mermaid[^"]*"/gi);
         expect(mermaidMatch).toBeNull();
         const markedMatch = html.match(/<script\s+src="[^"]*marked[^"]*"/gi);
         expect(markedMatch).toBeNull();
-    });
-
-    it('includes mermaid and marked CDN scripts when enableWiki is true', () => {
-        const html = generateDashboardHtml({ enableWiki: true });
-        expect(html).toContain('highlight.min.js');
-        // With enableWiki, mermaid and marked CDN scripts should be present
-        const mermaidMatch = html.match(/<script\s+src="[^"]*mermaid[^"]*"/gi);
-        expect(mermaidMatch).not.toBeNull();
-        expect(mermaidMatch!.length).toBeGreaterThanOrEqual(1);
-        const markedMatch = html.match(/<script\s+src="[^"]*marked[^"]*"/gi);
-        expect(markedMatch).not.toBeNull();
-        expect(markedMatch!.length).toBeGreaterThanOrEqual(1);
     });
 
     it('contains inlined style block', () => {

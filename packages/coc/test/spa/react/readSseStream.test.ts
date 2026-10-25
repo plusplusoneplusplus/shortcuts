@@ -23,11 +23,11 @@ describe('readSseStream', () => {
         expect(body.locked).toBe(false);
     });
 
-    it.each([true, false])('flushes an unterminated final frame only when requested (%s)', async flushFinalFrame => {
+    it('drops an unterminated final frame', async () => {
         const body = stream([new TextEncoder().encode('data: {"type":"done"}')]);
         const frames = [];
-        for await (const frame of readSseStream(body, { flushFinalFrame })) frames.push(frame);
-        expect(frames).toHaveLength(flushFinalFrame ? 1 : 0);
+        for await (const frame of readSseStream(body)) frames.push(frame);
+        expect(frames).toHaveLength(0);
         expect(body.locked).toBe(false);
     });
 

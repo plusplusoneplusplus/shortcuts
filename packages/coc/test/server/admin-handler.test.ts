@@ -151,7 +151,7 @@ describe('Admin Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.deletedProcesses).toBe(1);
             expect(body.deletedWorkspaces).toBe(3); // includes auto-registered global + my_work + my_life workspaces
-            expect(body.deletedWikis).toBe(0);
+            expect(body).not.toHaveProperty('deletedWikis');
             expect(body.errors).toEqual([]);
         });
     });
@@ -351,7 +351,7 @@ describe('Admin Handler', () => {
             expect(body.metadata.workspaceCount).toBe(3); // auto-registered global + my_work + my_life workspaces
             expect(Array.isArray(body.processes)).toBe(true);
             expect(Array.isArray(body.workspaces)).toBe(true);
-            expect(Array.isArray(body.wikis)).toBe(true);
+            expect(body).not.toHaveProperty('wikis');
             expect(Array.isArray(body.queueHistory)).toBe(true);
             expect(typeof body.preferences).toBe('object');
         });
@@ -2020,13 +2020,12 @@ describe('Admin Handler', () => {
             return {
                 version: 1,
                 exportedAt: new Date().toISOString(),
-                metadata: { processCount: 2, workspaceCount: 1, wikiCount: 0, queueFileCount: 0 },
+                metadata: { processCount: 2, workspaceCount: 1, queueFileCount: 0 },
                 processes: [
                     { id: 'p1', promptPreview: 'test1', fullPrompt: 'f1', status: 'completed', startTime: new Date().toISOString(), type: 'clarification' },
                     { id: 'p2', promptPreview: 'test2', fullPrompt: 'f2', status: 'completed', startTime: new Date().toISOString(), type: 'clarification' },
                 ],
                 workspaces: [{ id: 'ws1', name: 'WS1', rootPath: '/tmp/ws1' }],
-                wikis: [],
                 queueHistory: [],
                 preferences: {},
             };
@@ -2045,7 +2044,7 @@ describe('Admin Handler', () => {
             expect(body.valid).toBe(true);
             expect(body.preview.processCount).toBe(2);
             expect(body.preview.workspaceCount).toBe(1);
-            expect(body.preview.wikiCount).toBe(0);
+            expect(body.preview).not.toHaveProperty('wikiCount');
             expect(body.preview.queueFileCount).toBe(0);
             expect(body.preview.sampleProcessIds).toEqual(['p1', 'p2']);
         });
@@ -2195,12 +2194,11 @@ describe('GET /api/admin/providers/availability', () => {
             return {
                 version: 1,
                 exportedAt: new Date().toISOString(),
-                metadata: { processCount: 1, workspaceCount: 1, wikiCount: 0, queueFileCount: 0 },
+                metadata: { processCount: 1, workspaceCount: 1, queueFileCount: 0 },
                 processes: [
                     { id: 'imported-p1', promptPreview: 'imported', fullPrompt: 'imported full', status: 'completed', startTime: new Date().toISOString(), type: 'clarification' },
                 ],
                 workspaces: [{ id: 'imported-ws1', name: 'Imported WS', rootPath: '/tmp/imported' }],
-                wikis: [],
                 queueHistory: [],
                 preferences: {},
             };
@@ -2424,8 +2422,8 @@ describe('GET /api/admin/providers/availability', () => {
             const validPayload = {
                 version: 1,
                 exportedAt: new Date().toISOString(),
-                metadata: { processCount: 0, workspaceCount: 0, wikiCount: 0, queueFileCount: 0 },
-                processes: [], workspaces: [], wikis: [], queueHistory: [], preferences: {},
+                metadata: { processCount: 0, workspaceCount: 0, queueFileCount: 0 },
+                processes: [], workspaces: [], queueHistory: [], preferences: {},
             };
 
             const importRes = await request(`${srv.url}/api/admin/import?confirm=${token}`, {

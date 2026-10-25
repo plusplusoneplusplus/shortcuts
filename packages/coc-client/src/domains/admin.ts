@@ -1,7 +1,6 @@
 import type {
   AdminConfigResponse,
   AdminConfigUpdate,
-  AdminDataStatsQuery,
   AdminDataStatsResponse,
   AdminImportMode,
   AdminImportPreviewResponse,
@@ -26,10 +25,6 @@ import type {
 import type { CocRequestOptions, NormalizedCocClientOptions, QueryPrimitive, RequestAdapter } from '../types';
 import { buildApiUrl } from '../url';
 
-function serializeStatsQuery(query?: AdminDataStatsQuery): CocRequestOptions['query'] {
-  if (!query) return undefined;
-  return { includeWikis: query.includeWikis };
-}
 function copyConfigUpdate(update: AdminConfigUpdate): AdminConfigUpdate {
   return { ...update };
 }
@@ -58,9 +53,8 @@ export class AdminClient {
     });
   }
 
-  getDataStats(query?: AdminDataStatsQuery, options: Pick<CocRequestOptions, 'signal' | 'timeoutMs'> = {}): Promise<AdminDataStatsResponse> {
+  getDataStats(options: Pick<CocRequestOptions, 'signal' | 'timeoutMs'> = {}): Promise<AdminDataStatsResponse> {
     return this.transport.request<AdminDataStatsResponse>('/admin/data/stats', {
-      query: serializeStatsQuery(query),
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });
@@ -108,10 +102,10 @@ export class AdminClient {
     return this.transport.request<AdminTokenResponse>('/admin/data/wipe-token');
   }
 
-  wipeData(options: { token: string; includeWikis?: boolean }): Promise<AdminWipeResponse> {
+  wipeData(options: { token: string }): Promise<AdminWipeResponse> {
     return this.transport.request<AdminWipeResponse>('/admin/data', {
       method: 'DELETE',
-      query: { confirm: options.token, includeWikis: options.includeWikis },
+      query: { confirm: options.token },
     });
   }
 

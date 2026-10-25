@@ -59,7 +59,6 @@ export async function collectStorageSnapshot(ctx: StorageSnapshotContext): Promi
     const snapshot: StorageSnapshotData = {
         processes: [],
         workspaces: [],
-        wikis: [],
         queueHistory: [],
         preferences: {},
         imageBlobs: [],
@@ -69,7 +68,6 @@ export async function collectStorageSnapshot(ctx: StorageSnapshotContext): Promi
     const metadata: ExportMetadata = {
         processCount: 0,
         workspaceCount: 0,
-        wikiCount: 0,
         queueFileCount: 0,
         blobFileCount: 0,
         repoPreferenceCount: 0,
@@ -108,19 +106,17 @@ export async function restoreStorageSnapshotMerge(
 }
 
 export async function buildStorageWipePlan(
-    ctx: StorageSnapshotContext & { includeWikis: boolean },
+    ctx: StorageSnapshotContext,
 ): Promise<StorageWipePlan> {
     const plan: StorageWipePlan = {
         domainPlans: new Map<string, unknown>(),
         deletedProcesses: 0,
         deletedWorkspaces: 0,
-        deletedWikis: 0,
         deletedQueues: 0,
         deletedSchedules: 0,
         deletedGitOps: 0,
         deletedRepoPreferences: 0,
         deletedPreferences: false,
-        deletedWikiDirs: [],
         preservedFiles: listPreservedFiles(ctx.dataDir),
         errors: [],
     };
@@ -141,19 +137,17 @@ export function applyStorageWipePlanSummary(
 ): void {
     result.deletedProcesses = plan.deletedProcesses;
     result.deletedWorkspaces = plan.deletedWorkspaces;
-    result.deletedWikis = plan.deletedWikis;
     result.deletedQueues = plan.deletedQueues;
     result.deletedSchedules = plan.deletedSchedules;
     result.deletedGitOps = plan.deletedGitOps;
     result.deletedRepoPreferences = plan.deletedRepoPreferences;
     result.deletedPreferences = plan.deletedPreferences;
-    result.deletedWikiDirs = [...plan.deletedWikiDirs];
     result.preservedFiles = [...plan.preservedFiles];
     result.errors.push(...plan.errors);
 }
 
 export async function executeStorageWipePlan(
-    ctx: StorageSnapshotContext & { includeWikis: boolean },
+    ctx: StorageSnapshotContext,
     plan: StorageWipePlan,
     result: { errors: string[] },
 ): Promise<void> {
@@ -178,11 +172,9 @@ function listPreservedFiles(dataDir: string): string[] {
 function applyWipeCounts(plan: StorageWipePlan, counts: Partial<WipeCounts>): void {
     if (counts.deletedProcesses !== undefined) { plan.deletedProcesses = counts.deletedProcesses; }
     if (counts.deletedWorkspaces !== undefined) { plan.deletedWorkspaces = counts.deletedWorkspaces; }
-    if (counts.deletedWikis !== undefined) { plan.deletedWikis = counts.deletedWikis; }
     if (counts.deletedQueues !== undefined) { plan.deletedQueues = counts.deletedQueues; }
     if (counts.deletedSchedules !== undefined) { plan.deletedSchedules = counts.deletedSchedules; }
     if (counts.deletedGitOps !== undefined) { plan.deletedGitOps = counts.deletedGitOps; }
     if (counts.deletedRepoPreferences !== undefined) { plan.deletedRepoPreferences = counts.deletedRepoPreferences; }
     if (counts.deletedPreferences !== undefined) { plan.deletedPreferences = counts.deletedPreferences; }
-    if (counts.deletedWikiDirs !== undefined) { plan.deletedWikiDirs = [...counts.deletedWikiDirs]; }
 }

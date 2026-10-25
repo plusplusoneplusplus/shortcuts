@@ -1753,7 +1753,6 @@ components:
           properties:
             hasUsedChat: { type: boolean }
             hasRunWorkflow: { type: boolean }
-            hasOpenedWiki: { type: boolean }
             settingsVisited: { type: boolean }
             dismissed: { type: boolean }
             hasCompletedTour: { type: boolean }

@@ -8,7 +8,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { isWithinDirectory } from '@plusplusoneplusplus/forge';
 import {
     nativeRepoFilesStatus,
     nativeGitStatus,
@@ -17,11 +16,10 @@ import {
 import type { Route } from './types';
 import {
     createRouter,
-    serveStaticFile,
     sendJson,
     send404,
 } from './shared/router';
-import { applyCorsHeaders, getDefaultCorsPolicy } from './shared/cors';
+import { getDefaultCorsPolicy } from './shared/cors';
 import type { CorsPolicy } from './shared/cors';
 
 // ============================================================================
@@ -65,8 +63,6 @@ export interface RouterOptions {
     store: ProcessStore;
     /** Durable installation identity, supplied by server composition. */
     serverIdentity?: string;
-    /** Optional lookup function to resolve a wiki ID to its filesystem directory. */
-    getWikiDir?: (wikiId: string) => string | undefined;
     /** Optional ETag for the SPA HTML response. Enables conditional caching (304 Not Modified). */
     spaETag?: string | (() => string | undefined);
     /** Optional factory for the /icon.svg favicon (hostname-derived colors). Called on each request. */
@@ -87,13 +83,12 @@ export interface RouterOptions {
  *   GET /api/health  → health JSON
  *   GET/POST /api/*  → route table match or 404 JSON
  *   GET /static/*    → static files from staticDir
- *   GET /wiki/:id/static/* → static files from wiki dir
  *   GET /*           → SPA fallback (client-side routing)
  */
 export function createRequestHandler(
     options: RouterOptions
 ): (req: http.IncomingMessage, res: http.ServerResponse) => void {
-    const { spaHtml, staticDir, store, getWikiDir, spaETag, getIconSvg } = options;
+    const { spaHtml, staticDir, store, spaETag, getIconSvg } = options;
     const corsPolicy = options.corsPolicy ?? getDefaultCorsPolicy();
 
     // Prepend built-in routes (OpenAPI spec, Swagger UI, health)
@@ -168,7 +163,7 @@ export function createRequestHandler(
         corsPolicy,
     });
 
-    // Wrap with wiki static file handling (needs explicit 404 responses)
+    // Wrap with the dynamic favicon handler
     return (req: http.IncomingMessage, res: http.ServerResponse) => {
         const pathname = decodeURIComponent(
             (req.url || '/').split('?')[0]
@@ -184,32 +179,6 @@ export function createRequestHandler(
                 'Cache-Control': 'public, max-age=86400',
             });
             res.end(body);
-            return;
-        }
-
-        // Wiki static files: /wiki/:wikiId/static/*
-        const wikiStaticMatch = pathname.match(/^\/wiki\/([^/]+)\/static\/(.+)$/);
-        if (wikiStaticMatch) {
-            const wikiId = wikiStaticMatch[1];
-            const fileSuffix = wikiStaticMatch[2];
-            const wikiDir = getWikiDir?.(wikiId);
-            if (!wikiDir) {
-                applyCorsHeaders(req, res, corsPolicy);
-                send404(res, `Wiki not found: ${wikiId}`);
-                return;
-            }
-            const resolved = path.resolve(wikiDir, fileSuffix);
-            // Security: prevent directory traversal
-            if (!isWithinDirectory(resolved, wikiDir)) {
-                applyCorsHeaders(req, res, corsPolicy);
-                send404(res, 'Invalid path');
-                return;
-            }
-            if (serveStaticFile(resolved, res)) {
-                return;
-            }
-            applyCorsHeaders(req, res, corsPolicy);
-            send404(res, `File not found: ${fileSuffix}`);
             return;
         }
 

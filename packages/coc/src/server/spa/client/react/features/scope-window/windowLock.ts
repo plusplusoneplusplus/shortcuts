@@ -13,7 +13,7 @@ import { hashSegments, decodeSegment, repoHashBase } from '../../layout/routePat
 
 /**
  * Parse the selected repo/scope id out of a `#repos/{id}/...` hash. Returns null
- * for any non-repo route (e.g. `#admin`, `#wiki`, or an empty hash) — those do
+ * for any non-repo route (e.g. `#admin`, `#stats`, or an empty hash) — those do
  * not select a scope, so a locked window redirects them to its scope.
  */
 export function parseRepoIdFromHash(hash: string): string | null {

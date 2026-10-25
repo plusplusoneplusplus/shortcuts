@@ -53,7 +53,7 @@ async function replaceImport(
 
     options.getQueueManager?.()?.reset();
 
-    const wipeResult = await options.wiper.wipeData({ includeWikis: true });
+    const wipeResult = await options.wiper.wipeData();
     result.errors.push(...wipeResult.errors);
 
     await restoreStorageSnapshotReplace(payload, options, result);
@@ -84,7 +84,6 @@ function createImportResult(): ImportResult {
     return {
         importedProcesses: 0,
         importedWorkspaces: 0,
-        importedWikis: 0,
         importedQueueFiles: 0,
         importedBlobFiles: 0,
         importedScheduleFiles: 0,

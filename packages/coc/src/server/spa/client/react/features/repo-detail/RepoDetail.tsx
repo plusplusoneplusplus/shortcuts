@@ -13,7 +13,6 @@ import { TemplatesTab } from '../templates/TemplatesTab';
 import { RepoChatTab } from '../chat/RepoChatTab';
 import { RepoSchedulesTab } from '../schedules/RepoSchedulesTab';
 import { RepoGitTab } from '../git/RepoGitTab';
-import { RepoWikiTab } from './RepoWikiTab';
 import { SplitWorkspacePanel } from './SplitWorkspacePanel';
 import { useWorkspaceDock } from './useWorkspaceDock';
 import { WorkspaceDockToggle, setWorkspaceDockExpanded, useWorkspaceDockExpanded } from './WorkspaceDockToggle';
@@ -240,14 +239,6 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
         if (isRepoSubTabVisible(activeSubTab, visibleSubTabs)) return;
         dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
     }, [activeSubTab, visibleSubTabs, dispatch]);
-
-
-    const repoWikis = useMemo(() =>
-        state.wikis.filter((w: any) => w.repoPath === ws.rootPath),
-        [state.wikis, ws.rootPath]
-    );
-    const wikiGeneratingCount = repoWikis.filter((w: any) => w.status === 'generating').length;
-    const wikiWarningCount = repoWikis.filter((w: any) => w.status === 'error' || w.status === 'pending').length;
 
     const queueCacheKey = workspaceReadCacheKey(ws.id, workspaceReadSource(queueClient));
     const isRepoPaused = !!queueState.repoQueueMap[queueCacheKey]?.stats?.isPaused;
@@ -539,16 +530,6 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                         {t.key === 'activity' && queueQueuedCount > 0 && (
                                             <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#0078d4] text-white px-1 py-px rounded-full" data-testid="activity-queued-badge" title="Queued">{queueQueuedCount}</span>
                                         )}
-                                        {t.key === 'wiki' && wikiGeneratingCount > 0 && (
-                                            <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#16825d] text-white px-1 py-px rounded-full animate-pulse" data-testid="wiki-generating-badge" title="Generating">⟳</span>
-                                        )}
-                                        {t.key === 'wiki' && wikiWarningCount > 0 && wikiGeneratingCount === 0 && (
-                                            <span
-                                                className="ml-1 w-2 h-2 rounded-full bg-[#f59e0b] inline-block"
-                                                data-testid="wiki-warning-badge"
-                                                title="Needs attention"
-                                            />
-                                        )}
                                         {isActive && (
                                             <span className="absolute left-1.5 right-1.5 -bottom-[2px] h-[3px] rounded-sm bg-[#0969da] dark:bg-[#3794ff]" />
                                         )}
@@ -801,7 +782,6 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                 />
                             </div>
                         {activeSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
-                        {activeSubTab === 'wiki' && <RepoWikiTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
                         <div style={{ display: activeSubTab === 'explorer' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                             {wasVisited('explorer') && (
                                 <ExplorerPanel

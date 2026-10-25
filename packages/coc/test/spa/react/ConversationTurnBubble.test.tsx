@@ -735,7 +735,7 @@ describe('ConversationTurnBubble — task boundary inference', () => {
                             toolCall: {
                                 id: 'task-1',
                                 toolName: 'task',
-                                args: { agent_type: 'explore', description: 'Inspect wiki files' },
+                                args: { agent_type: 'explore', description: 'Inspect notes files' },
                                 status: 'running',
                             },
                         },
@@ -744,7 +744,7 @@ describe('ConversationTurnBubble — task boundary inference', () => {
                             toolCall: {
                                 id: 'view-inside',
                                 toolName: 'view',
-                                args: { path: '/Users/test/Documents/Projects/shortcuts/packages/coc/src/server/wiki/wiki-data.ts' },
+                                args: { path: '/Users/test/Documents/Projects/shortcuts/packages/coc/src/server/notes/notes-data.ts' },
                                 status: 'completed',
                             },
                         },
@@ -753,7 +753,7 @@ describe('ConversationTurnBubble — task boundary inference', () => {
                             toolCall: {
                                 id: 'task-1',
                                 toolName: 'task',
-                                args: { agent_type: 'explore', description: 'Inspect wiki files' },
+                                args: { agent_type: 'explore', description: 'Inspect notes files' },
                                 status: 'completed',
                             },
                         },
@@ -762,7 +762,7 @@ describe('ConversationTurnBubble — task boundary inference', () => {
                             toolCall: {
                                 id: 'view-outside',
                                 toolName: 'view',
-                                args: { path: '/Users/test/Documents/Projects/shortcuts/packages/coc/src/server/spa/client/react/wiki/WikiList.tsx' },
+                                args: { path: '/Users/test/Documents/Projects/shortcuts/packages/coc/src/server/spa/client/react/notes/NotesList.tsx' },
                                 status: 'completed',
                             },
                         },
@@ -808,7 +808,7 @@ describe('ConversationTurnBubble — task boundary inference', () => {
                             toolCall: {
                                 id: 'view-inside-timed',
                                 toolName: 'view',
-                                args: { path: '/Users/test/Documents/Projects/shortcuts/packages/coc/src/server/wiki/wiki-manager.ts' },
+                                args: { path: '/Users/test/Documents/Projects/shortcuts/packages/coc/src/server/notes/notes-manager.ts' },
                                 startTime: '2026-02-23T10:00:01.000Z',
                                 endTime: '2026-02-23T10:00:02.000Z',
                                 status: 'completed',
@@ -832,7 +832,7 @@ describe('ConversationTurnBubble — task boundary inference', () => {
                             toolCall: {
                                 id: 'view-outside-timed',
                                 toolName: 'view',
-                                args: { path: '/Users/test/Documents/Projects/shortcuts/packages/coc/src/server/spa/client/react/wiki/WikiList.tsx' },
+                                args: { path: '/Users/test/Documents/Projects/shortcuts/packages/coc/src/server/spa/client/react/notes/NotesList.tsx' },
                                 startTime: '2026-02-23T10:00:04.000Z',
                                 endTime: '2026-02-23T10:00:05.000Z',
                                 status: 'completed',

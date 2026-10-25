@@ -475,9 +475,8 @@ through the clone registry.
 the two stay behaviorally identical; selection and routing reuse `buildRepoSubTabSuffix`
 through `useShellNavigation`.
 
-`SHOW_WIKI_TAB` and `SHOW_MEMORY_TAB` live in a lightweight `navFlags.ts` (read by
-`repoSubTabs.ts`, re-exported from `TopBar` for `BottomNav` and `Router`), kept out of
-the heavily-mocked `featureFlags.ts` so partial test mocks of it do not break on a
+`SHOW_MEMORY_TAB` lives in a lightweight `navFlags.ts` (re-exported from `TopBar`), kept
+out of the heavily-mocked `featureFlags.ts` so partial test mocks of it do not break on a
 missing export.
 
 `computeVisibleSubTabs` uses classic ordering and labels, hides standalone Git,

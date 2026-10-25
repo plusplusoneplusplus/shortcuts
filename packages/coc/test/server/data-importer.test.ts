@@ -1,10 +1,10 @@
 /**
  * Validates importData():
  * - Invalid payload throws error
- * - Replace mode wipes and restores processes, workspaces, wikis
+ * - Replace mode wipes and restores processes and workspaces
  * - Replace mode restores queue files and preferences
  * - Replace mode resets queue manager and calls queue persistence restore
- * - Merge mode skips existing process/workspace/wiki IDs, adds new ones
+ * - Merge mode skips existing process/workspace IDs, adds new ones
  * - Merge mode merges queue files (dedup by task ID)
  * - Merge mode merges preferences
  */
@@ -44,7 +44,6 @@ function writeJSON(filePath: string, data: unknown): void {
 function buildPayload(overrides: Partial<CoCExportPayload> = {}): CoCExportPayload {
     const processes = overrides.processes ?? [];
     const workspaces = overrides.workspaces ?? [];
-    const wikis = overrides.wikis ?? [];
     const queueHistory = overrides.queueHistory ?? [];
     return {
         version: EXPORT_SCHEMA_VERSION,
@@ -52,12 +51,10 @@ function buildPayload(overrides: Partial<CoCExportPayload> = {}): CoCExportPaylo
         metadata: {
             processCount: processes.length,
             workspaceCount: workspaces.length,
-            wikiCount: wikis.length,
             queueFileCount: queueHistory.length,
         },
         processes,
         workspaces,
-        wikis,
         queueHistory,
         preferences: overrides.preferences ?? {},
         ...overrides,
@@ -159,24 +156,16 @@ describe('importData', () => {
             expect(workspaces).toHaveLength(2);
         });
 
-        it('wipes existing data and restores wikis', async () => {
-            await store.registerWiki({
-                id: 'old-w', name: 'Old Wiki', wikiDir: '/old',
-                aiEnabled: false, registeredAt: new Date().toISOString(),
-            });
-
-            const payload = buildPayload({
-                wikis: [
-                    { id: 'new-w1', name: 'Wiki1', wikiDir: '/wiki1', aiEnabled: false, registeredAt: new Date().toISOString() },
-                ],
-            });
+        it('ignores wiki registrations in legacy export payloads', async () => {
+            const payload = {
+                ...buildPayload(),
+                wikis: [{ id: 'legacy-w', name: 'Legacy', wikiDir: '/legacy', aiEnabled: false, registeredAt: new Date().toISOString() }],
+            } as CoCExportPayload;
 
             const result = await importData(payload, baseOptions());
 
-            expect(result.importedWikis).toBe(1);
-            const wikis = await store.getWikis();
-            expect(wikis).toHaveLength(1);
-            expect(wikis[0].id).toBe('new-w1');
+            expect(result.errors).toEqual([]);
+            expect(result).not.toHaveProperty('importedWikis');
         });
 
         it('restores queue files to disk', async () => {
@@ -244,7 +233,6 @@ describe('importData', () => {
 
             expect(result.importedProcesses).toBe(0);
             expect(result.importedWorkspaces).toBe(0);
-            expect(result.importedWikis).toBe(0);
             expect(result.importedQueueFiles).toBe(0);
             expect(result.importedBlobFiles).toBe(0);
             expect(result.errors).toEqual([]);
@@ -429,26 +417,6 @@ describe('importData', () => {
             expect(workspaces).toHaveLength(2);
         });
 
-        it('skips existing wiki IDs, adds new ones', async () => {
-            await store.registerWiki({
-                id: 'existing-w', name: 'Existing', wikiDir: '/existing',
-                aiEnabled: false, registeredAt: new Date().toISOString(),
-            });
-
-            const payload = buildPayload({
-                wikis: [
-                    { id: 'existing-w', name: 'Dup', wikiDir: '/dup', aiEnabled: false, registeredAt: new Date().toISOString() },
-                    { id: 'new-w', name: 'New', wikiDir: '/new', aiEnabled: false, registeredAt: new Date().toISOString() },
-                ],
-            });
-
-            const result = await importData(payload, baseOptions({ mode: 'merge' }));
-
-            expect(result.importedWikis).toBe(1);
-            const wikis = await store.getWikis();
-            expect(wikis).toHaveLength(2);
-        });
-
         it('merges queue files — deduplicates by task ID', async () => {
             const rootPath = '/projects/frontend';
             const repoId = 'ws-frontend';
@@ -533,14 +501,12 @@ describe('importData', () => {
                     { id: 'p1', type: 'clarification', promptPreview: 'test', fullPrompt: 'test', status: 'completed', startTime: new Date() } as any,
                 ],
                 workspaces: [{ id: 'ws1', name: 'WS1', rootPath: '/ws1' }],
-                wikis: [{ id: 'w1', name: 'Wiki1', wikiDir: '/w1', aiEnabled: false, registeredAt: new Date().toISOString() }],
             });
 
             const result = await importData(payload, baseOptions({ mode: 'merge' }));
 
             expect(result.importedProcesses).toBe(1);
             expect(result.importedWorkspaces).toBe(1);
-            expect(result.importedWikis).toBe(1);
         });
 
         it('skips existing blob files, writes only new ones', async () => {

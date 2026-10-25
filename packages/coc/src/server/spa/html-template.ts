@@ -84,7 +84,6 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
         theme = 'auto',
         wsPath = '/ws',
         apiBasePath = '/api',
-        enableWiki = false,
         features,
         containerMode,
         reviewFilePath,
@@ -101,15 +100,11 @@ export function generateDashboardHtml(options: DashboardOptions = {}): string {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${escapeHtml(title)}</title>
     <link rel="icon" type="image/svg+xml" href="/icon.svg">
-    <!-- highlight.js 11.9.0 — syntax highlighting (review editor + wiki) -->
+    <!-- highlight.js 11.9.0 — syntax highlighting (review editor) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" id="hljs-light">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-dark" disabled>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"><\/script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/powershell.min.js"><\/script>${enableWiki ? `
-    <!-- mermaid 10.x — diagram rendering (wiki) -->
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"><\/script>
-    <!-- marked — markdown-to-HTML parser (wiki) -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"><\/script>` : ''}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/powershell.min.js"><\/script>
     <style>
 ${getBundleCss()}
     </style>

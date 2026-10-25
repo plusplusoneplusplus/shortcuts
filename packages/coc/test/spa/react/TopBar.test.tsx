@@ -3,7 +3,8 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import { AppProvider, appReducer } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { NotificationProvider } from '../../../src/server/spa/client/react/contexts/NotificationContext';
 import { ThemeProvider } from '../../../src/server/spa/client/react/layout/ThemeProvider';
-import { TopBar, TABS, ALL_TABS, SHOW_WIKI_TAB, SHOW_MEMORY_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
+import * as TopBarModule from '../../../src/server/spa/client/react/layout/TopBar';
+import { TopBar, SHOW_MEMORY_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
 import type { DashboardTab } from '../../../src/server/spa/client/react/types/dashboard';
 
 vi.mock('../../../src/server/spa/client/react/contexts/ReposContext', () => ({
@@ -74,56 +75,23 @@ function renderTopBar() {
     );
 }
 
-// ─── TABS constant ──────────────────────────────────────────────
+// ─── Top-level tabs ─────────────────────────────────────────────
 
-describe('TABS constant', () => {
-    it('contains only non-repos entries (repos is now implicit default)', () => {
-        const labels = TABS.map(t => t.label);
-        expect(labels).not.toContain('Repos');
-        expect(labels).not.toContain('Memory');
-    });
-
-    it('has matching tab identifiers', () => {
-        const tabs = TABS.map(t => t.tab);
-        expect(tabs).not.toContain('repos');
-        expect(tabs).not.toContain('memory');
-    });
-
-    it('has 0 entries (repos removed as implicit default, wiki hidden by flag)', () => {
-        expect(TABS).toHaveLength(0);
-    });
-
-    it('SHOW_WIKI_TAB is false (wiki hidden but available in ALL_TABS)', () => {
-        expect(SHOW_WIKI_TAB).toBe(false);
+describe('TopBar top-level tabs', () => {
+    it('exports no top-level text tab list', () => {
+        expect(TopBarModule).not.toHaveProperty('TABS');
+        expect(TopBarModule).not.toHaveProperty('ALL_TABS');
+        expect(TopBarModule).not.toHaveProperty('SHOW_WIKI_TAB');
     });
 
     it('SHOW_MEMORY_TAB is false (memory view remains direct-route only)', () => {
         expect(SHOW_MEMORY_TAB).toBe(false);
-    });
-
-    it('ALL_TABS includes wiki entry but not skills (skills moved to icon button)', () => {
-        const tabs = ALL_TABS.map(t => t.tab);
-        expect(tabs).toContain('wiki');
-        expect(tabs).not.toContain('skills');
-        expect(tabs).not.toContain('repos');
-        expect(ALL_TABS).toHaveLength(1);
-    });
-
-    it('TABS excludes wiki when SHOW_WIKI_TAB is false', () => {
-        const tabs = TABS.map(t => t.tab);
-        expect(tabs).not.toContain('wiki');
     });
 });
 
 // ─── TopBar rendering ───────────────────────────────────────────
 
 describe('TopBar', () => {
-    it('renders all tab buttons', () => {
-        renderTopBar();
-        for (const { label } of TABS) {
-            expect(screen.getByText(label)).toBeDefined();
-        }
-    });
 
     it('renders the dashboard title as a link to the root page', () => {
         renderTopBar();
@@ -167,14 +135,6 @@ describe('TopBar', () => {
         expect(screen.getByLabelText('Admin')).toBeDefined();
     });
 
-    it('each tab button has data-tab attribute', () => {
-        renderTopBar();
-        for (const { tab } of TABS) {
-            const btn = screen.getByRole('button', { name: TABS.find(t => t.tab === tab)!.label });
-            expect(btn.getAttribute('data-tab')).toBe(tab);
-        }
-    });
-
     it('does not render the legacy Tools dropdown trigger', () => {
         renderTopBar();
         expect(document.getElementById('tools-toggle')).toBeNull();
@@ -193,23 +153,12 @@ describe('TopBar', () => {
     });
 });
 
-// ─── TopBar tab click → hash update ─────────────────────────────
-
-describe('TopBar — tab click updates location.hash', () => {
-    it('sets hash to #repos is no longer applicable (repos is implicit default)', () => {
-        // Repos has no tab button — navigating away from a detail page clears the hash
-        expect(ALL_TABS.map(t => t.tab)).not.toContain('repos');
-    });
-});
-
 // ─── TopBar active tab styling ──────────────────────────────────
 
 describe('TopBar — active tab styling', () => {
-    it('default active tab (repos) does not show active class on any text tab (repos has no button)', () => {
+    it('renders no text tab bar', () => {
         renderTopBar();
-        // Repos is the default tab but has no nav button; no text tab should be highlighted
-        const tabBar = document.getElementById('tab-bar');
-        expect(tabBar).toBeNull(); // nav is hidden when TABS is empty
+        expect(document.getElementById('tab-bar')).toBeNull();
     });
 });
 
@@ -222,13 +171,6 @@ describe('appReducer — SET_ACTIVE_TAB for top tabs', () => {
         selectedRepoId: null,
         repoSubTab: 'info' as const,
         reposSidebarCollapsed: false,
-        selectedWikiId: null,
-        selectedWikiComponentId: null,
-        wikiView: 'list' as const,
-        wikiDetailInitialTab: null,
-        wikiDetailInitialAdminTab: null,
-        wikiAutoGenerate: false,
-        wikis: [],
         repos: [],
         processes: [],
         repoFilter: '',
@@ -316,13 +258,6 @@ describe('TopBar — connection status via AppContext reducer', () => {
         selectedRepoId: null,
         repoSubTab: 'info' as const,
         reposSidebarCollapsed: false,
-        selectedWikiId: null,
-        selectedWikiComponentId: null,
-        wikiView: 'list' as const,
-        wikiDetailInitialTab: null,
-        wikiDetailInitialAdminTab: null,
-        wikiAutoGenerate: false,
-        wikis: [],
         repos: [],
         processes: [],
         repoFilter: '',
@@ -337,19 +272,6 @@ describe('TopBar — connection status via AppContext reducer', () => {
     it('SET_WS_STATUS connecting produces Reconnecting label', () => {
         const result = appReducer(reducerState, { type: 'SET_WS_STATUS', status: 'connecting' });
         expect(result.wsStatus).toBe('connecting');
-    });
-});
-
-// ─── tabFromHash round-trip with TopBar tabs ─────────────────────
-
-describe('TopBar tab → hash → tabFromHash round-trip', () => {
-    // Import tabFromHash to verify the hash values TopBar produces are parseable
-    it('all TopBar tab hashes are recognized by tabFromHash', async () => {
-        const { tabFromHash } = await import('../../../src/server/spa/client/react/layout/Router');
-        for (const { tab } of TABS) {
-            const hash = '#' + tab;
-            expect(tabFromHash(hash)).toBe(tab);
-        }
     });
 });
 
@@ -369,13 +291,6 @@ describe('TopBar — Tools dropdown is removed', () => {
         expect(SHOW_MEMORY_TAB).toBe(false);
     });
 
-    it('"Logs", "Skills" and "Memory" text tabs are not rendered in the main nav', () => {
-        renderTopBar();
-        const tabs = TABS.map(t => t.label);
-        expect(tabs).not.toContain('Logs');
-        expect(tabs).not.toContain('Skills');
-        expect(tabs).not.toContain('Memory');
-    });
 });
 
 // ─── TopBar My Work icon button ──────────────────────────────────

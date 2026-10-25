@@ -74,7 +74,7 @@ describe('RepoDetail terminal tab', () => {
         expect(terminalIdx).toBe(gitIdx + 1);
     });
 
-    it('VISIBLE_SUB_TABS includes terminal (wiki filtered, terminal kept)', () => {
+    it('VISIBLE_SUB_TABS includes terminal', () => {
         expect(VISIBLE_SUB_TABS.find(t => t.key === 'terminal')).toBeDefined();
     });
 });

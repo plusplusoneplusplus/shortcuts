@@ -13,7 +13,7 @@ describe('AdminClient', () => {
     });
 
     await client.getPrompts();
-    await client.getDataStats({ includeWikis: true });
+    await client.getDataStats();
     await client.getConfig();
     await client.updateConfig({ parallel: 2, output: 'json', 'chat.followUpSuggestions.count': 3 });
     await client.getVersion();
@@ -21,7 +21,7 @@ describe('AdminClient', () => {
     await client.getImportToken();
     await client.importData({ version: 1 }, { token: 'import-token', mode: 'merge' });
     await client.getWipeToken();
-    await client.wipeData({ token: 'wipe-token', includeWikis: false });
+    await client.wipeData({ token: 'wipe-token' });
     await client.restart();
     await client.getStorageStatus();
     await client.getStorageMigrateToken();
@@ -31,7 +31,7 @@ describe('AdminClient', () => {
 
     expect(adapter.calls).toMatchObject([
       { path: '/admin/prompts' },
-      { path: '/admin/data/stats', options: { query: { includeWikis: true } } },
+      { path: '/admin/data/stats', options: { signal: undefined, timeoutMs: undefined } },
       { path: '/admin/config' },
       {
         path: '/admin/config',
@@ -47,7 +47,7 @@ describe('AdminClient', () => {
       { path: '/admin/data/wipe-token' },
       {
         path: '/admin/data',
-        options: { method: 'DELETE', query: { confirm: 'wipe-token', includeWikis: false } },
+        options: { method: 'DELETE', query: { confirm: 'wipe-token' } },
       },
       { path: '/admin/restart', options: { method: 'POST' } },
       { path: '/admin/storage/status' },

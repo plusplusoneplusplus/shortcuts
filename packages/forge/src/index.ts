@@ -314,7 +314,6 @@ export {
     HookStepEvent,
     ProcessOutputEvent,
     WorkspaceInfo,
-    WikiInfo,
     ProcessFilter,
     ProcessChangeCallback,
     ProcessStore,

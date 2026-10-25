@@ -33,7 +33,6 @@ import { buildRemoteCloneKey, getWorkspaceIdFromSelectionId } from '../../../../
 import { workspaceReadCacheKey } from '../../../../src/server/spa/client/react/api/workspaceReads';
 
 vi.mock('../../../../src/server/spa/client/react/repos', () => ({ ReposView: () => null }));
-vi.mock('../../../../src/server/spa/client/react/layout/TopBar', () => ({ SHOW_WIKI_TAB: false }));
 
 // ── Mock child components ──────────────────────────────────────────────
 

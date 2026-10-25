@@ -19,7 +19,6 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
 vi.mock('../../../../src/server/spa/client/react/repos', () => ({ ReposView: () => {
     mocks.repos(); return <div data-testid="repos" />;
 } }));
-vi.mock('../../../../src/server/spa/client/react/wiki/WikiView', () => ({ WikiView: () => <div>Wiki</div> }));
 
 const hash = '#chat-references/destination/same/chat';
 const local = { id: 'same', name: 'Local collision' } as WorkspaceInfo;

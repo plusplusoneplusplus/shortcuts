@@ -3,7 +3,6 @@
  *
  * Verifies that:
  * - all route groups are registered into the routes array
- * - wikiManager is returned (or undefined) correctly
  * - the function is a pure composition with no side-effects beyond registration
  */
 
@@ -56,13 +55,8 @@ function makeStore(): ProcessStore {
         registerWorkspace: vi.fn(),
         removeWorkspace: vi.fn(),
         updateWorkspace: vi.fn(),
-        getWikis: vi.fn().mockResolvedValue([]),
-        registerWiki: vi.fn(),
-        removeWiki: vi.fn(),
-        updateWiki: vi.fn(),
         clearAllWorkspaces: vi.fn(),
-        clearAllWikis: vi.fn(),
-        getStorageStats: vi.fn().mockResolvedValue({ totalProcesses: 0, totalWorkspaces: 0, totalWikis: 0, storageSize: 0 }),
+        getStorageStats: vi.fn().mockResolvedValue({ totalProcesses: 0, totalWorkspaces: 0, storageSize: 0 }),
         onProcessOutput: vi.fn().mockReturnValue(() => {}),
         emitProcessOutput: vi.fn(),
         emitProcessComplete: vi.fn(),
@@ -121,7 +115,6 @@ function makeQueuePersistence(): any {
 function makeWsServer(): any {
     return {
         broadcastProcessEvent: vi.fn(),
-        broadcastWikiEvent: vi.fn(),
         closeAll: vi.fn(),
     };
 }
@@ -1004,12 +997,12 @@ describe('registerAllRoutes', () => {
         });
     });
 
-    it('returns { wikiManager } as a defined object (wiki routes always registered)', () => {
+    it('registers no wiki API routes', () => {
         const routes: Route[] = [];
         const result = registerAllRoutes(routes, makeOpts());
-        expect(result).toHaveProperty('wikiManager');
-        // Wiki routes are always registered (safe even with no wikis)
-        expect(result.wikiManager).toBeDefined();
+        expect(result).not.toHaveProperty('wikiManager');
+        const patterns = routes.map(r => (typeof r.pattern === 'string' ? r.pattern : r.pattern.toString()));
+        expect(patterns.some(p => p.includes('/api/wikis'))).toBe(false);
     });
 
     it('returns GitHub and Azure Boards work-item pollers', () => {
@@ -1057,8 +1050,6 @@ describe('registerAllRoutes', () => {
         expect(patterns.some(p => p.includes('schedules'))).toBe(true);
         // Tasks (nested under /api/workspaces/:id/tasks)
         expect(patterns.some(p => p.includes('tasks'))).toBe(true);
-        // Wikis
-        expect(patterns.some(p => p.includes('/api/wikis'))).toBe(true);
         // Workflows (nested under /api/workspaces/:id/workflows or /summary)
         expect(patterns.some(p => p.includes('summary'))).toBe(true);
         // Admin

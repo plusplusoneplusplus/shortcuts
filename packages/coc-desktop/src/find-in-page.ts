@@ -2,7 +2,7 @@
  * CoC Desktop — find-in-page (Ctrl+F / Cmd+F) support.
  *
  * Electron has no built-in find bar, and the served SPA relies on the browser's
- * native find-in-page for content pages (chat conversations, notes, wiki, diffs)
+ * native find-in-page for content pages (chat conversations, notes, diffs)
  * that have no in-app search box of their own. This module supplies that missing
  * capability: a find-bar overlay hosted in its OWN WebContentsView (see
  * `find-bar-host.ts`), wired through IPC to `webContents.findInPage` /

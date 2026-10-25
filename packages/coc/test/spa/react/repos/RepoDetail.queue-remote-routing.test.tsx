@@ -40,15 +40,10 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
             activeRepoSubTab: activeSubTab,
             repoTabState: {},
             repoRouteState: {},
-            wikis: [],
             settingsSection: 'info',
             selectedGitCommitHash: null,
             selectedGitFilePath: null,
             selectedNotePath: null,
-            selectedRepoWikiId: null,
-            repoWikiInitialTab: null,
-            repoWikiInitialAdminTab: null,
-            repoWikiInitialComponentId: null,
             selectedWorkflowProcessId: null,
         },
         dispatch: mockDispatch,
@@ -109,7 +104,6 @@ vi.mock('../../../../src/server/spa/client/react/ui', () => ({
 vi.mock('../../../../src/server/spa/client/react/ui/ErrorBoundary', () => ({
     ErrorBoundary: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
-vi.mock('../../../../src/server/spa/client/react/layout/TopBar', () => ({ SHOW_WIKI_TAB: false }));
 vi.mock('../../../../src/server/spa/client/react/layout/MobileTabBar', () => ({ MobileTabBar: () => null }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
@@ -155,7 +149,6 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoInfoTa
 vi.mock('../../../../src/server/spa/client/react/features/templates/TemplatesTab', () => ({ TemplatesTab: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab', () => ({ RepoSchedulesTab: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/git/RepoGitTab', () => ({ RepoGitTab: (props: any) => <div data-testid="repo-git-owner" data-destination={props.sourceSelectionId} data-workspace={props.workspaceId} /> }));
-vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoWikiTab', () => ({ RepoWikiTab: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-settings/RepoSettingsTab', () => ({ RepoSettingsTab: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({ ExplorerPanel: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/pull-requests/PullRequestsTab', () => ({ PullRequestsTab: (props: any) => <div data-testid="repo-pr-owner" data-destination={props.attachmentDestinationId} data-workspace={props.workspaceId} /> }));

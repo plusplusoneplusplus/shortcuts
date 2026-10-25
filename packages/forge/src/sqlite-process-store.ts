@@ -15,7 +15,6 @@ import {
     ProcessFilter,
     ProcessIndexEntry,
     WorkspaceInfo,
-    WikiInfo,
     ProcessChangeCallback,
     ProcessOutputEvent,
     StorageStats,
@@ -172,16 +171,6 @@ interface WorkspaceRow {
     disabled_skills: string | null;
     extra_skill_folders: string | null;
     virtual: number;
-}
-
-interface WikiRow {
-    id: string;
-    name: string;
-    wiki_dir: string;
-    repo_path: string | null;
-    color: string | null;
-    ai_enabled: number;
-    registered_at: string;
 }
 
 interface CountRow {
@@ -608,34 +597,6 @@ function rowToWorkspace(row: WorkspaceRow): WorkspaceInfo {
     }
 
     return ws;
-}
-
-// ============================================================================
-// Wiki ↔ Row conversion
-// ============================================================================
-
-function wikiToRow(wiki: WikiInfo): Record<string, unknown> {
-    return {
-        id: wiki.id,
-        name: wiki.name,
-        wiki_dir: wiki.wikiDir,
-        repo_path: wiki.repoPath ?? null,
-        color: wiki.color ?? null,
-        ai_enabled: boolToInt(wiki.aiEnabled),
-        registered_at: wiki.registeredAt,
-    };
-}
-
-function rowToWiki(row: WikiRow): WikiInfo {
-    return {
-        id: row.id,
-        name: row.name,
-        wikiDir: row.wiki_dir,
-        repoPath: row.repo_path ?? undefined,
-        color: row.color ?? undefined,
-        aiEnabled: !!row.ai_enabled,
-        registeredAt: row.registered_at,
-    };
 }
 
 // ============================================================================
@@ -1737,54 +1698,6 @@ export class SqliteProcessStore implements ProcessStore {
     }
 
     // ========================================================================
-    // Wiki CRUD
-    // ========================================================================
-
-    async registerWiki(wiki: WikiInfo): Promise<void> {
-        const row = wikiToRow(wiki);
-        this.db.prepare(`
-            INSERT OR REPLACE INTO wikis (
-                id, name, wiki_dir, repo_path, color, ai_enabled, registered_at
-            ) VALUES (
-                @id, @name, @wiki_dir, @repo_path, @color, @ai_enabled, @registered_at
-            )
-        `).run(row);
-    }
-
-    async getWikis(): Promise<WikiInfo[]> {
-        const rows = this.db.prepare('SELECT * FROM wikis').all() as WikiRow[];
-        return rows.map(rowToWiki);
-    }
-
-    async removeWiki(id: string): Promise<boolean> {
-        const result = this.db.prepare('DELETE FROM wikis WHERE id = ?').run(id);
-        return result.changes > 0;
-    }
-
-    async updateWiki(id: string, updates: Partial<Omit<WikiInfo, 'id'>>): Promise<WikiInfo | undefined> {
-        const setClauses: string[] = [];
-        const values: unknown[] = [];
-
-        if (updates.name !== undefined) { setClauses.push('name = ?'); values.push(updates.name); }
-        if (updates.wikiDir !== undefined) { setClauses.push('wiki_dir = ?'); values.push(updates.wikiDir); }
-        if (updates.repoPath !== undefined) { setClauses.push('repo_path = ?'); values.push(updates.repoPath); }
-        if (updates.color !== undefined) { setClauses.push('color = ?'); values.push(updates.color); }
-        if (updates.aiEnabled !== undefined) { setClauses.push('ai_enabled = ?'); values.push(boolToInt(updates.aiEnabled)); }
-        if (updates.registeredAt !== undefined) { setClauses.push('registered_at = ?'); values.push(updates.registeredAt); }
-
-        if (setClauses.length === 0) {
-            const row = this.db.prepare('SELECT * FROM wikis WHERE id = ?').get(id) as WikiRow | undefined;
-            return row ? rowToWiki(row) : undefined;
-        }
-
-        values.push(id);
-        this.db.prepare(`UPDATE wikis SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
-
-        const row = this.db.prepare('SELECT * FROM wikis WHERE id = ?').get(id) as WikiRow | undefined;
-        return row ? rowToWiki(row) : undefined;
-    }
-
-    // ========================================================================
     // Admin: bulk clear & stats
     // ========================================================================
 
@@ -1793,15 +1706,9 @@ export class SqliteProcessStore implements ProcessStore {
         return result.changes;
     }
 
-    async clearAllWikis(): Promise<number> {
-        const result = this.db.prepare('DELETE FROM wikis').run();
-        return result.changes;
-    }
-
     async getStorageStats(): Promise<StorageStats> {
         const procCount = (this.db.prepare('SELECT COUNT(*) AS cnt FROM processes').get() as CountRow).cnt;
         const wsCount = (this.db.prepare('SELECT COUNT(*) AS cnt FROM workspaces').get() as CountRow).cnt;
-        const wikiCount = (this.db.prepare('SELECT COUNT(*) AS cnt FROM wikis').get() as CountRow).cnt;
 
         let storageSize = 0;
         try {
@@ -1813,7 +1720,6 @@ export class SqliteProcessStore implements ProcessStore {
         return {
             totalProcesses: procCount,
             totalWorkspaces: wsCount,
-            totalWikis: wikiCount,
             storageSize,
         };
     }

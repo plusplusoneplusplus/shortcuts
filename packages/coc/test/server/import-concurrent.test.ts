@@ -65,10 +65,9 @@ function makePayload(processIdPrefix: string, count = 2) {
     return {
         version: EXPORT_SCHEMA_VERSION,
         exportedAt: new Date().toISOString(),
-        metadata: { processCount: processes.length, workspaceCount: 0, wikiCount: 0, queueFileCount: 0 },
+        metadata: { processCount: processes.length, workspaceCount: 0, queueFileCount: 0 },
         processes,
         workspaces: [],
-        wikis: [],
         queueHistory: [],
         preferences: {},
     };

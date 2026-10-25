@@ -92,11 +92,10 @@ const DreamsView = lazy(() => import('../features/dreams/DreamsView').then(m => 
 
 interface Stats {
     processCount: number | null;
-    wikiCount: number | null;
     totalBytes: number | null;
 }
 
-const WELCOME_RESET_PROGRESS = { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false, settingsVisited: false, dismissed: false, hasCompletedTour: false };
+const WELCOME_RESET_PROGRESS = { hasRunWorkflow: false, hasUsedChat: false, settingsVisited: false, dismissed: false, hasCompletedTour: false };
 
 export function AdminPanel() {
     const { toasts, addToast, removeToast } = useToast();
@@ -288,10 +287,9 @@ export function AdminPanel() {
     const loadStats = useCallback(async () => {
         setStatsLoading(true);
         try {
-            const data = await adminServer.client.admin.getDataStats({ includeWikis: true });
+            const data = await adminServer.client.admin.getDataStats();
             setStats({
                 processCount: data.processCount ?? data.processes ?? null,
-                wikiCount: data.wikiCount ?? data.wikis ?? null,
                 totalBytes: data.totalBytes ?? data.diskUsage ?? null,
             });
         } catch {

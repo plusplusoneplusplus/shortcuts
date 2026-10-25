@@ -74,7 +74,6 @@ export function resolveWipeDataOptions(
 ): WipeDataCommandOptions {
     return {
         confirm: Boolean(opts.confirm),
-        includeWikis: Boolean(opts.includeWikis),
         dryRun: Boolean(opts.dryRun),
         dataDir: (opts.dataDir as string | undefined) ?? config.serve?.dataDir,
         noColor: opts.color === false,

@@ -229,10 +229,10 @@ describe('destination remote delegation admission', () => {
         await domain.restoreReplace({} as never, context, {} as never);
         await domain.restoreMerge({} as never, context, {} as never);
         expect(store.get(proof)).toEqual(receipt);
-        const plan = await domain.planWipe({ ...context, includeWikis: false });
+        const plan = await domain.planWipe({ ...context });
         expect(plan.plan).toEqual([file()]);
         const result = { errors: [] as string[] };
-        await domain.executeWipe({ ...context, includeWikis: false }, plan.plan, result);
+        await domain.executeWipe({ ...context }, plan.plan, result);
         expect(result.errors).toEqual([]);
         expect(restart().get(proof)).toBeUndefined();
     });
