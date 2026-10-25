@@ -9,10 +9,12 @@
  * with Refrains disabled, the Coda strip controls its read-only assessment chats. Active normal items come first, then
  * the chat's Manual tracking section with its own add form and groups, then the
  * normal Done and Archived sections, then Overtures and Refrains or the Coda strip,
- * all in the list column beside the detail pane.
+ * all in the list column beside the detail pane. A compact search bar (toolbar
+ * icon or Ctrl/Cmd+F inside the tab) filters the whole ledger read-only and
+ * restores the previous view when it closes.
  */
 
-import { useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type MouseEvent, type ReactNode } from 'react';
+import { Fragment, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import type {
     CocClient,
     SentinelTodoItem,
@@ -54,6 +56,14 @@ import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspaceP
 import { AcceptAllCodaProposals, CodaFindingsContext, SentinelCodaFinding } from './SentinelCodaFinding';
 import { SentinelRefrains } from './SentinelRefrains';
 import { sentinelTodoRecentPage } from './sentinelTodoStatusModel';
+import { useScopedFindShortcut } from '../../../hooks/useScopedFindShortcut';
+import {
+    parseSentinelTodoSearch,
+    sentinelTodoHighlight,
+    sentinelTodoSearchExcerpt,
+    sentinelTodoSearchItems,
+    type SentinelTodoSearchQuery,
+} from './sentinelTodoSearch';
 import {
     endSentinelTodoExcursion,
     isPinnedSentinelTodo,
@@ -176,6 +186,27 @@ function Notice({ tone, children, onRetry, testId }: { tone: 'error' | 'info'; c
     );
 }
 
+/** Matched words as `<mark>`ed plain text; React escapes every segment, so item text never becomes markup. */
+function HighlightedText({ text, query }: { text: string; query?: SentinelTodoSearchQuery }) {
+    if (!query?.words.length) return <>{text}</>;
+    return <>{sentinelTodoHighlight(text, query).map((segment, index) => segment.match
+        ? <mark key={index} className="rounded-sm bg-[#ffd33d]/50 text-inherit dark:bg-[#ffd33d]/30" data-todo-search-match="">{segment.text}</mark>
+        : <Fragment key={index}>{segment.text}</Fragment>)}</>;
+}
+
+// Search results render in pages so a large ledger stays responsive; the count always covers every match.
+const SEARCH_RESULT_PAGE = 100;
+
+/** The view a search session started from, restored when it closes. Search itself is never remembered. */
+type SearchSnapshot = {
+    view: SentinelTodoView;
+    expanded: ReadonlySet<string>;
+    tagFilter: string;
+    visibleLimit: number;
+    scrollTop: number;
+    focus: HTMLElement | null;
+};
+
 /** Marks a Manual tracking field the user may leave blank. */
 function Optional({ show }: { show: boolean }) {
     return show ? <span className={cn('font-normal', MUTED)}> (optional)</span> : null;
@@ -284,6 +315,17 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     const referencesEnabled = useSentinelTodoExternalReferencesEnabled();
     const [tagFilter, setTagFilter] = useState('');
     const [matchMultiple, setMatchMultiple] = useState(false);
+    // Search is open while a snapshot exists; it lives only in this mount, so an owner change resets it.
+    const [searchSnapshot, setSearchSnapshot] = useState<SearchSnapshot | null>(null);
+    const searchSnapshotRef = useRef(searchSnapshot);
+    searchSnapshotRef.current = searchSnapshot;
+    const [searchText, setSearchText] = useState('');
+    const [searchLimit, setSearchLimit] = useState(SEARCH_RESULT_PAGE);
+    const searchInputRef = useRef<HTMLInputElement>(null);
+    const searchToggleRef = useRef<HTMLButtonElement>(null);
+    const searchId = useId();
+    const searchOpen = searchSnapshot !== null;
+    const searchQuery = useMemo(() => parseSentinelTodoSearch(searchOpen ? searchText : ''), [searchOpen, searchText]);
     const tagLibrary = tagsEnabled ? ledger?.tagLibrary : undefined;
     const effectiveTagFilter = tagLibrary && (tagFilter === 'untagged' || tagLibrary.tags.some(tag => tag.id === tagFilter)) ? tagFilter : '';
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -398,6 +440,28 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         : sentinelTodoRecentPage(filteredItems, visibleLimit).items, [filteredItems, visibleLimit, effectiveTagFilter]);
     const sections = useMemo(() => sentinelTodoSections(recentItems, 'normal'), [recentItems]);
     const manual = useMemo(() => sentinelTodoSections(recentItems, 'manual'), [recentItems]);
+    // Search covers the whole loaded ledger — Done, Archived and items past the recent page —
+    // ignoring the tag filter, in the list's own section order.
+    const searchResults = useMemo(() => searchQuery.words.length ? sentinelTodoSearchItems(orderedItems, searchQuery) : null,
+        [orderedItems, searchQuery]);
+    const searchGroups = useMemo(() => {
+        if (!searchResults) return null;
+        const normalMatches = sentinelTodoSections(searchResults, 'normal');
+        const manualMatches = sentinelTodoSections(searchResults, 'manual');
+        let remaining = searchLimit;
+        return [
+            { key: 'active', label: 'To do', items: normalMatches.active },
+            { key: 'manual', label: 'Manual tracking', items: manualMatches.active },
+            { key: 'manual-done', label: 'Manual tracking · Done', items: manualMatches.done },
+            { key: 'manual-archived', label: 'Manual tracking · Archived', items: manualMatches.archived },
+            { key: 'done', label: 'Done', items: normalMatches.done },
+            { key: 'archived', label: 'Archived', items: normalMatches.archived },
+        ].map(group => {
+            const shown = group.items.slice(0, Math.max(0, remaining));
+            remaining -= shown.length;
+            return { ...group, total: group.items.length, items: shown };
+        }).filter(group => group.items.length > 0);
+    }, [searchResults, searchLimit]);
     useEffect(() => {
         if (!ledger) {
             return;
@@ -499,9 +563,74 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         done: showDone, archived: showArchived, manual: showManual, manualDone: showManualDone, manualArchived: showManualArchived,
     } };
     useEffect(() => () => {
-        rememberSentinelTodoView(owner, { scrollTop: scrollTop.current, expandedIds: [...expandedRef.current], ...viewRef.current });
+        // An open search is never remembered: keep the view it started from.
+        const snapshot = searchSnapshotRef.current;
+        rememberSentinelTodoView(owner, snapshot
+            ? { scrollTop: snapshot.scrollTop, expandedIds: [...snapshot.expanded], ...snapshot.view }
+            : { scrollTop: scrollTop.current, expandedIds: [...expandedRef.current], ...viewRef.current });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [ownerKey]);
+
+    const openSearch = () => {
+        if (searchSnapshotRef.current) {
+            searchInputRef.current?.focus();
+            searchInputRef.current?.select();
+            return;
+        }
+        const active = document.activeElement;
+        setSearchSnapshot({
+            view: viewRef.current, expanded, tagFilter, visibleLimit, scrollTop: scrollTop.current,
+            focus: active instanceof HTMLElement && panelRef.current?.contains(active) ? active : null,
+        });
+        setSearchLimit(SEARCH_RESULT_PAGE);
+    };
+    const restoreAfterSearch = useRef<SearchSnapshot | null>(null);
+    const closeSearch = () => {
+        const snapshot = searchSnapshotRef.current;
+        if (!snapshot) return;
+        restoreAfterSearch.current = snapshot;
+        setSearchSnapshot(null);
+        setSearchText('');
+        setSelectedId(snapshot.view.selectedId ?? null);
+        setDetailOpen(snapshot.view.detailOpen ?? false);
+        setExpanded(snapshot.expanded);
+        setTagFilter(snapshot.tagFilter);
+        setVisibleLimit(snapshot.visibleLimit);
+        if (snapshot.view.sections) {
+            setShowDone(snapshot.view.sections.done);
+            setShowArchived(snapshot.view.sections.archived);
+            setShowManual(snapshot.view.sections.manual);
+            setShowManualDone(snapshot.view.sections.manualDone);
+            setShowManualArchived(snapshot.view.sections.manualArchived);
+        }
+    };
+    useLayoutEffect(() => {
+        if (searchOpen) {
+            searchInputRef.current?.focus();
+            return;
+        }
+        const snapshot = restoreAfterSearch.current;
+        if (!snapshot) return;
+        restoreAfterSearch.current = null;
+        if (scrollRef.current) scrollRef.current.scrollTop = snapshot.scrollTop;
+        scrollTop.current = snapshot.scrollTop;
+        // Results replace the list's rows, so a focused row is found again by its item.
+        const rowId = snapshot.focus?.dataset.todoSelect;
+        const row = rowId === undefined ? null : [...(scrollRef.current?.querySelectorAll<HTMLElement>('[data-todo-select]') ?? [])]
+            .find(button => button.dataset.todoSelect === rowId);
+        (snapshot.focus?.isConnected ? snapshot.focus : row ?? searchToggleRef.current)?.focus({ preventScroll: true });
+    }, [searchOpen]);
+    // Each new query starts at the top of its results (a narrow pane leaves details for them);
+    // a blank query shows the list where search began.
+    useLayoutEffect(() => {
+        const snapshot = searchSnapshotRef.current;
+        if (!snapshot) return;
+        setSearchLimit(SEARCH_RESULT_PAGE);
+        if (searchQuery.words.length && !wide) setDetailOpen(false);
+        if (scrollRef.current) scrollRef.current.scrollTop = searchQuery.words.length ? 0 : snapshot.scrollTop;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchQuery]);
+    useScopedFindShortcut(panelRef, openSearch, { claimsBodyFocus: false, yieldToNestedEditors: true });
     // Once the list has content: restore its scroll, and focus the link Back returned from.
     const viewRestored = useRef(false);
     useLayoutEffect(() => {
@@ -660,9 +789,9 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     });
     const reopenHint = (type: SentinelTodoType) => hasDoneItems(type)
         ? <span className={cn('text-[11px]', MUTED)}>Drop a Done item here to reopen as To do.</span> : null;
-    const renderList = (items: readonly SentinelTodoItem[]) => (
+    const renderList = (items: readonly SentinelTodoItem[], search?: SentinelTodoSearchQuery) => (
         <ul className="flex flex-col gap-1" role="list">
-            {items.map(item => <CompactTodoRow key={item.id} {...rowProps(item)} selected={item.id === selectedId} onSelect={() => selectItem(item.id)}
+            {items.map(item => <CompactTodoRow key={item.id} {...rowProps(item)} search={search} selected={item.id === selectedId} onSelect={() => selectItem(item.id)}
                 onReopenDragStart={item.status === 'done' && !item.archived ? event => {
                     draggedDone.current = item;
                     setDraggedDoneType(sentinelTodoType(item));
@@ -711,6 +840,15 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                 <div className="ml-auto flex max-w-full flex-wrap items-center gap-2">
                     <AcceptAllCodaProposals />
                     <div className="flex shrink-0 items-center gap-2">
+                        <button type="button" ref={searchToggleRef} aria-label="Search to-do items" title="Search to-do items (Ctrl/Cmd+F)"
+                            aria-keyshortcuts="Control+F Meta+F" aria-expanded={searchOpen} aria-controls={searchOpen ? `${searchId}-bar` : undefined}
+                            onClick={openSearch} data-testid="sentinel-todo-search-toggle"
+                            className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded text-[#848484] transition-colors hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc]/50',
+                                searchOpen && 'bg-[#0078d4]/10 text-[#0078d4] dark:text-[#3794ff]')}>
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+                                <circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3.5 3.5" />
+                            </svg>
+                        </button>
                         <button type="button" aria-label="Refresh to-do list" title="Refresh to-do list"
                             aria-busy={loading} disabled={loading} onClick={refresh} data-testid="sentinel-todo-refresh"
                             className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-[#848484] transition-colors hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc]/50 disabled:opacity-50 disabled:cursor-not-allowed">
@@ -726,6 +864,41 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                 </div>
             </div>}>
             {scrubber => <>
+            {searchOpen && (
+                <div role="search" id={`${searchId}-bar`} aria-label="To-do search" data-testid="sentinel-todo-search"
+                    className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    <label className="sr-only" htmlFor={`${searchId}-input`}>Search to-do items</label>
+                    <input ref={searchInputRef} id={`${searchId}-input`} type="text" data-scoped-find-input="" autoComplete="off"
+                        spellCheck={false} placeholder="Search titles, notes and Done when" value={searchText}
+                        aria-describedby={`${searchId}-status`} data-testid="sentinel-todo-search-input"
+                        className={cn(INPUT, 'min-w-0 flex-[1_1_10rem]')}
+                        onChange={event => setSearchText(event.target.value)}
+                        onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+                            if (event.key === 'Escape') {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                closeSearch();
+                            } else if (event.key === 'ArrowDown' && searchResults?.length) {
+                                event.preventDefault();
+                                scrollRef.current?.querySelector<HTMLButtonElement>('[data-todo-select]')?.focus();
+                            }
+                        }} />
+                    <span id={`${searchId}-status`} role="status" aria-live="polite" className={cn('whitespace-nowrap text-[11px]', MUTED)}
+                        data-testid="sentinel-todo-search-status">
+                        {ledger === null ? loadError ? 'Search is unavailable until the list loads.' : 'Loading to-do items…'
+                            : searchResults ? `${searchResults.length} ${searchResults.length === 1 ? 'match' : 'matches'}`
+                                : `Searches all ${ledger.items.length} ${ledger.items.length === 1 ? 'item' : 'items'}`}
+                    </span>
+                    <div className="flex shrink-0 items-center gap-1">
+                        {searchText && <Button size="sm" variant="ghost" data-testid="sentinel-todo-search-clear" onClick={() => {
+                            setSearchText('');
+                            searchInputRef.current?.focus();
+                        }}>Clear</Button>}
+                        <Button size="sm" variant="secondary" data-testid="sentinel-todo-search-close" onClick={closeSearch}
+                            aria-label="Close search">Close</Button>
+                    </div>
+                </div>
+            )}
             {loadError && (
                 <Notice tone="error" testId="sentinel-todo-load-error" onRetry={() => { void load(); }}>
                     Could not load the to-do list: {loadError}
@@ -736,13 +909,18 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             <div className="flex min-h-[160px] flex-1 gap-2">
             <div ref={scrollRef}
                 tabIndex={-1}
-                onScroll={event => { scrollTop.current = event.currentTarget.scrollTop; }}
+                onScroll={event => { if (!searchSnapshotRef.current) scrollTop.current = event.currentTarget.scrollTop; }}
                 style={wide ? { flex: '0 0 43%' } : undefined}
                 hidden={!wide && detailOpen && !!selected}
                 className="min-w-0 flex-1 overflow-auto"
                 data-testid="sentinel-todo-list"
                 onKeyDown={event => {
                     if (!(event.target instanceof HTMLElement) || !event.target.matches('[data-todo-select]')) return;
+                    if (event.key === 'Escape' && searchOpen) {
+                        event.preventDefault();
+                        closeSearch();
+                        return;
+                    }
                     const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[data-todo-select]')];
                     const index = buttons.indexOf(event.target as HTMLButtonElement);
                     const next = event.key === 'ArrowDown' ? Math.min(index + 1, buttons.length - 1)
@@ -760,6 +938,28 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                 )
             ) : (
                 <>
+                    {searchGroups && searchResults ? (
+                        <div className="flex flex-col gap-2" data-testid="sentinel-todo-search-results">
+                            {searchResults.length === 0 && (
+                                <p className={cn('p-2', MUTED)} data-testid="sentinel-todo-search-empty">
+                                    No to-do items match “{searchText.trim()}”.
+                                </p>
+                            )}
+                            {searchGroups.map(group => (
+                                <section key={group.key} aria-label={`${group.label} matches`} data-testid={`sentinel-todo-search-group-${group.key}`}
+                                    className="flex flex-col gap-1">
+                                    <h3 className={cn('m-0 px-1 text-[11px] font-medium', MUTED)}>{group.label} ({group.total})</h3>
+                                    {renderList(group.items, searchQuery)}
+                                </section>
+                            ))}
+                            {searchResults.length > searchLimit && (
+                                <Button size="sm" variant="secondary" data-testid="sentinel-todo-search-more"
+                                    onClick={() => setSearchLimit(limit => limit + SEARCH_RESULT_PAGE)}>
+                                    Show more matches ({searchResults.length - searchLimit})
+                                </Button>
+                            )}
+                        </div>
+                    ) : <>
                     <section aria-label="To do" data-testid="sentinel-todo-reopen-normal" {...reopenTargetProps('normal')}>
                     {reopenHint('normal')}
                     {normalCount === 0 ? (
@@ -839,6 +1039,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                             Show older items ({ledger.items.length - recentItems.length})
                         </Button>
                     )}
+                    </>}
                     <SentinelOvertures owner={owner} items={ledger.items} onItemLink={followTriggerItem} />
                     {scrubber}
                 </>
@@ -994,10 +1195,13 @@ function TodoCardMenu({ owner, item, onAttach, disabled, onAction }: {
     </div>;
 }
 
-function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibrary, selected, onSelect, menuDisabled, onMenuAction, onReopenDragStart, onReopenDragEnd }: Pick<TodoDetailProps, 'item' | 'owner' | 'currentWorkspaceId' | 'onFollowLink' | 'tagLibrary'> & {
+function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibrary, selected, onSelect, menuDisabled, onMenuAction, onReopenDragStart, onReopenDragEnd, search }: Pick<TodoDetailProps, 'item' | 'owner' | 'currentWorkspaceId' | 'onFollowLink' | 'tagLibrary'> & {
     selected: boolean; onSelect: () => void; menuDisabled: boolean; onMenuAction: (action: TodoMenuAction) => void;
     onReopenDragStart?: (event: DragEvent<HTMLButtonElement>) => void; onReopenDragEnd: () => void;
+    /** An active search: highlight matches and excerpt the collapsed field that matched. */
+    search?: SentinelTodoSearchQuery;
 }) {
+    const excerpt = search ? sentinelTodoSearchExcerpt(item, search) : null;
     const { canAttach, attach, attachError, drag } = useTodoAttachment(owner, item);
     const card = useRef<HTMLLIElement>(null);
     const selectedTextOnRelease = useRef(false);
@@ -1038,7 +1242,7 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
                     className="flex min-w-0 flex-[1_1_100%] select-text flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] [@container_todo-card_(min-width:28rem)]:basis-[55%]">
                     <StatusBadge status={sentinelTodoDisplayStatus(item)} />
                     {high && <HighPriorityBadge itemId={item.id} />}
-                    <span className={cn('min-w-0 flex-1 basis-[8rem] break-words [overflow-wrap:anywhere] font-medium', item.archived && 'line-through opacity-70')}>{item.title}</span>
+                    <span className={cn('min-w-0 flex-1 basis-[8rem] break-words [overflow-wrap:anywhere] font-medium', item.archived && 'line-through opacity-70')}><HighlightedText text={item.title} query={search} /></span>
                     {sentinelTodoType(item) === 'manual' && <span className={MUTED}>Tracking only</span>}
                 </button>
                 <div className={cn('flex min-w-0 max-w-full basis-full items-center gap-x-1.5 whitespace-nowrap text-[11px]',
@@ -1064,6 +1268,11 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
             </button>}
             <TodoCardMenu owner={owner} item={item} onAttach={canAttach ? attach : undefined} disabled={menuDisabled || mutationPending} onAction={onMenuAction} />
         </div>
+        {excerpt && search && <p className={cn('m-0 min-w-0 break-words px-1.5 pb-1 text-[11px] [overflow-wrap:anywhere]', MUTED)}
+            data-testid={`sentinel-todo-search-excerpt-${item.id}`}>
+            <span className="font-medium">{excerpt.field === 'notes' ? 'Notes' : 'Done when'}:</span>{' '}
+            <HighlightedText text={excerpt.text} query={search} />
+        </p>}
         {tagLibrary && item.tagIds?.length ? <div className="px-1.5 pb-1"><SentinelTodoTagChips item={item} library={tagLibrary} /></div> : null}
         {(item.jobs.length > 0 || reasonPreview) && <div className="min-w-0 px-1.5 pb-1">
             <TodoJobs item={item} owner={owner} currentWorkspaceId={currentWorkspaceId} onFollowLink={onFollowLink} reasonPreview={reasonPreview} />

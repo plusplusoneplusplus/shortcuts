@@ -803,7 +803,12 @@ all unarchived non-Done items, then recently updated Done within a 50-item budge
 active counts above 50 stay complete and archived history follows Done. Saved
 fulfillment determines selection, not job completion. Older-item expansion and
 section sorting apply to this selection; dependency,
-Overture and Coda controls retain the full snapshot. Job-title previews use owner-scoped compact process reads or Ralph
+Overture and Coda controls retain the full snapshot. To-do search (toolbar icon, or
+Ctrl/Cmd+F only while focus is in the tab and not in its nested text fields) filters
+the full snapshot, including Done, Archived and unloaded-page rows, by literal
+case-insensitive words that must all occur across title, notes and Done when; results
+keep section order with safe highlights and field excerpts. Selection is read-only;
+Escape/Close restores the pre-search view, and search state is never remembered. Job-title previews use owner-scoped compact process reads or Ralph
 whole-session task-group summaries, with abortable lazy loading and bounded
 per-reference caching. List/latest and detail/all-job titles share compact
 mode pills from the ledger projection, with Ralph session identity preserved and

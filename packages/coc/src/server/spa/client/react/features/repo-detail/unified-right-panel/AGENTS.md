@@ -876,6 +876,20 @@ unshrinkable time) sits under it; only at 28rem+ does that row move beside the t
 capped at 40% so the title keeps most of the width. Identical item/job titles use an
 accessible Open job link; distinct job titles remain visible. Full job history,
 conversation references and editing controls live in the detail pane.
+To-do search (`sentinelTodoSearch.ts`, no flag) opens a compact bar above the list from
+the toolbar icon or Ctrl/Cmd+F while focus is inside the tab (`useScopedFindShortcut`
+with `claimsBodyFocus: false` and `yieldToNestedEditors`; other surfaces and nested text
+fields keep their find). It filters the full loaded snapshot live — Done, Archived and
+rows past the recent page, ignoring the tag filter — on title, notes and Done when, never
+job/chat data. Whitespace-separated words must all occur, each case-insensitively and
+literally in one field. Matches keep section order, grouped To do / Manual tracking
+(+ Done/Archived) / Done / Archived, in 100-row pages under a full match count; rows
+highlight plain-text `<mark>` segments and excerpt a matching Done when or notes field.
+Loading and load failure are explicit, never zero matches. Selecting a result opens
+details without writes. Opening snapshots selection, details, expansion, sections, tag
+filter, older-row limit, scroll and focus; Escape (box or result row) or Close restores
+them. An open search is never remembered: unmount records the snapshot view. Owner
+remounts reset search; a narrow pane leaves details for results when a query changes.
 Default-off `sentinelTodoTagsEnabled` adds named restrained tag chips, a tag filter
 including Untagged, a selection-independent library manager and a detail picker.
 Enabling the live gate reloads the full owner snapshot without resetting drafts.
