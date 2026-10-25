@@ -65,14 +65,14 @@ describe('FirstStepsCard', () => {
         vi.restoreAllMocks();
     });
 
-    // 1. Renders card with all 4 steps when onboarding not dismissed
-    it('renders card with all 4 steps', () => {
+    // 1. Renders card with all 3 steps when onboarding not dismissed
+    it('renders card with all 3 steps', () => {
         renderCard();
         expect(screen.getByTestId('first-steps-card')).toBeTruthy();
         expect(screen.getByTestId('first-step-add-repo')).toBeTruthy();
         expect(screen.getByTestId('first-step-use-chat')).toBeTruthy();
         expect(screen.getByTestId('first-step-run-workflow')).toBeTruthy();
-        expect(screen.getByTestId('first-step-open-wiki')).toBeTruthy();
+        expect(screen.queryByTestId('first-step-open-wiki')).toBeNull();
         expect(screen.getByTestId('first-steps-progress').textContent).toBe(
             `0 of ${STEPS.length} complete`,
         );
@@ -81,17 +81,17 @@ describe('FirstStepsCard', () => {
     // 2. Shows completed steps with checkmark and strikethrough
     it('shows completed steps with checkmark', () => {
         renderCard({
-            prefs: { onboardingProgress: { hasUsedChat: true, hasRunWorkflow: true } },
+            prefs: { onboardingProgress: { hasUsedChat: true } },
             workspaces: [{ id: 'w1', path: '/repo' }],
         });
-        // Step 1 (add-repo) done via workspaces, step 2 (use-chat) done, step 3 (run-workflow) done
+        // Step 1 (add-repo) done via workspaces, step 2 (use-chat) done
         const step1 = screen.getByTestId('first-step-add-repo');
         const step2 = screen.getByTestId('first-step-use-chat');
         expect(step1.textContent).toContain('✓');
         expect(step2.textContent).toContain('✓');
-        // Progress = 3 of 4 (add-repo + hasUsedChat + hasRunWorkflow)
+        // Progress = 2 of 3 (add-repo + hasUsedChat)
         expect(screen.getByTestId('first-steps-progress').textContent).toBe(
-            '3 of 4 complete',
+            '2 of 3 complete',
         );
     });
 
@@ -116,13 +116,6 @@ describe('FirstStepsCard', () => {
         expect(onAddRepo).toHaveBeenCalledOnce();
     });
 
-    // 5. "Open Wiki" button navigates to wiki tab
-    it('"Open Wiki" button navigates to wiki tab', () => {
-        renderCard();
-        fireEvent.click(screen.getByTestId('first-steps-open-wiki'));
-        expect(screen.getByTestId('active-tab').textContent).toBe('wiki');
-    });
-
     // 6. "Dismiss" button dispatches UPDATE_ONBOARDING with dismissed:true
     it('"Dismiss" persists dismissed:true', async () => {
         renderCard();
@@ -141,14 +134,13 @@ describe('FirstStepsCard', () => {
         expect(body.onboardingProgress.dismissed).toBe(true);
     });
 
-    // 7. Celebration state when all 4 steps complete
+    // 7. Celebration state when all 3 steps complete
     it('shows celebration when all steps are complete', () => {
         renderCard({
             prefs: {
                 onboardingProgress: {
                     hasUsedChat: true,
                     hasRunWorkflow: true,
-                    hasOpenedWiki: true,
                 },
             },
             workspaces: [{ id: 'w1', path: '/repo' }],
@@ -175,7 +167,6 @@ describe('FirstStepsCard', () => {
                         onboardingProgress: {
                             hasUsedChat: true,
                             hasRunWorkflow: true,
-                            hasOpenedWiki: true,
                         },
                     }}
                     workspaces={[{ id: 'w1', path: '/repo' }]}
@@ -206,7 +197,7 @@ describe('FirstStepsCard', () => {
         const step1 = screen.getByTestId('first-step-add-repo');
         expect(step1.textContent).toContain('✓');
         expect(screen.getByTestId('first-steps-progress').textContent).toBe(
-            '1 of 4 complete',
+            '1 of 3 complete',
         );
     });
 
@@ -228,10 +219,10 @@ describe('FirstStepsCard', () => {
     });
 
     // 11. No action button for steps 2 and 3
-    it('renders action buttons only for steps 1 and 4', () => {
+    it('renders an action button only for step 1', () => {
         renderCard();
         expect(screen.getByTestId('first-steps-add-repo')).toBeTruthy();
-        expect(screen.getByTestId('first-steps-open-wiki')).toBeTruthy();
+        expect(screen.queryByTestId('first-steps-open-wiki')).toBeNull();
         // Steps 2 and 3 should not have action buttons
         expect(screen.queryByTestId('first-steps-use-chat')).toBeNull();
         expect(screen.queryByTestId('first-steps-run-workflow')).toBeNull();

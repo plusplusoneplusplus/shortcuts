@@ -44,7 +44,6 @@ spa/client/react/
 ├── tasks/         # Task/plan management, inline comments
 ├── ui/            # Primitives (Button, Card, Dialog, Spinner, Badge, Toast)
 ├── welcome/       # WelcomeTour, FirstStepsCard, FeatureTip
-├── wiki/          # WikiView, WikiAsk, WikiGraph
 ├── types/ utils/  # Types and utility modules
 └── featureFlags.ts
 ```
@@ -804,7 +803,12 @@ all unarchived non-Done items, then recently updated Done within a 50-item budge
 active counts above 50 stay complete and archived history follows Done. Saved
 fulfillment determines selection, not job completion. Older-item expansion and
 section sorting apply to this selection; dependency,
-Overture and Coda controls retain the full snapshot. Job-title previews use owner-scoped compact process reads or Ralph
+Overture and Coda controls retain the full snapshot. To-do search (toolbar icon, or
+Ctrl/Cmd+F only while focus is in the tab and not in its nested text fields) filters
+the full snapshot, including Done, Archived and unloaded-page rows, by literal
+case-insensitive words that must all occur across title, notes and Done when; results
+keep section order with safe highlights and field excerpts. Selection is read-only;
+Escape/Close restores the pre-search view, and search state is never remembered. Job-title previews use owner-scoped compact process reads or Ralph
 whole-session task-group summaries, with abortable lazy loading and bounded
 per-reference caching. List/latest and detail/all-job titles share compact
 mode pills from the ledger projection, with Ralph session identity preserved and
@@ -852,7 +856,9 @@ The automation names are **Refrains** (user prompts), **Coda** (built-in to-do r
 With the owning server's Refrains flags on, `SentinelRefrains` lists refrains
 and hosts Coda as its pinned built-in row. Refrain dialogs, gate status,
 Test gate/Resume gate and skip labels are described in the unified-right-panel
-`AGENTS.md`.
+`AGENTS.md`. Create/edit auto-compact thresholds use K-token drafts with up to
+three decimals; shared `utils/autoCompactThreshold.ts` converts exactly at the UI
+boundary while API/storage retain positive safe integer tokens.
 
 `SentinelCoda` mounts after the ledger loads when both live ledger and
 Coda flags are enabled; its function child places one inline strip and history in
@@ -970,7 +976,7 @@ session ID, phase, and ordered child process IDs).
 ## coc-client integration
 
 The SPA consumes `@plusplusoneplusplus/coc-client` for typed REST transport. Domains:
-admin, processes, queue, schedules, tasks, notes, workflows, wiki, memory, memoryV2,
+admin, processes, queue, schedules, tasks, notes, workflows, memory, memoryV2,
 skills, preferences, seen-state, work-items, agentProviders, git. The git domain covers
 commit/diff/branch helpers, operation history, the patch-transfer export/apply methods
 behind cross-clone cherry-pick, and the worktree-execution `listWorktrees` /

@@ -32,7 +32,6 @@ export { TemplatesClient } from './templates';
 export { WorkItemsClient } from './work-items';
 export { WorkspacesClient } from './workspaces';
 export { WorkflowClient } from './workflows';
-export { WikiClient } from './wiki';
 export { CronsClient } from './cron';
 export { TriggersClient } from './triggers';
 export { MapReduceClient } from './map-reduce';

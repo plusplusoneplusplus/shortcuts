@@ -13,20 +13,20 @@ describe('AdminClient mock server contract', () => {
   it('round-trips admin configuration, stats, version, import, wipe, and restart routes', async () => {
     mock = await startMockServer();
     const config = { resolved: { model: 'gpt-5.4', parallel: 2 }, sources: { model: 'config' } };
-    const preview = { valid: true, preview: { processCount: 2, workspaceCount: 1, wikiCount: 0 } };
-    mock.on('GET', '/api/admin/data/stats', { body: { processCount: 2, wikiCount: 1, totalBytes: 128 } });
+    const preview = { valid: true, preview: { processCount: 2, workspaceCount: 1 } };
+    mock.on('GET', '/api/admin/data/stats', { body: { processCount: 2, totalBytes: 128 } });
     mock.on('GET', '/api/admin/config', { body: config });
     mock.on('PUT', '/api/admin/config', request => ({ body: { ...config, updated: request.body } }));
     mock.on('GET', '/api/admin/version', { body: { version: '1.2.3', commit: 'abc123' } });
     mock.on('POST', '/api/admin/import/preview', { body: preview });
     mock.on('GET', '/api/admin/import-token', { body: { token: 'import-token', expiresIn: 300 } });
-    mock.on('POST', '/api/admin/import', { body: { importedProcesses: 1, importedWorkspaces: 1, importedWikis: 0, importedQueueFiles: 0, importedBlobFiles: 0, importedScheduleFiles: 0, importedRepoPreferenceFiles: 0, errors: [] } });
+    mock.on('POST', '/api/admin/import', { body: { importedProcesses: 1, importedWorkspaces: 1, importedQueueFiles: 0, importedBlobFiles: 0, importedScheduleFiles: 0, importedRepoPreferenceFiles: 0, errors: [] } });
     mock.on('GET', '/api/admin/data/wipe-token', { body: { token: 'wipe-token', expiresIn: 300 } });
-    mock.on('DELETE', '/api/admin/data', { body: { deletedProcesses: 1, deletedWorkspaces: 1, deletedWikis: 0, deletedQueues: 0, deletedSchedules: 0, deletedGitOps: 0, deletedRepoPreferences: 0, deletedPreferences: false, deletedWikiDirs: [], preservedFiles: [], errors: [] } });
+    mock.on('DELETE', '/api/admin/data', { body: { deletedProcesses: 1, deletedWorkspaces: 1, deletedQueues: 0, deletedSchedules: 0, deletedGitOps: 0, deletedRepoPreferences: 0, deletedPreferences: false, preservedFiles: [], errors: [] } });
     mock.on('POST', '/api/admin/restart', { body: { message: 'Server is restarting...' } });
     const client = createClient(mock);
 
-    await expect(client.admin.getDataStats({ includeWikis: true })).resolves.toMatchObject({ processCount: 2 });
+    await expect(client.admin.getDataStats()).resolves.toMatchObject({ processCount: 2 });
     await expect(client.admin.getConfig()).resolves.toEqual(config);
     await expect(client.admin.updateConfig({ parallel: 3 })).resolves.toMatchObject({ updated: { parallel: 3 } });
     await expect(client.admin.getVersion()).resolves.toEqual({ version: '1.2.3', commit: 'abc123' });
@@ -34,15 +34,17 @@ describe('AdminClient mock server contract', () => {
     await expect(client.admin.getImportToken()).resolves.toEqual({ token: 'import-token', expiresIn: 300 });
     await expect(client.admin.importData({ version: 1 }, { token: 'import-token', mode: 'merge' })).resolves.toMatchObject({ importedProcesses: 1 });
     await expect(client.admin.getWipeToken()).resolves.toEqual({ token: 'wipe-token', expiresIn: 300 });
-    await expect(client.admin.wipeData({ token: 'wipe-token', includeWikis: false })).resolves.toMatchObject({ deletedProcesses: 1 });
+    await expect(client.admin.wipeData({ token: 'wipe-token' })).resolves.toMatchObject({ deletedProcesses: 1 });
     await expect(client.admin.restart()).resolves.toEqual({ message: 'Server is restarting...' });
 
-    expectEmptyRequest(mock.requests[0], 'GET', '/api/admin/data/stats', { includeWikis: 'true' });
+    expectEmptyRequest(mock.requests[0], 'GET', '/api/admin/data/stats');
+    expect(mock.requests[0].query).toEqual({});
     expectEmptyRequest(mock.requests[1], 'GET', '/api/admin/config');
     expectJsonRequest(mock.requests[2], 'PUT', '/api/admin/config', { parallel: 3 });
     expectJsonRequest(mock.requests[4], 'POST', '/api/admin/import/preview', { version: 1 });
     expectJsonRequest(mock.requests[6], 'POST', '/api/admin/import', { version: 1 }, { confirm: 'import-token', mode: 'merge' });
-    expectEmptyRequest(mock.requests[8], 'DELETE', '/api/admin/data', { confirm: 'wipe-token', includeWikis: 'false' });
+    expectEmptyRequest(mock.requests[8], 'DELETE', '/api/admin/data', { confirm: 'wipe-token' });
+    expect(mock.requests[8].query).toEqual({ confirm: 'wipe-token' });
     expectEmptyRequest(mock.requests[9], 'POST', '/api/admin/restart');
   });
 

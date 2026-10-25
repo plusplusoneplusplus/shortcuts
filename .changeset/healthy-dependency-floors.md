@@ -2,7 +2,6 @@
 "@plusplusoneplusplus/coc": patch
 "@plusplusoneplusplus/coc-workflow": patch
 "@plusplusoneplusplus/forge": patch
-"@plusplusoneplusplus/deep-wiki": patch
 "@plusplusoneplusplus/coccontainer": patch
 "@plusplusoneplusplus/coc-client": patch
 "@plusplusoneplusplus/coc-connector": patch

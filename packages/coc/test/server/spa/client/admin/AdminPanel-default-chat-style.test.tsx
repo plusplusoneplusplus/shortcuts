@@ -129,7 +129,6 @@ function mockStatsResponse(overrides: Record<string, any> = {}) {
         ok: true,
         json: async () => ({
             processCount: 0,
-            wikiCount: 0,
             totalBytes: 0,
             ...overrides,
         }),

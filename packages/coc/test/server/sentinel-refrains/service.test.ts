@@ -229,20 +229,58 @@ describe('SentinelRefrainService', () => {
         list.mockRestore();
     });
 
-    it('does not replay a completed Sentinel handback after queue history is evicted', async () => {
+    it('drops legacy Sentinel handbacks on recovery without delivering them, unlocking edits and later runs', async () => {
+        const commands = new SentinelRefrainCommands({ jobs: jobStore, service });
+        const states = [
+            ['queued', 'handback-queued', { status: 'queued' }],
+            ['queued', 'handback-running', { status: 'running' }],
+            ['pending', undefined, undefined],
+            ['delivered', 'handback-done', { status: 'completed' }],
+        ] as const;
+        const legacy = states.map(([handbackState, handbackTaskId, task]) => {
+            const job = jobStore.create(owner, input);
+            const run = jobStore.createRun(owner, job.id, 'manual', `queue_${job.id}`, NOW);
+            jobStore.patchRun(owner, job.id, run.id, { status: 'completed', handbackState, handbackTaskId,
+                result: 'old result', sentinelFollowUpHref: '#repos/ws-a/chats/queue_parent?turn=2' });
+            if (handbackTaskId && task) tasks.set(handbackTaskId, task);
+            return { job, run };
+        });
+        expect(() => jobStore.update(owner, legacy[0].job.id, { name: 'Renamed' }, legacy[0].job.revision)).not.toThrow();
+
+        expect(await service.recover()).toBe(0);
+        expect(enqueue).not.toHaveBeenCalled();
+        expect(cancelTask.mock.calls.map(([id]) => id).sort()).toEqual(['handback-done', 'handback-queued', 'handback-running']);
+        for (const { job, run } of legacy) {
+            const stored = jobStore.run(owner, job.id, run.id);
+            expect(stored).toMatchObject({ status: 'completed' });
+            for (const field of ['handbackState', 'handbackTaskId', 'result', 'sentinelFollowUpHref']) expect(stored).not.toHaveProperty(field);
+            expect(service.view(owner, jobStore.get(owner, job.id)).runs[0]).not.toHaveProperty('sentinelFollowUpHref');
+        }
+        const { job } = legacy[2];
+        await expect(commands.update(owner, job.id, { name: 'Edited' }, job.revision)).resolves.toMatchObject({ name: 'Edited' });
+        await expect(service.start(owner, job.id)).resolves.toMatchObject({ status: 'queued' });
+        expect(enqueue).toHaveBeenCalledTimes(1);
+        expect(getRefrainTaskContext({ payload: enqueue.mock.calls[0][0].payload })?.kind).toBe('run');
+    });
+
+    it('guard rejects a handback task persisted by an older server, so it never runs a Sentinel turn', async () => {
         const job = jobStore.create(owner, input);
         const run = jobStore.createRun(owner, job.id, 'manual', 'queue_job', NOW);
         jobStore.patchRun(owner, job.id, run.id, { status: 'completed', handbackState: 'queued', handbackTaskId: 'old-handback' });
-        addProcess(owner.processId, { conversationTurns: [
-            { role: 'user', content: 'handback', turnIndex: 2, timestamp: new Date(),
-                relayRequestId: `sentinel-job-handback:${run.id}` },
-            assistantTurn(3, 'reviewed'),
-        ] as never });
-        await service.recover();
-        expect(jobStore.run(owner, job.id, run.id)).toMatchObject({ handbackState: 'delivered',
-            sentinelFollowUpHref: expect.stringContaining('?turn=2') });
-        expect(enqueue).not.toHaveBeenCalled();
+        const handback = { id: 'old-handback', repoId: owner.workspaceId, processId: owner.processId, status: 'queued',
+            payload: { kind: 'chat', mode: 'sentinel', workspaceId: owner.workspaceId, processId: owner.processId, prompt: 'old result',
+                context: { sentinelScheduledJob: { ...owner, jobId: job.id, runId: run.id, kind: 'handback' } } } } as unknown as QueuedTask;
+        await expect(service.guard(handback)).rejects.toMatchObject({ code: 'conflict' });
+
+        const queue = new FakeQueue();
+        service.attach(queue);
+        onChange.mockClear();
+        queue.emit('taskFailed', owner.workspaceId, { ...handback, status: 'failed' }, 'rejected');
+        await flush();
+        expect(onChange).not.toHaveBeenCalled();
+        expect(jobStore.run(owner, job.id, run.id).status).toBe('completed');
     });
+
     it('creates one persistent chat and relays every run through that same chat', async () => {
         const job = jobStore.create(owner, input);
         const first = await service.start(owner, job.id);
@@ -271,11 +309,11 @@ describe('SentinelRefrainService', () => {
         queue.emit('taskCompleted', owner.workspaceId, guardTask(call1, { status: 'completed' }));
         await flush();
         expect(jobStore.run(owner, job.id, first.id).status).toBe('completed');
-        expect(enqueue).toHaveBeenCalledTimes(2); // the Sentinel handback queued automatically
+        expect(enqueue).toHaveBeenCalledTimes(1); // completion queues no Sentinel turn
 
         const second = await service.start(owner, job.id);
-        expect(enqueue).toHaveBeenCalledTimes(3);
-        const call2 = enqueue.mock.calls[2][0] as CreateTaskInput;
+        expect(enqueue).toHaveBeenCalledTimes(2);
+        const call2 = enqueue.mock.calls[1][0] as CreateTaskInput;
         expect(call2.processId).toBe(chatProcessId); // same persistent chat, not a new one
         expect((call2.payload as Record<string, unknown>).processId).toBe(chatProcessId);
         expect((call2.payload as Record<string, unknown>).relayRequestId).toBe(`sentinel-job:${second.id}`);
@@ -290,7 +328,7 @@ describe('SentinelRefrainService', () => {
         expect(call.payload.prompt).toBe([
             input.instructions, '',
             'You are a job chat, not the owning Sentinel. You have no ledger-writing authority.',
-            'Return the result in your final response. The server queues the handback to the Sentinel.',
+            'Return the result in your final response. It stays in this job chat; nothing is sent to the Sentinel.',
         ].join('\n'));
         expect(call.payload.context).not.toHaveProperty('actor');
         expect(list).not.toHaveBeenCalled();
@@ -310,27 +348,6 @@ describe('SentinelRefrainService', () => {
         jobStore.patchRun(owner, job.id, run.id, { status: 'completed' });
         await new SentinelRefrainCommands({ jobs: jobStore, service }).delete(owner, job.id, job.revision);
         expect(fs.existsSync(directory)).toBe(false);
-    });
-
-    it('hands back the current run response, not a later manual chat response', async () => {
-        const job = jobStore.create(owner, input);
-        const run = await service.start(owner, job.id);
-        const call = enqueue.mock.calls[0][0] as CreateTaskInput;
-        await service.guard(guardTask(call));
-        const chat = processes.get(call.processId!)!;
-        processes.set(chat.id, { ...chat, conversationTurns: [
-            { role: 'user', content: 'Run job', turnIndex: 0, timestamp: new Date() },
-            assistantTurn(1, 'This run result'),
-            { role: 'user', content: 'A later manual message', turnIndex: 2, timestamp: new Date() },
-            assistantTurn(3, 'Unrelated later result'),
-        ] as AIProcess['conversationTurns'] });
-        const queue = new FakeQueue();
-        service.attach(queue);
-        queue.emit('taskCompleted', owner.workspaceId, guardTask(call, { status: 'completed' }));
-        await flush();
-        expect(jobStore.run(owner, job.id, run.id).result).toBe('This run result');
-        expect(enqueue.mock.calls[1][0].payload.prompt).toContain('This run result');
-        expect(enqueue.mock.calls[1][0].payload.prompt).not.toContain('Unrelated later result');
     });
 
     it('is single-flight per job but runs independent jobs in parallel', async () => {
@@ -445,92 +462,83 @@ describe('SentinelRefrainService', () => {
         expect(onSpy).toHaveBeenCalledTimes(6);
     });
 
-    it('hands back the last non-streaming assistant turn as the result, and the error text on failure', async () => {
+    it.each([
+        ['taskCompleted', undefined, { status: 'completed' }],
+        ['taskFailed', 'boom', { status: 'failed', error: 'boom' }],
+        ['taskCancelled', undefined, { status: 'cancelled', error: 'Cancelled' }],
+    ] as const)('settles a run on %s without a Sentinel turn and admits repeat runs', async (event, detail, expected) => {
+        const job = jobStore.create(owner, input);
+        const queue = new FakeQueue();
+        service.attach(queue);
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const run = await service.start(owner, job.id);
+            const call = enqueue.mock.calls.at(-1)![0] as CreateTaskInput;
+            addProcess(call.processId!, { conversationTurns: [assistantTurn(attempt, 'final answer')] as never });
+            await service.guard(guardTask(call));
+            queue.emit(event, owner.workspaceId, guardTask(call, { status: expected.status }), detail);
+            await flush();
+            const settled = jobStore.run(owner, job.id, run.id);
+            expect(settled).toMatchObject(expected);
+            expect(settled.finishedAt).toBeDefined();
+            for (const field of ['handbackState', 'handbackTaskId', 'result']) expect(settled).not.toHaveProperty(field);
+            expect(service.view(owner, jobStore.get(owner, job.id)).activeRun).toBeUndefined();
+        }
+        expect(enqueue).toHaveBeenCalledTimes(2);
+        expect(enqueue.mock.calls.every(([call]) => call.processId !== owner.processId)).toBe(true);
+        expect(processes.get(owner.processId)?.conversationTurns).toEqual([]);
+        const current = jobStore.get(owner, job.id);
+        await expect(new SentinelRefrainCommands({ jobs: jobStore, service }).update(owner, job.id, { name: 'Next' }, current.revision))
+            .resolves.toMatchObject({ name: 'Next' });
+    });
+
+    it('settles a user cancellation without a Sentinel turn', async () => {
         const job = jobStore.create(owner, input);
         const run = await service.start(owner, job.id);
         const call = enqueue.mock.calls[0][0] as CreateTaskInput;
         addProcess(call.processId!);
         await service.guard(guardTask(call));
-        // Conversation turns accumulate as the job chat runs, after guard() recorded the run's starting turn index.
-        addProcess(call.processId!, { conversationTurns: [
-            assistantTurn(0, 'draft', { displayOnly: true }),
-            assistantTurn(1, 'final answer'),
-        ] });
-        const queue = new FakeQueue();
-        service.attach(queue);
-        queue.emit('taskCompleted', owner.workspaceId, guardTask(call, { status: 'completed' }));
-        await flush();
-        expect(jobStore.run(owner, job.id, run.id)).toMatchObject({ status: 'completed', result: 'final answer' });
-        const handbackCall = enqueue.mock.calls[1][0] as CreateTaskInput;
-        expect((handbackCall.payload as Record<string, unknown>).prompt).toContain('final answer');
-        expect(handbackCall.processId).toBe(owner.processId);
-        expect((handbackCall.payload as Record<string, unknown>).processId).toBe(owner.processId);
-        expect(handbackCall.priority).toBe('low');
-
-        const job2 = jobStore.create(owner, input);
-        const run2 = await service.start(owner, job2.id);
-        const call2 = enqueue.mock.calls[2][0] as CreateTaskInput;
-        addProcess(call2.processId!);
-        await service.guard(guardTask(call2));
-        queue.emit('taskFailed', owner.workspaceId, guardTask(call2, { status: 'failed' }), 'boom');
-        await flush();
-        expect(jobStore.run(owner, job2.id, run2.id)).toMatchObject({ status: 'failed', error: 'boom' });
-        const handback2 = enqueue.mock.calls[3][0] as CreateTaskInput;
-        expect((handback2.payload as Record<string, unknown>).prompt).toContain('failed: boom');
+        await expect(service.cancel(owner, job.id, run.id)).resolves.toMatchObject({ status: 'cancelled', error: 'Cancelled by user' });
+        expect(enqueue).toHaveBeenCalledTimes(1);
+        await expect(service.start(owner, job.id)).resolves.toMatchObject({ status: 'queued' });
     });
 
-    it('guard rejects a handback whose task id, delivery state, or target no longer matches the recorded handback', async () => {
-        const job = jobStore.create(owner, input);
-        const run = await service.start(owner, job.id);
-        const call = enqueue.mock.calls[0][0] as CreateTaskInput;
-        addProcess(call.processId!);
-        await service.guard(guardTask(call));
+    it('keeps run settlement isolated per Sentinel owner', async () => {
+        const other = { workspaceId: owner.workspaceId, processId: 'queue_other_parent' };
+        addProcess(other.processId);
+        const mine = jobStore.create(owner, input);
+        const theirs = jobStore.create(other, input);
+        const myRun = await service.start(owner, mine.id);
+        const theirRun = await service.start(other, theirs.id);
+        const [myCall, theirCall] = enqueue.mock.calls.map(([call]) => call as CreateTaskInput);
+        addProcess(myCall.processId!);
+        addProcess(theirCall.processId!);
+        await service.guard(guardTask(myCall));
+        await service.guard(guardTask(theirCall));
         const queue = new FakeQueue();
         service.attach(queue);
-        queue.emit('taskCompleted', owner.workspaceId, guardTask(call, { status: 'completed' }));
+        queue.emit('taskCompleted', owner.workspaceId, guardTask(theirCall, { status: 'completed' }));
         await flush();
-        const handbackCall = enqueue.mock.calls[1][0] as CreateTaskInput;
-        const validHandback = guardTask(handbackCall);
-        await expect(service.guard(validHandback)).resolves.toBeUndefined();
-        await expect(service.guard({ ...validHandback, id: 'forged-handback' })).rejects.toMatchObject({ code: 'conflict' });
-        await expect(service.guard({ ...validHandback, processId: 'queue_other' })).rejects.toMatchObject({ code: 'conflict' });
-        jobStore.patchRun(owner, job.id, run.id, { handbackState: 'delivered' });
-        await expect(service.guard(validHandback)).rejects.toMatchObject({ code: 'conflict' });
+        expect(jobStore.run(other, theirs.id, theirRun.id).status).toBe('completed');
+        expect(jobStore.run(owner, mine.id, myRun.id).status).toBe('running');
+        expect(enqueue).toHaveBeenCalledTimes(2);
+        expect(processes.get(owner.processId)?.conversationTurns).toEqual([]);
+        expect(processes.get(other.processId)?.conversationTurns).toEqual([]);
     });
 
-    it('recover cancels orphaned active runs as interrupted, and resolves or re-queues pending handbacks by queue identity', async () => {
+    it('recover cancels orphaned active runs as interrupted without queuing anything', async () => {
         const jobA = jobStore.create(owner, input);
         const runA = jobStore.createRun(owner, jobA.id, 'manual', 'queue_a', NOW);
         jobStore.patchRun(owner, jobA.id, runA.id, { taskId: 'task-a', status: 'running' });
-
         const jobB = jobStore.create(owner, input);
         const runB = jobStore.createRun(owner, jobB.id, 'manual', 'queue_b', NOW);
-        jobStore.patchRun(owner, jobB.id, runB.id, { status: 'completed', handbackTaskId: 'handback-b', handbackState: 'queued' });
-        tasks.set('handback-b', { status: 'completed' });
-
-        const jobC = jobStore.create(owner, input);
-        const runC = jobStore.createRun(owner, jobC.id, 'manual', 'queue_c', NOW);
-        jobStore.patchRun(owner, jobC.id, runC.id, { status: 'failed', handbackTaskId: 'handback-c', handbackState: 'queued' });
-        tasks.set('handback-c', { status: 'failed' });
-
-        const jobD = jobStore.create(owner, input);
-        const runD = jobStore.createRun(owner, jobD.id, 'manual', 'queue_d', NOW);
-        jobStore.patchRun(owner, jobD.id, runD.id, { status: 'completed', handbackTaskId: 'handback-d', handbackState: 'queued' });
-        tasks.set('handback-d', { status: 'running' });
-
-        const jobE = jobStore.create(owner, input);
-        const runE = jobStore.createRun(owner, jobE.id, 'manual', 'queue_e', NOW);
-        jobStore.patchRun(owner, jobE.id, runE.id, { status: 'completed', handbackState: 'pending' });
+        jobStore.patchRun(owner, jobB.id, runB.id, { status: 'completed' });
 
         const count = await service.recover();
-        expect(count).toBe(1); // only jobA's active run counted as an interrupted recovery
+        expect(count).toBe(1);
         expect(cancelTask).toHaveBeenCalledWith('task-a');
         expect(jobStore.run(owner, jobA.id, runA.id)).toMatchObject({ status: 'interrupted', error: 'Server restarted during this run' });
-        expect(jobStore.run(owner, jobB.id, runB.id).handbackState).toBe('delivered');
-        expect(jobStore.run(owner, jobC.id, runC.id).handbackState).toBe('failed');
-        expect(jobStore.run(owner, jobD.id, runD.id).handbackState).toBe('queued'); // left alone — its task is still live
-        expect(jobStore.run(owner, jobE.id, runE.id).handbackState).toBe('queued'); // re-queued since no task was ever recorded
-        expect(enqueue).toHaveBeenCalled();
+        expect(jobStore.run(owner, jobB.id, runB.id).status).toBe('completed');
+        expect(enqueue).not.toHaveBeenCalled();
     });
 
     it('does not cancel active work when an owner read fails unexpectedly', async () => {
@@ -544,24 +552,7 @@ describe('SentinelRefrainService', () => {
         assertOwner.mockRestore();
     });
 
-    it('reports unexpected owner read failures as handback errors, not owner revocation', async () => {
-        const job = jobStore.create(owner, input);
-        const run = await service.start(owner, job.id);
-        const call = enqueue.mock.calls[0][0] as CreateTaskInput;
-        const failure = new Error('Database read unavailable');
-        const assertOwner = vi.spyOn(todoService, 'assertOwner').mockRejectedValueOnce(failure);
-        const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-        const queue = new FakeQueue();
-        service.attach(queue);
-        queue.emit('taskCompleted', owner.workspaceId, guardTask(call, { status: 'completed' }));
-        await flush();
-        expect(jobStore.run(owner, job.id, run.id).handbackState).toBe('failed');
-        expect(log).toHaveBeenCalledWith('[sentinel-jobs] Could not queue Sentinel handback:', failure);
-        assertOwner.mockRestore();
-        log.mockRestore();
-    });
-
-    it('invalidate suppresses pending handbacks and cancels active runs the moment the owner becomes invalid', async () => {
+    it('invalidate cancels active runs the moment the owner becomes invalid', async () => {
         const job = jobStore.create(owner, input);
         const run = await service.start(owner, job.id);
         const call = enqueue.mock.calls[0][0] as CreateTaskInput;
@@ -574,7 +565,7 @@ describe('SentinelRefrainService', () => {
         expect(onChange).toHaveBeenCalledWith(owner);
     });
 
-    it('shutdown marks every active run interrupted with a pending handback, without itself queuing the handback', async () => {
+    it('shutdown marks every active run interrupted without queuing anything', async () => {
         const job = jobStore.create(owner, input);
         const run = await service.start(owner, job.id);
         const call = enqueue.mock.calls[0][0] as CreateTaskInput;
@@ -583,51 +574,13 @@ describe('SentinelRefrainService', () => {
         enqueue.mockClear();
         await service.shutdown();
         expect(jobStore.run(owner, job.id, run.id)).toMatchObject({
-            status: 'interrupted', error: 'Server stopped during this run', handbackState: 'pending',
+            status: 'interrupted', error: 'Server stopped during this run',
         });
+        expect(jobStore.run(owner, job.id, run.id)).not.toHaveProperty('handbackState');
         expect(cancelTask).toHaveBeenCalledWith(call.id);
-        expect(enqueue).not.toHaveBeenCalled(); // the handback is left for recovery on next boot, not queued now
-    });
-
-    it('revokes queued handbacks on shutdown and recovers their durable delivery without rerunning the job', async () => {
-        const job = jobStore.create(owner, input);
-        const run = await service.start(owner, job.id);
-        const call = enqueue.mock.calls[0][0] as CreateTaskInput;
-        await service.guard(guardTask(call));
-        const queue = new FakeQueue();
-        service.attach(queue);
-        queue.emit('taskCompleted', owner.workspaceId, guardTask(call));
-        await flush();
-        const handbackId = jobStore.run(owner, job.id, run.id).handbackTaskId!;
-        await service.shutdown();
-        expect(cancelTask).toHaveBeenCalledWith(handbackId);
-        expect(jobStore.run(owner, job.id, run.id)).toMatchObject({ status: 'completed', handbackState: 'pending' });
-        expect(jobStore.run(owner, job.id, run.id).handbackTaskId).toBeUndefined();
         enqueue.mockClear();
         await makeService().recover();
-        expect(enqueue).toHaveBeenCalledTimes(1);
-        expect(getRefrainTaskContext({ payload: enqueue.mock.calls[0][0].payload })?.kind).toBe('handback');
-        expect(enqueue.mock.calls[0][0].id).not.toBe(handbackId);
-    });
-
-    it('retains a pending handback when shutdown races the completed job response read', async () => {
-        const job = jobStore.create(owner, input);
-        const run = await service.start(owner, job.id);
-        const call = enqueue.mock.calls[0][0] as CreateTaskInput;
-        await service.guard(guardTask(call));
-        let release!: (value: AIProcess | undefined) => void;
-        const waiting = new Promise<AIProcess | undefined>(resolve => { release = resolve; });
-        const read = vi.spyOn(service.deps.store, 'getProcess').mockImplementationOnce(() => waiting);
-        const queue = new FakeQueue();
-        service.attach(queue);
-        queue.emit('taskCompleted', owner.workspaceId, guardTask(call));
-        await flush();
-        const shutdown = service.shutdown();
-        release(processes.get(call.processId!));
-        await shutdown;
-        expect(jobStore.run(owner, job.id, run.id)).toMatchObject({ status: 'completed', handbackState: 'pending' });
-        expect(enqueue).toHaveBeenCalledTimes(1);
-        read.mockRestore();
+        expect(enqueue).not.toHaveBeenCalled(); // recovery on the next boot delivers nothing either
     });
 
     it('shutdown awaits every in-flight start before returning, even one still blocked on async owner validation', async () => {

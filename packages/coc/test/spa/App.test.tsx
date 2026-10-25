@@ -478,21 +478,14 @@ describe('App WebSocket events dispatch to correct context slice', () => {
         expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'QUEUE_UPDATED', queue });
     });
 
-    it('wiki-reload dispatches WIKI_RELOAD to AppContext', () => {
+    it('legacy wiki messages dispatch nothing', () => {
         const onMessage = renderAndCapture();
-        const wiki = { id: 'wiki-1', name: 'My Wiki' };
+        mockAppDispatch.mockClear();
 
-        act(() => onMessage({ type: 'wiki-reload', wiki }));
-
-        expect(mockAppDispatch).toHaveBeenCalledWith({ type: 'WIKI_RELOAD', wiki });
-    });
-
-    it('wiki-rebuilding dispatches WIKI_REBUILDING to AppContext', () => {
-        const onMessage = renderAndCapture();
-
+        act(() => onMessage({ type: 'wiki-reload', wiki: { id: 'wiki-1' } }));
         act(() => onMessage({ type: 'wiki-rebuilding', wikiId: 'wiki-2' }));
 
-        expect(mockAppDispatch).toHaveBeenCalledWith({ type: 'WIKI_REBUILDING', wikiId: 'wiki-2' });
+        expect(mockAppDispatch).not.toHaveBeenCalled();
     });
 
     it('message with unknown type is silently ignored', () => {

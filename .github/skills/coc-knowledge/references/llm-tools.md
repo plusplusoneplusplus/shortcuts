@@ -104,7 +104,9 @@ best first, for Sentinel first turns and follow-ups. `getSentinelNextStepsEnable
 reads the queue's authoritative config; tool preferences still gate availability.
 `buildFollowUpSuggestionsAddon` adds the compact `<sentinel_next_steps>` guidance only
 when the tool survives filtering. Its mode-specific schema and handler preserve one
-to three actions; ordinary modes retain exact-three guidance/schema. Suggestions grant
+to three actions; ordinary modes retain exact-three guidance/schema. Both descriptions
+share `FOLLOW_UP_ACTION_GUIDANCE`: the answer stays in visible text, but the model must not
+announce, list, recap or comment on the suggestions, since the tool renders them. Suggestions grant
 no execution authority. Click handling is covered in [chat-composer.md](spa/chat-composer.md).
 
 ### search_conversations
@@ -146,8 +148,8 @@ re-check owner and flags on every call. The tool gates every action through
 Coda REST commands retain their independent feature gate.
 `ChatBaseExecutor.buildSentinelRefrainsDeps`
 binds the tool to the invoking Sentinel chat (`workspaceId`, `processId`; never a
-tool argument) and only on attended turns: refrain handbacks and gate-paused
-notices (`FollowUpTurnOptions.sentinelJobHandback`, set by the lifecycle runner),
+tool argument) and only on attended turns: refrain gate-paused notices
+(`FollowUpTurnOptions.sentinelJobNotice`, set by the lifecycle runner),
 PR outcome reviews, read-only turns, cron/wakeup/trigger turns, Coda children
 and non-Sentinel chats (including refrain children) never get it. Each turn records
 its resolved provider/model/effort (`recordSentinelRefrainDefaults`) as the defaults new

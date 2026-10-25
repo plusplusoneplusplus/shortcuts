@@ -88,7 +88,7 @@ The search box is hidden by default behind `searchVisible`. Ctrl+F / ⌘F routes
 pane owns **keyboard focus** — never mouse hover — through
 `useScopedFindShortcut(containerRef, onTrigger, opts)`
 (`react/hooks/useScopedFindShortcut.ts`). Every search-owning panel (chat list, git commit
-list, tasks, work items) uses it, so none can fight over `preventDefault` or swallow
+list, tasks, work items, the Sentinel To-do tab) uses it, so none can fight over `preventDefault` or swallow
 native find. Panels carry `data-find-scope` while mounted so a sibling never steals Ctrl+F
 from a different focused panel.
 
@@ -99,7 +99,9 @@ Decision order:
 2. **Yield** when focus is in the detail pane (`data-pane="detail"`, via the exported
    `isWithinDetailPane`) so native find-in-page takes over — it only opens when
    `defaultPrevented` stays false.
-3. **Handle** when focus is inside the container.
+3. **Handle** when focus is inside the container. With `yieldToNestedEditors` (the To-do
+   tab), a text field inside the container keeps native find unless it is the panel's own
+   search box (`data-scoped-find-input`).
 4. **Yield** when focus is in any other region that is neither this container nor
    `document.body`/`documentElement` — e.g. the workspace right dock's terminal/explorer,
    which owns its own Ctrl+F story.

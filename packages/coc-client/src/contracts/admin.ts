@@ -26,26 +26,18 @@ export interface AdminTokenResponse {
   expiresIn: number;
 }
 
-export interface AdminDataStatsQuery {
-  includeWikis?: boolean;
-}
-
 export interface AdminDataStatsResponse {
   processCount?: number;
   processes?: number;
-  wikiCount?: number;
-  wikis?: number;
   totalBytes?: number;
   diskUsage?: number;
   deletedProcesses?: number;
   deletedWorkspaces?: number;
-  deletedWikis?: number;
   deletedQueues?: number;
   deletedSchedules?: number;
   deletedGitOps?: number;
   deletedRepoPreferences?: number;
   deletedPreferences?: boolean;
-  deletedWikiDirs?: string[];
   preservedFiles?: string[];
   errors?: string[];
   [key: string]: unknown;
@@ -396,7 +388,6 @@ export interface AdminImportPreviewResponse {
   preview?: {
     processCount?: number;
     workspaceCount?: number;
-    wikiCount?: number;
     queueFileCount?: number;
     sampleProcessIds?: string[];
     [key: string]: unknown;
@@ -406,7 +397,6 @@ export interface AdminImportPreviewResponse {
 export interface AdminImportResponse {
   importedProcesses: number;
   importedWorkspaces: number;
-  importedWikis: number;
   importedQueueFiles: number;
   importedBlobFiles: number;
   importedScheduleFiles: number;
@@ -418,13 +408,11 @@ export interface AdminImportResponse {
 export interface AdminWipeResponse {
   deletedProcesses: number;
   deletedWorkspaces: number;
-  deletedWikis: number;
   deletedQueues: number;
   deletedSchedules: number;
   deletedGitOps: number;
   deletedRepoPreferences: number;
   deletedPreferences: boolean;
-  deletedWikiDirs: string[];
   preservedFiles: string[];
   errors: string[];
   [key: string]: unknown;

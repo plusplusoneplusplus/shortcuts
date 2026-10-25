@@ -496,7 +496,7 @@ export const AUTO_COMPACT_MAX_CONSECUTIVE_FAILURES = 2;
 export type AutoCompactOutcome = 'succeeded' | 'insufficient' | 'failed' | 'unsupported' | 'cancelled';
 
 /**
- * Per-conversation Sentinel auto-compact state, persisted at
+ * Per-conversation chat auto-compact state, persisted at
  * `AIProcess.metadata.autoCompact`. Settings are written only through
  * `PUT /processes/:id/auto-compact`; the server owns the runtime fields.
  */

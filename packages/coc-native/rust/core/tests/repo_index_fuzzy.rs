@@ -106,7 +106,7 @@ fn ties_break_on_target_length_then_path_length() {
     // ordering comes from the tie-breaks: shorter basename first, then shorter
     // path between the two identically-named files.
     let matcher = matcher_of(&[
-        "packages/deep-wiki/src/seeds/prompts.ts",
+        "packages/coc-agent/src/seeds/prompts.ts",
         "packages/forge/src/ai/prompt-builder.ts",
         "packages/forge/src/ai/prompts.ts",
         "src/prompts.test.ts",
@@ -117,7 +117,7 @@ fn ties_break_on_target_length_then_path_length() {
         search(&matcher, "prompt", 10),
         vec![
             "packages/forge/src/ai/prompts.ts",
-            "packages/deep-wiki/src/seeds/prompts.ts",
+            "packages/coc-agent/src/seeds/prompts.ts",
             "src/prompts.test.ts",
             "packages/forge/src/ai/prompt-builder.ts",
         ],
@@ -129,7 +129,7 @@ fn the_prompt_regression_ranks_filenames_first() {
     // The reported bug: `command-types.ts` tied `prompt-builder.ts` on path
     // length, and `wipe-data.ts` outranked an exact filename prefix match.
     let matcher = matcher_of(&[
-        "packages/deep-wiki/src/seeds/prompts.ts",
+        "packages/coc-agent/src/seeds/prompts.ts",
         "packages/forge/src/ai/command-types.ts",
         "packages/forge/src/ai/prompt-builder.ts",
         "packages/coc/src/commands/wipe-data.ts",
@@ -139,7 +139,7 @@ fn the_prompt_regression_ranks_filenames_first() {
     assert_eq!(
         &ranked[..3],
         [
-            "packages/deep-wiki/src/seeds/prompts.ts",
+            "packages/coc-agent/src/seeds/prompts.ts",
             "packages/forge/src/ai/prompt-builder.ts",
             "packages/forge/src/utils/prompt-resolver.ts",
         ],

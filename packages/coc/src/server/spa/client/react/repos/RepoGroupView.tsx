@@ -62,6 +62,7 @@ import { RepoGroupMemberChatDetail } from './RepoGroupMemberChatDetail';
 import { allRepoGroupChatRows } from './repoGroupChatFeed';
 import { RepoGroupChatList } from './RepoGroupChatList';
 import { RailUnreadChats } from '../features/chat/RailUnreadChats';
+import { markGroupUnreadRead } from '../features/chat/unreadMarkAllRead';
 import { getChatRowTitle } from '../features/chat/latestSentinelChat';
 import { isUnseenGroupChat } from './repoGroupChatRowLabels';
 import { buildRepoGroupChatHash } from '../layout/dashboardRoutes';
@@ -278,7 +279,19 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
         );
     }, [chatFeed, chatFilters, chatServerKey, chatServerLabel, groupBaseUrl, selectionId, memberChat.selectedKey, memberChat.selectMember, memberChat.clearSelection, workspaceId]);
     const renderAggregatedUnreadRail = useCallback((ctx: RepoChatTabListContext) => (
-        <RailUnreadChats scopeKey={`${selectionId}:${groupBaseUrl ?? ''}`} scopeLabel={chatServerLabel}
+        <RailUnreadChats scopeKey={`${selectionId}:${groupBaseUrl ?? ''}:${JSON.stringify(chatFilters)}:${chatFeed.model?.membershipKey ?? ''}:${groupOwnerAvailable}`} scopeLabel={chatServerLabel}
+            onMarkAllRead={async signal => {
+                try {
+                    if (!chatFeed.model) throw new Error('The unread list is unavailable. Try again.');
+                    await markGroupUnreadRead({ groupId: workspaceId, baseUrl: groupBaseUrl, serverKey: chatServerKey,
+                        membershipKey: chatFeed.model.membershipKey, signal });
+                } finally {
+                    if (!signal.aborted) await chatFeed.refresh();
+                }
+            }}
+            markAllReadDisabledReason={!groupOwnerAvailable || !chatFeed.model || chatFeed.status === 'error'
+                || chatFeed.model.counts.partial || chatFeed.model.counts.unread === undefined || chatFeed.model.sources.some(source => !source.available || source.stale)
+                ? 'Some repositories are unavailable. Try again when the full list is available.' : undefined}
             count={chatFeed.model?.counts.unread}
             partial={chatFeed.model?.counts.unread === undefined || chatFeed.model?.counts.partial || chatFeed.model?.hasMore || chatFeed.status === 'error'}
             rows={(chatFeed.model?.history ?? []).filter(isUnseenGroupChat).map(row => ({
@@ -296,7 +309,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                     } else memberChat.selectMember(row);
                 },
             }))} />
-    ), [chatFeed.model, chatFeed.status, selectionId, groupBaseUrl, chatServerLabel, workspaceId, memberChat.clearSelection, memberChat.selectMember]);
+    ), [chatFeed.model, chatFeed.status, chatFeed.refresh, selectionId, groupBaseUrl, chatServerLabel, chatServerKey, chatFilters, groupOwnerAvailable, workspaceId, memberChat.clearSelection, memberChat.selectMember]);
     const routedGitMember = state.gitRouteScope?.routeWorkspaceId === workspaceId
         ? state.gitRouteScope.workspaceId
         : null;

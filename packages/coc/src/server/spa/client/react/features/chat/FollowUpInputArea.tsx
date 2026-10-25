@@ -201,7 +201,7 @@ export interface FollowUpInputAreaProps {
     sessionToolTokens?: number;
     /** Conversation-history token count (Copilot SDK only). */
     sessionConversationTokens?: number;
-    /** Sentinel auto-compact state and popover section for the context gauge. */
+    /** Chat auto-compact state and popover section for the context gauge. */
     contextAutoCompact?: ContextAutoCompact;
     /** Provider of the active native session; pending composer selection is kept separate. */
     activeProvider?: 'copilot' | 'codex' | 'claude' | 'opencode';

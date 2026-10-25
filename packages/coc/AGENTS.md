@@ -230,11 +230,15 @@ references before editing. Paths are package-relative.
   automatic and unfocused manual compaction; explicit manual focus overrides it verbatim.
   Ordinary chats retain provider defaults. Copilot and Claude accept the instruction;
   Codex ignores custom instructions and warns.
-  Sentinel auto-compact (`processes/auto-compact.ts`) is opt-in per chat and server-side only:
-  checks `currentTokens > thresholdTokens` after a persisted response, one attempt per
-  response, always queued; model limits never rescale the absolute threshold. The default
-  is OFF with a 700k input matching the mock design. Both context popovers use one switch/k
-  input row, Enter/blur auto-save and one status line; owner-bound drafts survive failures.
+  Auto-compact (`processes/auto-compact.ts`) is opt-in per chat in every mode (Ask,
+  Autopilot, Ralph, Sentinel) and server-side only: checks `currentTokens > thresholdTokens`
+  after a persisted first or follow-up response, one attempt per response, always queued;
+  model limits never rescale the absolute threshold. The default is OFF with a 700k input
+  matching the mock design. Refrain job chats follow their job threshold: settings PUT
+  rejects `422 AUTO_COMPACT_JOB_MANAGED`, resume stays allowed. Both context popovers use
+  one switch/k input row, Enter/blur auto-save and one status line; owner-bound drafts
+  survive failures. Job, read-only and owner-unresolved views lock writes; OpenCode cannot
+  be turned on.
   Unknown or at/above-limit thresholds warn without capping. It adds no deadline or abort
   to running compactions. Only its own endpoints write `metadata.autoCompact`.
 
@@ -431,10 +435,11 @@ references before editing. Paths are package-relative.
   original trigger. The gate receives parsed `gateLastResult` as `state`; empty
   results (`null`, `false`, `""`, `[]`, `{}`) save state and record `gate-empty`.
   Zero admits. Run prompts contain saved instructions, the current nonempty gate
-  result as fenced canonical JSON, and job-role/handback framing. Gate-returned
+  result as fenced canonical JSON, and job-role framing. Run results stay in the
+  persistent job chat and run history; nothing is sent to the Sentinel. Gate-returned
   To-do data passes through unchanged. Coda owns automatic To-do review inputs.
   Successful evaluations reset failures; five consecutive failures pause the gate
-  and queue one `notice` Sentinel turn that, like handbacks, never gets `sentinel_jobs`.
+  and queue one `notice` Sentinel turn that never gets `sentinel_jobs`.
   Manual errors/timeouts/cancellation return explicit errors without stale-result
   fallback. Edits/deletes (`cancelGate`), owner/flag invalidation and shutdown revoke
   late results without counting failures. Test gate
@@ -442,11 +447,13 @@ references before editing. Paths are package-relative.
   state and never saves, counts or starts a run, even while paused; Resume gate
   (`resumeGate`) clears the pause and failure count. The first run persists one ordinary
   Ask/Autopilot chat; later runs retain it, including after cancellation or failure.
-  Historical snapshots remain until explicit job deletion cleanup. Runs and handbacks use the existing
+  Historical snapshots remain until explicit job deletion cleanup. Runs use the existing
   low-priority task queue; job metadata grants compaction, never Sentinel identity.
-  Active runs and pending handbacks block edits/deletion, but schedule-only
+  Active runs block edits/deletion, but schedule-only
   pause/resume remains available. Cron is future-only, local-time and at most hourly.
-  Startup interrupts orphaned runs and reconciles handbacks by receipt; shutdown
+  Startup interrupts orphaned runs, cancels handback tasks persisted by older servers
+  and clears their run bookkeeping without delivering them; the guard rejects such
+  tasks. Shutdown
   drains admission before disposal. Owner removal revokes work, while unexpected
   owner-read errors surface without cancelling it. Snapshot export/import excludes
   these machine-local definitions; ledger wipe clears tables and snapshot directories.
@@ -571,6 +578,9 @@ references before editing. Paths are package-relative.
   errors without cancellation or fulfillment/user-verdict writes. Removing edges
   cannot erase duplicate guards. Started whole-session Ralph continuations retain
   their native session/step identities through the late-bound admission guard.
+  Prerequisite-free tracked launches reserve no admission; their iterations and final
+  checks continue only while the item has no admission rows or prerequisites and its
+  linked local Ralph job matches session, workspace and parent owner.
   Dependency authoring and artifact acceptance grant no execution permissions.
   Item `type` is immutable (`normal` or `manual`); creation defaults to normal.
   Type patches are invalid; items have no hard delete. Manual items permit AI maintenance,
@@ -584,7 +594,7 @@ references before editing. Paths are package-relative.
   `sentinel_todos` tool is bound to the invoking Sentinel chat via the late-bound
   `getSentinelTodos` runtime capability. The opt-in `sentinel_jobs` tool reuses the
   REST refrain/Coda command objects (`getSentinelRefrainCommands`), bound to the owning
-  Sentinel's attended turns only; handbacks, reviews and automation turns never get it.
+  Sentinel's attended turns only; gate notices, reviews and automation turns never get it.
   Every tool action, including Coda actions, rechecks live refrain availability and
   ownership through `SentinelRefrainCommands.assertOwner`. New refrains inherit omitted effort
   when their resolved provider/model match the Sentinel's, including explicit matches.

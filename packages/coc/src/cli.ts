@@ -218,9 +218,8 @@ export function createProgram(): Command {
 
     admin
         .command('wipe-data')
-        .description('Delete all runtime data (processes, workspaces, wikis, queues, preferences)')
+        .description('Delete all runtime data (processes, workspaces, queues, preferences)')
         .option('--confirm', 'Skip interactive confirmation', false)
-        .option('--include-wikis', 'Also delete generated wiki output directories', false)
         .option('--dry-run', 'Preview what would be deleted without executing', false)
         .option('-d, --data-dir <path>', 'Data directory for process storage')
         .option('--no-color', 'Disable colored output')

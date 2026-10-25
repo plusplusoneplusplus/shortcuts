@@ -382,7 +382,8 @@ export class ProcessesClient {
   }
 
   /**
-   * Save a Sentinel conversation's auto-compact setting. Saving never compacts
+   * Save a chat's auto-compact setting (any mode; Refrain job chats reject with
+   * 422 AUTO_COMPACT_JOB_MANAGED and follow their job). Saving never compacts
    * immediately; the owning server checks absolute token usage after each
    * persisted response, independently of the model context limit. An explicit
    * PUT replaces unsupported persisted settings without migrating them.

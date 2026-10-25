@@ -70,12 +70,10 @@ function generateExportPayload(opts: { processCount: number }) {
         metadata: {
             processCount: processes.length,
             workspaceCount: 0,
-            wikiCount: 0,
             queueFileCount: 0,
         },
         processes,
         workspaces: [],
-        wikis: [],
         queueHistory: [],
         preferences: {},
     };

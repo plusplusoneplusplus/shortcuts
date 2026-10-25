@@ -37,7 +37,6 @@ COPY packages/forge/package.json           packages/forge/
 COPY packages/coc/package.json             packages/coc/
 COPY packages/coc-client/package.json      packages/coc-client/
 COPY packages/coc-desktop/package.json     packages/coc-desktop/
-COPY packages/deep-wiki/package.json       packages/deep-wiki/
 COPY packages/coccontainer/package.json    packages/coccontainer/
 COPY packages/coc-connector/package.json   packages/coc-connector/
 COPY packages/coc-native/package.json      packages/coc-native/
@@ -52,7 +51,7 @@ COPY . .
 # .git is not in the build context; pass the commit in so /api/health reports it.
 ARG BUILD_COMMIT=unknown
 ENV COC_BUILD_COMMIT=${BUILD_COMMIT}
-# prebuild builds the required sibling workspaces; no desktop/deep-wiki/container.
+# prebuild builds the required sibling workspaces; no desktop/container.
 RUN npm run build -w packages/coc
 # node_modules come from the target-arch `deps` stage, not from here.
 RUN rm -rf node_modules && find packages -mindepth 2 -maxdepth 2 -name node_modules -type d -exec rm -rf {} +
@@ -72,7 +71,6 @@ COPY packages/forge/package.json           packages/forge/
 COPY packages/coc/package.json             packages/coc/
 COPY packages/coc-client/package.json      packages/coc-client/
 COPY packages/coc-desktop/package.json     packages/coc-desktop/
-COPY packages/deep-wiki/package.json       packages/deep-wiki/
 COPY packages/coccontainer/package.json    packages/coccontainer/
 COPY packages/coc-connector/package.json   packages/coc-connector/
 COPY packages/coc-native/package.json      packages/coc-native/

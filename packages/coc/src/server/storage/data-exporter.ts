@@ -1,5 +1,5 @@
 /**
- * Collects all CoC data (processes, workspaces, wikis, queue history,
+ * Collects all CoC data (processes, workspaces, queue history,
  * preferences, server config) and produces a CoCExportPayload JSON object.
  */
 
@@ -42,7 +42,6 @@ export async function exportAllData(options: ExportOptions): Promise<CoCExportPa
         },
         processes: snapshot.processes,
         workspaces: snapshot.workspaces,
-        wikis: snapshot.wikis,
         queueHistory: snapshot.queueHistory,
         preferences: snapshot.preferences,
         serverConfig,

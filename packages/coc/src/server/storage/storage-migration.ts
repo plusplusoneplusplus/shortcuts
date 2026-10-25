@@ -1,12 +1,12 @@
 /**
- * 6-phase pipeline that reads existing JSON process/workspace/wiki files
+ * 6-phase pipeline that reads existing JSON process/workspace files
  * from ~/.coc/repos/ and writes them into a new SQLite database.
  *
  * Phases:
  *   1. Backup source data to temp directory
  *   2. Schema creation
  *   3. Process migration (active + pruned)
- *   4. Metadata migration (workspaces + wikis)
+ *   4. Metadata migration (workspaces)
  *   5. Validation
  *   6. Cleanup & config switch
  *
@@ -26,7 +26,6 @@ import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type {
     ProcessIndexEntry,
     WorkspaceInfo,
-    WikiInfo,
     StoredProcessEntry,
     SerializedAIProcess,
     SerializedConversationTurn,
@@ -51,7 +50,6 @@ export interface MigrationSummary {
     processes: number;
     archivedProcesses: number;
     workspaces: number;
-    wikis: number;
     durationMs: number;
     backupPath: string;
     backupSizeBytes: number;
@@ -177,7 +175,6 @@ export class StorageMigrationEngine {
         let processCount = 0;
         let archivedCount = 0;
         let workspaceCount = 0;
-        let wikiCount = 0;
 
         try {
             // Phase 1: Backup
@@ -200,16 +197,15 @@ export class StorageMigrationEngine {
             archivedCount = migrationResult.archived;
 
             // Phase 4: Metadata migration (cancellation disabled from here)
-            this.emit({ phase: 4, status: 'running', message: 'Migrating workspaces and wikis...' });
+            this.emit({ phase: 4, status: 'running', message: 'Migrating workspaces...' });
             workspaceCount = this.migrateWorkspaces();
-            wikiCount = this.migrateWikis();
-            this.emit({ phase: 4, status: 'running', message: `Migrated ${workspaceCount} workspaces and ${wikiCount} wikis` });
+            this.emit({ phase: 4, status: 'running', message: `Migrated ${workspaceCount} workspaces` });
 
             // Phase 5: Validation
             if (this.options.skipValidation) {
                 this.emit({ phase: 5, status: 'running', message: '⚠️ Validation skipped by user request' });
             } else {
-                await this.validate(processCount + archivedCount, workspaceCount, wikiCount);
+                await this.validate(processCount + archivedCount, workspaceCount);
             }
 
             // Phase 6: Cleanup & config switch
@@ -219,7 +215,6 @@ export class StorageMigrationEngine {
                 processes: processCount,
                 archivedProcesses: archivedCount,
                 workspaces: workspaceCount,
-                wikis: wikiCount,
                 durationMs: Date.now() - startTime,
                 backupPath: backupDir,
                 backupSizeBytes: sizeBytes,
@@ -262,7 +257,7 @@ export class StorageMigrationEngine {
         }
         fs.mkdirSync(backupDir, { recursive: true });
 
-        const filesToBackup = ['config.yaml', 'workspaces.json', 'wikis.json'];
+        const filesToBackup = ['config.yaml', 'workspaces.json'];
         let totalBytes = 0;
         let current = 0;
 
@@ -527,42 +522,11 @@ export class StorageMigrationEngine {
         return workspaces.length;
     }
 
-    private migrateWikis(): number {
-        const filePath = path.join(this.options.dataDir, 'wikis.json');
-        const wikis = readJsonFile<WikiInfo[]>(filePath);
-        if (!wikis || !Array.isArray(wikis)) return 0;
-
-        const insert = this.db!.prepare(`
-            INSERT OR REPLACE INTO wikis (
-                id, name, wiki_dir, repo_path, color, ai_enabled, registered_at
-            ) VALUES (
-                @id, @name, @wiki_dir, @repo_path, @color, @ai_enabled, @registered_at
-            )
-        `);
-
-        const txn = this.db!.transaction(() => {
-            for (const wiki of wikis) {
-                insert.run({
-                    id: wiki.id,
-                    name: wiki.name,
-                    wiki_dir: wiki.wikiDir,
-                    repo_path: wiki.repoPath ?? null,
-                    color: wiki.color ?? null,
-                    ai_enabled: wiki.aiEnabled ? 1 : 0,
-                    registered_at: wiki.registeredAt,
-                });
-            }
-        });
-
-        txn();
-        return wikis.length;
-    }
-
     // ========================================================================
     // Phase 5: Validation
     // ========================================================================
 
-    private async validate(expectedProcesses: number, expectedWorkspaces: number, expectedWikis: number): Promise<void> {
+    private async validate(expectedProcesses: number, expectedWorkspaces: number): Promise<void> {
         this.emit({ phase: 5, status: 'running', message: 'Validating migrated data...' });
 
         // Validate total process count
@@ -581,14 +545,6 @@ export class StorageMigrationEngine {
         if (actualWorkspaces !== expectedWorkspaces) {
             throw this.validationError(
                 `Workspace count mismatch: expected ${expectedWorkspaces}, got ${actualWorkspaces}`
-            );
-        }
-
-        // Validate wiki count
-        const actualWikis = (this.db!.prepare('SELECT COUNT(*) AS cnt FROM wikis').get() as { cnt: number }).cnt;
-        if (actualWikis !== expectedWikis) {
-            throw this.validationError(
-                `Wiki count mismatch: expected ${expectedWikis}, got ${actualWikis}`
             );
         }
 

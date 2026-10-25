@@ -95,7 +95,7 @@ the admission boundary. Owning-server socket updates refresh state across tabs a
 completion refreshes the transcript, failure stays visible, and queued state preserves the
 active turn's streaming placeholder. Compact and Cancel route through the workspace client.
 
-Both Sentinel context popovers share `AutoCompactPanel`. Its manual action calls
+Both chat context popovers share `AutoCompactPanel`. Its manual action calls
 `useSendMessage.compactNow`, sharing `/compact` execution, duplicate admission, loading
 and toast handling while preserving composer drafts and automatic settings. `ChatDetail`
 supplies the exact owner client and raw workspace. Busy, read-only, unresolved-owner,

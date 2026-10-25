@@ -84,7 +84,7 @@ it('pins the SDK and CLI versions used by all workspaces', () => {
     const lock = JSON.parse(fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8'));
     expect(manifest.dependencies['@github/copilot-sdk']).toBe('1.0.9');
     expect(manifest.overrides['@github/copilot']).toBe('1.0.78');
-    for (const workspace of ['coc-agent-sdk', 'coc', 'forge', 'deep-wiki']) {
+    for (const workspace of ['coc-agent-sdk', 'coc', 'forge']) {
         const pkg = JSON.parse(fs.readFileSync(path.join(root, 'packages', workspace, 'package.json'), 'utf8'));
         expect(pkg.dependencies?.['@github/copilot-sdk'] ?? pkg.peerDependencies?.['@github/copilot-sdk']).toBe('1.0.9');
     }

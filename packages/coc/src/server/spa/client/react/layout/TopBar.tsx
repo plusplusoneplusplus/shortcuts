@@ -38,22 +38,13 @@ import { findRepoBySelectionId, parseRemoteCloneKey } from '../repos/cloneIdenti
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { isDesktopShell } from '../hooks/ui/useDesktopShell';
 import { getHostname } from '../utils/config';
-import { SHOW_WIKI_TAB, SHOW_MEMORY_TAB } from '../navFlags';
-import type { DashboardTab } from '../types/dashboard';
+import { SHOW_MEMORY_TAB } from '../navFlags';
 import { useWorkspaceNavigation } from '../hooks/useWorkspaceNavigation';
 import { useLockedWorkspaceId } from '../features/scope-window/useWindowLock';
 
 // Nav flags live in navFlags.ts; re-exported here for modules that import them
-// from TopBar (BottomNav, Router).
-export { SHOW_WIKI_TAB, SHOW_MEMORY_TAB };
-
-export const ALL_TABS: { label: string; tab: DashboardTab }[] = [
-    { label: 'Wiki', tab: 'wiki' },
-];
-
-export const TABS: { label: string; tab: DashboardTab }[] = SHOW_WIKI_TAB
-    ? ALL_TABS
-    : ALL_TABS.filter(t => t.tab !== 'wiki');
+// from TopBar.
+export { SHOW_MEMORY_TAB };
 
 export interface TopBarProps {
     onAdminOpen?: () => void;
@@ -89,11 +80,6 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
             (window as { cocDesktop?: { platform?: string } }).cocDesktop?.platform === 'darwin' ||
             /Mac/.test(navigator.platform)
         );
-
-    const switchTab= useCallback((tab: DashboardTab) => {
-        dispatch({ type: 'SET_ACTIVE_TAB', tab });
-        location.hash = '#' + tab;
-    }, [dispatch]);
 
     const goToRepos = useCallback(() => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab: 'repos' });
@@ -253,25 +239,6 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                     // (unselected state shows a "Select repository" picker).
                     <RemoteShellHeader repo={selectedRepo} repos={repos} hideIdentity={hideScopeIdentity} />
                 ))}
-                {TABS.length > 0 && (
-                    <nav className="hidden md:flex items-center gap-1 min-w-0 flex-shrink-0" id="tab-bar">
-                        {TABS.map(({ label, tab }) => (
-                            <button
-                                key={tab}
-                                className={
-                                    `h-7 px-3 rounded text-sm transition-colors ` +
-                                    (state.activeTab === tab
-                                        ? 'active border-b-2 border-[#0078d4] text-[#0078d4] dark:border-[#60b4ff] dark:text-[#60b4ff]'
-                                        : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.05] dark:hover:bg-white/[0.08]')
-                                }
-                                data-tab={tab}
-                                onClick={() => switchTab(tab)}
-                            >
-                                {label}
-                            </button>
-                        ))}
-                    </nav>
-                )}
             </div>
             <div className="flex flex-shrink-0 items-center gap-1.5" data-testid="topbar-actions">
                 {showRemoteHeader && !!selectedRepo && (

@@ -6,7 +6,6 @@ const SAVE_FAILURE_MESSAGE = 'Failed to save onboarding preferences. The welcome
 
 const DEFAULT_ONBOARDING_PROGRESS: OnboardingProgress = {
     hasRunWorkflow: false,
-    hasOpenedWiki: false,
     hasUsedChat: false,
     settingsVisited: false,
     dismissed: false,

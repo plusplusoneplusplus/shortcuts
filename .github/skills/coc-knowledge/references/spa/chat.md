@@ -115,13 +115,18 @@ aggregate feeds refresh their rows/counts. `ReposContext` refreshes native badge
 under concrete selection keys, rejecting obsolete count responses. Failed writes
 publish no success event; failed count reads retain the last known value.
 
-`RailUnreadChats` projects the mounted list into a collapsed-rail preview through
-`RailHoverPreview`, including zero and partial states. Native rows reuse
-`useUnseenChat` IDs, archive preferences and tab/type visibility. Aggregated groups
-supply their existing feed's counts and `isUnseenGroupChat` rows through
-`RepoChatTab.renderUnreadRail`. Rows retain native selection or owner-qualified
-member navigation. Preview entry adds no reads, polling or read-state writes;
-selection keeps the list's intentional read behavior. Owner changes dispose previews.
+`RailUnreadChats` projects the mounted list into `RailHoverPreview`, including zero
+and partial states. Native rows reuse `useUnseenChat` IDs, archive and tab/type
+visibility; groups supply feed counts and `isUnseenGroupChat` rows through
+`RepoChatTab.renderUnreadRail`. Entry performs no read-state mutation; selection
+retains native or owner-qualified member navigation and intentional read behavior.
+
+`unreadMarkAllRead` scans all pages before batching completion-stamped entries via
+`seenStateApi`. Native scope retains preview visibility; group scope matches the
+badge's group/member count, independent of list filters. Each owner batch uses the
+captured concrete server. Incomplete/offline scans reject before writes; failed
+batches retain unread state and surface errors. Scope changes cancel pending scans;
+committed events refresh rows/counts through the shared reconciliation path.
 
 ### ChatListPane
 

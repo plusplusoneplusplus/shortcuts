@@ -26,15 +26,10 @@ vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => 
             activeRepoSubTab: mockActiveRepoSubTab,
             repoTabState: {},
             repoRouteState: {},
-            wikis: [],
             settingsSection: 'info',
             selectedGitCommitHash: null,
             selectedGitFilePath: null,
             selectedNotePath: null,
-            selectedRepoWikiId: null,
-            repoWikiInitialTab: null,
-            repoWikiInitialAdminTab: null,
-            repoWikiInitialComponentId: null,
             selectedWorkflowProcessId: null,
         },
         dispatch: mockDispatch,
@@ -75,7 +70,6 @@ vi.mock('../../../../../src/server/spa/client/react/features/git/hooks/useGitInf
 vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useTerminalEnabled', () => ({
     useTerminalEnabled: () => false,
 }));
-
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useWorkflowsEnabled', () => ({
     useWorkflowsEnabled: () => false,
@@ -139,7 +133,6 @@ vi.mock('../../../../../src/server/spa/client/react/ui/ErrorBoundary', () => ({
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/layout/TopBar', () => ({
-    SHOW_WIKI_TAB: false,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/layout/MobileTabBar', () => ({
@@ -237,7 +230,6 @@ vi.mock('../../../../../src/server/spa/client/react/features/git/RepoGitTab', ()
         );
     },
 }));
-vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/RepoWikiTab', () => ({ RepoWikiTab: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/features/repo-settings/RepoSettingsTab', () => ({ RepoSettingsTab: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({ ExplorerPanel: () => null }));
 vi.mock('../../../../../src/server/spa/client/react/features/pull-requests/PullRequestsTab', () => ({ PullRequestsTab: () => null }));

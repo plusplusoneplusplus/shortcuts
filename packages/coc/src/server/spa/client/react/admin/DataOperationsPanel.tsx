@@ -39,7 +39,6 @@ export function DataOperationsPanel({ addToast, onDataChanged }: DataOperationsP
     const [importStatus, setImportStatus] = useState<string>('');
     // Wipe
     const [wipeToken, setWipeToken] = useState<string | null>(null);
-    const [includeWikis, setIncludeWikis] = useState(false);
     const [wipeStatus, setWipeStatus] = useState<string>('');
     const [wipePreview, setWipePreview] = useState<string | null>(null);
 
@@ -86,7 +85,6 @@ export function DataOperationsPanel({ addToast, onDataChanged }: DataOperationsP
             const lines: string[] = [];
             if (p.processCount != null) lines.push('Processes: ' + p.processCount);
             if (p.workspaceCount != null) lines.push('Workspaces: ' + p.workspaceCount);
-            if (p.wikiCount != null) lines.push('Wikis: ' + p.wikiCount);
             setImportPreview(lines.length ? lines.join('\n') : JSON.stringify(p, null, 2));
             setImportStatus('Preview loaded.');
         } catch (err: unknown) {
@@ -132,16 +130,15 @@ export function DataOperationsPanel({ addToast, onDataChanged }: DataOperationsP
 
     const handlePreviewWipe = useCallback(async () => {
         try {
-            const data = await adminServer.client.admin.getDataStats({ includeWikis });
+            const data = await adminServer.client.admin.getDataStats();
             const lines: string[] = [];
             if (data.processCount != null) lines.push('Processes: ' + data.processCount);
-            if (data.wikiCount != null) lines.push('Wikis: ' + data.wikiCount);
             if (data.totalBytes != null) lines.push('Disk: ' + formatBytes(data.totalBytes));
             setWipePreview(lines.length ? lines.join('\n') : JSON.stringify(data, null, 2));
         } catch {
             setWipePreview('Failed to load preview.');
         }
-    }, [adminServer, includeWikis]);
+    }, [adminServer]);
 
     const handleWipeStep1 = useCallback(async () => {
         setWipeStatus('Requesting confirmation token…');
@@ -160,7 +157,7 @@ export function DataOperationsPanel({ addToast, onDataChanged }: DataOperationsP
         if (!wipeToken) return;
         setWipeStatus('Wiping data…');
         try {
-            await adminServer.client.admin.wipeData({ token: wipeToken, includeWikis });
+            await adminServer.client.admin.wipeData({ token: wipeToken });
             setWipeStatus('Data wiped successfully.');
             addToast('Data wiped', 'success');
             setWipeToken(null);
@@ -168,7 +165,7 @@ export function DataOperationsPanel({ addToast, onDataChanged }: DataOperationsP
         } catch (err: unknown) {
             setWipeStatus('Wipe failed: ' + getSpaCocClientErrorMessage(err, 'Network error'));
         }
-    }, [adminServer, wipeToken, includeWikis, addToast, onDataChanged]);
+    }, [adminServer, wipeToken, addToast, onDataChanged]);
 
     const handleWipeCancel = useCallback(() => {
         setWipeToken(null);
@@ -195,7 +192,7 @@ export function DataOperationsPanel({ addToast, onDataChanged }: DataOperationsP
                 <div className="ar-card-body">
                     <AdminRow
                         name="Export all data"
-                        hint="Includes processes, workspaces, wikis, and preferences. Tokens are not exported."
+                        hint="Includes processes, workspaces, and preferences. Tokens are not exported."
                     >
                         <button id="admin-export-btn" type="button" className="ar-btn ar-btn-secondary ar-btn-sm" onClick={handleExport}>
                             Export JSON ↓
@@ -252,16 +249,6 @@ export function DataOperationsPanel({ addToast, onDataChanged }: DataOperationsP
                         name="Erase everything"
                         hint="Deletes every process, conversation, and workspace. Tokens and preferences are kept."
                     >
-                        <label className="ar-hstack" style={{ fontSize: 12, color: 'var(--ar-text-mute)', cursor: 'pointer' }}>
-                            <input
-                                id="admin-include-wikis"
-                                type="checkbox"
-                                checked={includeWikis}
-                                onChange={e => setIncludeWikis(e.target.checked)}
-                                style={{ accentColor: 'var(--ar-danger)' }}
-                            />
-                            Include wikis
-                        </label>
                         <button id="admin-preview-wipe" type="button" className="ar-btn ar-btn-ghost ar-btn-sm" onClick={handlePreviewWipe}>Preview</button>
                         {wipeToken === null ? (
                             <button id="admin-wipe-btn" type="button" className="ar-btn ar-btn-danger-outline ar-btn-sm" onClick={handleWipeStep1}>Wipe Data</button>

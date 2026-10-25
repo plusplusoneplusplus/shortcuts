@@ -73,6 +73,10 @@ const sampleReviewers: Reviewer[] = [
     { identity: { displayName: 'Approving Reviewer' }, vote: 'approved', isRequired: true },
 ];
 
+function fileRows() {
+    return Array.from(screen.getByRole('complementary', { name: 'Changed files' }).querySelectorAll<HTMLElement>('[data-file-path]'));
+}
+
 describe('PrReviewSummaryPanel', () => {
     it('renders deterministic finding facts', () => {
         const summary = buildPrReviewSummary({
@@ -243,27 +247,27 @@ describe('PrFilesPanel', () => {
 
     it('renders a row per parsed file', () => {
         render(<PrFilesPanel files={realDiff} />);
-        const rows = screen.getAllByTestId('pr-file-row');
+        const rows = fileRows();
         expect(rows).toHaveLength(3);
     });
 
     it('filters files by the search input', () => {
         render(<PrFilesPanel files={realDiff} />);
-        const search = screen.getByTestId('pr-file-search') as HTMLInputElement;
+        const search = screen.getByRole('textbox', { name: 'Search changed files by name or path' }) as HTMLInputElement;
         fireEvent.change(search, { target: { value: 'docs/' } });
-        const rows = screen.getAllByTestId('pr-file-row');
+        const rows = fileRows();
         rows.forEach(row => {
-            expect(row.textContent?.toLowerCase()).toContain('docs/');
+            expect(row.getAttribute('data-file-path')).toContain('docs/');
         });
     });
 
     it('changes the active file when a row is clicked', () => {
         render(<PrFilesPanel files={realDiff} />);
-        const rows = screen.getAllByTestId('pr-file-row');
+        const rows = fileRows();
         const target = rows.find(row => row.getAttribute('data-file-path') === 'test/worker.ts');
         expect(target).toBeTruthy();
         fireEvent.click(target!);
-        expect(target!.className).toMatch(/bg-blue-100|bg-blue-900/);
+        expect(target).toHaveAttribute('aria-current', 'true');
     });
 
     it('renders an empty placeholder when there are no files', () => {
@@ -275,7 +279,7 @@ describe('PrFilesPanel', () => {
     it('selects a file inline on row click without triggering the pop-out', () => {
         const onPopOut = vi.fn();
         render(<PrFilesPanel files={realDiff} onPopOut={onPopOut} />);
-        const rows = screen.getAllByTestId('pr-file-row');
+        const rows = fileRows();
         fireEvent.click(rows[0]);
         expect(onPopOut).not.toHaveBeenCalled();
     });
@@ -283,7 +287,7 @@ describe('PrFilesPanel', () => {
     it('calls onPopOut with the active file from the explicit pop-out button', () => {
         const onPopOut = vi.fn();
         render(<PrFilesPanel files={realDiff} diffText={rawFilesDiff} onPopOut={onPopOut} />);
-        const target = screen.getAllByTestId('pr-file-row')
+        const target = fileRows()
             .find(row => row.getAttribute('data-file-path') === 'test/worker.ts');
         fireEvent.click(target!);
         fireEvent.click(screen.getByTestId('pr-diff-popout'));
@@ -297,7 +301,7 @@ describe('PrFilesPanel', () => {
         expect(fooDiff.textContent).toContain('added');
         expect(fooDiff.textContent).not.toContain('old');
 
-        const readmeRow = screen.getAllByTestId('pr-file-row')
+        const readmeRow = fileRows()
             .find(row => row.getAttribute('data-file-path') === 'docs/readme.md');
         fireEvent.click(readmeRow!);
         const readmeDiff = screen.getByTestId('pr-inline-diff');
@@ -307,89 +311,58 @@ describe('PrFilesPanel', () => {
 
     it('shows file rows by basename (not full path) inside their parent folder', () => {
         render(<PrFilesPanel files={realDiff} />);
-        const rows = screen.getAllByTestId('pr-file-row');
-        const labels = rows.map(row => row.querySelector('[data-testid="pr-file-basename"]')?.textContent);
+        const rows = fileRows();
+        const labels = rows.map(row => row.querySelector('.git-review-file-name strong')?.textContent);
         expect(labels.sort()).toEqual(['foo.ts', 'readme.md', 'worker.ts']);
     });
 
     it('renders folder rows in tree mode by default', () => {
         render(<PrFilesPanel files={realDiff} />);
-        const folders = screen.getAllByTestId('pr-file-tree-folder');
-        const names = folders.map(f => f.getAttribute('data-folder-path'));
+        const folders = Array.from(screen.getByRole('complementary', { name: 'Changed files' }).querySelectorAll<HTMLElement>('[aria-expanded]')).filter(el => el.classList.contains('git-review-directory'));
+        const names = folders.map(f => f.getAttribute('aria-label'));
         expect(names.sort()).toEqual(['docs', 'src', 'test'].sort());
     });
 
     it('collapses a folder when its row is clicked, hiding its files', () => {
         render(<PrFilesPanel files={realDiff} />);
-        const docsFolder = screen
-            .getAllByTestId('pr-file-tree-folder')
-            .find(f => f.getAttribute('data-folder-path') === 'docs');
+        const docsFolder = Array.from(screen.getByRole('complementary', { name: 'Changed files' }).querySelectorAll<HTMLElement>('[aria-expanded]')).filter(el => el.classList.contains('git-review-directory'))
+            .find(f => f.getAttribute('aria-label') === 'docs');
         expect(docsFolder).toBeTruthy();
-        expect(docsFolder!.getAttribute('data-collapsed')).toBe('false');
+        expect(docsFolder!.getAttribute('aria-expanded')).toBe('true');
         expect(
-            screen.getAllByTestId('pr-file-row').some(r => r.getAttribute('data-file-path') === 'docs/readme.md'),
+            fileRows().some(r => r.getAttribute('data-file-path') === 'docs/readme.md'),
         ).toBe(true);
         fireEvent.click(docsFolder!);
-        const visible = screen
-            .getAllByTestId('pr-file-row')
+        const visible = fileRows()
             .map(r => r.getAttribute('data-file-path'));
         expect(visible).not.toContain('docs/readme.md');
         expect(visible).toContain('src/foo.ts');
         expect(visible).toContain('test/worker.ts');
     });
 
-    it('switches to flat mode when the Flat toggle is clicked and shows dirname above basename', () => {
+    it('switches to flat mode and shows each file directory with its basename', () => {
         render(<PrFilesPanel files={realDiff} />);
-        fireEvent.click(screen.getByTestId('pr-file-view-flat'));
-        expect(screen.queryByTestId('pr-file-tree-folder')).toBeNull();
-        const basenames = screen
-            .getAllByTestId('pr-file-row')
-            .map(row => row.querySelector('[data-testid="pr-file-basename"]')?.textContent);
+        fireEvent.click(screen.getByRole('button', { name: 'Flat', exact: true }));
+        expect(screen.getByRole('complementary', { name: 'Changed files' }).querySelector('.git-review-directory')).toBeNull();
+        const basenames = fileRows()
+            .map(row => row.querySelector('.git-review-file-name strong')?.textContent);
         expect(basenames.sort()).toEqual(['foo.ts', 'readme.md', 'worker.ts']);
-        screen.getAllByTestId('pr-file-row').forEach(row => {
-            expect(row.textContent ?? '').toMatch(/\//);
+        fileRows().forEach(row => {
+            expect(row.querySelector('.git-review-file-name small')?.textContent).toBe(row.getAttribute('data-file-path')?.split('/').slice(0, -1).join('/'));
         });
     });
 
-    it('keeps the basename and +/- delta visible side-by-side in tree rows so the delta is never overflow-hidden', () => {
-        render(<PrFilesPanel files={realDiff} />);
-        const row = screen
-            .getAllByTestId('pr-file-row')
-            .find(r => r.getAttribute('data-file-path') === 'src/foo.ts');
-        expect(row).toBeTruthy();
-        const basename = row!.querySelector('[data-testid="pr-file-basename"]') as HTMLElement;
-        expect(basename.className).toMatch(/flex-1/);
-        expect(basename.className).toMatch(/min-w-0/);
-        expect(basename.className).toMatch(/truncate/);
-        expect(row!.textContent ?? '').toMatch(/\+\d+\s+-\d+/);
+    it('uses the compact shared rows for long paths, with separate basename and change counts', () => {
+        const path = 'packages/coc/src/server/spa/client/react/features/pull-requests/very-long-component-name.tsx';
+        render(<PrFilesPanel files={[{ path, status: 'M', additions: 2, deletions: 1 }]} />);
+        const nav = screen.getByRole('complementary', { name: 'Changed files' });
+        const row = nav.querySelector('[data-file-path]')!;
+        expect(row.querySelector('.git-review-file-name strong')?.textContent).toBe('very-long-component-name.tsx');
+        expect(row.querySelector('.git-review-counts')?.textContent).toBe('+2−1');
+        expect(nav.querySelector('.git-review-directory')).toHaveAttribute('aria-label', 'packages/coc/src/server/spa/client/react/features/pull-requests');
+        expect(nav.querySelector('.git-review-file-list')).toBeTruthy();
     });
 
-    it('disables horizontal scrolling on the file list and keeps min-w-0 on the wrappers so deeply nested or long collapsed folder names truncate instead of overflowing', () => {
-        const deepDiff = parseDiffFileList([
-            'diff --git a/packages/coc/src/server/spa/client/react/features/pull-requests/an-extremely-long-component-name-that-would-otherwise-overflow-the-panel.tsx b/packages/coc/src/server/spa/client/react/features/pull-requests/an-extremely-long-component-name-that-would-otherwise-overflow-the-panel.tsx',
-            '--- a/packages/coc/src/server/spa/client/react/features/pull-requests/an-extremely-long-component-name-that-would-otherwise-overflow-the-panel.tsx',
-            '+++ b/packages/coc/src/server/spa/client/react/features/pull-requests/an-extremely-long-component-name-that-would-otherwise-overflow-the-panel.tsx',
-            '@@ -1,1 +1,2 @@',
-            ' keep',
-            '+added',
-            '',
-        ].join('\n'));
-
-        render(<PrFilesPanel files={deepDiff} />);
-
-        const scroll = screen.getByTestId('pr-file-list-scroll');
-        expect(scroll.className).toMatch(/overflow-x-hidden/);
-        expect(scroll.className).toMatch(/overflow-y-auto/);
-        expect(scroll.className).toMatch(/min-w-0/);
-
-        const folders = screen.getAllByTestId('pr-file-tree-folder');
-        expect(folders.length).toBeGreaterThan(0);
-        for (const folder of folders) {
-            expect(folder.className).toMatch(/min-w-0/);
-            const label = folder.querySelector('span.truncate');
-            expect(label).toBeTruthy();
-        }
-    });
 });
 
 // suppress unused import warning when running through transformer

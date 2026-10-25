@@ -108,7 +108,7 @@ describe('EnqueueDialog global mounting', () => {
     it('EnqueueDialog receives folderPath from OPEN_DIALOG dispatch', async () => {
         render(
             <Wrap>
-                <DialogOpener folderPath="coc/deep-wiki" />
+                <DialogOpener folderPath="coc/forge" />
                 <EnqueueDialog />
             </Wrap>
         );

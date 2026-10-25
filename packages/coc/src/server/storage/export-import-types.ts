@@ -3,7 +3,7 @@
  * including validation helpers.
  */
 
-import type { AIProcess, WorkspaceInfo, WikiInfo, QueuedTask, ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
+import type { AIProcess, WorkspaceInfo, QueuedTask, ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
 
 // Temporary forward-declarations for types still in coc package.
 // These will be replaced with proper imports once dependencies are extracted.
@@ -91,8 +91,8 @@ export interface CLIConfig {
 
 /** Data wiper instance for clearing server data (opaque handle). */
 export interface DataWiper {
-    getDryRunSummary(options?: { includeWikis?: boolean }): Promise<any>;
-    wipeData(options?: { includeWikis?: boolean }): Promise<any>;
+    getDryRunSummary(): Promise<any>;
+    wipeData(): Promise<any>;
 }
 
 /** Queue persistence for saving/restoring task queues (opaque handle). */
@@ -115,7 +115,6 @@ export const EXPORT_SCHEMA_VERSION = 1;
 export interface ExportMetadata {
     processCount: number;
     workspaceCount: number;
-    wikiCount: number;
     queueFileCount: number;
     /** Number of image blob files included in the export. Optional for backward compat. */
     blobFileCount?: number;
@@ -167,7 +166,6 @@ export interface CoCExportPayload {
     metadata: ExportMetadata;
     processes: AIProcess[];
     workspaces: WorkspaceInfo[];
-    wikis: WikiInfo[];
     queueHistory: QueueSnapshot[];
     /** Preferences blob: `{ global?: GlobalPreferences; repos?: Record<string, PerRepoPreferences> }`. */
     preferences: Record<string, unknown>;
@@ -183,7 +181,7 @@ export interface CoCExportPayload {
 
 /** Options passed to the data exporter. */
 export interface ExportOptions {
-    /** ProcessStore instance to read processes, workspaces, and wikis from. */
+    /** ProcessStore instance to read processes and workspaces from. */
     store: ProcessStore;
     /** CoC data directory (e.g. ~/.coc). */
     dataDir: string;
@@ -198,7 +196,7 @@ export type ImportMode = 'replace' | 'merge';
 
 /** Options passed to the data importer. */
 export interface ImportOptions {
-    /** ProcessStore instance to write processes, workspaces, and wikis to. */
+    /** ProcessStore instance to write processes and workspaces to. */
     store: ProcessStore;
     /** CoC data directory (e.g. ~/.coc). */
     dataDir: string;
@@ -216,7 +214,6 @@ export interface ImportOptions {
 export interface ImportResult {
     importedProcesses: number;
     importedWorkspaces: number;
-    importedWikis: number;
     importedQueueFiles: number;
     importedBlobFiles: number;
     importedScheduleFiles: number;
@@ -271,14 +268,14 @@ export function validateExportPayload(raw: unknown): ValidationResult {
         return { valid: false, error: 'Missing or invalid field: metadata (expected object)' };
     }
     const meta = obj.metadata as Record<string, unknown>;
-    for (const key of ['processCount', 'workspaceCount', 'wikiCount', 'queueFileCount']) {
+    for (const key of ['processCount', 'workspaceCount', 'queueFileCount']) {
         if (typeof meta[key] !== 'number') {
             return { valid: false, error: `metadata.${key} must be a number` };
         }
     }
 
     // array fields ------------------------------------------------------
-    for (const key of ['processes', 'workspaces', 'wikis', 'queueHistory']) {
+    for (const key of ['processes', 'workspaces', 'queueHistory']) {
         if (!Array.isArray(obj[key])) {
             return { valid: false, error: `Field "${key}" must be an array` };
         }

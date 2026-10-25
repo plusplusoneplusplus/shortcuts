@@ -2,7 +2,7 @@
  * TopBar remote-shell header tests.
  *
  * On desktop, TopBar always renders RemoteShellHeader — including on top-level
- * pages (Admin / Settings / Wiki) and cold loads with no repository selected.
+ * pages (Admin / Settings) and cold loads with no repository selected.
  * Repository selection controls what appears *inside* the header (full clusters
  * vs. the unselected "Select repository" picker), not which header system is shown.
  *
@@ -118,8 +118,8 @@ describe('TopBar remote-shell header', () => {
         expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'OPEN_DIALOG', workspaceId: 'a' });
     });
 
-    it('keeps the RemoteShellHeader off the repos tab (e.g. Wiki) when a clone is selected', () => {
-        mockAppState = { ...mockAppState, activeTab: 'wiki' };
+    it('keeps the RemoteShellHeader off the repos tab (e.g. Stats) when a clone is selected', () => {
+        mockAppState = { ...mockAppState, activeTab: 'stats' };
         render(<TopBar />);
 
         // The workspace-specific header (and its + New) stay put on the top-level
@@ -199,9 +199,9 @@ describe('TopBar remote-shell header', () => {
         expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
     });
 
-    it('does not render the virtual header off the repos tab (e.g. on Wiki)', () => {
+    it('does not render the virtual header off the repos tab (e.g. on Stats)', () => {
         mockMyWorkEnabled = true;
-        mockAppState = { ...mockAppState, activeTab: 'wiki', selectedRepoId: 'my_work' };
+        mockAppState = { ...mockAppState, activeTab: 'stats', selectedRepoId: 'my_work' };
         render(<TopBar />);
 
         // Virtual header requires isOnReposTab; off that tab the remote-first shell

@@ -85,10 +85,9 @@ test.describe('Admin: Import error paths', () => {
         const payload = {
             version: 1,
             exportedAt: new Date().toISOString(),
-            metadata: { processCount: 0, workspaceCount: 0, wikiCount: 0, queueFileCount: 0 },
+            metadata: { processCount: 0, workspaceCount: 0, queueFileCount: 0 },
             processes: [],
             workspaces: [],
-            wikis: [],
             queueHistory: [],
             preferences: {},
         };
@@ -118,10 +117,9 @@ test.describe('Admin: Import error paths', () => {
         const payload = {
             version: 1,
             exportedAt: new Date().toISOString(),
-            metadata: { processCount: 0, workspaceCount: 0, wikiCount: 0, queueFileCount: 0 },
+            metadata: { processCount: 0, workspaceCount: 0, queueFileCount: 0 },
             processes: [],
             workspaces: [],
-            wikis: [],
             queueHistory: [],
             preferences: {},
         };
@@ -164,12 +162,11 @@ test.describe('Admin: Import error paths', () => {
         const payload = {
             version: 1,
             exportedAt: new Date().toISOString(),
-            metadata: { processCount: 1, workspaceCount: 0, wikiCount: 0, queueFileCount: 0 },
+            metadata: { processCount: 1, workspaceCount: 0, queueFileCount: 0 },
             processes: [
                 { id: 'p1', promptPreview: 'test', fullPrompt: 'test', status: 'completed', startTime: new Date().toISOString(), type: 'clarification' },
             ],
             workspaces: [],
-            wikis: [],
             queueHistory: [],
             preferences: {},
         };

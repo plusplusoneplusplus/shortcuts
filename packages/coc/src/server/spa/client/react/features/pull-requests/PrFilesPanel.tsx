@@ -1,26 +1,4 @@
-/**
- * Files Changed tab — split layout: changed-files tree/list on the left,
- * inline side-by-side diff panel on the right.
- *
- * Clicking a file selects it and renders that file's diff inline in the
- * right panel. On desktop that panel is the shared `FileDiffPanel` driven by
- * a `DiffSource` — the exact component the pop-out review window uses — so
- * both surfaces have the same split/unified toggle, full-file context,
- * minimap, hunk navigation, inline comments and mark-reviewed. On mobile the
- * slim `SideBySideDiffViewer` panel is kept, sliced lazily from the already
- * fetched combined `diffText` so the stacked layout needs no extra fetch.
- * The separate pop-out window (#popout/git-review/pr/<prId>) stays reachable
- * via an explicit "Pop out" button in the diff panel header.
- *
- * Display rules for the file list:
- *  - Tree mode (default): folders are collapsible and single-child
- *    folder chains are collapsed into one row (e.g.
- *    `packages/coc/src/server`) so the basename of each file stays
- *    visible at a stable depth.
- *  - Flat mode: each row shows the basename prominently with the
- *    dirname rendered above it in muted small text.
- */
-
+/** PR file metadata and actions adapt to the shared review navigator; diff transport stays provider-owned. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../ui';
 import type { FileChange } from '../git/diff/FileTree';
@@ -30,12 +8,6 @@ import { DiffFindWidget } from '../git/diff/DiffFindWidget';
 import { useDiffFind } from '../git/diff/useDiffFind';
 import { useDiffFindShortcut } from '../git/diff/useDiffFindShortcut';
 import { extractFileDiffFromCombined } from '../git/diff/diffSource';
-import {
-    buildFileTree,
-    collectFolderPaths,
-    splitPath,
-    type FileTreeNode,
-} from './file-tree';
 import { SHOW_FOCUSED_DIFF } from '../../featureFlags';
 import type { HunkCategory } from './classification-types';
 import { HUNK_CATEGORIES, CATEGORY_LABELS } from './classification-types';
@@ -44,7 +16,7 @@ import { useClassification } from '../git/diff/useClassification';
 import type { ClassificationKey, DiffSource } from '../git/diff/diffSource';
 import { FileDiffPanel } from '../git/diff/FileDiffPanel';
 import { useFileDiffEngineState } from '../git/hooks/useFileDiffEngineState';
-import { useReviewFileNavigation } from '../git/diff/useReviewFileNavigation';
+import { ReviewFiles, type ReviewFileRenderContext } from '../git/diff/ReviewFiles';
 import { useCloneBaseUrl } from '../../repos/cloneRouting';
 import { usePrReviewProgress } from '../git/diff/usePrReviewProgress';
 import type { ReviewProgressClientKey } from '../git/diff/reviewProgressApi';
@@ -89,30 +61,6 @@ export interface PrFilesPanelProps {
      */
     reviewPersistence?: ReviewProgressClientKey;
 }
-
-type ViewMode = 'tree' | 'flat';
-
-const STATUS_LABEL: Record<string, string> = {
-    A: 'Added',
-    M: 'Modified',
-    D: 'Deleted',
-    R: 'Renamed',
-    added:    'Added',
-    modified: 'Modified',
-    deleted:  'Deleted',
-    renamed:  'Renamed',
-};
-
-const STATUS_CLASS: Record<string, string> = {
-    A: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200',
-    M: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
-    D: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200',
-    R: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200',
-    added:    'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200',
-    modified: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
-    deleted:  'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200',
-    renamed:  'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200',
-};
 
 // ── Classification badge dots ────────────────────────────────────────
 
@@ -316,7 +264,14 @@ function ClassificationFilterBar({ classification, aiSelection }: Classification
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function PrFilesPanel({
+/** Reset all transient selection, classification and progress on exact owner/comparison changes. */
+export function PrFilesPanel(props: PrFilesPanelProps) {
+    const endpoint = useCloneBaseUrl(props.attachmentDestinationId ?? props.diffSource?.routingTarget ?? props.workspaceId);
+    const identity = JSON.stringify([props.workspaceId, props.attachmentDestinationId, endpoint, props.diffSource?.cacheKey, props.headSha, props.reviewPersistence, props.classificationKey]);
+    return <PrFilesBody key={identity} {...props} identity={identity} />;
+}
+
+function PrFilesBody({
     files,
     diffText,
     isMobile = false,
@@ -327,10 +282,8 @@ export function PrFilesPanel({
     diffSource,
     headSha,
     reviewPersistence,
-}: PrFilesPanelProps) {
-    const [search, setSearch] = useState('');
-    const [viewMode, setViewMode] = useState<ViewMode>('tree');
-
+    identity,
+}: PrFilesPanelProps & { identity: string }) {
     const aiSelection = useModalJobAiSelection({ workspaceId, mode: 'ask' });
     const classificationHook = useClassification(classificationKey, aiSelection.resolved, { workspaceId });
     const [activePath, setActivePath] = useState<string>(files[0]?.path ?? '');
@@ -362,216 +315,43 @@ export function PrFilesPanel({
         setLastSelectedFile(activePath || null);
     }, [activePath, progressHydrated, markVisited, setLastSelectedFile]);
 
-    useEffect(() => {
-        if (files.length === 0) {
-            setActivePath('');
-        } else if (!files.some(file => file.path === activePath)) {
-            setActivePath(files[0].path);
-        }
-    }, [files, activePath]);
-
-    const visibleFiles = useMemo(() => {
-        if (!search.trim()) return files;
-        const query = search.trim().toLowerCase();
-        return files.filter(file => file.path.toLowerCase().includes(query));
-    }, [files, search]);
-
-    const showTree = viewMode === 'tree' && !search.trim();
-    const tree = useMemo(() => buildFileTree(visibleFiles), [visibleFiles]);
-
-    const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
-    useEffect(() => {
-        setCollapsedFolders(prev => {
-            const allPaths = new Set(collectFolderPaths(tree));
-            const next = new Set<string>();
-            for (const p of prev) if (allPaths.has(p)) next.add(p);
-            return next;
-        });
-    }, [tree]);
-
-    function toggleFolder(path: string) {
-        setCollapsedFolders(prev => {
-            const next = new Set(prev);
-            if (next.has(path)) next.delete(path);
-            else next.add(path);
-            return next;
-        });
-    }
-
-    function handleFileSelect(path: string) {
-        setActivePath(path);
-    }
-
-    const endpoint = useCloneBaseUrl(attachmentDestinationId ?? workspaceId);
-    const orderedPaths = showTree
-        ? treeFilePaths(tree)
-        : visibleFiles.map(file => file.path);
-    const toggleFileReviewed = useReviewFileNavigation({
-        identity: JSON.stringify([workspaceId, attachmentDestinationId, endpoint, diffSource?.cacheKey, headSha, reviewPersistence]),
-        selectedPath: activePath, paths: orderedPaths, reviewedFiles: reviewProgress.state.reviewedFiles,
-        toggleReviewed, navigate: handleFileSelect,
-    });
-    const handleToggleReviewed = () => { if (activePath) toggleFileReviewed(activePath); };
-
     // Desktop renders the shared FileDiffPanel (full review chrome); mobile
     // keeps the slim viewer so the stacked layout stays light.
     const useSharedPanel = !isMobile && !!diffSource && !!workspaceId;
 
-    // Lazy per-file slice for the slim viewer only: compute the diff for the
-    // SELECTED file from the already-fetched combined diff. No other file's
-    // hunks are rendered. The shared panel fetches per-file itself, so the
-    // desktop path never pays for this slice.
-    const activeDiff = useMemo(
-        () =>
-            !useSharedPanel && diffText && activePath
-                ? extractFileDiffFromCombined(diffText, activePath)
-                : null,
-        [useSharedPanel, diffText, activePath],
-    );
     const classificationReady = classification?.state.status === 'ready';
-
-    return (
-        <div
-            className={cn(
-                'flex h-full min-h-0 gap-2',
-                isMobile ? 'flex-col' : 'flex-row',
-            )}
-            data-testid="pr-files-panel"
-        >
-            <div
-                className={cn(
-                    'flex min-h-0 flex-col overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900',
-                    isMobile ? 'max-h-[45%] w-full shrink-0' : 'w-full max-w-[380px] shrink-0',
-                )}
-                data-testid="pr-file-list-panel"
-            >
-                <header className="flex min-h-[30px] shrink-0 flex-wrap items-center justify-between gap-x-1.5 gap-y-1 border-b border-gray-200 bg-gray-50 px-2 py-1 dark:border-gray-700 dark:bg-gray-800/60">
-                    <div className="flex min-w-0 items-center gap-1.5">
-                        <h2 className="m-0 truncate text-[13px] font-semibold leading-tight text-gray-900 dark:text-gray-100">
-                            Changed files
-                        </h2>
-                        <span className="font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-400">
-                            {files.length}
-                        </span>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-px" role="group" aria-label="File list view">
-                        <button
-                            type="button"
-                            onClick={() => setViewMode('tree')}
-                            aria-pressed={viewMode === 'tree'}
-                            title="Tree view"
-                            data-testid="pr-file-view-tree"
-                            className={cn(
-                                'inline-flex h-5 items-center justify-center rounded border px-1.5 text-[10px] font-semibold uppercase leading-none',
-                                viewMode === 'tree'
-                                    ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-900/40 dark:text-blue-200'
-                                    : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700',
-                            )}
-                        >
-                            Tree
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setViewMode('flat')}
-                            aria-pressed={viewMode === 'flat'}
-                            title="Flat list"
-                            data-testid="pr-file-view-flat"
-                            className={cn(
-                                'inline-flex h-5 items-center justify-center rounded border px-1.5 text-[10px] font-semibold uppercase leading-none',
-                                viewMode === 'flat'
-                                    ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-900/40 dark:text-blue-200'
-                                    : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700',
-                            )}
-                        >
-                            Flat
-                        </button>
-                    </div>
-                </header>
-                {SHOW_FOCUSED_DIFF && classification && (
-                    <ClassificationFilterBar classification={classification} aiSelection={aiSelection} />
-                )}
-                <div className="shrink-0 px-2 pt-2">
-                    <input
-                        type="text"
-                        value={search}
-                        onChange={event => setSearch(event.target.value)}
-                        placeholder="Filter files by path"
-                        className="min-h-[26px] w-full rounded-[5px] border border-gray-300 bg-white px-[7px] py-[3px] text-[12px] text-gray-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-                        data-testid="pr-file-search"
-                    />
-                </div>
-                <div
-                    className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2 pt-1.5 font-mono text-[12px] leading-[1.4]"
-                    data-testid="pr-file-list-scroll"
-                >
-                    {visibleFiles.length === 0 ? (
-                        <p className="m-0 px-1.5 py-1.5 text-[11px] text-gray-500 dark:text-gray-400">
-                            {files.length === 0
-                                ? 'No file changes in this pull request.'
-                                : 'No files match the filter.'}
-                        </p>
-                    ) : showTree ? (
-                        <FileTreeView
-                            nodes={tree}
-                            activePath={activePath}
-                            onSelect={handleFileSelect}
-                            collapsedFolders={collapsedFolders}
-                            onToggleFolder={toggleFolder}
-                            depth={0}
-                            classification={classification}
-                            reviewedFiles={reviewProgress.state.reviewedFiles}
-                            visitedFiles={reviewProgress.state.visitedFiles}
-                        />
-                    ) : (
-                        <FlatFileList
-                            files={visibleFiles}
-                            activePath={activePath}
-                            onSelect={handleFileSelect}
-                            classification={classification}
-                            reviewedFiles={reviewProgress.state.reviewedFiles}
-                            visitedFiles={reviewProgress.state.visitedFiles}
-                        />
-                    )}
-                </div>
-            </div>
-
-            {useSharedPanel && activePath ? (
-                <div
-                    className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
-                    data-testid="pr-shared-diff-panel"
-                >
-                    <FileDiffPanel
-                        onDiffEngineChange={onDiffEngineChange}
-                        // Remount on file switch so per-file panel state (find,
-                        // full-context toggle, comment sidebar) resets cleanly.
-                        key={`pr-${diffSource!.cacheKey}-${activePath}`}
-                        workspaceId={workspaceId!}
-                        attachmentDestinationId={attachmentDestinationId}
-                        filePath={activePath}
-                        source={diffSource!}
-                        showSourceLabel={false}
-                        onNavigateToFile={setActivePath}
-                        headerActions={<PrPopOutButton filePath={activePath} onPopOut={onPopOut} />}
-                        isReviewed={isReviewed(activePath)}
-                        onToggleReviewed={handleToggleReviewed}
-                        getHunkClassification={classificationReady ? classification!.getHunkClassification : undefined}
-                        hunkActiveFilters={classificationReady ? classification!.state.activeFilters : undefined}
-                    />
-                </div>
-            ) : (
-                <PrInlineDiffPanel
-                    // Remount on file switch so the in-diff find state (query, match
-                    // set, highlights) resets cleanly instead of carrying over stale
-                    // matches from the previously selected file.
-                    key={activePath}
-                    filePath={activePath}
-                    diff={activeDiff}
-                    hasFiles={files.length > 0}
-                    onPopOut={onPopOut}
-                />
-            )}
-        </div>
-    );
+    function renderDiff({ file, paths, select, target, toggleViewed }: ReviewFileRenderContext) {
+        if (useSharedPanel && diffSource && workspaceId) {
+            return <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" data-testid="pr-shared-diff-panel">
+                <FileDiffPanel key={`pr-${diffSource.cacheKey}-${file.path}`} workspaceId={workspaceId}
+                    attachmentDestinationId={attachmentDestinationId} filePath={file.path}
+                    source={{ ...diffSource, files: paths, fetchFileList: undefined }} showSourceLabel={false} onNavigateToFile={select}
+                    initialHunkTarget={target} onDiffEngineChange={onDiffEngineChange}
+                    headerActions={<PrPopOutButton filePath={file.path} onPopOut={onPopOut} />}
+                    isReviewed={isReviewed(file.path)} onToggleReviewed={toggleViewed}
+                    getHunkClassification={classificationReady ? classification!.getHunkClassification : undefined}
+                    hunkActiveFilters={classificationReady ? classification!.state.activeFilters : undefined} />
+            </div>;
+        }
+        return <PrInlineDiffPanel key={file.path} filePath={file.path}
+            diff={diffText ? extractFileDiffFromCombined(diffText, file.path) : null}
+            hasFiles={files.length > 0} onPopOut={onPopOut} />;
+    }
+    return <div className="flex h-full min-h-0 min-w-0 flex-1" data-testid="pr-files-panel">
+        <ReviewFiles identity={identity} files={files} defaultView="tree" selectedPath={activePath} onSelect={setActivePath}
+            reviewedFiles={reviewProgress.state.reviewedFiles} onToggleReviewed={toggleReviewed}
+            header={{ below: classification ? <ClassificationFilterBar classification={classification} aiSelection={aiSelection} /> : undefined }}
+            isFileDimmed={classification?.isFileDimmed}
+            rowDetails={file => {
+                const badge = classification?.getFileBadge(file.path);
+                return <>
+                    {!isReviewed(file.path) && <PrReviewMark path={file.path} visitedFiles={reviewProgress.state.visitedFiles} />}
+                    {badge && <ClassificationBadge category={badge.category} intensity={badge.intensity} />}
+                </>;
+            }}
+            renderFile={renderDiff}
+            renderEmpty={<PrInlineDiffPanel filePath="" diff={null} hasFiles={files.length > 0} onPopOut={onPopOut} />} />
+    </div>;
 }
 
 /** "Pop out" action — shared by the slim inline header and FileDiffPanel's header slot. */
@@ -690,216 +470,7 @@ function PrInlineDiffPanel({ filePath, diff, hasFiles, onPopOut }: PrInlineDiffP
  * Reviewed / visited mark for a file row — mirrors the pop-out file panel's
  * indicator (✓ reviewed, • visited-but-not-reviewed, nothing otherwise).
  */
-function PrReviewMark({ path, reviewedFiles, visitedFiles }: {
-    path: string;
-    reviewedFiles?: ReadonlySet<string>;
-    visitedFiles?: ReadonlySet<string>;
-}) {
-    if (reviewedFiles?.has(path)) {
-        return (
-            <span
-                className="shrink-0 text-[11px] text-emerald-600 dark:text-emerald-400"
-                title="Marked reviewed"
-                data-testid={`pr-file-reviewed-${path}`}
-            >
-                ✓
-            </span>
-        );
-    }
-    if (visitedFiles?.has(path)) {
-        return (
-            <span
-                className="shrink-0 text-[11px] text-gray-400 dark:text-gray-500"
-                title="Visited (not reviewed)"
-                data-testid={`pr-file-visited-${path}`}
-            >
-                •
-            </span>
-        );
-    }
-    return null;
-}
-
-interface FlatFileListProps {
-    files: FileChange[];
-    activePath: string;
-    onSelect: (path: string) => void;
-    classification?: UseClassificationReturn;
-    reviewedFiles?: ReadonlySet<string>;
-    visitedFiles?: ReadonlySet<string>;
-}
-
-function FlatFileList({ files, activePath, onSelect, classification, reviewedFiles, visitedFiles }: FlatFileListProps) {
-    return (
-        <div className="grid min-w-0 gap-px">
-            {files.map(file => {
-                const { dirname, basename } = splitPath(file.path);
-                const isActive = file.path === activePath;
-                const isDimmed = classification?.isFileDimmed(file.path) ?? false;
-                return (
-                    <button
-                        key={file.path}
-                        type="button"
-                        onClick={() => onSelect(file.path)}
-                        className={cn(
-                            'flex min-w-0 flex-col items-stretch gap-px rounded px-1.5 py-1 text-left',
-                            isActive
-                                ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100'
-                                : 'text-gray-800 hover:bg-blue-50 dark:text-gray-200 dark:hover:bg-blue-900/30',
-                            isDimmed && 'opacity-40',
-                        )}
-                        data-testid="pr-file-row"
-                        data-file-path={file.path}
-                        data-file-dimmed={isDimmed || undefined}
-                        title={file.path}
-                    >
-                        {dirname && (
-                            <span className="truncate text-[10px] text-gray-500 dark:text-gray-400">
-                                {dirname}/
-                            </span>
-                        )}
-                        <span className="flex min-w-0 items-center justify-between gap-1.5">
-                            <PrReviewMark path={file.path} reviewedFiles={reviewedFiles} visitedFiles={visitedFiles} />
-                            <span className="min-w-0 flex-1 truncate" data-testid="pr-file-basename">
-                                {basename}
-                            </span>
-                            <span className="flex shrink-0 items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400">
-                                {(() => {
-                                    const badge = classification?.getFileBadge(file.path);
-                                    return badge ? <ClassificationBadge category={badge.category} intensity={badge.intensity} /> : null;
-                                })()}
-                                {file.status && (
-                                    <span
-                                        className={cn(
-                                            'inline-flex shrink-0 items-center rounded-full px-1 py-px text-[9px] font-semibold uppercase tracking-normal leading-[1.4]',
-                                            STATUS_CLASS[file.status] ?? '',
-                                        )}
-                                        data-testid="pr-file-status"
-                                    >
-                                        {STATUS_LABEL[file.status] ?? file.status}
-                                    </span>
-                                )}
-                                <span className="text-green-700 dark:text-green-400">+{file.additions ?? 0}</span>{' '}
-                                <span className="text-red-700 dark:text-red-400">-{file.deletions ?? 0}</span>
-                            </span>
-                        </span>
-                    </button>
-                );
-            })}
-        </div>
-    );
-}
-
-interface FileTreeViewProps {
-    nodes: FileTreeNode[];
-    activePath: string;
-    onSelect: (path: string) => void;
-    collapsedFolders: Set<string>;
-    onToggleFolder: (path: string) => void;
-    depth: number;
-    classification?: UseClassificationReturn;
-    reviewedFiles?: ReadonlySet<string>;
-    visitedFiles?: ReadonlySet<string>;
-}
-
-function FileTreeView({
-    nodes,
-    activePath,
-    onSelect,
-    collapsedFolders,
-    onToggleFolder,
-    depth,
-    classification,
-    reviewedFiles,
-    visitedFiles,
-}: FileTreeViewProps) {
-    return (
-        <div className="grid min-w-0 gap-px">
-            {nodes.map(node => {
-                if (node.kind === 'folder') {
-                    const isCollapsed = collapsedFolders.has(node.path);
-                    return (
-                        <div key={`folder:${node.path}`} className="min-w-0">
-                            <button
-                                type="button"
-                                onClick={() => onToggleFolder(node.path)}
-                                aria-expanded={!isCollapsed}
-                                className="flex w-full min-w-0 items-center justify-between gap-1.5 rounded px-1.5 py-1 text-left text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800/60"
-                                style={{ paddingLeft: `${6 + depth * 10}px` }}
-                                data-testid="pr-file-tree-folder"
-                                data-folder-path={node.path}
-                                data-collapsed={isCollapsed}
-                            >
-                                <span className="flex min-w-0 flex-1 items-center gap-1">
-                                    <span
-                                        className="shrink-0 text-[9px] text-gray-400 dark:text-gray-500"
-                                        aria-hidden="true"
-                                    >
-                                        {isCollapsed ? '▶' : '▼'}
-                                    </span>
-                                    <span className="min-w-0 flex-1 truncate" title={node.path}>
-                                        {node.name}
-                                    </span>
-                                </span>
-                                <span className="shrink-0 text-[10px] text-gray-500 dark:text-gray-400">
-                                    {node.fileCount}
-                                </span>
-                            </button>
-                            {!isCollapsed && (
-                                <FileTreeView
-                                    nodes={node.children}
-                                    activePath={activePath}
-                                    onSelect={onSelect}
-                                    collapsedFolders={collapsedFolders}
-                                    onToggleFolder={onToggleFolder}
-                                    depth={depth + 1}
-                                    classification={classification}
-                                    reviewedFiles={reviewedFiles}
-                                    visitedFiles={visitedFiles}
-                                />
-                            )}
-                        </div>
-                    );
-                }
-                const isActive = node.path === activePath;
-                const isDimmed = classification?.isFileDimmed(node.path) ?? false;
-                return (
-                    <button
-                        key={`file:${node.path}`}
-                        type="button"
-                        onClick={() => onSelect(node.path)}
-                        className={cn(
-                            'flex min-w-0 items-center justify-between gap-1.5 rounded px-1.5 py-1 text-left',
-                            isActive
-                                ? 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100'
-                                : 'text-gray-800 hover:bg-blue-50 dark:text-gray-200 dark:hover:bg-blue-900/30',
-                            isDimmed && 'opacity-40',
-                        )}
-                        style={{ paddingLeft: `${6 + depth * 10}px` }}
-                        data-testid="pr-file-row"
-                        data-file-path={node.path}
-                        data-file-dimmed={isDimmed || undefined}
-                        title={node.path}
-                    >
-                        <PrReviewMark path={node.path} reviewedFiles={reviewedFiles} visitedFiles={visitedFiles} />
-                        <span className="min-w-0 flex-1 truncate" data-testid="pr-file-basename">
-                            {node.name}
-                        </span>
-                        <span className="flex shrink-0 items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400">
-                            {(() => {
-                                const badge = classification?.getFileBadge(node.path);
-                                return badge ? <ClassificationBadge category={badge.category} intensity={badge.intensity} /> : null;
-                            })()}
-                            <span className="text-green-700 dark:text-green-400">+{node.file.additions ?? 0}</span>{' '}
-                            <span className="text-red-700 dark:text-red-400">-{node.file.deletions ?? 0}</span>
-                        </span>
-                    </button>
-                );
-            })}
-        </div>
-    );
-}
-
-function treeFilePaths(nodes: FileTreeNode[]): string[] {
-    return nodes.flatMap(node => node.kind === 'folder' ? treeFilePaths(node.children) : [node.path]);
+function PrReviewMark({ path, visitedFiles }: { path: string; visitedFiles: ReadonlySet<string> }) {
+    return visitedFiles.has(path) ? <span className="shrink-0 text-[11px] text-gray-400" title="Visited (not reviewed)"
+        data-testid={`pr-file-visited-${path}`}>•</span> : null;
 }

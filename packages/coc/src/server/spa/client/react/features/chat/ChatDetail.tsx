@@ -98,7 +98,7 @@ import { ScratchpadPanel } from './scratchpad/ScratchpadPanel';
 import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { resolveLoadedTaskMode } from './chatMode';
-import { useSentinelAutoCompact } from './AutoCompactPanel';
+import { isJobManagedChat, useChatAutoCompact } from './AutoCompactPanel';
 import { normalizeChatMode } from '../../repos/modeConfig';
 import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isCanvasEnabled, isCronEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, getDefaultChatStyle, getFeatureValue } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
@@ -1656,8 +1656,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         return () => { active = false; window.removeEventListener(eventName, handle); };
     }, [scopedOwner, historyBaseUrl, workspaceId, processId, getOwnerProcess, setTurnsAndRef]);
 
-    // Sentinel-only auto-compact control in the context-usage popover. The
-    // owning server persists the setting and runs every check and compaction.
+    // Auto-compact control in the context-usage popover, shared by every chat
+    // mode. The owning server persists the setting and runs every check and
+    // compaction.
     const handleAutoCompactState = useCallback((autoCompact: ProcessAutoCompactState) => {
         setProcessDetails((prev: any) => prev ? { ...prev, metadata: { ...prev.metadata, autoCompact } } : prev);
     }, []);
@@ -1756,8 +1757,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         setCompacting: handleCompactingChange,
     });
 
-    const contextAutoCompact = useSentinelAutoCompact({
-        isSentinel: resolveLoadedTaskMode(task) === 'sentinel' || metadataProcess?.metadata?.mode === 'sentinel',
+    const contextAutoCompact = useChatAutoCompact({
+        available: !!metadataProcess,
+        jobManaged: isJobManagedChat(metadataProcess?.metadata),
+        readOnly: readOnly || !historyOwnerAvailable,
+        providerUnsupported: conversationProvider === 'opencode',
         processId,
         workspaceId: owningWorkspaceId,
         client,

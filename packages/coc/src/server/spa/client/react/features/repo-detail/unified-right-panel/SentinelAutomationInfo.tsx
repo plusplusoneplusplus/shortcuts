@@ -6,7 +6,7 @@ import { useHoverPopoverDismissal } from '../../chat/conversation/tool-calls/hov
 
 const descriptions = {
     Overtures: 'Wakes this Sentinel once when a watched PR merges or at a chosen time. It posts the saved message here; it does not automatically launch work or grant new permission.',
-    Refrains: 'Saved prompts you can run on demand or on a schedule. An optional gate decides whether a run should start. Results return to this Sentinel.',
+    Refrains: 'Saved prompts you can run on demand or on a schedule. An optional gate decides whether a run should start. Results stay in each refrain\'s job chat and are not sent to this Sentinel.',
     Coda: 'Reviews job, PR and commit evidence to suggest To-do status changes. Strongly verified Done results may apply automatically; manual and Deferred items need your approval. It does not carry out the tasks.',
 };
 

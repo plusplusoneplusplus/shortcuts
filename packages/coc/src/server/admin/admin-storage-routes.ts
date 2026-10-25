@@ -16,7 +16,7 @@ import type { MigrationProgress } from '../storage/storage-migration';
 import { StorageMigrationEngine } from '../storage/storage-migration';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { Route } from '../types';
-import { sendSSE } from '../wiki/ask-handler';
+import { writeDataEvent as sendSSE } from '../shared/sse-writer';
 import type { AdminRouteOptions } from './admin-route-types';
 import { resolveConfigPath } from './admin-route-types';
 import { TokenManager } from './token-manager';

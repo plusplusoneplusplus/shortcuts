@@ -10,7 +10,6 @@ import type {
     AIProcess,
     ProcessStore,
     TaskQueueManager,
-    WikiInfo,
     WorkspaceInfo,
 } from '@plusplusoneplusplus/forge';
 import type {
@@ -47,7 +46,6 @@ export interface CollectResult {
 export interface StorageSnapshotData {
     processes: AIProcess[];
     workspaces: WorkspaceInfo[];
-    wikis: WikiInfo[];
     queueHistory: QueueSnapshot[];
     preferences: Record<string, unknown>;
     imageBlobs: ImageBlobEntry[];
@@ -59,13 +57,11 @@ export interface StorageSnapshotData {
 export interface WipeCounts {
     deletedProcesses: number;
     deletedWorkspaces: number;
-    deletedWikis: number;
     deletedQueues: number;
     deletedSchedules: number;
     deletedGitOps: number;
     deletedRepoPreferences: number;
     deletedPreferences: boolean;
-    deletedWikiDirs: string[];
 }
 
 /** A domain's wipe plan: the concrete deletions plus their dry-run counts. */
@@ -85,8 +81,8 @@ export interface StorageSnapshotDomain<TPlan = unknown> {
     collect(ctx: StorageSnapshotContext): Promise<CollectResult> | CollectResult;
     restoreReplace(payload: CoCExportPayload, ctx: RestoreSnapshotContext, result: ImportResult): Promise<void> | void;
     restoreMerge(payload: CoCExportPayload, ctx: RestoreSnapshotContext, result: ImportResult): Promise<void> | void;
-    planWipe(ctx: StorageSnapshotContext & { includeWikis: boolean }): Promise<WipePlanResult<TPlan>> | WipePlanResult<TPlan>;
-    executeWipe(ctx: StorageSnapshotContext & { includeWikis: boolean }, plan: TPlan, result: { errors: string[] }): Promise<void> | void;
+    planWipe(ctx: StorageSnapshotContext): Promise<WipePlanResult<TPlan>> | WipePlanResult<TPlan>;
+    executeWipe(ctx: StorageSnapshotContext, plan: TPlan, result: { errors: string[] }): Promise<void> | void;
 }
 
 /** Full snapshot returned by {@link collectStorageSnapshot}. */
@@ -100,13 +96,11 @@ export interface StorageWipePlan {
     domainPlans: Map<string, unknown>;
     deletedProcesses: number;
     deletedWorkspaces: number;
-    deletedWikis: number;
     deletedQueues: number;
     deletedSchedules: number;
     deletedGitOps: number;
     deletedRepoPreferences: number;
     deletedPreferences: boolean;
-    deletedWikiDirs: string[];
     preservedFiles: string[];
     errors: string[];
 }

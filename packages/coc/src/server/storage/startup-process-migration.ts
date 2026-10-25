@@ -2,7 +2,7 @@
  * Automatically migrates file-based process histories from
  * ~/.coc/repos/<workspaceId>/processes/ into the SQLite process store
  * on server startup. Complements startup-workspace-migration.ts which
- * handles workspace/wiki registry entries.
+ * handles workspace registry entries.
  *
  * The migration is:
  * - Idempotent (INSERT OR IGNORE — already-imported processes are skipped)

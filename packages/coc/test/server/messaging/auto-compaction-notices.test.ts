@@ -318,9 +318,25 @@ describe('automatic compaction WhatsApp notices', () => {
         expect(ledger()[0].done).toEqual([`${TASK}:start`, TASK]);
     });
 
+    it.each(['ask', 'autopilot', 'ralph'])('posts the start notice for an ordinary %s chat like Sentinel', async mode => {
+        proc({}, { mode });
+        binding();
+        makeHub();
+        const task = autoTask();
+        emit('taskAdded', task);
+        await flush();
+        emit('taskStarted', task, 'running');
+        await flush();
+        expect(sent).toHaveLength(1);
+    });
+
     it.each([
         ['manual compaction', () => { proc(); binding(); return autoTask('queued', { trigger: undefined }); }],
-        ['non-Sentinel chat', () => { proc({}, { mode: 'ask' }); binding(); return autoTask(); }],
+        ['Refrain job chat', () => {
+            proc({}, { mode: 'ask', sentinelScheduledJob: { workspaceId: WS, processId: 'owner', jobId: 'job-1' } });
+            binding();
+            return autoTask();
+        }],
         ['unbound conversation', () => { proc(); return autoTask(); }],
         ['binding for a different request', () => { proc(); binding({ taskId: 'req-other' }); return autoTask(); }],
         ['binding in another workspace', () => {

@@ -1,5 +1,5 @@
 /**
- * Base router implementation used by both main server and wiki server.
+ * Base router implementation shared by the CoC servers.
  * Handles route matching, static file serving, and SPA fallback.
  */
 

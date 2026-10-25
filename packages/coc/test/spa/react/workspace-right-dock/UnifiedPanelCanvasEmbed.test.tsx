@@ -179,7 +179,7 @@ describe('canvas embed → unified panel canvas tab', () => {
     });
 
     it('shows no open action for markdown rendered outside a chat', async () => {
-        // A note or wiki body has a workspace but no conversation to own a tab.
+        // A note body has a workspace but no conversation to own a tab.
         render(
             <UnifiedPanelHostProvider host={{ workspaceId: 'ws-1', chatId: 'task-A' }}>
                 <ChatRenderContextProvider value={{ wsId: 'ws-1' }}>

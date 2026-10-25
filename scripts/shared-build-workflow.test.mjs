@@ -140,10 +140,7 @@ function vitestAliases() {
  * from src/ or test/.
  *
  * Static only, on purpose. `vi.mock()` registers a stub before the specifier is
- * ever resolved, and the deep-wiki lane behind `src/server/wiki` builds its
- * module path from a template literal inside a try/catch precisely so a missing
- * install degrades instead of throwing. Neither needs a dist/ on the runner, and
- * neither has ever had one there.
+ * ever resolved, so it never needs a dist/ on the runner.
  */
 function cocWorkspaceImports() {
     const found = new Set();

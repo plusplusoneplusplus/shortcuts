@@ -1,7 +1,7 @@
 /**
  * Tests keyboard shortcuts that operate when on the Repos tab with a repo selected:
  *   Alt+A → navigate to Activity sub-tab
- *   Alt+I → navigate to Wiki sub-tab
+ *   Alt+I → navigate to Work-items sub-tab
  *   Bare 'W' → should NOT navigate (no longer a shortcut)
  */
 
@@ -38,7 +38,7 @@ test.describe('Keyboard shortcuts', () => {
 
         const urlBefore = page.url();
 
-        // Press bare 'W' — should NOT navigate to wiki
+        // Press bare 'W' — should NOT navigate
         await page.keyboard.press('w');
         await page.waitForTimeout(300);
 

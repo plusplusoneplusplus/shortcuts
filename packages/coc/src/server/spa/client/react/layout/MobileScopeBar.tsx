@@ -2,8 +2,8 @@
  * MobileScopeBar — the 40px row that replaces `BottomNav` on the Repos tab at
  * mobile width.
  *
- * `BottomNav`'s six admin destinations (Skills / Memory / Usage / Servers /
- * Logs / Wiki) are not the primary axis of the repos tab — the *scope* is — and
+ * `BottomNav`'s five admin destinations (Skills / Memory / Usage / Servers /
+ * Logs) are not the primary axis of the repos tab — the *scope* is — and
  * at 48px they cost more of a short viewport than they earn. Here the row holds
  * the active scope chip (status dot · icon · name · `⧉N` · chevron) plus its
  * unseen badge, and folds those destinations behind a `⋯` sheet. Off the repos

@@ -60,7 +60,6 @@ function createImportResult(): ImportResult {
     return {
         importedProcesses: 0,
         importedWorkspaces: 0,
-        importedWikis: 0,
         importedQueueFiles: 0,
         importedBlobFiles: 0,
         importedScheduleFiles: 0,
@@ -73,10 +72,9 @@ function emptyPayload(overrides: Partial<CoCExportPayload> = {}): CoCExportPaylo
     return {
         version: EXPORT_SCHEMA_VERSION,
         exportedAt: '2024-01-01T00:00:00Z',
-        metadata: { processCount: 0, workspaceCount: 0, wikiCount: 0, queueFileCount: 0 },
+        metadata: { processCount: 0, workspaceCount: 0, queueFileCount: 0 },
         processes: [],
         workspaces: [],
-        wikis: [],
         queueHistory: [],
         preferences: {},
         ...overrides,
@@ -84,14 +82,12 @@ function emptyPayload(overrides: Partial<CoCExportPayload> = {}): CoCExportPaylo
 }
 
 /** Seed one representative artifact for every domain plus preserved files. */
-async function seedFixture(dataDir: string, store: SqliteProcessStore, wikiDir: string): Promise<void> {
+async function seedFixture(dataDir: string, store: SqliteProcessStore): Promise<void> {
     // core-store
     await store.addProcess({
         id: 'p1', type: 'clarification', promptPreview: 'x', fullPrompt: 'x', status: 'completed', startTime: new Date(),
     });
     await store.registerWorkspace({ id: 'ws1', name: 'WS', rootPath: '/tmp/ws1' });
-    fs.mkdirSync(wikiDir, { recursive: true });
-    await store.registerWiki({ id: 'wiki1', name: 'Wiki', wikiDir, aiEnabled: false, registeredAt: new Date().toISOString() });
 
     // queue (file + SQLite rows)
     writeJSON(path.join(dataDir, 'repos', 'repo-1', 'queues.json'), {
@@ -133,13 +129,11 @@ async function seedFixture(dataDir: string, store: SqliteProcessStore, wikiDir: 
 describe('snapshot domain contract harness', () => {
     let dataDir: string;
     let store: SqliteProcessStore;
-    let wikiDir: string;
 
     beforeEach(async () => {
         dataDir = createTempDir();
         store = new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') });
-        wikiDir = path.join(dataDir, 'wiki-output');
-        await seedFixture(dataDir, store, wikiDir);
+        await seedFixture(dataDir, store);
     });
 
     afterEach(() => {
@@ -172,13 +166,13 @@ describe('snapshot domain contract harness', () => {
             });
 
             it('planWipe returns a well-formed plan and executeWipe consumes it', async () => {
-                const planResult = await domain.planWipe({ dataDir, store, includeWikis: true });
+                const planResult = await domain.planWipe({ dataDir, store });
                 expect(planResult).toHaveProperty('plan');
                 expect(planResult.counts).toBeTypeOf('object');
                 expect(Array.isArray(planResult.errors)).toBe(true);
 
                 const result = { errors: [] as string[] };
-                await domain.executeWipe({ dataDir, store, includeWikis: true }, planResult.plan, result);
+                await domain.executeWipe({ dataDir, store }, planResult.plan, result);
                 expect(result.errors).toEqual([]);
             });
         });
@@ -192,13 +186,11 @@ describe('snapshot domain contract harness', () => {
 describe('snapshot domain behavior', () => {
     let dataDir: string;
     let store: SqliteProcessStore;
-    let wikiDir: string;
 
     beforeEach(async () => {
         dataDir = createTempDir();
         store = new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') });
-        wikiDir = path.join(dataDir, 'wiki-output');
-        await seedFixture(dataDir, store, wikiDir);
+        await seedFixture(dataDir, store);
     });
 
     afterEach(() => {
@@ -206,20 +198,20 @@ describe('snapshot domain behavior', () => {
         fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
-    it('core-store: collects counts and executeWipe clears store and wiki dir', async () => {
+    it('core-store: collects counts and executeWipe clears the store', async () => {
         const domain = createCoreStoreDomain();
         const collected = await domain.collect({ dataDir, store });
         expect(collected.metadata.processCount).toBe(1);
         expect(collected.metadata.workspaceCount).toBe(1);
-        expect(collected.metadata.wikiCount).toBe(1);
+        expect(collected.metadata).not.toHaveProperty('wikiCount');
 
-        const planResult = await domain.planWipe({ dataDir, store, includeWikis: true });
-        expect(planResult.counts.deletedWikiDirs).toEqual([wikiDir]);
+        const planResult = await domain.planWipe({ dataDir, store });
+        expect(planResult.counts).toEqual({ deletedProcesses: 1, deletedWorkspaces: 1 });
 
         const result = { errors: [] as string[] };
-        await domain.executeWipe({ dataDir, store, includeWikis: true }, planResult.plan, result);
+        await domain.executeWipe({ dataDir, store }, planResult.plan, result);
         expect(await store.getAllProcesses()).toHaveLength(0);
-        expect(fs.existsSync(wikiDir)).toBe(false);
+        expect(await store.getWorkspaces()).toHaveLength(0);
     });
 
     it('sentinel-jobs: excludes local definitions, runs and snapshots from aggregate export/import and wipes them together', async () => {
@@ -233,7 +225,7 @@ describe('snapshot domain behavior', () => {
         const file = path.join(snapshots, owner.processId, job.id, `${run.id}.json`);
         writeJSON(file, { privateSnapshotMarker: 'MACHINE_LOCAL_SNAPSHOT' });
         if (process.platform !== 'win32') fs.chmodSync(file, 0o400);
-        const ctx = { dataDir, store, includeWikis: false };
+        const ctx = { dataDir, store };
         const exported = JSON.stringify(await collectStorageSnapshot(ctx));
         for (const marker of [job.id, run.id, job.instructions, 'MACHINE_LOCAL_SNAPSHOT']) {
             expect(exported).not.toContain(marker);
@@ -289,7 +281,7 @@ describe('snapshot domain behavior', () => {
         for (const table of operationalTables) expect(db.prepare(`SELECT * FROM ${table}`).all()).toHaveLength(1);
         const before = todos.get(owner);
         const domain = createSentinelTodosDomain();
-        const ctx = { dataDir, store, includeWikis: false };
+        const ctx = { dataDir, store };
         expect(await domain.collect(ctx)).toEqual({ data: {}, metadata: {}, warnings: [] });
         const imported = createImportResult();
         await domain.restoreReplace(emptyPayload(), ctx, imported);
@@ -321,7 +313,7 @@ describe('snapshot domain behavior', () => {
         db.exec(`CREATE TEMP TRIGGER reject_todo_wipe BEFORE DELETE ON sentinel_todo_items
             BEGIN SELECT RAISE(ABORT, 'wipe failed'); END`);
         const domain = createSentinelTodosDomain();
-        const ctx = { dataDir, store, includeWikis: false };
+        const ctx = { dataDir, store };
         const result = { errors: [] as string[] };
         await domain.executeWipe(ctx, (await domain.planWipe(ctx)).plan, result);
         expect(result.errors).toEqual([expect.stringContaining('wipe failed')]);
@@ -333,7 +325,7 @@ describe('snapshot domain behavior', () => {
         new SentinelTodoStore(db);
         db.exec('DROP TABLE sentinel_todo_jobs');
         const domain = createSentinelTodosDomain();
-        const ctx = { dataDir, store, includeWikis: false };
+        const ctx = { dataDir, store };
         const result = { errors: [] as string[] };
         await domain.executeWipe(ctx, (await domain.planWipe(ctx)).plan, result);
         expect(result.errors).toEqual([expect.stringContaining('missing sentinel_todo_jobs')]);
@@ -343,7 +335,7 @@ describe('snapshot domain behavior', () => {
         const domain = createSentinelMirrorOutboxDomain();
         const file = path.join(dataDir, 'repos', 'repo-1', SENTINEL_MIRROR_OUTBOX_FILE);
         writeJSON(file, [{ content: 'Private delivery intent' }]);
-        const ctx = { dataDir, store, includeWikis: false };
+        const ctx = { dataDir, store };
         expect(await domain.collect(ctx)).toEqual({ data: {}, metadata: {}, warnings: [] });
         const imported = createImportResult();
         await domain.restoreReplace(emptyPayload(), ctx, imported);
@@ -368,7 +360,7 @@ describe('snapshot domain behavior', () => {
             });
             outbox.accept('repo-1', row.eventId);
             outbox.importLegacy('repo-1');
-            const ctx = { dataDir, store, includeWikis: false };
+            const ctx = { dataDir, store };
             expect(await domain.collect(ctx)).toEqual({ data: {}, metadata: {}, warnings: [] });
             await domain.restoreReplace(emptyPayload(), ctx, createImportResult());
             expect(outbox.list('repo-1')).toHaveLength(1);
@@ -386,12 +378,12 @@ describe('snapshot domain behavior', () => {
         const collected = await domain.collect({ dataDir, store });
         expect(collected.metadata.queueFileCount).toBe(1);
 
-        const planResult = await domain.planWipe({ dataDir, store, includeWikis: false });
+        const planResult = await domain.planWipe({ dataDir, store });
         // one queue file + one queue_tasks row + one queue_repo_state row
         expect(planResult.counts.deletedQueues).toBe(3);
 
         const result = { errors: [] as string[] };
-        await domain.executeWipe({ dataDir, store, includeWikis: false }, planResult.plan, result);
+        await domain.executeWipe({ dataDir, store }, planResult.plan, result);
         expect(fs.existsSync(path.join(dataDir, 'repos', 'repo-1', 'queues.json'))).toBe(false);
     });
 
@@ -400,9 +392,9 @@ describe('snapshot domain behavior', () => {
         const collected = await domain.collect({ dataDir, store });
         expect(collected.metadata.blobFileCount).toBe(1);
 
-        const planResult = await domain.planWipe({ dataDir, store, includeWikis: false });
+        const planResult = await domain.planWipe({ dataDir, store });
         const result = { errors: [] as string[] };
-        await domain.executeWipe({ dataDir, store, includeWikis: false }, planResult.plan, result);
+        await domain.executeWipe({ dataDir, store }, planResult.plan, result);
         expect(fs.existsSync(path.join(dataDir, 'blobs', 'task-1.images.json'))).toBe(false);
     });
 
@@ -412,12 +404,12 @@ describe('snapshot domain behavior', () => {
         expect(collected.metadata.repoPreferenceCount).toBe(1);
         expect((collected.data.preferences as { global?: unknown }).global).toBeDefined();
 
-        const planResult = await domain.planWipe({ dataDir, store, includeWikis: false });
+        const planResult = await domain.planWipe({ dataDir, store });
         expect(planResult.counts.deletedRepoPreferences).toBe(1);
         expect(planResult.counts.deletedPreferences).toBe(true);
 
         const result = { errors: [] as string[] };
-        await domain.executeWipe({ dataDir, store, includeWikis: false }, planResult.plan, result);
+        await domain.executeWipe({ dataDir, store }, planResult.plan, result);
         expect(fs.existsSync(path.join(dataDir, 'preferences.json'))).toBe(false);
         expect(fs.existsSync(path.join(dataDir, 'repos', 'repo-1', 'preferences.json'))).toBe(false);
     });
@@ -444,9 +436,9 @@ describe('snapshot domain behavior', () => {
         const collected = await domain.collect({ dataDir, store });
         expect(collected.metadata.scheduleFileCount).toBe(1);
 
-        const planResult = await domain.planWipe({ dataDir, store, includeWikis: false });
+        const planResult = await domain.planWipe({ dataDir, store });
         const result = { errors: [] as string[] };
-        await domain.executeWipe({ dataDir, store, includeWikis: false }, planResult.plan, result);
+        await domain.executeWipe({ dataDir, store }, planResult.plan, result);
         expect(fs.existsSync(path.join(dataDir, 'repos', 'repo-1', 'schedules'))).toBe(false);
     });
 
@@ -455,11 +447,11 @@ describe('snapshot domain behavior', () => {
         const collected = await domain.collect({ dataDir, store });
         expect(collected.data).toEqual({});
 
-        const planResult = await domain.planWipe({ dataDir, store, includeWikis: false });
+        const planResult = await domain.planWipe({ dataDir, store });
         expect(planResult.counts.deletedGitOps).toBe(1);
 
         const result = { errors: [] as string[] };
-        await domain.executeWipe({ dataDir, store, includeWikis: false }, planResult.plan, result);
+        await domain.executeWipe({ dataDir, store }, planResult.plan, result);
         expect(fs.existsSync(path.join(dataDir, 'repos', 'repo-1', 'git-ops.json'))).toBe(false);
     });
 
@@ -497,7 +489,7 @@ describe('snapshot domain behavior', () => {
         fs.mkdirSync(empty, { recursive: true });
         const preserved = path.join(dataDir, 'repos', 'repo-2', 'other.png');
         fs.writeFileSync(preserved, 'unrelated image');
-        const ctx = { dataDir, store, includeWikis: false };
+        const ctx = { dataDir, store };
         const plan = await buildStorageWipePlan(ctx);
         expect(plan.domainPlans.get('browser-screenshots')).toEqual([first, second, empty]);
         for (const directory of [first, second, empty]) expect(fs.existsSync(directory)).toBe(true);

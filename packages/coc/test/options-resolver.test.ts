@@ -332,14 +332,12 @@ describe('resolveWipeDataOptions', () => {
         const config = makeConfig();
         const opts = {
             confirm: true,
-            includeWikis: true,
             dryRun: true,
         };
 
         const result = resolveWipeDataOptions(opts, config);
 
         expect(result.confirm).toBe(true);
-        expect(result.includeWikis).toBe(true);
         expect(result.dryRun).toBe(true);
     });
 
@@ -348,7 +346,6 @@ describe('resolveWipeDataOptions', () => {
         const result = resolveWipeDataOptions({}, config);
 
         expect(result.confirm).toBe(false);
-        expect(result.includeWikis).toBe(false);
         expect(result.dryRun).toBe(false);
     });
 

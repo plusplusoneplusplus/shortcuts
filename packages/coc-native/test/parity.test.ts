@@ -139,7 +139,7 @@ describe('native and TypeScript scorers rank identically', () => {
             // The filename-vs-path ranking cases: a basename match, a deeper
             // copy of the same name, and a path that only matches on its
             // directories.
-            'packages/deep-wiki/src/seeds/prompts.ts',
+            'packages/coc-agent/src/seeds/prompts.ts',
             'packages/forge/src/ai/prompts.ts',
             'packages/forge/src/ai/prompt-builder.ts',
             'packages/forge/src/utils/prompt-resolver.ts',

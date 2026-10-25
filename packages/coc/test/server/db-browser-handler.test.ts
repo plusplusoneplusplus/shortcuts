@@ -117,7 +117,7 @@ describe('DB Browser Handler', () => {
             expect(tableNames).toContain('processes');
             expect(tableNames).toContain('conversation_turns');
             expect(tableNames).toContain('workspaces');
-            expect(tableNames).toContain('wikis');
+            expect(tableNames).not.toContain('wikis');
             expect(tableNames).toContain('queue_tasks');
             expect(tableNames).toContain('queue_repo_state');
 

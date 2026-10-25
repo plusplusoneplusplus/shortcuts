@@ -1,8 +1,6 @@
 /**
  * Implements the `coc serve` command.
  * Starts the CoC (Copilot Of Copilot) web server.
- *
- * Mirrors packages/deep-wiki/src/commands/serve.ts pattern.
  */
 
 import * as fs from 'fs';

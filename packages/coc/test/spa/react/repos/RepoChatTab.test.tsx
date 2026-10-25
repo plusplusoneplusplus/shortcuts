@@ -33,7 +33,6 @@ import { buildRemoteCloneKey, getWorkspaceIdFromSelectionId } from '../../../../
 import { workspaceReadCacheKey } from '../../../../src/server/spa/client/react/api/workspaceReads';
 
 vi.mock('../../../../src/server/spa/client/react/repos', () => ({ ReposView: () => null }));
-vi.mock('../../../../src/server/spa/client/react/layout/TopBar', () => ({ SHOW_WIKI_TAB: false }));
 
 // ── Mock child components ──────────────────────────────────────────────
 
@@ -181,7 +180,12 @@ const mockMarkAllSeen = vi.fn().mockReturnValue(true);
 const mockMarkTasksSeen = vi.fn().mockReturnValue(true);
 const mockMarkUnseen = vi.fn().mockReturnValue(true);
 let mockUnseenTaskIds = new Set<string>();
-vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useUnseenChat', () => ({
+const mockBatchRead = vi.fn().mockResolvedValue({});
+vi.mock('../../../../src/server/spa/client/react/hooks/preferences/seenStateApi', async importOriginal => ({
+    ...await importOriginal<object>(), patchSeenState: (...args: unknown[]) => mockBatchRead(...args),
+}));
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useUnseenChat', async importOriginal => ({
+    ...await importOriginal<object>(),
     useUnseenChat: () => ({
         unseenProcessIds: mockUnseenTaskIds,
         markSeen: mockMarkSeen,
@@ -2691,6 +2695,22 @@ describe('RepoChatTab: collapsed-rail latest Sentinel shortcut', () => {
 
     const shortcutIn = (rail: HTMLElement) =>
         rail.querySelector<HTMLButtonElement>('[data-testid="split-workspace-left-sentinel"]');
+
+    it.each([undefined, 'remote:box-b:ws-1'])('batches Mark all read through the existing %s owner API without navigation', async sourceSelectionId => {
+        setupFetchMock({ history: [makeHistoryTask('queue_unread', { customTitle: 'Unread answer' })] });
+        mockUnseenTaskIds = new Set(['queue_unread']);
+        const rail = await renderWithRail({ workspaceId: 'ws-1', sourceSelectionId });
+        fireEvent.click(rail.querySelector('[data-testid="split-workspace-left-unread"]')!);
+        expect(mockBatchRead).not.toHaveBeenCalled();
+        const hash = location.hash;
+        mockMarkSeen.mockClear();
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Mark all read' })); });
+        expect(mockBatchRead).toHaveBeenCalledWith('ws-1', [{ processId: 'queue_unread', seenAt: '2026-01-01T00:00:00Z' }],
+            { baseUrl: sourceSelectionId ? 'https://rail-owner.example' : undefined });
+        expect(mockMarkSeen).not.toHaveBeenCalled();
+        expect(location.hash).toBe(hash);
+        expect(screen.getByRole('link', { name: 'Unread answer' })).toBeTruthy();
+    });
 
     it.each([
         ['ws-1', undefined],

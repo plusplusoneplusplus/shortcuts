@@ -213,11 +213,11 @@ describe('DelegatedJobStore', () => {
         const domain = createDelegatedJobsDomain();
         const context = { dataDir } as StorageSnapshotContext;
         expect(await domain.collect(context)).toEqual({ data: {}, metadata: {}, warnings: [] });
-        const wipe = await domain.planWipe({ ...context, includeWikis: false });
+        const wipe = await domain.planWipe({ ...context });
         expect(wipe.plan).toEqual([getRepoDataPath(dataDir, 'parent-repo', DELEGATED_JOBS_FILE)]);
         expect(rows()).toHaveLength(1);
         const errors = { errors: [] as string[] };
-        await domain.executeWipe({ ...context, includeWikis: false }, wipe.plan, errors);
+        await domain.executeWipe({ ...context }, wipe.plan, errors);
         expect(errors.errors).toEqual([]);
         expect(rows()).toEqual([]);
     });

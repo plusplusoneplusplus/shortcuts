@@ -37,10 +37,6 @@ vi.mock('../../../../src/server/spa/client/react/layout/StatusActions', () => ({
     StatusActions: () => <div data-testid="status-actions-stub" />,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/wiki/WikiView', () => ({
-    WikiView: () => <div data-testid="wiki-view-stub">wiki</div>,
-}));
-
 import { Router } from '../../../../src/server/spa/client/react/layout/Router';
 import { GlobalStatusDock } from '../../../../src/server/spa/client/react/layout/GlobalStatusDock';
 import { AdminDialog } from '../../../../src/server/spa/client/react/admin/AdminDialog';

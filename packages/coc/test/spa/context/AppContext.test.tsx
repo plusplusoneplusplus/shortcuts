@@ -37,17 +37,6 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         selectedRepoId: null,
         activeRepoSubTab: 'settings',
         reposSidebarCollapsed: false,
-        selectedWikiId: null,
-        selectedWikiComponentId: null,
-        wikiView: 'list',
-        wikiDetailInitialTab: null,
-        wikiDetailInitialAdminTab: null,
-        wikiAutoGenerate: false,
-        wikis: [],
-        selectedRepoWikiId: null,
-        repoWikiInitialTab: null,
-        repoWikiInitialAdminTab: null,
-        repoWikiInitialComponentId: null,
         selectedWorkflowName: null,
         selectedWorkflowRunProcessId: null,
         selectedScheduleId: null,
@@ -64,11 +53,10 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         repoTabState: {},
         repoRouteState: {},
         notePathState: {},
-        wikiTabState: {},
         repoSubTabNavState: {},
         settingsSection: 'info',
         hasSeenWelcome: false,
-        onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false },
+        onboardingProgress: { hasRunWorkflow: false, hasUsedChat: false },
         dismissedTips: [],
         preferencesLoaded: false,
         preferencesLoadFailed: false,
@@ -152,41 +140,15 @@ describe('AppContext reducer', () => {
             expect(result.activeTab).toBe('processes');
         });
 
-        it('sets hasOpenedWiki without performing persistence in the reducer', () => {
+        it('leaves onboardingProgress unchanged and performs no persistence', () => {
             const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
             vi.stubGlobal('fetch', fetchSpy);
             const state = makeState({
-                onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false },
+                onboardingProgress: { hasRunWorkflow: false, hasUsedChat: false },
             });
-            const result = appReducer(state, { type: 'SET_ACTIVE_TAB', tab: 'wiki' });
-            expect(result.activeTab).toBe('wiki');
-            expect(result.onboardingProgress.hasOpenedWiki).toBe(true);
-            expect(fetchSpy).not.toHaveBeenCalled();
-            vi.unstubAllGlobals();
-        });
-
-        it('does not perform persistence when hasOpenedWiki is already true', () => {
-            const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
-            vi.stubGlobal('fetch', fetchSpy);
-            const state = makeState({
-                onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: true, hasUsedChat: false },
-            });
-            const result = appReducer(state, { type: 'SET_ACTIVE_TAB', tab: 'wiki' });
-            expect(result.activeTab).toBe('wiki');
-            expect(result.onboardingProgress.hasOpenedWiki).toBe(true);
-            expect(fetchSpy).not.toHaveBeenCalled();
-            vi.unstubAllGlobals();
-        });
-
-        it('does not change hasOpenedWiki when switching to a non-wiki tab', () => {
-            const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
-            vi.stubGlobal('fetch', fetchSpy);
-            const state = makeState({
-                onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false },
-            });
-            const result = appReducer(state, { type: 'SET_ACTIVE_TAB', tab: 'repos' });
-            expect(result.activeTab).toBe('repos');
-            expect(result.onboardingProgress.hasOpenedWiki).toBe(false);
+            const result = appReducer(state, { type: 'SET_ACTIVE_TAB', tab: 'stats' });
+            expect(result.activeTab).toBe('stats');
+            expect(result.onboardingProgress).toBe(state.onboardingProgress);
             expect(fetchSpy).not.toHaveBeenCalled();
             vi.unstubAllGlobals();
         });
@@ -216,12 +178,12 @@ describe('AppContext reducer', () => {
                 type: 'SET_WELCOME_PREFERENCES',
                 payload: {
                     hasSeenWelcome: true,
-                    onboardingProgress: { hasRunWorkflow: true, hasOpenedWiki: false, hasUsedChat: true },
+                    onboardingProgress: { hasRunWorkflow: true, hasUsedChat: true },
                     dismissedTips: ['tip-1', 'tip-2'],
                 },
             });
             expect(result.hasSeenWelcome).toBe(true);
-            expect(result.onboardingProgress).toEqual({ hasRunWorkflow: true, hasOpenedWiki: false, hasUsedChat: true });
+            expect(result.onboardingProgress).toEqual({ hasRunWorkflow: true, hasUsedChat: true });
             expect(result.dismissedTips).toEqual(['tip-1', 'tip-2']);
             expect(result.preferencesLoaded).toBe(true);
         });
@@ -229,25 +191,25 @@ describe('AppContext reducer', () => {
         it('keeps defaults when payload fields are undefined', () => {
             const state = makeState({
                 hasSeenWelcome: true,
-                onboardingProgress: { hasRunWorkflow: true, hasOpenedWiki: false, hasUsedChat: false },
+                onboardingProgress: { hasRunWorkflow: true, hasUsedChat: false },
                 dismissedTips: ['tip-a'],
             });
             const result = appReducer(state, { type: 'SET_WELCOME_PREFERENCES', payload: {} });
             expect(result.hasSeenWelcome).toBe(true);
-            expect(result.onboardingProgress).toEqual({ hasRunWorkflow: true, hasOpenedWiki: false, hasUsedChat: false });
+            expect(result.onboardingProgress).toEqual({ hasRunWorkflow: true, hasUsedChat: false });
             expect(result.dismissedTips).toEqual(['tip-a']);
             expect(result.preferencesLoaded).toBe(true);
         });
 
         it('merges partial onboardingProgress without clobbering other fields', () => {
             const state = makeState({
-                onboardingProgress: { hasRunWorkflow: true, hasOpenedWiki: false, hasUsedChat: false },
+                onboardingProgress: { hasRunWorkflow: true, hasUsedChat: false },
             });
             const result = appReducer(state, {
                 type: 'SET_WELCOME_PREFERENCES',
-                payload: { onboardingProgress: { hasOpenedWiki: true } },
+                payload: { onboardingProgress: { hasUsedChat: true } },
             });
-            expect(result.onboardingProgress).toEqual({ hasRunWorkflow: true, hasOpenedWiki: true, hasUsedChat: false });
+            expect(result.onboardingProgress).toEqual({ hasRunWorkflow: true, hasUsedChat: true });
         });
     });
 
@@ -271,17 +233,17 @@ describe('AppContext reducer', () => {
     describe('UPDATE_ONBOARDING', () => {
         it('merges partial progress without clobbering other fields', () => {
             const state = makeState({
-                onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false },
+                onboardingProgress: { hasRunWorkflow: false, hasUsedChat: false },
             });
             const result = appReducer(state, { type: 'UPDATE_ONBOARDING', payload: { hasRunWorkflow: true } });
-            expect(result.onboardingProgress).toEqual({ hasRunWorkflow: true, hasOpenedWiki: false, hasUsedChat: false });
+            expect(result.onboardingProgress).toEqual({ hasRunWorkflow: true, hasUsedChat: false });
         });
 
         it('does not perform persistence in the reducer', () => {
             const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
             vi.stubGlobal('fetch', fetchSpy);
             const state = makeState({
-                onboardingProgress: { hasRunWorkflow: false, hasOpenedWiki: true, hasUsedChat: false },
+                onboardingProgress: { hasRunWorkflow: false, hasUsedChat: false },
             });
             appReducer(state, { type: 'UPDATE_ONBOARDING', payload: { hasUsedChat: true } });
             expect(fetchSpy).not.toHaveBeenCalled();
@@ -418,7 +380,6 @@ describe('AppContext reducer', () => {
             const state = makeState({
                 onboardingProgress: {
                     hasRunWorkflow: true,
-                    hasOpenedWiki: false,
                     hasUsedChat: true,
                     settingsVisited: false,
                     dismissed: false,

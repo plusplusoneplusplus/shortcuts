@@ -189,7 +189,7 @@ describe('CodaStore', () => {
         store.suppress(owner, 'a', 'done', 'fp');
         fixture.close();
         const domain = createSentinelTodosDomain();
-        const ctx = { dataDir: fixture.dataDir, store: undefined, includeWikis: false };
+        const ctx = { dataDir: fixture.dataDir, store: undefined };
         const result = { errors: [] as string[] };
         await domain.executeWipe(ctx as never, (await domain.planWipe(ctx as never)).plan, result);
         expect(result.errors).toEqual([]);

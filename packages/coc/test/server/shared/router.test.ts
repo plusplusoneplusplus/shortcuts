@@ -1,6 +1,6 @@
 /**
  * Unit tests for the shared Router implementation used by both
- * main server and wiki server routers.
+ * CoC server routers.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';

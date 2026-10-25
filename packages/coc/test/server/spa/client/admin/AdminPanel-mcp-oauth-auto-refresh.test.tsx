@@ -106,7 +106,7 @@ function mockPreferencesResponse() {
 function mockStatsResponse() {
     return {
         ok: true,
-        json: async () => ({ processCount: 0, wikiCount: 0, totalBytes: 0 }),
+        json: async () => ({ processCount: 0, totalBytes: 0 }),
     };
 }
 

@@ -19,8 +19,6 @@ import { openWorkResourceRoute } from '../features/repo-detail/unified-right-pan
 import type {
     DashboardTab,
     RepoSubTab,
-    WikiProjectTab,
-    WikiAdminTab,
     MemorySubTab,
     SkillsSubTab,
     AdminSubTab,
@@ -30,8 +28,6 @@ import type {
 import {
     SETTINGS_SECTION_VALUES,
     REPO_SUB_TAB_VALUES,
-    WIKI_PROJECT_TAB_VALUES,
-    WIKI_ADMIN_TAB_VALUES,
 } from '../types/dashboard';
 import type { NativeCliSessionProviderId } from '@plusplusoneplusplus/coc-client';
 import { isNativeCliProviderAvailable, isNativeCliSessionProviderId } from '@plusplusoneplusplus/coc-client';
@@ -58,7 +54,6 @@ import {
 export function tabFromHash(hash: string): DashboardTab | null {
     const h = hashSegments(hash)[0].split('?')[0];
     if (h === 'repos' || h === 'tasks') return 'repos';
-    if (h === 'wiki') return 'wiki';
     if (h === 'reports') return 'reports';
     if (h === 'stats') return 'stats';
     if (h === 'memory') return 'memory';
@@ -68,38 +63,6 @@ export function tabFromHash(hash: string): DashboardTab | null {
     if (h === 'dreams-admin') return 'dreams-admin';
     if (h === 'admin') return 'admin';
     return null;
-}
-
-export const VALID_WIKI_PROJECT_TABS: Set<string> = new Set(WIKI_PROJECT_TAB_VALUES);
-export const VALID_WIKI_ADMIN_TABS: Set<string> = new Set(WIKI_ADMIN_TAB_VALUES);
-
-export interface WikiDeepLink {
-    wikiId: string | null;
-    tab: WikiProjectTab | null;
-    componentId: string | null;
-    adminTab: WikiAdminTab | null;
-}
-
-export function parseWikiDeepLink(hash: string): WikiDeepLink {
-    const parts = hashSegments(hash);
-    if (parts[0] !== 'wiki' || !parts[1]) return { wikiId: null, tab: null, componentId: null, adminTab: null };
-
-    const wikiId = decodeSegment(parts[1]);
-
-    if (parts.length >= 4 && parts[2] === 'component' && parts[3]) {
-        return { wikiId, tab: 'browse', componentId: decodeSegment(parts[3]), adminTab: null };
-    }
-
-    if (parts.length >= 3 && VALID_WIKI_PROJECT_TABS.has(parts[2])) {
-        const tab = parts[2] as WikiProjectTab;
-        let adminTab: WikiAdminTab | null = null;
-        if (tab === 'admin' && parts.length >= 4 && VALID_WIKI_ADMIN_TABS.has(parts[3])) {
-            adminTab = parts[3] as WikiAdminTab;
-        }
-        return { wikiId, tab, componentId: null, adminTab };
-    }
-
-    return { wikiId, tab: null, componentId: null, adminTab: null };
 }
 
 export function parseProcessDeepLink(hash: string): string | null {
@@ -830,24 +793,6 @@ function resolveReposRoute(hashIn: string, ctx: RouteContext, effects: RouteEffe
             });
         }
     }
-    // Wiki deep-link: #repos/{id}/wiki/{wikiId} and deeper paths
-    if (parts[2] === 'wiki' && parts[3]) {
-        const wikiId = decodeSegment(parts[3]);
-        if (parts[4] === 'component' && parts[5]) {
-            effects.push({ kind: 'app', action: { type: 'SET_REPO_WIKI_DEEP_LINK', wikiId, tab: 'browse', componentId: decodeSegment(parts[5]) } });
-        } else if (parts[4] && VALID_WIKI_PROJECT_TABS.has(parts[4])) {
-            const tab = parts[4] as WikiProjectTab;
-            let adminTab: WikiAdminTab | null = null;
-            if (tab === 'admin' && parts[5] && VALID_WIKI_ADMIN_TABS.has(parts[5])) {
-                adminTab = parts[5] as WikiAdminTab;
-            }
-            effects.push({ kind: 'app', action: { type: 'SET_REPO_WIKI_DEEP_LINK', wikiId, tab, adminTab } });
-        } else {
-            effects.push({ kind: 'app', action: { type: 'SET_REPO_WIKI_ID', wikiId } });
-        }
-    } else if (parts[2] === 'wiki') {
-        effects.push({ kind: 'app', action: { type: 'SET_REPO_WIKI_ID', wikiId: null } });
-    }
     // Workflow detail deep-link: #repos/{id}/workflow/{processId}
     if (parts[2] === 'workflow' && parts[3]) {
         effects.push({ kind: 'app', action: { type: 'SET_WORKFLOW_PROCESS', processId: decodeSegment(parts[3]) } });
@@ -935,20 +880,6 @@ export function resolveDashboardRoute(rawHash: string, ctx: RouteContext): Route
 
     if (tab === 'repos') {
         resolveReposRoute(hash, ctx, effects);
-    }
-
-    // Parse wiki deep links: #wiki/:id, #wiki/:id/:tab, #wiki/:id/component/:compId
-    if (tab === 'wiki') {
-        const wikiLink = parseWikiDeepLink('#' + hash);
-        if (wikiLink.wikiId) {
-            if (wikiLink.tab) {
-                effects.push({ kind: 'app', action: { type: 'SELECT_WIKI_WITH_TAB', wikiId: wikiLink.wikiId, tab: wikiLink.tab, adminTab: wikiLink.adminTab, componentId: wikiLink.componentId } });
-            } else {
-                effects.push({ kind: 'app', action: { type: 'SELECT_WIKI', wikiId: wikiLink.wikiId } });
-            }
-        } else {
-            effects.push({ kind: 'app', action: { type: 'SELECT_WIKI', wikiId: null } });
-        }
     }
 
     // Parse memory sub-tab deep links: #memory/:subTab

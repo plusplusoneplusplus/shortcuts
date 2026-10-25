@@ -273,7 +273,7 @@ describe('Sentinel job REST routes', () => {
         expect(onConfigChange).toHaveBeenCalledTimes(10); // 10 successful creates only
     });
 
-    it('rejects editing or deleting a job with an active run or an undelivered handback', async () => {
+    it('rejects editing or deleting a job with an active run', async () => {
         const created = await request('POST', base, input);
         const id = created.body.id;
         const started = await request('POST', `${base}/${id}/runs`);

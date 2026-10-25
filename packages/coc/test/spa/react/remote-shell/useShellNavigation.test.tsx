@@ -2,7 +2,7 @@
  * useShellNavigation — selection + sub-tab routing for the remote-first shell.
  *
  * Focus: switching a workspace sub-tab must pull back onto the repos tab. The
- * shell header now renders on the top-level pages (Admin / Settings / Wiki) too,
+ * shell header now renders on the top-level pages (Admin / Settings) too,
  * so a sub-tab click from there has to navigate into the workspace, not just flip
  * the remembered sub-tab.
  *

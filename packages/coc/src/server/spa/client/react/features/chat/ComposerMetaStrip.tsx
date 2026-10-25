@@ -12,7 +12,7 @@
  * When breakdown props (sessionSystemTokens / sessionToolTokens /
  * sessionConversationTokens) are provided, the ctx bar renders coloured
  * segments (purple=system, blue=tools, green=conversation, gray=other) and
- * a breakdown popover appears on hover/tap. Sentinel chats pass
+ * a breakdown popover appears on hover/tap. Chats pass
  * `autoCompact`, which adds a threshold marker, a status badge and the
  * auto-compact section to the shared popover.
  */
@@ -52,7 +52,7 @@ export interface ComposerMetaStripProps {
      * percentage. Tooltips and popovers retain the full details.
      */
     compact?: boolean;
-    /** Sentinel auto-compact state and popover section. */
+    /** Chat auto-compact state and popover section. */
     autoCompact?: ContextAutoCompact;
 }
 

@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { SqliteProcessStore, FileProcessStore } from '@plusplusoneplusplus/forge';
-import type { WorkspaceInfo, WikiInfo } from '@plusplusoneplusplus/forge';
+import type { WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import { migrateWorkspaceRegistryIfNeeded } from '../../src/server/storage/startup-workspace-migration';
 
 function createTempDir(): string {
@@ -12,10 +12,6 @@ function createTempDir(): string {
 
 function makeWorkspace(id: string, name: string): WorkspaceInfo {
     return { id, name, rootPath: `/repos/${name}` };
-}
-
-function makeWiki(id: string, name: string): WikiInfo {
-    return { id, name, wikiDir: `/wikis/${name}`, aiEnabled: true, registeredAt: new Date().toISOString() };
 }
 
 describe('migrateWorkspaceRegistryIfNeeded', () => {
@@ -46,49 +42,26 @@ describe('migrateWorkspaceRegistryIfNeeded', () => {
         expect(stored.map(w => w.id).sort()).toEqual(['ws-1', 'ws-2']);
     });
 
-    it('migrates wikis from JSON to SQLite when file exists', async () => {
-        fs.writeFileSync(path.join(dataDir, 'workspaces.json'), JSON.stringify([]));
-        const wikis = [makeWiki('wiki-1', 'docs'), makeWiki('wiki-2', 'api-docs')];
-        fs.writeFileSync(path.join(dataDir, 'wikis.json'), JSON.stringify(wikis));
-
-        const result = await migrateWorkspaceRegistryIfNeeded(dataDir, store);
-
-        expect(result.migrated).toBe(true);
-        expect(result.wikiCount).toBe(2);
-        const stored = await store.getWikis();
-        expect(stored.map(w => w.id).sort()).toEqual(['wiki-1', 'wiki-2']);
-    });
-
-    it('migrates both workspaces and wikis together', async () => {
-        fs.writeFileSync(path.join(dataDir, 'workspaces.json'), JSON.stringify([makeWorkspace('ws-1', 'proj')]));
-        fs.writeFileSync(path.join(dataDir, 'wikis.json'), JSON.stringify([makeWiki('wiki-1', 'docs')]));
-
-        const result = await migrateWorkspaceRegistryIfNeeded(dataDir, store);
-
-        expect(result).toEqual({ migrated: true, workspaceCount: 1, wikiCount: 1 });
-    });
-
     // --- Rename / cleanup ---
 
-    it('renames files to .migrated after successful migration', async () => {
+    it('renames workspaces.json to .migrated after successful migration', async () => {
         fs.writeFileSync(path.join(dataDir, 'workspaces.json'), JSON.stringify([makeWorkspace('ws-1', 'proj')]));
-        fs.writeFileSync(path.join(dataDir, 'wikis.json'), JSON.stringify([makeWiki('wiki-1', 'docs')]));
 
         await migrateWorkspaceRegistryIfNeeded(dataDir, store);
 
         expect(fs.existsSync(path.join(dataDir, 'workspaces.json'))).toBe(false);
         expect(fs.existsSync(path.join(dataDir, 'workspaces.json.migrated'))).toBe(true);
-        expect(fs.existsSync(path.join(dataDir, 'wikis.json'))).toBe(false);
-        expect(fs.existsSync(path.join(dataDir, 'wikis.json.migrated'))).toBe(true);
     });
 
-    it('renames only workspaces.json when wikis.json does not exist', async () => {
+    it('leaves a legacy wikis.json untouched', async () => {
+        const legacy = JSON.stringify([{ id: 'wiki-1', name: 'docs', wikiDir: '/wikis/docs' }]);
         fs.writeFileSync(path.join(dataDir, 'workspaces.json'), JSON.stringify([]));
+        fs.writeFileSync(path.join(dataDir, 'wikis.json'), legacy);
 
-        await migrateWorkspaceRegistryIfNeeded(dataDir, store);
+        const result = await migrateWorkspaceRegistryIfNeeded(dataDir, store);
 
-        expect(fs.existsSync(path.join(dataDir, 'workspaces.json'))).toBe(false);
-        expect(fs.existsSync(path.join(dataDir, 'workspaces.json.migrated'))).toBe(true);
+        expect(result).toEqual({ migrated: true, workspaceCount: 0 });
+        expect(fs.readFileSync(path.join(dataDir, 'wikis.json'), 'utf-8')).toBe(legacy);
         expect(fs.existsSync(path.join(dataDir, 'wikis.json.migrated'))).toBe(false);
     });
 
@@ -97,7 +70,7 @@ describe('migrateWorkspaceRegistryIfNeeded', () => {
     it('is a no-op when workspaces.json does not exist', async () => {
         const result = await migrateWorkspaceRegistryIfNeeded(dataDir, store);
 
-        expect(result).toEqual({ migrated: false, workspaceCount: 0, wikiCount: 0 });
+        expect(result).toEqual({ migrated: false, workspaceCount: 0 });
     });
 
     it('is a no-op when store is FileProcessStore', async () => {
@@ -106,7 +79,7 @@ describe('migrateWorkspaceRegistryIfNeeded', () => {
 
         const result = await migrateWorkspaceRegistryIfNeeded(dataDir, fileStore);
 
-        expect(result).toEqual({ migrated: false, workspaceCount: 0, wikiCount: 0 });
+        expect(result).toEqual({ migrated: false, workspaceCount: 0 });
         // File should still be there — not renamed
         expect(fs.existsSync(path.join(dataDir, 'workspaces.json'))).toBe(true);
     });
@@ -115,25 +88,20 @@ describe('migrateWorkspaceRegistryIfNeeded', () => {
 
     it('is idempotent — running twice does not duplicate entries', async () => {
         const workspaces = [makeWorkspace('ws-1', 'proj')];
-        const wikis = [makeWiki('wiki-1', 'docs')];
         fs.writeFileSync(path.join(dataDir, 'workspaces.json'), JSON.stringify(workspaces));
-        fs.writeFileSync(path.join(dataDir, 'wikis.json'), JSON.stringify(wikis));
 
         // First run
         await migrateWorkspaceRegistryIfNeeded(dataDir, store);
 
         // Restore files to simulate re-run
         fs.renameSync(path.join(dataDir, 'workspaces.json.migrated'), path.join(dataDir, 'workspaces.json'));
-        fs.renameSync(path.join(dataDir, 'wikis.json.migrated'), path.join(dataDir, 'wikis.json'));
 
         // Second run
         const result = await migrateWorkspaceRegistryIfNeeded(dataDir, store);
 
-        expect(result).toEqual({ migrated: true, workspaceCount: 1, wikiCount: 1 });
+        expect(result).toEqual({ migrated: true, workspaceCount: 1 });
         const storedWs = await store.getWorkspaces();
         expect(storedWs).toHaveLength(1);
-        const storedWikis = await store.getWikis();
-        expect(storedWikis).toHaveLength(1);
     });
 
     it('merges with pre-existing DB entries without removing them', async () => {
@@ -164,26 +132,12 @@ describe('migrateWorkspaceRegistryIfNeeded', () => {
         stderrSpy.mockRestore();
     });
 
-    it('handles malformed wikis.json gracefully', async () => {
-        fs.writeFileSync(path.join(dataDir, 'workspaces.json'), JSON.stringify([makeWorkspace('ws-1', 'proj')]));
-        fs.writeFileSync(path.join(dataDir, 'wikis.json'), 'not json');
-        const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-
-        const result = await migrateWorkspaceRegistryIfNeeded(dataDir, store);
-
-        expect(result.workspaceCount).toBe(1);
-        expect(result.wikiCount).toBe(0);
-        const messages = stderrSpy.mock.calls.map(c => String(c[0]));
-        expect(messages.some(m => m.includes('malformed'))).toBe(true);
-        stderrSpy.mockRestore();
-    });
-
     it('handles empty array in workspaces.json', async () => {
         fs.writeFileSync(path.join(dataDir, 'workspaces.json'), JSON.stringify([]));
 
         const result = await migrateWorkspaceRegistryIfNeeded(dataDir, store);
 
-        expect(result).toEqual({ migrated: true, workspaceCount: 0, wikiCount: 0 });
+        expect(result).toEqual({ migrated: true, workspaceCount: 0 });
         expect(fs.existsSync(path.join(dataDir, 'workspaces.json.migrated'))).toBe(true);
     });
 

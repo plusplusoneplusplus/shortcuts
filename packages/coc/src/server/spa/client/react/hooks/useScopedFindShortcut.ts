@@ -53,6 +53,12 @@ export interface ScopedFindShortcutOptions {
     claimsBodyFocus?: boolean;
     /** When false, the shortcut is inert. Default true. */
     enabled?: boolean;
+    /**
+     * When true, text-entry surfaces inside this panel keep their own (or the
+     * native) find, except the panel's search box, marked `data-scoped-find-input`.
+     * Default false: focus anywhere inside the panel opens its search.
+     */
+    yieldToNestedEditors?: boolean;
 }
 
 /**
@@ -61,7 +67,8 @@ export interface ScopedFindShortcutOptions {
  * Routing rules (checked in order):
  *  - ignore when the container is unmounted or hidden (`offsetParent === null`);
  *  - ignore when focus is in the detail pane (native find wins);
- *  - handle when focus is inside this container;
+ *  - handle when focus is inside this container (with `yieldToNestedEditors`,
+ *    except a nested text-entry surface other than the panel's search box);
  *  - when focus is elsewhere: ignore if another find-scope owns it; ignore if
  *    focus is on a text-entry surface in another region (e.g. the workspace
  *    right dock's terminal/inputs — that surface owns its own Ctrl+F, so native
@@ -77,13 +84,15 @@ export function useScopedFindShortcut(
     onTrigger: () => void,
     options: ScopedFindShortcutOptions = {},
 ): void {
-    const { claimsBodyFocus = true, enabled = true } = options;
+    const { claimsBodyFocus = true, enabled = true, yieldToNestedEditors = false } = options;
     const onTriggerRef = useRef(onTrigger);
     onTriggerRef.current = onTrigger;
     const claimsBodyFocusRef = useRef(claimsBodyFocus);
     claimsBodyFocusRef.current = claimsBodyFocus;
     const enabledRef = useRef(enabled);
     enabledRef.current = enabled;
+    const yieldToNestedEditorsRef = useRef(yieldToNestedEditors);
+    yieldToNestedEditorsRef.current = yieldToNestedEditors;
 
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
@@ -96,6 +105,8 @@ export function useScopedFindShortcut(
             if (isWithinDetailPane(e.target)) return;
             const target = e.target;
             const insideThis = target instanceof Node && container.contains(target);
+            if (insideThis && yieldToNestedEditorsRef.current && isEditableTarget(target)
+                && !(target as Element).closest('[data-scoped-find-input]')) return;
             if (!insideThis) {
                 const targetEl = target instanceof Element ? target : null;
                 const owningScope = targetEl ? targetEl.closest('[data-find-scope]') : null;

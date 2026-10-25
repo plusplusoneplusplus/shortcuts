@@ -47,7 +47,6 @@ This table locates boundaries, not individual implementation classes.
 | `memory/` | Memory integration; [memory system](memory-system.md) |
 | `ralph/`, `for-each/`, `map-reduce/`, `dreams/` | Iterative, sequential, parallel and background orchestration; [Ralph](ralph.md), [admin gates](admin-config.md) |
 | `decisions/` | Shared structured-decision service for routes and tools |
-| `wiki/` | Wiki manager and request adapters; [wiki serving](wiki-serving.md) |
 | `canvas/`, `kusto/` | Canvas persistence and query execution; [canvas](spa/canvas.md) |
 | `streaming/` | Process SSE and dashboard WebSockets; [streaming](streaming-architecture.md) |
 | `terminal/`, `language-servers/` | PTY and language-server lifecycles; [language servers](language-servers.md) |
@@ -290,7 +289,7 @@ dependencies supply the owner-bound unattended runtime through
 `SentinelRefrainService` is the caller: `routes/index.ts` injects `bridge.runRefrainGate` and
 the live `features.toolScripting` flag. The service keeps one in-flight gate per
 owner/job shared by both admission paths. Each prompt uses saved instructions and
-its current nonempty gate JSON, with job-role/handback framing. Gates may return
+its current nonempty gate JSON, with job-role framing. Gates may return
 selected To-do data; Coda owns automatic To-do review inputs. Empty results save
 state and record a skip with the original trigger; zero admits. A paused schedule
 permits manual gate admission, while a paused gate blocks it. Manual gate errors
@@ -845,11 +844,11 @@ top-level `CoC ·`-attributed safe-HTML message and saves a `teams-thread-roots`
 replies route to the job by root (a reply inside the dispatcher's thread would route to the
 dispatcher) and user selection is untouched.
 
-Automatic Sentinel compaction notices (WhatsApp only) track `payload.trigger: 'auto'` tasks on
+Automatic chat compaction notices (WhatsApp only) track `payload.trigger: 'auto'` tasks on
 `taskAdded`. `messaging/auto-compaction-origins.ts` picks the destination from the request whose
 response triggered it: that request's own WhatsApp receipt (current group, not released or
 notice-only), else its desktop-mirror capture while the mirror is enabled. Nothing is sent
-for unbound, manual, non-Sentinel or other-workspace cases. `taskStarted` records one
+for unbound, manual, Refrain job or other-workspace cases. `taskStarted` records one
 `<taskId>:start` notice only while the compaction record still names the task. The outcome
 follows on the existing terminal path: fixed wording plus removed-message/freed-token counts,
 never summaries, errors or history. Cancellation before start says it never ran. An unsent

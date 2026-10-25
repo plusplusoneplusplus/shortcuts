@@ -38,7 +38,6 @@ interface MigrationResult {
     processes?: number;
     archivedProcesses?: number;
     workspaces?: number;
-    wikis?: number;
     backupPath?: string;
     backupSizeBytes?: number;
     error?: string;
@@ -54,7 +53,7 @@ const PHASE_LABELS = [
     'Backing up data',
     'Creating database schema',
     'Migrating processes',
-    'Migrating workspaces & wikis',
+    'Migrating workspaces',
     'Validating migrated data',
     'Cleanup & restart',
 ];
@@ -465,7 +464,6 @@ export default function StorageSection() {
                     processes: data.processes,
                     archivedProcesses: data.archivedProcesses,
                     workspaces: data.workspaces,
-                    wikis: data.wikis,
                     backupPath: data.backupPath,
                     backupSizeBytes: data.backupSizeBytes,
                 });
@@ -718,9 +716,7 @@ export default function StorageSection() {
                         <p>✅ Successfully migrated to SQLite</p>
                         <ul className="list-disc pl-5 space-y-0.5 mt-2">
                             {result?.processes != null && <li>{result.processes} processes migrated</li>}
-                            {(result?.workspaces != null || result?.wikis != null) && (
-                                <li>{result?.workspaces ?? 0} workspaces{result?.wikis ? `, ${result.wikis} wikis` : ''}</li>
-                            )}
+                            {result?.workspaces != null && <li>{result.workspaces} workspaces</li>}
                             {result?.archivedProcesses != null && result.archivedProcesses > 0 && (
                                 <li>{result.archivedProcesses} archived processes preserved</li>
                             )}

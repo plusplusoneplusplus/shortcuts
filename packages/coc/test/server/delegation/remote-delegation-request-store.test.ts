@@ -263,12 +263,12 @@ describe('RemoteDelegationRequestStore', () => {
         const domain = createDelegatedJobsDomain();
         const context = { dataDir, store: {} } as StorageSnapshotContext;
         expect((await domain.collect(context)).data).toEqual({});
-        const plan = await domain.planWipe({ ...context, includeWikis: false });
+        const plan = await domain.planWipe({ ...context });
         expect(plan.plan).toEqual([
             getRepoDataPath(dataDir, workspaceId, DELEGATED_JOBS_FILE), file(),
         ]);
         const result = { errors: [] as string[] };
-        await domain.executeWipe({ ...context, includeWikis: false }, plan.plan, result);
+        await domain.executeWipe({ ...context }, plan.plan, result);
         expect(result.errors).toEqual([]);
         expect(restart().list(workspaceId)).toEqual([]);
         expect(jobs.list(workspaceId)).toEqual([]);

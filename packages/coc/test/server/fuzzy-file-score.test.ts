@@ -235,7 +235,7 @@ describe('rankFuzzyMatches', () => {
         // Every one of these is a tier-2 match with the same quality, so the
         // whole ordering comes from the tie-breaks.
         const paths = [
-            'packages/deep-wiki/src/seeds/prompts.ts',
+            'packages/coc-agent/src/seeds/prompts.ts',
             'packages/forge/src/ai/prompt-builder.ts',
             'packages/forge/src/ai/prompts.ts',
             'src/prompts.test.ts',
@@ -244,7 +244,7 @@ describe('rankFuzzyMatches', () => {
         expect(new Set(ranked.map(m => m.score)).size).toBe(1);
         expect(ranked.map(m => m.path)).toEqual([
             'packages/forge/src/ai/prompts.ts',
-            'packages/deep-wiki/src/seeds/prompts.ts',
+            'packages/coc-agent/src/seeds/prompts.ts',
             'src/prompts.test.ts',
             'packages/forge/src/ai/prompt-builder.ts',
         ]);
@@ -254,7 +254,7 @@ describe('rankFuzzyMatches', () => {
         // `command-types.ts` used to tie `prompt-builder.ts` on path length,
         // and `wipe-data.ts` used to outrank an exact filename prefix match.
         const paths = [
-            'packages/deep-wiki/src/seeds/prompts.ts',
+            'packages/coc-agent/src/seeds/prompts.ts',
             'packages/forge/src/ai/command-types.ts',
             'packages/forge/src/ai/prompt-builder.ts',
             'packages/coc/src/commands/wipe-data.ts',
@@ -262,7 +262,7 @@ describe('rankFuzzyMatches', () => {
         ];
         const ranked = rankFuzzyMatches('prompt', paths, 10).map(m => m.path);
         expect(ranked.slice(0, 3)).toEqual([
-            'packages/deep-wiki/src/seeds/prompts.ts',
+            'packages/coc-agent/src/seeds/prompts.ts',
             'packages/forge/src/ai/prompt-builder.ts',
             'packages/forge/src/utils/prompt-resolver.ts',
         ]);

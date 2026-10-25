@@ -113,16 +113,10 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
             if (existing) workspaces.set(id, { ...existing, ...updates });
             return undefined;
         }),
-        getWikis: vi.fn(async () => []),
-        registerWiki: vi.fn(async () => {}),
-        removeWiki: vi.fn(async () => false),
-        updateWiki: vi.fn(async () => undefined),
         clearAllWorkspaces: vi.fn(async () => 0),
-        clearAllWikis: vi.fn(async () => 0),
         getStorageStats: vi.fn(async () => ({
             totalProcesses: processes.size,
             totalWorkspaces: 0,
-            totalWikis: 0,
             storageSize: 0,
         })),
         onProcessOutput: vi.fn((_id: string, _callback: any) => () => {}),

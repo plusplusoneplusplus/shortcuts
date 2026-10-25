@@ -50,15 +50,15 @@ fn draining_starts_a_fresh_window() {
 fn subscriptions_keep_independent_ids_and_debounce_windows() {
     let now = Instant::now();
     let mut notes = PendingBatch::new(1, 300);
-    let mut wiki = PendingBatch::new(2, 2000);
+    let mut docs = PendingBatch::new(2, 2000);
     notes.record_path("a.md".into(), now);
-    wiki.record_path("a.md".into(), now);
+    docs.record_path("a.md".into(), now);
     let notes_batch = notes.drain_ready(after(now, 300)).unwrap();
     assert_eq!(notes_batch.subscription_id, 1);
-    assert_eq!(wiki.drain_ready(after(now, 300)), None);
-    let wiki_batch = wiki.drain_ready(after(now, 2000)).unwrap();
-    assert_eq!(wiki_batch.subscription_id, 2);
-    assert_eq!(notes_batch.paths, wiki_batch.paths);
+    assert_eq!(docs.drain_ready(after(now, 300)), None);
+    let docs_batch = docs.drain_ready(after(now, 2000)).unwrap();
+    assert_eq!(docs_batch.subscription_id, 2);
+    assert_eq!(notes_batch.paths, docs_batch.paths);
 }
 
 #[test]

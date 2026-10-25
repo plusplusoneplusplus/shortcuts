@@ -139,7 +139,6 @@ test.describe('Admin Panel (008)', () => {
         await navigateToAdmin(page, serverUrl);
 
         await expect(page.locator('[data-testid="stat-processes"]')).toHaveCount(0);
-        await expect(page.locator('[data-testid="stat-wikis"]')).toHaveCount(0);
         await expect(page.locator('[data-testid="stat-disk"]')).toHaveCount(0);
         await expect(page.locator('#admin-refresh-stats')).toHaveCount(0);
     });
@@ -174,26 +173,21 @@ test.describe('Admin Panel (008)', () => {
         expect(previewText!.length).toBeGreaterThan(5);
     });
 
-    test('8.6 preview with include-wikis checkbox', async ({ page, serverUrl }) => {
-        await seedProcess(serverUrl, 'admin-preview-wikis-1');
+    test('8.6 preview has no include-wikis option and sends no wiki flag', async ({ page, serverUrl }) => {
+        await seedProcess(serverUrl, 'admin-preview-nowiki-1');
 
         await navigateToAdmin(page, serverUrl);
         await page.click('[data-testid="admin-tab-data"]');
 
-        // Check include wikis checkbox
-        await page.check('#admin-include-wikis');
-        expect(await page.isChecked('#admin-include-wikis')).toBe(true);
+        await expect(page.locator('#admin-include-wikis')).toHaveCount(0);
 
-        // Click preview — the request should include includeWikis=true
-        const apiPromise = page.waitForRequest(req =>
-            req.url().includes('/admin/data/stats') && req.url().includes('includeWikis=true'),
-        );
+        const apiPromise = page.waitForRequest(req => req.url().includes('/admin/data/stats'));
         await page.click('#admin-preview-wipe');
-        await apiPromise;
+        const req = await apiPromise;
+        expect(req.url()).not.toContain('includeWikis');
 
         await expect(page.locator('#admin-wipe-preview')).toBeVisible({ timeout: 5000 });
     });
-
     // ----------------------------------------------------------------
     // TC5: Wipe Data — Cancel
     // ----------------------------------------------------------------
@@ -368,13 +362,12 @@ test.describe('Admin Panel (008)', () => {
         const exportPayload = {
             version: 1,
             exportedAt: new Date().toISOString(),
-            metadata: { processCount: 2, workspaceCount: 1, wikiCount: 0, queueFileCount: 0 },
+            metadata: { processCount: 2, workspaceCount: 1, queueFileCount: 0 },
             processes: [
                 { id: 'p1', promptPreview: 'test', fullPrompt: 'test', status: 'completed', startTime: new Date().toISOString(), type: 'clarification' },
                 { id: 'p2', promptPreview: 'test2', fullPrompt: 'test2', status: 'running', startTime: new Date().toISOString(), type: 'clarification' },
             ],
             workspaces: [{ id: 'ws1', name: 'WS1', rootPath: '/tmp/ws1' }],
-            wikis: [],
             queueHistory: [],
             preferences: {},
         };
@@ -423,12 +416,11 @@ test.describe('Admin Panel (008)', () => {
         const exportPayload = {
             version: 1,
             exportedAt: new Date().toISOString(),
-            metadata: { processCount: 1, workspaceCount: 0, wikiCount: 0, queueFileCount: 0 },
+            metadata: { processCount: 1, workspaceCount: 0, queueFileCount: 0 },
             processes: [
                 { id: 'imported-1', promptPreview: 'imported', fullPrompt: 'imported full', status: 'completed', startTime: new Date().toISOString(), type: 'clarification' },
             ],
             workspaces: [],
-            wikis: [],
             queueHistory: [],
             preferences: {},
         };
@@ -471,12 +463,11 @@ test.describe('Admin Panel (008)', () => {
         const exportPayload = {
             version: 1,
             exportedAt: new Date().toISOString(),
-            metadata: { processCount: 1, workspaceCount: 0, wikiCount: 0, queueFileCount: 0 },
+            metadata: { processCount: 1, workspaceCount: 0, queueFileCount: 0 },
             processes: [
                 { id: 'merged-1', promptPreview: 'merged', fullPrompt: 'merged full', status: 'completed', startTime: new Date().toISOString(), type: 'clarification' },
             ],
             workspaces: [],
-            wikis: [],
             queueHistory: [],
             preferences: {},
         };
@@ -508,10 +499,9 @@ test.describe('Admin Panel (008)', () => {
         const exportPayload = {
             version: 1,
             exportedAt: new Date().toISOString(),
-            metadata: { processCount: 0, workspaceCount: 0, wikiCount: 0, queueFileCount: 0 },
+            metadata: { processCount: 0, workspaceCount: 0, queueFileCount: 0 },
             processes: [],
             workspaces: [],
-            wikis: [],
             queueHistory: [],
             preferences: {},
         };
@@ -549,24 +539,19 @@ test.describe('Admin Panel (008)', () => {
     });
 
     // ----------------------------------------------------------------
-    // TC16: Wipe with includeWikis=true verifies DELETE sends flag
+    // TC16: Wipe DELETE carries only the confirmation token
     // ----------------------------------------------------------------
 
-    test('8.20 wipe with includeWikis=true sends includeWikis=true to DELETE', async ({ page, serverUrl }) => {
-        await seedProcess(serverUrl, 'admin-wipe-wikis-1', { status: 'completed' });
+    test('8.20 wipe DELETE sends no wiki flag', async ({ page, serverUrl }) => {
+        await seedProcess(serverUrl, 'admin-wipe-nowiki-1', { status: 'completed' });
 
         await navigateToAdmin(page, serverUrl);
         await page.click('[data-testid="admin-tab-data"]');
-
-        // Check the include wikis checkbox
-        await page.check('#admin-include-wikis');
-        expect(await page.isChecked('#admin-include-wikis')).toBe(true);
 
         // Click Wipe Data to get token
         await page.click('#admin-wipe-btn');
         await expect(page.locator('#admin-wipe-confirm')).toBeVisible({ timeout: 5000 });
 
-        // Intercept DELETE to verify includeWikis=true in URL
         const deletePromise = page.waitForRequest(req =>
             req.method() === 'DELETE' && req.url().includes('/api/admin/data'),
         );
@@ -574,12 +559,11 @@ test.describe('Admin Panel (008)', () => {
         await page.click('#admin-wipe-confirm');
 
         const deleteReq = await deletePromise;
-        expect(deleteReq.url()).toContain('includeWikis=true');
+        expect(deleteReq.url()).not.toContain('includeWikis');
 
         // Wipe should succeed
         await expect(page.locator('#admin-wipe-status')).toContainText('wiped successfully', { timeout: 10000 });
     });
-
     // ----------------------------------------------------------------
     // TC17: Stats API re-called after wipe
     // ----------------------------------------------------------------

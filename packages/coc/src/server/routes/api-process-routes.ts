@@ -55,7 +55,7 @@ import { recordProviderSwitchServerTelemetry } from '../provider-switch-telemetr
 import { processOperationAdmission } from '../processes/process-operation-admission';
 import { pendingMessageTask } from '../processes/queued-pending-message';
 import { cancelQueuedCompaction, compactProcess } from '../processes/compact-process';
-import { isSentinelProcess, parseAutoCompactSettings, resumeAutoCompact, saveAutoCompactSettings } from '../processes/auto-compact';
+import { autoCompactSettingsLockedReason, isSentinelProcess, parseAutoCompactSettings, resumeAutoCompact, saveAutoCompactSettings } from '../processes/auto-compact';
 import { ADDITIONAL_INSTRUCTIONS_METADATA_KEY, parseAdditionalInstructionsRequest, readAdditionalInstructions, saveAdditionalInstructions } from '../processes/sentinel-additional-instructions';
 import { cancelConversation } from '../processes/cancel-conversation';
 import { projectProcessBotControl, projectProcessIndexBotControl } from '../processes/bot-control-read-model';
@@ -788,19 +788,19 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         },
     }));
 
-    // PUT /api/processes/:id/auto-compact — Save a Sentinel chat's auto-compact
-    // setting ({ enabled, thresholdTokens }). Sentinel conversations only; the
-    // workspace query scopes the write to the owning workspace. Saving never
-    // compacts — the server checks usage after each persisted response.
+    // PUT /api/processes/:id/auto-compact — Save a chat's auto-compact setting
+    // ({ enabled, thresholdTokens }). Any chat mode; Refrain job chats follow
+    // their job and reject (422). The workspace query scopes the write to the
+    // owning workspace. Saving never compacts — the server checks usage after
+    // each persisted response.
     routes.push(createRoute({
         method: 'PUT', pattern: /^\/api\/processes\/([^/]+)\/auto-compact$/,
         handler: async ({ req, res, match }) => {
             const wsId = parseQueryParams(req.url || '/').workspaceId;
             const proc = await resolveProcess(store, decodeURIComponent(match[1]), wsId);
             if (!proc) return void handleAPIError(res, notFound('Process'));
-            if (!isSentinelProcess(proc)) {
-                return void handleAPIError(res, new APIError(422, 'Auto-compact is available only for Sentinel chats.', 'AUTO_COMPACT_SENTINEL_ONLY'));
-            }
+            const locked = autoCompactSettingsLockedReason(proc);
+            if (locked) return void handleAPIError(res, new APIError(422, locked, 'AUTO_COMPACT_JOB_MANAGED'));
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
             const settings = parseAutoCompactSettings(body);
@@ -812,16 +812,14 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
     }));
 
     // POST /api/processes/:id/auto-compact/resume — Clear a paused auto-compact
-    // state. The next persisted response re-evaluates; nothing compacts now.
+    // state on any chat, including Refrain job chats. The next persisted
+    // response re-evaluates; nothing compacts now.
     routes.push(createRoute({
         method: 'POST', pattern: /^\/api\/processes\/([^/]+)\/auto-compact\/resume$/,
         handler: async ({ req, res, match }) => {
             const wsId = parseQueryParams(req.url || '/').workspaceId;
             const proc = await resolveProcess(store, decodeURIComponent(match[1]), wsId);
             if (!proc) return void handleAPIError(res, notFound('Process'));
-            if (!isSentinelProcess(proc)) {
-                return void handleAPIError(res, new APIError(422, 'Auto-compact is available only for Sentinel chats.', 'AUTO_COMPACT_SENTINEL_ONLY'));
-            }
             const autoCompact = await resumeAutoCompact(store, proc.id, proc.metadata?.workspaceId);
             if (!autoCompact) return void handleAPIError(res, new APIError(409, 'Auto-compact is not configured for this chat.', 'AUTO_COMPACT_NOT_CONFIGURED'));
             return { autoCompact };

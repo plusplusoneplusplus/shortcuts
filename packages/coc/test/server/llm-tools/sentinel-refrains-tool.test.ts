@@ -259,7 +259,7 @@ describe('custom jobs', () => {
         expect(enqueue).toHaveBeenCalledTimes(1);
         expect(await call({ action: 'run_now', kind: 'custom', jobId: job.id })).toMatchObject({ code: 'conflict' });
         expect(await call({ action: 'update', kind: 'custom', jobId: job.id, expectedRevision: 1, name: 'X' }))
-            .toMatchObject({ code: 'conflict', error: expect.stringMatching(/handback/) });
+            .toMatchObject({ code: 'conflict', error: expect.stringMatching(/active run/) });
         const paused = (await call({ action: 'pause', kind: 'custom', jobId: job.id, expectedRevision: 1 })).job;
         expect(paused).toMatchObject({ enabled: false });
         expect(paused.activeRun?.id).toBe(run.id);

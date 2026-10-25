@@ -9,8 +9,6 @@ export interface DashboardOptions {
     wsPath?: string;
     /** API base path (default: "/api") */
     apiBasePath?: string;
-    /** Enable wiki tab with CDN libs for markdown/mermaid rendering */
-    enableWiki?: boolean;
     /**
      * Runtime feature flags embedded as bootstrap config
      * (window.__DASHBOARD_CONFIG__.features). Built generically from the admin

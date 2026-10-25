@@ -1,6 +1,6 @@
 /**
- * Tests for Router pure-function helpers — tabFromHash, parseWikiDeepLink,
- * parseProcessDeepLink and friends.
+ * Tests for Router pure-function helpers — tabFromHash, parseProcessDeepLink
+ * and friends.
  *
  * The Router component itself drives complex AppContext + QueueContext mutations;
  * those reducer tests live in context/AppContext.test.tsx and context/QueueContext.test.tsx.
@@ -9,15 +9,12 @@
 import { describe, it, expect } from 'vitest';
 import {
     tabFromHash,
-    parseWikiDeepLink,
     parseProcessDeepLink,
     parseWorkflowsDeepLink,
     parseGitCommitDeepLink,
     parseSettingsSection,
     VALID_REPO_SUB_TABS,
     VALID_SETTINGS_SECTIONS,
-    VALID_WIKI_PROJECT_TABS,
-    VALID_WIKI_ADMIN_TABS,
     parseAdminSubTab,
     VALID_ADMIN_SUB_TABS,
     parseAdminDatabaseDeepLink,
@@ -26,8 +23,6 @@ import {
 import {
     SETTINGS_SECTION_VALUES,
     REPO_SUB_TAB_VALUES,
-    WIKI_PROJECT_TAB_VALUES,
-    WIKI_ADMIN_TAB_VALUES,
 } from '../../src/server/spa/client/react/types/dashboard';
 
 // ── tabFromHash ───────────────────────────────────────────────────────────────
@@ -61,8 +56,8 @@ describe('tabFromHash', () => {
         expect(tabFromHash('#tasks')).toBe('repos');
     });
 
-    it('returns "wiki" for #wiki/myid/components', () => {
-        expect(tabFromHash('#wiki/myid/components')).toBe('wiki');
+    it('returns null for the retired #wiki route', () => {
+        expect(tabFromHash('#wiki/myid/components')).toBe(null);
     });
 
     it('returns "memory" for #memory/entries', () => {
@@ -83,41 +78,6 @@ describe('tabFromHash', () => {
 
     it('returns null for #models (standalone models route removed)', () => {
         expect(tabFromHash('#models')).toBe(null);
-    });
-});
-
-// ── parseWikiDeepLink ─────────────────────────────────────────────────────────
-
-describe('parseWikiDeepLink', () => {
-    it('returns correct wikiId for #wiki/myid', () => {
-        const r = parseWikiDeepLink('#wiki/myid');
-        expect(r.wikiId).toBe('myid');
-        expect(r.tab).toBe(null);
-    });
-
-    it('returns wikiId and tab for #wiki/myid/browse', () => {
-        const r = parseWikiDeepLink('#wiki/myid/browse');
-        expect(r.wikiId).toBe('myid');
-        expect(r.tab).toBe('browse');
-    });
-
-    it('returns componentId for #wiki/myid/component/comp-1', () => {
-        const r = parseWikiDeepLink('#wiki/myid/component/comp-1');
-        expect(r.wikiId).toBe('myid');
-        expect(r.componentId).toBe('comp-1');
-        expect(r.tab).toBe('browse');
-    });
-
-    it('returns admin tab for #wiki/myid/admin/generate', () => {
-        const r = parseWikiDeepLink('#wiki/myid/admin/generate');
-        expect(r.wikiId).toBe('myid');
-        expect(r.tab).toBe('admin');
-        expect(r.adminTab).toBe('generate');
-    });
-
-    it('returns null wikiId for non-wiki hash', () => {
-        const r = parseWikiDeepLink('#repos/some-id');
-        expect(r.wikiId).toBe(null);
     });
 });
 
@@ -253,28 +213,6 @@ describe('VALID_SETTINGS_SECTIONS', () => {
         expect(VALID_SETTINGS_SECTIONS.size).toBe(SETTINGS_SECTION_VALUES.length);
         for (const v of SETTINGS_SECTION_VALUES) {
             expect(VALID_SETTINGS_SECTIONS.has(v)).toBe(true);
-        }
-    });
-});
-
-// ── VALID_WIKI_PROJECT_TABS ───────────────────────────────────────────────────
-
-describe('VALID_WIKI_PROJECT_TABS', () => {
-    it('is derived from WIKI_PROJECT_TAB_VALUES — exact same members', () => {
-        expect(VALID_WIKI_PROJECT_TABS.size).toBe(WIKI_PROJECT_TAB_VALUES.length);
-        for (const v of WIKI_PROJECT_TAB_VALUES) {
-            expect(VALID_WIKI_PROJECT_TABS.has(v)).toBe(true);
-        }
-    });
-});
-
-// ── VALID_WIKI_ADMIN_TABS ─────────────────────────────────────────────────────
-
-describe('VALID_WIKI_ADMIN_TABS', () => {
-    it('is derived from WIKI_ADMIN_TAB_VALUES — exact same members', () => {
-        expect(VALID_WIKI_ADMIN_TABS.size).toBe(WIKI_ADMIN_TAB_VALUES.length);
-        for (const v of WIKI_ADMIN_TAB_VALUES) {
-            expect(VALID_WIKI_ADMIN_TABS.has(v)).toBe(true);
         }
     });
 });

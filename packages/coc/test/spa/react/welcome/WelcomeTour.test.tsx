@@ -25,7 +25,6 @@ const TOTAL = WELCOME_TOUR_STEPS.length;
 
 const FULL_DEFAULT_ONBOARDING = {
     hasRunWorkflow: false,
-    hasOpenedWiki: false,
     hasUsedChat: false,
     settingsVisited: false,
     dismissed: false,

@@ -876,6 +876,20 @@ unshrinkable time) sits under it; only at 28rem+ does that row move beside the t
 capped at 40% so the title keeps most of the width. Identical item/job titles use an
 accessible Open job link; distinct job titles remain visible. Full job history,
 conversation references and editing controls live in the detail pane.
+To-do search (`sentinelTodoSearch.ts`, no flag) opens a compact bar above the list from
+the toolbar icon or Ctrl/Cmd+F while focus is inside the tab (`useScopedFindShortcut`
+with `claimsBodyFocus: false` and `yieldToNestedEditors`; other surfaces and nested text
+fields keep their find). It filters the full loaded snapshot live — Done, Archived and
+rows past the recent page, ignoring the tag filter — on title, notes and Done when, never
+job/chat data. Whitespace-separated words must all occur, each case-insensitively and
+literally in one field. Matches keep section order, grouped To do / Manual tracking
+(+ Done/Archived) / Done / Archived, in 100-row pages under a full match count; rows
+highlight plain-text `<mark>` segments and excerpt a matching Done when or notes field.
+Loading and load failure are explicit, never zero matches. Selecting a result opens
+details without writes. Opening snapshots selection, details, expansion, sections, tag
+filter, older-row limit, scroll and focus; Escape (box or result row) or Close restores
+them. An open search is never remembered: unmount records the snapshot view. Owner
+remounts reset search; a narrow pane leaves details for results when a query changes.
 Default-off `sentinelTodoTagsEnabled` adds named restrained tag chips, a tag filter
 including Untagged, a selection-independent library manager and a detail picker.
 Enabling the live gate reloads the full owner snapshot without resetting drafts.
@@ -933,6 +947,8 @@ Manual items remain Tracking only. No launch, retry, cancel or approval controls
 are added to the To-do tracking surface.
 
 `SentinelTodoJobPreview` shares owner labels across latest/earlier titles and previews.
+Its preview prefers 400px; `useAnchoredPanelPosition` clamps it to the To-do pane and
+viewport with 8px margins, and `max-w-[calc(100vw-16px)]` covers the first frame.
 `sentinelTodoJobOwner` resolves each job's server-qualified workspace from cached
 App/Repos local, remote and group metadata. Local jobs inherit the ledger's server;
 unqualified remote jobs have unknown ownership. The current concrete repo omits its
@@ -973,10 +989,16 @@ flag keys, tool names and `data-*` values outside these components.
 `SentinelRefrains` selects the automation presentation after a ledger loads.
 The owning server's live `sentinelEnabled` and `sentinelTodoJobsEnabled`
 capabilities enable a collapsible Refrains list using `client.sentinelTodos.jobs`.
+Collapsed contents stay mounted behind `hidden`, so display utilities such as
+`flex` apply only while open (they override Tailwind's `[hidden]` rule); the
+expansion state survives reloads and rerenders and resets per owner mount.
 Owner/endpoint remounts abort pending reads and discard late results; mutations
 retain their admission lock until the authoritative reload settles. Dialog
-drafts retain captured revisions on errors. Refrain history carries run timing
-and clone-qualified refrain/Sentinel turn links. Model catalogs and effort tiers use
+drafts retain captured revisions on errors. Create/edit thresholds use K-token
+drafts with up to three decimals through `utils/autoCompactThreshold.ts`; API and
+storage values stay positive safe integer tokens, preserving non-round thresholds.
+Refrain history carries run timing
+and a clone-qualified job-turn link; run results stay in the job chat. Model catalogs and effort tiers use
 the same owner client. When the owning server's `effortLevelsEnabled` is on and the
 provider has tiers, the dialog shows the shared `EffortTierSelector` and saves only
 `effortTier`; otherwise it keeps explicit Model/Effort and clears a stored tier.

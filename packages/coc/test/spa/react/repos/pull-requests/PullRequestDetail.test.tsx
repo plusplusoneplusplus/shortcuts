@@ -120,6 +120,11 @@ function jsonResponse(payload: unknown, ok = true, status = 200) {
     } as unknown as Response;
 }
 
+/** File rows of the shared changed-files navigator. */
+function fileRows() {
+    return Array.from(screen.getByRole('complementary', { name: 'Changed files' }).querySelectorAll<HTMLElement>('[data-file-path]'));
+}
+
 /** text/plain response used by the diff endpoint. */
 function textResponse(body: string) {
     return {
@@ -235,6 +240,12 @@ beforeEach(() => {
         writable: true,
         value: { hash: '' },
     });
+    // The Files tab's inline diff scrolls to its first hunk 50ms after load; jsdom lacks scrollTo.
+    if (!HTMLElement.prototype.scrollTo) {
+        Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+            configurable: true, writable: true, value: () => {},
+        });
+    }
 });
 
 // ── Loading state ──────────────────────────────────────────────────────────────
@@ -538,7 +549,7 @@ describe('tabs', () => {
         fireEvent.click(screen.getByTestId('tab-files'));
         expect(screen.getByTestId('files-tab')).toBeInTheDocument();
         expect(screen.getByTestId('pr-files-panel')).toBeInTheDocument();
-        expect(screen.getAllByTestId('pr-file-row')).toHaveLength(2);
+        expect(fileRows()).toHaveLength(2);
         expect(screen.queryByText(/AI annotation/i)).not.toBeInTheDocument();
         expect(screen.queryByText(/AI focus file/i)).not.toBeInTheDocument();
         expect(screen.getByTestId('tab-files').textContent).toContain('2');
@@ -552,7 +563,7 @@ describe('tabs', () => {
         fireEvent.click(screen.getByTestId('tab-files'));
 
         // Clicking a file row selects it inline and must NOT open the pop-out window.
-        fireEvent.click(screen.getAllByTestId('pr-file-row')[0]);
+        fireEvent.click(fileRows()[0]);
         expect(openSpy).not.toHaveBeenCalled();
 
         // The pop-out remains reachable via its explicit button.
@@ -584,7 +595,7 @@ describe('tabs', () => {
         // Left rail: changed-files list. Right rail: the shared FileDiffPanel —
         // the same component the pop-out review window renders — not the slim
         // mobile-only viewer.
-        expect(screen.getAllByTestId('pr-file-row').length).toBeGreaterThan(0);
+        expect(fileRows().length).toBeGreaterThan(0);
         expect(screen.getByTestId('pr-shared-diff-panel')).toBeInTheDocument();
         expect(screen.queryByTestId('pr-diff-panel')).not.toBeInTheDocument();
         // The first file (src/foo.ts) is selected by default and its diff renders inline.
@@ -614,7 +625,7 @@ describe('tabs', () => {
         expect(fooDiff.textContent).not.toContain('removed one');
 
         // Select the second file → the panel swaps to that file's diff only.
-        const barRow = screen.getAllByTestId('pr-file-row')
+        const barRow = fileRows()
             .find(r => r.getAttribute('data-file-path') === 'src/bar.ts');
         expect(barRow).toBeDefined();
         await act(async () => { fireEvent.click(barRow!); });

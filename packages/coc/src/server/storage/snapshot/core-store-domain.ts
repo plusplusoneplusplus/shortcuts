@@ -1,31 +1,26 @@
 /**
  * Core store snapshot domain.
  *
- * Owns export/import/wipe for the process store's processes, workspaces, and
- * wikis (plus generated wiki output directories on disk).
+ * Owns export/import/wipe for the process store's processes and workspaces.
  */
 
-import * as fs from 'fs';
-import type { WikiInfo } from '@plusplusoneplusplus/forge';
 import type { StorageSnapshotDomain } from './types';
-import { getErrorMessage, isDirectory } from './snapshot-fs';
+import { getErrorMessage } from './snapshot-fs';
 
-export function createCoreStoreDomain(): StorageSnapshotDomain<{ wikiDirs: string[] }> {
+export function createCoreStoreDomain(): StorageSnapshotDomain<undefined> {
     return {
         id: 'core-store',
         async collect(ctx) {
-            const [processes, workspaces, wikis] = await Promise.all([
+            const [processes, workspaces] = await Promise.all([
                 ctx.store.getAllProcesses(),
                 ctx.store.getWorkspaces(),
-                ctx.store.getWikis(),
             ]);
 
             return {
-                data: { processes, workspaces, wikis },
+                data: { processes, workspaces },
                 metadata: {
                     processCount: processes.length,
                     workspaceCount: workspaces.length,
-                    wikiCount: wikis.length,
                 },
                 warnings: [],
             };
@@ -46,15 +41,6 @@ export function createCoreStoreDomain(): StorageSnapshotDomain<{ wikiDirs: strin
                     result.importedWorkspaces++;
                 } catch (err) {
                     result.errors.push(`Failed to add workspace ${ws.id}: ${getErrorMessage(err)}`);
-                }
-            }
-
-            for (const wiki of payload.wikis) {
-                try {
-                    await ctx.store.registerWiki(wiki);
-                    result.importedWikis++;
-                } catch (err) {
-                    result.errors.push(`Failed to add wiki ${wiki.id}: ${getErrorMessage(err)}`);
                 }
             }
         },
@@ -82,30 +68,15 @@ export function createCoreStoreDomain(): StorageSnapshotDomain<{ wikiDirs: strin
                     result.errors.push(`Failed to add workspace ${ws.id}: ${getErrorMessage(err)}`);
                 }
             }
-
-            const existingWikis = await ctx.store.getWikis();
-            const existingWikiIds = new Set(existingWikis.map(w => w.id));
-            for (const wiki of payload.wikis) {
-                if (existingWikiIds.has(wiki.id)) { continue; }
-                try {
-                    await ctx.store.registerWiki(wiki);
-                    result.importedWikis++;
-                } catch (err) {
-                    result.errors.push(`Failed to add wiki ${wiki.id}: ${getErrorMessage(err)}`);
-                }
-            }
         },
         async planWipe(ctx) {
             const errors: string[] = [];
             let deletedProcesses = 0;
             let deletedWorkspaces = 0;
-            let deletedWikis = 0;
-            let wikiDirs: string[] = [];
 
             try {
                 const stats = await ctx.store.getStorageStats();
                 deletedProcesses = stats.totalProcesses;
-                deletedWikis = stats.totalWikis;
             } catch (err) {
                 errors.push(`Failed to count process store data: ${getErrorMessage(err)}`);
             }
@@ -116,29 +87,16 @@ export function createCoreStoreDomain(): StorageSnapshotDomain<{ wikiDirs: strin
                 errors.push(`Failed to count workspaces: ${getErrorMessage(err)}`);
             }
 
-            if (ctx.includeWikis) {
-                try {
-                    const wikis = await ctx.store.getWikis();
-                    wikiDirs = wikis
-                        .map((w: WikiInfo) => w.wikiDir)
-                        .filter((dir: string) => typeof dir === 'string' && dir.length > 0);
-                } catch (err) {
-                    errors.push(`Failed to collect wiki directories: ${getErrorMessage(err)}`);
-                }
-            }
-
             return {
-                plan: { wikiDirs },
+                plan: undefined,
                 counts: {
                     deletedProcesses,
                     deletedWorkspaces,
-                    deletedWikis,
-                    deletedWikiDirs: wikiDirs,
                 },
                 errors,
             };
         },
-        async executeWipe(ctx, plan, result) {
+        async executeWipe(ctx, _plan, result) {
             try {
                 await ctx.store.clearProcesses();
             } catch (err) {
@@ -151,22 +109,6 @@ export function createCoreStoreDomain(): StorageSnapshotDomain<{ wikiDirs: strin
                 result.errors.push(`Failed to clear workspaces: ${getErrorMessage(err)}`);
             }
 
-            try {
-                await ctx.store.clearAllWikis();
-            } catch (err) {
-                result.errors.push(`Failed to clear wikis: ${getErrorMessage(err)}`);
-            }
-
-            if (!ctx.includeWikis) { return; }
-            for (const dir of plan?.wikiDirs ?? []) {
-                try {
-                    if (isDirectory(dir)) {
-                        fs.rmSync(dir, { recursive: true, force: true });
-                    }
-                } catch (err) {
-                    result.errors.push(`Failed to delete wiki directory ${dir}: ${getErrorMessage(err)}`);
-                }
-            }
         },
     };
 }

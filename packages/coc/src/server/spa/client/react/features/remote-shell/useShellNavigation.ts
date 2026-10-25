@@ -51,7 +51,7 @@ export function useShellNavigation(): ShellNavigation {
     const switchSubTab = useCallback((tab: RepoSubTab) => {
         // Switching a workspace sub-tab always means "show that workspace", so
         // pull back onto the repos tab. The shell header now renders on the
-        // top-level pages (Admin / Settings / Wiki) too, where a sub-tab click
+        // top-level pages (Admin / Settings) too, where a sub-tab click
         // must navigate into the workspace rather than just flip the remembered
         // sub-tab. On the repos tab this is a no-op.
         dispatch({ type: 'SET_ACTIVE_TAB', tab: 'repos' });

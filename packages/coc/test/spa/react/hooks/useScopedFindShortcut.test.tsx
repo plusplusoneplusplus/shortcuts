@@ -319,6 +319,33 @@ describe('useScopedFindShortcut', () => {
         expect(el.hasAttribute('data-find-scope')).toBe(false);
     });
 
+    it('with yieldToNestedEditors, nested text fields keep native find but its search box and chrome do not', () => {
+        const onTrigger = vi.fn();
+        function EditorPanel() {
+            const ref = useRef<HTMLDivElement>(null);
+            useScopedFindShortcut(ref, onTrigger, { claimsBodyFocus: false, yieldToNestedEditors: true });
+            return (
+                <div ref={ref} data-testid="p">
+                    <input data-testid="search" data-scoped-find-input="" />
+                    <textarea data-testid="editor" />
+                    <button data-testid="chrome">Row</button>
+                </div>
+            );
+        }
+        const { getByTestId } = render(<EditorPanel />);
+        makeVisible(getByTestId('p') as HTMLElement);
+
+        const nested = pressCtrlF(getByTestId('editor'));
+        expect(nested.defaultPrevented).toBe(false);
+        expect(onTrigger).not.toHaveBeenCalled();
+
+        expect(pressCtrlF(getByTestId('search')).defaultPrevented).toBe(true);
+        expect(pressCtrlF(getByTestId('chrome')).defaultPrevented).toBe(true);
+        expect(onTrigger).toHaveBeenCalledTimes(2);
+        expect(pressCtrlF(document.body).defaultPrevented).toBe(false);
+        expect(onTrigger).toHaveBeenCalledTimes(2);
+    });
+
     it('removes the document keydown listener on unmount', () => {
         const removeSpy = vi.spyOn(document, 'removeEventListener');
         const { unmount } = render(<Panel testid="p" onTrigger={vi.fn()} />);

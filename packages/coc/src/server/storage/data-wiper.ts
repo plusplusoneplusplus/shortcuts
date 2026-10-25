@@ -15,8 +15,6 @@ import {
 // ============================================================================
 
 export interface WipeOptions {
-    /** Whether to delete generated wiki output directories on disk. */
-    includeWikis: boolean;
     /** Dry-run mode: compute summary without actually deleting data. */
     dryRun?: boolean;
 }
@@ -24,13 +22,11 @@ export interface WipeOptions {
 export interface WipeResult {
     deletedProcesses: number;
     deletedWorkspaces: number;
-    deletedWikis: number;
     deletedQueues: number;
     deletedSchedules: number;
     deletedGitOps: number;
     deletedRepoPreferences: number;
     deletedPreferences: boolean;
-    deletedWikiDirs: string[];
     preservedFiles: string[];
     errors: string[];
 }
@@ -48,23 +44,22 @@ export class DataWiper {
     /**
      * Get a dry-run summary of what would be deleted.
      */
-    async getDryRunSummary(options: Pick<WipeOptions, 'includeWikis'> = { includeWikis: false }): Promise<WipeResult> {
-        return this.doWipe({ ...options, dryRun: true });
+    async getDryRunSummary(): Promise<WipeResult> {
+        return this.doWipe({ dryRun: true });
     }
 
     /**
      * Wipe all runtime data. Returns a summary of what was deleted.
      */
-    async wipeData(options: WipeOptions): Promise<WipeResult> {
+    async wipeData(options: WipeOptions = {}): Promise<WipeResult> {
         return this.doWipe(options);
     }
 
-    private async doWipe(options: WipeOptions & { dryRun?: boolean }): Promise<WipeResult> {
-        const { includeWikis, dryRun = false } = options;
+    private async doWipe(options: WipeOptions): Promise<WipeResult> {
+        const { dryRun = false } = options;
         const plan = await buildStorageWipePlan({
             dataDir: this.dataDir,
             store: this.store,
-            includeWikis,
         });
         const result = createEmptyWipeResult();
         applyStorageWipePlanSummary(result, plan);
@@ -73,7 +68,6 @@ export class DataWiper {
             await executeStorageWipePlan({
                 dataDir: this.dataDir,
                 store: this.store,
-                includeWikis,
             }, plan, result);
         }
 
@@ -85,13 +79,11 @@ function createEmptyWipeResult(): WipeResult {
     return {
         deletedProcesses: 0,
         deletedWorkspaces: 0,
-        deletedWikis: 0,
         deletedQueues: 0,
         deletedSchedules: 0,
         deletedGitOps: 0,
         deletedRepoPreferences: 0,
         deletedPreferences: false,
-        deletedWikiDirs: [],
         preservedFiles: [],
         errors: [],
     };

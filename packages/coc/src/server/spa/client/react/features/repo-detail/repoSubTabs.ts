@@ -7,7 +7,6 @@
  */
 
 import type { RepoSubTab } from '../../types/dashboard';
-import { SHOW_WIKI_TAB } from '../../navFlags';
 
 export interface SubTabDef {
     key: RepoSubTab;
@@ -24,13 +23,10 @@ export const SUB_TABS: SubTabDef[] = [
     { key: 'workflows', label: 'Workflows', shortcut: 'Alt+W' },
     { key: 'schedules', label: 'Schedules', shortcut: 'Alt+S' },
     { key: 'tasks', label: 'Tasks (Dep.)', shortcut: 'Alt+T' },
-    { key: 'wiki', label: 'Wiki' },
 ];
 
-/** Tabs actually rendered in the UI — wiki is hidden behind a feature flag. */
-export const VISIBLE_SUB_TABS: SubTabDef[] = SHOW_WIKI_TAB
-    ? SUB_TABS
-    : SUB_TABS.filter(t => t.key !== 'wiki');
+/** Tabs offered in the UI before per-repo gating. */
+export const VISIBLE_SUB_TABS: SubTabDef[] = SUB_TABS;
 
 /**
  * Logical group buckets for the desktop tab strip — used to render thin
@@ -41,7 +37,6 @@ export const TAB_GROUP_INDEX: Record<string, number> = {
     'chats': 1, 'activity': 1, 'git': 1, 'terminal': 1,
     'dreams': 2, 'tasks': 2,
     'explorer': 3, 'workflows': 3, 'schedules': 3,
-    'wiki': 4,
 };
 
 export interface VisibleSubTabOptions {

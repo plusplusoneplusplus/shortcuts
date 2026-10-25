@@ -341,7 +341,6 @@ export type PerRepoPreferences = z.infer<typeof PerRepoPreferencesSchema>;
 const OnboardingProgressSchema = z.object({
     hasUsedChat: z.boolean().optional().catch(undefined),
     hasRunWorkflow: z.boolean().optional().catch(undefined),
-    hasOpenedWiki: z.boolean().optional().catch(undefined),
     settingsVisited: z.boolean().optional().catch(undefined),
     dismissed: z.boolean().optional().catch(undefined),
     hasCompletedTour: z.boolean().optional().catch(undefined),

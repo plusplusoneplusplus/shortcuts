@@ -17,8 +17,10 @@ during classification. Priority navigation, comments, AI chat and pop-out are
 toolbar actions that move into the More menu in narrower panes.
 
 `useCommitReviewFiles` reads file metadata through the concrete owner client and
-discards superseded results. `GitFileReview` owns directory grouping, search,
-filters, selection, viewed tracking, overview and the narrow file drawer. Only
+discards superseded results. `GitFileReview` supplies Git transport and revision
+attachments to the shared `ReviewFiles` shell, which owns grouping/tree/flat layouts, search, filters,
+selection, viewed tracking, overview, resizing and the narrow drawer. Inline PR
+files adapt their metadata and renderer to the same shell. Only
 the selected `FileDiffPanel` mounts; never load a combined patch for navigation.
 The file panel retains diff engines, hunk navigation, comments, find, truncation
 and fallback behavior. Review state keys include owner, workspace and comparison.

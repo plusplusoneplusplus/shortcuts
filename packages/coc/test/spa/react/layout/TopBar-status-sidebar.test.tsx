@@ -107,7 +107,7 @@ describe('TopBar status cluster placement', () => {
     });
 
     it('hides the topbar cluster off the repos tab too (dock spans every tab)', () => {
-        mockAppState = { ...mockAppState, activeTab: 'wiki' };
+        mockAppState = { ...mockAppState, activeTab: 'stats' };
         render(<TopBar />);
         expect(clusterPresent()).toBe(false);
     });

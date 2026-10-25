@@ -92,8 +92,8 @@ Tool routes (separate `DashboardTab`s) sharing the admin shell: `memory`, `skill
 > As an operator, I want quick numbers without leaving the current page.
 
 - **Given** the Admin shell is open
-- **When** stats load via `GET /api/admin/data/stats?includeWikis=true`
-- **Then** the sidebar foot shows `Processes`, `Wikis`, `Disk` (`formatBytes`), with a refresh button (`#admin-refresh-stats`)
+- **When** stats load via `GET /api/admin/data/stats`
+- **Then** the sidebar foot shows `Processes`, `Disk` (`formatBytes`), with a refresh button (`#admin-refresh-stats`)
 - **And** while loading, a small spinner replaces the rows
 
 ---
@@ -256,7 +256,7 @@ Tool routes (separate `DashboardTab`s) sharing the admin shell: `memory`, `skill
 
 - **Given** Backup & Reset is active
 - **When** the user picks a `.json` file and clicks Preview
-- **Then** `POST /api/admin/import/preview` shows process / workspace / wiki counts
+- **Then** `POST /api/admin/import/preview` shows process / workspace counts
 - **When** the user clicks Import (mode = `replace` \| `merge`)
 - **Then** `GET /api/admin/import-token` obtains a token; `POST /api/admin/import?confirm=<token>&mode=<mode>` performs the import; on success stats reload
 
@@ -264,10 +264,10 @@ Tool routes (separate `DashboardTab`s) sharing the admin shell: `memory`, `skill
 > As an administrator, I want to permanently wipe data.
 
 - **Given** Backup & Reset is active (Danger zone)
-- **When** the user toggles "Include wikis" and clicks Preview
-- **Then** `GET /api/admin/data/stats?includeWikis=<bool>` previews what will be deleted
+- **When** the user clicks Preview
+- **Then** `GET /api/admin/data/stats` previews what will be deleted
 - **When** the user clicks Wipe Data
-- **Then** `GET /api/admin/data/wipe-token` returns a token; clicking Confirm Wipe calls `DELETE /api/admin/data?confirm=<token>&includeWikis=<bool>`; on success stats reload and a toast confirms
+- **Then** `GET /api/admin/data/wipe-token` returns a token; clicking Confirm Wipe calls `DELETE /api/admin/data?confirm=<token>`; on success stats reload and a toast confirms
 
 ---
 
@@ -362,7 +362,7 @@ Tool routes (separate `DashboardTab`s) sharing the admin shell: `memory`, `skill
 | Active row | `is-active` + `aria-current="page"` |
 | Mobile select | Single `<select>` with `<optgroup>` per group, mirrors sidebar selection |
 | Breadcrumb | `<Group> / <Label>` reflecting `activeBreadcrumbGroup` and `activeTabLabel` (or tool item label when embedded) |
-| Sidebar Usage block | Processes / Wikis / Disk rows + refresh button (`#admin-refresh-stats`) |
+| Sidebar Usage block | Processes / Disk rows + refresh button (`#admin-refresh-stats`) |
 
 ### 4.2 Settings Sub-Tabs (AI / Chat / Appearance / Features / Integrations)
 
@@ -417,7 +417,7 @@ Tool routes (separate `DashboardTab`s) sharing the admin shell: `memory`, `skill
 |---|---|
 | Export | Download JSON with status text |
 | Import | File picker, mode = `replace` \| `merge`, Preview → Import flow with token confirmation |
-| Wipe | "Include wikis" toggle, Preview → Wipe flow with token confirmation, Danger zone styling |
+| Wipe | Preview → Wipe flow with token confirmation, Danger zone styling |
 
 ### 4.8 Server Sub-Tab
 
@@ -481,7 +481,7 @@ Tool routes (separate `DashboardTab`s) sharing the admin shell: `memory`, `skill
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│  CoC │ Repos │ Wiki │ Admin* (top bar)                                        │
+│  CoC │ Repos │ Admin* (top bar)                                               │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │ ┌──────────────┐  ┌──────────────────────────────────────────────────────┐   │
 │ │ CoC Admin    │  │ Configure / AI & Execution                           │   │
@@ -510,7 +510,6 @@ Tool routes (separate `DashboardTab`s) sharing the admin shell: `memory`, `skill
 │ │              │                                                              │
 │ │ Usage        │                                                              │
 │ │  Processes 142│                                                              │
-│ │  Wikis     3 │                                                              │
 │ │  Disk   45MB │                                                              │
 │ └──────────────┘                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘

@@ -148,6 +148,10 @@ function renderWithClassification(classification: UseClassificationReturn) {
 
 // ── Tests ─────────────────────────────────────────────────────────────
 
+function fileRows() {
+    return Array.from(screen.getByRole('complementary', { name: 'Changed files' }).querySelectorAll<HTMLElement>('[data-file-path]'));
+}
+
 describe('ClassificationFilterBar', () => {
     it('renders classify button when classification is enabled', () => {
         const mock = createMockClassification();
@@ -334,11 +338,11 @@ describe('File dimming', () => {
             state: { status: 'ready', activeFilters: new Set<HunkCategory>(['logic']), result: mockResult },
         });
         renderWithClassification(mock);
-        const rows = screen.getAllByTestId('pr-file-row');
+        const rows = fileRows();
         const testFileRow = rows.find(r => r.getAttribute('data-file-path') === 'test/main.test.ts');
         expect(testFileRow).toBeDefined();
-        expect(testFileRow!.getAttribute('data-file-dimmed')).toBe('true');
-        expect(testFileRow!.className).toContain('opacity-40');
+        expect(testFileRow).toHaveStyle({ opacity: '0.4' });
+        expect(testFileRow).toHaveStyle({ opacity: '0.4' });
     });
 
     it('does not dim file rows that have hunks in active categories', () => {
@@ -347,10 +351,10 @@ describe('File dimming', () => {
             state: { status: 'ready', activeFilters: new Set<HunkCategory>(['logic']), result: mockResult },
         });
         renderWithClassification(mock);
-        const rows = screen.getAllByTestId('pr-file-row');
+        const rows = fileRows();
         const mainFileRow = rows.find(r => r.getAttribute('data-file-path') === 'src/main.ts');
         expect(mainFileRow).toBeDefined();
-        expect(mainFileRow!.getAttribute('data-file-dimmed')).toBeNull();
+        expect(mainFileRow!.style.opacity).toBe('');
     });
 
     it('does not dim files when all categories are active', () => {
@@ -362,9 +366,9 @@ describe('File dimming', () => {
             },
         });
         renderWithClassification(mock);
-        const rows = screen.getAllByTestId('pr-file-row');
+        const rows = fileRows();
         for (const row of rows) {
-            expect(row.getAttribute('data-file-dimmed')).toBeNull();
+            expect(row.style.opacity).toBe('');
         }
     });
 
@@ -373,9 +377,9 @@ describe('File dimming', () => {
             state: { status: 'idle', activeFilters: new Set<HunkCategory>(['logic']) },
         });
         renderWithClassification(mock);
-        const rows = screen.getAllByTestId('pr-file-row');
+        const rows = fileRows();
         for (const row of rows) {
-            expect(row.getAttribute('data-file-dimmed')).toBeNull();
+            expect(row.style.opacity).toBe('');
         }
     });
 });

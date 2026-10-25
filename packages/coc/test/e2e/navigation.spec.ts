@@ -44,10 +44,11 @@ test.describe('Navigation', () => {
         await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
     });
 
-    test('clicking Wiki tab switches to wiki view', async ({ page, serverUrl }) => {
+    test('retired #wiki route renders no wiki view', async ({ page, serverUrl }) => {
         await page.goto(serverUrl + '#wiki');
 
-        await expect(page.locator('#view-wiki')).toBeVisible();
+        await expect(page.locator('#app-root')).not.toBeEmpty();
+        await expect(page.locator('#view-wiki')).toHaveCount(0);
     });
 
     test('can switch back to Repos from Skills', async ({ page, serverUrl }) => {
@@ -138,11 +139,11 @@ test.describe('Navigation', () => {
         const hamburger = page.locator('#hamburger-btn');
 
         // Switch to a non-Repos top-level tab — hamburger should now navigate
-        // back to repos rather than toggle the popover. Wiki is used rather
+        // back to repos rather than toggle the popover. Reports is used rather
         // than Skills because the admin tool views live in a modal dialog whose
         // backdrop covers the topbar.
-        await page.goto(serverUrl + '#wiki');
-        await expect(page.locator('#view-wiki')).toBeVisible({ timeout: 10000 });
+        await page.goto(serverUrl + '#reports');
+        await expect(page.locator('#view-reports')).toBeVisible({ timeout: 10000 });
 
         // Hamburger click should not toggle the popover open
         await expect(hamburger).toHaveAttribute('aria-pressed', 'false');

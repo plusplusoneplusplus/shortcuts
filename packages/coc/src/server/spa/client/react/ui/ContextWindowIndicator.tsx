@@ -14,7 +14,7 @@
  * A breakdown popover appears on hover (desktop) or tap (mobile) when breakdown data
  * is present, listing each category's token count and percentage of the limit.
  *
- * Sentinel controls remain available when the context limit is unknown.
+ * Auto-compact controls remain available when the context limit is unknown.
  */
 
 import React from 'react';
@@ -38,7 +38,7 @@ export interface ContextWindowIndicatorProps {
     toolDefinitionsTokens?: number;
     /** Conversation-history token count when the provider reports a breakdown */
     conversationTokens?: number;
-    /** Sentinel auto-compact state and popover section. */
+    /** Chat auto-compact state and popover section. */
     autoCompact?: ContextAutoCompact;
 }
 

@@ -193,32 +193,6 @@ describe('Export Completeness — Section 7', () => {
     });
 
     // ========================================================================
-    // Wiki completeness
-    // ========================================================================
-
-    describe('wiki completeness', () => {
-        it('export includes wiki registrations (metadata only, not file content)', async () => {
-            // Register a wiki directly via the store (there is no POST /api/wikis HTTP endpoint)
-            await store.registerWiki({
-                id: 'wiki-1',
-                name: 'Test Wiki',
-                wikiDir: path.join(dataDir, 'wiki-output'),
-                aiEnabled: false,
-                registeredAt: new Date().toISOString(),
-            });
-
-            const res = await request(`${baseUrl}/api/admin/export`);
-            const body = JSON.parse(res.body);
-            expect(body.metadata.wikiCount).toBe(1);
-            expect(body.wikis).toHaveLength(1);
-            expect(body.wikis[0].id).toBe('wiki-1');
-            expect(body.wikis[0].name).toBe('Test Wiki');
-            // Export should NOT include wiki file content (only metadata)
-            expect(body.wikis[0].fileContent).toBeUndefined();
-        });
-    });
-
-    // ========================================================================
     // Payload validity
     // ========================================================================
 

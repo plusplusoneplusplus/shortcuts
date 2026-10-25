@@ -27,7 +27,6 @@ This monorepo uses **Vitest** (`*.test.ts`) for all packages and **Playwright** 
 | --- | --- | --- | --- |
 | `packages/forge/` | `src/` | `test/` | `test/helpers/mock-sdk.ts` |
 | `packages/coc/` | `src/` | `test/` | `test/helpers/mock-sdk-service.ts`, `test/helpers/mock-process-store.ts` |
-| `packages/deep-wiki/` | `src/` | `test/` | Inline `vi.mock` + `vi.hoisted` |
 
 Tests live in a **separate `test/` tree** that mirrors `src/`. Naming: `<module>.test.ts`.
 
@@ -75,7 +74,7 @@ Report I/O modules tested only with mocks (no real I/O test) as **gaps**.
 
 #### Mock-E2E mode
 
-For cross-cutting workflows (e.g., pipeline execution, wiki generation, AI-driven flows), check whether tests:
+For cross-cutting workflows (e.g., pipeline execution, AI-driven flows), check whether tests:
 - Wire together **multiple real modules** with only external services mocked
 - Test the **full request→response cycle** through the actual code path
 - Verify **state changes** across module boundaries (e.g., process store updated after pipeline run)

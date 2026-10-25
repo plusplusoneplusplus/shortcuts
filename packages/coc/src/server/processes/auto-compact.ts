@@ -1,7 +1,10 @@
 /**
- * Sentinel auto-compact: a per-conversation, opt-in threshold that compacts
+ * Chat auto-compact: a per-conversation, opt-in threshold that compacts
  * the provider session in the background after a persisted assistant response
  * pushes total context usage strictly above the threshold.
+ *
+ * Every chat mode (Ask, Autopilot, Ralph, Sentinel) shares it. Refrain job
+ * chats take their setting from the job; users edit it there, not per chat.
  *
  * State lives at `metadata.autoCompact` (see `ProcessAutoCompactState`). The
  * check runs only from the lifecycle runner after a completed response, never
@@ -28,7 +31,7 @@ import { APIError } from '../errors';
 import { isRefrainProcess } from '../sentinel-refrains/refrain-metadata';
 
 export type AutoCompactSkipReason =
-    | 'not-sentinel' | 'disabled' | 'paused' | 'no-response' | 'already-evaluated'
+    | 'not-found' | 'disabled' | 'paused' | 'no-response' | 'already-evaluated'
     | 'unknown-usage' | 'below-threshold' | 'already-compacting';
 
 export type AutoCompactCheckResult =
@@ -40,6 +43,11 @@ const UNSUPPORTED_STATE_ERROR = 'Unsupported auto-compact settings. Explicitly c
 
 export function isSentinelProcess(proc: Pick<AIProcess, 'metadata'> | undefined): boolean {
     return normalizeChatMode(proc?.metadata?.mode) === 'sentinel';
+}
+
+/** Why the user cannot edit this chat's setting, or undefined when they can. */
+export function autoCompactSettingsLockedReason(proc: Pick<AIProcess, 'metadata'>): string | undefined {
+    return isRefrainProcess(proc) ? 'Auto-compact for job chats follows the job threshold. Edit the job to change it.' : undefined;
 }
 
 export function readAutoCompact(metadata: GenericProcessMetadata | undefined): ProcessAutoCompactState | undefined {
@@ -183,7 +191,7 @@ export async function maybeAutoCompactAfterResponse(
     try {
         return await processOperationAdmission.runExclusive(processId, async (): Promise<AutoCompactCheckResult> => {
             const proc = await store.getProcess(processId, workspaceId);
-            if (!proc || (!isSentinelProcess(proc) && !isRefrainProcess(proc))) return { action: 'skipped', reason: 'not-sentinel' };
+            if (!proc) return { action: 'skipped', reason: 'not-found' };
             const stored = readAutoCompact(proc.metadata);
             if (proc.metadata?.autoCompact !== undefined && !stored) {
                 getLogger().warn(LogCategory.AI, `[AutoCompact] Check failed for ${proc.id}: ${UNSUPPORTED_STATE_ERROR}`);

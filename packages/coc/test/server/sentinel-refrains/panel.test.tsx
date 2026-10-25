@@ -1,7 +1,8 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { SentinelRefrain, SentinelRefrainGateTest, SentinelRefrainRun } from '@plusplusoneplusplus/coc-client';
+import userEvent from '@testing-library/user-event';
+import type { SentinelRefrain, SentinelRefrainGateTest, SentinelRefrainInput, SentinelRefrainRun } from '@plusplusoneplusplus/coc-client';
 
 const mock = vi.hoisted(() => ({
     list: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(), start: vi.fn(), cancel: vi.fn(), testGate: vi.fn(), resumeGate: vi.fn(),
@@ -96,7 +97,8 @@ describe('Sentinel Refrains', () => {
             fireEvent.click(info);
             const dialog = screen.getByRole('dialog', { name: 'About Refrains' });
             expect(dialog.textContent).toContain('An optional gate decides whether a run should start');
-            expect(dialog.textContent).toContain('Results return to this Sentinel');
+            expect(dialog.textContent).toContain("Results stay in each refrain's job chat and are not sent to this Sentinel");
+            expect(dialog.textContent).not.toContain('Results return to this Sentinel');
             expect(toggle.getAttribute('aria-expanded')).toBe('true');
             fireEvent.keyDown(dialog, { key: 'Escape' });
         }
@@ -205,12 +207,93 @@ describe('Sentinel Refrains', () => {
         await fillNew();
         expect(screen.getByLabelText('Mode')).toHaveValue('ask');
         expect(within(screen.getByLabelText('Effort')).queryByRole('option', { name: 'max', exact: true })).toBeNull();
-        expect(screen.getByLabelText('Auto-compact threshold (tokens)')).toHaveValue(100_000);
+        const threshold = screen.getByRole('textbox', { name: 'Auto-compact threshold (K tokens)' });
+        expect(threshold).toHaveValue('100');
+        expect(threshold).toHaveAttribute('inputmode', 'decimal');
+        expect(threshold).toHaveAccessibleDescription('1K = 1,000 tokens; up to 3 decimals.');
+        expect(within(threshold.parentElement!).getByText('K')).toBeVisible();
         fireEvent.click(screen.getByRole('button', { name: 'Create refrain' }));
         await waitFor(() => expect(mock.create).toHaveBeenCalledWith('ws-a', 'queue_sentinel', {
             name: 'Daily audit', instructions: 'Review pending work.', provider: 'copilot', model: 'test-model',
             effort: '', effortTier: '', mode: 'ask', cron: '', enabled: true, autoCompactThreshold: 100_000, gateScript: '',
         }));
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    });
+    describe.each(['create', 'edit'] as const)('%s K-token thresholds', action => {
+        async function open() {
+            if (action === 'edit') mock.list.mockResolvedValue({ jobs: [job()] });
+            view();
+            if (action === 'create') await fillNew();
+            else fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+            return screen.getByRole('textbox', { name: 'Auto-compact threshold (K tokens)' });
+        }
+        const saveLabel = action === 'create' ? 'Create refrain' : 'Save refrain';
+
+        it.each([
+            ['125', 125_000], ['100.001', 100_001], ['1.001', 1_001],
+            ['0.001', 1], ['9007199254740.991', Number.MAX_SAFE_INTEGER],
+        ])('saves %sK as %i absolute tokens and reloads the exact draft', async (draft, tokens) => {
+            const threshold = await open();
+            const persist = async (input: SentinelRefrainInput) => {
+                const saved = job({ ...input, autoCompactThreshold: input.autoCompactThreshold, revision: 3 });
+                mock.list.mockResolvedValue({ jobs: [saved] });
+                return saved;
+            };
+            if (action === 'create') mock.create.mockImplementation((_workspace, _process, input) => persist(input));
+            else mock.update.mockImplementation((_workspace, _process, _id, input) => persist(input));
+            fireEvent.change(threshold, { target: { value: draft } });
+            expect(threshold).toHaveAttribute('aria-invalid', 'false');
+            fireEvent.click(screen.getByRole('button', { name: saveLabel }));
+            if (action === 'create') {
+                await waitFor(() => expect(mock.create).toHaveBeenCalledWith('ws-a', 'queue_sentinel',
+                    expect.objectContaining({ autoCompactThreshold: tokens, cron: '' })));
+            } else {
+                await waitFor(() => expect(mock.update).toHaveBeenCalledWith('ws-a', 'queue_sentinel', 'j1',
+                    expect.objectContaining({ autoCompactThreshold: tokens, expectedRevision: 2, cron: '' })));
+            }
+            await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+            fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+            expect(screen.getByLabelText('Auto-compact threshold (K tokens)')).toHaveValue(draft);
+            expect(mock.start).not.toHaveBeenCalled();
+        });
+
+        it.each(['', '0', '-1', 'NaN', 'Infinity', 'abc', '0.0001', '100.0001', '1e3', '9007199254740.992'])(
+            'rejects invalid K draft "%s" visibly without saving or rounding', async draft => {
+                const threshold = await open();
+                fireEvent.change(threshold, { target: { value: draft } });
+                expect(threshold).toHaveValue(draft);
+                expect(threshold).toHaveAttribute('aria-invalid', 'true');
+                expect(threshold).toHaveAccessibleDescription('Enter a positive K value, up to 3 decimals, within the safe integer token range.');
+                expect(screen.getByRole('alert')).toHaveTextContent('Enter a positive K value');
+                expect(screen.getByRole('button', { name: saveLabel })).toBeDisabled();
+                fireEvent.submit(screen.getByRole('form', { name: action === 'create' ? 'New refrain' : 'Edit refrain' }));
+                expect(mock.create).not.toHaveBeenCalled();
+                expect(mock.update).not.toHaveBeenCalled();
+            },
+        );
+
+        it('discards a cancelled threshold draft without saving', async () => {
+            const threshold = await open();
+            fireEvent.change(threshold, { target: { value: '123.456' } });
+            fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
+            expect(screen.queryByRole('dialog')).toBeNull();
+            expect(mock.create).not.toHaveBeenCalled();
+            expect(mock.update).not.toHaveBeenCalled();
+            fireEvent.click(screen.getByRole('button', { name: action === 'create' ? 'New refrain' : 'Edit', exact: true }));
+            expect(screen.getByLabelText('Auto-compact threshold (K tokens)')).toHaveValue('100');
+        });
+    });
+    it.each([
+        [100_000, '100'], [100_001, '100.001'], [100_010, '100.01'], [100_100, '100.1'],
+        [100_999, '100.999'], [1_001, '1.001'], [1, '0.001'], [Number.MAX_SAFE_INTEGER, '9007199254740.991'],
+    ])('preserves an unchanged stored threshold of %i tokens as %sK on edit', async (tokens, draft) => {
+        mock.list.mockResolvedValue({ jobs: [job({ autoCompactThreshold: tokens })] });
+        view();
+        fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+        expect(screen.getByLabelText('Auto-compact threshold (K tokens)')).toHaveValue(draft);
+        fireEvent.click(screen.getByRole('button', { name: 'Save refrain' }));
+        await waitFor(() => expect(mock.update).toHaveBeenCalledWith('ws-a', 'queue_sentinel', 'j1',
+            expect.objectContaining({ autoCompactThreshold: tokens, expectedRevision: 2 })));
         await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     });
     it('validates hourly cron and positive thresholds and warns before Autopilot', async () => {
@@ -224,9 +307,9 @@ describe('Sentinel Refrains', () => {
         expect(screen.getByText(/schedule must run at most once an hour/)).toBeInTheDocument();
         fireEvent.change(screen.getByLabelText('Schedule preset'), { target: { value: '0 * * * *' } });
         expect(cron).toHaveValue('0 * * * *');
-        fireEvent.change(screen.getByLabelText('Auto-compact threshold (tokens)'), { target: { value: '0' } });
+        fireEvent.change(screen.getByLabelText('Auto-compact threshold (K tokens)'), { target: { value: '0' } });
         expect(screen.getByRole('button', { name: 'Create refrain' })).toBeDisabled();
-        fireEvent.change(screen.getByLabelText('Auto-compact threshold (tokens)'), { target: { value: '2000' } });
+        fireEvent.change(screen.getByLabelText('Auto-compact threshold (K tokens)'), { target: { value: '2' } });
         fireEvent.click(screen.getByRole('button', { name: 'Create refrain' }));
         await waitFor(() => expect(mock.create).toHaveBeenCalledWith('ws-a', 'queue_sentinel', expect.objectContaining({
             mode: 'autopilot', cron: '0 * * * *', autoCompactThreshold: 2000,
@@ -238,13 +321,15 @@ describe('Sentinel Refrains', () => {
         view();
         fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
         fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Edited audit' } });
+        fireEvent.change(screen.getByLabelText('Auto-compact threshold (K tokens)'), { target: { value: '100.001' } });
         fireEvent.change(screen.getByLabelText('Schedule preset'), { target: { value: 'manual' } });
         fireEvent.click(screen.getByRole('button', { name: 'Save refrain' }));
         await waitFor(() => expect(mock.update).toHaveBeenCalledWith('ws-a', 'queue_sentinel', 'j1', expect.objectContaining({
-            name: 'Edited audit', expectedRevision: 2, cron: '',
+            name: 'Edited audit', expectedRevision: 2, cron: '', autoCompactThreshold: 100_001,
         })));
         await screen.findAllByText(/Refrain changed/);
         expect(screen.getByLabelText('Name')).toHaveValue('Edited audit');
+        expect(screen.getByLabelText('Auto-compact threshold (K tokens)')).toHaveValue('100.001');
         expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
     it('limits user jobs to 10 without counting the built-in Scrubber', async () => {
@@ -307,11 +392,11 @@ describe('Sentinel Refrains', () => {
         await screen.findByText(/No refrains yet/);
         expect(screen.getByRole('button', { name: 'New refrain' })).not.toBeDisabled();
     });
-    it('renders bounded history with timings, failure/overlap and owner-qualified turn links', async () => {
+    it('renders bounded history with timings, failure/overlap and an owner-qualified job-turn link', async () => {
         mock.route = { kind: 'remote', baseUrl: 'https://example.invalid' };
         mock.list.mockResolvedValue({ jobs: [job({ mode: 'autopilot', runs: [
             run({ status: 'completed', startedAt: '2026-10-18T12:00:01Z', finishedAt: '2026-10-18T12:00:02Z', durationMs: 1000,
-                jobTurnHref: '#repos/ws-a/chats/queue_job?turn=2', sentinelFollowUpHref: '#repos/ws-a/chats/queue_sentinel?turn=4' }),
+                jobTurnHref: '#repos/ws-a/chats/queue_job?turn=2' }),
             run({ id: 'r2', runNumber: 2, status: 'skipped', trigger: 'schedule', skipReason: 'overlap' }),
         ] })] });
         render(<SentinelRefrains owner={{ ...owner, ownerRoutingRef: 'remote:server:ws-a' }} items={[]} onFollowLink={follow} />);
@@ -323,7 +408,7 @@ describe('Sentinel Refrains', () => {
         expect(link).toHaveAttribute('href', '#repos/remote%3Aserver%3Aws-a/chats/queue_job?turn=2');
         fireEvent.click(link);
         expect(follow).toHaveBeenCalledWith(expect.anything(), 'sentinel-job:queue_job:?turn=2');
-        expect(screen.getByRole('link', { name: 'Sentinel follow-up' })).toHaveAttribute('href', '#repos/remote%3Aserver%3Aws-a/chats/queue_sentinel?turn=4');
+        expect(screen.queryByRole('link', { name: 'Sentinel follow-up' })).not.toBeInTheDocument();
     });
     it('uses owning-server feature policy even when local jobs are off', async () => {
         applyRuntimeConfigPatch({ sentinelEnabled: false, sentinelTodoJobsEnabled: false });
@@ -640,5 +725,76 @@ describe('Sentinel Refrains', () => {
             view();
             expect(await screen.findByText(/copilot \/ high effort tier/)).toBeInTheDocument();
         });
+    });
+});
+
+describe('Refrains section collapse under the dashboard stylesheet', () => {
+    let style: HTMLStyleElement;
+    beforeEach(() => {
+        // Tailwind 3 preflight followed by an equal-specificity display utility, in dashboard stylesheet order.
+        style = document.createElement('style');
+        style.textContent = '[hidden]:where(:not([hidden="until-found"])) { display: none; }\n.flex { display: flex; }';
+        document.head.append(style);
+        mock.list.mockResolvedValue({ jobs: [job()] });
+    });
+    afterEach(() => style.remove());
+    const toggle = () => screen.getByRole('button', { name: /Refrains \(1\/10\)/ });
+    // jest-dom's toBeVisible treats every [hidden] element as invisible, so read the cascaded display instead.
+    const rendered = (element: Element) => {
+        for (let node: Element | null = element; node; node = node.parentElement) if (getComputedStyle(node).display === 'none') return false;
+        return true;
+    };
+
+    it('hides and shows the contents by pointer, Enter and Space, with the chevron and aria-expanded matching', async () => {
+        const user = userEvent.setup();
+        view();
+        const row = await screen.findByTestId('sentinel-refrain-j1');
+        const info = screen.getByRole('button', { name: 'About Refrains' });
+        expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+        expect(toggle()).toHaveTextContent('\u25be Refrains (1/10)');
+        expect(rendered(row)).toBe(true);
+
+        await user.click(toggle());
+        expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+        expect(toggle()).toHaveTextContent('\u25b8 Refrains (1/10)');
+        expect(rendered(row)).toBe(false);
+        expect(rendered(screen.getByText(/Results stay in each refrain/))).toBe(false);
+
+        await user.keyboard('{Enter}');
+        expect(toggle()).toHaveFocus();
+        expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+        expect(rendered(row)).toBe(true);
+        await user.keyboard(' ');
+        expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+        expect(rendered(row)).toBe(false);
+        expect(screen.getByTestId('sentinel-refrain-j1')).toBe(row); // collapsed contents stay mounted
+
+        // Adjacent heading controls stay outside the toggle, visible and inert to it.
+        expect(toggle().contains(info)).toBe(false);
+        expect(toggle().querySelector('button, a, input, select, textarea')).toBeNull();
+        expect(rendered(screen.getByRole('button', { name: 'New refrain' }))).toBe(true);
+        await user.click(info);
+        expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+        await user.keyboard('{Escape}');
+        await user.click(screen.getByRole('button', { name: 'New refrain' }));
+        expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('stays collapsed across owner reloads and parent rerenders, and does not leak to another owner', async () => {
+        const page = view();
+        await screen.findByTestId('sentinel-refrain-j1');
+        fireEvent.click(toggle());
+        mock.list.mockResolvedValue({ jobs: [job({ name: 'Renamed' })] });
+        const options = mock.connect.mock.calls[0][0];
+        await act(async () => options.onMessage({ type: 'sentinel-jobs-changed', workspaceId: owner.ownerWorkspaceId, processId: owner.processId }));
+        await waitFor(() => expect(screen.getByTestId('sentinel-refrain-j1')).toHaveAttribute('aria-label', 'Renamed'));
+        page.rerender(<SentinelRefrains owner={{ ...owner }} items={[]} onFollowLink={follow} />);
+        expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+        expect(rendered(screen.getByTestId('sentinel-refrain-j1'))).toBe(false);
+
+        page.rerender(<SentinelRefrains owner={{ ownerWorkspaceId: 'ws-b', processId: 'queue_other' }} items={[]} onFollowLink={follow} />);
+        await waitFor(() => expect(mock.list).toHaveBeenLastCalledWith('ws-b', 'queue_other', expect.anything()));
+        await waitFor(() => expect(rendered(screen.getByTestId('sentinel-refrain-j1'))).toBe(true));
+        expect(toggle()).toHaveAttribute('aria-expanded', 'true');
     });
 });

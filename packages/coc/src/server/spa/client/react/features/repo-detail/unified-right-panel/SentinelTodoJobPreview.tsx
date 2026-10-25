@@ -195,7 +195,7 @@ export function SentinelTodoJobPreview({ job, owner, targetRepo, currentWorkspac
             </span>
         </span>
         {open && portal && createPortal(<div ref={panelRef} id={id} role="dialog" aria-modal="false" aria-labelledby={`${id}-title`} data-native-view-overlay
-            className="fixed z-50 w-[330px] overflow-auto rounded border border-[#d0d7de] bg-white p-3 text-xs text-[#1e1e1e] shadow-lg dark:border-[#3c3c3c] dark:bg-[#252526] dark:text-[#cccccc]"
+            className="fixed z-50 w-[400px] max-w-[calc(100vw-16px)] overflow-auto rounded border border-[#d0d7de] bg-white p-3 text-xs text-[#1e1e1e] shadow-lg dark:border-[#3c3c3c] dark:bg-[#252526] dark:text-[#cccccc]"
             style={{ ...position, maxHeight: Math.min(320, position.maxHeight ?? 320), overflowWrap: 'anywhere' }}
             onPointerEnter={() => { pointerWithin.current = true; clear(); }} onPointerLeave={() => { pointerWithin.current = false; scheduleLeave(); }} onFocus={clear} onBlur={blur}
             onKeyDown={event => {

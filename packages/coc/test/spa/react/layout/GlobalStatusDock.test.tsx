@@ -37,7 +37,7 @@ import { GlobalStatusDock } from '../../../../src/server/spa/client/react/layout
 beforeEach(() => {
     mockIsMobile = false;
     // A non-chat context by default, so the global dock renders.
-    mockAppState = { activeTab: 'wiki', selectedRepoId: null, activeRepoSubTab: undefined };
+    mockAppState = { activeTab: 'stats', selectedRepoId: null, activeRepoSubTab: undefined };
     lastStatusActionsProps = null;
 });
 
@@ -59,7 +59,7 @@ describe('GlobalStatusDock', () => {
     });
 
     it('pins to the workspace left-column width on a non-admin, non-chat tab', () => {
-        mockAppState = { activeTab: 'wiki', selectedRepoId: null, activeRepoSubTab: undefined };
+        mockAppState = { activeTab: 'stats', selectedRepoId: null, activeRepoSubTab: undefined };
         render(<GlobalStatusDock />);
         const wrapper = screen.getByTestId('global-status-dock');
         expect(wrapper.style.width).toContain('--workspace-left-col-width');
@@ -98,12 +98,12 @@ describe('GlobalStatusDock', () => {
     });
 
     it('restores the dock when the admin dialog closes back onto a plain tab', () => {
-        mockAppState = { activeTab: 'wiki', selectedRepoId: null, activeRepoSubTab: undefined };
+        mockAppState = { activeTab: 'stats', selectedRepoId: null, activeRepoSubTab: undefined };
         const { rerender } = render(<GlobalStatusDock />);
         mockAppState = { activeTab: 'logs', selectedRepoId: null, activeRepoSubTab: undefined };
         rerender(<GlobalStatusDock />);
         expect(screen.getAllByTestId('status-actions')).toHaveLength(1);
-        mockAppState = { activeTab: 'wiki', selectedRepoId: null, activeRepoSubTab: undefined };
+        mockAppState = { activeTab: 'stats', selectedRepoId: null, activeRepoSubTab: undefined };
         rerender(<GlobalStatusDock />);
         expect(screen.getAllByTestId('status-actions')).toHaveLength(1);
     });
@@ -170,7 +170,7 @@ describe('GlobalStatusDock', () => {
     });
 
     it('still renders when a stale pull-requests sub-tab lingers but the active tab is not a workspace', () => {
-        mockAppState = { activeTab: 'wiki', selectedRepoId: null, activeRepoSubTab: 'pull-requests' };
+        mockAppState = { activeTab: 'stats', selectedRepoId: null, activeRepoSubTab: 'pull-requests' };
         render(<GlobalStatusDock />);
         expect(screen.getByTestId('status-actions')).toBeTruthy();
     });
@@ -178,8 +178,8 @@ describe('GlobalStatusDock', () => {
     it('still renders when a stale notes sub-tab lingers but the active tab is not a workspace', () => {
         // `activeRepoSubTab` can retain 'notes' after leaving the repos tab; the
         // notes stand-down is scoped to activeTab === 'repos' + a selected repo
-        // so the cluster does not vanish on e.g. the wiki tab.
-        mockAppState = { activeTab: 'wiki', selectedRepoId: null, activeRepoSubTab: 'notes' };
+        // so the cluster does not vanish on e.g. the stats tab.
+        mockAppState = { activeTab: 'stats', selectedRepoId: null, activeRepoSubTab: 'notes' };
         render(<GlobalStatusDock />);
         expect(screen.getByTestId('status-actions')).toBeTruthy();
     });

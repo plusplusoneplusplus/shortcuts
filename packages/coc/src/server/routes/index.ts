@@ -25,8 +25,6 @@ import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
 import type { ScheduleManager } from '../schedule/schedule-manager';
-import type { WikiServerOptions } from '../types';
-import type { WikiManager } from '../wiki';
 import { registerApiRoutes } from '../core/api-handler';
 import { registerQueueRoutes } from '../queue/queue-handler';
 import { prepareTaskForEnqueue } from './queue-enqueue';
@@ -71,7 +69,6 @@ import { createSentinelTodoDelegationHooks } from '../sentinel-todos/sentinel-to
 import { registerQuickAskAnswerRoutes } from '../processes/chat-sidenotes/quick-ask-answer-handler';
 import { registerCanvasRoutes } from '../canvas/canvas-routes';
 import { createCanvasRunScriptFactory } from '../canvas/canvas-script-bridge';
-import { registerWikiRoutes } from '../wiki';
 import { registerMemoryRoutes } from '../memory/memory-routes';
 import { registerMemoryV2Routes } from '../memory/memory-v2-routes';
 import { registerRepoRoutes } from '../repos/repo-routes';
@@ -288,7 +285,6 @@ export interface RegisterRoutesOptions {
     decisionService?: DecisionService;
     getWsServer: () => ProcessWebSocketServer;
     queuePersistence: SqliteQueuePersistence;
-    wikiOptions?: WikiServerOptions;
     aiInvoker: AIInvoker;
     getTerminalSessionManager?: () => TerminalSessionManager | undefined;
     resolvedConfig?: ResolvedCLIConfig;
@@ -354,15 +350,14 @@ export interface RegisterRoutesOptions {
     setAskUserQuestionRelay?: (relay: AskUserQuestionRelay) => void;
     /** Shared native Notes index lifecycle, validated by the composition root. */
     notesSearchService: NotesSearchService;
-    watchService?: import('../shared/native-watch-service').NativeWatchServiceLike;
 }
 
-export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; teamsMessagingManager: TeamsMessagingManager; whatsappMessagingManager: WhatsAppMessagingManager; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; autoPullManager: AutoPullManager; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler; repoTreeService: RepoTreeService; codaReady: Promise<number>; sentinelRefrainsShutdown: () => Promise<void>; teamsIc3OwnCommands?: ReturnType<typeof createTeamsIc3OwnCommandsRuntime> } {
+export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { teamsMessagingManager: TeamsMessagingManager; whatsappMessagingManager: WhatsAppMessagingManager; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; autoPullManager: AutoPullManager; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler; repoTreeService: RepoTreeService; codaReady: Promise<number>; sentinelRefrainsShutdown: () => Promise<void>; teamsIc3OwnCommands?: ReturnType<typeof createTeamsIc3OwnCommandsRuntime> } {
     const {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
         dataDir, configPath, tokenTtlMs, globalWorkspaceRootPath,
-        resolvedAiService, getWsServer, queuePersistence, wikiOptions,
+        resolvedAiService, getWsServer, queuePersistence,
         aiInvoker,
     } = opts;
     let workItemGitHubPullPoller: WorkItemGitHubPullPoller | undefined;
@@ -2152,35 +2147,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         });
     });
 
-    const wikiManager = registerWikiRoutes(routes, {
-        watchService: opts.watchService,
-        wikis: wikiOptions?.wikis,
-        aiEnabled: wikiOptions?.aiEnabled,
-        dataDir,
-        store,
-        onWikiRebuilding: (wikiId, affectedComponentIds) => {
-            getWsServer().broadcastWikiEvent({
-                type: 'wiki-rebuilding',
-                wikiId,
-                components: affectedComponentIds,
-            });
-        },
-        onWikiReloaded: (wikiId, affectedComponentIds) => {
-            getWsServer().broadcastWikiEvent({
-                type: 'wiki-reload',
-                wikiId,
-                components: affectedComponentIds,
-            });
-        },
-        onWikiError: (wikiId, error) => {
-            getWsServer().broadcastWikiEvent({
-                type: 'wiki-error',
-                wikiId,
-                message: error.message,
-            });
-        },
-    });
-
     // Sync routes (notes git sync — per-workspace)
     registerSyncRoutes(
         routes,
@@ -2196,7 +2162,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     );
 
-    return { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService,
+    return { teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService,
         codaReady: Promise.all([codaReady, remoteResultsReady, remoteReturnReady]).then(([count]) => count), sentinelRefrainsShutdown,
         teamsIc3OwnCommands };
 }

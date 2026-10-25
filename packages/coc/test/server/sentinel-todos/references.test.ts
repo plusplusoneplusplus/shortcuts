@@ -464,7 +464,7 @@ describe('Sentinel to-do conversation references', () => {
             const item = pendingItem();
             todos.attachReference(owner, item.id, 1, { processId: 'queue_design', workspaceId: 'ws-a', openLink: '#x' }, 'user');
             const domain = createSentinelTodosDomain();
-            const ctx = { dataDir: database.dataDir, store: undefined, includeWikis: false } as never;
+            const ctx = { dataDir: database.dataDir, store: undefined } as never;
             database.close();
             const result = { errors: [] as string[] };
             await domain.executeWipe(ctx, [], result);

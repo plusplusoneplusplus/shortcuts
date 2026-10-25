@@ -29,8 +29,8 @@ describe('createMockAppContext', () => {
     });
 
     it('merges overrides into state', () => {
-        const { state } = createMockAppContext({ activeTab: 'wiki', selectedId: 'p1' });
-        expect(state.activeTab).toBe('wiki');
+        const { state } = createMockAppContext({ activeTab: 'stats', selectedId: 'p1' });
+        expect(state.activeTab).toBe('stats');
         expect(state.selectedId).toBe('p1');
         // Other defaults still intact
         expect(state.workspace).toBe('__all');

@@ -261,20 +261,6 @@ function AppInner() {
                     window.dispatchEvent(new CustomEvent('notes-changed', { detail: { wsId: msg.workspaceId, changedPaths: (msg as any).changedPaths ?? [] } }));
                 }
                 break;
-            case 'wiki-reload':
-                if (msg.wiki) appDispatch({ type: 'WIKI_RELOAD', wiki: msg.wiki });
-                break;
-            case 'wiki-rebuilding':
-                if (msg.wikiId) appDispatch({ type: 'WIKI_REBUILDING', wikiId: msg.wikiId });
-                break;
-            case 'wiki-error':
-                if (msg.wikiId) appDispatch({ type: 'WIKI_ERROR', wikiId: msg.wikiId, error: msg.error || '' });
-                addNotification({
-                    type: 'warning',
-                    title: 'Wiki error',
-                    detail: msg.error || '',
-                });
-                break;
             case 'work-item-added':
                 if (msg.workspaceId && msg.item) {
                     for (const scopeId of getWorkItemEventScopeIds(String(msg.workspaceId))) {

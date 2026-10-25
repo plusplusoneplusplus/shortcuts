@@ -13,7 +13,6 @@ See [server architecture](server-architecture.md) for CoC internals.
 | `coc/` | CLI, HTTP server, dashboard and runtime composition; [server](server-architecture.md), [SPA](spa/shell.md) |
 | `coccontainer/` | Messaging-integrated server and native agent/message stores |
 | `coc-desktop/` | Private Electron host embedding CoC/CoCContainer servers |
-| `deep-wiki/` | Independent wiki-generation CLI; CoC can invoke it as a child process; [pipeline](deep-wiki.md) |
 | `coc-client/` | Node/browser REST and realtime client; [clone routing](spa/clone-routing.md) |
 | `coc-workflow/` | DAG compiler/executor, scheduling and portable Ralph contracts; [workflow engine](workflow-engine.md) |
 | `forge/` | Queue/process stores, Git, policies, connectors and utilities; SDK/workflow re-exports |
@@ -26,9 +25,7 @@ See [server architecture](server-architecture.md) for CoC internals.
 
 Reusable behavior belongs behind package contracts. Workspace dependencies
 resolve through npm symlinks during development; published manifests use
-caret ranges or `*`. Deep Wiki's publishing build bundles its CLI source and
-selected dependencies while externalizing packages such as forge and coc-native;
-see `packages/deep-wiki/esbuild.config.mjs`.
+caret ranges or `*`.
 
 ## Development
 
@@ -44,7 +41,6 @@ Run from the repository root unless noted:
 | `npm run lint` | Selected workspaces listed in root `package.json` |
 | `npm run ensure:native` | Ensure native addon and symbol-server binaries |
 | `npm run coc:link` | Build/link the local CoC CLI dependency chain |
-| `npm run deep-wiki:link` | Link Deep Wiki; build shared dependencies first |
 | `npm run dev:desktop` | Build/start Electron; build container dependencies first |
 
 Package `test` scripts run Vitest watch mode; `test:run` is non-watch.
@@ -63,7 +59,7 @@ Root `build:packages` runs:
 
 ```text
 coc-native -> coc-agent-sdk -> coc-workflow -> forge -> coc-client
--> coc-memory -> coc-connector -> coc -> coccontainer -> deep-wiki -> coc-desktop
+-> coc-memory -> coc-connector -> coc -> coccontainer -> coc-desktop
 ```
 
 Forge's prebuild builds native, SDK, workflow and memory before forge itself.
@@ -75,7 +71,7 @@ Desktop packaging needs both server packages built.
 
 ### Local runtime
 
-After linking, use `coc serve --no-open` or `deep-wiki generate <repo>`.
+After linking, use `coc serve --no-open`.
 CoC and CoCContainer rebuild loops live in
 `scripts/coc-serve-loop.sh` / `.ps1` and `scripts/coccontainer-serve-loop.sh` / `.ps1`;
 they install dependencies and ensure native binaries before serving.
@@ -403,8 +399,7 @@ All workspaces except private `coc-desktop` have public npm configuration under
 `@plusplusoneplusplus`. Changesets uses independent versions, `main` as base, and
 patch updates to internal dependencies (`.changeset/config.json`).
 `npm run changeset` adds a changeset; `npm run version-packages` applies it.
-`npm run publish-packages` builds its selected packages and Deep Wiki bundle,
-then invokes `changeset publish`; it is not the complete root build chain.
+`npm run publish-packages` builds its selected packages, then invokes `changeset publish`; it is not the complete root build chain.
 npm publication is manual, separate from installer/image release CI.
 
 Root and consuming manifests pin Copilot SDK `1.0.9`; the root override pins

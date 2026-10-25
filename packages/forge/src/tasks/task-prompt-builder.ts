@@ -43,7 +43,7 @@ export const AUTO_FOLDER_SENTINEL = '__auto__';
 export interface AutoFolderContext {
     /** Absolute path to the target root directory (tasks root or notes/Plans). */
     tasksRoot: string;
-    /** Existing subfolder paths relative to tasksRoot (e.g. ["coc", "coc/chat", "deep-wiki"]). */
+    /** Existing subfolder paths relative to tasksRoot (e.g. ["coc", "coc/chat", "forge"]). */
     existingFolders: string[];
 }
 

@@ -15,8 +15,6 @@ import { useApp } from '../contexts/AppContext';
 import { useVisibleDashboardTab } from './useVisibleDashboardTab';
 import { useQueue } from '../contexts/QueueContext';
 import { ReposView } from '../repos';
-import { WikiView } from '../wiki/WikiView';
-import { SHOW_WIKI_TAB } from './TopBar';
 import { isTerminalEnabled, isDreamsEnabled, isSchedulesInScheduledSlideEnabled } from '../utils/config';
 import { splitWorkspaceLeftCollapsedStorageKey, toggleLeftCollapsed } from '../features/repo-detail/WorkspaceLeftCollapse';
 import { toggleWorkspaceDockOpen } from '../features/repo-detail/WorkspaceDockToggle';
@@ -44,7 +42,7 @@ function StubView({ id, label }: { id: string; label: string }) {
     return <div id={id}>{label}</div>;
 }
 
-const ALL_REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
+export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
     g: 'git',
     e: 'explorer',
     t: 'tasks',
@@ -59,10 +57,6 @@ export const VIRTUAL_WORKSPACE_TAB_SHORTCUTS: Record<string, RepoSubTab> = {
     n: 'notes',
     c: 'settings',
 };
-
-export const REPO_TAB_SHORTCUTS: Record<string, RepoSubTab> = SHOW_WIKI_TAB
-    ? ALL_REPO_TAB_SHORTCUTS
-    : Object.fromEntries(Object.entries(ALL_REPO_TAB_SHORTCUTS).filter(([, v]) => v !== 'wiki'));
 
 export function Router() {
     const [referenceHash, setReferenceHash] = useState<string | null>(() =>
@@ -203,8 +197,6 @@ export function Router() {
     switch (renderedTab) {
         case 'repos':
             return <ReposView />;
-        case 'wiki':
-            return <WikiView />;
         case 'reports':
             return <StubView id="view-reports" label="Reports" />;
         default:

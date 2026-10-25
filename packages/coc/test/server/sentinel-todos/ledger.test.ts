@@ -647,7 +647,7 @@ describe('Sentinel to-do snapshot policy', () => {
             const todos = new SentinelTodoStore(shared);
             const { item } = todos.create(owner, { title: 'Local ledger' }, { actor: 'user' });
             todos.linkJob(owner, item.id, job);
-            const context = { dataDir, store: processes, includeWikis: false };
+            const context = { dataDir, store: processes };
             const domain = createSentinelTodosDomain();
             const errors = { errors: [] as string[] };
             await domain.executeWipe(context, (await domain.planWipe(context)).plan, errors);
@@ -669,7 +669,7 @@ describe('Sentinel to-do snapshot policy', () => {
         store.create(otherOwners[0], { title: 'Other ledger' }, { actor: 'user' });
         expect(createSnapshotDomains().map(domain => domain.id)).toContain('sentinel-todos');
         const domain = createSentinelTodosDomain();
-        const context = { dataDir, includeWikis: false } as StorageSnapshotContext & { includeWikis: boolean };
+        const context = { dataDir } as StorageSnapshotContext;
         expect(await domain.collect(context)).toEqual({ data: {}, metadata: {}, warnings: [] });
         const before = store.get(owner);
         const restoreResult = { errors: [] };

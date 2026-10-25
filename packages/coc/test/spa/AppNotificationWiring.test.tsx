@@ -190,16 +190,11 @@ describe('App WebSocket → Notification wiring', () => {
         expect(mockAddNotification).not.toHaveBeenCalled();
     });
 
-    it('wiki-error triggers addNotification with warning type', () => {
+    it('legacy wiki-error message triggers no notification', () => {
         const onMessage = renderAndCapture();
         act(() => onMessage({ type: 'wiki-error', wikiId: 'w1', error: 'Something broke' }));
 
-        expect(mockAddNotification).toHaveBeenCalledOnce();
-        expect(mockAddNotification.mock.calls[0][0]).toEqual({
-            type: 'warning',
-            title: 'Wiki error',
-            detail: 'Something broke',
-        });
+        expect(mockAddNotification).not.toHaveBeenCalled();
     });
 
     it('cancelled process triggers addNotification with warning type', () => {

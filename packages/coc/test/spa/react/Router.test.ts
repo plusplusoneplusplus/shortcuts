@@ -5,8 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, parseRalphSessionDeepLink, REPO_TAB_SHORTCUTS, VIRTUAL_WORKSPACE_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink, parseAdminSubTab, VALID_ADMIN_SUB_TABS, VALID_PR_DETAIL_TABS, parsePrDetailTab, parseAdminDatabaseDeepLink, buildDbBrowserHash, buildRepoSubTabSuffix, buildWorkspaceSubTabSuffix } from '../../../src/server/spa/client/react/layout/Router';
-import { SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
+import { tabFromHash, VALID_REPO_SUB_TABS, parseProcessDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, parseRalphSessionDeepLink, REPO_TAB_SHORTCUTS, VIRTUAL_WORKSPACE_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink, parseAdminSubTab, VALID_ADMIN_SUB_TABS, VALID_PR_DETAIL_TABS, parsePrDetailTab, parseAdminDatabaseDeepLink, buildDbBrowserHash, buildRepoSubTabSuffix, buildWorkspaceSubTabSuffix } from '../../../src/server/spa/client/react/layout/Router';
 import type { AppContextState, AppAction } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { appReducer } from '../../../src/server/spa/client/react/contexts/AppContext';
 
@@ -53,8 +52,9 @@ describe('tabFromHash', () => {
         expect(tabFromHash('#session')).toBeNull();
     });
 
-    it('returns "wiki" for #wiki (accessible via hash route even when tab hidden)', () => {
-        expect(tabFromHash('#wiki')).toBe('wiki');
+    it('returns null for the retired #wiki route', () => {
+        expect(tabFromHash('#wiki')).toBeNull();
+        expect(tabFromHash('#wiki/my-wiki/browse')).toBeNull();
     });
 
     it('returns "admin" for #admin', () => {
@@ -125,8 +125,8 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('git')).toBe(true);
     });
 
-    it('includes "wiki"', () => {
-        expect(VALID_REPO_SUB_TABS.has('wiki')).toBe(true);
+    it('does not include the retired "wiki" sub-tab', () => {
+        expect(VALID_REPO_SUB_TABS.has('wiki')).toBe(false);
     });
 
     it('includes "workflow"', () => {
@@ -154,8 +154,8 @@ describe('VALID_REPO_SUB_TABS', () => {
         expect(VALID_REPO_SUB_TABS.has('today')).toBe(true);
     });
 
-    it('has exactly 17 entries', () => {
-        expect(VALID_REPO_SUB_TABS.size).toBe(17);
+    it('has exactly 16 entries', () => {
+        expect(VALID_REPO_SUB_TABS.size).toBe(16);
     });
 });
 
@@ -398,265 +398,6 @@ describe('process deep-link parsing', () => {
     });
 });
 
-// ─── VALID_WIKI_PROJECT_TABS ────────────────────────────────────
-
-describe('VALID_WIKI_PROJECT_TABS', () => {
-    it('includes "browse"', () => {
-        expect(VALID_WIKI_PROJECT_TABS.has('browse')).toBe(true);
-    });
-
-    it('includes "ask"', () => {
-        expect(VALID_WIKI_PROJECT_TABS.has('ask')).toBe(true);
-    });
-
-    it('includes "graph"', () => {
-        expect(VALID_WIKI_PROJECT_TABS.has('graph')).toBe(true);
-    });
-
-    it('includes "admin"', () => {
-        expect(VALID_WIKI_PROJECT_TABS.has('admin')).toBe(true);
-    });
-
-    it('does not include unknown tab', () => {
-        expect(VALID_WIKI_PROJECT_TABS.has('settings')).toBe(false);
-    });
-
-    it('has exactly 4 entries', () => {
-        expect(VALID_WIKI_PROJECT_TABS.size).toBe(4);
-    });
-});
-
-// ─── parseWikiDeepLink ──────────────────────────────────────────
-
-describe('parseWikiDeepLink', () => {
-    it('parses #wiki/my-wiki with no tab (defaults null)', () => {
-        const result = parseWikiDeepLink('#wiki/my-wiki');
-        expect(result.wikiId).toBe('my-wiki');
-        expect(result.tab).toBeNull();
-        expect(result.componentId).toBeNull();
-        expect(result.adminTab).toBeNull();
-    });
-
-    it('parses #wiki/my-wiki/browse', () => {
-        const result = parseWikiDeepLink('#wiki/my-wiki/browse');
-        expect(result.wikiId).toBe('my-wiki');
-        expect(result.tab).toBe('browse');
-        expect(result.componentId).toBeNull();
-        expect(result.adminTab).toBeNull();
-    });
-
-    it('parses #wiki/my-wiki/ask', () => {
-        const result = parseWikiDeepLink('#wiki/my-wiki/ask');
-        expect(result.wikiId).toBe('my-wiki');
-        expect(result.tab).toBe('ask');
-        expect(result.componentId).toBeNull();
-        expect(result.adminTab).toBeNull();
-    });
-
-    it('parses #wiki/my-wiki/graph', () => {
-        const result = parseWikiDeepLink('#wiki/my-wiki/graph');
-        expect(result.wikiId).toBe('my-wiki');
-        expect(result.tab).toBe('graph');
-        expect(result.componentId).toBeNull();
-        expect(result.adminTab).toBeNull();
-    });
-
-    it('parses #wiki/my-wiki/admin with no sub-tab', () => {
-        const result = parseWikiDeepLink('#wiki/my-wiki/admin');
-        expect(result.wikiId).toBe('my-wiki');
-        expect(result.tab).toBe('admin');
-        expect(result.componentId).toBeNull();
-        expect(result.adminTab).toBeNull();
-    });
-
-    it('parses #wiki/my-wiki/component/comp-1', () => {
-        const result = parseWikiDeepLink('#wiki/my-wiki/component/comp-1');
-        expect(result.wikiId).toBe('my-wiki');
-        expect(result.tab).toBe('browse');
-        expect(result.componentId).toBe('comp-1');
-        expect(result.adminTab).toBeNull();
-    });
-
-    it('handles URL-encoded wiki IDs', () => {
-        const result = parseWikiDeepLink('#wiki/my%20wiki/ask');
-        expect(result.wikiId).toBe('my wiki');
-        expect(result.tab).toBe('ask');
-        expect(result.adminTab).toBeNull();
-    });
-
-    it('handles URL-encoded component IDs', () => {
-        const result = parseWikiDeepLink('#wiki/w1/component/comp%2Fone');
-        expect(result.wikiId).toBe('w1');
-        expect(result.tab).toBe('browse');
-        expect(result.componentId).toBe('comp/one');
-    });
-
-    it('returns null for unknown tab segment', () => {
-        const result = parseWikiDeepLink('#wiki/my-wiki/settings');
-        expect(result.wikiId).toBe('my-wiki');
-        expect(result.tab).toBeNull();
-        expect(result.componentId).toBeNull();
-        expect(result.adminTab).toBeNull();
-    });
-
-    it('returns null wikiId for #wiki alone', () => {
-        const result = parseWikiDeepLink('#wiki');
-        expect(result.wikiId).toBeNull();
-        expect(result.tab).toBeNull();
-        expect(result.componentId).toBeNull();
-    });
-
-    it('returns null for non-wiki hash', () => {
-        const result = parseWikiDeepLink('#repos/my-repo');
-        expect(result.wikiId).toBeNull();
-        expect(result.tab).toBeNull();
-        expect(result.componentId).toBeNull();
-    });
-
-    it('returns null for empty hash', () => {
-        const result = parseWikiDeepLink('#');
-        expect(result.wikiId).toBeNull();
-        expect(result.tab).toBeNull();
-    });
-
-    it('returns null for empty string', () => {
-        const result = parseWikiDeepLink('');
-        expect(result.wikiId).toBeNull();
-        expect(result.tab).toBeNull();
-    });
-
-    it('component route takes precedence over tab matching', () => {
-        const result = parseWikiDeepLink('#wiki/w1/component/admin');
-        expect(result.wikiId).toBe('w1');
-        expect(result.tab).toBe('browse');
-        expect(result.componentId).toBe('admin');
-    });
-
-    it('returns null componentId when component segment has no ID', () => {
-        const result = parseWikiDeepLink('#wiki/w1/component');
-        expect(result.wikiId).toBe('w1');
-        expect(result.tab).toBeNull();
-        expect(result.componentId).toBeNull();
-    });
-});
-
-// ─── VALID_WIKI_ADMIN_TABS ──────────────────────────────────────
-
-describe('VALID_WIKI_ADMIN_TABS', () => {
-    it('includes "generate"', () => {
-        expect(VALID_WIKI_ADMIN_TABS.has('generate')).toBe(true);
-    });
-
-    it('includes "seeds"', () => {
-        expect(VALID_WIKI_ADMIN_TABS.has('seeds')).toBe(true);
-    });
-
-    it('includes "config"', () => {
-        expect(VALID_WIKI_ADMIN_TABS.has('config')).toBe(true);
-    });
-
-    it('includes "delete"', () => {
-        expect(VALID_WIKI_ADMIN_TABS.has('delete')).toBe(true);
-    });
-
-    it('does not include unknown tab', () => {
-        expect(VALID_WIKI_ADMIN_TABS.has('settings')).toBe(false);
-    });
-
-    it('has exactly 4 entries', () => {
-        expect(VALID_WIKI_ADMIN_TABS.size).toBe(4);
-    });
-});
-
-// ─── parseWikiDeepLink — admin sub-tabs ─────────────────────────
-
-describe('parseWikiDeepLink — admin sub-tabs', () => {
-    it('parses #wiki/w1/admin/generate', () => {
-        const result = parseWikiDeepLink('#wiki/w1/admin/generate');
-        expect(result.wikiId).toBe('w1');
-        expect(result.tab).toBe('admin');
-        expect(result.adminTab).toBe('generate');
-        expect(result.componentId).toBeNull();
-    });
-
-    it('parses #wiki/w1/admin/seeds', () => {
-        const result = parseWikiDeepLink('#wiki/w1/admin/seeds');
-        expect(result.wikiId).toBe('w1');
-        expect(result.tab).toBe('admin');
-        expect(result.adminTab).toBe('seeds');
-    });
-
-    it('parses #wiki/w1/admin/config', () => {
-        const result = parseWikiDeepLink('#wiki/w1/admin/config');
-        expect(result.wikiId).toBe('w1');
-        expect(result.tab).toBe('admin');
-        expect(result.adminTab).toBe('config');
-    });
-
-    it('parses #wiki/w1/admin/delete', () => {
-        const result = parseWikiDeepLink('#wiki/w1/admin/delete');
-        expect(result.wikiId).toBe('w1');
-        expect(result.tab).toBe('admin');
-        expect(result.adminTab).toBe('delete');
-    });
-
-    it('returns null adminTab for unknown admin sub-tab', () => {
-        const result = parseWikiDeepLink('#wiki/w1/admin/unknown');
-        expect(result.wikiId).toBe('w1');
-        expect(result.tab).toBe('admin');
-        expect(result.adminTab).toBeNull();
-    });
-
-    it('returns null adminTab for non-admin tab with sub-path', () => {
-        const result = parseWikiDeepLink('#wiki/w1/ask/seeds');
-        expect(result.wikiId).toBe('w1');
-        expect(result.tab).toBe('ask');
-        expect(result.adminTab).toBeNull();
-    });
-
-    it('handles URL-encoded wiki ID with admin sub-tab', () => {
-        const result = parseWikiDeepLink('#wiki/my%20wiki/admin/config');
-        expect(result.wikiId).toBe('my wiki');
-        expect(result.tab).toBe('admin');
-        expect(result.adminTab).toBe('config');
-    });
-
-    it('#wiki/w1/admin has null adminTab (defaults to generate in component)', () => {
-        const result = parseWikiDeepLink('#wiki/w1/admin');
-        expect(result.tab).toBe('admin');
-        expect(result.adminTab).toBeNull();
-    });
-});
-
-// ─── wiki tab deep-link integration ─────────────────────────────
-// Top-level #wiki route is hidden (SHOW_WIKI_TAB = false); wiki is only
-// accessible under #repos/:id/wiki. The code remains for future re-enabling.
-
-describe('wiki tab deep-link integration', () => {
-    it('tabFromHash returns "wiki" for wiki routes (accessible via hash even when tab hidden)', () => {
-        expect(tabFromHash('#wiki/my-wiki/browse')).toBe('wiki');
-        expect(tabFromHash('#wiki/my-wiki/ask')).toBe('wiki');
-        expect(tabFromHash('#wiki/my-wiki/graph')).toBe('wiki');
-        expect(tabFromHash('#wiki/my-wiki/admin')).toBe('wiki');
-        expect(tabFromHash('#wiki/my-wiki/component/comp-1')).toBe('wiki');
-        expect(tabFromHash('#wiki/my-wiki/admin/seeds')).toBe('wiki');
-        expect(tabFromHash('#wiki/my-wiki/admin/config')).toBe('wiki');
-        expect(tabFromHash('#wiki/my-wiki/admin/delete')).toBe('wiki');
-        expect(tabFromHash('#wiki/my-wiki/admin/generate')).toBe('wiki');
-    });
-
-    it('parseWikiDeepLink still parses wiki hashes correctly', () => {
-        const detail1 = parseWikiDeepLink('#wiki/w1/ask');
-        expect(detail1.wikiId).toBe('w1');
-        expect(detail1.tab).toBe('ask');
-
-        const detail2 = parseWikiDeepLink('#wiki/w1/admin/seeds');
-        expect(detail2.wikiId).toBe('w1');
-        expect(detail2.tab).toBe('admin');
-        expect(detail2.adminTab).toBe('seeds');
-    });
-});
-
 // ─── parseWorkflowsDeepLink ──────────────────────────────────────
 
 describe('parseWorkflowsDeepLink', () => {
@@ -750,51 +491,6 @@ describe('parseChatTemplateDeepLink', () => {
 
     it('parses #repos/my-repo/templates/chat-template/st-1 (new URL form)', () => {
         expect(parseChatTemplateDeepLink('#repos/my-repo/templates/chat-template/st-1')).toBe('st-1');
-    });
-});
-
-// ─── handleHash wiki dispatch simulation ────────────────────────
-// The top-level #wiki route is hidden (SHOW_WIKI_TAB = false); wiki is
-// accessible under #repos/:id/wiki. The dispatch code remains for future
-// re-enabling. These tests verify that #wiki hashes produce no dispatches
-// while SHOW_WIKI_TAB is false.
-
-describe('handleHash wiki dispatch simulation', () => {
-    function simulateWikiHashDispatch(rawHash: string): Array<{ type: string; [key: string]: any }> {
-        const dispatches: Array<{ type: string; [key: string]: any }> = [];
-        const hash = rawHash.replace(/^#/, '');
-        const tab = tabFromHash('#' + hash);
-        if (tab === 'wiki') {
-            const wikiLink = parseWikiDeepLink('#' + hash);
-            if (wikiLink.wikiId) {
-                if (wikiLink.tab) {
-                    dispatches.push({
-                        type: 'SELECT_WIKI_WITH_TAB',
-                        wikiId: wikiLink.wikiId,
-                        tab: wikiLink.tab,
-                        adminTab: wikiLink.adminTab,
-                        componentId: wikiLink.componentId,
-                    });
-                } else {
-                    dispatches.push({ type: 'SELECT_WIKI', wikiId: wikiLink.wikiId });
-                }
-            }
-        }
-        return dispatches;
-    }
-
-    it('dispatches correctly for #wiki hashes (accessible via hash route even when tab hidden)', () => {
-        expect(simulateWikiHashDispatch('#wiki/w1/component/comp-1')).toHaveLength(1);
-        expect(simulateWikiHashDispatch('#wiki/w1/ask')).toHaveLength(1);
-        expect(simulateWikiHashDispatch('#wiki/w1')).toHaveLength(1);
-        expect(simulateWikiHashDispatch('#wiki/w1/admin/seeds')).toHaveLength(1);
-        // #wiki alone has no wikiId, so no dispatch
-        expect(simulateWikiHashDispatch('#wiki')).toHaveLength(0);
-    });
-
-    it('dispatches nothing for non-wiki hash', () => {
-        const dispatches = simulateWikiHashDispatch('#repos/my-repo');
-        expect(dispatches).toHaveLength(0);
     });
 });
 
@@ -1482,75 +1178,7 @@ describe('branch-range deep links', () => {
     });
 });
 
-// ─── wiki repo sub-tab deep-link ─────────────────────────────────
-
-describe('wiki repo sub-tab deep-link', () => {
-    function parseRepoDeepLink(rawHash: string): { repoId: string | null; subTab: string | null } {
-        const hash = rawHash.replace(/^#/, '');
-        const parts = hash.split('/');
-        if (parts[0] !== 'repos') return { repoId: null, subTab: null };
-        const repoId = parts.length >= 2 && parts[1] ? decodeURIComponent(parts[1]) : null;
-        const subTab = parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2]) ? parts[2] : null;
-        return { repoId, subTab };
-    }
-
-    it('parses #repos/my-repo/wiki correctly', () => {
-        const result = parseRepoDeepLink('#repos/my-repo/wiki');
-        expect(result.repoId).toBe('my-repo');
-        expect(result.subTab).toBe('wiki');
-    });
-
-    it('tabFromHash returns "repos" for #repos/ws-abc/wiki', () => {
-        expect(tabFromHash('#repos/ws-abc/wiki')).toBe('repos');
-    });
-
-    it('handles URL-encoded repo IDs with wiki sub-tab', () => {
-        const result = parseRepoDeepLink('#repos/my%20repo/wiki');
-        expect(result.repoId).toBe('my repo');
-        expect(result.subTab).toBe('wiki');
-    });
-});
-
-// ─── handleHash wiki repo sub-tab dispatch simulation ───────────
-
-describe('handleHash wiki repo sub-tab dispatch simulation', () => {
-    function simulateWikiRepoHash(rawHash: string): Array<{ type: string; [key: string]: any }> {
-        const dispatches: Array<{ type: string; [key: string]: any }> = [];
-        const hash = rawHash.replace(/^#/, '');
-        const tab = tabFromHash('#' + hash);
-        if (tab === 'repos') {
-            const parts = hash.split('/');
-            if (parts.length >= 2 && parts[0] === 'repos' && parts[1]) {
-                dispatches.push({ type: 'SET_SELECTED_REPO', id: decodeURIComponent(parts[1]) });
-                if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
-                    dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] });
-                }
-            }
-        }
-        return dispatches;
-    }
-
-    it('dispatches SET_REPO_SUB_TAB with wiki for #repos/r1/wiki', () => {
-        const dispatches = simulateWikiRepoHash('#repos/r1/wiki');
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
-    });
-
-    it('dispatches SET_SELECTED_REPO alongside wiki sub-tab', () => {
-        const dispatches = simulateWikiRepoHash('#repos/r1/wiki');
-        expect(dispatches).toContainEqual({ type: 'SET_SELECTED_REPO', id: 'r1' });
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
-    });
-
-    it('does not dispatch SET_REPO_SUB_TAB for #repos/r1 (no sub-tab)', () => {
-        const dispatches = simulateWikiRepoHash('#repos/r1');
-        expect(dispatches.find(d => d.type === 'SET_REPO_SUB_TAB')).toBeUndefined();
-    });
-});
-
-// ─── Bare W key no longer navigates to wiki ─────────────────────
-// After removing the bare-W shortcut, pressing W without modifier should NOT dispatch anything.
-
-describe('Bare W key no longer navigates to wiki', () => {
+describe('Bare W key dispatches no navigation', () => {
     type MockEvent = {
         key: string;
         code?: string;
@@ -1626,7 +1254,7 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
 
     const repoState: MockState = { activeTab: 'repos', selectedRepoId: 'my-repo' };
 
-    it('REPO_TAB_SHORTCUTS maps 7 letters to sub-tabs (wiki hidden), with no Notes/Settings page shortcut', () => {
+    it('REPO_TAB_SHORTCUTS maps 7 letters to sub-tabs, with no Notes/Settings page shortcut', () => {
         expect(Object.keys(REPO_TAB_SHORTCUTS)).toHaveLength(7);
         expect(REPO_TAB_SHORTCUTS['i']).toBeUndefined();
         expect(REPO_TAB_SHORTCUTS['d']).toBe('dreams');
@@ -1662,7 +1290,7 @@ describe('Alt+<letter> repo sub-tab keyboard shortcuts', () => {
     });
 
     it('does not dispatch when activeTab is not repos', () => {
-        const dispatches = simulateAltKeyHandler({ key: 'a', code: 'KeyA', altKey: true }, { activeTab: 'wiki', selectedRepoId: 'my-repo' });
+        const dispatches = simulateAltKeyHandler({ key: 'a', code: 'KeyA', altKey: true }, { activeTab: 'stats', selectedRepoId: 'my-repo' });
         expect(dispatches).toHaveLength(0);
     });
 
@@ -1764,7 +1392,7 @@ describe('Alt+Q queue dialog keyboard shortcut', () => {
     });
 
     it('does not dispatch when activeTab is not repos', () => {
-        const dispatches = simulateFullAltKeyHandler({ key: 'q', code: 'KeyQ', altKey: true }, { activeTab: 'wiki', selectedRepoId: 'my-repo' });
+        const dispatches = simulateFullAltKeyHandler({ key: 'q', code: 'KeyQ', altKey: true }, { activeTab: 'stats', selectedRepoId: 'my-repo' });
         expect(dispatches).toHaveLength(0);
     });
 
@@ -1806,97 +1434,6 @@ describe('Alt+Q queue dialog keyboard shortcut', () => {
     it('Alt+A still dispatches SET_REPO_SUB_TAB (not broken by Q handler)', () => {
         const dispatches = simulateFullAltKeyHandler({ key: 'a', code: 'KeyA', altKey: true }, repoState);
         expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
-    });
-});
-
-// ─── handleHash wiki deep-link in repos context──────────────────
-
-describe('handleHash wiki deep-link dispatch simulation (repos context)', () => {
-    function simulateRepoWikiHash(rawHash: string): Array<{ type: string; [key: string]: any }> {
-        const dispatches: Array<{ type: string; [key: string]: any }> = [];
-        const hash = rawHash.replace(/^#/, '');
-        const parts = hash.split('/');
-        if (parts[0] !== 'repos' || !parts[1]) return dispatches;
-
-        dispatches.push({ type: 'SET_SELECTED_REPO', id: decodeURIComponent(parts[1]) });
-        if (parts.length >= 3 && VALID_REPO_SUB_TABS.has(parts[2])) {
-            dispatches.push({ type: 'SET_REPO_SUB_TAB', tab: parts[2] });
-        }
-
-        if (parts[2] === 'wiki' && parts[3]) {
-            const wikiId = decodeURIComponent(parts[3]);
-            if (parts[4] === 'component' && parts[5]) {
-                dispatches.push({
-                    type: 'SET_REPO_WIKI_DEEP_LINK',
-                    wikiId,
-                    tab: 'browse',
-                    componentId: decodeURIComponent(parts[5]),
-                });
-            } else if (parts[4] && VALID_WIKI_PROJECT_TABS.has(parts[4])) {
-                const tab = parts[4];
-                let adminTab: string | null = null;
-                if (tab === 'admin' && parts[5] && VALID_WIKI_ADMIN_TABS.has(parts[5])) {
-                    adminTab = parts[5];
-                }
-                dispatches.push({ type: 'SET_REPO_WIKI_DEEP_LINK', wikiId, tab, adminTab });
-            } else {
-                dispatches.push({ type: 'SET_REPO_WIKI_ID', wikiId });
-            }
-        } else if (parts[2] === 'wiki') {
-            dispatches.push({ type: 'SET_REPO_WIKI_ID', wikiId: null });
-        }
-
-        return dispatches;
-    }
-
-    it('#repos/{id}/wiki/{wikiId} dispatches SET_REPO_WIKI_ID', () => {
-        const dispatches = simulateRepoWikiHash('#repos/my-repo/wiki/my-wiki');
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_WIKI_ID', wikiId: 'my-wiki' });
-    });
-
-    it('#repos/{id}/wiki/{wikiId}/ask dispatches SET_REPO_WIKI_DEEP_LINK with tab', () => {
-        const dispatches = simulateRepoWikiHash('#repos/my-repo/wiki/my-wiki/ask');
-        expect(dispatches).toContainEqual({
-            type: 'SET_REPO_WIKI_DEEP_LINK',
-            wikiId: 'my-wiki',
-            tab: 'ask',
-            adminTab: null,
-        });
-    });
-
-    it('#repos/{id}/wiki/{wikiId}/component/{cId} dispatches with componentId', () => {
-        const dispatches = simulateRepoWikiHash('#repos/my-repo/wiki/my-wiki/component/auth-module');
-        expect(dispatches).toContainEqual({
-            type: 'SET_REPO_WIKI_DEEP_LINK',
-            wikiId: 'my-wiki',
-            tab: 'browse',
-            componentId: 'auth-module',
-        });
-    });
-
-    it('#repos/{id}/wiki/{wikiId}/admin/seeds dispatches with adminTab', () => {
-        const dispatches = simulateRepoWikiHash('#repos/my-repo/wiki/my-wiki/admin/seeds');
-        expect(dispatches).toContainEqual({
-            type: 'SET_REPO_WIKI_DEEP_LINK',
-            wikiId: 'my-wiki',
-            tab: 'admin',
-            adminTab: 'seeds',
-        });
-    });
-
-    it('#repos/{id}/wiki (no wikiId) dispatches SET_REPO_WIKI_ID with null', () => {
-        const dispatches = simulateRepoWikiHash('#repos/my-repo/wiki');
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_WIKI_ID', wikiId: null });
-    });
-
-    it('URL-encoded wikiId is properly decoded', () => {
-        const dispatches = simulateRepoWikiHash('#repos/my-repo/wiki/wiki%20with%20spaces');
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_WIKI_ID', wikiId: 'wiki with spaces' });
-    });
-
-    it('dispatches SET_REPO_SUB_TAB wiki alongside wiki deep-link', () => {
-        const dispatches = simulateRepoWikiHash('#repos/my-repo/wiki/my-wiki');
-        expect(dispatches).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'wiki' });
     });
 });
 
@@ -2161,7 +1698,7 @@ describe('Router source-level: Alt+<letter> keyboard shortcuts', () => {
         expect(ROUTER_SOURCE).toContain("w: 'workflows'");
     });
 
-    it('bare W → wiki shortcut has been removed', () => {
+    it('bare W has no shortcut', () => {
         expect(ROUTER_SOURCE).not.toContain("e.key === 'w' || e.key === 'W'");
     });
 

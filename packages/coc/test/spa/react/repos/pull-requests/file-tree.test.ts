@@ -10,7 +10,7 @@ import {
     type FileTreeFile,
     type FileTreeFolder,
     type FileTreeNode,
-} from '../../../../../src/server/spa/client/react/features/pull-requests/file-tree';
+} from '../../../../../src/server/spa/client/react/features/git/diff/reviewFileTree';
 import type { FileChange } from '../../../../../src/server/spa/client/react/features/git/diff/FileTree';
 
 function file(path: string, additions = 1, deletions = 0): FileChange {
@@ -33,6 +33,10 @@ function asFile(node: FileTreeNode): FileTreeFile {
 }
 
 describe('splitPath', () => {
+    it('keeps missing provider/binary counts at zero in folder totals', () => {
+        const tree = buildFileTree([{ path: 'assets/image.bin', status: 'A' }]);
+        expect(tree[0]).toMatchObject({ kind: 'folder', fileCount: 1, additions: 0, deletions: 0 });
+    });
     it('returns basename and empty dirname for a flat path', () => {
         expect(splitPath('README.md')).toEqual({ dirname: '', basename: 'README.md' });
     });

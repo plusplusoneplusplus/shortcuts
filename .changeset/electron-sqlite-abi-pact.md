@@ -1,6 +1,5 @@
 ---
 "@plusplusoneplusplus/coc-memory": minor
-"@plusplusoneplusplus/deep-wiki": minor
 "@plusplusoneplusplus/forge": minor
 ---
 

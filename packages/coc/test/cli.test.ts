@@ -107,7 +107,7 @@ describe('CLI', () => {
             const wipeCmd = adminCmd.commands.find(c => c.name() === 'wipe-data')!;
             const optionNames = wipeCmd.options.map(o => o.long || o.short);
             expect(optionNames).toContain('--confirm');
-            expect(optionNames).toContain('--include-wikis');
+            expect(optionNames).not.toContain('--include-wikis');
             expect(optionNames).toContain('--dry-run');
             expect(optionNames).toContain('--data-dir');
         });

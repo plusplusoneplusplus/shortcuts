@@ -636,8 +636,8 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         // that is already queued.
                         {
                             ...(getRefrainTaskContext(task)?.kind === 'run' ? { sentinelScheduledJob: true } : {}),
-                            // Server-queued Sentinel turns (handbacks, gate notices) grant no job authority.
-                            ...(['handback', 'notice'].includes(getRefrainTaskContext(task)?.kind ?? '') ? { sentinelJobHandback: true } : {}),
+                            // Server-queued gate-paused notices grant no job authority.
+                            ...(getRefrainTaskContext(task)?.kind === 'notice' ? { sentinelJobNotice: true } : {}),
                             ...(userTurnPersisted ? { userTurnPersisted: true } : {}),
                             ...(imageTempDir ? { imageTempDir } : {}),
                             ...(followUpPayload.provider ? { requestedProvider: followUpPayload.provider } : {}),

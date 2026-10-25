@@ -240,33 +240,11 @@ export interface WorkspaceInfo {
 }
 
 /**
- * Wiki identity for multi-wiki support in the CoC server.
- * `id` is a stable hash of the wikiDir path.
- */
-export interface WikiInfo {
-    /** Stable unique identifier — typically a hash of wikiDir */
-    id: string;
-    /** Human-readable name (e.g. "My Project Wiki") */
-    name: string;
-    /** Absolute path to the generated wiki directory */
-    wikiDir: string;
-    /** Absolute path to the source repository (optional — wiki may be standalone) */
-    repoPath?: string;
-    /** Optional UI color for dashboard differentiation */
-    color?: string;
-    /** Whether AI Q&A is enabled for this wiki */
-    aiEnabled: boolean;
-    /** ISO 8601 timestamp of when the wiki was registered */
-    registeredAt: string;
-}
-
-/**
  * Aggregate storage statistics for admin/diagnostics.
  */
 export interface StorageStats {
     totalProcesses: number;
     totalWorkspaces: number;
-    totalWikis: number;
     /** Approximate total size of persisted data files in bytes. */
     storageSize: number;
 }
@@ -425,22 +403,11 @@ export interface ProcessStore {
      */
     renameWorkspaceId?(oldId: string, newId: string): Promise<boolean>;
 
-    /** Return all known wikis. */
-    getWikis(): Promise<WikiInfo[]>;
-    /** Register (or update) a wiki identity. */
-    registerWiki(wiki: WikiInfo): Promise<void>;
-    /** Remove a wiki by ID. Returns true if found and removed. */
-    removeWiki(id: string): Promise<boolean>;
-    /** Partial-update a wiki. Returns updated wiki or undefined if not found. */
-    updateWiki(id: string, updates: Partial<Omit<WikiInfo, 'id'>>): Promise<WikiInfo | undefined>;
-
     /** Optional callback invoked on every process mutation. */
     onProcessChange?: ProcessChangeCallback;
 
     /** Remove all workspaces. Returns count of removed items. */
     clearAllWorkspaces(): Promise<number>;
-    /** Remove all wikis. Returns count of removed items. */
-    clearAllWikis(): Promise<number>;
     /**
      * Return the count of processes matching the given filter without loading data.
      * Much cheaper than getAllProcesses().length for endpoints that only need a count.

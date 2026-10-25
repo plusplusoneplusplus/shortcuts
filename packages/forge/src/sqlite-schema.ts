@@ -123,19 +123,6 @@ export function initializeDatabase(db: NativeDatabase): void {
             )
         `);
 
-        // ── wikis ────────────────────────────────────────────────────
-        db.exec(`
-            CREATE TABLE IF NOT EXISTS wikis (
-                id            TEXT PRIMARY KEY,
-                name          TEXT NOT NULL,
-                wiki_dir      TEXT NOT NULL,
-                repo_path     TEXT,
-                color         TEXT,
-                ai_enabled    INTEGER NOT NULL DEFAULT 1,
-                registered_at TEXT NOT NULL
-            )
-        `);
-
         // ── queue_tasks ──────────────────────────────────────────────
         db.exec(`
             CREATE TABLE IF NOT EXISTS queue_tasks (

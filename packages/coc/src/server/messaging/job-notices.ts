@@ -18,7 +18,8 @@
 import * as fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import { toQueueProcessId, toTaskId, type AIProcess, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
-import { isSentinelProcess, readAutoCompact } from '../processes/auto-compact';
+import { readAutoCompact } from '../processes/auto-compact';
+import { isRefrainProcess } from '../sentinel-refrains/refrain-metadata';
 import type { DelegatedJobStore } from '../delegation/delegated-job-store';
 import { getRepoDataPath } from '../paths';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
@@ -63,7 +64,7 @@ export function isMessagingJobOrigin(value: unknown): value is MessagingJobOrigi
 
 export interface JobNotice {
     operation?: 'compact' | 'result';
-    /** Automatic Sentinel compaction (start or outcome), not a user-requested one. */
+    /** Automatic chat compaction (start or outcome), not a user-requested one. */
     auto?: true;
     /** Parent review answer or fixed cancellation notice, already scoped to its receipt. */
     body?: string;
@@ -238,7 +239,7 @@ export class MessagingJobNotices {
         if (typeof processId !== 'string' || typeof workspaceId !== 'string' || !processId || !workspaceId
             || (task.repoId && task.repoId !== workspaceId)) return;
         const proc = await this.deps.store.getProcess(processId, workspaceId);
-        if (!proc || proc.id !== processId || proc.metadata?.workspaceId !== workspaceId || !isSentinelProcess(proc)) return;
+        if (!proc || proc.id !== processId || proc.metadata?.workspaceId !== workspaceId || isRefrainProcess(proc)) return;
         const turnIndex = readAutoCompact(proc.metadata)?.lastEvaluatedTurnIndex;
         if (turnIndex === undefined) return;
         const origin = await this.deps.locateAutoCompactionOrigin!(proc, turnIndex);

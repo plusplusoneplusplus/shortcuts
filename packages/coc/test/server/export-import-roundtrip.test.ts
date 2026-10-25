@@ -27,7 +27,6 @@ function writeJSON(filePath: string, data: unknown): void {
 function buildPayload(overrides: Partial<CoCExportPayload> = {}): CoCExportPayload {
     const processes = overrides.processes ?? [];
     const workspaces = overrides.workspaces ?? [];
-    const wikis = overrides.wikis ?? [];
     const queueHistory = overrides.queueHistory ?? [];
     return {
         version: EXPORT_SCHEMA_VERSION,
@@ -35,12 +34,10 @@ function buildPayload(overrides: Partial<CoCExportPayload> = {}): CoCExportPaylo
         metadata: {
             processCount: processes.length,
             workspaceCount: workspaces.length,
-            wikiCount: wikis.length,
             queueFileCount: queueHistory.length,
         },
         processes,
         workspaces,
-        wikis,
         queueHistory,
         preferences: overrides.preferences ?? {},
         ...overrides,

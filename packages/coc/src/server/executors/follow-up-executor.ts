@@ -95,8 +95,8 @@ import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduc
 export interface FollowUpTurnOptions {
     /** Native refrain run admission, checked by the lifecycle runner. Refrains have no run deadlines. */
     sentinelScheduledJob?: boolean;
-    /** A refrain handback or gate notice into its Sentinel; such turns never get `sentinel_jobs`. */
-    sentinelJobHandback?: boolean;
+    /** A refrain gate-paused notice into its Sentinel; such turns never get `sentinel_jobs`. */
+    sentinelJobNotice?: boolean;
     /** Trusted native admission marker; never derived from prompt text or process metadata. */
     sentinelPrOutcomeReview?: boolean;
     sentinelPrOutcomeStopped?: boolean;
@@ -549,7 +549,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     : undefined,
                 sentinelTodos: this.buildSentinelTodoDeps(processId, wsId, currentMode),
                 sentinelRefrains: this.buildSentinelRefrainsDeps(processId, wsId, currentMode, sessionProvider,
-                    reviewOnly || turnSource !== undefined || options?.sentinelJobHandback === true),
+                    reviewOnly || turnSource !== undefined || options?.sentinelJobNotice === true),
                 // Registered regardless of `currentMode` so toggling the mode
                 // pill mid-chat leaves the tool block byte-identical and the
                 // resumed session keeps its prefix cache. A machine-triggered

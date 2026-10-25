@@ -141,6 +141,8 @@ describe('Sentinel to-do tags', () => {
         await user.keyboard(' ');
         expect(multiple.checked).toBe(true);
         await user.tab();
+        expect(document.activeElement).toBe(within(toolbar).getByRole('button', { name: 'Search to-do items' }));
+        await user.tab();
         expect(document.activeElement).toBe(refresh);
         await user.tab();
         expect(document.activeElement).toBe(add);

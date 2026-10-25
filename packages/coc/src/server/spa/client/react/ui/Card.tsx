@@ -14,13 +14,12 @@ export interface CardProps {
     title?: string;
     'aria-label'?: string;
     id?: string;
-    'data-wiki-id'?: string;
     'data-task-id'?: string;
     'data-testid'?: string;
     [key: `data-${string}`]: string | boolean | undefined;
 }
 
-export function Card({ className, children, onClick, onContextMenu, onDragStart, onTouchStart, onTouchEnd, onTouchMove, draggable, title, 'aria-label': ariaLabel, id, 'data-wiki-id': dataWikiId, 'data-task-id': dataTaskId, 'data-testid': dataTestId, ...rest }: CardProps) {
+export function Card({ className, children, onClick, onContextMenu, onDragStart, onTouchStart, onTouchEnd, onTouchMove, draggable, title, 'aria-label': ariaLabel, id, 'data-task-id': dataTaskId, 'data-testid': dataTestId, ...rest }: CardProps) {
     // Extract remaining data-* attributes
     const dataAttrs: Record<string, string | boolean | undefined> = {};
     for (const [key, value] of Object.entries(rest)) {
@@ -30,7 +29,6 @@ export function Card({ className, children, onClick, onContextMenu, onDragStart,
     return (
         <div
             id={id}
-            data-wiki-id={dataWikiId}
             data-task-id={dataTaskId}
             data-testid={dataTestId}
             {...dataAttrs}

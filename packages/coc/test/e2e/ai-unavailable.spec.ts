@@ -5,7 +5,6 @@
  * Exercises:
  * - POST /api/workspaces/:id/workflows/generate → 503 (AddWorkflowDialog)
  * - POST /api/workspaces/:id/workflows/refine   → 503 (WorkflowAIRefinePanel)
- * - POST /api/wikis/:id/ask                     → 503 (WikiAsk widget)
  */
 
 import * as fs from 'fs';
@@ -13,10 +12,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
-import { seedWorkspace, seedWiki, request } from './fixtures/seed';
-import { createWikiComponent } from './fixtures/wiki-fixtures';
+import { seedWorkspace, request } from './fixtures/seed';
 import { gotoWorkspace } from './fixtures/remote-shell';
-import type { ComponentGraph } from './fixtures/wiki-fixtures';
 
 /**
  * Enable the Workflows tab feature flag on the running server. The Workflows
@@ -57,29 +54,6 @@ async function navigateToTemplatesTab(
 ): Promise<void> {
     await gotoWorkspace(page, serverUrl, workspaceId, 'workflows');
     await expect(page.locator('button[data-subtab="workflows"]')).toHaveAttribute('data-active', 'true');
-}
-
-/** Create a minimal wiki directory with component-graph and articles. */
-function createMinimalWikiDir(dir: string): void {
-    const graph: ComponentGraph = {
-        project: {
-            name: 'Test Project',
-            description: 'A test project',
-            language: 'TypeScript',
-            buildSystem: 'npm',
-            entryPoints: ['src/index.ts'],
-        },
-        components: [
-            createWikiComponent('core-service', { category: 'core', complexity: 'low', dependencies: [], dependents: [] }),
-        ],
-        categories: [{ name: 'core', description: 'Core logic' }],
-        architectureNotes: 'Simple layered architecture.',
-    };
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'component-graph.json'), JSON.stringify(graph, null, 2));
-    const componentsDir = path.join(dir, 'components');
-    fs.mkdirSync(componentsDir, { recursive: true });
-    fs.writeFileSync(path.join(componentsDir, 'core-service.md'), '# Core Service\n\nHandles core logic.');
 }
 
 // ============================================================================
@@ -177,53 +151,6 @@ test.describe('AI service unavailable — workflow refine (503)', () => {
             // Error should appear in the refine panel
             await expect(page.locator('[data-testid="refine-error"]')).toBeVisible({ timeout: 8_000 });
             await expect(page.locator('[data-testid="refine-error"]')).toContainText(/unavailable|AI/i);
-        } finally {
-            safeRmSync(tmpDir);
-        }
-    });
-});
-
-// ============================================================================
-// Area 3 — Wiki ask → 503
-// ============================================================================
-
-test.describe('AI service unavailable — wiki ask (503)', () => {
-    test('wiki ask shows error when AI is unavailable', async ({ page, serverUrl }) => {
-        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-ai-503-ask-'));
-        try {
-            const wikiDir = path.join(tmpDir, 'wiki-data');
-            createMinimalWikiDir(wikiDir);
-            await seedWiki(serverUrl, 'wiki-ask-503', wikiDir, undefined, 'Ask 503 Wiki');
-
-            // Navigate to wiki → open ask tab
-            await page.goto(serverUrl + '#wiki');
-            await expect(page.locator('.wiki-card[data-wiki-id="wiki-ask-503"]')).toBeVisible({ timeout: 10_000 });
-            await page.click('.wiki-card[data-wiki-id="wiki-ask-503"]');
-            await expect(page.locator('#wiki-component-tree')).not.toBeEmpty({ timeout: 5_000 });
-
-            await page.click('.wiki-project-tab[data-wiki-project-tab="ask"]');
-            await expect(page.locator('#wiki-ask-widget')).toBeVisible({ timeout: 5_000 });
-
-            // Expand the ask panel
-            await page.keyboard.press('Control+i');
-            await expect(page.locator('#wiki-ask-messages')).toBeVisible({ timeout: 5_000 });
-
-            // Intercept the ask endpoint to return 503
-            await page.route('**/api/wikis/**/ask', route =>
-                route.fulfill({
-                    status: 503,
-                    contentType: 'application/json',
-                    body: JSON.stringify({ error: 'AI service unavailable' }),
-                }),
-            );
-
-            // Type and send a question
-            const input = page.locator('#wiki-ask-input, textarea[placeholder*="question"], textarea[placeholder*="ask"]').first();
-            await input.fill('What does this project do?');
-            await input.press('Enter');
-
-            // Error message should appear in the conversation area
-            await expect(page.locator('.ask-message-error')).toBeVisible({ timeout: 8_000 });
         } finally {
             safeRmSync(tmpDir);
         }

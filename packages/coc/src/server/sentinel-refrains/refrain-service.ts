@@ -34,8 +34,8 @@ export interface RefrainServiceDeps {
 const ACTIVE = ['queued', 'running'] as const;
 /** Consecutive gate failures that pause a gate until the user resumes it. */
 export const GATE_FAILURE_LIMIT = 5;
+const LEGACY_HANDBACK_FIELDS = ['handbackTaskId', 'handbackState', 'result', 'sentinelFollowUpHref'] as const;
 const EMPTY_GATE_RESULTS = new Set(['null', 'false', '""', '[]', '{}']);
-const pending = (run: RefrainRunRecord) => run.handbackState === 'pending' || run.handbackState === 'queued';
 const href = (owner: SentinelTodoOwner, processId: string, turnIndex = 0) =>
     `#repos/${owner.workspaceId}/chats/${encodeURIComponent(processId)}?turn=${turnIndex}`;
 
@@ -65,7 +65,8 @@ export class SentinelRefrainService {
         const runs = this.deps.jobs.runs(owner, job.id);
         const next = job.enabled && job.cron && this.deps.getEnabled() ? nextCronTime(job.cron, this.now()) : undefined;
         const publicRun = (run: RefrainRunRecord) => {
-            const { taskId: _task, handbackTaskId: _handback, handbackState: _state, result: _result, ...value } = run;
+            const { taskId: _task, handbackTaskId: _handback, handbackState: _state, result: _result,
+                sentinelFollowUpHref: _followUp, ...value } = run;
             return value;
         };
         const activeRun = runs.find(run => ACTIVE.includes(run.status as typeof ACTIVE[number]));
@@ -226,7 +227,7 @@ export class SentinelRefrainService {
         catch (noticeError) { console.error('[sentinel-jobs] Could not queue gate-paused notice:', noticeError); }
     }
 
-    /** One Sentinel notice per pause. Like handbacks, the turn gets no job-management tools. */
+    /** One Sentinel notice per pause. The turn gets no job-management tools. */
     private async gateNotice(owner: SentinelTodoOwner, job: RefrainRecord): Promise<void> {
         const target = await this.sentinelTarget(owner);
         if (!target) return;
@@ -303,7 +304,7 @@ export class SentinelRefrainService {
                         job.instructions, '',
                         ...(gateResult === undefined ? [] : ['Gate script result (JSON):', fenced(gateResult), '']),
                         'You are a job chat, not the owning Sentinel. You have no ledger-writing authority.',
-                        'Return the result in your final response. The server queues the handback to the Sentinel.',
+                        'Return the result in your final response. It stays in this job chat; nothing is sent to the Sentinel.',
                     ].join('\n'),
                     context: { sentinelScheduledJob: context },
                 },
@@ -340,14 +341,9 @@ export class SentinelRefrainService {
             }
             return;
         }
+        // Refrain results stay in the job chat; a handback task persisted by an older server never runs.
+        if (context.kind === 'handback') throw new RefrainError('conflict', 'Refrain results are not sent to the Sentinel');
         const run = this.deps.jobs.run(context, context.jobId, context.runId);
-        if (context.kind === 'handback') {
-            if (run.handbackTaskId !== task.id || run.handbackState !== 'queued'
-                || target !== context.processId || task.payload.mode !== 'sentinel') {
-                throw new RefrainError('conflict', 'Refrain handback is no longer authorized');
-            }
-            return;
-        }
         if ((!job.enabled && run.trigger === 'schedule') || run.taskId !== task.id || !ACTIVE.includes(run.status as typeof ACTIVE[number])
             || target !== job.processId || task.payload.mode !== job.mode || task.payload.provider !== job.provider) {
             throw new RefrainError('conflict', 'Refrain run is no longer authorized');
@@ -412,7 +408,10 @@ export class SentinelRefrainService {
         this.detach = () => { for (const { event, listener } of listeners) queue.off?.(event, listener); };
     }
 
-    /** No job retries/catch-up: interrupted turns terminate, pending handbacks recover by stable queue identity. */
+    /**
+     * No job retries/catch-up: interrupted turns terminate. Older servers recorded Sentinel handbacks;
+     * recovery cancels any still-queued handback task and drops that bookkeeping without delivering it.
+     */
     async recover(): Promise<number> {
         let count = 0;
         for (const { owner, job } of this.deps.jobs.all()) {
@@ -420,25 +419,10 @@ export class SentinelRefrainService {
                 if (ACTIVE.includes(run.status as typeof ACTIVE[number])) {
                     await this.finish(owner, job.id, run.id, 'interrupted', 'Server restarted during this run', true);
                     count++;
-                } else if (pending(run)) {
-                    const sentinel = await this.deps.store.getProcess(owner.processId, owner.workspaceId);
-                    const turns = sentinel?.conversationTurns ?? [];
-                    const user = turns.find(turn => turn.relayRequestId === `sentinel-job-handback:${run.id}`);
-                    const response = user && turns.filter(turn => !turn.displayOnly && turn.turnIndex > user.turnIndex)
-                        .sort((a, b) => a.turnIndex - b.turnIndex)[0];
-                    if (user && response?.role === 'assistant' && !response.streaming) {
-                        this.deps.jobs.patchRun(owner, job.id, run.id, { handbackState: 'delivered',
-                            sentinelFollowUpHref: href(owner, owner.processId, user.turnIndex) });
-                        if (run.handbackTaskId) await this.deps.cancelTask(run.handbackTaskId);
-                        continue;
-                    }
-                    const task = run.handbackTaskId && this.deps.getTask(run.handbackTaskId);
-                    if (task && (task.status === 'queued' || task.status === 'running')) continue;
-                    // A recorded completed task is definitive; do not repeat its Sentinel turn.
-                    if (task) this.deps.jobs.patchRun(owner, job.id, run.id, {
-                        handbackState: task.status === 'completed' ? 'delivered' : 'failed',
-                    });
-                    else await this.handback(owner, job, run);
+                } else if (LEGACY_HANDBACK_FIELDS.some(field => run[field] !== undefined)) {
+                    if (run.handbackTaskId) await this.deps.cancelTask(run.handbackTaskId);
+                    this.deps.jobs.patchRun(owner, job.id, run.id,
+                        Object.fromEntries(LEGACY_HANDBACK_FIELDS.map(field => [field, undefined])));
                 }
             }
         }
@@ -446,7 +430,7 @@ export class SentinelRefrainService {
         return count;
     }
 
-    /** Live flag/owner invalidation cancels queued/running work and revokes undelivered handbacks. */
+    /** Live flag/owner invalidation cancels queued/running work. */
     async invalidate(): Promise<void> {
         if (this.disposed) return;
         if (!this.gateEnabled()) this.abortGates('Tool scripting was turned off');
@@ -459,10 +443,6 @@ export class SentinelRefrainService {
             catch (error) { if (!ownerUnavailable(error)) throw error; }
             this.gates.get(gateKey(owner, job.id))?.abort(new RefrainError('not_found', 'Sentinel refrains or their owner became unavailable'));
             for (const run of this.deps.jobs.runs(owner, job.id)) {
-                if (pending(run)) {
-                    this.deps.jobs.patchRun(owner, job.id, run.id, { handbackState: 'suppressed' });
-                    if (run.handbackTaskId) await this.deps.cancelTask(run.handbackTaskId);
-                }
                 if (ACTIVE.includes(run.status as typeof ACTIVE[number])) {
                     await this.finish(owner, job.id, run.id, 'cancelled', 'Sentinel refrains or their owner became unavailable', true);
                 }
@@ -482,35 +462,20 @@ export class SentinelRefrainService {
                 const at = this.now().toISOString();
                 this.deps.jobs.patchRun(owner, job.id, run.id, { status: 'interrupted',
                     finishedAt: at, durationMs: Math.max(0, Date.parse(at) - Date.parse(run.startedAt ?? run.createdAt)),
-                    error: 'Server stopped during this run', handbackState: 'pending' }, ACTIVE);
+                    error: 'Server stopped during this run' }, ACTIVE);
                 if (run.taskId) await this.deps.cancelTask(run.taskId);
-            }
-            if (pending(run) && run.handbackTaskId) {
-                await this.deps.cancelTask(run.handbackTaskId);
-                this.deps.jobs.patchRun(owner, job.id, run.id, { handbackState: 'pending', handbackTaskId: undefined });
             }
         }
     }
 
     private async terminal(task: QueuedTask, status: 'completed' | 'failed' | 'cancelled', detail?: unknown): Promise<void> {
         const context = getRefrainTaskContext(task)!;
-        if (context.kind === 'notice') return;
+        if (context.kind !== 'run') return;
         let run: RefrainRunRecord;
         try { run = this.deps.jobs.run(context, context.jobId, context.runId); }
         catch (error) {
             if (error instanceof RefrainError && error.code === 'not_found') return;
             throw error;
-        }
-        if (context.kind === 'handback') {
-            if (run.handbackTaskId !== task.id || run.handbackState !== 'queued') return;
-            const process = await this.deps.store.getProcess(context.processId, context.workspaceId);
-            const turn = process?.conversationTurns?.find(turn => turn.relayRequestId === `sentinel-job-handback:${run.id}`);
-            this.deps.jobs.patchRun(context, context.jobId, context.runId, {
-                handbackState: status === 'completed' ? 'delivered' : 'failed',
-                ...(turn ? { sentinelFollowUpHref: href(context, context.processId, turn.turnIndex) } : {}),
-            });
-            this.changed(context);
-            return;
         }
         if (run.taskId !== task.id) return;
         await this.finish(context, context.jobId, context.runId, status,
@@ -523,59 +488,13 @@ export class SentinelRefrainService {
         const at = this.now().toISOString();
         const run = this.deps.jobs.patchRun(owner, id, runId, { status, finishedAt: at,
             durationMs: Math.max(0, Date.parse(at) - Date.parse(current.startedAt ?? current.createdAt)),
-            error, handbackState: 'pending' }, ACTIVE);
+            error }, ACTIVE);
         if (!run) return;
         this.changed(owner);
         if (stopTask && run.taskId) {
             try { await this.deps.cancelTask(run.taskId); }
             catch (cancelError) { console.error('[sentinel-jobs] Could not cancel job task:', cancelError); }
         }
-        if (this.disposed) return;
-        const job = this.deps.jobs.get(owner, id);
-        try {
-            const process = job.processId ? await this.deps.store.getProcess(job.processId, owner.workspaceId) : undefined;
-            const response = process?.conversationTurns?.filter(turn => !turn.displayOnly
-                && turn.turnIndex > (run.turnIndex ?? -1)).sort((a, b) => a.turnIndex - b.turnIndex)[0];
-            const assistant = response?.role === 'assistant' && !response.streaming ? response : undefined;
-            const result = assistant?.content || 'Completed without a final response';
-            const updated = this.deps.jobs.patchRun(owner, id, runId, { result: result.slice(0, 16_000) })!;
-            await this.handback(owner, job, updated);
-        } catch (handbackError) {
-            this.deps.jobs.patchRun(owner, id, runId, { handbackState: this.disposed ? 'pending' : 'failed' });
-            console.error('[sentinel-jobs] Could not queue Sentinel handback:', handbackError);
-        }
-        this.changed(owner);
-    }
-
-    private async handback(owner: SentinelTodoOwner, job: RefrainRecord, run: RefrainRunRecord): Promise<void> {
-        try { await this.assertOwner(owner); }
-        catch (error) {
-            if (!ownerUnavailable(error)) throw error;
-            this.deps.jobs.patchRun(owner, job.id, run.id, { handbackState: this.disposed ? 'pending' : 'suppressed' });
-            return;
-        }
-        const target = await this.sentinelTarget(owner);
-        if (!target) {
-            this.deps.jobs.patchRun(owner, job.id, run.id, { handbackState: this.disposed ? 'pending' : 'suppressed' }); return;
-        }
-        const taskId = run.handbackTaskId ?? randomUUID();
-        const context: RefrainTaskContext = { ...owner, jobId: job.id, runId: run.id, kind: 'handback' };
-        const text = run.status === 'completed'
-            ? `[Job: ${job.name}] run #${run.runNumber} finished — ${run.result ?? 'Completed'}`
-            : `[Job: ${job.name}] run #${run.runNumber} failed: ${run.error ?? run.status}`;
-        this.deps.jobs.patchRun(owner, job.id, run.id, { handbackTaskId: taskId, handbackState: 'queued' });
-        await this.assertOwner(owner);
-        await this.deps.enqueue({
-            id: taskId, type: 'chat', priority: 'low', repoId: owner.workspaceId, processId: owner.processId,
-            payload: { kind: 'chat', mode: 'sentinel', workspaceId: owner.workspaceId, processId: owner.processId,
-                provider: target.provider,
-                prompt: text + (run.jobTurnHref ? `\n\n[Job turn](${run.jobTurnHref})` : ''),
-                relayRequestId: `sentinel-job-handback:${run.id}`, context: { sentinelScheduledJob: context } },
-            config: { retryAttempts: 0, retryOnFailure: false }, displayName: `[Job: ${job.name}] handback #${run.runNumber}`,
-        });
-        // Revocation can race asynchronous queue admission.
-        const current = this.deps.jobs.run(owner, job.id, run.id);
-        if (this.disposed || !this.deps.getEnabled() || current.handbackState !== 'queued') await this.deps.cancelTask(taskId);
     }
 
     /** The owning Sentinel's chat, or its still-queued first task; undefined when no Sentinel can take a turn. */

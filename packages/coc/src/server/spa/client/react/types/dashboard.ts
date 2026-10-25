@@ -37,11 +37,11 @@ export interface ClientTokenUsage {
     conversationTokens?: number;
 }
 
-export type DashboardTab = 'processes' | 'repos' | 'wiki' | 'reports' | 'stats' | 'admin' | 'memory' | 'skills' | 'logs' | 'servers' | 'dreams-admin';
+export type DashboardTab = 'processes' | 'repos' | 'reports' | 'stats' | 'admin' | 'memory' | 'skills' | 'logs' | 'servers' | 'dreams-admin';
 
 export const REPO_SUB_TAB_VALUES = [
     'chats', 'settings', 'workflows', 'templates', 'tasks',
-    'schedules', 'git', 'wiki', 'workflow', 'explorer', 'activity',
+    'schedules', 'git', 'workflow', 'explorer', 'activity',
      'terminal', 'notes', 'dreams', 'cli-sessions', 'copilot-sessions',
     'today',
 ] as const;
@@ -58,11 +58,6 @@ export type SettingsSection = typeof SETTINGS_SECTION_VALUES[number];
 /** @deprecated Use SettingsSection */
 export type CopilotSection = SettingsSection;
 
-export const WIKI_PROJECT_TAB_VALUES = ['browse', 'ask', 'graph', 'admin'] as const;
-export type WikiProjectTab = typeof WIKI_PROJECT_TAB_VALUES[number];
-
-export const WIKI_ADMIN_TAB_VALUES = ['generate', 'seeds', 'config', 'delete'] as const;
-export type WikiAdminTab = typeof WIKI_ADMIN_TAB_VALUES[number];
 export type MemorySubTab = 'facts' | 'review' | 'episodes' | 'settings';
 export type SkillsSubTab = 'installed' | 'gallery' | 'config';
 export type AdminSubTab = 'settings' | 'providers' | 'data' | 'server' | 'prompts' | 'database' | 'agents' | 'messaging' | 'whatsapp' | 'browser';
@@ -233,8 +228,6 @@ export interface ClientTokenUsageStatsResponse {
     generatedAt: string;                        // ISO timestamp
     totalDays: number;
 }
-
-export type WikiViewMode = 'list' | 'detail';
 
 /** Navigation state for the Tasks (Plans) sub-tab, persisted in AppContext. */
 export interface TasksPanelNavState {

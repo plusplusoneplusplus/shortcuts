@@ -52,14 +52,12 @@ describe('DataWiper', () => {
 
             expect(summary.deletedProcesses).toBe(0);
             expect(summary.deletedWorkspaces).toBe(0);
-            expect(summary.deletedWikis).toBe(0);
             expect(summary.deletedQueues).toBe(0);
             expect(summary.deletedPreferences).toBe(false);
-            expect(summary.deletedWikiDirs).toEqual([]);
             expect(summary.errors).toEqual([]);
         });
 
-        it('should count existing processes, workspaces, wikis', async () => {
+        it('should count existing processes and workspaces', async () => {
             // Seed data
             await store.addProcess({
                 id: 'p1', type: 'clarification', promptPreview: 'test', fullPrompt: 'test', status: 'completed', startTime: new Date(),
@@ -68,16 +66,12 @@ describe('DataWiper', () => {
                 id: 'p2', type: 'clarification', promptPreview: 'test2', fullPrompt: 'test2', status: 'running', startTime: new Date(),
             });
             await store.registerWorkspace({ id: 'ws1', name: 'Workspace 1', rootPath: '/tmp/ws1' });
-            await store.registerWiki({
-                id: 'wiki1', name: 'Wiki 1', wikiDir: '/tmp/wiki-output', aiEnabled: false, registeredAt: new Date().toISOString(),
-            });
 
             const wiper = new DataWiper(dataDir, store);
             const summary = await wiper.getDryRunSummary();
 
             expect(summary.deletedProcesses).toBe(2);
             expect(summary.deletedWorkspaces).toBe(1);
-            expect(summary.deletedWikis).toBe(1);
         });
 
         it('should count queue rows from SQLite', async () => {
@@ -114,19 +108,6 @@ describe('DataWiper', () => {
             const summary = await wiper.getDryRunSummary();
 
             expect(summary.deletedPreferences).toBe(true);
-        });
-
-        it('should list wiki dirs when includeWikis is true', async () => {
-            const wikiDir = path.join(dataDir, 'wiki-output');
-            fs.mkdirSync(wikiDir, { recursive: true });
-            await store.registerWiki({
-                id: 'w1', name: 'Wiki', wikiDir, aiEnabled: false, registeredAt: new Date().toISOString(),
-            });
-
-            const wiper = new DataWiper(dataDir, store);
-            const summary = await wiper.getDryRunSummary({ includeWikis: true });
-
-            expect(summary.deletedWikiDirs).toEqual([wikiDir]);
         });
 
         it('should not modify data during dry run', async () => {
@@ -232,7 +213,7 @@ describe('DataWiper', () => {
             });
 
             const wiper = new DataWiper(dataDir, store);
-            const result = await wiper.wipeData({ includeWikis: false });
+            const result = await wiper.wipeData();
 
             expect(result.deletedProcesses).toBe(2);
             const remaining = await store.getAllProcesses();
@@ -244,23 +225,10 @@ describe('DataWiper', () => {
             await store.registerWorkspace({ id: 'ws2', name: 'WS2', rootPath: '/tmp/ws2' });
 
             const wiper = new DataWiper(dataDir, store);
-            const result = await wiper.wipeData({ includeWikis: false });
+            const result = await wiper.wipeData();
 
             expect(result.deletedWorkspaces).toBe(2);
             const remaining = await store.getWorkspaces();
-            expect(remaining).toHaveLength(0);
-        });
-
-        it('should clear all wikis', async () => {
-            await store.registerWiki({
-                id: 'w1', name: 'Wiki1', wikiDir: '/tmp/w1', aiEnabled: false, registeredAt: new Date().toISOString(),
-            });
-
-            const wiper = new DataWiper(dataDir, store);
-            const result = await wiper.wipeData({ includeWikis: false });
-
-            expect(result.deletedWikis).toBe(1);
-            const remaining = await store.getWikis();
             expect(remaining).toHaveLength(0);
         });
 
@@ -273,7 +241,7 @@ describe('DataWiper', () => {
             db.prepare('INSERT OR REPLACE INTO queue_repo_paths (repo_id, root_path) VALUES (?, ?)').run('repo1', '/tmp/repo1');
 
             const wiper = new DataWiper(dataDir, store);
-            const result = await wiper.wipeData({ includeWikis: false });
+            const result = await wiper.wipeData();
 
             expect(result.deletedQueues).toBe(2); // 1 task + 1 repo state
             const taskRows = db.prepare('SELECT COUNT(*) as cnt FROM queue_tasks').get() as { cnt: number };
@@ -295,7 +263,7 @@ describe('DataWiper', () => {
             });
 
             const wiper = new DataWiper(dataDir, store);
-            const result = await wiper.wipeData({ includeWikis: false });
+            const result = await wiper.wipeData();
 
             expect(result.deletedQueues).toBe(1);
             expect(fs.existsSync(queuePath)).toBe(false);
@@ -306,7 +274,7 @@ describe('DataWiper', () => {
             writeJSON(prefsPath, { lastModel: 'gpt-4' });
 
             const wiper = new DataWiper(dataDir, store);
-            const result = await wiper.wipeData({ includeWikis: false });
+            const result = await wiper.wipeData();
 
             expect(result.deletedPreferences).toBe(true);
             expect(fs.existsSync(prefsPath)).toBe(false);
@@ -317,46 +285,30 @@ describe('DataWiper', () => {
             fs.writeFileSync(configPath, 'model: gpt-4\n', 'utf-8');
 
             const wiper = new DataWiper(dataDir, store);
-            await wiper.wipeData({ includeWikis: false });
+            await wiper.wipeData();
 
             expect(fs.existsSync(configPath)).toBe(true);
         });
 
-        it('should delete wiki directories when includeWikis is true', async () => {
-            const wikiDir = path.join(dataDir, 'wiki-output');
-            fs.mkdirSync(path.join(wikiDir, 'subdir'), { recursive: true });
-            fs.writeFileSync(path.join(wikiDir, 'index.html'), '<html></html>');
-
-            await store.registerWiki({
-                id: 'w1', name: 'Wiki', wikiDir, aiEnabled: false, registeredAt: new Date().toISOString(),
-            });
-
-            const wiper = new DataWiper(dataDir, store);
-            const result = await wiper.wipeData({ includeWikis: true });
-
-            expect(result.deletedWikiDirs).toEqual([wikiDir]);
-            expect(fs.existsSync(wikiDir)).toBe(false);
-        });
-
-        it('should not delete wiki directories when includeWikis is false', async () => {
+        it('should leave legacy wiki rows and their output directories untouched', async () => {
             const wikiDir = path.join(dataDir, 'wiki-output');
             fs.mkdirSync(wikiDir, { recursive: true });
             fs.writeFileSync(path.join(wikiDir, 'index.html'), '<html></html>');
-
-            await store.registerWiki({
-                id: 'w1', name: 'Wiki', wikiDir, aiEnabled: false, registeredAt: new Date().toISOString(),
-            });
+            const db = store.getDatabase();
+            db.exec('CREATE TABLE IF NOT EXISTS wikis (id TEXT PRIMARY KEY, wiki_dir TEXT NOT NULL)');
+            db.prepare('INSERT INTO wikis (id, wiki_dir) VALUES (?, ?)').run('w1', wikiDir);
 
             const wiper = new DataWiper(dataDir, store);
-            const result = await wiper.wipeData({ includeWikis: false });
+            const result = await wiper.wipeData();
 
-            expect(result.deletedWikiDirs).toEqual([]);
-            expect(fs.existsSync(wikiDir)).toBe(true);
+            expect(result.errors).toEqual([]);
+            expect(fs.existsSync(path.join(wikiDir, 'index.html'))).toBe(true);
+            expect((db.prepare('SELECT COUNT(*) AS cnt FROM wikis').get() as { cnt: number }).cnt).toBe(1);
         });
 
         it('should handle empty queue tables gracefully', async () => {
             const wiper = new DataWiper(dataDir, store);
-            const result = await wiper.wipeData({ includeWikis: false });
+            const result = await wiper.wipeData();
 
             expect(result.deletedQueues).toBe(0);
             expect(result.errors).toEqual([]);
@@ -371,7 +323,7 @@ describe('DataWiper', () => {
             writeJSON(blob2, ['data:image/png;base64,def']);
 
             const wiper = new DataWiper(dataDir, store);
-            const result = await wiper.wipeData({ includeWikis: false });
+            const result = await wiper.wipeData();
 
             // Blob files are deleted even though deletedBlobs is no longer in WipeResult
             expect(fs.existsSync(blob1)).toBe(false);
@@ -380,7 +332,7 @@ describe('DataWiper', () => {
 
         it('should handle missing blobs directory gracefully', async () => {
             const wiper = new DataWiper(dataDir, store);
-            const result = await wiper.wipeData({ includeWikis: false });
+            const result = await wiper.wipeData();
 
             expect(result.errors).toEqual([]);
         });
@@ -397,7 +349,7 @@ describe('DataWiper', () => {
             writeJSON(path.join(repoDir, 'git-ops.json'), {});
 
             const wiper = new DataWiper(dataDir, store);
-            const result = await wiper.wipeData({ includeWikis: false });
+            const result = await wiper.wipeData();
 
             expect(result.deletedSchedules).toBe(2); // 1 YAML + 1 SQLite row
             expect(result.deletedGitOps).toBe(1);
@@ -408,25 +360,13 @@ describe('DataWiper', () => {
             expect(runCount).toBe(0);
         });
 
-        it('should handle non-existent wiki directory gracefully', async () => {
-            await store.registerWiki({
-                id: 'w1', name: 'Wiki', wikiDir: '/nonexistent/path', aiEnabled: false, registeredAt: new Date().toISOString(),
-            });
-
-            const wiper = new DataWiper(dataDir, store);
-            const result = await wiper.wipeData({ includeWikis: true });
-
-            // Non-existent dir should not cause error
-            expect(result.errors).toEqual([]);
-        });
-
         it('should report errors but continue on partial failures', async () => {
             await store.addProcess({
                 id: 'p1', type: 'clarification', promptPreview: 'test', fullPrompt: 'test', status: 'completed', startTime: new Date(),
             });
 
             const wiper = new DataWiper(dataDir, store);
-            const result = await wiper.wipeData({ includeWikis: false });
+            const result = await wiper.wipeData();
 
             // Should succeed overall
             expect(result.deletedProcesses).toBe(1);

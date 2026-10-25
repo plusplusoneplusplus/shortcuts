@@ -1437,6 +1437,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
                                     selectTask(id, task);
                                 } })
                                 : <NativeRailUnreadChats history={mergedHistory} unseenProcessIds={unseenProcessIds}
+                                    client={cloneClient} workspaceId={workspaceId}
                                     routeId={routeId} tab={getActivityTabSegment(mode)} onOpen={handleOpenRailShortcut}
                                     scopeKey={`${routeId}:${workspaceReadSource(cloneClient)}`}
                                     scopeLabel={railScopeLabel ?? workspaceId} />)}

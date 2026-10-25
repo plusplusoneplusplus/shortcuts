@@ -3,7 +3,6 @@
  *
  * Verifies that:
  * - all route groups are registered into the routes array
- * - wikiManager is returned (or undefined) correctly
  * - the function is a pure composition with no side-effects beyond registration
  */
 
@@ -56,13 +55,8 @@ function makeStore(): ProcessStore {
         registerWorkspace: vi.fn(),
         removeWorkspace: vi.fn(),
         updateWorkspace: vi.fn(),
-        getWikis: vi.fn().mockResolvedValue([]),
-        registerWiki: vi.fn(),
-        removeWiki: vi.fn(),
-        updateWiki: vi.fn(),
         clearAllWorkspaces: vi.fn(),
-        clearAllWikis: vi.fn(),
-        getStorageStats: vi.fn().mockResolvedValue({ totalProcesses: 0, totalWorkspaces: 0, totalWikis: 0, storageSize: 0 }),
+        getStorageStats: vi.fn().mockResolvedValue({ totalProcesses: 0, totalWorkspaces: 0, storageSize: 0 }),
         onProcessOutput: vi.fn().mockReturnValue(() => {}),
         emitProcessOutput: vi.fn(),
         emitProcessComplete: vi.fn(),
@@ -121,7 +115,6 @@ function makeQueuePersistence(): any {
 function makeWsServer(): any {
     return {
         broadcastProcessEvent: vi.fn(),
-        broadcastWikiEvent: vi.fn(),
         closeAll: vi.fn(),
     };
 }
@@ -199,7 +192,7 @@ function makeOpts(overrides: Partial<RegisterRoutesOptions> = {}): RegisterRoute
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('registerAllRoutes', () => {
-    it.each(['sentinel', 'workspace'])('revokes jobs and handbacks immediately after %s removal without affecting another workspace', async removed => {
+    it.each(['sentinel', 'workspace'])('revokes jobs immediately after %s removal without affecting another workspace', async removed => {
         const store = new SqliteProcessStore({ dbPath: path.join(tmpDir, 'processes.db') });
         const owners = [
             { workspaceId: 'ws-jobs-a', processId: 'queue_owner_a' },
@@ -214,7 +207,6 @@ describe('registerAllRoutes', () => {
         const input = { name: 'Review', instructions: 'Read evidence', provider: 'copilot', model: 'model', cron: '0 * * * *' };
         const a = jobs.create(owners[0], input);
         const b = jobs.create(owners[1], input);
-        const notification = jobs.create(owners[0], input);
         const bridge = makeBridge();
         bridge.registry = new EventEmitter();
         bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => input.id!);
@@ -233,18 +225,12 @@ describe('registerAllRoutes', () => {
             await composition.codaReady;
             const runA = await getJobs()!.start(owners[0], a.id);
             const runB = await getJobs()!.start(owners[1], b.id);
-            const handback = await getJobs()!.start(owners[0], notification.id);
-            jobs.patchRun(owners[0], notification.id, handback.id, {
-                status: 'completed', handbackState: 'queued', handbackTaskId: 'pending-handback',
-            });
             const previousRefreshes = refresh.mock.calls.length;
             if (removed === 'workspace') await store.removeWorkspace(owners[0].workspaceId);
             else await store.removeProcess(owners[0].processId);
             await vi.waitFor(() => expect(jobs.run(owners[0], a.id, runA.id).status).toBe('cancelled'));
             expect(refresh.mock.calls.length).toBeGreaterThan(previousRefreshes);
             expect(cancel).toHaveBeenCalledWith(runA.taskId);
-            expect(cancel).toHaveBeenCalledWith('pending-handback');
-            expect(jobs.run(owners[0], notification.id, handback.id).handbackState).toBe('suppressed');
             expect(jobs.run(owners[1], b.id, runB.id).status).toBe('queued');
             expect(cancel).not.toHaveBeenCalledWith(runB.taskId);
             expect(jobs.get(owners[0], a.id).processId).toBeTruthy();
@@ -1011,12 +997,12 @@ describe('registerAllRoutes', () => {
         });
     });
 
-    it('returns { wikiManager } as a defined object (wiki routes always registered)', () => {
+    it('registers no wiki API routes', () => {
         const routes: Route[] = [];
         const result = registerAllRoutes(routes, makeOpts());
-        expect(result).toHaveProperty('wikiManager');
-        // Wiki routes are always registered (safe even with no wikis)
-        expect(result.wikiManager).toBeDefined();
+        expect(result).not.toHaveProperty('wikiManager');
+        const patterns = routes.map(r => (typeof r.pattern === 'string' ? r.pattern : r.pattern.toString()));
+        expect(patterns.some(p => p.includes('/api/wikis'))).toBe(false);
     });
 
     it('returns GitHub and Azure Boards work-item pollers', () => {
@@ -1064,8 +1050,6 @@ describe('registerAllRoutes', () => {
         expect(patterns.some(p => p.includes('schedules'))).toBe(true);
         // Tasks (nested under /api/workspaces/:id/tasks)
         expect(patterns.some(p => p.includes('tasks'))).toBe(true);
-        // Wikis
-        expect(patterns.some(p => p.includes('/api/wikis'))).toBe(true);
         // Workflows (nested under /api/workspaces/:id/workflows or /summary)
         expect(patterns.some(p => p.includes('summary'))).toBe(true);
         // Admin

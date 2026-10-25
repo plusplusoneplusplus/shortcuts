@@ -116,7 +116,6 @@ function mockStatsResponse(overrides: Record<string, any> = {}) {
         ok: true,
         json: async () => ({
             processCount: 0,
-            wikiCount: 0,
             totalBytes: 0,
             ...overrides,
         }),
@@ -150,7 +149,7 @@ describe('AdminPanel — Scratchpad toggle', () => {
 
     it('does not render sidebar stats block but still calls the stats API', async () => {
         mockFetch.mockImplementation((url: string) => {
-            if (url.includes('/admin/data/stats')) return Promise.resolve(mockStatsResponse({ processCount: 7, wikiCount: 2, totalBytes: 1536 }));
+            if (url.includes('/admin/data/stats')) return Promise.resolve(mockStatsResponse({ processCount: 7, totalBytes: 1536 }));
             if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse());
             if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
             return Promise.resolve({ ok: true, json: async () => ({}) });
@@ -159,10 +158,9 @@ describe('AdminPanel — Scratchpad toggle', () => {
         render(<AdminPanel />);
 
         await waitFor(() => {
-            expect(mockFetch.mock.calls.some(([url]) => String(url).includes('/admin/data/stats?includeWikis=true'))).toBe(true);
+            expect(mockFetch.mock.calls.some(([url]) => String(url).endsWith('/admin/data/stats'))).toBe(true);
         });
         expect(screen.queryByTestId('stat-processes')).toBeNull();
-        expect(screen.queryByTestId('stat-wikis')).toBeNull();
         expect(screen.queryByTestId('stat-disk')).toBeNull();
     });
 

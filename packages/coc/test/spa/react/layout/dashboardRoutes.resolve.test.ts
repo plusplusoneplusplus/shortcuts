@@ -327,15 +327,19 @@ describe('resolveDashboardRoute — process deep-links', () => {
     });
 });
 
-// ── Wiki + admin top-level routes ─────────────────────────────────────────────
+// ── Retired wiki + admin top-level routes ─────────────────────────────────────
 
-describe('resolveDashboardRoute — wiki + admin', () => {
-    it('#wiki/w1/component/c1 selects the wiki with its browse component', () => {
+describe('resolveDashboardRoute — retired wiki + admin', () => {
+    it('#wiki/w1/component/c1 dispatches no wiki actions', () => {
         const r = resolveDashboardRoute('#wiki/w1/component/c1', makeCtx());
-        expect(appActions({ effects: r.effects })).toEqual([
-            { type: 'SET_ACTIVE_TAB', tab: 'wiki' },
-            { type: 'SELECT_WIKI_WITH_TAB', wikiId: 'w1', tab: 'browse', adminTab: null, componentId: 'c1' },
-        ]);
+        const types = appActions({ effects: r.effects }).map(a => a.type);
+        expect(types.some(t => t.includes('WIKI'))).toBe(false);
+    });
+
+    it('#repos/:id/wiki/w1 dispatches no wiki actions', () => {
+        const r = resolveDashboardRoute('#repos/ws-1/wiki/w1/admin/seeds', makeCtx());
+        const types = appActions({ effects: r.effects }).map(a => a.type);
+        expect(types.some(t => t.includes('WIKI'))).toBe(false);
     });
 
     it('#admin/database resolves the database sub-tab but ignores the ?page query on initial resolve', () => {

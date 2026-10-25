@@ -1,6 +1,9 @@
 /**
- * Sentinel-only context controls. Drafts outlive the popover; writes are
- * serialized and bound to the exact conversation/workspace/client owner.
+ * Auto-compact context controls shared by every chat mode. Drafts outlive the
+ * popover; writes are serialized and bound to the exact
+ * conversation/workspace/client owner. Refrain job chats show their job's
+ * setting read-only; read-only or owner-unresolved views cannot write; providers
+ * without compaction cannot be turned on.
  */
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
@@ -12,10 +15,21 @@ import {
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { cn } from '../../ui/cn';
 import { formatTokenCount, type ContextAutoCompact, type ContextAutoCompactStatus } from '../../ui/ContextUsagePopover';
+import { formatThresholdInput, parseThresholdInput } from '../../utils/autoCompactThreshold';
 
 interface CompactionRecord { state?: string; taskId?: string; error?: string }
 
 const RUNNING_DETAILS = 'Codex: 120s; Copilot/Claude: no overall deadline. Cancellation is queued-only.';
+const JOB_MANAGED = 'Set by this job. Edit the job to change it.';
+const PROVIDER_UNSUPPORTED = 'This provider does not support compaction.';
+const READ_ONLY = 'Read-only in this view.';
+
+/** Refrain job chats (owner-matching job metadata on an Ask/Autopilot chat) follow their job's threshold. */
+export function isJobManagedChat(metadata: { workspaceId?: unknown; mode?: unknown; sentinelScheduledJob?: unknown } | undefined): boolean {
+    const job = metadata?.sentinelScheduledJob as { jobId?: unknown; processId?: unknown; workspaceId?: unknown } | undefined;
+    return !!job && typeof job.jobId === 'string' && typeof job.processId === 'string'
+        && job.workspaceId === metadata?.workspaceId && (metadata?.mode === 'ask' || metadata?.mode === 'autopilot');
+}
 
 function validState(state: ProcessAutoCompactState | undefined): ProcessAutoCompactState | undefined {
     return state && typeof state === 'object' && !Array.isArray(state) && !('thresholdPercent' in state)
@@ -26,19 +40,6 @@ export function deriveAutoCompactStatus(state: ProcessAutoCompactState | undefin
     if (!validState(state)?.enabled) return 'off';
     if (state?.taskId && compaction?.taskId === state.taskId && (compaction.state === 'queued' || compaction.state === 'running')) return compaction.state;
     return state?.paused ? 'paused' : 'enabled';
-}
-
-/** k input accepts whole tokens (up to three decimal places), without rounding. */
-export function parseThresholdInput(value: string): number | undefined {
-    if (!/^\d+(?:\.\d{1,3})?$/.test(value.trim())) return undefined;
-    const [whole, fraction = ''] = value.trim().split('.');
-    const tokens = Number(`${whole}${fraction.padEnd(3, '0')}`);
-    return Number.isSafeInteger(tokens) && tokens > 0 ? tokens : undefined;
-}
-
-function formatThresholdInput(tokens: number): string {
-    const remainder = tokens % 1000;
-    return `${Math.floor(tokens / 1000)}${remainder ? `.${String(remainder).padStart(3, '0').replace(/0+$/, '')}` : ''}`;
 }
 
 export function describeAutoCompact(state: ProcessAutoCompactState | undefined, status: ContextAutoCompactStatus, usedTokens: number | undefined): string | undefined {
@@ -76,6 +77,12 @@ export interface AutoCompactPanelProps {
     actionError?: string;
     configurationError?: boolean;
     actionPending?: boolean;
+    /** Refrain job chat: the job owns the setting, so the controls are read-only. */
+    jobManaged?: boolean;
+    /** Read-only view or unresolved owner: no setting writes, resume or cancel. */
+    readOnly?: boolean;
+    /** The chat's provider cannot compact; turning on is blocked, turning off stays possible. */
+    providerUnsupported?: boolean;
     manualCompact?: { onCompact: () => Promise<void>; disabled: boolean; pending: boolean };
     onDraftChange: (draft: { enabled?: boolean; threshold?: string }) => void;
     onSave: () => void;
@@ -89,6 +96,8 @@ export function AutoCompactPanel(props: AutoCompactPanelProps) {
     const invalid = threshold === undefined;
     const id = useId();
     const runtime = describeAutoCompact(state, status, usedTokens);
+    const locked = !!props.jobManaged || !!props.readOnly;
+    const switchDisabled = locked || (!!props.providerUnsupported && !draftEnabled);
     const warning = tokenLimit === undefined ? 'Context limit unknown; this threshold may not fire before the window fills.'
         : threshold !== undefined && threshold >= tokenLimit ? 'Threshold meets/exceeds the context limit; it may not fire before the window fills.' : undefined;
     let message: string | undefined;
@@ -98,6 +107,8 @@ export function AutoCompactPanel(props: AutoCompactPanelProps) {
     else if (saveState.kind === 'saving') message = 'Saving...';
     else if (props.configurationError) message = 'Stored threshold is invalid. Set a token threshold to configure this chat.';
     else if (status === 'queued' || status === 'running' || status === 'paused') message = runtime;
+    else if (props.providerUnsupported) message = PROVIDER_UNSUPPORTED;
+    else if (locked) message = runtime ?? (props.readOnly ? READ_ONLY : JOB_MANAGED);
     else if (warning) message = warning;
     else if (dirty) message = 'Unsaved. Press Enter or leave the input to retry.';
     else if (runtime) message = runtime;
@@ -106,19 +117,19 @@ export function AutoCompactPanel(props: AutoCompactPanelProps) {
     const error = invalid || saveState.kind === 'error' || !!actionError || props.configurationError;
 
     return (
-        <section aria-label="Auto-compact for this Sentinel chat" data-testid="auto-compact-panel"
+        <section aria-label="Auto-compact for this chat" data-testid="auto-compact-panel"
             className="mt-2 pt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc]">
             <div className="flex min-w-0 items-center gap-1.5" data-testid="auto-compact-row">
-                <button type="button" role="switch" aria-checked={draftEnabled} aria-label="Auto-compact"
-                    data-testid="auto-compact-switch" onClick={() => props.onDraftChange({ enabled: !draftEnabled })}
-                    className={cn('relative inline-flex h-4 w-7 flex-shrink-0 items-center rounded-full transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#0078d4]',
+                <button type="button" role="switch" aria-checked={draftEnabled} aria-label="Auto-compact" disabled={switchDisabled}
+                    aria-describedby={`${id}-status`} data-testid="auto-compact-switch" onClick={() => props.onDraftChange({ enabled: !draftEnabled })}
+                    className={cn('relative inline-flex h-4 w-7 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#0078d4]',
                         draftEnabled ? 'bg-[#0078d4] dark:bg-[#3794ff]' : 'bg-[#c8c8c8] dark:bg-[#5a5a5a]')}>
                     <span aria-hidden="true" className={cn('inline-block h-3 w-3 rounded-full bg-white transition-transform', draftEnabled ? 'translate-x-3.5' : 'translate-x-0.5')} />
                 </button>
                 <label htmlFor={`${id}-input`} className="min-w-0">Auto-compact at</label>
                 <span className={cn('inline-flex flex-shrink-0 items-center rounded border bg-white dark:bg-[#252526]', !draftEnabled && 'opacity-60',
                     invalid ? 'border-[#f14c4c]' : 'border-[#c8c8c8] dark:border-[#3c3c3c]')}>
-                    <input id={`${id}-input`} type="text" inputMode="decimal" value={draftThreshold} disabled={!draftEnabled}
+                    <input id={`${id}-input`} type="text" inputMode="decimal" value={draftThreshold} disabled={!draftEnabled || locked}
                         aria-label="Auto-compact threshold in k tokens" aria-invalid={invalid || undefined} aria-describedby={`${id}-status`}
                         data-testid="auto-compact-input" onChange={event => props.onDraftChange({ threshold: event.target.value })}
                         onBlur={props.onSave} onKeyDown={event => {
@@ -140,9 +151,9 @@ export function AutoCompactPanel(props: AutoCompactPanelProps) {
             <div id={`${id}-status`} role="status" aria-live="polite" data-testid="auto-compact-status" data-status={status}
                 className={cn('mt-1 min-h-[1em] flex items-baseline gap-2', error ? 'text-[#f14c4c] dark:text-[#f48771]' : 'text-[#848484] dark:text-[#999999]')}>
                 <span title={status === 'running' ? RUNNING_DETAILS : undefined}>{message}</span>
-                {status === 'queued' && <button type="button" disabled={props.actionPending || saveState.kind === 'saving'} data-testid="auto-compact-cancel" onClick={props.onCancelQueued}
+                {status === 'queued' && <button type="button" disabled={props.readOnly || props.actionPending || saveState.kind === 'saving'} data-testid="auto-compact-cancel" onClick={props.onCancelQueued}
                     className="underline flex-shrink-0 disabled:opacity-50">Cancel</button>}
-                {status === 'paused' && <button type="button" disabled={props.actionPending || saveState.kind === 'saving'} data-testid="auto-compact-resume" onClick={props.onResume}
+                {status === 'paused' && <button type="button" disabled={props.readOnly || props.actionPending || saveState.kind === 'saving'} data-testid="auto-compact-resume" onClick={props.onResume}
                     className="underline flex-shrink-0 disabled:opacity-50">Resume</button>}
             </div>
         </section>
@@ -163,8 +174,12 @@ interface PanelSession {
     actionPending: boolean;
 }
 
-export function useSentinelAutoCompact({ isSentinel, processId, workspaceId, client, metadata, usedTokens, tokenLimit, onState, onCancelQueued, manualCompact }: {
-    isSentinel: boolean;
+export function useChatAutoCompact({ available, jobManaged, readOnly, providerUnsupported, processId, workspaceId, client, metadata, usedTokens, tokenLimit, onState, onCancelQueued, manualCompact }: {
+    /** A loaded chat conversation; every chat mode qualifies. */
+    available: boolean;
+    jobManaged?: boolean;
+    readOnly?: boolean;
+    providerUnsupported?: boolean;
     processId: string | null | undefined;
     workspaceId: string | undefined;
     client: CocClient;
@@ -176,7 +191,7 @@ export function useSentinelAutoCompact({ isSentinel, processId, workspaceId, cli
     onCancelQueued: () => Promise<void>;
 }): ContextAutoCompact | undefined {
     const session = useMemo<PanelSession>(() => ({ draft: null, saved: undefined, saveState: { kind: 'idle' },
-        inFlight: false, commitPending: false, actionPending: false }), [client, processId, workspaceId, isSentinel]);
+        inFlight: false, commitPending: false, actionPending: false }), [client, processId, workspaceId, available, jobManaged, readOnly]);
     const active = useRef<PanelSession>();
     active.current = session;
     const [, render] = useState(0);
@@ -192,7 +207,7 @@ export function useSentinelAutoCompact({ isSentinel, processId, workspaceId, cli
     const query = workspaceId ? { workspace: workspaceId } : undefined;
 
     async function save() {
-        if (active.current !== session || !isSentinel || !processId) return;
+        if (active.current !== session || !available || jobManaged || readOnly || !processId) return;
         if (session.inFlight || session.actionPending) { session.commitPending = true; return; }
         const submitted = draft();
         // Turning off must remain possible even while the token draft is invalid.
@@ -227,7 +242,7 @@ export function useSentinelAutoCompact({ isSentinel, processId, workspaceId, cli
     }
 
     async function action(kind: 'resume' | 'cancel') {
-        if (!processId || session.inFlight || session.actionPending || active.current !== session) return;
+        if (!processId || readOnly || session.inFlight || session.actionPending || active.current !== session) return;
         session.actionPending = true;
         session.actionError = undefined;
         notify();
@@ -243,7 +258,7 @@ export function useSentinelAutoCompact({ isSentinel, processId, workspaceId, cli
         if (session.commitPending && active.current === session) { session.commitPending = false; void save(); }
     }
 
-    if (!isSentinel || !processId) return undefined;
+    if (!available || !processId) return undefined;
     const state = validState(metadata?.autoCompact);
     const status = deriveAutoCompactStatus(state, metadata?.compaction);
     const limit = typeof tokenLimit === 'number' && Number.isFinite(tokenLimit) && tokenLimit > 0 ? tokenLimit : undefined;
@@ -256,6 +271,7 @@ export function useSentinelAutoCompact({ isSentinel, processId, workspaceId, cli
         panel: <AutoCompactPanel manualCompact={manualCompact} state={state} status={status} tokenLimit={limit} usedTokens={usage}
             draftEnabled={current.enabled} draftThreshold={current.threshold} dirty={dirty()} saveState={session.saveState}
             actionError={session.actionError} actionPending={session.actionPending} configurationError={!!metadata?.autoCompact && !state}
+            jobManaged={jobManaged} readOnly={readOnly} providerUnsupported={providerUnsupported}
             onDraftChange={change => {
                 const prior = draft();
                 session.draft = { enabled: change.enabled ?? prior.enabled, threshold: change.threshold ?? prior.threshold };
