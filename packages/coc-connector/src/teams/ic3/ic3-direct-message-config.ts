@@ -1,5 +1,7 @@
 export const IC3_RESOURCE = 'https://ic3.teams.office.com';
 export const IC3_DIRECT_MESSAGE_TIMEOUT_MS = 10_000;
+/** Two bounded native preparation operations plus the outbound write budget. */
+export const IC3_SOURCE_REPLY_TIMEOUT_MS = 70_000;
 export const IC3_CREDENTIAL_EXPIRY_MARGIN_MS = 60_000;
 export const IC3_SELF_CHAT = '48:notes';
 

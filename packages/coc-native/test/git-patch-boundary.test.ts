@@ -145,7 +145,8 @@ const timer = setInterval(() => {
             fs.writeFileSync(release, '');
             await pending?.catch(() => undefined);
             if (fs.existsSync(started)) await expect.poll(() => fs.existsSync(finished)).toBe(true);
-            fs.rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+            await fs.promises.rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+            expect(fs.existsSync(root)).toBe(false);
         }
     }
 });

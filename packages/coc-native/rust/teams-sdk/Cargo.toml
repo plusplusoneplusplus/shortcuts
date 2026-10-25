@@ -12,6 +12,7 @@ graph = []
 
 [dependencies]
 async-trait = "0.1"
+auth-sdk = { path = "../auth-sdk" }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 httpdate = "1"
 html-escape = "0.2"

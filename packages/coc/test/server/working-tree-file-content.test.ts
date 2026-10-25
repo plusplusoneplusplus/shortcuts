@@ -346,6 +346,9 @@ describe('caching', () => {
         write('c.txt', 'two\n');
         const service = new GitCacheService();
         const { io, reads } = countingIO();
+        const disk = await io.statDisk(path.join(repo, 'c.txt'));
+        // Windows reads can update ctime; a cache hit requires stable metadata.
+        io.statDisk = async () => disk;
 
         const first = await loadWorkingTreeFileContent(io, req('c.txt', 'unstaged'), { service, workspaceId: 'ws1' });
         const afterFirst = reads();
@@ -359,6 +362,34 @@ describe('caching', () => {
         expect(reads()).toBe(afterFirst);
         expect(second.head.content).toBe(first.head.content);
         expect(second.path).toBe(path.join(repo, 'c.txt'));
+    });
+
+    it.each(['mtimeMs', 'ctimeMs'] as const)('misses when only disk %s changes', async (field) => {
+        write('c.txt', 'one\n');
+        commitAll();
+        write('c.txt', 'two\n');
+        const service = new GitCacheService();
+        const cache = { service, workspaceId: 'ws1' };
+        const { io, reads } = countingIO();
+        let disk = await io.statDisk(path.join(repo, 'c.txt'));
+        if (!disk) {
+            throw new Error('Missing disk fixture');
+        }
+        io.statDisk = async () => disk;
+
+        const first = await loadWorkingTreeFileContent(io, req('c.txt', 'unstaged'), cache);
+        expect(first.head.content).toBe('two\n');
+        expect(reads()).toBe(2);
+        await loadWorkingTreeFileContent(io, req('c.txt', 'unstaged'), cache);
+        expect(reads()).toBe(2);
+
+        write('c.txt', 'six\n');
+        disk = { ...disk, [field]: disk[field] + 1 };
+        const changed = await loadWorkingTreeFileContent(io, req('c.txt', 'unstaged'), cache);
+        expect(changed.base.content).toBe('one\n');
+        expect(changed.head.content).toBe('six\n');
+        expect(reads()).toBe(4);
+        expect(service.size).toBe(1);
     });
 
     it('misses after the disk side changes and keeps one entry per file', async () => {

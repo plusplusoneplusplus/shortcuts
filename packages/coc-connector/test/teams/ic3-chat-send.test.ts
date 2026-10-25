@@ -88,6 +88,7 @@ describe('IC3 existing ordinary 1:1 writes', () => {
 
     it.each([
         { chatId: '' }, { chatId: ' ' }, { chatId: '48:notes' }, { chatId: '19:channel@thread.tacv2' },
+        { chatId: '19:source@unq.gbl.spaces' },
         { chatId: '19:bad/path@thread.v2' }, { connectionId: 'connection-two' },
         { connectionId: undefined }, { recipientId: undefined }, { recipientId: 'invalid' },
     ])('rejects invalid explicit destination %j without dispatch', async patch => {
@@ -173,21 +174,23 @@ describe('IC3 existing ordinary 1:1 writes', () => {
     });
 
     it.each(['cancel', 'dispose', 'deadline'] as const)('bounds verification and prevents late writes on %s', async event => {
+        vi.useFakeTimers();
         const caller = new AbortController();
-        const deadline = new AbortController();
-        if (event === 'deadline') vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
         let resolve!: (result: typeof metadata) => void;
         const verifyChat = vi.fn(() => new Promise<typeof metadata>(done => { resolve = done; }));
         const { operations } = setup({ verifyChat });
         const pending = operations.send(destination, body, { signal: caller.signal });
-        await vi.waitFor(() => expect(verifyChat).toHaveBeenCalledOnce());
+        const rejected = expect(pending).rejects.toMatchObject({ outcome: 'not-attempted', code: event === 'deadline' ? 'timeout' : 'unavailable' });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(verifyChat).toHaveBeenCalledOnce();
         if (event === 'cancel') caller.abort();
         else if (event === 'dispose') await operations.dispose();
-        else deadline.abort();
-        await expect(pending).rejects.toMatchObject({ outcome: 'not-attempted', code: event === 'deadline' ? 'timeout' : 'unavailable' });
+        else await vi.advanceTimersByTimeAsync(10_000);
+        await rejected;
         resolve(metadata);
         await Promise.resolve();
         expect(fetchMock).not.toHaveBeenCalled();
+        vi.useRealTimers();
     });
 
     it('cancels after dispatch as unknown without retry', async () => {

@@ -1107,6 +1107,27 @@ references before editing. Paths are package-relative.
   `-v`; no Markdown list syntax so Teams keeps the numbering). `localTopicsReply`
   and `resolveLocalTopic` share owner-qualified selection refs; cancelled or missing
   queued targets reject selection and delivery.
+- `features.teamsIc3OwnCommands` (default off) routes new own-user `@coc <prompt>`
+  messages to one Ask conversation per account, Teams chat and explicit local
+  `teamsIc3OwnCommands.workspaceId`, using the shared Teams connection `ic3Region`.
+  Stable hashed conversation IDs reuse saved chats across restarts. First turns use
+  medium effort; ordered follow-ups retain conversation policy and correlate answers
+  by request ID. Each new admitted mention attempts a standard Eyes acknowledgement
+  (`1f440_eyes`) on its original message before queue admission, without extra
+  history reads or custom emoji configuration.
+  Acknowledgements are bounded, deduplicated and best-effort; failures log safely
+  and still admit the request, while cancellation prevents late admission.
+  Reply chains serialize per conversation, not across chats; shutdown drains every
+  active chain. Timing info logs correlate hashed request IDs across detection,
+  admission, queue/execution and reply delivery without source identities or bodies.
+  Saving a region change restarts the own-command runtime. Account-pinned Trouter hints wake
+  authoritative native reads; native `Unsupported` rejects non-self notification
+  targets without retries or read-health changes. Fallback scans, admission and IC3-only source replies
+  share cancellation; an enqueue past the final caller check may finish. Never replay
+  uncertain admissions or sends. Keep read, reply and notification health separate;
+  route Admin reads through `useAdminServer`.
+  See the [IC3 runtime contract](../../.github/skills/coc-knowledge/references/server-architecture.md#ic3-own-command-launcher)
+  for read windows, deduplication, reply deadlines and safe-retry rules.
 - Ask/sentinel turns started from WhatsApp/Teams and jobs carrying
   `metadata.messagingOrigin` (every turn, including autopilot) relay
   `ask_user` questions one at a time to the originating group/thread through
@@ -1183,8 +1204,11 @@ references before editing. Paths are package-relative.
   the Connections card displays notification degradation while fallback remains connected.
   Private Trouter is best-effort, not durable catch-up; container relay settings are separate.
 - Teams setup uses scoped admin styles and native disclosures for advanced settings,
-  routing help, and connection history. Keep status/errors visible outside disclosures
-  and preserve separate endpoint/channel saves and unsaved-change connect gating.
+  routing help, and connection history. Connections → Teams puts channel/OAuth and
+  notification status beside independent IC3 status in a responsive overview before
+  configuration and feature controls. Missing status is unavailable, not disabled;
+  saved backends do not prove delivery health. Keep errors outside disclosures and
+  preserve separate endpoint/channel saves and unsaved-change connect gating.
 - Delegated Teams sends use safe HTML with `CoC ·` assistant attribution in the first
   text block; the authenticated user's native sender identity stays unchanged.
   Markdown tables share a safe renderer for outbound messages and AI answers;

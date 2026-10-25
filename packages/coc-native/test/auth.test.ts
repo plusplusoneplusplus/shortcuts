@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdirSync, mkdtempSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { AuthError, loadNativeAuth, MicrosoftOAuthSignIn, MicrosoftTokenProvider } from '../src/auth';
@@ -9,7 +9,15 @@ const tenant = '11111111-1111-4111-8111-111111111111';
 const subscription = '44444444-4444-4444-8444-444444444444';
 const directories: string[] = [];
 const originalPath = process.env.PATH;
+const installationVariables = ['ProgramW6432', 'ProgramFiles', 'ProgramFiles(x86)'] as const;
+beforeEach(() => {
+    if (process.platform === 'win32') {
+        const root = directory();
+        for (const variable of installationVariables) vi.stubEnv(variable, root);
+    }
+});
 afterEach(() => {
+    vi.unstubAllEnvs();
     if (originalPath === undefined) delete process.env.PATH;
     else process.env.PATH = originalPath;
     for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
@@ -46,8 +54,7 @@ function activeCli(refresh: 'auto' | 'never' = 'auto'): MicrosoftTokenProviderOp
     };
 }
 
-function fakeCli(mode: 'valid' | 'malformed' | 'mismatch' | 'hang' | 'login' = 'valid'): void {
-    const root = directory();
+function fakeCli(mode: 'valid' | 'malformed' | 'mismatch' | 'hang' | 'login' = 'valid', root = directory()): void {
     const account = JSON.stringify({
         id: subscription, tenantId: tenant,
         user: { name: mode === 'mismatch' ? 'other-fixture' : 'fixture-account', type: 'user' },
@@ -180,6 +187,33 @@ describe('built authentication addon', () => {
             await provider.getToken();
             fakeCli('malformed');
             await expect(provider.getToken({ forceRefresh: true })).rejects.toMatchObject({ code: 'InvalidTokenResponse' });
+        } finally { provider.dispose(); }
+    });
+
+    it.skipIf(process.platform !== 'win32').each(installationVariables)(
+        'finds an installed CLI under %s when the host PATH is stale',
+        async variable => {
+            const root = directory();
+            const cliDirectory = path.join(root, 'Microsoft SDKs', 'Azure', 'CLI2', 'wbin');
+            mkdirSync(cliDirectory, { recursive: true });
+            fakeCli('valid', cliDirectory);
+            process.env.PATH = directory();
+            vi.stubEnv(variable, root);
+            const provider = new MicrosoftTokenProvider(activeCli());
+            try {
+                await expect(provider.getToken()).resolves.toMatchObject({ source: 'azure-cli' });
+            } finally { provider.dispose(); }
+        },
+    );
+
+    it.skipIf(process.platform !== 'win32')('keeps PATH precedence and does not retry a failing CLI with another installation', async () => {
+        const cliDirectory = path.join(process.env.ProgramFiles!, 'Microsoft SDKs', 'Azure', 'CLI2', 'wbin');
+        mkdirSync(cliDirectory, { recursive: true });
+        fakeCli('valid', cliDirectory);
+        fakeCli('login');
+        const provider = new MicrosoftTokenProvider(activeCli());
+        try {
+            await expect(provider.getToken()).rejects.toMatchObject({ code: 'LoginRequired' });
         } finally { provider.dispose(); }
     });
 

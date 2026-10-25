@@ -46,6 +46,7 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'claude'
     | 'opencode'
     | 'features'
+    | 'teamsIc3OwnCommands'
     | 'memoryPromotion'
     | 'store'
     | 'monitoring'

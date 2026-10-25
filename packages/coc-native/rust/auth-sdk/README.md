@@ -129,9 +129,13 @@ verifies the selected subscription's tenant, and checks the token response's
 subscription/tenant. Unsupported or ambiguous selection fails; it never changes
 CLI state, calls `az login`, or persists CLI refresh credentials. It requires
 modern `az` output with UTC `expires_on`; ambiguous local `expiresOn` is rejected.
-Windows launches `az.cmd` with validated arguments and starts it suspended inside
-a kill-on-close job; Unix uses a process group. Dropped operations kill the tree
-and Tokio reaps the direct child. Raw CLI output never enters diagnostics.
+Windows resolves `az.cmd` from the process `PATH`, then the standard Azure CLI
+installation under `ProgramW6432`, `ProgramFiles` or `ProgramFiles(x86)`.
+This supports long-lived hosts with a stale `PATH`; a selected executable's
+failure never retries another installation. Windows launches it with validated
+arguments, suspended inside a kill-on-close job; Unix uses `az` from `PATH` and a
+process group. Dropped operations kill the tree and Tokio reaps the direct child.
+Raw CLI output never enters diagnostics.
 
 ## Token lifecycle
 

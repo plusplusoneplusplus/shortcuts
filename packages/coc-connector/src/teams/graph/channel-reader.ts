@@ -60,14 +60,14 @@ export class GraphChannelReader {
         return {
             nextLink: page['@odata.nextLink'],
             messages: page.value.map(message => {
-                const html = message.body?.content ?? '';
+                const html = message.deletedDateTime ? '' : message.body?.content ?? '';
                 const text = html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li)>/gi, '\n')
                     .replace(/<[^>]*>/g, '');
                 return {
                     channelId, messageId: message.id,
                     replyToMessageId: rootId,
                     text: (this.receiveImages ? decodeGraphHtmlEntities(text) : text).trim(),
-                    ...(this.receiveImages ? { images: graphChannelImages(html,
+                    ...(this.receiveImages ? { images: message.deletedDateTime ? [] : graphChannelImages(html,
                         { teamId, channelId, messageId: message.id, rootId }, this.credentials, this.lifetime.signal, message.attachments) } : {}),
                     senderName: message.from?.user?.displayName,
                     senderAadId: message.from?.user?.id,

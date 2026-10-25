@@ -51,6 +51,7 @@
   },
   "overrides": {
     "@github/copilot": "1.0.78",
+    "@azure/msal-node": "7.1.1",
     "@excalidraw/excalidraw": {
       "nanoid@3": "3.3.18",
       "sass": "1.105.1"

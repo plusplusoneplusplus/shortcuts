@@ -51,6 +51,8 @@ export class TeamsOperationError extends Error {
         readonly code: TeamsFailureCode,
         readonly outcome: 'not-attempted' | 'rejected' | 'unknown',
         readonly retryAfterMs?: number,
+        /** Explicit safe-retry evidence; unknown delivery must never be replayed. */
+        readonly retryable = false,
     ) {
         super(message);
         this.name = 'TeamsOperationError';

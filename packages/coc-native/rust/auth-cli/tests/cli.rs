@@ -6,7 +6,11 @@ const SUBSCRIPTION: &str = "44444444-4444-4444-8444-444444444444";
 const SECRET: &str = "abcdefghPRIVATE_TOKEN_MIDDLEijklmnop";
 
 fn binary() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_auth-cli"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_auth-cli"));
+    for variable in ["ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"] {
+        command.env_remove(variable);
+    }
+    command
 }
 
 fn token_args(command: &mut Command) -> &mut Command {

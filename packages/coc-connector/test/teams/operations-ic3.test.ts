@@ -296,8 +296,7 @@ describe('IC3 operations', () => {
         ['send', 'credential'], ['react', 'credential'], ['send', 'request'], ['react', 'request'],
         ['send', 'response'],
     ] as const)('bounds %s hanging %s with the shared ten-second deadline', async (kind, stage) => {
-        const deadline = new AbortController();
-        const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
+        vi.useFakeTimers();
         const { operations } = setup({
             acquireToken: () => stage === 'credential' ? new Promise(() => {}) : Promise.resolve(token()),
         });
@@ -305,12 +304,13 @@ describe('IC3 operations', () => {
             ok: true, json: () => new Promise(() => {}),
         } as Response));
         const pending = kind === 'send' ? operations.send(self, text) : operations.react(reference, 'like');
-        if (stage !== 'credential') await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-        deadline.abort();
-        await expect(pending).rejects.toMatchObject({
+        const rejected = expect(pending).rejects.toMatchObject({
             code: 'timeout', outcome: stage === 'credential' ? 'not-attempted' : 'unknown',
         });
-        expect(timeout).toHaveBeenCalledWith(10_000);
+        await vi.advanceTimersByTimeAsync(10_000);
+        await rejected;
+        expect(vi.getTimerCount()).toBe(0);
+        vi.useRealTimers();
         expect(fetchMock).toHaveBeenCalledTimes(stage === 'credential' ? 0 : 1);
     });
 

@@ -223,6 +223,8 @@ import { MessagingJobNotices } from '../messaging/job-notices';
 import { createAutoCompactionOrigins } from '../messaging/auto-compaction-origins';
 import { createMessagingHandOff } from '../messaging/job-handoff';
 import { AskUserQuestionRelayHub, type AskUserQuestionRelay } from '../messaging/ask-user-relay';
+import { createTeamsIc3OwnCommandLaunch } from '../messaging/teams-ic3-own-command-launch';
+import { createTeamsIc3OwnCommandsRuntime } from '../messaging/teams-ic3-own-commands-runtime';
 import { registerContainerSessionRoutes } from '../container-sessions/container-session-handler';
 import { ContainerSessionStore } from '../container-sessions/container-session-store';
 import type { ContainerAgentInfo } from '../container-sessions/container-session-types';
@@ -355,7 +357,7 @@ export interface RegisterRoutesOptions {
     watchService?: import('../shared/native-watch-service').NativeWatchServiceLike;
 }
 
-export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; teamsMessagingManager: TeamsMessagingManager; whatsappMessagingManager: WhatsAppMessagingManager; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; autoPullManager: AutoPullManager; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler; repoTreeService: RepoTreeService; codaReady: Promise<number>; sentinelRefrainsShutdown: () => Promise<void> } {
+export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; teamsMessagingManager: TeamsMessagingManager; whatsappMessagingManager: WhatsAppMessagingManager; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; autoPullManager: AutoPullManager; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler; repoTreeService: RepoTreeService; codaReady: Promise<number>; sentinelRefrainsShutdown: () => Promise<void>; teamsIc3OwnCommands?: ReturnType<typeof createTeamsIc3OwnCommandsRuntime> } {
     const {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
@@ -1420,6 +1422,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             origin ? taskId => jobNotices.track({ processId: proc.id, workspaceId: proc.metadata!.workspaceId!, origin, taskId }) : undefined),
         remotes: workspaceDirectory,
     });
+    const teamsIc3OwnCommands = opts.runtimeConfigService && createTeamsIc3OwnCommandsRuntime({
+        config: opts.runtimeConfigService, teams: teamsMessagingManager, store, queue: queueFacade, routes,
+        launch: createTeamsIc3OwnCommandLaunch({
+            bridge, store, dataDir, state: queueGlobalState, globalWorkspaceRootPath,
+            getDefaultProvider: concreteDefaultProvider, resolveDefaultProvider, isAutoProviderRoutingActive,
+            getEffortTiersForProvider, validateProvider: validateSendToConversationProvider,
+        }),
+    });
     const whatsappMessagingManager = registerWhatsAppMessagingRoutes(routes, { dataDir });
     const whatsappBindings = new WhatsAppBindings(dataDir, { store, queue: queueFacade });
     let whatsappBindingRestore: Promise<void> | undefined;
@@ -2187,5 +2197,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     );
 
     return { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService,
-        codaReady: Promise.all([codaReady, remoteResultsReady, remoteReturnReady]).then(([count]) => count), sentinelRefrainsShutdown };
+        codaReady: Promise.all([codaReady, remoteResultsReady, remoteReturnReady]).then(([count]) => count), sentinelRefrainsShutdown,
+        teamsIc3OwnCommands };
 }

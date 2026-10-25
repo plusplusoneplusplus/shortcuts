@@ -17,6 +17,7 @@ import type { AdminSettingDefinition, FeatureSettingTab } from '../../../../../c
 import { getFeatureSettingTabLink } from './adminNavigation';
 import { isContainerMode } from '../utils/config';
 import type { FeatureValues } from './useAdminFeatureSettings';
+import { AdminWorkspaceSelect } from './AdminWorkspaceSelect';
 
 const FEATURE_BADGES: Record<string, { className: string; label: string }> = {
     restart: { className: 'ar-badge ar-badge-warning', label: 'Restart' },
@@ -63,16 +64,25 @@ function FeatureSettingRow({ def, featureValues, setFeatureValues, sources, isDe
                     value={String(featureValues[def.key] ?? '')}
                     onChange={e => setFeatureValues(prev => ({ ...prev, [def.key]: e.target.value }))}
                     data-testid={ui.testId}
+                    aria-label={ui.label}
                 >
                     {ui.control.options.map(option => (
                         <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                 </select>
+            ) : ui.control?.type === 'workspace' ? (
+                <AdminWorkspaceSelect
+                    value={String(featureValues[def.key] ?? '')}
+                    onChange={value => setFeatureValues(prev => ({ ...prev, [def.key]: value }))}
+                    label={ui.label}
+                    data-testid={ui.testId}
+                />
             ) : (
                 <AdminToggle
                     checked={featureValues[def.key] === true}
                     onChange={checked => setFeatureValues(prev => ({ ...prev, [def.key]: checked }))}
                     data-testid={ui.testId}
+                    aria-label={ui.label}
                 />
             )}
         </AdminRow>

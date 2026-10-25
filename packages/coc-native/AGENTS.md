@@ -144,6 +144,7 @@ Credential Manager's 2,560-byte limit. Resource providers serialize rotation
 through OS advisory locks; lock-directory identity participates in credential keys.
 Azure CLI token requests select only `--subscription`; account and response tenant
 checks enforce the pinned tenant without the incompatible `--tenant` argument.
+Windows CLI discovery follows [`auth-sdk/README.md`](rust/auth-sdk/README.md).
 `selection: 'active-account'` resolves and pins identity on first token use, checks
 selection before cached returns and after acquisition, and rejects changes with
 `AccountMismatch`. Its token cache is provider-local; discovery stays in Rust.
@@ -170,21 +171,21 @@ on stderr. Ctrl+C drops SDK handles and closes callback/CLI work. Install from
 
 ## Teams capability
 
-`rust/napi/src/teams/` links the `rust/teams-sdk/` workspace crate with Graph,
-MCP and experimental IC3. `src/teams.ts` exports generated DTO aliases,
-`loadNativeTeams()` and sanitized `decodeNativeTeamsError()`. `NativeTeamsSession`
-owns one pinned account, immutable write routes, a bounded opaque cursor map and
-cancellable operations. Async Teams methods run on Tokio, not libuv workers.
-Trusted JS credential/verifier callbacks use bounded, unreferenced TSFNs; close
-revokes requests/subscriptions and releases callbacks even if a provider hangs.
-Optional HTTP/socket callbacks are trusted test boundaries, never URL overrides.
-Production HTTP and WebSockets stay in Rust. Cursor IDs never expose provider URLs.
-Notifications are bounded reconciliation hints, not message authority. SDK errors
-preserve delivery outcome without provider payloads; unknown writes are not replayed.
-Notification health uses an independent watch snapshot while hint receives wait.
-`latestChatMessages` selects bounded raw entries before exclusions and returns only
-metadata with fetched/skipped counts, including across short provider pages.
-Actual-addon coverage lives in `test/teams.test.ts`.
+`src/teams.ts` wraps Tokio-backed `rust/napi/src/teams/` handles with capability
+checks, AbortSignals, frozen results and safe SDK error metadata. Construction
+validates region, optional expected tenant/object IDs and a 100..30,000 ms timeout
+without I/O. One-shot `connect()` binds native Azure CLI credentials; failure
+requires a new session. Tokens stay native. Connection verifies identity, not
+Teams access or server command admission.
+
+`dispose()`/drop revokes the session and pending work. `beginRead()` creates a
+one-shot read whose cancellation is independent of other reads. Deadlines start
+at handle creation and cover dispatch through Node publication. Cursors are
+native-owned and session/collection-bound. The Node API exposes IC3 discovery
+and history only, without writes, notifications, credential callbacks or fallback.
+Protocol, self-chat, transient-content and credential contracts belong in
+[`teams-sdk/AGENTS.md`](rust/teams-sdk/AGENTS.md). Tests in `rust/napi/src/teams/`
+inject Rust transports; `test/teams.test.ts` covers built-addon and wrapper behavior.
 
 ## Layout
 
@@ -269,9 +270,10 @@ recompilation; `rust/core/build.rs` tracks napi-rs's cache-directory and
 force-build environment variables without adding Node linker configuration.
 The script requires wrapper and core DTO declarations before
 updating bindings and preserves the file's mtime when its contents match.
-Incomplete napi-rs transaction metadata fails before compilation; stop active
-native builds, inspect and rename the journal to a backup location before
-retrying. Preserve recovery contents; complete journals are recovered by napi-rs.
+Empty napi-rs journal scaffolding (`backups`/`inputs`) is removed non-recursively
+before compilation. Incomplete journals containing recovery data require manual
+inspection with active builds stopped; preserve their contents. Complete journals
+are recovered by napi-rs.
 
 ## Binary resolution
 

@@ -1451,6 +1451,8 @@ describe('AdminPanel', () => {
             'toggle-teams-bridge-observability-enabled',
             'toggle-teams-ai-answer-relay-enabled',
             'toggle-teams-message-reaction-enabled',
+            'toggle-teams-ic3-own-commands-enabled',
+            'select-teams-ic3-command-workspace',
         ];
         const INTEGRATIONS_TOGGLES = [
             'toggle-kusto-enabled', 'toggle-mcp-oauth-enabled',
@@ -1495,7 +1497,15 @@ describe('AdminPanel', () => {
             expect(screen.getByTestId('admin-tab-messaging').textContent).toContain('Teams');
             const card = screen.getByTestId('settings-tab-features-teams');
             expect(card.textContent).toContain('Teams features');
+            // TeamsConnectionCard (which hosts the IC3 card) is lazy-loaded; wait for it.
+            expect((await screen.findByTestId('teams-ic3-status')).textContent).toContain('IC3 connectivity');
             await waitFor(() => expect(screen.getByTestId('teams-connection-card')).toBeDefined());
+            const overview = screen.getByRole('region', { name: 'Teams status' });
+            const configuration = screen.getByTestId('teams-connection-card');
+            expect(overview.contains(screen.getByTestId('teams-ic3-status'))).toBe(true);
+            expect(overview.contains(screen.getByTestId('teams-bridge-status'))).toBe(true);
+            expect(overview.compareDocumentPosition(configuration) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+            expect(configuration.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
             for (const id of TEAMS_TOGGLES) expect(screen.getAllByTestId(id), id).toHaveLength(1);
             for (const id of INTEGRATIONS_TOGGLES) expect(screen.queryByTestId(id), id).toBeNull();
             for (const id of ['toggle-teams-bridge-observability-enabled', 'toggle-teams-message-reaction-enabled']) {
@@ -1503,6 +1513,10 @@ describe('AdminPanel', () => {
             }
             expect((screen.getByTestId('toggle-teams-ai-answer-relay-enabled') as HTMLInputElement).checked).toBe(true);
             expect((screen.getByTestId('toggle-teams-message-reaction-enabled') as HTMLInputElement).checked).toBe(false);
+            expect((screen.getByTestId('toggle-teams-ic3-own-commands-enabled') as HTMLInputElement).checked).toBe(false);
+            expect(card.textContent).toContain('Teams @coc <prompt> messages share one Ask conversation per Teams chat');
+            expect(screen.queryByTestId('select-teams-ic3-own-command-region')).toBeNull();
+            expect(screen.getByLabelText('IC3 region')).toBeDefined();
         });
 
         it('links Features search results for Teams settings to Connectors → Teams', async () => {
@@ -1545,6 +1559,8 @@ describe('AdminPanel', () => {
                 'features.teamsBridgeObservability': false,
                 'features.teamsAiAnswerRelay': false,
                 'features.teamsMessageReaction': true,
+                'features.teamsIc3OwnCommands': false,
+                'teamsIc3OwnCommands.workspaceId': '',
             });
             await waitFor(() => expect((screen.getByTestId('settings-tab-features-teams-save') as HTMLButtonElement).disabled).toBe(true));
 

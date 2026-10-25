@@ -665,6 +665,70 @@ positive and tracking is reliable (`branch.ab` present, upstream set, not detach
 no branch names, upstream labels or behind counts. Replies use
 lossless connector text chunking.
 
+### IC3 own-command launcher
+
+`messaging/teams-ic3-own-commands-runtime.ts` uses an account-pinned connector
+Trouter listener to wake native Azure CLI reads of self/direct/group chats.
+`TeamsMessagingManager` supplies the shared saved `ic3Region` and change
+subscription; region changes cancel and restart the runtime independently of
+the channel bridge connection. An unset region blocks reads.
+A 64-chat mailbox coalesces hints and drains between scan reads; overflow,
+loss and disconnect reconcile. Single-flight fallback scans read self first,
+process discovery pages incrementally and remain due 60 seconds after completion.
+Failed hints retry after cooldown; HTTP429 pauses all reads. Native `Unsupported`
+discards non-self notification targets such as meeting chats, without changing
+read health or blocking other hints. Self-stream and discovered-chat failures
+remain visible.
+
+Only the newest 30 messages per chat are inspected. Admission excludes pre-start
+messages, edits, quotes, attachments and foreign senders. Own-user `@coc <prompt>`
+messages share one Ask conversation per tenant/user, Teams chat and configured local
+workspace. A stable hashed first-task ID resolves queued or saved conversations
+across restarts. First turns use medium effort and normal Auto provider resolution;
+follow-ups retain conversation policy and use queue process ordering. Admission
+serializes by conversation. Account/chat/message hashes, queue evidence and persisted
+user-turn request IDs prevent duplicates. Mark attempts before admission; uncertain
+outcomes never retry.
+
+Each new eligible mention attempts a standard Eyes (`1f440_eyes`) acknowledgement
+on its exact source message before queue admission, including follow-ups. The
+account-pinned reaction client sends directly without discovery reads or custom
+emoji configuration. Failed writes log sanitized failures but do not discard the
+command. The ten-second total deadline,
+cancellation and no-replay policy apply independently of channel Likes.
+
+Memory-only pending replies capture source identity before enqueue and consume it
+on queue terminal events. Delivery serializes within each conversation; different
+chats deliver independently. Shutdown drains all active reply chains; reconfiguration
+revokes their authority without blocking the new generation. Shared answer extraction
+returns only the matching request's answer; fixed notices replace raw failures.
+`teams-ic3-own-command-reply.ts` reuses HTML
+chunking and `Ic3DirectMessageClient.sendToSourceChat`, preserving exact
+`48:notes`, `19:...@thread.v2` or `19:...@unq.gbl.spaces` IDs. Each part pins the
+account and rechecks access through the captured native reader; Graph/MCP are excluded.
+Source replies allow 70 seconds total for preparation and 10 seconds from dispatch;
+ordinary sends/Likes retain their 10-second total deadline.
+
+Failed chunks permit two retries only for definitive HTTP401/429, known transient
+native preparation failures or pre-dispatch timeouts. Refresh credentials and
+source access; wait 1s/2s or Retry-After, capped at 60s per wait. Longer cooldowns
+stop delivery. Confirmed chunks, permanent failures and unknown outcomes never
+replay. Reconfiguration/shutdown abort reads, admission preparation and replies;
+an enqueue past the final caller check may finish. Stop ingress and drain pending
+work. Restart does not recover pending replies. Further mentions continue the saved
+conversation; interactive questions stay in the dashboard.
+
+Read-only `GET /api/messaging/teams/ic3-own-commands/status` snapshots read health,
+last-check/last-success timestamps and independent `trouter` health. Completed reads
+publish immediately; history failures stay degraded through a scan while successes
+advance last-connected. Outer poll failures are error. Expose only safe codes;
+admission/reply failures do not affect read health. Status reads trigger no I/O
+and prove no write access. `[IC3 commands] timing` info logs correlate hashed request
+IDs across detection, acknowledgement, admission, completion and reply delivery/failure. Durations
+separate message age at detection, history reads, admission, queue/execution when
+queue timestamps exist, reply-chain wait and delivery. Logs exclude message bodies,
+raw chat IDs and account identities. See [configuration](admin-config.md#ic3-own-command-configuration).
+
 ### Messaging ask_user question relay
 
 `messaging/ask-user-relay.ts` (`AskUserQuestionRelayHub`) is the executor's
@@ -702,6 +766,11 @@ sets `mode: mcp, channelReadBackend: graph`, including omitted saved settings.
 Missing relay settings resolve on; explicit false stops reply polling and answer relay
 without restart/reconnect. Connectivity, Likes and Trouter require their own enablement.
 The connector's standalone defaults remain independent.
+
+Graph channel deletion tombstones retain message IDs and pagination without
+admitting text or images. Null body content requires a valid `deletedDateTime`;
+malformed ordinary messages still fail the page. Deleted roots retain readable
+surviving replies.
 
 Connector `receiveImages` exposes lazy inline/file image descriptors on hybrid
 Graph roots/replies. Scoped hosted content uses fixed v1.0 paths; HTTPS SharePoint
@@ -832,7 +901,8 @@ server settings and gates belong in [admin-config.md](admin-config.md).
 Normal CoC persists experimental `enableTrouter` in `teams-messaging.json`, defaults
 it off, and passes it to `TeamsBot` on reconnect. The connector pins separately acquired
 IC3 credentials to the MCP reader account, handles private Trouter registration/renewal,
-heartbeat/ACKs and reconnect, and accepts only selected-conversation wake hints.
+heartbeat/ACKs and reconnect. Its target getter returns a conversation predicate
+or `null` to suppress wakes.
 Real activity source threads override synthetic streams; notifications never authorize
 dispatch. Workspace/thread bindings remain owned by the existing messaging router.
 Known-thread wakes read authoritative Graph replies directly; root discovery/backfill runs

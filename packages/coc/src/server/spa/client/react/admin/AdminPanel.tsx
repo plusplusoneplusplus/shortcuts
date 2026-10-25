@@ -45,6 +45,7 @@ import {
 import { useAdminFeatureSettings } from './useAdminFeatureSettings';
 import { useAdminChatStyleSettings } from './useAdminChatStyleSettings';
 import { FeatureSettingsCard, TabFeatureSettingsCard } from './FeatureSettingsCard';
+import { TeamsIc3StatusCard } from './TeamsIc3StatusCard';
 import type { FeatureSettingTab } from '../../../../../config/admin-setting-definitions';
 
 const GUARDED_FEATURE_TABS: { tab: FeatureSettingTab; label: string }[] = [
@@ -919,7 +920,9 @@ export function AdminPanel() {
                             )}
                             {activeTab === 'messaging' && !isContainerMode() && (
                                 <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
-                                    <TeamsConnectionCard />
+                                    <TeamsConnectionCard>
+                                        <TeamsIc3StatusCard />
+                                    </TeamsConnectionCard>
                                 </Suspense>
                             )}
                             {/* Hidden until the admin config loads so edits are never overwritten by hydration. */}

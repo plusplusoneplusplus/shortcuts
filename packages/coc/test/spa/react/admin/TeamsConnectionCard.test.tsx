@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { TeamsConnectionCard } from '../../../../src/server/spa/client/react/admin/TeamsConnectionCard';
 import { IMSettingsSection } from '../../../../src/server/spa/client/react/admin/IMSettingsSection';
 
@@ -19,6 +19,67 @@ const status = {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('TeamsConnectionCard', () => {
+    it('places all status panels before detailed configuration without duplicating controls', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({
+            ...status, outboundBackend: 'mcp', ic3Region: 'emea', enableTrouter: true,
+            notificationStatus: { state: 'registered', error: null },
+        }) })));
+        render(<TeamsConnectionCard><section aria-label="Own-command status">IC3 status panel</section></TeamsConnectionCard>);
+        await screen.findByDisplayValue(status.serverUrl);
+        const overview = screen.getByRole('region', { name: 'Teams status' });
+        const setup = screen.getByTestId('teams-connection-card');
+        expect(overview.contains(screen.getByTestId('teams-bridge-status'))).toBe(true);
+        expect(overview.contains(screen.getByRole('region', { name: 'Own-command status' }))).toBe(true);
+        expect(overview.compareDocumentPosition(setup) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(overview.querySelector('input, select')).toBeNull();
+        expect(within(overview).getByText('MCP')).toBeDefined();
+        expect(within(overview).getByText('Microsoft Graph')).toBeDefined();
+        expect(within(overview).getByText('Engineering / General')).toBeDefined();
+        expect(within(overview).getByText('Disabled')).toBeDefined();
+        expect(within(overview).getByText('emea')).toBeDefined();
+        expect(within(setup).getByLabelText('Teams MCP server URL')).toBeDefined();
+        expect(screen.getAllByLabelText('Channel')).toHaveLength(1);
+    });
+
+    it('keeps connection and notification errors in the overview, outside configuration disclosures', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({
+            ...status, status: 'error', error: 'Channel read failed', enableTrouter: true,
+            notificationStatus: { state: 'retrying', error: { code: 'socket', message: 'Notification connection failed' } },
+        }) })));
+        render(<TeamsConnectionCard />);
+        const overview = screen.getByRole('region', { name: 'Teams status' });
+        await within(overview).findByText('Channel read failed');
+        expect(within(overview).getAllByRole('alert')).toHaveLength(2);
+        expect(within(overview).getByText('Notification connection failed').closest('details')).toBeNull();
+        expect(within(screen.getByTestId('teams-connection-card')).queryByRole('alert')).toBeNull();
+    });
+
+    it.each(['connecting', 'registered', 'retrying', 'stopped'])('shows live Trouter %s outside collapsed settings', async state => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({
+            ...status, enableTrouter: true, notificationStatus: { state, error: null },
+        }) })));
+        render(<TeamsConnectionCard />);
+        await screen.findByDisplayValue(status.serverUrl);
+        const notification = screen.getByTestId('teams-notification-status');
+        expect(notification.textContent).toContain(`Channel bridge Trouter: ${state}`);
+        expect(notification.closest('details')).toBeNull();
+    });
+
+    it('shows Trouter disabled instead of hiding notification status', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ ...status, enableTrouter: false }) })));
+        render(<TeamsConnectionCard />);
+        await screen.findByDisplayValue(status.serverUrl);
+        expect(screen.getByTestId('teams-notification-status').textContent).toContain('Channel bridge Trouter: disabled');
+        expect(screen.getByTestId('teams-notification-status').textContent).not.toContain('fallback');
+    });
+
+    it('does not invent a stopped Trouter state when enabled status is missing', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ ...status, enableTrouter: true }) })));
+        render(<TeamsConnectionCard />);
+        await screen.findByDisplayValue(status.serverUrl);
+        expect(screen.getByTestId('teams-notification-status').textContent).toContain('Status unavailable');
+    });
+
     it('groups setup separately from collapsed optional settings and history', async () => {
         vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
             ok: true, json: async () => url.endsWith('/status')
@@ -53,6 +114,7 @@ describe('TeamsConnectionCard', () => {
             expect((screen.getByLabelText(name) as HTMLInputElement).disabled).toBe(true);
         }
         expect(screen.getByRole('button', { name: 'Refresh status' })).toBeDefined();
+        expect(screen.getByTestId('teams-notification-status').textContent).toContain('Status unavailable');
     });
 
     it('offers an off-by-default notification opt-in and persists it before reconnect', async () => {
@@ -159,7 +221,7 @@ describe('TeamsConnectionCard', () => {
                 teamName: 'Engineering', channelName: 'General', ic3Region: region || null,
             }) }),
         ));
-        expect(screen.getByText(/Save, then reconnect/)).toBeDefined();
+        expect(screen.getByText(/Save to restart own commands; reconnect the bridge/)).toBeDefined();
     });
 
     const active = {
@@ -334,7 +396,7 @@ describe('TeamsConnectionCard', () => {
             }) }),
         ));
         await waitFor(() => expect((screen.getByText('Reconnect') as HTMLButtonElement).disabled).toBe(false));
-        expect(screen.getByText(/Save changes, then reconnect/)).toBeDefined();
+        expect(screen.getByText(/Save to restart own commands; reconnect the bridge/)).toBeDefined();
     });
 
     it('does not offer OAuth when the server lacks support and displays connection errors', async () => {

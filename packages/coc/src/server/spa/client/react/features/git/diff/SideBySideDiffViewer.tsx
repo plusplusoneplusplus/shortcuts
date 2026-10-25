@@ -34,6 +34,7 @@ import { DiffContextMenu } from '../../../tasks/comments/DiffContextMenu';
 import { FileBannerRow } from './FileBannerRow';
 import { parseFileBanners, type FileBanner } from './fileBannerModel';
 import { useDockedFileBanner } from './useDockedFileBanner';
+import { observeOffsetUntilCleanup } from './observeOffsetUntilCleanup';
 import { writeDiffSelectionDragStart } from './diffSelectionContext';
 import type { DiffComment, DiffCommentSelection } from '../../../../comments/diff-comment-types';
 
@@ -173,6 +174,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
             estimateSize: () => DIFF_LINE_ESTIMATE_PX,
             overscan: 24,
             scrollMargin,
+            observeElementOffset: observeOffsetUntilCleanup,
             measureElement: (el) => {
                 const h = (el as HTMLElement).getBoundingClientRect?.().height;
                 return h && h > 0 ? h : DIFF_LINE_ESTIMATE_PX;

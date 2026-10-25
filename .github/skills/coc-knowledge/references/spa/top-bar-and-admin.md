@@ -52,7 +52,14 @@ Both Teams forms expose explicit optional IC3 region configuration, saved with c
 settings and applied on reconnect. Unconfigured leaves channel reads/sends available;
 IC3 writes require a region. The container stores it under `messaging.teams.ic3Region`
 in `config.yaml`; an absent bridge requires restart.
-The normal Teams card groups endpoint/sign-in and channel settings separately,
+The normal Teams page starts with a responsive status grid: channel connection,
+OAuth and channel Trouter health alongside independent IC3 own-command read and
+notification health. Saved read/write backends, channel and region are configuration
+facts, not delivery checks. Missing notification snapshots show unavailable, not
+disabled, unless own commands are disabled. Errors remain visible in this overview.
+`TeamsConnectionCard` owns channel polling and configuration and accepts the
+`TeamsIc3StatusCard` as status content, avoiding duplicate status readers.
+Detailed configuration follows the overview, grouping endpoint/sign-in and channel settings separately,
 with optional outbound-backend, IC3 and notification settings in a native advanced-options disclosure.
 `outboundBackend` defaults to Graph, with explicit MCP available; Graph channel sends/replies require separate
 server-side Azure CLI credentials matching the MCP reader, with delegated `ChannelMessage.Send`
@@ -68,15 +75,25 @@ visible independently of disclosures. It exposes experimental `enableTrouter`, d
 saved through `/api/messaging/teams/config` and applied on reconnect. Its separate Azure CLI
 IC3 sign-in must match MCP; notification wakes retain authoritative reads and a
 60-second completion-relative fallback. This private protocol is not durable catch-up.
-It displays `notificationStatus` and sanitized errors separately from connected reader
-status, making fallback degradation visible without misreporting the whole bridge offline.
+It always displays channel-bridge Trouter state, including disabled or unavailable,
+from `notificationStatus`; enabled notifications show fallback cadence and sanitized
+errors separately from reader connectivity, outside collapsed settings.
 
-The Teams-only registry toggles (`features.teamsBridgeObservability`,
-`features.teamsAiAnswerRelay`, `features.teamsMessageReaction`; `ui.tab: 'teams'`) render
-only in a "Teams features" card below the connection card on Connectors → Teams. That card
-saves only those keys through `PUT /api/admin/config`, separately from the connection's
+The Teams-only registry controls (`features.teamsBridgeObservability`,
+`features.teamsAiAnswerRelay`, `features.teamsMessageReaction` and the independent
+IC3 own-command enable/workspace settings; `ui.tab: 'teams'`) render
+only in a "Teams features" card below detailed configuration on Connectors → Teams. That card
+saves only its keys through `PUT /api/admin/config`, separately from the connection's
 `/api/messaging/teams/*` actions; Ctrl+S there saves only the card. Features search links
-them to `#admin/messaging`. Shared `features.botManagedConversations` stays on Integrations.
+them to `#admin/messaging`. The IC3 workspace picker lists local registrations from
+the selected Admin server. Saving enabled IC3 settings starts the
+[Ask launcher](../admin-config.md#ic3-own-command-configuration).
+`TeamsIc3StatusCard` polls the selected Admin machine's read-only
+`/api/messaging/teams/ic3-own-commands/status` every five seconds for read health,
+timestamps and independent own-command Trouter health. Refresh only reads the
+snapshot. Failures clear stale status; machine changes/unmount abort reads and
+reject late results.
+Shared `features.botManagedConversations` stays on Integrations.
 
 `features.teamsAiAnswerRelay` defaults on, including omitted
 config, with explicit false as a live opt-out. The registry suppresses its experimental

@@ -5,8 +5,10 @@ import type { InboundTeamsMessage } from '../types';
 
 export class Ic3ReactionClient {
     private readonly credentials: Ic3CredentialStore;
+    private readonly sourceAccountPinned: boolean;
 
     constructor(options: Ic3TokenProvider | Ic3DirectMessageOptions = {}, credentials?: Ic3CredentialStore) {
+        this.sourceAccountPinned = typeof options !== 'function' && !!options.expectedAccount;
         this.credentials = credentials ?? new Ic3CredentialStore(
             typeof options === 'function' ? { acquireToken: options } : options);
     }
@@ -17,6 +19,43 @@ export class Ic3ReactionClient {
 
     dispose(): void {
         this.credentials.dispose();
+    }
+
+    /** Trusted ingress supplies the exact message from a fresh, account-pinned native chat read. */
+    async acknowledgeSourceMessage(chatId: string, messageId: string, caller?: AbortSignal): Promise<void> {
+        if (!this.sourceAccountPinned) {
+            throw new TeamsOperationError('IC3 acknowledgement requires a pinned source account',
+                'ic3', 'authentication', 'not-attempted');
+        }
+        if ((chatId !== '48:notes' && !/^19:[^\s/\\?#]+@(?:thread\.v2|unq\.gbl\.spaces)$/.test(chatId))
+            || !messageId.trim()) {
+            throw new TeamsOperationError('IC3 acknowledgement has an invalid source target',
+                'ic3', 'invalid-target', 'not-attempted');
+        }
+        await this.credentials.run(async attempt => {
+            const { signal } = attempt;
+            const credential = await this.credentials.get(signal);
+            signal.throwIfAborted();
+            const base = `https://teams.cloud.microsoft/api/chatsvc/${this.credentials.region}/v1/users/ME/conversations/${encodeURIComponent(chatId)}/messages`;
+            attempt.startWrite();
+            await this.putReaction(`${base}/${encodeURIComponent(messageId)}/properties?name=emotions`,
+                '1f440_eyes', credential.value, signal);
+        }, caller);
+    }
+
+    private async putReaction(url: string, key: string, token: string, signal: AbortSignal): Promise<void> {
+        const response = await boundedIc3(fetch(url, {
+            method: 'PUT',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json', Accept: 'application/json',
+                behavioroverride: 'redirectAs404',
+            },
+            body: JSON.stringify({ emotions: { key, value: Date.now() } }),
+            signal, redirect: 'error',
+        }), signal);
+        await boundedIc3(Promise.resolve(response.body?.cancel()), signal);
+        if (!response.ok) throw ic3HttpError(response);
     }
 
     async reactToChannelMessage(msg: InboundTeamsMessage, caller?: AbortSignal): Promise<void> {
@@ -31,18 +70,7 @@ export class Ic3ReactionClient {
                 const url = `https://teams.cloud.microsoft/api/chatsvc/${this.credentials.region}/v1/users/ME/conversations/${encodeURIComponent(msg.channelId!)}`
                     + `/messages/${encodeURIComponent(msg.messageId)}/properties?name=emotions`;
                 attempt.writeStarted = true;
-                const response = await boundedIc3(fetch(url, {
-                    method: 'PUT',
-                    headers: {
-                        Authorization: `Bearer ${credential.value}`,
-                        'Content-Type': 'application/json', Accept: 'application/json',
-                        behavioroverride: 'redirectAs404',
-                    },
-                    body: JSON.stringify({ emotions: { key: 'like', value: Date.now() } }),
-                    signal, redirect: 'error',
-                }), signal);
-                await boundedIc3(Promise.resolve(response.body?.cancel()), signal);
-                if (!response.ok) throw ic3HttpError(response);
+                await this.putReaction(url, 'like', credential.value, signal);
             }, caller);
         } catch (error) {
             if (error instanceof TeamsOperationError) {
