@@ -2055,6 +2055,12 @@
 .admin-redesign .ar-workspace-select .ar-select { width: 100%; min-width: 0; }
 .admin-redesign .ar-workspace-select .ar-btn { justify-self: start; }
 .admin-redesign .ar-teams { display: grid; gap: 16px; padding: 16px 20px; min-width: 0; }
+.admin-redesign .ar-teams-status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 16px; min-width: 0; margin-bottom: 16px; }
+.admin-redesign .ar-teams-status-grid .ar-card { margin: 0; min-width: 0; }
+.admin-redesign .ar-teams-status-facts { display: grid; gap: 8px; margin: 0; font-size: 12px; }
+.admin-redesign .ar-teams-status-facts > div { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(0, 2fr); gap: 12px; }
+.admin-redesign .ar-teams-status-facts dt { color: var(--ar-text-mute); }
+.admin-redesign .ar-teams-status-facts dd { margin: 0; overflow-wrap: anywhere; }
 .admin-redesign .ar-teams p { margin: 0; overflow-wrap: anywhere; }
 .admin-redesign .ar-teams-hint { color: var(--ar-text-mute); font-size: 12px; line-height: 1.6; }
 .admin-redesign .ar-teams-overview { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }

@@ -52,7 +52,14 @@ Both Teams forms expose explicit optional IC3 region configuration, saved with c
 settings and applied on reconnect. Unconfigured leaves channel reads/sends available;
 IC3 writes require a region. The container stores it under `messaging.teams.ic3Region`
 in `config.yaml`; an absent bridge requires restart.
-The normal Teams card groups endpoint/sign-in and channel settings separately,
+The normal Teams page starts with a responsive status grid: channel connection,
+OAuth and channel Trouter health alongside independent IC3 own-command read and
+notification health. Saved read/write backends, channel and region are configuration
+facts, not delivery checks. Missing notification snapshots show unavailable, not
+disabled, unless own commands are disabled. Errors remain visible in this overview.
+`TeamsConnectionCard` owns channel polling and configuration and accepts the
+`TeamsIc3StatusCard` as status content, avoiding duplicate status readers.
+Detailed configuration follows the overview, grouping endpoint/sign-in and channel settings separately,
 with optional outbound-backend, IC3 and notification settings in a native advanced-options disclosure.
 `outboundBackend` defaults to Graph, with explicit MCP available; Graph channel sends/replies require separate
 server-side Azure CLI credentials matching the MCP reader, with delegated `ChannelMessage.Send`
@@ -74,8 +81,8 @@ errors separately from reader connectivity, outside collapsed settings.
 
 The Teams-only registry controls (`features.teamsBridgeObservability`,
 `features.teamsAiAnswerRelay`, `features.teamsMessageReaction` and the independent
-IC3 own-command enable/workspace/region settings; `ui.tab: 'teams'`) render
-only in a "Teams features" card below the connection card on Connectors → Teams. That card
+IC3 own-command enable/workspace settings; `ui.tab: 'teams'`) render
+only in a "Teams features" card below detailed configuration on Connectors → Teams. That card
 saves only its keys through `PUT /api/admin/config`, separately from the connection's
 `/api/messaging/teams/*` actions; Ctrl+S there saves only the card. Features search links
 them to `#admin/messaging`. The IC3 workspace picker lists local registrations from

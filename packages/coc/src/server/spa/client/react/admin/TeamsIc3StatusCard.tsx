@@ -56,29 +56,31 @@ export function TeamsIc3StatusCard() {
     return (
         <SettingsCard title="IC3 connectivity" description="Own-command connection on the configured machine. Independent of the Teams channel bridge."
             data-testid="teams-ic3-status">
-            <div className="ar-hstack">
-                <span className={`ar-badge ${badge}`} role="status">
-                    {status ? LABELS[status.state] : error ? 'Status unavailable' : 'Loading status...'}
-                </span>
-                <button type="button" className="ar-btn ar-btn-ghost ar-btn-sm" onClick={() => setRefresh(value => value + 1)}>
-                    Refresh IC3 status
-                </button>
+            <div className="ar-teams">
+                <div className="ar-teams-overview">
+                    <span className={`ar-badge ${badge}`} role="status">
+                        {status ? LABELS[status.state] : error ? 'Status unavailable' : 'Loading status...'}
+                    </span>
+                    <button type="button" className="ar-btn ar-btn-ghost ar-btn-sm" onClick={() => setRefresh(value => value + 1)}>
+                        Refresh IC3 status
+                    </button>
+                </div>
+                {status?.state === 'disabled' && <p className="ar-hint">Enable IC3 own commands and save a workspace and region below to connect.</p>}
+                {status?.lastCheckedAt && <p className="ar-hint">Last check: {new Date(status.lastCheckedAt).toLocaleString()}</p>}
+                {status?.lastConnectedAt && <p className="ar-hint">Last connected: {new Date(status.lastConnectedAt).toLocaleString()}</p>}
+                {status?.error && <p className="ar-teams-error" role="alert">
+                    IC3 check failed ({status.error}). Check the saved workspace, region and Azure CLI sign-in on the configured machine.
+                </p>}
+                {error && <p className="ar-teams-error" role="alert">Unable to read IC3 status from the configured machine. Refresh to retry.</p>}
+                <p className="ar-hint" data-testid="ic3-own-command-trouter-status">
+                    Own-command Trouter: {status?.trouter?.state ?? (status?.state === 'disabled' ? 'disabled' : 'Status unavailable')}.
+                    {' Notifications wake targeted IC3 reads; background scans remain a fallback.'}
+                </p>
+                {status?.trouter?.error && <p className="ar-teams-error" role="alert">
+                    Own-command Trouter failed ({status.trouter.error.code}). Background scans remain active.
+                </p>}
+                <p className="ar-hint">Status follows background reads. Refreshing status sends no Teams message and does not test write access.</p>
             </div>
-            {status?.state === 'disabled' && <p className="ar-hint">Enable IC3 own commands and save a workspace and region below to connect.</p>}
-            {status?.lastCheckedAt && <p className="ar-hint">Last check: {new Date(status.lastCheckedAt).toLocaleString()}</p>}
-            {status?.lastConnectedAt && <p className="ar-hint">Last connected: {new Date(status.lastConnectedAt).toLocaleString()}</p>}
-            {status?.error && <p className="ar-teams-error" role="alert">
-                IC3 check failed ({status.error}). Check the saved workspace, region and Azure CLI sign-in on the configured machine.
-            </p>}
-            {error && <p className="ar-teams-error" role="alert">Unable to read IC3 status from the configured machine. Refresh to retry.</p>}
-            <p className="ar-hint" data-testid="ic3-own-command-trouter-status">
-                Own-command Trouter: {status?.trouter?.state ?? 'disabled'}.
-                {' Notifications wake targeted IC3 reads; background scans remain a fallback.'}
-            </p>
-            {status?.trouter?.error && <p className="ar-teams-error" role="alert">
-                Own-command Trouter failed ({status.trouter.error.code}). Background scans remain active.
-            </p>}
-            <p className="ar-hint">Status follows background reads. Refreshing status sends no Teams message and does not test write access.</p>
         </SettingsCard>
     );
 }

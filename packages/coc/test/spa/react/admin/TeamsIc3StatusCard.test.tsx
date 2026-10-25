@@ -26,7 +26,8 @@ describe('Teams IC3 connectivity card', () => {
         await flush();
         expect(screen.getByRole('status').textContent).toBe(label);
         expect(screen.getByText('IC3 connectivity')).toBeDefined();
-        expect(screen.getByTestId('ic3-own-command-trouter-status').textContent).toContain('disabled');
+        expect(screen.getByTestId('ic3-own-command-trouter-status').textContent)
+            .toContain(state === 'disabled' ? 'disabled' : 'Status unavailable');
         expect(screen.getByTestId('ic3-own-command-trouter-status').textContent).toContain('Notifications wake targeted IC3 reads');
         expect(mocks.fetch).toHaveBeenCalledWith(
             'https://configured.example.test/api/messaging/teams/ic3-own-commands/status',
@@ -75,8 +76,16 @@ describe('Teams IC3 connectivity card', () => {
         render(<TeamsIc3StatusCard />);
         await flush();
         expect(screen.getByRole('status').textContent).toBe('Status unavailable');
+        expect(screen.getByTestId('ic3-own-command-trouter-status').textContent).toContain('Status unavailable');
         await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
         expect(screen.getByRole('status').textContent).toBe('Status unavailable');
+    });
+
+    it('does not claim notifications are disabled while the status request is pending', async () => {
+        mocks.fetch.mockImplementation(() => new Promise(() => {}));
+        render(<TeamsIc3StatusCard />);
+        expect(screen.getByRole('status').textContent).toBe('Loading status...');
+        expect(screen.getByTestId('ic3-own-command-trouter-status').textContent).toContain('Status unavailable');
     });
 
     it('rejects malformed notification status without rendering provider objects', async () => {
