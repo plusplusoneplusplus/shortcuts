@@ -873,6 +873,8 @@ describe('registerAllRoutes', () => {
                 'taskCompleted', 'taskFailed', 'taskCancelled',
                 'ralphSessionComplete',
                 'taskCompleted', 'taskFailed', 'taskCancelled',
+                // Teams IC3 own-command replies, subscribed even while the feature is off.
+                'taskCompleted', 'taskFailed', 'taskCancelled',
                 'taskCompleted', 'taskFailed', 'taskCancelled',
                 ...(hasMirrorProjections ? ['taskCompleted', 'taskFailed', 'taskCancelled'] : []),
             ]);

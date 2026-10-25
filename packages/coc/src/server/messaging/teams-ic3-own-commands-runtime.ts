@@ -65,7 +65,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
 
     function snapshot(): TeamsIc3ConnectivityStatus {
         return { ...status, trouter: trouter?.getStatus() ?? {
-            state: stopped ? 'stopped' : options.config.config.features.teamsIc3OwnCommands ? 'connecting' : 'disabled',
+            state: stopped ? 'stopped' : options.config.config.features?.teamsIc3OwnCommands ? 'connecting' : 'disabled',
             error: null,
         } };
     }
@@ -150,7 +150,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
     function restart() {
         const config = options.config.config;
         const configuredRegion = options.teams.getIc3Region();
-        const next = JSON.stringify([config.features.teamsIc3OwnCommands, config.teamsIc3OwnCommands, configuredRegion]);
+        const next = JSON.stringify([config.features?.teamsIc3OwnCommands, config.teamsIc3OwnCommands, configuredRegion]);
         if (stopped || next === signature) return;
         signature = next;
         controller?.abort();
@@ -164,7 +164,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
         clearTimeout(timer);
         controller = new AbortController();
         const { signal } = controller;
-        status = { state: config.features.teamsIc3OwnCommands ? 'connecting' : 'disabled' };
+        status = { state: config.features?.teamsIc3OwnCommands ? 'connecting' : 'disabled' };
         const cutoff = Date.now();
         const commands = new Set<string>();
         let account: TeamsIc3Account | undefined;
@@ -198,7 +198,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
         }
 
         async function poll() {
-            if (signal.aborted || !config.features.teamsIc3OwnCommands) return;
+            if (signal.aborted || !config.features?.teamsIc3OwnCommands) return;
             polling = true;
             const fullScan = reconcile || Date.now() >= nextFallbackAt;
             reconcile = false;
@@ -362,7 +362,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                 }
             } finally {
                 polling = false;
-                if (!signal.aborted && config.features.teamsIc3OwnCommands) {
+                if (!signal.aborted && config.features?.teamsIc3OwnCommands) {
                     if (!fullScan) delay = Math.max(0, nextFallbackAt - Date.now());
                     schedule(wakes.size || reconcile ? 0 : delay, !wakes.size && !reconcile);
                 }

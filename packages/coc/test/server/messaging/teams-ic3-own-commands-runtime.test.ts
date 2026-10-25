@@ -119,6 +119,14 @@ describe('basic IC3 own-command launcher', () => {
         expect(service.getStatus()).toEqual({ state: 'disabled', trouter: { state: 'disabled', error: null } });
     });
 
+    it('treats a partial live config without features as disabled', async () => {
+        config = { teamsIc3OwnCommands: { workspaceId } } as typeof config;
+        expect(() => start()).not.toThrow();
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(createSession).not.toHaveBeenCalled();
+        expect(service.getStatus()).toEqual({ state: 'disabled', trouter: { state: 'disabled', error: null } });
+    });
+
     it('requires the shared Teams region before connecting', async () => {
         sharedRegion = null;
         start();
