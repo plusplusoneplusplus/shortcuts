@@ -183,7 +183,11 @@ describe('IC3 Ask queue admission', () => {
         const createdAt = new Date(Date.now() + 1000).toISOString();
         let messageId = 'source-command';
         let wake!: () => void;
-        const fetch = vi.fn(async () => new Response(JSON.stringify({ OriginalArrivalTime: '12345' }), { status: 201 }));
+        const fetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+            if (init?.method === 'PUT') return new Response(null, { status: 200 });
+            if (init?.method === 'POST') return new Response(JSON.stringify({ OriginalArrivalTime: '12345' }), { status: 201 });
+            throw new Error('Acknowledgements must not read message history');
+        });
         vi.stubGlobal('fetch', fetch);
         const accessToken = 'header.' + Buffer.from(JSON.stringify({
             aud: 'https://ic3.teams.office.com', tid: account.tenantId, oid: account.userId,
@@ -224,8 +228,11 @@ describe('IC3 Ask queue admission', () => {
             expect(task.payload.mode).toBe('ask');
             expect(task.config).toMatchObject({ afterEffortTier: 'medium' });
             bridge.activateQueueProcessing();
-            await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce(), { timeout: 10_000 });
-            const [url, init] = vi.mocked(globalThis.fetch).mock.calls[0];
+            await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2), { timeout: 10_000 });
+            expect(fetch.mock.calls[0][1]?.method).toBe('PUT');
+            expect(String(fetch.mock.calls[0][0])).toContain('/messages/source-command/properties?name=emotions');
+            expect(JSON.parse(String(fetch.mock.calls[0][1]?.body)).emotions.key).toBe('1f440_eyes');
+            const [url, init] = vi.mocked(globalThis.fetch).mock.calls[1];
             expect(url).toBe('https://teams.cloud.microsoft/api/chatsvc/amer/v1/users/ME/conversations/19%3Asource-group%40thread.v2/messages');
             expect(JSON.parse(String(init?.body)).content).toContain('AI response text');
             const proc = await store.getProcess(toQueueProcessId(task.id), workspaceId);
@@ -235,7 +242,9 @@ describe('IC3 Ask queue admission', () => {
             expect(proc?.conversationTurns?.[0].relayRequestId).toBe(task.payload.relayRequestId);
             messageId = 'follow-up-command';
             wake();
-            await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2), { timeout: 10_000 });
+            await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(4), { timeout: 10_000 });
+            expect(fetch.mock.calls[2][1]?.method).toBe('PUT');
+            expect(String(fetch.mock.calls[2][0])).toContain('/messages/follow-up-command/properties?name=emotions');
             const followUp = tasks().find(item => item.id !== task.id)!;
             expect(followUp.payload.processId).toBe(proc?.id);
             const continued = await store.getProcess(proc!.id, workspaceId);
@@ -243,7 +252,7 @@ describe('IC3 Ask queue admission', () => {
             expect(continued?.conversationTurns?.find(turn => turn.relayRequestId === followUp.id)?.role).toBe('user');
             expect(tasks().filter(item => !item.payload.processId)).toHaveLength(1);
             expect(sdk.mockSendMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({ sessionId: 'session-123' }));
-            expect(JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[1][1]?.body)).content).toContain('AI response text');
+            expect(JSON.parse(String(vi.mocked(globalThis.fetch).mock.calls[3][1]?.body)).content).toContain('AI response text');
         } finally { await runtime.dispose(); }
     });
 });

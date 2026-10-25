@@ -12,7 +12,7 @@ import { sendTeamsIc3OwnCommandReply, type TeamsIc3CommandSource } from './teams
 import type { Route } from '../types';
 import type { TeamsMessagingManager } from './teams-messaging-manager';
 import { sendJSON } from '../core/api-handler';
-import { TeamsOperationError, TrouterClient, type TrouterStatus, type TrouterWake } from '@plusplusoneplusplus/coc-connector/teams';
+import { Ic3ReactionClient, TeamsOperationError, TrouterClient, type Ic3DirectMessageOptions, type TrouterStatus, type TrouterWake } from '@plusplusoneplusplus/coc-connector/teams';
 
 function isCommandChat(chatId: string): boolean {
     return chatId === '48:notes' || /^19:[^\s/\\?#]+@(?:thread\.v2|unq\.gbl\.spaces)$/.test(chatId);
@@ -34,6 +34,7 @@ interface Options {
     routes: Route[];
     launch: ReturnType<typeof createTeamsIc3OwnCommandLaunch>;
     sendReply?: typeof sendTeamsIc3OwnCommandReply;
+    createReactions?: (options: Ic3DirectMessageOptions) => Pick<Ic3ReactionClient, 'acknowledgeSourceMessage' | 'dispose'>;
     createSession?: (region: 'amer' | 'emea' | 'apac') => Pick<TeamsIc3Session, 'connect' | 'readChats' | 'readHistory' | 'dispose'>;
     createTrouter?: (options: ConstructorParameters<typeof TrouterClient>[0]) => Pick<TrouterClient, 'start' | 'stop' | 'getStatus'>;
 }
@@ -43,6 +44,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
     let signature: string | undefined;
     let controller: AbortController;
     let session: ReturnType<NonNullable<Options['createSession']>> | undefined;
+    let reactions: ReturnType<NonNullable<Options['createReactions']>> | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let running = Promise.resolve();
     const replyQueues = new Map<string, Promise<void>>();
@@ -155,6 +157,8 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
         stopTrouter();
         pending.clear();
         replyQueues.clear();
+        reactions?.dispose();
+        reactions = undefined;
         session?.dispose();
         session = undefined;
         clearTimeout(timer);
@@ -260,6 +264,22 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                                 readMs: detectedAt - readStartedAt });
                             // Mark before admission: uncertain queue outcomes must not be retried.
                             try {
+                                const acknowledgementStartedAt = Date.now();
+                                try {
+                                    const reactionOptions = { region, expectedAccount: {
+                                        tenantId: owner.tenantId, objectId: owner.userId,
+                                    } };
+                                    reactions ??= options.createReactions?.(reactionOptions) ?? new Ic3ReactionClient(reactionOptions);
+                                    await reactions.acknowledgeSourceMessage(chat.chatId, message.messageId, signal);
+                                    signal.throwIfAborted();
+                                    timing(id, 'acknowledged', { acknowledgementMs: Date.now() - acknowledgementStartedAt });
+                                } catch (error) {
+                                    signal.throwIfAborted();
+                                    timing(id, 'acknowledgement-failed', { acknowledgementMs: Date.now() - acknowledgementStartedAt });
+                                    const code = error instanceof TeamsOperationError ? `${error.code}/${error.outcome}` : 'unavailable';
+                                    getLogger().warn(LogCategory.AI, `[IC3 commands] Eyes acknowledgement failed (${code}); continuing admission. `
+                                        + 'Verify IC3 region and account access.');
+                                }
                                 pending.set(id, { workspaceId: target.workspaceId, conversationId,
                                     source: { account: owner, chatId: chat.chatId, region,
                                         verifyAccess: async signal => { await reader.readHistory(chat.chatId, { signal }); } },
@@ -373,6 +393,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
             stopTrouter();
             clearTimeout(timer);
             session?.dispose();
+            reactions?.dispose();
             await running;
             await Promise.all(replies);
             await stoppingTrouter;
