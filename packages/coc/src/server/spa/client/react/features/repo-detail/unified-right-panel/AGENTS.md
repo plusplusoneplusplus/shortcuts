@@ -933,6 +933,8 @@ Manual items remain Tracking only. No launch, retry, cancel or approval controls
 are added to the To-do tracking surface.
 
 `SentinelTodoJobPreview` shares owner labels across latest/earlier titles and previews.
+Its preview prefers 400px; `useAnchoredPanelPosition` clamps it to the To-do pane and
+viewport with 8px margins, and `max-w-[calc(100vw-16px)]` covers the first frame.
 `sentinelTodoJobOwner` resolves each job's server-qualified workspace from cached
 App/Repos local, remote and group metadata. Local jobs inherit the ledger's server;
 unqualified remote jobs have unknown ownership. The current concrete repo omits its

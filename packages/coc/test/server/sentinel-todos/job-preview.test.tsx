@@ -134,6 +134,28 @@ describe('To-do job previews', () => {
         expect(follow.mock.calls[1][1]).toBe('job-key');
         expect(title.getAttribute('href')).toBe('#repos/repo1/chats/job1');
     });
+    it.each([[1280, 1264, 120], [360, 344, 8]])('prefers a 400px preview and clamps it inside a %ipx viewport', async (viewport, maxWidth, left) => {
+        const initial = window.innerWidth;
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: viewport });
+        const box = (x: number, width: number, height: number) => ({ x, y: 40, left: x, top: 40, width, height, right: x + width, bottom: 40 + height, toJSON: () => ({}) });
+        const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            return (this.getAttribute('role') === 'dialog' ? box(0, 400, 200) : box(120, 200, 20)) as DOMRect;
+        });
+        try {
+            mount(); focus();
+            const dialog = await screen.findByRole('dialog');
+            expect(dialog.className).toContain('w-[400px]');
+            expect(dialog.className).toContain('max-w-[calc(100vw-16px)]');
+            await waitFor(() => expect(dialog.style.maxWidth).toBe(`${maxWidth}px`));
+            expect(dialog.style.left).toBe(`${left}px`);
+            expect(left + Math.min(400, maxWidth)).toBeLessThanOrEqual(viewport - 8);
+            expect(within(dialog).getByRole('button', { name: 'Close job preview' })).toBeTruthy();
+            expect(within(dialog).getByRole('link', { name: /Open job/ })).toHaveAttribute('href', '#repos/repo1/chats/job1');
+        } finally {
+            rect.mockRestore();
+            Object.defineProperty(window, 'innerWidth', { configurable: true, value: initial });
+        }
+    });
     it('opens after 200ms with a 250ms pointer bridge', async () => {
         vi.useFakeTimers(); mount();
         const anchor = screen.getByRole('link').parentElement!;
