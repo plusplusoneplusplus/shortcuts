@@ -380,4 +380,103 @@ describe('native dependency readiness and durable admission', () => {
         expect(current().title).toBe('Dependent');
         await expect(actions.guard(await input(), 'enqueue')).rejects.toThrow('durable launch');
     });
+
+    describe('prerequisite-free tracked Ralph sessions', () => {
+        const sessionId = 'ralph-free-session';
+        let freeId: string;
+        let launch: CreateTaskInput;
+        const freeRecords = () => receipts.records(owner).filter(row => row.itemId === freeId);
+        function step(iteration: number, checkIndex?: number): CreateTaskInput {
+            const task = structuredClone(launch);
+            task.id = checkIndex ? `check-${checkIndex}` : `iteration-${iteration}`;
+            task.continuationOfSessionId = sessionId;
+            const ralph = (task.payload.context as any).ralph;
+            ralph.currentIteration = iteration;
+            if (checkIndex) ralph.finalCheck = { kind: 'goal-gap-check', checkIndex, sourceIteration: iteration, loopIndex: 1 };
+            return task;
+        }
+
+        beforeEach(async () => {
+            freeId = todos.create(owner, { title: 'No prerequisites' }, { actor: 'user' }).item.id;
+            launch = { type: 'chat', priority: 'normal', config: {}, payload: {
+                kind: 'chat', mode: 'ralph', workspaceId: saved.targetWorkspaceId, prompt: 'Iteration', context: {
+                    spawnedFromProcessId: owner.processId, sentinelTodoTracking: await actions.context(owner, freeId),
+                    ralph: { sessionId, currentIteration: 1, phase: 'executing' },
+                },
+            } };
+            // First launches of prerequisite-free items reserve no admission; send_to_conversation links the job.
+            await actions.guard(launch, 'enqueue');
+            launch.id = 'iteration-1';
+            todos.linkJob(owner, freeId, { processId: 'queue_iteration-1', workspaceId: saved.targetWorkspaceId,
+                kind: 'ralph', sessionId, openLink: '#ralph' });
+        });
+
+        it('continues iterations and final checks without minting admissions or step receipts', async () => {
+            for (const task of [launch, step(2), step(2, 1)]) {
+                await actions.guard(task, 'check');
+                await actions.guard(task, 'start');
+            }
+            await restart();
+            const replay = step(2);
+            replay.id = 'iteration-2-replay';
+            await actions.guard(replay, 'start');
+            expect(replay.config).toMatchObject({ retryOnFailure: false });
+            expect(freeRecords()).toHaveLength(0);
+            // A later tracked launch keeps ordinary first-launch semantics.
+            const relaunch = structuredClone(launch);
+            delete relaunch.id;
+            await expect(actions.guard(relaunch, 'enqueue')).resolves.toBeUndefined();
+        });
+
+        it('runs iteration 2 through lifecycle admission instead of failing before execution', async () => {
+            const executeByTypeFn = vi.fn(async () => ({ response: 'RALPH_NEXT' }));
+            const runner = new ProcessLifecycleRunner(processes, directory, vi.fn(), 'copilot', {
+                getSentinelDependencyAdmission: () => actions,
+            });
+            const taskId = queue.enqueue(step(2));
+            const result = await runner.run(queue.getTask(taskId)!, {
+                cancelledTasks: new Set(), executeByTypeFn, executeFollowUpFn: vi.fn(), getWorkingDirectoryFn: () => directory,
+            } as never);
+            expect(result.error?.message).toBeUndefined();
+            expect(executeByTypeFn).toHaveBeenCalledTimes(1);
+        });
+
+        it.each([
+            'prerequisites', 'session', 'workspace', 'parent', 'owner', 'phase', 'mode',
+            'other admission', 'unstarted admission', 'remote link',
+        ])('rejects continuation with mismatched %s', async change => {
+            const task = step(2);
+            const context = task.payload.context as any;
+            if (change === 'prerequisites') {
+                todos.setDependencies(owner, freeId, current(freeId).revision, [{ itemId: sourceId, condition: { kind: 'done' } }], 'user');
+            }
+            if (change === 'session') task.continuationOfSessionId = context.ralph.sessionId = 'unlinked-session';
+            if (change === 'workspace') task.payload.workspaceId = owner.workspaceId;
+            if (change === 'parent') context.spawnedFromProcessId = 'queue_foreign';
+            if (change === 'owner') context.sentinelTodoTracking.owner.processId = 'queue_foreign';
+            if (change === 'phase') context.ralph.phase = 'grilling';
+            if (change === 'mode') task.payload.mode = 'autopilot';
+            if (change.endsWith('admission')) {
+                receipts.reserveAdmission(owner, freeId, { taskId: 'admitted-task', workspaceId: saved.targetWorkspaceId,
+                    mode: 'ralph', sessionId: change === 'other admission' ? 'other-session' : sessionId,
+                    itemRevision: current(freeId).revision, dependencies: '[]' });
+            }
+            if (change === 'remote link') {
+                const remoteId = todos.create(owner, { title: 'Remote' }, { actor: 'user' }).item.id;
+                todos.linkJob(owner, remoteId, { processId: 'queue_remote', workspaceId: saved.targetWorkspaceId,
+                    serverId: 'remote-server', kind: 'ralph', sessionId: 'remote-session', openLink: '#remote' });
+                context.sentinelTodoTracking.itemId = remoteId;
+                task.continuationOfSessionId = context.ralph.sessionId = 'remote-session';
+            }
+            const message = change === 'owner' ? undefined : 'no matching started native admission';
+            await expect(actions.guard(task, 'check')).rejects.toThrow(message);
+            await expect(actions.guard(task, 'start')).rejects.toThrow(message);
+        });
+
+        it('requires an exact step identity at handoff', async () => {
+            const task = step(0);
+            await actions.guard(task, 'check');
+            await expect(actions.guard(task, 'start')).rejects.toThrow('exact native step identity');
+        });
+    });
 });

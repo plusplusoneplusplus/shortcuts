@@ -283,22 +283,27 @@ export class SentinelDependencyActions {
             finalCheck?: { kind?: string; checkIndex?: number } } | undefined;
         if (input.continuationOfSessionId) {
             // Running whole sessions continue independently of subsequent prerequisite edits.
-            const record = this.deps.receipts.records(owner).find(row => row.itemId === itemId
-                && row.record.sessionId === input.continuationOfSessionId)?.record;
-            if (!record?.started || record.mode !== 'ralph' || input.payload.mode !== 'ralph'
-                || input.payload.workspaceId !== record.workspaceId || (input.repoId && input.repoId !== record.workspaceId)
-                || ralph?.sessionId !== record.sessionId || ralph?.phase !== 'executing'
+            const sessionId = input.continuationOfSessionId;
+            await this.deps.service.assertOwner(owner);
+            const admissions = this.deps.receipts.records(owner).filter(row => row.itemId === itemId);
+            const record = admissions.find(row => row.record.sessionId === sessionId)?.record;
+            const target = record
+                ? (record.started && record.mode === 'ralph' ? record.workspaceId : undefined)
+                : admissions.length ? undefined : this.unadmittedRalphTarget(owner, itemId, sessionId);
+            if (!target || input.payload.mode !== 'ralph'
+                || input.payload.workspaceId !== target || (input.repoId && input.repoId !== target)
+                || ralph?.sessionId !== sessionId || ralph?.phase !== 'executing'
                 || context.spawnedFromProcessId !== owner.processId) {
                 throw new SentinelTodoError('invalid', 'Ralph continuation has no matching started native admission');
             }
-            await this.deps.service.assertOwner(owner);
             this.refresh(owner);
             if (phase === 'start') {
                 const index = ralph.finalCheck ? ralph.finalCheck.checkIndex : ralph.currentIteration;
                 if (!Number.isInteger(index) || index! < 1 || (ralph.finalCheck && ralph.finalCheck.kind !== 'goal-gap-check')) {
                     throw new SentinelTodoError('invalid', 'Ralph continuation requires an exact native step identity');
                 }
-                this.deps.receipts.transaction(owner, () => this.deps.receipts.startRalphStep(
+                // Unadmitted sessions keep no native step ledger, matching their first iteration.
+                if (record) this.deps.receipts.transaction(owner, () => this.deps.receipts.startRalphStep(
                     record.taskId, `${ralph.finalCheck ? 'check' : 'iteration'}:${index}`, input.id!));
             }
             input.config = { ...input.config, respectQueueBarriers: true, retryOnFailure: false };
@@ -375,6 +380,17 @@ export class SentinelDependencyActions {
             }
         });
         this.changed(owner, itemId);
+    }
+
+    /**
+     * Prerequisite-free first launches reserve no admission. Their continuation is bound only by the
+     * item's linked local Ralph job; items that gained prerequisites need a native admission instead.
+     */
+    private unadmittedRalphTarget(owner: SentinelTodoOwner, itemId: string, sessionId: string): string | undefined {
+        const item = this.item(owner, itemId);
+        if (item.dependsOn.length) return;
+        return item.jobs.find(job => job.kind === 'ralph' && job.sessionId === sessionId
+            && !job.serverId && !job.remote)?.workspaceId;
     }
 
     private eligible(item: SentinelTodoItem): void {

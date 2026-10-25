@@ -578,6 +578,9 @@ references before editing. Paths are package-relative.
   errors without cancellation or fulfillment/user-verdict writes. Removing edges
   cannot erase duplicate guards. Started whole-session Ralph continuations retain
   their native session/step identities through the late-bound admission guard.
+  Prerequisite-free tracked launches reserve no admission; their iterations and final
+  checks continue only while the item has no admission rows or prerequisites and its
+  linked local Ralph job matches session, workspace and parent owner.
   Dependency authoring and artifact acceptance grant no execution permissions.
   Item `type` is immutable (`normal` or `manual`); creation defaults to normal.
   Type patches are invalid; items have no hard delete. Manual items permit AI maintenance,

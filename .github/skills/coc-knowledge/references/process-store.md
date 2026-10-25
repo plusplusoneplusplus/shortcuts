@@ -273,7 +273,10 @@ invalidate pending wakes and admissions atomically. Started admissions expose
 `dependencyReadiness.requiresReview` and errors without cancellation or changes
 to fulfillment/user verdicts. Started whole-session Ralph continuations retain
 their native session and step identities through later graph edits. Removing
-edges cannot erase existing duplicate guards.
+edges cannot erase existing duplicate guards. Prerequisite-free tracked launches
+reserve no admission or step keys; their iterations and final checks continue only
+while the item has no admission rows or prerequisites and its linked local Ralph job
+matches the session, workspace and parent owner.
 
 ### Chat binding stores
 
