@@ -79,6 +79,26 @@ beforeEach(() => {
 });
 
 describe('TabFeatureSettingsCard', () => {
+    it('renders the default-off compliance toggle and an editable multiline prompt in the Teams section', async () => {
+        render(<Harness tabs={['teams']} />);
+        const toggle = screen.getByRole('checkbox', { name: 'Outbound compliance check' });
+        const textarea = screen.getByRole('textbox', { name: 'Compliance decision prompt' });
+        expect(toggle).toHaveProperty('checked', false);
+        expect(textarea.tagName).toBe('TEXTAREA');
+        expect(textarea).toHaveProperty('rows', 5);
+        expect(textarea.closest('#teams-group-teamsOutboundCompliance')).not.toBeNull();
+        fireEvent.change(textarea, { target: { value: 'Allow public text.\nBlock private text.' } });
+        fireEvent.click(toggle);
+        await act(async () => { await controller.handleSaveTab('teams'); });
+        expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+            'features.teamsOutboundCompliance': true,
+            'teamsOutboundCompliance.prompt': 'Allow public text.\nBlock private text.',
+        }));
+        fireEvent.change(textarea, { target: { value: 'Unsaved draft' } });
+        act(() => controller.handleCancelTab('teams'));
+        expect(textarea).toHaveProperty('value', 'Allow public text.\nBlock private text.');
+    });
+
     it('shows a default-off reaction delegation group with one workspace and dispatcher selector', () => {
         render(<Harness tabs={['teams']} />);
         const toggle = screen.getByTestId('toggle-teams-reaction-delegation-enabled');

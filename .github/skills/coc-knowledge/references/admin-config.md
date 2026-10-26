@@ -10,6 +10,7 @@ Admin-editable settings have ONE source of truth: `ADMIN_SETTING_DEFINITIONS` in
 - the resolved `default` and the `runtime` behavior (`live` / `restartRequired`)
 - optional `absentFallback` — the value assumed when a partial config lacks the key, used for bootstrap-conservative flags whose resolved default is on
 - optional `runtimeFlag` (a property name in `RuntimeDashboardConfig.features`), optional `customMerge` escape hatch, and optional `ui` metadata (tab/group/order/label/hint/badge/dependsOn/control/testId) for a settings-tab Features section; omitted `ui.tab` places the row on Features, `ui.tab: 'teams'` places it on Connectors → Teams (`#admin/messaging`), and `ui.tab: 'browser'` on Admin → Browser (`#admin/browser`), instead of a Configure sub-tab
+- `ui.control: { type: 'textarea' }` renders a multiline string draft with the shared page-scoped Save/Cancel controls
 
 The file is dependency-free (no Node/zod imports) because the SPA bundle imports it directly.
 
@@ -172,6 +173,16 @@ It verifies a physical local execution root, normal source precedence and both
 disabled-name sets, rejecting unreadable policy and missing/empty selected skill
 instructions. An invalid higher-priority dispatcher cannot fall through to another
 copy. Admission must invoke it with current configuration and cancellation.
+
+### Teams outbound compliance configuration
+
+`features.teamsOutboundCompliance` defaults off; `teamsOutboundCompliance.prompt`
+defaults to an empty string. Both are server-wide, live admin registry settings.
+Connections -> Teams renders the toggle and multiline decision prompt in one
+Outbound compliance group. File and merged admin validation require a nonblank
+prompt when enabled, preserving disabled drafts and the exact saved policy text.
+Validation or save errors retain pending edits and use the existing error toast.
+The prompt stays in admin configuration, outside dashboard runtime feature flags.
 
 ## Copilot One-Shot Transport
 

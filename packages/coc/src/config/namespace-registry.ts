@@ -48,6 +48,7 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'features'
     | 'teamsIc3OwnCommands'
     | 'teamsReactionDelegation'
+    | 'teamsOutboundCompliance'
     | 'memoryPromotion'
     | 'store'
     | 'monitoring'

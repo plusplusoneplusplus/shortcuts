@@ -73,7 +73,7 @@ export type AdminSettingValueSpec =
 
 // ── UI specs (admin Features card) ────────────────────────────────────────────
 
-export type FeatureGroupId = 'dashboard' | 'uiGeneral' | 'uiChat' | 'editorFiles' | 'editorNotes' | 'devTools' | 'workItems' | 'aiModes' | 'review' | 'infrastructure' | 'sentinelMode' | 'sentinelTodos' | 'sentinelMessaging' | 'browserAutomation' | 'browserPages' | 'teamsOwnCommands' | 'teamsReactionDelegation';
+export type FeatureGroupId = 'dashboard' | 'uiGeneral' | 'uiChat' | 'editorFiles' | 'editorNotes' | 'devTools' | 'workItems' | 'aiModes' | 'review' | 'infrastructure' | 'sentinelMode' | 'sentinelTodos' | 'sentinelMessaging' | 'browserAutomation' | 'browserPages' | 'teamsOwnCommands' | 'teamsReactionDelegation' | 'teamsOutboundCompliance';
 
 export interface FeatureGroupSpec {
     id: FeatureGroupId;
@@ -100,6 +100,7 @@ export const FEATURE_CARD_GROUPS: readonly FeatureGroupSpec[] = [
     { id: 'browserPages', heading: 'Pages & Previews', testId: 'feature-group-browser-pages' },
     { id: 'teamsOwnCommands', heading: 'IC3 @coc own commands', testId: 'feature-group-teams-own-commands' },
     { id: 'teamsReactionDelegation', heading: 'Reaction delegation', testId: 'feature-group-teams-reaction-delegation' },
+    { id: 'teamsOutboundCompliance', heading: 'Outbound compliance', testId: 'feature-group-teams-outbound-compliance' },
 ];
 
 export type AdminSettingBadge = 'restart' | 'experimental' | 'preview';
@@ -126,7 +127,7 @@ export interface AdminSettingUiSpec {
     /** Only render when this other (boolean) setting is currently on. */
     dependsOn?: string;
     /** Defaults to a toggle when omitted. */
-    control?: { type: 'select'; options: readonly { value: string; label: string }[] } | { type: 'workspace' } | { type: 'skill'; workspaceKey: string };
+    control?: { type: 'select'; options: readonly { value: string; label: string }[] } | { type: 'workspace' } | { type: 'skill'; workspaceKey: string } | { type: 'textarea' };
     testId: string;
 }
 
@@ -1043,6 +1044,22 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-teams-message-reaction-enabled',
         },
     }),
+    bool({
+        key: 'features.teamsOutboundCompliance', default: false, runtime: 'live',
+        ui: {
+            tab: 'teams', group: 'teamsOutboundCompliance', order: 10, label: 'Outbound compliance check',
+            hint: 'Require one Copilot compliance decision before each outbound text message from native @coc mentions and Robot reactions. Applies live to all workspaces on this server. Disabled by default.',
+            testId: 'toggle-teams-outbound-compliance-enabled',
+        },
+    }),
+    {
+        key: 'teamsOutboundCompliance.prompt', value: { kind: 'string' }, default: '', runtime: 'live',
+        ui: {
+            tab: 'teams', group: 'teamsOutboundCompliance', order: 20, label: 'Compliance decision prompt',
+            hint: 'Define when outbound text is allowed or blocked. Required when the check is enabled. The decision includes the complete formatted message and its source trigger, not unrelated chat history.',
+            control: { type: 'textarea' }, testId: 'textarea-teams-outbound-compliance-prompt',
+        },
+    },
     bool({
         key: 'features.teamsIc3OwnCommands', default: false, runtime: 'live',
         ui: {

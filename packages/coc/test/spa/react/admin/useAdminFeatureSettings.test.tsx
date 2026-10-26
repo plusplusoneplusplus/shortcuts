@@ -63,6 +63,41 @@ beforeEach(() => {
 });
 
 describe('useAdminFeatureSettings', () => {
+    it.each(['tab', 'all'])('preserves an invalid compliance draft and displays a validation error on %s save', async scope => {
+        const { view, addToast } = renderController();
+        act(() => view.result.current.setFeatureValues(prev => ({
+            ...prev, 'features.teamsOutboundCompliance': true, 'teamsOutboundCompliance.prompt': ' \n',
+        })));
+        await act(async () => {
+            if (scope === 'tab') await view.result.current.handleSaveTab('teams');
+            else await view.result.current.handleSaveFeatures();
+        });
+        expect(updateConfig).not.toHaveBeenCalled();
+        expect(addToast).toHaveBeenCalledWith('Save failed', 'error');
+        expect(view.result.current.featureValues['teamsOutboundCompliance.prompt']).toBe(' \n');
+        expect(view.result.current.isTabDirty('teams')).toBe(true);
+        expect(view.result.current.savingTab).toBeNull();
+        expect(view.result.current.featuresSaving).toBe(false);
+    });
+
+    it('keeps a valid compliance draft after server save failure, then saves and cancels through the Teams controls', async () => {
+        const { view, addToast } = renderController();
+        act(() => view.result.current.setFeatureValues(prev => ({
+            ...prev, 'features.teamsOutboundCompliance': true, 'teamsOutboundCompliance.prompt': 'Allow public text.',
+        })));
+        updateConfig.mockRejectedValueOnce(new Error('Policy save unavailable'));
+        await act(async () => { await view.result.current.handleSaveTab('teams'); });
+        expect(addToast).toHaveBeenCalledWith('Save failed', 'error');
+        expect(view.result.current.isTabDirty('teams')).toBe(true);
+        expect(view.result.current.featureValues['teamsOutboundCompliance.prompt']).toBe('Allow public text.');
+        await act(async () => { await view.result.current.handleSaveTab('teams'); });
+        expect(view.result.current.isTabDirty('teams')).toBe(false);
+        act(() => view.result.current.setFeatureValues(prev => ({ ...prev, 'teamsOutboundCompliance.prompt': '' })));
+        act(() => view.result.current.handleCancelTab('teams'));
+        expect(view.result.current.featureValues['teamsOutboundCompliance.prompt']).toBe('Allow public text.');
+        expect(view.result.current.isTabDirty('teams')).toBe(false);
+    });
+
     const binding = {
         features: { teamsReactionDelegation: true },
         teamsReactionDelegation: { workspaceId: 'alpha', dispatcherSkill: 'dispatcher' },
