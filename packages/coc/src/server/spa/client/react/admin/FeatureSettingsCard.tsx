@@ -6,6 +6,7 @@
  * state and the save/cancel behaviour live in `useAdminFeatureSettings`; this
  * component only renders and reports edits back up.
  */
+import { useId } from 'react';
 import { SettingsCard } from './SettingsCard';
 import { AdminRow, AdminToggle, SourceBadge } from './adminControls';
 import {
@@ -53,11 +54,17 @@ interface FeatureSettingRowProps {
 function FeatureSettingRow({ def, featureValues, setFeatureValues, sources, isDefaultValue }: FeatureSettingRowProps) {
     const ui = def.ui!;
     const badge = resolveFeatureBadge(def);
+    const id = useId();
+    const hintId = `${id}-hint`;
+    const errorId = `${id}-error`;
+    const promptInvalid = def.key === 'teamsOutboundCompliance.prompt'
+        && featureValues['features.teamsOutboundCompliance'] === true
+        && !String(featureValues[def.key] ?? '').trim();
     const name = badge
         ? <>{ui.label} <span className={badge.className}>{badge.label}</span></>
         : ui.label;
     return (
-        <AdminRow name={name} hint={ui.hint}>
+        <AdminRow name={name} hint={<span id={hintId}>{ui.hint}</span>}>
             <SourceBadge source={sources[def.key]} isDefault={isDefaultValue(def.key)} />
             {ui.control?.type === 'select' ? (
                 <select
@@ -72,15 +79,24 @@ function FeatureSettingRow({ def, featureValues, setFeatureValues, sources, isDe
                     ))}
                 </select>
             ) : ui.control?.type === 'textarea' ? (
-                <textarea
-                    className="ar-input"
-                    rows={5}
-                    value={String(featureValues[def.key] ?? '')}
-                    onChange={e => setFeatureValues(prev => ({ ...prev, [def.key]: e.target.value }))}
-                    data-testid={ui.testId}
-                    aria-label={ui.label}
-                    style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit' }}
-                />
+                <div style={{ width: '100%' }}>
+                    <textarea
+                        className="ar-input"
+                        rows={5}
+                        value={String(featureValues[def.key] ?? '')}
+                        onChange={e => setFeatureValues(prev => ({ ...prev, [def.key]: e.target.value }))}
+                        data-testid={ui.testId}
+                        aria-label={ui.label}
+                        aria-invalid={promptInvalid || undefined}
+                        aria-describedby={promptInvalid ? `${hintId} ${errorId}` : hintId}
+                        style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit' }}
+                    />
+                    {promptInvalid && (
+                        <p id={errorId} className="ar-teams-error" role="alert">
+                            A nonblank decision prompt is required when outbound compliance check is enabled.
+                        </p>
+                    )}
+                </div>
             ) : ui.control?.type === 'workspace' ? (
                 <AdminWorkspaceSelect
                     value={String(featureValues[def.key] ?? '')}
