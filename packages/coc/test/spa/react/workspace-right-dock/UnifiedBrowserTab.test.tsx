@@ -201,8 +201,9 @@ describe('browser tab engine-neutral controls', () => {
         expect(fireEvent.keyDown(address, { ...chord, key: 'Tab' })).toBe(true);
         await userEvent.click(button);
         const action = screen.getByRole('menuitem', { name: 'Open in system browser' });
-        expect(action).toHaveFocus();
-        expect(fireEvent.keyDown(action, chord)).toBe(false);
+        const downloads = screen.getByRole('menuitem', { name: 'Downloads' });
+        expect(downloads).toHaveFocus();
+        expect(fireEvent.keyDown(downloads, chord)).toBe(false);
         expect(screen.queryByRole('menu')).toBeNull();
         expect(address).toHaveFocus();
         expect(address.selectionEnd).toBe(address.value.length);
@@ -379,12 +380,13 @@ describe('browser toolbar overflow', () => {
         const trigger = screen.getByRole('button', { name: 'Browser options' });
         trigger.focus();
         await userEvent.keyboard('{ArrowDown}');
-        expect(screen.getByRole('menuitem', { name: 'Open in system browser' })).toHaveFocus();
+        expect(screen.getByRole('menuitem', { name: 'Downloads' })).toHaveFocus();
         await userEvent.keyboard('{Escape}');
         expect(screen.queryByRole('menu')).toBeNull();
         expect(trigger).toHaveFocus();
         await userEvent.keyboard('{Enter}');
-        expect(screen.getByRole('menuitem', { name: 'Open in system browser' })).toHaveFocus();
+        expect(screen.getByRole('menuitem', { name: 'Downloads' })).toHaveFocus();
+        await userEvent.keyboard('{End}');
         await userEvent.tab();
         expect(screen.queryByRole('menu')).toBeNull();
         await userEvent.click(trigger);
@@ -399,7 +401,7 @@ describe('browser toolbar overflow', () => {
         const trigger = screen.getByRole('button', { name: 'Browser options' });
         await userEvent.click(trigger);
         expect(screen.getByRole('menuitem', { name: 'Open in system browser' })).toBeDisabled();
-        expect(screen.getByRole('menu')).toHaveFocus();
+        expect(screen.getByRole('menuitem', { name: 'Downloads' })).toHaveFocus();
         expect(screen.queryByTestId('browser-engine')).toBeNull();
         expect(open).not.toHaveBeenCalled();
         view.rerender(<UnifiedBrowserTab {...props} active={false} />);
@@ -421,7 +423,7 @@ describe('browser toolbar overflow', () => {
         expect(screen.queryByRole('menuitem', { name: 'History' })).toBeNull();
     });
 
-    it('moves keyboard focus between History and the system-browser action', async () => {
+    it('moves keyboard focus between History, Downloads and the system-browser action', async () => {
         mocks.bridge!.history = {
             query: vi.fn(async () => ({ ok: true, entries: [], total: 0, recording: true, storageError: null })),
             suggest: vi.fn(async () => ({ ok: true, entries: [], total: 0, recording: true, storageError: null })),
@@ -432,6 +434,8 @@ describe('browser toolbar overflow', () => {
         const history = screen.getByRole('menuitem', { name: 'History' });
         const external = screen.getByRole('menuitem', { name: 'Open in system browser' });
         expect(history).toHaveFocus();
+        await userEvent.keyboard('{ArrowDown}');
+        expect(screen.getByRole('menuitem', { name: 'Downloads' })).toHaveFocus();
         await userEvent.keyboard('{ArrowDown}');
         expect(external).toHaveFocus();
         await userEvent.keyboard('{ArrowDown}');
@@ -682,6 +686,8 @@ it.each([undefined, 'webview2'] as const)('imports from a blank tab with related
     mocks.bridge!.importCookies = vi.fn(async () => ({ ok: true }));
     render(<UnifiedBrowserTab tabId="tab" viewId="blank" sessionKey="workspace" relatedEngine={relatedEngine} active visible onNavigate={vi.fn()} onPageState={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+    expect(screen.getByRole('menuitem', { name: 'Downloads' })).toHaveFocus();
+    await userEvent.keyboard('{End}');
     expect(screen.getByRole('menuitem', { name: 'Import cookies…' })).toHaveFocus();
     await userEvent.keyboard('{Enter}');
     expect(screen.getByLabelText('Domain')).toHaveValue('');
@@ -692,4 +698,38 @@ it.each([undefined, 'webview2'] as const)('imports from a blank tab with related
     expect(mocks.bridge!.importCookies).toHaveBeenCalledWith(null, 'app.example.com', 'a=b', relatedEngine);
     expect(open).not.toHaveBeenCalled();
     expect(mocks.bridge!.navigate).not.toHaveBeenCalled();
+});
+
+it.each([{ active: false }, { visible: false }, { sessionKey: 'workspace-b' }, { historyOwnerKey: 'clone-b' }])('dismisses Downloads on ownership/visibility change %o and ignores late replies', async patch => {
+    let resolve!: (reply: any) => void;
+    const off = vi.fn();
+    mocks.bridge!.downloads = { query: vi.fn(() => new Promise(r => { resolve = r; })), action: vi.fn(), onChanged: vi.fn(() => off) };
+    const view = tab();
+    await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Downloads' }));
+    expect(screen.getByRole('dialog', { name: 'Downloads' })).toBeInTheDocument();
+    view.rerender(<UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="remote-workspace" url="https://example.test/" active visible onNavigate={vi.fn()} onPageState={vi.fn()} {...patch} />);
+    await act(async () => resolve({ ok: true, entries: [], storageError: null, engines: {} }));
+    expect(screen.queryByRole('dialog')).toBeNull(); expect(off).toHaveBeenCalledOnce();
+});
+
+it.each(['web', 'older-desktop'] as const)('offers Downloads with explicit %s unavailability', async kind => {
+    if (kind === 'web') mocks.bridge = undefined;
+    tab({ url: undefined });
+    await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Downloads' }));
+    expect(screen.getByRole('dialog', { name: 'Downloads' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(kind === 'web' ? 'available in the CoC desktop app' : 'This desktop version');
+});
+
+it('redacts old-host download request URLs and raw external-open errors from notices', async () => {
+    tab();
+    await waitFor(() => expect(mocks.bridge!.onDownload).toHaveBeenCalled());
+    const listener = vi.mocked(mocks.bridge!.onDownload).mock.calls[0][0];
+    const url = 'https://user:secret@files.test/download?auth=token#private';
+    act(() => listener({ viewId: 'view', url, ok: true }));
+    expect(screen.getByTestId('browser-notice')).toHaveTextContent('Manage it there.');
+    expect(screen.getByTestId('browser-notice').textContent).not.toMatch(/secret|token|private/);
+    act(() => listener({ viewId: 'view', url, ok: false, error: 'OS rejected ' + url }));
+    expect(screen.getByTestId('browser-notice').textContent).not.toMatch(/secret|token|private/);
 });

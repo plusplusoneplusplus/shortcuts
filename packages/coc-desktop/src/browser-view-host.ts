@@ -4,6 +4,7 @@ import { browserProfilePath, readBrowserEngine, writeBrowserEngine, readBrowserP
 import { activateClickOnce, ClickOnceError } from './browser-clickonce';
 import { BrowserHostManager } from './browser-host-manager';
 import { ControlDeadline } from './browser-control-queue';
+import { BrowserDownloadStore, DOWNLOADS_QUERY_CHANNEL, DOWNLOADS_ACTION_CHANNEL, DOWNLOADS_CHANGED_CHANNEL } from './browser-downloads';
 import { BrowserHistoryStore, sanitizeHistoryUrl } from './browser-history';
 import { ElectronBrowserHost } from './electron-browser-host';
 import { ElectronFilePreviewHost } from './file-preview-host';
@@ -27,6 +28,7 @@ import {
 } from './browser-view-policy';
 
 let manager: BrowserHostManager | undefined;
+let downloads: BrowserDownloadStore | undefined;
 let historyMaintenance: ReturnType<typeof setInterval> | undefined;
 const owners = new Map<number, BrowserWindow>();
 const controlRequests = new Map<number, Map<string, { controller: AbortController; sessionKey: string }>>();
@@ -47,6 +49,13 @@ function cancelScopedControl(ownerId: number, keep: (sessionKey: string) => bool
 export function registerBrowserEmbedder(window: BrowserWindow, url: string): void {
     registerEmbedder(window, url);
     wireOwner(window);
+}
+
+function broadcastDownloads(): void {
+    for (const window of owners.values()) {
+        if (window.isDestroyed() || window.webContents.isDestroyed() || !isBrowserEmbedder(window.webContents)) continue;
+        try { window.webContents.send(DOWNLOADS_CHANGED_CHANNEL); } catch { /* destroyed during broadcast */ }
+    }
 }
 
 function broadcastHistory(): void {
@@ -83,6 +92,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     if (manager) { return; }
     installBrowserWebviewGuard();
     const webview2 = new WebView2BrowserHost(browserProfilePath(dataDir, 'webview2'));
+    downloads = new BrowserDownloadStore(dataDir, broadcastDownloads);
     const history = new BrowserHistoryStore(dataDir, Date.now, broadcastHistory);
     historyMaintenance = setInterval(() => {
         void history.pruneExpired().catch(error => console.error('[coc-desktop] Browser history maintenance failed:', error));
@@ -111,7 +121,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         richClipboard: clipboard,
         history,
         hosts: {
-            electron: new ElectronBrowserHost(browserProfilePath(dataDir, 'electron')),
+            electron: new ElectronBrowserHost(browserProfilePath(dataDir, 'electron'), downloads),
             webview2,
         },
         fileHost: new ElectronFilePreviewHost(),
@@ -138,6 +148,21 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     // Every history operation requires the exact registered SPA main document.
     const historyWindow = (event: Electron.IpcMainInvokeEvent) =>
         event.senderFrame === event.sender.mainFrame && isBrowserEmbedder(event.sender) ? ownWindow(event.sender) : null;
+    ipcMain.handle(DOWNLOADS_QUERY_CHANNEL, async event => {
+        if (!historyWindow(event)) return { ok: false, reason: 'no-window' };
+        const result = await downloads!.query();
+        return historyWindow(event) ? result : { ok: false, reason: 'no-window' };
+    });
+    ipcMain.handle(DOWNLOADS_ACTION_CHANNEL, async (event, id: unknown, action: unknown) => {
+        if (!historyWindow(event)) return { ok: false, reason: 'no-window' };
+        try {
+            await downloads!.action(id, action, { open: file => shell.openPath(file), show: file => shell.showItemInFolder(file) }, () => !!historyWindow(event));
+            return { ok: true };
+        } catch (error) {
+            return { ok: false, reason: error instanceof TypeError ? 'invalid' : 'unavailable',
+                message: error instanceof TypeError ? error.message : 'Download action failed. The file or operation may be unavailable.' };
+        }
+    });
     ipcMain.handle(BROWSER_CLICKONCE_SET_CHANNEL, (event, enabled: unknown) => {
         if (!historyWindow(event)) return { ok: false, reason: 'no-window' };
         if (typeof enabled !== 'boolean') return { ok: false, reason: 'invalid' };
@@ -349,5 +374,7 @@ export async function disposeBrowserViews(): Promise<void> {
     for (const ownerId of controlRequests.keys()) cancelControl(ownerId);
     clearInterval(historyMaintenance);
     historyMaintenance = undefined;
+    // Retire downloads before source guests; terminal callbacks cannot mark shutdown transfers completed.
+    await downloads?.dispose();
     await manager?.dispose();
 }

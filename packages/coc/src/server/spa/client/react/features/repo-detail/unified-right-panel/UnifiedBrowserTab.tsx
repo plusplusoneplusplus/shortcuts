@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { BrowserCookieImportDialog } from './BrowserCookieImportDialog';
 import { BrowserToolbarMenu } from './BrowserToolbarMenu';
+import { BrowserDownloadsPanel } from './BrowserDownloadsPanel';
 import { BrowserHistoryPanel } from './BrowserHistoryPanel';
 import { BrowserAddressBar } from './BrowserAddressBar';
 import { BrowserSiteInfoButton, type BrowserSiteInfoSource } from './BrowserSiteInfo';
@@ -69,6 +70,7 @@ export function UnifiedBrowserTab({
     const [retry, setRetry] = useState(0);
     const [menuOpen, setMenuOpen] = useState(false);
     const [cookieDialogOpen, setCookieDialogOpen] = useState(false);
+    const [downloadsScope, setDownloadsScope] = useState<string | null>(null);
     const [historyScope, setHistoryScope] = useState<string | null>(null);
     const historyKey = JSON.stringify([sessionKey, viewId, tabId, historyOwnerKey]);
     const addressRef = useRef<HTMLInputElement>(null);
@@ -77,7 +79,7 @@ export function UnifiedBrowserTab({
     const onPageStateRef = useRef(onPageState);
     onPageStateRef.current = onPageState;
 
-    useEffect(() => { setMenuOpen(false); setCookieDialogOpen(false); setHistoryScope(null); }, [active, visible, viewId, sessionKey, historyOwnerKey]);
+    useEffect(() => { setMenuOpen(false); setCookieDialogOpen(false); setHistoryScope(null); setDownloadsScope(null); }, [active, visible, viewId, sessionKey, historyOwnerKey]);
 
     useEffect(() => { setError(null); }, [url]);
 
@@ -104,8 +106,8 @@ export function UnifiedBrowserTab({
         const offDownload = bridge.onDownload(event => {
             if (event.viewId !== viewId || disposed) return;
             setNotice(event.ok
-                ? `Download opened in your system browser: ${event.url}`
-                : `Could not hand the download to your system browser: ${event.error ?? 'unknown error'}`);
+                ? 'Download opened in your system browser. Manage it there.'
+                : `Download unavailable: ${bridge.downloads ? event.error ?? 'Check Downloads for its state.' : 'Use Open in system browser to download from the source page.'}`);
         });
         // Reopening a live view with the same session keeps its history and page.
         setStartupError(null);
@@ -224,6 +226,7 @@ export function UnifiedBrowserTab({
                 canOpenExternal={Boolean(currentUrl)}
                 onOpenExternal={openExternal}
                 onImportCookies={bridge?.importCookies ? () => setCookieDialogOpen(true) : undefined}
+                onDownloads={() => setDownloadsScope(historyKey)}
                 onHistory={bridge?.history && onOpenHistoryUrl ? () => setHistoryScope(historyKey) : undefined}
             />
         </div>
@@ -243,6 +246,9 @@ export function UnifiedBrowserTab({
                 initialDomain={(() => { try { return new URL(currentUrl ?? '').hostname; } catch { return ''; } })()}
                 onClose={() => { setCookieDialogOpen(false); addressRef.current?.focus(); }}
                 onImported={domain => { setCookieDialogOpen(false); setNotice(`Cookies imported for ${domain}. Open the original URL to continue.`); addressRef.current?.focus(); }} />}
+            {downloadsScope === historyKey && active && visible && <BrowserDownloadsPanel
+                key={historyKey} downloads={bridge?.downloads} engine={engine ?? relatedEngine}
+                desktop={!!bridge} onClose={() => setDownloadsScope(null)} />}
             {historyScope === historyKey && active && visible && bridge?.history && onOpenHistoryUrl && <BrowserHistoryPanel
                 key={historyKey} history={bridge.history} onOpen={onOpenHistoryUrl} onClose={() => setHistoryScope(null)} />}
             {error && (

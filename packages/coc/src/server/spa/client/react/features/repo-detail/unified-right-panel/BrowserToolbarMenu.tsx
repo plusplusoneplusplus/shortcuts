@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import type { BrowserEngine, BrowserPreferences, DesktopBrowserBridge } from '../../../shared/file-path/browser-bridge';
 import { NativeViewIcon, nativeViewIconButton, nativeViewToolbarButton } from './NativeViewTab';
 
-export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal, onOpenExternal, onImportCookies, onHistory, bridge }: {
+export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal, onOpenExternal, onImportCookies, onHistory, onDownloads, bridge }: {
     open: boolean;
     onOpenChange(open: boolean): void;
     engine?: BrowserEngine;
@@ -11,6 +11,7 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
     onOpenExternal(): void;
     onImportCookies?: () => void;
     onHistory?(): void;
+    onDownloads?(): void;
     bridge?: DesktopBrowserBridge;
 }) {
     const triggerRef = useRef<HTMLButtonElement>(null);
@@ -147,6 +148,8 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
             >
                 {onHistory && <button type="button" role="menuitem" className={`w-full text-left ${nativeViewToolbarButton}`}
                     onClick={() => { onOpenChange(false); triggerRef.current?.focus(); onHistory(); }}>History</button>}
+                {onDownloads && <button type="button" role="menuitem" className={`w-full text-left ${nativeViewToolbarButton}`}
+                    onClick={() => { onOpenChange(false); triggerRef.current?.focus(); onDownloads(); }}>Downloads</button>}
                 {engine && <div role="presentation" className="px-2 py-1 text-[#616161] dark:text-[#9d9d9d]" title="This tab's browser engine" data-testid="browser-engine">
                     Engine: {engine === 'electron' ? 'Electron' : 'WebView2'}
                 </div>}

@@ -1,5 +1,6 @@
+import { downloadSource } from './browser-downloads';
 import type { BrowserImportCookie } from './browser-cookie-import';
-import { BrowserWindow, screen, shell, webContents } from 'electron';
+import { BrowserWindow, screen, webContents } from 'electron';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { BROWSER_FRAME_CDP_EVENTS, BrowserHostError, validBrowserCdpSession, type BrowserCdpEventListener, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserSiteFacts, type BrowserViewRequest } from './browser-host-contract';
@@ -455,10 +456,10 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         } else if (message.event === 'download' && typeof message.url === 'string') {
             const url = message.url;
             const report = (ok: boolean, error?: string) => {
-                if (this.views.get(message.viewId as string) === entry) { entry.sink.download({ viewId: entry.request.viewId, url, ok, ...(error ? { error } : {}) }); }
+                if (this.views.get(message.viewId as string) === entry) { entry.sink.download({ viewId: entry.request.viewId, url: downloadSource(url), ok, ...(error ? { error } : {}) }); }
             };
             if (!validateBrowserUrl(url).ok) { report(false, 'Only HTTP(S) downloads are supported.'); }
-            else { void shell.openExternal(url).then(() => report(true), error => report(false, error instanceof Error ? error.message : String(error))); }
+            else { report(false, 'WebView2 cannot manage this download. Use Open in system browser to download from the source page.'); }
         } else if ((message.event === 'open-menu-requested' || message.event === 'focus-address-requested' || message.event === 'reopen-closed-requested') && entry.bounds && !entry.window.isDestroyed()) {
             entry.window.webContents.focus();
             void this.focusOwner(entry.request.ownerId).then(() => {

@@ -538,4 +538,20 @@ describe('preload bridge', () => {
         unsubscribe();
         expect(removeListener).toHaveBeenCalledWith(channel, listener);
     });
+
+it('exposes bounded download queries, ID-only actions and payload-free invalidations', async () => {
+    const downloads = exposedApi().browser.downloads;
+    await downloads.query();
+    expect(invoke).toHaveBeenCalledWith('coc-desktop:browser-downloads-query');
+    await downloads.action('managed-id', 'cancel');
+    expect(invoke).toHaveBeenCalledWith('coc-desktop:browser-downloads-action', 'managed-id', 'cancel');
+    await downloads.action(null, 'clear');
+    expect(invoke).toHaveBeenCalledWith('coc-desktop:browser-downloads-action', null, 'clear');
+    const callback = vi.fn(); const off = downloads.onChanged(callback);
+    const listener = on.mock.calls.find(call => call[0] === 'coc-desktop:browser-downloads-changed')![1];
+    listener({}, { private: 'ignored' });
+    expect(callback).toHaveBeenCalledWith();
+    off(); expect(removeListener).toHaveBeenCalledWith('coc-desktop:browser-downloads-changed', listener);
+});
+
 });

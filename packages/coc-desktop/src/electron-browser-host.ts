@@ -15,7 +15,9 @@
  */
 
 import type { BrowserImportCookie } from './browser-cookie-import';
-import { BrowserWindow, WebContents, session, shell, webContents } from 'electron';
+import { app, BrowserWindow, WebContents, session, webContents } from 'electron';
+import { manageElectronDownload } from './electron-downloads';
+import { downloadSource, type BrowserDownloadStore } from './browser-downloads';
 import * as fs from 'node:fs';
 import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { lockElectronProfile } from './browser-profile-lock';
@@ -74,6 +76,7 @@ const entryByContents = new Map<number, BrowserEntry>();
 /** Control popout view ids by popup `webContents` id, so a held navigation names its popout. */
 const popoutByContents = new Map<number, string>();
 let profileSession: Electron.Session | undefined;
+let downloadStore: BrowserDownloadStore | undefined;
 let profileLock: NativeDatabase | undefined;
 /** Certificates Chromium verified this process lifetime, by hostname; bounded, newest last. */
 const verifiedCertificates = new Map<string, BrowserSiteCertificate>();
@@ -142,7 +145,7 @@ function destroyEntry(entry: BrowserEntry): void {
     }
 }
 
-/** Session-wide hooks: Chrome-like UA, deny-by-default permissions, download handoff. */
+/** Session-wide hooks: Chrome-like UA, deny-by-default permissions, managed downloads. */
 function configureProfile(): void {
     const ses = profileSession!;
     ses.setUserAgent(browserUserAgent(ses.getUserAgent()));
@@ -165,27 +168,24 @@ function configureProfile(): void {
         gate.then(allow => callback({ cancel: !allow }), () => callback({ cancel: true }));
     });
     ses.on('will-download', (event, item, wc) => {
-        event.preventDefault();
         const url = item.getURL();
         const entry = wc ? entryByContents.get(wc.id) : undefined;
         const original = item.getURLChain()[0];
         if (entry && wc && interceptApplication(entry, wc, {
             kind: 'download', url: validActivationUrl(original) ? original : url, deploymentUrl: url, mimeType: item.getMimeType(),
-        })) return;
-        const report = (ok: boolean, error?: string) => {
-            if (entry) {
-                const payload: BrowserDownloadEvent = { viewId: entry.viewId, url, ok, ...(error ? { error } : {}) };
-                send(entry, BROWSER_VIEW_DOWNLOAD_CHANNEL, payload);
-            }
-        };
-        if (!validateBrowserUrl(url).ok) {
-            report(false, 'Only http(s) downloads can be opened in the system browser.');
+        })) { event.preventDefault(); return; }
+        if (entry && !entry.closed && downloadStore) {
+            if (manageElectronDownload(downloadStore, item, app.getPath('downloads'))) return;
+            // Admission limits do not replay potentially authenticated/non-idempotent requests.
+            event.preventDefault();
+            send(entry, BROWSER_VIEW_DOWNLOAD_CHANNEL, { viewId: entry.viewId, url: downloadSource(url), ok: false, error: 'Too many active downloads or desktop is shutting down.' });
             return;
         }
-        shell.openExternal(url).then(
-            () => report(true),
-            (err: unknown) => report(false, err instanceof Error ? err.message : String(err)),
-        );
+        event.preventDefault();
+        // Unowned guests must never open external URLs or gain file capabilities.
+        if (!entry || entry.closed) return;
+        send(entry, BROWSER_VIEW_DOWNLOAD_CHANNEL, { viewId: entry.viewId, url: downloadSource(url), ok: false,
+            error: 'Download management is unavailable. Use Open in system browser to download from the source page.' });
     });
 }
 
@@ -516,7 +516,7 @@ async function waitForControlContents(getContents: () => WebContents | undefined
 export class ElectronBrowserHost implements BrowserEngineHost {
     readonly engine = 'electron' as const;
 
-    constructor(private readonly profilePath: string) {}
+    constructor(private readonly profilePath: string, downloads?: BrowserDownloadStore) { downloadStore = downloads; }
 
     async availability() { return { engine: this.engine, available: true }; }
 

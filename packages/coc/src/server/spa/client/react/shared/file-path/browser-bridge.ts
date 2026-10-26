@@ -48,6 +48,30 @@ export interface DesktopBrowserHistory {
     setRecording(recording: boolean): Promise<BrowserOperationResult>;
     onChanged(callback: () => void): () => void;
 }
+/** Mirrors desktop main's public download metadata; no local paths or request URLs. */
+export interface BrowserManagedDownload {
+    id: string;
+    engine: 'electron';
+    filename: string;
+    source: string;
+    started: number;
+    updated: number;
+    state: 'downloading' | 'paused' | 'completed' | 'cancelled' | 'interrupted' | 'failed';
+    received: number;
+    total: number;
+    active: boolean;
+    canPause: boolean;
+    canResume: boolean;
+    fileAvailable: boolean;
+}
+export type BrowserDownloadAction = 'pause' | 'resume' | 'cancel' | 'open' | 'show' | 'remove' | 'clear';
+export type BrowserDownloadsResult = { ok: true; entries: BrowserManagedDownload[]; storageError: string | null;
+    engines: Record<string, { managed: boolean; message: string }> } | { ok: false; reason: string; message?: string };
+export interface DesktopBrowserDownloads {
+    query(): Promise<BrowserDownloadsResult>;
+    action(id: string | null, action: BrowserDownloadAction): Promise<BrowserOperationResult>;
+    onChanged(callback: () => void): () => void;
+}
 export const WEBVIEW2_INSTALL_URL = 'https://developer.microsoft.com/microsoft-edge/webview2/#download-section';
 export const DESKTOP_BROWSER_PREFERENCES_HASH = '#admin/settings/appearance';
 
@@ -74,7 +98,7 @@ export interface BrowserNewTabRequest {
     url: string;
 }
 
-/** A download the desktop handed to the system browser. */
+/** Download fallback notice; current desktops return a safe source label in `url`. */
 export interface BrowserDownloadEvent {
     viewId: string;
     url: string;
@@ -107,6 +131,8 @@ export interface DesktopBrowserBridge {
     };
     /** Installation-wide history; absent on older desktop hosts. */
     history?: DesktopBrowserHistory;
+    /** Installation-wide downloads; absent on older hosts. */
+    downloads?: DesktopBrowserDownloads;
     /** Source kinds `open` accepts; absent on desktops that only open URLs. */
     sources?: readonly string[];
     importCookies?(viewId: string | null, domain: string, cookies: string, engine?: BrowserEngine): Promise<BrowserCookieImportResult>;

@@ -1,3 +1,4 @@
+import { shell } from 'electron';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WebView2BrowserHost } from '../src/webview2-browser-host';
 import { BROWSER_FRAME_CDP_EVENTS, BrowserHostError, type BrowserEventSink, type BrowserHostedView } from '../src/browser-host-contract';
@@ -36,7 +37,7 @@ vi.mock('electron', () => ({
     BrowserWindow: { fromWebContents: () => ({ ...mocks.window, webContents: mocks.owner }) },
     screen: { dipToScreenPoint: mocks.dipToScreenPoint },
     webContents: { fromId: () => mocks.owner },
-    shell: {},
+    shell: { openExternal: vi.fn() },
 }));
 
 vi.mock('../src/webview2-process', async importOriginal => ({
@@ -1112,4 +1113,20 @@ describe('WebView2 site information facts', () => {
         expect(hidden.cookieCount).toBeUndefined();
         expect(JSON.stringify(hidden)).not.toContain('secret');
     });
+});
+
+it('offers explicit system-browser fallback without replaying authenticated/non-idempotent download URLs', async () => {
+    const host = new WebView2BrowserHost('profile');
+    const download = vi.fn();
+    const view = await host.create({ ownerId: 7, viewId: 'fallback-download', sessionKey: 'workspace', url: 'https://files.test/source' }, { ...sink, download });
+    const nativeId = mocks.request.mock.calls.filter(call => call[0] === 'open').at(-1)![1].viewId;
+    mocks.onEvent({ event: 'download', viewId: nativeId, url: 'https://user:secret@files.test/file?auth=token#private' });
+    expect(shell.openExternal).not.toHaveBeenCalled();
+    expect(download).toHaveBeenCalledWith({ viewId: 'fallback-download', url: 'files.test', ok: false,
+        error: 'WebView2 cannot manage this download. Use Open in system browser to download from the source page.' });
+    expect(JSON.stringify(download.mock.calls)).not.toMatch(/secret|token|private|auth=/);
+    await view.close();
+    download.mockClear();
+    mocks.onEvent({ event: 'download', viewId: nativeId, url: 'https://files.test/file' });
+    expect(download).not.toHaveBeenCalled();
 });

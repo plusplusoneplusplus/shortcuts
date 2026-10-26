@@ -9,6 +9,7 @@
  */
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import type { DownloadRecord, DownloadAction } from './browser-downloads';
 import type { BrowserCommandRequest, BrowserCommandResult } from '@plusplusoneplusplus/coc-client';
 import type { BrowserControlActivityEvent, BrowserNavigationCheckEvent } from './browser-control-command';
 import type { BrowserSiteInfoResult } from './browser-view-policy';
@@ -39,6 +40,9 @@ const BROWSER_HISTORY_SUGGEST_CHANNEL = 'coc-desktop:browser-history-suggest';
 const BROWSER_HISTORY_DELETE_CHANNEL = 'coc-desktop:browser-history-delete';
 const BROWSER_HISTORY_CLEAR_CHANNEL = 'coc-desktop:browser-history-clear';
 const BROWSER_HISTORY_RECORDING_CHANNEL = 'coc-desktop:browser-history-recording';
+const DOWNLOADS_QUERY_CHANNEL = 'coc-desktop:browser-downloads-query';
+const DOWNLOADS_ACTION_CHANNEL = 'coc-desktop:browser-downloads-action';
+const DOWNLOADS_CHANGED_CHANNEL = 'coc-desktop:browser-downloads-changed';
 const BROWSER_HISTORY_CHANGED_CHANNEL = 'coc-desktop:browser-history-changed';
 const FIND_IN_PAGE_CHANNEL = 'coc-desktop:find-in-page';
 const STOP_FIND_IN_PAGE_CHANNEL = 'coc-desktop:stop-find-in-page';
@@ -278,6 +282,15 @@ const browser = {
             const listener = (_event: unknown, payload: { workspaceId: string; processId: string; turnId?: string; viewId: string; url?: string; routingRef?: string; routingOwnerId?: number }) => callback(payload);
             ipcRenderer.on(BROWSER_CONTROL_REVEAL_CHANNEL, listener);
             return () => ipcRenderer.removeListener(BROWSER_CONTROL_REVEAL_CHANNEL, listener);
+        },
+    },
+    downloads: {
+        query: (): Promise<{ ok: true; entries: DownloadRecord[]; storageError: string | null; engines: Record<string, { managed: boolean; message: string }> } | BrowserHistoryFailure> => ipcRenderer.invoke(DOWNLOADS_QUERY_CHANNEL),
+        action: (id: string | null, action: DownloadAction): Promise<BrowserHistoryResult> => ipcRenderer.invoke(DOWNLOADS_ACTION_CHANNEL, id, action),
+        onChanged: (callback: () => void): (() => void) => {
+            const listener = () => callback();
+            ipcRenderer.on(DOWNLOADS_CHANGED_CHANNEL, listener);
+            return () => ipcRenderer.removeListener(DOWNLOADS_CHANGED_CHANNEL, listener);
         },
     },
     history: {

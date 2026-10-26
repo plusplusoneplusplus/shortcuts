@@ -172,7 +172,7 @@ export const BROWSER_OPEN_EXTERNAL_CHANNEL = 'coc-desktop:browser-open-external'
 export const BROWSER_VIEW_STATE_CHANNEL = 'coc-desktop:browser-view-state';
 /** main → SPA: {@link BrowserNewTabRequest} when a page opens a new-window link. */
 export const BROWSER_VIEW_NEW_TAB_CHANNEL = 'coc-desktop:browser-view-new-tab';
-/** main → SPA: {@link BrowserDownloadEvent} after a download is handed to the system browser. */
+/** main → SPA: {@link BrowserDownloadEvent} for an unavailable download or explicit external handoff. */
 export const BROWSER_VIEW_DOWNLOAD_CHANNEL = 'coc-desktop:browser-view-download';
 export const BROWSER_PREFERENCES_GET_CHANNEL = 'coc-desktop:browser-preferences-get';
 export const BROWSER_PREFERENCES_SET_CHANNEL = 'coc-desktop:browser-preferences-set';
@@ -335,9 +335,10 @@ export interface BrowserNewTabRequest {
     url: string;
 }
 
-/** Result of handing a download to the system browser. */
+/** Download fallback notice. Managed transfers use the downloads metadata API. */
 export interface BrowserDownloadEvent {
     viewId: string;
+    /** Safe source label, never a request URL or credentials. */
     url: string;
     ok: boolean;
     error?: string;

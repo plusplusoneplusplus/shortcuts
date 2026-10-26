@@ -736,7 +736,7 @@ engine across all installation workspaces; browser tab descriptors stay
 ephemeral. A blank tab opens no view until it
 has a URL; address submits on a live view call `navigate`. The toolbar has
 Back/Forward/Reload|Stop, an editable address, and `BrowserToolbarMenu`
-with the actual engine, desktop History and the current-page system-browser action. The menu is
+with the actual engine, History, Downloads and the current-page system-browser action. The menu is
 a fixed dropdown portalled to the document body above the live Electron page.
 Escape, outside clicks, repeated trigger clicks, and loss of tab visibility or
 ownership dismiss it. Page titles appear in tab labels; load errors and download
@@ -758,6 +758,17 @@ owner, tab and visibility changes dismiss the dialog. Opening an entry mints a
 fresh tab through the panel's current dock target and concrete clone route, with
 no inherited engine override. Electron guests stay attached under the dialog;
 its modal/overlay marker hides WebView2 surfaces.
+
+`BrowserDownloadsPanel` opens from Downloads, including blank tabs, through optional
+`browser.downloads` IPC. Its records belong to the desktop installation across
+all windows/workspaces, with bounded main-owned persistence. The renderer sends
+managed IDs/actions, never save paths or request URLs. Electron uses its original
+transfer and native Save dialog; pause/resume reflect live capabilities. Completed
+file Open/Show require main's file identity check. Remove/clear preserve files.
+WebView2 requires explicit source-page system-browser handoff; web dashboards and
+older desktops explain unavailability. No automatic opening or request retry is
+available. Owner/visibility changes dismiss the modal and invalidate late replies;
+its focus trap and overlay marker cover native views without destroying guests.
 
 Electron opens return `embed: 'webview'` with a main-approved `src` and `partition`.
 The app-level `BrowserWebviewLayer` creates each guest once and calls

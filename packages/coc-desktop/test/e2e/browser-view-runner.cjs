@@ -29,6 +29,8 @@ if (process.env.COC_BROWSER_E2E_USER_DATA) {
 }
 const downloadsDir = fs.mkdtempSync(path.join(process.env.COC_BROWSER_E2E_USER_DATA, 'downloads-'));
 app.setPath('downloads', downloadsDir);
+// Fixture-only native save choice. Production keeps the Save dialog.
+app.on('session-created', ses => ses.on('will-download', (_event, item) => item.setSavePath(path.join(downloadsDir, 'file.zip'))));
 
 const emit = (step, data) => console.log('E2E::' + JSON.stringify({ step, ...data }));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -336,13 +338,17 @@ app.whenReady().then(async () => {
         spaCookies: spaCookies.length,
     });
 
-    // 10. Downloads go to the system browser; nothing lands on disk.
+    // 10. Chromium saves the original transfer and main publishes completed metadata.
     externalCalls.length = 0;
     await b1.webContents.executeJavaScript(`location.href = ${JSON.stringify(base + '/file.zip')}; 1`);
-    const download = await waitFor(() => spa('window.__downloads[0] || null'));
+    const download = await waitFor(async () => {
+        const result = await spa('window.__browser.downloads.query()');
+        return result.ok && result.entries.find(entry => entry.state === 'completed' && entry.fileAvailable);
+    });
     await sleep(300);
     emit('download', {
         download,
+        clearResult: await spa('window.__browser.downloads.action(null, "clear")'),
         externalCalls: externalCalls.slice(),
         downloadedFiles: fs.readdirSync(downloadsDir),
         tabUrl: b1.webContents.getURL(),

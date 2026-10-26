@@ -250,7 +250,7 @@ without installing or launching an application.
 ### Browser adapters and lifecycle
 
 Electron browser tabs use sandboxed DOM `<webview>` guests; WebView2 uses a Windows x64 Rust STA helper ([native contracts](../../../../../packages/coc-native/AGENTS.md#desktop-webview2)).
-Probes create no views; failures have no fallback/automatic installation. Navigation, layout and events are engine-neutral; related tabs/popups inherit engine/profile. Ordinary downloads go to the system browser; opted-in Windows ClickOnce requests use the shared activation policy.
+Probes create no views; failures have no fallback/automatic installation. Navigation, layout and events are engine-neutral; related tabs/popups inherit engine/profile. Electron downloads use desktop main’s download manager; WebView2 reports an explicit source-page system-browser fallback without replaying the download URL. Opted-in Windows ClickOnce requests use the shared activation policy.
 Pages have no CoC bridge, use normal TLS and deny sensitive permissions; HTML previews stay Electron.
 WebView2 placement combines renderer-relative DIP bounds with Electron's physical screen content origin. The helper maps that origin into the parent HWND's client coordinates and DPI-scales only relative bounds, keeping pages aligned below Windows menu bars through moves, zoom and fullscreen. It raises the child HWND without activation; null bounds hide it for inactive tabs and DOM overlays.
 
@@ -287,6 +287,33 @@ registered-main-frame IPC; actions target the requesting SPA's web contents.
 Native Copy and the Edit menu dispatch the input's ordinary copy event. The
 page title belongs in the tab label. The toolbar's Import cookies action opens
 `BrowserCookieImportDialog` with an editable domain and JSON or `name=value` pairs.
+
+### Desktop downloads
+
+`browser-view-host.ts` owns one `BrowserDownloadStore` (`browser-downloads.ts`) at
+`<desktopDataDir>/browser/downloads.json`. All workspaces/windows in that process
+share its 500-record bound, 90-day pruning on save and 20-live-transfer limit.
+Atomic serialized writes coalesce progress; storage failures remain visible.
+Records retain filename, safe host label, time, byte counts and native-selected
+file identity/path; public metadata excludes paths, request URLs and credentials.
+Shutdown cancels live handles, marks them interrupted and drains saves. Startup
+never restores live handles or offers retry/resume for interrupted transfers.
+
+`electron-downloads.ts` retains Chromium's original transfer and native Save dialog,
+including overwrite selection; the renderer supplies only managed IDs and actions.
+Pause/resume require live engine capability, and Open/Show require a completed,
+unchanged regular file. Clear/remove affect records only. Source navigation or
+close does not own the session's download handles. ClickOnce interception runs
+first. WebView2's native bridge supplies no retained operations: Downloads explains
+its unavailability and directs the user to open the source page in the system
+browser. Download URLs are never automatically replayed.
+
+Optional `cocDesktop.browser.downloads` exposes `query`, ID-only `action` and
+payload-free `onChanged`. IPC and broadcasts require registered exact-source SPA
+main documents. `BrowserDownloadsPanel` uses the shared modal/focus and native
+view overlay contracts, ignores stale replies, and dismisses on owner/visibility
+changes. Web dashboards and older desktops show explicit unavailability. The
+feature needs updated desktop main/preload and SPA; no experimental flag applies.
 
 ### Desktop browser control
 

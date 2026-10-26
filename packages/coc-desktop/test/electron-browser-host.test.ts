@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ElectronBrowserHost } from '../src/electron-browser-host';
 import type { BrowserEventSink } from '../src/browser-host-contract';
@@ -70,7 +71,7 @@ vi.mock('electron', () => ({
     },
     webContents: { fromId: () => mocks.owner },
     session: { fromPath: () => mocks.profile },
-    shell: { openExternal: mocks.external },
+    shell: { openExternal: mocks.external }, app: { getPath: () => '/native/Downloads' },
 }));
 
 beforeEach(() => {
@@ -237,7 +238,7 @@ describe('Electron ClickOnce routing', () => {
         }, sink);
         return { hosted, sink };
     }
-    it('leaves default-off navigation, new windows and downloads unchanged', async () => {
+    it('keeps default-off deployment links ordinary and never replays an unmanaged download', async () => {
         const h = await opened(false);
         const event = { preventDefault: vi.fn() };
         mocks.handlers.get('will-navigate')![0](event, url);
@@ -245,7 +246,8 @@ describe('Electron ClickOnce routing', () => {
         mocks.contents.setWindowOpenHandler.mock.calls.at(-1)![0]({ url, disposition: 'foreground-tab' });
         expect(h.sink.newTab).toHaveBeenCalledWith(url);
         mocks.download!(event, { getURL: () => url, getURLChain: () => [url], getMimeType: () => 'application/x-ms-application' }, mocks.contents);
-        await vi.waitFor(() => expect(mocks.external).toHaveBeenCalledWith(url));
+        expect(mocks.external).not.toHaveBeenCalled();
+        expect(h.sink.download).toHaveBeenCalledWith(expect.objectContaining({ ok: false }));
         expect(h.sink.application).not.toHaveBeenCalled();
         await h.hosted.close();
     });
@@ -338,7 +340,8 @@ describe('Electron ClickOnce routing', () => {
         expect(callback).toHaveBeenLastCalledWith({ cancel: false });
         const ordinary = 'https://fixture.test/report.zip';
         mocks.download!({ preventDefault: vi.fn() }, { getURL: () => ordinary, getURLChain: () => [ordinary], getMimeType: () => 'application/zip' }, mocks.contents);
-        await vi.waitFor(() => expect(mocks.external).toHaveBeenCalledWith(ordinary));
+        expect(mocks.external).not.toHaveBeenCalled();
+        expect(h.sink.download).toHaveBeenCalledWith(expect.objectContaining({ ok: false }));
         await h.hosted.close();
     });
 });
@@ -673,4 +676,29 @@ describe('Electron successful history events', () => {
         expect(sink.navigationStarted).not.toHaveBeenCalled();
         await hosted.close();
     });
+});
+
+it('retains an owned Chromium download independently of its source tab and rejects unowned downloads', async () => {
+    const update = vi.fn(); let handle: any;
+    const store = { start: vi.fn((_name, _url, native) => { handle = native; return { id: 'managed', update }; }) };
+    const host = new ElectronBrowserHost('profile', store as any);
+    const sink: BrowserEventSink = { state() {}, newTab() {}, download: vi.fn(), closeRequested() {}, openMenuRequested() {} };
+    const view = await host.create({ ownerId: 7, viewId: 'managed-source', sessionKey: 'workspace', url: 'https://files.test' }, sink);
+    const item = Object.assign(new EventEmitter(), {
+        getFilename: () => 'archive.zip', getURL: () => 'https://files.test/export?auth=secret', getURLChain: () => ['https://files.test/export'], getMimeType: () => 'application/zip',
+        getState: () => 'progressing', getReceivedBytes: () => 4, getTotalBytes: () => 10,
+        isPaused: () => false, canResume: () => false, setSaveDialogOptions: vi.fn(), getSavePath: () => '/native/selected',
+        pause: vi.fn(), resume: vi.fn(), cancel: vi.fn(),
+    });
+    const event = { preventDefault: vi.fn() };
+    mocks.download!(event, item, mocks.contents);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(mocks.external).not.toHaveBeenCalled();
+    expect(item.setSaveDialogOptions).toHaveBeenCalledOnce();
+    view.close();
+    item.emit('updated', {}, 'progressing'); item.emit('done', {}, 'completed');
+    expect(update).toHaveBeenLastCalledWith(expect.objectContaining({ state: 'completed' }), true, '/native/selected');
+    expect(item.cancel).not.toHaveBeenCalled(); handle.dispose();
+    mocks.download!(event, item, { id: 99999 });
+    expect(event.preventDefault).toHaveBeenCalledOnce(); expect(store.start).toHaveBeenCalledOnce();
 });
