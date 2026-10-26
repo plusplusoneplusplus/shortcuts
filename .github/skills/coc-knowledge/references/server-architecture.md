@@ -848,10 +848,15 @@ Enabled checks require complete context and a nonblank policy, enforce the
 Decision API's 256 KiB UTF-8 request limit without truncation, and permit one
 evaluation with output repair disabled. A structured block/allow choice resolves
 ties to block without a confidence threshold. A two-minute deadline includes
-backend readiness; cancellation and all failures prevent text dispatch. Explicit
-block throws `TeamsOutboundComplianceRejected`. Safe known-unsent transport
-retries retain the exact allowance. Disabled policy and sources without compliance
-context retain ordinary delivery; ingress owners supply context for gated sends.
+backend readiness; cancellation and all failures prevent text dispatch.
+
+Explicit block adds one account-pinned Crossmark to the captured original trigger
+after fresh source-access verification, then throws `TeamsOutboundComplianceRejected`.
+Its optional `rejectionReactionError` retains feedback failure without permitting
+text, fallback, retry or ordinary outcome reactions. Decision failures add no reaction.
+Safe known-unsent transport retries retain the exact allowance. Disabled policy and
+sources without compliance context retain ordinary delivery; ingress owners supply
+context for gated sends.
 
 ### Messaging ask_user question relay
 

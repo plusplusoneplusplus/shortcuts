@@ -5,7 +5,7 @@ import { Socket } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getLogger, toQueueProcessId, type AIProcess, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
 import { NativeTeamsError } from '@plusplusoneplusplus/coc-native';
-import { Ic3DirectMessageClient, TeamsOperationError, type Ic3DirectMessageOptions, type TrouterClient } from '@plusplusoneplusplus/coc-connector/teams';
+import { Ic3DirectMessageClient, Ic3ReactionClient, TeamsOperationError, type Ic3DirectMessageOptions, type TrouterClient } from '@plusplusoneplusplus/coc-connector/teams';
 import type { TeamsIc3Chat, TeamsIc3Message, TeamsIc3Page } from '@plusplusoneplusplus/coc-native';
 import { DEFAULT_CONFIG, mergeConfig, type CLIConfig } from '../../../src/config';
 import { createTeamsIc3OwnCommandsRuntime } from '../../../src/server/messaging/teams-ic3-own-commands-runtime';
@@ -827,6 +827,7 @@ describe('basic IC3 own-command launcher', () => {
             });
             if (outcome !== 'unavailable') decisionService = createDecisionService(sdk);
             const send = vi.spyOn(Ic3DirectMessageClient.prototype, 'sendToSourceChat').mockResolvedValue('sent');
+            const react = vi.spyOn(Ic3ReactionClient.prototype, 'reactToSourceMessage').mockResolvedValue(undefined);
             sendReply.mockImplementation(sendTeamsIc3OwnCommandReply);
             const id = await launched('48:notes');
             store.getProcess.mockResolvedValue(result(id));
@@ -844,6 +845,12 @@ describe('basic IC3 own-command launcher', () => {
             expect(send).toHaveBeenCalledTimes(outcome === 'disabled' ? 1 : 0);
             expect(transform).toHaveBeenCalledTimes(outcome === 'disabled' || outcome === 'unavailable' ? 0 : 1);
             expect(sendReply).toHaveBeenCalledOnce();
+            expect(react).toHaveBeenCalledTimes(outcome === 'block' ? 1 : 0);
+            if (outcome === 'block') {
+                expect(react).toHaveBeenCalledExactlyOnceWith('48:notes', 'command', 'crossmark', expect.any(AbortSignal));
+            }
+            expect(vi.mocked(getLogger().info).mock.calls.some(([, text]) =>
+                text.includes('"stage":"delivered"'))).toBe(outcome === 'disabled');
         },
     );
 

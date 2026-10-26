@@ -1,9 +1,9 @@
-import { Ic3DirectMessageClient, TeamsOperationError } from '@plusplusoneplusplus/coc-connector/teams';
+import { Ic3DirectMessageClient, Ic3ReactionClient, TeamsOperationError } from '@plusplusoneplusplus/coc-connector/teams';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { TeamsIc3Account, TeamsIc3SessionOptions } from '@plusplusoneplusplus/coc-native';
 import { formatTeamsAnswerChunks } from './teams-answer-format';
 import { formatTeamsOutbound } from './teams-outbound-format';
-import { checkTeamsOutboundCompliance, type TeamsOutboundCompliance } from './teams-outbound-compliance';
+import { checkTeamsOutboundCompliance, TeamsOutboundComplianceRejected, type TeamsOutboundCompliance } from './teams-outbound-compliance';
 
 export interface TeamsIc3CommandSource {
     account: TeamsIc3Account;
@@ -30,10 +30,29 @@ export async function sendTeamsIc3SourceReply(
     const account = { tenantId: source.account.tenantId, objectId: source.account.userId };
     const { chatId, region, verifyAccess } = source;
     const capturedParts = [...parts];
-    if (source.compliance) {
-        await checkTeamsOutboundCompliance(source.compliance, {
-            tenantId: account.tenantId, userId: account.objectId, chatId, region,
-        }, capturedParts, signal);
+    const compliance = source.compliance;
+    if (compliance) {
+        const messageId = compliance.trigger.messageId;
+        try {
+            await checkTeamsOutboundCompliance(compliance, {
+                tenantId: account.tenantId, userId: account.objectId, chatId, region,
+            }, capturedParts, signal);
+        } catch (error) {
+            if (!(error instanceof TeamsOutboundComplianceRejected)) throw error;
+            try {
+                signal.throwIfAborted();
+                await verifyAccess(signal);
+                signal.throwIfAborted();
+                const reaction = new Ic3ReactionClient({ region, expectedAccount: account });
+                try {
+                    await reaction.reactToSourceMessage(chatId, messageId, 'crossmark', signal);
+                    signal.throwIfAborted();
+                } finally { reaction.dispose(); }
+            } catch (reactionError) {
+                throw new TeamsOutboundComplianceRejected(reactionError);
+            }
+            throw error;
+        }
         signal.throwIfAborted();
     }
     const sender = new Ic3DirectMessageClient({ region, expectedAccount: account });

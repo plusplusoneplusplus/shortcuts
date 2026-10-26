@@ -26,8 +26,9 @@ export interface TeamsComplianceDestination {
 }
 
 export class TeamsOutboundComplianceRejected extends Error {
-    constructor() {
-        super('Teams outbound text was blocked by the compliance policy.');
+    constructor(readonly rejectionReactionError?: unknown) {
+        super('Teams outbound text was blocked by the compliance policy.'
+            + (rejectionReactionError === undefined ? '' : ' The rejection reaction failed.'));
         this.name = 'TeamsOutboundComplianceRejected';
     }
 }
