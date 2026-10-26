@@ -84,6 +84,8 @@ export interface BrowserViewState {
     title: string;
     /** Successful document identity; absent while navigating or on older hosts. */
     committedPage?: { url: string; title: string; revision: number };
+    /** Validated `data:image/...` site icon for web pages; absent while unknown or on older hosts. */
+    favicon?: string;
     canGoBack: boolean;
     canGoForward: boolean;
     loading: boolean;

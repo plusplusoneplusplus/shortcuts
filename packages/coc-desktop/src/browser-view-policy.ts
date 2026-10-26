@@ -318,6 +318,8 @@ export interface BrowserViewState {
     title: string;
     /** URL/title pair from a successful document, independent of history recording. */
     committedPage?: { url: string; title: string; revision: number };
+    /** Current document's site icon as a validated `data:image/...` URL; absent while unknown. */
+    favicon?: string;
     canGoBack: boolean;
     canGoForward: boolean;
     loading: boolean;

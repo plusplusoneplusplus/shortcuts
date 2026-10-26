@@ -432,6 +432,8 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             entry.state = {
                 viewId: entry.request.viewId, engine: 'webview2',
                 url: state.url, title: state.title, canGoBack: state.canGoBack, canGoForward: state.canGoForward, loading: state.loading,
+                // The manager re-validates the native helper's PNG data URL before it reaches the SPA.
+                ...(typeof state.favicon === 'string' ? { favicon: state.favicon } : {}),
                 ...(typeof state.error === 'string' ? { error: state.error } : {}),
                 ...(state.errorCode === 'runtime-crashed' || state.errorCode === 'navigation-failed' || state.errorCode === 'startup-failed' ? { errorCode: state.errorCode } : {}),
             };

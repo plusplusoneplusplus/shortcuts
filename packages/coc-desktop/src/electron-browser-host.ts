@@ -44,6 +44,7 @@ import { randomUUID } from 'node:crypto';
 import { browserPopupChrome } from './browser-popup-chrome';
 import { translateBackgroundInput } from './electron-background-input';
 import { isClickOnceRequest, validActivationUrl, type BrowserApplicationRequest } from './browser-clickonce';
+import { loadBrowserFavicon } from './browser-favicon';
 
 interface BrowserEntry {
     win: BrowserWindow;
@@ -67,6 +68,10 @@ interface BrowserEntry {
     sink: BrowserEventSink;
     closed: boolean;
     clickOnceEnabled: boolean;
+    /** Current document's validated icon; cleared when a new document commits. */
+    favicon?: string;
+    /** Aborts the in-flight icon request of a superseded document or icon list. */
+    faviconRequest?: AbortController;
     applicationSources: Map<number, { generation: number; navigationUrl?: string; crashed: boolean }>;
 }
 
@@ -118,6 +123,7 @@ function snapshot(entry: BrowserEntry): BrowserViewState {
         canGoBack: wc.navigationHistory.canGoBack(),
         canGoForward: wc.navigationHistory.canGoForward(),
         loading: wc.isLoading(),
+        ...(entry.favicon && !entry.error ? { favicon: entry.favicon } : {}),
         ...(entry.error ? { error: entry.error } : {}),
         ...(entry.errorCode ? { errorCode: entry.errorCode } : {}),
     };
@@ -130,6 +136,7 @@ function pushState(entry: BrowserEntry): void {
 function destroyEntry(entry: BrowserEntry): void {
     if (entry.closed) { return; }
     entry.closed = true;
+    entry.faviconRequest?.abort();
     entry.cdp?.dispose();
     entries.delete(entry);
     for (const popup of [...entry.popups]) {
@@ -388,7 +395,24 @@ function wireView(entry: BrowserEntry): void {
         update();
     });
     wc.on('did-stop-loading', update);
-    wc.on('did-navigate', update);
+    wc.on('did-navigate', () => {
+        // A new document never inherits the previous site's icon.
+        entry.faviconRequest?.abort();
+        entry.faviconRequest = undefined;
+        entry.favicon = undefined;
+        update();
+    });
+    wc.on('page-favicon-updated', (_event, favicons) => {
+        entry.faviconRequest?.abort();
+        const request = entry.faviconRequest = new AbortController();
+        // The profile's own network stack: same sign-ins and policy as the page, no third-party proxy.
+        void loadBrowserFavicon((url, init) => profileSession!.fetch(url, init), favicons, request.signal).then(favicon => {
+            if (entry.closed || entry.faviconRequest !== request || request.signal.aborted) return;
+            entry.faviconRequest = undefined;
+            entry.favicon = favicon;
+            update();
+        });
+    });
     wc.on('did-navigate-in-page', update);
     wc.on('page-title-updated', update);
     wc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {

@@ -749,7 +749,9 @@ Escape, outside clicks, repeated trigger clicks, and loss of tab visibility or
 ownership dismiss it. Page titles appear in tab labels; load errors and download
 handoff notices appear in the tab body. Unmounting hides the view; `closeTab`
 closes it. `onState` feeds `updateBrowserTab`
-(URL after redirects, title as label). `onNewTab` opens another browser tab
+(URL after redirects, title as label); its validated `favicon` goes to the
+memory-only `browserTabFavicons` store, which the strip renders in the globe's
+12px slot, falling back to the globe when absent or undecodable. `onNewTab` opens another browser tab
 with the opener's owner and `browserEngine`; the desktop default affects only
 new views. Desktop Preferences lives in Admin Appearance and uses local IPC.
 The SPA entry point subscribes to `onClosed` and removes target-engine tabs

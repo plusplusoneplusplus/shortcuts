@@ -434,6 +434,32 @@ describe('browser manager history integration', () => {
         await h.manager.dispose();
     });
 
+    it.each(['electron', 'webview2'] as const)('publishes only validated %s site icons to the owning window, never for errors or file previews', async engine => {
+        const icon = `data:image/png;base64,${Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString('base64')}`;
+        const h = harness(engine);
+        await h.manager.open(1, 'view', 'https://fixture.test/', 'workspace-a');
+        await h.manager.open(2, 'view', 'https://other.test/', 'workspace-b');
+        const { sink, view } = h.created[0];
+        const published = (owner: number) => h.send.mock.calls.filter(call => call[0] === owner && call[1] === BROWSER_VIEW_STATE_CHANNEL).at(-1)![2];
+        const otherBefore = published(2);
+        sink.state({ ...view.snapshot(), favicon: icon });
+        expect(published(1).favicon).toBe(icon);
+        expect(published(2)).toBe(otherBefore);
+        for (const favicon of ['https://tracker.test/favicon.ico', 'data:text/html;base64,PHNjcmlwdD4=', `data:image/svg+xml;base64,${Buffer.from([0x89, 0x50]).toString('base64')}`, icon.replace('png', 'gif')]) {
+            sink.state({ ...view.snapshot(), favicon });
+            expect(published(1).favicon).toBeUndefined();
+        }
+        sink.state({ ...view.snapshot(), favicon: icon, error: 'Load failed', errorCode: 'navigation-failed' });
+        expect(published(1).favicon).toBeUndefined();
+        const filePath = path.join(dir, 'icon-preview.html');
+        fs.writeFileSync(filePath, '<h1>Preview</h1>');
+        await h.manager.openFile(1, 'preview', filePath, 'workspace-a');
+        h.files[0].sink.state({ ...h.files[0].view.snapshot(), favicon: icon });
+        expect(published(1)).toMatchObject({ viewId: 'preview', sourceKind: 'file' });
+        expect(published(1).favicon).toBeUndefined();
+        await h.manager.dispose();
+    });
+
     it('ignores history events from file sources and closed owners, even with an HTTP URL', async () => {
         const h = harness();
         const filePath = path.join(dir, 'preview.html');

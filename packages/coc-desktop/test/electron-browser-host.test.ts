@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
         cookies: { set: vi.fn().mockResolvedValue(undefined), flushStore: vi.fn().mockResolvedValue(undefined), get: vi.fn().mockResolvedValue([]) },
         flushStorageData: vi.fn(),
         webRequest: { onBeforeRequest: vi.fn() },
+        fetch: vi.fn(),
     },
     contents: {
         focus: vi.fn(),
@@ -701,4 +702,51 @@ it('retains an owned Chromium download independently of its source tab and rejec
     expect(item.cancel).not.toHaveBeenCalled(); handle.dispose();
     mocks.download!(event, item, { id: 99999 });
     expect(event.preventDefault).toHaveBeenCalledOnce(); expect(store.start).toHaveBeenCalledOnce();
+});
+
+describe('Electron site icons', () => {
+    const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    const PNG_URL = `data:image/png;base64,${PNG.toString('base64')}`;
+    const lastState = (sink: BrowserEventSink) => vi.mocked(sink.state).mock.lastCall![0];
+
+    it('loads the page-declared icon through the profile session and clears it on the next document', async () => {
+        mocks.profile.fetch.mockResolvedValue(new Response(PNG, { status: 200 }));
+        const { hosted, sink } = await view();
+        emit('page-favicon-updated', ['javascript:alert(1)', 'https://user:pw@example.test/x.ico', 'https://example.test/favicon.ico']);
+        await vi.waitFor(() => expect(lastState(sink).favicon).toBe(PNG_URL));
+        expect(mocks.profile.fetch).toHaveBeenCalledExactlyOnceWith('https://example.test/favicon.ico', expect.objectContaining({ redirect: 'follow' }));
+        expect(hosted.snapshot().favicon).toBe(PNG_URL);
+        emit('did-navigate-in-page', 'https://example.test/#hash', true);
+        expect(lastState(sink).favicon).toBe(PNG_URL);
+        emit('did-navigate', 'https://other.test/', 200);
+        expect(lastState(sink).favicon).toBeUndefined();
+        expect(hosted.snapshot().favicon).toBeUndefined();
+        await hosted.close();
+    });
+
+    it('drops a late icon from a superseded document and never publishes non-image bytes', async () => {
+        let resolve!: (response: Response) => void;
+        mocks.profile.fetch.mockReturnValueOnce(new Promise<Response>(done => { resolve = done; }));
+        const { hosted, sink } = await view();
+        emit('page-favicon-updated', ['https://old.test/favicon.ico']);
+        emit('did-navigate', 'https://new.test/', 200);
+        resolve(new Response(PNG, { status: 200 }));
+        mocks.profile.fetch.mockResolvedValueOnce(new Response('<html><script>x</script>', { status: 200 }));
+        emit('page-favicon-updated', ['https://new.test/favicon.ico']);
+        await vi.waitFor(() => expect(mocks.profile.fetch).toHaveBeenCalledTimes(2));
+        await new Promise(done => setTimeout(done, 0));
+        expect(vi.mocked(sink.state).mock.calls.every(([state]) => state.favicon === undefined)).toBe(true);
+        expect(mocks.profile.fetch.mock.calls[0][1].signal.aborted).toBe(true);
+        await hosted.close();
+    });
+
+    it('hides the icon while the page shows a load error', async () => {
+        mocks.profile.fetch.mockResolvedValue(new Response(PNG, { status: 200 }));
+        const { hosted, sink } = await view();
+        emit('page-favicon-updated', ['https://example.test/favicon.ico']);
+        await vi.waitFor(() => expect(lastState(sink).favicon).toBe(PNG_URL));
+        emit('did-fail-load', -105, 'NAME_NOT_RESOLVED', 'https://example.test/', true);
+        expect(lastState(sink).favicon).toBeUndefined();
+        await hosted.close();
+    });
 });

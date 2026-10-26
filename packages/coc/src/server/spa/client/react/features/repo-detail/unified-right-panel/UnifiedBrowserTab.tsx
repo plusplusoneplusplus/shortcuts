@@ -11,6 +11,7 @@ import { isMacPlatform } from '../../../utils/composerKeyboardShortcuts';
 import { normalizeBrowserUrl } from './unifiedBrowserTabs';
 import { NativeViewNavButtons, NativeViewTab, nativeViewToolbar, nativeViewToolbarButton as toolbarButton } from './NativeViewTab';
 import { prepareBrowserWebview, useBrowserWebviewError } from './browserWebviewLayerStore';
+import { setBrowserTabFavicon } from './browserTabFavicons';
 import {
     desktopBrowserBridge,
     openUrlInSystemBrowser,
@@ -102,6 +103,7 @@ export function UnifiedBrowserTab({
             if (state.viewId !== viewId || disposed) return;
             setPage({ owner: pageOwner, state });
             setEngine(state.engine);
+            setBrowserTabFavicon(tabId, state.favicon);
             if (state.url) onPageStateRef.current(tabId, { url: state.url, title: state.title });
         });
         const offDownload = bridge.onDownload(event => {
@@ -133,6 +135,8 @@ export function UnifiedBrowserTab({
             offState();
             offDownload();
             setOpened(false);
+            // A remount or another view must not show this page's icon before its own state arrives.
+            setBrowserTabFavicon(tabId, undefined);
             // Hide, not close: a remount must find the live page. The panel closes the view with the tab.
             bridge.hide(viewId);
         };

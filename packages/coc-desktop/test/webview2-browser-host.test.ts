@@ -1130,3 +1130,21 @@ it('offers explicit system-browser fallback without replaying authenticated/non-
     mocks.onEvent({ event: 'download', viewId: nativeId, url: 'https://files.test/file' });
     expect(download).not.toHaveBeenCalled();
 });
+
+describe('WebView2 site icons', () => {
+    beforeEach(() => { vi.clearAllMocks(); mocks.request.mockReset().mockResolvedValue(undefined); });
+    it('forwards the native icon with root state, drops it when the helper clears it, and ignores popups', async () => {
+        const icon = 'data:image/png;base64,iVBORw0KGgo=';
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: 'https://fixture.test/' }, sink);
+        const state = { url: 'https://fixture.test/', title: 'Fixture', loading: false, canGoBack: false, canGoForward: false };
+        mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, favicon: icon } });
+        expect(sink.state).toHaveBeenLastCalledWith(expect.objectContaining({ viewId: 'tab', favicon: icon }));
+        expect(view.snapshot().favicon).toBe(icon);
+        mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, url: 'https://other.test/', loading: true } });
+        expect(vi.mocked(sink.state).mock.lastCall![0]).not.toHaveProperty('favicon');
+        mocks.onEvent({ event: 'state', viewId: '7:tab:1', state: { ...state, favicon: 42 } });
+        expect(vi.mocked(sink.state).mock.lastCall![0]).not.toHaveProperty('favicon');
+        await view.close();
+    });
+});
