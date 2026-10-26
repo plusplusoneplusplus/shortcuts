@@ -67,20 +67,25 @@ Remove-Item -LiteralPath $updateDir -Recurse -Force -ErrorAction SilentlyContinu
 `;
 }
 
-/** Await successful detached helper spawn before calling app.quit(). */
+/** Await successful detached launcher spawn before calling app.quit(). */
 export async function launchWindowsUpdate(
     options: WindowsUpdateOptions,
     spawnFn: typeof spawn = spawn,
 ): Promise<void> {
     const script = windowsInstallScript(options);
     const systemRoot = windowsPath(options.systemRoot ?? process.env.SystemRoot ?? 'C:\\Windows');
-    const powershell = path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    const cmd = path.join(systemRoot, 'System32', 'cmd.exe');
+    const powershellDir = path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0');
+    // Windows PowerShell can exit without executing its script under DETACHED_PROCESS.
+    // Detach cmd instead; it starts PowerShell normally outside the app's lifetime.
+    // Only fixed switches and base64 enter cmd's command line; paths stay in the script.
     await new Promise<void>((resolve, reject) => {
-        const child = spawnFn(powershell, [
+        const child = spawnFn(cmd, [
+            '/d', '/s', '/c', '.\\powershell.exe',
             '-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand',
             Buffer.from(script, 'utf16le').toString('base64'),
         ], {
-            detached: true, stdio: 'ignore', windowsHide: true, cwd: systemRoot,
+            detached: true, stdio: 'ignore', windowsHide: true, cwd: powershellDir,
         });
         child.once('error', reject);
         child.once('spawn', () => { child.unref(); resolve(); });

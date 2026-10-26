@@ -285,12 +285,14 @@ before returning a detached helper launch plan. The helper waits for the old PID
 swaps bundles with rollback, clears quarantine when present, and relaunches.
 Successful installation removes staging/downloads; helper failures retain an
 `install-error.txt` diagnostic and reopen the restored app. Failed detach preserves
-the mount directory for safety. `update-install-win.ts` launches a detached,
-hidden PowerShell helper that waits for the old PID before starting NSIS, avoiding
-NSIS process termination during shutdown. It uses `/S --force-run` and a final,
-unquoted `/D=` argument for the current executable's directory. Installer failures
-retain `install-error.txt` and reopen CoC; success removes downloads. Encoded
-PowerShell commands carry quoted path literals.
+the mount directory for safety. `update-install-win.ts` detaches a hidden
+`cmd.exe /d /s /c` launcher, which starts Windows PowerShell from its system
+directory. Directly detached PowerShell can exit without executing the script;
+the launcher preserves execution across app shutdown. Only fixed switches and
+base64 enter cmd; encoded PowerShell carries quoted path literals. The helper
+waits for the old PID before starting NSIS with `/S --force-run` and a final,
+unquoted `/D=` for the current app directory. Failures retain `install-error.txt`
+and reopen CoC; success removes downloads.
 
 `update-coordinator.ts` owns the user-requested download/restart lifecycle through
 injected UI and installer hooks. One process-wide instance coalesces clicks,

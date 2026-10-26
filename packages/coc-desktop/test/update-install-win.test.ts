@@ -108,6 +108,28 @@ describe('Windows update helper', () => {
 });
 
 describe('Windows detached launch', () => {
+    it.skipIf(process.platform !== 'win32')('executes the helper rather than silently exiting before the script starts', async () => {
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), 'win-update-launch-'));
+        try {
+            await launchWindowsUpdate({
+                download: {
+                    installerPath: path.join(root, 'missing-installer.exe'),
+                    tempDir: root,
+                    cleanup: async () => {},
+                },
+                execPath: path.join(root, 'missing-app.exe'),
+                // Windows process IDs are multiples of four, so this PID cannot exist.
+                oldPid: 2147483647,
+            });
+            // A failed installer must reach the helper's catch, not disappear at startup.
+            await vi.waitFor(async () => {
+                expect((await fs.readFile(path.join(root, 'install-error.txt'), 'utf8')).trim()).not.toBe('');
+            }, { timeout: 20_000 });
+        } finally {
+            await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+        }
+    }, 30_000);
+
     it('allows quit only after helper spawn succeeds, preserves installer until helper completion', async () => {
         const options = fixture();
         const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
@@ -121,11 +143,34 @@ describe('Windows detached launch', () => {
         expect(child.unref).toHaveBeenCalledOnce();
         expect(quit).toHaveBeenCalledOnce();
         const [file, args, config] = spawn.mock.calls[0] as unknown as [string, string[], object];
-        expect(file).toBe(String.raw`C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`);
-        expect(args.slice(0, -1)).toEqual(['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand']);
+        expect(file).toBe(String.raw`C:\Windows\System32\cmd.exe`);
+        expect(args.slice(0, -1)).toEqual([
+            '/d', '/s', '/c', '.\\powershell.exe',
+            '-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand',
+        ]);
         expect(Buffer.from(args.at(-1)!, 'base64').toString('utf16le')).toBe(windowsInstallScript(options));
-        expect(config).toEqual({ detached: true, stdio: 'ignore', windowsHide: true, cwd: options.systemRoot });
+        expect(config).toEqual({
+            detached: true, stdio: 'ignore', windowsHide: true,
+            cwd: String.raw`C:\Windows\System32\WindowsPowerShell\v1.0`,
+        });
         expect(options.download.cleanup).not.toHaveBeenCalled();
+    });
+
+    it('keeps paths and shell metacharacters out of the command launcher arguments', async () => {
+        const options = fixture();
+        options.systemRoot = String.raw`D:\Windows & %tools%`;
+        options.download.tempDir = String.raw`D:\O'Brien $HOME & %temp%`;
+        const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
+        const spawn = vi.fn(() => child);
+        const launch = launchWindowsUpdate(options, spawn as never);
+        child.emit('spawn');
+        await launch;
+        const [file, args, config] = spawn.mock.calls[0] as unknown as [string, string[], { cwd: string }];
+        expect(file).toBe(path.win32.join(options.systemRoot, 'System32', 'cmd.exe'));
+        expect(config.cwd).toBe(path.win32.join(options.systemRoot, 'System32', 'WindowsPowerShell', 'v1.0'));
+        expect(args.join(' ')).not.toContain(options.systemRoot);
+        expect(args.join(' ')).not.toContain(options.download.tempDir);
+        expect(Buffer.from(args.at(-1)!, 'base64').toString('utf16le')).toBe(windowsInstallScript(options));
     });
 
     it('propagates spawn errors without quitting or deleting the verified update', async () => {
