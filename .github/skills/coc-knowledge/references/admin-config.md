@@ -147,6 +147,31 @@ region change restarts own-command reads; an unset region blocks connection.
 Own-user mentions share one Ask conversation per account, Teams chat and workspace,
 returning each request's answer to its source chat. Interactive questions stay in the dashboard.
 
+### Teams reaction delegation configuration
+
+`features.teamsReactionDelegation` defaults off. The admin registry persists its
+live configuration contract and `teamsReactionDelegation.workspaceId` /
+`dispatcherSkill`, both empty by default. File and merged admin validation require
+both names when enabled; disabled drafts may be incomplete. Workspace IDs exclude
+remote selectors, and dispatcher values identify a skill by name, not a path.
+The strict namespace accepts neither permission/source selectors nor provider/model
+overrides. Connections -> Teams presents one registry group with the experimental
+toggle, local execution workspace and dispatcher skill selectors. `AdminSkillSelect`
+uses ordinary workspace skill listing and filters workspace/global disabled names.
+`adminWorkspaceSkills.ts` checks physical registration and enabled skills on the
+selected Admin server; enabled UI saves re-read these before persisting. Failures
+preserve drafts; disabled drafts remain saveable without live lookups. Late skill
+results cannot cross workspace/machine changes. The server's independent reaction
+runtime observes this live configuration. Connections identifies dispatcher
+refusal/Crossmark reporting, server-account GitHub approval verification before
+Checkmark, unverified other positive claims and links to the bound local dashboard.
+`messaging/teams-reaction-dispatcher.ts` provides uncached dispatch-time binding
+resolution through `resolveSkillConfig` strict mode and Forge's skill reader.
+It verifies a physical local execution root, normal source precedence and both
+disabled-name sets, rejecting unreadable policy and missing/empty selected skill
+instructions. An invalid higher-priority dispatcher cannot fall through to another
+copy. Admission must invoke it with current configuration and cancellation.
+
 ## Copilot One-Shot Transport
 
 Admin → Configure → AI & Execution exposes `copilot.transformTransport` as SDK / Direct HTTP. The default is `direct`; changes require a server restart. The setting applies to `transform()` consumers such as System One, titles and PR ranking. Agent conversations use the SDK. Direct HTTP reads the Copilot CLI's selected credentials automatically; tokens and credential-source controls stay outside Admin configuration. See [SDK wrapper](sdk-wrapper.md#cli-credentials) for authentication and lifecycle.

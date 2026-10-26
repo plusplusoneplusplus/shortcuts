@@ -14,6 +14,8 @@ import { getSpaCocClientErrorMessage } from '../api/cocClient';
 import { invalidateDisplaySettings } from '../hooks/preferences/useDisplaySettings';
 import { applyRuntimeConfigPatch } from '../utils/config';
 import { useAdminServer } from './adminTarget';
+import { loadEnabledAdminWorkspaceSkills } from './adminWorkspaceSkills';
+import type { CocClient } from '@plusplusoneplusplus/coc-client';
 import {
     ADMIN_SETTING_DEFINITIONS,
     getFeatureSettingTab,
@@ -44,6 +46,19 @@ function configUpdate(values: FeatureValues): Record<string, boolean | string | 
         const spec = FEATURES_CARD_SETTINGS.find(def => def.key === key)?.value;
         return [key, value === '' && spec?.kind === 'enum' && spec.nullable ? null : value];
     }));
+}
+
+async function validateReactionDelegation(client: CocClient, values: FeatureValues): Promise<void> {
+    if (values['features.teamsReactionDelegation'] !== true) return;
+    const workspaceId = values['teamsReactionDelegation.workspaceId'];
+    const dispatcherSkill = values['teamsReactionDelegation.dispatcherSkill'];
+    if (typeof workspaceId !== 'string' || !workspaceId || typeof dispatcherSkill !== 'string' || !dispatcherSkill) {
+        throw new Error('Select an execution workspace and dispatcher skill before enabling reaction delegation.');
+    }
+    const skills = await loadEnabledAdminWorkspaceSkills(client, workspaceId);
+    if (!skills.some(skill => skill.name === dispatcherSkill)) {
+        throw new Error('The dispatcher skill is missing or disabled in the execution workspace.');
+    }
 }
 
 export function readRuntimeFeatureValues(values: FeatureValues): Record<string, unknown> {
@@ -113,6 +128,7 @@ export function useAdminFeatureSettings(options: UseAdminFeatureSettingsOptions)
     const handleSaveFeatures = useCallback(async () => {
         setFeaturesSaving(true);
         try {
+            await validateReactionDelegation(adminServer.client, featureValues);
             await adminServer.client.admin.updateConfig(configUpdate(featureValues));
             addToast('Settings saved', 'success');
             if (!adminServer.isRemote) invalidateDisplaySettings();
@@ -144,6 +160,7 @@ export function useAdminFeatureSettings(options: UseAdminFeatureSettingsOptions)
         for (const def of defs) saved[def.key] = featureValues[def.key];
         setSavingTab(tab);
         try {
+            await validateReactionDelegation(adminServer.client, saved);
             await adminServer.client.admin.updateConfig(configUpdate(saved));
             addToast('Settings saved', 'success');
             if (!adminServer.isRemote) invalidateDisplaySettings();

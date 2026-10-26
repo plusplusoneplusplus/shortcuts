@@ -222,6 +222,11 @@ import { createMessagingHandOff } from '../messaging/job-handoff';
 import { AskUserQuestionRelayHub, type AskUserQuestionRelay } from '../messaging/ask-user-relay';
 import { createTeamsIc3OwnCommandLaunch } from '../messaging/teams-ic3-own-command-launch';
 import { createTeamsIc3OwnCommandsRuntime } from '../messaging/teams-ic3-own-commands-runtime';
+import { createTeamsReactionLaunch } from '../messaging/teams-reaction-launch';
+import { createTeamsReactionExecution } from '../messaging/teams-reaction-execution';
+import { createTeamsReactionRuntime } from '../messaging/teams-reaction-runtime';
+import { sendTeamsReactionResult } from '../messaging/teams-reaction-reply';
+import { resolveTeamsReactionOutcome } from '../messaging/teams-reaction-outcome';
 import { registerContainerSessionRoutes } from '../container-sessions/container-session-handler';
 import { ContainerSessionStore } from '../container-sessions/container-session-store';
 import type { ContainerAgentInfo } from '../container-sessions/container-session-types';
@@ -352,7 +357,7 @@ export interface RegisterRoutesOptions {
     notesSearchService: NotesSearchService;
 }
 
-export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { teamsMessagingManager: TeamsMessagingManager; whatsappMessagingManager: WhatsAppMessagingManager; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; autoPullManager: AutoPullManager; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler; repoTreeService: RepoTreeService; codaReady: Promise<number>; sentinelRefrainsShutdown: () => Promise<void>; teamsIc3OwnCommands?: ReturnType<typeof createTeamsIc3OwnCommandsRuntime> } {
+export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { teamsMessagingManager: TeamsMessagingManager; whatsappMessagingManager: WhatsAppMessagingManager; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; autoPullManager: AutoPullManager; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler; repoTreeService: RepoTreeService; codaReady: Promise<number>; sentinelRefrainsShutdown: () => Promise<void>; teamsIc3OwnCommands?: ReturnType<typeof createTeamsIc3OwnCommandsRuntime>; teamsReactions?: { dispose(): Promise<void> } } {
     const {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
@@ -1426,6 +1431,34 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             getEffortTiersForProvider, validateProvider: validateSendToConversationProvider,
         }),
     });
+    const teamsReactions = opts.runtimeConfigService && (() => {
+        const config = opts.runtimeConfigService!;
+        const execution = createTeamsReactionExecution({
+            queue: queueFacade,
+            launch: createTeamsReactionLaunch({
+                bridge, store, dataDir, state: queueGlobalState, globalWorkspaceRootPath,
+                getDefaultProvider: concreteDefaultProvider, resolveDefaultProvider, isAutoProviderRoutingActive,
+                getEffortTiersForProvider, validateProvider: validateSendToConversationProvider,
+            }, dataDir, () => config.config),
+        });
+        const runtime = createTeamsReactionRuntime({
+            config, teams: teamsMessagingManager, store, dataDir, execution,
+            onResult: async (job, source, signal) => {
+                signal.throwIfAborted();
+                const result = await resolveTeamsReactionOutcome(store, job, signal);
+                await sendTeamsReactionResult(source, {
+                    sourceText: job.sourceText,
+                    result,
+                }, signal);
+            },
+        });
+        let disposal: Promise<void> | undefined;
+        return {
+            dispose() {
+                return disposal ??= runtime.dispose().finally(() => execution.dispose());
+            },
+        };
+    })();
     const whatsappMessagingManager = registerWhatsAppMessagingRoutes(routes, { dataDir });
     const whatsappBindings = new WhatsAppBindings(dataDir, { store, queue: queueFacade });
     let whatsappBindingRestore: Promise<void> | undefined;
@@ -2165,5 +2198,5 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     return { teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService,
         codaReady: Promise.all([codaReady, remoteResultsReady, remoteReturnReady]).then(([count]) => count), sentinelRefrainsShutdown,
-        teamsIc3OwnCommands };
+        teamsIc3OwnCommands, teamsReactions };
 }

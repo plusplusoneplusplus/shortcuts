@@ -8,14 +8,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 
-const { updateConfig, applyRuntimeConfigPatch, invalidateDisplaySettings } = vi.hoisted(() => ({
+const { updateConfig, applyRuntimeConfigPatch, invalidateDisplaySettings, listWorkspaces, listSkills, workspaceConfig, globalConfig } = vi.hoisted(() => ({
     updateConfig: vi.fn(),
     applyRuntimeConfigPatch: vi.fn(),
     invalidateDisplaySettings: vi.fn(),
+    listWorkspaces: vi.fn(),
+    listSkills: vi.fn(),
+    workspaceConfig: vi.fn(),
+    globalConfig: vi.fn(),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({ admin: { updateConfig } }),
+    getSpaCocClient: () => ({
+        admin: { updateConfig }, workspaces: { list: listWorkspaces },
+        skills: { listWorkspace: listSkills, getWorkspaceConfig: workspaceConfig, getGlobalConfig: globalConfig },
+    }),
     getSpaCocClientErrorMessage: (_e: unknown, fallback: string) => fallback,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
@@ -49,9 +56,83 @@ beforeEach(() => {
     updateConfig.mockResolvedValue({});
     applyRuntimeConfigPatch.mockClear();
     invalidateDisplaySettings.mockClear();
+    listWorkspaces.mockReset().mockResolvedValue({ workspaces: [{ id: 'alpha', rootPath: 'fixture-root' }] });
+    listSkills.mockReset().mockResolvedValue([{ name: 'dispatcher' }]);
+    workspaceConfig.mockReset().mockResolvedValue({ disabledSkills: [] });
+    globalConfig.mockReset().mockResolvedValue({ globalDisabledSkills: [] });
 });
 
 describe('useAdminFeatureSettings', () => {
+    const binding = {
+        features: { teamsReactionDelegation: true },
+        teamsReactionDelegation: { workspaceId: 'alpha', dispatcherSkill: 'dispatcher' },
+    };
+
+    it.each(['tab', 'all'])('validates enabled reaction bindings before a %s save', async scope => {
+        const { view } = renderController();
+        act(() => view.result.current.hydrate(binding));
+        await act(async () => {
+            if (scope === 'tab') await view.result.current.handleSaveTab('teams');
+            else await view.result.current.handleSaveFeatures();
+        });
+        expect(listSkills).toHaveBeenCalledWith('alpha');
+        expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+            'features.teamsReactionDelegation': true,
+            'teamsReactionDelegation.workspaceId': 'alpha',
+            'teamsReactionDelegation.dispatcherSkill': 'dispatcher',
+        }));
+    });
+
+    it.each(['workspace', 'skill', 'workspace-disabled', 'global-disabled', 'read-failure', 'incomplete'])(
+        'refuses enabled saves with %s errors and retains pending edits', async failure => {
+            if (failure === 'workspace') listWorkspaces.mockResolvedValue({ workspaces: [] });
+            if (failure === 'skill') listSkills.mockResolvedValue([]);
+            if (failure === 'workspace-disabled') workspaceConfig.mockResolvedValue({ disabledSkills: ['dispatcher'] });
+            if (failure === 'global-disabled') globalConfig.mockResolvedValue({ globalDisabledSkills: ['dispatcher'] });
+            if (failure === 'read-failure') listSkills.mockRejectedValue(new Error('unavailable'));
+            const { view, addToast } = renderController();
+            act(() => view.result.current.hydrate(binding));
+            act(() => view.result.current.setFeatureValues(prev => ({
+                ...prev, 'features.teamsMessageReaction': true,
+                ...(failure === 'incomplete' ? { 'teamsReactionDelegation.dispatcherSkill': '' } : {}),
+            })));
+            await act(async () => { await view.result.current.handleSaveTab('teams'); });
+            expect(updateConfig).not.toHaveBeenCalled();
+            expect(addToast).toHaveBeenCalledWith('Save failed', 'error');
+            expect(view.result.current.isTabDirty('teams')).toBe(true);
+            expect(view.result.current.savingTab).toBeNull();
+            expect(applyRuntimeConfigPatch).not.toHaveBeenCalled();
+        },
+    );
+
+    it('allows disabling a removed binding without requiring working skill reads', async () => {
+        const { view } = renderController();
+        act(() => view.result.current.hydrate(binding));
+        act(() => view.result.current.setFeatureValues(prev => ({ ...prev, 'features.teamsReactionDelegation': false })));
+        await act(async () => { await view.result.current.handleSaveTab('teams'); });
+        expect(listWorkspaces).not.toHaveBeenCalled();
+        expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({ 'features.teamsReactionDelegation': false }));
+        expect(view.result.current.isTabDirty('teams')).toBe(false);
+    });
+
+    it('does not validate or save Teams bindings when another tab is saved, and cancel restores all binding keys', async () => {
+        const { view } = renderController();
+        act(() => view.result.current.hydrate(binding));
+        act(() => view.result.current.setFeatureValues(prev => ({
+            ...prev, 'teamsReactionDelegation.workspaceId': 'beta', 'teamsReactionDelegation.dispatcherSkill': 'other',
+        })));
+        await act(async () => { await view.result.current.handleSaveTab('chat'); });
+        expect(listWorkspaces).not.toHaveBeenCalled();
+        expect(updateConfig.mock.calls[0][0]).not.toHaveProperty('features.teamsReactionDelegation');
+        expect(view.result.current.isTabDirty('teams')).toBe(true);
+        act(() => view.result.current.handleCancelTab('teams'));
+        expect(view.result.current.featureValues).toMatchObject({
+            'features.teamsReactionDelegation': true, 'teamsReactionDelegation.workspaceId': 'alpha',
+            'teamsReactionDelegation.dispatcherSkill': 'dispatcher',
+        });
+        expect(view.result.current.isTabDirty('teams')).toBe(false);
+    });
+
     it('is not dirty after hydrate and becomes dirty on edit', () => {
         const { view } = renderController();
         act(() => view.result.current.hydrate({}));

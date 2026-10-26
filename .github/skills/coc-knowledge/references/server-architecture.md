@@ -689,12 +689,12 @@ serializes by conversation. Account/chat/message hashes, queue evidence and pers
 user-turn request IDs prevent duplicates. Mark attempts before admission; uncertain
 outcomes never retry.
 
-Each new eligible mention attempts a standard Eyes (`1f440_eyes`) acknowledgement
-on its exact source message before queue admission, including follow-ups. The
-account-pinned reaction client sends directly without discovery reads or custom
-emoji configuration. Failed writes log sanitized failures but do not discard the
-command. The ten-second total deadline,
-cancellation and no-replay policy apply independently of channel Likes.
+Each eligible mention, including follow-ups, attempts Eyes before admission.
+`Ic3ReactionClient.acknowledgeSourceMessage` wraps account-pinned
+`reactToSourceMessage` (Eyes/Checkmark/Crossmark), writing only the selected emotion.
+Writes need no discovery/custom emoji, retain a ten-second deadline and never replay.
+Transport success proves no task outcome; acknowledgment failures log safely without
+discarding commands. Channel Likes remain independent.
 
 Memory-only pending replies capture source identity before enqueue and consume it
 on queue terminal events. Delivery serializes within each conversation; different
@@ -727,6 +727,84 @@ IDs across detection, acknowledgement, admission, completion and reply delivery/
 separate message age at detection, history reads, admission, queue/execution when
 queue timestamps exist, reply-chain wait and delivery. Logs exclude message bodies,
 raw chat IDs and account identities. See [configuration](admin-config.md#ic3-own-command-configuration).
+
+### Teams reaction job admission
+
+`messaging/teams-reaction-evidence.ts` normalizes complete native `smilerobot`
+membership (`users[].mri/time`) and raw `EventMessage.time`, never receipt time.
+`teams-reaction-admission.ts` requires the pinned own user, timestamps newer than
+registration and within 30 seconds, and ordered nonduplicate evidence. Malformed,
+future, catch-up and ambiguous snapshots reject. Up to 4,096 fresh targets retain
+replay protection; timestamp-distinct re-additions get stable account/source-qualified
+request IDs. Live completeness and timestamp semantics require protocol verification.
+
+`teams-reaction-launch.ts` creates separate first-turn Ask jobs with medium effort,
+runtime-default timeout and normal queue/provider/pause policy. It checks physical
+workspace/dispatcher bindings before and after preparation and verifies queued/saved
+ownership before deduplicating. Prompts reference the exact skill path; JSON-encoded
+Teams data cannot enable slash-command capabilities. Context caps at 512 KiB UTF-8;
+questions stay dashboard-only and automatic merging is prohibited.
+
+`teams-reaction-execution.ts` serializes each account/chat/message through actual
+queue termination, independently of execution workspace; other sources remain
+concurrent. One server-owned coordinator survives reconnects, coalesces duplicate
+requests and closes fast-finish races with subscription-before-read. Limits are
+256 pending requests and 4,096 retained sources. Proven non-admission permits retry;
+uncertain admission or mismatched queue evidence blocks that source. Cancellation
+revokes observers without releasing admitted-job locks; disposal prevents new work,
+not existing execution.
+
+`teams-reaction-context.ts` reads the exact source and up to 20 strictly earlier
+messages through pinned backward history. Budgets: 100 pages, 5,000 records,
+60 seconds, 8 MiB scanned and 512 KiB output. Missing/incomplete targets, cross-chat
+or conflicting snapshots reject; partial coverage and excluded timestamps remain
+explicit. Embedded quotes stay untrusted; attachments, linked quotes and other
+chats are never fetched.
+
+`teams-reaction-pickup.ts` sequences admission, dispatcher validation, context,
+Eyes acknowledgment and execution. Binding changes or failed/uncertain writes
+prevent launch; duplicates skip Eyes. Registration loss revokes preparation and
+acknowledgment. Acknowledged work retains its account/config-scoped observer across
+notification reconnects; account/config changes and shutdown revoke delivery.
+
+### Teams reaction connection lifecycle
+
+`routes/index.ts` owns one coordinator and live-configured
+`messaging/teams-reaction-runtime.ts`, independent of own-command enablement.
+Region/dispatcher validation precedes authentication; the account pins readers
+and writers. Registration/loss boundaries reset admission cutoffs; disconnects
+wait for registration without scanning history or replaying reactions. Configuration,
+region and credential changes retire owned clients. Native connection retries wait
+60 seconds; at most 256 pickups/results remain outstanding. Shutdown drains the
+runtime and coordinator before queue teardown.
+
+Info logs correlate pickup, rejection, terminal delivery and cancellation using
+hashed source-event traces and elapsed time. Notification state/boundaries and
+bounded error classifiers expose failures without content, identities or raw errors.
+
+### Teams reaction result delivery
+
+`messaging/teams-reaction-outcome.ts` validates process/workspace/request/Ask
+ownership and reads the final complete assistant answer after the sole request-bound
+user turn. Its trailing `teams-delegation-result` JSON has exactly requestId,
+kind (task/approval) and outcome (done/rejected). Missing/malformed reports,
+follow-ups, partial answers and failed/cancelled jobs reject; foreign ownership
+and storage errors prevent delivery. Outcomes report dispatcher execution, not
+independent provider proof.
+
+The dispatcher owns policy and approval writes: recheck the revision and saved
+approval; existing approval for that revision counts as done without another vote.
+Missing evidence, blocked work, errors or cancellation require rejection with
+findings. Queue completion alone never proves success.
+
+`teams-reaction-reply.ts` captures source/outcome before awaits and validates targets
+before credentials. Done adds only Checkmark after fresh account-pinned access
+validation. Rejected sends an escaped source quote (120 Unicode code points) and
+fixed sentence, then revalidates access before Crossmark. Notices cap at 4 KiB,
+omit job links and leave findings in the dashboard. `sendTeamsReactionReply` is
+notice-only; source sends reuse the IC3 definitive-failure retry policy. Unknown
+writes and reaction failures never replay or trigger text fallback. No reply-parent
+metadata is synthesized.
 
 ### Messaging ask_user question relay
 
@@ -911,8 +989,10 @@ without blocking dispatch or subsequent reads; failures are sanitized and logged
 `notificationStatus` exposes protocol state and sanitized typed errors independently
 of reader connectivity through the messaging status API and Connections card.
 Standalone `TrouterClient` exports credential-injected `start/getStatus/stop` lifecycle
-for protocol-only smoke tests without inbound handlers. Per-session generations ignore
-stale socket/registrar callbacks; a client is permanently disposed by stop.
+for protocol-only smoke tests. `onMessageUpdate` exposes untrusted emotions separately
+from message wakes for selected registered self/direct/group chats; owners enforce
+reaction admission. Reconnect/loss never replays updates, generations reject stale
+callbacks and stop permanently disposes the client.
 
 The bounded single-flight scheduler syncs at startup, coalesces wakes, follows wakes
 during reads and falls back 60 seconds after successful completion. Loss, disconnect

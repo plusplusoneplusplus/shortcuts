@@ -17,6 +17,18 @@ export interface TeamsTrouterOptions {
     acquireToken?: Ic3TokenProvider;
     onState?: (state: 'connecting' | 'registered' | 'retrying' | 'stopped') => void;
     onError?: (error: TrouterNotificationError) => void;
+    /** Untrusted live chat reaction data; the owner must verify identity, freshness and transitions. */
+    onMessageUpdate?: (update: TrouterMessageUpdate) => void;
+}
+
+export interface TrouterMessageUpdate {
+    conversationId: string;
+    messageId: string;
+    rootMessageId?: string;
+    /** Uninterpreted EventMessage.time; receipt time and message creation time are not substitutes. */
+    eventTime?: unknown;
+    /** Native reaction payload, including removals. This is not an admission decision. */
+    emotions: unknown;
 }
 
 export type TrouterFailure = 'credentials' | 'authentication' | 'socket' | 'disconnected'
@@ -83,6 +95,7 @@ export interface TrouterEffects {
     send: string[];
     registrationPath?: string;
     wake?: TrouterWake;
+    messageUpdate?: TrouterMessageUpdate;
 }
 
 /** Notifications carry no admission authority, even when source identity is missing. */
@@ -114,18 +127,29 @@ export function parseTrouterFrame(raw: string, target: ((conversationId: string)
         if (!(typeof request.id === 'string' || typeof request.id === 'number')) throw new Error('Invalid Trouter request');
         result.send.push(`3:::${JSON.stringify({ id: request.id, status: 200, headers: {} })}`);
         const body = object(request.body);
-        if (text(body.type)?.toLowerCase() !== 'eventmessage' || text(body.resourceType)?.toLowerCase() !== 'newmessage') return result;
+        if (text(body.type)?.toLowerCase() !== 'eventmessage') return result;
+        const resourceType = text(body.resourceType)?.toLowerCase();
+        if (resourceType !== 'newmessage' && resourceType !== 'messageupdate') return result;
         const resource = object(body.resource);
-        const activity = object(object(resource.properties).activity);
+        const properties = object(resource.properties);
+        const activity = object(properties.activity);
         const source = text(activity.sourceThreadId);
         const stream = text(resource.to, body.to, resource.conversationLink, body.conversationLink, body.resourceLink);
         const id = source ? conversation(source) : stream ? conversation(stream) : undefined;
-        if (id && (!id.toLowerCase().startsWith('48:') || id === '48:notes')
-            && target?.(id)) result.wake = {
-            cause: 'message', conversationId: id,
-            rootMessageId: text(activity.sourceReplyChainId, body.parentmessageid, body.parentMessageId,
-                resource.parentmessageid, resource.parentMessageId, resource.replyToId),
-        };
+        if (!id || (id.toLowerCase().startsWith('48:') && id !== '48:notes') || !target?.(id)) return result;
+        const rootMessageId = text(activity.sourceReplyChainId, body.parentmessageid, body.parentMessageId,
+            resource.parentmessageid, resource.parentMessageId, resource.replyToId);
+        if (resourceType === 'newmessage') {
+            result.wake = { cause: 'message', conversationId: id, rootMessageId };
+        } else {
+            const messageId = text(resource.id);
+            if (messageId && !/[\u0000-\u0020/\\?#]/.test(messageId)
+                && (id === '48:notes' || /^19:[^\s/\\?#]+@(?:thread\.v2|unq\.gbl\.spaces)$/.test(id))
+                && Object.hasOwn(properties, 'emotions')) {
+                result.messageUpdate = { conversationId: id, messageId, rootMessageId, emotions: properties.emotions };
+                if (Object.hasOwn(body, 'time')) result.messageUpdate.eventTime = body.time;
+            }
+        }
     }
     return result;
 }
@@ -246,10 +270,10 @@ export class TrouterClient {
         const session = new AbortController();
         const signal = AbortSignal.any([this.lifetime.signal, session.signal]);
         const active = () => !signal.aborted && generation === this.generation;
-        let idleTimer: ReturnType<typeof setTimeout>;
         let renewTimer: ReturnType<typeof setTimeout> | undefined;
         let registrationTimer: ReturnType<typeof setTimeout> | undefined;
         let registering = false;
+        let isRegistered = false;
         try {
             await new Promise<void>((resolve, reject) => {
                 const finish = (error?: unknown) => {
@@ -257,17 +281,12 @@ export class TrouterClient {
                     error ? reject(error) : resolve();
                     session.abort();
                 };
-                const idle = () => {
-                    clearTimeout(idleTimer);
-                    idleTimer = setTimeout(() => finish(new TrouterFailureError('heartbeat-timeout')), 60_000);
-                };
                 const send = (frame: string) => {
                     if (!active()) return;
                     if (socket.bufferedAmount + Buffer.byteLength(frame) > MAX_FRAME) throw new Error('Trouter write overflow');
                     socket.send(frame);
                 };
                 signal.addEventListener('abort', () => resolve(), { once: true });
-                idle();
                 registrationTimer = setTimeout(() => finish(new TrouterFailureError('registration-timeout')), 30_000);
                 socket.addEventListener('open', () => {
                     if (!active()) return;
@@ -284,14 +303,18 @@ export class TrouterClient {
                     try {
                         if (typeof event.data !== 'string') throw new Error('Invalid Trouter data');
                         const effects = parseTrouterFrame(event.data, this.options.target());
-                        idle();
                         effects.send.forEach(send);
                         if (effects.wake) this.wake(effects.wake);
+                        if (effects.messageUpdate && isRegistered && this.options.target()?.(effects.messageUpdate.conversationId)) {
+                            try { this.options.onMessageUpdate?.(effects.messageUpdate); }
+                            catch { /* Update observers cannot interrupt the protocol. */ }
+                        }
                         if (effects.registrationPath && !registering) {
                             registering = true;
                             void this.register(effects.registrationPath, token, signal).then(() => {
                                 if (!active()) return;
                                 registered();
+                                isRegistered = true;
                                 clearTimeout(registrationTimer);
                                 this.state('registered');
                                 clearTimeout(renewTimer);
@@ -306,7 +329,6 @@ export class TrouterClient {
             });
         } finally {
             session.abort();
-            clearTimeout(idleTimer!);
             clearTimeout(renewTimer);
             clearTimeout(registrationTimer);
             socket.close();

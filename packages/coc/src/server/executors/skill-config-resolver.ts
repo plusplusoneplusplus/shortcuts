@@ -67,6 +67,11 @@ export interface SkillFolderOptions {
     autoDetectDefaultFolders?: boolean;
 }
 
+export interface SkillConfigOptions extends SkillFolderOptions {
+    /** Reject unreadable policy or configured sources rather than resolving a partial configuration. */
+    strict?: boolean;
+}
+
 /**
  * Expand a leading `~` (home directory) in a folder path. `~` alone maps to the
  * home directory; `~/x` and `~\x` map beneath it. Any other value is returned
@@ -161,7 +166,7 @@ export async function resolveSkillConfig(
     dataDir: string | undefined,
     workspaceId: string | undefined,
     workingDirectory: string | undefined,
-    options?: SkillFolderOptions,
+    options?: SkillConfigOptions,
 ): Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }> {
     let disabledSkills: string[] | undefined;
     let extraSkillFolders: string[] | undefined;
@@ -170,6 +175,9 @@ export async function resolveSkillConfig(
         try {
             const workspaces = await store.getWorkspaces();
             const ws = workspaces.find(w => w.id === workspaceId);
+            if (options?.strict && (!ws || ws.virtual || (workingDirectory && ws.rootPath !== workingDirectory))) {
+                throw new Error('Skill execution workspace is unavailable or changed.');
+            }
             if (ws?.disabledSkills && ws.disabledSkills.length > 0) {
                 disabledSkills = [...ws.disabledSkills];
             }
@@ -179,7 +187,8 @@ export async function resolveSkillConfig(
                     extraSkillFolders = effectiveExtraSkillFolders;
                 }
             }
-        } catch {
+        } catch (error) {
+            if (options?.strict) throw error;
             // Non-fatal: continue without workspace config
         }
     }
@@ -187,15 +196,24 @@ export async function resolveSkillConfig(
     if (dataDir) {
         try {
             const prefsPath = path.join(dataDir, 'preferences.json');
-            const prefsExists = await fs.promises.access(prefsPath).then(() => true).catch(() => false);
+            const prefsExists = await fs.promises.access(prefsPath).then(() => true).catch(error => {
+                if (options?.strict && error.code !== 'ENOENT') throw error;
+                return false;
+            });
             if (prefsExists) {
                 const prefs = JSON.parse(await fs.promises.readFile(prefsPath, 'utf-8'));
                 const globalDisabled: string[] = prefs?.globalDisabledSkills;
+                if (options?.strict && (prefs === null || typeof prefs !== 'object' || Array.isArray(prefs)
+                    || (globalDisabled !== undefined
+                        && (!Array.isArray(globalDisabled) || globalDisabled.some(name => typeof name !== 'string'))))) {
+                    throw new Error('Invalid global disabled skill configuration.');
+                }
                 if (Array.isArray(globalDisabled) && globalDisabled.length > 0) {
                     disabledSkills = [...new Set([...(disabledSkills ?? []), ...globalDisabled])];
                 }
             }
-        } catch {
+        } catch (error) {
+            if (options?.strict) throw error;
             // Non-fatal
         }
     }
@@ -206,10 +224,13 @@ export async function resolveSkillConfig(
 
     async function tryAddSkillDirectory(sourcePath: string, hostPath: string): Promise<void> {
         try {
-            if (!await fs.promises.access(hostPath).then(() => true).catch(() => false)) {
+            if (options?.strict) {
+                if (!(await fs.promises.stat(hostPath)).isDirectory()) throw new Error('Skill source is not a directory.');
+            } else if (!await fs.promises.access(hostPath).then(() => true).catch(() => false)) {
                 return;
             }
-        } catch {
+        } catch (error) {
+            if (options?.strict && !(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
             return;
         }
 
@@ -217,7 +238,8 @@ export async function resolveSkillConfig(
             dirs.push(sessionContext.kind === 'wsl'
                 ? translatePathForExecution(sourcePath, sessionContext)
                 : hostPath);
-        } catch {
+        } catch (error) {
+            if (options?.strict) throw error;
             // Non-fatal: skip skill folders that the active session namespace cannot access
         }
     }
@@ -239,7 +261,8 @@ export async function resolveSkillConfig(
             const skillsDir = resolvePathInExecutionContext(root, DEFAULT_SKILLS_SETTINGS.installPath);
             const hostSkillsDir = resolvePathForHostFilesystem(root, DEFAULT_SKILLS_SETTINGS.installPath);
             await tryAddSkillDirectory(skillsDir, hostSkillsDir);
-        } catch {
+        } catch (error) {
+            if (options?.strict) throw error;
             // Non-fatal: skip repo-local skills when path translation fails (e.g. Linux path on Windows without WSL)
         }
     }
@@ -272,7 +295,8 @@ export async function resolveSkillConfig(
                 for (let i = 0; i < sourceCandidates.length; i++) {
                     await tryAddSkillDirectory(sourceCandidates[i], hostCandidates[i]);
                 }
-            } catch {
+            } catch (error) {
+                if (options?.strict) throw error;
                 // Non-fatal: skip global extra folders when path translation fails
             }
         }
@@ -294,7 +318,8 @@ export async function resolveSkillConfig(
                         await tryAddSkillDirectory(sourceCandidates[i], hostCandidates[i]);
                     }
                 }
-            } catch {
+            } catch (error) {
+                if (options?.strict) throw error;
                 // Non-fatal: skip extra skill folders when path translation fails
             }
         }
