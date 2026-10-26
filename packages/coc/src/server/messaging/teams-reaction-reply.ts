@@ -73,6 +73,7 @@ export async function sendTeamsReactionResult(
     }
     const captured: TeamsIc3CommandSource = {
         account: { ...source.account }, chatId, region, verifyAccess: source.verifyAccess.bind(source),
+        compliance: source.compliance,
     };
     const reaction = notice.result.outcome === 'done' ? 'checkmark' : 'crossmark';
 

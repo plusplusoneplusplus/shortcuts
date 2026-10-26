@@ -3,12 +3,14 @@ import { setTimeout as delay } from 'node:timers/promises';
 import type { TeamsIc3Account, TeamsIc3SessionOptions } from '@plusplusoneplusplus/coc-native';
 import { formatTeamsAnswerChunks } from './teams-answer-format';
 import { formatTeamsOutbound } from './teams-outbound-format';
+import { checkTeamsOutboundCompliance, type TeamsOutboundCompliance } from './teams-outbound-compliance';
 
 export interface TeamsIc3CommandSource {
     account: TeamsIc3Account;
     chatId: string;
     region: TeamsIc3SessionOptions['region'];
     verifyAccess(signal: AbortSignal): Promise<void>;
+    compliance?: TeamsOutboundCompliance;
 }
 
 /** Reuse connector protocols; replies never create a chat or change the source account. */
@@ -27,9 +29,16 @@ export async function sendTeamsIc3SourceReply(
     signal.throwIfAborted();
     const account = { tenantId: source.account.tenantId, objectId: source.account.userId };
     const { chatId, region, verifyAccess } = source;
+    const capturedParts = [...parts];
+    if (source.compliance) {
+        await checkTeamsOutboundCompliance(source.compliance, {
+            tenantId: account.tenantId, userId: account.objectId, chatId, region,
+        }, capturedParts, signal);
+        signal.throwIfAborted();
+    }
     const sender = new Ic3DirectMessageClient({ region, expectedAccount: account });
     try {
-        for (const part of parts) {
+        for (const part of capturedParts) {
             for (let attempt = 0; ; attempt++) {
                 signal.throwIfAborted();
                 try {
