@@ -175,8 +175,9 @@ export type ServerMessage = DashboardDiscoveryServerEvent
 
 /** Client → Server message types */
 export type ClientMessage = DashboardDiscoveryClientEvent
-    | { type: 'browser-capability'; workspaceId: string; focused: boolean; background?: string[] }
+    | { type: 'browser-capability'; workspaceId: string; focused: boolean; background?: string[]; humanTakeoverSupported?: boolean }
     | { type: 'browser-capability-clear'; background?: string[] }
+    | { type: 'browser-takeover-state'; state: unknown }
     | { type: 'browser-command-result'; reply: BrowserCommandReply }
     | { type: 'browser-command-waiting'; id: string; waiting: boolean }
     | { type: 'browser-navigation-check'; checkId: string; workspaceId: string; processId: string; turnId: string; url: string }
@@ -428,10 +429,13 @@ export class ProcessWebSocketServer {
                 this.dashboardDiscovery.reply(client, message.reply, 'chats');
                 break;
             case 'browser-capability':
-                this.browserControl.advertise(client, message.workspaceId, message.focused, message.background);
+                this.browserControl.advertise(client, message.workspaceId, message.focused, message.background, message.humanTakeoverSupported);
                 break;
             case 'browser-capability-clear':
                 this.browserControl.clear(client, message.background);
+                break;
+            case 'browser-takeover-state':
+                this.browserControl.takeoverState(client, message.state);
                 break;
             case 'browser-command-result':
                 this.browserControl.reply(client, message.reply);

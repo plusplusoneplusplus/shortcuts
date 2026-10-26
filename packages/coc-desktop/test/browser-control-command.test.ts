@@ -11,7 +11,7 @@ describe('desktop browser command validation', () => {
         expect(validateBrowserCommandRequest({ ...input, framesEnabled: true, richPasteEnabled: true }).command).toEqual(input.command);
     });
     it.each([
-        { action: 'tabs' }, { action: 'open', url: 'https://fixture.test/', newTab: true },
+        { action: 'request_human', text: 'Complete MFA' }, { action: 'tabs' }, { action: 'open', url: 'https://fixture.test/', newTab: true },
         { action: 'select', tab: 't1:view' }, { action: 'snapshot', all: true, ref: 'e1' },
         { action: 'read', offset: 100 }, { action: 'click', ref: 'e1' },
         { action: 'type', ref: 'e1', text: '', submit: true }, { action: 'select_option', ref: 'e2', value: '' },
@@ -31,6 +31,6 @@ describe('desktop browser command validation', () => {
     ])('rejects %j at the IPC boundary', command => { expect(() => validateBrowserCommandRequest(request(command))).toThrow(); });
     it.each([
         null, [], { ...request({ action: 'tabs' }), workspaceId: null },
-        { ...request({ action: 'tabs' }), selectedTab: {} }, { ...request({ action: 'tabs' }), cdp: 'Page.navigate' },
+        { ...request({ action: 'tabs' }), selectedTab: {} }, { ...request({ action: 'tabs' }), humanTakeoverEnabled: 'true' }, { ...request({ action: 'tabs' }), validateAfterTakeover: 1 }, { ...request({ action: 'tabs' }), cdp: 'Page.navigate' },
     ])('rejects malformed envelope %j', input => { expect(() => validateBrowserCommandRequest(input)).toThrow(); });
 });

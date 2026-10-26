@@ -848,6 +848,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'browserControl.humanTakeoverEnabled', default: false, runtime: 'live', runtimeFlag: 'browserHumanTakeoverEnabled',
+        ui: {
+            tab: 'browser', group: 'browserAutomation', order: 15, label: 'Browser human takeover',
+            hint: 'Pause browser input and observation privately until you explicitly return control. Pending actions require page validation.',
+            dependsOn: 'browserControl.enabled', badge: 'experimental', testId: 'toggle-browser-human-takeover-enabled',
+        },
+    }),
+    bool({
         key: 'browserControl.navigationApprovalEnabled', default: true, runtime: 'live', runtimeFlag: 'browserNavigationApprovalEnabled',
         ui: {
             tab: 'browser', group: 'browserAutomation', order: 14, label: 'Ask before new sites',

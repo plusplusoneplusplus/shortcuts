@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { BrowserCommand, BrowserCommandResult, BrowserControlRuntime, BrowserNavigationPrompt } from '@plusplusoneplusplus/coc-client';
+import type { BrowserCommand, BrowserCommandResult, BrowserControlRuntime, BrowserNavigationPrompt, BrowserTakeoverState } from '@plusplusoneplusplus/coc-client';
 import { browserApprovalSite } from '../llm-tools/browser-navigation-approval';
 
 export interface BrowserRelayClient {
@@ -13,6 +13,7 @@ interface Capability {
     workspaceId: string | null;
     background: Set<string>;
     focused: number;
+    humanTakeoverSupported?: boolean;
 }
 
 /** Approval memory consulted before an agent navigation loads (see `BrowserNavigationApprovals`). */
@@ -47,6 +48,11 @@ export class BrowserControlRelay implements BrowserControlRuntime {
     private richPasteEnabled = () => false;
     private backgroundEnabled = () => false;
     private navigationApprovalEnabled = () => true;
+    private lastHumanTakeoverPolicy?: boolean;
+    private humanTakeoverEnabled = () => false;
+    private readonly handoffs = new Map<string, { client: BrowserRelayClient; state: BrowserTakeoverState }>();
+    private readonly revokedTakeoverTurns = new Set<string>();
+    private readonly takeoverRevisions = new Map<string, number>();
     private sequence = 0;
     private readonly clients = new Map<string, Capability>();
     private readonly pending = new Map<string, Pending>();
@@ -61,6 +67,12 @@ export class BrowserControlRelay implements BrowserControlRuntime {
         const turn = this.activeTurns.get(key);
         if (!turn) return;
         this.activeTurns.delete(key);
+        const handoff = this.handoffs.get(key);
+        if (handoff) this.revokedTakeoverTurns.add(JSON.stringify([key, turn.turnId]));
+        this.handoffs.delete(key);
+        for (const pending of [...this.pending.values()]) if (handoff && pending.workspaceId === workspaceId && pending.processId === processId) {
+            pending.cancel(); pending.finish(new Error('Browser conversation turn has finished'));
+        }
         for (const prompt of [...this.prompts.values()]) {
             if (prompt.workspaceId === workspaceId && prompt.processId === processId) this.settle(prompt, false);
         }
@@ -68,6 +80,36 @@ export class BrowserControlRelay implements BrowserControlRuntime {
             try { client.send(JSON.stringify({ type: 'browser-turn-finished', workspaceId, processId, turnId: turn.turnId })); }
             catch { /* disconnected */ }
         }
+    }
+
+    getHumanTakeoverRevision(workspaceId: string, processId: string): number {
+        const key = JSON.stringify([workspaceId, processId]);
+        const revision = this.takeoverRevisions.get(key) ?? 0;
+        return this.handoffs.has(key) ? -revision : revision;
+    }
+    getHumanTakeoverEnabled(): boolean { return this.getEnabled() && this.humanTakeoverEnabled() === true; }
+    setHumanTakeoverEnabledGetter(getEnabled: () => boolean): void { this.humanTakeoverEnabled = getEnabled; }
+    /** Exact socket/turn validation prevents another window or conversation changing privacy ownership. */
+    takeoverState(client: BrowserRelayClient, input: unknown): void {
+        if (!input || typeof input !== 'object' || !this.getHumanTakeoverEnabled()) return;
+        const state = input as BrowserTakeoverState;
+        const key = JSON.stringify([state.workspaceId, state.processId]);
+        const turn = this.activeTurns.get(key);
+        if (!turn || turn.turnId !== state.turnId || !turn.clients.has(client)
+            || !['agent', 'taking-over', 'human', 'checking', 'terminated'].includes(state.status)) return;
+        const old = this.handoffs.get(key);
+        if (old && old.client !== client) return;
+        if (state.status !== 'agent' && !old) this.takeoverRevisions.set(key, (this.takeoverRevisions.get(key) ?? 0) + 1);
+        if (state.status === 'agent') this.handoffs.delete(key);
+        else this.handoffs.set(key, { client, state: { workspaceId: state.workspaceId, processId: state.processId,
+            turnId: state.turnId, routingRef: state.routingRef, status: state.status } });
+        if (state.status === 'terminated') {
+            this.revokedTakeoverTurns.add(JSON.stringify([key, state.turnId]));
+            for (const pending of [...this.pending.values()]) if (pending.workspaceId === state.workspaceId && pending.processId === state.processId) {
+                pending.cancel(); pending.finish(new Error('Browser human takeover continuation terminated'));
+            }
+        }
+        this.syncPromptWaits(state.workspaceId, state.processId);
     }
 
     setEnabledGetter(getEnabled: () => boolean): void { this.enabled = getEnabled; }
@@ -88,6 +130,20 @@ export class BrowserControlRelay implements BrowserControlRuntime {
     setNavigationApprovals(approvals: BrowserNavigationApprovalStore): void { this.approvals = approvals; }
     /** Re-applies every live policy; call on runtime config change. */
     syncPolicies(): void {
+        const takeoverEnabled = this.getHumanTakeoverEnabled();
+        const disabledTransition = this.lastHumanTakeoverPolicy === true && !takeoverEnabled;
+        this.lastHumanTakeoverPolicy = takeoverEnabled;
+        if (!takeoverEnabled) {
+            const hadHandoffs = this.handoffs.size > 0;
+            for (const [key, handoff] of this.handoffs) {
+                this.revokedTakeoverTurns.add(JSON.stringify([key, handoff.state.turnId]));
+                for (const pending of [...this.pending.values()]) if (pending.workspaceId === handoff.state.workspaceId && pending.processId === handoff.state.processId) {
+                    pending.cancel(); pending.finish(new Error('Browser human takeover disabled'));
+                }
+                this.handoffs.delete(key);
+            }
+            if (hadHandoffs || disabledTransition) for (const capability of this.clients.values()) if (capability.humanTakeoverSupported) capability.client.send(JSON.stringify({ type: 'browser-takeover-policy', enabled: false }));
+        }
         this.syncBackgroundPolicy();
         this.syncFramesPolicy();
         this.syncNavigationApprovalPolicy();
@@ -102,9 +158,10 @@ export class BrowserControlRelay implements BrowserControlRuntime {
         if (this.getBackgroundEnabled()) return;
         for (const capability of [...this.clients.values()]) {
             if (!capability.background.size) continue;
-            const dropped = capability.background;
-            capability.background = new Set();
-            if (!capability.workspaceId) this.clients.delete(capability.client.id);
+            const paused = new Set([...this.handoffs.values()].filter(handoff => handoff.client === capability.client).map(handoff => handoff.state.workspaceId));
+            const dropped = new Set([...capability.background].filter(id => !paused.has(id)));
+            capability.background = paused;
+            if (!capability.workspaceId && !paused.size) this.clients.delete(capability.client.id);
             this.drop(capability.client, dropped);
         }
     }
@@ -128,20 +185,25 @@ export class BrowserControlRelay implements BrowserControlRuntime {
         }
     }
 
-    advertise(client: BrowserRelayClient, workspaceId: unknown, focused: unknown, background?: unknown): void {
+    advertise(client: BrowserRelayClient, workspaceId: unknown, focused: unknown, background?: unknown, humanTakeoverSupported?: unknown): void {
         if (typeof workspaceId !== 'string' || !workspaceId || typeof focused !== 'boolean') return;
         const old = this.clients.get(client.id);
         this.serve(client, workspaceId, this.retained(background, workspaceId), focused ? ++this.sequence : old?.focused ?? 0);
+        this.clients.get(client.id)!.humanTakeoverSupported = humanTakeoverSupported === true;
     }
 
     /** Clears the selected workspace; background control may keep retained workspaces served. */
     clear(client: BrowserRelayClient, background?: unknown): void {
         const retained = this.retained(background, null);
+        for (const handoff of this.handoffs.values()) if (handoff.client === client) retained.add(handoff.state.workspaceId);
         if (!retained.size) return this.disconnect(client);
         this.serve(client, null, retained, this.clients.get(client.id)?.focused ?? 0);
     }
 
     disconnect(client: BrowserRelayClient): void {
+        for (const [key, handoff] of this.handoffs) if (handoff.client === client) {
+            this.revokedTakeoverTurns.add(JSON.stringify([key, handoff.state.turnId])); this.handoffs.delete(key);
+        }
         const old = this.clients.get(client.id);
         this.clients.delete(client.id);
         this.drop(client, old ? served(old) : null);
@@ -154,7 +216,8 @@ export class BrowserControlRelay implements BrowserControlRuntime {
 
     private serve(client: BrowserRelayClient, workspaceId: string | null, background: Set<string>, focused: number): void {
         const old = this.clients.get(client.id);
-        this.clients.set(client.id, { client, workspaceId, background, focused });
+        for (const handoff of this.handoffs.values()) if (handoff.client === client && handoff.state.workspaceId !== workspaceId) background.add(handoff.state.workspaceId);
+        this.clients.set(client.id, { client, workspaceId, background, focused, humanTakeoverSupported: old?.humanTakeoverSupported });
         if (!old) return;
         const dropped = new Set([...served(old)].filter(id => id !== workspaceId && !background.has(id)));
         if (dropped.size) this.drop(client, dropped);
@@ -186,6 +249,8 @@ export class BrowserControlRelay implements BrowserControlRuntime {
         if (!pending || pending.client !== client) return;
         if (value.ok === false && typeof value.error === 'string') {
             pending.finish(new Error(value.error));
+        } else if (value.ok === true && this.handoffs.has(JSON.stringify([pending.workspaceId, pending.processId]))) {
+            pending.finish(new Error('unknown-outcome: late browser observation discarded during human takeover; do not replay'));
         } else if (value.ok === true && isResult(value.result)) {
             pending.finish(undefined, value.result);
         } else if (value.ok === true && pending.framesEnabled) {
@@ -263,7 +328,7 @@ export class BrowserControlRelay implements BrowserControlRuntime {
 
     private asking(workspaceId: string, processId: string): boolean {
         for (const prompt of this.prompts.values()) if (prompt.workspaceId === workspaceId && prompt.processId === processId) return true;
-        return false;
+        return this.handoffs.has(JSON.stringify([workspaceId, processId]));
     }
 
     /** A conversation's actions wait without a time limit while one of its navigations awaits the user. */
@@ -274,21 +339,27 @@ export class BrowserControlRelay implements BrowserControlRuntime {
         }
     }
 
-    execute(workspaceId: string, processId: string, command: BrowserCommand, selectedTab?: string, signal?: AbortSignal, controllingTurnId?: string): Promise<BrowserCommandResult> {
+    execute(workspaceId: string, processId: string, command: BrowserCommand, selectedTab?: string, signal?: AbortSignal, controllingTurnId?: string, observedTakeoverRevision?: number): Promise<BrowserCommandResult> {
         if (!this.getEnabled()) return Promise.reject(new Error('Browser control is disabled'));
         this.syncPolicies();
         const framesEnabled = this.getFramesEnabled();
         const richPasteEnabled = command.action === 'paste_html' && this.getRichPasteEnabled();
+        if (command.action === 'request_human' && !this.getHumanTakeoverEnabled()) return Promise.reject(new Error('Browser human takeover is disabled'));
         if (command.action === 'paste_html' && !richPasteEnabled) return Promise.reject(new Error('Browser rich paste is disabled'));
         if (!framesEnabled && (command.action === 'frames' || command.frame !== undefined)) {
             return Promise.reject(new Error('Browser frame control is disabled'));
         }
         if (signal?.aborted) return Promise.reject(signal.reason);
+        const suppliedTurn = controllingTurnId ?? (signal && this.turns.get(signal));
+        if (suppliedTurn && this.revokedTakeoverTurns.has(JSON.stringify([JSON.stringify([workspaceId, processId]), suppliedTurn]))) return Promise.reject(new Error('Browser human takeover continuation terminated; start a new conversation turn'));
         // A window showing the workspace wins over one keeping it in the background.
-        const selected = [...this.clients.values()].filter(client => client.workspaceId === workspaceId || client.background.has(workspaceId))
+        const paused = this.handoffs.get(JSON.stringify([workspaceId, processId]));
+        if (paused?.state.status === 'terminated' && (!controllingTurnId || paused.state.turnId === controllingTurnId)) return Promise.reject(new Error('Browser human takeover continuation terminated'));
+        const selected = [...this.clients.values()].filter(client => (!paused || client.client === paused.client) && (client.workspaceId === workspaceId || client.background.has(workspaceId)))
             .sort((a, b) => Number(b.workspaceId === workspaceId) - Number(a.workspaceId === workspaceId) || b.focused - a.focused)[0];
         if (!selected) return Promise.reject(new Error('No CoC desktop window is open for this workspace'));
         const client = selected.client;
+        if (command.action === 'request_human' && !selected.humanTakeoverSupported) return Promise.reject(new Error('Unsupported desktop capability: browser human takeover'));
         const id = randomUUID();
         let turnId = controllingTurnId ?? (signal && this.turns.get(signal));
         if (!turnId) {
@@ -342,7 +413,7 @@ export class BrowserControlRelay implements BrowserControlRuntime {
             this.pending.set(id, { client, workspaceId, processId, framesEnabled, richPasteEnabled, cancel, finish, wait });
             if (this.asking(workspaceId, processId)) wait(true);
             signal?.addEventListener('abort', abort, { once: true });
-            try { client.send(JSON.stringify({ type: 'browser-command', request: { id, turnId, workspaceId, processId, command, selectedTab, framesEnabled, ...(richPasteEnabled ? { richPasteEnabled: true } : {}) } })); }
+            try { client.send(JSON.stringify({ type: 'browser-command', request: { id, turnId, workspaceId, processId, command, selectedTab, framesEnabled, ...(observedTakeoverRevision !== undefined && observedTakeoverRevision !== this.getHumanTakeoverRevision(workspaceId, processId) ? { validateAfterTakeover: true } : {}), ...(this.getHumanTakeoverEnabled() && selected.humanTakeoverSupported ? { humanTakeoverEnabled: true } : {}), ...(richPasteEnabled ? { richPasteEnabled: true } : {}) } })); }
             catch (error) { finish(error); }
         });
     }
@@ -355,10 +426,10 @@ function served(capability: Capability): Set<string> {
 function isResult(value: unknown): value is BrowserCommandResult {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
     const result = value as Record<string, unknown>;
-    if (Object.keys(result).some(key => !['tab', 'title', 'url', 'tabs', 'elements', 'interactiveElements', 'frames', 'frame', 'document', 'truncated', 'text', 'textTotal', 'value', 'valueJson', 'valueTruncated', 'image'].includes(key))) return false;
+    if (Object.keys(result).some(key => !['tab', 'title', 'url', 'tabs', 'elements', 'interactiveElements', 'frames', 'frame', 'document', 'truncated', 'text', 'textTotal', 'value', 'valueJson', 'valueTruncated', 'image', 'handoffNote'].includes(key))) return false;
     if ('valueJson' in result && typeof result.valueJson !== 'string') return false;
     if ('valueTruncated' in result && typeof result.valueTruncated !== 'boolean') return false;
-    for (const key of ['tab', 'title', 'url', 'text']) if (key in result && typeof result[key] !== 'string') return false;
+    for (const key of ['tab', 'title', 'url', 'text', 'handoffNote']) if (key in result && typeof result[key] !== 'string') return false;
     for (const key of ['frame', 'document']) if (key in result && !handle(result[key])) return false;
     if ('truncated' in result && (typeof result.truncated !== 'string' || !result.truncated.trim() || result.truncated.length > 1024)) return false;
     if ('frames' in result) {

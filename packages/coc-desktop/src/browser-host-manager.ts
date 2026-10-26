@@ -9,13 +9,14 @@ import { parseBrowserCookies } from './browser-cookie-import';
 import { dispatchClickOnce, ClickOnceError, type ClickOncePolicy } from './browser-clickonce';
 import { validateHtmlPagePath, type HtmlPageBounds } from './html-page-policy';
 import type { BrowserHistoryStore } from './browser-history';
+import { BrowserHumanTakeover } from './browser-human-takeover';
 import { BrowserControlQueue } from './browser-control-queue';
 import { withRichClipboard, type RichClipboard } from './browser-rich-clipboard';
 import type { BrowserControlPage } from './browser-control-page';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
-import type { BrowserCommandRequest, BrowserCommandResult, BrowserControlTab } from '@plusplusoneplusplus/coc-client';
-import { BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FOCUSED_CHANNEL, BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_STOP_CHANNEL, BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL, type BrowserControlActivityEvent, type BrowserNavigationCheckEvent, validateBrowserCommandRequest } from './browser-control-command';
+import type { BrowserCommandRequest, BrowserCommandResult, BrowserControlTab, BrowserTakeoverState, BrowserTakeoverAction } from '@plusplusoneplusplus/coc-client';
+import { BROWSER_CONTROL_TAKEOVER_STATE_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FOCUSED_CHANNEL, BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_STOP_CHANNEL, BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL, type BrowserControlActivityEvent, type BrowserNavigationCheckEvent, validateBrowserCommandRequest } from './browser-control-command';
 
 interface Entry {
     ownerId: number;
@@ -32,6 +33,8 @@ interface Entry {
     committedPage?: BrowserViewState['committedPage'];
     commitRevision?: number;
     control?: BrowserControlQueue;
+    takeover?: BrowserHumanTakeover;
+    controlStamp?: string;
     popout?: boolean;
     activity?: ControlActivity;
     /** CDP focus emulation is on so a background tab takes input without window focus. */
@@ -56,6 +59,15 @@ interface CommandHold {
     workspaceId: string;
     processId: string;
     hold(): () => void;
+}
+
+interface TakeoverTurn {
+    ownerId: number;
+    control: BrowserHumanTakeover;
+    entries: Set<Entry>;
+    refreshed?: BrowserCommandResult;
+    beforeTakeover: Map<Entry, string | undefined>;
+    selected?: Entry;
 }
 
 function throwRejected(results: PromiseSettledResult<unknown>[]): void {
@@ -93,11 +105,20 @@ export class BrowserHostManager {
     private readonly navigationChecks = new Map<string, NavigationCheck>();
     /** A tab `open` is creating: its first load is gated before the turn activates the tab. */
     private readonly pendingActivity = new Map<string, ControlActivity>();
+    private readonly pendingHumanTabs = new Map<string, { sessionKey: string; control: BrowserHumanTakeover }>();
+    private readonly takeovers = new Map<string, TakeoverTurn>();
     private readonly commandHolds = new Set<CommandHold>();
 
     constructor(private readonly options: BrowserManagerOptions) {}
 
     finishControl(ownerId: number, turnId?: string, includeOwned = true, routingRef?: string): void {
+        for (const item of this.takeovers.values()) if (item.ownerId === ownerId
+            && (!routingRef || item.control.owner.routingRef === routingRef) && (!turnId || item.control.owner.turnId === turnId)
+            && (turnId || !item.control.paused)) {
+                item.control.stop('Browser conversation turn has finished');
+                for (const entry of item.entries) if (entry.takeover === item.control) entry.takeover = undefined;
+                this.takeovers.delete(this.takeoverKey(item.ownerId, item.control.owner.workspaceId, item.control.owner.processId, item.control.owner.routingRef));
+            }
         if (!turnId) {
             if (routingRef) this.visibleControl.get(ownerId)?.delete(routingRef);
             else this.visibleControl.delete(ownerId);
@@ -111,6 +132,7 @@ export class BrowserHostManager {
         for (const entries of this.owners.values()) for (const entry of entries.values()) {
             if (entry.activity && (entry.activity.routingOwnerId === ownerId || !!turnId && includeOwned && entry.ownerId === ownerId)
                 && (!routingRef || entry.activity.routingRef === routingRef) && (!turnId || entry.activity.turnId === turnId)) {
+                if (!turnId && entry.takeover?.paused) continue;
                 this.clearControlEntry(entry);
             }
         }
@@ -130,7 +152,7 @@ export class BrowserHostManager {
         let appliedTurnId: string | null = null;
         void Promise.resolve().then(() => {
             const activity = entry.activity;
-            appliedTurnId = activity && this.visibleControl.get(activity.routingOwnerId)?.get(activity.routingRef) === true ? activity.turnId : null;
+            appliedTurnId = activity && (!entry.takeover || entry.takeover.status === 'agent') && this.visibleControl.get(activity.routingOwnerId)?.get(activity.routingRef) === true ? activity.turnId : null;
             return entry.view?.setControlActivity?.(appliedTurnId);
         }).catch(error => {
             console.error('[coc-desktop] Browser control chrome failed:', error);
@@ -222,7 +244,7 @@ export class BrowserHostManager {
     }
 
     retainedSessionKeys(ownerId: number): Set<string> {
-        return new Set(this.retainedScopes.get(ownerId)?.keys());
+        return new Set([...(this.retainedScopes.get(ownerId)?.keys() ?? []), ...[...this.takeovers.values()].filter(item => item.ownerId === ownerId && item.control.paused).map(item => item.control.owner.routingRef)]);
     }
 
     /** Finish this window's control activity except for retained background scopes. */
@@ -244,7 +266,7 @@ export class BrowserHostManager {
     private controlScope(ownerId: number, workspaceId: string, routingRef?: string): { sessionKey: string; background: boolean } {
         const scope = this.controlScopes.get(ownerId);
         if (scope && scope.workspaceId === workspaceId && (routingRef === undefined || scope.sessionKey === routingRef)) return { sessionKey: scope.sessionKey, background: false };
-        if (routingRef !== undefined && this.retainedScopes.get(ownerId)?.get(routingRef) === workspaceId) return { sessionKey: routingRef, background: true };
+        if (routingRef !== undefined && (this.retainedScopes.get(ownerId)?.get(routingRef) === workspaceId || [...this.takeovers.values()].some(item => item.ownerId === ownerId && item.control.paused && item.control.owner.workspaceId === workspaceId && item.control.owner.routingRef === routingRef))) return { sessionKey: routingRef, background: true };
         throw new Error('Browser workspace scope changed');
     }
 
@@ -253,7 +275,7 @@ export class BrowserHostManager {
         const workspaceId = scope && scope.sessionKey === sessionKey ? scope.workspaceId
             : typeof sessionKey === 'string' ? this.retainedScopes.get(ownerId)?.get(sessionKey) : undefined;
         if (!workspaceId) throw new Error('Browser workspace scope changed');
-        const results = await Promise.allSettled(this.scopedEntries(ownerId, workspaceId, sessionKey as string).map(entry =>
+        const results = await Promise.allSettled(this.scopedEntries(ownerId, workspaceId, sessionKey as string).filter(entry => !entry.takeover?.paused).map(entry =>
             entry.control!.run(page => page.configureFrames(false))));
         throwRejected(results);
     }
@@ -270,7 +292,109 @@ export class BrowserHostManager {
      * `hold` pauses the caller's own 60s deadline while a navigation of this conversation waits
      * for the user's approval; the per-view queue deadline pauses as well.
      */
+    setHumanTakeoverEnabled(ownerId: number, routingRef: string, enabled: boolean): void {
+        if (enabled) return;
+        for (const item of this.takeovers.values()) if (item.ownerId === ownerId && item.control.owner.routingRef === routingRef) item.control.stop('Browser human takeover disabled');
+    }
+
+    private takeoverKey(ownerId: number, workspaceId: string, processId: string, routingRef: string): string {
+        return JSON.stringify([ownerId, workspaceId, processId, routingRef]);
+    }
+
+    /** Registered renderer IPC is the only UI entry. Identity must match the exact retained turn. */
+    async humanTakeover(ownerId: number, identity: BrowserTakeoverState, action: BrowserTakeoverAction, note?: string): Promise<void> {
+        if (!identity || typeof identity !== 'object' || !['take', 'return', 'stop'].includes(action)) throw new TypeError('Invalid browser takeover');
+        const item = this.takeovers.get(this.takeoverKey(ownerId, identity.workspaceId, identity.processId, identity.routingRef));
+        if (!item || item.control.owner.turnId !== identity.turnId) throw new Error('Browser takeover owner or turn changed');
+        if (note !== undefined && (typeof note !== 'string' || note.length > 2000)) throw new TypeError('Browser handoff note exceeds 2000 characters');
+        if (action === 'take') {
+            if (!item.control.paused) item.beforeTakeover = new Map([...item.entries].map(entry => [entry, entry.controlStamp]));
+            const taking = item.control.take();
+            // Manual loads must not inherit agent site-approval holds.
+            for (const entry of item.entries) this.nativeNavigationGate(entry);
+            this.pruneNavigationChecks();
+            await taking;
+        } else if (action === 'stop') item.control.stop();
+        else await item.control.returnToAgent(async () => {
+            if (this.foregroundSessionKey(ownerId) !== identity.routingRef) throw new Error('foreground-required: Return to agent requires the owning workspace on screen');
+            let refreshed: BrowserCommandResult | undefined;
+            for (const entry of item.entries) {
+                if (entry.closed || entry.takeover !== item.control) throw new Error('Browser takeover tab closed or owner changed');
+                const context = await this.withControlPage(entry.ownerId, entry.viewId, entry.sessionKey, async page => {
+                    const snapshot = await page.snapshot();
+                    return { tab: this.controlId(entry), title: snapshot.title, url: snapshot.url, elements: snapshot.elements, ...page.frameMetadata() };
+                }, undefined, true);
+                if (!refreshed || entry === item.selected) refreshed = context;
+            }
+            item.refreshed = refreshed;
+        }, note).finally(() => { for (const entry of item.entries) this.nativeNavigationGate(entry); });
+    }
+
     async executeControl(ownerId: number, input: BrowserCommandRequest, signal?: AbortSignal, routingRef?: string, hold?: () => () => void): Promise<BrowserCommandResult> {
+        const request = validateBrowserCommandRequest(input);
+        const scope = this.controlScope(ownerId, request.workspaceId, routingRef);
+        const key = this.takeoverKey(ownerId, request.workspaceId, request.processId, scope.sessionKey);
+        let item = this.takeovers.get(key);
+        if (item && item.control.owner.turnId !== (request.turnId ?? request.processId)) {
+            item.control.stop('Browser conversation turn has finished'); this.takeovers.delete(key); item = undefined;
+        }
+        if (item?.control.status === 'terminated') throw new Error('Browser human takeover continuation terminated');
+        if (!request.humanTakeoverEnabled) {
+            if (item?.control.paused) { item.control.stop('Browser human takeover disabled'); throw new Error('Browser human takeover disabled; continuation terminated'); }
+            if (request.command.action === 'request_human') throw new Error('Browser human takeover unavailable or disabled');
+            return this.executeControlUnpaused(ownerId, request, signal, routingRef, hold);
+        }
+        if (!item) {
+            const control = new BrowserHumanTakeover({ workspaceId: request.workspaceId, processId: request.processId,
+                turnId: request.turnId ?? request.processId, routingRef: scope.sessionKey }, state => {
+                const live = this.takeovers.get(key);
+                if (live) for (const entry of live.entries) { this.nativeActivity(entry); this.nativeNavigationGate(entry); }
+                this.pruneNavigationChecks();
+                if (state.status === 'terminated' && live) for (const [pendingKey, pending] of this.pendingHumanTabs) {
+                    if (pending.control === live.control) this.pendingHumanTabs.delete(pendingKey);
+                }
+                this.options.send(ownerId, BROWSER_CONTROL_TAKEOVER_STATE_CHANNEL, { ...state, viewIds: [...(live?.entries ?? [])].map(entry => entry.viewId) });
+            });
+            item = { ownerId, control, entries: new Set(), beforeTakeover: new Map() }; this.takeovers.set(key, item);
+        }
+        const current = item;
+        if (request.command.action === 'request_human') {
+            if (!current.entries.size) throw new Error('Select a browser tab before requesting human assistance');
+            const release = hold?.();
+            try {
+                if (!current.control.paused) current.beforeTakeover = new Map([...current.entries].map(entry => [entry, entry.controlStamp]));
+                const taking = current.control.take(request.command.text?.slice(0, 2000));
+                for (const entry of current.entries) this.nativeNavigationGate(entry);
+                this.pruneNavigationChecks();
+                await taking;
+                await current.control.wait(signal);
+                return { ...current.refreshed, handoffNote: current.control.note };
+            } finally { release?.(); }
+        }
+        const target = request.command.action === 'select' ? request.command.tab : request.selectedTab;
+        const entry = target ? this.scopedEntries(ownerId, request.workspaceId, routingRef).find(view => this.controlId(view) === target) : undefined;
+        const stamp = entry && request.validateAfterTakeover ? current.beforeTakeover.get(entry) : entry?.controlStamp;
+        const validate = async (validationSignal: AbortSignal) => {
+            if (!entry || entry.closed || entry.takeover !== current.control || !stamp) throw new Error('stale-action: browser target validity unavailable; replan');
+            try {
+                await this.withControlPage(entry.ownerId, entry.viewId, entry.sessionKey, async page => {
+                    if (await page.continuationStamp() !== stamp) throw new Error('stale-action: page or target changed during human takeover; replan');
+                }, validationSignal);
+            } finally { await entry.control?.settled(); }
+        };
+        return current.control.run(async commandSignal => {
+            try {
+                const result = await this.executeControlUnpaused(ownerId, request, commandSignal, routingRef, hold);
+                commandSignal.throwIfAborted();
+                return { ...result, ...(current.control.note ? { handoffNote: current.control.note } : {}) };
+            } finally {
+                // queue.run rejects promptly on abort; takeover readiness waits for actual engine settlement.
+                await Promise.all([...current.entries].map(view => view.control?.settled()));
+            }
+        }, signal, hold, validate, request.validateAfterTakeover);
+    }
+
+    private async executeControlUnpaused(ownerId: number, input: BrowserCommandRequest, signal?: AbortSignal, routingRef?: string, hold?: () => () => void): Promise<BrowserCommandResult> {
         const request = validateBrowserCommandRequest(input);
         const commandHold: CommandHold | undefined = hold && { routingOwnerId: ownerId, workspaceId: request.workspaceId, processId: request.processId, hold };
         if (commandHold) {
@@ -302,6 +426,7 @@ export class BrowserHostManager {
         if (command.action === 'tabs') {
             const tabs: BrowserControlTab[] = [];
             for (const entry of entries) {
+                if (entry.takeover?.paused && entry.takeover !== this.takeovers.get(this.takeoverKey(ownerId, request.workspaceId, request.processId, scope.sessionKey))?.control) continue;
                 const view = await entry.ready;
                 signal?.throwIfAborted();
                 if (entry.closed) continue;
@@ -335,6 +460,17 @@ export class BrowserHostManager {
         }
         if (!entry) throw new Error('No browser tab selected; use tabs, select or open');
         const selected = entry;
+        const takeover = this.takeovers.get(this.takeoverKey(ownerId, request.workspaceId, request.processId, scope.sessionKey));
+        if (selected.takeover?.paused && selected.takeover !== takeover?.control) throw new Error('Browser view is under exclusive human control');
+        if (takeover && request.humanTakeoverEnabled) {
+            for (const old of this.takeovers.values()) if (old.control === selected.takeover && old !== takeover) {
+                old.entries.delete(selected);
+                this.options.send(old.ownerId, BROWSER_CONTROL_TAKEOVER_STATE_CHANNEL, { ...old.control.state(), viewIds: [...old.entries].map(view => view.viewId) });
+            }
+            selected.takeover = takeover.control; takeover.entries.add(selected); takeover.selected = selected;
+            this.options.send(ownerId, BROWSER_CONTROL_TAKEOVER_STATE_CHANNEL, { ...takeover.control.state(), viewIds: [...takeover.entries].map(view => view.viewId) });
+        }
+
         if (!selected.popout) this.options.send(selected.ownerId, BROWSER_CONTROL_REVEAL_CHANNEL, {
             workspaceId: request.workspaceId, processId: request.processId, turnId: request.turnId, viewId: selected.viewId, routingOwnerId: ownerId,
             url: command.action === 'open' ? command.url : selected.view?.snapshot().url, routingRef: selected.sessionKey, ...background,
@@ -514,6 +650,16 @@ export class BrowserHostManager {
         let entries = this.owners.get(init.ownerId);
         if (!entries) { entries = new Map(); this.owners.set(init.ownerId, entries); }
         const entry = { ...init, closed: false } as Entry;
+        const pendingKey = JSON.stringify([init.ownerId, init.viewId]);
+        const inherited = this.pendingHumanTabs.get(pendingKey);
+        this.pendingHumanTabs.delete(pendingKey);
+        if (inherited && inherited.sessionKey === init.sessionKey && inherited.control.status !== 'terminated') {
+            entry.takeover = inherited.control;
+            for (const item of this.takeovers.values()) if (item.control === inherited.control) {
+                item.entries.add(entry);
+                this.options.send(item.ownerId, BROWSER_CONTROL_TAKEOVER_STATE_CHANNEL, { ...item.control.state(), viewIds: [...item.entries].map(view => view.viewId) });
+            }
+        }
         entry.ready = Promise.resolve().then(() => create(entry));
         if (entry.sourceKind === 'url') {
             entry.control = new BrowserControlQueue((method, params, sessionId) => {
@@ -589,6 +735,7 @@ export class BrowserHostManager {
                 if (entry.closed) return;
                 if (state.error) entry.committedPage = undefined;
                 if (state.errorCode === 'runtime-crashed') {
+                    entry.takeover?.stop('Browser runtime crashed during human takeover');
                     this.clearControlEntry(entry, false);
                     entry.control?.cancel(new BrowserHostError('runtime-crashed', state.error || 'Browser tab crashed'));
                 }
@@ -623,7 +770,15 @@ export class BrowserHostManager {
                 }
             },
             newTab: target => {
-                if (!entry.closed && validateBrowserUrl(target).ok) { this.options.send(entry.ownerId, BROWSER_VIEW_NEW_TAB_CHANNEL, { openerViewId: entry.viewId, engine: entry.engine, url: target }); }
+                if (!entry.closed && validateBrowserUrl(target).ok) {
+                    let viewId: string | undefined;
+                    if (entry.takeover?.paused) {
+                        if (this.pendingHumanTabs.size >= 128) return;
+                        viewId = `browser-${randomUUID()}`;
+                        this.pendingHumanTabs.set(JSON.stringify([entry.ownerId, viewId]), { sessionKey: entry.sessionKey, control: entry.takeover });
+                    }
+                    this.options.send(entry.ownerId, BROWSER_VIEW_NEW_TAB_CHANNEL, { openerViewId: entry.viewId, engine: entry.engine, url: target, ...(viewId ? { viewId } : {}) });
+                }
             },
             focusAddressRequested: () => {
                 if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, { viewId: entry.viewId }); }
@@ -645,6 +800,8 @@ export class BrowserHostManager {
                     ownerId: entry.ownerId, viewId, sessionKey: entry.sessionKey, engine: entry.engine,
                     sourceKind: 'url', closed: false, ready: Promise.resolve(view), view, popout: true,
                 };
+                popout.takeover = entry.takeover;
+                for (const item of this.takeovers.values()) if (item.control === entry.takeover) item.entries.add(popout);
                 popout.control = new BrowserControlQueue((method, params) => {
                     if (popout.closed || this.disposed) throw new Error('Browser popout closed');
                     return view.cdp!(method, params);
@@ -654,6 +811,7 @@ export class BrowserHostManager {
             controlPopoutClosed: viewId => {
                 const popout = this.entry(entry.ownerId, viewId);
                 if (!popout?.popout) return;
+                popout.takeover?.stop('Browser controlled popout closed');
                 this.clearControlEntry(popout, false);
                 popout.closed = true;
                 this.pruneNavigationChecks();
@@ -683,6 +841,7 @@ export class BrowserHostManager {
 
     /** The control turn driving a view: its popout's, its own, or the `open` that is creating it. */
     private gateActivity(entry: Entry, popoutViewId?: string): ControlActivity | undefined {
+        if (entry.takeover && entry.takeover.status !== 'agent') return undefined;
         const popout = popoutViewId === undefined ? undefined : this.entry(entry.ownerId, popoutViewId);
         if (popout?.popout && !popout.closed && popout.activity) return popout.activity;
         return entry.activity ?? this.pendingActivity.get(JSON.stringify([entry.ownerId, entry.viewId]));
@@ -857,7 +1016,7 @@ export class BrowserHostManager {
     /** Internal main-process control path; unlike UI commands, results and errors reach the caller. */
     async withControlPage<T>(
         ownerId: number, viewId: unknown, sessionKey: unknown,
-        operation: (page: BrowserControlPage, signal: AbortSignal, view: BrowserHostedView) => Promise<T>, signal?: AbortSignal,
+        operation: (page: BrowserControlPage, signal: AbortSignal, view: BrowserHostedView) => Promise<T>, signal?: AbortSignal, privateRefresh = false,
     ): Promise<T> {
         const entry = this.entry(ownerId, viewId);
         if (!entry || entry.closed || this.disposed) throw new BrowserHostError('not-found', 'Browser tab not found');
@@ -871,7 +1030,16 @@ export class BrowserHostManager {
             if (!view.cdp) throw new BrowserHostError('unsupported', 'Browser control is unavailable for this view');
             await view.waitForControlReady?.(commandSignal);
             while (view.snapshot().loading) await delay(25, undefined, { signal: commandSignal });
-            return operation(page, commandSignal, view);
+            if (entry.takeover?.paused && !privateRefresh) throw new Error('Browser actions and observation paused for human takeover');
+            const result = await operation(page, commandSignal, view);
+            commandSignal.throwIfAborted();
+            if (entry.takeover && !privateRefresh) {
+                // Uninspectable child frames make preservation unprovable, without changing a completed action's outcome.
+                try { entry.controlStamp = await page.continuationStamp(); }
+                catch { entry.controlStamp = undefined; }
+            }
+            commandSignal.throwIfAborted();
+            return result;
         }, signal);
     }
 
@@ -899,6 +1067,7 @@ export class BrowserHostManager {
 
     private async closeEntry(entry: Entry, notify = false): Promise<void> {
         if (!entry || entry.closed) { return; }
+        entry.takeover?.stop('Browser controlled tab closed during human takeover');
         this.clearControlEntry(entry, false);
         entry.closed = true;
         this.pruneNavigationChecks();
@@ -915,6 +1084,8 @@ export class BrowserHostManager {
     }
 
     async closeOwner(ownerId: number): Promise<void> {
+        for (const [key, item] of this.takeovers) if (item.ownerId === ownerId) { item.control.stop('Browser owner window disconnected'); this.takeovers.delete(key); }
+        for (const key of this.pendingHumanTabs.keys()) if (JSON.parse(key)[0] === ownerId) this.pendingHumanTabs.delete(key);
         this.finishControl(ownerId);
         this.visibleControl.delete(ownerId);
         this.controlScopes.delete(ownerId);

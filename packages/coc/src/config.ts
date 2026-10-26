@@ -249,7 +249,7 @@ export interface CLIConfig {
         enabled?: boolean;
     };
     /** Desktop browser control. Disabled by default. */
-    browserControl?: { enabled?: boolean; framesEnabled?: boolean; richPasteEnabled?: boolean; backgroundEnabled?: boolean; navigationApprovalEnabled?: boolean };
+    browserControl?: { enabled?: boolean; framesEnabled?: boolean; richPasteEnabled?: boolean; backgroundEnabled?: boolean; navigationApprovalEnabled?: boolean; humanTakeoverEnabled?: boolean };
     /** Target for native Azure CLI IC3 own-user Ask commands. */
     teamsIc3OwnCommands?: {
         workspaceId?: string;
@@ -675,7 +675,7 @@ export interface ResolvedCLIConfig {
         enabled: boolean;
     };
     /** Desktop browser control. */
-    browserControl: { enabled: boolean; framesEnabled: boolean; richPasteEnabled: boolean; backgroundEnabled: boolean; navigationApprovalEnabled: boolean };
+    browserControl: { enabled: boolean; framesEnabled: boolean; richPasteEnabled: boolean; backgroundEnabled: boolean; navigationApprovalEnabled: boolean; humanTakeoverEnabled: boolean };
     teamsIc3OwnCommands: {
         workspaceId: string;
     };
@@ -1035,7 +1035,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
         azureCli: { account: '', tenant: '', subscription: '' },
     },
-    browserControl: { enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false, navigationApprovalEnabled: true },
+    browserControl: { enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false, navigationApprovalEnabled: true, humanTakeoverEnabled: false },
     teamsIc3OwnCommands: { workspaceId: '' },
     LLMToolSystemOne: {
         enabled: true,

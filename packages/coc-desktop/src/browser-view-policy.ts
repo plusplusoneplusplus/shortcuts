@@ -331,6 +331,8 @@ export const BROWSER_ADDRESS_MENU_CHANNEL = 'coc-desktop:browser-address-menu';
 /** A page asked to open `url` in a new tab; the SPA opens it with the opener's owner. */
 export interface BrowserNewTabRequest {
     openerViewId: string;
+    /** Main-minted identity for a popup created during human ownership. */
+    viewId?: string;
     engine: BrowserEngine;
     url: string;
 }

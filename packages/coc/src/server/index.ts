@@ -996,6 +996,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     );
     wsServer.browserControl.setEnabledGetter(() => runtimeConfigService.config.browserControl.enabled);
     wsServer.browserControl.setFramesEnabledGetter(() => runtimeConfigService.config.browserControl.framesEnabled === true);
+    wsServer.browserControl.setHumanTakeoverEnabledGetter(() => runtimeConfigService.config.browserControl.humanTakeoverEnabled === true);
     wsServer.browserControl.setRichPasteEnabledGetter(() => runtimeConfigService.config.browserControl.richPasteEnabled === true);
     wsServer.browserControl.setBackgroundEnabledGetter(() => runtimeConfigService.config.browserControl.backgroundEnabled === true);
     wsServer.browserControl.setNavigationApprovalEnabledGetter(() => runtimeConfigService.config.browserControl.navigationApprovalEnabled !== false);

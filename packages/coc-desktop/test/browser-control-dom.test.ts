@@ -660,3 +660,28 @@ describe('ref resolution before trusted input', () => {
         expect(run<BrowserDomTarget>({ action: 'target', ref, option: 'b' }).optionSearch).toBeUndefined();
     });
 });
+
+
+describe('opaque human continuation stamps', () => {
+    it('keeps untouched pages valid and invalidates same-document targets, input/focus, history and document generations without reading values', async () => {
+        const old = (window as any).__cocHumanContinuation;
+        old?.observer?.disconnect(); Reflect.deleteProperty(window, '__cocHumanContinuation');
+        document.body.innerHTML = '<button>Continue</button><input type="password"><input autocomplete="one-time-code">';
+        const page = new BrowserControlPage(async (method, params) => {
+            expect(method).toBe('Runtime.evaluate');
+            expect(String(params?.expression)).not.toContain('.value');
+            return { result: { value: window.eval(String(params?.expression)) } };
+        });
+        const first = await page.continuationStamp(); expect(await page.continuationStamp()).toBe(first);
+        document.querySelector('button')!.textContent = 'Submit';
+        const changed = await page.continuationStamp(); expect(changed).not.toBe(first);
+        document.querySelector('input')!.value = 'private-password';
+        document.querySelector('input')!.dispatchEvent(new Event('input', { bubbles: true }));
+        const input = await page.continuationStamp(); expect(input).not.toBe(changed); expect(input).not.toContain('private-password');
+        history.pushState(null, '', '#manual'); const historyStamp = await page.continuationStamp(); expect(historyStamp).not.toBe(input);
+        (window as any).__cocHumanContinuation.observer.disconnect(); Reflect.deleteProperty(window, '__cocHumanContinuation');
+        expect(await page.continuationStamp()).not.toBe(historyStamp);
+        (window as any).__cocHumanContinuation.observer.disconnect(); Reflect.deleteProperty(window, '__cocHumanContinuation');
+        history.replaceState(null, '', '#');
+    });
+});

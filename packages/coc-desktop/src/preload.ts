@@ -25,6 +25,8 @@ const BROWSER_HISTORY_QUERY_CHANNEL = 'coc-desktop:browser-history-query';
 const BROWSER_ADDRESS_MENU_CHANNEL = 'coc-desktop:browser-address-menu';
 const BROWSER_CONTROL_SCOPE_CHANNEL = 'coc-desktop:browser-control-scope';
 const BROWSER_CONTROL_RETAIN_CHANNEL = 'coc-desktop:browser-control-retain';
+const BROWSER_CONTROL_TAKEOVER_CHANNEL = 'coc-desktop:browser-control-takeover';
+const BROWSER_CONTROL_TAKEOVER_STATE_CHANNEL = 'coc-desktop:browser-control-takeover-state';
 const BROWSER_CONTROL_COMMAND_CHANNEL = 'coc-desktop:browser-control-command';
 const BROWSER_CONTROL_CANCEL_CHANNEL = 'coc-desktop:browser-control-cancel';
 const BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL = 'coc-desktop:browser-control-release-frames';
@@ -198,6 +200,8 @@ interface BrowserViewState {
 /** A page asked to open a new tab (mirrors `BrowserNewTabRequest`). */
 interface BrowserNewTabRequest {
     openerViewId: string;
+    /** Main-minted identity for a popup created during human ownership. */
+    viewId?: string;
     engine: BrowserEngine;
     url: string;
 }
@@ -256,6 +260,10 @@ const browser = {
     control: {
         framesSupported: true,
         richPasteSupported: true,
+        humanTakeoverSupported: true,
+        takeover: (identity: import('@plusplusoneplusplus/coc-client').BrowserTakeoverState, action: 'take' | 'return' | 'stop', note?: string): Promise<void> => ipcRenderer.invoke(BROWSER_CONTROL_TAKEOVER_CHANNEL, identity, action, note),
+        setTakeoverPolicy: (routingRef: string, enabled: boolean): Promise<void> => ipcRenderer.invoke(BROWSER_CONTROL_TAKEOVER_CHANNEL, { routingRef }, 'policy', enabled),
+        onTakeover: (callback: (state: import('@plusplusoneplusplus/coc-client').BrowserTakeoverState) => void) => subscribe(BROWSER_CONTROL_TAKEOVER_STATE_CHANNEL, callback),
         bindScope: (workspaceId: string | null, sessionKey: string | null): Promise<{ ownerId: number }> =>
             ipcRenderer.invoke(BROWSER_CONTROL_SCOPE_CHANNEL, workspaceId, sessionKey),
         /** Keep a background workspace scope controllable while another one is selected; `null` drops it. */

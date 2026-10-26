@@ -47,6 +47,7 @@ export class BrowserControlQueue {
     private readonly page: BrowserControlPage;
     private tail: Promise<void> = Promise.resolve();
     private active?: AbortSignal;
+    private activeBarrier: Promise<void> = Promise.resolve();
     private readonly pending = new Set<AbortController>();
     private readonly deadlines = new Set<ControlDeadline>();
     private readonly holds = new Set<Map<ControlDeadline, () => void>>();
@@ -80,6 +81,8 @@ export class BrowserControlQueue {
         controller.signal.addEventListener('abort', onAbort, { once: true });
         const execution = this.tail.then(async () => {
             controller.signal.throwIfAborted();
+            let settled!: () => void;
+            this.activeBarrier = new Promise(resolve => { settled = resolve; });
             this.active = controller.signal;
             try {
                 const result = await operation(this.page, controller.signal);
@@ -87,6 +90,7 @@ export class BrowserControlQueue {
                 return result;
             } finally {
                 this.active = undefined;
+                settled();
             }
         });
         // Keep the serialization barrier until the underlying call settles, even if its caller has left.
@@ -111,6 +115,9 @@ export class BrowserControlQueue {
             for (const release of held.values()) release();
         };
     }
+
+    /** Wait for the issued engine call and required input releases, without waiting on queued commands. */
+    settled(): Promise<void> { return this.activeBarrier; }
 
     cancel(reason: Error): void {
         for (const controller of this.pending) controller.abort(reason);
