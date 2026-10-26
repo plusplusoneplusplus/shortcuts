@@ -99,6 +99,8 @@ describe('Teams complete-message compliance delivery boundary', () => {
         expect(h.evaluate).toHaveBeenCalledOnce();
         expect(h.transform).toHaveBeenCalledOnce();
         expect(Ic3DirectMessageClient.prototype.sendToSourceChat).not.toHaveBeenCalled();
+        expect(Ic3ReactionClient.prototype.reactToSourceMessage).toHaveBeenCalledExactlyOnceWith(
+            h.source.chatId, 'original-request', 'crossmark', expect.any(AbortSignal));
     });
 
     it.each(['task', 'approval'] as const)('gates the fixed %s refusal and retains compliance when capturing the reaction source', async kind => {
@@ -111,7 +113,8 @@ describe('Teams complete-message compliance delivery boundary', () => {
             state: expect.objectContaining({ chunks: [formatTeamsReactionNotice(notice)] }),
         }), expect.objectContaining({ allowOutputRepair: false }));
         expect(Ic3DirectMessageClient.prototype.sendToSourceChat).not.toHaveBeenCalled();
-        expect(Ic3ReactionClient.prototype.reactToSourceMessage).not.toHaveBeenCalled();
+        expect(Ic3ReactionClient.prototype.reactToSourceMessage).toHaveBeenCalledExactlyOnceWith(
+            h.source.chatId, 'original-request', 'crossmark', expect.any(AbortSignal));
     });
 
     it('covers direct reaction notices without treating emoji-only completion as text', async () => {
@@ -130,6 +133,59 @@ describe('Teams complete-message compliance delivery boundary', () => {
         h.transform.mockResolvedValue(output(1, 0));
         await expect(sendTeamsIc3OwnCommandReply(h.source, 'request-id', 'long answer\n'.repeat(4000), new AbortController().signal))
             .rejects.toBeInstanceOf(TeamsOutboundComplianceRejected);
+        expect(h.evaluate).toHaveBeenCalledOnce();
+        expect(h.transform).toHaveBeenCalledOnce();
+        expect(Ic3DirectMessageClient.prototype.sendToSourceChat).not.toHaveBeenCalled();
+    });
+
+    it.each(['mention', 'reaction'] as const)('reacts only to the captured original %s request after explicit rejection', async type => {
+        const h = harness(type);
+        const verify = h.source.verifyAccess;
+        const dispose = vi.spyOn(Ic3ReactionClient.prototype, 'dispose');
+        let finish!: () => void;
+        h.transform.mockImplementation(async () => {
+            await new Promise<void>(resolve => { finish = resolve; });
+            return output(1, 0);
+        });
+        const sending = sendTeamsIc3SourceReply(h.source, ['<p>first</p>', '<p>second</p>'], new AbortController().signal);
+        const rejected = expect(sending).rejects.toBeInstanceOf(TeamsOutboundComplianceRejected);
+        await vi.waitFor(() => expect(h.transform).toHaveBeenCalledOnce());
+        h.source.chatId = '19:changed@thread.v2';
+        h.source.region = 'emea';
+        h.source.account.userId = h.source.account.tenantId;
+        h.compliance.trigger.messageId = 'changed-request';
+        h.source.verifyAccess = vi.fn(async () => { throw new Error('Changed verifier'); });
+        finish();
+        await rejected;
+        expect(verify).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal));
+        expect(Ic3ReactionClient.prototype.reactToSourceMessage).toHaveBeenCalledExactlyOnceWith(
+            '19:fixture@thread.v2', 'original-request', 'crossmark', expect.any(AbortSignal));
+        expect(dispose).toHaveBeenCalledOnce();
+        expect(h.evaluate).toHaveBeenCalledOnce();
+        expect(h.transform).toHaveBeenCalledOnce();
+        expect(Ic3DirectMessageClient.prototype.sendToSourceChat).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['mention', 'access'], ['mention', 'write'], ['mention', 'cancelled'],
+        ['reaction', 'access'], ['reaction', 'write'], ['reaction', 'cancelled'],
+    ] as const)('preserves %s rejection when its reaction fails at %s without retry or text fallback', async (type, failure) => {
+        const h = harness(type);
+        const controller = new AbortController();
+        const reason = new TeamsOperationError('Fixture failure', 'ic3', 'timeout', 'unknown', undefined, true);
+        const dispose = vi.spyOn(Ic3ReactionClient.prototype, 'dispose');
+        h.transform.mockResolvedValue(output(1, 0));
+        if (failure === 'access') vi.mocked(h.source.verifyAccess).mockRejectedValueOnce(reason);
+        if (failure === 'write') vi.mocked(Ic3ReactionClient.prototype.reactToSourceMessage).mockRejectedValueOnce(reason);
+        if (failure === 'cancelled') vi.mocked(h.source.verifyAccess).mockImplementationOnce(async () => { controller.abort(reason); });
+        await expect(sendTeamsIc3SourceReply(h.source, ['<p>blocked</p>'], controller.signal))
+            .rejects.toMatchObject({
+                name: 'TeamsOutboundComplianceRejected',
+                message: 'Teams outbound text was blocked by the compliance policy. The rejection reaction failed.',
+                rejectionReactionError: reason,
+            });
+        expect(Ic3ReactionClient.prototype.reactToSourceMessage).toHaveBeenCalledTimes(failure === 'write' ? 1 : 0);
+        expect(dispose).toHaveBeenCalledTimes(failure === 'write' ? 1 : 0);
         expect(h.evaluate).toHaveBeenCalledOnce();
         expect(h.transform).toHaveBeenCalledOnce();
         expect(Ic3DirectMessageClient.prototype.sendToSourceChat).not.toHaveBeenCalled();
@@ -204,6 +260,7 @@ describe('Teams complete-message compliance delivery boundary', () => {
         expect(h.evaluate).not.toHaveBeenCalled();
         expect(h.transform).not.toHaveBeenCalled();
         expect(Ic3DirectMessageClient.prototype.sendToSourceChat).toHaveBeenCalledTimes(2);
+        expect(Ic3ReactionClient.prototype.reactToSourceMessage).not.toHaveBeenCalled();
     });
 
     it.each(['not json', '{"answers":{}}', '{"answers":{"compliance":{"type":"noul","value":1}}}'])(
@@ -215,6 +272,7 @@ describe('Teams complete-message compliance delivery boundary', () => {
             expect(h.evaluate).toHaveBeenCalledOnce();
             expect(h.transform).toHaveBeenCalledOnce();
             expect(Ic3DirectMessageClient.prototype.sendToSourceChat).not.toHaveBeenCalled();
+            expect(Ic3ReactionClient.prototype.reactToSourceMessage).not.toHaveBeenCalled();
         },
     );
 
@@ -263,6 +321,7 @@ describe('Teams complete-message compliance delivery boundary', () => {
         expect(h.evaluate.mock.calls.length).toBe(failure === 'missing-service' ? 0 : 1);
         expect(h.transform.mock.calls.length).toBe(failure === 'upstream-failure' ? 1 : 0);
         expect(Ic3DirectMessageClient.prototype.sendToSourceChat).not.toHaveBeenCalled();
+        expect(Ic3ReactionClient.prototype.reactToSourceMessage).not.toHaveBeenCalled();
     });
 
     it('bounds stalled readiness as part of the single compliance evaluation', async () => {
@@ -276,6 +335,7 @@ describe('Teams complete-message compliance delivery boundary', () => {
         expect(h.evaluate).toHaveBeenCalledOnce();
         expect(h.transform).not.toHaveBeenCalled();
         expect(Ic3DirectMessageClient.prototype.sendToSourceChat).not.toHaveBeenCalled();
+        expect(Ic3ReactionClient.prototype.reactToSourceMessage).not.toHaveBeenCalled();
         expect(vi.getTimerCount()).toBe(0);
     });
 
@@ -292,6 +352,7 @@ describe('Teams complete-message compliance delivery boundary', () => {
         finish();
         await vi.waitFor(() => expect(h.evaluate).toHaveBeenCalledOnce());
         expect(Ic3DirectMessageClient.prototype.sendToSourceChat).not.toHaveBeenCalled();
+        expect(Ic3ReactionClient.prototype.reactToSourceMessage).not.toHaveBeenCalled();
     });
 
     it('does not start evaluation if cancellation occurs while capturing policy', async () => {

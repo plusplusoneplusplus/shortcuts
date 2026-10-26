@@ -1198,6 +1198,10 @@ references before editing. Paths are package-relative.
   workspace/cwd, the shared DecisionService and a live server-policy getter,
   independently of provider/tool settings. Policy-only saves preserve active requests.
   Reaction pickup carries only the exact target body into the gate, not preceding history.
+  Explicit compliance block adds one pinned Crossmark to the captured original request
+  after fresh source-access verification, then throws `TeamsOutboundComplianceRejected`.
+  Decision failures add no reaction. Rejection-reaction failure stays attached to the
+  rejection error; never retry, send fallback text, or continue ordinary outcome delivery.
   Unrelated sources without compliance context retain ordinary transport behavior.
 - Ask/sentinel turns started from WhatsApp/Teams and jobs carrying
   `metadata.messagingOrigin` (every turn, including autopilot) relay

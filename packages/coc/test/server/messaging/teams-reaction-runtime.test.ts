@@ -218,7 +218,12 @@ describe('Teams reaction notification lifecycle', () => {
                 }));
                 expect(JSON.stringify(vi.mocked(decisionService!.evaluate).mock.calls)).not.toContain('Unrelated prior history');
             }
-            expect(react).toHaveBeenCalledTimes(permitsText || outcome === 'done' ? 1 : 0);
+            expect(react).toHaveBeenCalledTimes(permitsText || outcome === 'done' || outcome === 'block' ? 1 : 0);
+            if (outcome === 'block') {
+                expect(react).toHaveBeenCalledExactlyOnceWith('48:notes', 'target', 'crossmark', expect.any(AbortSignal));
+            }
+            expect(vi.mocked(getLogger().info).mock.calls.some(([, text]) =>
+                text.includes('Delivery completed'))).toBe(permitsText || outcome === 'done');
             emit(notification);
             await flush();
             expect(onResult).toHaveBeenCalledOnce();
