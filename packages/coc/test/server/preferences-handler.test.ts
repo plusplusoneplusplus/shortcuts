@@ -27,6 +27,7 @@ import {
     normalizeGlobalPreferencesForRead,
     resolveDefaultModel,
     readApprovalRequiredLlmTools,
+    toApprovalPreferences,
     registerPreferencesRoutes,
     applyGlobalPreferencesPatch,
     applyRepoPreferencesPatch,
@@ -3245,14 +3246,34 @@ describe('readApprovalRequiredLlmTools', () => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
-    it('defaults to an empty list', () => {
-        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-1')).toEqual([]);
+    it('defaults to the default-gated tools (mcp_call)', () => {
+        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-1')).toEqual(['mcp_call']);
     });
 
     it('round-trips through writeRepoPreferences per workspace', () => {
         writeRepoPreferences(tmpDir, 'ws-1', { approvalRequiredLlmTools: ['send_to_conversation'] });
-        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-1')).toEqual(['send_to_conversation']);
-        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-2')).toEqual([]);
+        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-1')).toEqual(['send_to_conversation', 'mcp_call']);
+        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-2')).toEqual(['mcp_call']);
+    });
+
+    it('drops a default-gated tool the repo opted out of', () => {
+        writeRepoPreferences(tmpDir, 'ws-1', { approvalOptOutLlmTools: ['mcp_call'] });
+        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-1')).toEqual([]);
+        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-2')).toEqual(['mcp_call']);
+    });
+
+    it('toApprovalPreferences stores missing default-gated tools as opt-outs', () => {
+        expect(toApprovalPreferences(['get_conversation'])).toEqual({
+            approvalRequiredLlmTools: ['get_conversation'], approvalOptOutLlmTools: ['mcp_call'],
+        });
+        expect(toApprovalPreferences(['get_conversation', 'mcp_call'])).toEqual({
+            approvalRequiredLlmTools: ['get_conversation'], approvalOptOutLlmTools: [],
+        });
+    });
+
+    it('validation keeps only default-gated names in approvalOptOutLlmTools', () => {
+        expect(validatePerRepoPreferences({ approvalOptOutLlmTools: ['mcp_call', 'mcp_call', 'browser', 3] })
+            .approvalOptOutLlmTools).toEqual(['mcp_call']);
     });
 
     it('validation drops non-gateable, removed, duplicate, and non-string entries', () => {

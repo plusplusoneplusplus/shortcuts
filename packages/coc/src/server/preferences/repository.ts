@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { getEffectiveDefaultDisabledTools } from '../llm-tools/llm-tool-registry';
+import { DEFAULT_APPROVAL_REQUIRED_LLM_TOOLS, getEffectiveDefaultDisabledTools } from '../llm-tools/llm-tool-registry';
 import { getRepoDataPath } from '../paths';
 import type { DefaultModelMode, GlobalPreferences, PerRepoPreferences } from './schema';
 import {
@@ -179,11 +179,25 @@ export function readEffectiveDisabledLlmTools(dataDir: string, workspaceId: stri
 }
 
 /**
- * Tools the user marked as "require approval" for this repo. Defaults to `[]`
- * (no tool is gated) when the preference has never been saved.
+ * Tools that require approval for this repo: the ones the user marked, plus
+ * the default-gated tools the repo has not opted out of.
  */
 export function readApprovalRequiredLlmTools(dataDir: string, workspaceId: string): string[] {
-    return readRepoPreferences(dataDir, workspaceId).approvalRequiredLlmTools ?? [];
+    const prefs = readRepoPreferences(dataDir, workspaceId);
+    const optOuts = prefs.approvalOptOutLlmTools ?? [];
+    const defaults = DEFAULT_APPROVAL_REQUIRED_LLM_TOOLS.filter(name => !optOuts.includes(name));
+    return Array.from(new Set([...(prefs.approvalRequiredLlmTools ?? []), ...defaults]));
+}
+
+/**
+ * Split a requested effective approval list into stored fields: default-gated
+ * tools missing from it become opt-outs, and are not stored as explicit marks.
+ */
+export function toApprovalPreferences(requested: readonly string[]): Pick<PerRepoPreferences, 'approvalRequiredLlmTools' | 'approvalOptOutLlmTools'> {
+    return {
+        approvalRequiredLlmTools: requested.filter(name => !DEFAULT_APPROVAL_REQUIRED_LLM_TOOLS.includes(name)),
+        approvalOptOutLlmTools: DEFAULT_APPROVAL_REQUIRED_LLM_TOOLS.filter(name => !requested.includes(name)),
+    };
 }
 
 /**

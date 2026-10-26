@@ -1,7 +1,7 @@
 /**
  * `run_tool_script` MCP access in a chat turn: the flag gate, server names in
  * the description, one shared client per turn, cleanup on dispose and abort,
- * and per-workspace server resolution.
+ * the approval gate on `mcp_call`, and per-workspace server resolution.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -12,6 +12,7 @@ import type { Tool, ToolEvent } from '@plusplusoneplusplus/coc-agent-sdk';
 import { buildChatTurnContext, type ChatTurnContext, type ChatTurnContextInput } from '../../../src/server/executors/chat-turn-context-builder';
 import { buildChatToolBundle } from '../../../src/server/executors/chat-tool-builder';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
+import type { LlmToolApprovalRecord } from '../../../src/server/executors/llm-tool-approval-gate';
 import { CONFIG_FILE_NAME } from '../../../src/config';
 
 const FIXTURE = path.join(__dirname, '..', 'llm-tools', 'fixtures', 'fake-mcp-server.cjs');
@@ -142,6 +143,73 @@ describe('run_tool_script MCP access in a chat turn', () => {
             .toContain('unknown-server: beta');
         expect((await runScript(b.tools, `return await tools.mcp_list_tools({ server: 'alpha' });`)).error.message)
             .toContain('unknown-server: alpha');
+    });
+
+    describe('approval gate', () => {
+        function interactiveTurn(decisions: string[], records: LlmToolApprovalRecord[], asked: string[]) {
+            return turn('ws-a', {
+                onLlmToolApprovalDecision: r => records.push(r),
+                askUser: {
+                    enabled: true,
+                    deps: {
+                        computeTurnIndex: () => 1,
+                        isInteractive: () => true,
+                        emitQuestions: vi.fn(async (payloads: any[], control: any) => {
+                            asked.push(payloads[0].question);
+                            control.answer(payloads[0].questionId, decisions.shift());
+                        }),
+                    },
+                },
+            });
+        }
+
+        it('asks before mcp_call by default and never before mcp_list_tools', async () => {
+            addWorkspace('ws-a', ['alpha']);
+            const records: LlmToolApprovalRecord[] = [];
+            const asked: string[] = [];
+            const ctx = await interactiveTurn(['deny', 'approve-once'], records, asked);
+            const run = await runScript(ctx.tools, `
+                await tools.mcp_list_tools({ server: 'alpha' });
+                let denied;
+                try { await tools.mcp_call({ server: 'alpha', tool: 'echo', args: { text: 'no' } }); }
+                catch (err) { denied = err.message; }
+                const echoed = await tools.mcp_call({ server: 'alpha', tool: 'echo', args: { text: 'yes' } });
+                return { denied, echoed };`);
+            expect(run.result.denied).toContain('User denied this tool call.');
+            expect(run.result.echoed).toBe('echo:yes');
+            expect(asked).toHaveLength(2);
+            expect(asked[0]).toContain('"server": "alpha"');
+            expect(asked[0]).toContain('"tool": "echo"');
+            expect(records.map(r => `${r.toolName}:${r.outcome}`)).toEqual(['mcp_call:deny', 'mcp_call:approve-once']);
+        });
+
+        it('denies mcp_call on unattended runs while listing still works', async () => {
+            addWorkspace('ws-a', ['alpha']);
+            const ctx = await turn('ws-a', { unattendedScript: true });
+            const run = await runScript(ctx.tools, `
+                const listed = await tools.mcp_list_tools({ server: 'alpha' });
+                let denied;
+                try { await tools.mcp_call({ server: 'alpha', tool: 'echo' }); }
+                catch (err) { denied = err.message; }
+                return { count: listed.tools.length, denied };`);
+            expect(run.result.count).toBe(4);
+            expect(run.result.denied).toContain('cannot run in a background script');
+        });
+
+        it('lets mcp_call through when the repo turns its approval off', async () => {
+            addWorkspace('ws-a', ['alpha']);
+            writeRepoPreferences(tmpDir, 'ws-a', { disabledLlmTools: [], approvalOptOutLlmTools: ['mcp_call'] });
+            const records: LlmToolApprovalRecord[] = [];
+            const asked: string[] = [];
+            const interactive = await interactiveTurn([], records, asked);
+            expect((await runScript(interactive.tools, `return await tools.mcp_call({ server: 'alpha', tool: 'echo', args: { text: 'a' } });`)).result)
+                .toBe('echo:a');
+            const unattended = await turn('ws-a', { unattendedScript: true });
+            expect((await runScript(unattended.tools, `return await tools.mcp_call({ server: 'alpha', tool: 'echo', args: { text: 'b' } });`)).result)
+                .toBe('echo:b');
+            expect(asked).toEqual([]);
+            expect(records).toEqual([]);
+        });
     });
 
     it.each([

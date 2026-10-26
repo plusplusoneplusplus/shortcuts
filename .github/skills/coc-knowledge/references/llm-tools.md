@@ -835,8 +835,13 @@ holds, `buildChatTurnContext` resolves the turn workspace's servers with
 `buildChatToolBundle` opens one scope per turn when it has servers: the pair is added only to
 the script runtime (never the model's direct tools), the `run_tool_script` description lists the
 server names, the turn signal's abort closes the scope, and `ChatTurnContext.dispose()` closes it.
-Flag off or `mcpServers: {}` adds nothing. Approval for `mcp_call`, turn tool filters and the
-non-chat surfaces are not wired yet.
+Flag off or `mcpServers: {}` adds nothing. The pair goes through the turn's LLM-tool approval gate
+(`gateMcpTools`): `mcp_call` is in `DEFAULT_APPROVAL_REQUIRED_LLM_TOOLS`, so
+`readApprovalRequiredLlmTools()` includes it unless the repo's `approvalOptOutLlmTools` lists it;
+the `llm-tools-config` PUT splits the requested effective list with `toApprovalPreferences()`
+(a missing default-gated tool becomes an opt-out) and GET returns the effective list.
+Unattended runs deny it; `mcp_list_tools` is never gated. Turn tool filters and the non-chat
+surfaces are not wired yet.
 
 ## Supporting Modules
 

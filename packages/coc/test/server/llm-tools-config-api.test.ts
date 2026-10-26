@@ -390,11 +390,11 @@ describe('LLM Tools Config API endpoints', () => {
         const url = () => `${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`;
         const prefsPath = () => path.join(tmpDir, 'repos', WORKSPACE_ID, 'preferences.json');
 
-        it('GET defaults to an empty list and flags gateable tools', async () => {
+        it('GET defaults to the default-gated mcp_call and flags gateable tools', async () => {
             const res = await request(url());
             expect(res.status).toBe(200);
             const data = res.json();
-            expect(data.approvalRequiredLlmTools).toEqual([]);
+            expect(data.approvalRequiredLlmTools).toEqual(['mcp_call']);
             const byName = new Map(data.tools.map((t: any) => [t.name, t]));
             expect((byName.get('send_to_conversation') as any).approvalGateable).toBe(true);
             expect((byName.get('ask_user') as any).approvalGateable).toBe(false);
@@ -453,7 +453,20 @@ describe('LLM Tools Config API endpoints', () => {
                 body: JSON.stringify({ approvalRequiredLlmTools: ['send_to_conversation'] }),
             });
             const other = await request(`${base()}/api/workspaces/${GROUP_ID}/llm-tools-config`);
-            expect(other.json().approvalRequiredLlmTools).toEqual([]);
+            expect(other.json().approvalRequiredLlmTools).toEqual(['mcp_call']);
+        });
+
+        it('PUT without mcp_call turns its default approval off; with it, back on', async () => {
+            const off = await request(url(), { method: 'PUT', body: JSON.stringify({ approvalRequiredLlmTools: ['get_conversation'] }) });
+            expect(off.json().approvalRequiredLlmTools).toEqual(['get_conversation']);
+            expect(JSON.parse(fs.readFileSync(prefsPath(), 'utf-8'))).toMatchObject({
+                approvalRequiredLlmTools: ['get_conversation'], approvalOptOutLlmTools: ['mcp_call'],
+            });
+            expect((await request(url())).json().approvalRequiredLlmTools).toEqual(['get_conversation']);
+
+            const on = await request(url(), { method: 'PUT', body: JSON.stringify({ approvalRequiredLlmTools: ['get_conversation', 'mcp_call'] }) });
+            expect(on.json().approvalRequiredLlmTools).toEqual(['get_conversation', 'mcp_call']);
+            expect(JSON.parse(fs.readFileSync(prefsPath(), 'utf-8')).approvalOptOutLlmTools).toEqual([]);
         });
     });
 

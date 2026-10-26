@@ -39,6 +39,8 @@ export interface RunToolScriptToolDeps {
     onNestedToolEvent?: (event: ToolEvent) => void;
     /** The turn's MCP clients; adds `mcp_list_tools` / `mcp_call` when it has servers. */
     mcp?: McpScriptScope;
+    /** Applies the turn's approval gate to the MCP pair. */
+    gateMcpTools?: (tools: Tool<any>[]) => Tool<any>[];
 }
 
 interface RunToolScriptArgs {
@@ -64,7 +66,8 @@ export function buildRunToolScriptDescription(toolNames: readonly string[], mcpS
 
 export function createRunToolScriptTool(deps: RunToolScriptToolDeps) {
     const mcpServerNames = deps.mcp?.serverNames() ?? [];
-    const scriptTools = mcpServerNames.length > 0 ? [...deps.tools, ...createMcpScriptTools(deps.mcp!)] : deps.tools;
+    const mcpTools = mcpServerNames.length > 0 ? createMcpScriptTools(deps.mcp!) : [];
+    const scriptTools = [...deps.tools, ...(deps.gateMcpTools?.(mcpTools) ?? mcpTools)];
     const tool = defineTool<RunToolScriptArgs>(RUN_TOOL_SCRIPT_TOOL_NAME, {
         description: buildRunToolScriptDescription(scriptTools.map(t => t.name), mcpServerNames),
         parameters: {

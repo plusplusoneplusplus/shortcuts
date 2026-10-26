@@ -333,6 +333,7 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
             signal: options.browserSignal,
             onNestedToolEvent: options.onNestedToolEvent,
             mcp: mcpScope,
+            gateMcpTools: mcpTools => applyLlmToolApprovalGate(mcpTools, approvalGate),
         });
         tools.push(...applyLlmToolApprovalGate([tool], approvalGate));
     }
