@@ -100,26 +100,99 @@ describe('CopilotDecisionBackend', () => {
         expect((error.details as { errors: string[] }).errors[0]).toContain('not valid JSON');
     });
 
+    it.each([
+        'not json',
+        '{"answers":{"greet":{"type":"noul","value":0.9}}}',
+        '{"answers":{"greet":{"type":"noul","value":"yes"},"tone":{"type":"choice","probabilities":{"friendly":1,"hostile":0}}}}',
+    ])('rejects malformed output without a repair inference when disabled: %s', async text => {
+        const service = createService(async () => ok(validText));
+        service.transform.mockResolvedValueOnce(ok(text));
+        const decisions = new DecisionService([new CopilotDecisionBackend(service)]);
+
+        const error = await expectDecisionError(
+            decisions.evaluate(body, { ...context, allowOutputRepair: false }),
+            'DECISION_INVALID_OUTPUT',
+            502,
+        );
+
+        expect(service.transform).toHaveBeenCalledTimes(1);
+        expect(error.message).toBe('Copilot returned invalid decision output after 1 attempt.');
+        expect(error.details).toEqual({ errors: expect.any(Array) });
+    });
+
+    it('returns valid single-inference results with usage and duration through the shared service', async () => {
+        const service = createService(async () => ok(validText, { tokenUsage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } }));
+        let now = 0;
+        const decisions = new DecisionService([new CopilotDecisionBackend(service)], () => (now += 25));
+
+        const response = await decisions.evaluate(body, { ...context, allowOutputRepair: false });
+
+        expect(service.transform).toHaveBeenCalledTimes(1);
+        expect(response).toMatchObject({
+            answers: { tone: { type: 'choice', choice: 'friendly' } },
+            usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+            metadata: { attempts: 1, durationMs: 25 },
+        });
+    });
+
+    it('keeps repair policy isolated between concurrent workspace calls on one shared backend', async () => {
+        const service = createService(async () => ok('invalid output'));
+        const decisions = new DecisionService([new CopilotDecisionBackend(service)]);
+
+        await Promise.all([
+            expectDecisionError(
+                decisions.evaluate(body, { ...context, allowOutputRepair: false }),
+                'DECISION_INVALID_OUTPUT', 502,
+            ),
+            expectDecisionError(
+                decisions.evaluate(body, { workspaceId: 'ws-2', workingDirectory: '/repo/two', allowOutputRepair: true }),
+                'DECISION_INVALID_OUTPUT', 502,
+            ),
+        ]);
+
+        expect(service.transform.mock.calls.filter(([, options]) => options?.cwd === context.workingDirectory)).toHaveLength(1);
+        expect(service.transform.mock.calls.filter(([, options]) => options?.cwd === '/repo/two')).toHaveLength(2);
+    });
+
+    it.each([undefined, false])('rejects repair policy in request bodies (context allowOutputRepair=%s)', async allowOutputRepair => {
+        const service = createService(async () => ok('invalid output'));
+        const decisions = new DecisionService([new CopilotDecisionBackend(service)]);
+
+        await expectDecisionError(
+            decisions.evaluate({ ...body, allowOutputRepair: true }, { ...context, allowOutputRepair }),
+            'DECISION_INVALID_REQUEST', 400,
+        );
+        await expectDecisionError(
+            decisions.evaluate({ ...body, allowOutputRepair: false }, { ...context, allowOutputRepair }),
+            'DECISION_INVALID_REQUEST', 400,
+        );
+        expect(service.transform).not.toHaveBeenCalled();
+    });
+
     it.each(['gpt-4.1', 'gpt-5.4-mini'])('rejects effective model %s without falling back or retrying', async effectiveModel => {
         const service = createService(async () => ok(validText, { effectiveModel }));
         await expectDecisionError(new CopilotDecisionBackend(service).evaluate(request, context), 'DECISION_MODEL_MISMATCH', 502);
         expect(service.transform).toHaveBeenCalledTimes(1);
     });
 
-    it('maps unavailable and missing services to 503', async () => {
+    it.each([undefined, false])('maps unavailable and missing services to 503 (allowOutputRepair=%s)', async allowOutputRepair => {
         const unavailable = createService(async () => ok(validText), false);
-        const error = await expectDecisionError(new CopilotDecisionBackend(unavailable).evaluate(request, context), 'DECISION_BACKEND_UNAVAILABLE', 503);
+        const invocationContext = { ...context, allowOutputRepair };
+        const error = await expectDecisionError(new CopilotDecisionBackend(unavailable).evaluate(request, invocationContext), 'DECISION_BACKEND_UNAVAILABLE', 503);
         expect(error.message).toContain('SDK missing');
         expect(unavailable.transform).not.toHaveBeenCalled();
-        await expectDecisionError(new CopilotDecisionBackend(undefined).evaluate(request, context), 'DECISION_BACKEND_UNAVAILABLE', 503);
+        await expectDecisionError(new CopilotDecisionBackend(undefined).evaluate(request, invocationContext), 'DECISION_BACKEND_UNAVAILABLE', 503);
     });
 
-    it('maps failed and throwing invocations to 502', async () => {
+    it.each([undefined, false])('maps failed and throwing invocations to 502 (allowOutputRepair=%s)', async allowOutputRepair => {
+        const invocationContext = { ...context, allowOutputRepair };
         const failed = createService(async () => ({ success: false, text: '', error: 'rate limited' }));
-        const error = await expectDecisionError(new CopilotDecisionBackend(failed).evaluate(request, context), 'DECISION_UPSTREAM_FAILED', 502);
+        const error = await expectDecisionError(new CopilotDecisionBackend(failed).evaluate(request, invocationContext), 'DECISION_UPSTREAM_FAILED', 502);
         expect(error.message).toContain('rate limited');
         const throwing = createService(async () => { throw new Error('socket closed'); });
-        await expectDecisionError(new CopilotDecisionBackend(throwing).evaluate(request, context), 'DECISION_UPSTREAM_FAILED', 502);
+        await expectDecisionError(new CopilotDecisionBackend(throwing).evaluate(request, invocationContext), 'DECISION_UPSTREAM_FAILED', 502);
+        expect(failed.transform).toHaveBeenCalledTimes(1);
+        expect(throwing.transform).toHaveBeenCalledTimes(1);
     });
 
     it.each([1, 2])('allows slow decisions with %i attempt(s), each within its own two-minute deadline', async attempts => {
@@ -152,7 +225,7 @@ describe('CopilotDecisionBackend', () => {
         }
     });
 
-    it('times out at the default two-minute deadline and aborts the in-flight transform', async () => {
+    it.each([undefined, false])('times out at the default deadline (allowOutputRepair=%s)', async allowOutputRepair => {
         vi.useFakeTimers();
         try {
             let seenSignal: AbortSignal | undefined;
@@ -161,7 +234,7 @@ describe('CopilotDecisionBackend', () => {
                 return new Promise(() => {});
             });
             const result = expectDecisionError(
-                new CopilotDecisionBackend(service).evaluate(request, context), 'DECISION_TIMEOUT', 504,
+                new CopilotDecisionBackend(service).evaluate(request, { ...context, allowOutputRepair }), 'DECISION_TIMEOUT', 504,
             );
 
             await vi.advanceTimersByTimeAsync(119_999);
@@ -187,7 +260,7 @@ describe('CopilotDecisionBackend', () => {
         expect(seenSignal?.aborted).toBe(true);
     });
 
-    it('cancels when the caller signal aborts', async () => {
+    it.each([undefined, false])('cancels when the caller signal aborts (allowOutputRepair=%s)', async allowOutputRepair => {
         const controller = new AbortController();
         let seenSignal: AbortSignal | undefined;
         const service = createService((_prompt, options) => {
@@ -196,11 +269,12 @@ describe('CopilotDecisionBackend', () => {
             return new Promise(() => {});
         });
         await expectDecisionError(
-            new CopilotDecisionBackend(service).evaluate(request, { ...context, signal: controller.signal }),
+            new CopilotDecisionBackend(service).evaluate(request, { ...context, signal: controller.signal, allowOutputRepair }),
             'DECISION_CANCELLED',
             499,
         );
         expect(seenSignal?.aborted).toBe(true);
+        expect(service.transform).toHaveBeenCalledTimes(1);
     });
 
     it('cancels immediately when the caller signal is already aborted', async () => {

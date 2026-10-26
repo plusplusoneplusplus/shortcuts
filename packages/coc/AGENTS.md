@@ -822,7 +822,9 @@ references before editing. Paths are package-relative.
 - Copilot decisions use explicit `isTransformAvailable` readiness and a two-minute
   deadline per initial/repair attempt. Preserve cancellation, timeout overrides,
   provider error categories and known usage totals. Repair only successful malformed
-  decision text; transport/model/usage failures never trigger another inference.
+  decision text unless server-owned `DecisionContext.allowOutputRepair` is false;
+  that invocation allows one inference only. Request bodies cannot override this
+  policy. Transport/model/usage failures never trigger another inference.
   Copilot direct transforms are opt-in, text-only, and never fall back to SDK.
   Keep agent/session and attachment paths on their established runtimes.
 - First/follow-up turns share context/system/policy/runner/settlement helpers

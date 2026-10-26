@@ -32,6 +32,8 @@ export interface DecisionContext {
     workspaceId: string;
     workingDirectory: string;
     signal?: AbortSignal;
+    /** Server-owned policy: false forbids a repair inference for malformed output. Defaults to true. */
+    allowOutputRepair?: boolean;
 }
 
 export interface DecisionBackend {
