@@ -214,6 +214,15 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         })
         : undefined;
 
+    const excludedTools = input.sentinelPrOutcomeReview ? [...new Set([
+        ...memoryV2.excludedBuiltinTools,
+        'bash', 'powershell', 'create', 'edit', 'write', 'apply_patch', 'task',
+        'Bash', 'Write', 'Edit', 'NotebookEdit', 'Task', 'Agent',
+        'run_in_terminal', 'terminal', 'execute', 'run_subagent',
+        'create_pull_request', 'send_to_conversation', 'cron', 'scheduleWakeup',
+        'store_memory', 'vote_memory', 'save_memory', 'skill',
+    ])] : memoryV2.excludedBuiltinTools;
+
     const toolBundle = buildChatToolBundle({
         sentinelPrOutcomeReview: input.sentinelPrOutcomeReview,
         unattendedScript: input.unattendedScript,
@@ -246,6 +255,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         includeToolScripting: input.includeToolScripting,
         onNestedToolEvent: input.onNestedToolEvent,
         mcpServers,
+        mcpExcludedTools: excludedTools,
         ...(input.browserOnly ? {
             includeFollowUpSuggestions: false, includeSearchConversations: false,
             includeTavilyWebSearch: false, includeScheduleWakeup: false,
@@ -275,14 +285,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         tools: toolBundle.tools,
         toolGuidance: toolBundle.toolGuidance,
         memoryV2,
-        excludedTools: input.sentinelPrOutcomeReview ? [...new Set([
-            ...memoryV2.excludedBuiltinTools,
-            'bash', 'powershell', 'create', 'edit', 'write', 'apply_patch', 'task',
-            'Bash', 'Write', 'Edit', 'NotebookEdit', 'Task', 'Agent',
-            'run_in_terminal', 'terminal', 'execute', 'run_subagent',
-            'create_pull_request', 'send_to_conversation', 'cron', 'scheduleWakeup',
-            'store_memory', 'vote_memory', 'save_memory', 'skill',
-        ])] : memoryV2.excludedBuiltinTools,
+        excludedTools,
         askUser: toolBundle.askUser,
         dispose: () => {
             memoryV2.dispose();

@@ -15,7 +15,7 @@ import type { BrowserControlRuntime } from '@plusplusoneplusplus/coc-client';
 import { createBrowserTool, type BrowserToolStateStore } from '../llm-tools/browser-tools';
 import { DEFAULT_DISABLED_LLM_TOOLS, filterDisabledLlmTools, isScriptableLlmTool } from '../llm-tools/llm-tool-registry';
 import { createRunToolScriptTool } from '../llm-tools/run-tool-script-tool';
-import { McpScriptScope } from '../llm-tools/mcp-script-tools';
+import { McpScriptScope, createExcludedMcpToolFilter } from '../llm-tools/mcp-script-tools';
 import { readApprovalRequiredLlmTools, readEffectiveDisabledLlmTools } from '../preferences-handler';
 import { applyLlmToolApprovalGate, type LlmToolApprovalRecord } from './llm-tool-approval-gate';
 import type { MemoryV2Addon } from './memory-v2-addon';
@@ -133,6 +133,8 @@ export interface ChatToolBundleOptions {
     mcpServers?: Record<string, MCPServerConfig>;
     /** Overrides the `features.toolScriptingMcp` config flag (used by tests). */
     toolScriptingMcpEnabled?: boolean;
+    /** The turn's provider `excludedTools`; matching MCP tools are hidden from scripts too. */
+    mcpExcludedTools?: string[];
 }
 
 export interface ChatToolBundle {
@@ -320,7 +322,12 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         && isToolScriptingEnabled(options)
         && filterDisabledLlmTools([{ name: 'run_tool_script' }], disabledWithContextExclusions).length > 0) {
         if (options.mcpServers && (options.toolScriptingMcpEnabled ?? isToolScriptingMcpEnabled(options.dataDir))) {
-            const scope = new McpScriptScope({ servers: options.mcpServers });
+            const scope = new McpScriptScope({
+                servers: options.mcpServers,
+                isToolAllowed: createExcludedMcpToolFilter([
+                    ...(disabledWithContextExclusions ?? []), ...(options.mcpExcludedTools ?? []),
+                ]),
+            });
             if (scope.serverNames().length > 0) {
                 mcpScope = scope;
                 options.browserSignal?.addEventListener('abort', () => void scope.close(), { once: true });
@@ -333,7 +340,8 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
             signal: options.browserSignal,
             onNestedToolEvent: options.onNestedToolEvent,
             mcp: mcpScope,
-            gateMcpTools: mcpTools => applyLlmToolApprovalGate(mcpTools, approvalGate),
+            gateMcpTools: mcpTools => applyLlmToolApprovalGate(
+                filterDisabledLlmTools(mcpTools, disabledWithContextExclusions), approvalGate),
         });
         tools.push(...applyLlmToolApprovalGate([tool], approvalGate));
     }

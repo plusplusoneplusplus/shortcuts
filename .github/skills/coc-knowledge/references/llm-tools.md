@@ -840,8 +840,13 @@ Flag off or `mcpServers: {}` adds nothing. The pair goes through the turn's LLM-
 `readApprovalRequiredLlmTools()` includes it unless the repo's `approvalOptOutLlmTools` lists it;
 the `llm-tools-config` PUT splits the requested effective list with `toApprovalPreferences()`
 (a missing default-gated tool becomes an opt-out) and GET returns the effective list.
-Unattended runs deny it; `mcp_list_tools` is never gated. Turn tool filters and the non-chat
-surfaces are not wired yet.
+Unattended runs deny it; `mcp_list_tools` is never gated. Tool filters: the config `tools`
+allowlist (per-repo `enabledMcpTools`, the source of Codex `enabled_tools`) applies as is, and the
+scope's `isToolAllowed` comes from `createExcludedMcpToolFilter()` over the turn's disabled LLM
+tools, `excludeTools` and provider `excludedTools`, matching `<server>-<tool>`,
+`mcp__<server>__<tool>` and `<server>/<tool>`. Filtered tools are hidden from `mcp_list_tools`
+and fail with `tool-not-allowed`; excluding `mcp_call` itself drops it from the script runtime
+and description. The non-chat surfaces are not wired yet.
 
 ## Supporting Modules
 

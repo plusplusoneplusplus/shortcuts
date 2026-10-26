@@ -26,7 +26,7 @@ import {
     type ToolInvocation,
 } from '@plusplusoneplusplus/coc-agent-sdk';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
-import { createMcpScriptTools, type McpScriptScope } from './mcp-script-tools';
+import { createMcpScriptTools, MCP_CALL_TOOL_NAME, type McpScriptScope } from './mcp-script-tools';
 
 export interface RunToolScriptToolDeps {
     /** The scriptable tools of this turn (already filtered and approval-gated). */
@@ -49,9 +49,11 @@ interface RunToolScriptArgs {
 
 export function buildRunToolScriptDescription(toolNames: readonly string[], mcpServerNames: readonly string[] = []): string {
     const callable = [...toolNames, RUN_TOOL_SCRIPT_TOOL_NAME].map(name => `tools.${name}`).join(', ');
+    const mcpCall = toolNames.includes(MCP_CALL_TOOL_NAME)
+        ? ' and tools.mcp_call({ server, tool, args }) to call one (resolves to its text, parsed as JSON when possible)'
+        : '';
     const mcp = mcpServerNames.length > 0
-        ? `MCP servers: ${mcpServerNames.join(', ')}; use tools.mcp_list_tools({ server }) to see their tools `
-            + 'and tools.mcp_call({ server, tool, args }) to call one (resolves to its text, parsed as JSON when possible). '
+        ? `MCP servers: ${mcpServerNames.join(', ')}; use tools.mcp_list_tools({ server }) to see their tools${mcpCall}. `
         : '';
     return 'Run a JavaScript script that calls CoC tools as async functions and returns only what you `return`. '
         + 'Use it for loops, filtering, or fan-out across many tool calls. '

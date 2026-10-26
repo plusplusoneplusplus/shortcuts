@@ -49,6 +49,23 @@ interface McpConnection {
     tools?: McpScriptToolInfo[];
 }
 
+/**
+ * The provider-facing names an MCP tool can carry in a turn's tool filters:
+ * Copilot `<server>-<tool>`, Claude `mcp__<server>__<tool>` and `<server>/<tool>`.
+ */
+export function mcpToolFilterNames(server: string, tool: string): string[] {
+    return [`${server}-${tool}`, `mcp__${server}__${tool}`, `${server}/${tool}`];
+}
+
+/** An `isToolAllowed` filter from a turn's excluded tool names; undefined when nothing is excluded. */
+export function createExcludedMcpToolFilter(
+    excluded: Iterable<string> | undefined,
+): ((server: string, tool: string) => boolean) | undefined {
+    const names = new Set(excluded ?? []);
+    if (names.size === 0) return undefined;
+    return (server, tool) => !mcpToolFilterNames(server, tool).some(name => names.has(name));
+}
+
 export class McpScriptScope {
     private readonly servers: Record<string, MCPServerConfig>;
     private readonly connections = new Map<string, Promise<McpConnection>>();

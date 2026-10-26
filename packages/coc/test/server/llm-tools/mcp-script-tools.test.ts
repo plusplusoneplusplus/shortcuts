@@ -13,6 +13,7 @@ import type { AddressInfo } from 'net';
 import { CocToolRuntime, runToolScript, type MCPServerConfig } from '@plusplusoneplusplus/coc-agent-sdk';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
+    createExcludedMcpToolFilter,
     createMcpScriptTools,
     MCP_CALL_TOOL_NAME,
     MCP_LIST_TOOLS_TOOL_NAME,
@@ -231,5 +232,19 @@ describe('McpScriptScope over HTTP', () => {
         } finally {
             fs.rmSync(emptyHome, { recursive: true, force: true });
         }
+    });
+});
+
+describe('createExcludedMcpToolFilter', () => {
+    it('is undefined when nothing is excluded', () => {
+        expect(createExcludedMcpToolFilter(undefined)).toBeUndefined();
+        expect(createExcludedMcpToolFilter([])).toBeUndefined();
+    });
+
+    it('matches Copilot, Claude and slash names but not bare or other-server names', () => {
+        const allowed = createExcludedMcpToolFilter(['a-x', 'mcp__a__y', 'a/z', 'w', 'b-w'])!;
+        expect([allowed('a', 'x'), allowed('a', 'y'), allowed('a', 'z')]).toEqual([false, false, false]);
+        expect(allowed('a', 'w')).toBe(true);
+        expect(allowed('b', 'x')).toBe(true);
     });
 });

@@ -242,4 +242,43 @@ describe('run_tool_script MCP access in a chat turn', () => {
         });
         expect(bundle.mcpScope).toBeUndefined();
     });
+
+    describe('tool filters', () => {
+        const listAndCall = (tool: string) => `
+            const listed = await tools.mcp_list_tools({ server: 'alpha' });
+            let failed;
+            try { await tools.mcp_call({ server: 'alpha', tool: '${tool}', args: {} }); }
+            catch (err) { failed = err.message; }
+            return { names: listed.tools.map(t => t.name), failed };`;
+
+        it('hides excluded MCP tools in every provider naming and refuses to call them', async () => {
+            addWorkspace('ws-a', ['alpha']);
+            const ctx = await turn('ws-a', { excludeTools: ['alpha-secret', 'mcp__alpha__fail', 'alpha/pid'] });
+            const run = await runScript(ctx.tools, listAndCall('secret'));
+            expect(run.result.names).toEqual(['echo']);
+            expect(run.result.failed).toContain('tool-not-allowed: alpha/secret');
+            expect((await runScript(ctx.tools, listAndCall('fail'))).result.failed).toContain('tool-not-allowed: alpha/fail');
+        });
+
+        it('honors the per-repo MCP tool allow-list (the source of provider allowlists like Codex enabled_tools)', async () => {
+            addWorkspace('ws-a', ['alpha']);
+            writeRepoPreferences(tmpDir, 'ws-a', { disabledLlmTools: [], enabledMcpTools: { alpha: ['echo'] } });
+            const ctx = await turn('ws-a');
+            const run = await runScript(ctx.tools, listAndCall('pid'));
+            expect(run.result.names).toEqual(['echo']);
+            expect(run.result.failed).toContain('tool-not-allowed: alpha/pid');
+        });
+
+        it('drops mcp_call when the turn excludes it but keeps listing', async () => {
+            addWorkspace('ws-a', ['alpha']);
+            const ctx = await turn('ws-a', { excludeTools: ['mcp_call'] });
+            const description = scriptTool(ctx.tools).description!;
+            expect(description).toContain('tools.mcp_list_tools');
+            expect(description).not.toContain('tools.mcp_call');
+            const run = await runScript(ctx.tools, `
+                const listed = await tools.mcp_list_tools({ server: 'alpha' });
+                return { names: listed.tools.map(t => t.name), hasCall: typeof tools.mcp_call };`);
+            expect(run.result.names).toEqual(['echo', 'pid', 'fail', 'secret']);
+        });
+    });
 });
