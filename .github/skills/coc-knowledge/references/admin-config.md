@@ -181,8 +181,11 @@ defaults to an empty string. Both are server-wide, live admin registry settings.
 Connections -> Teams renders the toggle and multiline decision prompt in one
 Outbound compliance group. File and merged admin validation require a nonblank
 prompt when enabled, preserving disabled drafts and the exact saved policy text.
-Validation or save errors retain pending edits and use the existing error toast.
-The prompt stays in admin configuration, outside dashboard runtime feature flags.
+The prompt shows an inline alert for enabled blank drafts, associated through
+`aria-invalid` and `aria-describedby`; its help explains fail-closed Teams delivery
+and CoC reporting. Validation or save errors retain pending edits and use the
+existing error toast and Save/Cancel controls. The prompt stays in admin
+configuration, outside dashboard runtime feature flags.
 
 ## Copilot One-Shot Transport
 

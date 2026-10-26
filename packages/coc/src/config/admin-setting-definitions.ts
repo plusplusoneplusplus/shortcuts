@@ -1056,7 +1056,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         key: 'teamsOutboundCompliance.prompt', value: { kind: 'string' }, default: '', runtime: 'live',
         ui: {
             tab: 'teams', group: 'teamsOutboundCompliance', order: 20, label: 'Compliance decision prompt',
-            hint: 'Define when outbound text is allowed or blocked. Required when the check is enabled. The decision includes the complete formatted message and its source trigger, not unrelated chat history.',
+            hint: 'Define when outbound text is allowed or blocked. Required when the check is enabled. The decision includes the complete formatted message and its source trigger, not unrelated chat history. Policy rejection or a decision API error sends no Teams text; the failure is reported in CoC on the Teams status card.',
             control: { type: 'textarea' }, testId: 'textarea-teams-outbound-compliance-prompt',
         },
     },

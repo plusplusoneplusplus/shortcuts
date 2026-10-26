@@ -1189,7 +1189,10 @@ references before editing. Paths are package-relative.
   `features.teamsOutboundCompliance` defaults off and `teamsOutboundCompliance.prompt`
   defaults empty. Enabled file and merged admin config require a nonblank prompt.
   Keep the multiline policy in the Teams registry group and outside dashboard
-  runtime feature flags; validation/save errors preserve the draft.
+  runtime feature flags. Enabled blank drafts show an inline alert associated with
+  the prompt through `aria-invalid` and `aria-describedby`; help explains fail-closed
+  Teams delivery and CoC reporting. Keep Save/Cancel and error toasts intact;
+  validation/save errors preserve the draft.
   `sendTeamsIc3SourceReply` checks source-owned compliance context before any chunk,
   using `teams-outbound-compliance.ts`. Capture destination/content before awaiting;
   allow covers only those exact chunks. Keep one Copilot DecisionService evaluation,
