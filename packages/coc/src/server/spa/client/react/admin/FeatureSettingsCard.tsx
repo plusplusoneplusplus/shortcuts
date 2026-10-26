@@ -71,6 +71,16 @@ function FeatureSettingRow({ def, featureValues, setFeatureValues, sources, isDe
                         <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                 </select>
+            ) : ui.control?.type === 'textarea' ? (
+                <textarea
+                    className="ar-input"
+                    rows={5}
+                    value={String(featureValues[def.key] ?? '')}
+                    onChange={e => setFeatureValues(prev => ({ ...prev, [def.key]: e.target.value }))}
+                    data-testid={ui.testId}
+                    aria-label={ui.label}
+                    style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit' }}
+                />
             ) : ui.control?.type === 'workspace' ? (
                 <AdminWorkspaceSelect
                     value={String(featureValues[def.key] ?? '')}

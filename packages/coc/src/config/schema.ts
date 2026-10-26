@@ -252,6 +252,13 @@ const BASE_SCHEMA_TREE: SchemaTree = {
 export const CLIConfigSchema = (treeToZodObject(
     mergeSchemaTrees(BASE_SCHEMA_TREE, buildAdminSettingsSchemaTree())
 ) as unknown as z.ZodType<CLIConfig>).superRefine((config, ctx) => {
+    if (config.features?.teamsOutboundCompliance === true && !config.teamsOutboundCompliance?.prompt?.trim()) {
+        ctx.addIssue({
+            code: 'custom',
+            path: ['teamsOutboundCompliance', 'prompt'],
+            message: 'A nonblank decision prompt is required when outbound compliance check is enabled',
+        });
+    }
     if (config.features?.teamsReactionDelegation !== true) return;
     for (const field of ['workspaceId', 'dispatcherSkill'] as const) {
         if (!config.teamsReactionDelegation?.[field]) {

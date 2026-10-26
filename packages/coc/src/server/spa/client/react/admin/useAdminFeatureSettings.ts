@@ -38,6 +38,10 @@ export function readFeatureValues(resolved: unknown): FeatureValues {
 }
 
 function configUpdate(values: FeatureValues): Record<string, boolean | string | null> {
+    if (values['features.teamsOutboundCompliance'] === true
+        && !String(values['teamsOutboundCompliance.prompt'] ?? '').trim()) {
+        throw new Error('A nonblank decision prompt is required when outbound compliance check is enabled.');
+    }
     if (values['features.teamsIc3OwnCommands'] === true
         && !values['teamsIc3OwnCommands.workspaceId']) {
         throw new Error('Select a command workspace before enabling own commands.');

@@ -1183,6 +1183,11 @@ references before editing. Paths are package-relative.
   and safe classifiers, not source content or identities.
   See [reaction architecture](../../.github/skills/coc-knowledge/references/server-architecture.md#teams-reaction-job-admission)
   for module boundaries, budgets and protocol-verification limits.
+- Teams outbound compliance settings are server-wide and live:
+  `features.teamsOutboundCompliance` defaults off and `teamsOutboundCompliance.prompt`
+  defaults empty. Enabled file and merged admin config require a nonblank prompt.
+  Keep the multiline policy in the Teams registry group and outside dashboard
+  runtime feature flags; validation/save errors preserve the draft.
 - Ask/sentinel turns started from WhatsApp/Teams and jobs carrying
   `metadata.messagingOrigin` (every turn, including autopilot) relay
   `ask_user` questions one at a time to the originating group/thread through
