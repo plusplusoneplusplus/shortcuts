@@ -47,11 +47,12 @@ export class CopilotDecisionBackend implements DecisionBackend {
     }
 
     async evaluate(request: ValidatedDecisionRequest, context: DecisionContext): Promise<DecisionResponse> {
+        const maxAttempts = context.allowOutputRepair === false ? 1 : COPILOT_DECISION_MAX_ATTEMPTS;
         await this.requireAvailable();
 
         let prompt = buildDecisionPrompt(request);
         let usage: DecisionUsage | undefined;
-        for (let attempt = 1; attempt <= COPILOT_DECISION_MAX_ATTEMPTS; attempt++) {
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             const result = await this.invoke(prompt, context);
             usage = addUsage(usage, result);
             const parsed = parseDecisionOutput(result.text, request);
@@ -64,11 +65,11 @@ export class CopilotDecisionBackend implements DecisionBackend {
                     metadata: { confidenceKind: 'self_reported', attempts: attempt, durationMs: 0 },
                 };
             }
-            if (attempt === COPILOT_DECISION_MAX_ATTEMPTS) {
+            if (attempt === maxAttempts) {
                 throw new DecisionBackendError({
                     code: 'DECISION_INVALID_OUTPUT',
                     status: 502,
-                    message: `Copilot returned invalid decision output after ${attempt} attempts.`,
+                    message: `Copilot returned invalid decision output after ${attempt} attempt${attempt === 1 ? '' : 's'}.`,
                     details: { errors: parsed.errors },
                 });
             }
