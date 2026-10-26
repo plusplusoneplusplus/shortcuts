@@ -502,6 +502,19 @@ describe('Features card UI metadata', () => {
         })).toolScriptingEnabled).toBe(true);
     });
 
+    it('keeps MCP in tool scripts opt-in and dependent on tool scripting', () => {
+        const def = getAdminSettingDefinition('features.toolScriptingMcp')!;
+        expect(def.default).toBe(false);
+        expect(def.runtime).toBe('live');
+        expect(def.ui).toMatchObject({
+            group: 'review', badge: 'experimental',
+            dependsOn: 'features.toolScripting',
+            testId: 'toggle-tool-scripting-mcp-enabled',
+        });
+        expect(DEFAULT_CONFIG.features.toolScriptingMcp).toBe(false);
+        expect(readAdminSettingValue(def, {})).toBe(false);
+    });
+
     it('exposes the query pull request tool as a live, default-on toggle', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.queryPullRequestTool')!;
         expect(def.default).toBe(true);
@@ -995,6 +1008,7 @@ describe('feature toggle settings-tab placement', () => {
         'excalidraw.enabled': 'features',
         'LLMToolSystemOne.enabled': 'features',
         'features.toolScripting': 'features',
+        'features.toolScriptingMcp': 'features',
         'features.queryPullRequestTool': 'features',
         'features.canvasHostApis': 'features',
         'features.canvasToolScripts': 'features',

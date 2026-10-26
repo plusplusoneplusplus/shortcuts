@@ -113,6 +113,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `arxivPaperIngest` | off | Only the Notes editor interception embedding a lone pasted arXiv link; the paper-ingest API stays callable |
 | `canvasHostApis` | off | Extension-canvas host APIs (below) |
 | `canvasToolScripts` | off | Canvas `host.runScript` (below) |
+| `toolScriptingMcp` | off | Live MCP opt-in for tool scripts; Admin → Features places it beside Tool scripting with `features.toolScripting` as its dependency |
 | `chatStyleSelector` | on | Chat Style chip (below) |
 | `defaultChatStyle` | `default` | Enum (`default`\|`human`\|`direct`\|`terse`\|`structured`); style new conversations start on (below) |
 | `chatProviderSwitching` | off | Concrete provider changes between idle Ask/Autopilot follow-up turns (below) |
