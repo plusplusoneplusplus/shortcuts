@@ -31,6 +31,32 @@ function harness(stateStore = new BrowserToolStateStore(dataDir), workspaceId = 
 }
 
 describe('compact browser tool', () => {
+    it('requests human help immediately outside the tool queue and returns refreshed context and the optional note', async () => {
+        const h = harness();
+        let resolve!: (result: BrowserCommandResult) => void;
+        h.execute.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+        const read = h.call({ action: 'read' });
+        await vi.waitFor(() => expect(h.execute).toHaveBeenCalledOnce());
+        h.execute.mockResolvedValueOnce({ tab: 't1:view', elements: [element('e1', 'Continue')], handoffNote: 'Signed in' });
+        const help = await h.call({ action: 'request_human', text: 'Complete sign-in' });
+        expect(h.execute).toHaveBeenCalledTimes(2);
+        expect(help.textResultForLlm).toContain('Handoff note: Signed in');
+        expect(help.textResultForLlm).toContain('Continue');
+        resolve({ text: 'ordinary', textTotal: 8 }); await read;
+    });
+    it('captures the handoff revision before entering the tool queue', async () => {
+        const h = harness(); let revision = 0;
+        Object.assign(h.runtime, { getHumanTakeoverRevision: () => revision });
+        let resolve!: (result: BrowserCommandResult) => void;
+        h.execute.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+        const first = h.call({ action: 'read' });
+        const delayed = h.call({ action: 'navigate', direction: 'back' });
+        await vi.waitFor(() => expect(h.execute).toHaveBeenCalledOnce());
+        revision = 1;
+        h.execute.mockResolvedValueOnce({ elements: [] });
+        resolve({ text: 'ordinary', textTotal: 8 }); await first; await delayed;
+        expect(h.execute.mock.calls[1][6]).toBe(0);
+    });
     it('forwards bounded rich paste without reflecting clipboard content in the result', async () => {
         const h = harness();
         const command = { action: 'paste_html', ref: 'e1', html: '<b>Synthetic payload</b>', text: 'Synthetic payload', replaceClipboard: true } as const;

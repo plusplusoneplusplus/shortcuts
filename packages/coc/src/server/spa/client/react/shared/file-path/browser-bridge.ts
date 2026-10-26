@@ -94,6 +94,8 @@ export interface BrowserViewState {
 /** A page asked to open a new-window link as another tab. */
 export interface BrowserNewTabRequest {
     openerViewId: string;
+    /** Main-minted identity for a popup created during human ownership. */
+    viewId?: string;
     engine: BrowserEngine;
     url: string;
 }
@@ -112,6 +114,10 @@ export interface DesktopBrowserBridge {
     control?: {
         framesSupported?: boolean;
         richPasteSupported?: boolean;
+        humanTakeoverSupported?: boolean;
+        takeover?(identity: import('@plusplusoneplusplus/coc-client').BrowserTakeoverState, action: 'take' | 'return' | 'stop', note?: string): Promise<void>;
+        setTakeoverPolicy?(routingRef: string, enabled: boolean): Promise<void>;
+        onTakeover?(callback: (state: import('@plusplusoneplusplus/coc-client').BrowserTakeoverState) => void): () => void;
         bindScope(workspaceId: string | null, sessionKey: string | null): Promise<{ ownerId: number } | void>;
         /** Keep a background scope controllable while another is selected; `null` drops it. Absent on older desktops. */
         retainScope?(sessionKey: string, workspaceId: string | null): Promise<void>;

@@ -41,6 +41,7 @@ function harness(baseUrl?: string, modern = false) {
     let reveal!: (event: any) => void;
     let activity!: (event: any) => void;
     let stop!: (event: any) => void;
+    let takeoverState!: (state: any) => void;
     let navigationCheck!: (event: any) => void;
     const control = {
         framesSupported: modern,
@@ -50,6 +51,8 @@ function harness(baseUrl?: string, modern = false) {
         cancel: vi.fn(),
         onReveal: vi.fn((handler: (event: any) => void) => { reveal = handler; return vi.fn(); }),
         ...(modern ? {
+            onTakeover: vi.fn((handler: (state: any) => void) => { takeoverState = handler; return vi.fn(); }),
+            setTakeoverPolicy: vi.fn(async () => {}),
             finish: vi.fn(), setVisible: vi.fn(), releaseFrames: vi.fn(async () => {}),
             onActivity: vi.fn((handler: (event: any) => void) => { activity = handler; return vi.fn(); }),
             onStop: vi.fn((handler: (event: any) => void) => { stop = handler; return vi.fn(); }),
@@ -60,7 +63,7 @@ function harness(baseUrl?: string, modern = false) {
     (window as any).cocDesktop = { browser: { control } };
     const relay = createBrowserSocketRelay({ send }, baseUrl);
     return { relay, control, send, reveal: (event: any) => reveal(event), activity: (event: any) => activity(event), stop: (event: any) => stop(event),
-        navigationCheck: (event: any) => navigationCheck(event) };
+        navigationCheck: (event: any) => navigationCheck(event), takeoverState: (state: any) => takeoverState(state) };
 }
 const request = { id: 'r', workspaceId: 'w', processId: 'p', command: { action: 'tabs' } };
 const tick = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
@@ -807,5 +810,23 @@ describe('SPA browser socket relay', () => {
             remote.relay.dispose();
             local.relay.dispose();
         });
+    });
+});
+
+
+describe('human takeover relay lifecycle', () => {
+    it('retains paused work with background off, sends privacy state only to its source and clears it on disconnect', async () => {
+        const h = harness(undefined, true);
+        const retainScope = vi.fn(async () => {}); Object.assign(h.control, { retainScope, humanTakeoverSupported: true });
+        await h.relay.update('w'); h.relay.onOpen();
+        h.control.execute.mockImplementationOnce(() => new Promise(() => {}));
+        h.relay.onMessage({ type: 'browser-command', request: { ...request, turnId: 'turn', humanTakeoverEnabled: true } });
+        h.takeoverState({ workspaceId: 'w', processId: 'p', turnId: 'turn', routingRef: 'w', status: 'human', viewIds: ['one'] });
+        expect(h.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'browser-takeover-state' }));
+        await h.relay.update('other');
+        expect(retainScope).toHaveBeenCalledWith('w', 'w'); expect(h.control.cancel).not.toHaveBeenCalled();
+        h.relay.onClose();
+        expect(h.control.setTakeoverPolicy).toHaveBeenCalledWith('w', false); expect(h.control.cancel).toHaveBeenCalledWith('r');
+        h.relay.dispose();
     });
 });

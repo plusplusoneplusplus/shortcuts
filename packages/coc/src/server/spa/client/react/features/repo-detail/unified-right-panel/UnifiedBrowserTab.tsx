@@ -5,6 +5,7 @@ import { BrowserDownloadsPanel } from './BrowserDownloadsPanel';
 import { BrowserHistoryPanel } from './BrowserHistoryPanel';
 import { BrowserAddressBar } from './BrowserAddressBar';
 import { BrowserSiteInfoButton, type BrowserSiteInfoSource } from './BrowserSiteInfo';
+import { BrowserHumanTakeoverStrip } from '../../../shared/file-path/BrowserHumanTakeoverStrip';
 import { BrowserControlBadge } from '../../../shared/file-path/BrowserControlBadge';
 import { isMacPlatform } from '../../../utils/composerKeyboardShortcuts';
 import { normalizeBrowserUrl } from './unifiedBrowserTabs';
@@ -190,7 +191,7 @@ export function UnifiedBrowserTab({
                 event.stopPropagation();
             }}
         >
-            {workspaceId && <BrowserControlBadge workspaceId={workspaceId} routingRef={routingRef} tabId={tabId} />}
+            {workspaceId && <BrowserControlBadge workspaceId={workspaceId} routingRef={routingRef} tabId={tabId} viewId={viewId} />}
             {bridge && (
                 <NativeViewNavButtons
                     canGoBack={Boolean(page?.canGoBack)}
@@ -229,6 +230,7 @@ export function UnifiedBrowserTab({
                 onDownloads={() => setDownloadsScope(historyKey)}
                 onHistory={bridge?.history && onOpenHistoryUrl ? () => setHistoryScope(historyKey) : undefined}
             />
+            <BrowserHumanTakeoverStrip routingRef={sessionKey} viewId={viewId} />
         </div>
     );
 

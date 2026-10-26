@@ -1,4 +1,4 @@
-import type { BrowserCommandRequest, BrowserNavigationPrompt, ProcessWebSocketConnection } from '@plusplusoneplusplus/coc-client';
+import type { BrowserCommandRequest, BrowserNavigationPrompt, BrowserTakeoverState, ProcessWebSocketConnection } from '@plusplusoneplusplus/coc-client';
 import { desktopBrowserBridge, type BrowserControlReveal, type BrowserControlActivityEvent } from './browser-bridge';
 import { getSpaCocClient, getCocClientFor } from '../../api/cocClient';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserBackgroundControlEnabled, isBrowserControlEnabled } from '../../utils/config';
@@ -11,6 +11,7 @@ import { attachBrowserWebview, setBrowserWebviewBackground } from '../../feature
 import { getBrowserControlScope, subscribeBrowserControlScope } from './browser-control-scope';
 import { startBrowserControlActivity, updateBrowserControlTab, finishBrowserControlActivity, resumeBrowserControlActivity, removeBrowserControlActivity } from './browser-control-activity';
 import { clearBrowserControlNotice, setBrowserControlNotice } from './browser-control-notice';
+import { setBrowserTakeover, clearBrowserTakeover } from './browser-takeover';
 import { clearBrowserNavigationPrompt, setBrowserNavigationPrompt } from './browser-navigation-prompts';
 
 /**
@@ -30,6 +31,8 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
     let disposed = false;
     let selectedRef: string | null = null;
     let ownerId: number | undefined;
+    const handoffs = new Map<string, BrowserTakeoverState>();
+    const paused = (ref: string) => [...handoffs.values()].some(state => state.routingRef === ref && !['agent', 'terminated'].includes(state.status));
     const controlled = new Map<string, { workspaceId: string; processId: string; routingRef: string; turnId?: string; routed?: boolean }>();
     /** Pending request id -> the routing ref it runs under. */
     const pending = new Map<string, string>();
@@ -101,18 +104,19 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
         if (!match || ownerId !== undefined && Number(match[1]) !== ownerId) return undefined;
         return findBrowserPanelView(match[2], targetWorkspace, ref)?.tab.id;
     };
-    const background = () => backgroundOn() ? { background: backgroundIds() } : {};
+    const background = () => backgroundOn() || handoffs.size > 0 ? { background: backgroundIds() } : {};
     const advertise = (focused = document.hasFocus()) => {
         if (!connected) return;
-        if (workspaceId) connection.send({ type: 'browser-capability', workspaceId, focused, ...background() });
-        else if (backgroundOn()) connection.send({ type: 'browser-capability-clear', ...background() });
+        if (workspaceId) connection.send({ type: 'browser-capability', workspaceId, focused, ...(control?.humanTakeoverSupported ? { humanTakeoverSupported: true } : {}), ...background() });
+        else if (backgroundOn() || handoffs.size > 0) connection.send({ type: 'browser-capability-clear', ...background() });
     };
     const focus = () => advertise();
     const offFocused = control?.onFocused?.(() => advertise(true));
     /** Retains every controlled scope other than the foreground one; never drops (see `releaseRetained`). */
     const retainControlled = (foreground: string | null) => {
-        if (!backgroundOn() || !connected) return;
+        if ((!backgroundOn() && !handoffs.size) || !connected) return;
         for (const activity of controlled.values()) {
+            if (!backgroundOn() && !paused(activity.routingRef)) continue;
             if (activity.routingRef === foreground || retained.has(activity.routingRef) || retained.size >= 64) continue;
             retained.set(activity.routingRef, activity.workspaceId);
             void control!.retainScope!(activity.routingRef, activity.workspaceId)
@@ -121,7 +125,7 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
     };
     /** Drops retained scopes without an active turn; their pending requests are cancelled. */
     const releaseRetained = (all = false) => {
-        const live = new Set(all || !backgroundOn() || !connected ? [] : [...controlled.values()].map(activity => activity.routingRef));
+        const live = new Set(all || !connected ? [] : [...controlled.values()].filter(activity => backgroundOn() || paused(activity.routingRef)).map(activity => activity.routingRef));
         if (!all && routingRef) live.delete(routingRef);
         let changed = false;
         for (const ref of [...retained.keys()]) {
@@ -207,6 +211,22 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
         connection.send({ type: 'browser-navigation-check', checkId: event.checkId, workspaceId: event.workspaceId,
             processId: event.processId, turnId: event.turnId, url: event.url });
     });
+    const offTakeover = control?.onTakeover?.(state => {
+        if (disposed || !matchesSource(state)) return;
+        const key = JSON.stringify([state.workspaceId, state.processId]);
+        handoffs.set(key, state);
+        setBrowserTakeover(state);
+        if (connected) connection.send({ type: 'browser-takeover-state', state });
+        syncRetention();
+        advertise();
+    });
+    const clearHandoffs = () => {
+        for (const state of handoffs.values()) {
+            void control?.setTakeoverPolicy?.(state.routingRef, false);
+            clearBrowserTakeover(state.routingRef, state.processId);
+        }
+        handoffs.clear();
+    };
     const stopping = new Set<string>();
     const offStop = control?.onStop?.(event => {
         if (!connected || !matchesSource(event) || stopping.has(event.turnId)) return;
@@ -284,7 +304,7 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
         if (request.framesEnabled === true) { framePending.add(request.id); frameRefs.add(ref); }
         // Cancellation (switch, close, config change) removes the entry, so only live requests reply.
         const live = () => pending.get(request.id) === ref && connected && !waiting.has(request.id);
-        void (backgroundOn() ? control!.execute(request, ref) : control!.execute(request)).then(
+        void (backgroundOn() || request.humanTakeoverEnabled ? control!.execute(request, ref) : control!.execute(request)).then(
             result => {
                 if (live()) {
                     const tabId = panelTabId(result.tab, request.workspaceId, ref) ?? result.tab;
@@ -353,8 +373,9 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             rerunWaiting();
         },
         onOpen() { connected = true; syncVisibility(); retainControlled(routingRef); advertise(); },
-        onClose() { connected = false; cancelPending(); blockNavigations(); releaseRetained(true); clearActivities(); },
+        onClose() { connected = false; clearHandoffs(); cancelPending(); blockNavigations(); releaseRetained(true); clearActivities(); },
         onMessage(message: { type: string; [key: string]: unknown }): boolean {
+            if (message.type === 'browser-takeover-policy' && message.enabled === false) { clearHandoffs(); return true; }
             if (message.type === 'config-changed') {
                 for (const id of [...framePending]) {
                     if (dropWaiting(id, 'Browser frame policy changed during command')) continue;
@@ -368,6 +389,9 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             }
             if (message.type === 'browser-turn-finished' && typeof message.turnId === 'string'
                 && typeof message.workspaceId === 'string' && typeof message.processId === 'string') {
+                const handoffKey = JSON.stringify([message.workspaceId, message.processId]);
+                const handoff = handoffs.get(handoffKey);
+                if (handoff?.turnId === message.turnId) { clearBrowserTakeover(handoff.routingRef, handoff.processId); handoffs.delete(handoffKey); }
                 control?.finish?.(message.turnId);
                 dropWaitingTurn(message.workspaceId, message.processId, message.turnId, 'Browser conversation turn has finished');
                 finishBrowserControlActivity(message.workspaceId, message.processId, baseUrl, message.turnId);
@@ -429,6 +453,9 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
                 connection.send({ type: 'browser-command-result', reply: { id: request.id, ok: false, error: 'Unsupported desktop capability: browser frame control' } });
                 return true;
             }
+            if (request.humanTakeoverEnabled && control.humanTakeoverSupported !== true) {
+                connection.send({ type: 'browser-command-result', reply: { id: request.id, ok: false, error: 'Unsupported desktop capability: browser human takeover' } }); return true;
+            }
             if (request.command?.action === 'paste_html' && (control.richPasteSupported !== true || request.richPasteEnabled !== true)) {
                 connection.send({ type: 'browser-command-result', reply: { id: request.id, ok: false, error: 'Unsupported or disabled desktop rich paste capability' } });
                 return true;
@@ -453,6 +480,7 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
         },
         dispose() {
             disposed = true;
+            clearHandoffs();
             ++revision;
             cancelPending();
             blockNavigations();
@@ -464,6 +492,7 @@ export function createBrowserSocketRelay(connection: Pick<ProcessWebSocketConnec
             offActivity?.();
             offStop?.();
             offNavigationCheck?.();
+            offTakeover?.();
             window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, onConfigUpdated);
             window.removeEventListener('focus', focus);
             unsubscribeScope();

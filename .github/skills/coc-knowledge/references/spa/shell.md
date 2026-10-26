@@ -346,6 +346,26 @@ until they settle; release events complete dispatched key/mouse presses. The
 local-only Electron relay fixture exercises WebSocket, SPA tab creation, preload,
 main, trusted input, markdown, evaluation, JPEG crops and popup discovery.
 
+### Browser human takeover
+
+Default-off `browserControl.humanTakeoverEnabled` advertises explicit desktop support.
+Main's `BrowserHumanTakeover` owns an in-memory exact owner/workspace/process/turn gate
+across claimed URL views and popups. Toolbar Take over and `request_human(text)` pause
+dispatch immediately; issued input settles required releases before human ownership.
+Server and IPC deadlines compose with navigation holds; provider deadlines keep running.
+Late observations are discarded. Stop, disable, disconnect, close and turn finish
+terminate pending work; reconnect never replays a revoked turn.
+
+`BrowserHumanTakeoverStrip` lives in the browser toolbar. Explicit Return refreshes
+ordinary context without input values, then preserved work validates opaque document,
+frame and mutation stamps. Unprovable or changed targets return `stale-action` for
+replanning; issued unknown outcomes never replay. Tool-queue revision capture covers
+commands delayed on the server. Paused scopes survive workspace switches with background
+control off; Return requires the owning foreground surface. Snapshots and credentials
+never enter handoff state persistence. Runtime state and optional notes stay in memory.
+
+### Background browser control
+
 With default-off `browserControl.backgroundEnabled` (runtime flag
 `browserBackgroundControlEnabled`) and a desktop exposing `control.retainScope`,
 switching workspace keeps every scope with an active turn retained: the relay
@@ -359,7 +379,8 @@ hidden fail before dispatch with `foreground-required:`; the relay then sends
 `#repos/<panel scope>/chats/<processId>` (repo group or clone key); once that ref
 is foreground again, waiting requests re-run. Turn finish, tab close, server
 cancel, flag off, socket close and dispose reject and clear them. Other background
-errors return unchanged. With the flag off, switching cancels as before.
+errors return unchanged. With the flag off, switching cancels active agent work;
+human takeover retains its private pause until explicit Return or termination.
 
 Site approval (live `browserControl.navigationApprovalEnabled`, default on) gates
 agent-driven main-frame loads while a control turn is active on the view, its

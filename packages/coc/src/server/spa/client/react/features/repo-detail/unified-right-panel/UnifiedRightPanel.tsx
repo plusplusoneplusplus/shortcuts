@@ -809,7 +809,7 @@ export function UnifiedRightPanel({
     useEffect(() => {
         const bridge = desktopBrowserBridge();
         if (!bridge) return;
-        return bridge.onNewTab(({ openerViewId, url, engine }) => {
+        return bridge.onNewTab(({ openerViewId, viewId, url, engine }) => {
             const opener = tabsRef.current.find(tab => tab.kind === 'browser' && tab.resourceId === openerViewId);
             const normalized = normalizeBrowserUrl(url);
             if (!opener || !normalized.ok) return;
@@ -818,7 +818,7 @@ export function UnifiedRightPanel({
                 ownerRoutingRef: opener.ownerRoutingRef,
                 chatId,
                 repoLabel: opener.repoLabel,
-            }, normalized.url), browserEngine: engine });
+            }, normalized.url), ...(viewId ? { resourceId: viewId } : {}), browserEngine: engine });
         });
     }, [chatId, open]);
 
