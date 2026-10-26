@@ -898,6 +898,18 @@ concrete server, preserving matching group routes and reapplying an unchanged ha
 Back restores the list's scroll, selection, drafts and link focus. The full
 contract lives in `features/repo-detail/unified-right-panel/AGENTS.md`.
 
+### Sentinel To-do categories
+
+Default-off live `sentinelTodoCategoriesEnabled` adds `SentinelTodoCategories`
+to the To-do toolbar. Its owner-client loader reads the workspace's ordered set;
+the manager creates, renames, reorders and confirms deletes with workspace-wide
+item/chat counts. Writes carry set revisions. Concurrent changes retain name
+drafts and require explicit revision review; stale deletion previews require a
+new preview. `useSentinelTodoEvents` shares its owning-server workspace socket
+between ledger and category invalidations, refreshing all chats on
+`sentinel-todo-categories-changed`. Owner/transport remounts isolate drafts and
+late responses. Unresolved remote owners cannot issue category requests locally.
+
 ### Sentinel To-do dependencies
 
 Default-off `sentinelTodoDependenciesEnabled` adds `SentinelTodoDependencies` to

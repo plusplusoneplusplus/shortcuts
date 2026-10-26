@@ -73,16 +73,19 @@ export function useSentinelTodoChat(scopeWorkspaceId: string, chatId: string | n
 }
 
 /**
- * Ledger change events from the OWNING server's WebSocket, subscribed to the
+ * Ledger and workspace category events from the OWNING server's WebSocket, subscribed to the
  * owner workspace, so a remote-owned Sentinel refreshes from its own host.
  * `owner === null` subscribes to nothing.
  */
 export function useSentinelTodoEvents(
     owner: SentinelTodoOwner | null,
     onChange: (event: SentinelTodoChangeEvent) => void,
+    onCategoriesChange?: () => void,
 ): void {
     const onChangeRef = useRef(onChange);
     onChangeRef.current = onChange;
+    const onCategoriesChangeRef = useRef(onCategoriesChange);
+    onCategoriesChangeRef.current = onCategoriesChange;
     const workspaceId = owner?.ownerWorkspaceId ?? null;
     const processId = owner?.processId ?? null;
     const routingRef = owner?.ownerRoutingRef;
@@ -95,6 +98,9 @@ export function useSentinelTodoEvents(
             workspaceId,
             onMessage: message => {
                 if (isSentinelTodoChangeFor(message, target)) onChangeRef.current(message);
+                if (message.type === 'sentinel-todo-categories-changed' && message.workspaceId === workspaceId) {
+                    onCategoriesChangeRef.current?.();
+                }
             },
         });
         return () => connection.close();

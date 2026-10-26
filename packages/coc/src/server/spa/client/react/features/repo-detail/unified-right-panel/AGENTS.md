@@ -830,7 +830,15 @@ one tab per concrete owner and chat: `resourceId` is the parent process id.
 `routingRefForPanelOwner` binds the owner workspace to the panel's server,
 including repo-group members. Only the descriptor persists; the ledger is fetched from the owning server
 (`client.sentinelTodos.get` with `full: true`, routed like the chat) and refreshed by that server's
-`sentinel-todos-changed` events on a workspace-subscribed socket. Stored `todo`
+`sentinel-todos-changed` events on a workspace-subscribed socket. Default-off live
+`sentinelTodoCategoriesEnabled` adds `SentinelTodoCategories`: an owner-client
+loader and category manager for the workspace's ordered set. Create, rename,
+reorder and confirmed delete use set revisions; deletion previews workspace-wide
+item/chat counts and refreshes the ledger. Name drafts retain captured revisions
+and require explicit review after concurrent changes. The same socket refreshes
+categories on workspace-scoped `sentinel-todo-categories-changed` events across
+chats. Owner/transport remounts and request generations discard late results;
+unresolved remote owners make no local requests. Stored `todo`
 tabs remain visible in `useUnifiedPanelTabs`; the `+` menu offers To-do for the
 selected hosted Sentinel chat.
 

@@ -48,6 +48,7 @@ import { getSentinelTodoChat, useSentinelTodoEvents } from './sentinelTodoChats'
 import { SentinelOvertures } from './SentinelOvertures';
 import { SentinelTodoDependencies } from './SentinelTodoDependencies';
 import { SentinelTodoPrOutcomes } from './SentinelTodoPrOutcomes';
+import { SentinelTodoCategoryToolbar, useSentinelTodoCategories } from './SentinelTodoCategories';
 import { SentinelTodoTagChips, SentinelTodoTagPicker, SentinelTodoTagToolbar, sentinelTodoMatchesTag, useSentinelTodoTagsEnabled } from './SentinelTodoTags';
 import { externalReferences, SentinelTodoExternalReferences, SentinelTodoExternalReferenceEditor, useSentinelTodoExternalReferencesEnabled } from './SentinelTodoExternalReferences';
 import { openUnifiedPanelTab } from './unifiedPanelOpen';
@@ -311,6 +312,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     const wide = width >= SENTINEL_TODO_SPLIT_MIN_WIDTH;
     const [ledger, setLedger] = useState<SentinelTodoLedgerResponse | null>(null);
     const [visibleLimit, setVisibleLimit] = useState(SENTINEL_TODO_RECENT_LIMIT);
+    const categories = useSentinelTodoCategories(owner, client, unavailable);
     const tagsEnabled = useSentinelTodoTagsEnabled();
     const referencesEnabled = useSentinelTodoExternalReferencesEnabled();
     const [tagFilter, setTagFilter] = useState('');
@@ -414,6 +416,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     const refresh = () => {
         if (pendingLoads.current > 0) return;
         void load();
+        void categories.reload();
     };
 
     useEffect(() => {
@@ -430,7 +433,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         previousTagsEnabled.current = tagsEnabled;
         if (enabledNow) void load();
     }, [tagsEnabled, load]);
-    useSentinelTodoEvents(owner, () => { void load(); });
+    useSentinelTodoEvents(owner, () => { void load(); }, () => { void categories.reload(); });
 
     useEffect(() => { onErrorChange?.(loadError !== null); }, [loadError, onErrorChange]);
 
@@ -834,6 +837,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                         </span>
                     )}
                 </div>
+                {categories.enabled && <SentinelTodoCategoryToolbar state={categories} owner={owner} client={client} onLedgerChange={load} />}
                 {tagsEnabled && <SentinelTodoTagToolbar owner={owner} client={client} library={tagLibrary} onLedgerChange={load}
                     loading={loading} loadError={loadError} onRetry={refresh}
                     filter={effectiveTagFilter} onFilter={setTagFilter} multiple={matchMultiple} onMultiple={setMatchMultiple} />}
