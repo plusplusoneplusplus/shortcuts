@@ -224,8 +224,11 @@ export async function resolveSkillConfig(
 
     async function tryAddSkillDirectory(sourcePath: string, hostPath: string): Promise<void> {
         try {
-            const stat = await fs.promises.stat(hostPath);
-            if (options?.strict && !stat.isDirectory()) throw new Error('Skill source is not a directory.');
+            if (options?.strict) {
+                if (!(await fs.promises.stat(hostPath)).isDirectory()) throw new Error('Skill source is not a directory.');
+            } else if (!await fs.promises.access(hostPath).then(() => true).catch(() => false)) {
+                return;
+            }
         } catch (error) {
             if (options?.strict && !(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
             return;

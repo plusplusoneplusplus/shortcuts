@@ -1060,7 +1060,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         key: 'features.teamsReactionDelegation', default: false, runtime: 'live',
         ui: {
             tab: 'teams', group: 'teamsReactionDelegation', order: 10, label: 'Enable Robot reaction delegation', badge: 'experimental',
-            hint: 'Start separate Ask jobs for your live Robot reactions in self, direct and group chats. The dispatcher skill defines permissions, checks and procedure; questions stay in the dashboard. Dispatcher-reported done adds Checkmark; rejected adds Crossmark. Existing approval for the current revision counts as done without another vote. Missing evidence or incomplete work is rejected.',
+            hint: 'Start separate Ask jobs for your live Robot reactions in Teams self, direct and group chats. The dispatcher skill defines permissions, checks and procedure; questions stay in the dashboard. Dispatcher-reported done adds Checkmark; rejected adds Crossmark. Existing approval for the current revision counts as done without another vote. Missing evidence or incomplete work is rejected.',
             testId: 'toggle-teams-reaction-delegation-enabled',
         },
     }),
@@ -1074,7 +1074,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         default: '', runtime: 'live',
         ui: {
             tab: 'teams', group: 'teamsReactionDelegation', order: 20, label: 'Execution workspace',
-            hint: 'Required when enabled. Use a registered local workspace on the configured machine, with its normal provider and model defaults.',
+            hint: 'Required when enabled. Teams reaction jobs run in this registered local workspace on the configured machine, with its normal provider and model defaults.',
             control: { type: 'workspace' }, testId: 'select-teams-reaction-workspace',
         },
     },
@@ -1089,7 +1089,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         default: '', runtime: 'live',
         ui: {
             tab: 'teams', group: 'teamsReactionDelegation', order: 30, label: 'Dispatcher skill',
-            hint: 'Select one enabled skill from the execution workspace. Its instructions define task interpretation, specialists, permissions and procedure. This is prompt policy, not an authorization boundary.',
+            hint: 'Select one enabled skill from the execution workspace to handle Teams reactions. Its instructions define task interpretation, specialists, permissions and procedure. This is prompt policy, not an authorization boundary.',
             control: { type: 'skill', workspaceKey: 'teamsReactionDelegation.workspaceId' },
             testId: 'select-teams-reaction-dispatcher-skill',
         },

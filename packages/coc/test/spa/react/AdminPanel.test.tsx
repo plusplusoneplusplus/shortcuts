@@ -1559,6 +1559,9 @@ describe('AdminPanel', () => {
                 'features.teamsMessageReaction': true,
                 'features.teamsIc3OwnCommands': false,
                 'teamsIc3OwnCommands.workspaceId': '',
+                'features.teamsReactionDelegation': false,
+                'teamsReactionDelegation.workspaceId': '',
+                'teamsReactionDelegation.dispatcherSkill': '',
             });
             await waitFor(() => expect((screen.getByTestId('settings-tab-features-teams-save') as HTMLButtonElement).disabled).toBe(true));
 

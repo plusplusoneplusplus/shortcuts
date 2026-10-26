@@ -341,6 +341,8 @@ describe('AdminPanel — Workspace Features search', () => {
         expect(defs.map(def => def.key)).toEqual([
             'features.teamsBridgeObservability', 'features.teamsAiAnswerRelay', 'features.teamsMessageReaction',
             'features.teamsIc3OwnCommands', 'teamsIc3OwnCommands.workspaceId',
+            'features.teamsReactionDelegation', 'teamsReactionDelegation.workspaceId',
+            'teamsReactionDelegation.dispatcherSkill',
         ]);
         for (const def of defs) {
             expect(screen.queryByTestId(def.ui!.testId)).toBeNull();
