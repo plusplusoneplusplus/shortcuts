@@ -914,7 +914,13 @@ ordering within each section. Headers expose total and attention counts; empty
 categories remain visible and nonempty Uncategorized includes missing IDs.
 Manual, Done, Archived and search retain their sections with category labels.
 Category collapse clears contained selection while keeping editor drafts;
-selection or category movement reveals the destination.
+selection or category movement reveals the destination. Items move through the
+card menu's keyboard-accessible Move to category group, by dropping an active
+normal card's grip on a category section, or through Category selects in the
+add/edit forms and the detail pane (non-archived items). Moves are ordinary
+revisioned item updates; drops trust only the mount's drag ticket, and unaccepted
+drops bubble to the Done reopening target. Add forms default to Pick
+automatically (no `categoryId` sent); edit conflicts keep the category draft.
 
 ### Sentinel To-do dependencies
 

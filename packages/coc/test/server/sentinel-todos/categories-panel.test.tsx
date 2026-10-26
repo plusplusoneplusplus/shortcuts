@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import type { SentinelTodoCategorySet, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
 
 const { api, client, references, sockets } = vi.hoisted(() => {
-    const api = { get: vi.fn(), connect: vi.fn(), getCategories: vi.fn(), createCategory: vi.fn(), updateCategory: vi.fn(),
+    const api = { get: vi.fn(), create: vi.fn(), update: vi.fn(), connect: vi.fn(), getCategories: vi.fn(), createCategory: vi.fn(), updateCategory: vi.fn(),
         reorderCategories: vi.fn(), getCategoryUsage: vi.fn(), deleteCategory: vi.fn() };
     return { api, client: { sentinelTodos: api, events: { connect: api.connect } }, references: [] as unknown[],
         sockets: [] as { workspaceId: string; onMessage: (message: unknown) => void; close: ReturnType<typeof vi.fn> }[] };
@@ -415,5 +415,154 @@ describe('category grouped view', () => {
         act(() => applyRuntimeConfigPatch({ sentinelTodoCategoriesEnabled: false }));
         expect(screen.queryByTestId('sentinel-todo-category-groups')).toBeNull();
         expect(screen.getByTestId('sentinel-todo-row-work')).toBeTruthy();
+    });
+});
+
+describe('moving items between categories', () => {
+    let items: SentinelTodoItem[];
+    let revision: number;
+    beforeEach(() => {
+        items = [todo('work', { categoryId: 'ui' })];
+        revision = 1;
+        api.get.mockImplementation(async () => ({ revision, items }));
+        api.update.mockImplementation(async (_ws, _chat, id, { expectedRevision, categoryId, ...patch }) => {
+            const current = items.find(item => item.id === id)!;
+            if (expectedRevision !== current.revision) throw { status: 409, body: { current } };
+            const next = { ...current, ...patch, revision: current.revision + 1 } as SentinelTodoItem;
+            if (categoryId === null) delete next.categoryId; else if (categoryId !== undefined) next.categoryId = categoryId;
+            items = items.map(item => item.id === id ? next : item);
+            revision += 1;
+            return { item: next, ledgerRevision: revision };
+        });
+        api.create.mockImplementation(async () => {
+            revision += 1;
+            return { item: todo('created'), ledgerRevision: revision };
+        });
+    });
+    const transfer = () => {
+        const values = new Map<string, string>();
+        return { types: [] as string[], effectAllowed: 'none', dropEffect: 'none',
+            setData: vi.fn(function (this: { types: string[] }, key: string, value: string) {
+                values.set(key, value);
+                if (!this.types.includes(key)) this.types.push(key);
+            }),
+            getData: (key: string) => values.get(key) ?? '',
+        };
+    };
+    const selectWork = () => fireEvent.click(screen.getByTestId('sentinel-todo-row-work').querySelector('[data-todo-select]')!);
+
+    it('moves from the card menu with the keyboard, including to Uncategorized', async () => {
+        render(<UnifiedTodoTab owner={owner} />);
+        await waitFor(() => expect(rowIds(group('ui'))).toEqual(['work']));
+        const user = userEvent.setup();
+        const trigger = within(screen.getByTestId('sentinel-todo-row-work')).getByRole('button', { name: 'More actions' });
+        trigger.focus();
+        await user.keyboard('{Enter}');
+        expect(screen.getByRole('menuitemradio', { name: 'Interface', checked: true })).toBeTruthy();
+        screen.getByRole('menuitemradio', { name: 'Docs' }).focus();
+        await user.keyboard('{Enter}');
+        await waitFor(() => expect(rowIds(group('docs'))).toEqual(['work']));
+        expect(api.update).toHaveBeenCalledWith('ws-owner', 'chat-a', 'work', { expectedRevision: 1, categoryId: 'docs' });
+        fireEvent.click(within(screen.getByTestId('sentinel-todo-row-work')).getByRole('button', { name: 'More actions' }));
+        fireEvent.click(screen.getByRole('menuitemradio', { name: 'Uncategorized' }));
+        await waitFor(() => expect(rowIds(group('uncategorized'))).toEqual(['work']));
+        expect(api.update).toHaveBeenLastCalledWith('ws-owner', 'chat-a', 'work', { expectedRevision: 2, categoryId: null });
+    });
+
+    it('moves by dropping the grip on another category and reports a stale drop', async () => {
+        render(<UnifiedTodoTab owner={owner} />);
+        await waitFor(() => expect(rowIds(group('ui'))).toEqual(['work']));
+        let dataTransfer = transfer();
+        fireEvent.dragStart(screen.getByTestId('sentinel-todo-move-grip-work'), { dataTransfer });
+        expect(dataTransfer.effectAllowed).toBe('copyMove');
+        expect(fireEvent.dragOver(group('ui'), { dataTransfer })).toBe(true);
+        expect(fireEvent.dragOver(group('docs'), { dataTransfer })).toBe(false);
+        expect(dataTransfer.dropEffect).toBe('move');
+        fireEvent.drop(group('docs'), { dataTransfer });
+        await waitFor(() => expect(rowIds(group('docs'))).toEqual(['work']));
+        expect(api.update).toHaveBeenCalledWith('ws-owner', 'chat-a', 'work', { expectedRevision: 1, categoryId: 'docs' });
+
+        dataTransfer = transfer();
+        fireEvent.dragStart(screen.getByTestId('sentinel-todo-move-grip-work'), { dataTransfer });
+        items = items.map(item => ({ ...item, revision: item.revision + 1 }));
+        fireEvent.drop(group('ui'), { dataTransfer });
+        expect(await screen.findByTestId('sentinel-todo-move-error')).toBeTruthy();
+        expect(screen.getByTestId('sentinel-todo-move-error').textContent).toMatch(/Could not move work: .*Drag again to retry/);
+        expect(rowIds(group('docs'))).toEqual(['work']);
+        // A forged payload without this mount's drag ticket is ignored.
+        const forged = transfer();
+        forged.setData('application/x-coc-sentinel-todo-category', 'work');
+        expect(fireEvent.dragOver(group('ui'), { dataTransfer: forged })).toBe(true);
+        expect(api.update).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps reopening a Done item by dropping it on the grouped list', async () => {
+        items = [todo('work', { categoryId: 'ui' }), todo('finished', { categoryId: 'docs', status: 'done' })];
+        render(<UnifiedTodoTab owner={owner} />);
+        fireEvent.click(within(await screen.findByTestId('sentinel-todo-done-section')).getByRole('button', { name: 'Done (1)' }));
+        expect(screen.queryByTestId('sentinel-todo-move-grip-finished')).toBeNull();
+        const dataTransfer = transfer();
+        fireEvent.dragStart(within(screen.getByTestId('sentinel-todo-row-finished')).getByRole('button', { name: 'Reopen finished as To do' }), { dataTransfer });
+        fireEvent.drop(group('ui'), { dataTransfer });
+        await waitFor(() => expect(rowIds(group('docs'))).toEqual(['finished']));
+        expect(api.update).toHaveBeenCalledWith('ws-owner', 'chat-a', 'finished', { expectedRevision: 1, status: 'todo', statusReason: null });
+    });
+
+    it('chooses a category in the add form, defaulting to automatic', async () => {
+        render(<UnifiedTodoTab owner={owner} />);
+        await screen.findByTestId('sentinel-todo-row-work');
+        for (const [choice, expected] of [[undefined, undefined], ['docs', 'docs'], ['', null]] as const) {
+            fireEvent.click(screen.getByTestId('sentinel-todo-add'));
+            const select = screen.getByLabelText('Category') as HTMLSelectElement;
+            expect([...select.options].map(option => option.textContent)).toEqual(['Pick automatically', 'Interface', 'Docs', 'Uncategorized']);
+            if (choice !== undefined) fireEvent.change(select, { target: { value: choice } });
+            fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'New' } });
+            fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+            await waitFor(() => expect(screen.queryByTestId('sentinel-todo-add-form')).toBeNull());
+            const request = api.create.mock.lastCall![2];
+            if (expected === undefined) expect(request).not.toHaveProperty('categoryId');
+            else expect(request.categoryId).toBe(expected);
+        }
+    });
+
+    it('moves from the edit form and keeps the draft across a conflict', async () => {
+        render(<UnifiedTodoTab owner={owner} />);
+        await screen.findByTestId('sentinel-todo-row-work');
+        selectWork();
+        const detail = screen.getByTestId('sentinel-todo-detail-work');
+        fireEvent.click(within(detail).getByRole('button', { name: 'Edit' }));
+        const form = screen.getByTestId('sentinel-todo-edit-form-work');
+        const select = within(form).getByLabelText('Category') as HTMLSelectElement;
+        expect(select.value).toBe('ui');
+        fireEvent.change(select, { target: { value: 'docs' } });
+        items = items.map(item => ({ ...item, revision: 2, notes: 'changed elsewhere' }));
+        revision = 2;
+        fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+        await within(detail).findByTestId('sentinel-todo-row-error-work');
+        expect((within(screen.getByTestId('sentinel-todo-edit-form-work')).getByLabelText('Category') as HTMLSelectElement).value).toBe('docs');
+        fireEvent.click(within(screen.getByTestId('sentinel-todo-edit-form-work')).getByRole('button', { name: 'Save' }));
+        await waitFor(() => expect(rowIds(group('docs'))).toEqual(['work']));
+        expect(api.update).toHaveBeenLastCalledWith('ws-owner', 'chat-a', 'work', { expectedRevision: 2, categoryId: 'docs' });
+        expect(screen.queryByTestId('sentinel-todo-edit-form-work')).toBeNull();
+    });
+
+    it('moves from the detail pane select and hides it for archived items or with the flag off', async () => {
+        items = [todo('work', { categoryId: 'deleted' }), todo('old', { categoryId: 'ui', archived: true })];
+        render(<UnifiedTodoTab owner={owner} />);
+        await screen.findByTestId('sentinel-todo-row-work');
+        selectWork();
+        const detail = screen.getByTestId('sentinel-todo-detail-work');
+        const select = within(detail).getByLabelText('Category') as HTMLSelectElement;
+        expect(select.value).toBe('');
+        fireEvent.change(select, { target: { value: 'ui' } });
+        await waitFor(() => expect(rowIds(group('ui'))).toEqual(['work']));
+        expect(api.update).toHaveBeenCalledWith('ws-owner', 'chat-a', 'work', { expectedRevision: 1, categoryId: 'ui' });
+        fireEvent.click(within(screen.getByTestId('sentinel-todo-archived-section')).getByRole('button'));
+        fireEvent.click(screen.getByTestId('sentinel-todo-row-old').querySelector('[data-todo-select]')!);
+        expect(within(screen.getByTestId('sentinel-todo-detail-old')).queryByLabelText('Category')).toBeNull();
+        act(() => applyRuntimeConfigPatch({ sentinelTodoCategoriesEnabled: false }));
+        selectWork();
+        expect(within(screen.getByTestId('sentinel-todo-detail-work')).queryByLabelText('Category')).toBeNull();
+        expect(screen.queryByTestId('sentinel-todo-move-grip-work')).toBeNull();
     });
 });

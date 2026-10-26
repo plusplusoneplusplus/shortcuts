@@ -17,6 +17,7 @@
 import { Fragment, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import type {
     CocClient,
+    SentinelTodoCategory,
     SentinelTodoItem,
     SentinelTodoLedgerResponse,
     SentinelTodoPriority,
@@ -106,14 +107,19 @@ export interface UnifiedTodoTabProps {
 }
 
 const TODO_REOPEN_DRAG_MIME = 'application/x-coc-sentinel-todo-reopen';
+const TODO_CATEGORY_DRAG_MIME = 'application/x-coc-sentinel-todo-category';
+/** The add forms' default: no categoryId is sent, so the owning server picks one. */
+const AUTO_CATEGORY = '__auto';
 
-type TodoMenuAction = { itemId: string } & ({ status: SentinelTodoStatus } | { priority: SentinelTodoPriority });
+type TodoMenuAction = { itemId: string } & ({ status: SentinelTodoStatus } | { priority: SentinelTodoPriority } | { categoryId: string | null });
 
 type FollowLink = (event: MouseEvent<HTMLAnchorElement>, linkKey: string, href?: string) => void;
 
 type DraftFieldsValue = { title: string; completionCondition: string; notes: string; priority: SentinelTodoPriority };
 type Draft = DraftFieldsValue & {
     titleOnly?: boolean;
+    /** Undefined leaves the category alone (automatic on create); null is Uncategorized. */
+    categoryId?: string | null;
     externalReferences?: SentinelTodoExternalReference[]; externalReferencesChanged?: boolean;
     initialFields?: DraftFieldsValue;
 };
@@ -213,8 +219,9 @@ function Optional({ show }: { show: boolean }) {
     return show ? <span className={cn('font-normal', MUTED)}> (optional)</span> : null;
 }
 
-function DraftFields({ draft, onChange, idPrefix, manual = false }: {
+function DraftFields({ draft, onChange, idPrefix, manual = false, categories, autoCategory = false }: {
     draft: Draft; onChange: (draft: Draft) => void; idPrefix: string; manual?: boolean;
+    categories?: readonly SentinelTodoCategory[]; autoCategory?: boolean;
 }) {
     const referencesEnabled = useSentinelTodoExternalReferencesEnabled();
     return (
@@ -235,11 +242,30 @@ function DraftFields({ draft, onChange, idPrefix, manual = false }: {
                     <option key={priority} value={priority}>{SENTINEL_TODO_PRIORITY_LABELS[priority]}</option>
                 ))}
             </select>
+            {categories && <>
+                <label className="block text-[11px] font-medium" htmlFor={`${idPrefix}-category`}>Category</label>
+                <CategorySelect id={`${idPrefix}-category`} categories={categories} auto={autoCategory}
+                    value={draft.categoryId} onChange={categoryId => onChange({ ...draft, categoryId })} />
+            </>}
             {referencesEnabled && <SentinelTodoExternalReferenceEditor value={draft.externalReferences ?? []}
                 onChange={externalReferences => onChange({ ...draft, externalReferences, externalReferencesChanged: true })}
                 idPrefix={idPrefix} inputClass={INPUT} />}
         </>
     );
+}
+
+/** A missing or deleted category reads as Uncategorized. */
+function CategorySelect({ id, categories, value, onChange, auto = false, disabled }: {
+    id: string; categories: readonly SentinelTodoCategory[]; value: string | null | undefined;
+    onChange: (categoryId: string | null | undefined) => void; auto?: boolean; disabled?: boolean;
+}) {
+    const selected = value === undefined && auto ? AUTO_CATEGORY : value && categories.some(category => category.id === value) ? value : '';
+    return <select id={id} className={cn(INPUT, 'w-auto max-w-full self-start')} value={selected} disabled={disabled}
+        onChange={event => onChange(event.target.value === AUTO_CATEGORY ? undefined : event.target.value || null)}>
+        {auto && <option value={AUTO_CATEGORY}>Pick automatically</option>}
+        {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+        <option value="">Uncategorized</option>
+    </select>;
 }
 
 type AddItemFormState = ReturnType<typeof useAddItemForm>;
@@ -279,13 +305,13 @@ function useAddItemForm(onCreate: (draft: Draft, idempotencyKey: string) => Prom
     };
 }
 
-function AddItemForm({ form, testIdPrefix, label, manual = false }: {
-    form: AddItemFormState; testIdPrefix: string; label: string; manual?: boolean;
+function AddItemForm({ form, testIdPrefix, label, manual = false, categories }: {
+    form: AddItemFormState; testIdPrefix: string; label: string; manual?: boolean; categories?: readonly SentinelTodoCategory[];
 }) {
     return (
         <form className="flex flex-col gap-1 rounded border border-[#e0e0e0] p-2 dark:border-[#3c3c3c]" aria-label={label}
             onSubmit={event => { void form.submit(event); }} data-testid={`${testIdPrefix}-form`}>
-            <DraftFields draft={form.draft} onChange={form.setDraft} idPrefix={testIdPrefix} manual={manual} />
+            <DraftFields draft={form.draft} onChange={form.setDraft} idPrefix={testIdPrefix} manual={manual} categories={categories} autoCategory />
             {form.error && <Notice tone="error" testId={`${testIdPrefix}-error`} onRetry={() => { void form.submit(); }}>{form.error}</Notice>}
             <div className="flex flex-wrap justify-end gap-1 pt-1">
                 <Button size="sm" variant="secondary" onClick={form.cancel}>Cancel</Button>
@@ -352,6 +378,10 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     // A local drag ticket binds this gesture to this exact owner/transport and revision.
     const draggedDone = useRef<SentinelTodoItem | null>(null);
     const [draggedDoneType, setDraggedDoneType] = useState<SentinelTodoType | null>(null);
+    const draggedCategoryItem = useRef<SentinelTodoItem | null>(null);
+    const [draggingCategory, setDraggingCategory] = useState(false);
+    const [movingId, setMovingId] = useState<string | null>(null);
+    const [moveError, setMoveError] = useState<string | null>(null);
     const reopenPending = useRef(false);
     const [reopeningId, setReopeningId] = useState<string | null>(null);
     const [reopenError, setReopenError] = useState<string | null>(null);
@@ -445,6 +475,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         : sentinelTodoRecentPage(filteredItems, visibleLimit).items, [filteredItems, visibleLimit, effectiveTagFilter]);
     const sections = useMemo(() => sentinelTodoSections(recentItems, 'normal'), [recentItems]);
     const manual = useMemo(() => sentinelTodoSections(recentItems, 'manual'), [recentItems]);
+    const categoryDefinitions = categories.enabled ? categories.categorySet?.categories : undefined;
     const categoryGroups = useMemo(() => {
         const definitions = categories.enabled ? categories.categorySet?.categories ?? [] : [];
         const knownIds = new Set(definitions.map(category => category.id));
@@ -499,12 +530,13 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             ...(referencesEnabled && draft.externalReferencesChanged && draft.externalReferences?.length
                 ? { externalReferences: draft.externalReferences } : {}),
             ...(type === 'manual' ? { type } : {}),
+            ...(categoryDefinitions && draft.categoryId !== undefined ? { categoryId: draft.categoryId } : {}),
             idempotencyKey,
             ...(tagLibrary && matchMultiple ? { matchMultiple: true } : {}),
         });
         await showRevision(ledgerRevision);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [client, ownerKey, showRevision, tagLibrary, matchMultiple, referencesEnabled]);
+    }, [client, ownerKey, showRevision, tagLibrary, matchMultiple, referencesEnabled, categoryDefinitions]);
     const addForm = useAddItemForm((draft, key) => createItem('normal', draft, key));
     const manualForm = useAddItemForm((draft, key) => createItem('manual', draft, key));
     const openAddForm = () => { setDetailOpen(false); addForm.open(); };
@@ -771,12 +803,45 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             chatId, resourceId: WORKSPACE_PREVIEW_PREFIX + reference, label: resourcePathName(reference),
         }),
         onSave: saveItem, onFollowLink: followLink,
-        tagLibrary, tagClient: client, matchMultiple,
+        tagLibrary, tagClient: client, matchMultiple, categories: categoryDefinitions,
     });
-    const clearDoneDrag = () => {
+    const clearGripDrag = () => {
         draggedDone.current = null;
         setDraggedDoneType(null);
+        draggedCategoryItem.current = null;
+        setDraggingCategory(false);
     };
+    // Like reopening, a category move trusts only this mount's ticket, never transferred IDs.
+    const canDropCategory = (event: DragEvent<HTMLElement>, categoryId: string) => {
+        const source = draggedCategoryItem.current;
+        const current = ledger?.items.find(item => item.id === source?.id);
+        return !!source && !!current && !current.archived && current.status !== 'done' && sentinelTodoType(current) === 'normal'
+            && !blockedMenus.has(current.id) && movingId === null && (current.categoryId ?? '') !== categoryId
+            && event.dataTransfer.types.includes(TODO_CATEGORY_DRAG_MIME);
+    };
+    const categoryDropProps = (categoryId: string) => ({
+        onDragOver: (event: DragEvent<HTMLElement>) => {
+            if (!canDropCategory(event, categoryId)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            event.dataTransfer.dropEffect = 'move';
+        },
+        onDrop: (event: DragEvent<HTMLElement>) => {
+            const source = draggedCategoryItem.current;
+            // Anything else, such as a Done item, bubbles on to the reopening target.
+            if (!source || !canDropCategory(event, categoryId) || event.dataTransfer.getData(TODO_CATEGORY_DRAG_MIME) !== source.id) return;
+            clearGripDrag();
+            event.preventDefault();
+            event.stopPropagation();
+            setMovingId(source.id);
+            setMoveError(null);
+            void saveItem(source, { categoryId: categoryId || null }).then(failure => {
+                if (mounted.current && failure) setMoveError(`Could not move ${source.title}: ${failure.message} Drag again to retry.`);
+            }).finally(() => {
+                if (mounted.current) setMovingId(null);
+            });
+        },
+    });
     const canDropDone = (event: DragEvent<HTMLElement>, type: SentinelTodoType) => {
         const source = draggedDone.current;
         const current = ledger?.items.find(item => item.id === source?.id);
@@ -795,7 +860,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         onDrop: (event: DragEvent<HTMLElement>) => {
             const source = draggedDone.current;
             const accepted = canDropDone(event, type) && event.dataTransfer.getData(TODO_REOPEN_DRAG_MIME) === source?.id;
-            clearDoneDrag();
+            clearGripDrag();
             if (!accepted || !source) return;
             event.preventDefault();
             event.stopPropagation();
@@ -826,8 +891,14 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                     setDraggedDoneType(sentinelTodoType(item));
                     event.dataTransfer.setData(TODO_REOPEN_DRAG_MIME, item.id);
                     event.dataTransfer.effectAllowed = 'copyMove';
-                } : undefined} onReopenDragEnd={clearDoneDrag}
-                menuDisabled={blockedMenus.has(item.id) || reopeningId === item.id} onMenuAction={action => {
+                } : undefined}
+                onMoveDragStart={categoryDefinitions && sentinelTodoType(item) === 'normal' && !item.archived && item.status !== 'done' && !search ? event => {
+                    draggedCategoryItem.current = item;
+                    setDraggingCategory(true);
+                    event.dataTransfer.setData(TODO_CATEGORY_DRAG_MIME, item.id);
+                    event.dataTransfer.effectAllowed = 'copyMove';
+                } : undefined} onGripDragEnd={clearGripDrag} categories={categoryDefinitions}
+                menuDisabled={blockedMenus.has(item.id) || reopeningId === item.id || movingId === item.id} onMenuAction={action => {
                     selectItem(item.id);
                     setMenuAction(action);
                 }} />)}
@@ -959,7 +1030,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                     event.preventDefault();
                     buttons[next]?.focus();
                 }}>
-            {addForm.adding && <AddItemForm form={addForm} testIdPrefix="sentinel-todo-add" label="Add item" />}
+            {addForm.adding && <AddItemForm form={addForm} testIdPrefix="sentinel-todo-add" label="Add item" categories={categoryDefinitions} />}
             {ledger === null ? (
                 !loadError && (
                     <div className={cn('flex items-center gap-2 p-2', MUTED)} role="status" data-testid="sentinel-todo-loading">
@@ -998,6 +1069,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                             const attention = group.items.filter(item => sentinelTodoDisplayStatus(item) === 'needs_attention').length;
                             return <Section key={group.id} label={group.name} count={group.items.length} attention={attention}
                                 open={open} testId={`sentinel-todo-category-${group.id || 'uncategorized'}`}
+                                dropTarget={{ ...categoryDropProps(group.id), active: draggingCategory }}
                                 onToggle={() => {
                                     setCollapsedCategories(previous => {
                                         const next = new Set(previous);
@@ -1012,6 +1084,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                                 {group.items.length ? renderList(group.items) : <span className={MUTED}>No active items.</span>}
                             </Section>;
                         })}
+                        {moveError && <Notice tone="error" testId="sentinel-todo-move-error">{moveError}</Notice>}
                         {categoryGroups.length === 0 && <span className={MUTED}>No categories yet. Add a category to group your items.</span>}
                         {normalCount === 0 && !addForm.adding && <Button size="sm" onClick={openAddForm}>Add item</Button>}
                     </div> : normalCount === 0 ? (
@@ -1048,7 +1121,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                         </div>
                         {showManual && (
                             <div id={`${manualId}-body`} className="flex flex-col gap-1">
-                                {manualForm.adding && <AddItemForm form={manualForm} testIdPrefix="sentinel-todo-manual-add" label="Add manual item" manual />}
+                                {manualForm.adding && <AddItemForm form={manualForm} testIdPrefix="sentinel-todo-manual-add" label="Add manual item" manual categories={categoryDefinitions} />}
                                 <section aria-label="Manual To do" data-testid="sentinel-todo-reopen-manual" {...reopenTargetProps('manual')}>
                                 {reopenHint('manual')}
                                 {manual.active.length > 0 ? renderList(manual.active) : (
@@ -1122,11 +1195,15 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     );
 }
 
-function Section({ label, count, attention, open, onToggle, testId, children }: {
-    label: string; count: number; attention?: number; open: boolean; onToggle: () => void; testId: string; children: ReactNode;
+function Section({ label, count, attention, open, onToggle, testId, dropTarget, children }: {
+    label: string; count: number; attention?: number; open: boolean; onToggle: () => void; testId: string;
+    dropTarget?: { onDragOver: (event: DragEvent<HTMLElement>) => void; onDrop: (event: DragEvent<HTMLElement>) => void; active: boolean };
+    children: ReactNode;
 }) {
+    const { active, ...dropHandlers } = dropTarget ?? { active: false };
     return (
-        <div data-testid={testId}>
+        <div data-testid={testId} {...dropHandlers}
+            className={cn(active && 'rounded border border-dashed border-[#0078d4]/50 bg-[#0078d4]/5')}>
             <button type="button" aria-expanded={open} onClick={onToggle}
                 className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left font-medium hover:bg-black/[0.04] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:hover:bg-white/[0.04]">
                 <span aria-hidden="true">{open ? '▾' : '▸'}</span>
@@ -1155,6 +1232,8 @@ type TodoDetailProps = {
     tagLibrary?: SentinelTodoTagLibrary;
     tagClient: CocClient;
     matchMultiple: boolean;
+    /** The workspace's ordered categories; absent while categories are off. */
+    categories?: readonly SentinelTodoCategory[];
     onClose: () => void;
     menuAction?: TodoMenuAction | null;
     onMenuBlocked: (id: string, blocked: boolean) => void;
@@ -1201,9 +1280,11 @@ function AttachTodoButton({ title, onClick, onDragStart }: {
     </button>;
 }
 
-function TodoCardMenu({ owner, item, onAttach, disabled, onAction }: {
+function TodoCardMenu({ owner, item, onAttach, disabled, onAction, categories }: {
     owner: SentinelTodoOwner; item: SentinelTodoItem; onAttach?: () => void; disabled: boolean; onAction: (action: TodoMenuAction) => void;
+    categories?: readonly SentinelTodoCategory[];
 }) {
+    const currentCategory = item.categoryId && categories?.some(category => category.id === item.categoryId) ? item.categoryId : null;
     const root = useRef<HTMLDivElement>(null);
     const trigger = () => root.current?.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]');
     return <div ref={root} className="ml-auto shrink-0" draggable={false}
@@ -1239,6 +1320,14 @@ function TodoCardMenu({ owner, item, onAttach, disabled, onAction }: {
                         if (priority !== sentinelTodoPriority(item)) onAction({ itemId: item.id, priority });
                     },
                 })),
+                ...(categories ? [...categories, { id: null, name: 'Uncategorized' }].map(category => ({
+                    key: `category-${category.id ?? ''}`, label: category.name, group: 'category', groupLabel: 'Move to category',
+                    checked: currentCategory === category.id, disabled,
+                    onClick: () => {
+                        trigger()?.focus();
+                        if (category.id !== currentCategory) onAction({ itemId: item.id, categoryId: category.id });
+                    },
+                })) : []),
             ] : []),
             ...(onAttach ? [{ key: 'attach', label: 'Attach', group: 'attach', onClick: () => {
                 trigger()?.focus();
@@ -1248,9 +1337,12 @@ function TodoCardMenu({ owner, item, onAttach, disabled, onAction }: {
     </div>;
 }
 
-function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibrary, selected, onSelect, menuDisabled, onMenuAction, onReopenDragStart, onReopenDragEnd, search, categoryLabel }: Pick<TodoDetailProps, 'item' | 'owner' | 'currentWorkspaceId' | 'onFollowLink' | 'tagLibrary'> & {
+function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibrary, categories, selected, onSelect, menuDisabled, onMenuAction, onReopenDragStart, onMoveDragStart, onGripDragEnd, search, categoryLabel }: Pick<TodoDetailProps, 'item' | 'owner' | 'currentWorkspaceId' | 'onFollowLink' | 'tagLibrary' | 'categories'> & {
     selected: boolean; onSelect: () => void; menuDisabled: boolean; onMenuAction: (action: TodoMenuAction) => void;
-    onReopenDragStart?: (event: DragEvent<HTMLButtonElement>) => void; onReopenDragEnd: () => void;
+    onReopenDragStart?: (event: DragEvent<HTMLElement>) => void;
+    /** Dragging the grip onto a category section moves the item there. */
+    onMoveDragStart?: (event: DragEvent<HTMLElement>) => void;
+    onGripDragEnd: () => void;
     /** An active search: highlight matches and excerpt the collapsed field that matched. */
     search?: SentinelTodoSearchQuery;
     categoryLabel?: string;
@@ -1269,6 +1361,13 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
     };
     const { mutationPending } = useContext(CodaFindingsContext);
     const canReopen = !!onReopenDragStart && !menuDisabled && !mutationPending;
+    const canMove = !!onMoveDragStart && !menuDisabled && !mutationPending;
+    const gripDragStart = (event: DragEvent<HTMLElement>) => {
+        onGripDragEnd();
+        if (canAttach) drag(event); else event.stopPropagation();
+        if (canReopen) onReopenDragStart?.(event);
+        if (canMove) onMoveDragStart?.(event);
+    };
     const high = sentinelTodoPriority(item) === 'high';
     const reasonPreview = sentinelTodoDisplayStatus(item) === 'needs_attention' && item.statusReason ? <span
         className="min-w-0 max-w-full flex-[1_1_8rem] truncate text-[11px] text-[#b5650f] dark:text-[#cca700]" title={item.statusReason}
@@ -1308,19 +1407,19 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
                     <TodoTime label="Updated" iso={item.updatedAt} testId={`sentinel-todo-updated-${item.id}`} hideLabel />
                 </div>
             </div>
-            {(canAttach || canReopen) && <button type="button" draggable onDragStart={event => {
-                onReopenDragEnd();
-                if (canAttach) drag(event); else event.stopPropagation();
-                if (canReopen) onReopenDragStart?.(event);
-            }} onDragEnd={onReopenDragEnd}
+            {(canAttach || canReopen) ? <button type="button" draggable onDragStart={gripDragStart} onDragEnd={onGripDragEnd}
                 onClick={canAttach ? attach : () => onMenuAction({ itemId: item.id, status: 'todo' })}
                 aria-label={canAttach ? `Attach ${item.title} as context` : `Reopen ${item.title} as To do`}
                 title={canReopen ? `Drag to To do to reopen, or click to ${canAttach ? 'attach to owning Sentinel' : 'reopen'}`
+                    : canMove ? 'Drag to a category or the owning Sentinel, or click to attach'
                     : 'Drag to owning Sentinel as context, or click to attach'}
                 className="flex h-6 w-6 shrink-0 cursor-grab select-none items-center justify-center rounded text-[#848484] hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] active:cursor-grabbing dark:hover:bg-white/[0.04]">
                 <span aria-hidden="true">⠿</span>
-            </button>}
-            <TodoCardMenu owner={owner} item={item} onAttach={canAttach ? attach : undefined} disabled={menuDisabled || mutationPending} onAction={onMenuAction} />
+            </button> : canMove && <span draggable onDragStart={gripDragStart} onDragEnd={onGripDragEnd} aria-hidden="true"
+                title="Drag to a category to move; use the actions menu from the keyboard" data-testid={`sentinel-todo-move-grip-${item.id}`}
+                className="flex h-6 w-6 shrink-0 cursor-grab select-none items-center justify-center rounded text-[#848484] hover:bg-black/[0.04] active:cursor-grabbing dark:hover:bg-white/[0.04]">⠿</span>}
+            <TodoCardMenu owner={owner} item={item} onAttach={canAttach ? attach : undefined} disabled={menuDisabled || mutationPending} onAction={onMenuAction}
+                categories={categories} />
         </div>
         {excerpt && search && <p className={cn('m-0 min-w-0 break-words px-1.5 pb-1 text-[11px] [overflow-wrap:anywhere]', MUTED)}
             data-testid={`sentinel-todo-search-excerpt-${item.id}`}>
@@ -1338,7 +1437,11 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
     </li>;
 }
 
-function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, items, ledgerRevision, onLedgerChange, onItemLink, onArtifactLink, hidden, headingId, tagLibrary, tagClient, matchMultiple, onClose, menuAction, onMenuBlocked, onMenuActionConsumed }: TodoDetailProps) {
+function knownCategoryId(item: SentinelTodoItem, categories: readonly SentinelTodoCategory[]): string | null {
+    return item.categoryId && categories.some(category => category.id === item.categoryId) ? item.categoryId : null;
+}
+
+function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, items, ledgerRevision, onLedgerChange, onItemLink, onArtifactLink, hidden, headingId, tagLibrary, tagClient, matchMultiple, categories, onClose, menuAction, onMenuBlocked, onMenuActionConsumed }: TodoDetailProps) {
     const referencesEnabled = useSentinelTodoExternalReferencesEnabled();
     const [restoredDraft] = useState(() => recallSentinelTodoView(owner).itemDrafts?.[item.id]);
     const [editing, setEditing] = useState<(Draft & { baseRevision: number }) | null>(restoredDraft?.editing ?? null);
@@ -1400,7 +1503,10 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
             notes: item.notes, priority: sentinelTodoPriority(item) };
         const fieldsChanged = draft.title.trim() !== initial.title.trim() || draft.completionCondition.trim() !== initial.completionCondition.trim()
             || draft.notes !== initial.notes || draft.priority !== initial.priority;
+        const categoryChanged = !draft.titleOnly && categories !== undefined && draft.categoryId !== undefined
+            && draft.categoryId !== knownCategoryId(item, categories);
         void run(() => onSave(item, {
+            ...(categoryChanged ? { categoryId: draft.categoryId } : {}),
             ...(draft.titleOnly ? { title: draft.title.trim() } : fieldsChanged ? {
                 title: draft.title.trim(),
                 completionCondition: draft.completionCondition.trim(),
@@ -1421,7 +1527,8 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
         const fields = { title: item.title, completionCondition: item.completionCondition, notes: item.notes,
             priority: sentinelTodoPriority(item) };
         setEditing({ ...fields, titleOnly, baseRevision: item.revision,
-            externalReferences: externalReferences(item), initialFields: fields });
+            externalReferences: externalReferences(item), initialFields: fields,
+            ...(categories ? { categoryId: knownCategoryId(item, categories) } : {}) });
     };
     const cancelEdit = () => { setEditing(null); setError(null); };
 
@@ -1447,9 +1554,9 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
         consumedMenuAction.current = menuAction;
         onMenuActionConsumed();
         if (item.archived || closeBlocked || editing || statusDraft) return;
-        const patch = 'status' in menuAction
-            ? { status: menuAction.status, statusReason: null }
-            : { priority: menuAction.priority };
+        const patch = 'status' in menuAction ? { status: menuAction.status, statusReason: null }
+            : 'priority' in menuAction ? { priority: menuAction.priority }
+            : { categoryId: menuAction.categoryId };
         void run(() => onSave(item, patch), () => {});
         // The request is an explicit user action, never replayed by ledger refreshes.
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1526,6 +1633,12 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                 <TodoTime label="Updated" iso={item.updatedAt} testId={`sentinel-todo-updated-${item.id}`} />
                 {canAttach && <AttachTodoButton title={item.title} onClick={attach} onDragStart={drag} />}
             </div>
+            {categories && !item.archived && <div className="flex flex-wrap items-center gap-1.5 px-2 pb-1.5 text-[11px]">
+                <label className={MUTED} htmlFor={`${domId}-category`}>Category</label>
+                <CategorySelect id={`${domId}-category`} categories={categories} value={knownCategoryId(item, categories)}
+                    disabled={closeBlocked || editing !== null || statusDraft !== null}
+                    onChange={categoryId => { void run(() => onSave(item, { categoryId: categoryId ?? null }), () => {}); }} />
+            </div>}
             {attachError && <Notice tone="error" testId={`sentinel-todo-attach-error-${item.id}`}>{attachError}</Notice>}
             <TodoJobs item={item} owner={owner} currentWorkspaceId={currentWorkspaceId} expanded onFollowLink={onFollowLink} />
             {!hidden && <SentinelTodoPrOutcomes owner={owner} item={item} ledgerRevision={ledgerRevision} onBusyChange={setOutcomesBusy} />}
@@ -1547,7 +1660,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                     {editing && !editing.titleOnly ? (
                         <form className="flex flex-col gap-1" onSubmit={saveEdit} data-testid={`sentinel-todo-edit-form-${item.id}`}>
                             <DraftFields draft={editing} onChange={draft => setEditing({ ...editing, ...draft })} idPrefix={`${domId}-edit`}
-                                manual={sentinelTodoType(item) === 'manual'} />
+                                manual={sentinelTodoType(item) === 'manual'} categories={categories} />
                             <div className="flex flex-wrap justify-end gap-1 pt-1">
                                 <Button size="sm" variant="secondary" onClick={cancelEdit}>Cancel</Button>
                                 <Button size="sm" type="submit" disabled={!editing.title.trim()} loading={busy}>Save</Button>

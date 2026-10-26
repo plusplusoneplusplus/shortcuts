@@ -843,7 +843,12 @@ visible and Uncategorized appears only for unassigned or unknown-category items.
 Items retain status ordering within each category. Manual, Done, Archived and
 search lists retain their sections and show category labels on cards. Collapsing
 a selected category clears selection while keeping editor drafts; selection or a
-category move reveals its destination. Owner/transport remounts and request generations discard late results;
+category move reveals its destination. Items move by the card menu's
+keyboard-accessible Move to category group, by dropping an active normal card's
+grip on a category section (a mount-local drag ticket; other drops bubble to Done
+reopening), or by Category selects in add/edit forms and non-archived details.
+Moves are revisioned item updates; add forms default to Pick automatically and
+send no `categoryId`; edit conflicts keep the category draft. Owner/transport remounts and request generations discard late results;
 unresolved remote owners make no local requests. Stored `todo`
 tabs remain visible in `useUnifiedPanelTabs`; the `+` menu offers To-do for the
 selected hosted Sentinel chat.
