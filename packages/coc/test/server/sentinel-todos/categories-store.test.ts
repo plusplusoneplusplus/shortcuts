@@ -112,4 +112,105 @@ describe('workspace Sentinel to-do category storage', () => {
         expect(() => store.reorderCategories('workspace', { expectedRevision: set.revision, categoryIds: ids.reverse() })).toThrow('injected failure');
         expect(store.getCategories('workspace')).toEqual(set);
     });
+    // Assignment commands and public categoryId projection belong to the item-contract slice.
+    // Seed the nullable column directly here to exercise workspace-wide deletion independently.
+    function assign(owner: { workspaceId: string; processId: string }, categoryId: string,
+        input: { title: string; type?: 'normal' | 'manual'; status?: 'todo' | 'done' } = { title: 'Work' }) {
+        const { item } = store.create(owner, input, { actor: 'user' });
+        fixture.db.prepare(`UPDATE sentinel_todo_items SET category_id = ?
+            WHERE workspace_id = ? AND parent_process_id = ? AND id = ?`)
+            .run(categoryId, owner.workspaceId, owner.processId, item.id);
+        return item;
+    }
+
+    it('counts and clears every assigned item across chats, preserving other categories and workspaces', () => {
+        const set = create('Backend');
+        const categoryId = set.categories[0].id;
+        const kept = create('Frontend');
+        const a = { workspaceId: 'workspace', processId: 'a' };
+        const b = { ...a, processId: 'b' };
+        const other = { ...a, workspaceId: 'other' };
+        const first = assign(a, categoryId);
+        assign(a, categoryId, { title: 'Manual', type: 'manual' });
+        assign(b, categoryId, { title: 'Completed', status: 'done' });
+        const archived = assign(b, categoryId, { title: 'Archived' });
+        store.update(b, archived.id, archived.revision, { archived: true }, 'user');
+        assign(a, kept.categories[1].id);
+        assign(other, categoryId);
+        const beforeA = store.get(a);
+        const beforeB = store.get(b);
+        const beforeOther = store.get(other);
+        expect(store.getCategoryUsage(a.workspaceId, categoryId)).toEqual({ itemCount: 4, chatCount: 2 });
+        const deleted = store.deleteCategory(a.workspaceId, categoryId, { expectedRevision: kept.revision, confirmed: true });
+        expect(deleted).toEqual({
+            categorySet: { revision: 3, categories: [kept.categories[1]] },
+            affectedOwners: [a, b], itemCount: 4, chatCount: 2,
+        });
+        for (const [owner, before] of [[a, beforeA], [b, beforeB]] as const) {
+            const after = store.get(owner);
+            expect(after.revision).toBe(before.revision + 2);
+            expect(after.items).toEqual(before.items.map((item, index) => index < 2
+                ? { ...item, revision: item.revision + 1, updatedBy: 'system' } : item));
+        }
+        expect(store.get(other)).toEqual(beforeOther);
+        const remaining = fixture.db.prepare(`SELECT workspace_id, category_id FROM sentinel_todo_items
+            WHERE category_id IS NOT NULL ORDER BY workspace_id`).all();
+        expect(remaining).toEqual([
+            { workspace_id: 'other', category_id: categoryId },
+            { workspace_id: 'workspace', category_id: kept.categories[1].id },
+        ]);
+        expectError(() => store.update(a, first.id, first.revision, { title: 'Stale' }, 'user'), 'conflict');
+        expectError(() => store.getCategoryUsage(a.workspaceId, categoryId), 'not_found');
+    });
+
+    it('requires confirmation and the current set revision, and can delete an empty category', () => {
+        const set = create('Unused');
+        const categoryId = set.categories[0].id;
+        expect(store.getCategoryUsage('workspace', categoryId)).toEqual({ itemCount: 0, chatCount: 0 });
+        for (const confirmed of [undefined, false]) {
+            expectError(() => store.deleteCategory('workspace', categoryId, { expectedRevision: 1, confirmed }), 'invalid');
+        }
+        expectError(() => store.deleteCategory('workspace', categoryId, { expectedRevision: 0, confirmed: true }), 'conflict');
+        expectError(() => store.deleteCategory('workspace', 'missing', { expectedRevision: 1, confirmed: true }), 'not_found');
+        expect(store.getCategories('workspace')).toEqual(set);
+        expect(store.deleteCategory('workspace', categoryId, { expectedRevision: 1, confirmed: true })).toEqual({
+            categorySet: { revision: 2, categories: [] }, affectedOwners: [], itemCount: 0, chatCount: 0,
+        });
+    });
+
+    it('rolls back assignment, item and ledger changes if saving the category set fails', () => {
+        const set = create('Backend');
+        const categoryId = set.categories[0].id;
+        const owner = { workspaceId: 'workspace', processId: 'chat' };
+        assign(owner, categoryId);
+        const before = store.get(owner);
+        fixture.db.exec(`CREATE TEMP TRIGGER reject_category_delete BEFORE UPDATE ON sentinel_todo_category_sets
+            BEGIN SELECT RAISE(ABORT, 'delete failed'); END`);
+        expect(() => store.deleteCategory('workspace', categoryId, { expectedRevision: 1, confirmed: true })).toThrow('delete failed');
+        expect(store.getCategories('workspace')).toEqual(set);
+        expect(store.get(owner)).toEqual(before);
+        expect(store.getCategoryUsage('workspace', categoryId)).toEqual({ itemCount: 1, chatCount: 1 });
+    });
+
+    it('adds the nullable assignment column to an existing database without touching items or tags', () => {
+        const owner = { workspaceId: 'workspace', processId: 'chat' };
+        store.create(owner, { title: 'Existing item' }, { actor: 'user' });
+        store.writeTag(owner, undefined, { expectedRevision: 0, name: 'Existing tag', color: 'blue' });
+        const before = store.get(owner);
+        const tags = store.getTags(owner);
+        const version = fixture.db.pragma<number>('user_version', { simple: true });
+        fixture.db.exec('ALTER TABLE sentinel_todo_items DROP COLUMN category_id');
+        fixture.close();
+        // Startup opens a fresh connection against the existing schema.
+        const db = new NativeDatabase(path.join(fixture.dataDir, 'processes.db'));
+        try {
+            const reopened = new SentinelTodoStore(db);
+            new SentinelTodoStore(db); // Startup is idempotent.
+            expect(reopened.get(owner)).toEqual(before);
+            expect(reopened.getTags(owner)).toEqual(tags);
+            expect(db.prepare('SELECT category_id FROM sentinel_todo_items').all()).toEqual([{ category_id: null }]);
+            expect(db.pragma<number>('user_version', { simple: true })).toBe(version);
+        } finally { db.close(); }
+    });
+
 });

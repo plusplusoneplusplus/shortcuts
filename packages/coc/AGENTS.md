@@ -534,8 +534,11 @@ references before editing. Paths are package-relative.
   the process store's native `processes.db` handle; ledger, item and job rows are scoped
   by workspace and parent chat. Category sets in `sentinel_todo_category_sets` use
   workspace identity alone, with their own revision and ordered names; group sets
-  are independent of member repos. Mutations acquire the database writer before reading
-  and compare revisions; stale item writers receive `409` with the current item.
+  are independent of member repos. Category deletion clears nullable `category_id`
+  assignments across all workspace chats atomically and advances affected item/ledger
+  revisions; usage counts include Manual, Done and Archived items. Category sets stay
+  machine-local and participate in server-data wipe. Mutations acquire the database
+  writer before reading and compare revisions; stale item writers receive `409` with the current item.
   Recent REST/tool/panel lists include every unarchived non-Done item first, then
   recently updated Done items within a 50-item budget; active counts above 50 stay
   complete. Archived history follows Done. `nextOffset` pages the remaining history;

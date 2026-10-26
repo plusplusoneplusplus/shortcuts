@@ -275,7 +275,8 @@ describe('snapshot domain behavior', () => {
             ledgerRevision: todos.get(owner).revision, evaluatedAt: '2026-01-01T00:00:00.000Z', state: 'ready', edges: [] },
         'generation', () => 'Read the current readiness');
         receipts.persistPoll({ id: 'owner-poll', owner, nextTickAt: null });
-        const operationalTables = ['sentinel_dependency_admissions',
+        todos.writeCategory(owner.workspaceId, undefined, { expectedRevision: 0, name: 'Backend' });
+        const operationalTables = ['sentinel_todo_category_sets', 'sentinel_dependency_admissions',
             'sentinel_dependency_ralph_starts', 'sentinel_dependency_wakes', 'sentinel_dependency_polls',
             'sentinel_todo_dependency_generations'];
         for (const table of operationalTables) expect(db.prepare(`SELECT * FROM ${table}`).all()).toHaveLength(1);
@@ -306,6 +307,7 @@ describe('snapshot domain behavior', () => {
         const todos = new SentinelTodoStore(db);
         const owner = { workspaceId: 'ws1', processId: 'p1' };
         const { item } = todos.create(owner, { title: 'Keep evidence' }, { actor: 'user' });
+        const categories = todos.writeCategory(owner.workspaceId, undefined, { expectedRevision: 0, name: 'Backend' });
         todos.linkJob(owner, item.id, {
             processId: 'child', workspaceId: 'ws-child', kind: 'local', openLink: '#',
         });
@@ -318,6 +320,7 @@ describe('snapshot domain behavior', () => {
         await domain.executeWipe(ctx, (await domain.planWipe(ctx)).plan, result);
         expect(result.errors).toEqual([expect.stringContaining('wipe failed')]);
         expect(todos.get(owner)).toEqual(before);
+        expect(todos.getCategories(owner.workspaceId)).toEqual(categories);
     });
 
     it('sentinel-todos: surfaces an incomplete SQLite schema instead of reporting a successful wipe', async () => {

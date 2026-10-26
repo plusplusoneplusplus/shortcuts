@@ -32,6 +32,9 @@ const categoryWriteSchema = z.object({
     expectedRevision: z.number().int().nonnegative(),
     name: z.string().trim().min(1).max(40),
 }).strict();
+const categoryDeleteSchema = z.object({
+    expectedRevision: z.number().int().nonnegative(), confirmed: z.literal(true),
+}).strict();
 const categoryReorderSchema = z.object({
     expectedRevision: z.number().int().nonnegative(),
     categoryIds: z.array(z.string().min(1).max(200)).max(MAX_TODO_CATEGORIES),
@@ -292,6 +295,51 @@ export class SentinelTodoStore {
             }
             set.categories = body.categoryIds.map(categoryId => byId.get(categoryId)!);
         });
+    }
+
+    /** Includes Manual, Done and Archived items in every chat of this workspace. */
+    getCategoryUsage(workspaceId: string, categoryId: string): { itemCount: number; chatCount: number } {
+        parse(id, workspaceId);
+        parse(id, categoryId);
+        return this.db.transaction(() => {
+            this.requireCategory(this.getCategories(workspaceId), categoryId);
+            return this.db.prepare(`SELECT COUNT(*) AS itemCount, COUNT(DISTINCT parent_process_id) AS chatCount
+                FROM sentinel_todo_items WHERE workspace_id = ? AND category_id = ?`)
+                .get<{ itemCount: number; chatCount: number }>(workspaceId, categoryId)!;
+        })();
+    }
+
+    deleteCategory(workspaceId: string, categoryId: string, input: unknown): {
+        categorySet: SentinelTodoCategorySet; affectedOwners: SentinelTodoOwner[]; itemCount: number; chatCount: number;
+    } {
+        const body = parse(categoryDeleteSchema, input);
+        parse(id, categoryId);
+        let affectedOwners: SentinelTodoOwner[] = [];
+        let itemCount = 0;
+        const categorySet = this.mutateCategories(workspaceId, body.expectedRevision, set => {
+            this.requireCategory(set, categoryId);
+            const chats = this.db.prepare(`SELECT parent_process_id AS processId, COUNT(*) AS itemCount
+                FROM sentinel_todo_items WHERE workspace_id = ? AND category_id = ? GROUP BY parent_process_id`)
+                .all<{ processId: string; itemCount: number }>(workspaceId, categoryId);
+            // Bookkeeping preserves user edit/verdict timestamps while invalidating stale item writers.
+            itemCount = this.db.prepare(`UPDATE sentinel_todo_items
+                SET category_id = NULL, revision = revision + 1, updated_by = 'system'
+                WHERE workspace_id = ? AND category_id = ?`).run(workspaceId, categoryId).changes;
+            for (const chat of chats) {
+                this.db.prepare(`UPDATE sentinel_todo_ledgers SET revision = revision + ?
+                    WHERE workspace_id = ? AND parent_process_id = ?`)
+                    .run(chat.itemCount, workspaceId, chat.processId);
+            }
+            affectedOwners = chats.map(chat => ({ workspaceId, processId: chat.processId }));
+            set.categories = set.categories.filter(category => category.id !== categoryId);
+        });
+        return { categorySet, affectedOwners, itemCount, chatCount: affectedOwners.length };
+    }
+
+    private requireCategory(set: SentinelTodoCategorySet, categoryId: string): void {
+        if (!set.categories.some(category => category.id === categoryId)) {
+            throw new SentinelTodoError('not_found', 'Category not found');
+        }
     }
 
     private mutateCategories(workspaceId: string, expectedRevision: number,
@@ -572,6 +620,10 @@ export class SentinelTodoStore {
                 db.exec('DROP TABLE sentinel_todo_references_previous');
             }
             const columns = db.prepare('PRAGMA table_info(sentinel_todo_items)').all<{ name: string }>();
+            // Nullable and deliberately without a foreign key: unknown IDs degrade on read.
+            if (!columns.some(column => column.name === 'category_id')) {
+                db.exec('ALTER TABLE sentinel_todo_items ADD COLUMN category_id TEXT');
+            }
             if (!columns.some(column => column.name === 'external_references')) {
                 db.exec("ALTER TABLE sentinel_todo_items ADD COLUMN external_references TEXT NOT NULL DEFAULT '[]'");
             }

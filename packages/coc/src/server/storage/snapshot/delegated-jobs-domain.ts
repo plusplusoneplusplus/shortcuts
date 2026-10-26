@@ -46,6 +46,7 @@ export function createSentinelTodosDomain(): StorageSnapshotDomain<string[]> {
 
 const OPTIONAL_SENTINEL_TODO_TABLES = [
     'sentinel_scheduled_job_runs', 'sentinel_scheduled_jobs',
+    'sentinel_todo_category_sets',
     'sentinel_todo_tag_assignments', 'sentinel_todo_tag_libraries',
     'sentinel_pr_outcome_controls',
     'sentinel_dependency_ralph_starts', 'sentinel_dependency_admissions', 'sentinel_dependency_polls', 'sentinel_dependency_wakes',
