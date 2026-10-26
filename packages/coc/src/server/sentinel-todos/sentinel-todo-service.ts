@@ -201,9 +201,13 @@ export class SentinelTodoService {
     }
 
     private visibleItem(item: SentinelTodoItem): SentinelTodoItem {
-        const visible = this.externalReferencesEnabled() ? item : {
+        let visible = this.externalReferencesEnabled() ? item : {
             ...item, references: item.references.filter(ref => ref.kind === undefined || ref.kind === 'conversation'),
         };
+        if (!this.categoriesEnabled()) {
+            const { categoryId, ...withoutCategory } = visible;
+            visible = withoutCategory;
+        }
         if (this.tagsEnabled()) return visible;
         const { tagIds, tagOrigin, tagMatch, tagRevision, ...withoutTags } = visible;
         return withoutTags;
@@ -309,6 +313,12 @@ export class SentinelTodoService {
         }
         const ledger = this.deps.todos.get(owner);
         return { item: ledger.items.find(row => row.id === item.id) ?? item, ledgerRevision: ledger.revision };
+    }
+
+    private assertCategoryInput(input: { categoryId?: string | null }): void {
+        if (input?.categoryId !== undefined && !this.categoriesEnabled()) {
+            throw new SentinelTodoError('invalid', 'Sentinel to-do categories are disabled');
+        }
     }
 
     private assertTagInput(input: { tagIds?: string[]; matchMultiple?: boolean; expectedTagRevision?: number }): void {
@@ -793,6 +803,7 @@ export class SentinelTodoService {
         opts: { actor: SentinelTodoActor; idempotencyKey?: string },
     ): Promise<{ item: SentinelTodoItem; created: boolean; ledgerRevision: number }> {
         await this.assertOwner(owner);
+        this.assertCategoryInput(input);
         this.assertTagInput(input);
         this.assertExternalReferenceInput(input);
         const result = this.withVisibleErrors(() => this.deps.todos.create(owner, input, opts));
@@ -809,6 +820,7 @@ export class SentinelTodoService {
         actor: SentinelTodoActor,
     ): Promise<{ item: SentinelTodoItem; ledgerRevision: number }> {
         await this.assertOwner(owner);
+        this.assertCategoryInput(patch);
         this.assertTagInput(patch);
         this.assertExternalReferenceInput(patch);
         const before = this.deps.todos.get(owner).items.find(item => item.id === itemId);

@@ -536,7 +536,11 @@ references before editing. Paths are package-relative.
   workspace identity alone, with their own revision and ordered names; group sets
   are independent of member repos. Category deletion clears nullable `category_id`
   assignments across all workspace chats atomically and advances affected item/ledger
-  revisions; usage counts include Manual, Done and Archived items. Category sets stay
+  revisions; usage counts include Manual, Done and Archived items. Item `categoryId`
+  uses ordinary item revisions; omission preserves and `null` clears. Writes validate
+  workspace membership; unknown stored IDs read as Uncategorized. Category-only edits
+  preserve user-edit/verdict protection. The live gate hides assignments and rejects
+  explicit category writes while preserving stored assignments during other edits. Category sets stay
   machine-local and participate in server-data wipe. Default-off live
   `features.sentinelTodoCategories` gates owner-validated REST/client category commands;
   post-commit `sentinel-todo-categories-changed` invalidates the workspace set, and

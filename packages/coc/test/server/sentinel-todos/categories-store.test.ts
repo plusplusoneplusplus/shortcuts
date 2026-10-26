@@ -112,8 +112,7 @@ describe('workspace Sentinel to-do category storage', () => {
         expect(() => store.reorderCategories('workspace', { expectedRevision: set.revision, categoryIds: ids.reverse() })).toThrow('injected failure');
         expect(store.getCategories('workspace')).toEqual(set);
     });
-    // Assignment commands and public categoryId projection belong to the item-contract slice.
-    // Seed the nullable column directly here to exercise workspace-wide deletion independently.
+    // Seed the nullable column directly to include dangling cross-workspace assignments.
     function assign(owner: { workspaceId: string; processId: string }, categoryId: string,
         input: { title: string; type?: 'normal' | 'manual'; status?: 'todo' | 'done' } = { title: 'Work' }) {
         const { item } = store.create(owner, input, { actor: 'user' });
@@ -150,7 +149,7 @@ describe('workspace Sentinel to-do category storage', () => {
             const after = store.get(owner);
             expect(after.revision).toBe(before.revision + 2);
             expect(after.items).toEqual(before.items.map((item, index) => index < 2
-                ? { ...item, revision: item.revision + 1, updatedBy: 'system' } : item));
+                ? { ...item, categoryId: undefined, revision: item.revision + 1, updatedBy: 'system' } : item));
         }
         expect(store.get(other)).toEqual(beforeOther);
         const remaining = fixture.db.prepare(`SELECT workspace_id, category_id FROM sentinel_todo_items

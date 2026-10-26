@@ -23,7 +23,7 @@ import type { SentinelTodoItemView, SentinelTodoService } from '../sentinel-todo
 import type { SendToConversationTodoTracking } from './send-to-conversation-tool';
 import { SentinelOvertureError, type SentinelOvertureService } from '../triggers/sentinel-overture-service';
 import type { Trigger } from '../triggers/trigger-types';
-import type { SentinelTodoDependencyEvaluation, SentinelTodoPrProvenance, SentinelTodoTag, SentinelTodoTagLibrary, SentinelTodoExternalReference, SentinelOvertureEventInput } from '@plusplusoneplusplus/coc-client';
+import type { SentinelTodoCategorySet, SentinelTodoDependencyEvaluation, SentinelTodoPrProvenance, SentinelTodoTag, SentinelTodoTagLibrary, SentinelTodoExternalReference, SentinelOvertureEventInput } from '@plusplusoneplusplus/coc-client';
 import { SENTINEL_TODO_RECENT_LIMIT } from '@plusplusoneplusplus/coc-client';
 import { SENTINEL_COMPLETION_GUIDANCE, SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
 import { sentinelTodoRecentList } from '../sentinel-todos/sentinel-todo-list';
@@ -48,7 +48,7 @@ export interface SentinelTodosToolDeps {
     reviewOnly?: boolean;
     service: Pick<SentinelTodoService, 'list' | 'create' | 'update' | 'linkJob' | 'attachReference'>
         & Partial<Pick<SentinelTodoService, 'setDependencies' | 'dependenciesEnabled' | 'bindPrOutput' | 'acceptArtifact' | 'evaluateDependencies' | 'dependencyActions'
-            | 'attachDashboardReference' | 'tagsEnabled' | 'getTags' | 'createTag' | 'updateTag' | 'deleteTag' | 'suggestTags' | 'externalReferencesEnabled'>>;
+            | 'attachDashboardReference' | 'categoriesEnabled' | 'getCategories' | 'tagsEnabled' | 'getTags' | 'createTag' | 'updateTag' | 'deleteTag' | 'suggestTags' | 'externalReferencesEnabled'>>;
     /** The invoking Sentinel chat; every call is scoped to this ledger. */
     owner: SentinelTodoOwner;
     /** Present when trigger infrastructure is available. */
@@ -97,6 +97,7 @@ export interface SentinelTodosArgs {
     phase?: string;
     reference?: string;
     version?: string;
+    categoryId?: string | null;
     tagIds?: string[];
     tagId?: string;
     tagName?: string;
@@ -107,7 +108,7 @@ export interface SentinelTodosArgs {
 }
 
 export type SentinelTodosResult =
-    | { items: SentinelTodoItemView[]; ledgerRevision: number; archivedCount: number; total: number; hasMore: boolean; nextOffset: number | null; tagLibrary?: SentinelTodoTagLibrary }
+    | { items: SentinelTodoItemView[]; ledgerRevision: number; archivedCount: number; total: number; hasMore: boolean; nextOffset: number | null; categorySet?: SentinelTodoCategorySet; tagLibrary?: SentinelTodoTagLibrary }
     | { tagLibrary: SentinelTodoTagLibrary }
     | { item: SentinelTodoItem; created?: boolean; attached?: boolean }
     | { trigger: Trigger; removed?: boolean }
@@ -317,6 +318,9 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                     },
                 },
                 idempotencyKey: { type: 'string', description: 'create/create_trigger: stable key that makes retries safe.' },
+                ...(service.categoriesEnabled?.() ? {
+                    categoryId: { type: ['string', 'null'], description: 'create/update: one existing workspace category ID from list categorySet; null clears to Uncategorized. Omission preserves on update.' },
+                } : {}),
                 ...(tagsEnabled ? {
                     tagIds: { type: 'array', items: { type: 'string' }, description: 'create/update: explicit existing tag IDs; [] clears. Never overwrite user-manual choices.' },
                     tagId: { type: 'string', description: 'update_tag/delete_tag: existing definition in this parent ledger.' },
@@ -391,6 +395,9 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                 }
                 if (args?.action === 'update' && args.type !== undefined) {
                     return { error: 'Item type is immutable; conversion and handoff are not supported.', code: 'invalid' };
+                }
+                if (args.categoryId !== undefined && !service.categoriesEnabled?.()) {
+                    return { error: 'Sentinel categories are disabled.', code: 'disabled' };
                 }
                 if ((args.tagIds !== undefined || args.matchMultiple !== undefined || args.expectedTagRevision !== undefined) && !service.tagsEnabled?.()) {
                     return { error: 'Sentinel tags are disabled.', code: 'disabled' };
@@ -494,6 +501,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                             ledgerRevision: ledger.revision,
                             archivedCount: ledger.items.filter(item => item.archived).length,
                             total: page.total, hasMore: page.hasMore, nextOffset: page.nextOffset,
+                            ...(service.categoriesEnabled?.() && service.getCategories ? { categorySet: await service.getCategories(owner) } : {}),
                             ...(ledger.tagLibrary ? { tagLibrary: ledger.tagLibrary } : {}),
                         };
                     }
@@ -516,6 +524,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                             status,
                             ...(reason ? { statusReason: reason } : {}),
                             ...(args.priority !== undefined ? { priority: args.priority } : {}),
+                            ...(args.categoryId !== undefined ? { categoryId: args.categoryId } : {}),
                             ...(args.tagIds !== undefined ? { tagIds: args.tagIds } : {}),
                             ...(args.matchMultiple !== undefined ? { matchMultiple: args.matchMultiple } : {}),
                         }, { actor: 'sentinel', idempotencyKey: args.idempotencyKey });
@@ -541,6 +550,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                         const outcome = args.outcome?.trim() || (args.status === 'done' ? reason : undefined);
                         if (outcome) patch.outcome = outcome;
                         if (args.reviewedJobs !== undefined) patch.reviewedJobs = args.reviewedJobs;
+                        if (args.categoryId !== undefined) patch.categoryId = args.categoryId;
                         if (args.tagIds !== undefined) patch.tagIds = args.tagIds;
                         if (args.matchMultiple !== undefined) patch.matchMultiple = args.matchMultiple;
                         if (args.expectedTagRevision !== undefined) patch.expectedTagRevision = args.expectedTagRevision;

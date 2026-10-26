@@ -399,7 +399,12 @@ reorder/delete categories under the native writer lock; names are unique ignorin
 (up to 12 categories, 40 characters each). Repo groups own independent sets.
 Deletion clears nullable item `category_id` assignments across the workspace and
 advances affected item/ledger revisions atomically. Usage counts include all item
-states and chat owners. Category sets follow the machine-local ledger export/wipe policy.
+states and chat owners. Item `categoryId` persists in nullable `category_id`, with
+ordinary item revisions: omission preserves, `null` clears, and writes require a
+category in the owning workspace. Missing stored IDs project as Uncategorized.
+Category-only edits preserve user-edit/verdict protection. The live gate hides
+assignments and rejects explicit category writes; other edits preserve assignments.
+Category sets follow the machine-local ledger export/wipe policy.
 `SentinelTodoService` verifies a Sentinel chat in that workspace and the live default-off
 `features.sentinelTodoCategories` gate for every category command. Owning-server REST
 and `coc-client` use `/sentinel-todos/:processId/categories`; post-commit workspace

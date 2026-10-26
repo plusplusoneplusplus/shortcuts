@@ -89,10 +89,36 @@ describe('Workspace Sentinel category routes', () => {
             .map(revision => ({ workspaceId: 'ws-a', revision, affectedLedgers: [] })));
     });
 
+    it('round-trips revisioned item categories and safely reads missing categories', async () => {
+        const set = await request('POST', `${base}/categories`, { expectedRevision: 0, name: 'API' });
+        const first = set.body.categories[0].id;
+        const next = await request('POST', `${otherChat}/categories`, { expectedRevision: 1, name: 'UI' });
+        const second = next.body.categories[1].id;
+        const created = await request('POST', `${base}/items`, { title: 'Work', categoryId: first });
+        expect(created).toMatchObject({ status: 201, body: { item: { categoryId: first, revision: 1 } } });
+        const path = `${base}/items/${created.body.item.id}`;
+        expect(await request('PATCH', path, { expectedRevision: 1, categoryId: second }))
+            .toMatchObject({ status: 200, body: { item: { categoryId: second, revision: 2 } } });
+        expect(await request('PATCH', path, { expectedRevision: 1, categoryId: null }))
+            .toMatchObject({ status: 409, body: { code: 'conflict', current: { categoryId: second } } });
+        expect((await request('PATCH', path, { expectedRevision: 2, notes: 'Keep category' })).body.item.categoryId).toBe(second);
+        const cleared = await request('PATCH', path, { expectedRevision: 3, categoryId: null });
+        expect(cleared.status).toBe(200);
+        expect(cleared.body.item.categoryId).toBeUndefined();
+        expect((await request('PATCH', path, { expectedRevision: 4, categoryId: 'missing' })).status).toBe(400);
+        db.prepare('UPDATE sentinel_todo_items SET category_id = ?').run('missing');
+        const ledger = await request('GET', base);
+        expect(ledger.status).toBe(200);
+        expect(ledger.body.items[0].categoryId).toBeUndefined();
+        enabled = false;
+        expect((await request('POST', `${base}/items`, { title: 'Disabled', categoryId: first })).status).toBe(400);
+        expect((await request('PATCH', path, { expectedRevision: 4, categoryId: null })).status).toBe(400);
+    });
+
     it('previews all affected items/chats and publishes committed ledger invalidations on confirmed delete', async () => {
         const created = await request('POST', `${base}/categories`, { expectedRevision: 0, name: 'API' });
         const categoryId = created.body.categories[0].id;
-        // Public item assignment is a separate AC-02 slice.
+        // Include a dangling foreign-workspace assignment in the deletion fixture.
         const firstOwner = { workspaceId: 'ws-a', processId: 'parent/a' };
         const secondOwner = { workspaceId: 'ws-a', processId: 'parent/b' };
         todos.create(firstOwner, { title: 'Normal' }, { actor: 'user' });

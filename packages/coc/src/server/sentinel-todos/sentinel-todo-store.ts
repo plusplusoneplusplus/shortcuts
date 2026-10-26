@@ -154,6 +154,7 @@ const evidenceSchema = z.discriminatedUnion('kind', [
 ]);
 export type SentinelTodoEvidence = z.infer<typeof evidenceSchema>;
 const itemSchema = z.object({
+    categoryId: id.optional(),
     tagRevision: z.number().int().nonnegative().optional(),
     tagIds: tagIdsSchema.optional(),
     tagOrigin: z.enum(['manual', 'suggested']).optional(),
@@ -201,6 +202,7 @@ export type SentinelTodoReferenceInput = Omit<SentinelTodoReference, 'attachedAt
 export type SentinelTodoDependency = z.infer<typeof todoDependencySchema>;
 
 export const todoCreateSchema = z.object({
+    categoryId: id.nullable().optional(),
     externalReferences: externalReferencesSchema.optional(),
     tagIds: tagIdsSchema.optional(),
     matchMultiple: z.boolean().optional(),
@@ -215,6 +217,7 @@ export const todoCreateSchema = z.object({
 }).strict();
 /** `null` clears an optional field; omitted fields are left unchanged. */
 export const todoPatchSchema = z.object({
+    categoryId: id.nullable().optional(),
     externalReferences: externalReferencesSchema.optional(),
     expectedTagRevision: z.number().int().nonnegative().optional(),
     tagIds: tagIdsSchema.optional(),
@@ -705,11 +708,13 @@ export class SentinelTodoStore {
             }
             const now = new Date().toISOString();
             const fields = parse(todoCreateSchema, input);
+            if (fields.categoryId) this.validateCategoryId(owner, fields.categoryId);
             if (fields.tagIds !== undefined) this.validateTagIds(owner, fields.tagIds);
             assertReviewReason(opts.actor, fields.status, fields.statusReason);
             const item = parse(itemSchema, {
                 id: randomUUID(),
                 type: fields.type ?? 'normal',
+                ...(fields.categoryId ? { categoryId: fields.categoryId } : {}),
                 title: fields.title,
                 completionCondition: fields.completionCondition ?? '',
                 notes: fields.notes ?? '',
@@ -859,6 +864,7 @@ export class SentinelTodoStore {
             }
             const now = new Date().toISOString();
             const next: Record<string, unknown> = { ...current };
+            if (fields.categoryId) this.validateCategoryId(owner, fields.categoryId);
             if (fields.externalReferences !== undefined) {
                 next.references = [...current.references.filter(isConversationReference),
                     ...fields.externalReferences];
@@ -880,7 +886,7 @@ export class SentinelTodoStore {
             for (const key of ['title', 'completionCondition', 'notes', 'status', 'priority', 'archived'] as const) {
                 if (fields[key] !== undefined) next[key] = fields[key];
             }
-            for (const key of ['targetRepo', 'statusReason'] as const) {
+            for (const key of ['targetRepo', 'statusReason', 'categoryId'] as const) {
                 if (fields[key] === null) delete next[key];
                 else if (fields[key] !== undefined) next[key] = fields[key];
             }
@@ -895,7 +901,7 @@ export class SentinelTodoStore {
             if (fields.outcome === null) delete next.outcome;
             else if (fields.outcome !== undefined) next.outcome = { summary: fields.outcome, recordedAt: now, recordedBy: actor };
             // Priority is metadata: a priority-only edit must not supersede a linked job's result.
-            if (actor === 'user' && Object.keys(fields).some(key => !['priority', 'externalReferences', 'tagIds', 'matchMultiple', 'expectedTagRevision'].includes(key) && fields[key as keyof SentinelTodoPatch] !== undefined)) {
+            if (actor === 'user' && Object.keys(fields).some(key => !['priority', 'categoryId', 'externalReferences', 'tagIds', 'matchMultiple', 'expectedTagRevision'].includes(key) && fields[key as keyof SentinelTodoPatch] !== undefined)) {
                 next.userEditedAt = now;
             }
             if (actor === 'user' && (fields.status !== undefined || fields.statusReason !== undefined
@@ -1190,7 +1196,9 @@ export class SentinelTodoStore {
         const tags = new Map(this.db.prepare(`SELECT item_id, metadata FROM sentinel_todo_tag_assignments
             WHERE workspace_id = ? AND parent_process_id = ?`)
             .all<{ item_id: string; metadata: string }>(...scope).map(row => [row.item_id, JSON.parse(row.metadata)]));
+        const categoryIds = new Set(this.getCategories(owner.workspaceId).categories.map(category => category.id));
         return parse(ledgerSchema, { revision: ledger.revision, items: items.map(row => ({
+            ...(row.category_id && categoryIds.has(row.category_id) ? { categoryId: row.category_id } : {}),
             ...tags.get(row.id),
             id: row.id, type: row.type, title: row.title, completionCondition: row.completion_condition,
             notes: row.notes, status: row.status, priority: row.priority, archived: row.archived === 1,
@@ -1203,6 +1211,12 @@ export class SentinelTodoStore {
             ...optional('statusReason', row.status_reason), ...optional('idempotencyKey', row.idempotency_key),
             ...optional('userEditedAt', row.user_edited_at), ...optional('userVerdictRevision', row.user_verdict_revision),
         })) });
+    }
+
+    private validateCategoryId(owner: SentinelTodoOwner, categoryId: string): void {
+        if (!this.getCategories(owner.workspaceId).categories.some(category => category.id === categoryId)) {
+            throw new SentinelTodoError('invalid', 'Unknown workspace category');
+        }
     }
 
     private insertItem(owner: SentinelTodoOwner, item: SentinelTodoItem, order: number): void {
@@ -1274,10 +1288,11 @@ export class SentinelTodoStore {
 const ITEM_FIELDS = [
     'type', 'title', 'completion_condition', 'notes', 'target_repo', 'status', 'status_reason',
     'priority', 'outcome', 'archived', 'revision', 'created_at', 'updated_at', 'created_by',
-    'updated_by', 'idempotency_key', 'user_edited_at', 'user_verdict_revision', 'external_references',
+    'category_id', 'updated_by', 'idempotency_key', 'user_edited_at', 'user_verdict_revision', 'external_references',
 ] as const;
 
 interface ItemRow {
+    category_id: string | null;
     id: string; type: string; title: string; completion_condition: string; notes: string;
     target_repo: string | null; status: string; status_reason: string | null; priority: string;
     outcome: string | null; archived: number; revision: number; created_at: string; updated_at: string;
@@ -1300,6 +1315,7 @@ interface JobRow {
 function itemRow(owner: SentinelTodoOwner, item: SentinelTodoItem) {
     return {
         workspace_id: owner.workspaceId, parent_process_id: owner.processId, id: item.id,
+        category_id: item.categoryId ?? null,
         type: item.type, title: item.title, completion_condition: item.completionCondition, notes: item.notes,
         target_repo: encode(item.targetRepo), status: item.status, status_reason: item.statusReason ?? null,
         priority: item.priority, outcome: encode(item.outcome), archived: Number(item.archived), revision: item.revision,

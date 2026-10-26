@@ -179,7 +179,10 @@ never a tool argument, and the service re-proves Sentinel ownership on every cal
 after Done. `limit` sets the budget, `nextOffset`/`offset` page remaining history, `itemId` reads an exact item;
 internal tracking and graph reads retain the full ledger), `create` (normal items require `completionCondition`,
 optional `idempotencyKey` replay), `update` (requires `itemId` + `expectedRevision`; conflicts
-return `{ code: 'conflict', current }`), `attach_reference` (`itemId` + `expectedRevision` + `conversationId`,
+return `{ code: 'conflict', current }`). With the categories gate enabled, `list`
+includes the workspace `categorySet`; create/update accept one `categoryId`, with
+`null` clearing and omission preserving on update. Moves use item revisions.
+`attach_reference` (`itemId` + `expectedRevision` + `conversationId`,
 optional `conversationWorkspaceId` defaulting to the chat's; saved, queued or running chats and Ralph sessions
 qualify; a reference-only link that never changes status or counts as a job/review). Store deduplication uses
 durable server/workspace/process identity, plus `sessionId` for Ralph session references; omitted `serverIdentity` denotes the ledger's server. Reference records retain

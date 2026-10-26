@@ -241,6 +241,8 @@ export interface SentinelTodoTrackedAdmission {
 }
 
 export interface SentinelTodoItem {
+  /** One workspace category; absent means Uncategorized. */
+  categoryId?: string;
   /** Independent metadata CAS; absent means zero. Does not affect dependency snapshots. */
   tagRevision?: number;
   tagIds?: string[];
@@ -284,6 +286,8 @@ export interface SentinelTodoLedgerResponse {
 }
 
 export interface CreateSentinelTodoRequest {
+  /** One workspace category; null explicitly selects Uncategorized. */
+  categoryId?: string | null;
   externalReferences?: SentinelTodoExternalReference[];
   tagIds?: string[];
   matchMultiple?: boolean;
@@ -303,6 +307,8 @@ export interface CreateSentinelTodoRequest {
 
 /** Omitted fields stay unchanged; nullable fields explicitly support clearing. */
 export interface UpdateSentinelTodoRequest {
+  /** One workspace category; null clears on writes, omission preserves on update. */
+  categoryId?: string | null;
   /** Replaces external references only; [] clears them, omission preserves all references. */
   externalReferences?: SentinelTodoExternalReference[];
   /** Required when tagIds is supplied, including an explicit empty selection. */
