@@ -1190,6 +1190,11 @@ references before editing. Paths are package-relative.
   defaults empty. Enabled file and merged admin config require a nonblank prompt.
   Keep the multiline policy in the Teams registry group and outside dashboard
   runtime feature flags; validation/save errors preserve the draft.
+  `sendTeamsIc3SourceReply` checks source-owned compliance context before any chunk,
+  using `teams-outbound-compliance.ts`. Capture destination/content before awaiting;
+  allow covers only those exact chunks. Keep one Copilot DecisionService evaluation,
+  disable output repair, and never recheck compliance during safe transport retries.
+  Sources without compliance context retain ordinary transport behavior.
 - Ask/sentinel turns started from WhatsApp/Teams and jobs carrying
   `metadata.messagingOrigin` (every turn, including autopilot) relay
   `ask_user` questions one at a time to the originating group/thread through

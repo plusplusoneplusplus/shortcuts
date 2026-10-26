@@ -826,6 +826,24 @@ notice-only; source sends reuse the IC3 definitive-failure retry policy. Unknown
 writes and reaction failures never replay or trigger text fallback. No reply-parent
 metadata is synthesized.
 
+### Teams outbound text compliance boundary
+
+`messaging/teams-outbound-compliance.ts` evaluates source-owned compliance context
+through the shared Copilot `DecisionService`. `sendTeamsIc3SourceReply` snapshots
+destination and all formatted chunks before evaluation; reaction-result source
+capture preserves the context. A live policy getter supplies one snapshot per
+logical message. Policy instructions stay separate from untrusted trigger evidence,
+complete formatted text and chunk boundaries. No unrelated history is included.
+
+Enabled checks require complete context and a nonblank policy, enforce the
+Decision API's 256 KiB UTF-8 request limit without truncation, and permit one
+evaluation with output repair disabled. A structured block/allow choice resolves
+ties to block without a confidence threshold. A two-minute deadline includes
+backend readiness; cancellation and all failures prevent text dispatch. Explicit
+block throws `TeamsOutboundComplianceRejected`. Safe known-unsent transport
+retries retain the exact allowance. Disabled policy and sources without compliance
+context retain ordinary delivery; ingress owners supply context for gated sends.
+
 ### Messaging ask_user question relay
 
 `messaging/ask-user-relay.ts` (`AskUserQuestionRelayHub`) is the executor's
