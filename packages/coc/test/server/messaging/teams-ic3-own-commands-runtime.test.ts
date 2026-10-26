@@ -851,6 +851,70 @@ describe('basic IC3 own-command launcher', () => {
             }
             expect(vi.mocked(getLogger().info).mock.calls.some(([, text]) =>
                 text.includes('"stage":"delivered"'))).toBe(outcome === 'disabled');
+            expect(service.getStatus().state).toBe('connected');
+            expect(service.getStatus().error).toBeUndefined();
+            if (outcome === 'disabled') expect(service.getStatus().outboundCompliance).toBeUndefined();
+            else expect(service.getStatus().outboundCompliance).toMatchObject({
+                state: outcome === 'block' ? 'blocked' : 'failed',
+                reason: expect.stringContaining(outcome === 'block' ? 'blocked by the compliance policy'
+                    : outcome === 'malformed' ? 'output was invalid' : 'backend is unavailable'),
+                checkedAt: expect.any(String),
+            });
+        },
+    );
+
+    it.each(['feedback-failed', 'backend-failed', 'timeout', 'cancelled'] as const)(
+        'reports mention compliance %s without text, receipts, retries or read-health changes', async outcome => {
+            const sdk = createMockSDKService().service;
+            const readiness = vi.spyOn(sdk, 'isTransformAvailable').mockResolvedValue({ available: true });
+            const transform = vi.spyOn(sdk, 'transform').mockResolvedValue({
+                success: true, text: JSON.stringify({ answers: {
+                    compliance: { type: 'choice', probabilities: { block: 1, allow: 0 } },
+                } }),
+            });
+            if (outcome === 'backend-failed') transform.mockRejectedValue(new Error('private backend text'));
+            if (outcome === 'timeout' || outcome === 'cancelled') readiness.mockReturnValue(new Promise(() => {}));
+            decisionService = createDecisionService(sdk);
+            const evaluate = vi.spyOn(decisionService, 'evaluate');
+            const send = vi.spyOn(Ic3DirectMessageClient.prototype, 'sendToSourceChat').mockResolvedValue('sent');
+            const react = vi.spyOn(Ic3ReactionClient.prototype, 'reactToSourceMessage')
+                .mockRejectedValue(new Error('private feedback text'));
+            sendReply.mockImplementation(sendTeamsIc3OwnCommandReply);
+            const id = await launched('48:notes');
+            store.getProcess.mockResolvedValue(result(id));
+            await update({ features: { teamsOutboundCompliance: true },
+                teamsOutboundCompliance: { prompt: 'private policy text' } });
+            events.emit('taskCompleted', terminal(id));
+            await vi.advanceTimersByTimeAsync(0);
+            if (outcome === 'timeout') await vi.advanceTimersByTimeAsync(120_000);
+            if (outcome === 'cancelled') await service.dispose();
+            await vi.advanceTimersByTimeAsync(0);
+            const failure = service.getStatus().outboundCompliance!;
+            expect(failure).toMatchObject({
+                state: outcome === 'feedback-failed' ? 'blocked' : 'failed',
+                reason: expect.stringContaining(outcome === 'feedback-failed' ? 'rejection reaction failed'
+                    : outcome === 'backend-failed' ? 'backend failed' : outcome === 'timeout' ? 'timed out' : 'cancelled'),
+            });
+            expect(service.getStatus().state).toBe(outcome === 'cancelled' ? 'stopped' : 'connected');
+            expect(service.getStatus().error).toBeUndefined();
+            // Status reads cannot mutate the retained failure.
+            failure.reason = 'changed';
+            expect(service.getStatus().outboundCompliance!.reason).not.toBe('changed');
+            expect(evaluate).toHaveBeenCalledOnce();
+            expect(transform).toHaveBeenCalledTimes(outcome === 'timeout' || outcome === 'cancelled' ? 0 : 1);
+            expect(send).not.toHaveBeenCalled();
+            expect(react).toHaveBeenCalledTimes(outcome === 'feedback-failed' ? 1 : 0);
+            events.emit('taskCompleted', terminal(id));
+            await vi.advanceTimersByTimeAsync(60_000);
+            expect(sendReply).toHaveBeenCalledOnce();
+            expect(evaluate).toHaveBeenCalledOnce();
+            expect(vi.mocked(getLogger().info).mock.calls.some(([, text]) =>
+                text.includes('"stage":"delivered"'))).toBe(false);
+            const publicOutput = JSON.stringify([service.getStatus(), vi.mocked(getLogger().warn).mock.calls]);
+            for (const privateText of ['private backend text', 'private feedback text', 'private policy text', 'The initial answer']) {
+                expect(publicOutput).not.toContain(privateText);
+            }
+            expect(getLogger().warn).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('Outbound compliance'));
         },
     );
 

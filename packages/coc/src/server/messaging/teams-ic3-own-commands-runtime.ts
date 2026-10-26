@@ -9,7 +9,7 @@ import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import { onTaskTerminal } from './chat-target';
 import { findRequestAnswer, findRequestTurn, isTerminalStatus, RELAY_ANSWER_TEXT } from './relay-answer';
 import { sendTeamsIc3OwnCommandReply, type TeamsIc3CommandSource } from './teams-ic3-own-command-reply';
-import type { TeamsOutboundCompliance } from './teams-outbound-compliance';
+import { getTeamsOutboundComplianceFailure, type TeamsOutboundCompliance, type TeamsOutboundComplianceFailure } from './teams-outbound-compliance';
 import type { Route } from '../types';
 import type { TeamsMessagingManager } from './teams-messaging-manager';
 import { sendJSON } from '../core/api-handler';
@@ -24,6 +24,7 @@ export interface TeamsIc3ConnectivityStatus {
     lastCheckedAt?: string;
     lastConnectedAt?: string;
     error?: string;
+    outboundCompliance?: TeamsOutboundComplianceFailure;
     trouter: TrouterStatus;
 }
 
@@ -57,6 +58,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
         signal: AbortSignal; detectedAt: number }>();
     let stopped = false;
     let status: Omit<TeamsIc3ConnectivityStatus, 'trouter'> = { state: 'disabled' };
+    let outboundCompliance: TeamsOutboundComplianceFailure | undefined;
     options.routes.push({
         method: 'GET', pattern: '/api/messaging/teams/ic3-own-commands/status',
         handler: async (_req, res) => {
@@ -66,7 +68,8 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
     });
 
     function snapshot(): TeamsIc3ConnectivityStatus {
-        return { ...status, trouter: trouter?.getStatus() ?? {
+        return { ...status, ...(outboundCompliance ? { outboundCompliance: { ...outboundCompliance } } : {}),
+            trouter: trouter?.getStatus() ?? {
             state: stopped ? 'stopped' : options.config.config.features?.teamsIc3OwnCommands ? 'connecting' : 'disabled',
             error: null,
         } };
@@ -135,7 +138,14 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                 timing(requestId, 'delivered', { replyMs: Date.now() - replyStartedAt,
                     sinceDetectionMs: Date.now() - request.detectedAt });
             } catch (error) {
-                if (!request.signal.aborted) {
+                const complianceFailure = getTeamsOutboundComplianceFailure(error);
+                if (complianceFailure) {
+                    outboundCompliance = complianceFailure;
+                    timing(requestId, `compliance-${complianceFailure.state}`, { replyMs: Date.now() - replyStartedAt });
+                    getLogger().warn(LogCategory.AI, `[IC3 commands] Outbound compliance ${JSON.stringify({
+                        requestId, ...complianceFailure,
+                    })}`);
+                } else if (!request.signal.aborted) {
                     timing(requestId, 'reply-failed', { replyMs: Date.now() - replyStartedAt });
                     report(error);
                 }

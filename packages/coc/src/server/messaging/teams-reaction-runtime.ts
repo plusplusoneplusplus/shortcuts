@@ -13,7 +13,9 @@ import { resolveTeamsReactionDispatcher } from './teams-reaction-dispatcher';
 import { normalizeTeamsRobotReaction } from './teams-reaction-evidence';
 import { createTeamsReactionPickup } from './teams-reaction-pickup';
 import { safeErrorDiagnostics } from './safe-error-diagnostics';
-import type { TeamsOutboundCompliance } from './teams-outbound-compliance';
+import { getTeamsOutboundComplianceFailure, type TeamsOutboundCompliance, type TeamsOutboundComplianceFailure } from './teams-outbound-compliance';
+import type { Route } from '../types';
+import { sendJSON } from '../core/api-handler';
 
 type Pickup = ReturnType<typeof createTeamsReactionPickup>;
 type Result = Extract<Awaited<ReturnType<Pickup['handle']>>, { admitted: true }>;
@@ -26,6 +28,7 @@ interface Options {
     dataDir: string;
     execution: Pick<ReturnType<typeof createTeamsReactionExecution>, 'run'>;
     decisionService?: TeamsOutboundCompliance['decisionService'];
+    routes: Route[];
     onResult(result: Result, source: TeamsIc3CommandSource & { messageId: string }, signal: AbortSignal): Promise<void>;
     createSession?: (region: 'amer' | 'emea' | 'apac') => Pick<TeamsIc3Session, 'connect' | 'readHistory' | 'dispose'>;
     createReactions?: (options: Ic3DirectMessageOptions) => Pick<Ic3ReactionClient, 'acknowledgeSourceMessage' | 'dispose'>;
@@ -41,6 +44,7 @@ export function createTeamsReactionRuntime(options: Options) {
     let retry: ReturnType<typeof setTimeout> | undefined;
     let state: 'disabled' | 'connecting' | 'connected' | 'degraded' | 'error' | 'stopped' = 'disabled';
     let lastError: Failure | undefined;
+    let outboundCompliance: TeamsOutboundComplianceFailure | undefined;
     const work = new Set<Promise<void>>();
     const deliveries = new Set<Promise<void>>();
 
@@ -249,7 +253,13 @@ export function createTeamsReactionRuntime(options: Options) {
                             deliverySignal.throwIfAborted();
                             log('Delivery completed');
                         }).catch(error => {
-                            if (!deliverySignal.aborted) {
+                            const complianceFailure = getTeamsOutboundComplianceFailure(error);
+                            if (complianceFailure) {
+                                outboundCompliance = complianceFailure;
+                                getLogger().warn(LogCategory.AI, `[Teams reactions] Outbound compliance ${JSON.stringify({
+                                    trace, ...complianceFailure,
+                                })}`);
+                            } else if (!deliverySignal.aborted) {
                                 if (stage === 'pickup' && owner.controller.signal.aborted
                                     && error === owner.controller.signal.reason) {
                                     log('Pickup cancelled by registration loss');
@@ -274,9 +284,10 @@ export function createTeamsReactionRuntime(options: Options) {
     const unsubscribe = options.config.onChange(() => restart());
     const unsubscribeRegion = options.teams.onIc3RegionChange(() => restart());
     restart();
-    return {
-        getStatus(): { state: typeof state; error?: Failure; trouter: TrouterStatus } {
+    const runtime = {
+        getStatus(): { state: typeof state; error?: Failure; outboundCompliance?: TeamsOutboundComplianceFailure; trouter: TrouterStatus } {
             return { state, ...(lastError ? { error: lastError } : {}),
+                ...(outboundCompliance ? { outboundCompliance: { ...outboundCompliance } } : {}),
                 trouter: trouter?.getStatus() ?? { state: stopped ? 'stopped' : state === 'disabled' ? 'disabled' : 'connecting', error: null } };
         },
         async dispose() {
@@ -292,4 +303,12 @@ export function createTeamsReactionRuntime(options: Options) {
             await Promise.all(deliveries);
         },
     };
+    options.routes.push({
+        method: 'GET', pattern: '/api/messaging/teams/reactions/status',
+        handler: async (_req, res) => {
+            res.setHeader('Cache-Control', 'no-store');
+            sendJSON(res, 200, runtime.getStatus());
+        },
+    });
+    return runtime;
 }

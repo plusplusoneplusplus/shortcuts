@@ -853,7 +853,13 @@ backend readiness; cancellation and all failures prevent text dispatch.
 Explicit block adds one account-pinned Crossmark to the captured original trigger
 after fresh source-access verification, then throws `TeamsOutboundComplianceRejected`.
 Its optional `rejectionReactionError` retains feedback failure without permitting
-text, fallback, retry or ordinary outcome reactions. Decision failures add no reaction.
+text, fallback, retry or ordinary outcome reactions. Decision failures add no reaction
+and throw `TeamsOutboundComplianceFailed`, with a fixed safe reason/code and original
+failure as `cause`. Both runtimes log correlated content-free outcomes and retain the
+latest `{ state: blocked | failed, reason, checkedAt }` under `outboundCompliance`,
+separate from read/connection health, including cancellation. The existing owning-server
+Teams status card polls the uncached own-command and reaction status routes and shows
+each trigger's latest failure and feedback error. Failures never emit delivery receipts.
 Safe known-unsent transport retries retain the exact allowance. Disabled policy and
 sources without compliance context retain ordinary delivery; ingress owners supply
 context for gated sends.
