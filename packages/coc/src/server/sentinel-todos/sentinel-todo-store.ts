@@ -337,6 +337,26 @@ export class SentinelTodoStore {
         return { categorySet, affectedOwners, itemCount, chatCount: affectedOwners.length };
     }
 
+    /**
+     * Applies an automatic category pick to a just-created item. Any change since
+     * classification started (a user move, edit or category-set change) wins.
+     */
+    setPickedCategory(owner: SentinelTodoOwner, itemId: string, expectedRevision: number,
+        categorySetRevision: number, categoryId: string): { item: SentinelTodoItem; ledgerRevision: number } {
+        return this.mutate(owner, () => {
+            const ledger = this.read(owner);
+            const index = ledger.items.findIndex(item => item.id === itemId);
+            if (index < 0) throw new SentinelTodoError('not_found', 'To-do item not found');
+            const item = ledger.items[index];
+            if (item.revision !== expectedRevision || item.categoryId !== undefined
+                || this.getCategories(owner.workspaceId).revision !== categorySetRevision) {
+                throw new SentinelTodoError('conflict', 'The item or category set changed during classification', item);
+            }
+            this.validateCategoryId(owner, categoryId);
+            return this.commit(owner, ledger, index, { ...item, categoryId }, 'system', item.updatedAt);
+        }, false);
+    }
+
     private requireCategory(set: SentinelTodoCategorySet, categoryId: string): void {
         if (!set.categories.some(category => category.id === categoryId)) {
             throw new SentinelTodoError('not_found', 'Category not found');

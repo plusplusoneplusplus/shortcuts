@@ -540,7 +540,11 @@ references before editing. Paths are package-relative.
   uses ordinary item revisions; omission preserves and `null` clears. Writes validate
   workspace membership; unknown stored IDs read as Uncategorized. Category-only edits
   preserve user-edit/verdict protection. The live gate hides assignments and rejects
-  explicit category writes while preserving stored assignments during other edits. Category sets stay
+  explicit category writes while preserving stored assignments during other edits. Creates that omit
+  `categoryId` (REST and tool) save first, then `pickTodoCategory` (single-choice decision, 8s bound)
+  applies a match via `setPickedCategory`, which CAS-checks item and set revisions so a user move wins;
+  no match/timeout/unavailable stays Uncategorized. Explicit `categoryId`/`null` and later edits never
+  re-pick. Category sets stay
   machine-local and participate in server-data wipe. Default-off live
   `features.sentinelTodoCategories` gates owner-validated REST/client category commands;
   post-commit `sentinel-todo-categories-changed` invalidates the workspace set, and

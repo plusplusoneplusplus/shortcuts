@@ -30,6 +30,7 @@ import { getRepoDataPath } from '../paths';
 import type { SentinelTodoCategorySet, SentinelTodoCategoryUsage, DeleteSentinelTodoCategoryResponse, SentinelTodoTagLibrary } from '@plusplusoneplusplus/coc-client';
 import type { DecisionService } from '../decisions/decision-service';
 import { matchTodoTags, tagSuggestSchema } from './sentinel-todo-tags';
+import { pickTodoCategory } from './sentinel-todo-category-classifier';
 import type { DashboardDiscoveryRuntime, DashboardWorkspaceTarget } from '@plusplusoneplusplus/coc-client';
 import { z } from 'zod';
 import { getServerLogger } from '../logging/server-logger';
@@ -283,14 +284,7 @@ export class SentinelTodoService {
     private async classifyTags(owner: SentinelTodoOwner, item: SentinelTodoItem, multiple: boolean, confirmed = false) {
         const library = this.deps.todos.getTags(owner);
         const generation = this.deps.getTagsGeneration?.();
-        let root: string | undefined;
-        if (library.tags.length) {
-            let reason: string | undefined;
-            try { root = await this.deps.resolveWorkspaceRoot?.(owner.workspaceId); }
-            catch (error) { reason = error instanceof Error ? error.message : String(error); }
-            if (!root) getServerLogger().warn({ ...owner, reason: reason ?? 'Parent workspace root is unavailable' },
-                'Tag classification workspace is unavailable');
-        }
+        const root = library.tags.length ? await this.classificationRoot(owner, 'Tag') : undefined;
         const metadata = await matchTodoTags(this.deps.decisions,
             root ? { workspaceId: owner.workspaceId, workingDirectory: root } : undefined, item, library.tags, multiple);
         await this.assertTagsOwner(owner);
@@ -300,6 +294,48 @@ export class SentinelTodoService {
         const result = this.deps.todos.setSuggestedTags(owner, item.id, item.revision, library.revision, item.tagRevision ?? 0, metadata, confirmed);
         this.emit({ owner, ...result, tagOnly: true });
         return result;
+    }
+
+    private async classificationRoot(owner: SentinelTodoOwner, kind: string): Promise<string | undefined> {
+        let root: string | undefined;
+        let reason: string | undefined;
+        try { root = await this.deps.resolveWorkspaceRoot?.(owner.workspaceId); }
+        catch (error) { reason = error instanceof Error ? error.message : String(error); }
+        if (!root) getServerLogger().warn({ ...owner, reason: reason ?? 'Parent workspace root is unavailable' },
+            `${kind} classification workspace is unavailable`);
+        return root;
+    }
+
+    /**
+     * Picks a category for a new item that arrived without one. The item is
+     * already saved; no match, timeout or an unavailable backend leave it
+     * Uncategorized, and any change made meanwhile (e.g. a user move) wins.
+     */
+    private async autoCategory(owner: SentinelTodoOwner, saved: { item: SentinelTodoItem; ledgerRevision: number }) {
+        const item = saved.item;
+        if (!this.categoriesEnabled() || item.categoryId !== undefined) return saved;
+        const set = this.deps.todos.getCategories(owner.workspaceId);
+        if (!set.categories.length) return saved;
+        const root = await this.classificationRoot(owner, 'Category');
+        const pick = await pickTodoCategory(this.deps.decisions,
+            root ? { workspaceId: owner.workspaceId, workingDirectory: root } : undefined, item, set.categories);
+        if (pick.state !== 'matched') {
+            getServerLogger().debug({ ...owner, itemId: item.id, state: pick.state, reason: pick.message },
+                'New to-do item left Uncategorized');
+            return saved;
+        }
+        try {
+            if (!this.categoriesEnabled()) return saved;
+            const result = this.deps.todos.setPickedCategory(owner, item.id, item.revision, set.revision, pick.categoryId);
+            this.emit({ owner, ...result });
+            return result;
+        } catch (error) {
+            if (!(error instanceof SentinelTodoError) || !['conflict', 'not_found', 'invalid'].includes(error.code)) throw error;
+            getServerLogger().debug({ ...owner, itemId: item.id, code: error.code, reason: error.message },
+                'Discarded stale category classification after saving the item');
+            const ledger = this.deps.todos.get(owner);
+            return { item: ledger.items.find(row => row.id === item.id) ?? item, ledgerRevision: ledger.revision };
+        }
     }
 
     private async autoTags(owner: SentinelTodoOwner, item: SentinelTodoItem, multiple: boolean) {
@@ -808,8 +844,11 @@ export class SentinelTodoService {
         this.assertExternalReferenceInput(input);
         const result = this.withVisibleErrors(() => this.deps.todos.create(owner, input, opts));
         if (result.created) this.emit({ owner, ledgerRevision: result.ledgerRevision, item: result.item });
-        return this.visibleWrite(result.created
-            ? { ...result, ...await this.autoTags(owner, result.item, input.matchMultiple === true) } : result);
+        if (!result.created) return this.visibleWrite(result);
+        const tagged = await this.autoTags(owner, result.item, input.matchMultiple === true);
+        // An explicit categoryId (including null for Uncategorized) is the caller's choice.
+        const categorized = input.categoryId === undefined ? await this.autoCategory(owner, tagged) : tagged;
+        return this.visibleWrite({ ...result, ...categorized });
     }
 
     async update(

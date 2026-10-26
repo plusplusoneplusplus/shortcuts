@@ -319,7 +319,7 @@ export function createSentinelTodosTool(deps: SentinelTodosToolDeps) {
                 },
                 idempotencyKey: { type: 'string', description: 'create/create_trigger: stable key that makes retries safe.' },
                 ...(service.categoriesEnabled?.() ? {
-                    categoryId: { type: ['string', 'null'], description: 'create/update: one existing workspace category ID from list categorySet; null clears to Uncategorized. Omission preserves on update.' },
+                    categoryId: { type: ['string', 'null'], description: 'create/update: one existing workspace category ID from list categorySet; null clears to Uncategorized. On create, omit it to let the server pick one automatically (Uncategorized when nothing clearly matches). Omission preserves on update.' },
                 } : {}),
                 ...(tagsEnabled ? {
                     tagIds: { type: 'array', items: { type: 'string' }, description: 'create/update: explicit existing tag IDs; [] clears. Never overwrite user-manual choices.' },

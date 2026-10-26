@@ -181,7 +181,8 @@ internal tracking and graph reads retain the full ledger), `create` (normal item
 optional `idempotencyKey` replay), `update` (requires `itemId` + `expectedRevision`; conflicts
 return `{ code: 'conflict', current }`). With the categories gate enabled, `list`
 includes the workspace `categorySet`; create/update accept one `categoryId`, with
-`null` clearing and omission preserving on update. Moves use item revisions.
+`null` clearing and omission preserving on update; omission on create lets the server
+auto-pick one (Uncategorized when nothing clearly matches). Moves use item revisions.
 `attach_reference` (`itemId` + `expectedRevision` + `conversationId`,
 optional `conversationWorkspaceId` defaulting to the chat's; saved, queued or running chats and Ralph sessions
 qualify; a reference-only link that never changes status or counts as a job/review). Store deduplication uses
