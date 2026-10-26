@@ -29,9 +29,6 @@ const EVIDENCE = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items\/(
 const CATEGORIES = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/categories$/;
 const CATEGORY = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/categories\/([^/]+)$/;
 const CATEGORY_USAGE = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/categories\/([^/]+)\/usage$/;
-const TAGS = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/tags$/;
-const TAG = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/tags\/([^/]+)$/;
-const SUGGEST_TAGS = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items\/([^/]+)\/suggest-tags$/;
 
 export function registerSentinelTodoRoutes(opts: {
     routes: Route[];
@@ -80,39 +77,6 @@ export function registerSentinelTodoRoutes(opts: {
             if (!target) return;
             if (!service.categoriesEnabled()) return sendError(res, 404, 'Sentinel to-do categories are disabled');
             try { sendJSON(res, 200, await service.getCategoryUsage(target, decodeURIComponent(match![3]))); }
-            catch (error) { fail(res, error); }
-        },
-    });
-
-    for (const method of ['GET', 'POST', 'PATCH', 'DELETE'] as const) {
-        routes.push({
-            method,
-            pattern: method === 'PATCH' || method === 'DELETE' ? TAG : TAGS,
-            handler: async (req, res, match) => {
-                const target = owner(res, match);
-                if (!target) return;
-                if (!service.tagsEnabled()) return sendError(res, 404, 'Sentinel to-do tags are disabled');
-                try {
-                    if (method === 'GET') return sendJSON(res, 200, await service.getTags(target));
-                    const body = await parseBodyOrReject(req, res);
-                    if (body === null) return;
-                    const result = method === 'POST' ? await service.createTag(target, body)
-                        : method === 'PATCH' ? await service.updateTag(target, decodeURIComponent(match![3]), body)
-                            : await service.deleteTag(target, decodeURIComponent(match![3]), body);
-                    sendJSON(res, 200, result);
-                } catch (error) { fail(res, error); }
-            },
-        });
-    }
-    routes.push({
-        method: 'POST', pattern: SUGGEST_TAGS,
-        handler: async (req, res, match) => {
-            const target = owner(res, match);
-            if (!target) return;
-            if (!service.tagsEnabled()) return sendError(res, 404, 'Sentinel to-do tags are disabled');
-            const body = await parseBodyOrReject(req, res);
-            if (body === null) return;
-            try { sendJSON(res, 200, await service.suggestTags(target, decodeURIComponent(match![3]), body)); }
             catch (error) { fail(res, error); }
         },
     });

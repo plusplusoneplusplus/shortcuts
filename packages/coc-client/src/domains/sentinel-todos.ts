@@ -9,10 +9,6 @@ import type {
   ReorderSentinelTodoCategoriesRequest,
   DeleteSentinelTodoCategoryRequest,
   DeleteSentinelTodoCategoryResponse,
-  SentinelTodoTagLibrary,
-  WriteSentinelTodoTagRequest,
-  DeleteSentinelTodoTagRequest,
-  SuggestSentinelTodoTagsRequest,
   SentinelCodaResponse,
   SentinelPrOutcomesResponse,
   SentinelPrOutcomeControlRequest,
@@ -79,26 +75,6 @@ export class SentinelTodosClient {
 
   deleteCategory(workspaceId: string, processId: string, categoryId: string, request: DeleteSentinelTodoCategoryRequest): Promise<DeleteSentinelTodoCategoryResponse> {
     return this.transport.request(ledgerPath(workspaceId, processId, `/categories/${encodePathSegment(categoryId)}`), { method: 'DELETE', body: request });
-  }
-
-  getTags(workspaceId: string, processId: string, options?: { signal?: AbortSignal }): Promise<SentinelTodoTagLibrary> {
-    return this.transport.request(ledgerPath(workspaceId, processId, '/tags'), options);
-  }
-
-  createTag(workspaceId: string, processId: string, request: WriteSentinelTodoTagRequest): Promise<SentinelTodoTagLibrary> {
-    return this.transport.request(ledgerPath(workspaceId, processId, '/tags'), { method: 'POST', body: request });
-  }
-
-  updateTag(workspaceId: string, processId: string, tagId: string, request: WriteSentinelTodoTagRequest): Promise<SentinelTodoTagLibrary> {
-    return this.transport.request(ledgerPath(workspaceId, processId, `/tags/${encodePathSegment(tagId)}`), { method: 'PATCH', body: request });
-  }
-
-  deleteTag(workspaceId: string, processId: string, tagId: string, request: DeleteSentinelTodoTagRequest): Promise<SentinelTodoTagLibrary> {
-    return this.transport.request(ledgerPath(workspaceId, processId, `/tags/${encodePathSegment(tagId)}`), { method: 'DELETE', body: request });
-  }
-
-  suggestTags(workspaceId: string, processId: string, itemId: string, request: SuggestSentinelTodoTagsRequest): Promise<SentinelTodoWriteResponse> {
-    return this.transport.request(ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/suggest-tags`), { method: 'POST', body: request });
   }
 
   listPrOutcomes(workspaceId: string, processId: string, itemId: string, options?: { signal?: AbortSignal }): Promise<SentinelPrOutcomesResponse> {

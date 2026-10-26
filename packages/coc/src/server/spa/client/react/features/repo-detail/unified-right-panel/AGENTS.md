@@ -904,7 +904,7 @@ active normal count and, when nonzero, how many normal items display Needs atten
 on the actual panel. At 660px the compact selectable list and detail editor scroll
 independently; below that width selection opens details and Back returns focus to
 the selected row. Detail Close clears selection, returns list focus and preserves
-owner-scoped deselection across refreshes/remounts. Pending item, tag, dependency
+owner-scoped deselection across refreshes/remounts. Pending item, dependency
 and PR-outcome mutations, plus pending Coda actions, block Close. Native pressed buttons expose selection;
 arrows/Home/End move row focus without selecting. Visited editors stay mounted
 but hidden across selection and resizing, retaining drafts.
@@ -919,27 +919,16 @@ To-do search (`sentinelTodoSearch.ts`, no flag) opens a compact bar above the li
 the toolbar icon or Ctrl/Cmd+F while focus is inside the tab (`useScopedFindShortcut`
 with `claimsBodyFocus: false` and `yieldToNestedEditors`; other surfaces and nested text
 fields keep their find). It filters the full loaded snapshot live — Done, Archived and
-rows past the recent page, ignoring the tag filter — on title, notes and Done when, never
+rows past the recent page — on title, notes and Done when, never
 job/chat data. Whitespace-separated words must all occur, each case-insensitively and
 literally in one field. Matches keep section order, grouped To do / Manual tracking
 (+ Done/Archived) / Done / Archived, in 100-row pages under a full match count; rows
 highlight plain-text `<mark>` segments and excerpt a matching Done when or notes field.
 Loading and load failure are explicit, never zero matches. Selecting a result opens
-details without writes. Opening snapshots selection, details, expansion, sections, tag
-filter, older-row limit, scroll and focus; Escape (box or result row) or Close restores
+details without writes. Opening snapshots selection, details, expansion, sections,
+older-row limit, scroll and focus; Escape (box or result row) or Close restores
 them. An open search is never remembered: unmount records the snapshot view. Owner
 remounts reset search; a narrow pane leaves details for results when a query changes.
-Default-off `sentinelTodoTagsEnabled` adds named restrained tag chips, a tag filter
-including Untagged, a selection-independent library manager and a detail picker.
-Enabling the live gate reloads the full owner snapshot without resetting drafts.
-Absent libraries distinguish loading, read failure and owning-server unavailability,
-with explicit retry; missing capability never fabricates an empty library.
-Filtering uses the full owner snapshot independently of the recent history budget.
-Item tag drafts share the owner-scoped remembered view across remounts. Library edits keep
-parent identity; deletion confirms removal from all items. Explicit picks and
-clears are manual; re-suggest confirms replacing them. Classification notices
-remain separate from save errors, status and execution controls. Narrow panels
-wrap tags and use native keyboard-accessible controls.
 With session-context attachments enabled, list-card grips and the detail pane's
 Attach button are copy-drag sources for their owning Sentinel composer. Grips also
 attach on click or keyboard activation; the overflow menu retains Attach. Cards use

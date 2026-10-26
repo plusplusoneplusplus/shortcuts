@@ -197,13 +197,9 @@ only external entries; omission preserves, `[]` clears. Validation canonicalizes
 supported PRs and deduplicates safe URLs. Metadata never supplies output evidence,
 execution/review authority, monitoring or fulfillment, and leaves user verdicts intact.
 
-Default-off `features.sentinelTodoTags` uses `sentinel_todo_tag_libraries` and
-`sentinel_todo_tag_assignments` under the same workspace/parent keys. Independent
-assignment/library revisions leave content revisions and dependency authority
-unchanged. Manual selections/clears survive content edits. The shared decision
-backend matches existing definitions without a worker; asynchronous results
-recheck owner, content, assignment and library snapshots. Failed/unavailable
-attempts preserve edits. Tags remain machine-local and share ledger wipe.
+Startup drops the retired `sentinel_todo_tag_libraries` and
+`sentinel_todo_tag_assignments` tables; categories replaced tags and their data is
+not migrated.
 
 The internal `setDependencies` command replaces ordered evidence selectors under
 the item revision. A writer-reserved transaction validates same-ledger references,

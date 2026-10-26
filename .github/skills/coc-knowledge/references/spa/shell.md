@@ -837,10 +837,7 @@ The panel always uses list/detail presentation:
 at 660px the panes scroll independently; narrower panels use selection and Back.
 Visited detail editors stay mounted across selection and resizing to retain drafts.
 Detail Close remembers owner-scoped deselection and restores list focus; pending
-item, tag, dependency, PR-outcome and Coda mutations block it. Item tag drafts share the
-remembered owner view across remounts. The live tag gate reloads the owner snapshot
-on enable; missing libraries expose loading/error/unavailable states and retry,
-without fabricating capability or depending on selection.
+item, dependency, PR-outcome and Coda mutations block it.
 Detail notes default to expanded; explicit visibility choices share the owner/item-scoped
 in-memory `SentinelTodoView` with drafts across refreshes and remounts.
 Compact list headers combine wrapping titles, status, priority and shared overflow

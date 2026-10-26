@@ -319,10 +319,10 @@ describe('TabFeatureSettingsCard', () => {
         render(<Harness tabs={['sentinel', 'chat']} />);
         act(() => controller.hydrate({
             sentinel: { enabled: true },
-            features: { sentinelTodoTags: true, sentinelResultCards: false },
+            features: { sentinelTodoCategories: true, sentinelResultCards: false },
         }));
         expect(controller.isTabDirty('sentinel')).toBe(false);
-        fireEvent.click(screen.getByTestId('toggle-sentinel-todo-tags-enabled'));
+        fireEvent.click(screen.getByTestId('toggle-sentinel-todo-categories-enabled'));
         const chatDef = toggleDef('chat');
         fireEvent.click(screen.getByTestId(chatDef.ui!.testId));
         updateConfig.mockRejectedValueOnce(new Error('Save failed'));
@@ -333,7 +333,7 @@ describe('TabFeatureSettingsCard', () => {
 
         act(() => controller.handleCancelTab('sentinel'));
         expect(controller.featureValues['sentinel.enabled']).toBe(true);
-        expect(controller.featureValues['features.sentinelTodoTags']).toBe(true);
+        expect(controller.featureValues['features.sentinelTodoCategories']).toBe(true);
         expect(controller.featureValues['features.sentinelResultCards']).toBe(false);
         expect(controller.isTabDirty('sentinel')).toBe(false);
         expect(controller.isTabDirty('chat')).toBe(true);

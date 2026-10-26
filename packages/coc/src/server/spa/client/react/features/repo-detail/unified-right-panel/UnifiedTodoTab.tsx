@@ -23,7 +23,6 @@ import type {
     SentinelTodoPriority,
     SentinelTodoStatus,
     SentinelTodoType,
-    SentinelTodoTagLibrary,
     SentinelTodoExternalReference,
     UpdateSentinelTodoRequest,
 } from '@plusplusoneplusplus/coc-client';
@@ -50,7 +49,6 @@ import { SentinelOvertures } from './SentinelOvertures';
 import { SentinelTodoDependencies } from './SentinelTodoDependencies';
 import { SentinelTodoPrOutcomes } from './SentinelTodoPrOutcomes';
 import { SentinelTodoCategoryToolbar, useSentinelTodoCategories } from './SentinelTodoCategories';
-import { SentinelTodoTagChips, SentinelTodoTagPicker, SentinelTodoTagToolbar, sentinelTodoMatchesTag, useSentinelTodoTagsEnabled } from './SentinelTodoTags';
 import { externalReferences, SentinelTodoExternalReferences, SentinelTodoExternalReferenceEditor, useSentinelTodoExternalReferencesEnabled } from './SentinelTodoExternalReferences';
 import { openUnifiedPanelTab } from './unifiedPanelOpen';
 import { resourcePathName } from './unifiedPanelOpenMenuModel';
@@ -208,7 +206,6 @@ const SEARCH_RESULT_PAGE = 100;
 type SearchSnapshot = {
     view: SentinelTodoView;
     expanded: ReadonlySet<string>;
-    tagFilter: string;
     visibleLimit: number;
     scrollTop: number;
     focus: HTMLElement | null;
@@ -339,10 +336,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     const [ledger, setLedger] = useState<SentinelTodoLedgerResponse | null>(null);
     const [visibleLimit, setVisibleLimit] = useState(SENTINEL_TODO_RECENT_LIMIT);
     const categories = useSentinelTodoCategories(owner, client, unavailable);
-    const tagsEnabled = useSentinelTodoTagsEnabled();
     const referencesEnabled = useSentinelTodoExternalReferencesEnabled();
-    const [tagFilter, setTagFilter] = useState('');
-    const [matchMultiple, setMatchMultiple] = useState(false);
     // Search is open while a snapshot exists; it lives only in this mount, so an owner change resets it.
     const [searchSnapshot, setSearchSnapshot] = useState<SearchSnapshot | null>(null);
     const searchSnapshotRef = useRef(searchSnapshot);
@@ -354,8 +348,6 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     const searchId = useId();
     const searchOpen = searchSnapshot !== null;
     const searchQuery = useMemo(() => parseSentinelTodoSearch(searchOpen ? searchText : ''), [searchOpen, searchText]);
-    const tagLibrary = tagsEnabled ? ledger?.tagLibrary : undefined;
-    const effectiveTagFilter = tagLibrary && (tagFilter === 'untagged' || tagLibrary.tags.some(tag => tag.id === tagFilter)) ? tagFilter : '';
     const [loadError, setLoadError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const pendingLoads = useRef(0);
@@ -458,21 +450,19 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         void load();
         return () => { mounted.current = false; loadSeq.current += 1; };
     }, [load]);
-    const previousFeatures = useRef({ tags: tagsEnabled, categories: categories.enabled });
+    // Disabled projections omit categoryId, so enabling categories needs fresh assignments.
+    const categoriesWereEnabled = useRef(categories.enabled);
     useEffect(() => {
-        const enabledNow = (tagsEnabled && !previousFeatures.current.tags)
-            || (categories.enabled && !previousFeatures.current.categories);
-        previousFeatures.current = { tags: tagsEnabled, categories: categories.enabled };
+        const enabledNow = categories.enabled && !categoriesWereEnabled.current;
+        categoriesWereEnabled.current = categories.enabled;
         if (enabledNow) void load();
-    }, [tagsEnabled, categories.enabled, load]);
+    }, [categories.enabled, load]);
     useSentinelTodoEvents(owner, () => { void load(); }, () => { void categories.reload(); });
 
     useEffect(() => { onErrorChange?.(loadError !== null); }, [loadError, onErrorChange]);
 
     const orderedItems = useMemo(() => sentinelTodoRecentPage(ledger?.items ?? [], ledger?.items.length).items, [ledger]);
-    const filteredItems = useMemo(() => (ledger?.items ?? []).filter(item => sentinelTodoMatchesTag(item, effectiveTagFilter, tagLibrary)), [ledger, effectiveTagFilter, tagLibrary]);
-    const recentItems = useMemo(() => effectiveTagFilter ? sentinelTodoRecentPage(filteredItems, filteredItems.length).items
-        : sentinelTodoRecentPage(filteredItems, visibleLimit).items, [filteredItems, visibleLimit, effectiveTagFilter]);
+    const recentItems = useMemo(() => sentinelTodoRecentPage(ledger?.items ?? [], visibleLimit).items, [ledger, visibleLimit]);
     const sections = useMemo(() => sentinelTodoSections(recentItems, 'normal'), [recentItems]);
     const manual = useMemo(() => sentinelTodoSections(recentItems, 'manual'), [recentItems]);
     const categoryDefinitions = categories.enabled ? categories.categorySet?.categories : undefined;
@@ -487,7 +477,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     }, [categories.enabled, categories.categorySet, sections.active]);
 
     // Search covers the whole loaded ledger — Done, Archived and items past the recent page —
-    // ignoring the tag filter, in the list's own section order.
+    // in the list's own section order.
     const searchResults = useMemo(() => searchQuery.words.length ? sentinelTodoSearchItems(orderedItems, searchQuery) : null,
         [orderedItems, searchQuery]);
     const searchGroups = useMemo(() => {
@@ -532,11 +522,10 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             ...(type === 'manual' ? { type } : {}),
             ...(categoryDefinitions && draft.categoryId !== undefined ? { categoryId: draft.categoryId } : {}),
             idempotencyKey,
-            ...(tagLibrary && matchMultiple ? { matchMultiple: true } : {}),
         });
         await showRevision(ledgerRevision);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [client, ownerKey, showRevision, tagLibrary, matchMultiple, referencesEnabled, categoryDefinitions]);
+    }, [client, ownerKey, showRevision, referencesEnabled, categoryDefinitions]);
     const addForm = useAddItemForm((draft, key) => createItem('normal', draft, key));
     const manualForm = useAddItemForm((draft, key) => createItem('manual', draft, key));
     const openAddForm = () => { setDetailOpen(false); addForm.open(); };
@@ -572,7 +561,6 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         if (currentView.current.ownerKey !== ownerKey) return;
         const item = ledger?.items.find(candidate => candidate.id === itemId);
         if (!item) return;
-        setTagFilter('');
         setVisibleLimit(limit => Math.max(limit, orderedItems.indexOf(item) + 1));
         const isManual = sentinelTodoType(item) === 'manual';
         if (isManual) setShowManual(true);
@@ -626,7 +614,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         }
         const active = document.activeElement;
         setSearchSnapshot({
-            view: viewRef.current, expanded, tagFilter, visibleLimit, scrollTop: scrollTop.current,
+            view: viewRef.current, expanded, visibleLimit, scrollTop: scrollTop.current,
             focus: active instanceof HTMLElement && panelRef.current?.contains(active) ? active : null,
         });
         setSearchLimit(SEARCH_RESULT_PAGE);
@@ -641,7 +629,6 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         setSelectedId(snapshot.view.selectedId ?? null);
         setDetailOpen(snapshot.view.detailOpen ?? false);
         setExpanded(snapshot.expanded);
-        setTagFilter(snapshot.tagFilter);
         setVisibleLimit(snapshot.visibleLimit);
         if (snapshot.view.sections) {
             setShowDone(snapshot.view.sections.done);
@@ -803,7 +790,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             chatId, resourceId: WORKSPACE_PREVIEW_PREFIX + reference, label: resourcePathName(reference),
         }),
         onSave: saveItem, onFollowLink: followLink,
-        tagLibrary, tagClient: client, matchMultiple, categories: categoryDefinitions,
+        categories: categoryDefinitions,
     });
     const clearGripDrag = () => {
         draggedDone.current = null;
@@ -935,9 +922,6 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                     )}
                 </div>
                 {categories.enabled && <SentinelTodoCategoryToolbar state={categories} owner={owner} client={client} onLedgerChange={load} />}
-                {tagsEnabled && <SentinelTodoTagToolbar owner={owner} client={client} library={tagLibrary} onLedgerChange={load}
-                    loading={loading} loadError={loadError} onRetry={refresh}
-                    filter={effectiveTagFilter} onFilter={setTagFilter} multiple={matchMultiple} onMultiple={setMatchMultiple} />}
                 <div className="ml-auto flex max-w-full flex-wrap items-center gap-2">
                     <AcceptAllCodaProposals />
                     <div className="flex shrink-0 items-center gap-2">
@@ -1090,7 +1074,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                     </div> : normalCount === 0 ? (
                         !addForm.adding && (
                             <div className={cn('flex flex-col items-start gap-2 p-2', MUTED)} data-testid="sentinel-todo-empty">
-                                <span>{effectiveTagFilter ? 'No normal items match this tag filter.' : ledger.items.some(item => sentinelTodoType(item) === 'normal')
+                                <span>{ledger.items.some(item => sentinelTodoType(item) === 'normal')
                                     ? 'No normal items in this recent view. Show older items to see more.'
                                     : 'Nothing is tracked yet. Sentinel records concrete work requests, agreed next actions, and the jobs it delegates for them here; you can add items too.'}</span>
                                 <Button size="sm" onClick={openAddForm}>Add item</Button>
@@ -1157,7 +1141,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                             {renderList(sections.archived)}
                         </Section>
                     )}
-                    {!effectiveTagFilter && ledger.items.length > recentItems.length && (
+                    {ledger.items.length > recentItems.length && (
                         <Button size="sm" variant="secondary"
                             onClick={() => setVisibleLimit(recentItems.length + SENTINEL_TODO_RECENT_LIMIT)}
                             data-testid="sentinel-todo-show-older">
@@ -1229,9 +1213,6 @@ type TodoDetailProps = {
     currentWorkspaceId?: string;
     hidden?: boolean;
     headingId?: string;
-    tagLibrary?: SentinelTodoTagLibrary;
-    tagClient: CocClient;
-    matchMultiple: boolean;
     /** The workspace's ordered categories; absent while categories are off. */
     categories?: readonly SentinelTodoCategory[];
     onClose: () => void;
@@ -1337,7 +1318,7 @@ function TodoCardMenu({ owner, item, onAttach, disabled, onAction, categories }:
     </div>;
 }
 
-function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibrary, categories, selected, onSelect, menuDisabled, onMenuAction, onReopenDragStart, onMoveDragStart, onGripDragEnd, search, categoryLabel }: Pick<TodoDetailProps, 'item' | 'owner' | 'currentWorkspaceId' | 'onFollowLink' | 'tagLibrary' | 'categories'> & {
+function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, categories, selected, onSelect, menuDisabled, onMenuAction, onReopenDragStart, onMoveDragStart, onGripDragEnd, search, categoryLabel }: Pick<TodoDetailProps, 'item' | 'owner' | 'currentWorkspaceId' | 'onFollowLink' | 'categories'> & {
     selected: boolean; onSelect: () => void; menuDisabled: boolean; onMenuAction: (action: TodoMenuAction) => void;
     onReopenDragStart?: (event: DragEvent<HTMLElement>) => void;
     /** Dragging the grip onto a category section moves the item there. */
@@ -1427,7 +1408,6 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
             <HighlightedText text={excerpt.text} query={search} />
         </p>}
         {categoryLabel && <span className={cn('block px-1.5 pb-1 text-[11px]', MUTED)} data-testid={`sentinel-todo-category-label-${item.id}`}>{categoryLabel}</span>}
-        {tagLibrary && item.tagIds?.length ? <div className="px-1.5 pb-1"><SentinelTodoTagChips item={item} library={tagLibrary} /></div> : null}
         {(item.jobs.length > 0 || reasonPreview) && <div className="min-w-0 px-1.5 pb-1">
             <TodoJobs item={item} owner={owner} currentWorkspaceId={currentWorkspaceId} onFollowLink={onFollowLink} reasonPreview={reasonPreview} />
         </div>}
@@ -1441,7 +1421,7 @@ function knownCategoryId(item: SentinelTodoItem, categories: readonly SentinelTo
     return item.categoryId && categories.some(category => category.id === item.categoryId) ? item.categoryId : null;
 }
 
-function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, items, ledgerRevision, onLedgerChange, onItemLink, onArtifactLink, hidden, headingId, tagLibrary, tagClient, matchMultiple, categories, onClose, menuAction, onMenuBlocked, onMenuActionConsumed }: TodoDetailProps) {
+function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, items, ledgerRevision, onLedgerChange, onItemLink, onArtifactLink, hidden, headingId, categories, onClose, menuAction, onMenuBlocked, onMenuActionConsumed }: TodoDetailProps) {
     const referencesEnabled = useSentinelTodoExternalReferencesEnabled();
     const [restoredDraft] = useState(() => recallSentinelTodoView(owner).itemDrafts?.[item.id]);
     const [editing, setEditing] = useState<(Draft & { baseRevision: number }) | null>(restoredDraft?.editing ?? null);
@@ -1459,12 +1439,11 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
     const [error, setError] = useState<string | null>(restoredDraft?.error ?? null);
     const { canAttach, attach, attachError, drag } = useTodoAttachment(owner, item);
     const [busy, setBusy] = useState(false);
-    const [tagsBusy, setTagsBusy] = useState(false);
     const [dependenciesBusy, setDependenciesBusy] = useState(false);
     const [outcomesBusy, setOutcomesBusy] = useState(false);
     const [organizeNotesBusy, setOrganizeNotesBusy] = useState(false);
     const { mutationPending: codaBusy } = useContext(CodaFindingsContext);
-    const closeBlocked = busy || tagsBusy || dependenciesBusy || outcomesBusy || codaBusy || organizeNotesBusy;
+    const closeBlocked = busy || dependenciesBusy || outcomesBusy || codaBusy || organizeNotesBusy;
     useLayoutEffect(() => {
         onMenuBlocked(item.id, closeBlocked || editing !== null || statusDraft !== null);
     }, [item.id, closeBlocked, editing, statusDraft, onMenuBlocked]);
@@ -1516,7 +1495,6 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
             ...(!draft.titleOnly && referencesEnabled && draft.externalReferencesChanged
                 && JSON.stringify(draft.externalReferences ?? []) !== JSON.stringify(externalReferences(item))
                 ? { externalReferences: draft.externalReferences ?? [] } : {}),
-            ...(fieldsChanged && tagLibrary && matchMultiple ? { matchMultiple: true } : {}),
         }, draft.baseRevision), () => setEditing(null),
         // Keep the typed text; the next save is knowingly based on the newer revision.
         current => setEditing(prev => prev && { ...prev, baseRevision: current?.revision ?? prev.baseRevision }));
@@ -1620,8 +1598,6 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                     </svg>
                 </button>
             </div>
-            {tagLibrary && <SentinelTodoTagPicker item={item} owner={owner} client={tagClient} library={tagLibrary}
-                multiple={matchMultiple} onLedgerChange={onLedgerChange} onBusyChange={setTagsBusy} />}
             <SentinelCodaFinding item={item} />
             <div className={cn('flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-2 pb-1.5 text-[11px]', MUTED)} data-testid={`sentinel-todo-meta-${item.id}`}>
                 {item.targetRepo && (
@@ -1689,7 +1665,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                                                 </button>
                                             )}
                                             {!item.archived && <SentinelTodoOrganizeNotes owner={owner} item={item} active={!hidden}
-                                                blocked={busy || tagsBusy || dependenciesBusy || outcomesBusy || codaBusy || editing !== null || statusDraft !== null}
+                                                blocked={busy || dependenciesBusy || outcomesBusy || codaBusy || editing !== null || statusDraft !== null}
                                                 onBusyChange={setOrganizeNotesBusy} />}
                                         </div>
                                         {(!foldNotes || notesOpen) && (

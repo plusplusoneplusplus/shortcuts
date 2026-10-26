@@ -152,7 +152,6 @@ export interface SentinelTodoChangeEvent {
     workspaceId: string;
     processId: string;
     ledgerRevision: number;
-    tagOnly?: boolean;
 }
 
 /** Whether a WebSocket message is a change to this owner's ledger. */
@@ -176,7 +175,7 @@ export function shouldAutoOpenSentinelTodoTab(
     input: OpenUnifiedTabInput,
     event: SentinelTodoChangeEvent,
 ): boolean {
-    if (event.tagOnly || event.ledgerRevision !== 1) return false;
+    if (event.ledgerRevision !== 1) return false;
     const id = unifiedTabId(input);
     if ((state.chatTabs[chatId] ?? []).some(tab => tab.id === id)) return false;
     return activeTabId(state, chatId) === null;

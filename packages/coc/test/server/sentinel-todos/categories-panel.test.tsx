@@ -56,7 +56,7 @@ beforeEach(() => {
     references.length = 0;
     sockets.length = 0;
     Object.values(api).forEach(mock => mock.mockReset());
-    applyRuntimeConfigPatch({ sentinelTodoCategoriesEnabled: true, sentinelTodoTagsEnabled: false,
+    applyRuntimeConfigPatch({ sentinelTodoCategoriesEnabled: true,
         sentinelTodoExternalReferencesEnabled: false, sessionContextAttachmentsEnabled: false });
     sets = { 'ws-owner': { revision: 3, categories: [{ id: 'ui', name: 'Interface' }, { id: 'docs', name: 'Docs' }] },
         'ws-group': { revision: 0, categories: [] } };

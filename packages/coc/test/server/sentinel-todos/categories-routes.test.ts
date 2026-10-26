@@ -67,6 +67,20 @@ describe('Workspace Sentinel category routes', () => {
     const otherWorkspace = '/api/workspaces/ws-b/sentinel-todos/other-workspace';
     const group = '/api/workspaces/group-a/sentinel-todos/group-chat';
 
+    it('no longer serves tag routes or accepts tag fields, since categories replaced tags', async () => {
+        for (const [method, pathname] of [['GET', `${base}/tags`], ['POST', `${base}/tags`],
+            ['PATCH', `${base}/tags/tag-1`], ['DELETE', `${base}/tags/tag-1`], ['POST', `${base}/items/item-1/suggest-tags`]]) {
+            await expect(request(method, pathname)).rejects.toThrow('Missing route');
+        }
+        expect(await request('POST', `${base}/items`, { title: 'Track', tagIds: [] })).toMatchObject({ status: 400 });
+        const created = await request('POST', `${base}/items`, { title: 'Track' });
+        expect(created.status).toBe(201);
+        expect(created.body.item).not.toHaveProperty('tagIds');
+        expect(await request('PATCH', `${base}/items/${created.body.item.id}`, {
+            expectedRevision: created.body.item.revision, expectedTagRevision: 0, tagIds: [],
+        })).toMatchObject({ status: 400 });
+    });
+
     it('shares ordered CRUD across chats, isolating other workspaces and repo groups', async () => {
         expect(await request('GET', `${base}/categories`)).toEqual({ status: 200, body: { revision: 0, categories: [] } });
         const created = await request('POST', `${base}/categories`, { expectedRevision: 0, name: ' API ' });

@@ -214,9 +214,6 @@ Bookkeeping per Sentinel chat in native SQLite `processes.db`, keyed by workspac
 | PUT | `/api/workspaces/:workspaceId/sentinel-todos/:processId/categories` | Reorder with `{ expectedRevision, categoryIds }`, requiring an exact permutation |
 | GET | `/api/workspaces/:workspaceId/sentinel-todos/:processId/categories/:categoryId/usage` | Deletion preview → `{ itemCount, chatCount }`, including every item state across all workspace chats |
 | DELETE | `/api/workspaces/:workspaceId/sentinel-todos/:processId/categories/:categoryId` | `{ expectedRevision, confirmed: true }` clears assignments in every workspace chat atomically → `{ categorySet, itemCount, chatCount }`; category writes broadcast `sentinel-todo-categories-changed` (`workspaceId`, set `revision`); deletion also invalidates each affected ledger |
-| GET/POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/tags` | Read/create parent tag library; create `{ expectedRevision, name, color, description? }` → `{ revision, tags }`; default-off `features.sentinelTodoTags`, disabled → `404` |
-| PATCH/DELETE | `/api/workspaces/:workspaceId/sentinel-todos/:processId/tags/:tagId` | Rename/recolor/describe or delete with library `expectedRevision`; delete requires `confirmed: true` and removes that tag from every parent item atomically |
-| POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/items/:itemId/suggest-tags` | `{ expectedRevision, expectedTagRevision, multiple?, confirmed? }` best-effort matches only existing parent definitions; manual replacement requires explicit confirmation; item edits survive unavailable/failed classification |
 | PUT | `/api/workspaces/:workspaceId/sentinel-todos/:processId/items/:itemId/dependencies` | Replace all typed `dependsOn` edges with `expectedRevision`; requires default-off `features.sentinelTodoDependencies`; same-parent graph validation is transactional, stale → `409`, invalid/self/duplicate/foreign/archived/cyclic edges → `400`; preserves fulfillment and grants no authority |
 | POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/items/:itemId/pr-output` | Bind/rebind exact produced canonical PR `{ expectedRevision, outputSlot, prUrl, provenance }`; `{ kind: 'tracked_job', processId, workspaceId, reason }` requires an owning tracked delegation and matching recorded output link; `{ kind: 'owner_selection', reason }` explicitly attests otherwise unavailable output provenance; revision CAS, no inferred newest PR or merge claim; dependencies flag required |
 | POST | `/api/workspaces/:workspaceId/sentinel-todos/:processId/items/:itemId/artifact-acceptance` | Explicit `{ expectedRevision, phase, reference, version: 'sha256:<64 lowercase hex>' }` receipt; pins the prerequisite's local target workspace (parent when unset), checkout or exact absolute managed notes/tasks/outputs path; current bytes must match, foreign roots/remote content reject, stale → `409`; acceptance never sets Done or authorizes implementation; dependencies flag required |
@@ -231,16 +228,6 @@ REST writes are always actor `user` (no caller-supplied actor; unknown keys → 
 Items carry `references[]` (`processId`, `workspaceId`, `openLink`, `title?`, `attachedAt`, `attachedBy`) separate from `jobs[]`: no execution, no review, no status change, no user-verdict bookkeeping, and nothing is sent to the referenced chat. Older servers omit the field.
 
 Items carry `priority: 'high' | 'regular'` (create defaults to `regular`; items stored without it read as `regular` with no rewrite or revision bump). It is ledger metadata only — independent of status, never job queue priority or list order. A priority-only `PATCH` leaves status, reason and outcome unchanged and does not count as a user edit that supersedes a linked job's result; other values → `400 invalid`.
-
-With tags enabled, ledger reads include `tagLibrary`; items expose `tagIds`,
-`tagOrigin`, independent `tagRevision` and `tagMatch`. Assignment updates and
-re-suggest require `expectedTagRevision` as well as the content revision.
-Explicit create/update `tagIds` (including `[]`) protect
-manual selections from automatic matching. `matchMultiple` opts an automatic
-attempt into multiple existing matches; the default is one or none. Tags belong to
-the parent ledger, not each item's target workspace. They grant no execution
-authority and do not change fulfillment, dependency readiness or manual tracking.
-Tag-only notifications carry `tagOnly: true`, refresh readers and never autoopen tabs.
 
 `coc-client` exposes these through `client.sentinelTodos` (portable contracts in `contracts/sentinel-todos.ts`). Ledger items expose actor-attributed `evidence[]` and `dependencyReadiness` (`waiting`, `ready`) with evaluation, wake delivery, errors and durable `requiresReview` warnings for invalidated started work. Warnings do not cancel work or rewrite fulfillment/user verdicts. Normally user-authorized dispatch rechecks all prerequisites and preserves native duplicate guards. Item-write conflicts surface as `CocApiError` with `code: 'conflict'` and `body.current`. See [process-store.md](process-store.md#sentinel-dependency-operations) for native receipts and recovery.
 

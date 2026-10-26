@@ -69,7 +69,7 @@ describe('Sentinel item category assignments', () => {
             .toMatchObject({ created: false, ledgerRevision: 1, item: { title: 'Work', categoryId: first } });
     });
 
-    it('advertises the category tool parameter independently of tags', () => {
+    it('advertises the category tool parameter only while categories are enabled', () => {
         const schema = () => createSentinelTodosTool({ service, owner }).tool.parameters as any;
         expect(schema().properties.categoryId).toMatchObject({ type: ['string', 'null'] });
         expect(schema().properties.tagIds).toBeUndefined();

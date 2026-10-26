@@ -59,7 +59,7 @@ describe('workspace Sentinel to-do category storage', () => {
         expect(store.getCategories('member').categories.map(category => category.name)).toEqual(['Member work']);
     });
 
-    it('persists across connections, tolerates tag tables, and rejects stale writers', () => {
+    it('persists across connections and rejects stale writers', () => {
         const initial = create('Backend');
         const db = new NativeDatabase(path.join(fixture.dataDir, 'processes.db'));
         try {
@@ -73,7 +73,6 @@ describe('workspace Sentinel to-do category storage', () => {
                 expectedRevision: 1, categoryIds: initial.categories.map(category => category.id),
             }), 'conflict');
             expect(store.getCategories('workspace')).toEqual(changed);
-            expect(fixture.db.prepare("SELECT name FROM sqlite_master WHERE name = 'sentinel_todo_tag_libraries'").get()).toBeDefined();
         } finally { db.close(); }
     });
 
@@ -191,12 +190,10 @@ describe('workspace Sentinel to-do category storage', () => {
         expect(store.getCategoryUsage('workspace', categoryId)).toEqual({ itemCount: 1, chatCount: 1 });
     });
 
-    it('adds the nullable assignment column to an existing database without touching items or tags', () => {
+    it('adds the nullable assignment column to an existing database without touching items', () => {
         const owner = { workspaceId: 'workspace', processId: 'chat' };
         store.create(owner, { title: 'Existing item' }, { actor: 'user' });
-        store.writeTag(owner, undefined, { expectedRevision: 0, name: 'Existing tag', color: 'blue' });
         const before = store.get(owner);
-        const tags = store.getTags(owner);
         const version = fixture.db.pragma<number>('user_version', { simple: true });
         fixture.db.exec('ALTER TABLE sentinel_todo_items DROP COLUMN category_id');
         fixture.close();
@@ -206,9 +203,42 @@ describe('workspace Sentinel to-do category storage', () => {
             const reopened = new SentinelTodoStore(db);
             new SentinelTodoStore(db); // Startup is idempotent.
             expect(reopened.get(owner)).toEqual(before);
-            expect(reopened.getTags(owner)).toEqual(tags);
             expect(db.prepare('SELECT category_id FROM sentinel_todo_items').all()).toEqual([{ category_id: null }]);
             expect(db.pragma<number>('user_version', { simple: true })).toBe(version);
+        } finally { db.close(); }
+    });
+
+    it('starts on a database that still has the old tag tables and drops their data', () => {
+        const owner = { workspaceId: 'workspace', processId: 'chat' };
+        const { item } = store.create(owner, { title: 'Tagged item' }, { actor: 'user' });
+        // The shape earlier releases created for parent-scoped tags.
+        fixture.db.exec(`
+            CREATE TABLE sentinel_todo_tag_libraries (
+                workspace_id TEXT NOT NULL, parent_process_id TEXT NOT NULL, revision INTEGER NOT NULL, tags TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, parent_process_id),
+                FOREIGN KEY (workspace_id, parent_process_id)
+                    REFERENCES sentinel_todo_ledgers (workspace_id, parent_process_id) ON DELETE CASCADE);
+            CREATE TABLE sentinel_todo_tag_assignments (
+                workspace_id TEXT NOT NULL, parent_process_id TEXT NOT NULL, item_id TEXT NOT NULL, metadata TEXT NOT NULL,
+                PRIMARY KEY (workspace_id, parent_process_id, item_id),
+                FOREIGN KEY (workspace_id, parent_process_id, item_id)
+                    REFERENCES sentinel_todo_items (workspace_id, parent_process_id, id) ON DELETE CASCADE);`);
+        fixture.db.prepare('INSERT INTO sentinel_todo_tag_libraries VALUES (?, ?, 1, ?)')
+            .run('workspace', 'chat', JSON.stringify([{ id: 'tag-1', name: 'Old', color: 'blue' }]));
+        fixture.db.prepare('INSERT INTO sentinel_todo_tag_assignments VALUES (?, ?, ?, ?)')
+            .run('workspace', 'chat', item.id, JSON.stringify({ tagIds: ['tag-1'], tagOrigin: 'manual', tagRevision: 1 }));
+        const before = store.get(owner);
+        fixture.close();
+        const db = new NativeDatabase(path.join(fixture.dataDir, 'processes.db'));
+        try {
+            const reopened = new SentinelTodoStore(db);
+            new SentinelTodoStore(db); // Startup is idempotent.
+            expect(db.prepare(`SELECT name FROM sqlite_master WHERE name IN
+                ('sentinel_todo_tag_libraries', 'sentinel_todo_tag_assignments')`).all()).toEqual([]);
+            expect(reopened.get(owner)).toEqual(before);
+            expect(reopened.get(owner).items[0]).not.toHaveProperty('tagIds');
+            const updated = reopened.update(owner, item.id, item.revision, { title: 'Still editable' }, 'user');
+            expect(updated.item.title).toBe('Still editable');
         } finally { db.close(); }
     });
 

@@ -24,7 +24,6 @@ export function sentinelTodoRecentList(ledger: SentinelTodoLedgerView, input: un
     }
     return {
         revision: ledger.revision,
-        ...(ledger.tagLibrary ? { tagLibrary: ledger.tagLibrary } : {}),
         ...sentinelTodoRecentPage(eligible, limit, itemId ? 0 : offset),
     };
 }
