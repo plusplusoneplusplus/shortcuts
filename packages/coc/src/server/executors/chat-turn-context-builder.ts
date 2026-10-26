@@ -136,6 +136,8 @@ export interface ChatTurnContext {
     excludedTools: string[];
     /** Ask-user addon handles (defined when askUser.enabled is true). */
     askUser?: ChatToolBundle['askUser'];
+    /** Gated `mcp_list_tools` / `mcp_call` for top-level owner scripts; closed by `dispose`. */
+    scriptMcpTools?: ChatToolBundle['scriptMcpTools'];
     /** Dispose all open resources (memory DB handles, script MCP clients). Safe to call multiple times. */
     dispose: () => void;
 }
@@ -206,7 +208,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
 
     // Scripts reach the same MCP servers the turn resolves for its workspace;
     // nothing is started until a script uses one.
-    const scriptsMayUseMcp = input.includeToolScripting !== false && !input.browserOnly && !input.codaFindings
+    const scriptsMayUseMcp = (input.includeToolScripting !== false || input.unattendedScript === true) && !input.browserOnly && !input.codaFindings
         && !input.sentinelPrOutcomeReview && isToolScriptingMcpEnabled(input.dataDir);
     const mcpServers = scriptsMayUseMcp
         ? await resolveChatMcpServersForWorkspace({
@@ -287,6 +289,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         memoryV2,
         excludedTools,
         askUser: toolBundle.askUser,
+        scriptMcpTools: toolBundle.scriptMcpTools,
         dispose: () => {
             memoryV2.dispose();
             void toolBundle.mcpScope?.close();

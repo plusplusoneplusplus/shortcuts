@@ -5,7 +5,9 @@
  * Shared by Sentinel job gates (`job-gate-owner-runner.ts`) and the canvas
  * `host.runScript` bridge (`canvas/canvas-script-bridge.ts`). The tool context is
  * built with `unattendedScript: true`: no `ask_user`, approval-gated tools are
- * denied, and only the CoC handlers in the context execute.
+ * denied, and only the CoC handlers in the context execute. With
+ * `features.toolScriptingMcp` the script also gets `mcp_list_tools` / `mcp_call`
+ * over the owner workspace's MCP servers; those clients live for one run.
  */
 
 import {
@@ -72,9 +74,14 @@ export async function withOwnerToolRuntime<T>(
     try {
         signal?.throwIfAborted();
         const allowed = allowTools ? new Set(allowTools) : undefined;
-        const tools = allowed
-            ? context.tools.filter(tool => tool.name !== RUN_TOOL_SCRIPT_TOOL_NAME && allowed.has(tool.name))
-            : context.tools;
+        // The MCP pair is not a registered LLM tool, so `allowTools` cannot name
+        // it; its own approval gate (unattended: deny unless opted out) applies.
+        const tools = [
+            ...(allowed
+                ? context.tools.filter(tool => tool.name !== RUN_TOOL_SCRIPT_TOOL_NAME && allowed.has(tool.name))
+                : context.tools),
+            ...(context.scriptMcpTools ?? []),
+        ];
         const allowNestedScripts = tools.some(tool => tool.name === RUN_TOOL_SCRIPT_TOOL_NAME)
             && !readApprovalRequiredLlmTools(ownerTools.dataDir, ownerTools.workspaceId)
                 .includes(RUN_TOOL_SCRIPT_TOOL_NAME);

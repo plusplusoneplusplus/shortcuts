@@ -421,7 +421,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         const cron = this.buildCronToolDeps(owner.id);
         return {
             dataDir, store: this.store,
-            workspaceId, processId: owner.id,
+            workspaceId, processId: owner.id, workingDirectory,
             followUpSuggestions: this.followUpSuggestions,
             sentinelNextSteps: normalizeChatMode(mode) === 'sentinel' && this.queueConfig.getSentinelNextStepsEnabled(),
             enqueueChat: this.runtime.getEnqueueChat?.(),

@@ -69,7 +69,8 @@ export function buildRunToolScriptDescription(toolNames: readonly string[], mcpS
 export function createRunToolScriptTool(deps: RunToolScriptToolDeps) {
     const mcpServerNames = deps.mcp?.serverNames() ?? [];
     const mcpTools = mcpServerNames.length > 0 ? createMcpScriptTools(deps.mcp!) : [];
-    const scriptTools = [...deps.tools, ...(deps.gateMcpTools?.(mcpTools) ?? mcpTools)];
+    const gatedMcpTools = deps.gateMcpTools?.(mcpTools) ?? mcpTools;
+    const scriptTools = [...deps.tools, ...gatedMcpTools];
     const tool = defineTool<RunToolScriptArgs>(RUN_TOOL_SCRIPT_TOOL_NAME, {
         description: buildRunToolScriptDescription(scriptTools.map(t => t.name), mcpServerNames),
         parameters: {
@@ -111,5 +112,5 @@ export function createRunToolScriptTool(deps: RunToolScriptToolDeps) {
             }
         },
     });
-    return { tool };
+    return { tool, mcpTools: gatedMcpTools };
 }

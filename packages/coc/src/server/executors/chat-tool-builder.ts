@@ -148,6 +148,11 @@ export interface ChatToolBundle {
     askUser?: AskUserAddon;
     /** MCP clients behind `run_tool_script`; the owner closes it when the turn ends. */
     mcpScope?: McpScriptScope;
+    /**
+     * The gated `mcp_list_tools` / `mcp_call` pair over `mcpScope`, for owner
+     * scripts that run at the top level instead of inside `run_tool_script`.
+     */
+    scriptMcpTools?: Tool<any>[];
 }
 
 /**
@@ -317,8 +322,11 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
 
     // Built last, over the filtered and gated list: a script reaches only the
     // tools this turn already offers, with the same approval policy.
+    // Owner scripts (unattended) run the engine directly, so they keep the MCP
+    // pair even when this owner's turns leave the run_tool_script tool out.
     let mcpScope: McpScriptScope | undefined;
-    if (options.includeToolScripting !== false && !options.sentinelPrOutcomeReview
+    let scriptMcpTools: Tool<any>[] | undefined;
+    if ((options.includeToolScripting !== false || options.unattendedScript) && !options.sentinelPrOutcomeReview
         && isToolScriptingEnabled(options)
         && filterDisabledLlmTools([{ name: 'run_tool_script' }], disabledWithContextExclusions).length > 0) {
         if (options.mcpServers && (options.toolScriptingMcpEnabled ?? isToolScriptingMcpEnabled(options.dataDir))) {
@@ -333,7 +341,7 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
                 options.browserSignal?.addEventListener('abort', () => void scope.close(), { once: true });
             }
         }
-        const { tool } = createRunToolScriptTool({
+        const { tool, mcpTools } = createRunToolScriptTool({
             tools: tools.filter(t => isScriptableLlmTool(t.name)),
             workspaceId: options.workspaceId,
             processId: options.processId,
@@ -343,10 +351,11 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
             gateMcpTools: mcpTools => applyLlmToolApprovalGate(
                 filterDisabledLlmTools(mcpTools, disabledWithContextExclusions), approvalGate),
         });
-        tools.push(...applyLlmToolApprovalGate([tool], approvalGate));
+        if (options.includeToolScripting !== false) tools.push(...applyLlmToolApprovalGate([tool], approvalGate));
+        if (mcpTools.length > 0) scriptMcpTools = mcpTools;
     }
 
-    return { tools, toolGuidance, askUser, mcpScope };
+    return { tools, toolGuidance, askUser, mcpScope, scriptMcpTools };
 }
 
 function readFeatures(dataDir: string | undefined) {

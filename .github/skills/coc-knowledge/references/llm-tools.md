@@ -846,7 +846,11 @@ scope's `isToolAllowed` comes from `createExcludedMcpToolFilter()` over the turn
 tools, `excludeTools` and provider `excludedTools`, matching `<server>-<tool>`,
 `mcp__<server>__<tool>` and `<server>/<tool>`. Filtered tools are hidden from `mcp_list_tools`
 and fail with `tool-not-allowed`; excluding `mcp_call` itself drops it from the script runtime
-and description. The non-chat surfaces are not wired yet.
+and description. Non-chat surfaces (canvas `host.runScript`, Sentinel refrain gates) go through
+`withOwnerToolRuntime`: the owner context is built unattended with the owner chat's
+`workingDirectory`, the bundle returns the gated pair as `scriptMcpTools` (also for owners whose
+turns omit `run_tool_script`, e.g. Codex), the runner appends it to the top-level runtime outside
+`allowTools`, and `context.dispose()` closes the scope after the one run.
 
 ## Supporting Modules
 
