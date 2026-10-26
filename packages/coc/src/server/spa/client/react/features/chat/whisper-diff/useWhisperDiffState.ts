@@ -7,14 +7,13 @@
  * file row). It is fully synchronous and network-free: it replays the group's
  * captured `edit`/`create`/`apply_patch` tool calls through
  * `buildWhisperCombinedDiff` once, producing every reconstructable file's diff
- * section plus the deleted / non-reconstructable "not shown" lists. The panel
- * then renders the stacked "All files" view or narrows to one file by the
- * user's dropdown selection.
+ * section plus the deleted / non-reconstructable lists. The panel lists every
+ * file in the shared review navigator and shows the selected one.
  *
  * `buildWhisperCombinedDiff` is the single source of truth for the sections +
  * "not shown" split, so there is no per-file async/commit-diff fallback — a
- * non-reconstructable file is listed-but-disabled in the dropdown and can only
- * be seen (as "not shown") in the All-files view. `idle` means no group is open.
+ * non-reconstructable file is listed and says that no diff was captured.
+ * `idle` means no group is open.
  */
 import { useMemo } from 'react';
 import {
@@ -50,16 +49,18 @@ export interface WhisperDiffState {
     status: WhisperDiffStatus;
     /** The whole-group combined view (sections + "not shown" lists + totals). */
     view: CombinedWhisperDiffView;
-    /** Every file in the group, group order — the header dropdown's item list. */
+    /** Every file in the group, group order — the review navigator's rows. */
     files: FileEdit[];
     /**
      * Entry-point focus target: a file path (opened from a popover file row) or
-     * `undefined` (opened from the footer → All files). Drives the panel's
-     * initial dropdown selection; thereafter selection is user-driven.
+     * `undefined` (opened from the footer → the first file). Drives the panel's
+     * initial selection; thereafter selection is user-driven.
      */
     focusPath?: string;
-    /** No-diff explanation, shown when the All-files view is empty. */
+    /** No-diff explanation, shown when the group has no files. */
     error: string;
+    /** Clone that owns the changed files; scopes the panel's editor models. */
+    workspaceId?: string;
     /**
      * Stable identity of "the same open", when the caller has one.
      *
@@ -106,7 +107,7 @@ export function useWhisperDiffState(
 ): WhisperDiffState {
     // Pure + synchronous. Memoized on the held context so the returned state has
     // a stable identity per open — the panel keys its selection-reset effect on
-    // that identity to re-initialize the dropdown when a new group replaces the
+    // that identity to re-initialize the selection when a new group replaces the
     // current one. `ctx` is held in panel state (useWhisperDiffPanelState), so it
     // is a stable reference across unrelated re-renders; only a fresh `open()`
     // changes it. Nothing here calls setState, so recomputing on a new ctx is
@@ -131,6 +132,7 @@ export function useWhisperDiffState(
             files: ctx.files,
             focusPath: ctx.focusPath,
             error: hasDiff ? '' : 'No diff is available for these files.',
+            ...(ctx.workspaceId === undefined ? {} : { workspaceId: ctx.workspaceId }),
             ...(selectionKey === undefined
                 ? {}
                 : { selectionKey: `${selectionKey}\n${ctx.focusPath ?? ''}` }),

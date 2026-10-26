@@ -390,6 +390,33 @@ pub fn history_message(
     })
 }
 
+/// Mirrors `MAX_BROWSER_FAVICON_BYTES` in coc-desktop's browser-favicon.ts.
+pub const MAX_FAVICON_BYTES: usize = 64 * 1024;
+
+/// The engine's PNG rendering of the site icon as a bounded data URL. Anything
+/// that is empty, oversized or not a PNG leaves the tab on its default icon.
+pub fn favicon_data_url(png: &[u8]) -> Option<String> {
+    const SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    if png.len() > MAX_FAVICON_BYTES || !png.starts_with(&SIGNATURE) {
+        return None;
+    }
+    let mut url = String::with_capacity(22 + png.len().div_ceil(3) * 4);
+    url.push_str("data:image/png;base64,");
+    for chunk in png.chunks(3) {
+        let bytes = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let triple = (u32::from(bytes[0]) << 16) | (u32::from(bytes[1]) << 8) | u32::from(bytes[2]);
+        for index in 0..4 {
+            url.push(if index <= chunk.len() {
+                ALPHABET[(triple >> (18 - 6 * index) & 0x3f) as usize] as char
+            } else {
+                '='
+            });
+        }
+    }
+    Some(url)
+}
+
 pub fn emit(value: Value) {
     let stdout = io::stdout();
     let mut output = stdout.lock();
@@ -410,6 +437,24 @@ pub fn failure(id: u64, reason: &str, message: impl std::fmt::Display) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn favicons_are_bounded_png_data_urls() {
+        let png = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+        assert_eq!(favicon_data_url(&png).unwrap(), "data:image/png;base64,iVBORw0KGgo=");
+        let mut padded = png.to_vec();
+        padded.push(0xff);
+        assert_eq!(favicon_data_url(&padded).unwrap(), "data:image/png;base64,iVBORw0KGgr/");
+        padded.push(0x00);
+        assert_eq!(favicon_data_url(&padded).unwrap(), "data:image/png;base64,iVBORw0KGgr/AA==");
+        assert_eq!(favicon_data_url(&[]), None);
+        assert_eq!(favicon_data_url(b"<svg onload=alert(1)>"), None);
+        let mut large = png.to_vec();
+        large.resize(MAX_FAVICON_BYTES, 0);
+        assert!(favicon_data_url(&large).is_some());
+        large.push(0);
+        assert_eq!(favicon_data_url(&large), None);
+    }
 
     fn command_line(expression: &str) -> String {
         serde_json::json!({

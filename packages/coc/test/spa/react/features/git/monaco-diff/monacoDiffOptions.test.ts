@@ -231,7 +231,9 @@ describe('source assertions', () => {
             }
         };
         walk(SRC);
+        // WhisperDiffPanel renders a chat's captured snapshot (no I/O), so it cannot go through FileDiffPanel's DiffSource.
         expect(readers.filter(f => !f.endsWith('hooks/useDiffEngine.ts')).sort()).toEqual([
+            'features/chat/whisper-diff/WhisperDiffPanel.tsx',
             'features/git/diff/FileDiffPanel.tsx',
             'features/git/hooks/useFileDiffEngineState.ts',
             'features/git/working-tree/WorkingTreeFileDiff.tsx',

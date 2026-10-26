@@ -421,7 +421,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         const cron = this.buildCronToolDeps(owner.id);
         return {
             dataDir, store: this.store,
-            workspaceId, processId: owner.id,
+            workspaceId, processId: owner.id, workingDirectory,
             followUpSuggestions: this.followUpSuggestions,
             sentinelNextSteps: normalizeChatMode(mode) === 'sentinel' && this.queueConfig.getSentinelNextStepsEnabled(),
             enqueueChat: this.runtime.getEnqueueChat?.(),
@@ -1096,6 +1096,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             onLlmToolApprovalDecision: (record) => this.recordLlmToolApproval(processId, record),
             includeToolScripting: (payload.provider ?? this.provider) !== 'codex',
             onNestedToolEvent: this.buildNestedToolEventHandler(processId),
+            workingDirectory,
             askUser: this.buildAskUserWiring(processId, {
                 computeTurnIndex: () => 1,
                 ...(codaContext ? { isInteractive: () => false } : {}),

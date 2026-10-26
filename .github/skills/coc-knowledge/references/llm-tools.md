@@ -817,6 +817,41 @@ card shows `code` as a Script block and pretty-prints the JSON result. Gated liv
 Codex chats (`includeToolScripting: false`; Codex code mode already has `functions.exec`),
 browser-only bundles, Coda turns and PR-outcome-review turns.
 
+**MCP access (`mcp-script-tools.ts`).** `McpScriptScope` owns CoC's own MCP clients for one
+turn or one non-chat run: built from resolved `mcpServers` (disabled entries dropped),
+`serverNames()` reads config only, a server's client connects lazily on first use (15s
+timeout, failed connects are retried), its tool list is cached per client, and `close()`
+closes every client and kills stdio children. Stdio inherits `process.env` plus the
+server's `env`; HTTP/SSE send static headers, or a still-valid Bearer token from
+`readMcpServerAccessToken()` (read-only; the token never appears in `McpServerAuthInfo`)
+when no `Authorization` header is configured. A 401 maps to `auth-required: <server>`;
+other failures are `unknown-server`, `unknown-tool`, `tool-not-allowed` (config `tools`
+allowlist or the scope's `isToolAllowed`) and tool `isError` text. `createMcpScriptTools()`
+exposes the scope as `mcp_list_tools({ server })` and `mcp_call({ server, tool, args })`;
+results are `structuredContent` JSON or joined text content. When
+`isToolScriptingMcpEnabled()` (both `features.toolScripting` and `features.toolScriptingMcp`)
+holds, `buildChatTurnContext` resolves the turn workspace's servers with
+`resolveChatMcpServersForWorkspace` (`workingDirectory` is the root fallback) and
+`buildChatToolBundle` opens one scope per turn when it has servers: the pair is added only to
+the script runtime (never the model's direct tools), the `run_tool_script` description lists the
+server names, the turn signal's abort closes the scope, and `ChatTurnContext.dispose()` closes it.
+Flag off or `mcpServers: {}` adds nothing. The pair goes through the turn's LLM-tool approval gate
+(`gateMcpTools`): `mcp_call` is in `DEFAULT_APPROVAL_REQUIRED_LLM_TOOLS`, so
+`readApprovalRequiredLlmTools()` includes it unless the repo's `approvalOptOutLlmTools` lists it;
+the `llm-tools-config` PUT splits the requested effective list with `toApprovalPreferences()`
+(a missing default-gated tool becomes an opt-out) and GET returns the effective list.
+Unattended runs deny it; `mcp_list_tools` is never gated. Tool filters: the config `tools`
+allowlist (per-repo `enabledMcpTools`, the source of Codex `enabled_tools`) applies as is, and the
+scope's `isToolAllowed` comes from `createExcludedMcpToolFilter()` over the turn's disabled LLM
+tools, `excludeTools` and provider `excludedTools`, matching `<server>-<tool>`,
+`mcp__<server>__<tool>` and `<server>/<tool>`. Filtered tools are hidden from `mcp_list_tools`
+and fail with `tool-not-allowed`; excluding `mcp_call` itself drops it from the script runtime
+and description. Non-chat surfaces (canvas `host.runScript`, Sentinel refrain gates) go through
+`withOwnerToolRuntime`: the owner context is built unattended with the owner chat's
+`workingDirectory`, the bundle returns the gated pair as `scriptMcpTools` (also for owners whose
+turns omit `run_tool_script`, e.g. Codex), the runner appends it to the top-level runtime outside
+`allowTools`, and `context.dispose()` closes the scope after the one run.
+
 ## Supporting Modules
 
 | File | Description |

@@ -16,6 +16,7 @@ import type { BrowserControlPage } from './browser-control-page';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { BrowserCommandRequest, BrowserCommandResult, BrowserControlTab, BrowserTakeoverState, BrowserTakeoverAction } from '@plusplusoneplusplus/coc-client';
+import { validBrowserFavicon } from './browser-favicon';
 import { BROWSER_CONTROL_TAKEOVER_STATE_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FOCUSED_CHANNEL, BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_STOP_CHANNEL, BROWSER_CONTROL_NAVIGATION_CHECK_CHANNEL, type BrowserControlActivityEvent, type BrowserNavigationCheckEvent, validateBrowserCommandRequest } from './browser-control-command';
 
 interface Entry {
@@ -697,7 +698,9 @@ export class BrowserHostManager {
     private state(entry: Entry, state: BrowserViewState): BrowserViewState {
         const committedPage = entry.sourceKind === 'url' && !state.loading && !state.error
             && entry.committedPage?.url === state.url ? entry.committedPage : undefined;
-        return { ...state, committedPage, engine: entry.engine, viewId: entry.viewId, sourceKind: entry.sourceKind };
+        // File previews never carry icons; web icons are re-validated before they reach the SPA.
+        const favicon = entry.sourceKind === 'url' && !state.error && validBrowserFavicon(state.favicon) ? state.favicon : undefined;
+        return { ...state, committedPage, favicon, engine: entry.engine, viewId: entry.viewId, sourceKind: entry.sourceKind };
     }
 
     private async createUrl(entry: Entry, url: string): Promise<BrowserHostedView> {

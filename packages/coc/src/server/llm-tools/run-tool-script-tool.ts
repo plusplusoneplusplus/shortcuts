@@ -26,6 +26,7 @@ import {
     type ToolInvocation,
 } from '@plusplusoneplusplus/coc-agent-sdk';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
+import { createMcpScriptTools, MCP_CALL_TOOL_NAME, type McpScriptScope } from './mcp-script-tools';
 
 export interface RunToolScriptToolDeps {
     /** The scriptable tools of this turn (already filtered and approval-gated). */
@@ -36,18 +37,29 @@ export interface RunToolScriptToolDeps {
     signal?: AbortSignal;
     /** Receives inner-call events so the timeline nests them under the script. */
     onNestedToolEvent?: (event: ToolEvent) => void;
+    /** The turn's MCP clients; adds `mcp_list_tools` / `mcp_call` when it has servers. */
+    mcp?: McpScriptScope;
+    /** Applies the turn's approval gate to the MCP pair. */
+    gateMcpTools?: (tools: Tool<any>[]) => Tool<any>[];
 }
 
 interface RunToolScriptArgs {
     code?: unknown;
 }
 
-export function buildRunToolScriptDescription(toolNames: readonly string[]): string {
+export function buildRunToolScriptDescription(toolNames: readonly string[], mcpServerNames: readonly string[] = []): string {
     const callable = [...toolNames, RUN_TOOL_SCRIPT_TOOL_NAME].map(name => `tools.${name}`).join(', ');
+    const mcpCall = toolNames.includes(MCP_CALL_TOOL_NAME)
+        ? ' and tools.mcp_call({ server, tool, args }) to call one (resolves to its text, parsed as JSON when possible)'
+        : '';
+    const mcp = mcpServerNames.length > 0
+        ? `MCP servers: ${mcpServerNames.join(', ')}; use tools.mcp_list_tools({ server }) to see their tools${mcpCall}. `
+        : '';
     return 'Run a JavaScript script that calls CoC tools as async functions and returns only what you `return`. '
         + 'Use it for loops, filtering, or fan-out across many tool calls. '
         + 'Each call resolves to the tool\'s result, parsed as JSON when possible, otherwise a string. '
         + `Callable: ${callable}. `
+        + mcp
         + `Limits: ${MAX_CALLS_PER_SCRIPT} tool calls per script, ${MAX_IN_FLIGHT_PER_SCRIPT} in flight, `
         + `nested run_tool_script up to depth ${MAX_SCRIPT_DEPTH}. `
         + 'A tool error throws ToolCallError (fields: toolName, message, code); catch it to continue. '
@@ -55,8 +67,12 @@ export function buildRunToolScriptDescription(toolNames: readonly string[]): str
 }
 
 export function createRunToolScriptTool(deps: RunToolScriptToolDeps) {
+    const mcpServerNames = deps.mcp?.serverNames() ?? [];
+    const mcpTools = mcpServerNames.length > 0 ? createMcpScriptTools(deps.mcp!) : [];
+    const gatedMcpTools = deps.gateMcpTools?.(mcpTools) ?? mcpTools;
+    const scriptTools = [...deps.tools, ...gatedMcpTools];
     const tool = defineTool<RunToolScriptArgs>(RUN_TOOL_SCRIPT_TOOL_NAME, {
-        description: buildRunToolScriptDescription(deps.tools.map(t => t.name)),
+        description: buildRunToolScriptDescription(scriptTools.map(t => t.name), mcpServerNames),
         parameters: {
             type: 'object',
             properties: {
@@ -72,7 +88,7 @@ export function createRunToolScriptTool(deps: RunToolScriptToolDeps) {
                 return { textResultForLlm: 'run_tool_script needs a non-empty `code` string.', resultType: 'failure' };
             }
             const signals = [deps.signal, invocation?.signal].filter((s): s is AbortSignal => !!s);
-            const runtime = new CocToolRuntime(deps.tools, {
+            const runtime = new CocToolRuntime(scriptTools, {
                 sessionId: invocation?.sessionId, workspaceId: deps.workspaceId, processId: deps.processId,
             });
             const started = Date.now();
@@ -96,5 +112,5 @@ export function createRunToolScriptTool(deps: RunToolScriptToolDeps) {
             }
         },
     });
-    return { tool };
+    return { tool, mcpTools: gatedMcpTools };
 }

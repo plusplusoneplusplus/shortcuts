@@ -102,7 +102,7 @@ model. A dock target change keeps explicit member opens valid within that panel.
 | `unifiedPanelTabGroupStore.ts` | Panel-scope fold state through `useSyncExternalStore`, separate from tab descriptors and ordering; panel-state clearing also clears folds. |
 | `UnifiedPanelTabOverflowMenu.tsx` | Shared searchable portal for group overflow and canvas compression, including keyboard navigation, focus return, row closing and bulk-close callbacks. `data-native-view-overlay` hides overlapping native browser views. |
 | `unifiedPanelSourceSplit.ts` + `UnifiedSourceMirror.tsx` | The two-pane source split (see "Source split"): pure drop/reconcile/width rules and the session-only split store, plus the second Monaco view used when one file fills both panes. |
-| `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab, an in-place directory picker, and the Search/Explorer navigator controls. The model decides whether the path can use repo browsing. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
+| `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab, an in-place directory picker, the active file's "Reload from disk" button, and the Search/Explorer navigator controls. The model decides whether the path can use repo browsing. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
 | `UnifiedPanelRepoPicker.tsx` | The dock target, as a button + listbox on the tab strip left of the `+` (the strip's `leadingControls`). Renders nothing below two targets. The label comes from the `target` prop, so a refused switch (`onSelectTarget` returning `false`) keeps reporting the real scope; below 340px of strip width the label drops to a chevron via a container query. |
 | `UnifiedPanelTreeToggle.tsx` | The Explorer half of the panel's navigator controls. It renders with Search in the file toolbar or, when that toolbar is absent, in the tab strip. |
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
@@ -147,7 +147,9 @@ host — the chat has no canvas column of its own), `note` renders
 `NoteEditor`, `notes` renders the shared `NotesView` with panel-local selection
 restored from its descriptor (a missing path clears after tree validation)
 and a container-width layout,
-`diff` renders the chat's `WhisperDiffPanel`, and `terminal` renders
+`diff` renders the chat's `WhisperDiffPanel` (the shared `ReviewFiles`
+navigator over the captured tool-call snapshot; see the knowledge
+chat-conversation reference), and `terminal` renders
 `TerminalView`. The add menu activates the target-owned Terminal tab and passes an
 in-memory `openRequest`; descriptors never persist creation intent. `TerminalView`
 waits for successful hydration before creating through its existing WebSocket
@@ -266,6 +268,11 @@ own view, and the panel does not stack two. It shows `explorer/Breadcrumbs` for
 the file's path (scrolled to the tail, so a long path truncates from the left
 with the whole thing in the row's tooltip) and the tab's `repoLabel` when it has
 one.
+
+The active file's "Reload from disk" button sits before them. Each mounted file
+tab's `PreviewPane` registers its handler and busy state through
+`onReloadControlChange`; the panel keeps them per tab id and passes the active
+tab's to the row, so a hidden tab's reload never shows on another tab.
 
 The Search and Explorer controls sit at the row's right edge. When the file
 toolbar is not rendered, the same pair moves beside the tab strip's `+`. Each
@@ -742,7 +749,9 @@ Escape, outside clicks, repeated trigger clicks, and loss of tab visibility or
 ownership dismiss it. Page titles appear in tab labels; load errors and download
 handoff notices appear in the tab body. Unmounting hides the view; `closeTab`
 closes it. `onState` feeds `updateBrowserTab`
-(URL after redirects, title as label). `onNewTab` opens another browser tab
+(URL after redirects, title as label); its validated `favicon` goes to the
+memory-only `browserTabFavicons` store, which the strip renders in the globe's
+12px slot, falling back to the globe when absent or undecodable. `onNewTab` opens another browser tab
 with the opener's owner and `browserEngine`; the desktop default affects only
 new views. Desktop Preferences lives in Admin Appearance and uses local IPC.
 The SPA entry point subscribes to `onClosed` and removes target-engine tabs
@@ -1174,7 +1183,7 @@ One more thing that model owns: **path form**. Tool args carry whatever the
 agent's platform produced, so a chat can record `src\a.ts` from a Windows run and
 `src/a.ts` from a POSIX one — sometimes both, for the same file. `collectFileEdits`
 canonicalizes its map key to forward slashes (`normalizeFileEditPath`), so one
-file stays one row in the list, one dropdown item and one diff section. The raw
+file stays one row in the popover list and one row in the review navigator. The raw
 args are left alone; every reconstruction and the shell-delete pass already
 normalize both sides before comparing, so nothing downstream had to change.
 
@@ -1213,8 +1222,8 @@ end-to-end case for this path: a chat's
 turns go through `buildChatChangesContext` and `chatChangesTabInput` into a
 rendered `UnifiedDiffTab`, pinning that repeated edits and a later reversion
 replay as successive hunks, that a record captured in both `toolCalls` and
-`timeline` replays once, that deleted and non-reconstructable files land under
-"Not shown", and that repeated opens (and a close then reopen) land on the one
+`timeline` replays once, that deleted and non-reconstructable files are listed
+and say no diff was captured, and that repeated opens (and a close then reopen) land on the one
 tab. Its fixture is cross-platform — two of its files are recorded with Windows
 backslash paths, one edited and one removed by `Remove-Item` — and
 `chatChangesModel.test.ts` plus `test/spa/processes/toolGroupUtils.test.ts` pin

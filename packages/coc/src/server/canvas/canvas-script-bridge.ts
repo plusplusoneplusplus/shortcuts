@@ -8,6 +8,8 @@
  * with the owner's enabled tools; anything else is simply absent, so
  * `tools.x(...)` throws `ToolCallError` inside the script. Manifest tools must
  * be registered, scriptable and `readOnly` (see {@link validateCanvasManifestTools}).
+ * With `features.toolScriptingMcp` the owner's `mcp_list_tools` / `mcp_call`
+ * pair is added regardless of the manifest; `mcp_call` stays approval-gated.
  *
  * Like `host.complete` this is capability-side only: the iframe has no
  * `CanvasHost.runScript`. Every run logs ids and counts, never the code, state

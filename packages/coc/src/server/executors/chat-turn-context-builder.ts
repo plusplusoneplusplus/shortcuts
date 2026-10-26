@@ -23,7 +23,8 @@ import type { SentinelRefrainsToolDeps } from '../llm-tools/sentinel-refrains-to
 import type { MemoryV2Addon } from './memory-v2-addon';
 import type { SystemOneAddonDeps } from './prompt-builder';
 import { buildMemoryV2Addon } from './memory-v2-addon';
-import { buildChatToolBundle } from './chat-tool-builder';
+import { buildChatToolBundle, isToolScriptingMcpEnabled } from './chat-tool-builder';
+import { resolveChatMcpServersForWorkspace } from './mcp-tool-enforcement';
 import type { LlmToolApprovalRecord } from './llm-tool-approval-gate';
 import type { ChatToolBundle } from './chat-tool-builder';
 import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
@@ -103,6 +104,11 @@ export interface ChatTurnContextInput {
     /** Receives `run_tool_script` inner-call events so the timeline nests them under the script. */
     onNestedToolEvent?: (event: ToolEvent) => void;
     /**
+     * Turn working directory, the fallback root when resolving the workspace's
+     * MCP servers for `run_tool_script` (`features.toolScriptingMcp`).
+     */
+    workingDirectory?: string;
+    /**
      * Whether to include Memory V2 tools and context in this turn.
      * Defaults to true. No chat path opts out today — autopilot used to, which
      * made its tool block differ from ask mode's and cost the conversation's
@@ -130,7 +136,9 @@ export interface ChatTurnContext {
     excludedTools: string[];
     /** Ask-user addon handles (defined when askUser.enabled is true). */
     askUser?: ChatToolBundle['askUser'];
-    /** Dispose all open resources (e.g. memory DB handles). Safe to call multiple times. */
+    /** Gated `mcp_list_tools` / `mcp_call` for top-level owner scripts; closed by `dispose`. */
+    scriptMcpTools?: ChatToolBundle['scriptMcpTools'];
+    /** Dispose all open resources (memory DB handles, script MCP clients). Safe to call multiple times. */
     dispose: () => void;
 }
 
@@ -198,6 +206,25 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         ? await buildMemoryV2Addon(input.dataDir, input.workspaceId, input.query, input.processId)
         : EMPTY_MEM_V2;
 
+    // Scripts reach the same MCP servers the turn resolves for its workspace;
+    // nothing is started until a script uses one.
+    const scriptsMayUseMcp = (input.includeToolScripting !== false || input.unattendedScript === true) && !input.browserOnly && !input.codaFindings
+        && !input.sentinelPrOutcomeReview && isToolScriptingMcpEnabled(input.dataDir);
+    const mcpServers = scriptsMayUseMcp
+        ? await resolveChatMcpServersForWorkspace({
+            store: input.store, dataDir: input.dataDir, workspaceId: input.workspaceId, workingDirectory: input.workingDirectory,
+        })
+        : undefined;
+
+    const excludedTools = input.sentinelPrOutcomeReview ? [...new Set([
+        ...memoryV2.excludedBuiltinTools,
+        'bash', 'powershell', 'create', 'edit', 'write', 'apply_patch', 'task',
+        'Bash', 'Write', 'Edit', 'NotebookEdit', 'Task', 'Agent',
+        'run_in_terminal', 'terminal', 'execute', 'run_subagent',
+        'create_pull_request', 'send_to_conversation', 'cron', 'scheduleWakeup',
+        'store_memory', 'vote_memory', 'save_memory', 'skill',
+    ])] : memoryV2.excludedBuiltinTools;
+
     const toolBundle = buildChatToolBundle({
         sentinelPrOutcomeReview: input.sentinelPrOutcomeReview,
         unattendedScript: input.unattendedScript,
@@ -229,6 +256,8 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         onLlmToolApprovalDecision: input.onLlmToolApprovalDecision,
         includeToolScripting: input.includeToolScripting,
         onNestedToolEvent: input.onNestedToolEvent,
+        mcpServers,
+        mcpExcludedTools: excludedTools,
         ...(input.browserOnly ? {
             includeFollowUpSuggestions: false, includeSearchConversations: false,
             includeTavilyWebSearch: false, includeScheduleWakeup: false,
@@ -258,17 +287,12 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         tools: toolBundle.tools,
         toolGuidance: toolBundle.toolGuidance,
         memoryV2,
-        excludedTools: input.sentinelPrOutcomeReview ? [...new Set([
-            ...memoryV2.excludedBuiltinTools,
-            'bash', 'powershell', 'create', 'edit', 'write', 'apply_patch', 'task',
-            'Bash', 'Write', 'Edit', 'NotebookEdit', 'Task', 'Agent',
-            'run_in_terminal', 'terminal', 'execute', 'run_subagent',
-            'create_pull_request', 'send_to_conversation', 'cron', 'scheduleWakeup',
-            'store_memory', 'vote_memory', 'save_memory', 'skill',
-        ])] : memoryV2.excludedBuiltinTools,
+        excludedTools,
         askUser: toolBundle.askUser,
+        scriptMcpTools: toolBundle.scriptMcpTools,
         dispose: () => {
             memoryV2.dispose();
+            void toolBundle.mcpScope?.close();
         },
     };
 }

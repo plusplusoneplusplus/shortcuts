@@ -48,6 +48,7 @@ import { compressedCanvasTabs, UnifiedPanelCanvasStack } from './UnifiedPanelCan
 import { groupStripTabs, isGroupBoundaryMove, stripGroupForKind, type UnifiedTabStripGroup } from './unifiedPanelTabGroups';
 import { TAB_GROUP_LABELS, UnifiedPanelTabGroupLabel } from './UnifiedPanelTabGroupLabel';
 import { UnifiedPanelTabOverflowMenu } from './UnifiedPanelTabOverflowMenu';
+import { useBrowserTabFavicon } from './browserTabFavicons';
 import {
     unifiedPanelTabMenuItems,
     type UnifiedPanelFileActionAvailability,
@@ -179,6 +180,29 @@ const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
         </svg>
     ),
 };
+
+/**
+ * The site's icon in the globe's 12px slot. A missing or undecodable icon keeps
+ * the globe, so the tab never shows a broken image or shifts its label.
+ */
+function BrowserTabIcon({ tabId }: { tabId: string }) {
+    const favicon = useBrowserTabFavicon(tabId);
+    const [failed, setFailed] = useState<string | null>(null);
+    if (!favicon || failed === favicon) return KIND_ICONS.browser;
+    return (
+        <img
+            src={favicon}
+            alt=""
+            width={12}
+            height={12}
+            draggable={false}
+            className="block h-3 w-3 object-contain"
+            data-icon="browser-favicon"
+            data-testid={`unified-panel-tab-favicon-${tabId}`}
+            onError={() => setFailed(favicon)}
+        />
+    );
+}
 
 const EMPTY_TAB_IDS: ReadonlySet<string> = new Set<string>();
 const EMPTY_FOLDED_GROUPS: ReadonlySet<UnifiedTabStripGroup> = new Set();
@@ -618,6 +642,7 @@ export function UnifiedPanelTabStrip({
                             <span className="flex-shrink-0 opacity-80" aria-hidden="true">
                                 {tab.kind === 'file'
                                     ? <FileNameIcon fileName={tab.label} showTitle={false} testId={`unified-panel-tab-file-icon-${tab.id}`} />
+                                    : tab.kind === 'browser' ? <BrowserTabIcon tabId={tab.id} />
                                     : KIND_ICONS[tab.kind]}
                             </span>
                             {hasError && (

@@ -190,6 +190,7 @@ interface BrowserViewState {
     url: string;
     title: string;
     committedPage?: { url: string; title: string; revision: number };
+    favicon?: string;
     canGoBack: boolean;
     canGoForward: boolean;
     loading: boolean;

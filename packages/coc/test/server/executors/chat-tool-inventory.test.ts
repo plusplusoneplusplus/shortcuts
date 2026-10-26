@@ -21,6 +21,7 @@ vi.mock('../../../src/server/executors/chat-tool-builder', () => ({
         tools: [], toolGuidance: '',
         askUser: { cancelAll: vi.fn(), hasPending: () => false, answerQuestion: () => false, skipQuestion: () => false },
     }),
+    isToolScriptingMcpEnabled: () => false,
 }));
 vi.mock('../../../src/server/executors/memory-v2-addon', () => ({
     buildMemoryV2Addon: async () => ({ tools: [], suffix: '', excludedBuiltinTools: [], dispose: vi.fn() }),

@@ -889,6 +889,15 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.toolScriptingMcp', default: false, runtime: 'live',
+        ui: {
+            group: 'review', order: 64.55, label: 'MCP in tool scripts', badge: 'experimental',
+            dependsOn: 'features.toolScripting',
+            hint: 'Allow tool scripts to list and call the workspace provider’s MCP tools, subject to tool filters and approval. Requires tool scripting. Disabled by default.',
+            testId: 'toggle-tool-scripting-mcp-enabled',
+        },
+    }),
+    bool({
         key: 'features.queryPullRequestTool', default: true, runtime: 'live', runtimeFlag: 'queryPullRequestToolEnabled',
         ui: {
             group: 'review', order: 64.6, label: 'Query pull request tool', badge: 'experimental',

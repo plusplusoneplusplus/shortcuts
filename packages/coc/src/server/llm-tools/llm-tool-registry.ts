@@ -278,6 +278,13 @@ export function isLlmToolApprovalGateable(toolName: string): boolean {
     return !NON_GATEABLE_LLM_TOOLS.includes(toolName) && !isRemovedLlmToolName(toolName);
 }
 
+/**
+ * Tools that ask before running unless the repo opts out
+ * (`approvalOptOutLlmTools`). `mcp_call` reaches external MCP servers from a
+ * script, so it starts gated.
+ */
+export const DEFAULT_APPROVAL_REQUIRED_LLM_TOOLS: readonly string[] = ['mcp_call'];
+
 /** Drop non-gateable and removed names from an approval-required list. */
 export function filterApprovalRequiredLlmToolNames(toolNames: readonly string[]): string[] {
     return Array.from(new Set(toolNames.filter(isLlmToolApprovalGateable)));

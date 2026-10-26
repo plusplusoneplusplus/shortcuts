@@ -476,6 +476,16 @@ at a complete character and read-only, with no registered save callback.
 Trusted and workspace-preview files remain read-only. Native repo blob reads
 accept text through 10 MB and retain backend errors above that cap.
 
+`useFileContent.reload` re-reads the same file in place through the pane's own
+read (owner workspace + concrete route; trusted and workspace-preview paths keep
+their read-only transports), leaving the buffer on screen until new bytes land.
+`PreviewPane` confirms before it replaces unsaved edits; a failed read, an edit or
+save during the read, or a file/owner change keeps the buffer. A landed reload
+restores Monaco's view state, retires the opening reveal, and marks the language
+document clean at the disk text. Hosts with a toolbar take the "Reload from disk"
+control through `onReloadControlChange`; other hosts show it in the pane's
+floating toolbar. Historical diff/commit views do not use this buffer.
+
 `PreviewPane` decides whether a blob is a *live repo document* — a real file in
 this workspace, read whole, not a trusted absolute path — and only then opens a
 language document and registers Monaco providers over its model

@@ -1,10 +1,10 @@
 /**
  * UnifiedPanelCloseConfirm — the "this close destroys something" prompt (AC-05).
  *
- * Today its only caller is the terminal tab: everything else in the panel
- * detaches when it closes, while a terminal tab's ✕ would end live PTYs. The
- * component is deliberately kind-agnostic (message + confirm label are props) so
- * the dirty file/note/canvas guards can reuse it rather than growing a second
+ * Callers: the terminal tab, whose ✕ would end live PTYs, and a file buffer's
+ * "Reload from disk" over unsaved edits. The component is deliberately
+ * kind-agnostic (message, confirm label and accessible name are props) so the
+ * dirty file/note/canvas guards can reuse it rather than growing a second
  * dialog.
  *
  * Two behaviors matter more than the chrome:
@@ -29,12 +29,14 @@ export interface UnifiedPanelCloseConfirmProps {
     error?: string | null;
     /** True while the confirm action is in flight. */
     busy?: boolean;
+    /** The dialog's accessible name. */
+    label?: string;
     onCancel: () => void;
     onConfirm: () => void;
 }
 
 export function UnifiedPanelCloseConfirm({
-    message, confirmLabel, error = null, busy = false, onCancel, onConfirm,
+    message, confirmLabel, error = null, busy = false, label = 'Confirm close', onCancel, onConfirm,
 }: UnifiedPanelCloseConfirmProps) {
     const cancelRef = useRef<HTMLButtonElement | null>(null);
 
@@ -62,7 +64,7 @@ export function UnifiedPanelCloseConfirm({
             <div
                 role="dialog"
                 aria-modal="true"
-                aria-label="Confirm close"
+                aria-label={label}
                 className={cn(
                     'w-full max-w-[280px] rounded border border-[#c8c8c8] bg-white p-3 shadow-lg',
                     'dark:border-[#3c3c3c] dark:bg-[#252526]',

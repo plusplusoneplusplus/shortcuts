@@ -81,6 +81,10 @@ struct View {
     navigation_gate: Cell<bool>,
     /// One approved URL the next non-redirected navigation may load without asking again.
     gate_bypass: RefCell<Option<String>>,
+    /// Current document's PNG icon data URL; cleared when a new document starts.
+    favicon: RefCell<Option<String>>,
+    /// Superseded documents and icon requests cannot publish a late icon.
+    favicon_generation: Cell<u64>,
 }
 
 impl View {
@@ -361,6 +365,8 @@ impl View {
         if let Some((code, message)) = error.as_ref() {
             state["errorCode"] = json!(code);
             state["error"] = json!(message);
+        } else if let Some(favicon) = self.favicon.borrow().as_ref() {
+            state["favicon"] = json!(favicon);
         }
         Ok(state)
     }
@@ -374,6 +380,57 @@ impl View {
                 protocol::emit(json!({ "event": "state", "viewId": self.id, "state": state }))
             }
             Err(error) => self.fail("runtime-crashed", error.to_string()),
+        }
+    }
+
+    fn clear_favicon(&self) {
+        self.favicon_generation.set(self.favicon_generation.get() + 1);
+        *self.favicon.borrow_mut() = None;
+    }
+
+    /// Tabs only: popups have no tab header. Runtimes without ICoreWebView2_15 keep the default icon.
+    fn request_favicon(self: &Rc<Self>) -> Result<()> {
+        if self.closed.get() || self.popup {
+            return Ok(());
+        }
+        let Ok(webview) = self.webview.cast::<ICoreWebView2_15>() else {
+            return Ok(());
+        };
+        let generation = self.favicon_generation.get() + 1;
+        self.favicon_generation.set(generation);
+        let mut uri = PWSTR::null();
+        unsafe { webview.FaviconUri(&mut uri)? };
+        if CoTaskMemPWSTR::from(uri).to_string().is_empty() {
+            self.set_favicon(None);
+            return Ok(());
+        }
+        let weak = Rc::downgrade(self);
+        unsafe {
+            webview.GetFavicon(
+                COREWEBVIEW2_FAVICON_IMAGE_FORMAT_PNG,
+                &GetFaviconCompletedHandler::create(Box::new(move |result, stream| {
+                    let Some(view) = weak.upgrade() else {
+                        return Ok(());
+                    };
+                    if view.closed.get() || view.favicon_generation.get() != generation {
+                        return Ok(());
+                    }
+                    let icon = result
+                        .ok()
+                        .and(stream)
+                        .and_then(|stream| read_favicon(&stream))
+                        .and_then(|png| protocol::favicon_data_url(&png));
+                    view.set_favicon(icon);
+                    Ok(())
+                })),
+            )
+        }
+    }
+
+    fn set_favicon(&self, icon: Option<String>) {
+        if *self.favicon.borrow() != icon {
+            *self.favicon.borrow_mut() = icon;
+            self.push();
         }
     }
 
@@ -495,6 +552,28 @@ impl View {
                 Ok(())
             };
             complete_cleanup([popups, subscriptions, controller, window])
+        }
+    }
+}
+
+/// Reads at most one byte past the limit so oversized icons are rejected, not truncated.
+fn read_favicon(stream: &IStream) -> Option<Vec<u8>> {
+    let mut png = Vec::new();
+    let mut buffer = [0u8; 8192];
+    loop {
+        let mut read = 0u32;
+        let status = unsafe {
+            stream.Read(buffer.as_mut_ptr().cast(), buffer.len() as u32, Some(&mut read))
+        };
+        if status.is_err() {
+            return None;
+        }
+        if read == 0 {
+            return Some(png);
+        }
+        png.extend_from_slice(&buffer[..read as usize]);
+        if png.len() > protocol::MAX_FAVICON_BYTES {
+            return None;
         }
     }
 }
@@ -1304,6 +1383,8 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                             cdp_error: RefCell::new(None),
                             navigation_gate: Cell::new(command.navigation_gate == Some(true)),
                             gate_bypass: RefCell::new(None),
+                            favicon: RefCell::new(None),
+                            favicon_generation: Cell::new(0),
                         });
                         view.controller.SetIsVisible(false)?;
                         view.webview.Settings()?.SetIsWebMessageEnabled(false)?;
@@ -1559,6 +1640,8 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                 }
                 *view.requested.borrow_mut() = url;
                 *view.error.borrow_mut() = None;
+                // A new document never inherits the previous site's icon.
+                view.clear_favicon();
                 view.push();
                 Ok(())
             })),
@@ -1598,6 +1681,10 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                     view.push_history(true)?;
                 }
                 view.push();
+                // FaviconChanged is not raised when the next document keeps the same icon URI.
+                if success.as_bool() {
+                    view.request_favicon()?;
+                }
                 Ok(())
             })),
             &mut token,
@@ -1653,6 +1740,16 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
             })),
             &mut token,
         )?;
+        if let (false, Ok(webview)) = (view.popup, view.webview.cast::<ICoreWebView2_15>()) {
+            let weak = Rc::downgrade(view);
+            webview.add_FaviconChanged(
+                &FaviconChangedEventHandler::create(Box::new(move |_, _| match weak.upgrade() {
+                    Some(view) => view.request_favicon(),
+                    None => Ok(()),
+                })),
+                &mut token,
+            )?;
+        }
         view.webview.add_PermissionRequested(
             &PermissionRequestedEventHandler::create(Box::new(|_, args| {
                 if let Some(args) = args {

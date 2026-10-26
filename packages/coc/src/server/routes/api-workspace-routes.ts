@@ -19,6 +19,7 @@ import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-uti
 import type { ApiRouteContext } from './api-shared';
 import {
     readApprovalRequiredLlmTools,
+    toApprovalPreferences,
     readEffectiveDisabledLlmTools,
     readRepoPreferences,
     writeRepoPreferences,
@@ -932,13 +933,13 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             const merged = validatePerRepoPreferences({
                 ...existing,
                 ...(hasDisabled ? { disabledLlmTools: body.disabledLlmTools } : {}),
-                ...(hasApproval ? { approvalRequiredLlmTools: body.approvalRequiredLlmTools } : {}),
+                ...(hasApproval ? toApprovalPreferences(body.approvalRequiredLlmTools) : {}),
             });
             writeRepoPreferences(ctx.dataDir, ws.id, merged);
             sendJSON(res, 200, {
                 tools: buildSettingsToolList(getEffectiveLlmToolRegistry({ cronEnabled: ctx.cronEnabled, canvasEnabled: ctx.getLiveFeatureFlags?.()?.canvasEnabled ?? false, kustoEnabled: ctx.getLiveFeatureFlags?.()?.kustoEnabled ?? false, browserControlEnabled: ctx.getLiveFeatureFlags?.().browserControlEnabled, llmToolSystemOneEnabled: ctx.getLiveFeatureFlags?.()?.llmToolSystemOneEnabled ?? DEFAULT_CONFIG.LLMToolSystemOne.enabled, toolScriptingEnabled: ctx.getLiveFeatureFlags?.()?.toolScriptingEnabled ?? DEFAULT_CONFIG.features.toolScripting, queryPullRequestToolEnabled: ctx.getLiveFeatureFlags?.()?.queryPullRequestToolEnabled ?? DEFAULT_CONFIG.features.queryPullRequestTool })),
                 disabledLlmTools: merged.disabledLlmTools ?? getEffectiveDefaultDisabledTools(),
-                approvalRequiredLlmTools: merged.approvalRequiredLlmTools ?? [],
+                approvalRequiredLlmTools: readApprovalRequiredLlmTools(ctx.dataDir, ws.id),
                 conversationRetrievalAvailable: typeof ctx.store.searchConversations === 'function',
             });
         },

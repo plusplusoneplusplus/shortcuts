@@ -44,7 +44,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { TerminalView, type TerminalSessionSummary } from '../../terminal/TerminalView';
 import { NotesView } from '../../notes/NotesView';
-import { PreviewPane, type PreviewStatus } from '../explorer/PreviewPane';
+import { PreviewPane, type FileReloadControl, type PreviewStatus } from '../explorer/PreviewPane';
 import { ExternalSourcePane } from '../explorer/ExternalSourcePane';
 import type {
     EditorModelMountContext,
@@ -120,6 +120,8 @@ export interface UnifiedTabViewProps {
     ) => void;
     /** File tabs only: the live text model a split pane's second view attaches to. */
     onSourceModelChange?: (tabId: string, context: EditorModelMountContext | null) => void;
+    /** File tabs only: the "Reload from disk" control the panel toolbar renders. */
+    onReloadControlChange?: (tabId: string, control: FileReloadControl | null) => void;
     /** Persist the panel-local Notes selection without activating its tab. */
     onNotesSelectionChange?: (tabId: string, notePath: string | null) => void;
     /** Canvas tabs only: the collapsed-canvas switcher shown beside the title. */
@@ -136,7 +138,7 @@ export function UnifiedTabView({
     tab, scopeWorkspaceId, onClose, onDirtyChange, onErrorChange,
     onRegisterSave, onTerminalSessionsChange, terminalOpenRequest, isActive, onOpenFile, onOpenExternal, definitionPreviewOwners,
     onFileNavigationMount, onFileNavigationLocation, onSourceModelChange,
-    onNotesSelectionChange, canvasSwitcher,
+    onNotesSelectionChange, onReloadControlChange, canvasSwitcher,
 }: UnifiedTabViewProps) {
     const panelHost = useUnifiedPanelHost();
     const [markdownPreviewEnabled, setMarkdownPreviewEnabled] = useState(
@@ -201,6 +203,10 @@ export function UnifiedTabView({
         (context: EditorModelMountContext | null) => onSourceModelChange?.(tab.id, context),
         [onSourceModelChange, tab.id],
     );
+    const handleReloadControl = useCallback(
+        (control: FileReloadControl | null) => onReloadControlChange?.(tab.id, control),
+        [onReloadControlChange, tab.id],
+    );
     const handleNotesSelection = useCallback(
         (notePath: string | null) => onNotesSelectionChange?.(tab.id, notePath),
         [onNotesSelectionChange, tab.id],
@@ -251,6 +257,7 @@ export function UnifiedTabView({
                     onNavigationMount={handleNavigationMount}
                     onNavigationLocation={handleNavigationLocation}
                     onModelShare={onSourceModelChange ? handleModelShare : undefined}
+                    onReloadControlChange={onReloadControlChange ? handleReloadControl : undefined}
                 />
             </>);
         case 'external':

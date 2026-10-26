@@ -285,7 +285,18 @@ retain native editing. Clipboard failures leave default copy enabled and visible
 Optional `browser.showAddressMenu` opens native Cut/Copy/Paste/Select All through
 registered-main-frame IPC; actions target the requesting SPA's web contents.
 Native Copy and the Edit menu dispatch the input's ordinary copy event. The
-page title belongs in the tab label. The toolbar's Import cookies action opens
+page title belongs in the tab label; the site icon replaces the tab's globe.
+Icons travel as `BrowserViewState.favicon`, a `data:image/...` URL whose bytes
+match a known image signature (at most 64 KiB, `browser-favicon.ts`). Electron
+loads the first of three page-declared HTTP(S)/data candidates from
+`page-favicon-updated` through its profile session's `fetch`; WebView2's helper
+reads `GetFavicon` PNG output on `FaviconChanged` and successful completion
+(runtimes without `ICoreWebView2_15` keep the globe). Both clear the icon when a
+new document starts or commits and drop superseded requests; error states and
+file previews never carry one, and the manager re-validates before owner-routed
+publication. The SPA keeps icons in memory per tab (`browserTabFavicons.ts`),
+never persists or requests page URLs, and keeps the globe on absent or failed
+images. The toolbar's Import cookies action opens
 `BrowserCookieImportDialog` with an editable domain and JSON or `name=value` pairs.
 
 ### Desktop downloads
@@ -954,6 +965,10 @@ is truncated at a complete character and read-only with no save callback.
 Trusted/workspace-preview files remain read-only. Native repository blob reads
 accept text through 10 MB; larger reads retain the backend size error. Binary
 and image read caps, diff language limits, and chat-source API limits are separate.
+"Reload from disk" (unified file toolbar, or the pane's floating toolbar) calls
+`useFileContent.reload`: an in-place re-read through the same owner-routed read
+that confirms before discarding unsaved edits, keeps the buffer on failure or on
+edits/saves during the read, and drops answers after a file/owner change.
 
 Explorer editor tabs render the same filename-classified badge or generic
 document icon as the file tree. Search-result editor tabs render a decorative

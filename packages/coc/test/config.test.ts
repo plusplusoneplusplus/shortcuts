@@ -1195,6 +1195,7 @@ timeout: 300
                 '  sentinelTodoScrubber: true',
                 '  sentinelTodoTags: true',
                 '  toolScripting: true',
+                '  toolScriptingMcp: true',
                 '  queryPullRequestTool: true',
                 '  sessionContextAttachments: true',
                 '  commitChatLens: true',
@@ -1594,6 +1595,7 @@ timeout: 300
                     "teamsMessageReaction": true,
                     "teamsReactionDelegation": false,
                     "toolScripting": true,
+                    "toolScriptingMcp": false,
                   },
                   "forEach": {
                     "enabled": false,
@@ -1846,6 +1848,7 @@ timeout: 300
                   "features.teamsMessageReaction": "file",
                   "features.teamsReactionDelegation": "default",
                   "features.toolScripting": "default",
+                  "features.toolScriptingMcp": "default",
                   "forEach.enabled": "file",
                   "groupSingleLineMessages": "file",
                   "idleTimeout": "file",

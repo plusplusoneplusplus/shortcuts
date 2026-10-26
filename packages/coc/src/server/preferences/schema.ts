@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { filterApprovalRequiredLlmToolNames, filterRemovedLlmToolNames } from '../llm-tools/llm-tool-registry';
+import { DEFAULT_APPROVAL_REQUIRED_LLM_TOOLS, filterApprovalRequiredLlmToolNames, filterRemovedLlmToolNames } from '../llm-tools/llm-tool-registry';
 import { MAX_ADDITIONAL_NOTES_ROOTS } from '../notes/notes-root-resolver';
 
 // ============================================================================
@@ -310,6 +310,11 @@ export const PerRepoPreferencesSchema = z.object({
         .transform(arr => filterApprovalRequiredLlmToolNames(
             arr.filter((t): t is string => typeof t === 'string' && t.length > 0),
         ))
+        .optional(),
+    /** Default-gated tools (DEFAULT_APPROVAL_REQUIRED_LLM_TOOLS) the repo turned approval off for. */
+    approvalOptOutLlmTools: z.array(z.unknown())
+        .transform(arr => Array.from(new Set(arr.filter((t): t is string =>
+            typeof t === 'string' && DEFAULT_APPROVAL_REQUIRED_LLM_TOOLS.includes(t)))))
         .optional(),
     defaultModel: z.string().max(100).optional(),
     defaultModels: DefaultModelsByModeSchema.optional(),

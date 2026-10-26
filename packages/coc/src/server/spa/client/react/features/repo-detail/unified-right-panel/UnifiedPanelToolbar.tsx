@@ -4,7 +4,8 @@
  * Rendered only while a file tab is active; every other kind brings its own
  * toolbar inside its own view, and the panel does not stack two of them. It
  * reuses the Explorer's own `Breadcrumbs` so the two surfaces read identically
- * and hosts the shared navigator toggle at its right edge.
+ * and hosts the active file's "Reload from disk" button (registered by its
+ * `PreviewPane`) beside the shared navigator toggle at its right edge.
  *
  * A segment click opens a directory picker listing that folder's files and
  * subfolders. The picker uses the active file tab's owner, so it remains correct
@@ -24,6 +25,8 @@ import { Breadcrumbs } from '../explorer/Breadcrumbs';
 import { explorerApi } from '../explorer/explorerApi';
 import { FileTypeIcon } from '../explorer/FileTypeIcon';
 import type { TreeEntry } from '../explorer/types';
+import { ReloadFromDiskButton } from '../../../shared/file-viewer/ReloadFromDiskButton';
+import type { FileReloadControl } from '../explorer/PreviewPane';
 import { breadcrumbFolderPath } from './unifiedPanelBreadcrumbs';
 import type { UnifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 
@@ -36,6 +39,8 @@ export interface UnifiedPanelToolbarProps {
     routingRef?: string | null;
     /** Open a file chosen from the directory picker. */
     onOpenFile: (entry: TreeEntry) => void;
+    /** The active file buffer's "Reload from disk" control, once it is mounted. */
+    reload?: FileReloadControl;
     /** Panel-level navigator control rendered at the row's right edge. */
     trailing?: ReactNode;
 }
@@ -45,6 +50,7 @@ export function UnifiedPanelToolbar({
     workspaceId,
     routingRef,
     onOpenFile,
+    reload,
     trailing,
 }: UnifiedPanelToolbarProps) {
     const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -160,6 +166,7 @@ export function UnifiedPanelToolbar({
                     </span>
                 )}
             </div>
+            {reload && <ReloadFromDiskButton onReload={reload.reload} busy={reload.busy} />}
             {trailing}
             {directoryPath !== null && (
                 <div

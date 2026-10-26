@@ -8,7 +8,7 @@
  *    bottom-sheet style).
  *  - desktop → a resizable, full-height sibling column with a drag handle.
  *
- * The panel chrome (header dropdown selector + state-driven body) lives in
+ * The panel chrome (review navigator + selected file diff) lives in
  * `WhisperDiffPanel`; the per-file selection is internal to the panel, so this
  * host only owns the mobile-vs-desktop shell + resizing and titles the mobile
  * sheet with the whole-group file count.
@@ -18,7 +18,7 @@ import { WhisperDiffPanel } from './WhisperDiffPanel';
 import type { WhisperDiffState } from './useWhisperDiffState';
 import type { UseResizablePanelReturn } from '../../../hooks/ui/useResizablePanel';
 
-/** Whole-group title for the mobile sheet chrome (the dropdown inside is authoritative). */
+/** Whole-group title for the mobile sheet chrome (the navigator inside is authoritative). */
 function sheetTitle(state: WhisperDiffState): string {
     const n = state.view.fileCount;
     return n > 0 ? `${n} file${n !== 1 ? 's' : ''} changed` : 'Changes';

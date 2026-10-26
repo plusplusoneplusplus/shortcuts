@@ -347,6 +347,10 @@ and route popup documents through their root tab without replacing its state.
 `sourceViewId` retains the emitting controller identity, so desktop committed-page
 copy metadata accepts only the root document while history includes popups.
 Generic snapshots, history-stack notifications and layout never record visits.
+Root tabs add a `favicon` PNG data URL (at most 64 KiB) to state from
+`ICoreWebView2_15::GetFavicon` on `FaviconChanged` and successful completion;
+`NavigationStarting` clears it and a generation counter drops late icons. Popups and
+error states carry none.
 
 `src/webview2.ts` resolves `COC_WEBVIEW2_PATH`, the local executable, then the
 Windows x64 prebuilt, rewriting ASAR paths to unpacked paths. Server imports

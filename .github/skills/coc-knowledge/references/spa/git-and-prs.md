@@ -144,8 +144,9 @@ The commit menu never derives its membership from paginated sidebar history.
 keys by workspace/base mode, and Refresh drops every mode for the workspace.
 No-upstream fallback reports `baseModeFallback`; pop-out URLs serialize the mode.
 
-Commit and branch review use `GitFileReview`; inline PR files use `PrFilesPanel`.
-Both adapt to `ReviewFiles`, which owns search, kind/status/viewed filters,
+Commit and branch review use `GitFileReview`; inline PR files use `PrFilesPanel`;
+a chat's captured changes use `WhisperDiffPanel` (no transport; see
+[chat-conversation.md](chat-conversation.md)). All adapt to `ReviewFiles`, which owns search, kind/status/viewed filters,
 selection, directory/tree/flat layouts, overview, progress and the narrow drawer.
 `reviewFileTree` supplies sorted compact directory trees. Typed render, row metadata
 and drag capabilities keep Git revision attachments and PR classification/visited
