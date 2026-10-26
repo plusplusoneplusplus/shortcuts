@@ -18,6 +18,7 @@ import { getFeatureSettingTabLink } from './adminNavigation';
 import { isContainerMode } from '../utils/config';
 import type { FeatureValues } from './useAdminFeatureSettings';
 import { AdminWorkspaceSelect } from './AdminWorkspaceSelect';
+import { AdminSkillSelect } from './AdminSkillSelect';
 
 const FEATURE_BADGES: Record<string, { className: string; label: string }> = {
     restart: { className: 'ar-badge ar-badge-warning', label: 'Restart' },
@@ -72,6 +73,14 @@ function FeatureSettingRow({ def, featureValues, setFeatureValues, sources, isDe
                 </select>
             ) : ui.control?.type === 'workspace' ? (
                 <AdminWorkspaceSelect
+                    value={String(featureValues[def.key] ?? '')}
+                    onChange={value => setFeatureValues(prev => ({ ...prev, [def.key]: value }))}
+                    label={ui.label}
+                    data-testid={ui.testId}
+                />
+            ) : ui.control?.type === 'skill' ? (
+                <AdminSkillSelect
+                    workspaceId={String(featureValues[ui.control.workspaceKey] ?? '')}
                     value={String(featureValues[def.key] ?? '')}
                     onChange={value => setFeatureValues(prev => ({ ...prev, [def.key]: value }))}
                     label={ui.label}

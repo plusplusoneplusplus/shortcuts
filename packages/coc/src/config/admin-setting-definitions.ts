@@ -73,7 +73,7 @@ export type AdminSettingValueSpec =
 
 // ── UI specs (admin Features card) ────────────────────────────────────────────
 
-export type FeatureGroupId = 'dashboard' | 'uiGeneral' | 'uiChat' | 'editorFiles' | 'editorNotes' | 'devTools' | 'workItems' | 'aiModes' | 'review' | 'infrastructure' | 'sentinelMode' | 'sentinelTodos' | 'sentinelMessaging' | 'browserAutomation' | 'browserPages' | 'teamsOwnCommands';
+export type FeatureGroupId = 'dashboard' | 'uiGeneral' | 'uiChat' | 'editorFiles' | 'editorNotes' | 'devTools' | 'workItems' | 'aiModes' | 'review' | 'infrastructure' | 'sentinelMode' | 'sentinelTodos' | 'sentinelMessaging' | 'browserAutomation' | 'browserPages' | 'teamsOwnCommands' | 'teamsReactionDelegation';
 
 export interface FeatureGroupSpec {
     id: FeatureGroupId;
@@ -99,6 +99,7 @@ export const FEATURE_CARD_GROUPS: readonly FeatureGroupSpec[] = [
     { id: 'browserAutomation', heading: 'AI Browser Control', testId: 'feature-group-browser-automation' },
     { id: 'browserPages', heading: 'Pages & Previews', testId: 'feature-group-browser-pages' },
     { id: 'teamsOwnCommands', heading: 'IC3 @coc own commands', testId: 'feature-group-teams-own-commands' },
+    { id: 'teamsReactionDelegation', heading: 'Reaction delegation', testId: 'feature-group-teams-reaction-delegation' },
 ];
 
 export type AdminSettingBadge = 'restart' | 'experimental' | 'preview';
@@ -125,7 +126,7 @@ export interface AdminSettingUiSpec {
     /** Only render when this other (boolean) setting is currently on. */
     dependsOn?: string;
     /** Defaults to a toggle when omitted. */
-    control?: { type: 'select'; options: readonly { value: string; label: string }[] } | { type: 'workspace' };
+    control?: { type: 'select'; options: readonly { value: string; label: string }[] } | { type: 'workspace' } | { type: 'skill'; workspaceKey: string };
     testId: string;
 }
 
@@ -1053,6 +1054,44 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             tab: 'teams', group: 'teamsOwnCommands', order: 20, label: 'Command workspace',
             hint: 'Required. Teams commands run in this registered local workspace on the configured machine, not the dashboard selection.',
             control: { type: 'workspace' }, testId: 'select-teams-ic3-command-workspace',
+        },
+    },
+    bool({
+        key: 'features.teamsReactionDelegation', default: false, runtime: 'live',
+        ui: {
+            tab: 'teams', group: 'teamsReactionDelegation', order: 10, label: 'Enable Robot reaction delegation', badge: 'experimental',
+            hint: 'Start separate Ask jobs for your live Robot reactions in self, direct and group chats. The dispatcher skill defines permissions, checks and procedure; questions stay in the dashboard. Dispatcher-reported done adds Checkmark; rejected adds Crossmark. Existing approval for the current revision counts as done without another vote. Missing evidence or incomplete work is rejected.',
+            testId: 'toggle-teams-reaction-delegation-enabled',
+        },
+    }),
+    {
+        key: 'teamsReactionDelegation.workspaceId',
+        value: {
+            kind: 'custom',
+            validate: value => typeof value === 'string' && value.length <= 256 && /^[a-zA-Z0-9_-]*$/.test(value)
+                ? undefined : 'Select a local workspace ID registered on this server.',
+        },
+        default: '', runtime: 'live',
+        ui: {
+            tab: 'teams', group: 'teamsReactionDelegation', order: 20, label: 'Execution workspace',
+            hint: 'Required when enabled. Use a registered local workspace on the configured machine, with its normal provider and model defaults.',
+            control: { type: 'workspace' }, testId: 'select-teams-reaction-workspace',
+        },
+    },
+    {
+        key: 'teamsReactionDelegation.dispatcherSkill',
+        value: {
+            kind: 'custom',
+            validate: value => typeof value === 'string' && value.length <= 256
+                && (value === '' || /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(value))
+                ? undefined : 'Select one dispatcher skill by name, not a file path.',
+        },
+        default: '', runtime: 'live',
+        ui: {
+            tab: 'teams', group: 'teamsReactionDelegation', order: 30, label: 'Dispatcher skill',
+            hint: 'Select one enabled skill from the execution workspace. Its instructions define task interpretation, specialists, permissions and procedure. This is prompt policy, not an authorization boundary.',
+            control: { type: 'skill', workspaceKey: 'teamsReactionDelegation.workspaceId' },
+            testId: 'select-teams-reaction-dispatcher-skill',
         },
     },
     bool({

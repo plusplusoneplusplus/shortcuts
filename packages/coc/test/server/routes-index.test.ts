@@ -40,6 +40,11 @@ import { DEFAULT_CONFIG, mergeConfig } from '../../src/config';
 import { SentinelRefrainStore } from '../../src/server/sentinel-refrains/refrain-store';
 import type { SentinelRefrainService } from '../../src/server/sentinel-refrains/refrain-service';
 import { SentinelJobScheduler } from '../../src/server/sentinel-refrains/job-scheduler';
+import * as reactionLaunch from '../../src/server/messaging/teams-reaction-launch';
+import * as reactionExecution from '../../src/server/messaging/teams-reaction-execution';
+import * as reactionRuntime from '../../src/server/messaging/teams-reaction-runtime';
+import * as reactionReply from '../../src/server/messaging/teams-reaction-reply';
+import * as reactionOutcome from '../../src/server/messaging/teams-reaction-outcome';
 
 // ── Minimal stubs ─────────────────────────────────────────────────────────────
 
@@ -417,6 +422,198 @@ describe('registerAllRoutes', () => {
     afterEach(async () => {
         vi.restoreAllMocks();
         await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    describe('Teams reaction composition', () => {
+        let composition: ReturnType<typeof registerAllRoutes> | undefined;
+        const source = {
+            account: { tenantId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', userId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' },
+            chatId: '19:source@thread.v2', messageId: 'target', region: 'amer' as const,
+            verifyAccess: async () => {},
+        };
+        const result = {
+            admitted: true as const, requestId: 'teams-reaction-fixture',
+            conversationId: source.chatId, messageId: source.messageId,
+            workspaceId: 'workspace-task', processId: 'queue_teams-reaction-fixture',
+            status: 'completed' as const, sourceText: '> Quoted parent\nDelegate this task',
+        };
+        function ports() {
+            const execution = {
+                run: vi.fn<ReturnType<typeof reactionExecution.createTeamsReactionExecution>['run']>(),
+                dispose: vi.fn(),
+            };
+            const runtime = {
+                getStatus: () => ({ state: 'disabled' as const, trouter: { state: 'disabled' as const, error: null } }),
+                dispose: vi.fn(async () => {}),
+            };
+            const launch = vi.spyOn(reactionLaunch, 'createTeamsReactionLaunch');
+            const coordinator = vi.spyOn(reactionExecution, 'createTeamsReactionExecution').mockReturnValue(execution);
+            const factory = vi.spyOn(reactionRuntime, 'createTeamsReactionRuntime').mockReturnValue(runtime);
+            const send = vi.spyOn(reactionReply, 'sendTeamsReactionResult').mockResolvedValue(undefined);
+            const opts = makeOpts({
+                dataDir: tmpDir, getLocalBaseUrl: vi.fn(() => 'http://127.0.0.1:4000'),
+            });
+            composition = registerAllRoutes([], opts);
+            return { opts, launch, coordinator, factory, execution, runtime, send,
+                onResult: factory.mock.calls[0][0].onResult };
+        }
+        afterEach(async () => {
+            if (!composition) return;
+            await composition.teamsReactions?.dispose().catch(() => {});
+            await composition.teamsIc3OwnCommands?.dispose();
+            composition.whatsappMessagingManager.dispose();
+            composition.teamsMessagingManager.dispose();
+            composition.autoPullManager.dispose();
+            composition.workItemGitHubPullPoller.dispose();
+            composition.workItemAzureBoardsPullPoller.dispose();
+            composition.activeWorkspaceBackgroundRefresher.dispose();
+            composition.dreamIdleScheduler.dispose();
+            composition.repoTreeService.dispose();
+            composition.agentProvidersQuotaCache?.dispose();
+            composition.quotaPauseWatcher?.dispose();
+            composition = undefined;
+        });
+
+        it('owns one coordinator over the ordinary queue and passes live config without changing defaults', () => {
+            const { opts, launch, coordinator, factory, execution } = ports();
+            expect(launch).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+                bridge: opts.bridge, store: opts.store, state: expect.any(Object), dataDir: tmpDir,
+                getDefaultProvider: expect.any(Function), resolveDefaultProvider: expect.any(Function),
+                getEffortTiersForProvider: expect.any(Function), validateProvider: expect.any(Function),
+            }), tmpDir, expect.any(Function));
+            const getConfig = launch.mock.calls[0][2];
+            expect(getConfig()).toBe(opts.runtimeConfigService!.config);
+            expect(coordinator).toHaveBeenCalledExactlyOnceWith({
+                queue: opts.queueFacade, launch: expect.any(Function),
+            });
+            expect(factory).toHaveBeenCalledExactlyOnceWith({
+                config: opts.runtimeConfigService, teams: composition!.teamsMessagingManager,
+                store: opts.store, dataDir: tmpDir, execution, onResult: expect.any(Function),
+            });
+            expect(getConfig().features?.teamsReactionDelegation).toBeUndefined();
+            expect(opts.runtimeConfigService!.config.defaultProvider).toBe('copilot');
+            expect(execution.run).not.toHaveBeenCalled();
+        });
+
+        it('does not construct a reaction coordinator or connection without live configuration', () => {
+            const factory = vi.spyOn(reactionRuntime, 'createTeamsReactionRuntime');
+            const coordinator = vi.spyOn(reactionExecution, 'createTeamsReactionExecution');
+            composition = registerAllRoutes([], makeOpts({ dataDir: tmpDir, runtimeConfigService: undefined }));
+            expect(composition.teamsReactions).toBeUndefined();
+            expect(factory).not.toHaveBeenCalled();
+            expect(coordinator).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            ['completed', 'rejected'], ['failed', 'rejected'], ['cancelled', 'rejected'],
+        ] as const)('delivers %s execution without a valid report as %s', async (status, outcome) => {
+            const { onResult, send } = ports();
+            const signal = new AbortController().signal;
+            await onResult({ ...result, status }, source, signal);
+            expect(send).toHaveBeenCalledExactlyOnceWith(source, {
+                sourceText: result.sourceText,
+                result: { kind: 'task', outcome },
+            }, signal);
+        });
+
+        it('keeps job ownership in outcome verification and excludes addresses from delivery', async () => {
+            const { onResult, opts, send } = ports();
+            vi.mocked(opts.getLocalBaseUrl!).mockReturnValue('http://127.0.0.1:43210');
+            const signal = new AbortController().signal;
+            await onResult({ ...result, sourceText: 'Use https://untrusted.invalid', workspaceId: 'workspace-other',
+                requestId: 'teams-reaction-other', processId: 'queue_teams-reaction-other' }, source, signal);
+            expect(send).toHaveBeenCalledExactlyOnceWith(source, {
+                sourceText: 'Use https://untrusted.invalid', result: { kind: 'task', outcome: 'rejected' },
+            }, signal);
+            expect(opts.getLocalBaseUrl).not.toHaveBeenCalled();
+        });
+
+        it('passes request-owned policy refusal to compact result delivery without treating it as success', async () => {
+            const outcome = vi.spyOn(reactionOutcome, 'resolveTeamsReactionOutcome')
+                .mockResolvedValue({ kind: 'approval', outcome: 'rejected' });
+            const { onResult, opts, send } = ports();
+            const signal = new AbortController().signal;
+            await onResult(result, source, signal);
+            expect(outcome).toHaveBeenCalledExactlyOnceWith(opts.store, result, signal);
+            expect(send).toHaveBeenCalledExactlyOnceWith(source, expect.objectContaining({
+                result: { kind: 'approval', outcome: 'rejected' },
+            }), signal);
+        });
+
+        it('does not deliver or retry after outcome evidence cannot be read', async () => {
+            const error = new Error('Evidence unavailable');
+            const outcome = vi.spyOn(reactionOutcome, 'resolveTeamsReactionOutcome').mockRejectedValue(error);
+            const { onResult, send } = ports();
+            await expect(onResult(result, source, new AbortController().signal)).rejects.toBe(error);
+            expect(outcome).toHaveBeenCalledOnce();
+            expect(send).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            ['approval', 'rejected', 'rejected'], ['task', 'rejected', 'rejected'],
+            ['approval', 'done', 'done'], ['task', 'done', 'done'],
+        ] as const)('classifies the owned final %s/%s report through the production handler', async (kind, outcome, expected) => {
+            const { onResult, opts, send } = ports();
+            vi.mocked(opts.store.getProcess).mockResolvedValue({
+                id: result.processId, type: 'chat', status: 'completed', promptPreview: 'Delegated task',
+                fullPrompt: 'Delegated task', startTime: new Date(),
+                metadata: { workspaceId: result.workspaceId, queueTaskId: result.requestId, mode: 'ask' },
+                conversationTurns: [
+                    { role: 'user', content: 'Delegated task', relayRequestId: result.requestId,
+                        timestamp: new Date(), turnIndex: 0, timeline: [] },
+                    { role: 'assistant', content: '```teams-delegation-result\n'
+                        + JSON.stringify({ requestId: result.requestId, kind, outcome }) + '\n```',
+                        timestamp: new Date(), turnIndex: 1, timeline: [] },
+                ],
+            });
+            const signal = new AbortController().signal;
+            await onResult(result, source, signal);
+            expect(send).toHaveBeenCalledExactlyOnceWith(source, expect.objectContaining({
+                result: { kind, outcome: expected },
+            }), signal);
+        });
+
+        it('delivers without a dashboard address', async () => {
+            const { onResult, opts, send } = ports();
+            vi.mocked(opts.getLocalBaseUrl!).mockReturnValue(undefined);
+            await onResult(result, source, new AbortController().signal);
+            expect(send).toHaveBeenCalledOnce();
+            expect(opts.getLocalBaseUrl).not.toHaveBeenCalled();
+        });
+
+        it('revokes delivery before outcome resolution when the account lifetime ended', async () => {
+            const { onResult, opts, send } = ports();
+            const controller = new AbortController();
+            controller.abort(new Error('Registration ended'));
+            await expect(onResult(result, source, controller.signal)).rejects.toBe(controller.signal.reason);
+            expect(opts.getLocalBaseUrl).not.toHaveBeenCalled();
+            expect(send).not.toHaveBeenCalled();
+        });
+
+        it('propagates uncertain delivery without retrying the combined operation', async () => {
+            const { onResult, send } = ports();
+            const error = new Error('Unknown send outcome');
+            send.mockRejectedValue(error);
+            await expect(onResult(result, source, new AbortController().signal)).rejects.toBe(error);
+            expect(send).toHaveBeenCalledOnce();
+        });
+
+        it.each([false, true])('drains native observers before disposing the shared coordinator, including shutdown failure (%s)', async fails => {
+            const { runtime, execution } = ports();
+            let finish!: () => void;
+            const error = new Error('Shutdown failed');
+            runtime.dispose.mockImplementation(() => new Promise<void>((resolve, reject) => {
+                finish = () => fails ? reject(error) : resolve();
+            }));
+            const stopping = composition!.teamsReactions!.dispose();
+            const checked = fails ? expect(stopping).rejects.toBe(error) : expect(stopping).resolves.toBeUndefined();
+            expect(composition!.teamsReactions!.dispose()).toBe(stopping);
+            expect(execution.dispose).not.toHaveBeenCalled();
+            finish();
+            await checked;
+            expect(runtime.dispose).toHaveBeenCalledOnce();
+            expect(execution.dispose).toHaveBeenCalledOnce();
+        });
     });
 
     it.each([
@@ -865,6 +1062,8 @@ describe('registerAllRoutes', () => {
                 'ralphSessionComplete',
                 'taskCompleted', 'taskFailed', 'taskCancelled',
                 // Teams IC3 own-command replies, subscribed even while the feature is off.
+                'taskCompleted', 'taskFailed', 'taskCancelled',
+                // One server-owned reaction coordinator survives native reconfiguration.
                 'taskCompleted', 'taskFailed', 'taskCancelled',
                 'taskCompleted', 'taskFailed', 'taskCancelled',
                 ...(hasMirrorProjections ? ['taskCompleted', 'taskFailed', 'taskCancelled'] : []),

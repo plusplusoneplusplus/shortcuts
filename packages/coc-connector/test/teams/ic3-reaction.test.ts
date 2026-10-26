@@ -122,6 +122,111 @@ describe('IC3 channel Like', () => {
             expect(fetchMock).toHaveBeenCalledOnce();
             expect(vi.getTimerCount()).toBe(0);
         });
+
+        describe.each([
+            ['eyes', '1f440_eyes'],
+            ['checkmark', '2714_heavycheckmark'],
+            ['crossmark', '274c_crossmark'],
+        ] as const)('source %s reaction', (reaction, nativeKey) => {
+            it.each(['48:notes', chatId, '19:source@unq.gbl.spaces'])('writes only the requested key to the exact %s source', async target => {
+                const { client } = setup();
+                await client.reactToSourceMessage(target, 'foreign-authored-message', reaction);
+                expect(fetchMock).toHaveBeenCalledOnce();
+                expect(fetchMock.mock.calls[0][0]).toBe(
+                    `https://teams.cloud.microsoft/api/chatsvc/amer/v1/users/ME/conversations/${encodeURIComponent(target)}`
+                    + '/messages/foreign-authored-message/properties?name=emotions');
+                expect(fetchMock.mock.calls[0][1]).toMatchObject({
+                    method: 'PUT', redirect: 'error', signal: expect.any(AbortSignal),
+                    body: JSON.stringify({ emotions: { key: nativeKey, value: Date.now() } }),
+                });
+                expect(vi.getTimerCount()).toBe(0);
+            });
+
+            it('requires matching account, region and an admitted chat target before dispatch', async () => {
+                const acquireToken = vi.fn(async () => sourceToken());
+                const unpinned = new Ic3ReactionClient({ region: 'amer', acquireToken });
+                const noRegion = new Ic3ReactionClient({ expectedAccount: account, acquireToken });
+                clients.push(unpinned, noRegion);
+                await expect(unpinned.reactToSourceMessage(chatId, 'message', reaction))
+                    .rejects.toMatchObject({ code: 'authentication', outcome: 'not-attempted' });
+                await expect(noRegion.reactToSourceMessage(chatId, 'message', reaction))
+                    .rejects.toMatchObject({ code: 'configuration', outcome: 'not-attempted' });
+                expect(acquireToken).not.toHaveBeenCalled();
+                const { client } = setup({ tid: account.objectId });
+                for (const target of ['19:channel@thread.tacv2', '48:notifications', '../unsafe']) {
+                    await expect(client.reactToSourceMessage(target, 'message', reaction))
+                        .rejects.toMatchObject({ code: 'invalid-target', outcome: 'not-attempted' });
+                }
+                await expect(client.reactToSourceMessage(chatId, ' ', reaction))
+                    .rejects.toMatchObject({ code: 'invalid-target', outcome: 'not-attempted' });
+                await expect(client.reactToSourceMessage(chatId, 'message', reaction))
+                    .rejects.toMatchObject({ code: 'authentication', outcome: 'not-attempted' });
+                expect(fetchMock).not.toHaveBeenCalled();
+            });
+
+            it.each([401, 429, 500])('does not replay, fall back or expose provider bodies on HTTP %s', async status => {
+                const { client } = setup();
+                fetchMock.mockResolvedValueOnce(new Response('private failure', { status }));
+                const pending = client.reactToSourceMessage(chatId, 'message', reaction);
+                await expect(pending).rejects.toMatchObject({ outcome: status === 500 ? 'unknown' : 'rejected' });
+                await expect(pending).rejects.not.toThrow('private failure');
+                expect(fetchMock).toHaveBeenCalledOnce();
+                expect(vi.getTimerCount()).toBe(0);
+            });
+
+            it.each(['timeout', 'caller', 'dispose'])('prevents a late credential completion from writing on %s', async action => {
+                let finish!: (value: string) => void;
+                const client = new Ic3ReactionClient({ region: 'amer', expectedAccount: account,
+                    acquireToken: () => new Promise(resolve => { finish = resolve; }) });
+                clients.push(client);
+                const caller = new AbortController();
+                const pending = client.reactToSourceMessage(chatId, 'message', reaction, caller.signal);
+                const failed = expect(pending).rejects.toMatchObject({ outcome: 'not-attempted' });
+                await vi.advanceTimersByTimeAsync(0);
+                if (action === 'timeout') await vi.advanceTimersByTimeAsync(10_000);
+                else if (action === 'caller') caller.abort();
+                else client.dispose();
+                await failed;
+                finish(sourceToken());
+                await vi.advanceTimersByTimeAsync(0);
+                expect(fetchMock).not.toHaveBeenCalled();
+                expect(vi.getTimerCount()).toBe(0);
+            });
+
+            it.each(['timeout', 'caller', 'dispose'])('reports an unknown outcome after dispatch on %s', async action => {
+                const { client } = setup();
+                fetchMock.mockImplementationOnce(() => new Promise(() => {}));
+                const caller = new AbortController();
+                const pending = client.reactToSourceMessage(chatId, 'message', reaction, caller.signal);
+                const failed = expect(pending).rejects.toMatchObject({ outcome: 'unknown' });
+                await vi.advanceTimersByTimeAsync(0);
+                if (action === 'timeout') await vi.advanceTimersByTimeAsync(10_000);
+                else if (action === 'caller') caller.abort();
+                else client.dispose();
+                await failed;
+                expect(fetchMock).toHaveBeenCalledOnce();
+                expect(vi.getTimerCount()).toBe(0);
+            });
+
+            it('rejects a pre-cancelled call without acquiring credentials', async () => {
+                const { client, acquireToken } = setup();
+                const caller = new AbortController();
+                caller.abort();
+                await expect(client.reactToSourceMessage(chatId, 'message', reaction, caller.signal))
+                    .rejects.toMatchObject({ outcome: 'not-attempted' });
+                expect(acquireToken).not.toHaveBeenCalled();
+                expect(fetchMock).not.toHaveBeenCalled();
+                expect(vi.getTimerCount()).toBe(0);
+            });
+        });
+
+        it.each(['like', 'robot', 'failed', 'toString', '__proto__'])('rejects unsupported runtime reaction %s before credentials', async reaction => {
+            const { client, acquireToken } = setup();
+            await expect(Reflect.apply(client.reactToSourceMessage, client, [chatId, 'message', reaction]))
+                .rejects.toMatchObject({ code: 'unsupported', outcome: 'not-attempted' });
+            expect(acquireToken).not.toHaveBeenCalled();
+            expect(fetchMock).not.toHaveBeenCalled();
+        });
     });
 
     afterEach(() => {

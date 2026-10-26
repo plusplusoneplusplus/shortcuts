@@ -87,6 +87,9 @@ function invalidProbe(def: AdminSettingDefinition): unknown {
 
 function nestedConfigWith(key: string, value: unknown): CLIConfig {
     const config: Record<string, unknown> = {};
+    if (key === 'features.teamsReactionDelegation' && value === true) {
+        config.teamsReactionDelegation = { workspaceId: 'workspace-fixture', dispatcherSkill: 'dispatcher-fixture' };
+    }
     setConfigValueAtPath(config, key, value);
     return config as CLIConfig;
 }
@@ -957,6 +960,9 @@ describe('feature toggle settings-tab placement', () => {
         'features.teamsMessageReaction': 'teams',
         'features.teamsIc3OwnCommands': 'teams',
         'teamsIc3OwnCommands.workspaceId': 'teams',
+        'features.teamsReactionDelegation': 'teams',
+        'teamsReactionDelegation.workspaceId': 'teams',
+        'teamsReactionDelegation.dispatcherSkill': 'teams',
         // Integrations (bot-managed conversations also covers WhatsApp)
         'features.botManagedConversations': 'integrations',
         'mcpOauth.enabled': 'integrations',
@@ -1072,6 +1078,9 @@ describe('feature toggle settings-tab placement', () => {
             ['features.teamsMessageReaction', false, 'live', 'teamsMessageReactionEnabled', 'experimental'],
             ['features.teamsIc3OwnCommands', false, 'live', undefined, 'experimental'],
             ['teamsIc3OwnCommands.workspaceId', '', 'live', undefined, undefined],
+            ['features.teamsReactionDelegation', false, 'live', undefined, 'experimental'],
+            ['teamsReactionDelegation.workspaceId', '', 'live', undefined, undefined],
+            ['teamsReactionDelegation.dispatcherSkill', '', 'live', undefined, undefined],
         ]);
         expect(uiDefs.filter(d => /^features\.teams/.test(d.key)).map(d => d.key).sort())
             .toEqual(teamsDefs.filter(d => d.key.startsWith('features.')).map(d => d.key).sort());

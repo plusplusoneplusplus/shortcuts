@@ -81,13 +81,20 @@ errors separately from reader connectivity, outside collapsed settings.
 
 The Teams-only registry controls (`features.teamsBridgeObservability`,
 `features.teamsAiAnswerRelay`, `features.teamsMessageReaction` and the independent
-IC3 own-command enable/workspace settings; `ui.tab: 'teams'`) render
+IC3 own-command enable/workspace settings and reaction-delegation enable/workspace/skill
+settings; `ui.tab: 'teams'`) render
 only in a "Teams features" card below detailed configuration on Connectors → Teams. That card
 saves only its keys through `PUT /api/admin/config`, separately from the connection's
 `/api/messaging/teams/*` actions; Ctrl+S there saves only the card. Features search links
 them to `#admin/messaging`. The IC3 workspace picker lists local registrations from
 the selected Admin server. Saving enabled IC3 settings starts the
 [Ask launcher](../admin-config.md#ic3-own-command-configuration).
+The Reaction delegation group uses the same responsive admin rows and page-scoped
+Save/Cancel. Its dispatcher picker reads installed skills for the selected execution
+workspace, excludes disabled names and preserves unavailable saved selections with
+visible errors. Machine/workspace changes discard late lists; enabled saves recheck
+the binding on the selected machine. The configuration surface does not launch
+reaction jobs. See [delegation configuration](../admin-config.md#teams-reaction-delegation-configuration).
 `TeamsIc3StatusCard` polls the selected Admin machine's read-only
 `/api/messaging/teams/ic3-own-commands/status` every five seconds for read health,
 timestamps and independent own-command Trouter health. Refresh only reads the

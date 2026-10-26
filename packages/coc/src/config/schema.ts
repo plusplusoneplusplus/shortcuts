@@ -66,6 +66,10 @@ const CUSTOM_FILE_SCHEMAS: Record<string, z.ZodTypeAny> = {
     'agentProviderRouting.auto': autoProviderRoutingSchema,
     'features.chatStylePrompts': chatStylePromptsSchema,
     'teamsIc3OwnCommands.workspaceId': z.string().max(256).regex(/^[a-zA-Z0-9_-]*$/, 'Expected a local workspace ID'),
+    'teamsReactionDelegation.workspaceId': z.string().max(256).regex(/^[a-zA-Z0-9_-]*$/, 'Expected a local workspace ID'),
+    'teamsReactionDelegation.dispatcherSkill': z.string().max(256).regex(
+        /^(?:[a-zA-Z0-9][a-zA-Z0-9._-]*)?$/, 'Expected a dispatcher skill name, not a file path',
+    ),
 };
 
 // ============================================================================
@@ -153,14 +157,15 @@ function mergeSchemaTrees(base: SchemaTree, overlay: SchemaTree): SchemaTree {
     return merged;
 }
 
-/** Optional config leaves; the own-command namespace rejects credential/consent fields. */
+/** Optional config leaves; Teams task namespaces reject credential/permission fields. */
 function treeToZodObject(tree: SchemaTree, namespace = ''): z.ZodTypeAny {
     const shape: Record<string, z.ZodTypeAny> = {};
     for (const [key, value] of Object.entries(tree)) {
         shape[key] = (isZodType(value) ? value : treeToZodObject(value, namespace ? `${namespace}.${key}` : key)).optional();
     }
     const object = z.object(shape);
-    return namespace === 'teamsIc3OwnCommands' ? object.strict() : object.passthrough();
+    return namespace === 'teamsIc3OwnCommands' || namespace === 'teamsReactionDelegation'
+        ? object.strict() : object.passthrough();
 }
 
 /**
@@ -244,9 +249,20 @@ const BASE_SCHEMA_TREE: SchemaTree = {
 /**
  * Base (non-admin) shape + generated admin-editable leaves.
  */
-export const CLIConfigSchema = treeToZodObject(
+export const CLIConfigSchema = (treeToZodObject(
     mergeSchemaTrees(BASE_SCHEMA_TREE, buildAdminSettingsSchemaTree())
-) as unknown as z.ZodType<CLIConfig>;
+) as unknown as z.ZodType<CLIConfig>).superRefine((config, ctx) => {
+    if (config.features?.teamsReactionDelegation !== true) return;
+    for (const field of ['workspaceId', 'dispatcherSkill'] as const) {
+        if (!config.teamsReactionDelegation?.[field]) {
+            ctx.addIssue({
+                code: 'custom',
+                path: ['teamsReactionDelegation', field],
+                message: `Required when Teams reaction delegation is enabled: ${field}`,
+            });
+        }
+    }
+});
 
 export type CLIConfigFromSchema = CLIConfig;
 
