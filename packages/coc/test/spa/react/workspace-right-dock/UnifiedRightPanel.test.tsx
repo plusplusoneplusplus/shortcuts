@@ -1017,7 +1017,9 @@ describe('UnifiedRightPanel', () => {
                 act(() => onDownload?.({ viewId, url: 'https://example.com/file.zip', ok: true }));
                 expect(screen.getByTestId('browser-notice').textContent).toContain('system browser');
                 act(() => onDownload?.({ viewId, url: 'https://example.com/file.zip', ok: false, error: 'no handler' }));
-                expect(screen.getByTestId('browser-notice').textContent).toContain('no handler');
+                // Older hosts without managed downloads point to the system browser and never show the raw error.
+                expect(screen.getByTestId('browser-notice').textContent).toContain('Use Open in system browser');
+                expect(screen.getByTestId('browser-notice').textContent).not.toContain('no handler');
 
                 act(() => onState?.(page(viewId, { url: 'https://example.com/after' })));
                 await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Browser options' })); });
