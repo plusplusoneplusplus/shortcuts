@@ -237,7 +237,7 @@ Editors keeps only `features.arxivPaperIngest` (Notes Editor). The Chat tab host
 ### Sentinel settings
 
 `#admin/settings/sentinel` owns the Sentinel behavior controls: `sentinel.enabled`,
-`features.sentinelNextSteps`, `sentinelTodoDependencies`, `sentinelTodoTags`, `sentinelTodoExternalReferences`,
+`features.sentinelNextSteps`, `sentinelTodoDependencies`, `sentinelTodoTags`, `sentinelTodoCategories`, `sentinelTodoExternalReferences`,
 `sentinelTodoScrubber`, `sentinelTodoJobs`, `sentinelTodoDateTimeTriggers`,
 `sentinelPrOutcomeWake`, `sentinelFollowUpResults`, and `sentinelDesktopMirror`. The
 presentation-only `sentinelResultCards` lives on Appearance → Chat Interface. Registry groups organize mode, To-do/PR outcomes and

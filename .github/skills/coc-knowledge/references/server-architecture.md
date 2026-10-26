@@ -400,6 +400,10 @@ reorder/delete categories under the native writer lock; names are unique ignorin
 Deletion clears nullable item `category_id` assignments across the workspace and
 advances affected item/ledger revisions atomically. Usage counts include all item
 states and chat owners. Category sets follow the machine-local ledger export/wipe policy.
+`SentinelTodoService` verifies a Sentinel chat in that workspace and the live default-off
+`features.sentinelTodoCategories` gate for every category command. Owning-server REST
+and `coc-client` use `/sentinel-todos/:processId/categories`; post-commit workspace
+invalidations carry the set revision, and deletions also invalidate affected ledgers.
 Queue tasks, controls and paths live in `queue_tasks`, `queue_repo_state` and `queue_repo_paths`.
 `queues.json` is handled by storage snapshot import/export, not live queue persistence.
 See [process-store.md](process-store.md) for tables and read/write contracts.

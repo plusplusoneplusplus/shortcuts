@@ -147,3 +147,18 @@ describe('Scrubber owner event routing', () => {
         expect(JSON.parse((local.send as any).mock.calls[0][0])).toMatchObject({ processId: 'parent', runId: 'run' });
     });
 });
+
+describe('Workspace category event routing', () => {
+    it('notifies both chats in the owning workspace without notifying another workspace', () => {
+        const server = new ProcessWebSocketServer();
+        const first = createMockClient('chat-a', 'ws-a');
+        const second = createMockClient('chat-b', 'ws-a');
+        const other = createMockClient('other', 'ws-b');
+        for (const client of [first, second, other]) addClientToServer(server, client);
+        const event = { type: 'sentinel-todo-categories-changed' as const, workspaceId: 'ws-a', revision: 4, timestamp: 1 };
+        server.broadcastProcessEvent(event);
+        expect(first.send).toHaveBeenCalledExactlyOnceWith(JSON.stringify(event));
+        expect(second.send).toHaveBeenCalledExactlyOnceWith(JSON.stringify(event));
+        expect(other.send).not.toHaveBeenCalled();
+    });
+});

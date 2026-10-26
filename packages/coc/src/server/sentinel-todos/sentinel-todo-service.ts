@@ -27,7 +27,7 @@ import {
     type SentinelTodoStore,
 } from './sentinel-todo-store';
 import { getRepoDataPath } from '../paths';
-import type { SentinelTodoTagLibrary } from '@plusplusoneplusplus/coc-client';
+import type { SentinelTodoCategorySet, SentinelTodoCategoryUsage, DeleteSentinelTodoCategoryResponse, SentinelTodoTagLibrary } from '@plusplusoneplusplus/coc-client';
 import type { DecisionService } from '../decisions/decision-service';
 import { matchTodoTags, tagSuggestSchema } from './sentinel-todo-tags';
 import type { DashboardDiscoveryRuntime, DashboardWorkspaceTarget } from '@plusplusoneplusplus/coc-client';
@@ -44,6 +44,12 @@ const dashboardReferenceSchema = z.object({
     title: z.string().trim().min(1).max(512),
     offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).default(0),
 }).strict();
+
+export interface SentinelTodoCategoriesChange {
+    workspaceId: string;
+    revision: number;
+    affectedLedgers: { processId: string; ledgerRevision: number }[];
+}
 
 export interface SentinelTodoChange {
     owner: SentinelTodoOwner;
@@ -113,6 +119,8 @@ export class SentinelTodoService {
         onChange?: (change: SentinelTodoChange) => void;
         getDependenciesEnabled?: () => boolean;
         getTagsEnabled?: () => boolean;
+        getCategoriesEnabled?: () => boolean;
+        onCategoriesChange?: (change: SentinelTodoCategoriesChange) => void;
         getExternalReferencesEnabled?: () => boolean;
         getTagsGeneration?: () => unknown;
         decisions?: Pick<DecisionService, 'evaluate'>;
@@ -124,6 +132,64 @@ export class SentinelTodoService {
 
     dependenciesEnabled(): boolean {
         return this.deps.getDependenciesEnabled?.() === true;
+    }
+
+    categoriesEnabled(): boolean {
+        return this.deps.getCategoriesEnabled?.() === true;
+    }
+
+    private async assertCategoriesOwner(owner: SentinelTodoOwner): Promise<void> {
+        await this.assertOwner(owner);
+        if (!this.categoriesEnabled()) throw new SentinelTodoError('not_found', 'Sentinel to-do categories are disabled');
+    }
+
+    async getCategories(owner: SentinelTodoOwner): Promise<SentinelTodoCategorySet> {
+        await this.assertCategoriesOwner(owner);
+        return this.deps.todos.getCategories(owner.workspaceId);
+    }
+
+    async createCategory(owner: SentinelTodoOwner, input: unknown): Promise<SentinelTodoCategorySet> {
+        await this.assertCategoriesOwner(owner);
+        const set = this.deps.todos.writeCategory(owner.workspaceId, undefined, input);
+        this.emitCategories(owner.workspaceId, set);
+        return set;
+    }
+
+    async updateCategory(owner: SentinelTodoOwner, categoryId: string, input: unknown): Promise<SentinelTodoCategorySet> {
+        await this.assertCategoriesOwner(owner);
+        const set = this.deps.todos.writeCategory(owner.workspaceId, categoryId, input);
+        this.emitCategories(owner.workspaceId, set);
+        return set;
+    }
+
+    async reorderCategories(owner: SentinelTodoOwner, input: unknown): Promise<SentinelTodoCategorySet> {
+        await this.assertCategoriesOwner(owner);
+        const set = this.deps.todos.reorderCategories(owner.workspaceId, input);
+        this.emitCategories(owner.workspaceId, set);
+        return set;
+    }
+
+    async getCategoryUsage(owner: SentinelTodoOwner, categoryId: string): Promise<SentinelTodoCategoryUsage> {
+        await this.assertCategoriesOwner(owner);
+        return this.deps.todos.getCategoryUsage(owner.workspaceId, categoryId);
+    }
+
+    async deleteCategory(owner: SentinelTodoOwner, categoryId: string, input: unknown): Promise<DeleteSentinelTodoCategoryResponse> {
+        await this.assertCategoriesOwner(owner);
+        const { categorySet, affectedOwners, itemCount, chatCount } = this.deps.todos.deleteCategory(owner.workspaceId, categoryId, input);
+        this.emitCategories(owner.workspaceId, categorySet, affectedOwners);
+        return { categorySet, itemCount, chatCount };
+    }
+
+    private emitCategories(workspaceId: string, set: SentinelTodoCategorySet, affectedOwners: SentinelTodoOwner[] = []): void {
+        try {
+            this.deps.onCategoriesChange?.({ workspaceId, revision: set.revision,
+                affectedLedgers: affectedOwners.map(owner => ({ processId: owner.processId,
+                    ledgerRevision: this.deps.todos.get(owner).revision })) });
+        } catch (error) {
+            getServerLogger().warn({ workspaceId, error: error instanceof Error ? error.message : String(error) },
+                'Committed category change notification failed');
+        }
     }
 
     tagsEnabled(): boolean {

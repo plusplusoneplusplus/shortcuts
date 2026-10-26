@@ -13,6 +13,24 @@ export type SentinelTodoType = 'normal' | 'manual';
 export type SentinelTodoPriority = 'high' | 'regular';
 export type SentinelTodoActor = 'user' | 'sentinel' | 'system';
 
+/** One ordered set belongs to the workspace, shared by all its Sentinel chats. */
+export interface SentinelTodoCategory { id: string; name: string }
+export interface SentinelTodoCategorySet { revision: number; categories: SentinelTodoCategory[] }
+export interface WriteSentinelTodoCategoryRequest { expectedRevision: number; name: string }
+export interface ReorderSentinelTodoCategoriesRequest { expectedRevision: number; categoryIds: string[] }
+export interface DeleteSentinelTodoCategoryRequest { expectedRevision: number; confirmed: true }
+export interface SentinelTodoCategoryUsage { itemCount: number; chatCount: number }
+export interface DeleteSentinelTodoCategoryResponse extends SentinelTodoCategoryUsage {
+  categorySet: SentinelTodoCategorySet;
+}
+/** Workspace invalidation: refetch categories using the owning server's client. */
+export interface SentinelTodoCategoriesChangedEvent {
+  type: 'sentinel-todo-categories-changed';
+  workspaceId: string;
+  revision: number;
+  timestamp?: number;
+}
+
 export interface SentinelTodoTag {
   id: string;
   name: string;

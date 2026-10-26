@@ -333,6 +333,7 @@ export interface CLIConfig {
         /** Native prerequisite authoring and admission. Disabled by default. */
         sentinelTodoDependencies?: boolean;
         sentinelTodoTags?: boolean;
+        sentinelTodoCategories?: boolean;
         /** Typed display-only external references on Sentinel items. Disabled by default. */
         sentinelTodoExternalReferences?: boolean;
         /** Sentinel Coda, the built-in to-do review (visible evidence checks, cron). Disabled by default. */
@@ -773,6 +774,7 @@ export interface ResolvedCLIConfig {
         sentinelTargetAutocomplete: boolean;
         sentinelTodoDependencies: boolean;
         sentinelTodoTags: boolean;
+        sentinelTodoCategories: boolean;
         sentinelTodoExternalReferences: boolean;
         /** Sentinel Coda, the built-in to-do review (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber: boolean;
@@ -1126,6 +1128,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         sentinelTargetAutocomplete: false,
         sentinelTodoDependencies: false,
         sentinelTodoTags: false,
+        sentinelTodoCategories: false,
         sentinelTodoExternalReferences: false,
         sentinelTodoScrubber: false,
         sentinelTodoJobs: false,

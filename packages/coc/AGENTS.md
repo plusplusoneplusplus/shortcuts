@@ -537,7 +537,10 @@ references before editing. Paths are package-relative.
   are independent of member repos. Category deletion clears nullable `category_id`
   assignments across all workspace chats atomically and advances affected item/ledger
   revisions; usage counts include Manual, Done and Archived items. Category sets stay
-  machine-local and participate in server-data wipe. Mutations acquire the database
+  machine-local and participate in server-data wipe. Default-off live
+  `features.sentinelTodoCategories` gates owner-validated REST/client category commands;
+  post-commit `sentinel-todo-categories-changed` invalidates the workspace set, and
+  deletion also emits whole-ledger invalidations for affected chats. Mutations acquire the database
   writer before reading and compare revisions; stale item writers receive `409` with the current item.
   Recent REST/tool/panel lists include every unarchived non-Done item first, then
   recently updated Done items within a 50-item budget; active counts above 50 stay

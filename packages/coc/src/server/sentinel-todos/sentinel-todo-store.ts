@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { z } from 'zod';
-import type { SentinelTodoDependencyEvaluation, SentinelTodoTagLibrary } from '@plusplusoneplusplus/coc-client';
+import type { SentinelTodoCategorySet, SentinelTodoDependencyEvaluation, SentinelTodoTagLibrary } from '@plusplusoneplusplus/coc-client';
 import { externalReferenceSchema, externalReferencesSchema, MAX_TODO_EXTERNAL_REFERENCES } from './sentinel-todo-external-references';
 
 export const MAX_TODO_ITEMS = 500;
@@ -26,8 +26,6 @@ const tagDeleteSchema = z.object({
 }).strict();
 
 export const MAX_TODO_CATEGORIES = 12;
-export interface SentinelTodoCategory { id: string; name: string }
-export interface SentinelTodoCategorySet { revision: number; categories: SentinelTodoCategory[] }
 const categoryWriteSchema = z.object({
     expectedRevision: z.number().int().nonnegative(),
     name: z.string().trim().min(1).max(40),

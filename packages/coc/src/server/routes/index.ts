@@ -564,10 +564,22 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         fetchPr: createPrStatusFetcher({ dataDir }),
         resolveWorkspaceRoot: async workspaceId => (await store.getWorkspaces()).find(workspace => workspace.id === workspaceId)?.rootPath,
         getDependenciesEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoDependencies === true,
+        getCategoriesEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoCategories === true,
         getTagsEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoTags === true,
         getExternalReferencesEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.sentinelTodoExternalReferences === true,
         getTagsGeneration: () => opts.runtimeConfigService?.revision,
         decisions: decisionService,
+        onCategoriesChange: ({ workspaceId, revision, affectedLedgers }) => {
+            getWsServer().broadcastProcessEvent({
+                type: 'sentinel-todo-categories-changed', workspaceId, revision, timestamp: Date.now(),
+            });
+            for (const { processId, ledgerRevision } of affectedLedgers) {
+                getWsServer().broadcastProcessEvent({
+                    type: 'sentinel-todos-changed', workspaceId, processId, ledgerRevision, timestamp: Date.now(),
+                });
+            }
+            if (affectedLedgers.length) opts.triggerManager?.refreshDependencyPolling();
+        },
         onTagsChange: (owner, ledgerRevision) => {
             const event = {
                 type: 'sentinel-todos-changed' as const, workspaceId: owner.workspaceId, processId: owner.processId,

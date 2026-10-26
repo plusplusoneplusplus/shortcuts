@@ -933,6 +933,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.sentinelTargetAutocomplete': 'sentinel',
         'features.sentinelTodoDependencies': 'sentinel',
         'features.sentinelTodoTags': 'sentinel',
+        'features.sentinelTodoCategories': 'sentinel',
         'features.sentinelTodoExternalReferences': 'sentinel',
         'features.sentinelTodoScrubber': 'sentinel',
         'features.sentinelTodoJobs': 'sentinel',

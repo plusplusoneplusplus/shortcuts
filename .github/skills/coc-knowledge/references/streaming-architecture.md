@@ -339,6 +339,7 @@ ProcessStore
 | `server-topology-changed` | remote-server registry and connection routes |
 | `work-item-added` / `work-item-removed` | work-item-routes (added also from work-item-execution-routes) |
 | `work-item-updated` | work-item-routes, plan-routes, execution-routes |
+| `sentinel-todo-categories-changed` / `sentinel-todos-changed` | Sentinel to-do service → routes/index; workspace-filtered post-commit category-set and ledger invalidations |
 | `turn-pinned` / `turn-archived` | turn-actions-handler |
 | `memory-promoted` / `memory-promotion-failed` | auto-promote, memory-promote-executor |
 | `server-restarting`, `config-changed` | admin-handler |
