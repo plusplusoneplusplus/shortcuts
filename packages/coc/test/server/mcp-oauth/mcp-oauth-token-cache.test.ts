@@ -12,6 +12,7 @@ import * as os from 'os';
 import * as path from 'path';
 import {
     readMcpServerAuthInfo,
+    readMcpServerAccessToken,
     clearMcpServerAuth,
     getMcpOauthCacheDir,
 } from '../../../src/server/mcp-oauth/mcp-oauth-token-cache';
@@ -166,5 +167,30 @@ describe('getMcpOauthCacheDir', () => {
 
     it('respects an explicit home override', () => {
         expect(getMcpOauthCacheDir('/tmp/x')).toBe(path.join('/tmp/x', '.copilot', 'mcp-oauth-config'));
+    });
+});
+
+describe('readMcpServerAccessToken', () => {
+    let tmpHome: string;
+
+    beforeEach(() => {
+        tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-oauth-token-'));
+    });
+
+    afterEach(() => {
+        try { fs.rmSync(tmpHome, { recursive: true, force: true }); } catch { /* ignore */ }
+    });
+
+    it('returns the token only while it is valid', () => {
+        writeTokenPair(tmpHome, TEST_SERVER_URL, { accessToken: 'live', expiresAt: Math.floor(Date.now() / 1000) + 3600 });
+        writeTokenPair(tmpHome, OTHER_SERVER_URL, { accessToken: 'stale', expiresAt: Math.floor(Date.now() / 1000) - 60 });
+        expect(readMcpServerAccessToken(TEST_SERVER_URL, tmpHome)).toBe('live');
+        expect(readMcpServerAccessToken(OTHER_SERVER_URL, tmpHome)).toBeUndefined();
+        expect(readMcpServerAccessToken('https://missing.example.com', tmpHome)).toBeUndefined();
+    });
+
+    it('never exposes the token through the auth info', () => {
+        writeTokenPair(tmpHome, TEST_SERVER_URL, { accessToken: 'live', expiresAt: Math.floor(Date.now() / 1000) + 3600 });
+        expect(JSON.stringify(readMcpServerAuthInfo(TEST_SERVER_URL, 'http', tmpHome))).not.toContain('live');
     });
 });

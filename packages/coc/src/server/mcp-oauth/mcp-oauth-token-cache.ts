@@ -127,8 +127,25 @@ export function readMcpServerAuthInfo(
     serverType?: string,
     homeDir?: string,
 ): McpServerAuthInfo {
+    return readCachedAuth(serverUrl, serverType, homeDir).info;
+}
+
+/**
+ * Return the cached access token for a remote MCP server URL when it is still
+ * valid (same expiry skew as {@link readMcpServerAuthInfo}), else `undefined`.
+ * Never refreshes and never writes the cache.
+ */
+export function readMcpServerAccessToken(serverUrl: string, homeDir?: string): string | undefined {
+    return readCachedAuth(serverUrl, undefined, homeDir).accessToken;
+}
+
+function readCachedAuth(
+    serverUrl: string | undefined,
+    serverType: string | undefined,
+    homeDir: string | undefined,
+): { info: McpServerAuthInfo; accessToken?: string } {
     if (!serverUrl || (serverType && serverType !== 'http' && serverType !== 'sse')) {
-        return { status: 'not-required' };
+        return { info: { status: 'not-required' } };
     }
 
     const cacheDir = getMcpOauthCacheDir(homeDir);
@@ -136,27 +153,27 @@ export function readMcpServerAuthInfo(
     try {
         found = findMetadataFile(cacheDir, serverUrl);
     } catch {
-        return { status: 'unknown' };
+        return { info: { status: 'unknown' } };
     }
 
     if (!found) {
-        return { status: 'required' };
+        return { info: { status: 'required' } };
     }
 
     const tokensPath = path.join(cacheDir, `${found.hash}.tokens.json`);
     if (!fs.existsSync(tokensPath)) {
-        return { status: 'required' };
+        return { info: { status: 'required' } };
     }
 
     let tokens: TokensFile;
     try {
         tokens = JSON.parse(fs.readFileSync(tokensPath, 'utf-8')) as TokensFile;
     } catch {
-        return { status: 'unknown' };
+        return { info: { status: 'unknown' } };
     }
 
     if (!tokens.accessToken) {
-        return { status: 'required' };
+        return { info: { status: 'required' } };
     }
 
     const expiresAt = typeof tokens.expiresAt === 'number' ? tokens.expiresAt : undefined;
@@ -166,10 +183,10 @@ export function readMcpServerAuthInfo(
     // than "authenticated but about to fail". A refresh token can still pull
     // us out, but the UI cue is more accurate this way.
     if (expiresAt !== undefined && expiresAt <= Math.floor(Date.now() / 1000) + 60) {
-        return { status: 'expired', expiresAt, hasRefreshToken };
+        return { info: { status: 'expired', expiresAt, hasRefreshToken } };
     }
 
-    return { status: 'authenticated', expiresAt, hasRefreshToken };
+    return { info: { status: 'authenticated', expiresAt, hasRefreshToken }, accessToken: tokens.accessToken };
 }
 
 /**

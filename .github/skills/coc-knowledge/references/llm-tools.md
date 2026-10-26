@@ -817,6 +817,20 @@ card shows `code` as a Script block and pretty-prints the JSON result. Gated liv
 Codex chats (`includeToolScripting: false`; Codex code mode already has `functions.exec`),
 browser-only bundles, Coda turns and PR-outcome-review turns.
 
+**MCP access (`mcp-script-tools.ts`).** `McpScriptScope` owns CoC's own MCP clients for one
+turn or one non-chat run: built from resolved `mcpServers` (disabled entries dropped),
+`serverNames()` reads config only, a server's client connects lazily on first use (15s
+timeout, failed connects are retried), its tool list is cached per client, and `close()`
+closes every client and kills stdio children. Stdio inherits `process.env` plus the
+server's `env`; HTTP/SSE send static headers, or a still-valid Bearer token from
+`readMcpServerAccessToken()` (read-only; the token never appears in `McpServerAuthInfo`)
+when no `Authorization` header is configured. A 401 maps to `auth-required: <server>`;
+other failures are `unknown-server`, `unknown-tool`, `tool-not-allowed` (config `tools`
+allowlist or the scope's `isToolAllowed`) and tool `isError` text. `createMcpScriptTools()`
+exposes the scope as `mcp_list_tools({ server })` and `mcp_call({ server, tool, args })`;
+results are `structuredContent` JSON or joined text content. Wiring into chat and
+non-chat surfaces behind `features.toolScriptingMcp` is not done yet.
+
 ## Supporting Modules
 
 | File | Description |
