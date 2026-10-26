@@ -25,6 +25,18 @@ const tagDeleteSchema = z.object({
     expectedRevision: z.number().int().nonnegative(), confirmed: z.literal(true),
 }).strict();
 
+export const MAX_TODO_CATEGORIES = 12;
+export interface SentinelTodoCategory { id: string; name: string }
+export interface SentinelTodoCategorySet { revision: number; categories: SentinelTodoCategory[] }
+const categoryWriteSchema = z.object({
+    expectedRevision: z.number().int().nonnegative(),
+    name: z.string().trim().min(1).max(40),
+}).strict();
+const categoryReorderSchema = z.object({
+    expectedRevision: z.number().int().nonnegative(),
+    categoryIds: z.array(z.string().min(1).max(200)).max(MAX_TODO_CATEGORIES),
+}).strict();
+
 const id = z.string().min(1).max(200);
 export const todoTypeSchema = z.enum(['normal', 'manual']);
 export const todoStatusSchema = z.enum(['todo', 'in_progress', 'deferred', 'needs_attention', 'done']);
@@ -243,6 +255,63 @@ export class SentinelTodoError extends Error {
  * The caller owns the database lifetime.
  */
 export class SentinelTodoStore {
+    /** Categories belong to the workspace itself, including repo-group workspaces. */
+    getCategories(workspaceId: string): SentinelTodoCategorySet {
+        parse(id, workspaceId);
+        const row = this.db.prepare(`SELECT revision, categories FROM sentinel_todo_category_sets
+            WHERE workspace_id = ?`).get<{ revision: number; categories: string }>(workspaceId);
+        return row ? { revision: row.revision, categories: JSON.parse(row.categories) }
+            : { revision: 0, categories: [] };
+    }
+
+    writeCategory(workspaceId: string, categoryId: string | undefined, input: unknown): SentinelTodoCategorySet {
+        const body = parse(categoryWriteSchema, input);
+        return this.mutateCategories(workspaceId, body.expectedRevision, set => {
+            const index = categoryId === undefined ? -1 : set.categories.findIndex(category => category.id === categoryId);
+            if (categoryId !== undefined && index < 0) throw new SentinelTodoError('not_found', 'Category not found');
+            if (set.categories.some(category => category.id !== categoryId
+                && category.name.toLowerCase() === body.name.toLowerCase())) {
+                throw new SentinelTodoError('invalid', 'Category names must be unique, ignoring case');
+            }
+            if (categoryId === undefined && set.categories.length >= MAX_TODO_CATEGORIES) {
+                throw new SentinelTodoError('limit', `At most ${MAX_TODO_CATEGORIES} categories per workspace`);
+            }
+            const category = { id: categoryId ?? randomUUID(), name: body.name };
+            if (index < 0) set.categories.push(category);
+            else set.categories[index] = category;
+        });
+    }
+
+    reorderCategories(workspaceId: string, input: unknown): SentinelTodoCategorySet {
+        const body = parse(categoryReorderSchema, input);
+        return this.mutateCategories(workspaceId, body.expectedRevision, set => {
+            const byId = new Map(set.categories.map(category => [category.id, category]));
+            if (body.categoryIds.length !== byId.size || new Set(body.categoryIds).size !== byId.size
+                || body.categoryIds.some(categoryId => !byId.has(categoryId))) {
+                throw new SentinelTodoError('invalid', 'Category order must contain every category exactly once');
+            }
+            set.categories = body.categoryIds.map(categoryId => byId.get(categoryId)!);
+        });
+    }
+
+    private mutateCategories(workspaceId: string, expectedRevision: number,
+        mutation: (set: SentinelTodoCategorySet) => void): SentinelTodoCategorySet {
+        parse(id, workspaceId);
+        return this.db.transaction(() => {
+            // Reserve the writer before reading, including the first write to an empty set.
+            this.db.prepare('UPDATE sentinel_todo_category_sets SET revision = revision WHERE 0').run();
+            const set = this.getCategories(workspaceId);
+            if (set.revision !== expectedRevision) throw new SentinelTodoError('conflict', 'The categories changed; reload them');
+            mutation(set);
+            set.revision++;
+            this.db.prepare(`INSERT INTO sentinel_todo_category_sets (workspace_id, revision, categories)
+                VALUES (?, ?, ?) ON CONFLICT (workspace_id) DO UPDATE SET
+                revision = excluded.revision, categories = excluded.categories`)
+                .run(workspaceId, set.revision, JSON.stringify(set.categories));
+            return set;
+        })();
+    }
+
     getTags(owner: SentinelTodoOwner): SentinelTodoTagLibrary {
         assertOwner(owner);
         const row = this.db.prepare(`SELECT revision, tags FROM sentinel_todo_tag_libraries
@@ -342,6 +411,11 @@ export class SentinelTodoStore {
 
     constructor(private readonly db: NativeDatabase) {
         db.transaction(() => db.exec(`
+            CREATE TABLE IF NOT EXISTS sentinel_todo_category_sets (
+                workspace_id TEXT PRIMARY KEY NOT NULL,
+                revision INTEGER NOT NULL CHECK (revision >= 0),
+                categories TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS sentinel_todo_ledgers (
                 workspace_id TEXT NOT NULL,
                 parent_process_id TEXT NOT NULL,

@@ -393,6 +393,10 @@ Native-addon failure is a startup failure, not a JavaScript SQLite fallback.
 The process schema definitions, migrations and version live in `packages/forge/src/sqlite-schema.ts`.
 `sentinel-todos/sentinel-todo-store.ts` initializes its additive feature tables on the
 shared native handle before queue activation; the store borrows its owner's lifecycle.
+Its `sentinel_todo_category_sets` table stores one ordered, revisioned category set
+per workspace, independently of chat ledgers. Store commands create, rename and
+reorder categories under the native writer lock; names are unique ignoring case
+(up to 12 categories, 40 characters each). Repo groups own independent sets.
 Queue tasks, controls and paths live in `queue_tasks`, `queue_repo_state` and `queue_repo_paths`.
 `queues.json` is handled by storage snapshot import/export, not live queue persistence.
 See [process-store.md](process-store.md) for tables and read/write contracts.
