@@ -91,20 +91,23 @@ export class Ic3CredentialStore {
         this.clear();
     }
 
+    /** A null deadline leaves acknowledgment waits governed by cancellation and provider failures. */
     async run<T>(operation: (attempt: Attempt) => Promise<T>, caller?: AbortSignal,
-        timeoutMs = IC3_DIRECT_MESSAGE_TIMEOUT_MS): Promise<T> {
+        timeoutMs: number | null = IC3_DIRECT_MESSAGE_TIMEOUT_MS): Promise<T> {
         this.requireRegion();
         if (this.lifetime.signal.aborted) {
             throw new TeamsOperationError('unavailable: disposed', 'ic3', 'unavailable', 'not-attempted');
         }
         const deadline = new AbortController();
-        const timer = setTimeout(() => deadline.abort(), timeoutMs).unref();
+        const timer = timeoutMs === null ? undefined : setTimeout(() => deadline.abort(), timeoutMs).unref();
         let writeTimer: ReturnType<typeof setTimeout> | undefined;
         const signal = AbortSignal.any([deadline.signal, this.lifetime.signal, ...(caller ? [caller] : [])]);
         const attempt: Attempt = { signal, writeStarted: false, startWrite: () => {
             signal.throwIfAborted();
             attempt.writeStarted = true;
-            writeTimer = setTimeout(() => deadline.abort(), IC3_DIRECT_MESSAGE_TIMEOUT_MS).unref();
+            if (timeoutMs !== null) {
+                writeTimer = setTimeout(() => deadline.abort(), IC3_DIRECT_MESSAGE_TIMEOUT_MS).unref();
+            }
         } };
         try {
             signal.throwIfAborted();

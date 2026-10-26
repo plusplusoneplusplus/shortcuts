@@ -4,6 +4,7 @@ import { TeamsAzureCliCredential } from '../../src/teams/azure-cli-credential';
 import { GraphCredentialStore } from '../../src/teams/graph/graph-credential';
 import { GraphChannelReader } from '../../src/teams/graph/channel-reader';
 import { Ic3CredentialStore } from '../../src/teams/ic3/ic3-credential';
+import { Ic3ReactionClient } from '../../src/teams/ic3/ic3-reaction';
 import { TeamsBot } from '../../src/teams/bot';
 import { McpClient } from '../../src/teams/mcp/mcp-client';
 import { McpTransport } from '../../src/teams/mcp/transport-mcp';
@@ -246,6 +247,29 @@ describe('Teams Graph startup deadlines', () => {
 });
 
 describe('Teams resource credential wiring', () => {
+    it('allows cold acknowledgment credentials beyond the ordinary ten-second write budget', async () => {
+        vi.useFakeTimers();
+        native.getToken.mockImplementationOnce(() => new Promise(resolve => {
+            setTimeout(() => resolve({ accessToken: token('https://ic3.teams.office.com') }), 20_000);
+        }));
+        const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+        vi.stubGlobal('fetch', fetch);
+        const client = new Ic3ReactionClient({ region: 'amer', expectedAccount: account });
+        try {
+            const pending = client.acknowledgeSourceMessage('19:source@thread.v2', 'message');
+            await vi.advanceTimersByTimeAsync(10_000);
+            expect(native.cancelOutstanding).not.toHaveBeenCalled();
+            expect(fetch).not.toHaveBeenCalled();
+            await vi.advanceTimersByTimeAsync(10_000);
+            await pending;
+            expect(fetch).toHaveBeenCalledOnce();
+            expect(native.cancelOutstanding).not.toHaveBeenCalled();
+            expect(vi.getTimerCount()).toBe(0);
+        } finally {
+            client.dispose();
+        }
+    });
+
     it('reports missing native authentication as an actionable hard failure', async () => {
         for (const credentials of [
             new GraphCredentialStore(account),

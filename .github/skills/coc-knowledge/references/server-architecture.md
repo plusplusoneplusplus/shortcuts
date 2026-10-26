@@ -782,9 +782,13 @@ explicit. Embedded quotes stay untrusted; attachments, linked quotes and other
 chats are never fetched.
 
 `teams-reaction-pickup.ts` sequences admission, dispatcher validation, context,
-Eyes acknowledgment and execution. Binding changes or failed/uncertain writes
-prevent launch; duplicates skip Eyes. Registration loss revokes preparation and
-acknowledgment. Acknowledged work retains its account/config-scoped observer across
+Eyes acknowledgment and execution. The connector acknowledgment has no operation
+or post-dispatch deadline; native credential attempts retain thirty seconds.
+Explicitly retryable, definite failures allow three attempts with fresh credentials
+and one/two-second backoff honoring `Retry-After` through sixty seconds. Unknown
+writes never replay. Binding changes or exhausted/uncertain failures prevent launch;
+duplicates skip Eyes. Registration loss cancels preparation, acknowledgment and
+backoff. Acknowledged work retains its account/config-scoped observer across
 notification reconnects; account/config changes and shutdown revoke delivery.
 
 ### Teams reaction connection lifecycle
