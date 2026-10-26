@@ -9,6 +9,7 @@ import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import { onTaskTerminal } from './chat-target';
 import { findRequestAnswer, findRequestTurn, isTerminalStatus, RELAY_ANSWER_TEXT } from './relay-answer';
 import { sendTeamsIc3OwnCommandReply, type TeamsIc3CommandSource } from './teams-ic3-own-command-reply';
+import type { TeamsOutboundCompliance } from './teams-outbound-compliance';
 import type { Route } from '../types';
 import type { TeamsMessagingManager } from './teams-messaging-manager';
 import { sendJSON } from '../core/api-handler';
@@ -33,6 +34,7 @@ interface Options {
     queue: ScheduleQueueEventBus;
     routes: Route[];
     launch: ReturnType<typeof createTeamsIc3OwnCommandLaunch>;
+    decisionService?: TeamsOutboundCompliance['decisionService'];
     sendReply?: typeof sendTeamsIc3OwnCommandReply;
     createReactions?: (options: Ic3DirectMessageOptions) => Pick<Ic3ReactionClient, 'acknowledgeSourceMessage' | 'dispose'>;
     createSession?: (region: 'amer' | 'emea' | 'apac') => Pick<TeamsIc3Session, 'connect' | 'readChats' | 'readHistory' | 'dispose'>;
@@ -216,11 +218,13 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                 const workspaces = await options.store.getWorkspaces();
                 signal.throwIfAborted();
                 const target = config.teamsIc3OwnCommands;
-                if (!configuredRegion || !workspaces.some(workspace => workspace.id === target.workspaceId
-                    && !workspace.virtual && isAbsolute(workspace.rootPath))) {
+                const workspace = workspaces.find(workspace => workspace.id === target.workspaceId
+                    && !workspace.virtual && isAbsolute(workspace.rootPath));
+                if (!configuredRegion || !workspace) {
                     throw new Error('Configure a local IC3 workspace and region.');
                 }
                 const region = configuredRegion;
+                const { rootPath: workingDirectory } = workspace;
                 if (!session || !account) {
                     session?.dispose();
                     session = options.createSession?.(region) ?? new TeamsIc3Session({ region });
@@ -282,6 +286,16 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                                 }
                                 pending.set(id, { workspaceId: target.workspaceId, conversationId,
                                     source: { account: owner, chatId: chat.chatId, region,
+                                        compliance: {
+                                            decisionService: options.decisionService,
+                                            workspaceId: target.workspaceId, workingDirectory,
+                                            trigger: { type: 'mention', messageId: message.messageId,
+                                                text: message.text, untrustedHtml: message.untrustedHtml },
+                                            getPolicy: () => ({
+                                                enabled: options.config.config.features?.teamsOutboundCompliance === true,
+                                                prompt: options.config.config.teamsOutboundCompliance?.prompt ?? '',
+                                            }),
+                                        },
                                         verifyAccess: async signal => { await reader.readHistory(chat.chatId, { signal }); } },
                                     signal, detectedAt });
                                 await options.launch(target.workspaceId, id, admission.prompt, signal, conversationId);

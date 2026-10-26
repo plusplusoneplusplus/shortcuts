@@ -41,7 +41,10 @@ export async function checkTeamsOutboundCompliance(
     const { enabled, prompt } = compliance.getPolicy();
     if (!enabled) return;
     const { workspaceId, workingDirectory, decisionService } = compliance;
-    const trigger = { ...compliance.trigger };
+    const trigger = {
+        type: compliance.trigger.type, messageId: compliance.trigger.messageId, text: compliance.trigger.text,
+        ...(compliance.trigger.untrustedHtml === undefined ? {} : { untrustedHtml: compliance.trigger.untrustedHtml }),
+    };
     if (typeof prompt !== 'string' || !prompt.trim() || !workspaceId?.trim() || !workingDirectory?.trim()
         || !['mention', 'reaction'].includes(trigger.type) || !trigger.messageId?.trim()
         || typeof trigger.text !== 'string' || !parts.length

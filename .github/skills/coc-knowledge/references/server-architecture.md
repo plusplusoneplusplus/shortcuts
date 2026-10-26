@@ -833,7 +833,16 @@ through the shared Copilot `DecisionService`. `sendTeamsIc3SourceReply` snapshot
 destination and all formatted chunks before evaluation; reaction-result source
 capture preserves the context. A live policy getter supplies one snapshot per
 logical message. Policy instructions stay separate from untrusted trigger evidence,
-complete formatted text and chunk boundaries. No unrelated history is included.
+complete formatted text and chunk boundaries; absent native HTML is omitted from
+the JSON request. No unrelated history is included.
+
+`routes/index.ts` supplies the server-shared decision service to both native
+runtimes. Each runtime attaches the original trigger, physical workspace/cwd and
+a live owning-server policy getter to every text source. Reaction pickup retains
+the exact target body separately from dispatcher history and verifies the terminal
+job's workspace against its captured binding. Policy-only saves affect subsequent
+logical sends without revoking active requests. Provider selection and chat-tool
+flags do not participate in enforcement.
 
 Enabled checks require complete context and a nonblank policy, enforce the
 Decision API's 256 KiB UTF-8 request limit without truncation, and permit one

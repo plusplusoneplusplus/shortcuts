@@ -13,6 +13,7 @@ import { resolveTeamsReactionDispatcher } from './teams-reaction-dispatcher';
 import { normalizeTeamsRobotReaction } from './teams-reaction-evidence';
 import { createTeamsReactionPickup } from './teams-reaction-pickup';
 import { safeErrorDiagnostics } from './safe-error-diagnostics';
+import type { TeamsOutboundCompliance } from './teams-outbound-compliance';
 
 type Pickup = ReturnType<typeof createTeamsReactionPickup>;
 type Result = Extract<Awaited<ReturnType<Pickup['handle']>>, { admitted: true }>;
@@ -24,6 +25,7 @@ interface Options {
     store: ProcessStore;
     dataDir: string;
     execution: Pick<ReturnType<typeof createTeamsReactionExecution>, 'run'>;
+    decisionService?: TeamsOutboundCompliance['decisionService'];
     onResult(result: Result, source: TeamsIc3CommandSource & { messageId: string }, signal: AbortSignal): Promise<void>;
     createSession?: (region: 'amer' | 'emea' | 'apac') => Pick<TeamsIc3Session, 'connect' | 'readHistory' | 'dispose'>;
     createReactions?: (options: Ic3DirectMessageOptions) => Pick<Ic3ReactionClient, 'acknowledgeSourceMessage' | 'dispose'>;
@@ -224,6 +226,16 @@ export function createTeamsReactionRuntime(options: Options) {
                             const chatId = result.conversationId;
                             await options.onResult(result, {
                                 account: { ...account }, chatId, messageId: result.messageId, region: connectionRegion,
+                                compliance: {
+                                    decisionService: options.decisionService,
+                                    workspaceId: result.workspaceId, workingDirectory: result.workingDirectory,
+                                    trigger: { type: 'reaction', messageId: result.messageId,
+                                        text: result.sourceText, untrustedHtml: result.sourceHtml },
+                                    getPolicy: () => ({
+                                        enabled: options.config.config.features?.teamsOutboundCompliance === true,
+                                        prompt: options.config.config.teamsOutboundCompliance?.prompt ?? '',
+                                    }),
+                                },
                                 verifyAccess: async accessSignal => {
                                     deliverySignal.throwIfAborted();
                                     accessSignal.throwIfAborted();
