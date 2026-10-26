@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const explorerTree = vi.hoisted(() => vi.fn());
+const explorerReadBlob = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView', () => ({
     TerminalView: ({ workspaceId }: { workspaceId: string }) => (
@@ -67,7 +68,7 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/e
     explorerApi: {
         tree: explorerTree,
         searchFiles: async () => ({ results: [] as { path: string }[] }),
-        readBlob: async () => ({ content: '', encoding: 'utf-8', mimeType: 'text/plain' }),
+        readBlob: explorerReadBlob,
         writeBlob: async () => ({ success: true }),
         readTrustedBlob: async () => ({ content: '', encoding: 'utf-8', mimeType: 'text/plain' }),
     },
@@ -200,6 +201,8 @@ describe('unified panel toolbar row', () => {
         clearUnifiedTreeState();
         explorerTree.mockReset();
         explorerTree.mockResolvedValue({ entries: [], truncated: false });
+        explorerReadBlob.mockReset();
+        explorerReadBlob.mockResolvedValue({ content: '', encoding: 'utf-8', mimeType: 'text/plain' });
     });
     afterEach(() => {
         cleanup();
@@ -358,6 +361,33 @@ describe('unified panel toolbar row', () => {
             undefined,
         ));
         expect(screen.getByTestId('unified-panel-toolbar-repo').textContent).toBe('api');
+    });
+
+    it('reloads the active file from disk through its owning workspace', async () => {
+        const groupDock = dockStub({
+            target: MEMBER,
+            targets: [{ workspaceId: WS, label: 'group' }, { workspaceId: MEMBER, label: 'api' }],
+        });
+        await renderWithTreeFile('app', { dock: groupDock });
+        const button = await screen.findByRole('button', { name: 'Reload from disk' });
+        expect(button.getAttribute('title')).toBe('Reload from disk');
+        expect(screen.getByTestId('unified-panel-toolbar').contains(button)).toBe(true);
+        await waitFor(() => expect(explorerReadBlob).toHaveBeenCalledTimes(1));
+
+        let finish!: (blob: unknown) => void;
+        explorerReadBlob.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+        await act(async () => { fireEvent.click(button); });
+        expect(explorerReadBlob).toHaveBeenCalledTimes(2);
+        expect(explorerReadBlob).toHaveBeenLastCalledWith(MEMBER, 'src/app.ts', { signal: expect.any(AbortSignal) });
+        // Busy until the read settles, so a repeat click issues nothing.
+        expect(screen.getByRole('button', { name: 'Reload from disk' })).toHaveProperty('disabled', true);
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Reload from disk' })); });
+        expect(explorerReadBlob).toHaveBeenCalledTimes(2);
+
+        await act(async () => { finish({ content: 'fresh', encoding: 'utf-8', mimeType: 'text/plain' }); });
+        expect(screen.getByRole('button', { name: 'Reload from disk' })).toHaveProperty('disabled', false);
+        // Only the toolbar carries the control; the pane adds no second button.
+        expect(screen.getAllByRole('button', { name: 'Reload from disk' })).toHaveLength(1);
     });
 
     it('keeps the whole path in a tooltip when it truncates', async () => {

@@ -34,6 +34,8 @@ import {
 } from '../../../shared/file-viewer/MonacoFileEditor';
 import { mountNonEditableModel } from '../../../shared/file-viewer/nonEditableMonacoModel';
 import { useFileContent } from '../../../shared/file-viewer/useFileContent';
+import { ReloadFromDiskButton } from '../../../shared/file-viewer/ReloadFromDiskButton';
+import { UnifiedPanelCloseConfirm } from '../unified-right-panel/UnifiedPanelCloseConfirm';
 import { useMarkdownPreview } from '../../../hooks/ui/useMarkdownPreview';
 import { toContentChanges } from '../../language-servers/monacoBridge';
 import { useLanguageDocument } from '../../language-servers/useLanguageDocument';
@@ -166,6 +168,18 @@ export interface PreviewPaneProps {
      * view of this file can attach to the same buffer instead of reading its own.
      */
     onModelShare?: (context: EditorModelMountContext | null) => void;
+    /**
+     * Hands a host-rendered "Reload from disk" control its handler and busy
+     * state (and `null` on unmount). A host that sets it renders the button
+     * itself; without it the button sits in this pane's floating toolbar.
+     */
+    onReloadControlChange?: (control: FileReloadControl | null) => void;
+}
+
+/** What a host needs to render the "Reload from disk" button for this pane. */
+export interface FileReloadControl {
+    reload: () => void;
+    busy: boolean;
 }
 
 /** What a buffer is doing, as reported to its owner through `onStatusChange`. */
@@ -186,7 +200,7 @@ function RenderedMarkdown({ content }: { content: string }) {
     );
 }
 
-export function PreviewPane({ editingScope, repoId, routingRef, definitionPreviewOwners, filePath, fileName, markdownPreview = false, revealLine, endLine, revealColumn, revealNonce, symbolCandidate, onClose, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate, onNavigateExternal, onNavigationMount, onNavigationLocation, onModelShare }: PreviewPaneProps) {
+export function PreviewPane({ editingScope, repoId, routingRef, definitionPreviewOwners, filePath, fileName, markdownPreview = false, revealLine, endLine, revealColumn, revealNonce, symbolCandidate, onClose, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate, onNavigateExternal, onNavigationMount, onNavigationLocation, onModelShare, onReloadControlChange }: PreviewPaneProps) {
     const [identityFailure, setIdentityFailure] = useState<{ message: string; retry(): void } | null>(null);
     const identityFailureRef = useRef(identityFailure);
     identityFailureRef.current = identityFailure;
@@ -238,7 +252,7 @@ export function PreviewPane({ editingScope, repoId, routingRef, definitionPrevie
     }, [onNotFound]);
 
     const {
-        blob, displayBlob, isOversized, loading, error, status, retry,
+        blob, displayBlob, isOversized, loading, error, status, retry, reload, reloading,
         isDirty, isSaving, editedContent, onChange: recordEdit, save: writeFile, discard: discardEdits,
     } = useFileContent({
         key: `${routingRef ?? repoId}:${filePath}`,
@@ -292,6 +306,11 @@ export function PreviewPane({ editingScope, repoId, routingRef, definitionPrevie
         setRawMarkdown(revealLine !== undefined);
     }, [repoId, routingRef, actualPath, setRawMarkdown]);
     const showRendered = canPreviewMarkdown && !rawMarkdown;
+    // A reload keeps the reader where they were, so the opening reveal and its
+    // highlight must not re-run over the new text. The next navigation here
+    // brings them back.
+    const [revealRetired, setRevealRetired] = useState(false);
+    useEffect(() => { setRevealRetired(false); }, [revealLine, endLine, revealColumn, revealNonce, repoId, routingRef, actualPath]);
     const renderedNavigationController = useMemo<EditorNavigationController>(() => ({
         capture: () => rawViewStateRef.current,
         restore: snapshot => {
@@ -542,16 +561,19 @@ export function PreviewPane({ editingScope, repoId, routingRef, definitionPrevie
     const mountModel = displayBlob?.encoding === 'utf-8'
         ? (viewOnly ? mountNonEditableModel : handleModelMount)
         : undefined;
-    const mountSharedModel = useMemo(() => (mountModel && sharesModel
+    const editorRef = useRef<EditorModelMountContext['editor'] | null>(null);
+    const mountSharedModel = useMemo(() => (mountModel
         ? (context: EditorModelMountContext) => {
+            editorRef.current = context.editor;
             const cleanup = mountModel(context);
-            modelShareRef.current?.(context);
+            if (sharesModel) modelShareRef.current?.(context);
             return () => {
-                modelShareRef.current?.(null);
+                if (sharesModel) modelShareRef.current?.(null);
+                if (editorRef.current === context.editor) editorRef.current = null;
                 cleanup?.();
             };
         }
-        : mountModel
+        : undefined
     ), [mountModel, sharesModel]);
 
     // One editor change feeds two consumers: the render buffer, and the
@@ -593,6 +615,61 @@ export function PreviewPane({ editingScope, repoId, routingRef, definitionPrevie
         setExplorerFileDirty(ownerKey, fileInstanceId, actualPath, false);
         recordLanguageEdit(discardEdits(), undefined);
     }, [discardEdits, recordLanguageEdit, ownerKey, fileInstanceId, actualPath]);
+
+    // Reload from disk. Unsaved edits are only replaced after the user confirms;
+    // edits or a save made while the read runs keep the buffer as it is.
+    const [reloadPrompt, setReloadPrompt] = useState(false);
+    const [reloadNotice, setReloadNotice] = useState<{ message: string; error: boolean } | null>(null);
+    const reloadLandedRef = useRef<{ viewState: ReturnType<EditorModelMountContext['editor']['saveViewState']> } | null>(null);
+    useEffect(() => {
+        setReloadPrompt(false);
+        setReloadNotice(null);
+        reloadLandedRef.current = null;
+    }, [repoId, routingRef, actualPath]);
+    const runReload = useCallback(async () => {
+        setReloadNotice(null);
+        const result = await reload(() => {
+            reloadLandedRef.current = { viewState: editorRef.current?.saveViewState() ?? null };
+            setRevealRetired(true);
+        });
+        if (result.kind === 'failed') {
+            setReloadNotice({ message: `Could not reload from disk: ${result.message}`, error: true });
+        } else if (result.kind === 'edited') {
+            setReloadNotice({ message: 'The file was edited or saved during the reload, so your buffer was kept. Reload again to replace it.', error: false });
+        }
+    }, [reload]);
+    const reloadBusy = reloading || reloadPrompt || isSaving || loading;
+    const requestReload = useCallback(() => {
+        if (reloadBusy) return;
+        if (isDirty) {
+            setReloadPrompt(true);
+            return;
+        }
+        void runReload();
+    }, [reloadBusy, isDirty, runReload]);
+    const cancelReload = useCallback(() => setReloadPrompt(false), []);
+    const confirmReload = useCallback(() => {
+        setReloadPrompt(false);
+        void runReload();
+    }, [runReload]);
+    // After a reload lands in Monaco, put the cursor, selection and scroll back,
+    // and hand the language document the disk text as its clean baseline.
+    useEffect(() => {
+        const landed = reloadLandedRef.current;
+        reloadLandedRef.current = null;
+        if (!landed) return;
+        if (landed.viewState) editorRef.current?.restoreViewState(landed.viewState);
+        if (blob?.encoding === 'utf-8') markSaved(blob.content);
+        // Runs once per landed blob; `markSaved` is read at that moment.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [blob]);
+    const reloadControlRef = useRef(onReloadControlChange);
+    reloadControlRef.current = onReloadControlChange;
+    const hostedReload = onReloadControlChange !== undefined;
+    useEffect(() => {
+        reloadControlRef.current?.({ reload: requestReload, busy: reloadBusy });
+    }, [requestReload, reloadBusy]);
+    useEffect(() => () => reloadControlRef.current?.(null), [hostedReload]);
 
     // Surface unsaved-edits state to the owner so a workspace switch can prompt
     // before discarding the buffer (AC-03). Report the current value whenever it
@@ -688,6 +765,9 @@ export function PreviewPane({ editingScope, repoId, routingRef, definitionPrevie
                     {isDirty && !isTrusted && (
                         <span className="w-2 h-2 rounded-full bg-[#f59e0b] flex-shrink-0" title="Unsaved changes" data-testid="dirty-indicator" />
                     )}
+                    {!hostedReload && !error && (
+                        <ReloadFromDiskButton onReload={requestReload} busy={reloadBusy} />
+                    )}
                     {canPreviewMarkdown && (
                         <div role="group" aria-label="Markdown view" className="flex rounded border border-[#bcbcbc] bg-[#fafafa] text-xs dark:border-[#555] dark:bg-[#252525]">
                             {(['Rendered', 'Raw'] as const).map(mode => (
@@ -743,8 +823,8 @@ export function PreviewPane({ editingScope, repoId, routingRef, definitionPrevie
                     readOnly={viewOnly}
                     onSave={viewOnly ? undefined : handleSave}
                     markdown={isWorkspacePreview && !canPreviewMarkdown ? 'toggle' : 'off'}
-                    revealLine={revealLine}
-                    highlightRange={endLine !== undefined && displayBlob.encoding === 'utf-8'
+                    revealLine={revealRetired ? undefined : revealLine}
+                    highlightRange={!revealRetired && endLine !== undefined && displayBlob.encoding === 'utf-8'
                         ? resolveLineRange(revealLine, endLine, toLines(displayBlob.content).length) : null}
                     revealColumn={revealColumn}
                     revealNonce={revealNonce}
@@ -757,6 +837,36 @@ export function PreviewPane({ editingScope, repoId, routingRef, definitionPrevie
                 <div className="absolute bottom-1 left-3 text-xs text-[#848484]" data-testid="preview-oversized">
                     File exceeds 10 MB; showing a truncated, read-only preview.
                 </div>
+            )}
+            {reloadNotice && (
+                <div
+                    role={reloadNotice.error ? 'alert' : 'status'}
+                    className={`absolute left-3 right-3 top-9 z-20 flex items-start gap-2 rounded border px-2 py-1 text-xs shadow-sm ${
+                        reloadNotice.error
+                            ? 'border-[#f1b8ad] bg-[#fdf0ee] text-[#a1260d] dark:border-[#5a1d1d] dark:bg-[#3a1d1d] dark:text-[#f48771]'
+                            : 'border-[#c8c8c8] bg-white text-[#1e1e1e] dark:border-[#555] dark:bg-[#2d2d2d] dark:text-[#cccccc]'
+                    }`}
+                    data-testid="file-reload-notice"
+                >
+                    <span className="min-w-0 flex-1">{reloadNotice.message}</span>
+                    <button
+                        type="button"
+                        aria-label="Dismiss"
+                        className="flex-shrink-0 rounded px-1 hover:bg-black/5 dark:hover:bg-white/10"
+                        onClick={() => setReloadNotice(null)}
+                    >
+                        ×
+                    </button>
+                </div>
+            )}
+            {reloadPrompt && (
+                <UnifiedPanelCloseConfirm
+                    label="Confirm reload"
+                    message={`Reload ${fileName} from disk? Your unsaved changes will be lost.`}
+                    confirmLabel="Discard and reload"
+                    onCancel={cancelReload}
+                    onConfirm={confirmReload}
+                />
             )}
             {downloadError && <div role="alert" className="absolute bottom-2 left-2 text-xs text-red-600">{downloadError}</div>}
 

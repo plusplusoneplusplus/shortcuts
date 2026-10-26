@@ -244,4 +244,97 @@ describe('useFileContent', () => {
         rerender();
         expect(read).toHaveBeenCalledTimes(1);
     });
+
+    describe('reload', () => {
+        function deferred() {
+            let resolve!: (blob: FileBlob) => void;
+            let reject!: (err: Error) => void;
+            const promise = new Promise<FileBlob>((res, rej) => { resolve = res; reject = rej; });
+            return { promise, resolve, reject };
+        }
+
+        it('re-reads in place: the buffer stays until the new bytes replace it', async () => {
+            const read = vi.fn().mockResolvedValueOnce(text('v1'));
+            const { result } = renderHook(() => useFileContent({ key: 'a', read, write: vi.fn() }));
+            await waitFor(() => expect(result.current.loading).toBe(false));
+            act(() => result.current.onChange('dirty'));
+
+            const next = deferred();
+            read.mockReturnValueOnce(next.promise);
+            const beforeApply = vi.fn();
+            let reload!: Promise<unknown>;
+            act(() => { reload = result.current.reload(beforeApply); });
+            expect(result.current.reloading).toBe(true);
+            expect(result.current.loading).toBe(false);
+            expect(result.current.editedContent).toBe('dirty');
+
+            await act(async () => { next.resolve(text('v2')); expect(await reload).toEqual({ kind: 'reloaded' }); });
+            expect(beforeApply).toHaveBeenCalledTimes(1);
+            expect(result.current.reloading).toBe(false);
+            expect(result.current.blob?.content).toBe('v2');
+            expect(result.current.editedContent).toBe('v2');
+            expect(result.current.isDirty).toBe(false);
+            act(() => { expect(result.current.discard()).toBe('v2'); });
+        });
+
+        it('reports a failed read and keeps the buffer and status', async () => {
+            const onError = vi.fn();
+            const read = vi.fn().mockResolvedValueOnce(text('v1')).mockRejectedValueOnce(new Error('gone'));
+            const { result } = renderHook(() => useFileContent({ key: 'a', read, write: vi.fn(), onError }));
+            await waitFor(() => expect(result.current.loading).toBe(false));
+            act(() => result.current.onChange('kept'));
+
+            await act(async () => {
+                expect(await result.current.reload()).toEqual({ kind: 'failed', message: 'gone' });
+            });
+            expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'gone' }));
+            expect(result.current.status).toBe('ready');
+            expect(result.current.editedContent).toBe('kept');
+            expect(result.current.isDirty).toBe(true);
+            expect(result.current.blob?.content).toBe('v1');
+        });
+
+        it('keeps edits and saves that land while the read is in flight', async () => {
+            let finishWrite!: () => void;
+            const write = vi.fn().mockReturnValue(new Promise<void>(resolve => { finishWrite = resolve; }));
+            const read = vi.fn().mockResolvedValueOnce(text('v1'));
+            const { result } = renderHook(() => useFileContent({ key: 'a', read, write }));
+            await waitFor(() => expect(result.current.loading).toBe(false));
+
+            const typed = deferred();
+            read.mockReturnValueOnce(typed.promise);
+            let reload!: Promise<unknown>;
+            act(() => { reload = result.current.reload(); });
+            act(() => result.current.onChange('typed'));
+            await act(async () => { typed.resolve(text('v2')); expect(await reload).toEqual({ kind: 'edited' }); });
+            expect(result.current.editedContent).toBe('typed');
+
+            const saved = deferred();
+            read.mockReturnValueOnce(saved.promise);
+            act(() => { reload = result.current.reload(); });
+            act(() => { void result.current.save(); });
+            await act(async () => { finishWrite(); saved.resolve(text('pre-save disk')); expect(await reload).toEqual({ kind: 'edited' }); });
+            expect(result.current.editedContent).toBe('typed');
+        });
+
+        it('ignores a concurrent reload and a late answer after the key changes', async () => {
+            const read = vi.fn().mockResolvedValueOnce(text('a1'));
+            const { result, rerender } = renderHook(({ key }) => useFileContent({ key, read }), { initialProps: { key: 'a' } });
+            await waitFor(() => expect(result.current.loading).toBe(false));
+
+            const late = deferred();
+            read.mockReturnValueOnce(late.promise);
+            let first!: Promise<unknown>;
+            act(() => { first = result.current.reload(); });
+            await act(async () => { expect(await result.current.reload()).toEqual({ kind: 'stale' }); });
+            expect(read).toHaveBeenCalledTimes(2);
+
+            read.mockResolvedValueOnce(text('b1'));
+            rerender({ key: 'b' });
+            await waitFor(() => expect(result.current.blob?.content).toBe('b1'));
+            expect(result.current.reloading).toBe(false);
+            await act(async () => { late.resolve(text('a2')); expect(await first).toEqual({ kind: 'stale' }); });
+            expect(result.current.blob?.content).toBe('b1');
+        });
+    });
 });

@@ -72,6 +72,7 @@ import type { WorkspaceDockController } from '../useWorkspaceDock';
 import { ExplorerCloseTabsDialog } from '../explorer/ExplorerCloseTabsDialog';
 import { ContentSearchPanel } from '../explorer/ContentSearchPanel';
 import { ExplorerPanel } from '../explorer/ExplorerPanel';
+import type { FileReloadControl } from '../explorer/PreviewPane';
 import { QuickOpen, type QuickOpenResult } from '../explorer/QuickOpen';
 import type { PaletteMode } from '../explorer/paletteQuery';
 import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as trustedFileName } from '../explorer/ExactOpen';
@@ -794,6 +795,20 @@ export function UnifiedRightPanel({
         (id: string, hasError: boolean) => setFlag(setErrorIds, id, hasError),
         [setFlag],
     );
+    // Each file tab's "Reload from disk" handler and busy state; the toolbar
+    // shows the active tab's. A tab unregisters itself when it unmounts.
+    const [reloadControls, setReloadControls] = useState<Readonly<Record<string, FileReloadControl>>>({});
+    const handleReloadControl = useCallback((id: string, control: FileReloadControl | null) => {
+        setReloadControls(prev => {
+            if (control === null) {
+                if (!(id in prev)) return prev;
+                const next = { ...prev };
+                delete next[id];
+                return next;
+            }
+            return { ...prev, [id]: control };
+        });
+    }, []);
     const navigateBrowser = useCallback(
         (id: string, url: string) => updateBrowser(id, { url, label: browserLabelForUrl(url) }),
         [updateBrowser],
@@ -2064,6 +2079,7 @@ export function UnifiedRightPanel({
                             workspaceId={active?.ownerWorkspaceId ?? target}
                             routingRef={active?.ownerRoutingRef}
                             onOpenFile={openBreadcrumbFile}
+                            reload={active ? reloadControls[active.id] : undefined}
                             trailing={navigatorControls('toolbar')}
                         />
                     )}
@@ -2209,6 +2225,7 @@ export function UnifiedRightPanel({
                                     onFileNavigationMount={handleFileNavigationMount}
                                     onFileNavigationLocation={handleFileNavigationLocation}
                                     onSourceModelChange={splitEnabled ? handleSourceModelChange : undefined}
+                                    onReloadControlChange={handleReloadControl}
                                     onNotesSelectionChange={updateNotesSelection}
                                     canvasSwitcher={tab.id === activeId && stackedCanvasTabs.some(t => t.id === tab.id) ? (
                                         <UnifiedPanelCanvasStack

@@ -30,6 +30,22 @@ export interface UseFileContentOptions {
     onError?: (err: Error) => void;
 }
 
+/**
+ * How a `reload` ended. Only `reloaded` replaced the buffer; every other
+ * outcome left the text on screen untouched.
+ *
+ *  - `edited` — the buffer was edited or saved while the read was in flight,
+ *    so the read may be older than what the user has.
+ *  - `failed` — the read was rejected; `message` says why.
+ *  - `stale` — the file identity changed, the hook unmounted, or another
+ *    reload/save was already running.
+ */
+export type FileReloadResult =
+    | { kind: 'reloaded' }
+    | { kind: 'edited' }
+    | { kind: 'failed'; message: string }
+    | { kind: 'stale' };
+
 export interface UseFileContent {
     /** The bytes as read, before truncation or edits. */
     blob: FileBlob | null;
@@ -40,6 +56,16 @@ export interface UseFileContent {
     error: string | null;
     status: FileViewerStatus;
     retry: () => void;
+    /**
+     * Re-reads the same file in place, keeping the current buffer on screen
+     * until the new bytes arrive. Replaces unsaved edits made BEFORE the call
+     * (the host confirms that), never ones made while the read runs.
+     * `beforeApply` runs right before the buffer is replaced. Without a loaded
+     * blob this is a plain `retry`.
+     */
+    reload: (beforeApply?: () => void) => Promise<FileReloadResult>;
+    /** True while a `reload` read is in flight. */
+    reloading: boolean;
     editedContent: string;
     isDirty: boolean;
     isSaving: boolean;
@@ -58,6 +84,7 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
     const [editedContent, setEditedContent] = useState('');
     const [isDirty, setIsDirty] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [reloading, setReloading] = useState(false);
     const abortRef = useRef<AbortController | null>(null);
     // Refs so changing callback identities never re-trigger the fetch.
     const readRef = useRef(read);
@@ -71,6 +98,11 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
     const editRevisionRef = useRef(0);
     const editedContentRef = useRef('');
     const savingRef = useRef(false);
+    // Bumped by every save, so a reload can tell a write raced its read.
+    const saveRevisionRef = useRef(0);
+    const reloadingRef = useRef(false);
+    const blobRef = useRef(blob);
+    blobRef.current = blob;
     // Encode only when the read blob changes, never on each editor keystroke.
     const textPreview = useMemo(() => {
         if (blob?.encoding !== 'utf-8') return null;
@@ -92,6 +124,9 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
         setLoading(true);
         setError(null);
         setBlob(null);
+        // A fresh read retires any reload in flight; its answer is now stale.
+        reloadingRef.current = false;
+        setReloading(false);
         setIsDirty(false);
         setEditedContent('');
         savedContentRef.current = '';
@@ -148,6 +183,7 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
         const revision = editRevisionRef.current;
         const readController = abortRef.current;
         savingRef.current = true;
+        saveRevisionRef.current++;
         setIsSaving(true);
         try {
             await writeFn(content);
@@ -165,6 +201,50 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
             setIsSaving(false);
         }
     }, [editedContent, canWrite]);
+
+    const reload = useCallback(async (beforeApply?: () => void): Promise<FileReloadResult> => {
+        const readController = abortRef.current;
+        if (key === null || !readController || readController.signal.aborted) return { kind: 'stale' };
+        if (reloadingRef.current || savingRef.current) return { kind: 'stale' };
+        if (blobRef.current === null) {
+            load();
+            return { kind: 'reloaded' };
+        }
+        const editRevision = editRevisionRef.current;
+        const saveRevision = saveRevisionRef.current;
+        // A key change, `retry` or unmount aborts this controller; the reload
+        // shares it, so a late answer for an old file is never applied.
+        const current = () => readController === abortRef.current && !readController.signal.aborted;
+        reloadingRef.current = true;
+        setReloading(true);
+        try {
+            const data = await readRef.current(readController.signal);
+            if (!current()) return { kind: 'stale' };
+            if (editRevisionRef.current !== editRevision || saveRevisionRef.current !== saveRevision) {
+                return { kind: 'edited' };
+            }
+            beforeApply?.();
+            setBlob(data);
+            setError(null);
+            const text = data.encoding === 'utf-8' ? data.content : '';
+            setEditedContent(text);
+            savedContentRef.current = text;
+            editedContentRef.current = text;
+            editRevisionRef.current++;
+            setIsDirty(false);
+            return { kind: 'reloaded' };
+        } catch (err) {
+            if (!current()) return { kind: 'stale' };
+            const error = err instanceof Error ? err : new Error(String(err));
+            onErrorRef.current?.(error);
+            return { kind: 'failed', message: error.message || 'Failed to reload file' };
+        } finally {
+            if (readController === abortRef.current) {
+                reloadingRef.current = false;
+                setReloading(false);
+            }
+        }
+    }, [key, load]);
 
     const discard = useCallback((): string => {
         const saved = savedContentRef.current;
@@ -189,6 +269,8 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
         error,
         status: loading ? 'loading' : error ? 'error' : 'ready',
         retry: load,
+        reload,
+        reloading,
         editedContent,
         isDirty,
         isSaving,

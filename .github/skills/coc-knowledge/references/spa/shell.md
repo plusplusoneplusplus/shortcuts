@@ -954,6 +954,10 @@ is truncated at a complete character and read-only with no save callback.
 Trusted/workspace-preview files remain read-only. Native repository blob reads
 accept text through 10 MB; larger reads retain the backend size error. Binary
 and image read caps, diff language limits, and chat-source API limits are separate.
+"Reload from disk" (unified file toolbar, or the pane's floating toolbar) calls
+`useFileContent.reload`: an in-place re-read through the same owner-routed read
+that confirms before discarding unsaved edits, keeps the buffer on failure or on
+edits/saves during the read, and drops answers after a file/owner change.
 
 Explorer editor tabs render the same filename-classified badge or generic
 document icon as the file tree. Search-result editor tabs render a decorative

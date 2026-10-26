@@ -102,7 +102,7 @@ model. A dock target change keeps explicit member opens valid within that panel.
 | `unifiedPanelTabGroupStore.ts` | Panel-scope fold state through `useSyncExternalStore`, separate from tab descriptors and ordering; panel-state clearing also clears folds. |
 | `UnifiedPanelTabOverflowMenu.tsx` | Shared searchable portal for group overflow and canvas compression, including keyboard navigation, focus return, row closing and bulk-close callbacks. `data-native-view-overlay` hides overlapping native browser views. |
 | `unifiedPanelSourceSplit.ts` + `UnifiedSourceMirror.tsx` | The two-pane source split (see "Source split"): pure drop/reconcile/width rules and the session-only split store, plus the second Monaco view used when one file fills both panes. |
-| `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab, an in-place directory picker, and the Search/Explorer navigator controls. The model decides whether the path can use repo browsing. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
+| `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab, an in-place directory picker, the active file's "Reload from disk" button, and the Search/Explorer navigator controls. The model decides whether the path can use repo browsing. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
 | `UnifiedPanelRepoPicker.tsx` | The dock target, as a button + listbox on the tab strip left of the `+` (the strip's `leadingControls`). Renders nothing below two targets. The label comes from the `target` prop, so a refused switch (`onSelectTarget` returning `false`) keeps reporting the real scope; below 340px of strip width the label drops to a chevron via a container query. |
 | `UnifiedPanelTreeToggle.tsx` | The Explorer half of the panel's navigator controls. It renders with Search in the file toolbar or, when that toolbar is absent, in the tab strip. |
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
@@ -266,6 +266,11 @@ own view, and the panel does not stack two. It shows `explorer/Breadcrumbs` for
 the file's path (scrolled to the tail, so a long path truncates from the left
 with the whole thing in the row's tooltip) and the tab's `repoLabel` when it has
 one.
+
+The active file's "Reload from disk" button sits before them. Each mounted file
+tab's `PreviewPane` registers its handler and busy state through
+`onReloadControlChange`; the panel keeps them per tab id and passes the active
+tab's to the row, so a hidden tab's reload never shows on another tab.
 
 The Search and Explorer controls sit at the row's right edge. When the file
 toolbar is not rendered, the same pair moves beside the tab strip's `+`. Each
