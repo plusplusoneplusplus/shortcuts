@@ -199,7 +199,7 @@ Codex thread options expose no `skillDirectories`/`disabledSkills`. CoC maps res
 
 Every SDK agent mode maps to `approvalPolicy: 'never'` and `sandboxMode: 'danger-full-access'` with network enabled, so Codex can read skill files and other allowed roots on hosts where the restricted workspace-write sandbox cannot initialize. The server normalizes chat `mode='plan'` to Ask before calling the SDK.
 
-Ask-mode constraints use the shared `<coc-read-only-mode>` directive. File-write exceptions cover the plan file, attached note file, explicitly requested `.goal.md` files, and files outside the repository. PR approval requires an explicit user request for that specific PR and permits only an approval review or vote, not edits, commits, pushes, merges, or other PR changes. A review request alone does not authorize approval.
+Ask-mode constraints use the shared `<coc-read-only-mode>` directive. File-write exceptions cover the plan file, attached note file, explicitly requested `.goal.md` files, and files outside the repository. PR approval is allowed; other repository changes require switching modes.
 
 ### Attachments
 
