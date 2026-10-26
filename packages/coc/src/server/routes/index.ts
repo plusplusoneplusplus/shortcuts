@@ -1445,7 +1445,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             }, dataDir, () => config.config),
         });
         const runtime = createTeamsReactionRuntime({
-            config, teams: teamsMessagingManager, store, dataDir, execution, decisionService,
+            config, teams: teamsMessagingManager, store, dataDir, execution, decisionService, routes,
             onResult: async (job, source, signal) => {
                 signal.throwIfAborted();
                 const result = await resolveTeamsReactionOutcome(store, job, signal);

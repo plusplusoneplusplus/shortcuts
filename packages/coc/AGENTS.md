@@ -1200,8 +1200,13 @@ references before editing. Paths are package-relative.
   Reaction pickup carries only the exact target body into the gate, not preceding history.
   Explicit compliance block adds one pinned Crossmark to the captured original request
   after fresh source-access verification, then throws `TeamsOutboundComplianceRejected`.
-  Decision failures add no reaction. Rejection-reaction failure stays attached to the
-  rejection error; never retry, send fallback text, or continue ordinary outcome delivery.
+  Decision failures add no reaction and throw `TeamsOutboundComplianceFailed` with
+  a safe reason/code and the original failure as `cause`. Rejection-reaction failure
+  stays attached to the rejection error. Both runtimes retain the latest compliance
+  failure separately from connection health and log content-free correlated outcomes,
+  including cancellation. The owning-server Teams status card reads both native status
+  routes and shows blocked/failed reasons; never retry, send fallback text, mark
+  blocked text delivered, or continue ordinary outcome delivery.
   Unrelated sources without compliance context retain ordinary transport behavior.
 - Ask/sentinel turns started from WhatsApp/Teams and jobs carrying
   `metadata.messagingOrigin` (every turn, including autopilot) relay

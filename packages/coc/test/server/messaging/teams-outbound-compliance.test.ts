@@ -12,6 +12,9 @@ import { formatTeamsReactionNotice, sendTeamsReactionReply, sendTeamsReactionRes
 import { TeamsOutboundComplianceRejected, type TeamsOutboundCompliance }
     from '../../../src/server/messaging/teams-outbound-compliance';
 import { RELAY_ANSWER_TEXT } from '../../../src/server/messaging/relay-answer';
+import { DecisionBackendError } from '../../../src/server/decisions/decision-backend';
+import { getTeamsOutboundComplianceFailure, TeamsOutboundComplianceFailed } from '../../../src/server/messaging/teams-outbound-compliance';
+import type { DecisionErrorCode } from '@plusplusoneplusplus/coc-client';
 
 function output(block = 0, allow = 1) {
     return {
@@ -47,6 +50,40 @@ describe('Teams complete-message compliance delivery boundary', () => {
         vi.spyOn(Ic3ReactionClient.prototype, 'reactToSourceMessage').mockResolvedValue(undefined);
     });
     afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
+
+    it.each<DecisionErrorCode>([
+        'DECISION_INVALID_REQUEST', 'DECISION_REQUEST_TOO_LARGE', 'DECISION_BACKEND_NOT_IMPLEMENTED',
+        'DECISION_BACKEND_UNAVAILABLE', 'DECISION_UPSTREAM_FAILED', 'DECISION_MODEL_MISMATCH',
+        'DECISION_INVALID_OUTPUT', 'DECISION_TIMEOUT', 'DECISION_CANCELLED',
+    ])('reports a safe %s reason without leaking decision evidence or diagnostics', async code => {
+        const h = harness();
+        const cause = new DecisionBackendError({ code, status: 502, message: 'Private decision evidence',
+            details: { prompt: 'Private policy text' } });
+        h.evaluate.mockRejectedValue(cause);
+        let failure: unknown;
+        try { await sendTeamsIc3SourceReply(h.source, ['<p>answer</p>'], new AbortController().signal); }
+        catch (error) { failure = error; }
+        expect(failure).toBeInstanceOf(TeamsOutboundComplianceFailed);
+        expect(failure).toMatchObject({ code, cause });
+        const report = getTeamsOutboundComplianceFailure(failure);
+        expect(report).toMatchObject({ state: 'failed', reason: expect.any(String), checkedAt: expect.any(String) });
+        expect(JSON.stringify(report)).not.toContain('Private');
+        expect(h.evaluate).toHaveBeenCalledOnce();
+        expect(h.transform).not.toHaveBeenCalled();
+        expect(Ic3DirectMessageClient.prototype.sendToSourceChat).not.toHaveBeenCalled();
+        expect(Ic3ReactionClient.prototype.reactToSourceMessage).not.toHaveBeenCalled();
+    });
+
+    it('keeps an allowed transport failure outside compliance reporting', async () => {
+        const h = harness();
+        const failure = new TeamsOperationError('Private transport detail', 'ic3', 'timeout', 'unknown', undefined, true);
+        vi.mocked(Ic3DirectMessageClient.prototype.sendToSourceChat).mockRejectedValue(failure);
+        await expect(sendTeamsIc3SourceReply(h.source, ['<p>answer</p>'], new AbortController().signal))
+            .rejects.toBe(failure);
+        expect(getTeamsOutboundComplianceFailure(failure)).toBeUndefined();
+        expect(h.evaluate).toHaveBeenCalledOnce();
+        expect(Ic3DirectMessageClient.prototype.sendToSourceChat).toHaveBeenCalledOnce();
+    });
 
     it('allows a complete plain-text trigger without an optional native HTML body', async () => {
         const h = harness();
@@ -348,7 +385,7 @@ describe('Teams complete-message compliance delivery boundary', () => {
         const sending = sendTeamsIc3SourceReply(h.source, ['<p>answer</p>'], controller.signal);
         const reason = new Error('Fixture cancellation');
         controller.abort(reason);
-        await expect(sending).rejects.toBe(reason);
+        await expect(sending).rejects.toMatchObject({ code: 'DECISION_CANCELLED', cause: reason });
         finish();
         await vi.waitFor(() => expect(h.evaluate).toHaveBeenCalledOnce());
         expect(Ic3DirectMessageClient.prototype.sendToSourceChat).not.toHaveBeenCalled();
@@ -360,7 +397,8 @@ describe('Teams complete-message compliance delivery boundary', () => {
         const controller = new AbortController();
         const reason = new Error('Fixture policy cancellation');
         h.compliance.getPolicy = () => { controller.abort(reason); return h.policy; };
-        await expect(sendTeamsIc3SourceReply(h.source, ['<p>answer</p>'], controller.signal)).rejects.toBe(reason);
+        await expect(sendTeamsIc3SourceReply(h.source, ['<p>answer</p>'], controller.signal))
+            .rejects.toMatchObject({ code: 'DECISION_CANCELLED', cause: reason });
         expect(h.evaluate).not.toHaveBeenCalled();
         expect(h.transform).not.toHaveBeenCalled();
         expect(Ic3DirectMessageClient.prototype.sendToSourceChat).not.toHaveBeenCalled();

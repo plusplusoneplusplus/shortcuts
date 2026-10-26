@@ -494,6 +494,7 @@ describe('registerAllRoutes', () => {
                 config: opts.runtimeConfigService, teams: composition!.teamsMessagingManager,
                 store: opts.store, dataDir: tmpDir, execution, onResult: expect.any(Function),
                 decisionService: opts.decisionService,
+                routes: expect.any(Array),
             });
             expect(getConfig().features?.teamsReactionDelegation).toBeUndefined();
             expect(opts.runtimeConfigService!.config.defaultProvider).toBe('copilot');

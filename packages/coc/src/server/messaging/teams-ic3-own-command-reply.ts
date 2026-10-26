@@ -3,7 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import type { TeamsIc3Account, TeamsIc3SessionOptions } from '@plusplusoneplusplus/coc-native';
 import { formatTeamsAnswerChunks } from './teams-answer-format';
 import { formatTeamsOutbound } from './teams-outbound-format';
-import { checkTeamsOutboundCompliance, TeamsOutboundComplianceRejected, type TeamsOutboundCompliance } from './teams-outbound-compliance';
+import { checkTeamsOutboundCompliance, TeamsOutboundComplianceFailed, TeamsOutboundComplianceRejected, type TeamsOutboundCompliance } from './teams-outbound-compliance';
 
 export interface TeamsIc3CommandSource {
     account: TeamsIc3Account;
@@ -38,7 +38,7 @@ export async function sendTeamsIc3SourceReply(
                 tenantId: account.tenantId, userId: account.objectId, chatId, region,
             }, capturedParts, signal);
         } catch (error) {
-            if (!(error instanceof TeamsOutboundComplianceRejected)) throw error;
+            if (!(error instanceof TeamsOutboundComplianceRejected)) throw new TeamsOutboundComplianceFailed(error, signal);
             try {
                 signal.throwIfAborted();
                 await verifyAccess(signal);
