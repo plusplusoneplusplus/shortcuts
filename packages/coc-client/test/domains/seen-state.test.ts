@@ -39,4 +39,14 @@ describe('SeenStateClient', () => {
       entries: [{ processId: 'proc-1', seenAt: '2026-05-02T00:00:00.000Z' }],
     });
   });
+
+  it('forwards the caller abort signal on batch updates', async () => {
+    const adapter = createMockAdapter({});
+    const client = new SeenStateClient(adapter);
+    const signal = new AbortController().signal;
+
+    await client.updateMany('repo-a', [], { signal });
+
+    expect(adapter.calls[0].options?.signal).toBe(signal);
+  });
 });

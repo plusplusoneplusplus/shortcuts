@@ -122,11 +122,16 @@ visibility; groups supply feed counts and `isUnseenGroupChat` rows through
 retains native or owner-qualified member navigation and intentional read behavior.
 
 `unreadMarkAllRead` scans all pages before batching completion-stamped entries via
-`seenStateApi`. Native scope retains preview visibility; group scope matches the
-badge's group/member count, independent of list filters. Each owner batch uses the
-captured concrete server. Incomplete/offline scans reject before writes; failed
-batches retain unread state and surface errors. Scope changes cancel pending scans;
-committed events refresh rows/counts through the shared reconciliation path.
+`seenStateApi`. Native scope retains preview visibility and writes only rows whose
+server `seenAt` differs (the server applies batches synchronously, so resending read
+rows can stall it); the page-origin client's `''` base is keyed as the local owner so
+committed events reach mounted readers. Group scope matches the badge's group/member
+count, independent of list filters. Each owner batch uses the captured concrete
+server. Scans and writes carry the run's abort signal. Incomplete/offline scans
+reject before writes; failed batches retain unread state and surface errors. Scope
+changes cancel pending runs; `MARK_ALL_READ_TIMEOUT_MS` (120s) aborts a stalled run
+and settles it even if a request ignores the signal, then shows a retryable error.
+Committed events refresh rows/counts through the shared reconciliation path.
 
 ### ChatListPane
 

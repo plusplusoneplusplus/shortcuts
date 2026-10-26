@@ -12,30 +12,35 @@ export function unreadRailTaskVisible(task: any, tab: RailPinnedTab, excluded: S
         && (tab === 'activity' || (tab === 'chats' ? isChatTask(task) : !isChatTask(task)));
 }
 
-/** Collect the full native scope before using the same completion-stamped batch API as the list. */
+/**
+ * Collect the full native scope before using the same completion-stamped batch API as the list.
+ * Only rows whose server seen stamp differs are written: the server applies the batch
+ * synchronously, so resending every read conversation can stall it for minutes.
+ */
 export async function markNativeUnreadRead({ client, workspaceId, tab, excluded, archived, signal }: {
     client: CocClient; workspaceId: string; tab: RailPinnedTab; excluded: Set<string>;
     archived?: ReadonlySet<string>; signal: AbortSignal;
 }): Promise<void> {
-    const baseUrl = client.options?.baseUrl;
+    // The page-origin client reports '', while mounted readers key the local owner as undefined.
+    const baseUrl = client.options?.baseUrl || undefined;
     const entries = new Map<string, SeenStateEntry>();
     let offset = 0;
     for (;;) {
         signal.throwIfAborted();
-        const page = await client.workspaces.history(workspaceId, { limit: 100, offset });
+        const page = await client.workspaces.history(workspaceId, { limit: 100, offset }, { signal });
         signal.throwIfAborted();
         if (!Array.isArray(page.history) || (page.offset !== undefined && page.offset !== offset)
             || (page.hasMore && !page.history.length)) throw new Error('Could not read the full conversation list.');
         for (const task of page.history) {
             if (task.workspaceId && task.workspaceId !== workspaceId) throw new Error('Unexpected conversation owner.');
             const seenAt = getTaskCompletedAtIso(task);
-            if (seenAt && unreadRailTaskVisible(task, tab, excluded, archived)) entries.set(task.id, { processId: task.id, seenAt });
+            if (seenAt && task.seenAt !== seenAt && unreadRailTaskVisible(task, tab, excluded, archived)) entries.set(task.id, { processId: task.id, seenAt });
         }
         if (!page.hasMore) break;
         offset += page.history.length;
     }
     signal.throwIfAborted();
-    if (entries.size) await patchSeenState(workspaceId, [...entries.values()], { baseUrl });
+    if (entries.size) await patchSeenState(workspaceId, [...entries.values()], { baseUrl }, { signal });
 }
 
 /** The group unread badge spans the group and every member, independent of list filters. */
@@ -72,7 +77,7 @@ export async function markGroupUnreadRead({ groupId, baseUrl, serverKey, members
     signal.throwIfAborted();
     const results = await Promise.allSettled([...byOwner].map(async ([owner, entries]) => {
         signal.throwIfAborted();
-        await patchSeenState(owner, [...entries.values()], { baseUrl });
+        await patchSeenState(owner, [...entries.values()], { baseUrl }, { signal });
     }));
     if (results.some(result => result.status === 'rejected')) throw new Error('Could not mark all conversations read. Some repositories failed; unread conversations remain.');
 }

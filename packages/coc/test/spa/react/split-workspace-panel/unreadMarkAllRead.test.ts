@@ -27,12 +27,27 @@ describe('unread preview bulk read', () => {
         const history = vi.fn()
             .mockResolvedValueOnce({ history: [task('visible'), task('archived', { archived: true }), task('hidden', { mode: 'autopilot' })], hasMore: true })
             .mockResolvedValueOnce({ history: [task('not-loaded'), task('work-item', { workItemId: 'wi' }), task('task', { type: 'run-workflow' })], hasMore: false });
-        await markNativeUnreadRead({ ...native(history, baseUrl), excluded: new Set(['autopilot']) });
-        expect(history.mock.calls).toEqual([['same', { limit: 100, offset: 0 }], ['same', { limit: 100, offset: 3 }]]);
+        const options = { ...native(history, baseUrl), excluded: new Set(['autopilot']) };
+        await markNativeUnreadRead(options);
+        expect(history.mock.calls).toEqual([['same', { limit: 100, offset: 0 }, { signal: options.signal }], ['same', { limit: 100, offset: 3 }, { signal: options.signal }]]);
         expect(patch).toHaveBeenCalledTimes(1);
         expect(patch).toHaveBeenCalledWith('same', [
             { processId: 'visible', seenAt: completedAt }, { processId: 'not-loaded', seenAt: completedAt },
-        ], { baseUrl });
+        ], { baseUrl }, { signal: options.signal });
+    });
+
+    it('writes only rows whose server seen stamp differs and keys the page-origin owner as local', async () => {
+        const history = vi.fn().mockResolvedValue({ history: [
+            task('read', { seenAt: completedAt }), task('stale', { seenAt: '2026-10-22T00:00:00.000Z' }), task('never'),
+        ], hasMore: false });
+        await markNativeUnreadRead(native(history, ''));
+        expect(patch).toHaveBeenCalledWith('same', [
+            { processId: 'stale', seenAt: completedAt }, { processId: 'never', seenAt: completedAt },
+        ], { baseUrl: undefined }, expect.anything());
+        patch.mockClear();
+        history.mockResolvedValue({ history: [task('read', { seenAt: completedAt })], hasMore: false });
+        await markNativeUnreadRead(native(history));
+        expect(patch).not.toHaveBeenCalled();
     });
 
     it('does not mutate a truncated native list when a later page fails', async () => {
@@ -68,7 +83,7 @@ describe('unread preview bulk read', () => {
         const options = { ...groupOptions(), baseUrl, serverKey: baseUrl ? 'owner' : 'local' };
         await markGroupUnreadRead(options);
         expect(groupPage).toHaveBeenNthCalledWith(2, 'group-a', { limit: 200, cursor: 'next' }, options.baseUrl, options.signal);
-        expect(patch.mock.calls).toEqual(['same', 'member'].map(owner => [owner, [{ processId: 'same-chat', seenAt: completedAt }], { baseUrl: options.baseUrl }]));
+        expect(patch.mock.calls).toEqual(['same', 'member'].map(owner => [owner, [{ processId: 'same-chat', seenAt: completedAt }], { baseUrl: options.baseUrl }, { signal: options.signal }]));
     });
 
     it.each(['partial', 'membership', 'unavailable', 'incomplete'])('does not write when the paginated group scope is %s', async reason => {

@@ -35,9 +35,10 @@ export async function patchSeenState(
     workspaceId: string,
     entries: SeenStateEntry[],
     route?: SeenStateRoute,
+    options?: { signal?: AbortSignal },
 ): Promise<SeenStateMap> {
     const { baseUrl } = resolveRoute(workspaceId, route);
-    const map = await getCocClientFor(baseUrl).seenState.updateMany(workspaceId, entries);
+    const map = await getCocClientFor(baseUrl).seenState.updateMany(workspaceId, entries, { signal: options?.signal });
     window.dispatchEvent(new CustomEvent<SeenStateChange>(SEEN_STATE_CHANGED_EVENT, {
         detail: { workspaceId, baseUrl, entries },
     }));

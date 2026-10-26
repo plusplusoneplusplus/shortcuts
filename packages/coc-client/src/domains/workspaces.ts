@@ -263,9 +263,10 @@ export class WorkspacesClient {
     });
   }
 
-  history(workspaceId: string, query?: WorkspaceHistoryQuery): Promise<ProcessHistoryResponse> {
+  history(workspaceId: string, query?: WorkspaceHistoryQuery, options?: Pick<CocRequestOptions, 'signal'>): Promise<ProcessHistoryResponse> {
     return this.transport.request<ProcessHistoryResponse>(`/workspaces/${encodePathSegment(workspaceId)}/history`, {
       query: serializeHistoryQuery(query),
+      signal: options?.signal,
     });
   }
 
