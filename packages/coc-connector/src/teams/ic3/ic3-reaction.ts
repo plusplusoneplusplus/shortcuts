@@ -1,3 +1,4 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import { boundedIc3, ic3HttpError, Ic3CredentialStore } from './ic3-credential';
 import type { Ic3DirectMessageOptions, Ic3TokenProvider } from './ic3-direct-message-config';
 import { TeamsOperationError } from '../operations';
@@ -12,6 +13,7 @@ const sourceReactions = {
 export class Ic3ReactionClient {
     private readonly credentials: Ic3CredentialStore;
     private readonly sourceAccountPinned: boolean;
+    private readonly lifetime = new AbortController();
 
     constructor(options: Ic3TokenProvider | Ic3DirectMessageOptions = {}, credentials?: Ic3CredentialStore) {
         this.sourceAccountPinned = typeof options !== 'function' && !!options.expectedAccount;
@@ -24,17 +26,43 @@ export class Ic3ReactionClient {
     }
 
     dispose(): void {
+        this.lifetime.abort();
         this.credentials.dispose();
     }
 
     /** Trusted ingress supplies the exact message from a fresh, account-pinned native chat read. */
     async acknowledgeSourceMessage(chatId: string, messageId: string, caller?: AbortSignal): Promise<void> {
-        return this.reactToSourceMessage(chatId, messageId, 'eyes', caller);
+        const signal = AbortSignal.any([this.lifetime.signal, ...(caller ? [caller] : [])]);
+        for (let attempt = 0; ; attempt++) {
+            try {
+                return await this.writeSourceReaction(chatId, messageId, 'eyes', signal, null);
+            } catch (error) {
+                if (signal.aborted || attempt === 2 || !(error instanceof TeamsOperationError)
+                    || !error.retryable || error.outcome === 'unknown') throw error;
+                const wait = Math.max(1000 * 2 ** attempt, error.retryAfterMs ?? 0);
+                if (!Number.isFinite(wait) || wait > 60_000) throw error;
+                this.credentials.clear();
+                try {
+                    await delay(wait, undefined, { signal });
+                } catch (error) {
+                    if (!signal.aborted) throw error;
+                    throw new TeamsOperationError('IC3 source acknowledgment cancelled',
+                        'ic3', 'unavailable', 'not-attempted');
+                }
+            }
+        }
     }
 
     /** The caller verifies the task outcome; this transport does not infer success or rejection. */
     async reactToSourceMessage(
         chatId: string, messageId: string, reaction: 'eyes' | 'checkmark' | 'crossmark', caller?: AbortSignal,
+    ): Promise<void> {
+        return this.writeSourceReaction(chatId, messageId, reaction, caller);
+    }
+
+    private async writeSourceReaction(
+        chatId: string, messageId: string, reaction: 'eyes' | 'checkmark' | 'crossmark',
+        caller?: AbortSignal, timeoutMs?: number | null,
     ): Promise<void> {
         if (!Object.hasOwn(sourceReactions, reaction)) {
             throw new TeamsOperationError('IC3 source reaction is unsupported',
@@ -57,7 +85,7 @@ export class Ic3ReactionClient {
             attempt.startWrite();
             await this.putReaction(`${base}/${encodeURIComponent(messageId)}/properties?name=emotions`,
                 sourceReactions[reaction], credential.value, signal);
-        }, caller);
+        }, caller, timeoutMs);
     }
 
     private async putReaction(url: string, key: string, token: string, signal: AbortSignal): Promise<void> {
