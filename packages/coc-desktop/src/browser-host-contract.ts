@@ -1,4 +1,4 @@
-import type { BrowserAvailability, BrowserDownloadEvent, BrowserEngine, BrowserFailureReason, BrowserNavAction, BrowserViewState } from './browser-view-policy';
+import type { BrowserAvailability, BrowserDownloadEvent, BrowserEngine, BrowserFailureReason, BrowserNavAction, BrowserSiteCertificate, BrowserViewState } from './browser-view-policy';
 import type { BrowserImportCookie } from './browser-cookie-import';
 import type { HtmlPageBounds } from './html-page-policy';
 import type { BrowserApplicationRequest } from './browser-clickonce';
@@ -67,12 +67,25 @@ export interface BrowserEventSink {
     navigationGate?(url: string, popoutViewId?: string): boolean | Promise<boolean>;
 }
 
+/** Engine facts behind site information. */
+export interface BrowserSiteFacts {
+    /** The engine refuses invalid certificates and offers no way to proceed. */
+    rejectsInvalidCertificates: boolean;
+    /** The current main-frame failure is a certificate error. */
+    certificateError: boolean;
+    certificate?: BrowserSiteCertificate;
+    /** Cookies sent to the committed URL; undefined when it was not asked for or could not be read. */
+    cookieCount?: number;
+}
+
 export interface BrowserHostedView {
     readonly embed?: 'webview';
     readonly src?: string;
     readonly partition?: string;
     adopt?(guestId: number): void | Promise<void>;
     importCookies?(cookies: BrowserImportCookie[]): Promise<void>;
+    /** URL views only. Counts cookies for `committedUrl` when given; never returns names or values. */
+    siteFacts?(committedUrl?: string): Promise<BrowserSiteFacts>;
     snapshot(): BrowserViewState;
     navigate(url: string): void | Promise<void>;
     nav(action: BrowserNavAction): void | Promise<void>;

@@ -5,7 +5,9 @@ import { validateBrowserUrl } from './browser-view-policy';
 export function validateBrowserCommandRequest(input: unknown): BrowserCommandRequest {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('Invalid browser request');
     const request = input as BrowserCommandRequest;
-    if (Object.keys(request).some(key => !['id', 'turnId', 'workspaceId', 'processId', 'command', 'selectedTab', 'framesEnabled', 'richPasteEnabled'].includes(key))) throw new TypeError('Invalid browser request field');
+    if (Object.keys(request).some(key => !['id', 'turnId', 'workspaceId', 'processId', 'command', 'selectedTab', 'framesEnabled', 'richPasteEnabled', 'humanTakeoverEnabled', 'validateAfterTakeover'].includes(key))) throw new TypeError('Invalid browser request field');
+    if (request.validateAfterTakeover !== undefined && typeof request.validateAfterTakeover !== 'boolean') throw new TypeError('Invalid browser continuation validation');
+    if (request.humanTakeoverEnabled !== undefined && typeof request.humanTakeoverEnabled !== 'boolean') throw new TypeError('Invalid browser takeover policy');
     if (request.richPasteEnabled !== undefined && typeof request.richPasteEnabled !== 'boolean') throw new TypeError('Invalid browser rich paste policy');
     if (request.framesEnabled !== undefined && typeof request.framesEnabled !== 'boolean') throw new TypeError('Invalid browser frame policy');
     if (request.turnId !== undefined && (typeof request.turnId !== 'string' || !request.turnId || request.turnId.length > 512)) throw new TypeError('Invalid browser turn');
@@ -62,3 +64,6 @@ export interface BrowserControlActivityEvent {
     /** The turn drives this tab from a retained scope while another workspace is selected. */
     background?: boolean;
 }
+
+export const BROWSER_CONTROL_TAKEOVER_CHANNEL = 'coc-desktop:browser-control-takeover';
+export const BROWSER_CONTROL_TAKEOVER_STATE_CHANNEL = 'coc-desktop:browser-control-takeover-state';

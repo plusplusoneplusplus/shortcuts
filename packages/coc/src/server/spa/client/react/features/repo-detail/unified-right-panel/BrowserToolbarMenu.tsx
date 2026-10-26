@@ -1,9 +1,9 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { BrowserEngine, BrowserPreferences, DesktopBrowserBridge } from '../../../shared/file-path/browser-bridge';
-import { nativeViewToolbarButton } from './NativeViewTab';
+import { NativeViewIcon, nativeViewIconButton, nativeViewToolbarButton } from './NativeViewTab';
 
-export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal, onOpenExternal, onImportCookies, onHistory, bridge }: {
+export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal, onOpenExternal, onImportCookies, onHistory, onDownloads, bridge }: {
     open: boolean;
     onOpenChange(open: boolean): void;
     engine?: BrowserEngine;
@@ -11,6 +11,7 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
     onOpenExternal(): void;
     onImportCookies?: () => void;
     onHistory?(): void;
+    onDownloads?(): void;
     bridge?: DesktopBrowserBridge;
 }) {
     const triggerRef = useRef<HTMLButtonElement>(null);
@@ -99,7 +100,7 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
         <button
             ref={triggerRef}
             type="button"
-            className={`flex-shrink-0 ${nativeViewToolbarButton}`}
+            className={nativeViewIconButton}
             aria-label="Browser options"
             title="Browser options"
             aria-haspopup="menu"
@@ -112,7 +113,9 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
                     onOpenChange(true);
                 }
             }}
-        >…</button>
+        >
+            <NativeViewIcon><path d="M3.5 8h.01M8 8h.01M12.5 8h.01" strokeWidth="2.2" /></NativeViewIcon>
+        </button>
         {open && createPortal(
             <div
                 ref={panelRef}
@@ -145,6 +148,8 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
             >
                 {onHistory && <button type="button" role="menuitem" className={`w-full text-left ${nativeViewToolbarButton}`}
                     onClick={() => { onOpenChange(false); triggerRef.current?.focus(); onHistory(); }}>History</button>}
+                {onDownloads && <button type="button" role="menuitem" className={`w-full text-left ${nativeViewToolbarButton}`}
+                    onClick={() => { onOpenChange(false); triggerRef.current?.focus(); onDownloads(); }}>Downloads</button>}
                 {engine && <div role="presentation" className="px-2 py-1 text-[#616161] dark:text-[#9d9d9d]" title="This tab's browser engine" data-testid="browser-engine">
                     Engine: {engine === 'electron' ? 'Electron' : 'WebView2'}
                 </div>}

@@ -172,7 +172,7 @@ export const BROWSER_OPEN_EXTERNAL_CHANNEL = 'coc-desktop:browser-open-external'
 export const BROWSER_VIEW_STATE_CHANNEL = 'coc-desktop:browser-view-state';
 /** main → SPA: {@link BrowserNewTabRequest} when a page opens a new-window link. */
 export const BROWSER_VIEW_NEW_TAB_CHANNEL = 'coc-desktop:browser-view-new-tab';
-/** main → SPA: {@link BrowserDownloadEvent} after a download is handed to the system browser. */
+/** main → SPA: {@link BrowserDownloadEvent} for an unavailable download or explicit external handoff. */
 export const BROWSER_VIEW_DOWNLOAD_CHANNEL = 'coc-desktop:browser-view-download';
 export const BROWSER_PREFERENCES_GET_CHANNEL = 'coc-desktop:browser-preferences-get';
 export const BROWSER_PREFERENCES_SET_CHANNEL = 'coc-desktop:browser-preferences-set';
@@ -181,6 +181,8 @@ export const BROWSER_CLICKONCE_SET_CHANNEL = 'coc-desktop:browser-clickonce-set'
 export const BROWSER_PREFERENCES_CHANGED_CHANNEL = 'coc-desktop:browser-preferences-changed';
 export const BROWSER_IMPORT_COOKIES_CHANNEL = 'coc-desktop:browser-import-cookies';
 export const BROWSER_CLEAR_DATA_CHANNEL = 'coc-desktop:browser-clear-data';
+/** SPA → main: read-only site information for one owned view `(viewId, sessionKey)`. */
+export const BROWSER_SITE_INFO_CHANNEL = 'coc-desktop:browser-site-info';
 /** main → SPA: native close shortcut; the active panel owns tab teardown. */
 export const BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL = 'coc-desktop:browser-view-close-requested';
 /** main → SPA: native address shortcut; the active owning browser focuses its address. */
@@ -263,6 +265,38 @@ export type BrowserOperationResult = { ok: true } | {
 /** Cookie import also reports how many cookies it set, never their names or values. */
 export type BrowserCookieImportResult = { ok: true; count: number } | Extract<BrowserOperationResult, { ok: false }>;
 
+/**
+ * How the tab's document reached it, as the engine reported it. `secure` needs an engine that
+ * rejects invalid certificates without a bypass; HTTPS alone is `https-unverified`.
+ */
+export type BrowserSiteConnection = 'secure' | 'https-unverified' | 'insecure' | 'certificate-error' | 'failed' | 'loading' | 'local-file' | 'unknown';
+
+/** The certificate the engine verified for a host; times are Unix seconds. */
+export interface BrowserSiteCertificate {
+    subject: string;
+    issuer: string;
+    validStart: number;
+    validExpiry: number;
+}
+
+/** Read-only site facts for one view. Never carries cookie names, values or history. */
+export interface BrowserSiteInfo {
+    viewId: string;
+    engine: BrowserEngine;
+    sourceKind: BrowserSourceKind;
+    /** The committed document, or the attempted URL while loading or after a failure. */
+    url: string;
+    host: string;
+    connection: BrowserSiteConnection;
+    certificate?: BrowserSiteCertificate;
+    /** How many cookies the profile sends to `url`; only for a committed web document. */
+    cookies: { available: true; count: number } | { available: false; reason: 'not-applicable' | 'unsupported' | 'failed' };
+    /** The committed document this describes; a newer commit makes it stale. */
+    revision?: number;
+}
+
+export type BrowserSiteInfoResult = { ok: true; info: BrowserSiteInfo } | Extract<BrowserOperationResult, { ok: false }>;
+
 /** History / load control actions. */
 export type BrowserNavAction = 'back' | 'forward' | 'reload' | 'stop';
 
@@ -297,13 +331,16 @@ export const BROWSER_ADDRESS_MENU_CHANNEL = 'coc-desktop:browser-address-menu';
 /** A page asked to open `url` in a new tab; the SPA opens it with the opener's owner. */
 export interface BrowserNewTabRequest {
     openerViewId: string;
+    /** Main-minted identity for a popup created during human ownership. */
+    viewId?: string;
     engine: BrowserEngine;
     url: string;
 }
 
-/** Result of handing a download to the system browser. */
+/** Download fallback notice. Managed transfers use the downloads metadata API. */
 export interface BrowserDownloadEvent {
     viewId: string;
+    /** Safe source label, never a request URL or credentials. */
     url: string;
     ok: boolean;
     error?: string;

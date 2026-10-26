@@ -4,10 +4,12 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as policy from '../src/browser-view-policy';
+import { DOWNLOADS_QUERY_CHANNEL, DOWNLOADS_ACTION_CHANNEL, DOWNLOADS_CHANGED_CHANNEL, type BrowserDownloadStore } from '../src/browser-downloads';
 import { BROWSER_HISTORY_RETENTION_MS } from '../src/browser-history';
 import { BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_RETAIN_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL } from '../src/browser-control-command';
 
 const mocks = vi.hoisted(() => ({
+    downloads: undefined as BrowserDownloadStore | undefined,
     handlers: new Map<string, (...args: any[]) => any>(), events: new Map<string, (...args: any[]) => any>(), windows: new Map<any, any>(),
     sinks: [] as any[], clearData: vi.fn(async () => {}), dialog: vi.fn(async () => ({ response: 0 })),
     menu: vi.fn((_template: any[]) => ({ popup: vi.fn() })),
@@ -22,6 +24,7 @@ vi.mock('electron', () => ({
 }));
 vi.mock('../src/server-controller', () => ({ defaultDataDir: () => 'unused' }));
 vi.mock('../src/electron-browser-host', () => ({ ElectronBrowserHost: class {
+    constructor(_profile: string, downloads?: BrowserDownloadStore) { if (downloads) mocks.downloads = downloads; }
     engine = 'electron';
     availability = async () => ({ engine: this.engine, available: true });
     clearData = mocks.clearData;
@@ -88,6 +91,17 @@ describe('desktop history IPC', () => {
         }
         expect([...mocks.handlers.keys()].filter(channel => /activate|launch/.test(channel))).toEqual([]);
         expect(invoke(policy.BROWSER_CLICKONCE_SET_CHANNEL, spa.event, false)).toEqual({ ok: true });
+    });
+    it('answers site information only to the exact registered SPA main frame that owns the view', async () => {
+        const spa = owner(1), other = owner(2), foreign = owner(3, 'http://localhost:4000/foreign');
+        await invoke(policy.BROWSER_VIEW_OPEN_CHANNEL, spa.event, 'site', 'https://fixture.test/', 'w');
+        expect(await invoke(policy.BROWSER_SITE_INFO_CHANNEL, spa.event, 'site', 'w')).toMatchObject({ ok: true, info: {
+            viewId: 'site', host: 'fixture.test', connection: 'unknown', cookies: { available: false, reason: 'not-applicable' } } });
+        expect(await invoke(policy.BROWSER_SITE_INFO_CHANNEL, spa.event, 'site', 'other-workspace')).toEqual({ ok: false, reason: 'bad-session' });
+        expect(await invoke(policy.BROWSER_SITE_INFO_CHANNEL, other.event, 'site', 'w')).toEqual({ ok: false, reason: 'not-found' });
+        for (const event of [foreign.event, { ...spa.event, senderFrame: {} }]) {
+            expect(await invoke(policy.BROWSER_SITE_INFO_CHANNEL, event, 'site', 'w')).toEqual({ ok: false, reason: 'no-window' });
+        }
     });
     it('wires address-menu Copy to native copy in the requesting SPA, preserving cut and editing', () => {
         const spa = owner(1), other = owner(2), foreign = owner(3, 'http://localhost:4000/foreign');
@@ -344,5 +358,47 @@ describe('desktop history IPC', () => {
         expect(a.contents.send).toHaveBeenCalledWith(policy.BROWSER_HISTORY_CHANGED_CHANNEL);
         await host.disposeBrowserViews();
         expect(vi.getTimerCount()).toBe(0);
+    });
+});
+
+describe('desktop download IPC', () => {
+    it('shares records and ID-only actions across registered windows/workspaces and rejects pages and subframes', async () => {
+        const first = owner(101), second = owner(102), foreign = owner(103, 'https://foreign.test/');
+        const handle = { pause: vi.fn(), resume: vi.fn(), cancel: vi.fn(), dispose: vi.fn() };
+        const transfer = mocks.downloads!.start('file.txt', 'https://name:secret@files.test/file?auth=token', handle)!;
+        const progress = { state: 'downloading' as const, received: 4, total: 10, canPause: true, canResume: false };
+        transfer.update(progress);
+        const a = await invoke(DOWNLOADS_QUERY_CHANNEL, first.event);
+        const b = await invoke(DOWNLOADS_QUERY_CHANNEL, second.event);
+        expect(a.entries).toEqual(b.entries);
+        expect(a.entries[0]).toMatchObject({ source: 'files.test', filename: 'file.txt', active: true });
+        expect(JSON.stringify(a)).not.toMatch(/secret|auth=|token|filePath/);
+        expect(first.contents.send).toHaveBeenCalledWith(DOWNLOADS_CHANGED_CHANNEL);
+        expect(second.contents.send).toHaveBeenCalledWith(DOWNLOADS_CHANGED_CHANNEL);
+        expect(foreign.contents.send).not.toHaveBeenCalledWith(DOWNLOADS_CHANGED_CHANNEL);
+        for (const event of [foreign.event, { ...first.event, senderFrame: {} }]) {
+            expect(await invoke(DOWNLOADS_QUERY_CHANNEL, event)).toEqual({ ok: false, reason: 'no-window' });
+            expect(await invoke(DOWNLOADS_ACTION_CHANNEL, event, transfer.id, 'cancel')).toEqual({ ok: false, reason: 'no-window' });
+        }
+        expect(await invoke(DOWNLOADS_ACTION_CHANNEL, second.event, '/arbitrary/file', 'open')).toMatchObject({ ok: false, reason: 'invalid' });
+        expect(await invoke(DOWNLOADS_ACTION_CHANNEL, second.event, transfer.id, 'retry')).toMatchObject({ ok: false, reason: 'invalid' });
+        expect(await invoke(DOWNLOADS_ACTION_CHANNEL, second.event, transfer.id, 'pause')).toEqual({ ok: true });
+        expect(handle.pause).toHaveBeenCalledOnce();
+        // A workspace reload and source-window closure do not own download lifetime.
+        first.contents.emit('did-start-navigation', {}, 'http://localhost:4000/', false, true);
+        first.window.emit('closed');
+        transfer.update({ ...progress, received: 9 });
+        expect((await invoke(DOWNLOADS_QUERY_CHANNEL, second.event)).entries[0].received).toBe(9);
+        expect(handle.cancel).not.toHaveBeenCalled();
+        expect(await invoke(DOWNLOADS_ACTION_CHANNEL, second.event, transfer.id, 'cancel')).toEqual({ ok: true });
+        expect(handle.cancel).toHaveBeenCalledOnce();
+    });
+    it('rejects a pending query when its sender navigates away', async () => {
+        let url = 'http://localhost:4000/';
+        const spa = owner(104);
+        spa.contents.getURL = () => url;
+        const pending = invoke(DOWNLOADS_QUERY_CHANNEL, spa.event);
+        url = 'https://foreign.test/';
+        expect(await pending).toEqual({ ok: false, reason: 'no-window' });
     });
 });

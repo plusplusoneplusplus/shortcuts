@@ -1,8 +1,9 @@
 import type { AIProcess } from '../contracts/processes';
 import type { QueueTaskSummary } from '../contracts/queue';
-import type { BrowserCommandRequest, BrowserCommandReply, BrowserNavigationAnswer, BrowserNavigationPrompt } from '../browser-control';
+import type { BrowserCommandRequest, BrowserCommandReply, BrowserNavigationAnswer, BrowserNavigationPrompt, BrowserTakeoverState } from '../browser-control';
 
 export type BrowserControlServerEvent =
+  | { type: 'browser-takeover-policy'; enabled: boolean }
   | { type: 'browser-command'; request: BrowserCommandRequest }
   | { type: 'browser-command-cancel'; id: string }
   | { type: 'browser-turn-finished'; workspaceId: string; processId: string; turnId: string }
@@ -11,7 +12,8 @@ export type BrowserControlServerEvent =
   | { type: 'browser-navigation-prompt'; prompt: BrowserNavigationPrompt }
   | { type: 'browser-navigation-prompt-cleared'; checkId: string };
 export type BrowserControlClientEvent =
-  | { type: 'browser-capability'; workspaceId: string; focused: boolean; background?: string[] }
+  | { type: 'browser-takeover-state'; state: BrowserTakeoverState }
+  | { type: 'browser-capability'; workspaceId: string; focused: boolean; background?: string[]; humanTakeoverSupported?: boolean }
   | { type: 'browser-capability-clear'; background?: string[] }
   | { type: 'browser-command-result'; reply: BrowserCommandReply }
   /** A background action is waiting on the Switch back notice; the owning server pauses its 60s limit. */

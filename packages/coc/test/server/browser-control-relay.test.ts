@@ -530,3 +530,92 @@ describe('browser navigation approval relay', () => {
         fs.rmSync(dir, { recursive: true, force: true });
     });
 });
+
+describe('browser human takeover relay', () => {
+    const state = (turnId: string, status: 'human' | 'agent' | 'terminated' = 'human') => ({ workspaceId: 'w', processId: 'p', turnId, routingRef: 'w', status });
+    it('defaults off and reports unavailable hosts without changing engines', async () => {
+        const relay = enabled(), a = client('a'); relay.advertise(a, 'w', true);
+        await expect(relay.execute('w', 'p', { action: 'request_human', text: 'MFA' })).rejects.toThrow('disabled');
+        relay.setHumanTakeoverEnabledGetter(() => true);
+        await expect(relay.execute('w', 'p', { action: 'request_human', text: 'MFA' })).rejects.toThrow('Unsupported desktop');
+        expect(a.send).not.toHaveBeenCalled();
+    });
+    it('holds deadlines while human owns the conversation, drops late observations and isolates other conversations', async () => {
+        vi.useFakeTimers();
+        const relay = enabled(), a = client('a'), b = client('b');
+        relay.setHumanTakeoverEnabledGetter(() => true);
+        relay.advertise(a, 'w', true, undefined, true);
+        const late = relay.execute('w', 'p', { action: 'snapshot' }, undefined, undefined, 'turn').catch(error => error);
+        const first = request(a); expect(first.humanTakeoverEnabled).toBe(true);
+        relay.takeoverState(b, state('turn')); // wrong socket cannot pause
+        relay.takeoverState(a, state('wrong')); // nor can a stale turn
+        relay.takeoverState(a, state('turn'));
+        const pending = relay.execute('w', 'p', { action: 'read' }, undefined, undefined, 'turn');
+        const read = request(a);
+        await vi.advanceTimersByTimeAsync(600_000);
+        relay.reply(a, { id: first.id, ok: true, result: { elements: [], title: 'private secret' } });
+        expect((await late).message).toContain('observation discarded');
+        const other = relay.execute('w', 'other', { action: 'snapshot' }); const own = request(a);
+        relay.reply(a, { id: own.id, ok: true, result: { elements: [] } }); await other;
+        relay.takeoverState(a, state('turn', 'agent'));
+        relay.reply(a, { id: read.id, ok: true, result: { text: 'refreshed', handoffNote: 'ready' } });
+        expect(await pending).toMatchObject({ text: 'refreshed', handoffNote: 'ready' });
+        expect(vi.getTimerCount()).toBe(0);
+    });
+    it.each(['stop', 'disable', 'disconnect', 'finish'])('terminates held continuation on %s without replay', async action => {
+        const relay = enabled(), a = client('a'); let on = true;
+        relay.setHumanTakeoverEnabledGetter(() => on); relay.advertise(a, 'w', true, undefined, true);
+        const pending = relay.execute('w', 'p', { action: 'request_human', text: 'MFA' }, undefined, undefined, 'turn').catch(error => error);
+        relay.takeoverState(a, state('turn'));
+        if (action === 'stop') relay.takeoverState(a, state('turn', 'terminated'));
+        if (action === 'disable') { on = false; relay.syncPolicies(); }
+        if (action === 'disconnect') relay.disconnect(a);
+        if (action === 'finish') relay.finishProcess('w', 'p');
+        expect(await pending).toBeInstanceOf(Error);
+        expect(a.send.mock.calls.map(([data]) => JSON.parse(data)).filter(message => message.type === 'browser-command')).toHaveLength(1);
+    });
+    it('retains a human pause across workspace switch with background off and composes with navigation waits', async () => {
+        const relay = enabled(), a = client('a'); relay.setHumanTakeoverEnabledGetter(() => true);
+        relay.advertise(a, 'w', true, undefined, true);
+        const pending = relay.execute('w', 'p', { action: 'request_human', text: 'MFA' }, undefined, undefined, 'turn');
+        const original = request(a); relay.takeoverState(a, state('turn'));
+        relay.advertise(a, 'other', true, undefined, true);
+        relay.syncPolicies();
+        // Explicit Return is available in the owning browser surface after switching back.
+        relay.advertise(a, 'w', true, undefined, true);
+        relay.takeoverState(a, state('turn', 'agent'));
+        relay.reply(a, { id: original.id, ok: true, result: { elements: [], handoffNote: 'ready' } });
+        expect(await pending).toMatchObject({ handoffNote: 'ready' });
+    });
+    it('marks server-delayed commands for main-process revalidation across a handoff', async () => {
+        const relay = enabled(), a = client('a'); relay.setHumanTakeoverEnabledGetter(() => true); relay.advertise(a, 'w', true, undefined, true);
+        const first = relay.execute('w', 'p', { action: 'snapshot' }, undefined, undefined, 'turn');
+        const original = request(a); relay.reply(a, { id: original.id, ok: true, result: { elements: [] } }); await first;
+        const before = relay.getHumanTakeoverRevision('w', 'p');
+        relay.takeoverState(a, state('turn')); relay.takeoverState(a, state('turn', 'agent'));
+        const delayed = relay.execute('w', 'p', { action: 'navigate', direction: 'back' }, undefined, undefined, 'turn', before);
+        expect(request(a).validateAfterTakeover).toBe(true);
+        relay.reply(a, { id: request(a).id, ok: false, error: 'stale-action: page changed; replan' });
+        await expect(delayed).rejects.toThrow('stale-action');
+    });
+
+    it('rejects commands from a disconnected handoff turn after reconnect instead of automatically restoring control', async () => {
+        const relay = enabled(), a = client('a'); relay.setHumanTakeoverEnabledGetter(() => true); relay.advertise(a, 'w', true, undefined, true);
+        const pending = relay.execute('w', 'p', { action: 'request_human', text: 'MFA' }, undefined, undefined, 'turn').catch(error => error);
+        relay.takeoverState(a, state('turn')); relay.disconnect(a); await pending;
+        relay.advertise(a, 'w', true, undefined, true);
+        await expect(relay.execute('w', 'p', { action: 'snapshot' }, undefined, undefined, 'turn')).rejects.toThrow('continuation terminated');
+        const next = relay.execute('w', 'p', { action: 'snapshot' }, undefined, undefined, 'new-turn');
+        relay.reply(a, { id: request(a).id, ok: true, result: { elements: [] } }); await next;
+    });
+
+    it('revokes desktop UI policy on flag disable even between browser commands', async () => {
+        const relay = enabled(), a = client('a'); let flag = true;
+        relay.setHumanTakeoverEnabledGetter(() => flag); relay.advertise(a, 'w', true, undefined, true);
+        const first = relay.execute('w', 'p', { action: 'snapshot' }, undefined, undefined, 'turn');
+        relay.reply(a, { id: request(a).id, ok: true, result: { elements: [] } }); await first;
+        flag = false; relay.syncPolicies();
+        expect(JSON.parse(a.send.mock.calls.at(-1)![0])).toEqual({ type: 'browser-takeover-policy', enabled: false });
+    });
+
+});

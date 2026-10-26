@@ -15,16 +15,19 @@
  */
 
 import type { BrowserImportCookie } from './browser-cookie-import';
-import { BrowserWindow, WebContents, session, shell, webContents } from 'electron';
+import { app, BrowserWindow, WebContents, session, webContents } from 'electron';
+import { manageElectronDownload } from './electron-downloads';
+import { downloadSource, type BrowserDownloadStore } from './browser-downloads';
 import * as fs from 'node:fs';
 import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { lockElectronProfile } from './browser-profile-lock';
-import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserViewRequest } from './browser-host-contract';
+import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserSiteFacts, type BrowserViewRequest } from './browser-host-contract';
 import {
     BROWSER_VIEW_DOWNLOAD_CHANNEL,
     BROWSER_VIEW_NEW_TAB_CHANNEL,
     BROWSER_VIEW_STATE_CHANNEL,
     BrowserDownloadEvent,
+    BrowserSiteCertificate,
     BrowserViewState,
     browserUserAgent,
     classifyBrowserNavigation,
@@ -58,6 +61,8 @@ interface BrowserEntry {
     requestedUrl: string;
     error?: string;
     errorCode?: BrowserViewState['errorCode'];
+    /** Chromium net error of the current main-frame failure. */
+    netError?: number;
     popups: Set<BrowserWindow>;
     sink: BrowserEventSink;
     closed: boolean;
@@ -71,7 +76,27 @@ const entryByContents = new Map<number, BrowserEntry>();
 /** Control popout view ids by popup `webContents` id, so a held navigation names its popout. */
 const popoutByContents = new Map<number, string>();
 let profileSession: Electron.Session | undefined;
+let downloadStore: BrowserDownloadStore | undefined;
 let profileLock: NativeDatabase | undefined;
+/** Certificates Chromium verified this process lifetime, by hostname; bounded, newest last. */
+const verifiedCertificates = new Map<string, BrowserSiteCertificate>();
+const MAX_VERIFIED_CERTIFICATES = 256;
+
+/** net::ERR_CERT_* codes occupy -200 to -299. */
+function isCertificateNetError(code: number | undefined): boolean {
+    return code !== undefined && code <= -200 && code > -300;
+}
+
+function recordCertificate(request: Electron.Request): void {
+    verifiedCertificates.delete(request.hostname);
+    if (request.errorCode !== 0) return;
+    const certificate = request.validatedCertificate ?? request.certificate;
+    verifiedCertificates.set(request.hostname, {
+        subject: certificate.subjectName, issuer: certificate.issuerName,
+        validStart: certificate.validStart, validExpiry: certificate.validExpiry,
+    });
+    if (verifiedCertificates.size > MAX_VERIFIED_CERTIFICATES) verifiedCertificates.delete(verifiedCertificates.keys().next().value!);
+}
 
 function send(entry: BrowserEntry, channel: string, payload: unknown): void {
     if (entry.closed) { return; }
@@ -120,12 +145,17 @@ function destroyEntry(entry: BrowserEntry): void {
     }
 }
 
-/** Session-wide hooks: Chrome-like UA, deny-by-default permissions, download handoff. */
+/** Session-wide hooks: Chrome-like UA, deny-by-default permissions, managed downloads. */
 function configureProfile(): void {
     const ses = profileSession!;
     ses.setUserAgent(browserUserAgent(ses.getUserAgent()));
     ses.setPermissionRequestHandler((_wc, permission, callback) => callback(isBrowserPermissionAllowed(permission)));
     ses.setPermissionCheckHandler((_wc, permission) => isBrowserPermissionAllowed(permission));
+    // Observe only: -3 keeps Chromium's own verification result, so invalid certificates still fail.
+    ses.setCertificateVerifyProc((request, callback) => {
+        recordCertificate(request);
+        callback(-3);
+    });
     ses.webRequest.onBeforeRequest((details, callback) => {
         const id = details.webContentsId;
         const entry = id === undefined ? undefined : entryByContents.get(id);
@@ -138,27 +168,24 @@ function configureProfile(): void {
         gate.then(allow => callback({ cancel: !allow }), () => callback({ cancel: true }));
     });
     ses.on('will-download', (event, item, wc) => {
-        event.preventDefault();
         const url = item.getURL();
         const entry = wc ? entryByContents.get(wc.id) : undefined;
         const original = item.getURLChain()[0];
         if (entry && wc && interceptApplication(entry, wc, {
             kind: 'download', url: validActivationUrl(original) ? original : url, deploymentUrl: url, mimeType: item.getMimeType(),
-        })) return;
-        const report = (ok: boolean, error?: string) => {
-            if (entry) {
-                const payload: BrowserDownloadEvent = { viewId: entry.viewId, url, ok, ...(error ? { error } : {}) };
-                send(entry, BROWSER_VIEW_DOWNLOAD_CHANNEL, payload);
-            }
-        };
-        if (!validateBrowserUrl(url).ok) {
-            report(false, 'Only http(s) downloads can be opened in the system browser.');
+        })) { event.preventDefault(); return; }
+        if (entry && !entry.closed && downloadStore) {
+            if (manageElectronDownload(downloadStore, item, app.getPath('downloads'))) return;
+            // Admission limits do not replay potentially authenticated/non-idempotent requests.
+            event.preventDefault();
+            send(entry, BROWSER_VIEW_DOWNLOAD_CHANNEL, { viewId: entry.viewId, url: downloadSource(url), ok: false, error: 'Too many active downloads or desktop is shutting down.' });
             return;
         }
-        shell.openExternal(url).then(
-            () => report(true),
-            (err: unknown) => report(false, err instanceof Error ? err.message : String(err)),
-        );
+        event.preventDefault();
+        // Unowned guests must never open external URLs or gain file capabilities.
+        if (!entry || entry.closed) return;
+        send(entry, BROWSER_VIEW_DOWNLOAD_CHANNEL, { viewId: entry.viewId, url: downloadSource(url), ok: false,
+            error: 'Download management is unavailable. Use Open in system browser to download from the source page.' });
     });
 }
 
@@ -357,6 +384,7 @@ function wireView(entry: BrowserEntry): void {
     wc.on('did-start-loading', () => {
         entry.error = undefined;
         entry.errorCode = undefined;
+        entry.netError = undefined;
         update();
     });
     wc.on('did-stop-loading', update);
@@ -368,6 +396,7 @@ function wireView(entry: BrowserEntry): void {
         if (isMainFrame && errorCode !== -3) {
             entry.error = errorDescription || `Load failed (${errorCode})`;
             entry.errorCode = 'navigation-failed';
+            entry.netError = errorCode;
             if (validatedURL) {
                 entry.requestedUrl = validatedURL;
             }
@@ -392,6 +421,7 @@ function load(entry: BrowserEntry, url: string): void {
     entry.requestedUrl = url;
     entry.error = undefined;
     entry.errorCode = undefined;
+    entry.netError = undefined;
     void entry.contents.loadURL(url).catch(() => {
         /* surfaced by did-fail-load */
     });
@@ -486,7 +516,7 @@ async function waitForControlContents(getContents: () => WebContents | undefined
 export class ElectronBrowserHost implements BrowserEngineHost {
     readonly engine = 'electron' as const;
 
-    constructor(private readonly profilePath: string) {}
+    constructor(private readonly profilePath: string, downloads?: BrowserDownloadStore) { downloadStore = downloads; }
 
     async availability() { return { engine: this.engine, available: true }; }
 
@@ -521,6 +551,7 @@ export class ElectronBrowserHost implements BrowserEngineHost {
                 pushState(entry);
             },
             importCookies: cookies => this.importCookies(cookies),
+            siteFacts: url => this.siteFacts(entry, url),
             snapshot: () => snapshot(entry),
             navigate: url => load(entry, url),
             nav: action => runNav(entry, action),
@@ -575,7 +606,20 @@ export class ElectronBrowserHost implements BrowserEngineHost {
         await this.profile().cookies.flushStore();
     }
 
+    /** Electron has no certificate-error bypass, so a loaded HTTPS page passed Chromium's verification. */
+    private async siteFacts(entry: BrowserEntry, url: string | undefined): Promise<BrowserSiteFacts> {
+        const facts: BrowserSiteFacts = { rejectsInvalidCertificates: true, certificateError: isCertificateNetError(entry.netError) };
+        if (!url) return facts;
+        const hostname = new URL(url).hostname;
+        const certificate = url.startsWith('https:') ? verifiedCertificates.get(hostname) : undefined;
+        if (certificate) facts.certificate = certificate;
+        try { facts.cookieCount = (await this.profile().cookies.get({ url })).length; }
+        catch { /* reported as unavailable; cookie errors are never surfaced */ }
+        return facts;
+    }
+
     async clearData(): Promise<void> {
+        verifiedCertificates.clear();
         const profile = this.profile();
         // Clear the complete browsing-data set, including the network cookie store.
         await profile.clearData();

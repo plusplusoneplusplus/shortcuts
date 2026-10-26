@@ -1,16 +1,17 @@
 /** Browser-safe wire contract shared by the server, desktop SPA and main process. */
 export const BROWSER_ACTIONS = [
     'tabs', 'open', 'select', 'snapshot', 'read', 'click', 'type', 'select_option',
-    'press', 'scroll', 'navigate', 'wait', 'screenshot', 'eval', 'frames', 'paste_html',
+    'press', 'scroll', 'navigate', 'wait', 'screenshot', 'eval', 'frames', 'paste_html', 'request_human',
 ] as const;
 
 export const BROWSER_TOOL_DESCRIPTION = 'Only in /browser mode; otherwise never call. tabs; open(url,newTab?); select(tab); snapshot(ref?,all?); '
     + 'read(ref?|frame?,offset?); click(ref); type(ref,text,submit?); select_option(ref,value); press(key,frame?); '
     + 'scroll(ref?|direction,frame?); navigate(direction:back|forward|reload); wait(text,frame?)|wait(ms); '
     + 'eval(js,frame?); frames(offset?); paste_html(ref,html,text,replaceClipboard?). Rich paste requires enabled support and focused selection; replaces clipboard only with permission. '
+    + 'request_human(text) pauses browser activity privately until the person explicitly returns control. '
     + 'Ref/frame are exclusive. Use returned refs; frames require enabled support. '
     + 'screenshot(ref?,format?,view?) only on request; JPEG default. Saves file; reply with returned markdown. view=true attaches pixels.';
-export const BROWSER_SCHEMA_CHAR_BUDGET = 1600;
+export const BROWSER_SCHEMA_CHAR_BUDGET = 1800;
 
 export interface BrowserCommand {
     action: typeof BROWSER_ACTIONS[number];
@@ -76,6 +77,7 @@ export interface BrowserCommandResult {
     value?: unknown;
     valueJson?: string;
     valueTruncated?: boolean;
+    handoffNote?: string;
     image?: { data: string; mimeType: 'image/jpeg' | 'image/png' };
 }
 
@@ -88,6 +90,8 @@ export interface BrowserCommandRequest {
     selectedTab?: string;
     framesEnabled?: boolean;
     richPasteEnabled?: boolean;
+    humanTakeoverEnabled?: boolean;
+    validateAfterTakeover?: boolean;
 }
 
 export type BrowserCommandReply =
@@ -115,7 +119,8 @@ export interface BrowserNavigationPrompt {
 export interface BrowserControlRuntime {
     getEnabled(): boolean;
     getFramesEnabled?(): boolean;
-    execute(workspaceId: string, processId: string, command: BrowserCommand, selectedTab?: string, signal?: AbortSignal, turnId?: string): Promise<BrowserCommandResult>;
+    getHumanTakeoverRevision?(workspaceId: string, processId: string): number;
+    execute(workspaceId: string, processId: string, command: BrowserCommand, selectedTab?: string, signal?: AbortSignal, turnId?: string, observedTakeoverRevision?: number): Promise<BrowserCommandResult>;
 }
 
 export const BROWSER_TOOL_PARAMETERS = {
@@ -135,6 +140,7 @@ export const BROWSER_TOOL_PARAMETERS = {
 } as const;
 
 const ACTION_PARAMS: Record<BrowserCommand['action'], { allowed: string[]; required: string[] }> = {
+    request_human: { allowed: ['text'], required: ['text'] },
     tabs: { allowed: [], required: [] },
     open: { allowed: ['url', 'newTab'], required: ['url'] },
     select: { allowed: ['tab'], required: ['tab'] },
@@ -182,6 +188,7 @@ export function assertBrowserCommand(raw: unknown): asserts raw is BrowserComman
         }
     }
     for (const name of required) if (!Object.prototype.hasOwnProperty.call(args, name)) throw new TypeError(`${action}: ${name} is required`);
+    if (action === 'request_human' && (typeof args.text !== 'string' || !args.text.trim() || args.text.length > 2000)) throw new TypeError('request_human requires a reason of 1 to 2000 characters');
     if (action === 'paste_html' && (String(args.html).length + String(args.text).length > 128000)) {
         throw new TypeError('Rich paste exceeds 128000 characters');
     }
@@ -201,3 +208,16 @@ export function parseBrowserCommand(raw: unknown): BrowserCommand {
     assertBrowserCommand(raw);
     return raw;
 }
+
+/** Ephemeral, exact-owner handoff state. Never contains page content or credentials. */
+export interface BrowserTakeoverState {
+    workspaceId: string;
+    processId: string;
+    turnId: string;
+    routingRef: string;
+    viewIds?: string[];
+    status: 'agent' | 'taking-over' | 'human' | 'checking' | 'terminated';
+    reason?: string;
+    error?: string;
+}
+export type BrowserTakeoverAction = 'take' | 'return' | 'stop';

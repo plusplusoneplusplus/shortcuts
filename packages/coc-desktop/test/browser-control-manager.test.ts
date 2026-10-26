@@ -529,3 +529,82 @@ describe('agent-driven navigation approval gate', () => {
         }
     });
 });
+
+
+describe('human takeover exact owner enforcement', () => {
+    const request = (id: string, command: BrowserCommand, selectedTab?: string, processId = 'p') => ({ id, workspaceId: 'w', processId, turnId: processId + '-turn', command, selectedTab, humanTakeoverEnabled: true });
+    const identity = (processId = 'p') => ({ workspaceId: 'w', processId, turnId: processId + '-turn', routingRef: 'w', status: 'agent' as const });
+    it.each(['electron', 'webview2'] as const)('pauses across two %s tabs, validates unchanged work and rejects a conflicting conversation', async engine => {
+        const h = harness();
+        const stamp = vi.spyOn(BrowserControlPage.prototype, 'continuationStamp').mockResolvedValue('doc:1');
+        try {
+            await h.manager.open(1, 'one', 'https://fixture.test/', 'w', engine);
+            await h.manager.open(1, 'two', 'https://fixture.test/', 'w', engine);
+            for (const tab of ['t1:one', 't1:two']) await h.manager.executeControl(1, request(tab, { action: 'snapshot' }, tab));
+            await h.manager.humanTakeover(1, identity(), 'take');
+            const pending = h.manager.executeControl(1, request('read', { action: 'read' }, 't1:one'));
+            const second = h.manager.executeControl(1, request('eval', { action: 'eval', js: '42' }, 't1:two'));
+            await expect(h.manager.executeControl(1, request('conflict', { action: 'snapshot' }, 't1:one', 'other'))).rejects.toThrow('exclusive human');
+            await expect(h.manager.humanTakeover(2, identity(), 'return')).rejects.toThrow('owner');
+            await expect(h.manager.humanTakeover(1, { ...identity(), turnId: 'wrong' }, 'return')).rejects.toThrow('turn');
+            await h.manager.humanTakeover(1, identity(), 'return', 'finished');
+            expect(await pending).toMatchObject({ text: expect.any(String), handoffNote: 'finished' });
+            expect(await second).toMatchObject({ valueJson: '42' });
+        } finally { stamp.mockRestore(); await h.manager.dispose(); }
+    });
+    it('agent initiation pauses immediately without reveal/focus and rejects changed page generations on Return', async () => {
+        const h = harness(); let generation = 'doc:1';
+        const stamp = vi.spyOn(BrowserControlPage.prototype, 'continuationStamp').mockImplementation(async () => generation);
+        try {
+            const tab = (await h.manager.executeControl(1, request('open', { action: 'open', url: 'https://fixture.test/' }))).tab;
+            h.send.mockClear();
+            const help = h.manager.executeControl(1, request('help', { action: 'request_human', text: 'Complete MFA' }, tab));
+            const queued = h.manager.executeControl(1, request('click', { action: 'click', ref: 'e1' }, tab)).catch(error => error);
+            await vi.waitFor(() => expect(h.send.mock.calls.some(([, channel, state]) => channel.includes('takeover-state') && state.status === 'human')).toBe(true));
+            expect(h.send.mock.calls.some(([, channel]) => channel === BROWSER_CONTROL_REVEAL_CHANNEL)).toBe(false);
+            generation = 'new-document:1';
+            await h.manager.humanTakeover(1, identity(), 'return', 'MFA done');
+            expect(await help).toMatchObject({ handoffNote: 'MFA done', elements: [] });
+            expect((await queued).message).toContain('stale-action');
+        } finally { stamp.mockRestore(); await h.manager.dispose(); }
+    });
+    it('keeps takeover across foreground scope changes with background control off and terminates on controlled-tab close', async () => {
+        const h = harness(); const stamp = vi.spyOn(BrowserControlPage.prototype, 'continuationStamp').mockResolvedValue('doc:1');
+        try {
+            const tab = (await h.manager.executeControl(1, request('open', { action: 'open', url: 'https://fixture.test/' }))).tab!;
+            await h.manager.humanTakeover(1, identity(), 'take');
+            expect(h.manager.retainedSessionKeys(1)).toContain('w');
+            h.manager.bindControlScope(1, 'other', 'other'); h.manager.finishUnretainedControl(1);
+            const pending = h.manager.executeControl(1, request('pending', { action: 'snapshot' }, tab), undefined, 'w').catch(error => error);
+            await h.manager.close(1, tab.slice(3));
+            expect((await pending).message).toContain('tab closed');
+        } finally { stamp.mockRestore(); await h.manager.dispose(); }
+    });
+    it('protects a manually opened tab during takeover and terminates the continuation on popup close', async () => {
+        const h = harness(); const stamp = vi.spyOn(BrowserControlPage.prototype, 'continuationStamp').mockResolvedValue('doc:1');
+        try {
+            await h.manager.executeControl(1, request('open', { action: 'open', url: 'https://fixture.test/' }));
+            await h.manager.humanTakeover(1, identity(), 'take');
+            h.sinks[0].newTab('https://private.test/');
+            const event = h.send.mock.calls.find(([, channel]) => channel === 'coc-desktop:browser-view-new-tab')?.[2];
+            expect(event?.viewId).toBeTruthy();
+            await h.manager.open(1, event.viewId, 'https://private.test/', 'w');
+            await expect(h.manager.executeControl(1, request('conflict', { action: 'read' }, `t1:${event.viewId}`, 'other'))).rejects.toThrow('exclusive human');
+            const pending = h.manager.executeControl(1, request('pending', { action: 'read' }, `t1:${event.viewId}`)).catch(error => error);
+            await h.manager.close(1, event.viewId);
+            expect((await pending).message).toContain('tab closed');
+        } finally { stamp.mockRestore(); await h.manager.dispose(); }
+    });
+    it('validates server-queued actions against the pre-handoff document even when admitted after Return', async () => {
+        const h = harness(); let generation = 'before';
+        const stamp = vi.spyOn(BrowserControlPage.prototype, 'continuationStamp').mockImplementation(async () => generation);
+        try {
+            const tab = (await h.manager.executeControl(1, request('open', { action: 'open', url: 'https://fixture.test/' }))).tab;
+            await h.manager.humanTakeover(1, identity(), 'take');
+            generation = 'after'; await h.manager.humanTakeover(1, identity(), 'return');
+            await expect(h.manager.executeControl(1, { ...request('queued', { action: 'navigate', direction: 'back' }, tab), validateAfterTakeover: true })).rejects.toThrow('stale-action');
+            expect(h.views[0].nav).not.toHaveBeenCalled();
+        } finally { stamp.mockRestore(); await h.manager.dispose(); }
+    });
+
+});

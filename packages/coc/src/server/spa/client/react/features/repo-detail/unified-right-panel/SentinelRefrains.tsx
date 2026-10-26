@@ -183,7 +183,6 @@ function JobsList({ client, owner, scrubber, baseUrl, effortLevelsEnabled, onFol
             Collapsed contents stay mounted to keep row, gate-test and Coda state. */}
         <div id={id} hidden={!open} className={open ? 'flex min-w-0 flex-col gap-2' : undefined}>
             {scrubber && <div data-testid="sentinel-refrains-built-in">{scrubber}</div>}
-            <p className={MUTED}>Results stay in each refrain&apos;s job chat and are not sent to this Sentinel. Schedules use the owning server&apos;s local time; missed runs are not caught up.</p>
             {readError && <p role="alert">Could not load refrains: {readError} <Button size="sm" variant="secondary" onClick={() => void load()}>Refresh refrains</Button></p>}
             {actionError && <p role="alert">{actionError}</p>}
             {!jobs && !readError && <div role="status" className="flex items-center gap-1"><Spinner size="sm" /> Loading refrains…</div>}

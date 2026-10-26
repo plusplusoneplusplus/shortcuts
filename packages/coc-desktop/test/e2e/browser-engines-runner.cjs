@@ -30,6 +30,11 @@ const execFileAsync = promisify(execFile);
 // macOS sandboxes the network service to userData and the user temp dir, and a
 // cookie DB anywhere else silently falls back to memory.
 app.setPath('userData', userData);
+const fixtureDownloads = path.join(userData, 'fixture-downloads');
+fs.mkdirSync(fixtureDownloads, { recursive: true });
+app.setPath('downloads', fixtureDownloads);
+// Fixture-only selection; never launch a downloaded file.
+app.on('session-created', ses => ses.on('will-download', (_event, item) => item.setSavePath(path.join(fixtureDownloads, 'fixture.zip'))));
 const externalCalls = [];
 shell.openExternal = async url => { externalCalls.push(url); };
 let confirmation = 0;
@@ -431,7 +436,10 @@ app.whenReady().then(async () => {
         await settled(main, 'related', s => s.title === 'Second');
         emit('related', { newTab, result: related });
         command('main', 'download');
-        const download = await waitFor(() => spa('window.downloads[0]'), 'download handoff');
+        const download = engine === 'electron' ? await waitFor(async () => {
+            const result = await spa('window.__browser.downloads.query()');
+            return result.ok && result.entries.find(entry => entry.state === 'completed' && entry.fileAvailable);
+        }, 'managed download') : await waitFor(() => spa('window.downloads[0]'), 'manual download fallback');
         emit('download', { download, externalCalls });
         confirmation = 0;
         const cancelled = await call(main, 'clearData', engine);

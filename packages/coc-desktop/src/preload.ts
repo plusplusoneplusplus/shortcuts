@@ -9,8 +9,10 @@
  */
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import type { DownloadRecord, DownloadAction } from './browser-downloads';
 import type { BrowserCommandRequest, BrowserCommandResult } from '@plusplusoneplusplus/coc-client';
 import type { BrowserControlActivityEvent, BrowserNavigationCheckEvent } from './browser-control-command';
+import type { BrowserSiteInfoResult } from './browser-view-policy';
 
 // The preload runs SANDBOXED (Electron sandboxes preloads by default since v20):
 // its `require` can only load the 'electron' builtin, and a relative import —
@@ -23,6 +25,8 @@ const BROWSER_HISTORY_QUERY_CHANNEL = 'coc-desktop:browser-history-query';
 const BROWSER_ADDRESS_MENU_CHANNEL = 'coc-desktop:browser-address-menu';
 const BROWSER_CONTROL_SCOPE_CHANNEL = 'coc-desktop:browser-control-scope';
 const BROWSER_CONTROL_RETAIN_CHANNEL = 'coc-desktop:browser-control-retain';
+const BROWSER_CONTROL_TAKEOVER_CHANNEL = 'coc-desktop:browser-control-takeover';
+const BROWSER_CONTROL_TAKEOVER_STATE_CHANNEL = 'coc-desktop:browser-control-takeover-state';
 const BROWSER_CONTROL_COMMAND_CHANNEL = 'coc-desktop:browser-control-command';
 const BROWSER_CONTROL_CANCEL_CHANNEL = 'coc-desktop:browser-control-cancel';
 const BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL = 'coc-desktop:browser-control-release-frames';
@@ -38,6 +42,9 @@ const BROWSER_HISTORY_SUGGEST_CHANNEL = 'coc-desktop:browser-history-suggest';
 const BROWSER_HISTORY_DELETE_CHANNEL = 'coc-desktop:browser-history-delete';
 const BROWSER_HISTORY_CLEAR_CHANNEL = 'coc-desktop:browser-history-clear';
 const BROWSER_HISTORY_RECORDING_CHANNEL = 'coc-desktop:browser-history-recording';
+const DOWNLOADS_QUERY_CHANNEL = 'coc-desktop:browser-downloads-query';
+const DOWNLOADS_ACTION_CHANNEL = 'coc-desktop:browser-downloads-action';
+const DOWNLOADS_CHANGED_CHANNEL = 'coc-desktop:browser-downloads-changed';
 const BROWSER_HISTORY_CHANGED_CHANNEL = 'coc-desktop:browser-history-changed';
 const FIND_IN_PAGE_CHANNEL = 'coc-desktop:find-in-page';
 const STOP_FIND_IN_PAGE_CHANNEL = 'coc-desktop:stop-find-in-page';
@@ -82,6 +89,7 @@ const BROWSER_PAGE_ZOOM_SET_CHANNEL = 'coc-desktop:browser-page-zoom-set';
 const BROWSER_CLICKONCE_SET_CHANNEL = 'coc-desktop:browser-clickonce-set';
 const BROWSER_PREFERENCES_CHANGED_CHANNEL = 'coc-desktop:browser-preferences-changed';
 const BROWSER_IMPORT_COOKIES_CHANNEL = 'coc-desktop:browser-import-cookies';
+const BROWSER_SITE_INFO_CHANNEL = 'coc-desktop:browser-site-info';
 const BROWSER_CLEAR_DATA_CHANNEL = 'coc-desktop:browser-clear-data';
 const BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL = 'coc-desktop:browser-view-close-requested';
 const BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL = 'coc-desktop:browser-view-focus-address-requested';
@@ -192,6 +200,8 @@ interface BrowserViewState {
 /** A page asked to open a new tab (mirrors `BrowserNewTabRequest`). */
 interface BrowserNewTabRequest {
     openerViewId: string;
+    /** Main-minted identity for a popup created during human ownership. */
+    viewId?: string;
     engine: BrowserEngine;
     url: string;
 }
@@ -250,6 +260,10 @@ const browser = {
     control: {
         framesSupported: true,
         richPasteSupported: true,
+        humanTakeoverSupported: true,
+        takeover: (identity: import('@plusplusoneplusplus/coc-client').BrowserTakeoverState, action: 'take' | 'return' | 'stop', note?: string): Promise<void> => ipcRenderer.invoke(BROWSER_CONTROL_TAKEOVER_CHANNEL, identity, action, note),
+        setTakeoverPolicy: (routingRef: string, enabled: boolean): Promise<void> => ipcRenderer.invoke(BROWSER_CONTROL_TAKEOVER_CHANNEL, { routingRef }, 'policy', enabled),
+        onTakeover: (callback: (state: import('@plusplusoneplusplus/coc-client').BrowserTakeoverState) => void) => subscribe(BROWSER_CONTROL_TAKEOVER_STATE_CHANNEL, callback),
         bindScope: (workspaceId: string | null, sessionKey: string | null): Promise<{ ownerId: number }> =>
             ipcRenderer.invoke(BROWSER_CONTROL_SCOPE_CHANNEL, workspaceId, sessionKey),
         /** Keep a background workspace scope controllable while another one is selected; `null` drops it. */
@@ -278,6 +292,15 @@ const browser = {
             return () => ipcRenderer.removeListener(BROWSER_CONTROL_REVEAL_CHANNEL, listener);
         },
     },
+    downloads: {
+        query: (): Promise<{ ok: true; entries: DownloadRecord[]; storageError: string | null; engines: Record<string, { managed: boolean; message: string }> } | BrowserHistoryFailure> => ipcRenderer.invoke(DOWNLOADS_QUERY_CHANNEL),
+        action: (id: string | null, action: DownloadAction): Promise<BrowserHistoryResult> => ipcRenderer.invoke(DOWNLOADS_ACTION_CHANNEL, id, action),
+        onChanged: (callback: () => void): (() => void) => {
+            const listener = () => callback();
+            ipcRenderer.on(DOWNLOADS_CHANGED_CHANNEL, listener);
+            return () => ipcRenderer.removeListener(DOWNLOADS_CHANGED_CHANNEL, listener);
+        },
+    },
     history: {
         suggest: (search = ''): Promise<BrowserHistorySuggestResult> => ipcRenderer.invoke(BROWSER_HISTORY_SUGGEST_CHANNEL, search),
         query: (search = '', offset = 0, limit = 50): Promise<BrowserHistoryQueryResult> =>
@@ -290,6 +313,8 @@ const browser = {
     sources: BROWSER_SOURCE_KINDS,
     importCookies: (viewId: string | null, domain: string, cookies: string, engine?: BrowserEngine): Promise<BrowserCookieImportResult> =>
         ipcRenderer.invoke(BROWSER_IMPORT_COOKIES_CHANNEL, viewId, domain, cookies, engine),
+    siteInfo: (viewId: string, sessionKey: string): Promise<BrowserSiteInfoResult> =>
+        ipcRenderer.invoke(BROWSER_SITE_INFO_CHANNEL, viewId, sessionKey),
     open: (viewId: string, source: BrowserSource | string, sessionKey: string, relatedEngine?: BrowserEngine): Promise<BrowserOpenResult> =>
         ipcRenderer.invoke(BROWSER_VIEW_OPEN_CHANNEL, viewId, source, sessionKey, relatedEngine),
     adopt: (viewId: string, guestId: number): Promise<BrowserOperationResult> =>

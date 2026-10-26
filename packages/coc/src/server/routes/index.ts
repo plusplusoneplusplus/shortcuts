@@ -896,6 +896,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         browserControl?.setFramesEnabledGetter(() => (
             opts.runtimeConfigService?.config ?? opts.resolvedConfig
         )?.browserControl?.framesEnabled === true);
+        browserControl?.setHumanTakeoverEnabledGetter(() => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.browserControl?.humanTakeoverEnabled === true);
         browserControl?.setRichPasteEnabledGetter(() => (
             opts.runtimeConfigService?.config ?? opts.resolvedConfig
         )?.browserControl?.richPasteEnabled === true);

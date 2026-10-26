@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ElectronBrowserHost } from '../src/electron-browser-host';
 import type { BrowserEventSink } from '../src/browser-host-contract';
@@ -8,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     attach: undefined as undefined | (() => void),
     expire: undefined as undefined | (() => void),
     beforeRequest: undefined as undefined | ((details: any, callback: any) => void),
+    verifyProc: undefined as undefined | ((request: any, callback: (result: number) => void) => void),
     download: undefined as undefined | ((event: any, item: any, wc: any) => void),
     external: vi.fn().mockResolvedValue(undefined),
     revoke: vi.fn(),
@@ -18,10 +20,11 @@ const mocks = vi.hoisted(() => ({
     profile: {
         getUserAgent: () => 'Electron/42', setUserAgent: vi.fn(),
         setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn(), on: vi.fn(),
+        setCertificateVerifyProc: vi.fn((proc: any) => { mocks.verifyProc = proc; }),
         clearData: vi.fn().mockResolvedValue(undefined),
         clearAuthCache: vi.fn().mockResolvedValue(undefined),
         clearCodeCaches: vi.fn().mockResolvedValue(undefined),
-        cookies: { set: vi.fn().mockResolvedValue(undefined), flushStore: vi.fn().mockResolvedValue(undefined) },
+        cookies: { set: vi.fn().mockResolvedValue(undefined), flushStore: vi.fn().mockResolvedValue(undefined), get: vi.fn().mockResolvedValue([]) },
         flushStorageData: vi.fn(),
         webRequest: { onBeforeRequest: vi.fn() },
     },
@@ -68,7 +71,7 @@ vi.mock('electron', () => ({
     },
     webContents: { fromId: () => mocks.owner },
     session: { fromPath: () => mocks.profile },
-    shell: { openExternal: mocks.external },
+    shell: { openExternal: mocks.external }, app: { getPath: () => '/native/Downloads' },
 }));
 
 beforeEach(() => {
@@ -87,6 +90,54 @@ beforeEach(() => {
 function emit(name: string, ...args: any[]) {
     for (const handler of mocks.handlers.get(name) ?? []) { handler({}, ...args); }
 }
+
+describe('Electron site information facts', () => {
+    const sink: BrowserEventSink = { state() {}, newTab() {}, download() {}, closeRequested() {}, openMenuRequested() {} };
+    const certificate = (subjectName: string) => ({ subjectName, issuerName: 'Fixture CA', validStart: 100, validExpiry: 200 });
+
+    it('observes Chromium certificate verification without changing its result', async () => {
+        const view = await new ElectronBrowserHost('profile').create({ ownerId: 7, viewId: 'cert', sessionKey: 'w', url: 'https://secure.test/' }, sink);
+        try {
+            const callback = vi.fn();
+            mocks.verifyProc!({ hostname: 'secure.test', errorCode: 0, verificationResult: 'net::OK',
+                certificate: certificate('leaf'), validatedCertificate: certificate('secure.test') }, callback);
+            mocks.verifyProc!({ hostname: 'broken.test', errorCode: -202, verificationResult: 'net::ERR_CERT_AUTHORITY_INVALID',
+                certificate: certificate('broken.test'), validatedCertificate: certificate('broken.test') }, callback);
+            expect(callback.mock.calls).toEqual([[-3], [-3]]);
+            mocks.profile.cookies.get.mockResolvedValueOnce([{ name: 'sid', value: 'secret' }, { name: 'pref', value: 'x' }]);
+            const facts = await view.siteFacts!('https://secure.test/page');
+            expect(facts).toEqual({ rejectsInvalidCertificates: true, certificateError: false, cookieCount: 2,
+                certificate: { subject: 'secure.test', issuer: 'Fixture CA', validStart: 100, validExpiry: 200 } });
+            expect(JSON.stringify(facts)).not.toContain('secret');
+            expect(mocks.profile.cookies.get).toHaveBeenCalledWith({ url: 'https://secure.test/page' });
+            expect((await view.siteFacts!('https://broken.test/')).certificate).toBeUndefined();
+            expect((await view.siteFacts!('http://secure.test/')).certificate).toBeUndefined();
+            expect(await view.siteFacts!()).toEqual({ rejectsInvalidCertificates: true, certificateError: false });
+        } finally {
+            await view.close();
+        }
+    });
+
+    it('flags only certificate failures of the current main-frame load and hides cookie read errors', async () => {
+        const view = await new ElectronBrowserHost('profile').create({ ownerId: 7, viewId: 'fail', sessionKey: 'w', url: 'https://bad.test/' }, sink);
+        try {
+            emit('did-fail-load', -202, 'ERR_CERT_AUTHORITY_INVALID', 'https://bad.test/', true);
+            expect((await view.siteFacts!()).certificateError).toBe(true);
+            emit('did-start-loading');
+            expect((await view.siteFacts!()).certificateError).toBe(false);
+            emit('did-fail-load', -105, 'ERR_NAME_NOT_RESOLVED', 'https://bad.test/', true);
+            expect((await view.siteFacts!()).certificateError).toBe(false);
+            emit('did-fail-load', -201, 'ERR_CERT_DATE_INVALID', 'https://bad.test/frame', false);
+            expect((await view.siteFacts!()).certificateError).toBe(false);
+            mocks.profile.cookies.get.mockRejectedValueOnce(new Error('secret=value'));
+            const facts = await view.siteFacts!('https://bad.test/');
+            expect(facts.cookieCount).toBeUndefined();
+            expect(JSON.stringify(facts)).not.toContain('secret');
+        } finally {
+            await view.close();
+        }
+    });
+});
 
 describe('Electron browser profile cleanup', () => {
     it('activates the owner before focusing the exact guest', async () => {
@@ -187,7 +238,7 @@ describe('Electron ClickOnce routing', () => {
         }, sink);
         return { hosted, sink };
     }
-    it('leaves default-off navigation, new windows and downloads unchanged', async () => {
+    it('keeps default-off deployment links ordinary and never replays an unmanaged download', async () => {
         const h = await opened(false);
         const event = { preventDefault: vi.fn() };
         mocks.handlers.get('will-navigate')![0](event, url);
@@ -195,7 +246,8 @@ describe('Electron ClickOnce routing', () => {
         mocks.contents.setWindowOpenHandler.mock.calls.at(-1)![0]({ url, disposition: 'foreground-tab' });
         expect(h.sink.newTab).toHaveBeenCalledWith(url);
         mocks.download!(event, { getURL: () => url, getURLChain: () => [url], getMimeType: () => 'application/x-ms-application' }, mocks.contents);
-        await vi.waitFor(() => expect(mocks.external).toHaveBeenCalledWith(url));
+        expect(mocks.external).not.toHaveBeenCalled();
+        expect(h.sink.download).toHaveBeenCalledWith(expect.objectContaining({ ok: false }));
         expect(h.sink.application).not.toHaveBeenCalled();
         await h.hosted.close();
     });
@@ -288,7 +340,8 @@ describe('Electron ClickOnce routing', () => {
         expect(callback).toHaveBeenLastCalledWith({ cancel: false });
         const ordinary = 'https://fixture.test/report.zip';
         mocks.download!({ preventDefault: vi.fn() }, { getURL: () => ordinary, getURLChain: () => [ordinary], getMimeType: () => 'application/zip' }, mocks.contents);
-        await vi.waitFor(() => expect(mocks.external).toHaveBeenCalledWith(ordinary));
+        expect(mocks.external).not.toHaveBeenCalled();
+        expect(h.sink.download).toHaveBeenCalledWith(expect.objectContaining({ ok: false }));
         await h.hosted.close();
     });
 });
@@ -623,4 +676,29 @@ describe('Electron successful history events', () => {
         expect(sink.navigationStarted).not.toHaveBeenCalled();
         await hosted.close();
     });
+});
+
+it('retains an owned Chromium download independently of its source tab and rejects unowned downloads', async () => {
+    const update = vi.fn(); let handle: any;
+    const store = { start: vi.fn((_name, _url, native) => { handle = native; return { id: 'managed', update }; }) };
+    const host = new ElectronBrowserHost('profile', store as any);
+    const sink: BrowserEventSink = { state() {}, newTab() {}, download: vi.fn(), closeRequested() {}, openMenuRequested() {} };
+    const view = await host.create({ ownerId: 7, viewId: 'managed-source', sessionKey: 'workspace', url: 'https://files.test' }, sink);
+    const item = Object.assign(new EventEmitter(), {
+        getFilename: () => 'archive.zip', getURL: () => 'https://files.test/export?auth=secret', getURLChain: () => ['https://files.test/export'], getMimeType: () => 'application/zip',
+        getState: () => 'progressing', getReceivedBytes: () => 4, getTotalBytes: () => 10,
+        isPaused: () => false, canResume: () => false, setSaveDialogOptions: vi.fn(), getSavePath: () => '/native/selected',
+        pause: vi.fn(), resume: vi.fn(), cancel: vi.fn(),
+    });
+    const event = { preventDefault: vi.fn() };
+    mocks.download!(event, item, mocks.contents);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(mocks.external).not.toHaveBeenCalled();
+    expect(item.setSaveDialogOptions).toHaveBeenCalledOnce();
+    view.close();
+    item.emit('updated', {}, 'progressing'); item.emit('done', {}, 'completed');
+    expect(update).toHaveBeenLastCalledWith(expect.objectContaining({ state: 'completed' }), true, '/native/selected');
+    expect(item.cancel).not.toHaveBeenCalled(); handle.dispose();
+    mocks.download!(event, item, { id: 99999 });
+    expect(event.preventDefault).toHaveBeenCalledOnce(); expect(store.start).toHaveBeenCalledOnce();
 });

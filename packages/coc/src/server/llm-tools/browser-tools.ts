@@ -74,6 +74,13 @@ export class BrowserToolStateStore {
         return result;
     }
 
+    acceptHandoff(workspaceId: string, processId: string, result: BrowserCommandResult): void {
+        const state = this.states.get(JSON.stringify([workspaceId, processId]));
+        if (!state || state.deleted) return;
+        if (result.tab) state.selectedTab = result.tab;
+        state.snapshots.clear();
+    }
+
     delete(workspaceId: string, processId: string): void {
         const key = JSON.stringify([workspaceId, processId]);
         const state = this.states.get(key);
@@ -237,20 +244,31 @@ export function createBrowserTool(deps: BrowserToolDeps): Tool<BrowserCommand> {
                 const signals = [deps.signal, invocation?.signal].filter((signal): signal is AbortSignal => !!signal);
                 const signal = signals.length ? AbortSignal.any(signals) : undefined;
                 signal?.throwIfAborted();
+                const observedTakeoverRevision = deps.runtime.getHumanTakeoverRevision?.(deps.workspaceId, deps.processId);
                 if (!deps.runtime.getEnabled()) throw new Error('Browser control is disabled');
+                if (command.action === 'request_human') {
+                    // Assistance must pause now, even when another browser tool call is still pending.
+                    const result = await deps.runtime.execute(deps.workspaceId, deps.processId, command, undefined, signal, turnId);
+                    signal?.throwIfAborted();
+                    if (!Array.isArray(result.elements)) throw new Error('Browser returned no refreshed page context');
+                    deps.stateStore.acceptHandoff(deps.workspaceId, deps.processId, result);
+                    return success([`Control returned to agent. Already observed information cannot be erased.`,
+                        result.handoffNote ? `Handoff note: ${result.handoffNote}` : '', status(result), formatBrowserSnapshot(result.elements)].filter(Boolean).join('\n'));
+                }
                 return await deps.stateStore.run(deps.workspaceId, deps.processId, async state => {
                     signal?.throwIfAborted();
                     if (state.deleted) throw new Error('Browser process was removed');
                     const framesEnabled = deps.runtime.getFramesEnabled?.();
-                    const result = await deps.runtime.execute(deps.workspaceId, deps.processId, command, state.selectedTab, signal, turnId);
+                    const result = await deps.runtime.execute(deps.workspaceId, deps.processId, command, state.selectedTab, signal, turnId, ...(observedTakeoverRevision === undefined ? [] : [observedTakeoverRevision]));
                     signal?.throwIfAborted();
                     if (state.deleted) throw new Error('Browser process was removed');
                     if (framesEnabled !== deps.runtime.getFramesEnabled?.()) throw new Error('Browser frame policy changed during command');
                     if (result.tab) state.selectedTab = result.tab;
                     const tab = result.tab ?? state.selectedTab;
+                    const respond = (text: string) => success(result.handoffNote ? `Handoff note: ${result.handoffNote}\n${text}` : text);
                     if (command.action === 'tabs') {
                         if (!Array.isArray(result.tabs)) throw new Error('Browser returned no tab list');
-                        return success(bounded(result.tabs.map(tab =>
+                        return respond(bounded(result.tabs.map(tab =>
                             `${tab.id}${tab.id === state.selectedTab ? ' *' : ''} ${JSON.stringify(clean(tab.title))} · ${clean(tab.url)} · ${tab.engine}`,
                         ).join('\n') || '(no URL tabs)', BROWSER_SNAPSHOT_CAP, '\ntruncated - select a tab'));
                     }
@@ -270,7 +288,7 @@ export function createBrowserTool(deps: BrowserToolDeps): Tool<BrowserCommand> {
                         if (shown && (shown < result.frames.length || result.truncated)) {
                             output.push(`[truncated: frames offset=${(command.offset ?? 0) + shown} to continue]`);
                         }
-                        return success(output.join('\n') || '(no inspected frames)');
+                        return respond(output.join('\n') || '(no inspected frames)');
                     }
                     if (command.action === 'read') {
                         if (typeof result.text !== 'string') throw new Error('Browser returned no page text');
@@ -278,11 +296,11 @@ export function createBrowserTool(deps: BrowserToolDeps): Tool<BrowserCommand> {
                         const text = result.text;
                         const total = result.textTotal;
                         if (typeof total !== 'number' || !Number.isSafeInteger(total) || total < 0 || text.length > BROWSER_READ_CAP) throw new Error('Browser returned an invalid page text result');
-                        if (result.frame && result.document) return success(formatFrameRead(command, result));
+                        if (result.frame && result.document) return respond(formatFrameRead(command, result));
                         const hint = `\ntruncated - read${command.ref ? ` ref=${command.ref}` : ''} offset=${offset + BROWSER_READ_CAP - 80} to continue`;
                         const contentCap = BROWSER_READ_CAP - 80;
                         const content = text.slice(0, contentCap);
-                        return success(content + (offset + content.length < total ? hint : ''));
+                        return respond(content + (offset + content.length < total ? hint : ''));
                     }
                     if (command.action === 'eval') {
                         if (typeof result.valueJson !== 'string') throw new Error('Browser returned no evaluation result');
@@ -293,20 +311,20 @@ export function createBrowserTool(deps: BrowserToolDeps): Tool<BrowserCommand> {
                             const warning = frameWarning(result);
                             const suffix = result.valueTruncated || header.length + result.valueJson.length + warning.length > BROWSER_EVAL_CAP
                                 ? hint : warning ? `\n${warning}` : '';
-                            return success(header + result.valueJson.slice(0, BROWSER_EVAL_CAP - header.length - suffix.length) + suffix);
+                            return respond(header + result.valueJson.slice(0, BROWSER_EVAL_CAP - header.length - suffix.length) + suffix);
                         }
-                        return success(result.valueTruncated ? result.valueJson.slice(0, BROWSER_EVAL_CAP - hint.length) + hint : result.valueJson);
+                        return respond(result.valueTruncated ? result.valueJson.slice(0, BROWSER_EVAL_CAP - hint.length) + hint : result.valueJson);
                     }
                     if (command.action === 'screenshot') {
                         if (!result.image?.data || !['image/jpeg', 'image/png'].includes(result.image.mimeType)) throw new Error('Browser returned no screenshot');
                         const file = deps.stateStore.saveScreenshot(deps.workspaceId, deps.processId, result.image);
-                        const response = success(`${status(result)}\nsaved: ![screenshot](<${file.replace(/\\/g, '/')}>)`);
+                        const response = respond(`${status(result)}\nsaved: ![screenshot](<${file.replace(/\\/g, '/')}>)`);
                         if (command.view === true) {
                             response.binaryResultsForLlm = [{ type: 'image', data: result.image.data, mimeType: result.image.mimeType, description: 'Browser screenshot' }];
                         }
                         return response;
                     }
-                    if (command.action === 'wait') return success([status(result), frameScope(result), frameWarning(result)].filter(Boolean).join('\n'));
+                    if (command.action === 'wait') return respond([status(result), frameScope(result), frameWarning(result)].filter(Boolean).join('\n'));
                     if (!Array.isArray(result.elements)) throw new Error('Browser returned no snapshot');
                     const current = elementMap(result.interactiveElements ?? result.elements ?? []);
                     const scope = tab ? snapshotScope(tab, result) : undefined;
@@ -314,14 +332,14 @@ export function createBrowserTool(deps: BrowserToolDeps): Tool<BrowserCommand> {
                     const previous = baseline && baseline.scope === scope ? baseline.elements : new Map<string, string>();
                     if (tab && result.truncated) state.snapshots.delete(tab);
                     if (tab && scope && !result.truncated) state.snapshots.set(tab, { scope, elements: current });
-                    if (command.action === 'snapshot') return success(result.frames
+                    if (command.action === 'snapshot') return respond(result.frames
                         ? formatBrowserFrameSnapshot(result, command.all) : formatBrowserSnapshot(result.elements ?? [], command.all));
                     const delta = formatBrowserDelta(previous, current);
                     const header = [status(result), frameScope(result)].filter(Boolean).join('\n');
                     const warning = frameWarning(result);
                     const changes = bounded(delta, BROWSER_SNAPSHOT_CAP - header.length - warning.length - 2,
                         '\n[truncated: output-limit; snapshot to inspect]');
-                    return success([header, changes, warning].filter(Boolean).join('\n'));
+                    return respond([header, changes, warning].filter(Boolean).join('\n'));
                 });
             } catch (error) {
                 const message = bounded(error instanceof Error ? error.message : String(error), BROWSER_EVAL_CAP, '\ntruncated error');

@@ -3,11 +3,13 @@ import { getSpaCocClient, getCocClientFor } from '../../api/cocClient';
 import { useCocClient, useCloneBaseUrl } from '../../repos/cloneRouting';
 import { useBrowserToolEnabled } from '../../features/chat/hooks/useBrowserMode';
 import { finishBrowserControlActivity, getBrowserControlActivity, subscribeBrowserControlActivity } from './browser-control-activity';
+import { getBrowserTakeover, subscribeBrowserTakeover } from './browser-takeover';
 import { desktopBrowserBridge } from './browser-bridge';
 
-export function BrowserControlBadge({ workspaceId, tabId, routingRef }: {
+export function BrowserControlBadge({ workspaceId, tabId, routingRef, viewId }: {
     workspaceId: string;
     tabId: string;
+    viewId?: string;
     routingRef?: string | null;
 }) {
     const routedClient = useCocClient(routingRef ?? workspaceId);
@@ -19,6 +21,8 @@ export function BrowserControlBadge({ workspaceId, tabId, routingRef }: {
         useCallback(() => getBrowserControlActivity(workspaceId, tabId, baseUrl), [workspaceId, tabId, baseUrl]),
         () => null,
     );
+    const takeover = useSyncExternalStore(subscribeBrowserTakeover,
+        useCallback(() => viewId ? getBrowserTakeover(routingRef ?? workspaceId, viewId) : null, [routingRef, workspaceId, viewId]), () => null);
     const browserEnabled = useBrowserToolEnabled(workspaceId, routingRef);
     const [stopping, setStopping] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -26,7 +30,7 @@ export function BrowserControlBadge({ workspaceId, tabId, routingRef }: {
 
     useEffect(() => { setError(null); }, [activity?.processId, workspaceId, tabId]);
 
-    if (!activity || !browserEnabled) return null;
+    if (!activity || !browserEnabled || takeover && takeover.status !== 'agent') return null;
 
     const stop = async () => {
         if (stoppingProcess.current) return;

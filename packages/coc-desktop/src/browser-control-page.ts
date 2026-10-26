@@ -57,6 +57,39 @@ export class BrowserControlPage {
         return { frames: this.frames.metadata(offset), frame: selected?.id, document: selected?.document, truncated: this.frames.truncated };
     }
 
+    /** Opaque document/target validity stamp; never reads input values or page text. */
+    async continuationStamp(): Promise<string> {
+        const expression = `(() => {
+            let state = window.__cocHumanContinuation;
+            if (!state) {
+                state = { document: document, id: ${JSON.stringify(randomUUID())}, revision: 0 };
+                Object.defineProperty(window, '__cocHumanContinuation', { value: state, configurable: true });
+                const changed = () => { state.revision++; };
+                state.observer = new MutationObserver(changed);
+                state.observer.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+                for (const name of ['input', 'change', 'focusin', 'scroll', 'pagehide', 'hashchange', 'popstate'])
+                    window.addEventListener(name, changed, true);
+            }
+            if (state.url !== location.href) { state.url = location.href; state.revision++; }
+            if (state.observer.takeRecords().length) state.revision++;
+            return state.id + ':' + state.revision;
+        })()`;
+        if (this.frames) {
+            await this.frames.refresh();
+            const revision = this.frames.revision;
+            const stamps = [];
+            for (const frame of this.frames.list()) {
+                if (frame.status !== 'ready' || frame.context === undefined) throw new Error('stale-action: frame validity unavailable');
+                stamps.push([frame.id, frame.document, await this.frames.evaluate(expression, frame.id)]);
+            }
+            this.frames.assert(revision);
+            return JSON.stringify(stamps);
+        }
+        const result = await this.send('Runtime.evaluate', { expression, returnByValue: true }) as { result?: { value?: unknown }; exceptionDetails?: unknown };
+        if (result.exceptionDetails || typeof result.result?.value !== 'string') throw new Error('stale-action: page validity unavailable');
+        return result.result.value;
+    }
+
     dispose(): void {
         this.frames?.dispose();
         this.frames = undefined;

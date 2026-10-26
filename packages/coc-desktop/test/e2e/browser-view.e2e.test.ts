@@ -2,7 +2,7 @@
  * End-to-end test for the browser tab host in a REAL Electron instance with
  * local HTTP fixture servers: open/refuse, link navigation, redirects,
  * in-page URL changes, history, stop/reload, failure + retry, new-window links,
- * sign-in pop-ups, session sharing/isolation, download handoff, visibility,
+ * sign-in pop-ups, session sharing/isolation, managed downloads, visibility,
  * close cleanup and restart. The scenario lives in `browser-view-runner.cjs`
  * (an Electron app main script that emits one `E2E::{json}` line per step);
  * this file spawns it and asserts.
@@ -207,12 +207,13 @@ describe.skipIf(skip)('browser tab host E2E (real Electron, local HTTP fixtures)
         expect(steps.get('sessions')).toMatchObject({ sameOwner: 'sid=signed-in', otherOwner: 'sid=signed-in', spaCookies: 0 });
     });
 
-    it('hands downloads to the system browser without writing a file', () => {
+    it('manages the original download and clearing metadata preserves the native-selected file', () => {
         const dl = steps.get('download')!;
-        expect(dl.download).toMatchObject({ viewId: 'b1', ok: true });
-        expect(dl.download.url).toMatch(/\/file\.zip$/);
-        expect(dl.externalCalls).toEqual([dl.download.url]);
-        expect(dl.downloadedFiles).toEqual([]);
+        expect(dl.download).toMatchObject({ filename: 'file.zip', state: 'completed', fileAvailable: true, active: false });
+        expect(dl.download).not.toHaveProperty('filePath');
+        expect(dl.externalCalls).toEqual([]);
+        expect(dl.clearResult).toEqual({ ok: true });
+        expect(dl.downloadedFiles).toEqual(['file.zip']);
         expect(dl.tabUrl).not.toMatch(/file\.zip$/);
     });
 

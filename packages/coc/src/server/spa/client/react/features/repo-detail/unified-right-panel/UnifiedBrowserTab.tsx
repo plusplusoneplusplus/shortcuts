@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { BrowserCookieImportDialog } from './BrowserCookieImportDialog';
 import { BrowserToolbarMenu } from './BrowserToolbarMenu';
+import { BrowserDownloadsPanel } from './BrowserDownloadsPanel';
 import { BrowserHistoryPanel } from './BrowserHistoryPanel';
 import { BrowserAddressBar } from './BrowserAddressBar';
+import { BrowserSiteInfoButton, type BrowserSiteInfoSource } from './BrowserSiteInfo';
+import { BrowserHumanTakeoverStrip } from '../../../shared/file-path/BrowserHumanTakeoverStrip';
 import { BrowserControlBadge } from '../../../shared/file-path/BrowserControlBadge';
 import { isMacPlatform } from '../../../utils/composerKeyboardShortcuts';
 import { normalizeBrowserUrl } from './unifiedBrowserTabs';
-import { NativeViewNavButtons, NativeViewTab, nativeViewToolbarButton as toolbarButton } from './NativeViewTab';
+import { NativeViewNavButtons, NativeViewTab, nativeViewToolbar, nativeViewToolbarButton as toolbarButton } from './NativeViewTab';
 import { prepareBrowserWebview, useBrowserWebviewError } from './browserWebviewLayerStore';
 import {
     desktopBrowserBridge,
@@ -68,6 +71,7 @@ export function UnifiedBrowserTab({
     const [retry, setRetry] = useState(0);
     const [menuOpen, setMenuOpen] = useState(false);
     const [cookieDialogOpen, setCookieDialogOpen] = useState(false);
+    const [downloadsScope, setDownloadsScope] = useState<string | null>(null);
     const [historyScope, setHistoryScope] = useState<string | null>(null);
     const historyKey = JSON.stringify([sessionKey, viewId, tabId, historyOwnerKey]);
     const addressRef = useRef<HTMLInputElement>(null);
@@ -76,7 +80,7 @@ export function UnifiedBrowserTab({
     const onPageStateRef = useRef(onPageState);
     onPageStateRef.current = onPageState;
 
-    useEffect(() => { setMenuOpen(false); setCookieDialogOpen(false); setHistoryScope(null); }, [active, visible, viewId, sessionKey, historyOwnerKey]);
+    useEffect(() => { setMenuOpen(false); setCookieDialogOpen(false); setHistoryScope(null); setDownloadsScope(null); }, [active, visible, viewId, sessionKey, historyOwnerKey]);
 
     useEffect(() => { setError(null); }, [url]);
 
@@ -103,8 +107,8 @@ export function UnifiedBrowserTab({
         const offDownload = bridge.onDownload(event => {
             if (event.viewId !== viewId || disposed) return;
             setNotice(event.ok
-                ? `Download opened in your system browser: ${event.url}`
-                : `Could not hand the download to your system browser: ${event.error ?? 'unknown error'}`);
+                ? 'Download opened in your system browser. Manage it there.'
+                : `Download unavailable: ${bridge.downloads ? event.error ?? 'Check Downloads for its state.' : 'Use Open in system browser to download from the source page.'}`);
         });
         // Reopening a live view with the same session keeps its history and page.
         setStartupError(null);
@@ -164,10 +168,17 @@ export function UnifiedBrowserTab({
         });
     };
     const nav = (action: 'back' | 'forward' | 'reload' | 'stop') => bridge?.nav(viewId, action);
+    // The live document, never the address draft: a new commit, load or failure closes site information.
+    const siteScope = JSON.stringify([pageOwner, url ?? '', page?.url ?? '', page?.committedPage?.revision ?? null, page?.loading ?? null, page?.error ?? null]);
+    const siteSource: BrowserSiteInfoSource = !bridge ? { kind: 'unavailable', message: 'Site information is available for pages open in the CoC desktop app.' }
+        : !bridge.siteInfo ? { kind: 'unavailable', message: 'This desktop version cannot report site information.' }
+        : !url || !opened ? { kind: 'unavailable', message: 'Open a page to see its site information.' }
+        : { kind: 'web', load: () => bridge.siteInfo!(viewId, sessionKey) };
 
     const toolbar = (
         <div
-            className="flex min-w-0 flex-shrink-0 flex-wrap items-center gap-1 border-b border-[#e5e5e5] px-2 py-1 text-xs dark:border-[#333]"
+            className={`flex min-w-0 flex-wrap ${nativeViewToolbar}`}
+            data-testid="browser-toolbar"
             onKeyDown={event => {
                 const mac = isMacPlatform();
                 if (!active || !visible || event.defaultPrevented || event.key.toLowerCase() !== 'l'
@@ -180,7 +191,7 @@ export function UnifiedBrowserTab({
                 event.stopPropagation();
             }}
         >
-            {workspaceId && <BrowserControlBadge workspaceId={workspaceId} routingRef={routingRef} tabId={tabId} />}
+            {workspaceId && <BrowserControlBadge workspaceId={workspaceId} routingRef={routingRef} tabId={tabId} viewId={viewId} />}
             {bridge && (
                 <NativeViewNavButtons
                     canGoBack={Boolean(page?.canGoBack)}
@@ -205,6 +216,7 @@ export function UnifiedBrowserTab({
                 onCopyError={() => setNotice('Rich link copy unavailable. Using standard selection copy.')}
                 showAddressMenu={bridge?.showAddressMenu}
                 onMenuError={() => setNotice('Address menu unavailable. Use the keyboard to copy or edit.')}
+                leading={<BrowserSiteInfoButton source={siteSource} scopeKey={siteScope} enabled={active && visible} />}
             />
             <BrowserToolbarMenu
                 key={`${sessionKey}:${viewId}`}
@@ -215,8 +227,10 @@ export function UnifiedBrowserTab({
                 canOpenExternal={Boolean(currentUrl)}
                 onOpenExternal={openExternal}
                 onImportCookies={bridge?.importCookies ? () => setCookieDialogOpen(true) : undefined}
+                onDownloads={() => setDownloadsScope(historyKey)}
                 onHistory={bridge?.history && onOpenHistoryUrl ? () => setHistoryScope(historyKey) : undefined}
             />
+            <BrowserHumanTakeoverStrip routingRef={sessionKey} viewId={viewId} />
         </div>
     );
 
@@ -234,6 +248,9 @@ export function UnifiedBrowserTab({
                 initialDomain={(() => { try { return new URL(currentUrl ?? '').hostname; } catch { return ''; } })()}
                 onClose={() => { setCookieDialogOpen(false); addressRef.current?.focus(); }}
                 onImported={domain => { setCookieDialogOpen(false); setNotice(`Cookies imported for ${domain}. Open the original URL to continue.`); addressRef.current?.focus(); }} />}
+            {downloadsScope === historyKey && active && visible && <BrowserDownloadsPanel
+                key={historyKey} downloads={bridge?.downloads} engine={engine ?? relatedEngine}
+                desktop={!!bridge} onClose={() => setDownloadsScope(null)} />}
             {historyScope === historyKey && active && visible && bridge?.history && onOpenHistoryUrl && <BrowserHistoryPanel
                 key={historyKey} history={bridge.history} onOpen={onOpenHistoryUrl} onClose={() => setHistoryScope(null)} />}
             {error && (

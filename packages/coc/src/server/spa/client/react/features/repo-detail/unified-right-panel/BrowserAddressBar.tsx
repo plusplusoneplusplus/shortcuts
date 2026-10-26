@@ -1,11 +1,12 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import type { BrowserHistorySuggestion, BrowserViewState, DesktopBrowserBridge, DesktopBrowserHistory } from '../../../shared/file-path/browser-bridge';
 import { escapeHtml } from '../../../utils/format';
 import { normalizeBrowserUrl } from './unifiedBrowserTabs';
+import { nativeViewAddressField } from './NativeViewTab';
 
 /** Editing stays local; matching, ranking and persistence belong to main. */
-export function BrowserAddressBar({ inputRef, url, committedPage, history, enabled, ownerKey, invalid, onEdit, onOpen, onCopyError, showAddressMenu, onMenuError }: {
+export function BrowserAddressBar({ inputRef, url, committedPage, history, enabled, ownerKey, invalid, onEdit, onOpen, onCopyError, showAddressMenu, onMenuError, leading }: {
     inputRef: RefObject<HTMLInputElement>;
     url?: string;
     committedPage?: BrowserViewState['committedPage'];
@@ -18,6 +19,8 @@ export function BrowserAddressBar({ inputRef, url, committedPage, history, enabl
     onCopyError?(): void;
     showAddressMenu?: DesktopBrowserBridge['showAddressMenu'];
     onMenuError?(): void;
+    /** Controls drawn inside the pill before the address, e.g. site information. */
+    leading?: ReactNode;
 }) {
     const id = useId();
     const [address, setAddress] = useState(url ?? '');
@@ -191,7 +194,12 @@ export function BrowserAddressBar({ inputRef, url, committedPage, history, enabl
     const submitAddress = () => activate(shown && selected >= 0 ? entries[selected].url : completion.current?.url ?? address);
 
     return <>
-        <form className="flex min-w-0 flex-1" onSubmit={event => { event.preventDefault(); submitAddress(); }}>
+        <form
+            className={`flex items-center ${nativeViewAddressField} ${leading ? 'pl-0.5' : ''} hover:border-[#c8c8c8] has-[input:focus]:border-[#007acc] has-[input:focus]:ring-1 has-[input:focus]:ring-[#007acc]/30 dark:hover:border-[#4a4a4a] dark:has-[input:focus]:border-[#007acc] ${invalid ? '!border-[#a1260d] dark:!border-[#f48771]' : ''}`}
+            onSubmit={event => { event.preventDefault(); submitAddress(); }}
+            data-testid="browser-address-pill"
+        >
+            {leading}
             <input
                 ref={inputRef}
                 type="text"
@@ -320,7 +328,7 @@ export function BrowserAddressBar({ inputRef, url, committedPage, history, enabl
                 spellCheck={false}
                 autoComplete="off"
                 autoFocus={!url}
-                className="min-w-0 flex-1 rounded border border-[#c8c8c8] bg-transparent px-2 py-1 outline-none focus:border-[#007acc] dark:border-[#3c3c3c]"
+                className={`h-full min-w-0 flex-1 bg-transparent pr-3 outline-none placeholder:text-[#8a8a8a] ${leading ? 'pl-1' : 'pl-3'}`}
                 data-testid="browser-address"
             />
         </form>

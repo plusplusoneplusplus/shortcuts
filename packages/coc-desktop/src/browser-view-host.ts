@@ -4,19 +4,20 @@ import { browserProfilePath, readBrowserEngine, writeBrowserEngine, readBrowserP
 import { activateClickOnce, ClickOnceError } from './browser-clickonce';
 import { BrowserHostManager } from './browser-host-manager';
 import { ControlDeadline } from './browser-control-queue';
+import { BrowserDownloadStore, DOWNLOADS_QUERY_CHANNEL, DOWNLOADS_ACTION_CHANNEL, DOWNLOADS_CHANGED_CHANNEL } from './browser-downloads';
 import { BrowserHistoryStore, sanitizeHistoryUrl } from './browser-history';
 import { ElectronBrowserHost } from './electron-browser-host';
 import { ElectronFilePreviewHost } from './file-preview-host';
 import { installBrowserWebviewGuard, isBrowserEmbedder, registerBrowserEmbedder as registerEmbedder } from './browser-webview-guard';
 import { WebView2BrowserHost } from './webview2-browser-host';
 import { toHtmlPageViewBounds } from './html-page-policy';
-import { BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_RETAIN_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL, BROWSER_CONTROL_NAVIGATION_DECISION_CHANNEL, validateBrowserCommandRequest } from './browser-control-command';
+import { BROWSER_CONTROL_TAKEOVER_CHANNEL, BROWSER_CONTROL_COMMAND_CHANNEL, BROWSER_CONTROL_CANCEL_CHANNEL, BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, BROWSER_CONTROL_SCOPE_CHANNEL, BROWSER_CONTROL_RETAIN_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_FINISH_CHANNEL, BROWSER_CONTROL_VISIBLE_CHANNEL, BROWSER_CONTROL_NAVIGATION_DECISION_CHANNEL, validateBrowserCommandRequest } from './browser-control-command';
 import {
     BROWSER_ADDRESS_MENU_CHANNEL,
     BROWSER_CLICKONCE_SET_CHANNEL,
     BROWSER_HISTORY_QUERY_CHANNEL, BROWSER_HISTORY_SUGGEST_CHANNEL, BROWSER_HISTORY_DELETE_CHANNEL, BROWSER_HISTORY_CLEAR_CHANNEL,
     BROWSER_HISTORY_RECORDING_CHANNEL, BROWSER_HISTORY_CHANGED_CHANNEL,
-    BROWSER_IMPORT_COOKIES_CHANNEL, BROWSER_CLEAR_DATA_CHANNEL, BROWSER_OPEN_EXTERNAL_CHANNEL, BROWSER_PREFERENCES_CHANGED_CHANNEL,
+    BROWSER_IMPORT_COOKIES_CHANNEL, BROWSER_SITE_INFO_CHANNEL, BROWSER_CLEAR_DATA_CHANNEL, BROWSER_OPEN_EXTERNAL_CHANNEL, BROWSER_PREFERENCES_CHANGED_CHANNEL,
     BROWSER_PREFERENCES_GET_CHANNEL, BROWSER_PREFERENCES_SET_CHANNEL, BROWSER_PAGE_ZOOM_SET_CHANNEL, BROWSER_VIEW_CLOSE_CHANNEL,
     BROWSER_VIEW_HIDE_CHANNEL, BROWSER_VIEW_NAV_CHANNEL, BROWSER_VIEW_NAVIGATE_CHANNEL,
     BROWSER_VIEW_OPEN_CHANNEL, BROWSER_VIEW_ADOPT_CHANNEL, BROWSER_VIEW_SET_BOUNDS_CHANNEL,
@@ -27,6 +28,7 @@ import {
 } from './browser-view-policy';
 
 let manager: BrowserHostManager | undefined;
+let downloads: BrowserDownloadStore | undefined;
 let historyMaintenance: ReturnType<typeof setInterval> | undefined;
 const owners = new Map<number, BrowserWindow>();
 const controlRequests = new Map<number, Map<string, { controller: AbortController; sessionKey: string }>>();
@@ -47,6 +49,13 @@ function cancelScopedControl(ownerId: number, keep: (sessionKey: string) => bool
 export function registerBrowserEmbedder(window: BrowserWindow, url: string): void {
     registerEmbedder(window, url);
     wireOwner(window);
+}
+
+function broadcastDownloads(): void {
+    for (const window of owners.values()) {
+        if (window.isDestroyed() || window.webContents.isDestroyed() || !isBrowserEmbedder(window.webContents)) continue;
+        try { window.webContents.send(DOWNLOADS_CHANGED_CHANNEL); } catch { /* destroyed during broadcast */ }
+    }
 }
 
 function broadcastHistory(): void {
@@ -83,6 +92,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     if (manager) { return; }
     installBrowserWebviewGuard();
     const webview2 = new WebView2BrowserHost(browserProfilePath(dataDir, 'webview2'));
+    downloads = new BrowserDownloadStore(dataDir, broadcastDownloads);
     const history = new BrowserHistoryStore(dataDir, Date.now, broadcastHistory);
     historyMaintenance = setInterval(() => {
         void history.pruneExpired().catch(error => console.error('[coc-desktop] Browser history maintenance failed:', error));
@@ -111,7 +121,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         richClipboard: clipboard,
         history,
         hosts: {
-            electron: new ElectronBrowserHost(browserProfilePath(dataDir, 'electron')),
+            electron: new ElectronBrowserHost(browserProfilePath(dataDir, 'electron'), downloads),
             webview2,
         },
         fileHost: new ElectronFilePreviewHost(),
@@ -138,6 +148,21 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     // Every history operation requires the exact registered SPA main document.
     const historyWindow = (event: Electron.IpcMainInvokeEvent) =>
         event.senderFrame === event.sender.mainFrame && isBrowserEmbedder(event.sender) ? ownWindow(event.sender) : null;
+    ipcMain.handle(DOWNLOADS_QUERY_CHANNEL, async event => {
+        if (!historyWindow(event)) return { ok: false, reason: 'no-window' };
+        const result = await downloads!.query();
+        return historyWindow(event) ? result : { ok: false, reason: 'no-window' };
+    });
+    ipcMain.handle(DOWNLOADS_ACTION_CHANNEL, async (event, id: unknown, action: unknown) => {
+        if (!historyWindow(event)) return { ok: false, reason: 'no-window' };
+        try {
+            await downloads!.action(id, action, { open: file => shell.openPath(file), show: file => shell.showItemInFolder(file) }, () => !!historyWindow(event));
+            return { ok: true };
+        } catch (error) {
+            return { ok: false, reason: error instanceof TypeError ? 'invalid' : 'unavailable',
+                message: error instanceof TypeError ? error.message : 'Download action failed. The file or operation may be unavailable.' };
+        }
+    });
     ipcMain.handle(BROWSER_CLICKONCE_SET_CHANNEL, (event, enabled: unknown) => {
         if (!historyWindow(event)) return { ok: false, reason: 'no-window' };
         if (typeof enabled !== 'boolean') return { ok: false, reason: 'invalid' };
@@ -193,6 +218,11 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     ipcMain.handle(BROWSER_CONTROL_RELEASE_FRAMES_CHANNEL, (event, sessionKey: unknown) => {
         if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');
         return manager!.releaseFrames(event.sender.id, sessionKey);
+    });
+    ipcMain.handle(BROWSER_CONTROL_TAKEOVER_CHANNEL, (event, identity, action, note) => {
+        if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');
+        if (action === 'policy') return manager!.setHumanTakeoverEnabled(event.sender.id, identity.routingRef, note === true);
+        return manager!.humanTakeover(event.sender.id, identity, action, note);
     });
     ipcMain.handle(BROWSER_CONTROL_COMMAND_CHANNEL, async (event, input: unknown, routingRef?: unknown) => {
         if (!historyWindow(event)) throw new Error('Browser control requires a registered SPA main frame');
@@ -279,6 +309,9 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     ipcMain.handle(BROWSER_IMPORT_COOKIES_CHANNEL, (event, id: unknown, domain: unknown, cookies: unknown, engine: unknown) =>
         event.senderFrame === event.sender.mainFrame && isBrowserEmbedder(event.sender) && ownWindow(event.sender)
             ? manager!.importCookies(event.sender.id, id, domain, cookies, engine) : { ok: false, reason: 'no-window' });
+    ipcMain.handle(BROWSER_SITE_INFO_CHANNEL, (event, id: unknown, sessionKey: unknown) =>
+        event.senderFrame === event.sender.mainFrame && isBrowserEmbedder(event.sender) && ownWindow(event.sender)
+            ? manager!.siteInfo(event.sender.id, id, sessionKey) : { ok: false, reason: 'no-window' });
     ipcMain.handle(BROWSER_VIEW_NAVIGATE_CHANNEL, (event, id: unknown, url: unknown) =>
         ownWindow(event.sender) ? manager!.navigate(event.sender.id, id, url) : { ok: false, reason: 'no-window' });
     ipcMain.on(BROWSER_VIEW_NAV_CHANNEL, (event, id: unknown, action: unknown) => {
@@ -346,5 +379,7 @@ export async function disposeBrowserViews(): Promise<void> {
     for (const ownerId of controlRequests.keys()) cancelControl(ownerId);
     clearInterval(historyMaintenance);
     historyMaintenance = undefined;
+    // Retire downloads before source guests; terminal callbacks cannot mark shutdown transfers completed.
+    await downloads?.dispose();
     await manager?.dispose();
 }

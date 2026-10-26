@@ -145,3 +145,19 @@ describe('browser toolbar native placement regression', () => {
         expect(screen.queryByRole('menu')).toBeNull();
     });
 });
+
+it('covers WebView2 with Downloads and restores retained native bounds after closing', async () => {
+    const bridge = mocks.bridge!;
+    vi.mocked(bridge.open).mockResolvedValue({ ok: true, engine: 'webview2' });
+    bridge.downloads = { query: vi.fn(async () => ({ ok: true, entries: [], storageError: null, engines: { webview2: { managed: false, message: 'Downloads use the system browser.' } } })), action: vi.fn(), onChanged: vi.fn(() => vi.fn()) };
+    render(<UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="workspace" url="https://example.test/" active visible onNavigate={vi.fn()} onPageState={vi.fn()} />);
+    await waitFor(() => expect(bridge.setBounds).toHaveBeenCalled());
+    await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Downloads' }));
+    expect(await screen.findByRole('dialog', { name: 'Downloads' })).toBeInTheDocument();
+    await waitFor(() => expect(bridge.hide).toHaveBeenCalledWith('view'));
+    vi.mocked(bridge.setBounds).mockClear();
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(bridge.setBounds).toHaveBeenCalled());
+    expect(bridge.open).toHaveBeenCalledOnce(); expect(bridge.close).not.toHaveBeenCalled(); expect(bridge.navigate).not.toHaveBeenCalled();
+});

@@ -1,8 +1,9 @@
+import { downloadSource } from './browser-downloads';
 import type { BrowserImportCookie } from './browser-cookie-import';
-import { BrowserWindow, screen, shell, webContents } from 'electron';
+import { BrowserWindow, screen, webContents } from 'electron';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { BROWSER_FRAME_CDP_EVENTS, BrowserHostError, validBrowserCdpSession, type BrowserCdpEventListener, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserViewRequest } from './browser-host-contract';
+import { BROWSER_FRAME_CDP_EVENTS, BrowserHostError, validBrowserCdpSession, type BrowserCdpEventListener, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserSiteFacts, type BrowserViewRequest } from './browser-host-contract';
 import { validateBrowserUrl, type BrowserAvailability, type BrowserViewState } from './browser-view-policy';
 import { browserMessage, WebView2Process } from './webview2-process';
 import type { HtmlPageBounds } from './html-page-policy';
@@ -36,6 +37,15 @@ interface NativeEntry {
     /** This view's own control turn gate; a popup is also gated while its root is. */
     navigationGate: boolean;
     gateSequence: number;
+}
+
+/**
+ * The native helper reports a failed navigation as `Navigation failed (<COREWEBVIEW2_WEB_ERROR_STATUS>)`
+ * (host.rs). Statuses 1-5 are certificate errors: common name, expired, client certificate, revoked, invalid.
+ */
+export function isWebView2CertificateError(error: string | undefined): boolean {
+    const status = /^Navigation failed \((\d+)\)$/.exec(error ?? '')?.[1];
+    return status !== undefined && Number(status) >= 1 && Number(status) <= 5;
 }
 
 /** Never-placed background views get an ordinary desktop viewport. */
@@ -126,17 +136,18 @@ export class WebView2BrowserHost implements BrowserEngineHost {
 
     private hosted(entry: NativeEntry): BrowserHostedView {
         const id = entry.nativeId;
+        const cdp: NonNullable<BrowserHostedView['cdp']> = async (method, params = {}, sessionId) => {
+            await entry.cdpReady;
+            if (this.views.get(id) !== entry) { throw new BrowserHostError('not-found', 'Browser tab is closed.'); }
+            if (entry.state.errorCode === 'runtime-crashed') { throw new BrowserHostError('runtime-crashed', entry.state.error ?? 'Browser page crashed.'); }
+            if (entry.cdpError) { throw entry.cdpError; }
+            if (sessionId !== undefined && (!validBrowserCdpSession(sessionId) || !entry.cdpSessions.has(sessionId))) {
+                throw new BrowserHostError('invalid', 'Browser frame session does not belong to this view.');
+            }
+            return this.process.request('cdp', { viewId: id, method, params, ...(sessionId !== undefined ? { sessionId } : {}) });
+        };
         return {
-            cdp: async (method, params = {}, sessionId) => {
-                await entry.cdpReady;
-                if (this.views.get(id) !== entry) { throw new BrowserHostError('not-found', 'Browser tab is closed.'); }
-                if (entry.state.errorCode === 'runtime-crashed') { throw new BrowserHostError('runtime-crashed', entry.state.error ?? 'Browser page crashed.'); }
-                if (entry.cdpError) { throw entry.cdpError; }
-                if (sessionId !== undefined && (!validBrowserCdpSession(sessionId) || !entry.cdpSessions.has(sessionId))) {
-                    throw new BrowserHostError('invalid', 'Browser frame session does not belong to this view.');
-                }
-                return this.process.request('cdp', { viewId: id, method, params, ...(sessionId !== undefined ? { sessionId } : {}) });
-            },
+            cdp,
             onCdpEvent: listener => {
                 if (this.views.get(id) !== entry) { throw new BrowserHostError('not-found', 'Browser tab is closed.'); }
                 if (!entry.cdpListeners.size) { this.subscribeCdp(entry, true); }
@@ -168,6 +179,17 @@ export class WebView2BrowserHost implements BrowserEngineHost {
                 await Promise.all(views.map(view => this.process.request('navigation-gate', { viewId: view.nativeId, navigationGate: this.gated(view) })));
             },
             importCookies: cookies => this.process.request('import-cookies', { viewId: id, cookies }),
+            // WebView2's default TLS interstitial can offer to proceed, and the helper reports no certificate.
+            siteFacts: async url => {
+                const facts: BrowserSiteFacts = { rejectsInvalidCertificates: false, certificateError: isWebView2CertificateError(entry.state.error) };
+                if (!url) return facts;
+                try {
+                    const result = await cdp('Network.getCookies', { urls: [url] }) as { cookies?: unknown } | undefined;
+                    // Count only: the reply holds values, which never leave this process.
+                    if (Array.isArray(result?.cookies)) facts.cookieCount = result.cookies.length;
+                } catch { /* reported as unavailable; cookie errors are never surfaced */ }
+                return facts;
+            },
             snapshot: () => ({ ...entry.state }),
             navigate: async url => {
                 entry.documentGeneration++;
@@ -434,10 +456,10 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         } else if (message.event === 'download' && typeof message.url === 'string') {
             const url = message.url;
             const report = (ok: boolean, error?: string) => {
-                if (this.views.get(message.viewId as string) === entry) { entry.sink.download({ viewId: entry.request.viewId, url, ok, ...(error ? { error } : {}) }); }
+                if (this.views.get(message.viewId as string) === entry) { entry.sink.download({ viewId: entry.request.viewId, url: downloadSource(url), ok, ...(error ? { error } : {}) }); }
             };
             if (!validateBrowserUrl(url).ok) { report(false, 'Only HTTP(S) downloads are supported.'); }
-            else { void shell.openExternal(url).then(() => report(true), error => report(false, error instanceof Error ? error.message : String(error))); }
+            else { report(false, 'WebView2 cannot manage this download. Use Open in system browser to download from the source page.'); }
         } else if ((message.event === 'open-menu-requested' || message.event === 'focus-address-requested' || message.event === 'reopen-closed-requested') && entry.bounds && !entry.window.isDestroyed()) {
             entry.window.webContents.focus();
             void this.focusOwner(entry.request.ownerId).then(() => {

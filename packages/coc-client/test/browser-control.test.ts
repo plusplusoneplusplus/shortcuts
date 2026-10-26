@@ -11,11 +11,12 @@ const valid: BrowserCommand[] = [
     { action: 'screenshot', ref: 'e1' }, { action: 'eval', js: 'document.title' },
     { action: 'frames' },
     { action: 'paste_html', ref: 'e1', html: '<b>Fixture</b>', text: 'Fixture' },
+    { action: 'request_human', text: 'Complete sign-in' },
 ];
 
 describe('single browser command contract', () => {
     it('declares exactly the accepted actions in a closed single-tool schema', () => {
-        expect(BROWSER_ACTIONS).toHaveLength(16);
+        expect(BROWSER_ACTIONS).toHaveLength(17);
         expect(valid.map(command => command.action)).toEqual([...BROWSER_ACTIONS]);
         expect(BROWSER_TOOL_PARAMETERS.additionalProperties).toBe(false);
         expect(BROWSER_TOOL_PARAMETERS.required).toEqual(['action']);
@@ -41,7 +42,7 @@ describe('single browser command contract', () => {
     });
 
     it.each([
-        ['open', 'url'], ['select', 'tab'], ['click', 'ref'], ['type', 'ref'],
+        ['request_human', 'text'], ['open', 'url'], ['select', 'tab'], ['click', 'ref'], ['type', 'ref'],
         ['select_option', 'value'], ['press', 'key'], ['navigate', 'direction'], ['eval', 'js'],
     ])('requires %s parameter %s', (action, param) => {
         const command = valid.find(command => command.action === action)!;
@@ -55,6 +56,7 @@ describe('single browser command contract', () => {
     });
 
     it.each([
+        { action: 'request_human', text: '' }, { action: 'request_human', text: 'x'.repeat(2001) },
         { action: 'wait' }, { action: 'wait', ms: 2, text: 'ready' },
         { action: 'wait', text: ' ' }, { action: 'wait', ms: -1 }, { action: 'wait', ms: 60_001 },
         { action: 'wait', ms: 1.5 }, { action: 'read', offset: Infinity }, { action: 'read', offset: -1 },

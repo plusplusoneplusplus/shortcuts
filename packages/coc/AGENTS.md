@@ -31,6 +31,11 @@ references before editing. Paths are package-relative.
 - Embedded web-page zoom uses desktop browser preference IPC and broadcasts, not
   workspace/server state or app zoom. Browser toolbar controls affect every URL guest;
   HTML previews, editors, terminals and external browser windows keep their own behavior.
+- Browser Downloads uses installation-wide desktop main metadata and ID-only IPC,
+  never workspace/server file paths. Electron retains original transfers with a
+  native Save dialog; WebView2 requires explicit source-page system-browser handoff.
+  Completed file actions validate native-selected file identity; record clearing
+  preserves files. See the shell knowledge reference for lifecycle and bounds.
 - Windows ClickOnce is an installation-wide, default-off Desktop Preferences toggle,
   not a workspace/server flag. New URL tabs retain its interception setting; main
   rechecks the current preference and exact source lifecycle before activation.

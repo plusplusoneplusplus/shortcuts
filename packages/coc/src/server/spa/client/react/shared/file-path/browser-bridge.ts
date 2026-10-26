@@ -15,6 +15,21 @@ export interface BrowserPreferences {
 export type BrowserOperationResult = { ok: true } | { ok: false; reason: string; message?: string };
 /** Cookie import also reports how many cookies it set, never their names or values. */
 export type BrowserCookieImportResult = { ok: true; count: number } | { ok: false; reason: string; message?: string };
+/** Mirrors `BrowserSiteInfo` in coc-desktop's browser-view-policy.ts. */
+export type BrowserSiteConnection = 'secure' | 'https-unverified' | 'insecure' | 'certificate-error' | 'failed' | 'loading' | 'local-file' | 'unknown';
+export interface BrowserSiteInfo {
+    viewId: string;
+    engine: BrowserEngine;
+    sourceKind: 'url' | 'file';
+    url: string;
+    host: string;
+    connection: BrowserSiteConnection;
+    /** Unix seconds. */
+    certificate?: { subject: string; issuer: string; validStart: number; validExpiry: number };
+    cookies: { available: true; count: number } | { available: false; reason: 'not-applicable' | 'unsupported' | 'failed' };
+    revision?: number;
+}
+export type BrowserSiteInfoResult = { ok: true; info: BrowserSiteInfo } | { ok: false; reason: string; message?: string };
 export interface BrowserHistoryEntry {
     url: string;
     title: string;
@@ -31,6 +46,30 @@ export interface DesktopBrowserHistory {
     delete(url: string): Promise<BrowserOperationResult>;
     clear(): Promise<BrowserOperationResult>;
     setRecording(recording: boolean): Promise<BrowserOperationResult>;
+    onChanged(callback: () => void): () => void;
+}
+/** Mirrors desktop main's public download metadata; no local paths or request URLs. */
+export interface BrowserManagedDownload {
+    id: string;
+    engine: 'electron';
+    filename: string;
+    source: string;
+    started: number;
+    updated: number;
+    state: 'downloading' | 'paused' | 'completed' | 'cancelled' | 'interrupted' | 'failed';
+    received: number;
+    total: number;
+    active: boolean;
+    canPause: boolean;
+    canResume: boolean;
+    fileAvailable: boolean;
+}
+export type BrowserDownloadAction = 'pause' | 'resume' | 'cancel' | 'open' | 'show' | 'remove' | 'clear';
+export type BrowserDownloadsResult = { ok: true; entries: BrowserManagedDownload[]; storageError: string | null;
+    engines: Record<string, { managed: boolean; message: string }> } | { ok: false; reason: string; message?: string };
+export interface DesktopBrowserDownloads {
+    query(): Promise<BrowserDownloadsResult>;
+    action(id: string | null, action: BrowserDownloadAction): Promise<BrowserOperationResult>;
     onChanged(callback: () => void): () => void;
 }
 export const WEBVIEW2_INSTALL_URL = 'https://developer.microsoft.com/microsoft-edge/webview2/#download-section';
@@ -55,11 +94,13 @@ export interface BrowserViewState {
 /** A page asked to open a new-window link as another tab. */
 export interface BrowserNewTabRequest {
     openerViewId: string;
+    /** Main-minted identity for a popup created during human ownership. */
+    viewId?: string;
     engine: BrowserEngine;
     url: string;
 }
 
-/** A download the desktop handed to the system browser. */
+/** Download fallback notice; current desktops return a safe source label in `url`. */
 export interface BrowserDownloadEvent {
     viewId: string;
     url: string;
@@ -73,6 +114,10 @@ export interface DesktopBrowserBridge {
     control?: {
         framesSupported?: boolean;
         richPasteSupported?: boolean;
+        humanTakeoverSupported?: boolean;
+        takeover?(identity: import('@plusplusoneplusplus/coc-client').BrowserTakeoverState, action: 'take' | 'return' | 'stop', note?: string): Promise<void>;
+        setTakeoverPolicy?(routingRef: string, enabled: boolean): Promise<void>;
+        onTakeover?(callback: (state: import('@plusplusoneplusplus/coc-client').BrowserTakeoverState) => void): () => void;
         bindScope(workspaceId: string | null, sessionKey: string | null): Promise<{ ownerId: number } | void>;
         /** Keep a background scope controllable while another is selected; `null` drops it. Absent on older desktops. */
         retainScope?(sessionKey: string, workspaceId: string | null): Promise<void>;
@@ -92,9 +137,13 @@ export interface DesktopBrowserBridge {
     };
     /** Installation-wide history; absent on older desktop hosts. */
     history?: DesktopBrowserHistory;
+    /** Installation-wide downloads; absent on older hosts. */
+    downloads?: DesktopBrowserDownloads;
     /** Source kinds `open` accepts; absent on desktops that only open URLs. */
     sources?: readonly string[];
     importCookies?(viewId: string | null, domain: string, cookies: string, engine?: BrowserEngine): Promise<BrowserCookieImportResult>;
+    /** Read-only facts for an owned view's committed page; absent on older desktop hosts. */
+    siteInfo?(viewId: string, sessionKey: string): Promise<BrowserSiteInfoResult>;
     open(viewId: string, source: string | BrowserSource, sessionKey: string, relatedEngine?: BrowserEngine): Promise<BrowserOpenResult>;
     adopt?(viewId: string, guestId: number): Promise<BrowserOperationResult>;
     navigate(viewId: string, url: string): Promise<BrowserOpenResult>;

@@ -162,7 +162,7 @@ Results/state identify the retained engine and `sourceKind`; `sessionKey` identi
 Local `.html`/`.htm` previews are `file` sources hosted as Electron webview guests by `file-preview-host.ts`, independent of engine preferences and browser-data cleanup. They have no preload, use the isolated in-memory `coc-html-page` session, and follow `html-page-policy.ts`. Only pending, main-validated exact file URLs pass the attachment guard. Invalid, relative or missing HTML files return `{ ok: false, reason }`, requiring the source-viewer fallback.
 `window.cocDesktop.htmlPage` is a compatibility wrapper for SPAs without `file` sources: it maps each `pageId` to view `html-page:<pageId>` (session key `html-page`) over the browser channels and narrows replies/states (`loading`/`loaded`/`failed`); it has no view logic of its own.
 
-SPA side: `desktopHtmlPageBridge()` adapts the `file` source and its attachment metadata to the page API (view `html-page:<pageId>`); web dashboards and remote-workspace paths keep the source viewer. `UnifiedHtmlPageTab` and `UnifiedBrowserTab` share `NativeViewTab` and `NativeViewNavButtons`; their Electron placeholders register with the same persistent guest layer. The HTML toolbar shows a read-only path.
+SPA side: `desktopHtmlPageBridge()` adapts the `file` source and its attachment metadata to the page API (view `html-page:<pageId>`); web dashboards and remote-workspace paths keep the source viewer. `UnifiedHtmlPageTab` and `UnifiedBrowserTab` share `NativeViewTab`, the toolbar classes in `NativeViewTab.tsx`, and `NativeViewNavButtons` (one rounded back/forward/reload-or-stop capsule labelled Page navigation); their Electron placeholders register with the same persistent guest layer. The browser address input and the HTML toolbar's read-only path share one pill style.
 
 ### Browser profiles and preferences
 
@@ -250,7 +250,7 @@ without installing or launching an application.
 ### Browser adapters and lifecycle
 
 Electron browser tabs use sandboxed DOM `<webview>` guests; WebView2 uses a Windows x64 Rust STA helper ([native contracts](../../../../../packages/coc-native/AGENTS.md#desktop-webview2)).
-Probes create no views; failures have no fallback/automatic installation. Navigation, layout and events are engine-neutral; related tabs/popups inherit engine/profile. Ordinary downloads go to the system browser; opted-in Windows ClickOnce requests use the shared activation policy.
+Probes create no views; failures have no fallback/automatic installation. Navigation, layout and events are engine-neutral; related tabs/popups inherit engine/profile. Electron downloads use desktop main’s download manager; WebView2 reports an explicit source-page system-browser fallback without replaying the download URL. Opted-in Windows ClickOnce requests use the shared activation policy.
 Pages have no CoC bridge, use normal TLS and deny sensitive permissions; HTML previews stay Electron.
 WebView2 placement combines renderer-relative DIP bounds with Electron's physical screen content origin. The helper maps that origin into the parent HWND's client coordinates and DPI-scales only relative bounds, keeping pages aligned below Windows menu bars through moves, zoom and fullscreen. It raises the child HWND without activation; null bounds hide it for inactive tabs and DOM overlays.
 
@@ -288,6 +288,33 @@ Native Copy and the Edit menu dispatch the input's ordinary copy event. The
 page title belongs in the tab label. The toolbar's Import cookies action opens
 `BrowserCookieImportDialog` with an editable domain and JSON or `name=value` pairs.
 
+### Desktop downloads
+
+`browser-view-host.ts` owns one `BrowserDownloadStore` (`browser-downloads.ts`) at
+`<desktopDataDir>/browser/downloads.json`. All workspaces/windows in that process
+share its 500-record bound, 90-day pruning on save and 20-live-transfer limit.
+Atomic serialized writes coalesce progress; storage failures remain visible.
+Records retain filename, safe host label, time, byte counts and native-selected
+file identity/path; public metadata excludes paths, request URLs and credentials.
+Shutdown cancels live handles, marks them interrupted and drains saves. Startup
+never restores live handles or offers retry/resume for interrupted transfers.
+
+`electron-downloads.ts` retains Chromium's original transfer and native Save dialog,
+including overwrite selection; the renderer supplies only managed IDs and actions.
+Pause/resume require live engine capability, and Open/Show require a completed,
+unchanged regular file. Clear/remove affect records only. Source navigation or
+close does not own the session's download handles. ClickOnce interception runs
+first. WebView2's native bridge supplies no retained operations: Downloads explains
+its unavailability and directs the user to open the source page in the system
+browser. Download URLs are never automatically replayed.
+
+Optional `cocDesktop.browser.downloads` exposes `query`, ID-only `action` and
+payload-free `onChanged`. IPC and broadcasts require registered exact-source SPA
+main documents. `BrowserDownloadsPanel` uses the shared modal/focus and native
+view overlay contracts, ignores stale replies, and dismisses on owner/visibility
+changes. Web dashboards and older desktops show explicit unavailability. The
+feature needs updated desktop main/preload and SPA; no experimental flag applies.
+
 ### Desktop browser control
 
 `shared/file-path/browser-control-relay.ts` attaches to existing local/clone
@@ -319,6 +346,26 @@ until they settle; release events complete dispatched key/mouse presses. The
 local-only Electron relay fixture exercises WebSocket, SPA tab creation, preload,
 main, trusted input, markdown, evaluation, JPEG crops and popup discovery.
 
+### Browser human takeover
+
+Default-off `browserControl.humanTakeoverEnabled` advertises explicit desktop support.
+Main's `BrowserHumanTakeover` owns an in-memory exact owner/workspace/process/turn gate
+across claimed URL views and popups. Toolbar Take over and `request_human(text)` pause
+dispatch immediately; issued input settles required releases before human ownership.
+Server and IPC deadlines compose with navigation holds; provider deadlines keep running.
+Late observations are discarded. Stop, disable, disconnect, close and turn finish
+terminate pending work; reconnect never replays a revoked turn.
+
+`BrowserHumanTakeoverStrip` lives in the browser toolbar. Explicit Return refreshes
+ordinary context without input values, then preserved work validates opaque document,
+frame and mutation stamps. Unprovable or changed targets return `stale-action` for
+replanning; issued unknown outcomes never replay. Tool-queue revision capture covers
+commands delayed on the server. Paused scopes survive workspace switches with background
+control off; Return requires the owning foreground surface. Snapshots and credentials
+never enter handoff state persistence. Runtime state and optional notes stay in memory.
+
+### Background browser control
+
 With default-off `browserControl.backgroundEnabled` (runtime flag
 `browserBackgroundControlEnabled`) and a desktop exposing `control.retainScope`,
 switching workspace keeps every scope with an active turn retained: the relay
@@ -332,7 +379,8 @@ hidden fail before dispatch with `foreground-required:`; the relay then sends
 `#repos/<panel scope>/chats/<processId>` (repo group or clone key); once that ref
 is foreground again, waiting requests re-run. Turn finish, tab close, server
 cancel, flag off, socket close and dispose reject and clear them. Other background
-errors return unchanged. With the flag off, switching cancels as before.
+errors return unchanged. With the flag off, switching cancels active agent work;
+human takeover retains its private pause until explicit Return or termination.
 
 Site approval (live `browserControl.navigationApprovalEnabled`, default on) gates
 agent-driven main-frame loads while a control turn is active on the view, its
@@ -404,6 +452,8 @@ The SPA shell, editors, terminals, file previews and system browser are unaffect
 Optional `browser.importCookies(viewId, domain, cookies, relatedEngine?)` accepts a null view id for blank tabs and imports into the related or configured engine profile without opening a page. An existing view id retains its own engine and ownership. The call routes through registered-main-frame, owner-checked desktop IPC to the tab’s retained engine profile, independent of its redirected URL. WebView2 retains its hidden import controller until a replacement controller exists or shutdown, preserving session cookies before the first page.
 
 Main-process validation rejects unrelated domains, invalid fields and partitioned cookies before writes; engine failures omit cookie values. Imports coordinate with profile cleanup and never navigate. JSON retains attributes, supplied expiry/session semantics and exact values, including literal double quotes and backslashes escaped with JSON syntax. Pairs retain quotes/backslashes literally, trim surrounding spaces, and use host-only, secure cookies at `/` with SameSite Lax and expiry 30 days from import. Both engines receive Unix-second expiry in their installation-wide profiles. Values reject controls, non-ASCII characters, spaces, semicolons and commas; pairs reject controls before trimming. Size and batch limits apply.
+
+Optional `browser.siteInfo(viewId, sessionKey)` backs the address pill's leading **View site information** popover (`BrowserSiteInfo.tsx`). Registered-main-frame IPC reaches `BrowserHostManager.siteInfo`, which requires the exact owner/view/session and describes the committed document, never an address draft; a reply is refused (`busy`) once a newer commit, load or failure replaces it, and the SPA closes the popover and drops late replies when owner, view, document or visibility changes. Connection states: `secure` only when the engine rejects invalid certificates with no bypass (Electron; its profile's observe-only `setCertificateVerifyProc` keeps Chromium's result with `-3` and records the verified certificate per host for issuer/expiry), `https-unverified` for WebView2 (its default TLS interstitial can offer to proceed and the helper reports no certificate), `insecure` (HTTP), `certificate-error` (Electron net errors −200…−299; WebView2 helper statuses 1–5 in `Navigation failed (<status>)`), `failed`, `loading` and `unknown`. Cookies are a count for the committed URL only (Electron `cookies.get({ url })`; WebView2 `Network.getCookies` over its view CDP transport), never names or values; read failures are explicit. Site settings show the fixed deny-by-default permission policy; there are no per-site settings. HTML page tabs show the same control with a static local-file description and no IPC.
 
 Electron `cookies.set` and WebView2 `CreateCookie`/`AddOrUpdateCookie` receive values without unquoting or decoding. Import compatibility does not guarantee site authentication. Cookie text stays in dialog memory. Native surfaces use `useNativeViewPlacement`: modals hide them globally; visible tab menus and `data-native-view-overlay` elements hide only intersecting views, including overlaps between hit-test probes. Dismissal restores placement; disposed callbacks cannot restore a previous owner. DOM webviews stay visible under menus, dialogs and toasts.
 The sandbox preload captures renderer pointer/focus events. Owner-validated `browser-host-focus` IPC restores renderer focus and sends the visible WebView2 view a `focus-host` command, which transfers native keyboard focus to its parent HWND without joining input queues.

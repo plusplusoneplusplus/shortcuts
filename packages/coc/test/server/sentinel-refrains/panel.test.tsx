@@ -94,6 +94,8 @@ describe('Sentinel Refrains', () => {
             const toggle = screen.getByRole('button', { name: /Refrains \(0\/10\)/ });
             const info = screen.getByRole('button', { name: 'About Refrains' });
             expect(toggle.contains(info)).toBe(false);
+            expect(screen.queryByText(/Results stay in each refrain/)).toBeNull();
+            expect(screen.queryByText(/missed runs are not caught up/)).toBeNull();
             fireEvent.click(info);
             const dialog = screen.getByRole('dialog', { name: 'About Refrains' });
             expect(dialog.textContent).toContain('An optional gate decides whether a run should start');
@@ -758,7 +760,6 @@ describe('Refrains section collapse under the dashboard stylesheet', () => {
         expect(toggle()).toHaveAttribute('aria-expanded', 'false');
         expect(toggle()).toHaveTextContent('\u25b8 Refrains (1/10)');
         expect(rendered(row)).toBe(false);
-        expect(rendered(screen.getByText(/Results stay in each refrain/))).toBe(false);
 
         await user.keyboard('{Enter}');
         expect(toggle()).toHaveFocus();

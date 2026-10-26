@@ -45,6 +45,29 @@ describe('UnifiedHtmlPageTab on the shared native view', () => {
         expect(bridge.setBounds).toHaveBeenCalledWith('p1', { x: 10, y: 20, width: 300, height: 200 });
     });
 
+    it('shares the browser navigation capsule and shows the path as a read-only pill', async () => {
+        const bridge = makeBridge(true);
+        tab();
+        await act(async () => {});
+        const capsule = screen.getByRole('group', { name: 'Page navigation' });
+        expect(Array.from(capsule.children).map(child => child.getAttribute('data-testid')))
+            .toEqual(['html-page-back', 'html-page-forward', 'html-page-nav-separator', 'html-page-reload']);
+        const path = screen.getByTestId('html-page-path');
+        expect(path.tagName).toBe('SPAN');
+        expect(path).toHaveClass('truncate');
+        expect(path).toHaveAttribute('title', '/w/pages/index.html');
+        const pill = screen.getByTestId('html-page-path-pill');
+        expect(pill).toHaveClass('rounded-full');
+        expect(pill.firstElementChild).toBe(screen.getByRole('button', { name: 'View site information' }));
+        fireEvent.click(screen.getByRole('button', { name: 'View site information' }));
+        const dialog = screen.getByRole('dialog', { name: 'index.html' });
+        expect(dialog).toHaveTextContent('Local file');
+        expect(dialog).toHaveTextContent('isolated in-memory session');
+        expect(dialog).not.toHaveTextContent(/secure/i);
+        expect(bridge.open).toHaveBeenCalledTimes(1);
+        expect(screen.getByTestId('html-page-toolbar')).toHaveClass('overflow-x-auto', 'bg-[#f8f8f8]');
+    });
+
     it('drives back/forward/reload/open-externally through the merged bridge', async () => {
         const bridge = makeBridge(true);
         tab();

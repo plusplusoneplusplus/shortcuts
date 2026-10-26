@@ -1,3 +1,4 @@
+import { shell } from 'electron';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WebView2BrowserHost } from '../src/webview2-browser-host';
 import { BROWSER_FRAME_CDP_EVENTS, BrowserHostError, type BrowserEventSink, type BrowserHostedView } from '../src/browser-host-contract';
@@ -36,7 +37,7 @@ vi.mock('electron', () => ({
     BrowserWindow: { fromWebContents: () => ({ ...mocks.window, webContents: mocks.owner }) },
     screen: { dipToScreenPoint: mocks.dipToScreenPoint },
     webContents: { fromId: () => mocks.owner },
-    shell: {},
+    shell: { openExternal: vi.fn() },
 }));
 
 vi.mock('../src/webview2-process', async importOriginal => ({
@@ -1077,4 +1078,55 @@ describe('WebView2 agent navigation approval gate', () => {
         expect(navigates()).toHaveLength(1);
         await h.host.dispose();
     });
+});
+
+describe('WebView2 site information facts', () => {
+    beforeEach(() => { vi.clearAllMocks(); mocks.request.mockReset().mockResolvedValue(undefined); });
+
+    it('recognizes only the native helper certificate statuses', async () => {
+        const { isWebView2CertificateError } = await import('../src/webview2-browser-host');
+        expect([1, 2, 3, 4, 5].every(status => isWebView2CertificateError(`Navigation failed (${status})`))).toBe(true);
+        for (const error of [undefined, '', 'Navigation failed (0)', 'Navigation failed (6)', 'Navigation failed (12)', 'Certificate (2)', 'Navigation failed (2) extra']) {
+            expect(isWebView2CertificateError(error)).toBe(false);
+        }
+    });
+
+    it('counts cookies through the view CDP transport, never claims certificate verification, and hides failures', async () => {
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'site', sessionKey: 'workspace', url: 'https://fixture.test/' }, sink);
+        mocks.request.mockReset().mockImplementation(async (op: string) => op === 'cdp'
+            ? { cookies: [{ name: 'sid', value: 'secret' }, { name: 'pref', value: 'x' }] } : undefined);
+        const facts = await view.siteFacts!('https://fixture.test/page');
+        expect(facts).toEqual({ rejectsInvalidCertificates: false, certificateError: false, cookieCount: 2 });
+        expect(JSON.stringify(facts)).not.toContain('secret');
+        expect(mocks.request).toHaveBeenCalledExactlyOnceWith('cdp', { viewId: '7:site:1', method: 'Network.getCookies', params: { urls: ['https://fixture.test/page'] } });
+        mocks.request.mockClear();
+        expect(await view.siteFacts!()).toEqual({ rejectsInvalidCertificates: false, certificateError: false });
+        expect(mocks.request).not.toHaveBeenCalled();
+        const failed = { url: 'https://fixture.test/', title: '', loading: false, canGoBack: false, canGoForward: false, errorCode: 'navigation-failed' };
+        mocks.onEvent({ event: 'state', viewId: '7:site:1', state: { ...failed, error: 'Navigation failed (2)' } });
+        expect((await view.siteFacts!()).certificateError).toBe(true);
+        mocks.onEvent({ event: 'state', viewId: '7:site:1', state: { ...failed, error: 'Navigation failed (9)' } });
+        expect((await view.siteFacts!()).certificateError).toBe(false);
+        mocks.request.mockRejectedValueOnce(new Error('secret=value'));
+        const hidden = await view.siteFacts!('https://fixture.test/');
+        expect(hidden.cookieCount).toBeUndefined();
+        expect(JSON.stringify(hidden)).not.toContain('secret');
+    });
+});
+
+it('offers explicit system-browser fallback without replaying authenticated/non-idempotent download URLs', async () => {
+    const host = new WebView2BrowserHost('profile');
+    const download = vi.fn();
+    const view = await host.create({ ownerId: 7, viewId: 'fallback-download', sessionKey: 'workspace', url: 'https://files.test/source' }, { ...sink, download });
+    const nativeId = mocks.request.mock.calls.filter(call => call[0] === 'open').at(-1)![1].viewId;
+    mocks.onEvent({ event: 'download', viewId: nativeId, url: 'https://user:secret@files.test/file?auth=token#private' });
+    expect(shell.openExternal).not.toHaveBeenCalled();
+    expect(download).toHaveBeenCalledWith({ viewId: 'fallback-download', url: 'files.test', ok: false,
+        error: 'WebView2 cannot manage this download. Use Open in system browser to download from the source page.' });
+    expect(JSON.stringify(download.mock.calls)).not.toMatch(/secret|token|private|auth=/);
+    await view.close();
+    download.mockClear();
+    mocks.onEvent({ event: 'download', viewId: nativeId, url: 'https://files.test/file' });
+    expect(download).not.toHaveBeenCalled();
 });

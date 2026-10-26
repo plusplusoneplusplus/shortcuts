@@ -107,7 +107,7 @@ model. A dock target change keeps explicit member opens valid within that panel.
 | `UnifiedPanelTreeToggle.tsx` | The Explorer half of the panel's navigator controls. It renders with Search in the file toolbar or, when that toolbar is absent, in the tab strip. |
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
 | `UnifiedPanelOpenMenu.tsx` + `unifiedPanelOpenMenuModel.ts` | The searchable `+` popover. It reads `targets` for labels and the unavailable reason but does not change the target — the strip picker owns that. A query that normalizes to an http(s) URL adds an "Open … Browser" row (first for an explicit scheme, after file hits for a bare domain); a query written with another scheme adds an unselectable inline error row. Plain text stays a file search. |
-| `unifiedBrowserTabs.ts` + `UnifiedBrowserTab.tsx` | Browser tab rules and view: `normalizeBrowserUrl` (http(s) only, `https://` for a bare domain, `http://` for loopback, no search fallback), `browserOpenInput`, and `browserSessionKey` (the concrete owner route, else workspace id). The view owns navigation, inline rejection and an Open in system browser fallback. The … menu opens `BrowserCookieImportDialog` when the desktop bridge supports `importCookies`: an editable domain plus JSON or cookie pairs, sent through owner-checked local IPC to the retained engine profile. Blank tabs import directly into the related or configured engine profile without creating a page; existing tabs keep their retained engine. Imports stay independent of redirects and never navigate automatically; cookie text stays in dialog state and is discarded on close. JSON preserves cookie attributes and supplied expiry/session semantics; pairs use host-only, secure cookies at `/` with SameSite Lax and expiry 30 days from import, surviving CoC restarts in that engine's installation-wide profile. Ctrl+L (Cmd+L on macOS) focuses and selects its complete editable value from toolbar controls or owner-qualified native `onFocusAddressRequested` events, only while active and visible. |
+| `unifiedBrowserTabs.ts` + `UnifiedBrowserTab.tsx` | Browser tab rules and view: `normalizeBrowserUrl` (http(s) only, `https://` for a bare domain, `http://` for loopback, no search fallback), `browserOpenInput`, and `browserSessionKey` (the concrete owner route, else workspace id). The view owns navigation, inline rejection and an Open in system browser fallback. The … menu opens `BrowserCookieImportDialog` when the desktop bridge supports `importCookies`: an editable domain plus JSON or cookie pairs, sent through owner-checked local IPC to the retained engine profile. Blank tabs import directly into the related or configured engine profile without creating a page; existing tabs keep their retained engine. Imports stay independent of redirects and never navigate automatically; cookie text stays in dialog state and is discarded on close. JSON preserves cookie attributes and supplied expiry/session semantics; pairs use host-only, secure cookies at `/` with SameSite Lax and expiry 30 days from import, surviving CoC restarts in that engine's installation-wide profile. Ctrl+L (Cmd+L on macOS) focuses and selects its complete editable value from toolbar controls or owner-qualified native `onFocusAddressRequested` events, only while active and visible. The address pill's leading `BrowserSiteInfo` control reads `bridge.siteInfo(viewId, sessionKey)` for the committed document and closes on any owner, view, document or visibility change; HTML page tabs show it with a static local-file description. |
 | `BrowserAddressBar.tsx` | Shared address editing and optional history combobox. Blank input makes no suggestion queries or dropdown; clearing invalidates replies. Main ranks eight suggestions with case-preserving suffix completion. Stored-URL activation, Escape, deletion/paste/caret/IME and owner checks preserve editing. Standard Copy adds escaped HTML plus the raw URL only for a fully selected, unedited committed page; drafts, partial selections and cut retain native defaults. Optional native address menus dispatch ordinary editing commands. See the knowledge shell reference for committed-page identity and clipboard fallback contracts. |
 | `NativeViewTab.tsx` + `useNativeViewPlacement.ts` | Shared frame and navigation buttons. Electron browser/HTML placeholders register with the persistent webview layer; WebView2 uses native placement and hide-on-overlap. |
 | `BrowserWebviewLayer.tsx` + `browserWebviewLayerStore.ts` | App-level Electron guest ownership, adoption, clipped placement, visibility and explicit close. Guests never move between workspace subtrees. |
@@ -736,7 +736,7 @@ engine across all installation workspaces; browser tab descriptors stay
 ephemeral. A blank tab opens no view until it
 has a URL; address submits on a live view call `navigate`. The toolbar has
 Back/Forward/Reload|Stop, an editable address, and `BrowserToolbarMenu`
-with the actual engine, desktop History and the current-page system-browser action. The menu is
+with the actual engine, History, Downloads and the current-page system-browser action. The menu is
 a fixed dropdown portalled to the document body above the live Electron page.
 Escape, outside clicks, repeated trigger clicks, and loss of tab visibility or
 ownership dismiss it. Page titles appear in tab labels; load errors and download
@@ -758,6 +758,17 @@ owner, tab and visibility changes dismiss the dialog. Opening an entry mints a
 fresh tab through the panel's current dock target and concrete clone route, with
 no inherited engine override. Electron guests stay attached under the dialog;
 its modal/overlay marker hides WebView2 surfaces.
+
+`BrowserDownloadsPanel` opens from Downloads, including blank tabs, through optional
+`browser.downloads` IPC. Its records belong to the desktop installation across
+all windows/workspaces, with bounded main-owned persistence. The renderer sends
+managed IDs/actions, never save paths or request URLs. Electron uses its original
+transfer and native Save dialog; pause/resume reflect live capabilities. Completed
+file Open/Show require main's file identity check. Remove/clear preserve files.
+WebView2 requires explicit source-page system-browser handoff; web dashboards and
+older desktops explain unavailability. No automatic opening or request retry is
+available. Owner/visibility changes dismiss the modal and invalidate late replies;
+its focus trap and overlay marker cover native views without destroying guests.
 
 Electron opens return `embed: 'webview'` with a main-approved `src` and `partition`.
 The app-level `BrowserWebviewLayer` creates each guest once and calls
