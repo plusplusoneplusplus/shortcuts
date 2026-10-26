@@ -837,7 +837,13 @@ reorder and confirmed delete use set revisions; deletion previews workspace-wide
 item/chat counts and refreshes the ledger. Name drafts retain captured revisions
 and require explicit review after concurrent changes. The same socket refreshes
 categories on workspace-scoped `sentinel-todo-categories-changed` events across
-chats. Owner/transport remounts and request generations discard late results;
+chats. Active normal items render in collapsible workspace-ordered category
+sections with total and display-status attention counts; empty categories remain
+visible and Uncategorized appears only for unassigned or unknown-category items.
+Items retain status ordering within each category. Manual, Done, Archived and
+search lists retain their sections and show category labels on cards. Collapsing
+a selected category clears selection while keeping editor drafts; selection or a
+category move reveals its destination. Owner/transport remounts and request generations discard late results;
 unresolved remote owners make no local requests. Stored `todo`
 tabs remain visible in `useUnifiedPanelTabs`; the `+` menu offers To-do for the
 selected hosted Sentinel chat.

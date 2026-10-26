@@ -909,6 +909,12 @@ new preview. `useSentinelTodoEvents` shares its owning-server workspace socket
 between ledger and category invalidations, refreshing all chats on
 `sentinel-todo-categories-changed`. Owner/transport remounts isolate drafts and
 late responses. Unresolved remote owners cannot issue category requests locally.
+Active normal items group by workspace category order, retaining display-status
+ordering within each section. Headers expose total and attention counts; empty
+categories remain visible and nonempty Uncategorized includes missing IDs.
+Manual, Done, Archived and search retain their sections with category labels.
+Category collapse clears contained selection while keeping editor drafts;
+selection or category movement reveals the destination.
 
 ### Sentinel To-do dependencies
 

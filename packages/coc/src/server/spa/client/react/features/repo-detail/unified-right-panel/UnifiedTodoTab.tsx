@@ -360,6 +360,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     const [showManual, setShowManual] = useState(restored.sections?.manual ?? true);
     const [showManualDone, setShowManualDone] = useState(restored.sections?.manualDone ?? false);
     const [showManualArchived, setShowManualArchived] = useState(restored.sections?.manualArchived ?? false);
+    const [collapsedCategories, setCollapsedCategories] = useState<ReadonlySet<string>>(() => new Set());
     const manualId = useId();
     const detailId = useId();
 
@@ -427,12 +428,13 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         void load();
         return () => { mounted.current = false; loadSeq.current += 1; };
     }, [load]);
-    const previousTagsEnabled = useRef(tagsEnabled);
+    const previousFeatures = useRef({ tags: tagsEnabled, categories: categories.enabled });
     useEffect(() => {
-        const enabledNow = tagsEnabled && !previousTagsEnabled.current;
-        previousTagsEnabled.current = tagsEnabled;
+        const enabledNow = (tagsEnabled && !previousFeatures.current.tags)
+            || (categories.enabled && !previousFeatures.current.categories);
+        previousFeatures.current = { tags: tagsEnabled, categories: categories.enabled };
         if (enabledNow) void load();
-    }, [tagsEnabled, load]);
+    }, [tagsEnabled, categories.enabled, load]);
     useSentinelTodoEvents(owner, () => { void load(); }, () => { void categories.reload(); });
 
     useEffect(() => { onErrorChange?.(loadError !== null); }, [loadError, onErrorChange]);
@@ -443,6 +445,16 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         : sentinelTodoRecentPage(filteredItems, visibleLimit).items, [filteredItems, visibleLimit, effectiveTagFilter]);
     const sections = useMemo(() => sentinelTodoSections(recentItems, 'normal'), [recentItems]);
     const manual = useMemo(() => sentinelTodoSections(recentItems, 'manual'), [recentItems]);
+    const categoryGroups = useMemo(() => {
+        const definitions = categories.enabled ? categories.categorySet?.categories ?? [] : [];
+        const knownIds = new Set(definitions.map(category => category.id));
+        return [...definitions.map(category => ({ ...category,
+            items: sections.active.filter(item => item.categoryId === category.id),
+        })), { id: '', name: 'Uncategorized',
+            items: sections.active.filter(item => !item.categoryId || !knownIds.has(item.categoryId)),
+        }].filter(group => group.id !== '' || group.items.length > 0);
+    }, [categories.enabled, categories.categorySet, sections.active]);
+
     // Search covers the whole loaded ledger — Done, Archived and items past the recent page —
     // ignoring the tag filter, in the list's own section order.
     const searchResults = useMemo(() => searchQuery.words.length ? sentinelTodoSearchItems(orderedItems, searchQuery) : null,
@@ -702,6 +714,17 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     const selected = ledger?.items.find(item => item.id === selectedId);
     const selectedType = selected ? sentinelTodoType(selected) : null;
     const selectedSection = selected ? selected.archived ? 'archived' : selected.status === 'done' ? 'done' : 'active' : null;
+    const selectedCategory = categoryGroups.find(group => group.items.some(item => item.id === selectedId))?.id;
+    useLayoutEffect(() => {
+        if (selectedCategory === undefined) return;
+        setCollapsedCategories(previous => {
+            if (!previous.has(selectedCategory)) return previous;
+            const next = new Set(previous);
+            next.delete(selectedCategory);
+            return next;
+        });
+    }, [selectedId, selectedCategory]);
+
     // Reveal on selection or section movement, not on every snapshot or item edit.
     useLayoutEffect(() => {
         if (selectedType === null || selectedSection === null) {
@@ -794,7 +817,10 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
         ? <span className={cn('text-[11px]', MUTED)}>Drop a Done item here to reopen as To do.</span> : null;
     const renderList = (items: readonly SentinelTodoItem[], search?: SentinelTodoSearchQuery) => (
         <ul className="flex flex-col gap-1" role="list">
-            {items.map(item => <CompactTodoRow key={item.id} {...rowProps(item)} search={search} selected={item.id === selectedId} onSelect={() => selectItem(item.id)}
+            {items.map(item => <CompactTodoRow key={item.id} {...rowProps(item)}
+                categoryLabel={categories.enabled && (search || sentinelTodoType(item) === 'manual' || item.archived || item.status === 'done')
+                    ? categories.categorySet?.categories.find(category => category.id === item.categoryId)?.name ?? 'Uncategorized' : undefined}
+                search={search} selected={item.id === selectedId} onSelect={() => selectItem(item.id)}
                 onReopenDragStart={item.status === 'done' && !item.archived ? event => {
                     draggedDone.current = item;
                     setDraggedDoneType(sentinelTodoType(item));
@@ -966,7 +992,29 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                     ) : <>
                     <section aria-label="To do" data-testid="sentinel-todo-reopen-normal" {...reopenTargetProps('normal')}>
                     {reopenHint('normal')}
-                    {normalCount === 0 ? (
+                    {categories.enabled ? <div className="flex flex-col gap-2" data-testid="sentinel-todo-category-groups">
+                        {categoryGroups.map(group => {
+                            const open = !collapsedCategories.has(group.id);
+                            const attention = group.items.filter(item => sentinelTodoDisplayStatus(item) === 'needs_attention').length;
+                            return <Section key={group.id} label={group.name} count={group.items.length} attention={attention}
+                                open={open} testId={`sentinel-todo-category-${group.id || 'uncategorized'}`}
+                                onToggle={() => {
+                                    setCollapsedCategories(previous => {
+                                        const next = new Set(previous);
+                                        if (open) next.add(group.id); else next.delete(group.id);
+                                        return next;
+                                    });
+                                    if (open && group.items.some(item => item.id === selectedId)) {
+                                        setSelectedId(null);
+                                        setDetailOpen(false);
+                                    }
+                                }}>
+                                {group.items.length ? renderList(group.items) : <span className={MUTED}>No active items.</span>}
+                            </Section>;
+                        })}
+                        {categoryGroups.length === 0 && <span className={MUTED}>No categories yet. Add a category to group your items.</span>}
+                        {normalCount === 0 && !addForm.adding && <Button size="sm" onClick={openAddForm}>Add item</Button>}
+                    </div> : normalCount === 0 ? (
                         !addForm.adding && (
                             <div className={cn('flex flex-col items-start gap-2 p-2', MUTED)} data-testid="sentinel-todo-empty">
                                 <span>{effectiveTagFilter ? 'No normal items match this tag filter.' : ledger.items.some(item => sentinelTodoType(item) === 'normal')
@@ -1074,8 +1122,8 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     );
 }
 
-function Section({ label, count, open, onToggle, testId, children }: {
-    label: string; count: number; open: boolean; onToggle: () => void; testId: string; children: ReactNode;
+function Section({ label, count, attention, open, onToggle, testId, children }: {
+    label: string; count: number; attention?: number; open: boolean; onToggle: () => void; testId: string; children: ReactNode;
 }) {
     return (
         <div data-testid={testId}>
@@ -1083,6 +1131,7 @@ function Section({ label, count, open, onToggle, testId, children }: {
                 className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left font-medium hover:bg-black/[0.04] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] dark:hover:bg-white/[0.04]">
                 <span aria-hidden="true">{open ? '▾' : '▸'}</span>
                 {label} ({count})
+                {attention !== undefined && <span className={MUTED}>· {attention} need{attention === 1 ? 's' : ''} attention</span>}
             </button>
             {open && <div className="pt-1">{children}</div>}
         </div>
@@ -1199,11 +1248,12 @@ function TodoCardMenu({ owner, item, onAttach, disabled, onAction }: {
     </div>;
 }
 
-function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibrary, selected, onSelect, menuDisabled, onMenuAction, onReopenDragStart, onReopenDragEnd, search }: Pick<TodoDetailProps, 'item' | 'owner' | 'currentWorkspaceId' | 'onFollowLink' | 'tagLibrary'> & {
+function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibrary, selected, onSelect, menuDisabled, onMenuAction, onReopenDragStart, onReopenDragEnd, search, categoryLabel }: Pick<TodoDetailProps, 'item' | 'owner' | 'currentWorkspaceId' | 'onFollowLink' | 'tagLibrary'> & {
     selected: boolean; onSelect: () => void; menuDisabled: boolean; onMenuAction: (action: TodoMenuAction) => void;
     onReopenDragStart?: (event: DragEvent<HTMLButtonElement>) => void; onReopenDragEnd: () => void;
     /** An active search: highlight matches and excerpt the collapsed field that matched. */
     search?: SentinelTodoSearchQuery;
+    categoryLabel?: string;
 }) {
     const excerpt = search ? sentinelTodoSearchExcerpt(item, search) : null;
     const { canAttach, attach, attachError, drag } = useTodoAttachment(owner, item);
@@ -1277,6 +1327,7 @@ function CompactTodoRow({ item, owner, currentWorkspaceId, onFollowLink, tagLibr
             <span className="font-medium">{excerpt.field === 'notes' ? 'Notes' : 'Done when'}:</span>{' '}
             <HighlightedText text={excerpt.text} query={search} />
         </p>}
+        {categoryLabel && <span className={cn('block px-1.5 pb-1 text-[11px]', MUTED)} data-testid={`sentinel-todo-category-label-${item.id}`}>{categoryLabel}</span>}
         {tagLibrary && item.tagIds?.length ? <div className="px-1.5 pb-1"><SentinelTodoTagChips item={item} library={tagLibrary} /></div> : null}
         {(item.jobs.length > 0 || reasonPreview) && <div className="min-w-0 px-1.5 pb-1">
             <TodoJobs item={item} owner={owner} currentWorkspaceId={currentWorkspaceId} onFollowLink={onFollowLink} reasonPreview={reasonPreview} />

@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { SentinelTodoCategorySet } from '@plusplusoneplusplus/coc-client';
+import type { SentinelTodoCategorySet, SentinelTodoItem } from '@plusplusoneplusplus/coc-client';
 
 const { api, client, references, sockets } = vi.hoisted(() => {
     const api = { get: vi.fn(), connect: vi.fn(), getCategories: vi.fn(), createCategory: vi.fn(), updateCategory: vi.fn(),
@@ -18,7 +18,7 @@ vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', async import
     getCocClientForWorkspace: (reference: unknown) => { references.push(reference); return client; },
 }));
 vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelRefrains', () => ({
-    SentinelRefrains: ({ toolbar, children }: { toolbar: React.ReactNode; children: React.ReactNode }) => <>{toolbar}{children}</>,
+    SentinelRefrains: ({ toolbar, children }: { toolbar: React.ReactNode; children: (scrubber: React.ReactNode) => React.ReactNode }) => <>{toolbar}{children(null)}</>,
 }));
 vi.mock('../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelCodaFinding', async importOriginal => ({
     ...(await importOriginal<object>()), AcceptAllCodaProposals: () => null, SentinelCodaFinding: () => null,
@@ -300,5 +300,120 @@ describe('workspace category management', () => {
         await manage();
         expect(screen.getByText('No categories yet.')).toBeTruthy();
         expect(sockets[0].close).toHaveBeenCalledOnce();
+    });
+});
+
+function todo(id: string, patch: Partial<SentinelTodoItem> = {}): SentinelTodoItem {
+    return { id, title: id, completionCondition: '', notes: '', status: 'todo', archived: false,
+        revision: 1, createdAt: '2026-10-09T00:00:00.000Z', updatedAt: '2026-10-09T00:00:00.000Z',
+        createdBy: 'sentinel', updatedBy: 'sentinel', jobs: [], type: 'normal', priority: 'regular', ...patch };
+}
+const group = (id: string) => screen.getByTestId(`sentinel-todo-category-${id}`);
+const rowIds = (element: HTMLElement) => [...element.querySelectorAll('[data-todo-select]')].map(row => row.getAttribute('data-todo-select'));
+
+describe('category grouped view', () => {
+    it.each([320, 900])('uses workspace order, status order and active normal counts at %ipx', async width => {
+        vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(width);
+        sets['ws-owner'].categories.push({ id: 'empty', name: 'Empty' });
+        api.get.mockResolvedValue({ revision: 1, items: [
+            todo('docs-open', { categoryId: 'docs' }), todo('ui-open', { categoryId: 'ui' }),
+            todo('ui-attention', { categoryId: 'ui', status: 'needs_attention', statusReason: 'Review' }),
+            todo('ui-progress', { categoryId: 'ui', status: 'in_progress' }),
+            todo('unknown', { categoryId: 'deleted' }), todo('none'),
+            todo('manual', { categoryId: 'ui', type: 'manual', status: 'needs_attention' }),
+            todo('done', { categoryId: 'ui', status: 'done' }), todo('archived', { categoryId: 'ui', archived: true }),
+        ] });
+        render(<UnifiedTodoTab owner={owner} />);
+        await waitFor(() => expect(rowIds(group('ui'))).toHaveLength(3));
+        const groups = screen.getByTestId('sentinel-todo-category-groups');
+        expect([...groups.children].map(node => node.getAttribute('data-testid'))).toEqual([
+            'sentinel-todo-category-ui', 'sentinel-todo-category-docs', 'sentinel-todo-category-empty', 'sentinel-todo-category-uncategorized',
+        ]);
+        expect(rowIds(group('ui'))).toEqual(['ui-attention', 'ui-progress', 'ui-open']);
+        expect(within(group('ui')).getByRole('button', { name: /Interface \(3\).*1 needs attention/ })).toBeTruthy();
+        expect(within(group('empty')).getByRole('button', { name: /Empty \(0\).*0 need attention/ })).toBeTruthy();
+        expect(within(group('empty')).getByText('No active items.')).toBeTruthy();
+        expect(rowIds(group('uncategorized'))).toEqual(['unknown', 'none']);
+        expect(screen.getByTestId('sentinel-todo-category-label-manual').textContent).toBe('Interface');
+        fireEvent.click(within(screen.getByTestId('sentinel-todo-done-section')).getByRole('button'));
+        fireEvent.click(within(screen.getByTestId('sentinel-todo-archived-section')).getByRole('button'));
+        expect(screen.getByTestId('sentinel-todo-category-label-done').textContent).toBe('Interface');
+        expect(screen.getByTestId('sentinel-todo-category-label-archived').textContent).toBe('Interface');
+        expect(rowIds(screen.getByTestId('sentinel-todo-manual-section'))).toEqual(['manual']);
+        expect(rowIds(screen.getByTestId('sentinel-todo-done-section'))).toEqual(['done']);
+        expect(rowIds(screen.getByTestId('sentinel-todo-archived-section'))).toEqual(['archived']);
+    });
+
+    it('reloads projected item assignments when categories are enabled live', async () => {
+        applyRuntimeConfigPatch({ sentinelTodoCategoriesEnabled: false });
+        api.get.mockResolvedValueOnce({ revision: 1, items: [todo('work')] })
+            .mockResolvedValue({ revision: 1, items: [todo('work', { categoryId: 'ui' })] });
+        render(<UnifiedTodoTab owner={owner} />);
+        await screen.findByTestId('sentinel-todo-row-work');
+        act(() => applyRuntimeConfigPatch({ sentinelTodoCategoriesEnabled: true }));
+        await waitFor(() => expect(rowIds(group('ui'))).toEqual(['work']));
+        expect(api.get).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps empty categories visible, hides empty Uncategorized and handles an empty set', async () => {
+        render(<UnifiedTodoTab owner={owner} />);
+        await screen.findByTestId('sentinel-todo-category-ui');
+        expect(screen.queryByTestId('sentinel-todo-category-uncategorized')).toBeNull();
+        expect(within(group('ui')).getByText('No active items.')).toBeTruthy();
+        sets['ws-owner'] = { revision: 4, categories: [] };
+        act(() => emit());
+        await screen.findByText('No categories yet. Add a category to group your items.');
+        expect(screen.queryByTestId('sentinel-todo-category-ui')).toBeNull();
+    });
+
+    it('preserves collapse on refresh and clears selection when its category collapses', async () => {
+        api.get.mockResolvedValue({ revision: 1, items: [todo('work', { categoryId: 'ui' })] });
+        render(<UnifiedTodoTab owner={owner} />);
+        await screen.findByTestId('sentinel-todo-row-work');
+        const toggle = () => within(group('ui')).getByRole('button', { name: /Interface \(1\)/ });
+        fireEvent.click(toggle());
+        expect(toggle().getAttribute('aria-expanded')).toBe('false');
+        sets['ws-owner'] = { revision: 4, categories: [...sets['ws-owner'].categories].reverse() };
+        act(() => emit());
+        await waitFor(() => expect(screen.getByTestId('sentinel-todo-category-groups').firstElementChild).toBe(group('docs')));
+        expect(toggle().getAttribute('aria-expanded')).toBe('false');
+        fireEvent.click(toggle());
+        fireEvent.click(screen.getByTestId('sentinel-todo-row-work').querySelector('[data-todo-select]')!);
+        expect(screen.getByTestId('sentinel-todo-row-work').querySelector('[data-todo-select]')?.getAttribute('aria-pressed')).toBe('true');
+        fireEvent.click(toggle());
+        fireEvent.click(toggle());
+        expect(screen.getByTestId('sentinel-todo-row-work').querySelector('[data-todo-select]')?.getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('reveals a selected item moved into a collapsed category and leaves search ungrouped', async () => {
+        api.get.mockResolvedValue({ revision: 1, items: [todo('work', { categoryId: 'ui' })] });
+        render(<UnifiedTodoTab owner={owner} />);
+        await screen.findByTestId('sentinel-todo-row-work');
+        fireEvent.click(within(group('docs')).getByRole('button', { name: /Docs/ }));
+        fireEvent.click(screen.getByTestId('sentinel-todo-row-work').querySelector('[data-todo-select]')!);
+        api.get.mockResolvedValue({ revision: 2, items: [todo('work', { categoryId: 'docs', revision: 2 })] });
+        act(() => sockets.forEach(socket => socket.onMessage({ type: 'sentinel-todos-changed',
+            workspaceId: owner.ownerWorkspaceId, processId: owner.processId, ledgerRevision: 2 })));
+        await waitFor(() => expect(rowIds(group('docs'))).toEqual(['work']));
+        expect(within(group('docs')).getByRole('button', { name: /Docs/ }).getAttribute('aria-expanded')).toBe('true');
+        fireEvent.click(screen.getByRole('button', { name: 'Search to-do items' }));
+        fireEvent.change(screen.getByTestId('sentinel-todo-search-input'), { target: { value: 'work' } });
+        expect(screen.queryByTestId('sentinel-todo-category-groups')).toBeNull();
+        expect(screen.getByTestId('sentinel-todo-category-label-work').textContent).toBe('Docs');
+    });
+
+    it('uses the plain active list with the flag off and refreshes names and missing assignments live', async () => {
+        api.get.mockResolvedValue({ revision: 1, items: [todo('work', { categoryId: 'ui' })] });
+        render(<UnifiedTodoTab owner={owner} />);
+        await waitFor(() => expect(rowIds(group('ui'))).toEqual(['work']));
+        sets['ws-owner'] = { revision: 4, categories: [{ id: 'ui', name: 'Renamed' }] };
+        act(() => emit());
+        await screen.findByRole('button', { name: /Renamed \(1\)/ });
+        sets['ws-owner'] = { revision: 5, categories: [] };
+        act(() => emit());
+        await waitFor(() => expect(rowIds(group('uncategorized'))).toEqual(['work']));
+        act(() => applyRuntimeConfigPatch({ sentinelTodoCategoriesEnabled: false }));
+        expect(screen.queryByTestId('sentinel-todo-category-groups')).toBeNull();
+        expect(screen.getByTestId('sentinel-todo-row-work')).toBeTruthy();
     });
 });
