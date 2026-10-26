@@ -79,6 +79,20 @@ beforeEach(() => {
 });
 
 describe('TabFeatureSettingsCard', () => {
+    it('shows a default-off reaction delegation group with one workspace and dispatcher selector', () => {
+        render(<Harness tabs={['teams']} />);
+        const toggle = screen.getByTestId('toggle-teams-reaction-delegation-enabled');
+        expect(toggle).toHaveProperty('checked', false);
+        expect(toggle.closest('#teams-group-teamsReactionDelegation')).not.toBeNull();
+        expect(toggle.closest('.ar-row')?.textContent).toContain('Experimental');
+        expect(screen.getByTestId('select-teams-reaction-workspace').tagName).toBe('SELECT');
+        expect(screen.getByTestId('select-teams-reaction-dispatcher-skill')).toHaveProperty('disabled', true);
+        const keys = getTabFeatureSettings('teams').filter(def => def.ui?.group === 'teamsReactionDelegation').map(def => def.key);
+        expect(keys).toEqual([
+            'features.teamsReactionDelegation', 'teamsReactionDelegation.workspaceId', 'teamsReactionDelegation.dispatcherSkill',
+        ]);
+    });
+
     it('ignores saved rail Git opt-outs in Appearance and runtime updates', () => {
         render(<Harness tabs={['appearance']} />);
         act(() => controller.hydrate({ features: { railGitSummary: false } }));

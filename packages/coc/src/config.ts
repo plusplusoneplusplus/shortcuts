@@ -254,6 +254,11 @@ export interface CLIConfig {
     teamsIc3OwnCommands?: {
         workspaceId?: string;
     };
+    /** Execution target and dispatcher for own-user Teams Robot reactions. */
+    teamsReactionDelegation?: {
+        workspaceId?: string;
+        dispatcherSkill?: string;
+    };
     /** Kusto query canvas (interactive KQL query + charts). Disabled by default. */
     kusto?: {
         enabled?: boolean;
@@ -319,6 +324,8 @@ export interface CLIConfig {
         teamsMessageReaction?: boolean;
         /** Own-user @coc prompts start Ask chats. Disabled by default. */
         teamsIc3OwnCommands?: boolean;
+        /** Own-user Robot reactions delegate separate Ask jobs. Disabled by default. */
+        teamsReactionDelegation?: boolean;
         /** Optional Sentinel next actions and click-to-send. Disabled by default. */
         sentinelNextSteps?: boolean;
         /** Inline Sentinel target context discovery. Disabled by default. */
@@ -679,6 +686,10 @@ export interface ResolvedCLIConfig {
     teamsIc3OwnCommands: {
         workspaceId: string;
     };
+    teamsReactionDelegation: {
+        workspaceId: string;
+        dispatcherSkill: string;
+    };
     /** Kusto query canvas (interactive KQL query + charts). */
     kusto: {
         enabled: boolean;
@@ -755,6 +766,7 @@ export interface ResolvedCLIConfig {
         teamsAiAnswerRelay: boolean;
         teamsMessageReaction: boolean;
         teamsIc3OwnCommands: boolean;
+        teamsReactionDelegation: boolean;
         sentinelNextSteps: boolean;
         sentinelTargetAutocomplete: boolean;
         sentinelTodoDependencies: boolean;
@@ -1037,6 +1049,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     browserControl: { enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false, navigationApprovalEnabled: true, humanTakeoverEnabled: false },
     teamsIc3OwnCommands: { workspaceId: '' },
+    teamsReactionDelegation: { workspaceId: '', dispatcherSkill: '' },
     LLMToolSystemOne: {
         enabled: true,
     },
@@ -1104,6 +1117,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         teamsAiAnswerRelay: true,
         teamsMessageReaction: false,
         teamsIc3OwnCommands: false,
+        teamsReactionDelegation: false,
         sentinelNextSteps: true,
         sentinelTargetAutocomplete: false,
         sentinelTodoDependencies: false,

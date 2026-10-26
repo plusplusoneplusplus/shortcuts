@@ -14,6 +14,7 @@ const jwt = (claims: object = {}, expiresIn = 3600) => `header.${Buffer.from(JSO
 const notification = (resource: object, body: object = {}) => `3:::${JSON.stringify({
     id: 'request', body: { type: 'EventMessage', resourceType: 'NewMessage', resource, ...body },
 })}`;
+const update = (resource: object, body: object = {}) => notification(resource, { resourceType: 'MessageUpdate', ...body });
 async function flush() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
 
 class Socket implements TrouterSocket {
@@ -65,6 +66,81 @@ describe('Trouter protocol', () => {
     it('message loss forces reconciliation', () => {
         expect(parseTrouterFrame(event('trouter.message_loss'), acceptTarget).wake).toEqual({ cause: 'message-loss' });
     });
+    it.each(['48:notes', '19:direct@thread.v2', '19:group@unq.gbl.spaces'])(
+        'exposes reaction updates from explicitly accepted chat %s independently of message wakes', conversationId => {
+            const emotions = [{ key: 'smilerobot', users: [{ mri: `8:orgid:${account.objectId}`, time: Date.now(), value: '' }] }];
+            const result = parseTrouterFrame(update({
+                id: 'source-message', to: conversationId, from: '8:orgid:another-user',
+                parentMessageId: 'quoted-parent', properties: { emotions },
+            }), id => id === conversationId);
+            expect(result.send).toEqual(['3:::{"id":"request","status":200,"headers":{}}']);
+            expect(result.wake).toBeUndefined();
+            expect(result.messageUpdate).toEqual({
+                conversationId, messageId: 'source-message', rootMessageId: 'quoted-parent', emotions,
+            });
+        });
+    it('normalizes JSON string envelopes and prefers source identity for updates', () => {
+        const chat = '19:group@thread.v2';
+        const resource = JSON.stringify({ id: 'message', to: '48:notifications',
+            properties: JSON.stringify({ emotions: '[]', activity: { sourceThreadId: encodeURIComponent(chat),
+                sourceReplyChainId: 'root' } }) });
+        const body = JSON.stringify({ type: 'EventMessage', resourceType: 'MessageUpdate', resource,
+            time: '2026-01-01T00:00:00.001Z' });
+        expect(parseTrouterFrame(`3:::${JSON.stringify({ id: 42, body })}`, id => id === chat).messageUpdate)
+            .toEqual({ conversationId: chat, messageId: 'message', rootMessageId: 'root', emotions: '[]',
+                eventTime: '2026-01-01T00:00:00.001Z' });
+    });
+    it.each([[], null, '[]'])('preserves empty/removal payload %j without interpreting it as a trigger', emotions => {
+        const result = parseTrouterFrame(update({ id: 'message', to: '48:notes', properties: { emotions } }), () => true);
+        expect(result.messageUpdate?.emotions).toEqual(emotions);
+        expect(result.wake).toBeUndefined();
+    });
+    it.each(['2026-01-01T00:00:00.123Z', 1_800_000_000_000, null, 'invalid', { time: 42 }])(
+        'preserves native event time without interpreting it: %j', time => {
+            const result = parseTrouterFrame(update({
+                id: 'message', to: '48:notes', originalarrivaltime: '2000-01-01T00:00:00Z',
+                version: '1', properties: { emotions: [] },
+            }, { time }), () => true);
+            expect(result.messageUpdate).toMatchObject({ eventTime: time });
+            expect(result.wake).toBeUndefined();
+        },
+    );
+    it('does not invent event time from target metadata or transport receipt', () => {
+        const result = parseTrouterFrame(update({
+            id: 'message', to: '48:notes', originalarrivaltime: '2026-01-01T00:00:00Z',
+            composetime: '2026-01-01T00:00:00Z', version: String(Date.now()),
+            properties: { emotions: [] },
+        }), () => true);
+        expect(result.messageUpdate).not.toHaveProperty('eventTime');
+    });
+    it.each([
+        { id: 'message', to: target, properties: { emotions: [] } },
+        { id: 'message', to: '48:notifications', properties: { emotions: [] } },
+        { id: 'message', to: '48:unknown', properties: { emotions: [] } },
+        { id: 'message', to: '19:meeting@thread.skype', properties: { emotions: [] } },
+        { id: 'message', to: '48:notes', properties: {} },
+        { id: 'message', to: '48:notes', content: 'edited text' },
+        { to: '48:notes', properties: { emotions: [] } },
+        { id: '', to: '48:notes', properties: { emotions: [] } },
+        { id: 'bad/id', to: '48:notes', properties: { emotions: [] } },
+        { id: 'bad\nid', to: '48:notes', properties: { emotions: [] } },
+        { id: 'message', properties: { emotions: [] } },
+    ])('ACKs but excludes unsupported, untargeted or incomplete reaction updates: %j', resource => {
+        const result = parseTrouterFrame(update(resource), () => true);
+        expect(result.send).toHaveLength(1);
+        expect(result.messageUpdate).toBeUndefined();
+        expect(result.wake).toBeUndefined();
+    });
+    it('never exposes updates for inactive targets, unselected chats or other notification types', () => {
+        const resource = { id: 'message', to: '48:notes', properties: { emotions: [] } };
+        expect(parseTrouterFrame(update(resource), null).messageUpdate).toBeUndefined();
+        expect(parseTrouterFrame(update(resource), acceptTarget).messageUpdate).toBeUndefined();
+        expect(parseTrouterFrame(update(resource, { type: 'Other' }), () => true).messageUpdate).toBeUndefined();
+        expect(parseTrouterFrame(update(resource, { resourceType: 'MessageDelete' }), () => true).messageUpdate).toBeUndefined();
+        const newMessage = parseTrouterFrame(notification(resource), () => true);
+        expect(newMessage.messageUpdate).toBeUndefined();
+        expect(newMessage.wake?.conversationId).toBe('48:notes');
+    });
     it('supports an explicit multi-chat policy without accepting channels or synthetic notification streams', () => {
         const accept = (id: string) => id === '48:notes' || /^19:[\w-]+@thread\.v2$/.test(id);
         for (const id of ['48:notes', '19:direct@thread.v2', '19:group@thread.v2']) {
@@ -111,19 +187,22 @@ describe('Trouter lifecycle', () => {
     afterEach(async () => { await Promise.all(clients.splice(0).map(client => client.stop())); vi.restoreAllMocks(); vi.useRealTimers(); });
 
     function setup(options: { acquireToken?: () => Promise<string>; fetch?: any; onState?: any; onError?: any;
-        target?: () => ((id: string) => boolean) | null } = {}) {
+        target?: () => ((id: string) => boolean) | null;
+        onMessageUpdate?: ConstructorParameters<typeof TrouterClient>[0]['onMessageUpdate'] } = {}) {
         const sockets: Socket[] = [];
         const wake = vi.fn();
         const acquireToken = options.acquireToken ?? vi.fn(async () => jwt());
         const fetch = options.fetch ?? vi.fn(async () => new Response(null, { status: 201 }));
+        const onMessageUpdate = options.onMessageUpdate ?? vi.fn();
         const client = new TrouterClient({
             target: options.target ?? (() => acceptTarget), expectedAccount: account, onWake: wake,
             acquireToken, fetch, onState: options.onState, onError: options.onError,
+            onMessageUpdate,
             socketFactory: () => { const socket = new Socket(); sockets.push(socket); return socket; },
         });
         clients.push(client);
         client.start();
-        return { client, sockets, wake, fetch, acquireToken };
+        return { client, sockets, wake, fetch, acquireToken, onMessageUpdate };
     }
 
     async function register(sockets: Socket[]) {
@@ -133,6 +212,68 @@ describe('Trouter lifecycle', () => {
         await flush();
     }
 
+    it('delivers only registered-session updates without synthesizing normal message wakes', async () => {
+        const s = setup({ target: () => id => id === '48:notes' });
+        await flush();
+        const frame = update({ id: 'message', to: '48:notes', properties: { emotions: [] } },
+            { time: '2026-01-01T00:00:00.001Z' });
+        s.sockets[0].emit('message', frame);
+        expect(s.onMessageUpdate).not.toHaveBeenCalled();
+        await register(s.sockets);
+        s.wake.mockClear();
+        s.sockets[0].emit('message', frame);
+        expect(s.onMessageUpdate).toHaveBeenCalledExactlyOnceWith({
+            conversationId: '48:notes', messageId: 'message', emotions: [], rootMessageId: undefined,
+            eventTime: '2026-01-01T00:00:00.001Z',
+        });
+        expect(s.wake).not.toHaveBeenCalled();
+        expect(s.fetch).toHaveBeenCalledOnce();
+    });
+    it('revokes update delivery on live target changes, reconnect and stop', async () => {
+        let enabled = true;
+        const s = setup({ target: () => enabled ? id => id === '48:notes' : null });
+        await register(s.sockets);
+        const frame = update({ id: 'message', to: '48:notes', properties: { emotions: [] } });
+        s.sockets[0].emit('message', frame);
+        enabled = false;
+        s.sockets[0].emit('message', frame);
+        enabled = true;
+        const stale = s.sockets[0];
+        stale.emit('close');
+        await flush();
+        stale.emit('message', frame);
+        await vi.advanceTimersByTimeAsync(501);
+        await flush();
+        s.sockets[1].emit('message', frame);
+        expect(s.onMessageUpdate).toHaveBeenCalledTimes(1);
+        await register(s.sockets);
+        s.sockets[1].emit('message', frame);
+        expect(s.onMessageUpdate).toHaveBeenCalledTimes(2);
+        await s.client.stop();
+        s.sockets[1].emit('message', frame);
+        expect(s.onMessageUpdate).toHaveBeenCalledTimes(2);
+    });
+    it('does not replay reaction updates on message loss or reconnect', async () => {
+        const s = setup({ target: () => () => true });
+        await register(s.sockets);
+        s.sockets[0].emit('message', event('trouter.message_loss'));
+        s.sockets[0].emit('close');
+        await flush();
+        await vi.advanceTimersByTimeAsync(501);
+        await register(s.sockets);
+        expect(s.onMessageUpdate).not.toHaveBeenCalled();
+    });
+    it('keeps protocol health independent of update observer exceptions', async () => {
+        const onMessageUpdate = vi.fn(() => { throw new Error('observer'); });
+        const s = setup({ target: () => id => id === '48:notes', onMessageUpdate });
+        await register(s.sockets);
+        s.sockets[0].emit('message', update({ id: 'message', to: '48:notes', properties: { emotions: [] } }));
+        s.sockets[0].emit('message', '2::');
+        expect(onMessageUpdate).toHaveBeenCalledOnce();
+        expect(s.client.getStatus()).toEqual({ state: 'registered', error: null });
+        expect(s.sockets[0].sent.at(-1)).toBe('2::');
+        expect(s.sockets[0].closed).toBe(false);
+    });
     it('uses one account registration for multiple explicitly accepted chat sources', async () => {
         const first = '19:first@thread.v2';
         const second = '19:second@thread.v2';
@@ -231,7 +372,7 @@ describe('Trouter lifecycle', () => {
         await vi.advanceTimersByTimeAsync(501);
         expect(s.acquireToken).toHaveBeenCalledTimes(2);
     });
-    it('heartbeat timeout, malformed input and overflow reconnect with reconciliation', async () => {
+    it('malformed input and overflow reconnect with reconciliation', async () => {
         const s = setup();
         await register(s.sockets);
         s.sockets[0].bufferedAmount = 256 * 1024 + 1;
@@ -245,8 +386,26 @@ describe('Trouter lifecycle', () => {
         expect(s.sockets[1].closed).toBe(true);
         await vi.advanceTimersByTimeAsync(1001);
         const latest = s.sockets.at(-1)!;
-        await vi.advanceTimersByTimeAsync(60_000);
+        await vi.advanceTimersByTimeAsync(30_000);
         expect(latest.closed).toBe(true);
+    });
+    it('keeps a registered connection open during silence and receives later updates', async () => {
+        const onError = vi.fn();
+        const s = setup({ onError, target: () => id => id === '48:notes' });
+        await register(s.sockets);
+        s.wake.mockClear();
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        expect(s.sockets).toHaveLength(1);
+        expect(s.sockets[0].closed).toBe(false);
+        expect(s.client.getStatus()).toEqual({ state: 'registered', error: null });
+        expect(onError).not.toHaveBeenCalled();
+        expect(s.wake).not.toHaveBeenCalled();
+        s.sockets[0].emit('message', update({ id: 'message', to: '48:notes', properties: { emotions: [] } }));
+        expect(s.onMessageUpdate).toHaveBeenCalledOnce();
+        s.sockets[0].emit('message', '2::');
+        expect(s.sockets[0].sent.at(-1)).toBe('2::');
+        await s.client.stop();
+        expect(vi.getTimerCount()).toBe(0);
     });
     it('registration TTL renews even while a longer token stays valid', async () => {
         const s = setup({ acquireToken: vi.fn(async () => jwt({}, 7200)) });

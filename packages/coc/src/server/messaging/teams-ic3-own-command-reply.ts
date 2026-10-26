@@ -16,15 +16,24 @@ export async function sendTeamsIc3OwnCommandReply(
     source: TeamsIc3CommandSource, requestId: string, answer: string, signal: AbortSignal,
 ): Promise<void> {
     signal.throwIfAborted();
-    const account = { tenantId: source.account.tenantId, objectId: source.account.userId };
     const parts = formatTeamsAnswerChunks(answer, requestId.slice(-12)).map(part => formatTeamsOutbound(part, 'html'));
-    const sender = new Ic3DirectMessageClient({ region: source.region, expectedAccount: account });
+    await sendTeamsIc3SourceReply(source, parts, signal);
+}
+
+/** Parts are trusted, already-formatted HTML; uncertain sends are never replayed. */
+export async function sendTeamsIc3SourceReply(
+    source: TeamsIc3CommandSource, parts: readonly string[], signal: AbortSignal,
+): Promise<void> {
+    signal.throwIfAborted();
+    const account = { tenantId: source.account.tenantId, objectId: source.account.userId };
+    const { chatId, region, verifyAccess } = source;
+    const sender = new Ic3DirectMessageClient({ region, expectedAccount: account });
     try {
         for (const part of parts) {
             for (let attempt = 0; ; attempt++) {
                 signal.throwIfAborted();
                 try {
-                    await sender.sendToSourceChat(source.chatId, part, source.verifyAccess, signal);
+                    await sender.sendToSourceChat(chatId, part, verifyAccess, signal);
                     break;
                 } catch (error) {
                     if (signal.aborted || attempt === 2 || !(error instanceof TeamsOperationError)

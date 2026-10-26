@@ -1143,6 +1143,33 @@ references before editing. Paths are package-relative.
   route Admin reads through `useAdminServer`.
   See the [IC3 runtime contract](../../.github/skills/coc-knowledge/references/server-architecture.md#ic3-own-command-launcher)
   for read windows, deduplication, reply deadlines and safe-retry rules.
+- Teams reaction delegation defaults off (`features.teamsReactionDelegation`).
+  Enabled configuration requires `teamsReactionDelegation.workspaceId` and
+  `dispatcherSkill`; reject permission/source/provider/model overrides. Resolve
+  uncached physical workspace and enabled skill bindings strictly, rechecking after
+  preparation; missing, unreadable or changed policy fails without fallback.
+  Admin selection stays on its owning server and rejects stale reads.
+  Admit only fresh, complete native Robot membership for the pinned own account;
+  never substitute receipt time, scan historical reactions or replay ambiguous
+  evidence. Stable addition IDs deduplicate; timestamp-distinct re-additions are new.
+  Use separate Ask jobs with medium effort and runtime-default timeout. Teams
+  context stays untrusted and cannot enable slash-command capabilities; questions
+  stay dashboard-only. Fetch only bounded source history, never attachments,
+  linked quotes or other chats; require Eyes before execution.
+  One server-owned coordinator serializes account/chat/message work through queue
+  termination across reconnects. Uncertain admission blocks that source; cancellation
+  never releases an admitted-job lock. Registration loss revokes preparation,
+  not acknowledged result observation; account/config changes and shutdown revoke
+  delivery. Drain observers before coordinator disposal and queue teardown.
+  Validate request-owned final reports as done/rejected, not independent provider
+  proof. Current-revision prior approval counts as done without another vote;
+  missing evidence, incomplete work and malformed reports reject. Foreign ownership
+  and storage errors prevent delivery. Done sends only Checkmark; rejected sends
+  an escaped notice then Crossmark, with fresh pinned access checks and no job links.
+  Never replay uncertain writes or retry the combined delivery. Log hashed traces
+  and safe classifiers, not source content or identities.
+  See [reaction architecture](../../.github/skills/coc-knowledge/references/server-architecture.md#teams-reaction-job-admission)
+  for module boundaries, budgets and protocol-verification limits.
 - Ask/sentinel turns started from WhatsApp/Teams and jobs carrying
   `metadata.messagingOrigin` (every turn, including autopilot) relay
   `ask_user` questions one at a time to the originating group/thread through

@@ -1101,6 +1101,9 @@ timeout: 300
                 '  humanTakeoverEnabled: true',
                 'teamsIc3OwnCommands:',
                 '  workspaceId: ws-fixture',
+                'teamsReactionDelegation:',
+                '  workspaceId: ws-fixture',
+                '  dispatcherSkill: dispatcher-fixture',
                 'dangerousCommandGuard:',
                 '  enabled: true',
                 'vimNavigation:',
@@ -1176,6 +1179,7 @@ timeout: 300
                 '  teamsBridgeObservability: true',
                 '  teamsMessageReaction: true',
                 '  teamsIc3OwnCommands: true',
+                '  teamsReactionDelegation: true',
                 '  sentinelDesktopMirror: true',
                 '  sentinelPrOutcomeWake: true',
                 '  sentinelFollowUpResults: true',
@@ -1588,6 +1592,7 @@ timeout: 300
                     "teamsBridgeObservability": false,
                     "teamsIc3OwnCommands": false,
                     "teamsMessageReaction": true,
+                    "teamsReactionDelegation": false,
                     "toolScripting": true,
                   },
                   "forEach": {
@@ -1717,6 +1722,10 @@ timeout: 300
                   "teamsIc3OwnCommands": {
                     "workspaceId": "",
                   },
+                  "teamsReactionDelegation": {
+                    "dispatcherSkill": "",
+                    "workspaceId": "",
+                  },
                   "terminal": {
                     "enabled": false,
                   },
@@ -1835,6 +1844,7 @@ timeout: 300
                   "features.teamsBridgeObservability": "file",
                   "features.teamsIc3OwnCommands": "default",
                   "features.teamsMessageReaction": "file",
+                  "features.teamsReactionDelegation": "default",
                   "features.toolScripting": "default",
                   "forEach.enabled": "file",
                   "groupSingleLineMessages": "file",
@@ -1881,6 +1891,8 @@ timeout: 300
                   "showReportIntent": "file",
                   "taskCardDensity": "file",
                   "teamsIc3OwnCommands.workspaceId": "default",
+                  "teamsReactionDelegation.dispatcherSkill": "default",
+                  "teamsReactionDelegation.workspaceId": "default",
                   "terminal.enabled": "file",
                   "timeout": "file",
                   "toolCompactness": "file",
