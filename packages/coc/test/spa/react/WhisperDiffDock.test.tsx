@@ -12,6 +12,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
+vi.mock('../../../src/server/spa/client/react/features/git/hooks/useDiffEngine', () => ({
+    useDiffEngine: () => ['legacy', () => {}],
+}));
 vi.mock('../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer', () => ({
     UnifiedDiffViewer: ({ diff, 'data-testid': testId }: any) => (
         <pre data-testid={testId}>{diff}</pre>
@@ -98,7 +101,7 @@ describe('WhisperDiffDock', () => {
         expect(resize.handleMouseDown).toHaveBeenCalled();
     });
 
-    it('titles the mobile sheet with the whole-group file count and defaults to "All files"', () => {
+    it('titles the mobile sheet with the whole-group file count and shows the review navigator', () => {
         render(
             <WhisperDiffDock
                 state={successState}
@@ -107,10 +110,11 @@ describe('WhisperDiffDock', () => {
                 resize={resize}
             />,
         );
-        // Sheet chrome shows the group count; the panel header dropdown defaults
-        // to the stacked "All files" view.
+        // Sheet chrome shows the group count; the panel opens the shared review
+        // navigator on the group's only file.
         expect(screen.getByText('1 file changed')).toBeInTheDocument();
-        expect(screen.getByTestId('whisper-diff-filename')).toHaveTextContent('All files');
+        expect(screen.getByTestId('git-file-review')).toBeInTheDocument();
+        expect(screen.getByTestId('whisper-diff-file')).toHaveAttribute('data-path', 'home/u/proj/src/foo.ts');
     });
 
     it('pluralizes the sheet title for a multi-file group', () => {

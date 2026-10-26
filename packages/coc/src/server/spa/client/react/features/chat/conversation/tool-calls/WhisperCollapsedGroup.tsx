@@ -32,9 +32,9 @@ import { popOutOpened } from '../../../../utils/popOutWindow';
  * popover — either the whole-group combined diff (the "N files" footer) or a
  * single focused file (a file row). Both entry points carry the SAME payload;
  * they differ only by `focusPath`, which the panel uses to pick the initial
- * dropdown selection. The panel is a filterable whole-group view: it always
- * reconstructs every file synchronously via `buildWhisperCombinedDiff`, then
- * shows the stacked "All files" view or narrows to one file by selection.
+ * navigator selection. The panel always reconstructs every file synchronously
+ * via `buildWhisperCombinedDiff` and lists the whole group in the shared review
+ * navigator, showing one selected file at a time.
  *
  * It rides the window CustomEvent bridge (`whisperDiffEvent`) into the single
  * docked panel slot; opening one replaces whatever the dock currently shows.
@@ -50,11 +50,11 @@ export interface WhisperDiffOpenContext {
      * fetches a commit diff, so this is currently unused by the panel.
      */
     commits: DetectedCommit[];
-    /** Workspace/clone routing id, carried for parity (currently unused by the panel). */
+    /** Clone that owns the edited files; scopes the panel's editor models and review state. */
     workspaceId?: string;
     /**
      * When set, the panel opens focused on this file's diff (a popover file-row
-     * entry). Absent → the panel opens on the stacked "All files" view (the
+     * entry). Absent → the panel opens on the first file of the whole group (the
      * footer entry). Thereafter the selection is user-driven inside the panel.
      */
     focusPath?: string;
@@ -1049,7 +1049,7 @@ export function WhisperCollapsedGroup({
         [precedingChunks, toolById],
     );
 
-    // A file row opens the converged panel focused on that file (its dropdown
+    // A file row opens the converged panel focused on that file (its navigator
     // selection is pre-set via `focusPath`). Same whole-group payload as the
     // footer — the builder surfaces deleted/non-reconstructable files downstream,
     // so the full ordered list is carried through unchanged.
@@ -1069,7 +1069,7 @@ export function WhisperCollapsedGroup({
     const onFileClick = onOpenFileDiff ? handleFileClick : undefined;
 
     // The multi-file footer opens the SAME converged panel with no `focusPath`,
-    // so it lands on the stacked "All files" view.
+    // so it lands on the first file of the full changed-file set.
     const handleOpenCombined = useCallback(() => {
         if (!onOpenFileDiff) return;
         onOpenFileDiff({

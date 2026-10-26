@@ -495,8 +495,23 @@ mounted.
 `buildWhisperFileDiff` reconstructs tool-call diffs without file I/O. Captured
 `apply_patch` bodies keep their existing anchors; a leading unanchored body gets a
 synthetic `@@` header with old/new counts from its context and change lines.
-`WhisperDiffPanel` uses `hideFileHeaders`, so this boundary keeps added-file content
+The classic viewer uses `hideFileHeaders`, so this boundary keeps added-file content
 outside the viewer's suppressed git preamble.
+
+`WhisperDiffPanel` (the chat dock and the unified panel's "N files changed" /
+Changes `diff` tabs) renders that replayed snapshot in the shared Git/PR review
+shell: `ReviewFiles` supplies the tree, selection, filters, resize separator and
+narrow drawer. `whisperReviewModel` maps each file to a workspace-relative row
+(A/M/D, popover counts) and decides its content honestly: a single all-added
+new-file hunk is `whole` and opens in `MonacoFileDiffViewer` (empty original,
+exact created text, synthetic models keyed by owner workspace and diff hash,
+read-only, no language features); every other change stays `patch` in the
+classic viewer with a patch-only note; deleted and non-reconstructable files say
+no diff was captured. It never reads disk, Git or another turn. The footer opens
+the first file in tree order, a file row its `focusPath`; selection resets per
+open of a frozen group and survives a live Changes source's rebuilds via
+`selectionKey`. The Classic engine preference and editor failure
+(`DiffEngineFallbackBanner` + Retry) fall back to the classic patch.
 
 ### Commit strips
 

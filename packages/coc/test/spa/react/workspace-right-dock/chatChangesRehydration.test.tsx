@@ -33,6 +33,9 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffVi
 // `UnifiedTabView` is rendered for real so the descriptor → props wiring is
 // covered, but only its `diff` branch matters here; the sibling views pull in
 // terminals, editors and canvases that have nothing to do with this.
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffEngine', () => ({
+    useDiffEngine: () => ['legacy', () => {}],
+}));
 vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView', () => ({
     TerminalView: () => null,
 }));
@@ -169,10 +172,10 @@ function renderTab(tab: UnifiedPanelTab, onErrorChange?: (id: string, hasError: 
     );
 }
 
+/** The files the review navigator lists for the tab. */
 function renderedPaths(): string[] {
-    return screen
-        .getAllByTestId('whisper-diff-file-section')
-        .map(el => el.getAttribute('data-path') ?? '');
+    const nav = screen.getByRole('complementary', { name: 'Changed files' });
+    return Array.from(nav.querySelectorAll('[data-file-path]')).map(el => el.getAttribute('data-file-path') ?? '');
 }
 
 beforeEach(() => {

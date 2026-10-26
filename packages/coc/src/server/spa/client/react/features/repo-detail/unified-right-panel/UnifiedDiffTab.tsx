@@ -8,7 +8,7 @@
  * so:
  *
  *  - a live group renders exactly the diff the chat's own dock would show,
- *    including the file dropdown and the "not shown" list;
+ *    including the file navigator and the files with no diff;
  *  - a source that is gone — the tab survived a reload, or its transcript is no
  *    longer loaded — renders the explicit expired state instead of a blank
  *    panel, because a diff is reconstructed from a chat group rather than

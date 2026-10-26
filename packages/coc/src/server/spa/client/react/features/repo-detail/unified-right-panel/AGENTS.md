@@ -147,7 +147,9 @@ host — the chat has no canvas column of its own), `note` renders
 `NoteEditor`, `notes` renders the shared `NotesView` with panel-local selection
 restored from its descriptor (a missing path clears after tree validation)
 and a container-width layout,
-`diff` renders the chat's `WhisperDiffPanel`, and `terminal` renders
+`diff` renders the chat's `WhisperDiffPanel` (the shared `ReviewFiles`
+navigator over the captured tool-call snapshot; see the knowledge
+chat-conversation reference), and `terminal` renders
 `TerminalView`. The add menu activates the target-owned Terminal tab and passes an
 in-memory `openRequest`; descriptors never persist creation intent. `TerminalView`
 waits for successful hydration before creating through its existing WebSocket
@@ -1179,7 +1181,7 @@ One more thing that model owns: **path form**. Tool args carry whatever the
 agent's platform produced, so a chat can record `src\a.ts` from a Windows run and
 `src/a.ts` from a POSIX one — sometimes both, for the same file. `collectFileEdits`
 canonicalizes its map key to forward slashes (`normalizeFileEditPath`), so one
-file stays one row in the list, one dropdown item and one diff section. The raw
+file stays one row in the popover list and one row in the review navigator. The raw
 args are left alone; every reconstruction and the shell-delete pass already
 normalize both sides before comparing, so nothing downstream had to change.
 
@@ -1218,8 +1220,8 @@ end-to-end case for this path: a chat's
 turns go through `buildChatChangesContext` and `chatChangesTabInput` into a
 rendered `UnifiedDiffTab`, pinning that repeated edits and a later reversion
 replay as successive hunks, that a record captured in both `toolCalls` and
-`timeline` replays once, that deleted and non-reconstructable files land under
-"Not shown", and that repeated opens (and a close then reopen) land on the one
+`timeline` replays once, that deleted and non-reconstructable files are listed
+and say no diff was captured, and that repeated opens (and a close then reopen) land on the one
 tab. Its fixture is cross-platform — two of its files are recorded with Windows
 backslash paths, one edited and one removed by `Remove-Item` — and
 `chatChangesModel.test.ts` plus `test/spa/processes/toolGroupUtils.test.ts` pin

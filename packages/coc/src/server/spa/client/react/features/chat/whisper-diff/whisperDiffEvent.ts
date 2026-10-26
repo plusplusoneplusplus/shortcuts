@@ -20,7 +20,7 @@ export const WHISPER_DIFF_EVENT = 'coc-open-whisper-diff';
 
 /**
  * Dispatch a request to open the converged whisper diff panel — from the "N
- * files" footer (no `focusPath` → All files) or a file row (`focusPath` set →
+ * files" footer (no `focusPath` → the first file) or a file row (`focusPath` set →
  * focused on that file). Both ride the same event + docked slot; opening one
  * replaces whatever the dock currently shows.
  */

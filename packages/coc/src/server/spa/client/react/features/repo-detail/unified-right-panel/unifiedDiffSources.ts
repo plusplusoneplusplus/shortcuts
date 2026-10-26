@@ -18,7 +18,7 @@
  *    descriptor names the same source the chat would re-register.
  *  - **Re-registering an unchanged group keeps the existing record**, so a
  *    re-render of the popover cannot reset the selection the user made in the
- *    panel's file dropdown (`WhisperDiffPanel` re-initializes on a new context
+ *    panel's file navigator (`WhisperDiffPanel` re-initializes on a new context
  *    identity). Only a genuinely different open — a new focus target — replaces
  *    it.
  *  - **Nothing here survives a reload.** The registry is module state, bounded
