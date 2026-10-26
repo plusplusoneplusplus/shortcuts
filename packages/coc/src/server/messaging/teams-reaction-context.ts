@@ -10,7 +10,7 @@ export async function collectTeamsReactionContext(
     reader: Pick<TeamsIc3Session, 'readHistory'>,
     source: { readonly chatId: string; readonly messageId: string },
     signal: AbortSignal,
-): Promise<{ messageContext: string; sourceText: string }> {
+): Promise<{ messageContext: string; sourceText: string; sourceHtml?: string }> {
     signal.throwIfAborted();
     const { chatId, messageId } = source;
     if ((chatId !== '48:notes'
@@ -103,6 +103,6 @@ export async function collectTeamsReactionContext(
         if (Buffer.byteLength(context, 'utf8') > maxContextBytes) {
             throw new Error('Teams reaction context byte limit exceeded.');
         }
-        return { messageContext: context, sourceText: targetMessage.text };
+        return { messageContext: context, sourceText: targetMessage.text, sourceHtml: targetMessage.untrustedHtml };
     } finally { clearTimeout(timer); }
 }

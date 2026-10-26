@@ -1427,7 +1427,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         remotes: workspaceDirectory,
     });
     const teamsIc3OwnCommands = opts.runtimeConfigService && createTeamsIc3OwnCommandsRuntime({
-        config: opts.runtimeConfigService, teams: teamsMessagingManager, store, queue: queueFacade, routes,
+        config: opts.runtimeConfigService, teams: teamsMessagingManager, store, queue: queueFacade, routes, decisionService,
         launch: createTeamsIc3OwnCommandLaunch({
             bridge, store, dataDir, state: queueGlobalState, globalWorkspaceRootPath,
             getDefaultProvider: concreteDefaultProvider, resolveDefaultProvider, isAutoProviderRoutingActive,
@@ -1445,7 +1445,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             }, dataDir, () => config.config),
         });
         const runtime = createTeamsReactionRuntime({
-            config, teams: teamsMessagingManager, store, dataDir, execution,
+            config, teams: teamsMessagingManager, store, dataDir, execution, decisionService,
             onResult: async (job, source, signal) => {
                 signal.throwIfAborted();
                 const result = await resolveTeamsReactionOutcome(store, job, signal);

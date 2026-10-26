@@ -64,7 +64,11 @@ export function createTeamsReactionPickup(options: {
                     ...account, conversationId: admission.conversationId, messageId: admission.messageId,
                 }, admission.requestId, context.messageContext, executionSignal);
                 executionSignal.throwIfAborted();
-                return { ...admission, ...job, sourceText: context.sourceText };
+                if (job.workspaceId !== binding.workspaceId) {
+                    throw new Error('Teams reaction execution workspace changed after pickup.');
+                }
+                return { ...admission, ...job, sourceText: context.sourceText, sourceHtml: context.sourceHtml,
+                    workingDirectory: binding.workingDirectory };
             } finally { pending--; }
         },
         dispose() {

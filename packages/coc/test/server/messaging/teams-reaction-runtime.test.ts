@@ -2,11 +2,15 @@ import path from 'node:path';
 import { getLogger } from '@plusplusoneplusplus/forge';
 import type { TeamsIc3Session } from '@plusplusoneplusplus/coc-native';
 import type { Ic3DirectMessageOptions, TrouterClient, TrouterMessageUpdate } from '@plusplusoneplusplus/coc-connector/teams';
+import { Ic3DirectMessageClient, Ic3ReactionClient } from '@plusplusoneplusplus/coc-connector/teams';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CONFIG, mergeConfig } from '../../../src/config';
 import { createTeamsReactionRuntime } from '../../../src/server/messaging/teams-reaction-runtime';
 import * as dispatcher from '../../../src/server/messaging/teams-reaction-dispatcher';
 import { createMockProcessStore } from '../helpers/mock-process-store';
+import { createMockSDKService } from '../../helpers/mock-sdk-service';
+import { createDecisionService } from '../../../src/server/decisions/decision-service';
+import { sendTeamsReactionResult } from '../../../src/server/messaging/teams-reaction-reply';
 
 const account = {
     tenantId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
@@ -37,6 +41,7 @@ describe('Teams reaction notification lifecycle', () => {
     let writers: { options: Ic3DirectMessageOptions; acknowledgeSourceMessage: ReturnType<typeof vi.fn>;
         dispose: ReturnType<typeof vi.fn> }[];
     let resolveDispatcher: ReturnType<typeof vi.spyOn<typeof dispatcher, 'resolveTeamsReactionDispatcher'>>;
+    let decisionService: ReturnType<typeof createDecisionService> | undefined;
     const store = createMockProcessStore();
     const unsubscribe = vi.fn();
     const unsubscribeRegion = vi.fn();
@@ -87,7 +92,7 @@ describe('Teams reaction notification lifecycle', () => {
                 return unsubscribeRegion;
             } },
             store, dataDir: path.resolve('data'), execution: { run }, onResult,
-            createSession, createTrouter, createReactions,
+            createSession, createTrouter, createReactions, decisionService,
         });
     }
     async function flush() { await vi.advanceTimersByTimeAsync(0); }
@@ -113,6 +118,7 @@ describe('Teams reaction notification lifecycle', () => {
         vi.clearAllMocks();
         readers = [];
         notifications = [];
+        decisionService = undefined;
         writers = [];
         createSession.mockReset().mockImplementation(() => {
             const reader = makeReader();
@@ -148,6 +154,84 @@ describe('Teams reaction notification lifecycle', () => {
         expect(createTrouter).not.toHaveBeenCalled();
         expect(createReactions).not.toHaveBeenCalled();
         expect(runtime.getStatus()).toEqual({ state: 'disabled', trouter: { state: 'disabled', error: null } });
+    });
+
+    it.each(['allow', 'block', 'malformed', 'unavailable', 'disabled', 'done'] as const)(
+        'production reaction %s uses original context and the shared delivery gate', async outcome => {
+            const sdk = createMockSDKService().service;
+            vi.spyOn(sdk, 'isTransformAvailable').mockResolvedValue({ available: true });
+            const transform = vi.spyOn(sdk, 'transform').mockResolvedValue({
+                success: true, text: outcome === 'malformed' ? 'not JSON' : JSON.stringify({ answers: {
+                    compliance: { type: 'choice', probabilities: {
+                        block: outcome === 'allow' ? 0 : 1, allow: outcome === 'allow' ? 1 : 0,
+                    } },
+                } }),
+            });
+            if (outcome !== 'unavailable') decisionService = createDecisionService(sdk);
+            const evaluate = decisionService && vi.spyOn(decisionService, 'evaluate');
+            const send = vi.spyOn(Ic3DirectMessageClient.prototype, 'sendToSourceChat').mockResolvedValue('sent');
+            const react = vi.spyOn(Ic3ReactionClient.prototype, 'reactToSourceMessage').mockResolvedValue(undefined);
+            const finished = deferred<Awaited<ReturnType<typeof run>>>();
+            run.mockReturnValue(finished.promise);
+            onResult.mockImplementation(async (job, source, signal) => {
+                await sendTeamsReactionResult(source, { sourceText: job.sourceText,
+                    result: { kind: 'task', outcome: outcome === 'done' ? 'done' : 'rejected' } }, signal);
+            });
+            const notification = await registered();
+            readers[0].readHistory.mockResolvedValue({
+                items: [{
+                    chatId: '48:notes', messageId: 'target', createdAt: new Date(epoch - 1000).toISOString(),
+                    modifiedAt: new Date(epoch - 1000).toISOString(), authorKind: 'user',
+                    authorId: 'another-user', text: 'Complete original request '.repeat(20),
+                    untrustedHtml: '<p>Original request</p>', textTruncated: false, htmlTruncated: false, deleted: false,
+                }, {
+                    chatId: '48:notes', messageId: 'earlier', createdAt: new Date(epoch - 2000).toISOString(),
+                    modifiedAt: new Date(epoch - 2000).toISOString(), authorKind: 'user',
+                    text: 'Unrelated prior history', textTruncated: false, htmlTruncated: false, deleted: false,
+                }], rawCount: 2,
+            });
+            emit(notification);
+            await flush();
+            expect(run).toHaveBeenCalledOnce();
+            if (outcome !== 'disabled') {
+                config = mergeConfig(config, { features: { teamsOutboundCompliance: true },
+                    teamsOutboundCompliance: { prompt: 'Permit safe text.' } });
+                change();
+            }
+            expect(readers[0].dispose).not.toHaveBeenCalled();
+            finished.resolve({ workspaceId: binding.workspaceId,
+                processId: `queue_${run.mock.calls[0][1]}`, status: 'completed' });
+            await flush();
+            const permitsText = outcome === 'allow' || outcome === 'disabled';
+            expect(send).toHaveBeenCalledTimes(permitsText ? 1 : 0);
+            expect(transform).toHaveBeenCalledTimes(['allow', 'block', 'malformed'].includes(outcome) ? 1 : 0);
+            if (outcome === 'allow' || outcome === 'block') {
+                expect(evaluate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+                    backend: 'copilot',
+                    state: expect.objectContaining({
+                        trigger: { type: 'reaction', messageId: 'target',
+                            text: 'Complete original request '.repeat(20), untrustedHtml: '<p>Original request</p>' },
+                        destination: { ...account, chatId: '48:notes', region: 'amer' },
+                    }),
+                }), expect.objectContaining({
+                    workspaceId: binding.workspaceId, workingDirectory: binding.workingDirectory, allowOutputRepair: false,
+                }));
+                expect(JSON.stringify(vi.mocked(decisionService!.evaluate).mock.calls)).not.toContain('Unrelated prior history');
+            }
+            expect(react).toHaveBeenCalledTimes(permitsText || outcome === 'done' ? 1 : 0);
+            emit(notification);
+            await flush();
+            expect(onResult).toHaveBeenCalledOnce();
+        },
+    );
+
+    it('refuses delivery when the execution workspace differs from the captured dispatcher binding', async () => {
+        run.mockResolvedValue({ workspaceId: 'foreign-workspace', processId: 'queue_foreign', status: 'completed' });
+        const notification = await registered();
+        emit(notification);
+        await flush();
+        expect(onResult).not.toHaveBeenCalled();
+        expect(runtime.getStatus()).toMatchObject({ state: 'degraded', error: 'pickup' });
     });
 
     it('requires an explicit IC3 region before reading policy or credentials', async () => {

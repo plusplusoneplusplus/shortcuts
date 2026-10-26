@@ -1194,7 +1194,11 @@ references before editing. Paths are package-relative.
   using `teams-outbound-compliance.ts`. Capture destination/content before awaiting;
   allow covers only those exact chunks. Keep one Copilot DecisionService evaluation,
   disable output repair, and never recheck compliance during safe transport retries.
-  Sources without compliance context retain ordinary transport behavior.
+  Native mention and reaction runtimes always attach original trigger text/HTML,
+  workspace/cwd, the shared DecisionService and a live server-policy getter,
+  independently of provider/tool settings. Policy-only saves preserve active requests.
+  Reaction pickup carries only the exact target body into the gate, not preceding history.
+  Unrelated sources without compliance context retain ordinary transport behavior.
 - Ask/sentinel turns started from WhatsApp/Teams and jobs carrying
   `metadata.messagingOrigin` (every turn, including autopilot) relay
   `ask_user` questions one at a time to the originating group/thread through

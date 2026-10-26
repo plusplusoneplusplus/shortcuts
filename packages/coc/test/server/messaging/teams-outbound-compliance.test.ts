@@ -48,6 +48,18 @@ describe('Teams complete-message compliance delivery boundary', () => {
     });
     afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
+    it('allows a complete plain-text trigger without an optional native HTML body', async () => {
+        const h = harness();
+        h.compliance.trigger.untrustedHtml = undefined;
+        await sendTeamsIc3OwnCommandReply(h.source, 'request-id', 'Safe answer', new AbortController().signal);
+        expect(h.evaluate).toHaveBeenCalledOnce();
+        expect(h.transform).toHaveBeenCalledOnce();
+        expect(h.evaluate.mock.calls[0][0]).toMatchObject({
+            state: { trigger: { type: 'mention', messageId: 'original-request', text: '@coc do the work' } },
+        });
+        expect(Ic3DirectMessageClient.prototype.sendToSourceChat).toHaveBeenCalledOnce();
+    });
+
     it.each(['mention', 'reaction'] as const)('evaluates every formatted chunk once before any %s text is sent', async type => {
         const h = harness(type);
         h.transform.mockImplementation(async () => {
