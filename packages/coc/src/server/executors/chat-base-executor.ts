@@ -1096,6 +1096,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             onLlmToolApprovalDecision: (record) => this.recordLlmToolApproval(processId, record),
             includeToolScripting: (payload.provider ?? this.provider) !== 'codex',
             onNestedToolEvent: this.buildNestedToolEventHandler(processId),
+            workingDirectory,
             askUser: this.buildAskUserWiring(processId, {
                 computeTurnIndex: () => 1,
                 ...(codaContext ? { isInteractive: () => false } : {}),

@@ -125,6 +125,7 @@ vi.mock('../../../src/server/executors/prompt-builder', () => ({
 
 vi.mock('../../../src/server/executors/chat-tool-builder', () => ({
     buildChatToolBundle: (...args: any[]) => mockBuildChatToolBundle(...args),
+    isToolScriptingMcpEnabled: () => false,
 }));
 
 const mockBuildMemoryV2Addon = vi.fn();

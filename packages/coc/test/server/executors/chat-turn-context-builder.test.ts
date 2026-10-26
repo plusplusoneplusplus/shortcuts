@@ -55,6 +55,7 @@ const mockAskUserAddon = {
 const mockBuildChatToolBundle = vi.fn();
 vi.mock('../../../src/server/executors/chat-tool-builder', () => ({
     buildChatToolBundle: (...args: any[]) => mockBuildChatToolBundle(...args),
+    isToolScriptingMcpEnabled: () => false,
 }));
 
 // ============================================================================

@@ -106,6 +106,7 @@ export class RalphExecutor extends ChatBaseExecutor {
             onLlmToolApprovalDecision: (record) => this.recordLlmToolApproval(processId, record),
             includeToolScripting: (payload.provider ?? this.provider) !== 'codex',
             onNestedToolEvent: this.buildNestedToolEventHandler(processId),
+            workingDirectory,
         });
 
         // System message carries only generic, non-Ralph blocks. All Ralph

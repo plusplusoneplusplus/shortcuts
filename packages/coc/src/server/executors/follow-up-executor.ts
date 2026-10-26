@@ -558,6 +558,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 onLlmToolApprovalDecision: (record) => this.recordLlmToolApproval(processId, record),
                 includeToolScripting: sessionProvider !== 'codex',
                 onNestedToolEvent: this.buildNestedToolEventHandler(processId),
+                workingDirectory,
                 askUser: this.buildAskUserWiring(processId, {
                     computeTurnIndex: () => process.conversationTurns?.length ?? 0,
                     isInteractive: () => turnSource === undefined || isMessagingJobOrigin(process.metadata?.messagingOrigin),

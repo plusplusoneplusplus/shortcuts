@@ -828,8 +828,15 @@ when no `Authorization` header is configured. A 401 maps to `auth-required: <ser
 other failures are `unknown-server`, `unknown-tool`, `tool-not-allowed` (config `tools`
 allowlist or the scope's `isToolAllowed`) and tool `isError` text. `createMcpScriptTools()`
 exposes the scope as `mcp_list_tools({ server })` and `mcp_call({ server, tool, args })`;
-results are `structuredContent` JSON or joined text content. Wiring into chat and
-non-chat surfaces behind `features.toolScriptingMcp` is not done yet.
+results are `structuredContent` JSON or joined text content. When
+`isToolScriptingMcpEnabled()` (both `features.toolScripting` and `features.toolScriptingMcp`)
+holds, `buildChatTurnContext` resolves the turn workspace's servers with
+`resolveChatMcpServersForWorkspace` (`workingDirectory` is the root fallback) and
+`buildChatToolBundle` opens one scope per turn when it has servers: the pair is added only to
+the script runtime (never the model's direct tools), the `run_tool_script` description lists the
+server names, the turn signal's abort closes the scope, and `ChatTurnContext.dispose()` closes it.
+Flag off or `mcpServers: {}` adds nothing. Approval for `mcp_call`, turn tool filters and the
+non-chat surfaces are not wired yet.
 
 ## Supporting Modules
 

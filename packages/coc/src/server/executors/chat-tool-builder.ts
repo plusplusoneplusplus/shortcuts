@@ -1,7 +1,7 @@
 import type { OwnerScriptRunner } from './owner-script-runner';
 import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import type { Tool, ToolEvent } from '@plusplusoneplusplus/coc-agent-sdk';
+import type { MCPServerConfig, Tool, ToolEvent } from '@plusplusoneplusplus/coc-agent-sdk';
 import { CONFIG_FILE_NAME, DEFAULT_CONFIG, resolveConfig } from '../../config';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
@@ -15,6 +15,7 @@ import type { BrowserControlRuntime } from '@plusplusoneplusplus/coc-client';
 import { createBrowserTool, type BrowserToolStateStore } from '../llm-tools/browser-tools';
 import { DEFAULT_DISABLED_LLM_TOOLS, filterDisabledLlmTools, isScriptableLlmTool } from '../llm-tools/llm-tool-registry';
 import { createRunToolScriptTool } from '../llm-tools/run-tool-script-tool';
+import { McpScriptScope } from '../llm-tools/mcp-script-tools';
 import { readApprovalRequiredLlmTools, readEffectiveDisabledLlmTools } from '../preferences-handler';
 import { applyLlmToolApprovalGate, type LlmToolApprovalRecord } from './llm-tool-approval-gate';
 import type { MemoryV2Addon } from './memory-v2-addon';
@@ -128,6 +129,10 @@ export interface ChatToolBundleOptions {
     toolScriptingEnabled?: boolean;
     /** Receives `run_tool_script` inner-call events so the timeline nests them under the script. */
     onNestedToolEvent?: (event: ToolEvent) => void;
+    /** The turn's resolved MCP servers, offered to `run_tool_script` when `features.toolScriptingMcp` is on. */
+    mcpServers?: Record<string, MCPServerConfig>;
+    /** Overrides the `features.toolScriptingMcp` config flag (used by tests). */
+    toolScriptingMcpEnabled?: boolean;
 }
 
 export interface ChatToolBundle {
@@ -139,6 +144,8 @@ export interface ChatToolBundle {
      */
     toolGuidance: string;
     askUser?: AskUserAddon;
+    /** MCP clients behind `run_tool_script`; the owner closes it when the turn ends. */
+    mcpScope?: McpScriptScope;
 }
 
 /**
@@ -308,28 +315,44 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
 
     // Built last, over the filtered and gated list: a script reaches only the
     // tools this turn already offers, with the same approval policy.
+    let mcpScope: McpScriptScope | undefined;
     if (options.includeToolScripting !== false && !options.sentinelPrOutcomeReview
         && isToolScriptingEnabled(options)
         && filterDisabledLlmTools([{ name: 'run_tool_script' }], disabledWithContextExclusions).length > 0) {
+        if (options.mcpServers && (options.toolScriptingMcpEnabled ?? isToolScriptingMcpEnabled(options.dataDir))) {
+            const scope = new McpScriptScope({ servers: options.mcpServers });
+            if (scope.serverNames().length > 0) {
+                mcpScope = scope;
+                options.browserSignal?.addEventListener('abort', () => void scope.close(), { once: true });
+            }
+        }
         const { tool } = createRunToolScriptTool({
             tools: tools.filter(t => isScriptableLlmTool(t.name)),
             workspaceId: options.workspaceId,
             processId: options.processId,
             signal: options.browserSignal,
             onNestedToolEvent: options.onNestedToolEvent,
+            mcp: mcpScope,
         });
         tools.push(...applyLlmToolApprovalGate([tool], approvalGate));
     }
 
-    return { tools, toolGuidance, askUser };
+    return { tools, toolGuidance, askUser, mcpScope };
+}
+
+function readFeatures(dataDir: string | undefined) {
+    return dataDir ? resolveConfig(path.join(dataDir, CONFIG_FILE_NAME)).features : DEFAULT_CONFIG.features;
 }
 
 function isToolScriptingEnabled(options: ChatToolBundleOptions): boolean {
     if (options.toolScriptingEnabled !== undefined) return options.toolScriptingEnabled;
-    const features = options.dataDir
-        ? resolveConfig(path.join(options.dataDir, CONFIG_FILE_NAME)).features
-        : DEFAULT_CONFIG.features;
-    return features.toolScripting !== false;
+    return readFeatures(options.dataDir).toolScripting !== false;
+}
+
+/** Whether scripts may reach MCP servers: needs both `features.toolScripting` and `features.toolScriptingMcp`. */
+export function isToolScriptingMcpEnabled(dataDir: string | undefined): boolean {
+    const features = readFeatures(dataDir);
+    return features.toolScripting !== false && features.toolScriptingMcp === true;
 }
 
 function mergeDisabledTools(
