@@ -908,7 +908,8 @@ store and edit raw Markdown but display inline Markdown through `SentinelTodoNot
 (the AskUser safe renderer: raw HTML escaped, non-http(s)/mailto/relative/hash URLs
 become `#`); links stop row propagation, http(s) opens the panel browser, in-app hash
 links join the excursion, and a remote ledger qualifies bare `#repos/<ws>` links with
-its server. Normal tracking
+its server. Default-off live `sentinelTodoInlineNotesEnabled` adds in-place Notes
+editing in details (see the unified-right-panel AGENTS.md). Normal tracking
 comes first, then an always-visible Manual tracking
 section with its own add form and separate Done/Archived groups. Following an in-app To-do
 Job/Ref link starts a per-window, in-memory excursion: visited hosted chats show an origin

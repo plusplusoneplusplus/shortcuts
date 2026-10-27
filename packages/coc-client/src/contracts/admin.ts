@@ -129,6 +129,7 @@ export interface AdminResolvedConfig {
     queryPullRequestTool?: boolean;
     sentinelTodoCategories?: boolean;
     sentinelTodoExternalReferences?: boolean;
+    sentinelTodoInlineNotes?: boolean;
     sentinelPrOutcomeWake?: boolean;
     sentinelTodoDateTimeTriggers?: boolean;
     sentinelFollowUpResults?: boolean;
@@ -236,6 +237,7 @@ export interface AdminConfigUpdate {
   'features.queryPullRequestTool'?: boolean;
   'features.sentinelTodoCategories'?: boolean;
   'features.sentinelTodoExternalReferences'?: boolean;
+  'features.sentinelTodoInlineNotes'?: boolean;
   'features.sentinelPrOutcomeWake'?: boolean;
   'features.sentinelTodoDateTimeTriggers'?: boolean;
   'features.sentinelFollowUpResults'?: boolean;
@@ -312,6 +314,8 @@ export interface RuntimeDashboardConfig {
     sentinelTodoDependenciesEnabled: boolean;
     sentinelTodoCategoriesEnabled: boolean;
     sentinelTodoExternalReferencesEnabled: boolean;
+    /** Inline Notes editing in Sentinel To-do details (`features.sentinelTodoInlineNotes`); defaults off. */
+    sentinelTodoInlineNotesEnabled: boolean;
     sentinelTodoScrubberEnabled: boolean;
     sentinelTodoJobsEnabled: boolean;
     sentinelAdditionalInstructionsEnabled: boolean;

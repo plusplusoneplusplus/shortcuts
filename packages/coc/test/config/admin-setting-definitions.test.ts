@@ -879,6 +879,24 @@ describe('Features card UI metadata', () => {
         })).panelTabGroupsEnabled).toBe(true);
     });
 
+    it('exposes Sentinel To-do inline Notes editing as a live, experimental default-off Sentinel toggle', () => {
+        const def = getAdminSettingDefinition('features.sentinelTodoInlineNotes')!;
+        expect(def.value).toEqual({ kind: 'boolean' });
+        expect(def.default).toBe(false);
+        expect(def.runtime).toBe('live');
+        expect(def.runtimeFlag).toBe('sentinelTodoInlineNotesEnabled');
+        expect(def.ui).toMatchObject({
+            tab: 'sentinel', group: 'sentinelTodos', badge: 'experimental',
+            testId: 'toggle-sentinel-todo-inline-notes-enabled',
+        });
+        expect(DEFAULT_CONFIG.features.sentinelTodoInlineNotes).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).sentinelTodoInlineNotesEnabled).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).sentinelTodoInlineNotesEnabled).toBe(false);
+        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
+            features: { sentinelTodoInlineNotes: true },
+        })).sentinelTodoInlineNotesEnabled).toBe(true);
+    });
+
     it('exposes browser tab shortcuts as a live, experimental default-off Browser page toggle', () => {
         const def = getAdminSettingDefinition('features.browserTabShortcuts')!;
         expect(def.value).toEqual({ kind: 'boolean' });
@@ -955,6 +973,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.sentinelTodoDependencies': 'sentinel',
         'features.sentinelTodoCategories': 'sentinel',
         'features.sentinelTodoExternalReferences': 'sentinel',
+        'features.sentinelTodoInlineNotes': 'sentinel',
         'features.sentinelTodoScrubber': 'sentinel',
         'features.sentinelTodoJobs': 'sentinel',
         'features.sentinelAdditionalInstructions': 'sentinel',

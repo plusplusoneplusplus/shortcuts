@@ -1194,6 +1194,7 @@ timeout: 300
                 '  sentinelTodoCategories: true',
                 '  sentinelTodoDependencies: true',
                 '  sentinelTodoExternalReferences: true',
+                '  sentinelTodoInlineNotes: true',
                 '  sentinelTodoJobs: true',
                 '  sentinelAdditionalInstructions: true',
                 '  sentinelTodoScrubber: true',
@@ -1275,7 +1276,7 @@ timeout: 300
 
         describe.each([
             'sentinelTodoDependencies', 'sentinelResultCards', 'sentinelPrOutcomeWake', 'sentinelFollowUpResults', 'sentinelRemoteResults',
-            'sentinelTodoExternalReferences', 'railManualRefresh', 'railStatusActions',
+            'sentinelTodoExternalReferences', 'sentinelTodoInlineNotes', 'railManualRefresh', 'railStatusActions',
             'explorerDelete', 'panelTabReordering', 'panelTabGroups', 'browserTabShortcuts',
         ] as const)('%s', feature => {
             it.each([undefined, false, true])('resolves its value and source (%s)', value => {
@@ -1593,6 +1594,7 @@ timeout: 300
                     "sentinelTodoDateTimeTriggers": false,
                     "sentinelTodoDependencies": false,
                     "sentinelTodoExternalReferences": false,
+                    "sentinelTodoInlineNotes": false,
                     "sentinelTodoJobs": false,
                     "sentinelTodoScrubber": false,
                     "sessionContextAttachments": true,
@@ -1851,6 +1853,7 @@ timeout: 300
                   "features.sentinelTodoDateTimeTriggers": "default",
                   "features.sentinelTodoDependencies": "default",
                   "features.sentinelTodoExternalReferences": "default",
+                  "features.sentinelTodoInlineNotes": "default",
                   "features.sentinelTodoJobs": "default",
                   "features.sentinelTodoScrubber": "default",
                   "features.sessionContextAttachments": "default",

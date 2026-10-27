@@ -106,6 +106,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `teamsIc3OwnCommands` | off | Native Azure CLI own-user `@coc <prompt>` launcher; configured under Connectors -> Teams |
 | `sentinelTodoDependencies` | off | Live gate for native owner-scoped prerequisite authoring; publishes `sentinelTodoDependenciesEnabled`, and grants no execution authority |
 | `sentinelTodoExternalReferences` | off | Live gate for typed PR/email/web display references in item create/update, tool and panel; publishes `sentinelTodoExternalReferencesEnabled`; preserves conversation attachments and grants no authority |
+| `sentinelTodoInlineNotes` | off | Live SPA-only gate for inline Notes editing in To-do details; publishes `sentinelTodoInlineNotesEnabled`; writes only revisioned `notes` through the existing item update and grants no authority |
 | `sentinelTodoJobs` | off | Live experimental opt-in for Sentinel Refrains (Admin label "Sentinel Refrains"); publishes `sentinelTodoJobsEnabled`. The Admin row requires `sentinel.enabled`; Coda (`sentinelTodoScrubber`, label "Sentinel Coda") retains its independent flag. Keys keep the older names on purpose |
 | `sentinelFollowUpResults` | off | Live gate for returning each tracked Sentinel `send_to_conversation` post-mode turn result as a delegated review; publishes `sentinelFollowUpResultsEnabled` |
 | `sentinelPrOutcomeWake` | off | Live gate for tracked delegated-PR outcome reviews and To-do detail controls; publishes `sentinelPrOutcomeWakeEnabled`, uses native trigger infrastructure, and does not change CI/conflict repair permission |
@@ -251,7 +252,7 @@ Editors keeps only `features.arxivPaperIngest` (Notes Editor). The Chat tab host
 ### Sentinel settings
 
 `#admin/settings/sentinel` owns the Sentinel behavior controls: `sentinel.enabled`,
-`features.sentinelNextSteps`, `sentinelTodoDependencies`, `sentinelTodoCategories`, `sentinelTodoExternalReferences`,
+`features.sentinelNextSteps`, `sentinelTodoDependencies`, `sentinelTodoCategories`, `sentinelTodoExternalReferences`, `sentinelTodoInlineNotes`,
 `sentinelTodoScrubber`, `sentinelTodoJobs`, `sentinelTodoDateTimeTriggers`,
 `sentinelPrOutcomeWake`, `sentinelFollowUpResults`, and `sentinelDesktopMirror`. The
 presentation-only `sentinelResultCards` lives on Appearance → Chat Interface. Registry groups organize mode, To-do/PR outcomes and

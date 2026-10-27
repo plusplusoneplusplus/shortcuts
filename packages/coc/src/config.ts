@@ -339,6 +339,8 @@ export interface CLIConfig {
         sentinelTodoCategories?: boolean;
         /** Typed display-only external references on Sentinel items. Disabled by default. */
         sentinelTodoExternalReferences?: boolean;
+        /** Inline Notes editing in Sentinel To-do details. Disabled by default. */
+        sentinelTodoInlineNotes?: boolean;
         /** Sentinel Coda, the built-in to-do review (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber?: boolean;
         /** Sentinel Refrains: scheduled and on-demand prompts. Disabled by default. */
@@ -784,6 +786,8 @@ export interface ResolvedCLIConfig {
         sentinelTodoDependencies: boolean;
         sentinelTodoCategories: boolean;
         sentinelTodoExternalReferences: boolean;
+        /** Inline Notes editing in Sentinel To-do details. Disabled by default. */
+        sentinelTodoInlineNotes: boolean;
         /** Sentinel Coda, the built-in to-do review (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber: boolean;
         /** Sentinel Refrains: scheduled and on-demand prompts. Disabled by default. */
@@ -1141,6 +1145,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         sentinelTodoDependencies: false,
         sentinelTodoCategories: false,
         sentinelTodoExternalReferences: false,
+        sentinelTodoInlineNotes: false,
         sentinelTodoScrubber: false,
         sentinelTodoJobs: false,
         sentinelAdditionalInstructions: true,

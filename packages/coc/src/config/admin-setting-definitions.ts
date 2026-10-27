@@ -713,6 +713,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.sentinelTodoInlineNotes', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoInlineNotesEnabled',
+        ui: {
+            tab: 'sentinel', group: 'sentinelTodos', order: 32.595, label: 'Sentinel To-do inline Notes editing', badge: 'experimental',
+            hint: 'Click a To-do\'s Notes in its details to edit them in place. Saves only Notes, checks for concurrent changes and grants no execution authority. Disabled by default.',
+            testId: 'toggle-sentinel-todo-inline-notes-enabled',
+        },
+    }),
+    bool({
         key: 'features.sentinelTodoScrubber', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoScrubberEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.6, label: 'Sentinel Coda', badge: 'experimental',

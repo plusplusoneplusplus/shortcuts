@@ -964,6 +964,14 @@ on drop and send (see the composer knowledge reference). Details list every job 
 notes over two lines or 160 characters have an optional collapse toggle
 (`sentinelTodoFoldNotes`). Visibility is remembered with each item's drafts in the
 owner-scoped, in-memory `SentinelTodoView` across refreshes and remounts.
+Default-off live `sentinelTodoInlineNotesEnabled` adds inline Notes editing on
+non-archived items (normal and manual): Edit/Add notes actions or a click on note
+text (links and text selections excluded) open `SentinelTodoNotesEditor` as a
+`notesOnly` edit draft, sharing the item's draft memory, menu/Organize blocking and
+owner-routed `onSave`. Saves are explicit and send only `notes`; blur never saves.
+A draft whose base notes differ from the live item shows the latest notes and
+disables Save until the user keeps the draft or takes the latest; with unchanged
+notes, the save uses the live revision.
 The footer shows Created, a `Status` button group of the four
 stored statuses (active items only; the saved one is `aria-pressed`, pressing it is a no-op, In review is
 never offered), and ghost Edit/Reopen/Archive or Restore buttons. Manual tracking's header carries a
