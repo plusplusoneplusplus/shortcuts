@@ -473,6 +473,13 @@ export function UnifiedRightPanel({
         migrateUnifiedPanelState(workspaceId);
     }, [workspaceId]);
     const modeColumnVisible = isUnifiedTreeVisible(tree.state, width);
+    // Opens (never toggles) the Explorer navigator. `selectMode` closes the
+    // whole panel when its mode is already selected, which is what the To-do
+    // tab leaves behind after hiding the tree.
+    const showExplorer = useCallback(() => {
+        if (!isOpen || mode !== 'explorer') dock.selectMode('explorer');
+        tree.setOpen(true);
+    }, [dock, isOpen, mode, tree]);
 
     // The column's drag. It is deliberately given no `storageKey`: the width
     // lives in the existing panel navigator store, and two localStorage owners
@@ -1082,8 +1089,7 @@ export function UnifiedRightPanel({
                 return;
             }
             detail.handled = true;
-            dock.selectMode('explorer');
-            tree.setOpen(true);
+            showExplorer();
             setTreeRevealRequest(prev => ({
                 ownerWorkspaceId: detail.ownerWorkspaceId,
                 path: detail.path,
@@ -1093,7 +1099,7 @@ export function UnifiedRightPanel({
         };
         window.addEventListener(OPEN_PANEL_DIRECTORY_EVENT, onOpenDirectory);
         return () => window.removeEventListener(OPEN_PANEL_DIRECTORY_EVENT, onOpenDirectory);
-    }, [workspaceId, chatId, routingRef, dock, tree, target, targetOptions]);
+    }, [workspaceId, chatId, routingRef, dock, showExplorer, target, targetOptions]);
 
     const handleTabMenuAction = useCallback((action: UnifiedPanelTabMenuAction, tabId: string) => {
         const tab = tabs.find(candidate => candidate.id === tabId);
@@ -2154,8 +2160,7 @@ export function UnifiedRightPanel({
                                 setMenuOpen(false);
                                 // Explorer is a panel mode, not a resource tab.
                                 if (kind === 'explorer') {
-                                    dock.selectMode('explorer');
-                                    tree.setOpen(true);
+                                    showExplorer();
                                     return;
                                 }
                                 openWorkspaceResource(kind);

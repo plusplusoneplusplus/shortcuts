@@ -543,7 +543,10 @@ not last is moved to the end. A `preview` bit on any kind but `file` is
 discarded: only the tree's single click creates the slot, and it opens files.
 
 The `+` menu keeps its **Explorer** entry, in place and with its label. The action
-selects Explorer mode and opens the navigator instead of opening a tab.
+selects Explorer mode and opens the navigator instead of opening a tab. Like
+directory links, it calls `dock.selectMode` only when the panel is closed or in
+Search mode, because selecting the current open mode closes the whole panel —
+the state To-do leaves after hiding the tree.
 
 ## File write permissions
 

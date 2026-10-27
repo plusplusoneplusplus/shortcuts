@@ -181,7 +181,7 @@ scope-only rather than showing an empty picker.
 What the `+` menu offers depends on the *target*, not the scope. A repo-group
 root has no single repository root, so `unifiedPanelOpenMenuModel` hides its
 Explorer entry (`isRepoGroupWorkspaceId`); a concrete repo gets it. The entry
-toggles the file-tree column — the tree is panel chrome, never a tab.
+opens the file-tree column, never closes it — the tree is panel chrome, never a tab.
 
 Only a panel whose target *is* its scope owns the explorer route: the tree column
 gets `deepLink={target === workspaceId}`. Selecting a file otherwise writes

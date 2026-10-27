@@ -51,7 +51,8 @@ import { sentinelTodoTabInput } from '../../../../src/server/spa/client/react/fe
 import { clearSentinelTodoExcursion } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoExcursion';
 import { clearSentinelTodoChats } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelTodoChats';
 import { applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
-import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
+import { useWorkspaceDock, type WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
+import { workspaceDockModeStorageKey, workspaceDockOpenStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
 
 const WS = 'ws-todo';
 const CHAT = 'sentinel';
@@ -76,6 +77,16 @@ function seed(activeTodo = true, scope = WS) {
 }
 function panel(controller = dock(), scope = WS, chatId = CHAT) {
     return <><button>Chat content</button><UnifiedRightPanel workspaceId={scope} chatId={chatId} dock={controller} /></>;
+}
+// The real dock controller, so `selectMode`'s toggle-closed rule is live.
+function LiveDockPanel({ scope = WS }: { scope?: string }) {
+    const controller = useWorkspaceDock(scope);
+    return <UnifiedRightPanel workspaceId={scope} chatId={CHAT} dock={{ ...controller, width: 900 }} />;
+}
+function dockOpen(scope = WS) { return localStorage.getItem(workspaceDockOpenStorageKey(scope)) === '1'; }
+async function chooseMenuExplorer() {
+    await userEvent.click(screen.getByTestId('unified-panel-open-menu'));
+    await userEvent.click(within(screen.getByRole('dialog', { name: 'Open a resource' })).getByText('Explorer'));
 }
 function selectItem(id = 'one') {
     return screen.getByTestId(`sentinel-todo-row-${id}`).querySelector('button[data-todo-select]') as HTMLButtonElement;
@@ -285,5 +296,71 @@ describe('To-do activation and Explorer presentation', () => {
         expect(explorerOpen()).toBe(false);
         expect(explorerOpen('other-workspace')).toBe(true);
         expect(readUnifiedPanelState(WS).chatTabs[CHAT]).toHaveLength(2);
+    });
+});
+
+describe('the + menu Explorer entry with To-do active', () => {
+    it('keeps the panel open and shows Explorer instead of toggling the panel closed', async () => {
+        seed();
+        localStorage.setItem(workspaceDockOpenStorageKey(WS), '1');
+        render(<LiveDockPanel />);
+        await loaded();
+        expect(explorerOpen()).toBe(false);
+        const before = readUnifiedPanelState(WS);
+        await chooseMenuExplorer();
+        expect(dockOpen()).toBe(true);
+        expect(localStorage.getItem(workspaceDockModeStorageKey(WS)) ?? 'explorer').toBe('explorer');
+        expect(explorerOpen()).toBe(true);
+        expect(readUnifiedTreeState(WS).width).toBe(243);
+        expect(screen.queryByRole('dialog', { name: 'Open a resource' })).toBeNull();
+        expect(screen.getByRole('tab', { name: /To-do/ })).toHaveAttribute('aria-selected', 'true');
+        expect(readUnifiedPanelState(WS)).toEqual(before);
+    });
+
+    it('is idempotent when Explorer is already shown', async () => {
+        seed();
+        localStorage.setItem(workspaceDockOpenStorageKey(WS), '1');
+        render(<LiveDockPanel />);
+        await loaded();
+        await chooseMenuExplorer();
+        await chooseMenuExplorer();
+        expect(dockOpen()).toBe(true);
+        expect(explorerOpen()).toBe(true);
+    });
+
+    it('switches from Search to Explorer without closing the panel', async () => {
+        seed();
+        localStorage.setItem(workspaceDockOpenStorageKey(WS), '1');
+        localStorage.setItem(workspaceDockModeStorageKey(WS), 'search');
+        render(<LiveDockPanel />);
+        await loaded();
+        await chooseMenuExplorer();
+        expect(dockOpen()).toBe(true);
+        expect(localStorage.getItem(workspaceDockModeStorageKey(WS))).toBe('explorer');
+        expect(explorerOpen()).toBe(true);
+    });
+
+    it('leaves the explicit Explorer toggle able to hide only the tree', async () => {
+        seed();
+        localStorage.setItem(workspaceDockOpenStorageKey(WS), '1');
+        render(<LiveDockPanel />);
+        await loaded();
+        await chooseMenuExplorer();
+        await userEvent.click(screen.getByRole('button', { name: 'Hide Explorer' }));
+        expect(explorerOpen()).toBe(false);
+        expect(dockOpen()).toBe(true);
+    });
+
+    it('keeps the panel open when a directory link targets an open Explorer-mode panel', async () => {
+        seed();
+        localStorage.setItem(workspaceDockOpenStorageKey(WS), '1');
+        render(<LiveDockPanel />);
+        await loaded();
+        const detail = { scopeWorkspaceId: WS, chatId: CHAT, ownerWorkspaceId: WS,
+            ownerRoutingRef: null, path: 'src', handled: false };
+        act(() => { window.dispatchEvent(new CustomEvent('coc-open-panel-directory', { detail })); });
+        expect(detail.handled).toBe(true);
+        expect(dockOpen()).toBe(true);
+        expect(explorerOpen()).toBe(true);
     });
 });
