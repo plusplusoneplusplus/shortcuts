@@ -364,12 +364,34 @@ describe('Sentinel Overtures', () => {
             expect(screen.getByText(trigger.outcomeReason!)).toBeTruthy();
         } else expect(screen.getByLabelText('Actions for PR #7')).toBeTruthy();
     });
-    it.each(['pending', 'delivered'] as const)('makes %s delivery visible alongside Fired and time', async state => {
-        mocks.list.mockResolvedValue([rule({ outcome: 'fired', delivery: { state, firedAt: iso, deliveryId: 'delivery-1', reason: 'merged' } })]);
+    it('makes pending delivery visible alongside Fired and time', async () => {
+        mocks.list.mockResolvedValue([rule({ outcome: 'fired', delivery: { state: 'pending', firedAt: iso, deliveryId: 'delivery-1', reason: 'merged' } })]);
         mount();
         const badge = await screen.findByText('Fired');
-        expect(badge.title.toLowerCase()).toContain(state === 'pending' ? 'pending' : 'delivered');
-        expect(screen.getByText(state === 'pending' ? /Delivery pending/ : /Message delivered/)).toBeTruthy();
+        expect(badge.title.toLowerCase()).toContain('pending');
+        expect(screen.getByText(/Delivery pending/)).toBeTruthy();
+    });
+    it('auto-clears delivered PR and date wakes from rows and count, even from an older owner server', async () => {
+        mocks.capabilities.mockResolvedValue({ dateTime: true });
+        const delivered = (overrides: Partial<Trigger>) => rule({ status: 'disarmed', outcome: 'fired', nextTickAt: null,
+            delivery: { state: 'delivered', firedAt: iso, deliveredAt: iso, deliveryId: 'delivery-1', reason: 'merged' }, ...overrides });
+        const dateEvent: Trigger['event'] = { type: 'date-time', firesAt: iso, timeZone: 'UTC' };
+        const failed = rule({ id: 'failed', status: 'disarmed', outcome: 'error', outcomeReason: 'Sentinel chat not found',
+            delivery: { state: 'failed', firedAt: iso, deliveryId: 'delivery-2', reason: 'due' } });
+        mocks.list.mockResolvedValueOnce([delivered({ id: 'pr-delivered' }), delivered({ id: 'date-delivered', event: dateEvent }), failed, rule()]);
+        mount();
+        await screen.findByText('Waiting');
+        expect(screen.getAllByTestId(/^sentinel-overture-/).map(row => row.dataset.testid))
+            .toEqual(['sentinel-overture-rule-1', 'sentinel-overture-failed']);
+        expect(screen.getByRole('button', { name: /Overtures \(2\)/ })).toBeTruthy();
+        expect(screen.queryByText(/Message delivered/)).toBeNull();
+        // The waiting rule fires and delivers: the next owner read drops it and the empty entry returns.
+        mocks.list.mockResolvedValue([delivered({ id: 'rule-1' }), delivered({ id: 'date-delivered', event: dateEvent })]);
+        const handler = mocks.connect.mock.calls[0][0].onMessage;
+        act(() => handler({ type: 'trigger-updated', workspaceId: owner.ownerWorkspaceId, processId: owner.processId }));
+        await waitFor(() => expect(screen.queryByTestId('sentinel-overtures')).toBeNull());
+        expect(screen.getByRole('button', { name: '+ Add overture' })).toBeTruthy();
+        expect(mocks.remove).not.toHaveBeenCalled();
     });
     it('shows read errors over Waiting with retry details without terminalizing the row', async () => {
         const base = rule();

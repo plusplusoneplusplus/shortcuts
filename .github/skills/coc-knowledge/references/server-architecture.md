@@ -253,7 +253,9 @@ Done or archived items stop as Skipped. Eligible fires persist the terminal outc
 fixed delivery identity and immutable wake prompt before queue work; delivery errors
 remain pending and visible. Date recovery rechecks item/owner eligibility and
 removal before admission; missing owners fail without retargeting. Clearing retains
-dedupe receipts. A date wake grants no new authorization.
+dedupe receipts. Owner lists also omit delivered fired wakes without touching the
+stored receipt; a wake reopened to pending shows again. A date wake grants no new
+authorization.
 
 `QueueActionExecutor` sends bound wakes through `ProcessMessageDeliveryService.deliverOnce`,
 which serializes owner checks and dedupe with human follow-ups and buffer draining.

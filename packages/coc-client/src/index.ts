@@ -13,6 +13,7 @@ export * from './browser-control';
 export * from './pull-request-url';
 export * from './dashboard-discovery';
 export * from './date-time-trigger';
+export * from './sentinel-overture';
 
 // Deprecated names kept for one release after the Refrains/Coda/Overtures rename.
 import type { SentinelCodaClient, SentinelRefrainsClient } from './domains';

@@ -1081,7 +1081,9 @@ Tests use isolated mock clients in
 ### Overtures
 
 `SentinelOvertures` lists intact, nondelegated To-do bindings through the ledger
-owner's typed `client.triggers` API. Overture status and delivery stay separate from
+owner's typed `client.triggers` API. Fired overtures with delivered wakes leave the
+rows and count automatically (shared `isDeliveredSentinelOverture`, also applied to
+older owner servers); pending, failed, skipped and error results stay until Clear. Overture status and delivery stay separate from
 item/job/review states. Rows link the canonical PR or show a zoned date with UTC
 tooltip.
 

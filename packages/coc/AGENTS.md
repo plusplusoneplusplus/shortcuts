@@ -368,7 +368,9 @@ references before editing. Paths are package-relative.
   revisions, eligibility and shared-cap checks. Trigger infrastructure is always
   wired; overtures never expire and require no additional approval gate. Clearing overtures
   hides their presentation while preserving delivery and keyed authoring receipts;
-  retries must not duplicate wakes or revive removed overtures.
+  owner lists also omit fired overtures whose wake was delivered (coc-client
+  `isDeliveredSentinelOverture`) without changing the stored record. Retries must not
+  duplicate wakes or revive removed overtures.
   Sentinel tool actions use late-bound `getTriggerInfra().sentinelOvertures`;
   the overture owner is the invoking chat, never a tool argument. The tool's date event
   schema follows the live service capability; owner-qualified REST capabilities

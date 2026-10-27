@@ -969,7 +969,8 @@ Run now confirms a one-shot wake and never launches jobs directly.
 Lifecycle and pending delivery stay separate from item/job/review state; typed
 writes carry owner identity and saved revisions. Owner changes isolate async
 reads and dialogs. Item links reveal only the target and its containing groups,
-preserving unrelated expansion and lazy previews. Terminal Clear retains receipts.
+preserving unrelated expansion and lazy previews. Terminal Clear retains receipts;
+delivered fired wakes leave rows and count automatically, falling back to the empty entry.
 
 Ctrl/Cmd+F focuses the Explorer file filter only while focus is inside the
 visible Explorer navigator column. Content tabs keep their own find behavior,
