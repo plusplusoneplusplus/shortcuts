@@ -97,8 +97,9 @@ and transport code stays generic.
   stdin pipe rejects in-flight work instead of escaping as an uncaught process
   error. A reply whose request already settled is dropped, which is how stale
   results from a superseded query never reach a caller. `dispose` rejects
-  everything in flight with a `closed` failure and detaches every stream
-  listener; the stream ending does the same.
+  everything in flight with a `closed` failure and detaches connection handlers,
+  retaining a stateless error listener on each stream to absorb late write
+  failures; the stream ending does the same.
 - Failures arrive as `LanguageServerRequestError` with a `failure` of `timeout`,
   `cancelled`, `closed`, `server-error`, or `write-failed`.
 - `session.ts` — `LanguageServerSession` owns one process: it spawns
