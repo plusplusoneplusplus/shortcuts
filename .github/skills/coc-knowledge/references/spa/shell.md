@@ -706,6 +706,7 @@ features default off.
 | `features.explorerEditorTabs` | `isExplorerEditorTabsEnabled()` | on |
 | `features.schedulerDelayHint` | `isSchedulerDelayHintEnabled()` | on |
 | `features.htmlPageTab` | `htmlPageTabEnabled` | on |
+| `features.binaryFileReveal` | `isBinaryFileRevealEnabled()` | off |
 | `features.quickAskSidenotes` | live server flag | — |
 ### Unified right panel
 

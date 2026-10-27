@@ -572,6 +572,13 @@ Images retain MIME/encoding; CSV is text, not a table viewer. Preview failures,
 oversized content, and binary blobs offer an owner-routed Download action.
 Concrete unresolved remote routes fail visibly without local fallback.
 
+Default-off `features.binaryFileReveal` (Admin → Appearance, editor files) makes
+`UnifiedTabView` pass `revealBinary` to `PreviewPane`. Only the binary placeholder
+renders `BinaryRevealAction`, which sends the exact workspace id, repo-relative
+path and clone route to `explorerApi.reveal` (the owning server's OS file-manager
+route) and never opens the file. Trusted and workspace-preview paths get a
+disabled button with a visible reason; failures show an alert, not success.
+
 ## Keep-alive and terminals
 
 A tab joins the mounted set when it **first becomes active**, and leaves on close.

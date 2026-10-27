@@ -91,8 +91,12 @@ export const explorerApi = {
     },
 
     reveal(workspaceId: string, path: string, routingRef?: string | null): Promise<void> {
-        return getCocClientForWorkspace(routingRef === undefined ? workspaceId : routingRef)
-            .explorer.reveal(workspaceId, path);
+        const ref = routingRef === undefined ? workspaceId : routingRef;
+        // Never let a remote clone's path fall through to the local server.
+        if (resolveCloneRoute(ref).kind === 'unresolved-remote') {
+            return Promise.reject(new Error('The owning server is unavailable. The file was not revealed.'));
+        }
+        return getCocClientForWorkspace(ref).explorer.reveal(workspaceId, path);
     },
 
     readTrustedBlob(path: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<ExplorerBlobResponse> {

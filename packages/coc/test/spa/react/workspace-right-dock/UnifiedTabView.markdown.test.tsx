@@ -9,15 +9,17 @@ import {
 } from '../../../../src/server/spa/client/react/utils/config';
 
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane', () => ({
-    PreviewPane: ({ repoId, routingRef, filePath, markdownPreview, revealLine }: {
+    PreviewPane: ({ repoId, routingRef, filePath, markdownPreview, revealBinary, revealLine }: {
         repoId: string;
         routingRef?: string | null;
         filePath: string;
         markdownPreview?: boolean;
+        revealBinary?: boolean;
         revealLine?: number;
     }) => (
         <div data-testid="panel-file" data-repo={repoId} data-route={routingRef}
-            data-path={filePath} data-preview={String(markdownPreview)} data-line={revealLine} />
+            data-path={filePath} data-preview={String(markdownPreview)} data-reveal-binary={String(revealBinary)}
+            data-line={revealLine} />
     ),
 }));
 
@@ -57,5 +59,23 @@ describe('unified Markdown file-tab opt-in', () => {
         expect(screen.getByTestId('panel-file')).toBe(view);
         expect(view).toHaveAttribute('data-line', '12');
         expect(view).toHaveAttribute('data-preview', 'true');
+    });
+});
+
+describe('unified file-tab binary Open in Explorer gate', () => {
+    beforeEach(() => _resetRuntimeConfig());
+
+    it('defaults off and follows live features.binaryFileReveal changes for the same owner', () => {
+        render(<UnifiedTabView tab={{ ...file, resourceId: 'assets/blob.bin', label: 'blob.bin' }}
+            scopeWorkspaceId="ws-group" onClose={vi.fn()} />);
+        const view = screen.getByTestId('panel-file');
+        expect(view).toHaveAttribute('data-reveal-binary', 'false');
+        act(() => applyRuntimeConfigPatch({ binaryFileRevealEnabled: true }));
+        expect(view).toHaveAttribute('data-reveal-binary', 'true');
+        expect(view).toHaveAttribute('data-repo', 'ws-member');
+        expect(view).toHaveAttribute('data-route', 'remote:member');
+        expect(view).toHaveAttribute('data-path', 'assets/blob.bin');
+        act(() => applyRuntimeConfigPatch({ binaryFileRevealEnabled: false }));
+        expect(view).toHaveAttribute('data-reveal-binary', 'false');
     });
 });

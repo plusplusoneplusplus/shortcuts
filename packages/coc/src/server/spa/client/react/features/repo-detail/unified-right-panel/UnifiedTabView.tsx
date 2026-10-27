@@ -63,7 +63,7 @@ import { useUnifiedPanelHost } from './unifiedPanelHost';
 import { DiffDefinitionReturnChip } from '../../git/diff/DiffDefinitionReturnChip';
 import { WorkspaceSettingsSlot } from '../../repo-settings/WorkspaceSettingsHost';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isMarkdownPanelPreviewEnabled } from '../../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isBinaryFileRevealEnabled, isMarkdownPanelPreviewEnabled } from '../../../utils/config';
 
 export interface UnifiedTabViewProps {
     tab: UnifiedPanelTab;
@@ -144,8 +144,12 @@ export function UnifiedTabView({
     const [markdownPreviewEnabled, setMarkdownPreviewEnabled] = useState(
         () => isMarkdownPanelPreviewEnabled(),
     );
+    const [binaryRevealEnabled, setBinaryRevealEnabled] = useState(() => isBinaryFileRevealEnabled());
     useEffect(() => {
-        const update = () => setMarkdownPreviewEnabled(isMarkdownPanelPreviewEnabled());
+        const update = () => {
+            setMarkdownPreviewEnabled(isMarkdownPanelPreviewEnabled());
+            setBinaryRevealEnabled(isBinaryFileRevealEnabled());
+        };
         window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
         return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
     }, []);
@@ -244,6 +248,7 @@ export function UnifiedTabView({
                     filePath={tab.resourceId}
                     fileName={fileNameOf(tab)}
                     markdownPreview={markdownPreviewEnabled}
+                    revealBinary={binaryRevealEnabled}
                     revealLine={tab.line}
                     endLine={tab.endLine}
                     revealColumn={tab.column}

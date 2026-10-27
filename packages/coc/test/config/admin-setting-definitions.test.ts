@@ -879,6 +879,24 @@ describe('Features card UI metadata', () => {
         })).panelTabGroupsEnabled).toBe(true);
     });
 
+    it('exposes binary-file Open in Explorer as a live, experimental default-off Appearance toggle', () => {
+        const def = getAdminSettingDefinition('features.binaryFileReveal')!;
+        expect(def.value).toEqual({ kind: 'boolean' });
+        expect(def.default).toBe(false);
+        expect(def.runtime).toBe('live');
+        expect(def.runtimeFlag).toBe('binaryFileRevealEnabled');
+        expect(def.ui).toMatchObject({
+            tab: 'appearance', group: 'editorFiles', badge: 'experimental',
+            testId: 'toggle-binary-file-reveal-enabled',
+        });
+        expect(DEFAULT_CONFIG.features.binaryFileReveal).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).binaryFileRevealEnabled).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).binaryFileRevealEnabled).toBe(false);
+        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
+            features: { binaryFileReveal: true },
+        })).binaryFileRevealEnabled).toBe(true);
+    });
+
     it('exposes Sentinel To-do inline Notes editing as a live, experimental default-off Sentinel toggle', () => {
         const def = getAdminSettingDefinition('features.sentinelTodoInlineNotes')!;
         expect(def.value).toEqual({ kind: 'boolean' });
@@ -1003,6 +1021,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.explorerDelete': 'appearance',
         'features.panelTabReordering': 'appearance',
         'features.panelTabGroups': 'appearance',
+        'features.binaryFileReveal': 'appearance',
         'features.htmlPageTab': 'browser',
         'features.browserTabShortcuts': 'browser',
         'scratchpad.layout': 'appearance',

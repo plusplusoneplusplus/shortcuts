@@ -404,6 +404,8 @@ export interface CLIConfig {
         panelSourceSplit?: boolean;
         panelTabReordering?: boolean;
         panelTabGroups?: boolean;
+        /** "Open in Explorer" under a right-panel file tab's binary placeholder. Disabled by default. */
+        binaryFileReveal?: boolean;
         /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Disabled by default. */
         browserTabShortcuts?: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
@@ -849,6 +851,8 @@ export interface ResolvedCLIConfig {
         panelSourceSplit: boolean;
         panelTabReordering: boolean;
         panelTabGroups: boolean;
+        /** "Open in Explorer" under a right-panel file tab's binary placeholder. Disabled by default. */
+        binaryFileReveal: boolean;
         /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Disabled by default. */
         browserTabShortcuts: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
@@ -1181,6 +1185,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         panelSourceSplit: true,
         panelTabReordering: true,
         panelTabGroups: false,
+        binaryFileReveal: false,
         browserTabShortcuts: false,
         htmlPageTab: true,
         chatStyleSelector: true,

@@ -1230,6 +1230,7 @@ timeout: 300
                 '  panelSourceSplit: false',
                 '  panelTabReordering: true',
                 '  panelTabGroups: true',
+                '  binaryFileReveal: true',
                 '  browserTabShortcuts: true',
                 '  htmlPageTab: false',
                 '  chatStyleSelector: true',
@@ -1277,7 +1278,7 @@ timeout: 300
         describe.each([
             'sentinelTodoDependencies', 'sentinelResultCards', 'sentinelPrOutcomeWake', 'sentinelFollowUpResults', 'sentinelRemoteResults',
             'sentinelTodoExternalReferences', 'sentinelTodoInlineNotes', 'railManualRefresh', 'railStatusActions',
-            'explorerDelete', 'panelTabReordering', 'panelTabGroups', 'browserTabShortcuts',
+            'explorerDelete', 'panelTabReordering', 'panelTabGroups', 'binaryFileReveal', 'browserTabShortcuts',
         ] as const)('%s', feature => {
             it.each([undefined, false, true])('resolves its value and source (%s)', value => {
                 const configPath = path.join(tmpDir, `${feature}.yaml`);
@@ -1544,6 +1545,7 @@ timeout: 300
                     "arxivPaperIngest": false,
                     "autoAgentProviderRouting": false,
                     "autoMemoryPromotion": true,
+                    "binaryFileReveal": false,
                     "botManagedConversations": false,
                     "browserTabShortcuts": false,
                     "canvasHostApis": false,
@@ -1804,6 +1806,7 @@ timeout: 300
                   "features.arxivPaperIngest": "default",
                   "features.autoAgentProviderRouting": "default",
                   "features.autoMemoryPromotion": "file",
+                  "features.binaryFileReveal": "default",
                   "features.botManagedConversations": "default",
                   "features.browserTabShortcuts": "default",
                   "features.canvasHostApis": "default",

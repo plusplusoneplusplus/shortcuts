@@ -1418,6 +1418,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.binaryFileReveal', default: false, runtime: 'live', runtimeFlag: 'binaryFileRevealEnabled',
+        ui: {
+            tab: 'appearance', group: 'editorFiles', order: 47, label: 'Open binary files in Explorer', badge: 'experimental',
+            hint: 'Adds an "Open in Explorer" button to a right-panel file tab that cannot preview a binary file. It shows the file in the owning server\'s system file manager and never opens the file. Disabled by default.',
+            testId: 'toggle-binary-file-reveal-enabled',
+        },
+    }),
+    bool({
         key: 'features.htmlPageTab', default: true, runtime: 'live', runtimeFlag: 'htmlPageTabEnabled',
         ui: {
             tab: 'browser', group: 'browserPages', order: 10, label: 'HTML page tabs',
