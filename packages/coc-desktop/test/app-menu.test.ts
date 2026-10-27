@@ -837,3 +837,21 @@ describe('window close accelerator regression', () => {
         expect(template.find(item => item.role === 'windowMenu')).toEqual({ role: 'windowMenu' });
     });
 });
+
+describe('reload accelerator regression', () => {
+    // A menu accelerator fires wherever focus is (chat, editor, terminal) and
+    // reloads the whole SPA, restarting every hosted browser page with it.
+    it.each(['darwin', 'win32', 'linux'] as const)('%s keeps View reload items without Ctrl/Cmd+R accelerators', platform => {
+        const template = buildAppMenuTemplate(platform, 'CoC', { onCheckForUpdates: vi.fn() });
+        const viewMenu = template.filter(item => item.role === 'viewMenu');
+        expect(viewMenu).toHaveLength(1);
+        const items = submenuOf(viewMenu[0]);
+        for (const role of ['reload', 'forceReload'] as const) {
+            // null/undefined would restore Electron's default CommandOrControl(+Shift)+R.
+            expect(items.find(item => item.role === role)).toEqual({ role, accelerator: '', registerAccelerator: false });
+        }
+        expect(items.filter(item => item.role !== undefined).map(item => item.role)).toEqual([
+            'reload', 'forceReload', 'toggleDevTools', 'resetZoom', 'zoomIn', 'zoomOut', 'togglefullscreen',
+        ]);
+    });
+});

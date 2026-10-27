@@ -210,6 +210,43 @@ describe('browser tab engine-neutral controls', () => {
         platformSpy.mockRestore();
     });
 
+    it.each(['Win32', 'MacIntel'])('reloads only from its own focused toolbar on %s, never from outside or portaled overlays', async platform => {
+        const platformSpy = vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);
+        const outside = document.body.appendChild(document.createElement('textarea'));
+        const view = tab();
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
+        const nav = vi.mocked(mocks.bridge!.nav);
+        const address = screen.getByLabelText('Address') as HTMLInputElement;
+        const button = screen.getByRole('button', { name: 'Browser options' });
+        const chord = { key: 'r', ctrlKey: platform === 'Win32', metaKey: platform === 'MacIntel' };
+        // Focus outside the browser (chat composer, editor, terminal) keeps the key.
+        outside.focus();
+        expect(fireEvent.keyDown(outside, chord)).toBe(true);
+        expect(fireEvent.keyDown(document.body, chord)).toBe(true);
+        expect(nav).not.toHaveBeenCalled();
+        // Focus in: the address bar and toolbar buttons reload this view once.
+        expect(fireEvent.keyDown(address, { ...chord, key: 'R' })).toBe(false);
+        expect(nav).toHaveBeenCalledExactlyOnceWith('view', 'reload');
+        expect(fireEvent.keyDown(address, { ...chord, repeat: true })).toBe(false);
+        expect(fireEvent.keyDown(button, chord)).toBe(false);
+        expect(nav).toHaveBeenCalledTimes(2);
+        for (const patch of [{ shiftKey: true }, { altKey: true }, { ctrlKey: platform !== 'Win32', metaKey: platform !== 'MacIntel' }]) {
+            expect(fireEvent.keyDown(address, { ...chord, ...patch })).toBe(true);
+        }
+        // Portaled overlays bubble through React but do not own the page.
+        await userEvent.click(button);
+        expect(fireEvent.keyDown(screen.getByRole('menuitem', { name: 'Downloads' }), chord)).toBe(true);
+        expect(nav).toHaveBeenCalledTimes(2);
+        // Focus out after a reload, and an inactive tab, never reload.
+        outside.focus();
+        expect(fireEvent.keyDown(outside, chord)).toBe(true);
+        view.rerender(<UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="remote-workspace" url="https://example.test/" active={false} visible onNavigate={vi.fn()} onPageState={vi.fn()} />);
+        expect(fireEvent.keyDown(address, chord)).toBe(true);
+        expect(nav).toHaveBeenCalledTimes(2);
+        outside.remove();
+        platformSpy.mockRestore();
+    });
+
     it('labels the actual engine returned by the host and hides rather than closes on unmount', async () => {
         open.mockResolvedValue({ ok: true, engine: 'webview2' });
         const view = tab();

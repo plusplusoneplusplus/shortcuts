@@ -373,6 +373,16 @@ function wireView(entry: BrowserEntry): void {
             event.preventDefault();
             return;
         }
+        // Reload fires here only while this guest owns keyboard focus; the app
+        // menu binds no reload key, so focus elsewhere never reaches a page.
+        if (modifier && !input.alt && key === 'r' && !entry.closed && entry.shown && input.type === 'keyDown') {
+            event.preventDefault();
+            if (!input.isAutoRepeat) {
+                if (input.shift && !entry.error && wc.getURL()) { wc.reloadIgnoringCache(); }
+                else { runNav(entry, 'reload'); }
+            }
+            return;
+        }
         if (entry.closed || !entry.shown || input.type !== 'keyDown'
             || !['w', 't', 'l'].includes(key) || !modifier || input.alt
             || (key === 'l' && (input.shift || !entry.sink.focusAddressRequested))

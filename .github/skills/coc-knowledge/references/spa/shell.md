@@ -477,6 +477,16 @@ The browser toolbar handles Ctrl+L (Cmd+L on macOS); native engines forward
 focus. Only the matching active, visible browser tab focuses and selects its
 complete editable address, including unsent edits.
 
+Reload keys belong to the focused browser surface, never the app menu. The
+desktop View menu keeps Reload/Force Reload as items without Ctrl/Cmd+R or
+Ctrl/Cmd+Shift+R accelerators, since a full SPA reload closes every hosted
+view. A focused, visible Electron URL guest reloads itself on Ctrl/Cmd+R
+(Shift bypasses the cache); a focused HTML preview guest reloads on Ctrl/Cmd+R;
+WebView2 keeps its native browser accelerators, which act only with native
+focus. The browser toolbar (address bar and buttons, not portaled popovers)
+reloads its active, visible tab on plain Ctrl/Cmd+R. Focus anywhere else leaves
+the key to that surface.
+
 Both tabs hide on unmount and close with their tab; entry-point `onClosed` reaches inactive stores and removes guest hosts via `closeBrowserPanelView`. Window teardown and full SPA reload (`manager.reloadOwner`) close all views. Persisted HTML descriptors reopen files from disk with fresh history, scroll and form state; URL tabs remain session-only.
 Live desktop `test/e2e/browser-engines.e2e.test.ts` uses `COC_DESKTOP_E2E=1` and `--fileParallelism=false`; headless Linux needs Xvfb/`COC_DESKTOP_E2E_NO_SANDBOX=1`.
 

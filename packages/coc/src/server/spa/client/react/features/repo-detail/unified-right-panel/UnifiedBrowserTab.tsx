@@ -185,6 +185,17 @@ export function UnifiedBrowserTab({
             data-testid="browser-toolbar"
             onKeyDown={event => {
                 const mac = isMacPlatform();
+                // Like a browser's address bar, the toolbar reloads its own page;
+                // the desktop menu binds no reload key, so focus elsewhere never does.
+                // Portaled popovers bubble here through React but are overlays, not the toolbar.
+                if (active && visible && !event.defaultPrevented && event.key.toLowerCase() === 'r'
+                    && (mac ? event.metaKey : event.ctrlKey) && !event.altKey && !event.shiftKey
+                    && bridge && opened && event.currentTarget.contains(event.target as Node)) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (!event.repeat) nav('reload');
+                    return;
+                }
                 if (!active || !visible || event.defaultPrevented || event.key.toLowerCase() !== 'l'
                     || !(mac ? event.metaKey : event.ctrlKey) || event.altKey || event.shiftKey
                     || !addressRef.current) return;

@@ -42,6 +42,7 @@ const mocks = vi.hoisted(() => ({
         setZoomFactor: vi.fn(),
         setBackgroundThrottling: vi.fn(),
         sendInputEvent: vi.fn(), insertText: vi.fn().mockResolvedValue(undefined), selectAll: vi.fn(),
+        reload: vi.fn(), reloadIgnoringCache: vi.fn(),
         getURL: () => 'https://example.test/', getTitle: () => 'Fixture', isLoading: () => false,
         navigationHistory: { canGoBack: () => true, canGoForward: () => false },
     },
@@ -448,6 +449,29 @@ describe('Electron browser add-menu forwarding', () => {
         expect(mocks.revoke).toHaveBeenCalledOnce();
         await hosted.close();
         expect(mocks.revoke).toHaveBeenCalledOnce();
+    });
+
+    it('reloads only its own focused visible guest, with Shift bypassing the cache', async () => {
+        const { hosted, press } = await view();
+        const { reload, reloadIgnoringCache } = mocks.contents;
+        reload.mockClear(); reloadIgnoringCache.mockClear();
+        // A hidden guest (another tab, pane or workspace) never claims the key.
+        expect(press({ key: 'r' }).preventDefault).not.toHaveBeenCalled();
+        await hosted.setBounds({ x: 0, y: 0, width: 300, height: 200 });
+        expect(press({ key: 'R' }).preventDefault).toHaveBeenCalledOnce();
+        expect(reload).toHaveBeenCalledOnce();
+        expect(press({ key: 'r', isAutoRepeat: true }).preventDefault).toHaveBeenCalledOnce();
+        expect(reload).toHaveBeenCalledOnce();
+        expect(press({ key: 'R', shift: true }).preventDefault).toHaveBeenCalledOnce();
+        expect(reloadIgnoringCache).toHaveBeenCalledOnce();
+        for (const input of [{ alt: true }, { control: false, meta: false }, { type: 'keyUp' }]) {
+            expect(press({ key: 'r', ...input }).preventDefault).not.toHaveBeenCalled();
+        }
+        await hosted.setBounds(null);
+        expect(press({ key: 'r' }).preventDefault).not.toHaveBeenCalled();
+        expect(reload).toHaveBeenCalledOnce();
+        expect(reloadIgnoringCache).toHaveBeenCalledOnce();
+        await hosted.close();
     });
 
     it('returns owner focus for the address shortcut, preserving other chords and hidden views', async () => {
