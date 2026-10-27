@@ -79,6 +79,10 @@ struct View {
     cdp_sessions: RefCell<protocol::CdpSessions>,
     cdp_error: RefCell<Option<String>>,
     navigation_gate: Cell<bool>,
+    /// The owning window enabled Ctrl+1–9 tab switching.
+    tab_shortcuts: Cell<bool>,
+    /// A forwarded Ctrl hold that has not been reported released yet.
+    tab_modifier_held: Cell<bool>,
     /// One approved URL the next non-redirected navigation may load without asking again.
     gate_bypass: RefCell<Option<String>>,
     /// Current document's PNG icon data URL; cleared when a new document starts.
@@ -1072,6 +1076,18 @@ fn dispatch(state: &State, command: Command) {
                 }
                 _ => Err(windows::core::Error::from(E_INVALIDARG)),
             },
+            "tab-shortcuts" => match command.tab_shortcuts {
+                Some(enabled) if !view.closed.get() => {
+                    view.tab_shortcuts.set(enabled);
+                    if !enabled && view.tab_modifier_held.replace(false) {
+                        protocol::emit(
+                            json!({ "event": "tab-modifier", "viewId": view.id, "held": false }),
+                        );
+                    }
+                    Ok(())
+                }
+                _ => Err(windows::core::Error::from(E_INVALIDARG)),
+            },
             "page-zoom" => {
                 if let Some(percent) = command
                     .page_zoom_percent
@@ -1382,6 +1398,8 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                             cdp_sessions: RefCell::new(protocol::CdpSessions::default()),
                             cdp_error: RefCell::new(None),
                             navigation_gate: Cell::new(command.navigation_gate == Some(true)),
+                            tab_shortcuts: Cell::new(command.tab_shortcuts == Some(true)),
+                            tab_modifier_held: Cell::new(false),
                             gate_bypass: RefCell::new(None),
                             favicon: RefCell::new(None),
                             favicon_generation: Cell::new(0),
@@ -1831,6 +1849,27 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                 let mut key = 0;
                 args.KeyEventKind(&mut kind)?;
                 args.VirtualKey(&mut key)?;
+                if view.tab_shortcuts.get() {
+                    let key_down = kind == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN;
+                    if let Some(digit) = protocol::tab_shortcut_digit(
+                        key,
+                        GetKeyState(VK_CONTROL.0 as i32) < 0,
+                        GetKeyState(VK_MENU.0 as i32) < 0,
+                        GetKeyState(VK_SHIFT.0 as i32) < 0,
+                    ) {
+                        args.SetHandled(true)?;
+                        let mut status = COREWEBVIEW2_PHYSICAL_KEY_STATUS::default();
+                        args.PhysicalKeyStatus(&mut status)?;
+                        if key_down && !status.WasKeyDown.as_bool() {
+                            protocol::emit(json!({ "event": "tab-shortcut-requested", "viewId": view.id, "digit": digit }));
+                        }
+                        return Ok(());
+                    }
+                    if let Some(held) = protocol::tab_modifier_report(key, key_down, view.tab_modifier_held.get()) {
+                        view.tab_modifier_held.set(held);
+                        protocol::emit(json!({ "event": "tab-modifier", "viewId": view.id, "held": held }));
+                    }
+                }
                 let open_menu = protocol::open_menu_shortcut(
                     key,
                     kind == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN,
@@ -1969,6 +2008,7 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                     click_once_enabled: Some(view.click_once_enabled),
                     navigation_gate: Some(view.navigation_gate.get()),
                     approved: None,
+                    tab_shortcuts: None,
                 };
                 start_controller(&callback_state, command, Some((args, deferral, view.clone())));
                 Ok(())

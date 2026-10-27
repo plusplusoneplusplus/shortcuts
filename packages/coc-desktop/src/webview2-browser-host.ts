@@ -37,6 +37,8 @@ interface NativeEntry {
     /** This view's own control turn gate; a popup is also gated while its root is. */
     navigationGate: boolean;
     gateSequence: number;
+    /** The owning window enabled Ctrl+1–9 tab switching; survives a crashed view's reopen. */
+    tabShortcuts?: boolean;
 }
 
 /**
@@ -202,13 +204,19 @@ export class WebView2BrowserHost implements BrowserEngineHost {
                     if (this.process.running) { await this.process.request('close', { viewId: id }); }
                     entry.state = { ...entry.state, error: undefined, errorCode: undefined, loading: true };
                     await this.process.request('open', { viewId: id, url: entry.request.url, parent: entry.parent, pageZoomPercent: entry.pageZoom,
-                        ...(entry.request.clickOnceEnabled ? { clickOnceEnabled: true } : {}), ...(this.gated(entry) ? { navigationGate: true } : {}) });
+                        ...(entry.request.clickOnceEnabled ? { clickOnceEnabled: true } : {}), ...(this.gated(entry) ? { navigationGate: true } : {}),
+                        ...(entry.tabShortcuts ? { tabShortcuts: true } : {}) });
                     await this.process.request('bounds', { viewId: id, bounds: this.bounds(entry) });
                 } else { await this.process.request('nav', { viewId: id, action }); }
             },
             setPageZoom: async percent => {
                 await this.process.request('page-zoom', { viewId: id, pageZoomPercent: percent });
                 entry.pageZoom = percent;
+            },
+            setTabShortcuts: async enabled => {
+                if (entry.root || this.views.get(id) !== entry || !!entry.tabShortcuts === enabled) { return; }
+                entry.tabShortcuts = enabled;
+                await this.process.request('tab-shortcuts', { viewId: id, tabShortcuts: enabled });
             },
             setBounds: async bounds => {
                 if (entry.root) { return; }
@@ -471,6 +479,16 @@ export class WebView2BrowserHost implements BrowserEngineHost {
                     else { entry.sink.openMenuRequested(); }
                 }
             }).catch(error => this.viewFailure(entry, error));
+        } else if (message.event === 'tab-shortcut-requested' && entry.tabShortcuts && entry.bounds && !entry.window.isDestroyed()
+            && Number.isInteger(message.digit) && (message.digit as number) >= 1 && (message.digit as number) <= 9) {
+            // Native focus returns to the SPA first: the switch hides this view, and key-up must reach the document.
+            const digit = message.digit as number;
+            entry.window.webContents.focus();
+            void this.focusOwner(entry.request.ownerId).then(() => {
+                if (this.views.get(message.viewId as string) === entry && entry.bounds) { entry.sink.tabShortcut?.({ digit }); }
+            }).catch(error => this.viewFailure(entry, error));
+        } else if (message.event === 'tab-modifier' && entry.tabShortcuts && typeof message.held === 'boolean') {
+            entry.sink.tabShortcut?.({ held: message.held });
         } else if (message.event === 'close-requested' && entry.bounds) {
             entry.sink.closeRequested();
         } else if (message.event === 'focus-host' && !entry.window.isDestroyed()) {

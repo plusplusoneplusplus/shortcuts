@@ -29,6 +29,8 @@ import {
     BrowserDownloadEvent,
     BrowserSiteCertificate,
     BrowserViewState,
+    browserTabShortcutDigit,
+    browserTabShortcutModifierKey,
     browserUserAgent,
     classifyBrowserNavigation,
     classifyBrowserWindowOpen,
@@ -73,6 +75,10 @@ interface BrowserEntry {
     /** Aborts the in-flight icon request of a superseded document or icon list. */
     faviconRequest?: AbortController;
     applicationSources: Map<number, { generation: number; navigationUrl?: string; crashed: boolean }>;
+    /** The owning window enabled Ctrl/Cmd+1–9 tab switching. */
+    tabShortcuts?: boolean;
+    /** A forwarded modifier hold that has not been reported released yet. */
+    tabModifierHeld?: boolean;
 }
 
 const entries = new Set<BrowserEntry>();
@@ -351,6 +357,38 @@ function wireHistory(entry: BrowserEntry, wc: WebContents): void {
     });
 }
 
+/**
+ * Ctrl/Cmd+1–9 and platform-modifier holds go to the owning panel while this
+ * visible guest has focus. Returns whether the page must not see the key.
+ */
+function forwardTabShortcut(entry: BrowserEntry, input: Electron.Input): boolean {
+    if (!entry.tabShortcuts || entry.closed || !entry.shown) {
+        entry.tabModifierHeld = false;
+        return false;
+    }
+    const digit = browserTabShortcutDigit(input, process.platform);
+    if (digit !== null) {
+        if (input.type === 'keyDown' && !input.isAutoRepeat) {
+            // The switch hides this guest; key-up then reaches the SPA document.
+            entry.win.webContents.focus();
+            entry.sink.tabShortcut?.({ digit });
+        }
+        return true;
+    }
+    if (input.key === browserTabShortcutModifierKey(process.platform)) {
+        const held = input.type === 'keyDown';
+        if (held !== !!entry.tabModifierHeld) {
+            entry.tabModifierHeld = held;
+            entry.sink.tabShortcut?.({ held });
+        }
+    } else if (input.type === 'keyDown' && entry.tabModifierHeld) {
+        // Any other chord (Ctrl+C, …) means the hold was not for tab hints.
+        entry.tabModifierHeld = false;
+        entry.sink.tabShortcut?.({ held: false });
+    }
+    return false;
+}
+
 function wireView(entry: BrowserEntry): void {
     const wc = entry.contents!;
     entry.cdp = new ElectronBrowserCdp(wc);
@@ -369,6 +407,10 @@ function wireView(entry: BrowserEntry): void {
         // Only the embedded view, never authentication popups, owns this shortcut.
         const key = input.key.toLowerCase();
         const modifier = process.platform === 'darwin' ? input.meta : input.control;
+        if (forwardTabShortcut(entry, input)) {
+            event.preventDefault();
+            return;
+        }
         if (modifier && !input.alt && ['+', '=', '-', '_', '0'].includes(key)) {
             event.preventDefault();
             return;
@@ -611,6 +653,13 @@ export class ElectronBrowserHost implements BrowserEngineHost {
             },
             setBounds: bounds => setBounds(entry, bounds),
             setBackgroundControl: enabled => { entry.background = enabled; },
+            setTabShortcuts: enabled => {
+                entry.tabShortcuts = enabled;
+                if (!enabled && entry.tabModifierHeld) {
+                    entry.tabModifierHeld = false;
+                    entry.sink.tabShortcut?.({ held: false });
+                }
+            },
             focus: async () => {
                 if (entry.closed || entry.win.isDestroyed() || !entry.contents || entry.contents.isDestroyed()) {
                     throw new BrowserHostError('not-found', 'Browser tab is closed.');

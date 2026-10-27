@@ -57,7 +57,11 @@ import { useFileIdentityOpen } from '../../language-servers/useFileIdentityOpen'
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { cn } from '../../../ui/cn';
-import { DASHBOARD_CONFIG_UPDATED_EVENT, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled, isPanelTabGroupsEnabled } from '../../../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isBrowserTabShortcutsEnabled, isPanelSourceSplitEnabled, isPanelTabReorderingEnabled, isPanelTabGroupsEnabled } from '../../../utils/config';
+import {
+    BROWSER_TAB_HINT_DELAY_MS, browserTabForDigit, browserTabShortcutDigit, browserTabShortcutModifierDown,
+    browserTabShortcutsMac, isBrowserTabShortcutModifier,
+} from './browserTabShortcuts';
 import { useContainerWidth } from '../../chat/hooks/useContainerWidth';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import {
@@ -254,6 +258,7 @@ export function UnifiedRightPanel({
     const { isOpen, mode, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
     const [reorderEnabled, setReorderEnabled] = useState(() => isPanelTabReorderingEnabled());
     const [groupsEnabled, setGroupsEnabled] = useState(() => isPanelTabGroupsEnabled());
+    const [browserTabShortcutsEnabled, setBrowserTabShortcutsEnabled] = useState(() => isBrowserTabShortcutsEnabled());
     const foldedGroups = useUnifiedTabGroupState(workspaceId);
     const [splitEnabled, setSplitEnabled] = useState(() => isPanelSourceSplitEnabled());
     const settingsOwner = useWorkspaceSettingsOwner();
@@ -261,6 +266,7 @@ export function UnifiedRightPanel({
         const update = () => {
             setReorderEnabled(isPanelTabReorderingEnabled());
             setGroupsEnabled(isPanelTabGroupsEnabled());
+            setBrowserTabShortcutsEnabled(isBrowserTabShortcutsEnabled());
             setSplitEnabled(isPanelSourceSplitEnabled());
         };
         window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
@@ -1827,36 +1833,125 @@ export function UnifiedRightPanel({
         }, url));
     }, [open, target, targetRoutingRef, chatId, workspaceId, targetLabel]);
 
+    // Whether SPA focus hands browser-style tab shortcuts (Ctrl/Cmd+T, Ctrl/Cmd+1–9) to this panel.
+    const ownsBrowserTabShortcut = useCallback((): boolean => {
+        const root = panelRootRef.current;
+        const focused = document.activeElement;
+        if (!isOpen || !root || root.offsetParent === null || !focused) { return false; }
+        if (focused === document.body) {
+            // Empty panels have no focused resource. Claim neutral focus only
+            // when there is one visible panel, never an arbitrary workspace.
+            const visiblePanels = Array.from(document.querySelectorAll<HTMLElement>(
+                '[data-testid="unified-right-panel"][data-open="true"]',
+            )).filter(panel => panel.offsetParent !== null);
+            return visiblePanels.length === 1 && visiblePanels[0] === root;
+        }
+        if (!root.contains(focused)) { return false; }
+        const inBrowser = active?.kind === 'browser'
+            && focused.closest('[data-testid^="unified-panel-view-"]')?.getAttribute('data-testid')
+                === `unified-panel-view-${active.id}`;
+        // Browser address editing uses browser shortcuts; other editors and
+        // terminal inputs retain their own bindings.
+        return inBrowser || !!menuRef.current?.contains(focused) || !(isEditableTarget(focused)
+            || focused.closest('[contenteditable="true"], .monaco-editor, .xterm'));
+    }, [isOpen, active]);
+
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
             if (event.defaultPrevented || event.isComposing
                 || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey
                 || event.key.toLowerCase() !== 't') { return; }
-            const root = panelRootRef.current;
-            const focused = document.activeElement;
-            if (!isOpen || !root || root.offsetParent === null || !focused) { return; }
-            if (focused === document.body) {
-                // Empty panels have no focused resource. Claim neutral focus only
-                // when there is one visible panel, never an arbitrary workspace.
-                const visiblePanels = Array.from(document.querySelectorAll<HTMLElement>(
-                    '[data-testid="unified-right-panel"][data-open="true"]',
-                )).filter(panel => panel.offsetParent !== null);
-                if (visiblePanels.length !== 1 || visiblePanels[0] !== root) { return; }
-            } else if (!root.contains(focused)) { return; }
-            const inBrowser = active?.kind === 'browser'
-                && focused.closest('[data-testid^="unified-panel-view-"]')?.getAttribute('data-testid')
-                    === `unified-panel-view-${active.id}`;
-            // Browser address editing uses browser shortcuts; other editors and
-            // terminal inputs retain their own bindings.
-            if (!inBrowser && !menuRef.current?.contains(focused) && (isEditableTarget(focused)
-                || focused.closest('[contenteditable="true"], .monaco-editor, .xterm'))) { return; }
+            if (!ownsBrowserTabShortcut()) { return; }
             event.preventDefault();
             event.stopPropagation();
             if (!event.repeat) { openBrowserFromShortcut(); }
         };
         document.addEventListener('keydown', onKeyDown);
         return () => document.removeEventListener('keydown', onKeyDown);
-    }, [isOpen, active, openBrowserFromShortcut]);
+    }, [ownsBrowserTabShortcut, openBrowserFromShortcut]);
+
+    // Ctrl/Cmd+1–9 (`features.browserTabShortcuts`): the digit picks a web tab
+    // by the number its strip hint shows (9 is the last), read from the
+    // rendered strip so reorder, close and folded groups never disagree with it.
+    // Holding the modifier alone reveals the hints; release, another chord,
+    // blur, a hidden page and any owner change hide them again.
+    const [tabHintsVisible, setTabHintsVisible] = useState(false);
+    const selectBrowserTabByDigit = useCallback((digit: number): boolean => {
+        const browserTabs = Array.from(panelRootRef.current?.querySelectorAll<HTMLElement>(
+            '[data-testid="unified-panel-tab-list"] [role="tab"][data-kind="browser"]',
+        ) ?? []);
+        const tab = browserTabForDigit(browserTabs, digit);
+        const id = tab?.dataset.tabId;
+        if (!tab || !id) return false;
+        activateWithNavigation(id);
+        tab.focus();
+        return true;
+    }, [activateWithNavigation]);
+    // Latest values for the listeners below, so a tab switch mid-hold keeps the hints.
+    const tabShortcutState = useRef({ active, owns: ownsBrowserTabShortcut, select: selectBrowserTabByDigit });
+    tabShortcutState.current = { active, owns: ownsBrowserTabShortcut, select: selectBrowserTabByDigit };
+    // Re-subscribing on an owner change (workspace, clone or chat) hides the hints.
+    useEffect(() => {
+        if (!browserTabShortcutsEnabled || !isOpen) return;
+        const mac = browserTabShortcutsMac();
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        const hide = () => {
+            if (timer !== null) clearTimeout(timer);
+            timer = null;
+            setTabHintsVisible(false);
+        };
+        const reveal = () => {
+            if (timer !== null) clearTimeout(timer);
+            timer = setTimeout(() => {
+                timer = null;
+                setTabHintsVisible(true);
+            }, BROWSER_TAB_HINT_DELAY_MS);
+        };
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (isBrowserTabShortcutModifier(event, mac)) {
+                if (!event.repeat && tabShortcutState.current.owns()) reveal();
+                return;
+            }
+            const digit = browserTabShortcutDigit(event, mac);
+            if (digit === null || event.defaultPrevented || event.isComposing || !tabShortcutState.current.owns()) {
+                hide();
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            if (!event.repeat) tabShortcutState.current.select(digit);
+        };
+        const onKeyUp = (event: KeyboardEvent) => {
+            if (!browserTabShortcutModifierDown(event, mac)) hide();
+        };
+        const onVisibility = () => { if (document.visibilityState === 'hidden') hide(); };
+        // A focused page cannot bubble keys here; only this panel's active,
+        // visible web view is honoured, and its hold ends with its release.
+        const offNative = desktopBrowserBridge()?.onTabShortcut?.(event => {
+            const root = panelRootRef.current;
+            const { active: current, select } = tabShortcutState.current;
+            if (!root || root.offsetParent === null || current?.kind !== 'browser' || current.resourceId !== event.viewId) return;
+            if (typeof event.digit === 'number') select(event.digit);
+            else if (event.held === true) reveal();
+            else if (event.held === false) hide();
+        });
+        document.addEventListener('keydown', onKeyDown, true);
+        document.addEventListener('keyup', onKeyUp, true);
+        window.addEventListener('blur', hide);
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => {
+            offNative?.();
+            document.removeEventListener('keydown', onKeyDown, true);
+            document.removeEventListener('keyup', onKeyUp, true);
+            window.removeEventListener('blur', hide);
+            document.removeEventListener('visibilitychange', onVisibility);
+            hide();
+        };
+    }, [browserTabShortcutsEnabled, isOpen, workspaceId, routingRef, chatId]);
+    // Native pages forward these keys only after this window opts in.
+    useEffect(() => {
+        desktopBrowserBridge()?.setTabShortcuts?.(browserTabShortcutsEnabled);
+    }, [browserTabShortcutsEnabled]);
 
     // Native guests send this source-qualified event after returning host focus.
     useEffect(() => desktopBrowserBridge()?.onOpenMenuRequested?.(({ viewId }) => {
@@ -2020,6 +2115,7 @@ export function UnifiedRightPanel({
                     onCloseMany={requestBulkClose}
                     onMove={move}
                     reorderEnabled={reorderEnabled}
+                    browserShortcuts={browserTabShortcutsEnabled ? { mac: browserTabShortcutsMac(), hintsVisible: tabHintsVisible } : null}
                     groupsEnabled={groupsEnabled}
                     foldedGroups={foldedGroups}
                     onToggleGroup={group => toggleGroupFolded(workspaceId, group)}

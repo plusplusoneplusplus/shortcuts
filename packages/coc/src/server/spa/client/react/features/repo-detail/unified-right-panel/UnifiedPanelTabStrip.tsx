@@ -57,6 +57,7 @@ import {
     type UnifiedPanelFileActionAvailability,
     type UnifiedPanelTabMenuAction,
 } from './unifiedPanelTabMenuModel';
+import { browserTabAriaKeyShortcut, browserTabShortcutDigits, browserTabShortcutLabel } from './browserTabShortcuts';
 
 /**
  * The tooltip a tab shows on hover: the full label, its repo if any, and — for
@@ -236,6 +237,11 @@ export interface UnifiedPanelTabStripProps {
     onMove: (id: string, beforeId: string | null) => void;
     /** Mixed-type presentation ordering, gated by the panel's live feature flag. */
     reorderEnabled?: boolean;
+    /**
+     * Ctrl/Cmd+1–9 numbering of the rendered web tabs (`features.browserTabShortcuts`);
+     * `hintsVisible` shows the badges while the panel's platform modifier is held.
+     */
+    browserShortcuts?: { mac: boolean; hintsVisible: boolean } | null;
     groupsEnabled?: boolean;
     foldedGroups?: ReadonlySet<UnifiedTabStripGroup>;
     onToggleGroup?: (group: UnifiedTabStripGroup) => void;
@@ -285,6 +291,7 @@ export function UnifiedPanelTabStrip({
     onCloseMany,
     onMove,
     reorderEnabled: mixedReorderEnabled = false,
+    browserShortcuts = null,
     groupsEnabled = false,
     foldedGroups = EMPTY_FOLDED_GROUPS,
     onToggleGroup,
@@ -329,6 +336,14 @@ export function UnifiedPanelTabStrip({
             : compressedCanvasTabs(tabs, activeId),
         [activeId, tabs, groupsEnabled, groups],
     );
+    // Numbered in render order, so a hint always names the tab its digit selects.
+    const shortcutsOn = browserShortcuts !== null;
+    const browserShortcutDigitById = useMemo(() => {
+        if (!shortcutsOn) return null;
+        const browserTabs = stripTabs.filter(tab => tab.kind === 'browser');
+        const digits = browserTabShortcutDigits(browserTabs.length);
+        return new Map(browserTabs.map((tab, index) => [tab.id, digits[index]]));
+    }, [shortcutsOn, stripTabs]);
     const { listRef, thumb, onThumbPointerDown } = useOverlayScrollbar(stripTabs);
     useEffect(() => { cancelDrag(); setContextMenu(null); }, [reorderScope, reorderEnabled, groupsEnabled, cancelDrag]);
     useEffect(() => {
@@ -523,6 +538,7 @@ export function UnifiedPanelTabStrip({
                     const isActive = tab.id === activeId;
                     const isDirty = dirtyIds?.has(tab.id) ?? false;
                     const hasError = errorIds?.has(tab.id) ?? false;
+                    const shortcutDigit = browserShortcutDigitById?.get(tab.id) ?? null;
                     // The divider marks where tools (Terminal, Notes, Git, and
                     // the chat's canvases) end and resources (files, diffs)
                     // begin — derived, never passed in.
@@ -556,6 +572,9 @@ export function UnifiedPanelTabStrip({
                             data-tab-id={tab.id}
                             data-strip-stop={groupsEnabled ? '' : undefined}
                             data-kind={tab.kind}
+                            data-browser-shortcut={shortcutDigit ?? undefined}
+                            aria-keyshortcuts={shortcutDigit !== null && browserShortcuts
+                                ? browserTabAriaKeyShortcut(shortcutDigit, browserShortcuts.mac) : undefined}
                             data-scope={scopeForKind(tab.kind)}
                             data-active={isActive || undefined}
                             data-dirty={isDirty || undefined}
@@ -672,6 +691,17 @@ export function UnifiedPanelTabStrip({
                                 >
                                     {tab.repoLabel}
                                 </span>
+                            )}
+                            {/* Overlays the label's tail just before the close slot (padding 10 +
+                              * close 16 + gap 6), so no tab width or child position ever moves. */}
+                            {browserShortcuts?.hintsVisible && shortcutDigit !== null && (
+                                <kbd
+                                    aria-hidden="true"
+                                    data-testid={`unified-panel-tab-shortcut-${tab.id}`}
+                                    className="pointer-events-none absolute right-8 top-1/2 -translate-y-1/2 rounded-full bg-[#ececec] px-1 font-sans text-[10px] leading-4 text-[#616161] dark:bg-[#3a3a3a] dark:text-[#c5c5c5]"
+                                >
+                                    {browserTabShortcutLabel(shortcutDigit, browserShortcuts.mac)}
+                                </kbd>
                             )}
                             <span className="sr-only">
                                 {tab.repoLabel && !showsUnifiedTabRepoBadge(tab) ? ` — ${tab.repoLabel}` : ''}

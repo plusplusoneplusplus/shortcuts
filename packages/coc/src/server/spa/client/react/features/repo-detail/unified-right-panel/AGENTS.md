@@ -629,6 +629,25 @@ the source view id after returning host focus; only the matching active,
 visible browser tab creates a new tab. The `+` and empty-state Open buttons
 open `UnifiedPanelOpenMenu`.
 
+## Browser-tab number shortcuts
+
+Default-off `features.browserTabShortcuts` (Admin → Browser, Pages & Previews)
+makes Ctrl+1–9 (Cmd on macOS; top-row digits, no Shift/Alt) switch web
+(`browser`) tabs. `browserTabShortcuts.ts` owns the browser convention over the
+strip's rendered web tabs: 1–8 by position, 9 the last; past nine tabs, tabs
+9…n-1 carry no hint. The strip marks each numbered tab with
+`data-browser-shortcut` and `aria-keyshortcuts`, and the panel resolves a digit
+from those rendered tabs, so reorder, close, folded groups and other tab kinds
+never disagree with the hints. Ownership is the Ctrl/Cmd+T rule
+(`ownsBrowserTabShortcut`): editors, Monaco and terminals keep their keys. A
+switch activates the tab and focuses its strip button. Holding the modifier
+alone for `BROWSER_TAB_HINT_DELAY_MS` shows aria-hidden pills absolutely
+positioned over the label tail before the close slot, so no tab box moves;
+release, another chord, window blur, a hidden document, collapse and a
+workspace/route/chat change hide them. The panel calls
+`setTabShortcuts(enabled)` so focused native pages forward `onTabShortcut`
+digits and modifier holds; only the active, visible browser view's events count.
+
 ## Reopen-closed-tab shortcut
 
 Ctrl/Cmd+Shift+T always restores web tabs newest-first; there is no feature flag

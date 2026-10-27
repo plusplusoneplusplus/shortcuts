@@ -1229,6 +1229,7 @@ timeout: 300
                 '  panelSourceSplit: false',
                 '  panelTabReordering: true',
                 '  panelTabGroups: true',
+                '  browserTabShortcuts: true',
                 '  htmlPageTab: false',
                 '  chatStyleSelector: true',
                 '  defaultChatStyle: direct',
@@ -1275,7 +1276,7 @@ timeout: 300
         describe.each([
             'sentinelTodoDependencies', 'sentinelResultCards', 'sentinelPrOutcomeWake', 'sentinelFollowUpResults', 'sentinelRemoteResults',
             'sentinelTodoExternalReferences', 'railManualRefresh', 'railStatusActions',
-            'explorerDelete', 'panelTabReordering', 'panelTabGroups',
+            'explorerDelete', 'panelTabReordering', 'panelTabGroups', 'browserTabShortcuts',
         ] as const)('%s', feature => {
             it.each([undefined, false, true])('resolves its value and source (%s)', value => {
                 const configPath = path.join(tmpDir, `${feature}.yaml`);
@@ -1543,6 +1544,7 @@ timeout: 300
                     "autoAgentProviderRouting": false,
                     "autoMemoryPromotion": true,
                     "botManagedConversations": false,
+                    "browserTabShortcuts": false,
                     "canvasHostApis": false,
                     "canvasToolScripts": false,
                     "chatFolders": false,
@@ -1801,6 +1803,7 @@ timeout: 300
                   "features.autoAgentProviderRouting": "default",
                   "features.autoMemoryPromotion": "file",
                   "features.botManagedConversations": "default",
+                  "features.browserTabShortcuts": "default",
                   "features.canvasHostApis": "default",
                   "features.canvasToolScripts": "default",
                   "features.chatFolders": "default",

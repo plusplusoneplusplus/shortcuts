@@ -732,6 +732,16 @@ Restores reopen the last URL and title through `browserOpenInput` with a fresh
 view id and drop entries whose owner is no longer a target; native hosts forward
 source-qualified `onReopenClosedRequested` like the add-tab request. Each
 keypress restores at most one tab; repeats restore nothing.
+Default-off `features.browserTabShortcuts` adds Ctrl/Cmd+1–9 web-tab
+switching (1–8 by visible strip position, 9 the last; other tab kinds are not
+numbered) with the Ctrl/Cmd+T focus ownership. Holding the platform modifier
+reveals trailing, aria-hidden `Ctrl+N`/`⌘N` pills overlaid on the label tail;
+tab boxes never move. Hints hide on release, another chord, blur, a hidden
+document, collapse and owner changes. Desktop windows opt in through
+`browser.setTabShortcuts`; focused Electron guests (`before-input-event`) and
+WebView2 views (`AcceleratorKeyPressed`) then swallow those digits, return host
+focus, and send `onTabShortcut` digits plus unhandled modifier holds to the
+owning window. Other windows and HTML previews keep the keys.
 Repository-group mode stays scoped to the group while panel requests use the
 selected dock target.
 

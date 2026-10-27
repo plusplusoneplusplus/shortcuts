@@ -5,6 +5,8 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+    browserTabShortcutDigit,
+    browserTabShortcutModifierKey,
     browserUserAgent,
     classifyBrowserNavigation,
     classifyBrowserWindowOpen,
@@ -148,5 +150,38 @@ describe('small guards', () => {
             expect(isBrowserPermissionAllowed(permission)).toBe(false);
         }
         expect(isBrowserPermissionAllowed('clipboard-sanitized-write')).toBe(true);
+    });
+});
+
+describe('browser tab shortcut keys', () => {
+    const win = { control: true, meta: false, alt: false, shift: false };
+    const mac = { control: false, meta: true, alt: false, shift: false };
+
+    it('maps the platform modifier plus top-row 1–9 to a digit', () => {
+        for (let digit = 1; digit <= 9; digit++) {
+            expect(browserTabShortcutDigit({ ...win, code: `Digit${digit}` }, 'win32')).toBe(digit);
+            expect(browserTabShortcutDigit({ ...win, code: `Digit${digit}` }, 'linux')).toBe(digit);
+            expect(browserTabShortcutDigit({ ...mac, code: `Digit${digit}` }, 'darwin')).toBe(digit);
+        }
+        expect(browserTabShortcutModifierKey('darwin')).toBe('Meta');
+        expect(browserTabShortcutModifierKey('win32')).toBe('Control');
+    });
+
+    it('leaves other chords with the page', () => {
+        for (const [input, platform] of [
+            [{ ...win, code: 'Digit0' }, 'win32'],
+            [{ ...win, code: 'Numpad1' }, 'win32'],
+            [{ ...win, code: 'KeyT' }, 'win32'],
+            [{ ...win }, 'win32'],
+            [{ ...win, shift: true, code: 'Digit1' }, 'win32'],
+            // AltGr arrives as Ctrl+Alt on Windows.
+            [{ ...win, alt: true, code: 'Digit1' }, 'win32'],
+            [{ ...win, meta: true, code: 'Digit1' }, 'linux'],
+            [{ ...mac, code: 'Digit1' }, 'win32'],
+            [{ ...win, code: 'Digit1' }, 'darwin'],
+            [{ ...mac, control: true, code: 'Digit1' }, 'darwin'],
+        ] as const) {
+            expect(browserTabShortcutDigit(input, platform)).toBeNull();
+        }
     });
 });

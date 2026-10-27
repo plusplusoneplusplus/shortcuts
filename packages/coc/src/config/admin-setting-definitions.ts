@@ -1417,6 +1417,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-html-page-tab-enabled',
         },
     }),
+    bool({
+        key: 'features.browserTabShortcuts', default: false, runtime: 'live', runtimeFlag: 'browserTabShortcutsEnabled',
+        ui: {
+            tab: 'browser', group: 'browserPages', order: 20, label: 'Browser tab shortcuts', badge: 'experimental',
+            hint: 'Ctrl+1–8 (Cmd on macOS) switch to that right-panel browser tab and Ctrl+9 to the last one. Hold the key to show each tab\'s shortcut. Disabled by default.',
+            testId: 'toggle-browser-tab-shortcuts-enabled',
+        },
+    }),
 
     bool({
         key: 'features.canvasHostApis', default: false, runtime: 'live',

@@ -1580,6 +1580,7 @@ describe('AdminPanel', () => {
             'toggle-browser-control-enabled',
             'toggle-sensitive-input-enabled',
             'toggle-html-page-tab-enabled',
+            'toggle-browser-tab-shortcuts-enabled',
         ];
 
         async function gotoBrowserPage(): Promise<void> {
@@ -1676,6 +1677,7 @@ describe('AdminPanel', () => {
                 'browserControl.navigationApprovalEnabled': true,
                 'browserControl.humanTakeoverEnabled': false,
                 'features.htmlPageTab': false,
+                'features.browserTabShortcuts': false,
                 'features.sensitiveInput': false,
             });
             await waitFor(() => expect((screen.getByTestId('settings-tab-features-browser-save') as HTMLButtonElement).disabled).toBe(true));

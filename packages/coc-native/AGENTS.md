@@ -331,7 +331,11 @@ Visible embedded views forward Ctrl+T as `open-menu-requested`, Ctrl+Shift+T as
 popups and repeats; Shift only selects reopen). The desktop host completes
 `focus-host` before the SPA opens the owning panel's add-tab menu, reopens its
 newest closed web tab, or focuses and selects the active owning browser's
-editable address.
+editable address. After the `tab-shortcuts` command enables a view, top-row
+Ctrl+1–9 (no Alt/Shift) is handled as `tab-shortcut-requested { digit }`, routed
+like the shortcuts above, and Ctrl presses/releases (or another Ctrl chord
+cancelling a hold) emit `tab-modifier { held }` without being handled. The flag
+survives a crashed view's reopen through the `open` command.
 
 `history.rs` owns per-controller loading and successful-document readiness.
 Open, navigate, reload and available back/forward requests mark loading before native

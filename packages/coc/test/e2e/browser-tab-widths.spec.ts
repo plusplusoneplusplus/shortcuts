@@ -37,9 +37,11 @@ test.beforeAll(async () => {
             window.fixtureTabs = tabs.map(tab => ({ id: tab.id, kind: tab.kind }));
             function Fixture() {
                 const [width, setWidth] = React.useState(1200);
+                const [shortcuts, setShortcuts] = React.useState(null);
                 window.setStripWidth = setWidth;
+                window.setShortcuts = setShortcuts;
                 return <div style={{ width }} data-testid="host">
-                    <UnifiedPanelTabStrip tabs={tabs} activeId={tabs[3].id}
+                    <UnifiedPanelTabStrip tabs={tabs} activeId={tabs[3].id} browserShortcuts={shortcuts}
                         onActivate={() => {}} onClose={() => {}} onCloseMany={() => {}} onMove={() => {}} />
                 </div>;
             }
@@ -61,13 +63,26 @@ async function measure(page: Page) {
                 const node = document.querySelector(`[data-testid="unified-panel-tab-${id}"]`) as HTMLElement;
                 const label = document.querySelector(`[data-testid="unified-panel-tab-label-${id}"]`) as HTMLElement;
                 const close = document.querySelector(`[data-testid="unified-panel-tab-close-${id}"]`) as HTMLElement;
+                const hint = document.querySelector(`[data-testid="unified-panel-tab-shortcut-${id}"]`) as HTMLElement | null;
                 const box = node.getBoundingClientRect();
+                const closeBox = close.getBoundingClientRect();
+                const hintBox = hint?.getBoundingClientRect();
                 return {
                     kind,
+                    left: box.left,
                     width: box.width,
                     height: box.height,
                     ellipsized: label.scrollWidth > label.clientWidth,
-                    closeInside: close.getBoundingClientRect().right <= box.right,
+                    closeInside: closeBox.right <= box.right,
+                    closeLeft: closeBox.left,
+                    hint: hint && hintBox ? {
+                        text: hint.textContent,
+                        height: hintBox.height,
+                        // Trailing: over the label's tail, just before the close button, clear of the icon.
+                        trailing: hintBox.right <= closeBox.left && closeBox.left - hintBox.right <= 8,
+                        inside: hintBox.left >= (node.firstElementChild as HTMLElement).getBoundingClientRect().right
+                            && hintBox.right <= box.right,
+                    } : null,
                 };
             }),
         };
@@ -103,4 +118,32 @@ test('browser tabs share one width regardless of title, then shrink evenly and s
     const tight = await measure(page);
     expect(tight.tabs.filter(tab => tab.kind === 'browser').map(tab => tab.width)).toEqual([96, 96, 96, 96]);
     expect(tight.tabs.every(tab => tab.closeInside)).toBe(true);
+});
+
+test('held-modifier shortcut pills fit inside browser tabs without moving the strip', async ({ page }) => {
+    await page.setContent(`<!doctype html><html><head><style>${css}</style></head><body><div id="fixture"></div></body></html>`);
+    await page.addScriptTag({ content: script });
+    await expect(page.getByTestId('unified-panel-tab-list')).toBeVisible();
+
+    for (const width of [1200, 240]) {
+        await page.evaluate(w => { (window as any).setShortcuts(null); (window as any).setStripWidth(w); }, width);
+        await expect.poll(async () => (await measure(page)).tabs.every(tab => tab.hint === null)).toBe(true);
+        const before = await measure(page);
+        await page.evaluate(() => (window as any).setShortcuts({ mac: false, hintsVisible: true }));
+        await expect.poll(async () => (await measure(page)).tabs[0].hint?.text).toBe('Ctrl+1');
+        const after = await measure(page);
+        // Same tab boxes, same close-button positions: no width or layout jump.
+        expect(after.tabs.map(tab => [tab.left, tab.width, tab.height, tab.closeLeft]))
+            .toEqual(before.tabs.map(tab => [tab.left, tab.width, tab.height, tab.closeLeft]));
+        expect(after.overflow).toBe(before.overflow);
+        const browser = after.tabs.filter(tab => tab.kind === 'browser');
+        expect(browser.map(tab => tab.hint?.text)).toEqual(['Ctrl+1', 'Ctrl+2', 'Ctrl+3', 'Ctrl+4']);
+        expect(browser.every(tab => tab.hint!.trailing && tab.hint!.inside && tab.hint!.height <= 16 && tab.closeInside)).toBe(true);
+        // The long title keeps its ellipsis; other kinds get no pill.
+        expect(browser[1].ellipsized).toBe(true);
+        expect(after.tabs.find(tab => tab.kind === 'terminal')!.hint).toBeNull();
+    }
+
+    await page.evaluate(() => (window as any).setShortcuts({ mac: true, hintsVisible: true }));
+    await expect.poll(async () => (await measure(page)).tabs[0].hint?.text).toBe('⌘1');
 });

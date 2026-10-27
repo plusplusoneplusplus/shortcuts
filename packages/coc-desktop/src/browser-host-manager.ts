@@ -1,6 +1,6 @@
 import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserSiteFacts, type FilePreviewHost } from './browser-host-contract';
 import {
-    BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_DOWNLOAD_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL,
+    BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL, BROWSER_VIEW_TAB_SHORTCUT_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_DOWNLOAD_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL,
     BROWSER_PAGE_ZOOM, isBrowserPageZoom, isBrowserEngine, isValidBrowserSessionKey, isValidBrowserViewId, toBrowserSource, validateBrowserUrl,
     type BrowserEngine, type BrowserFailureReason, type BrowserNavAction, type BrowserCookieImportResult, type BrowserSiteConnection, type BrowserSiteInfo, type BrowserSiteInfoResult, type BrowserOpenResult, type BrowserOperationResult, type BrowserPreferences,
     type BrowserSourceKind, type BrowserViewState,
@@ -109,6 +109,8 @@ export class BrowserHostManager {
     private readonly pendingHumanTabs = new Map<string, { sessionKey: string; control: BrowserHumanTakeover }>();
     private readonly takeovers = new Map<string, TakeoverTurn>();
     private readonly commandHolds = new Set<CommandHold>();
+    /** Windows whose SPA enabled Ctrl/Cmd+1–9 tab switching; other windows' pages keep those keys. */
+    private readonly tabShortcutOwners = new Set<number>();
 
     constructor(private readonly options: BrowserManagerOptions) {}
 
@@ -587,6 +589,19 @@ export class BrowserHostManager {
         return update;
     }
 
+    /** The window's SPA opts its web pages in or out of forwarding Ctrl/Cmd+1–9 and modifier holds. */
+    setTabShortcuts(ownerId: number, enabled: boolean): void {
+        if (enabled === this.tabShortcutOwners.has(ownerId)) return;
+        if (enabled) this.tabShortcutOwners.add(ownerId);
+        else this.tabShortcutOwners.delete(ownerId);
+        for (const entry of this.owners.get(ownerId)?.values() ?? []) {
+            if (entry.sourceKind !== 'url' || entry.popout) continue;
+            // Apply the latest value, not this call's: toggles may race a view's startup.
+            void entry.ready.then(view => entry.closed ? undefined : view.setTabShortcuts?.(this.tabShortcutOwners.has(ownerId)))
+                .catch(error => console.error('[coc-desktop] Browser tab shortcut update failed:', error));
+        }
+    }
+
     async select(engine: unknown): Promise<BrowserOperationResult> {
         if (!isBrowserEngine(engine)) { return { ok: false, reason: 'bad-engine' }; }
         const availability = await this.options.hosts[engine].availability();
@@ -792,6 +807,11 @@ export class BrowserHostManager {
             reopenClosedRequested: () => {
                 if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL, { viewId: entry.viewId }); }
             },
+            tabShortcut: event => {
+                if (!entry.closed && this.tabShortcutOwners.has(entry.ownerId)) {
+                    this.options.send(entry.ownerId, BROWSER_VIEW_TAB_SHORTCUT_CHANNEL, { viewId: entry.viewId, ...event });
+                }
+            },
             closeRequested: () => {
                 if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, { viewId: entry.viewId }); }
             },
@@ -838,6 +858,10 @@ export class BrowserHostManager {
         if (entry.sourceKind === 'url' && view.setPageZoom) {
             try { await view.setPageZoom(this.options.getPageZoom()); }
             catch (error) { await view.close(); entry.view = undefined; throw error; }
+        }
+        if (entry.sourceKind === 'url' && this.tabShortcutOwners.has(entry.ownerId)) {
+            try { await view.setTabShortcuts?.(true); }
+            catch (error) { console.error('[coc-desktop] Browser tab shortcut setup failed:', error); }
         }
         return view;
     }
@@ -1091,6 +1115,7 @@ export class BrowserHostManager {
         for (const key of this.pendingHumanTabs.keys()) if (JSON.parse(key)[0] === ownerId) this.pendingHumanTabs.delete(key);
         this.finishControl(ownerId);
         this.visibleControl.delete(ownerId);
+        this.tabShortcutOwners.delete(ownerId);
         this.controlScopes.delete(ownerId);
         this.retainedScopes.delete(ownerId);
         const entries = this.owners.get(ownerId);
