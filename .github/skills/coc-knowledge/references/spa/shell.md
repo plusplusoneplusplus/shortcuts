@@ -286,6 +286,9 @@ Optional `browser.showAddressMenu` opens native Cut/Copy/Paste/Select All throug
 registered-main-frame IPC; actions target the requesting SPA's web contents.
 Native Copy and the Edit menu dispatch the input's ordinary copy event. The
 page title belongs in the tab label; the site icon replaces the tab's globe.
+Browser tabs ignore title length: `UnifiedPanelTabStrip` gives each a 160px basis
+that shrinks evenly to 96px before the row scrolls, ellipsizing the label; other
+kinds stay content-sized (max 180px) and non-shrinking.
 Icons travel as `BrowserViewState.favicon`, a `data:image/...` URL whose bytes
 match a known image signature (at most 64 KiB, `browser-favicon.ts`). Electron
 loads the first of three page-declared HTTP(S)/data candidates from

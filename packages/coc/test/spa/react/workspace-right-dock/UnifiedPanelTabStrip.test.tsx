@@ -775,6 +775,26 @@ describe('UnifiedPanelTabStrip', () => {
         expect(tabNode(tabs[0]).querySelector('.sr-only')?.textContent).not.toContain('api');
     });
 
+    it('gives browser tabs one title-independent width that shrinks to a shared floor', () => {
+        let state = EMPTY_UNIFIED_PANEL;
+        for (const label of ['Google', 'Search - Microsoft Bing with a very long page title', 'YouTube', 'A']) {
+            state = openTab(state, { kind: 'browser', ownerWorkspaceId: WS, chatId: CHAT, resourceId: label, label });
+        }
+        state = openTab(state, { kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
+        const tabs = visibleTabs(state, CHAT);
+        renderStrip({ tabs, activeId: tabs[0].id });
+        const browserTabs = tabs.filter(tab => tab.kind === 'browser');
+        const sizing = (tab: UnifiedPanelTab) => tabNode(tab).className.split(/\s+/)
+            .filter(name => /^(min-w|max-w|basis|flex-shrink)/.test(name)).sort().join(' ');
+        expect(new Set(browserTabs.map(sizing))).toEqual(new Set([sizing(browserTabs[0])]));
+        expect(sizing(browserTabs[0])).toBe('basis-[160px] flex-shrink max-w-[160px] min-w-[96px]');
+        for (const tab of browserTabs) {
+            expect(screen.getByTestId(`unified-panel-tab-label-${tab.id}`).className).toMatch(/\btruncate\b.*\bflex-1\b/);
+        }
+        // Other kinds keep their content-sized, non-shrinking tabs.
+        expect(sizing(tabs.find(tab => tab.kind === 'terminal')!)).toBe('flex-shrink-0 max-w-[180px] min-w-0');
+    });
+
     it('keeps the "+" outside the scrolling tab row', () => {
         const onOpenMenu = vi.fn();
         renderStrip({ onOpenMenu });

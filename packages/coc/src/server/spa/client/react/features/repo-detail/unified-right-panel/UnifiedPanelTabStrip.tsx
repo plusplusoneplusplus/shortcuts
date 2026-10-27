@@ -20,6 +20,9 @@
  *    scrolling row so labels truncate at a sane width instead of collapsing to
  *    nothing, and the trailing "+" sits outside that row so it stays reachable
  *    no matter how many tabs are open.
+ *  - **Browser tabs share one width.** Like a browser's own strip, page tabs
+ *    are sized by the strip, not by their titles: each starts at 160px and they
+ *    shrink together to 96px before the row scrolls, so long titles ellipsize.
  *  - **Canvas bursts collapse with groups disabled.** Four or more canvas tabs render as the active
  *    canvas only. While a canvas is active its header carries the count chip
  *    (wired by `UnifiedRightPanel`); otherwise the chip sits here so hidden
@@ -74,6 +77,13 @@ export function unifiedTabTooltip(tab: UnifiedPanelTab): string {
  * Whether the strip draws a repo badge beside the label. Source files show the
  * bare filename; their repo lives in the tooltip and screen-reader text.
  */
+/**
+ * Title-independent browser tab sizing: one shared 160px basis that shrinks
+ * evenly (equal bases shrink equally) to a 96px floor, then the row scrolls.
+ */
+const BROWSER_TAB_SIZE = 'min-w-[96px] max-w-[160px] flex-shrink basis-[160px]';
+const DEFAULT_TAB_SIZE = 'min-w-0 max-w-[180px] flex-shrink-0';
+
 function showsUnifiedTabRepoBadge(tab: Pick<UnifiedPanelTab, 'kind' | 'repoLabel'>): boolean {
     return !!tab.repoLabel && tab.kind !== 'file';
 }
@@ -619,8 +629,9 @@ export function UnifiedPanelTabStrip({
                             className={cn(
                                 // `flex-shrink-0` is what makes the row scroll: without it every
                                 // tab squeezes and the labels truncate to nothing long before the
-                                // strip actually overflows.
-                                'group relative flex h-[35px] min-w-0 max-w-[180px] flex-shrink-0 cursor-pointer select-none',
+                                // strip actually overflows. Browser tabs shrink only to a floor.
+                                'group relative flex h-[35px] cursor-pointer select-none',
+                                tab.kind === 'browser' ? BROWSER_TAB_SIZE : DEFAULT_TAB_SIZE,
                                 'items-center gap-1.5 whitespace-nowrap border-r border-[#e5e5e5] px-2.5 text-xs dark:border-[#333]',
                                 'focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#0078d4] dark:focus-visible:ring-[#3794ff]',
                                 isActive
@@ -649,7 +660,7 @@ export function UnifiedPanelTabStrip({
                                 <span aria-hidden="true" className="flex-shrink-0" data-testid={`unified-panel-tab-error-${tab.id}`}>⚠</span>
                             )}
                             <span
-                                className={cn('truncate', tab.preview && 'italic')}
+                                className={cn('truncate', tab.kind === 'browser' && 'min-w-0 flex-1', tab.preview && 'italic')}
                                 data-testid={`unified-panel-tab-label-${tab.id}`}
                             >
                                 {tab.label}
