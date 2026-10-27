@@ -3,10 +3,12 @@ import type {
   SentinelRefrainGateTest,
   SentinelRefrainInput,
   SentinelRefrainRun,
-  SentinelTodoTagLibrary,
-  WriteSentinelTodoTagRequest,
-  DeleteSentinelTodoTagRequest,
-  SuggestSentinelTodoTagsRequest,
+  SentinelTodoCategorySet,
+  SentinelTodoCategoryUsage,
+  WriteSentinelTodoCategoryRequest,
+  ReorderSentinelTodoCategoriesRequest,
+  DeleteSentinelTodoCategoryRequest,
+  DeleteSentinelTodoCategoryResponse,
   SentinelCodaResponse,
   SentinelPrOutcomesResponse,
   SentinelPrOutcomeControlRequest,
@@ -50,24 +52,29 @@ export class SentinelTodosClient {
     this.jobs = new SentinelRefrainsClient(transport);
   }
 
-  getTags(workspaceId: string, processId: string, options?: { signal?: AbortSignal }): Promise<SentinelTodoTagLibrary> {
-    return this.transport.request(ledgerPath(workspaceId, processId, '/tags'), options);
+  /** The chat proves access; the category set is shared by its whole workspace. */
+  getCategories(workspaceId: string, processId: string, options?: { signal?: AbortSignal }): Promise<SentinelTodoCategorySet> {
+    return this.transport.request(ledgerPath(workspaceId, processId, '/categories'), options);
   }
 
-  createTag(workspaceId: string, processId: string, request: WriteSentinelTodoTagRequest): Promise<SentinelTodoTagLibrary> {
-    return this.transport.request(ledgerPath(workspaceId, processId, '/tags'), { method: 'POST', body: request });
+  createCategory(workspaceId: string, processId: string, request: WriteSentinelTodoCategoryRequest): Promise<SentinelTodoCategorySet> {
+    return this.transport.request(ledgerPath(workspaceId, processId, '/categories'), { method: 'POST', body: request });
   }
 
-  updateTag(workspaceId: string, processId: string, tagId: string, request: WriteSentinelTodoTagRequest): Promise<SentinelTodoTagLibrary> {
-    return this.transport.request(ledgerPath(workspaceId, processId, `/tags/${encodePathSegment(tagId)}`), { method: 'PATCH', body: request });
+  updateCategory(workspaceId: string, processId: string, categoryId: string, request: WriteSentinelTodoCategoryRequest): Promise<SentinelTodoCategorySet> {
+    return this.transport.request(ledgerPath(workspaceId, processId, `/categories/${encodePathSegment(categoryId)}`), { method: 'PATCH', body: request });
   }
 
-  deleteTag(workspaceId: string, processId: string, tagId: string, request: DeleteSentinelTodoTagRequest): Promise<SentinelTodoTagLibrary> {
-    return this.transport.request(ledgerPath(workspaceId, processId, `/tags/${encodePathSegment(tagId)}`), { method: 'DELETE', body: request });
+  reorderCategories(workspaceId: string, processId: string, request: ReorderSentinelTodoCategoriesRequest): Promise<SentinelTodoCategorySet> {
+    return this.transport.request(ledgerPath(workspaceId, processId, '/categories'), { method: 'PUT', body: request });
   }
 
-  suggestTags(workspaceId: string, processId: string, itemId: string, request: SuggestSentinelTodoTagsRequest): Promise<SentinelTodoWriteResponse> {
-    return this.transport.request(ledgerPath(workspaceId, processId, `/items/${encodePathSegment(itemId)}/suggest-tags`), { method: 'POST', body: request });
+  getCategoryUsage(workspaceId: string, processId: string, categoryId: string, options?: { signal?: AbortSignal }): Promise<SentinelTodoCategoryUsage> {
+    return this.transport.request(ledgerPath(workspaceId, processId, `/categories/${encodePathSegment(categoryId)}/usage`), options);
+  }
+
+  deleteCategory(workspaceId: string, processId: string, categoryId: string, request: DeleteSentinelTodoCategoryRequest): Promise<DeleteSentinelTodoCategoryResponse> {
+    return this.transport.request(ledgerPath(workspaceId, processId, `/categories/${encodePathSegment(categoryId)}`), { method: 'DELETE', body: request });
   }
 
   listPrOutcomes(workspaceId: string, processId: string, itemId: string, options?: { signal?: AbortSignal }): Promise<SentinelPrOutcomesResponse> {

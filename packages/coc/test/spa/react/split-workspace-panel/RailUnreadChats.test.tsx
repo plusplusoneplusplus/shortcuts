@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ToastContext } from '../../../../src/server/spa/client/react/contexts/ToastContext';
-import { RailUnreadChats, NativeRailUnreadChats } from '../../../../src/server/spa/client/react/features/chat/RailUnreadChats';
+import { MARK_ALL_READ_TIMEOUT_MS, RailUnreadChats, NativeRailUnreadChats } from '../../../../src/server/spa/client/react/features/chat/RailUnreadChats';
 import { RailControlsContext } from '../../../../src/server/spa/client/react/features/repo-detail/RailHoverPreview';
 import { ChatPreferencesContext } from '../../../../src/server/spa/client/react/contexts/chatPrefsConsumer';
 
@@ -113,6 +113,35 @@ describe('Unread rail preview', () => {
         expect(action).toHaveAttribute('title', 'Some repos are offline.');
         fireEvent.click(action);
         expect(onMarkAllRead).toHaveBeenCalledTimes(1);
+    });
+
+    it('releases a request that ignores its signal at the deadline with a retryable error', async () => {
+        const stalled = vi.fn((_signal: AbortSignal) => new Promise<void>(() => {}));
+        render(panel({ onMarkAllRead: stalled }));
+        fireEvent.click(trigger());
+        fireEvent.click(screen.getByRole('button', { name: 'Mark all read' }));
+        await act(async () => { await vi.advanceTimersByTimeAsync(MARK_ALL_READ_TIMEOUT_MS - 1); });
+        expect(screen.getByRole('button', { name: 'Marking…' })).toBeDisabled();
+        expect(stalled.mock.calls[0][0].aborted).toBe(false);
+        await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+        expect(stalled.mock.calls[0][0].aborted).toBe(true);
+        expect(screen.getByRole('alert')).toHaveTextContent('timed out');
+        expect(addToast).toHaveBeenCalledWith(expect.stringContaining('try again'), 'error');
+        expect(screen.getByRole('link', { name: 'Unread answer' })).toBeTruthy();
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Mark all read' })); });
+        expect(stalled).toHaveBeenCalledTimes(2);
+        expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('drops the deadline when the scope unmounts mid-run', async () => {
+        const stalled = vi.fn((_signal: AbortSignal) => new Promise<void>(() => {}));
+        const { unmount } = render(panel({ onMarkAllRead: stalled }));
+        fireEvent.click(trigger());
+        fireEvent.click(screen.getByRole('button', { name: 'Mark all read' }));
+        unmount();
+        expect(stalled.mock.calls[0][0].aborted).toBe(true);
+        await act(async () => { await vi.advanceTimersByTimeAsync(MARK_ALL_READ_TIMEOUT_MS); });
+        expect(addToast).not.toHaveBeenCalled();
     });
 
     it('aborts old-scope work and ignores its late failure without blocking a new owner', async () => {

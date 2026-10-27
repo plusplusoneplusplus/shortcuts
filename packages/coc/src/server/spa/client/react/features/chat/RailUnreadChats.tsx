@@ -9,6 +9,10 @@ import { compareChatRecency, getChatRowTitle } from './latestSentinelChat';
 import { markNativeUnreadRead, unreadRailTaskVisible } from './unreadMarkAllRead';
 import type { RailPinnedTab } from './rail-pinned-jobs';
 
+/** Upper bound for one Mark all read run, so a stalled owner cannot leave the action pending. */
+export const MARK_ALL_READ_TIMEOUT_MS = 120_000;
+const MARK_ALL_READ_TIMEOUT_MESSAGE = 'Marking conversations read timed out. Some may already be read; try again.';
+
 export interface UnreadRailRow {
     key: string;
     title: string;
@@ -44,15 +48,21 @@ export function RailUnreadChats({ scopeKey, scopeLabel, rows, count = rows.lengt
         flight.current = controller;
         setPendingScope(scopeKey);
         setFailure(null);
+        let timedOut = false;
+        const timer = setTimeout(() => { timedOut = true; controller.abort(); }, MARK_ALL_READ_TIMEOUT_MS);
+        // Settles on scope change or deadline even if a stalled request ignores the signal.
+        const stopped = new Promise<never>((_, reject) => controller.signal.addEventListener('abort', () => reject(controller.signal.reason), { once: true }));
         try {
-            await onMarkAllRead(controller.signal);
+            await Promise.race([onMarkAllRead(controller.signal), stopped]);
         } catch (error) {
-            if (!controller.signal.aborted) {
-                const message = error instanceof Error ? error.message : 'Could not mark conversations read.';
+            if (timedOut || !controller.signal.aborted) {
+                const message = timedOut ? MARK_ALL_READ_TIMEOUT_MESSAGE
+                    : error instanceof Error ? error.message : 'Could not mark conversations read.';
                 setFailure({ scope: scopeKey, message });
                 toast?.addToast(message, 'error');
             }
         } finally {
+            clearTimeout(timer);
             if (flight.current === controller) {
                 flight.current = null;
                 setPendingScope(null);

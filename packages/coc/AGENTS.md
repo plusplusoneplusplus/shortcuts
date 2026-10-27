@@ -532,8 +532,24 @@ references before editing. Paths are package-relative.
   tools share `SentinelTodoService`, which proves the parent Sentinel owner before every
   read/write and emits only after the SQLite transaction commits. The store borrows
   the process store's native `processes.db` handle; ledger, item and job rows are scoped
-  by workspace and parent chat. Mutations acquire the database writer before reading
-  and compare revisions; stale item writers receive `409` with the current item.
+  by workspace and parent chat. Category sets in `sentinel_todo_category_sets` use
+  workspace identity alone, with their own revision and ordered names; group sets
+  are independent of member repos. Category deletion clears nullable `category_id`
+  assignments across all workspace chats atomically and advances affected item/ledger
+  revisions; usage counts include Manual, Done and Archived items. Item `categoryId`
+  uses ordinary item revisions; omission preserves and `null` clears. Writes validate
+  workspace membership; unknown stored IDs read as Uncategorized. Category-only edits
+  preserve user-edit/verdict protection. The live gate hides assignments and rejects
+  explicit category writes while preserving stored assignments during other edits. Creates that omit
+  `categoryId` (REST and tool) save first, then `pickTodoCategory` (single-choice decision, 8s bound)
+  applies a match via `setPickedCategory`, which CAS-checks item and set revisions so a user move wins;
+  no match/timeout/unavailable stays Uncategorized. Explicit `categoryId`/`null` and later edits never
+  re-pick. Category sets stay
+  machine-local and participate in server-data wipe. Default-off live
+  `features.sentinelTodoCategories` gates owner-validated REST/client category commands;
+  post-commit `sentinel-todo-categories-changed` invalidates the workspace set, and
+  deletion also emits whole-ledger invalidations for affected chats. Mutations acquire the database
+  writer before reading and compare revisions; stale item writers receive `409` with the current item.
   Recent REST/tool/panel lists include every unarchived non-Done item first, then
   recently updated Done items within a 50-item budget; active counts above 50 stay
   complete. Archived history follows Done. `nextOffset` pages the remaining history;
@@ -603,12 +619,9 @@ references before editing. Paths are package-relative.
   Every tool action, including Coda actions, rechecks live refrain availability and
   ownership through `SentinelRefrainCommands.assertOwner`. New refrains inherit omitted effort
   when their resolved provider/model match the Sentinel's, including explicit matches.
-  Default-off `features.sentinelTodoTags` exposes parent-ledger tag definitions
-  and metadata through the same service, REST client and tool. Target workspaces
-  share their parent's library, never another parent's tags. Matching uses the
-  existing decision backend, selects only existing definitions and surfaces failed
-  or unavailable classification without losing edits. Manual assignments and clears
-  survive content updates; tag writes never grant authority or change readiness.
+  Categories replaced the earlier parent-scoped tags: startup drops the old
+  `sentinel_todo_tag_*` tables without migrating them, and no tag routes, tool
+  actions or flag remain.
   Sentinel `send_to_conversation` create mode requires an unarchived normal
   `todoItemId` before any local/remote/Ralph launch and links the admitted job afterwards (link failures are
   reported, never repaired by relaunching). Linked items move to In progress; local

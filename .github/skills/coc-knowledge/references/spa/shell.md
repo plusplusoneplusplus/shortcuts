@@ -837,10 +837,7 @@ The panel always uses list/detail presentation:
 at 660px the panes scroll independently; narrower panels use selection and Back.
 Visited detail editors stay mounted across selection and resizing to retain drafts.
 Detail Close remembers owner-scoped deselection and restores list focus; pending
-item, tag, dependency, PR-outcome and Coda mutations block it. Item tag drafts share the
-remembered owner view across remounts. The live tag gate reloads the owner snapshot
-on enable; missing libraries expose loading/error/unavailable states and retry,
-without fabricating capability or depending on selection.
+item, dependency, PR-outcome and Coda mutations block it.
 Detail notes default to expanded; explicit visibility choices share the owner/item-scoped
 in-memory `SentinelTodoView` with drafts across refreshes and remounts.
 Compact list headers combine wrapping titles, status, priority and shared overflow
@@ -897,6 +894,30 @@ never persisted. The return route selects the ledger owner's workspace/process o
 concrete server, preserving matching group routes and reapplying an unchanged hash.
 Back restores the list's scroll, selection, drafts and link focus. The full
 contract lives in `features/repo-detail/unified-right-panel/AGENTS.md`.
+
+### Sentinel To-do categories
+
+Default-off live `sentinelTodoCategoriesEnabled` adds `SentinelTodoCategories`
+to the To-do toolbar. Its owner-client loader reads the workspace's ordered set;
+the manager creates, renames, reorders and confirms deletes with workspace-wide
+item/chat counts. Writes carry set revisions. Concurrent changes retain name
+drafts and require explicit revision review; stale deletion previews require a
+new preview. `useSentinelTodoEvents` shares its owning-server workspace socket
+between ledger and category invalidations, refreshing all chats on
+`sentinel-todo-categories-changed`. Owner/transport remounts isolate drafts and
+late responses. Unresolved remote owners cannot issue category requests locally.
+Active normal items group by workspace category order, retaining display-status
+ordering within each section. Headers expose total and attention counts; empty
+categories remain visible and nonempty Uncategorized includes missing IDs.
+Manual, Done, Archived and search retain their sections with category labels.
+Category collapse clears contained selection while keeping editor drafts;
+selection or category movement reveals the destination. Items move through the
+card menu's keyboard-accessible Move to category group, by dropping an active
+normal card's grip on a category section, or through Category selects in the
+add/edit forms and the detail pane (non-archived items). Moves are ordinary
+revisioned item updates; drops trust only the mount's drag ticket, and unaccepted
+drops bubble to the Done reopening target. Add forms default to Pick
+automatically (no `categoryId` sent); edit conflicts keep the category draft.
 
 ### Sentinel To-do dependencies
 

@@ -139,6 +139,24 @@ describe('SentinelTodosClient', () => {
     expect((await new SentinelTodosClient(readAdapter).get('owner ws', 'parent/a')).items[0].references).toEqual(references);
   });
 
+  it('round-trips a single category and sends revisioned move, omission and clear through the supplied transport', async () => {
+    const adapter = createMockAdapter({ item: { id: 'item/a', categoryId: 'category-a' }, ledgerRevision: 1 });
+    const client = new SentinelTodosClient(adapter);
+    expect((await client.create('owner ws', 'parent/a', { title: 'Work', categoryId: 'category-a' })).item.categoryId).toBe('category-a');
+    await client.update('owner ws', 'parent/a', 'item/a', { expectedRevision: 1, categoryId: 'category-b' });
+    await client.update('owner ws', 'parent/a', 'item/a', { expectedRevision: 2, notes: 'Keep category' });
+    await client.update('owner ws', 'parent/a', 'item/a', { expectedRevision: 3, categoryId: null });
+    const base = '/workspaces/owner%20ws/sentinel-todos/parent%2Fa/items';
+    expect(adapter.calls).toEqual([
+      { path: base, options: { method: 'POST', body: { title: 'Work', categoryId: 'category-a' } } },
+      { path: base + '/item%2Fa', options: { method: 'PATCH', body: { expectedRevision: 1, categoryId: 'category-b' } } },
+      { path: base + '/item%2Fa', options: { method: 'PATCH', body: { expectedRevision: 2, notes: 'Keep category' } } },
+      { path: base + '/item%2Fa', options: { method: 'PATCH', body: { expectedRevision: 3, categoryId: null } } },
+    ]);
+    const reader = createMockAdapter({ revision: 1, items: [{ id: 'item/a', categoryId: 'category-a' }] });
+    expect((await new SentinelTodosClient(reader).get('owner ws', 'parent/a')).items[0].categoryId).toBe('category-a');
+  });
+
   it('sends priority on create and priority-only update', async () => {
     const adapter = createMockAdapter({ item: { id: 'i1' }, ledgerRevision: 1 });
     const client = new SentinelTodosClient(adapter);

@@ -118,7 +118,7 @@ describe('queue serializer -> feed -> hook search refresh', () => {
         await waitFor(() => expect(rows()).toHaveLength(6));
         expect(rows().map(row => row.key)).toEqual(loadedKeys);
         expect(api.getRepoGroupChats.mock.calls[3][1]).toEqual({ q: 'cobalt', statuses, limit: 6 });
-        expect(seen).toHaveBeenCalledWith('a', expect.any(Array));
+        expect(seen).toHaveBeenCalledWith('a', expect.any(Array), { signal: undefined });
         expect(result.current.model?.counts.unread).toBe(unread! - (statuses.includes('completed') ? 1 : 0));
         expect(result.current.model?.nextCursor).toBe(cursor);
 

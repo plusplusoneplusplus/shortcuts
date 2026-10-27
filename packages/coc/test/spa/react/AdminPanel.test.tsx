@@ -1235,7 +1235,7 @@ describe('AdminPanel', () => {
         ];
         const FUNCTIONAL_BY_TAB = {
             chat: ['toggle-chat-followup-enabled', 'toggle-chat-askuser-enabled', 'toggle-quick-ask-sidenotes-enabled', 'toggle-chat-style-selector-enabled'],
-            sentinel: ['toggle-sentinel-enabled', 'toggle-sentinel-todo-tags-enabled'],
+            sentinel: ['toggle-sentinel-enabled', 'toggle-sentinel-todo-categories-enabled'],
             editors: ['toggle-arxiv-paper-ingest-enabled'],
             integrations: ['toggle-kusto-enabled'],
             features: ['toggle-focused-diff-enabled', 'toggle-native-cli-sessions-enabled'],

@@ -45,7 +45,7 @@ describe('seenStateApi', () => {
             'proc-2': '2026-05-02T00:00:01.000Z',
         });
 
-        expect(mocks.seenState.updateMany).toHaveBeenCalledWith('repo/a', entries);
+        expect(mocks.seenState.updateMany).toHaveBeenCalledWith('repo/a', entries, { signal: undefined });
     });
 
     it('delegates unseen deletion and exposes a void helper result', async () => {

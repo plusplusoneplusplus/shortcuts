@@ -26,9 +26,9 @@ const ITEM = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items\/([^/]
 const REFERENCES = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items\/([^/]+)\/references$/;
 const DEPENDENCIES = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items\/([^/]+)\/dependencies$/;
 const EVIDENCE = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items\/([^/]+)\/(pr-output|artifact-acceptance|readiness)$/;
-const TAGS = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/tags$/;
-const TAG = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/tags\/([^/]+)$/;
-const SUGGEST_TAGS = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/items\/([^/]+)\/suggest-tags$/;
+const CATEGORIES = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/categories$/;
+const CATEGORY = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/categories\/([^/]+)$/;
+const CATEGORY_USAGE = /^\/api\/workspaces\/([^/]+)\/sentinel-todos\/([^/]+)\/categories\/([^/]+)\/usage$/;
 
 export function registerSentinelTodoRoutes(opts: {
     routes: Route[];
@@ -49,35 +49,34 @@ export function registerSentinelTodoRoutes(opts: {
         return sendJSON(res, status, { error: error.message, code: error.code, ...(error.current ? { current: error.current } : {}) });
     };
 
-    for (const method of ['GET', 'POST', 'PATCH', 'DELETE'] as const) {
+    for (const method of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const) {
         routes.push({
             method,
-            pattern: method === 'PATCH' || method === 'DELETE' ? TAG : TAGS,
+            pattern: method === 'PATCH' || method === 'DELETE' ? CATEGORY : CATEGORIES,
             handler: async (req, res, match) => {
                 const target = owner(res, match);
                 if (!target) return;
-                if (!service.tagsEnabled()) return sendError(res, 404, 'Sentinel to-do tags are disabled');
+                if (!service.categoriesEnabled()) return sendError(res, 404, 'Sentinel to-do categories are disabled');
                 try {
-                    if (method === 'GET') return sendJSON(res, 200, await service.getTags(target));
+                    if (method === 'GET') return sendJSON(res, 200, await service.getCategories(target));
                     const body = await parseBodyOrReject(req, res);
                     if (body === null) return;
-                    const result = method === 'POST' ? await service.createTag(target, body)
-                        : method === 'PATCH' ? await service.updateTag(target, decodeURIComponent(match![3]), body)
-                            : await service.deleteTag(target, decodeURIComponent(match![3]), body);
+                    const result = method === 'POST' ? await service.createCategory(target, body)
+                        : method === 'PUT' ? await service.reorderCategories(target, body)
+                            : method === 'PATCH' ? await service.updateCategory(target, decodeURIComponent(match![3]), body)
+                                : await service.deleteCategory(target, decodeURIComponent(match![3]), body);
                     sendJSON(res, 200, result);
                 } catch (error) { fail(res, error); }
             },
         });
     }
     routes.push({
-        method: 'POST', pattern: SUGGEST_TAGS,
-        handler: async (req, res, match) => {
+        method: 'GET', pattern: CATEGORY_USAGE,
+        handler: async (_req, res, match) => {
             const target = owner(res, match);
             if (!target) return;
-            if (!service.tagsEnabled()) return sendError(res, 404, 'Sentinel to-do tags are disabled');
-            const body = await parseBodyOrReject(req, res);
-            if (body === null) return;
-            try { sendJSON(res, 200, await service.suggestTags(target, decodeURIComponent(match![3]), body)); }
+            if (!service.categoriesEnabled()) return sendError(res, 404, 'Sentinel to-do categories are disabled');
+            try { sendJSON(res, 200, await service.getCategoryUsage(target, decodeURIComponent(match![3]))); }
             catch (error) { fail(res, error); }
         },
     });

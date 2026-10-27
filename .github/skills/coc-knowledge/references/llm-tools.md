@@ -179,7 +179,11 @@ never a tool argument, and the service re-proves Sentinel ownership on every cal
 after Done. `limit` sets the budget, `nextOffset`/`offset` page remaining history, `itemId` reads an exact item;
 internal tracking and graph reads retain the full ledger), `create` (normal items require `completionCondition`,
 optional `idempotencyKey` replay), `update` (requires `itemId` + `expectedRevision`; conflicts
-return `{ code: 'conflict', current }`), `attach_reference` (`itemId` + `expectedRevision` + `conversationId`,
+return `{ code: 'conflict', current }`). With the categories gate enabled, `list`
+includes the workspace `categorySet`; create/update accept one `categoryId`, with
+`null` clearing and omission preserving on update; omission on create lets the server
+auto-pick one (Uncategorized when nothing clearly matches). Moves use item revisions.
+`attach_reference` (`itemId` + `expectedRevision` + `conversationId`,
 optional `conversationWorkspaceId` defaulting to the chat's; saved, queued or running chats and Ralph sessions
 qualify; a reference-only link that never changes status or counts as a job/review). Store deduplication uses
 durable server/workspace/process identity, plus `sessionId` for Ralph session references; omitted `serverIdentity` denotes the ledger's server. Reference records retain
@@ -237,15 +241,6 @@ invoking Sentinel through `getTriggerInfra().sentinelOvertures`. Creation uses
 overtures (one-shot wake-ups); PR URLs arm PR-merged overtures. A live-gated event schema accepts
 date/time overtures, and shared service admission rechecks the date flag. Overtures never launch
 jobs or change item status; manual items and native verdict-only tools cannot author them.
-
-With default-off `features.sentinelTodoTags`, `list` includes the parent-owned
-`tagLibrary`; `list_tags`, `create_tag`, `update_tag`, confirmed `delete_tag` and
-`suggest_tags` share REST commands. Library writes compare `expectedRevision`;
-assignment updates/re-suggest additionally compare `expectedTagRevision`.
-Create/update accept `tagIds` and `matchMultiple`. Definitions are user-requested,
-never invented by matching. Manual choices/clears stay authoritative; the assistant
-cannot re-suggest over them. `tagMatch` exposes failures without discarding edits.
-Native PR reviews cannot edit tags.
 
 The addon's `<sentinel_todo_ledger>` guidance tracks concrete intended outcomes
 with final-deliverable completion conditions, reuses one item across grilling/implementation/review,

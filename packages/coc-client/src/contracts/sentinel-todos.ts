@@ -13,36 +13,22 @@ export type SentinelTodoType = 'normal' | 'manual';
 export type SentinelTodoPriority = 'high' | 'regular';
 export type SentinelTodoActor = 'user' | 'sentinel' | 'system';
 
-export interface SentinelTodoTag {
-  id: string;
-  name: string;
-  color: 'gray' | 'blue' | 'violet' | 'teal' | 'amber';
-  description?: string;
+/** One ordered set belongs to the workspace, shared by all its Sentinel chats. */
+export interface SentinelTodoCategory { id: string; name: string }
+export interface SentinelTodoCategorySet { revision: number; categories: SentinelTodoCategory[] }
+export interface WriteSentinelTodoCategoryRequest { expectedRevision: number; name: string }
+export interface ReorderSentinelTodoCategoriesRequest { expectedRevision: number; categoryIds: string[] }
+export interface DeleteSentinelTodoCategoryRequest { expectedRevision: number; confirmed: true }
+export interface SentinelTodoCategoryUsage { itemCount: number; chatCount: number }
+export interface DeleteSentinelTodoCategoryResponse extends SentinelTodoCategoryUsage {
+  categorySet: SentinelTodoCategorySet;
 }
-export interface SentinelTodoTagLibrary {
+/** Workspace invalidation: refetch categories using the owning server's client. */
+export interface SentinelTodoCategoriesChangedEvent {
+  type: 'sentinel-todo-categories-changed';
+  workspaceId: string;
   revision: number;
-  tags: SentinelTodoTag[];
-}
-export interface WriteSentinelTodoTagRequest {
-  expectedRevision: number;
-  name: string;
-  color: SentinelTodoTag['color'];
-  description?: string;
-}
-export interface DeleteSentinelTodoTagRequest {
-  expectedRevision: number;
-  confirmed: true;
-}
-export interface SuggestSentinelTodoTagsRequest {
-  expectedRevision: number;
-  /** Required for suggestions; guards concurrent manual and automatic tag writes. */
-  expectedTagRevision?: number;
-  multiple?: boolean;
-  confirmed?: boolean;
-}
-export interface SentinelTodoTagMatch {
-  state: 'matched' | 'no_match' | 'unavailable' | 'failed';
-  message?: string;
+  timestamp?: number;
 }
 
 export interface SentinelTodoTargetRepo {
@@ -223,11 +209,8 @@ export interface SentinelTodoTrackedAdmission {
 }
 
 export interface SentinelTodoItem {
-  /** Independent metadata CAS; absent means zero. Does not affect dependency snapshots. */
-  tagRevision?: number;
-  tagIds?: string[];
-  tagOrigin?: 'manual' | 'suggested';
-  tagMatch?: SentinelTodoTagMatch;
+  /** One workspace category; absent means Uncategorized. */
+  categoryId?: string;
   id: string;
   /** Immutable tracking kind; stored items without a type read as `normal`. */
   type: SentinelTodoType;
@@ -256,7 +239,6 @@ export interface SentinelTodoItem {
 }
 
 export interface SentinelTodoLedgerResponse {
-  tagLibrary?: SentinelTodoTagLibrary;
   revision: number;
   items: SentinelTodoItem[];
   /** Recent-list pagination; full snapshots omit these fields. */
@@ -266,9 +248,9 @@ export interface SentinelTodoLedgerResponse {
 }
 
 export interface CreateSentinelTodoRequest {
+  /** One workspace category; null explicitly selects Uncategorized. */
+  categoryId?: string | null;
   externalReferences?: SentinelTodoExternalReference[];
-  tagIds?: string[];
-  matchMultiple?: boolean;
   /** Defaults to `normal`; updates cannot change it. */
   type?: SentinelTodoType;
   title: string;
@@ -285,12 +267,10 @@ export interface CreateSentinelTodoRequest {
 
 /** Omitted fields stay unchanged; nullable fields explicitly support clearing. */
 export interface UpdateSentinelTodoRequest {
+  /** One workspace category; null clears on writes, omission preserves on update. */
+  categoryId?: string | null;
   /** Replaces external references only; [] clears them, omission preserves all references. */
   externalReferences?: SentinelTodoExternalReference[];
-  /** Required when tagIds is supplied, including an explicit empty selection. */
-  expectedTagRevision?: number;
-  tagIds?: string[];
-  matchMultiple?: boolean;
   expectedRevision: number;
   title?: string;
   completionCondition?: string;
@@ -328,8 +308,6 @@ export interface SentinelTodosChangedEvent {
   processId: string;
   ledgerRevision: number;
   itemId?: string;
-  /** Metadata invalidation; authority revisions are unchanged. */
-  tagOnly?: boolean;
   timestamp?: number;
 }
 

@@ -4,7 +4,7 @@ import type {
   SeenStateMap,
   UnseenCountResponse,
 } from '../contracts';
-import type { RequestAdapter } from '../types';
+import type { CocRequestOptions, RequestAdapter } from '../types';
 import { encodePathSegment } from '../url';
 
 function seenStatePath(workspaceId: string, suffix = ''): string {
@@ -18,10 +18,11 @@ export class SeenStateClient {
     return this.transport.request<SeenStateMap>(seenStatePath(workspaceId));
   }
 
-  updateMany(workspaceId: string, entries: SeenStateEntry[]): Promise<SeenStateMap> {
+  updateMany(workspaceId: string, entries: SeenStateEntry[], options?: Pick<CocRequestOptions, 'signal'>): Promise<SeenStateMap> {
     return this.transport.request<SeenStateMap>(seenStatePath(workspaceId), {
       method: 'PATCH',
       body: { entries: entries.map(entry => ({ ...entry })) },
+      signal: options?.signal,
     });
   }
 

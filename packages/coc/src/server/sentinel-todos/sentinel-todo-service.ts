@@ -27,9 +27,9 @@ import {
     type SentinelTodoStore,
 } from './sentinel-todo-store';
 import { getRepoDataPath } from '../paths';
-import type { SentinelTodoTagLibrary } from '@plusplusoneplusplus/coc-client';
+import type { SentinelTodoCategorySet, SentinelTodoCategoryUsage, DeleteSentinelTodoCategoryResponse } from '@plusplusoneplusplus/coc-client';
 import type { DecisionService } from '../decisions/decision-service';
-import { matchTodoTags, tagSuggestSchema } from './sentinel-todo-tags';
+import { pickTodoCategory } from './sentinel-todo-category-classifier';
 import type { DashboardDiscoveryRuntime, DashboardWorkspaceTarget } from '@plusplusoneplusplus/coc-client';
 import { z } from 'zod';
 import { getServerLogger } from '../logging/server-logger';
@@ -45,11 +45,16 @@ const dashboardReferenceSchema = z.object({
     offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).default(0),
 }).strict();
 
+export interface SentinelTodoCategoriesChange {
+    workspaceId: string;
+    revision: number;
+    affectedLedgers: { processId: string; ledgerRevision: number }[];
+}
+
 export interface SentinelTodoChange {
     owner: SentinelTodoOwner;
     ledgerRevision: number;
     item: SentinelTodoItem;
-    tagOnly?: boolean;
 }
 
 /**
@@ -79,7 +84,7 @@ export type SentinelTodoItemView = Omit<SentinelTodoItem, 'jobs'> & {
     jobs: SentinelTodoJobLinkView[];
     dependencyReadiness?: SentinelTodoDependencyReadiness;
 };
-export type SentinelTodoLedgerView = { revision: number; items: SentinelTodoItemView[]; tagLibrary?: SentinelTodoTagLibrary };
+export type SentinelTodoLedgerView = { revision: number; items: SentinelTodoItemView[] };
 
 /**
  * The one command surface for Sentinel to-do bookkeeping, shared by REST and
@@ -112,11 +117,10 @@ export class SentinelTodoService {
         jobs?: Pick<DelegatedJobStore, 'list'>;
         onChange?: (change: SentinelTodoChange) => void;
         getDependenciesEnabled?: () => boolean;
-        getTagsEnabled?: () => boolean;
+        getCategoriesEnabled?: () => boolean;
+        onCategoriesChange?: (change: SentinelTodoCategoriesChange) => void;
         getExternalReferencesEnabled?: () => boolean;
-        getTagsGeneration?: () => unknown;
         decisions?: Pick<DecisionService, 'evaluate'>;
-        onTagsChange?: (owner: SentinelTodoOwner, ledgerRevision: number) => void;
         fetchPr?: PrStatusFetcher;
         resolveWorkspaceRoot?: (workspaceId: string) => Promise<string | undefined>;
         dataDir?: string;
@@ -126,8 +130,62 @@ export class SentinelTodoService {
         return this.deps.getDependenciesEnabled?.() === true;
     }
 
-    tagsEnabled(): boolean {
-        return this.deps.getTagsEnabled?.() === true;
+    categoriesEnabled(): boolean {
+        return this.deps.getCategoriesEnabled?.() === true;
+    }
+
+    private async assertCategoriesOwner(owner: SentinelTodoOwner): Promise<void> {
+        await this.assertOwner(owner);
+        if (!this.categoriesEnabled()) throw new SentinelTodoError('not_found', 'Sentinel to-do categories are disabled');
+    }
+
+    async getCategories(owner: SentinelTodoOwner): Promise<SentinelTodoCategorySet> {
+        await this.assertCategoriesOwner(owner);
+        return this.deps.todos.getCategories(owner.workspaceId);
+    }
+
+    async createCategory(owner: SentinelTodoOwner, input: unknown): Promise<SentinelTodoCategorySet> {
+        await this.assertCategoriesOwner(owner);
+        const set = this.deps.todos.writeCategory(owner.workspaceId, undefined, input);
+        this.emitCategories(owner.workspaceId, set);
+        return set;
+    }
+
+    async updateCategory(owner: SentinelTodoOwner, categoryId: string, input: unknown): Promise<SentinelTodoCategorySet> {
+        await this.assertCategoriesOwner(owner);
+        const set = this.deps.todos.writeCategory(owner.workspaceId, categoryId, input);
+        this.emitCategories(owner.workspaceId, set);
+        return set;
+    }
+
+    async reorderCategories(owner: SentinelTodoOwner, input: unknown): Promise<SentinelTodoCategorySet> {
+        await this.assertCategoriesOwner(owner);
+        const set = this.deps.todos.reorderCategories(owner.workspaceId, input);
+        this.emitCategories(owner.workspaceId, set);
+        return set;
+    }
+
+    async getCategoryUsage(owner: SentinelTodoOwner, categoryId: string): Promise<SentinelTodoCategoryUsage> {
+        await this.assertCategoriesOwner(owner);
+        return this.deps.todos.getCategoryUsage(owner.workspaceId, categoryId);
+    }
+
+    async deleteCategory(owner: SentinelTodoOwner, categoryId: string, input: unknown): Promise<DeleteSentinelTodoCategoryResponse> {
+        await this.assertCategoriesOwner(owner);
+        const { categorySet, affectedOwners, itemCount, chatCount } = this.deps.todos.deleteCategory(owner.workspaceId, categoryId, input);
+        this.emitCategories(owner.workspaceId, categorySet, affectedOwners);
+        return { categorySet, itemCount, chatCount };
+    }
+
+    private emitCategories(workspaceId: string, set: SentinelTodoCategorySet, affectedOwners: SentinelTodoOwner[] = []): void {
+        try {
+            this.deps.onCategoriesChange?.({ workspaceId, revision: set.revision,
+                affectedLedgers: affectedOwners.map(owner => ({ processId: owner.processId,
+                    ledgerRevision: this.deps.todos.get(owner).revision })) });
+        } catch (error) {
+            getServerLogger().warn({ workspaceId, error: error instanceof Error ? error.message : String(error) },
+                'Committed category change notification failed');
+        }
     }
 
     externalReferencesEnabled(): boolean {
@@ -135,12 +193,14 @@ export class SentinelTodoService {
     }
 
     private visibleItem(item: SentinelTodoItem): SentinelTodoItem {
-        const visible = this.externalReferencesEnabled() ? item : {
+        let visible = this.externalReferencesEnabled() ? item : {
             ...item, references: item.references.filter(ref => ref.kind === undefined || ref.kind === 'conversation'),
         };
-        if (this.tagsEnabled()) return visible;
-        const { tagIds, tagOrigin, tagMatch, tagRevision, ...withoutTags } = visible;
-        return withoutTags;
+        if (!this.categoriesEnabled()) {
+            const { categoryId, ...withoutCategory } = visible;
+            visible = withoutCategory;
+        }
+        return visible;
     }
 
     private visibleWrite<T extends { item: SentinelTodoItem }>(result: T): T {
@@ -157,97 +217,51 @@ export class SentinelTodoService {
         }
     }
 
-    private async assertTagsOwner(owner: SentinelTodoOwner): Promise<void> {
-        await this.assertOwner(owner);
-        if (!this.tagsEnabled()) throw new SentinelTodoError('not_found', 'Sentinel to-do tags are disabled');
-    }
-
-    async getTags(owner: SentinelTodoOwner): Promise<SentinelTodoTagLibrary> {
-        await this.assertTagsOwner(owner);
-        return this.deps.todos.getTags(owner);
-    }
-
-    async createTag(owner: SentinelTodoOwner, input: unknown): Promise<SentinelTodoTagLibrary> {
-        await this.assertTagsOwner(owner);
-        const result = this.deps.todos.writeTag(owner, undefined, input);
-        this.emitTags(owner);
-        return result;
-    }
-
-    async updateTag(owner: SentinelTodoOwner, tagId: string, input: unknown): Promise<SentinelTodoTagLibrary> {
-        await this.assertTagsOwner(owner);
-        const result = this.deps.todos.writeTag(owner, tagId, input);
-        this.emitTags(owner);
-        return result;
-    }
-
-    async deleteTag(owner: SentinelTodoOwner, tagId: string, input: unknown): Promise<SentinelTodoTagLibrary> {
-        await this.assertTagsOwner(owner);
-        const result = this.deps.todos.deleteTag(owner, tagId, input);
-        this.emitTags(owner);
-        return result;
-    }
-
-    private emitTags(owner: SentinelTodoOwner): void {
-        const ledgerRevision = this.deps.todos.get(owner).revision;
-        try { this.deps.onTagsChange?.(owner, ledgerRevision); }
-        catch (error) {
-            getServerLogger().warn({ ...owner, error: error instanceof Error ? error.message : String(error) },
-                'Committed tag library notification failed');
-        }
-    }
-
-    async suggestTags(owner: SentinelTodoOwner, itemId: string, input: unknown, actor: 'user' | 'sentinel' = 'user') {
-        await this.assertTagsOwner(owner);
-        const parsed = tagSuggestSchema.safeParse(input);
-        if (!parsed.success) throw new SentinelTodoError('invalid', 'Invalid tag suggestion request');
-        const { expectedRevision, expectedTagRevision, multiple, confirmed } = parsed.data;
-        const item = this.requireEvidenceItem(this.deps.todos.get(owner), itemId, expectedRevision);
-        if ((item.tagRevision ?? 0) !== expectedTagRevision) throw new SentinelTodoError('conflict', 'Tag assignments changed since they were loaded', item);
-        if (item.tagOrigin === 'manual' && (!confirmed || actor !== 'user')) {
-            throw new SentinelTodoError('invalid', 'Confirm replacing manual tag assignments');
-        }
-        return this.classifyTags(owner, item, multiple === true, actor === 'user' && confirmed === true);
-    }
-
-    private async classifyTags(owner: SentinelTodoOwner, item: SentinelTodoItem, multiple: boolean, confirmed = false) {
-        const library = this.deps.todos.getTags(owner);
-        const generation = this.deps.getTagsGeneration?.();
+    private async classificationRoot(owner: SentinelTodoOwner, kind: string): Promise<string | undefined> {
         let root: string | undefined;
-        if (library.tags.length) {
-            let reason: string | undefined;
-            try { root = await this.deps.resolveWorkspaceRoot?.(owner.workspaceId); }
-            catch (error) { reason = error instanceof Error ? error.message : String(error); }
-            if (!root) getServerLogger().warn({ ...owner, reason: reason ?? 'Parent workspace root is unavailable' },
-                'Tag classification workspace is unavailable');
-        }
-        const metadata = await matchTodoTags(this.deps.decisions,
-            root ? { workspaceId: owner.workspaceId, workingDirectory: root } : undefined, item, library.tags, multiple);
-        await this.assertTagsOwner(owner);
-        if (generation !== this.deps.getTagsGeneration?.()) {
-            throw new SentinelTodoError('conflict', 'Tag configuration changed during classification');
-        }
-        const result = this.deps.todos.setSuggestedTags(owner, item.id, item.revision, library.revision, item.tagRevision ?? 0, metadata, confirmed);
-        this.emit({ owner, ...result, tagOnly: true });
-        return result;
+        let reason: string | undefined;
+        try { root = await this.deps.resolveWorkspaceRoot?.(owner.workspaceId); }
+        catch (error) { reason = error instanceof Error ? error.message : String(error); }
+        if (!root) getServerLogger().warn({ ...owner, reason: reason ?? 'Parent workspace root is unavailable' },
+            `${kind} classification workspace is unavailable`);
+        return root;
     }
 
-    private async autoTags(owner: SentinelTodoOwner, item: SentinelTodoItem, multiple: boolean) {
-        if (this.tagsEnabled() && item.tagOrigin !== 'manual') {
-            try { return await this.classifyTags(owner, item, multiple); }
-            catch (error) {
-                if (!(error instanceof SentinelTodoError) || !['conflict', 'not_found'].includes(error.code)) throw error;
-                getServerLogger().debug({ ...owner, itemId: item.id, code: error.code, reason: error.message },
-                    'Discarded stale or unavailable tag classification after saving content');
-            }
+    /**
+     * Picks a category for a new item that arrived without one. The item is
+     * already saved; no match, timeout or an unavailable backend leave it
+     * Uncategorized, and any change made meanwhile (e.g. a user move) wins.
+     */
+    private async autoCategory(owner: SentinelTodoOwner, saved: { item: SentinelTodoItem; ledgerRevision: number }) {
+        const item = saved.item;
+        if (!this.categoriesEnabled() || item.categoryId !== undefined) return saved;
+        const set = this.deps.todos.getCategories(owner.workspaceId);
+        if (!set.categories.length) return saved;
+        const root = await this.classificationRoot(owner, 'Category');
+        const pick = await pickTodoCategory(this.deps.decisions,
+            root ? { workspaceId: owner.workspaceId, workingDirectory: root } : undefined, item, set.categories);
+        if (pick.state !== 'matched') {
+            getServerLogger().debug({ ...owner, itemId: item.id, state: pick.state, reason: pick.message },
+                'New to-do item left Uncategorized');
+            return saved;
         }
-        const ledger = this.deps.todos.get(owner);
-        return { item: ledger.items.find(row => row.id === item.id) ?? item, ledgerRevision: ledger.revision };
+        try {
+            if (!this.categoriesEnabled()) return saved;
+            const result = this.deps.todos.setPickedCategory(owner, item.id, item.revision, set.revision, pick.categoryId);
+            this.emit({ owner, ...result });
+            return result;
+        } catch (error) {
+            if (!(error instanceof SentinelTodoError) || !['conflict', 'not_found', 'invalid'].includes(error.code)) throw error;
+            getServerLogger().debug({ ...owner, itemId: item.id, code: error.code, reason: error.message },
+                'Discarded stale category classification after saving the item');
+            const ledger = this.deps.todos.get(owner);
+            return { item: ledger.items.find(row => row.id === item.id) ?? item, ledgerRevision: ledger.revision };
+        }
     }
 
-    private assertTagInput(input: { tagIds?: string[]; matchMultiple?: boolean; expectedTagRevision?: number }): void {
-        if (!this.tagsEnabled() && (input?.tagIds !== undefined || input?.matchMultiple !== undefined || input?.expectedTagRevision !== undefined)) {
-            throw new SentinelTodoError('not_found', 'Sentinel to-do tags are disabled');
+    private assertCategoryInput(input: { categoryId?: string | null }): void {
+        if (input?.categoryId !== undefined && !this.categoriesEnabled()) {
+            throw new SentinelTodoError('invalid', 'Sentinel to-do categories are disabled');
         }
     }
 
@@ -452,7 +466,6 @@ export class SentinelTodoService {
         const dependencies = this.dependencyActions?.project(owner, ledger);
         return {
             revision: ledger.revision,
-            ...(this.tagsEnabled() ? { tagLibrary: this.deps.todos.getTags(owner) } : {}),
             items: ledger.items.map(item => ({
                 ...this.visibleItem(item),
                 ...dependencies?.(item),
@@ -727,12 +740,13 @@ export class SentinelTodoService {
         opts: { actor: SentinelTodoActor; idempotencyKey?: string },
     ): Promise<{ item: SentinelTodoItem; created: boolean; ledgerRevision: number }> {
         await this.assertOwner(owner);
-        this.assertTagInput(input);
+        this.assertCategoryInput(input);
         this.assertExternalReferenceInput(input);
         const result = this.withVisibleErrors(() => this.deps.todos.create(owner, input, opts));
         if (result.created) this.emit({ owner, ledgerRevision: result.ledgerRevision, item: result.item });
-        return this.visibleWrite(result.created
-            ? { ...result, ...await this.autoTags(owner, result.item, input.matchMultiple === true) } : result);
+        if (!result.created) return this.visibleWrite(result);
+        // An explicit categoryId (including null for Uncategorized) is the caller's choice.
+        return this.visibleWrite(input.categoryId === undefined ? { ...result, ...await this.autoCategory(owner, result) } : result);
     }
 
     async update(
@@ -743,17 +757,11 @@ export class SentinelTodoService {
         actor: SentinelTodoActor,
     ): Promise<{ item: SentinelTodoItem; ledgerRevision: number }> {
         await this.assertOwner(owner);
-        this.assertTagInput(patch);
+        this.assertCategoryInput(patch);
         this.assertExternalReferenceInput(patch);
-        const before = this.deps.todos.get(owner).items.find(item => item.id === itemId);
         const result = this.withVisibleErrors(() => this.deps.todos.update(owner, itemId, expectedRevision, patch, actor));
-        const tagOnly = patch.tagIds !== undefined && Object.keys(patch)
-            .every(key => ['tagIds', 'matchMultiple', 'expectedTagRevision'].includes(key) || patch[key as keyof SentinelTodoPatch] === undefined);
-        this.emit({ owner, ...result, ...(tagOnly ? { tagOnly: true } : {}) });
-        const meaningful = before && (['title', 'notes', 'completionCondition'] as const)
-            .some(key => before[key].trim() !== result.item[key].trim());
-        return this.visibleWrite(meaningful && patch.tagIds === undefined
-            ? await this.autoTags(owner, result.item, patch.matchMultiple === true) : result);
+        this.emit({ owner, ...result });
+        return this.visibleWrite(result);
     }
 
     private emit(change: SentinelTodoChange): void {

@@ -54,7 +54,7 @@ beforeEach(() => {
     Object.values(api).forEach(mock => mock.mockReset());
     panelBrowser.mockReset().mockReturnValue(false);
     api.connect.mockReturnValue({ close: vi.fn() });
-    applyRuntimeConfigPatch({ sentinelTodoExternalReferencesEnabled: false, sentinelTodoTagsEnabled: false, sessionContextAttachmentsEnabled: false });
+    applyRuntimeConfigPatch({ sentinelTodoExternalReferencesEnabled: false, sessionContextAttachmentsEnabled: false });
     api.get.mockImplementation(async () => snapshot);
     api.update.mockImplementation(async (_ws, _parent, id, patch) => {
         snapshot = { revision: snapshot.revision + 1, items: snapshot.items.map(current => current.id === id

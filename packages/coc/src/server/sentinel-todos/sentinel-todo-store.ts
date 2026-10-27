@@ -1,28 +1,25 @@
 import { randomUUID } from 'node:crypto';
 import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { z } from 'zod';
-import type { SentinelTodoDependencyEvaluation, SentinelTodoTagLibrary } from '@plusplusoneplusplus/coc-client';
+import type { SentinelTodoCategorySet, SentinelTodoDependencyEvaluation } from '@plusplusoneplusplus/coc-client';
 import { externalReferenceSchema, externalReferencesSchema, MAX_TODO_EXTERNAL_REFERENCES } from './sentinel-todo-external-references';
 
 export const MAX_TODO_ITEMS = 500;
 export const MAX_TODO_JOB_LINKS = 50;
 export const MAX_TODO_REFERENCES = 20;
 export const MAX_TODO_DEPENDENCIES = 50;
-export const MAX_TODO_TAGS = 50;
-const tagIdsSchema = z.array(z.string().min(1).max(200)).max(MAX_TODO_TAGS)
-    .refine(ids => new Set(ids).size === ids.length, 'Duplicate tag IDs');
-const tagMatchSchema = z.object({
-    state: z.enum(['matched', 'no_match', 'unavailable', 'failed']),
-    message: z.string().max(1_000).optional(),
-}).strict();
-const tagWriteSchema = z.object({
+
+export const MAX_TODO_CATEGORIES = 12;
+const categoryWriteSchema = z.object({
     expectedRevision: z.number().int().nonnegative(),
-    name: z.string().trim().min(1).max(80),
-    color: z.enum(['gray', 'blue', 'violet', 'teal', 'amber']),
-    description: z.string().trim().max(1_000).optional(),
+    name: z.string().trim().min(1).max(40),
 }).strict();
-const tagDeleteSchema = z.object({
+const categoryDeleteSchema = z.object({
     expectedRevision: z.number().int().nonnegative(), confirmed: z.literal(true),
+}).strict();
+const categoryReorderSchema = z.object({
+    expectedRevision: z.number().int().nonnegative(),
+    categoryIds: z.array(z.string().min(1).max(200)).max(MAX_TODO_CATEGORIES),
 }).strict();
 
 const id = z.string().min(1).max(200);
@@ -141,10 +138,7 @@ const evidenceSchema = z.discriminatedUnion('kind', [
 ]);
 export type SentinelTodoEvidence = z.infer<typeof evidenceSchema>;
 const itemSchema = z.object({
-    tagRevision: z.number().int().nonnegative().optional(),
-    tagIds: tagIdsSchema.optional(),
-    tagOrigin: z.enum(['manual', 'suggested']).optional(),
-    tagMatch: tagMatchSchema.optional(),
+    categoryId: id.optional(),
     id,
     type: todoTypeSchema,
     title: z.string().trim().min(1).max(200),
@@ -188,9 +182,8 @@ export type SentinelTodoReferenceInput = Omit<SentinelTodoReference, 'attachedAt
 export type SentinelTodoDependency = z.infer<typeof todoDependencySchema>;
 
 export const todoCreateSchema = z.object({
+    categoryId: id.nullable().optional(),
     externalReferences: externalReferencesSchema.optional(),
-    tagIds: tagIdsSchema.optional(),
-    matchMultiple: z.boolean().optional(),
     type: todoTypeSchema.optional(),
     title: itemSchema.shape.title,
     completionCondition: itemSchema.shape.completionCondition.optional(),
@@ -202,10 +195,8 @@ export const todoCreateSchema = z.object({
 }).strict();
 /** `null` clears an optional field; omitted fields are left unchanged. */
 export const todoPatchSchema = z.object({
+    categoryId: id.nullable().optional(),
     externalReferences: externalReferencesSchema.optional(),
-    expectedTagRevision: z.number().int().nonnegative().optional(),
-    tagIds: tagIdsSchema.optional(),
-    matchMultiple: z.boolean().optional(),
     title: itemSchema.shape.title.optional(),
     completionCondition: itemSchema.shape.completionCondition.optional(),
     notes: itemSchema.shape.notes.optional(),
@@ -243,105 +234,135 @@ export class SentinelTodoError extends Error {
  * The caller owns the database lifetime.
  */
 export class SentinelTodoStore {
-    getTags(owner: SentinelTodoOwner): SentinelTodoTagLibrary {
-        assertOwner(owner);
-        const row = this.db.prepare(`SELECT revision, tags FROM sentinel_todo_tag_libraries
-            WHERE workspace_id = ? AND parent_process_id = ?`)
-            .get<{ revision: number; tags: string }>(owner.workspaceId, owner.processId);
-        return row ? { revision: row.revision, tags: JSON.parse(row.tags) } : { revision: 0, tags: [] };
+    /** Categories belong to the workspace itself, including repo-group workspaces. */
+    getCategories(workspaceId: string): SentinelTodoCategorySet {
+        parse(id, workspaceId);
+        const row = this.db.prepare(`SELECT revision, categories FROM sentinel_todo_category_sets
+            WHERE workspace_id = ?`).get<{ revision: number; categories: string }>(workspaceId);
+        return row ? { revision: row.revision, categories: JSON.parse(row.categories) }
+            : { revision: 0, categories: [] };
     }
 
-    writeTag(owner: SentinelTodoOwner, tagId: string | undefined, input: unknown): SentinelTodoTagLibrary {
-        const body = parse(tagWriteSchema, input);
-        return this.mutate(owner, () => {
-            const library = this.getTags(owner);
-            if (library.revision !== body.expectedRevision) throw new SentinelTodoError('conflict', 'The tag library changed; reload it');
-            const index = tagId === undefined ? -1 : library.tags.findIndex(tag => tag.id === tagId);
-            if (tagId !== undefined && index < 0) throw new SentinelTodoError('not_found', 'Tag not found');
-            if (library.tags.some(tag => tag.id !== tagId && tag.name.toLowerCase() === body.name.toLowerCase())) {
-                throw new SentinelTodoError('invalid', 'Tag names must be unique, ignoring case');
+    writeCategory(workspaceId: string, categoryId: string | undefined, input: unknown): SentinelTodoCategorySet {
+        const body = parse(categoryWriteSchema, input);
+        return this.mutateCategories(workspaceId, body.expectedRevision, set => {
+            const index = categoryId === undefined ? -1 : set.categories.findIndex(category => category.id === categoryId);
+            if (categoryId !== undefined && index < 0) throw new SentinelTodoError('not_found', 'Category not found');
+            if (set.categories.some(category => category.id !== categoryId
+                && category.name.toLowerCase() === body.name.toLowerCase())) {
+                throw new SentinelTodoError('invalid', 'Category names must be unique, ignoring case');
             }
-            if (tagId === undefined && library.tags.length >= MAX_TODO_TAGS) throw new SentinelTodoError('limit', `At most ${MAX_TODO_TAGS} tags per ledger`);
-            const tag = { id: tagId ?? randomUUID(), name: body.name, color: body.color,
-                ...(body.description ? { description: body.description } : {}) };
-            if (index < 0) library.tags.push(tag);
-            else library.tags[index] = tag;
-            return this.saveTagLibrary(owner, library);
-        }, false);
-    }
-
-    deleteTag(owner: SentinelTodoOwner, tagId: string, input: unknown): SentinelTodoTagLibrary {
-        const body = parse(tagDeleteSchema, input);
-        return this.mutate(owner, () => {
-            const library = this.getTags(owner);
-            if (library.revision !== body.expectedRevision) throw new SentinelTodoError('conflict', 'The tag library changed; reload it');
-            if (!library.tags.some(tag => tag.id === tagId)) throw new SentinelTodoError('not_found', 'Tag not found');
-            library.tags = library.tags.filter(tag => tag.id !== tagId);
-            const ledger = this.read(owner);
-            for (let index = 0; index < ledger.items.length; index++) {
-                const item = ledger.items[index];
-                if (!item.tagIds?.includes(tagId)) continue;
-                // A removed tag cannot turn a manual selection (including empty) into an automatic one.
-                const next = { ...item, tagIds: item.tagIds.filter(id => id !== tagId) };
-                delete next.tagMatch;
-                const result = this.commit(owner, ledger, index, next, 'system', item.updatedAt, true);
-                ledger.items[index] = result.item;
-                ledger.revision = result.ledgerRevision;
+            if (categoryId === undefined && set.categories.length >= MAX_TODO_CATEGORIES) {
+                throw new SentinelTodoError('limit', `At most ${MAX_TODO_CATEGORIES} categories per workspace`);
             }
-            return this.saveTagLibrary(owner, library);
-        }, false);
+            const category = { id: categoryId ?? randomUUID(), name: body.name };
+            if (index < 0) set.categories.push(category);
+            else set.categories[index] = category;
+        });
     }
 
-    setSuggestedTags(owner: SentinelTodoOwner, itemId: string, expectedRevision: number, libraryRevision: number, expectedTagRevision: number,
-        metadata: { tagIds: string[]; tagMatch: z.infer<typeof tagMatchSchema> }, confirmed = false) {
+    reorderCategories(workspaceId: string, input: unknown): SentinelTodoCategorySet {
+        const body = parse(categoryReorderSchema, input);
+        return this.mutateCategories(workspaceId, body.expectedRevision, set => {
+            const byId = new Map(set.categories.map(category => [category.id, category]));
+            if (body.categoryIds.length !== byId.size || new Set(body.categoryIds).size !== byId.size
+                || body.categoryIds.some(categoryId => !byId.has(categoryId))) {
+                throw new SentinelTodoError('invalid', 'Category order must contain every category exactly once');
+            }
+            set.categories = body.categoryIds.map(categoryId => byId.get(categoryId)!);
+        });
+    }
+
+    /** Includes Manual, Done and Archived items in every chat of this workspace. */
+    getCategoryUsage(workspaceId: string, categoryId: string): { itemCount: number; chatCount: number } {
+        parse(id, workspaceId);
+        parse(id, categoryId);
+        return this.db.transaction(() => {
+            this.requireCategory(this.getCategories(workspaceId), categoryId);
+            return this.db.prepare(`SELECT COUNT(*) AS itemCount, COUNT(DISTINCT parent_process_id) AS chatCount
+                FROM sentinel_todo_items WHERE workspace_id = ? AND category_id = ?`)
+                .get<{ itemCount: number; chatCount: number }>(workspaceId, categoryId)!;
+        })();
+    }
+
+    deleteCategory(workspaceId: string, categoryId: string, input: unknown): {
+        categorySet: SentinelTodoCategorySet; affectedOwners: SentinelTodoOwner[]; itemCount: number; chatCount: number;
+    } {
+        const body = parse(categoryDeleteSchema, input);
+        parse(id, categoryId);
+        let affectedOwners: SentinelTodoOwner[] = [];
+        let itemCount = 0;
+        const categorySet = this.mutateCategories(workspaceId, body.expectedRevision, set => {
+            this.requireCategory(set, categoryId);
+            const chats = this.db.prepare(`SELECT parent_process_id AS processId, COUNT(*) AS itemCount
+                FROM sentinel_todo_items WHERE workspace_id = ? AND category_id = ? GROUP BY parent_process_id`)
+                .all<{ processId: string; itemCount: number }>(workspaceId, categoryId);
+            // Bookkeeping preserves user edit/verdict timestamps while invalidating stale item writers.
+            itemCount = this.db.prepare(`UPDATE sentinel_todo_items
+                SET category_id = NULL, revision = revision + 1, updated_by = 'system'
+                WHERE workspace_id = ? AND category_id = ?`).run(workspaceId, categoryId).changes;
+            for (const chat of chats) {
+                this.db.prepare(`UPDATE sentinel_todo_ledgers SET revision = revision + ?
+                    WHERE workspace_id = ? AND parent_process_id = ?`)
+                    .run(chat.itemCount, workspaceId, chat.processId);
+            }
+            affectedOwners = chats.map(chat => ({ workspaceId, processId: chat.processId }));
+            set.categories = set.categories.filter(category => category.id !== categoryId);
+        });
+        return { categorySet, affectedOwners, itemCount, chatCount: affectedOwners.length };
+    }
+
+    /**
+     * Applies an automatic category pick to a just-created item. Any change since
+     * classification started (a user move, edit or category-set change) wins.
+     */
+    setPickedCategory(owner: SentinelTodoOwner, itemId: string, expectedRevision: number,
+        categorySetRevision: number, categoryId: string): { item: SentinelTodoItem; ledgerRevision: number } {
         return this.mutate(owner, () => {
             const ledger = this.read(owner);
             const index = ledger.items.findIndex(item => item.id === itemId);
             if (index < 0) throw new SentinelTodoError('not_found', 'To-do item not found');
             const item = ledger.items[index];
-            if (item.revision !== expectedRevision || (item.tagRevision ?? 0) !== expectedTagRevision
-                || this.getTags(owner).revision !== libraryRevision) {
-                throw new SentinelTodoError('conflict', 'The item or tag library changed during classification', item);
+            if (item.revision !== expectedRevision || item.categoryId !== undefined
+                || this.getCategories(owner.workspaceId).revision !== categorySetRevision) {
+                throw new SentinelTodoError('conflict', 'The item or category set changed during classification', item);
             }
-            if (item.tagOrigin === 'manual' && !confirmed) throw new SentinelTodoError('invalid', 'Confirm replacing manual tag assignments');
-            this.validateTagIds(owner, metadata.tagIds);
-            const failed = metadata.tagMatch.state === 'failed' || metadata.tagMatch.state === 'unavailable';
-            const next = failed ? { ...item, tagMatch: metadata.tagMatch }
-                : { ...item, ...metadata, tagOrigin: 'suggested' };
-            return this.commit(owner, ledger, index, next,
-                'system', item.updatedAt, true);
+            this.validateCategoryId(owner, categoryId);
+            return this.commit(owner, ledger, index, { ...item, categoryId }, 'system', item.updatedAt);
         }, false);
     }
 
-    private saveTagLibrary(owner: SentinelTodoOwner, library: SentinelTodoTagLibrary): SentinelTodoTagLibrary {
-        this.db.prepare(`INSERT INTO sentinel_todo_ledgers VALUES (?, ?, 0) ON CONFLICT DO NOTHING`)
-            .run(owner.workspaceId, owner.processId);
-        const next = { ...library, revision: library.revision + 1 };
-        this.db.prepare(`INSERT INTO sentinel_todo_tag_libraries VALUES (?, ?, ?, ?)
-            ON CONFLICT (workspace_id, parent_process_id) DO UPDATE SET revision = excluded.revision, tags = excluded.tags`)
-            .run(owner.workspaceId, owner.processId, next.revision, JSON.stringify(next.tags));
-        return next;
-    }
-
-    private validateTagIds(owner: SentinelTodoOwner, ids: string[]): void {
-        parse(tagIdsSchema, ids);
-        const library = this.getTags(owner);
-        if (ids.some(id => !library.tags.some(tag => tag.id === id))) {
-            throw new SentinelTodoError('invalid', 'Tag IDs must belong to this parent ledger');
+    private requireCategory(set: SentinelTodoCategorySet, categoryId: string): void {
+        if (!set.categories.some(category => category.id === categoryId)) {
+            throw new SentinelTodoError('not_found', 'Category not found');
         }
     }
 
-    private writeTags(owner: SentinelTodoOwner, item: SentinelTodoItem): void {
-        if (item.tagIds === undefined && item.tagOrigin === undefined && item.tagMatch === undefined) return;
-        this.db.prepare(`INSERT INTO sentinel_todo_tag_assignments VALUES (?, ?, ?, ?)
-            ON CONFLICT (workspace_id, parent_process_id, item_id) DO UPDATE SET metadata = excluded.metadata`)
-            .run(owner.workspaceId, owner.processId, item.id, JSON.stringify({
-                tagIds: item.tagIds, tagOrigin: item.tagOrigin, tagMatch: item.tagMatch, tagRevision: item.tagRevision,
-            }));
+    private mutateCategories(workspaceId: string, expectedRevision: number,
+        mutation: (set: SentinelTodoCategorySet) => void): SentinelTodoCategorySet {
+        parse(id, workspaceId);
+        return this.db.transaction(() => {
+            // Reserve the writer before reading, including the first write to an empty set.
+            this.db.prepare('UPDATE sentinel_todo_category_sets SET revision = revision WHERE 0').run();
+            const set = this.getCategories(workspaceId);
+            if (set.revision !== expectedRevision) throw new SentinelTodoError('conflict', 'The categories changed; reload them');
+            mutation(set);
+            set.revision++;
+            this.db.prepare(`INSERT INTO sentinel_todo_category_sets (workspace_id, revision, categories)
+                VALUES (?, ?, ?) ON CONFLICT (workspace_id) DO UPDATE SET
+                revision = excluded.revision, categories = excluded.categories`)
+                .run(workspaceId, set.revision, JSON.stringify(set.categories));
+            return set;
+        })();
     }
 
     constructor(private readonly db: NativeDatabase) {
         db.transaction(() => db.exec(`
+            CREATE TABLE IF NOT EXISTS sentinel_todo_category_sets (
+                workspace_id TEXT PRIMARY KEY NOT NULL,
+                revision INTEGER NOT NULL CHECK (revision >= 0),
+                categories TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS sentinel_todo_ledgers (
                 workspace_id TEXT NOT NULL,
                 parent_process_id TEXT NOT NULL,
@@ -376,24 +397,9 @@ export class SentinelTodoStore {
                 FOREIGN KEY (workspace_id, parent_process_id)
                     REFERENCES sentinel_todo_ledgers (workspace_id, parent_process_id) ON DELETE CASCADE
             );
-            CREATE TABLE IF NOT EXISTS sentinel_todo_tag_libraries (
-                workspace_id TEXT NOT NULL,
-                parent_process_id TEXT NOT NULL,
-                revision INTEGER NOT NULL,
-                tags TEXT NOT NULL,
-                PRIMARY KEY (workspace_id, parent_process_id),
-                FOREIGN KEY (workspace_id, parent_process_id)
-                    REFERENCES sentinel_todo_ledgers (workspace_id, parent_process_id) ON DELETE CASCADE
-            );
-            CREATE TABLE IF NOT EXISTS sentinel_todo_tag_assignments (
-                workspace_id TEXT NOT NULL,
-                parent_process_id TEXT NOT NULL,
-                item_id TEXT NOT NULL,
-                metadata TEXT NOT NULL,
-                PRIMARY KEY (workspace_id, parent_process_id, item_id),
-                FOREIGN KEY (workspace_id, parent_process_id, item_id)
-                    REFERENCES sentinel_todo_items (workspace_id, parent_process_id, id) ON DELETE CASCADE
-            );
+            -- Categories replaced tags; earlier tag data is dropped, not migrated.
+            DROP TABLE IF EXISTS sentinel_todo_tag_assignments;
+            DROP TABLE IF EXISTS sentinel_todo_tag_libraries;
             CREATE UNIQUE INDEX IF NOT EXISTS sentinel_todo_items_idempotency
                 ON sentinel_todo_items (workspace_id, parent_process_id, idempotency_key)
                 WHERE idempotency_key IS NOT NULL;
@@ -498,6 +504,10 @@ export class SentinelTodoStore {
                 db.exec('DROP TABLE sentinel_todo_references_previous');
             }
             const columns = db.prepare('PRAGMA table_info(sentinel_todo_items)').all<{ name: string }>();
+            // Nullable and deliberately without a foreign key: unknown IDs degrade on read.
+            if (!columns.some(column => column.name === 'category_id')) {
+                db.exec('ALTER TABLE sentinel_todo_items ADD COLUMN category_id TEXT');
+            }
             if (!columns.some(column => column.name === 'external_references')) {
                 db.exec("ALTER TABLE sentinel_todo_items ADD COLUMN external_references TEXT NOT NULL DEFAULT '[]'");
             }
@@ -581,11 +591,12 @@ export class SentinelTodoStore {
             }
             const now = new Date().toISOString();
             const fields = parse(todoCreateSchema, input);
-            if (fields.tagIds !== undefined) this.validateTagIds(owner, fields.tagIds);
+            if (fields.categoryId) this.validateCategoryId(owner, fields.categoryId);
             assertReviewReason(opts.actor, fields.status, fields.statusReason);
             const item = parse(itemSchema, {
                 id: randomUUID(),
                 type: fields.type ?? 'normal',
+                ...(fields.categoryId ? { categoryId: fields.categoryId } : {}),
                 title: fields.title,
                 completionCondition: fields.completionCondition ?? '',
                 notes: fields.notes ?? '',
@@ -602,13 +613,11 @@ export class SentinelTodoStore {
                 jobs: [],
                 references: fields.externalReferences ?? [],
                 ...(opts.actor === 'user' && fields.status === 'deferred' ? { userVerdictRevision: 1, userEditedAt: now } : {}),
-                ...(fields.tagIds !== undefined ? { tagIds: fields.tagIds, tagOrigin: 'manual', tagRevision: 1 } : {}),
                 ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
             });
             this.db.prepare(`INSERT INTO sentinel_todo_ledgers (workspace_id, parent_process_id, revision)
                 VALUES (?, ?, 0) ON CONFLICT DO NOTHING`).run(owner.workspaceId, owner.processId);
             this.insertItem(owner, item, ledger.items.length);
-            this.writeTags(owner, item);
             this.advanceLedger(owner, ledger.revision);
             return { item, created: true, ledgerRevision: ledger.revision + 1 };
         });
@@ -681,15 +690,6 @@ export class SentinelTodoStore {
     ): { item: SentinelTodoItem; ledgerRevision: number } {
         assertCaller(actor);
         const fields = parse(todoPatchSchema, patch);
-        if (fields.expectedTagRevision !== undefined && fields.tagIds === undefined) {
-            throw new SentinelTodoError('invalid', 'expectedTagRevision requires tagIds');
-        }
-        if (fields.matchMultiple !== undefined && Object.entries(fields)
-            .every(([key, value]) => value === undefined || ['matchMultiple', 'expectedTagRevision'].includes(key))) {
-            throw new SentinelTodoError('invalid', 'Matching options require an item field or tagIds');
-        }
-        const metadataOnly = fields.tagIds !== undefined && Object.keys(fields).every(key =>
-            ['tagIds', 'matchMultiple', 'expectedTagRevision'].includes(key) || fields[key as keyof SentinelTodoPatch] === undefined);
         assertReviewReason(actor, fields.status, fields.statusReason);
         return this.mutate(owner, () => {
             const ledger = this.read(owner);
@@ -735,28 +735,15 @@ export class SentinelTodoStore {
             }
             const now = new Date().toISOString();
             const next: Record<string, unknown> = { ...current };
+            if (fields.categoryId) this.validateCategoryId(owner, fields.categoryId);
             if (fields.externalReferences !== undefined) {
                 next.references = [...current.references.filter(isConversationReference),
                     ...fields.externalReferences];
             }
-            if (fields.tagIds !== undefined) {
-                this.validateTagIds(owner, fields.tagIds);
-                if (fields.expectedTagRevision === undefined) throw new SentinelTodoError('invalid', 'Tag assignments require expectedTagRevision');
-                if (fields.expectedTagRevision !== (current.tagRevision ?? 0)) {
-                    throw new SentinelTodoError('conflict', 'Tag assignments changed since they were loaded', current);
-                }
-                if (actor !== 'user' && current.tagOrigin === 'manual') {
-                    throw new SentinelTodoError('invalid', 'Manual tag assignments require user confirmation to replace');
-                }
-                next.tagIds = fields.tagIds;
-                next.tagOrigin = 'manual';
-                next.tagRevision = (current.tagRevision ?? 0) + 1;
-                delete next.tagMatch;
-            }
             for (const key of ['title', 'completionCondition', 'notes', 'status', 'priority', 'archived'] as const) {
                 if (fields[key] !== undefined) next[key] = fields[key];
             }
-            for (const key of ['targetRepo', 'statusReason'] as const) {
+            for (const key of ['targetRepo', 'statusReason', 'categoryId'] as const) {
                 if (fields[key] === null) delete next[key];
                 else if (fields[key] !== undefined) next[key] = fields[key];
             }
@@ -771,7 +758,7 @@ export class SentinelTodoStore {
             if (fields.outcome === null) delete next.outcome;
             else if (fields.outcome !== undefined) next.outcome = { summary: fields.outcome, recordedAt: now, recordedBy: actor };
             // Priority is metadata: a priority-only edit must not supersede a linked job's result.
-            if (actor === 'user' && Object.keys(fields).some(key => !['priority', 'externalReferences', 'tagIds', 'matchMultiple', 'expectedTagRevision'].includes(key) && fields[key as keyof SentinelTodoPatch] !== undefined)) {
+            if (actor === 'user' && Object.keys(fields).some(key => !['priority', 'categoryId', 'externalReferences'].includes(key) && fields[key as keyof SentinelTodoPatch] !== undefined)) {
                 next.userEditedAt = now;
             }
             if (actor === 'user' && (fields.status !== undefined || fields.statusReason !== undefined
@@ -782,8 +769,8 @@ export class SentinelTodoStore {
                 && reviewedLinks.includes(link)
                 ? { ...link, result: { ...link.result, reviewed: { recordedAt: now, recordedBy: actor } } }
                 : link);
-            return this.commit(owner, ledger, index, next, actor, metadataOnly ? current.updatedAt : now, metadataOnly);
-        }, !metadataOnly);
+            return this.commit(owner, ledger, index, next, actor, now);
+        });
     }
 
     /**
@@ -975,13 +962,7 @@ export class SentinelTodoStore {
         next: Record<string, unknown>,
         actor: SentinelTodoActor,
         now: string,
-        metadataOnly = false,
     ): { item: SentinelTodoItem; ledgerRevision: number } {
-        if (metadataOnly) {
-            const item = parse(itemSchema, { ...next, tagRevision: (ledger.items[index].tagRevision ?? 0) + 1 });
-            this.writeTags(owner, item);
-            return { item, ledgerRevision: ledger.revision };
-        }
         const item = parse(itemSchema, {
             ...next, revision: ledger.items[index].revision + 1, updatedAt: now, updatedBy: actor,
         });
@@ -994,7 +975,6 @@ export class SentinelTodoStore {
         if (changed !== 1) throw new SentinelTodoError('conflict', 'The item changed since it was loaded');
         this.writeJobs(owner, item);
         this.writeReferences(owner, item);
-        this.writeTags(owner, item);
         this.advanceLedger(owner, ledger.revision);
         return { item, ledgerRevision: ledger.revision + 1 };
     }
@@ -1063,11 +1043,9 @@ export class SentinelTodoStore {
         }
         const items = this.db.prepare(`SELECT * FROM sentinel_todo_items
             WHERE workspace_id = ? AND parent_process_id = ? ORDER BY item_order`).all<ItemRow>(...scope);
-        const tags = new Map(this.db.prepare(`SELECT item_id, metadata FROM sentinel_todo_tag_assignments
-            WHERE workspace_id = ? AND parent_process_id = ?`)
-            .all<{ item_id: string; metadata: string }>(...scope).map(row => [row.item_id, JSON.parse(row.metadata)]));
+        const categoryIds = new Set(this.getCategories(owner.workspaceId).categories.map(category => category.id));
         return parse(ledgerSchema, { revision: ledger.revision, items: items.map(row => ({
-            ...tags.get(row.id),
+            ...(row.category_id && categoryIds.has(row.category_id) ? { categoryId: row.category_id } : {}),
             id: row.id, type: row.type, title: row.title, completionCondition: row.completion_condition,
             notes: row.notes, status: row.status, priority: row.priority, archived: row.archived === 1,
             revision: row.revision, createdAt: row.created_at, updatedAt: row.updated_at,
@@ -1079,6 +1057,12 @@ export class SentinelTodoStore {
             ...optional('statusReason', row.status_reason), ...optional('idempotencyKey', row.idempotency_key),
             ...optional('userEditedAt', row.user_edited_at), ...optional('userVerdictRevision', row.user_verdict_revision),
         })) });
+    }
+
+    private validateCategoryId(owner: SentinelTodoOwner, categoryId: string): void {
+        if (!this.getCategories(owner.workspaceId).categories.some(category => category.id === categoryId)) {
+            throw new SentinelTodoError('invalid', 'Unknown workspace category');
+        }
     }
 
     private insertItem(owner: SentinelTodoOwner, item: SentinelTodoItem, order: number): void {
@@ -1150,10 +1134,11 @@ export class SentinelTodoStore {
 const ITEM_FIELDS = [
     'type', 'title', 'completion_condition', 'notes', 'target_repo', 'status', 'status_reason',
     'priority', 'outcome', 'archived', 'revision', 'created_at', 'updated_at', 'created_by',
-    'updated_by', 'idempotency_key', 'user_edited_at', 'user_verdict_revision', 'external_references',
+    'category_id', 'updated_by', 'idempotency_key', 'user_edited_at', 'user_verdict_revision', 'external_references',
 ] as const;
 
 interface ItemRow {
+    category_id: string | null;
     id: string; type: string; title: string; completion_condition: string; notes: string;
     target_repo: string | null; status: string; status_reason: string | null; priority: string;
     outcome: string | null; archived: number; revision: number; created_at: string; updated_at: string;
@@ -1176,6 +1161,7 @@ interface JobRow {
 function itemRow(owner: SentinelTodoOwner, item: SentinelTodoItem) {
     return {
         workspace_id: owner.workspaceId, parent_process_id: owner.processId, id: item.id,
+        category_id: item.categoryId ?? null,
         type: item.type, title: item.title, completion_condition: item.completionCondition, notes: item.notes,
         target_repo: encode(item.targetRepo), status: item.status, status_reason: item.statusReason ?? null,
         priority: item.priority, outcome: encode(item.outcome), archived: Number(item.archived), revision: item.revision,

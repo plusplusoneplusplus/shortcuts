@@ -664,11 +664,11 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.sentinelTodoTags', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoTagsEnabled',
+        key: 'features.sentinelTodoCategories', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoCategoriesEnabled',
         ui: {
-            tab: 'sentinel', group: 'sentinelTodos', order: 32.56, label: 'Sentinel To-do tags', badge: 'experimental',
-            hint: 'Parent-scoped user-defined tracking tags with best-effort matching. Tags never grant execution authority. Disabled by default.',
-            testId: 'toggle-sentinel-todo-tags-enabled',
+            tab: 'sentinel', group: 'sentinelTodos', order: 32.565, label: 'Sentinel To-do categories', badge: 'experimental',
+            hint: 'Workspace categories shared by every Sentinel chat. Disabled by default.',
+            testId: 'toggle-sentinel-todo-categories-enabled',
         },
     }),
     bool({
