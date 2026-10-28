@@ -175,7 +175,11 @@ function splitOversized(block: Block, limit: number): string[] {
 export function formatTeamsAnswerChunks(
     answer: string, requestLabel: string, contextLabel?: string, reservedContextLabel?: string,
     attribution: 'compact' | 'legacy' = 'compact',
+    maxBytes = TEAMS_ANSWER_MAX_BYTES,
 ): string[] {
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 512 || maxBytes > TEAMS_ANSWER_MAX_BYTES) {
+        throw new RangeError('Teams answer byte limit must be between 512 and 20000');
+    }
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(requestLabel)) {
         throw new TypeError('Teams request label must be a compact opaque identifier');
     }
@@ -186,7 +190,7 @@ export function formatTeamsAnswerChunks(
         const header = (part: number, total: number, label = contextLabel) =>
             `<p><strong>Request ${requestLabel} · Part ${part}/${total}</strong></p>`
             + (label ? `<p>${escapeTeamsHtml(label.slice(0, 140))}</p>` : '');
-        const budget = TEAMS_ANSWER_MAX_BYTES - bytes(prefix
+        const budget = maxBytes - bytes(prefix
             + header(expected, expected, contextLabel ?? reservedContextLabel));
         const bodies: string[] = [];
         let body = '';
@@ -212,7 +216,7 @@ export function formatTeamsAnswerChunks(
         }
         const result = bodies.map((content, index) => header(index + 1, bodies.length) + content);
         if (result.every(part => bytes(attribution === 'legacy' ? prefix + part
-            : formatTeamsOutbound(part, 'html')) <= TEAMS_ANSWER_MAX_BYTES)) {
+            : formatTeamsOutbound(part, 'html')) <= maxBytes)) {
             return result;
         }
         expected = bodies.length + 1;

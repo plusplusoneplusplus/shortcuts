@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Ic3DirectMessageClient, TeamsOperationError } from '@plusplusoneplusplus/coc-connector/teams';
 import { AuthError, MicrosoftTokenProvider, NativeTeamsError } from '@plusplusoneplusplus/coc-native';
-import { sendTeamsIc3OwnCommandReply, type TeamsIc3CommandSource } from '../../../src/server/messaging/teams-ic3-own-command-reply';
+import { sendTeamsIc3OwnCommandReply, type TeamsIc3OwnCommandSource } from '../../../src/server/messaging/teams-ic3-own-command-reply';
 import { admitTeamsIc3OwnCommand } from '../../../src/server/messaging/teams-ic3-own-command-admission';
 
-const source: TeamsIc3CommandSource = {
+const source: TeamsIc3OwnCommandSource = {
     account: { tenantId: '11111111-1111-4111-8111-111111111111', userId: '22222222-2222-4222-8222-222222222222' },
     chatId: '19:fixture@thread.v2', region: 'amer', verifyAccess: vi.fn(async () => {}),
+    replyTo: { messageId: '1790000000000', text: '@coc explain this' },
 };
 const id = 'ic3-command-fixture';
 
@@ -180,6 +181,8 @@ describe('IC3 command reply through existing Teams clients', () => {
         expect(body.content).toContain('CoC');
         expect(body.content).toContain('<strong>bold</strong>');
         expect(body.content).not.toContain('<script>');
+        expect(body.content.startsWith('<blockquote itemscope="" itemtype="http://schema.skype.com/Reply" itemid="1790000000000">')).toBe(true);
+        expect(body.content).toContain('<p>@coc explain this</p></blockquote>');
         expect(source.verifyAccess).toHaveBeenCalledWith(expect.any(AbortSignal));
         expect(dispose).toHaveBeenCalledOnce();
     });
@@ -209,7 +212,41 @@ describe('IC3 command reply through existing Teams clients', () => {
             const body = JSON.parse(String(init?.body)).content;
             expect(Buffer.byteLength(body)).toBeLessThanOrEqual(20_000);
             expect(body).toContain(`Part ${index + 1}/${fetch.mock.calls.length}`);
+            expect(body).toContain('itemid="1790000000000"');
         }
+    });
+
+    it('escapes and bounds the original message preview without copying untrusted HTML', async () => {
+        await sendTeamsIc3OwnCommandReply({
+            ...source, replyTo: { messageId: '1790000000001', text: '@coc <script>&"\n' + '\u{1f600}'.repeat(400) },
+        }, id, 'answer\n'.repeat(5000), new AbortController().signal);
+        for (const [, init] of fetch.mock.calls) {
+            const html = JSON.parse(String(init?.body)).content;
+            expect(Buffer.byteLength(html)).toBeLessThanOrEqual(20_000);
+            expect(html).toContain('itemid="1790000000001"');
+            expect(html).toContain('&lt;script&gt;&amp;&quot;');
+            expect(html).not.toContain('<script>');
+            expect(html).toContain('...</p></blockquote>');
+            expect(html.match(/\u{1f600}/gu)).toHaveLength(184);
+            expect(html).not.toContain('\ufffd');
+        }
+    });
+
+    it.each(['', 'root', '123" onclick="bad', '1'.repeat(21)])(
+        'rejects invalid reply message ID %s before authentication or dispatch', async messageId => {
+            await expect(sendTeamsIc3OwnCommandReply({
+                ...source, replyTo: { ...source.replyTo, messageId },
+            }, id, 'answer', new AbortController().signal)).rejects.toThrow('original message ID and text');
+            expect(MicrosoftTokenProvider.prototype.getToken).not.toHaveBeenCalled();
+            expect(fetch).not.toHaveBeenCalled();
+        },
+    );
+
+    it('rejects a missing original message preview without posting an unlinked answer', async () => {
+        await expect(sendTeamsIc3OwnCommandReply({
+            ...source, replyTo: { ...source.replyTo, text: ' ' },
+        }, id, 'answer', new AbortController().signal)).rejects.toThrow('original message ID and text');
+        expect(fetch).not.toHaveBeenCalled();
     });
 
     it('stops on an uncertain send without replay, fallback or later chunks', async () => {

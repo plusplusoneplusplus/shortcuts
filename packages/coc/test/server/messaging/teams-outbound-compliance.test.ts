@@ -5,7 +5,7 @@ import { createMockSDKService } from '../../helpers/mock-sdk-service';
 import { createDecisionService } from '../../../src/server/decisions/decision-service';
 import { COPILOT_DECISION_TIMEOUT_MS } from '../../../src/server/decisions/copilot-decision-backend';
 import { DECISION_LIMITS } from '../../../src/server/decisions/decision-validation';
-import { sendTeamsIc3OwnCommandReply, sendTeamsIc3SourceReply, type TeamsIc3CommandSource }
+import { sendTeamsIc3OwnCommandReply, sendTeamsIc3SourceReply, type TeamsIc3OwnCommandSource }
     from '../../../src/server/messaging/teams-ic3-own-command-reply';
 import { formatTeamsReactionNotice, sendTeamsReactionReply, sendTeamsReactionResult }
     from '../../../src/server/messaging/teams-reaction-reply';
@@ -36,10 +36,11 @@ function harness(type: 'mention' | 'reaction' = 'mention') {
         workspaceId: 'ws-fixture', workingDirectory: resolve('fixture-workspace'),
         trigger: { type, messageId: 'original-request', text: '@coc do the work', untrustedHtml: '<p>do the work</p>' },
     };
-    const source: TeamsIc3CommandSource = {
+    const source: TeamsIc3OwnCommandSource = {
         account: { tenantId: '11111111-1111-4111-8111-111111111111', userId: '22222222-2222-4222-8222-222222222222' },
         chatId: '19:fixture@thread.v2', region: 'amer', verifyAccess: vi.fn(async () => {}),
         compliance,
+        replyTo: { messageId: '1790000000000', text: '@coc do the work' },
     };
     return { source, sdk, transform, evaluate, policy, compliance };
 }
@@ -125,6 +126,7 @@ describe('Teams complete-message compliance delivery boundary', () => {
         });
         expect(sent[0][1]).toContain('<strong>answer</strong>');
         expect(sent[0][1]).toContain('CoC');
+        expect(sent[0][1]).toContain('itemid="1790000000000"');
         expect(h.transform.mock.calls[0][1]).toMatchObject({ model: 'gpt-6-luna', loadDefaultMcpConfig: false });
     });
 
