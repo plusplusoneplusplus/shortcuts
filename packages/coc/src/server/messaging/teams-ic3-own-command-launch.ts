@@ -3,6 +3,7 @@ import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import { prepareTaskForEnqueue } from '../routes/queue-enqueue';
 import { enqueueViaBridge, validateAndParseTask, type QueueRouteContext } from '../routes/queue-shared';
 import { processOperationAdmission } from '../processes/process-operation-admission';
+import { isRepoGroupWorkspaceId } from '../workspaces/repo-group-workspace';
 
 export function createTeamsIc3OwnCommandLaunch(
     queue: QueueRouteContext & { store: NonNullable<QueueRouteContext['store']> },
@@ -33,7 +34,7 @@ export function createTeamsIc3OwnCommandLaunch(
             await prepareTaskForEnqueue(task, queue);
             const workspace = (await queue.store.getWorkspaces()).find(item => item.id === workspaceId);
             signal.throwIfAborted();
-            if (!workspace || workspace.virtual || !isAbsolute(workspace.rootPath)) {
+            if (!workspace || (workspace.virtual && !isRepoGroupWorkspaceId(workspaceId)) || !isAbsolute(workspace.rootPath)) {
                 throw new Error('IC3 command workspace is unavailable.');
             }
             task.id = followUp ? id : conversationId;

@@ -145,8 +145,9 @@ The injection baseline stays `DEFAULT_CHAT_STYLE`, not the configured default: a
 
 `features.teamsIc3OwnCommands` (default off) enables the independent native Azure CLI
 [Ask launcher](server-architecture.md#ic3-own-command-launcher). Its live
-`teamsIc3OwnCommands.workspaceId` selects a registered local workspace on the owning
-server. The Teams connection card's `ic3Region` in `teams-messaging.json` supplies
+`teamsIc3OwnCommands.workspaceId` selects a registered local workspace or repo group
+on the owning server. The selector labels groups and excludes other virtual scopes.
+The Teams connection card's `ic3Region` in `teams-messaging.json` supplies
 the shared explicit `amer`, `emea` or `apac` region for IC3 operations. Saving a
 region change restarts own-command reads; an unset region blocks connection.
 Own-user mentions share one Ask conversation per account, Teams chat and workspace,

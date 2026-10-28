@@ -1102,8 +1102,8 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         default: '', runtime: 'live',
         ui: {
             tab: 'teams', group: 'teamsOwnCommands', order: 20, label: 'Command workspace',
-            hint: 'Required. Teams commands run in this registered local workspace on the configured machine, not the dashboard selection.',
-            control: { type: 'workspace' }, testId: 'select-teams-ic3-command-workspace',
+            hint: 'Required. Teams commands run in this registered local workspace or repo group on the configured machine, not the dashboard selection.',
+            control: { type: 'workspace', includeRepoGroups: true }, testId: 'select-teams-ic3-command-workspace',
         },
     },
     bool({

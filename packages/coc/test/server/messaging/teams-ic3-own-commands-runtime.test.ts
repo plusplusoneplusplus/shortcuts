@@ -59,6 +59,8 @@ describe('basic IC3 own-command launcher', () => {
         { id: workspaceId, name: 'Alpha', rootPath: path.resolve('alpha') },
         { id: 'workspace-beta', name: 'Beta', rootPath: path.resolve('beta') },
         { id: 'virtual', name: 'Virtual', rootPath: path.resolve('virtual'), virtual: true },
+        { id: 'group-relative', name: 'Relative group', rootPath: 'relative', virtual: true },
+        { id: 'group-INVALID', name: 'Invalid group', rootPath: path.resolve('invalid'), virtual: true },
     ]) };
 
     function message(messageId: string, chatId = 'direct', patch: Partial<TeamsIc3Message> = {}): TeamsIc3Message {
@@ -671,7 +673,7 @@ describe('basic IC3 own-command launcher', () => {
         expect(JSON.stringify(vi.mocked(getLogger().warn).mock.calls)).not.toContain('private provider detail');
     });
 
-    it.each(['missing', 'virtual'])('does not connect for %s targets or fall back to another workspace', async target => {
+    it.each(['missing', 'virtual', 'group-missing', 'group-relative', 'group-INVALID'])('does not connect for %s targets or fall back to another workspace', async target => {
         config = mergeConfig(config, { teamsIc3OwnCommands: { workspaceId: target } });
         start();
         await vi.advanceTimersByTimeAsync(0);
