@@ -177,8 +177,11 @@ Results use `shared/InteractiveTable`, shared with markdown tables. Unwrapped ta
 with more than twelve visible columns grow past the pane to retain readable
 content-proportional widths; the table's own scroll container handles overflow.
 Hidden columns are excluded from width normalization. Header and numeric-summary
-overflow is clipped, with full text in tooltips. Resizing uses measured pixel widths;
-wrapping remains controlled by the host. These display settings do not mutate query
+overflow is clipped, with full text in tooltips. Resizing uses measured pixel widths.
+Kusto supplies the shared Wrap text control with in-memory state per mounted view.
+Wrapping survives result revisions and Table/Chart switches, resets on workspace or
+canvas changes, and defaults off on remount. Native table rows grow with wrapped
+content without virtual row measurements. Display settings do not mutate query
 results or canvas revisions.
 
 Authentication belongs to the owning server's `kusto-client-runtime.ts`, shared by
