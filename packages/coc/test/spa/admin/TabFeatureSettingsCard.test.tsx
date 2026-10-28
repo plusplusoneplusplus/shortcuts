@@ -79,6 +79,104 @@ beforeEach(() => {
 });
 
 describe('TabFeatureSettingsCard', () => {
+    it.each(['', ' \n\t'])('associates an inline error with an enabled blank prompt (%j), retaining the draft on Save', async draft => {
+        render(<Harness tabs={['teams']} />);
+        const textarea = screen.getByRole('textbox', { name: 'Compliance decision prompt' });
+        fireEvent.change(textarea, { target: { value: draft } });
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Outbound compliance check' }));
+        const error = screen.getByRole('alert');
+        expect(error.textContent).toBe('A nonblank decision prompt is required when outbound compliance check is enabled.');
+        expect(textarea.getAttribute('aria-invalid')).toBe('true');
+        expect(textarea.getAttribute('aria-describedby')?.split(' ')).toContain(error.id);
+        const save = screen.getByTestId('settings-tab-features-teams-save');
+        const cancel = screen.getByTestId('settings-tab-features-teams-cancel');
+        expect(save).toHaveProperty('disabled', false);
+        expect(cancel).toHaveProperty('disabled', false);
+        await act(async () => { fireEvent.click(save); });
+        expect(updateConfig).not.toHaveBeenCalled();
+        expect(textarea).toHaveProperty('value', draft);
+        expect(controller.isTabDirty('teams')).toBe(true);
+        expect(screen.getByRole('alert')).toBe(error);
+        fireEvent.click(cancel);
+        expect(screen.queryByRole('alert')).toBeNull();
+        expect(textarea.hasAttribute('aria-invalid')).toBe(false);
+        expect(controller.isTabDirty('teams')).toBe(false);
+    });
+
+    it('clears the inline error when corrected, saves the exact policy and restores it on Cancel', async () => {
+        render(<Harness tabs={['teams']} />);
+        const textarea = screen.getByRole('textbox', { name: 'Compliance decision prompt' });
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Outbound compliance check' }));
+        const errorId = screen.getByRole('alert').id;
+        const policy = '  Allow public text.\nBlock private text.  ';
+        fireEvent.change(textarea, { target: { value: policy } });
+        expect(screen.queryByRole('alert')).toBeNull();
+        expect(textarea.hasAttribute('aria-invalid')).toBe(false);
+        expect(textarea.getAttribute('aria-describedby')?.split(' ')).not.toContain(errorId);
+        await act(async () => { fireEvent.click(screen.getByTestId('settings-tab-features-teams-save')); });
+        expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+            'features.teamsOutboundCompliance': true, 'teamsOutboundCompliance.prompt': policy,
+        }));
+        expect(controller.isTabDirty('teams')).toBe(false);
+        fireEvent.change(textarea, { target: { value: '' } });
+        expect(screen.getByRole('alert')).toBeTruthy();
+        fireEvent.click(screen.getByTestId('settings-tab-features-teams-cancel'));
+        expect(textarea).toHaveProperty('value', policy);
+        expect(screen.queryByRole('alert')).toBeNull();
+        expect(controller.isTabDirty('teams')).toBe(false);
+    });
+
+    it('allows disabled blank prompts and clears validation without erasing the draft when disabled', async () => {
+        render(<Harness tabs={['teams']} />);
+        const toggle = screen.getByRole('checkbox', { name: 'Outbound compliance check' });
+        const textarea = screen.getByRole('textbox', { name: 'Compliance decision prompt' });
+        expect(screen.queryByRole('alert')).toBeNull();
+        fireEvent.change(textarea, { target: { value: ' \n\t' } });
+        fireEvent.click(toggle);
+        expect(screen.getByRole('alert')).toBeTruthy();
+        fireEvent.click(toggle);
+        expect(screen.queryByRole('alert')).toBeNull();
+        expect(textarea.hasAttribute('aria-invalid')).toBe(false);
+        await act(async () => { fireEvent.click(screen.getByTestId('settings-tab-features-teams-save')); });
+        expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+            'features.teamsOutboundCompliance': false, 'teamsOutboundCompliance.prompt': ' \n\t',
+        }));
+        expect(textarea).toHaveProperty('value', ' \n\t');
+        expect(controller.isTabDirty('teams')).toBe(false);
+    });
+
+    it('keeps fail-closed Teams delivery and CoC reporting help associated with the prompt', () => {
+        render(<Harness tabs={['teams']} />);
+        const textarea = screen.getByRole('textbox', { name: 'Compliance decision prompt' });
+        const hintId = textarea.getAttribute('aria-describedby')!;
+        const hint = document.getElementById(hintId)!;
+        expect(hint.textContent).toContain('Policy rejection or a decision API error sends no Teams text');
+        expect(hint.textContent).toContain('the failure is reported in CoC on the Teams status card');
+        fireEvent.click(screen.getByRole('checkbox', { name: 'Outbound compliance check' }));
+        expect(textarea.getAttribute('aria-describedby')?.split(' ')).toContain(hintId);
+        expect(document.getElementById(hintId)).toBe(hint);
+    });
+
+    it('renders the default-off compliance toggle and an editable multiline prompt in the Teams section', async () => {
+        render(<Harness tabs={['teams']} />);
+        const toggle = screen.getByRole('checkbox', { name: 'Outbound compliance check' });
+        const textarea = screen.getByRole('textbox', { name: 'Compliance decision prompt' });
+        expect(toggle).toHaveProperty('checked', false);
+        expect(textarea.tagName).toBe('TEXTAREA');
+        expect(textarea).toHaveProperty('rows', 5);
+        expect(textarea.closest('#teams-group-teamsOutboundCompliance')).not.toBeNull();
+        fireEvent.change(textarea, { target: { value: 'Allow public text.\nBlock private text.' } });
+        fireEvent.click(toggle);
+        await act(async () => { await controller.handleSaveTab('teams'); });
+        expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+            'features.teamsOutboundCompliance': true,
+            'teamsOutboundCompliance.prompt': 'Allow public text.\nBlock private text.',
+        }));
+        fireEvent.change(textarea, { target: { value: 'Unsaved draft' } });
+        act(() => controller.handleCancelTab('teams'));
+        expect(textarea).toHaveProperty('value', 'Allow public text.\nBlock private text.');
+    });
+
     it('shows a default-off reaction delegation group with one workspace and dispatcher selector', () => {
         render(<Harness tabs={['teams']} />);
         const toggle = screen.getByTestId('toggle-teams-reaction-delegation-enabled');

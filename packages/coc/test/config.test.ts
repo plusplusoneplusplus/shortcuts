@@ -1104,6 +1104,8 @@ timeout: 300
                 'teamsReactionDelegation:',
                 '  workspaceId: ws-fixture',
                 '  dispatcherSkill: dispatcher-fixture',
+                'teamsOutboundCompliance:',
+                '  prompt: Block secrets in replies.',
                 'dangerousCommandGuard:',
                 '  enabled: true',
                 'vimNavigation:',
@@ -1180,6 +1182,7 @@ timeout: 300
                 '  teamsMessageReaction: true',
                 '  teamsIc3OwnCommands: true',
                 '  teamsReactionDelegation: true',
+                '  teamsOutboundCompliance: true',
                 '  sentinelDesktopMirror: true',
                 '  sentinelPrOutcomeWake: true',
                 '  sentinelFollowUpResults: true',
@@ -1265,6 +1268,8 @@ timeout: 300
             expect(result.resolved.browserControl.backgroundEnabled).toBe(true);
             expect(result.resolved.browserControl.navigationApprovalEnabled).toBe(false);
             expect(result.resolved.browserControl.humanTakeoverEnabled).toBe(true);
+            expect(result.resolved.features.teamsOutboundCompliance).toBe(true);
+            expect(result.resolved.teamsOutboundCompliance.prompt).toBe('Block secrets in replies.');
         });
 
         describe.each([
@@ -1593,6 +1598,7 @@ timeout: 300
                     "teamsBridgeObservability": false,
                     "teamsIc3OwnCommands": false,
                     "teamsMessageReaction": true,
+                    "teamsOutboundCompliance": false,
                     "teamsReactionDelegation": false,
                     "toolScripting": true,
                     "toolScriptingMcp": false,
@@ -1724,6 +1730,9 @@ timeout: 300
                   "teamsIc3OwnCommands": {
                     "workspaceId": "",
                   },
+                  "teamsOutboundCompliance": {
+                    "prompt": "",
+                  },
                   "teamsReactionDelegation": {
                     "dispatcherSkill": "",
                     "workspaceId": "",
@@ -1846,6 +1855,7 @@ timeout: 300
                   "features.teamsBridgeObservability": "file",
                   "features.teamsIc3OwnCommands": "default",
                   "features.teamsMessageReaction": "file",
+                  "features.teamsOutboundCompliance": "default",
                   "features.teamsReactionDelegation": "default",
                   "features.toolScripting": "default",
                   "features.toolScriptingMcp": "default",
@@ -1894,6 +1904,7 @@ timeout: 300
                   "showReportIntent": "file",
                   "taskCardDensity": "file",
                   "teamsIc3OwnCommands.workspaceId": "default",
+                  "teamsOutboundCompliance.prompt": "default",
                   "teamsReactionDelegation.dispatcherSkill": "default",
                   "teamsReactionDelegation.workspaceId": "default",
                   "terminal.enabled": "file",

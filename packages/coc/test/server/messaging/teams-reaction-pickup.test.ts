@@ -134,6 +134,8 @@ describe('Teams reaction session pickup', () => {
                 admitted: true, requestId: id, conversationId: chatId, messageId: 'target',
                 workspaceId: binding.workspaceId, processId: toQueueProcessId(id), status: 'completed',
                 sourceText: 'Review the quoted request.',
+                sourceHtml: '<blockquote>Parent</blockquote>Review the quoted request.',
+                workingDirectory: binding.workingDirectory,
             });
         },
     );

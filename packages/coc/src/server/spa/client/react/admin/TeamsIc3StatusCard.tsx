@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { TeamsIc3ConnectivityStatus } from '../../../../messaging/teams-ic3-own-commands-runtime';
+import type { TeamsOutboundComplianceFailure } from '../../../../messaging/teams-outbound-compliance';
 import { SettingsCard } from './SettingsCard';
 import { useAdminServer } from './adminTarget';
 
@@ -8,17 +9,30 @@ const LABELS = {
     degraded: 'Degraded', error: 'Connection failed', stopped: 'Stopped',
 };
 
+function validComplianceFailure(value: unknown): value is TeamsOutboundComplianceFailure | undefined {
+    if (value === undefined) return true;
+    if (!value || typeof value !== 'object') return false;
+    const failure = value as Partial<TeamsOutboundComplianceFailure>;
+    return (failure.state === 'blocked' || failure.state === 'failed')
+        && typeof failure.reason === 'string' && !!failure.reason.trim()
+        && typeof failure.checkedAt === 'string' && Number.isFinite(Date.parse(failure.checkedAt));
+}
+
 export function TeamsIc3StatusCard() {
     const server = useAdminServer();
     const [status, setStatus] = useState<TeamsIc3ConnectivityStatus | null>(null);
     const [error, setError] = useState(false);
+    const [reactionFailure, setReactionFailure] = useState<TeamsOutboundComplianceFailure>();
+    const [reactionError, setReactionError] = useState(false);
     const [refresh, setRefresh] = useState(0);
     useEffect(() => {
         const controller = new AbortController();
         let timer: ReturnType<typeof setTimeout>;
         setStatus(null);
         setError(false);
-        const poll = async () => {
+        setReactionFailure(undefined);
+        setReactionError(false);
+        const pollOwnCommands = async () => {
             try {
                 const response = await server.fetch(`${server.apiBase}/messaging/teams/ic3-own-commands/status`, {
                     cache: 'no-store', signal: controller.signal,
@@ -26,6 +40,7 @@ export function TeamsIc3StatusCard() {
                 if (!response.ok) throw new Error('IC3 status unavailable');
                 const next: TeamsIc3ConnectivityStatus = await response.json();
                 if (!next || !Object.hasOwn(LABELS, next.state)
+                    || !validComplianceFailure(next.outboundCompliance)
                     || (next.error !== undefined && typeof next.error !== 'string')
                     || (next.trouter !== undefined && (!next.trouter
                         || !['disabled', 'connecting', 'registered', 'retrying', 'stopped'].includes(next.trouter.state)
@@ -43,9 +58,32 @@ export function TeamsIc3StatusCard() {
                     setStatus(null);
                     setError(true);
                 }
-            } finally {
-                if (!controller.signal.aborted) timer = setTimeout(() => void poll(), 5000);
             }
+        };
+        const pollReactions = async () => {
+            try {
+                const response = await server.fetch(`${server.apiBase}/messaging/teams/reactions/status`, {
+                    cache: 'no-store', signal: controller.signal,
+                });
+                if (!response.ok) throw new Error('Reaction status unavailable');
+                const next = await response.json();
+                if (!next || !Object.hasOwn(LABELS, next.state) || !validComplianceFailure(next.outboundCompliance)) {
+                    throw new Error('Invalid reaction status');
+                }
+                if (!controller.signal.aborted) {
+                    setReactionFailure(next.outboundCompliance);
+                    setReactionError(false);
+                }
+            } catch {
+                if (!controller.signal.aborted) {
+                    setReactionFailure(undefined);
+                    setReactionError(true);
+                }
+            }
+        };
+        const poll = async () => {
+            await Promise.all([pollOwnCommands(), pollReactions()]);
+            if (!controller.signal.aborted) timer = setTimeout(() => void poll(), 5000);
         };
         void poll();
         return () => { controller.abort(); clearTimeout(timer); };
@@ -78,6 +116,14 @@ export function TeamsIc3StatusCard() {
                 </p>
                 {status?.trouter?.error && <p className="ar-teams-error" role="alert">
                     Own-command Trouter failed ({status.trouter.error.code}). Background scans remain active.
+                </p>}
+                {([['mention', status?.outboundCompliance], ['reaction', reactionFailure]] as const).map(([trigger, failure]) =>
+                    failure && <p key={trigger} className="ar-teams-error" role="alert">
+                        Last {trigger} outbound compliance failure: {failure.state}. {failure.reason}
+                        {' '}{new Date(failure.checkedAt).toLocaleString()}
+                    </p>)}
+                {reactionError && <p className="ar-teams-error" role="alert">
+                    Unable to read reaction compliance status from the configured machine. Refresh to retry.
                 </p>}
                 <p className="ar-hint">Status follows background reads. Refreshing status sends no Teams message and does not test write access.</p>
             </div>

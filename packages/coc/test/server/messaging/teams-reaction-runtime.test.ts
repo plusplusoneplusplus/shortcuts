@@ -1,12 +1,19 @@
 import path from 'node:path';
+import { IncomingMessage, ServerResponse } from 'node:http';
+import { Socket } from 'node:net';
 import { getLogger } from '@plusplusoneplusplus/forge';
 import type { TeamsIc3Session } from '@plusplusoneplusplus/coc-native';
 import type { Ic3DirectMessageOptions, TrouterClient, TrouterMessageUpdate } from '@plusplusoneplusplus/coc-connector/teams';
+import { Ic3DirectMessageClient, Ic3ReactionClient } from '@plusplusoneplusplus/coc-connector/teams';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CONFIG, mergeConfig } from '../../../src/config';
 import { createTeamsReactionRuntime } from '../../../src/server/messaging/teams-reaction-runtime';
 import * as dispatcher from '../../../src/server/messaging/teams-reaction-dispatcher';
 import { createMockProcessStore } from '../helpers/mock-process-store';
+import { createMockSDKService } from '../../helpers/mock-sdk-service';
+import { createDecisionService } from '../../../src/server/decisions/decision-service';
+import { sendTeamsReactionResult } from '../../../src/server/messaging/teams-reaction-reply';
+import type { Route } from '../../../src/server/types';
 
 const account = {
     tenantId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
@@ -37,6 +44,8 @@ describe('Teams reaction notification lifecycle', () => {
     let writers: { options: Ic3DirectMessageOptions; acknowledgeSourceMessage: ReturnType<typeof vi.fn>;
         dispose: ReturnType<typeof vi.fn> }[];
     let resolveDispatcher: ReturnType<typeof vi.spyOn<typeof dispatcher, 'resolveTeamsReactionDispatcher'>>;
+    let decisionService: ReturnType<typeof createDecisionService> | undefined;
+    let routes: Route[];
     const store = createMockProcessStore();
     const unsubscribe = vi.fn();
     const unsubscribeRegion = vi.fn();
@@ -87,7 +96,7 @@ describe('Teams reaction notification lifecycle', () => {
                 return unsubscribeRegion;
             } },
             store, dataDir: path.resolve('data'), execution: { run }, onResult,
-            createSession, createTrouter, createReactions,
+            createSession, createTrouter, createReactions, decisionService, routes,
         });
     }
     async function flush() { await vi.advanceTimersByTimeAsync(0); }
@@ -113,6 +122,8 @@ describe('Teams reaction notification lifecycle', () => {
         vi.clearAllMocks();
         readers = [];
         notifications = [];
+        decisionService = undefined;
+        routes = [];
         writers = [];
         createSession.mockReset().mockImplementation(() => {
             const reader = makeReader();
@@ -148,6 +159,163 @@ describe('Teams reaction notification lifecycle', () => {
         expect(createTrouter).not.toHaveBeenCalled();
         expect(createReactions).not.toHaveBeenCalled();
         expect(runtime.getStatus()).toEqual({ state: 'disabled', trouter: { state: 'disabled', error: null } });
+    });
+
+    it.each(['allow', 'block', 'malformed', 'unavailable', 'disabled', 'done'] as const)(
+        'production reaction %s uses original context and the shared delivery gate', async outcome => {
+            const sdk = createMockSDKService().service;
+            vi.spyOn(sdk, 'isTransformAvailable').mockResolvedValue({ available: true });
+            const transform = vi.spyOn(sdk, 'transform').mockResolvedValue({
+                success: true, text: outcome === 'malformed' ? 'not JSON' : JSON.stringify({ answers: {
+                    compliance: { type: 'choice', probabilities: {
+                        block: outcome === 'allow' ? 0 : 1, allow: outcome === 'allow' ? 1 : 0,
+                    } },
+                } }),
+            });
+            if (outcome !== 'unavailable') decisionService = createDecisionService(sdk);
+            const evaluate = decisionService && vi.spyOn(decisionService, 'evaluate');
+            const send = vi.spyOn(Ic3DirectMessageClient.prototype, 'sendToSourceChat').mockResolvedValue('sent');
+            const react = vi.spyOn(Ic3ReactionClient.prototype, 'reactToSourceMessage').mockResolvedValue(undefined);
+            const finished = deferred<Awaited<ReturnType<typeof run>>>();
+            run.mockReturnValue(finished.promise);
+            onResult.mockImplementation(async (job, source, signal) => {
+                await sendTeamsReactionResult(source, { sourceText: job.sourceText,
+                    result: { kind: 'task', outcome: outcome === 'done' ? 'done' : 'rejected' } }, signal);
+            });
+            const notification = await registered();
+            readers[0].readHistory.mockResolvedValue({
+                items: [{
+                    chatId: '48:notes', messageId: 'target', createdAt: new Date(epoch - 1000).toISOString(),
+                    modifiedAt: new Date(epoch - 1000).toISOString(), authorKind: 'user',
+                    authorId: 'another-user', text: 'Complete original request '.repeat(20),
+                    untrustedHtml: '<p>Original request</p>', textTruncated: false, htmlTruncated: false, deleted: false,
+                }, {
+                    chatId: '48:notes', messageId: 'earlier', createdAt: new Date(epoch - 2000).toISOString(),
+                    modifiedAt: new Date(epoch - 2000).toISOString(), authorKind: 'user',
+                    text: 'Unrelated prior history', textTruncated: false, htmlTruncated: false, deleted: false,
+                }], rawCount: 2,
+            });
+            emit(notification);
+            await flush();
+            expect(run).toHaveBeenCalledOnce();
+            if (outcome !== 'disabled') {
+                config = mergeConfig(config, { features: { teamsOutboundCompliance: true },
+                    teamsOutboundCompliance: { prompt: 'Permit safe text.' } });
+                change();
+            }
+            expect(readers[0].dispose).not.toHaveBeenCalled();
+            finished.resolve({ workspaceId: binding.workspaceId,
+                processId: `queue_${run.mock.calls[0][1]}`, status: 'completed' });
+            await flush();
+            const permitsText = outcome === 'allow' || outcome === 'disabled';
+            expect(send).toHaveBeenCalledTimes(permitsText ? 1 : 0);
+            expect(transform).toHaveBeenCalledTimes(['allow', 'block', 'malformed'].includes(outcome) ? 1 : 0);
+            if (outcome === 'allow' || outcome === 'block') {
+                expect(evaluate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+                    backend: 'copilot',
+                    state: expect.objectContaining({
+                        trigger: { type: 'reaction', messageId: 'target',
+                            text: 'Complete original request '.repeat(20), untrustedHtml: '<p>Original request</p>' },
+                        destination: { ...account, chatId: '48:notes', region: 'amer' },
+                    }),
+                }), expect.objectContaining({
+                    workspaceId: binding.workspaceId, workingDirectory: binding.workingDirectory, allowOutputRepair: false,
+                }));
+                expect(JSON.stringify(vi.mocked(decisionService!.evaluate).mock.calls)).not.toContain('Unrelated prior history');
+            }
+            expect(react).toHaveBeenCalledTimes(permitsText || outcome === 'done' || outcome === 'block' ? 1 : 0);
+            if (outcome === 'block') {
+                expect(react).toHaveBeenCalledExactlyOnceWith('48:notes', 'target', 'crossmark', expect.any(AbortSignal));
+            }
+            expect(vi.mocked(getLogger().info).mock.calls.some(([, text]) =>
+                text.includes('Delivery completed'))).toBe(permitsText || outcome === 'done');
+            expect(runtime.getStatus().state).toBe('connected');
+            expect(runtime.getStatus().error).toBeUndefined();
+            if (permitsText || outcome === 'done') expect(runtime.getStatus().outboundCompliance).toBeUndefined();
+            else expect(runtime.getStatus().outboundCompliance).toMatchObject({
+                state: outcome === 'block' ? 'blocked' : 'failed',
+                reason: expect.stringContaining(outcome === 'block' ? 'blocked by the compliance policy'
+                    : outcome === 'malformed' ? 'output was invalid' : 'backend is unavailable'),
+                checkedAt: expect.any(String),
+            });
+            emit(notification);
+            await flush();
+            expect(onResult).toHaveBeenCalledOnce();
+        },
+    );
+
+    it.each(['feedback-failed', 'backend-failed', 'timeout', 'cancelled'] as const)(
+        'reports reaction compliance %s without text, receipts, retries or connection-health changes', async outcome => {
+            const sdk = createMockSDKService().service;
+            const readiness = vi.spyOn(sdk, 'isTransformAvailable').mockResolvedValue({ available: true });
+            const transform = vi.spyOn(sdk, 'transform').mockResolvedValue({
+                success: true, text: JSON.stringify({ answers: {
+                    compliance: { type: 'choice', probabilities: { block: 1, allow: 0 } },
+                } }),
+            });
+            if (outcome === 'backend-failed') transform.mockRejectedValue(new Error('private backend text'));
+            if (outcome === 'timeout' || outcome === 'cancelled') readiness.mockReturnValue(new Promise(() => {}));
+            decisionService = createDecisionService(sdk);
+            const evaluate = vi.spyOn(decisionService, 'evaluate');
+            const send = vi.spyOn(Ic3DirectMessageClient.prototype, 'sendToSourceChat').mockResolvedValue('sent');
+            const react = vi.spyOn(Ic3ReactionClient.prototype, 'reactToSourceMessage')
+                .mockRejectedValue(new Error('private feedback text'));
+            onResult.mockImplementation(async (job, source, signal) => {
+                await sendTeamsReactionResult(source, { sourceText: job.sourceText,
+                    result: { kind: 'task', outcome: 'rejected' } }, signal);
+            });
+            config = mergeConfig(config, { features: { teamsOutboundCompliance: true },
+                teamsOutboundCompliance: { prompt: 'private policy text' } });
+            const notification = await registered();
+            const originalEvent = update();
+            emit(notification, originalEvent);
+            await flush();
+            if (outcome === 'timeout') await vi.advanceTimersByTimeAsync(120_000);
+            if (outcome === 'cancelled') await runtime.dispose();
+            await flush();
+            const failure = runtime.getStatus().outboundCompliance!;
+            expect(failure).toMatchObject({
+                state: outcome === 'feedback-failed' ? 'blocked' : 'failed',
+                reason: expect.stringContaining(outcome === 'feedback-failed' ? 'rejection reaction failed'
+                    : outcome === 'backend-failed' ? 'backend failed' : outcome === 'timeout' ? 'timed out' : 'cancelled'),
+            });
+            expect(runtime.getStatus().state).toBe(outcome === 'cancelled' ? 'stopped' : 'connected');
+            expect(runtime.getStatus().error).toBeUndefined();
+            failure.reason = 'changed';
+            expect(runtime.getStatus().outboundCompliance!.reason).not.toBe('changed');
+            expect(evaluate).toHaveBeenCalledOnce();
+            expect(transform).toHaveBeenCalledTimes(outcome === 'timeout' || outcome === 'cancelled' ? 0 : 1);
+            expect(send).not.toHaveBeenCalled();
+            expect(react).toHaveBeenCalledTimes(outcome === 'feedback-failed' ? 1 : 0);
+            emit(notification, originalEvent);
+            await vi.advanceTimersByTimeAsync(60_000);
+            expect(onResult).toHaveBeenCalledOnce();
+            expect(evaluate).toHaveBeenCalledOnce();
+            expect(vi.mocked(getLogger().info).mock.calls.some(([, text]) => text.includes('Delivery completed'))).toBe(false);
+            const publicOutput = JSON.stringify([runtime.getStatus(), vi.mocked(getLogger().warn).mock.calls]);
+            for (const privateText of ['private backend text', 'private feedback text', 'private policy text', 'Please review this task.']) {
+                expect(publicOutput).not.toContain(privateText);
+            }
+            expect(getLogger().warn).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('Outbound compliance'));
+            expect(routes).toContainEqual(expect.objectContaining({
+                method: 'GET', pattern: '/api/messaging/teams/reactions/status',
+            }));
+            const req = new IncomingMessage(new Socket());
+            const res = new ServerResponse(req);
+            const end = vi.spyOn(res, 'end').mockReturnValue(res);
+            await routes.find(route => route.pattern === '/api/messaging/teams/reactions/status')!.handler(req, res);
+            expect(res.getHeader('Cache-Control')).toBe('no-store');
+            expect(JSON.parse(String(end.mock.calls[0][0]))).toEqual(runtime.getStatus());
+        },
+    );
+
+    it('refuses delivery when the execution workspace differs from the captured dispatcher binding', async () => {
+        run.mockResolvedValue({ workspaceId: 'foreign-workspace', processId: 'queue_foreign', status: 'completed' });
+        const notification = await registered();
+        emit(notification);
+        await flush();
+        expect(onResult).not.toHaveBeenCalled();
+        expect(runtime.getStatus()).toMatchObject({ state: 'degraded', error: 'pickup' });
     });
 
     it('requires an explicit IC3 region before reading policy or credentials', async () => {

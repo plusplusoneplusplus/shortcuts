@@ -771,6 +771,11 @@ process. Offered to all chat providers (ask, autopilot, Ralph, follow-ups) by
 `buildSystemOneToolsAddon`, gated live by the `LLMToolSystemOne.enabled` admin flag
 (default on; explicit `false` hides it) and per-repo `disabledLlmTools`.
 
+The Copilot backend permits one output-repair inference by default. Internal callers
+set server-owned `DecisionContext.allowOutputRepair: false` for a single inference;
+malformed output then fails with `DECISION_INVALID_OUTPUT`. The policy is per invocation,
+not a backend setting or request-body field; routes and `system_one` keep the default.
+
 ### run_tool_script
 
 The model writes the body of an async JavaScript function that calls CoC tools as

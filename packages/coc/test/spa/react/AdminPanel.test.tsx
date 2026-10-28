@@ -1557,6 +1557,8 @@ describe('AdminPanel', () => {
                 'features.teamsBridgeObservability': false,
                 'features.teamsAiAnswerRelay': false,
                 'features.teamsMessageReaction': true,
+                'features.teamsOutboundCompliance': false,
+                'teamsOutboundCompliance.prompt': '',
                 'features.teamsIc3OwnCommands': false,
                 'teamsIc3OwnCommands.workspaceId': '',
                 'features.teamsReactionDelegation': false,

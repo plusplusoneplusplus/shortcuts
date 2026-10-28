@@ -782,9 +782,13 @@ explicit. Embedded quotes stay untrusted; attachments, linked quotes and other
 chats are never fetched.
 
 `teams-reaction-pickup.ts` sequences admission, dispatcher validation, context,
-Eyes acknowledgment and execution. Binding changes or failed/uncertain writes
-prevent launch; duplicates skip Eyes. Registration loss revokes preparation and
-acknowledgment. Acknowledged work retains its account/config-scoped observer across
+Eyes acknowledgment and execution. The connector acknowledgment has no operation
+or post-dispatch deadline; native credential attempts retain thirty seconds.
+Explicitly retryable, definite failures allow three attempts with fresh credentials
+and one/two-second backoff honoring `Retry-After` through sixty seconds. Unknown
+writes never replay. Binding changes or exhausted/uncertain failures prevent launch;
+duplicates skip Eyes. Registration loss cancels preparation, acknowledgment and
+backoff. Acknowledged work retains its account/config-scoped observer across
 notification reconnects; account/config changes and shutdown revoke delivery.
 
 ### Teams reaction connection lifecycle
@@ -825,6 +829,44 @@ omit job links and leave findings in the dashboard. `sendTeamsReactionReply` is
 notice-only; source sends reuse the IC3 definitive-failure retry policy. Unknown
 writes and reaction failures never replay or trigger text fallback. No reply-parent
 metadata is synthesized.
+
+### Teams outbound text compliance boundary
+
+`messaging/teams-outbound-compliance.ts` evaluates source-owned compliance context
+through the shared Copilot `DecisionService`. `sendTeamsIc3SourceReply` snapshots
+destination and all formatted chunks before evaluation; reaction-result source
+capture preserves the context. A live policy getter supplies one snapshot per
+logical message. Policy instructions stay separate from untrusted trigger evidence,
+complete formatted text and chunk boundaries; absent native HTML is omitted from
+the JSON request. No unrelated history is included.
+
+`routes/index.ts` supplies the server-shared decision service to both native
+runtimes. Each runtime attaches the original trigger, physical workspace/cwd and
+a live owning-server policy getter to every text source. Reaction pickup retains
+the exact target body separately from dispatcher history and verifies the terminal
+job's workspace against its captured binding. Policy-only saves affect subsequent
+logical sends without revoking active requests. Provider selection and chat-tool
+flags do not participate in enforcement.
+
+Enabled checks require complete context and a nonblank policy, enforce the
+Decision API's 256 KiB UTF-8 request limit without truncation, and permit one
+evaluation with output repair disabled. A structured block/allow choice resolves
+ties to block without a confidence threshold. A two-minute deadline includes
+backend readiness; cancellation and all failures prevent text dispatch.
+
+Explicit block adds one account-pinned Crossmark to the captured original trigger
+after fresh source-access verification, then throws `TeamsOutboundComplianceRejected`.
+Its optional `rejectionReactionError` retains feedback failure without permitting
+text, fallback, retry or ordinary outcome reactions. Decision failures add no reaction
+and throw `TeamsOutboundComplianceFailed`, with a fixed safe reason/code and original
+failure as `cause`. Both runtimes log correlated content-free outcomes and retain the
+latest `{ state: blocked | failed, reason, checkedAt }` under `outboundCompliance`,
+separate from read/connection health, including cancellation. The existing owning-server
+Teams status card polls the uncached own-command and reaction status routes and shows
+each trigger's latest failure and feedback error. Failures never emit delivery receipts.
+Safe known-unsent transport retries retain the exact allowance. Disabled policy and
+sources without compliance context retain ordinary delivery; ingress owners supply
+context for gated sends.
 
 ### Messaging ask_user question relay
 

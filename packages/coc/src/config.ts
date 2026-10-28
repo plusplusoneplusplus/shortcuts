@@ -259,6 +259,9 @@ export interface CLIConfig {
         workspaceId?: string;
         dispatcherSkill?: string;
     };
+    teamsOutboundCompliance?: {
+        prompt?: string;
+    };
     /** Kusto query canvas (interactive KQL query + charts). Disabled by default. */
     kusto?: {
         enabled?: boolean;
@@ -326,6 +329,7 @@ export interface CLIConfig {
         teamsIc3OwnCommands?: boolean;
         /** Own-user Robot reactions delegate separate Ask jobs. Disabled by default. */
         teamsReactionDelegation?: boolean;
+        teamsOutboundCompliance?: boolean;
         /** Optional Sentinel next actions and click-to-send. Disabled by default. */
         sentinelNextSteps?: boolean;
         /** Inline Sentinel target context discovery. Disabled by default. */
@@ -692,6 +696,9 @@ export interface ResolvedCLIConfig {
         workspaceId: string;
         dispatcherSkill: string;
     };
+    teamsOutboundCompliance: {
+        prompt: string;
+    };
     /** Kusto query canvas (interactive KQL query + charts). */
     kusto: {
         enabled: boolean;
@@ -769,6 +776,7 @@ export interface ResolvedCLIConfig {
         teamsMessageReaction: boolean;
         teamsIc3OwnCommands: boolean;
         teamsReactionDelegation: boolean;
+        teamsOutboundCompliance: boolean;
         sentinelNextSteps: boolean;
         sentinelTargetAutocomplete: boolean;
         sentinelTodoDependencies: boolean;
@@ -1054,6 +1062,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     browserControl: { enabled: false, framesEnabled: false, richPasteEnabled: false, backgroundEnabled: false, navigationApprovalEnabled: true, humanTakeoverEnabled: false },
     teamsIc3OwnCommands: { workspaceId: '' },
     teamsReactionDelegation: { workspaceId: '', dispatcherSkill: '' },
+    teamsOutboundCompliance: { prompt: '' },
     LLMToolSystemOne: {
         enabled: true,
     },
@@ -1122,6 +1131,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         teamsMessageReaction: false,
         teamsIc3OwnCommands: false,
         teamsReactionDelegation: false,
+        teamsOutboundCompliance: false,
         sentinelNextSteps: true,
         sentinelTargetAutocomplete: false,
         sentinelTodoDependencies: false,

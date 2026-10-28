@@ -15,6 +15,7 @@ import userEvent from '@testing-library/user-event';
 vi.mock('@plusplusoneplusplus/forge', () => ({}));
 
 const routing = vi.hoisted(() => ({ apiBase: '', selectedRepoId: null as string | null }));
+const { addToast } = vi.hoisted(() => ({ addToast: vi.fn() }));
 
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
@@ -96,7 +97,7 @@ vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
     Card: ({ children, ...props }: any) => <div {...props}>{children}</div>,
     Button: ({ children, onClick, ...props }: any) => <button onClick={onClick} {...props}>{children}</button>,
     Spinner: () => <div>Loading...</div>,
-    useToast: () => ({ toasts: [], addToast: vi.fn(), removeToast: vi.fn() }),
+    useToast: () => ({ toasts: [], addToast, removeToast: vi.fn() }),
     ToastContainer: () => null,
 }));
 
@@ -226,6 +227,38 @@ describe('AdminPanel — Workspace Features search', () => {
         });
     });
 
+    it('retains compliance drafts and reports validation and server save errors on the Teams page', async () => {
+        render(<AdminPanel />);
+        await gotoTeamsPage();
+        const section = within(screen.getByTestId('settings-tab-features-teams'));
+        const toggle = section.getByRole('checkbox', { name: 'Outbound compliance check' });
+        const prompt = section.getByRole('textbox', { name: 'Compliance decision prompt' });
+        fireEvent.click(toggle);
+        fireEvent.change(prompt, { target: { value: ' \n' } });
+        fireEvent.click(section.getByRole('button', { name: 'Save' }));
+        await waitFor(() => expect(addToast).toHaveBeenCalledWith(expect.stringContaining('nonblank'), 'error'));
+        expect(mockFetch.mock.calls.some(([, opts]) => opts?.method === 'PUT')).toBe(false);
+        expect(prompt).toHaveProperty('value', ' \n');
+        expect(toggle).toHaveProperty('checked', true);
+
+        mockFetch.mockImplementation((url: string, opts?: RequestInit) =>
+            url.includes('/admin/config') && opts?.method === 'PUT'
+                ? Promise.resolve({
+                    ok: false, status: 400,
+                    json: async () => ({ error: 'Compliance policy save failed' }),
+                })
+                : defaultFetchImpl(url, opts));
+        fireEvent.change(prompt, { target: { value: 'Allow public information.\nBlock private data.' } });
+        fireEvent.click(section.getByRole('button', { name: 'Save' }));
+        await waitFor(() => expect(addToast).toHaveBeenCalledWith(expect.stringContaining('Compliance policy save failed'), 'error'));
+        expect(prompt).toHaveProperty('value', 'Allow public information.\nBlock private data.');
+        expect(toggle).toHaveProperty('checked', true);
+        expect(section.getByRole('button', { name: 'Save' })).toHaveProperty('disabled', false);
+        fireEvent.click(section.getByRole('button', { name: 'Cancel' }));
+        expect(prompt).toHaveProperty('value', '');
+        expect(toggle).toHaveProperty('checked', false);
+    });
+
     it('loads an enabled Teams message reaction and saves disabling it', async () => {
         mockFetch.mockImplementation((url: string, opts?: any) =>
             url.includes('/admin/config') && opts?.method !== 'PUT'
@@ -340,16 +373,19 @@ describe('AdminPanel — Workspace Features search', () => {
         const defs = ADMIN_SETTING_DEFINITIONS.filter(def => def.ui && getFeatureSettingTab(def) === 'teams');
         expect(defs.map(def => def.key)).toEqual([
             'features.teamsBridgeObservability', 'features.teamsAiAnswerRelay', 'features.teamsMessageReaction',
+            'features.teamsOutboundCompliance', 'teamsOutboundCompliance.prompt',
             'features.teamsIc3OwnCommands', 'teamsIc3OwnCommands.workspaceId',
             'features.teamsReactionDelegation', 'teamsReactionDelegation.workspaceId',
             'teamsReactionDelegation.dispatcherSkill',
         ]);
         for (const def of defs) {
+            fireEvent.change(screen.getByTestId('feature-search-input'), { target: { value: def.ui!.label } });
             expect(screen.queryByTestId(def.ui!.testId)).toBeNull();
             const link = screen.getByTestId(`feature-search-link-${def.ui!.testId}`);
             expect(link.getAttribute('href')).toBe('#admin/messaging');
             expect(link.textContent).toBe('in Teams');
         }
+        fireEvent.change(screen.getByTestId('feature-search-input'), { target: { value: 'Teams' } });
         const shared = screen.getByTestId('feature-search-link-toggle-bot-managed-conversations-enabled');
         expect(shared.getAttribute('href')).toBe('#admin/settings/integrations');
 

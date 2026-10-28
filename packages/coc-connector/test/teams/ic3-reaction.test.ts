@@ -1,5 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Ic3ReactionClient } from '../../src/teams/ic3/ic3-reaction';
+import { AuthError } from '@plusplusoneplusplus/coc-native';
+
+vi.mock('node:timers/promises', () => ({
+    setTimeout: (ms: number, value: unknown, options: { signal: AbortSignal }) =>
+        new Promise((resolve, reject) => {
+            const abort = () => {
+                clearTimeout(timer);
+                options.signal.removeEventListener('abort', abort);
+                reject(options.signal.reason);
+            };
+            const timer = setTimeout(() => {
+                options.signal.removeEventListener('abort', abort);
+                resolve(value);
+            }, ms);
+            options.signal.addEventListener('abort', abort, { once: true });
+            if (options.signal.aborted) abort();
+        }),
+}));
 
 const resource = 'https://ic3.teams.office.com';
 const fetchMock = vi.fn<typeof fetch>();
@@ -84,16 +102,16 @@ describe('IC3 channel Like', () => {
             expect(fetchMock).not.toHaveBeenCalled();
         });
 
-        it.each([401, 429, 500])('never replays a reaction on HTTP %s', async status => {
+        it.each([403, 404, 408, 500])('never replays an acknowledgment on HTTP %s', async status => {
             const { client } = setup();
             fetchMock.mockResolvedValueOnce(new Response('private failure', { status }));
             const pending = client.acknowledgeSourceMessage(chatId, 'mention');
-            await expect(pending).rejects.toMatchObject({ outcome: status === 500 ? 'unknown' : 'rejected' });
+            await expect(pending).rejects.toMatchObject({ outcome: status >= 500 || status === 408 ? 'unknown' : 'rejected' });
             await expect(pending).rejects.not.toThrow('private failure');
             expect(fetchMock).toHaveBeenCalledOnce();
         });
 
-        it.each(['timeout', 'caller', 'dispose'])('bounds uncooperative credentials on %s without a late write', async action => {
+        it.each(['caller', 'dispose'])('cancels uncooperative credentials on %s without a late write', async action => {
             let finish!: (token: string) => void;
             const client = new Ic3ReactionClient({ region: 'amer', expectedAccount: account,
                 acquireToken: () => new Promise(resolve => { finish = resolve; }) });
@@ -102,8 +120,10 @@ describe('IC3 channel Like', () => {
             const pending = client.acknowledgeSourceMessage(chatId, 'mention', caller.signal);
             const failed = expect(pending).rejects.toMatchObject({ outcome: 'not-attempted' });
             await vi.advanceTimersByTimeAsync(0);
-            if (action === 'timeout') await vi.advanceTimersByTimeAsync(10_000);
-            else if (action === 'caller') caller.abort();
+            await vi.advanceTimersByTimeAsync(120_000);
+            expect(fetchMock).not.toHaveBeenCalled();
+            expect(vi.getTimerCount()).toBe(0);
+            if (action === 'caller') caller.abort();
             else client.dispose();
             await failed;
             finish(sourceToken());
@@ -112,14 +132,128 @@ describe('IC3 channel Like', () => {
             expect(vi.getTimerCount()).toBe(0);
         });
 
-        it('bounds an uncooperative dispatched reaction with an unknown outcome', async () => {
+        it.each(['caller', 'dispose'])('waits for a dispatched acknowledgment until %s cancels it', async action => {
             const { client } = setup();
             fetchMock.mockImplementationOnce(() => new Promise(() => {}));
-            const pending = client.acknowledgeSourceMessage(chatId, 'mention');
-            const failed = expect(pending).rejects.toMatchObject({ code: 'timeout', outcome: 'unknown' });
-            await vi.advanceTimersByTimeAsync(10_000);
+            const caller = new AbortController();
+            const pending = client.acknowledgeSourceMessage(chatId, 'mention', caller.signal);
+            const failed = expect(pending).rejects.toMatchObject({ code: 'unavailable', outcome: 'unknown' });
+            await vi.advanceTimersByTimeAsync(120_000);
+            expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(false);
+            expect(vi.getTimerCount()).toBe(0);
+            if (action === 'caller') caller.abort();
+            else client.dispose();
             await failed;
             expect(fetchMock).toHaveBeenCalledOnce();
+            expect(vi.getTimerCount()).toBe(0);
+        });
+
+        it('allows slow credentials and a slow acknowledgment to succeed without deadline timers', async () => {
+            let finishCredential!: (value: string) => void;
+            let finishWrite!: (value: Response) => void;
+            const acquireToken = vi.fn(() => new Promise<string>(resolve => { finishCredential = resolve; }));
+            const client = new Ic3ReactionClient({ region: 'amer', expectedAccount: account, acquireToken });
+            clients.push(client);
+            fetchMock.mockImplementationOnce(() => new Promise(resolve => { finishWrite = resolve; }));
+            const pending = client.acknowledgeSourceMessage(chatId, 'mention');
+            await vi.advanceTimersByTimeAsync(120_000);
+            expect(vi.getTimerCount()).toBe(0);
+            finishCredential(sourceToken());
+            await vi.advanceTimersByTimeAsync(0);
+            await vi.advanceTimersByTimeAsync(120_000);
+            expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(false);
+            finishWrite(new Response(null, { status: 200 }));
+            await pending;
+            expect(fetchMock).toHaveBeenCalledOnce();
+            expect(vi.getTimerCount()).toBe(0);
+        });
+
+        it.each([401, 429])('retries a definitively rejected HTTP %s acknowledgment with fresh credentials', async status => {
+            const { client, acquireToken } = setup();
+            fetchMock.mockResolvedValueOnce(new Response(null, { status, headers: { 'Retry-After': '3' } }));
+            const pending = client.acknowledgeSourceMessage(chatId, 'mention');
+            await vi.advanceTimersByTimeAsync(2999);
+            expect(fetchMock).toHaveBeenCalledOnce();
+            await vi.advanceTimersByTimeAsync(1);
+            await pending;
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+            expect(acquireToken).toHaveBeenCalledTimes(2);
+            expect(vi.getTimerCount()).toBe(0);
+        });
+
+        it('surfaces the last rejection after three attempts with exponential backoff', async () => {
+            const { client } = setup();
+            fetchMock.mockImplementation(() => Promise.resolve(new Response(null, { status: 429 })));
+            const pending = client.acknowledgeSourceMessage(chatId, 'mention');
+            const rejected = expect(pending).rejects.toMatchObject({ code: 'rate-limited', outcome: 'rejected' });
+            await vi.advanceTimersByTimeAsync(999);
+            expect(fetchMock).toHaveBeenCalledOnce();
+            await vi.advanceTimersByTimeAsync(1);
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+            await vi.advanceTimersByTimeAsync(1999);
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+            await vi.advanceTimersByTimeAsync(1);
+            await rejected;
+            expect(fetchMock).toHaveBeenCalledTimes(3);
+            expect(vi.getTimerCount()).toBe(0);
+        });
+
+        it('does not shorten an excessive Retry-After or replay an uncertain network failure', async () => {
+            const { client } = setup();
+            fetchMock.mockResolvedValueOnce(new Response(null, { status: 429, headers: { 'Retry-After': '61' } }));
+            await expect(client.acknowledgeSourceMessage(chatId, 'mention'))
+                .rejects.toMatchObject({ code: 'rate-limited' });
+            fetchMock.mockRejectedValueOnce(new Error('private network failure'));
+            await expect(client.acknowledgeSourceMessage(chatId, 'mention'))
+                .rejects.toMatchObject({ code: 'network', outcome: 'unknown' });
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+            expect(vi.getTimerCount()).toBe(0);
+        });
+
+        it.each(['caller', 'dispose'])('cancels retry backoff on %s without another write', async action => {
+            const { client } = setup();
+            fetchMock.mockResolvedValueOnce(new Response(null, { status: 429 }));
+            const caller = new AbortController();
+            const pending = client.acknowledgeSourceMessage(chatId, 'mention', caller.signal);
+            const rejected = expect(pending).rejects.toMatchObject({ code: 'unavailable', outcome: 'not-attempted' });
+            await vi.advanceTimersByTimeAsync(0);
+            if (action === 'caller') caller.abort();
+            else client.dispose();
+            await rejected;
+            await vi.advanceTimersByTimeAsync(120_000);
+            expect(fetchMock).toHaveBeenCalledOnce();
+            expect(vi.getTimerCount()).toBe(0);
+        });
+
+        it.each(['TimedOut', 'TokenExpired', 'StorageLocked'] as const)('retries a pre-dispatch %s credential failure', async code => {
+            const { client, acquireToken } = setup();
+            acquireToken.mockRejectedValueOnce(new AuthError(code));
+            const pending = client.acknowledgeSourceMessage(chatId, 'mention');
+            await vi.advanceTimersByTimeAsync(1000);
+            await pending;
+            expect(acquireToken).toHaveBeenCalledTimes(2);
+            expect(fetchMock).toHaveBeenCalledOnce();
+            expect(vi.getTimerCount()).toBe(0);
+        });
+
+        it.each(['AccountMismatch', 'AccessDenied', 'InvalidConfiguration'] as const)(
+            'does not retry a permanent %s credential failure', async code => {
+                const { client, acquireToken } = setup();
+                acquireToken.mockRejectedValueOnce(new AuthError(code));
+                await expect(client.acknowledgeSourceMessage(chatId, 'mention'))
+                    .rejects.toMatchObject({ code: 'authentication', outcome: 'not-attempted' });
+                expect(acquireToken).toHaveBeenCalledOnce();
+                expect(fetchMock).not.toHaveBeenCalled();
+                expect(vi.getTimerCount()).toBe(0);
+            },
+        );
+
+        it('rejects a pre-cancelled acknowledgment without credentials or writes', async () => {
+            const { client, acquireToken } = setup();
+            await expect(client.acknowledgeSourceMessage(chatId, 'mention', AbortSignal.abort()))
+                .rejects.toMatchObject({ outcome: 'not-attempted' });
+            expect(acquireToken).not.toHaveBeenCalled();
+            expect(fetchMock).not.toHaveBeenCalled();
             expect(vi.getTimerCount()).toBe(0);
         });
 

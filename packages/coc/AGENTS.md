@@ -822,7 +822,9 @@ references before editing. Paths are package-relative.
 - Copilot decisions use explicit `isTransformAvailable` readiness and a two-minute
   deadline per initial/repair attempt. Preserve cancellation, timeout overrides,
   provider error categories and known usage totals. Repair only successful malformed
-  decision text; transport/model/usage failures never trigger another inference.
+  decision text unless server-owned `DecisionContext.allowOutputRepair` is false;
+  that invocation allows one inference only. Request bodies cannot override this
+  policy. Transport/model/usage failures never trigger another inference.
   Copilot direct transforms are opt-in, text-only, and never fall back to SDK.
   Keep agent/session and attachment paths on their established runtimes.
 - First/follow-up turns share context/system/policy/runner/settlement helpers
@@ -1183,6 +1185,32 @@ references before editing. Paths are package-relative.
   and safe classifiers, not source content or identities.
   See [reaction architecture](../../.github/skills/coc-knowledge/references/server-architecture.md#teams-reaction-job-admission)
   for module boundaries, budgets and protocol-verification limits.
+- Teams outbound compliance settings are server-wide and live:
+  `features.teamsOutboundCompliance` defaults off and `teamsOutboundCompliance.prompt`
+  defaults empty. Enabled file and merged admin config require a nonblank prompt.
+  Keep the multiline policy in the Teams registry group and outside dashboard
+  runtime feature flags. Enabled blank drafts show an inline alert associated with
+  the prompt through `aria-invalid` and `aria-describedby`; help explains fail-closed
+  Teams delivery and CoC reporting. Keep Save/Cancel and error toasts intact;
+  validation/save errors preserve the draft.
+  `sendTeamsIc3SourceReply` checks source-owned compliance context before any chunk,
+  using `teams-outbound-compliance.ts`. Capture destination/content before awaiting;
+  allow covers only those exact chunks. Keep one Copilot DecisionService evaluation,
+  disable output repair, and never recheck compliance during safe transport retries.
+  Native mention and reaction runtimes always attach original trigger text/HTML,
+  workspace/cwd, the shared DecisionService and a live server-policy getter,
+  independently of provider/tool settings. Policy-only saves preserve active requests.
+  Reaction pickup carries only the exact target body into the gate, not preceding history.
+  Explicit compliance block adds one pinned Crossmark to the captured original request
+  after fresh source-access verification, then throws `TeamsOutboundComplianceRejected`.
+  Decision failures add no reaction and throw `TeamsOutboundComplianceFailed` with
+  a safe reason/code and the original failure as `cause`. Rejection-reaction failure
+  stays attached to the rejection error. Both runtimes retain the latest compliance
+  failure separately from connection health and log content-free correlated outcomes,
+  including cancellation. The owning-server Teams status card reads both native status
+  routes and shows blocked/failed reasons; never retry, send fallback text, mark
+  blocked text delivered, or continue ordinary outcome delivery.
+  Unrelated sources without compliance context retain ordinary transport behavior.
 - Ask/sentinel turns started from WhatsApp/Teams and jobs carrying
   `metadata.messagingOrigin` (every turn, including autopilot) relay
   `ask_user` questions one at a time to the originating group/thread through

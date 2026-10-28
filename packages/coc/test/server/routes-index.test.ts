@@ -45,6 +45,8 @@ import * as reactionExecution from '../../src/server/messaging/teams-reaction-ex
 import * as reactionRuntime from '../../src/server/messaging/teams-reaction-runtime';
 import * as reactionReply from '../../src/server/messaging/teams-reaction-reply';
 import * as reactionOutcome from '../../src/server/messaging/teams-reaction-outcome';
+import * as ownCommandsRuntime from '../../src/server/messaging/teams-ic3-own-commands-runtime';
+import { createDecisionService } from '../../src/server/decisions/decision-service';
 
 // ── Minimal stubs ─────────────────────────────────────────────────────────────
 
@@ -435,6 +437,7 @@ describe('registerAllRoutes', () => {
             admitted: true as const, requestId: 'teams-reaction-fixture',
             conversationId: source.chatId, messageId: source.messageId,
             workspaceId: 'workspace-task', processId: 'queue_teams-reaction-fixture',
+            workingDirectory: path.resolve('workspace-task'),
             status: 'completed' as const, sourceText: '> Quoted parent\nDelegate this task',
         };
         function ports() {
@@ -452,6 +455,7 @@ describe('registerAllRoutes', () => {
             const send = vi.spyOn(reactionReply, 'sendTeamsReactionResult').mockResolvedValue(undefined);
             const opts = makeOpts({
                 dataDir: tmpDir, getLocalBaseUrl: vi.fn(() => 'http://127.0.0.1:4000'),
+                decisionService: createDecisionService(undefined),
             });
             composition = registerAllRoutes([], opts);
             return { opts, launch, coordinator, factory, execution, runtime, send,
@@ -489,10 +493,21 @@ describe('registerAllRoutes', () => {
             expect(factory).toHaveBeenCalledExactlyOnceWith({
                 config: opts.runtimeConfigService, teams: composition!.teamsMessagingManager,
                 store: opts.store, dataDir: tmpDir, execution, onResult: expect.any(Function),
+                decisionService: opts.decisionService,
+                routes: expect.any(Array),
             });
             expect(getConfig().features?.teamsReactionDelegation).toBeUndefined();
             expect(opts.runtimeConfigService!.config.defaultProvider).toBe('copilot');
             expect(execution.run).not.toHaveBeenCalled();
+        });
+
+        it('shares the server decision service across both native runtimes regardless of the system_one flag', () => {
+            const mention = vi.spyOn(ownCommandsRuntime, 'createTeamsIc3OwnCommandsRuntime');
+            const { opts, factory } = ports();
+            expect(mention).toHaveBeenCalledOnce();
+            expect(mention.mock.calls[0][0].decisionService).toBe(opts.decisionService);
+            expect(factory.mock.calls[0][0].decisionService).toBe(opts.decisionService);
+            expect(opts.runtimeConfigService!.config.features.llmToolSystemOne).toBeUndefined();
         });
 
         it('does not construct a reaction coordinator or connection without live configuration', () => {

@@ -87,6 +87,9 @@ function invalidProbe(def: AdminSettingDefinition): unknown {
 
 function nestedConfigWith(key: string, value: unknown): CLIConfig {
     const config: Record<string, unknown> = {};
+    if (key === 'features.teamsOutboundCompliance' && value === true) {
+        config.teamsOutboundCompliance = { prompt: 'Allow only compliant outbound text.' };
+    }
     if (key === 'features.teamsReactionDelegation' && value === true) {
         config.teamsReactionDelegation = { workspaceId: 'workspace-fixture', dispatcherSkill: 'dispatcher-fixture' };
     }
@@ -590,7 +593,7 @@ describe('Features card UI metadata', () => {
         for (const def of uiDefs) {
             expect(def.ui!.label.length, def.key).toBeGreaterThan(0);
             expect(def.ui!.hint.length, def.key).toBeGreaterThan(0);
-            const prefix = def.ui!.control ? 'select-' : 'toggle-';
+            const prefix = def.ui!.control?.type === 'textarea' ? 'textarea-' : def.ui!.control ? 'select-' : 'toggle-';
             expect(def.ui!.testId.startsWith(prefix), `${def.key} testId should start with '${prefix}'`).toBe(true);
         }
     });
@@ -971,6 +974,8 @@ describe('feature toggle settings-tab placement', () => {
         'features.teamsBridgeObservability': 'teams',
         'features.teamsAiAnswerRelay': 'teams',
         'features.teamsMessageReaction': 'teams',
+        'features.teamsOutboundCompliance': 'teams',
+        'teamsOutboundCompliance.prompt': 'teams',
         'features.teamsIc3OwnCommands': 'teams',
         'teamsIc3OwnCommands.workspaceId': 'teams',
         'features.teamsReactionDelegation': 'teams',
@@ -1090,6 +1095,8 @@ describe('feature toggle settings-tab placement', () => {
             ['features.teamsBridgeObservability', false, 'live', 'teamsBridgeObservabilityEnabled', 'experimental'],
             ['features.teamsAiAnswerRelay', true, 'live', 'teamsAiAnswerRelayEnabled', 'experimental'],
             ['features.teamsMessageReaction', false, 'live', 'teamsMessageReactionEnabled', 'experimental'],
+            ['features.teamsOutboundCompliance', false, 'live', undefined, undefined],
+            ['teamsOutboundCompliance.prompt', '', 'live', undefined, undefined],
             ['features.teamsIc3OwnCommands', false, 'live', undefined, 'experimental'],
             ['teamsIc3OwnCommands.workspaceId', '', 'live', undefined, undefined],
             ['features.teamsReactionDelegation', false, 'live', undefined, 'experimental'],
