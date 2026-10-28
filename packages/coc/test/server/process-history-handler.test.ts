@@ -276,6 +276,27 @@ describe('Process History REST API', () => {
         expect(unseenItem.seenAt).toBeUndefined();
     });
 
+    it('unseen=true pages over unread terminal rows only, using the completion stamp', async () => {
+        await addProcess('p-read', { status: 'completed', startTime: '2024-06-01T10:00:00Z', endTime: '2024-06-01T10:05:00Z' });
+        await addProcess('p-stale', { status: 'failed', startTime: '2024-06-01T10:01:00Z', endTime: '2024-06-01T10:06:00Z' });
+        await addProcess('p-new', { status: 'cancelled', startTime: '2024-06-01T10:02:00Z', endTime: '2024-06-01T10:07:00Z' });
+        await addProcess('p-new2', { status: 'completed', startTime: '2024-06-01T10:03:00Z', endTime: '2024-06-01T10:08:00Z' });
+        await addProcess('p-running', { status: 'running', startTime: '2024-06-01T10:04:00Z' });
+        await addProcess('p-other-ws', { status: 'completed', endTime: '2024-06-01T10:09:00Z', workspaceId: 'ws-other' });
+        store.markSeen('p-read', '2024-06-01T10:05:00.000Z');
+        store.markSeen('p-stale', '2024-06-01T09:00:00.000Z');
+
+        const first = JSON.parse((await getJSON(historyUrl(wsId, 'unseen=true&limit=2'))).body);
+        expect(first.history.map((h: any) => h.id)).toEqual(['p-new2', 'p-new']);
+        expect(first).toMatchObject({ hasMore: true, offset: 0, limit: 2 });
+        const second = JSON.parse((await getJSON(historyUrl(wsId, 'unseen=true&limit=2&offset=2'))).body);
+        expect(second.history.map((h: any) => [h.id, h.seenAt])).toEqual([['p-stale', '2024-06-01T09:00:00.000Z']]);
+        expect(second.hasMore).toBe(false);
+
+        const all = JSON.parse((await getJSON(historyUrl(wsId))).body);
+        expect(all.history.map((h: any) => h.id)).toEqual(['p-new2', 'p-new', 'p-stale', 'p-read']);
+    });
+
     it('returns correct ProcessHistoryItem shape', async () => {
         await addProcess('p-shape', {
             status: 'completed',

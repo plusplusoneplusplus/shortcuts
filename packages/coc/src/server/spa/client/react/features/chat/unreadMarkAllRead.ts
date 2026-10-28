@@ -13,9 +13,11 @@ export function unreadRailTaskVisible(task: any, tab: RailPinnedTab, excluded: S
 }
 
 /**
- * Collect the full native scope before using the same completion-stamped batch API as the list.
- * Only rows whose server seen stamp differs are written: the server applies the batch
- * synchronously, so resending every read conversation can stall it for minutes.
+ * Collect the full native unread scope before using the same completion-stamped batch API as the list.
+ * `unseen` asks the owner for unread rows only, so the read is one short request instead of a walk
+ * over the whole history; servers without the filter return every row and the seen-stamp check
+ * below keeps the result identical. Reads and the write share the owner client, so a remote scope
+ * never falls back to the page origin.
  */
 export async function markNativeUnreadRead({ client, workspaceId, tab, excluded, archived, signal }: {
     client: CocClient; workspaceId: string; tab: RailPinnedTab; excluded: Set<string>;
@@ -27,7 +29,7 @@ export async function markNativeUnreadRead({ client, workspaceId, tab, excluded,
     let offset = 0;
     for (;;) {
         signal.throwIfAborted();
-        const page = await client.workspaces.history(workspaceId, { limit: 100, offset }, { signal });
+        const page = await client.workspaces.history(workspaceId, { limit: 100, offset, unseen: true }, { signal });
         signal.throwIfAborted();
         if (!Array.isArray(page.history) || (page.offset !== undefined && page.offset !== offset)
             || (page.hasMore && !page.history.length)) throw new Error('Could not read the full conversation list.');
@@ -40,7 +42,7 @@ export async function markNativeUnreadRead({ client, workspaceId, tab, excluded,
         offset += page.history.length;
     }
     signal.throwIfAborted();
-    if (entries.size) await patchSeenState(workspaceId, [...entries.values()], { baseUrl }, { signal });
+    if (entries.size) await patchSeenState(workspaceId, [...entries.values()], { baseUrl }, { signal, client });
 }
 
 /** The group unread badge spans the group and every member, independent of list filters. */
