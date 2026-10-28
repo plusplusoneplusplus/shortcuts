@@ -322,7 +322,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                         }
                     } catch (error) {
                         if (signal.aborted) return false;
-                        // Meeting IDs also match Trouter hints; native metadata decides eligibility.
+                        // Matching IDs alone do not prove a supported native conversation type.
                         if (notification && chat.chatId !== '48:notes'
                             && error instanceof NativeTeamsError && error.code === 'Unsupported') {
                             getLogger().debug(LogCategory.AI, '[IC3 commands] Ignoring notification for an unsupported conversation.');
@@ -365,7 +365,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                     checked();
                     await drainWakes();
                     for (const chat of page.items) {
-                        if ((chat.kind === 'oneOnOne' || chat.kind === 'group') && !chats.has(chat.chatId)) {
+                        if (['oneOnOne', 'group', 'meeting'].includes(chat.kind) && !chats.has(chat.chatId)) {
                             chats.add(chat.chatId);
                             await readChat(chat);
                             await drainWakes();

@@ -27,10 +27,20 @@ describe('IC3 own-human command classification', () => {
     it.each([
         ['oneOnOne', '19:fixture@thread.v2'],
         ['group', '19:fixture-group@thread.v2'],
+        ['meeting', '19:meeting_fixture@thread.v2'],
         ['self', '48:notes'],
     ])('accepts an own literal command in %s', (kind, chatId) => {
         expect(admitTeamsIc3OwnCommand(context(kind, chatId), message({ chatId })))
             .toEqual({ kind: 'command', prompt: 'explain this' });
+    });
+
+    it.each<Partial<TeamsIc3Message>>([
+        { authorId: 'another-user' },
+        { modifiedAt: '2026-01-01T00:00:01.000Z' },
+        { deleted: true },
+    ])('keeps meeting sender and edit guards %j', patch => {
+        expect(admitTeamsIc3OwnCommand(context('meeting'), message(patch)))
+            .toMatchObject({ kind: 'ignored' });
     });
 
     it.each([

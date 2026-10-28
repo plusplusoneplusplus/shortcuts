@@ -165,6 +165,7 @@ impl ReadState {
                     kind: match chat.kind {
                         ChatKind::OneOnOne => "oneOnOne",
                         ChatKind::Group => "group",
+                        ChatKind::Meeting => "meeting",
                     }
                     .into(),
                 })

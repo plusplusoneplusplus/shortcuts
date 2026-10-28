@@ -61,7 +61,7 @@ describe('IC3 channel Like', () => {
             vi.useRealTimers();
         });
 
-        it.each(['48:notes', chatId, '19:source@unq.gbl.spaces'])('applies standard Eyes to the exact %s message without discovery reads', async target => {
+        it.each(['48:notes', chatId, '19:source@unq.gbl.spaces', '19:meeting_fixture@thread.v2'])('applies standard Eyes to the exact %s message without discovery reads', async target => {
             const { client } = setup();
             await client.acknowledgeSourceMessage(target, 'mention/id');
             const base = `https://teams.cloud.microsoft/api/chatsvc/amer/v1/users/ME/conversations/${encodeURIComponent(target)}/messages`;

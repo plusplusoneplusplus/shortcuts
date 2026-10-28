@@ -5,7 +5,7 @@ import { teamsCodeSpan } from './teams-outbound-format';
 
 export interface TeamsIc3OwnCommandContext {
     readonly account: TeamsIc3Account;
-    /** Discovered ordinary chat, or the account's self stream. */
+    /** Discovered direct/group/meeting chat, or the account's self stream. */
     readonly chat: TeamsIc3Chat;
 }
 
@@ -76,7 +76,7 @@ export function admitTeamsIc3OwnCommand(
         || !account.tenantId.trim() || !account.userId.trim()) {
         return ignore('invalid-evidence');
     }
-    if (self ? chat.kind !== 'self' : !['oneOnOne', 'group'].includes(chat.kind)) {
+    if (self ? chat.kind !== 'self' : !['oneOnOne', 'group', 'meeting'].includes(chat.kind)) {
         return ignore('unsupported-chat');
     }
     if (message.authorKind !== 'user' || !message.authorId

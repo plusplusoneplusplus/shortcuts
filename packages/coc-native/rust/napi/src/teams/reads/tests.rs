@@ -112,6 +112,7 @@ async fn discovery_keeps_raw_count_and_opaque_continuation_without_inventing_sel
         vec![
             json!({"conversations": [
             chat("ordinary", "OneToOneChat"), chat("group", "Chat"),
+            {"id": "meeting", "threadProperties": {"threadType": "meeting", "productThreadType": "Meeting"}},
             {"id": "channel", "threadProperties": {"threadType": "channel"}},
             {"id": "48:notes"}
         ], "_metadata": {"backwardLink":
@@ -123,10 +124,11 @@ async fn discovery_keeps_raw_count_and_opaque_continuation_without_inventing_sel
     let first = read(&owner);
     first.state.begin(&Collection::Chats, None).unwrap();
     let page = first.state.publish_chats(first.state.chats(None).await.unwrap()).unwrap();
-    assert_eq!(page.raw_count, 4);
-    assert_eq!(page.items.len(), 2);
+    assert_eq!(page.raw_count, 5);
+    assert_eq!(page.items.len(), 3);
     assert_eq!((&*page.items[0].chat_id, &*page.items[0].kind), ("ordinary", "oneOnOne"));
     assert_eq!((&*page.items[1].chat_id, &*page.items[1].kind), ("group", "group"));
+    assert_eq!((&*page.items[2].chat_id, &*page.items[2].kind), ("meeting", "meeting"));
     let next = read(&owner);
     let cursor = next.state.begin(&Collection::Chats, page.next.as_ref()).unwrap();
     let page = next.state.publish_chats(next.state.chats(cursor.as_ref()).await.unwrap()).unwrap();
@@ -136,9 +138,9 @@ async fn discovery_keeps_raw_count_and_opaque_continuation_without_inventing_sel
 }
 
 #[tokio::test]
-async fn ordinary_group_and_explicit_self_history_preserve_author_edit_deletion_and_untrusted_content(
+async fn ordinary_group_meeting_and_explicit_self_history_preserve_author_edit_deletion_and_untrusted_content(
 ) {
-    for id in ["ordinary", "group", "48:notes"] {
+    for id in ["ordinary", "group", "meeting", "48:notes"] {
         let mut edited = message(id, "edited", "8:orgid:fixture-user");
         edited["version"] = json!("1767229200000");
         edited["messagetype"] = json!("RichText/Html");
@@ -148,6 +150,8 @@ async fn ordinary_group_and_explicit_self_history_preserve_author_edit_deletion_
             vec![
                 if id == "48:notes" {
                     json!({"id": id})
+                } else if id == "meeting" {
+                    json!({"id": id, "threadProperties": {"threadType": "meeting", "productThreadType": "Meeting"}})
                 } else {
                     chat(id, if id == "ordinary" { "OneToOneChat" } else { "Chat" })
                 },

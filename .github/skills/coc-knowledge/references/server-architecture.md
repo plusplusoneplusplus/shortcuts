@@ -693,7 +693,7 @@ lossless connector text chunking.
 ### IC3 own-command launcher
 
 `messaging/teams-ic3-own-commands-runtime.ts` uses an account-pinned connector
-Trouter listener to wake native Azure CLI reads of self/direct/group chats.
+Trouter listener to wake native Azure CLI reads of self/direct/group/meeting chats.
 `TeamsMessagingManager` supplies the shared saved `ic3Region` and change
 subscription; region changes cancel and restart the runtime independently of
 the channel bridge connection. An unset region blocks reads.
@@ -701,10 +701,12 @@ A 64-chat mailbox coalesces hints and drains between scan reads; overflow,
 loss and disconnect reconcile. Single-flight fallback scans read self first,
 process discovery pages incrementally and remain due 60 seconds after completion.
 Failed hints retry after cooldown; HTTP429 pauses all reads. Native `Unsupported`
-discards non-self notification targets such as meeting chats, without changing
+discards unsupported non-self notification targets, without changing
 read health or blocking other hints. Self-stream and discovered-chat failures
 remain visible.
 
+Native discovery and history share exact type checks: `chat` with `OneToOneChat`/`Chat`,
+or `meeting` with `Meeting`. Channels and unknown thread types remain excluded.
 Only the newest 30 messages per chat are inspected. Admission excludes pre-start
 messages, edits, quotes, attachments and foreign senders. Own-user `@coc <prompt>`
 messages share one Ask conversation per tenant/user, Teams chat and configured local
