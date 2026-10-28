@@ -36,7 +36,10 @@ describe('basic IC3 own-command launcher', () => {
             { chatId: 'direct', kind: 'oneOnOne' }, { chatId: 'group', kind: 'group' },
             { chatId: 'channel', kind: 'channel' },
         ], rawCount: 3 })),
-        readHistory: vi.fn(async (chatId: string) => ({ items: histories.get(chatId) ?? [], rawCount: 0 })),
+        readHistory: vi.fn(async (chatId: string) => {
+            const items = histories.get(chatId) ?? [];
+            return { items, rawCount: items.length };
+        }),
         readThread: vi.fn<TeamsIc3Session['readThread']>(),
         dispose: vi.fn(),
     };
