@@ -205,6 +205,43 @@ async fn ordinary_group_meeting_and_explicit_self_history_preserve_author_edit_d
 }
 
 #[tokio::test]
+async fn thread_history_publishes_root_and_binds_continuation_to_exact_thread() {
+    let chat_id = ChatId::new("19:context@thread.v2").unwrap();
+    let root = MessageId::new("1790000000000").unwrap();
+    let mut child = message(chat_id.as_str(), "1790000000001", "8:orgid:fixture-user");
+    child["rootMessageId"] = json!(root.as_str());
+    let (owner, _) = setup(
+        vec![
+            chat(chat_id.as_str(), "Chat"),
+            json!({"messages":[child],"_metadata":{"backwardLink":
+            "https://teams.cloud.microsoft/api/chatsvc/emea/v1/users/ME/conversations/19:context@thread.v2;messageid=1790000000000/messages?pageSize=50&cursor=next"}}),
+            message(chat_id.as_str(), root.as_str(), "8:orgid:fixture-user"),
+        ],
+        false,
+    );
+    let request = read(&owner);
+    let collection = Collection::ThreadHistory(chat_id.clone(), root.clone());
+    request.state.begin(&collection, None).unwrap();
+    let page = request.state.thread_history(&chat_id, &root, None).await.unwrap();
+    let next = request.state.continuation(collection.clone(), page.next.clone());
+    let published = request.state.publish_history(chat_id.clone(), page).unwrap();
+    assert_eq!(published.items.len(), 2);
+    assert_eq!(published.items[0].root_message_id.as_deref(), Some(root.as_str()));
+    assert_eq!(published.items[1].message_id, root.as_str());
+    for wrong in [
+        Collection::History(chat_id.clone()),
+        Collection::ThreadHistory(chat_id.clone(), MessageId::new("1790000000002").unwrap()),
+        Collection::ThreadHistory(ChatId::new("other").unwrap(), root),
+    ] {
+        assert_eq!(
+            read(&owner).state.begin(&wrong, next.as_ref()).err().unwrap().code,
+            ErrorCode::UnsafeCursor
+        );
+    }
+    assert!(read(&owner).state.begin(&collection, next.as_ref()).unwrap().is_some());
+}
+
+#[tokio::test]
 async fn history_cursor_is_collection_and_owner_bound_and_does_not_expose_provider_urls() {
     let (owner, transport) = setup(
         vec![

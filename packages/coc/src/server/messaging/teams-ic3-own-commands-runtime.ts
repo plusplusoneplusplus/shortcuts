@@ -14,6 +14,7 @@ import type { Route } from '../types';
 import type { TeamsMessagingManager } from './teams-messaging-manager';
 import { sendJSON } from '../core/api-handler';
 import { isRepoGroupWorkspaceId } from '../workspaces/repo-group-workspace';
+import { buildTeamsIc3CommandPrompt } from './teams-ic3-command-context';
 import { Ic3ReactionClient, TeamsOperationError, TrouterClient, type Ic3DirectMessageOptions, type TrouterStatus, type TrouterWake } from '@plusplusoneplusplus/coc-connector/teams';
 
 function isCommandChat(chatId: string): boolean {
@@ -39,7 +40,7 @@ interface Options {
     decisionService?: TeamsOutboundCompliance['decisionService'];
     sendReply?: typeof sendTeamsIc3OwnCommandReply;
     createReactions?: (options: Ic3DirectMessageOptions) => Pick<Ic3ReactionClient, 'acknowledgeSourceMessage' | 'dispose'>;
-    createSession?: (region: 'amer' | 'emea' | 'apac') => Pick<TeamsIc3Session, 'connect' | 'readChats' | 'readHistory' | 'dispose'>;
+    createSession?: (region: 'amer' | 'emea' | 'apac') => Pick<TeamsIc3Session, 'connect' | 'readChats' | 'readHistory' | 'readThread' | 'dispose'>;
     createTrouter?: (options: ConstructorParameters<typeof TrouterClient>[0]) => Pick<TrouterClient, 'start' | 'stop' | 'getStatus'>;
 }
 
@@ -277,6 +278,8 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                                 owner.tenantId, owner.userId, target.workspaceId, chat.chatId,
                             ])).digest('hex');
                             if (commands.has(id)) continue;
+                            const prompt = await buildTeamsIc3CommandPrompt(reader, message, admission.prompt, signal);
+                            signal.throwIfAborted();
                             commands.add(id);
                             const detectedAt = Date.now();
                             timing(id, 'detected', { detectionLagMs: Math.max(0, detectedAt - Date.parse(message.createdAt)),
@@ -316,7 +319,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                                         },
                                         verifyAccess: async signal => { await reader.readHistory(chat.chatId, { signal }); } },
                                     signal, detectedAt });
-                                await options.launch(target.workspaceId, id, admission.prompt, signal, conversationId);
+                                await options.launch(target.workspaceId, id, prompt, signal, conversationId);
                                 signal.throwIfAborted();
                                 timing(id, 'admitted', { admissionMs: Date.now() - detectedAt });
                                 const task = options.queue.getTask(id) ?? options.queue.getTask(conversationId);

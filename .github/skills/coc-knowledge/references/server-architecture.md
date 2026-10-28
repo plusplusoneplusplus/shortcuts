@@ -720,6 +720,15 @@ serializes by conversation. Account/chat/message hashes, queue evidence and pers
 user-turn request IDs prevent duplicates. Mark attempts before admission; uncertain
 outcomes never retry.
 
+`teams-ic3-command-context.ts` enriches a mention inside a thread before marking
+admission or attempting Eyes. The native `readThread` collection supplies the root
+independently of reply pagination; account/session/chat/root-bound cursors keep
+other threads out. At most five pages and 30 seconds select the root plus up to
+20 strictly earlier replies, ordered oldest-first. JSON context is capped at
+48 KiB, escapes envelope delimiters and labels omitted/deleted/truncated content.
+It is untrusted reference data, separate from the user request and refreshed per
+follow-up. Read failures prevent context-free jobs and leave admission retryable.
+
 Each eligible mention, including follow-ups, attempts Eyes before admission.
 `Ic3ReactionClient.acknowledgeSourceMessage` wraps account-pinned
 `reactToSourceMessage` (Eyes/Checkmark/Crossmark), writing only the selected emotion.

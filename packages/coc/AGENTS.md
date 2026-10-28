@@ -1209,6 +1209,12 @@ references before editing. Paths are package-relative.
   Thread replies retain the existing root or start under the mention. Quote
   previews are escaped and bounded, with their bytes reserved within the 20,000-byte
   limit. Outbound compliance checks the complete HTML. Channel routing is separate.
+  Mentions inside a thread collect its root and up to 20 strictly earlier replies
+  before acknowledgement/admission. `teams-ic3-command-context.ts` wraps this
+  exact-thread data as untrusted JSON, separately from the request; fresh reads
+  apply to every follow-up. Context uses at most five native pages, 30 seconds and
+  48 KiB, marks incomplete/deleted content, and never reads unrelated threads.
+  A context-read failure logs safely and prevents context-free admission.
   Acknowledgements are bounded, deduplicated and best-effort; failures log safely
   and still admit the request, while cancellation prevents late admission.
   Reply chains serialize per conversation, not across chats; shutdown drains every

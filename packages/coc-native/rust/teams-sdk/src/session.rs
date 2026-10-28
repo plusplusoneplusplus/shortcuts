@@ -389,7 +389,7 @@ impl Session {
             url,
         }))
     }
-    async fn get_page(
+    pub(crate) async fn get_page(
         &self,
         backend: Backend,
         collection: Url,

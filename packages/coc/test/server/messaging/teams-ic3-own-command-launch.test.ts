@@ -211,7 +211,7 @@ describe('IC3 Ask queue admission', () => {
         const account = { tenantId: '11111111-1111-4111-8111-111111111111', userId: '22222222-2222-4222-8222-222222222222' };
         const chatId = '19:source-group@thread.v2';
         const createdAt = new Date(Date.now() + 1000).toISOString();
-        let messageId = 'source-command';
+        let messageId = '1790000000001';
         let wake!: () => void;
         const fetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
             if (init?.method === 'PUT') return new Response(null, { status: 200 });
@@ -245,10 +245,18 @@ describe('IC3 Ask queue admission', () => {
                 connect: async () => account,
                 readChats: async () => ({ items: [{ chatId, kind: 'group' }], rawCount: 1 }),
                 readHistory: async source => ({ items: source === chatId ? [{
-                    chatId, messageId, createdAt, modifiedAt: createdAt,
-                    authorKind: 'user', authorId: account.userId, text: '@coc explain this',
+                    chatId, chatKind: 'group', messageId, createdAt, modifiedAt: createdAt,
+                    rootMessageId: '1790000000000',
+                    authorKind: 'user', authorId: account.userId, text: '@coc what does this mean',
                     deleted: false, textTruncated: false, htmlTruncated: false,
                 }] : [], rawCount: source === chatId ? 1 : 0 }),
+                readThread: async () => ({ items: [{
+                    chatId, chatKind: 'group', messageId: '1790000000000',
+                    createdAt: new Date(Date.parse(createdAt) - 1000).toISOString(),
+                    modifiedAt: new Date(Date.parse(createdAt) - 1000).toISOString(),
+                    authorKind: 'user', authorId: 'fixture-other-user', text: 'HTTP 429 means too many requests.',
+                    deleted: false, textTruncated: false, htmlTruncated: false,
+                }], rawCount: 1 }),
                 dispose: () => {},
             }),
         });
@@ -258,16 +266,21 @@ describe('IC3 Ask queue admission', () => {
             expect(task.repoId).toBe(commandWorkspaceId);
             expect(task.payload.workingDirectory).toBe(group?.rootPath ?? root());
             expect(task.payload.mode).toBe('ask');
+            expect(task.payload.prompt).toContain('HTTP 429 means too many requests.');
+            expect(task.payload.prompt).toContain('untrusted Teams thread context');
             expect(task.config).toMatchObject({ afterEffortTier: 'medium' });
             bridge.activateQueueProcessing();
             await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2), { timeout: 10_000 });
             expect(fetch.mock.calls[0][1]?.method).toBe('PUT');
-            expect(String(fetch.mock.calls[0][0])).toContain('/messages/source-command/properties?name=emotions');
+            expect(String(fetch.mock.calls[0][0])).toContain('/messages/1790000000001/properties?name=emotions');
             expect(JSON.parse(String(fetch.mock.calls[0][1]?.body)).emotions.key).toBe('1f440_eyes');
             const [url, init] = vi.mocked(globalThis.fetch).mock.calls[1];
-            expect(url).toBe('https://teams.cloud.microsoft/api/chatsvc/amer/v1/users/ME/conversations/19%3Asource-group%40thread.v2/messages');
+            expect(url).toBe('https://teams.cloud.microsoft/api/chatsvc/amer/v1/users/ME/conversations/19%3Asource-group%40thread.v2%3Bmessageid%3D1790000000000/messages');
             expect(JSON.parse(String(init?.body)).content).toContain('AI response text');
             const proc = await store.getProcess(toQueueProcessId(task.id), commandWorkspaceId);
+            expect(sdk.mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: expect.stringContaining('HTTP 429 means too many requests.'),
+            }));
             expect(proc?.metadata?.workspaceId).toBe(commandWorkspaceId);
             if (group) {
                 expect(sdk.mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
@@ -280,11 +293,11 @@ describe('IC3 Ask queue admission', () => {
             expect(proc?.metadata?.afterEffortTier).toBe('medium');
             expect(proc?.metadata?.queueTaskId).toBe(task.id);
             expect(proc?.conversationTurns?.[0].relayRequestId).toBe(task.payload.relayRequestId);
-            messageId = 'follow-up-command';
+            messageId = '1790000000002';
             wake();
             await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(4), { timeout: 10_000 });
             expect(fetch.mock.calls[2][1]?.method).toBe('PUT');
-            expect(String(fetch.mock.calls[2][0])).toContain('/messages/follow-up-command/properties?name=emotions');
+            expect(String(fetch.mock.calls[2][0])).toContain('/messages/1790000000002/properties?name=emotions');
             const followUp = tasks().find(item => item.id !== task.id)!;
             expect(followUp.payload.processId).toBe(proc?.id);
             const continued = await store.getProcess(proc!.id, commandWorkspaceId);

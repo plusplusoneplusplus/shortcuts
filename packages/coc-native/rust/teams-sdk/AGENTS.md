@@ -131,6 +131,10 @@ IC3 discovery and history/detail share exact native type pairs: `chat` with
 through the region-pinned `users/ME` endpoint; channels and unknown pairs reject.
 History/detail expose this verified `chat_kind` on transient message details and
 preserve numeric `root_message_id` values; malformed explicit roots reject the read.
+`ic3_thread_history` reads the exact `;messageid=<root>` collection, validates each
+reply's parent and retains the base chat identity. Its first page fetches the root
+by exact message ID when absent; raw counts include that additional record.
+Thread cursors cannot cross roots or ordinary history. Self-stream thread reads reject.
 Only exact `48:notes` bypasses thread type checks; callers bind this
 account-scoped self stream explicitly, independently of discovery. History skips
 live call-recording/transcript artifacts and system events, retaining raw counts

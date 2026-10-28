@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getLogger, toQueueProcessId, type AIProcess, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
 import { NativeTeamsError } from '@plusplusoneplusplus/coc-native';
 import { Ic3DirectMessageClient, Ic3ReactionClient, TeamsOperationError, type Ic3DirectMessageOptions, type TrouterClient } from '@plusplusoneplusplus/coc-connector/teams';
-import type { TeamsIc3Chat, TeamsIc3Message, TeamsIc3Page } from '@plusplusoneplusplus/coc-native';
+import type { TeamsIc3Chat, TeamsIc3Message, TeamsIc3Page, TeamsIc3Session } from '@plusplusoneplusplus/coc-native';
 import { DEFAULT_CONFIG, mergeConfig, type CLIConfig } from '../../../src/config';
 import { createTeamsIc3OwnCommandsRuntime } from '../../../src/server/messaging/teams-ic3-own-commands-runtime';
 import type { ScheduleQueueEventBus } from '../../../src/server/schedule/schedule-queue-await';
@@ -37,6 +37,7 @@ describe('basic IC3 own-command launcher', () => {
             { chatId: 'channel', kind: 'channel' },
         ], rawCount: 3 })),
         readHistory: vi.fn(async (chatId: string) => ({ items: histories.get(chatId) ?? [], rawCount: 0 })),
+        readThread: vi.fn<TeamsIc3Session['readThread']>(),
         dispose: vi.fn(),
     };
     const createSession = vi.fn(() => reader);
@@ -98,6 +99,10 @@ describe('basic IC3 own-command launcher', () => {
         store.getProcess.mockReset();
         sendReply.mockReset().mockResolvedValue(undefined);
         reactions.acknowledgeSourceMessage.mockReset().mockResolvedValue(undefined);
+        reader.readThread.mockReset().mockImplementation(async (chatId, root) => ({
+            items: [message(root, chatId, { createdAt: new Date().toISOString(), modifiedAt: new Date().toISOString(),
+                chatKind: histories.get(chatId)?.[0]?.chatKind, text: 'Root context' })], rawCount: 1,
+        }));
         launch.mockResolvedValue(undefined);
         histories = new Map();
         decisionService = undefined;
@@ -228,6 +233,69 @@ describe('basic IC3 own-command launcher', () => {
         expect(launch).not.toHaveBeenCalled();
         expect(sendReply).not.toHaveBeenCalled();
         expect(service.getStatus().state).toBe('degraded');
+    });
+
+    it('passes the thread root to an ambiguous mention and refreshes context for the next request', async () => {
+        const listener = await startNotifications();
+        const chatId = notifiedChat;
+        const first = message('1790000000001', chatId, {
+            rootMessageId: '1790000000000', text: '@coc what does this mean',
+        });
+        const root = message('1790000000000', chatId, {
+            text: 'HTTP 429 means too many requests.', createdAt: new Date().toISOString(),
+        });
+        reader.readThread.mockResolvedValue({ items: [root, first], rawCount: 2 });
+        histories.set(chatId, [first]);
+        listener.onWake({ cause: 'message', conversationId: chatId });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(launch.mock.calls[0][2]).toContain(root.text);
+        expect(launch.mock.calls[0][2]).toContain('untrusted Teams thread context');
+        expect(launch.mock.calls[0][2].endsWith('User request:\nwhat does this mean')).toBe(true);
+        const next = message('1790000000002', chatId, {
+            createdAt: new Date(Date.now() + 2000).toISOString(),
+            modifiedAt: new Date(Date.now() + 2000).toISOString(),
+            rootMessageId: '1790000000000', text: '@coc how do we resolve it',
+        });
+        reader.readThread.mockResolvedValue({ items: [root, first, next], rawCount: 3 });
+        histories.set(chatId, [next]);
+        listener.onWake({ cause: 'message', conversationId: chatId });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(launch).toHaveBeenCalledTimes(2);
+        expect(launch.mock.calls[1][2]).toContain('@coc what does this mean');
+        expect(launch.mock.calls[1][2].endsWith('User request:\nhow do we resolve it')).toBe(true);
+        expect(launch.mock.calls[0][4]).toBe(launch.mock.calls[1][4]);
+    });
+
+    it('does not acknowledge or launch without context and can retry a definite failed context read', async () => {
+        const listener = await startNotifications();
+        histories.set(notifiedChat, [message('1790000000001', notifiedChat, { rootMessageId: '1790000000000' })]);
+        const root = message('1790000000000', notifiedChat, { createdAt: new Date().toISOString(),
+            modifiedAt: new Date().toISOString(), text: 'Root context' });
+        reader.readThread.mockResolvedValue({ items: [root], rawCount: 1 })
+            .mockRejectedValueOnce(new NativeTeamsError('Network'));
+        listener.onWake({ cause: 'message', conversationId: notifiedChat });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(launch).not.toHaveBeenCalled();
+        expect(reactions.acknowledgeSourceMessage).not.toHaveBeenCalled();
+        listener.onWake({ cause: 'message', conversationId: notifiedChat });
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(launch).toHaveBeenCalledOnce();
+    });
+
+    it('revokes a slow context read on shutdown without admitting a late job', async () => {
+        const listener = await startNotifications();
+        histories.set(notifiedChat, [message('1790000000001', notifiedChat, { rootMessageId: '1790000000000' })]);
+        let finish!: (value: TeamsIc3Page<TeamsIc3Message>) => void;
+        reader.readThread.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+        listener.onWake({ cause: 'message', conversationId: notifiedChat });
+        await vi.advanceTimersByTimeAsync(0);
+        const readSignal = reader.readThread.mock.calls[0][2]?.signal;
+        const stopped = service.dispose();
+        expect(readSignal?.aborted).toBe(true);
+        finish({ items: [], rawCount: 0 });
+        await stopped;
+        expect(launch).not.toHaveBeenCalled();
+        expect(reactions.acknowledgeSourceMessage).not.toHaveBeenCalled();
     });
 
     it.each(['48:notes', 'direct', 'group', '19:meeting_fixture@thread.v2'])('acknowledges each new %s mention before initial and follow-up admission', async chatId => {
