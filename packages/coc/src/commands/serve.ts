@@ -133,8 +133,10 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
             process.on('SIGTERM', onSignal);
 
             // On Windows, SIGINT may not fire in all terminal environments.
-            // Use readline interface to reliably capture Ctrl+C.
-            if (process.platform === 'win32') {
+            // Use readline interface to reliably capture Ctrl+C. Console only:
+            // without one (agent/background/hidden launch) stdin hits EOF at once
+            // and readline's 'close' would shut the server down right after start.
+            if (process.platform === 'win32' && process.stdin.isTTY) {
                 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
                 rl.on('SIGINT', onSignal);
                 rl.on('close', onSignal);
