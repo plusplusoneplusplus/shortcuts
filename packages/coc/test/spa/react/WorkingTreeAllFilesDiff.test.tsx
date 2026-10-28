@@ -1,151 +1,164 @@
-/**
- * @vitest-environment jsdom
- *
- * The all-working-changes view: staged, unstaged and untracked files grouped
- * by section, collapsed rows that lazy-load their diff, and the Working
- * Changes header button that opens it.
- */
+/** @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import React from 'react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import React, { useEffect } from 'react';
 
-const h = vi.hoisted(() => {
-    const client = {
-        git: {
-            getWorkingTreeChanges: vi.fn(),
-            getWorkingTreeFileDiff: vi.fn(),
-            getWorkingTreeFileContent: vi.fn(),
-            listDiffComments: vi.fn(),
-        },
-    };
-    return { client };
-});
-
-vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({
-    useCocClient: () => h.client,
+const h = vi.hoisted(() => ({
+    client: { git: { getWorkingTreeChanges: vi.fn(), listDiffComments: vi.fn() } },
+    endpoint: undefined as string | undefined,
+    unresolved: false,
+    panel: vi.fn(), mount: vi.fn(), unmount: vi.fn(), save: vi.fn(),
 }));
-
+vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({
+    useCocClient: () => h.client, useCloneBaseUrl: () => h.endpoint,
+}));
+vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    resolveCloneRoute: () => ({ kind: h.unresolved ? 'unresolved-remote' : 'local' }),
+}));
 vi.mock('../../../src/server/spa/client/react/features/git/hooks/useFilesViewMode', () => ({
     useFilesViewMode: () => ({ mode: 'flat', setMode: vi.fn() }),
 }));
-
-import {
-    WorkingTreeAllFilesDiff,
-    untrackedContentAsDiff,
-} from '../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeAllFilesDiff';
+// Keep the real shared shell and dirty guard; the file pane has separate engine/edit tests.
+vi.mock('../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff', () => ({
+    WorkingTreeFileDiff: (props: any) => {
+        h.panel(props);
+        useEffect(() => { h.mount(); return () => { h.unmount(); props.onDirtyChange(false); }; }, []);
+        return <div data-testid="full-working-diff">{props.filePath} {props.stage}
+            <button onClick={() => { props.onDirtyChange(true); props.onRegisterSave(h.save); }}>Edit buffer</button>
+            <button onClick={() => props.onNavigateToFile(props.workingTreeFiles.at(-1), 'last')}>Last hunk</button>
+        </div>;
+    },
+}));
+import { WorkingTreeAllFilesDiff } from '../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeAllFilesDiff';
 import { WorkingTree } from '../../../src/server/spa/client/react/features/git/working-tree/WorkingTree';
 
 const ROOT = '/repo';
 function change(rel: string, stage: 'staged' | 'unstaged' | 'untracked', status = 'M') {
     return { filePath: `${ROOT}/${rel}`, status, stage, repositoryRoot: ROOT, repositoryName: 'repo', additions: 1, deletions: 0 };
 }
-
-// a.ts is partially staged, so it shows in two sections.
-const CHANGES = [
-    change('a.ts', 'staged'),
-    change('a.ts', 'unstaged'),
-    change('new.txt', 'untracked', '?'),
-];
-
+const CHANGES = [change('a.ts', 'staged'), change('a.ts', 'unstaged'), change('new.txt', 'untracked', '?')];
+const nav = () => screen.getByRole('complementary', { name: 'Changed files' });
+const row = (stage: string) => within(nav()).getByRole('button', { name: new RegExp(`, ${stage},`) });
+const current = () => h.panel.mock.calls.at(-1)![0];
+const props = { workspaceId: 'ws-1', attachmentDestinationId: 'ws-1', repoRoot: ROOT, onFileSelect: vi.fn() };
 beforeEach(() => {
-    vi.clearAllMocks();
+    vi.clearAllMocks(); h.endpoint = undefined; h.unresolved = false;
     h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: CHANGES });
     h.client.git.listDiffComments.mockResolvedValue({ comments: [] });
-    h.client.git.getWorkingTreeFileDiff.mockImplementation((_ws: string, _path: string, q: { stage: string }) =>
-        Promise.resolve({ diff: `@@ -1 +1 @@\n-old\n+${q.stage}-line` }));
-    h.client.git.getWorkingTreeFileContent.mockResolvedValue({
-        head: { content: 'hello\nworld\n' }, base: { content: '' }, binary: false, tooLarge: false,
-    });
+    h.save.mockResolvedValue(true);
 });
 
-describe('untrackedContentAsDiff', () => {
-    it('adds every line of the file', () => {
-        expect(untrackedContentAsDiff('hello\nworld\n')).toBe('@@ -0,0 +1,2 @@\n+hello\n+world');
+describe('WorkingTreeAllFilesDiff shared review', () => {
+    it('uses one full pane, stage labels and shared responsive controls without review-only actions', async () => {
+        render(<WorkingTreeAllFilesDiff {...props} />);
+        await screen.findByTestId('full-working-diff');
+        expect(screen.getAllByTestId('full-working-diff')).toHaveLength(1);
+        expect(current()).toMatchObject({ filePath: '/repo/a.ts', stage: 'staged', repoRoot: ROOT });
+        for (const mode of ['Groups', 'Tree', 'Flat']) expect(screen.getByRole('button', { name: mode, exact: true })).toBeTruthy();
+        expect(screen.getByRole('separator', { name: 'Resize changed files list' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Files · 3' })).toBeTruthy();
+        expect(row('Staged')).toBeTruthy(); expect(row('Unstaged')).toBeTruthy(); expect(row('Untracked')).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Mark viewed' })).toBeNull();
+        expect(screen.queryByLabelText('Hide viewed')).toBeNull();
     });
-
-    it('returns an empty diff for an empty file', () => {
-        expect(untrackedContentAsDiff('')).toBe('');
+    it('keeps the same path separate in groups, tree and flat, including keyboard and hunk navigation', async () => {
+        render(<WorkingTreeAllFilesDiff {...props} />);
+        await screen.findByTestId('full-working-diff');
+        for (const mode of ['Tree', 'Flat', 'Groups']) {
+            fireEvent.click(screen.getByRole('button', { name: mode, exact: true }));
+            expect(nav().querySelectorAll('[data-file-path]')).toHaveLength(3);
+            fireEvent.click(row('Unstaged'));
+            expect(current()).toMatchObject({ filePath: '/repo/a.ts', stage: 'unstaged', workingTreeFiles: ['/repo/a.ts'] });
+            fireEvent.keyDown(row('Unstaged'), { key: 'Home' });
+            expect(current().stage).toBe('staged');
+        }
+        fireEvent.click(screen.getByRole('button', { name: 'Last hunk', exact: true }));
+        expect(current()).toMatchObject({ stage: 'staged', initialHunkTarget: 'last' });
+        fireEvent.click(row('Untracked'));
+        expect(current()).toMatchObject({ stage: 'untracked', filePath: '/repo/new.txt' });
     });
-});
-
-describe('WorkingTreeAllFilesDiff', () => {
-    it('groups files by section with rows collapsed and no diff fetched', async () => {
-        render(<WorkingTreeAllFilesDiff workspaceId="ws-1" onFileSelect={vi.fn()} />);
-
-        const staged = await screen.findByTestId('working-tree-all-section-staged');
-        expect(within(staged).getByText('Staged (1)')).toBeTruthy();
-        expect(within(screen.getByTestId('working-tree-all-section-unstaged')).getByText('Changes (1)')).toBeTruthy();
-        expect(within(screen.getByTestId('working-tree-all-section-untracked')).getByText('Untracked (1)')).toBeTruthy();
-        expect(screen.queryByTestId('working-tree-all-file-diff-staged-a.ts')).toBeNull();
-        expect(h.client.git.getWorkingTreeFileDiff).not.toHaveBeenCalled();
+    it('keeps repeated display paths from different repository roots selectable in the tree', async () => {
+        h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: [
+            change('a.ts', 'staged'),
+            { ...change('a.ts', 'staged'), filePath: '/other/a.ts', repositoryRoot: '/other' },
+        ] });
+        render(<WorkingTreeAllFilesDiff {...props} />); await screen.findByTestId('full-working-diff');
+        fireEvent.click(screen.getByRole('button', { name: 'Tree', exact: true }));
+        const repeated = within(nav()).getAllByRole('button', { name: /repo\/a.ts, Staged,/ });
+        expect(repeated).toHaveLength(2);
+        fireEvent.click(repeated[1]);
+        expect(current().filePath).toBe('/other/a.ts');
     });
-
-    it('loads the diff for the expanded section only, keeping a partially staged file apart', async () => {
-        render(<WorkingTreeAllFilesDiff workspaceId="ws-1" onFileSelect={vi.fn()} />);
-
-        fireEvent.click(await screen.findByTestId('working-tree-all-file-toggle-unstaged-a.ts'));
-
-        const diff = await screen.findByTestId('working-tree-all-file-diff-unstaged-a.ts');
-        await waitFor(() => expect(diff.textContent).toContain('unstaged-line'));
-        expect(h.client.git.getWorkingTreeFileDiff).toHaveBeenCalledWith('ws-1', `${ROOT}/a.ts`, { stage: 'unstaged' });
-        expect(screen.queryByTestId('working-tree-all-file-diff-staged-a.ts')).toBeNull();
+    it('searches and filters real paths while keeping stage-specific single-file opening', async () => {
+        render(<WorkingTreeAllFilesDiff {...props} />);
+        await screen.findByTestId('full-working-diff');
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'a.ts' } });
+        expect(nav().querySelectorAll('[data-file-path]')).toHaveLength(2);
+        fireEvent.click(row('Unstaged'));
+        fireEvent.click(screen.getByRole('button', { name: 'Open full diff', exact: true }));
+        expect(props.onFileSelect).toHaveBeenCalledWith('/repo/a.ts', 'unstaged');
+        fireEvent.change(screen.getByLabelText('Change status filter'), { target: { value: 'A' } });
+        expect(nav().querySelectorAll('[data-file-path]')).toHaveLength(0);
     });
-
-    it('shows an untracked file as added content', async () => {
-        render(<WorkingTreeAllFilesDiff workspaceId="ws-1" onFileSelect={vi.fn()} />);
-
-        fireEvent.click(await screen.findByTestId('working-tree-all-file-toggle-untracked-new.txt'));
-
-        const diff = await screen.findByTestId('working-tree-all-file-diff-untracked-new.txt');
-        await waitFor(() => expect(diff.textContent).toContain('world'));
-        expect(h.client.git.getWorkingTreeFileContent).toHaveBeenCalledWith('ws-1', `${ROOT}/new.txt`, 'untracked');
-        expect(h.client.git.getWorkingTreeFileDiff).not.toHaveBeenCalled();
-    });
-
-    it('opens the single-file view with the row stage', async () => {
-        const onFileSelect = vi.fn();
-        render(<WorkingTreeAllFilesDiff workspaceId="ws-1" onFileSelect={onFileSelect} />);
-
-        fireEvent.click(await screen.findByTestId('working-tree-all-file-open-staged-a.ts'));
-
-        expect(onFileSelect).toHaveBeenCalledWith(`${ROOT}/a.ts`, 'staged');
-    });
-
-    it('collapses a row again without refetching', async () => {
-        render(<WorkingTreeAllFilesDiff workspaceId="ws-1" onFileSelect={vi.fn()} />);
-        const toggle = await screen.findByTestId('working-tree-all-file-toggle-staged-a.ts');
-
-        fireEvent.click(toggle);
-        await screen.findByText('staged-line', { exact: false });
-        fireEvent.click(toggle);
-        expect(screen.queryByTestId('working-tree-all-file-diff-staged-a.ts')).toBeNull();
-        fireEvent.click(toggle);
-
-        await screen.findByTestId('working-tree-all-file-diff-staged-a.ts');
-        expect(h.client.git.getWorkingTreeFileDiff).toHaveBeenCalledTimes(1);
-    });
-
-    it('re-reads the list and drops cached diffs on refresh', async () => {
-        const { rerender } = render(<WorkingTreeAllFilesDiff workspaceId="ws-1" onFileSelect={vi.fn()} refreshKey={0} />);
-        fireEvent.click(await screen.findByTestId('working-tree-all-file-toggle-staged-a.ts'));
-        await screen.findByText('staged-line', { exact: false });
-
-        rerender(<WorkingTreeAllFilesDiff workspaceId="ws-1" onFileSelect={vi.fn()} refreshKey={1} />);
-
-        await waitFor(() => expect(h.client.git.getWorkingTreeChanges).toHaveBeenCalledTimes(2));
-        await waitFor(() => expect(screen.queryByTestId('working-tree-all-file-diff-staged-a.ts')).toBeNull());
-    });
-
-    it('shows an empty state when the tree is clean', async () => {
+    it('refreshes the list and selected pane without disposing dirty text, even if the path disappears', async () => {
+        const onDirtyChange = vi.fn(), onRegisterSave = vi.fn();
+        const { rerender } = render(<WorkingTreeAllFilesDiff {...props} refreshKey={0} onDirtyChange={onDirtyChange} onRegisterSave={onRegisterSave} />);
+        await screen.findByTestId('full-working-diff');
+        fireEvent.click(screen.getByText('Edit buffer'));
+        expect(onDirtyChange).toHaveBeenCalledWith(true); expect(onRegisterSave).toHaveBeenCalledWith(h.save);
+        const mounts = h.mount.mock.calls.length;
         h.client.git.getWorkingTreeChanges.mockResolvedValue({ changes: [] });
-        render(<WorkingTreeAllFilesDiff workspaceId="ws-1" onFileSelect={vi.fn()} />);
-        expect(await screen.findByTestId('working-tree-all-files-empty')).toBeTruthy();
+        rerender(<WorkingTreeAllFilesDiff {...props} refreshKey={1} onDirtyChange={onDirtyChange} onRegisterSave={onRegisterSave} />);
+        await waitFor(() => expect(h.client.git.getWorkingTreeChanges).toHaveBeenCalledTimes(2));
+        expect(current().refreshKey).toBe(1); expect(current().stage).toBe('staged');
+        expect(h.mount).toHaveBeenCalledTimes(mounts); expect(h.unmount).not.toHaveBeenCalled();
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'other' } });
+        expect(screen.getByTestId('full-working-diff')).toBeTruthy();
     });
-
-    it('shows the list error', async () => {
-        h.client.git.getWorkingTreeChanges.mockRejectedValue(new Error('boom'));
-        render(<WorkingTreeAllFilesDiff workspaceId="ws-1" onFileSelect={vi.fn()} />);
-        expect((await screen.findByTestId('working-tree-all-files-error')).textContent).toContain('boom');
+    it('guards selection and overview, retains failed saves and supports cancel/discard', async () => {
+        render(<WorkingTreeAllFilesDiff {...props} />); await screen.findByTestId('full-working-diff');
+        fireEvent.click(screen.getByText('Edit buffer'));
+        fireEvent.click(row('Unstaged'));
+        expect(current().stage).toBe('staged');
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
+        fireEvent.click(screen.getByRole('button', { name: 'Overview', exact: true }));
+        h.save.mockResolvedValue(false);
+        fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+        await screen.findByText('Could not save the file. Your changes are still in the editor.');
+        expect(screen.getByTestId('full-working-diff')).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: "Don't Save", exact: true }));
+        expect(screen.queryByTestId('full-working-diff')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Read diff', exact: true }));
+        expect(current().stage).toBe('staged');
+    });
+    it('does not accept delayed list results after refresh or owner changes', async () => {
+        let resolveOld!: (value: any) => void;
+        h.client.git.getWorkingTreeChanges.mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve; }));
+        const { rerender } = render(<WorkingTreeAllFilesDiff {...props} refreshKey={0} />);
+        rerender(<WorkingTreeAllFilesDiff {...props} refreshKey={1} />);
+        await screen.findByTestId('full-working-diff');
+        await act(async () => resolveOld({ changes: [change('stale.ts', 'staged')] }));
+        expect(screen.queryByText('stale.ts')).toBeNull();
+        fireEvent.change(screen.getByRole('textbox'), { target: { value: 'new.txt' } });
+        h.endpoint = 'https://other.test';
+        rerender(<WorkingTreeAllFilesDiff {...props} attachmentDestinationId="remote:other:ws-1" refreshKey={1} />);
+        await screen.findByTestId('full-working-diff');
+        expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('');
+        expect(current().attachmentDestinationId).toBe('remote:other:ws-1');
+        expect(h.client.git.getWorkingTreeChanges).toHaveBeenLastCalledWith('ws-1');
+    });
+    it('does not issue a local request for an unresolved remote owner', () => {
+        h.unresolved = true;
+        render(<WorkingTreeAllFilesDiff {...props} attachmentDestinationId="remote:offline:ws-1" />);
+        expect(screen.getByRole('alert').textContent).toContain('owner is unavailable');
+        expect(h.client.git.getWorkingTreeChanges).not.toHaveBeenCalled();
+    });
+    it('shows clean, error and retry states', async () => {
+        h.client.git.getWorkingTreeChanges.mockRejectedValueOnce(new Error('boom')).mockResolvedValue({ changes: [] });
+        render(<WorkingTreeAllFilesDiff {...props} />);
+        expect((await screen.findByRole('alert')).textContent).toContain('boom');
+        fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
+        expect(await screen.findByTestId('working-tree-all-files-empty')).toBeTruthy();
     });
 });
 

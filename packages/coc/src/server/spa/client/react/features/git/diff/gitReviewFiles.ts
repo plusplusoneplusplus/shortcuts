@@ -1,6 +1,8 @@
 import type { FileChange } from './FileTree';
 import { normalizeStatus } from './FileTree';
 
+export function reviewFileKey(file: FileChange): string { return file.id ?? file.path; }
+
 export function reviewFileStatus(status: string) { return normalizeStatus(status).replace(/^([RC])\d+$/, '$1'); }
 
 export type ReviewFileKind = 'all' | 'source' | 'tests' | 'docs';
@@ -19,7 +21,7 @@ export function filterReviewFiles(files: FileChange[], query: string, kind: Revi
     return files.filter(file => (!needle || `${file.path}\n${file.oldPath ?? ''}`.toLowerCase().includes(needle))
         && (kind === 'all' || reviewFileKind(file.path) === kind)
         && (status === 'all' || reviewFileStatus(file.status) === status)
-        && (!hideViewed || !viewed.has(file.path)));
+        && (!hideViewed || !viewed.has(reviewFileKey(file))));
 }
 export function groupReviewFiles(files: FileChange[]) {
     const groups = new Map<string, FileChange[]>();

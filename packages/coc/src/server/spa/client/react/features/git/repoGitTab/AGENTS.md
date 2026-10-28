@@ -20,7 +20,7 @@ refresh, and the two layouts. Everything else lives here.
 | `useGitSkillActions.ts` | Skills list + MRU map, skill runs, Ask AI launches, queue-backed squash and conflict resolution. |
 | `useDirtyDetailGuard.tsx` | Save / Don't Save / Cancel prompt before a user selection replaces an edited working-tree diff. `RepoGitTab` wraps the selection's select/navigate functions with `guard`; data-driven `setView` stays unguarded. |
 | `RepoGitListPane.tsx`, `RepoGitOverlays.tsx` | Presentation only; everything arrives as props. |
-| `RepoGitDetailPane.tsx` | Detail routing and an owner/commit-keyed review host. Commit and branch file routes keep the shared navigator mounted; same-commit navigation preserves chat and the file panel. |
+| `RepoGitDetailPane.tsx` | Detail routing and an owner/commit-keyed review host. Commit and branch file routes keep the shared navigator mounted; same-commit navigation preserves chat and the file panel. All working changes use `ReviewFiles` with repository/stage/path selection IDs and `WorkingTreeFileDiff`, forwarding concrete ownership, refresh and dirty/save hooks. |
 
 ## Invariants
 

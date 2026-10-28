@@ -78,6 +78,7 @@ vi.mock('../../../../../../src/server/spa/client/react/repos/cloneRouting', () =
     useCocClient: (workspaceId: string) => clients[workspaceId],
 }));
 
+import { registerCloneBaseUrls } from '../../../../../../src/server/spa/client/react/repos/cloneRegistry';
 import { WorkingTreeFileDiff, stagedDiskMatchesIndex } from '../../../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff';
 import {
     DIFF_ENGINE_STORAGE_KEY,
@@ -457,5 +458,42 @@ describe('stagedDiskMatchesIndex', () => {
         expect(stagedDiskMatchesIndex(staged('x'), content('x', 'x', { tooLarge: true }) as never)).toBe(false);
         // Staged deletion: no index file, so nothing to edit.
         expect(stagedDiskMatchesIndex(staged('', false), content('', '', { head: { content: '', ref: 'WORKTREE', exists: false } }) as never)).toBe(false);
+    });
+});
+
+describe('WorkingTreeFileDiff — untracked review editing', () => {
+    it('retains an unsaved untracked buffer when a refresh reports binary content', async () => {
+        clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValue(content('', 'new\n'));
+        const view = await renderDiff({ stage: 'untracked', untrackedAsDiff: true, refreshKey: 0 });
+        act(() => fakes[0].type('unsaved text\n'));
+        clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValue(content('', '', { binary: true }));
+        await act(async () => { view.rerender(<WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/a.ts" repoRoot="/repo"
+            stage="untracked" untrackedAsDiff refreshKey={1} createDiffEditor={createDiffEditor} />); });
+        expect(fakes.at(-1)!.modifiedText).toBe('unsaved text\n');
+        expect(screen.queryByTestId('preview-pane')).toBeNull();
+        expect(screen.getByTestId('working-tree-file-diff-disk-changed')).toBeTruthy();
+    });
+    it('refuses saving to a remote owner that became unavailable', async () => {
+        registerCloneBaseUrls([{ workspaceId: 'ws-a', serverId: 'owner', baseUrl: 'https://owner.test' }]);
+        await renderDiff({ attachmentDestinationId: 'remote:owner:ws-a' });
+        act(() => fakes[0].type('unsaved text\n'));
+        registerCloneBaseUrls([]);
+        await act(async () => { fakes[0].pressSave(); });
+        expect(writeBlob).not.toHaveBeenCalled();
+        expect(screen.getByTestId('working-tree-file-diff-save-error').textContent).toContain('owning server is unavailable');
+        expect(fakes.at(-1)!.modifiedText).toBe('unsaved text\n');
+    });
+    it('saves an untracked all-added comparison on its concrete owner and reports dirty state', async () => {
+        registerCloneBaseUrls([{ workspaceId: 'ws-a', serverId: 'owner', baseUrl: 'https://owner.test' }]);
+        const onDirtyChange = vi.fn(), onSaved = vi.fn();
+        clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValue(content('', 'new\n'));
+        await renderDiff({ stage: 'untracked', untrackedAsDiff: true, attachmentDestinationId: 'remote:owner:ws-a', onDirtyChange, onSaved });
+        act(() => fakes[0].type('new\nedited\n'));
+        expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+        await act(async () => { fakes[0].pressSave(); });
+        expect(writeBlob).toHaveBeenCalledWith('ws-a', 'src/a.ts', 'new\nedited\n', 'remote:owner:ws-a');
+        expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+        expect(onSaved).toHaveBeenCalledOnce();
+        registerCloneBaseUrls([]);
     });
 });

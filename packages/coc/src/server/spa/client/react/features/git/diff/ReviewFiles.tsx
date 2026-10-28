@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { useReviewFileNavigation } from './useReviewFileNavigation';
 import { STATUS_LABELS, type FileChange } from './FileTree';
-import { filterReviewFiles, groupReviewFiles, reviewFileKind, reviewFileParts, reviewFileStatus, type ReviewFileKind } from './gitReviewFiles';
+import { filterReviewFiles, groupReviewFiles, reviewFileKey, reviewFileKind, reviewFileParts, reviewFileStatus, type ReviewFileKind } from './gitReviewFiles';
 import { GitReviewToolbar, type GitReviewHeader } from './GitReviewToolbar';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { writePointerContextDragData } from '../../chat/sessionContextDrag';
@@ -24,6 +24,11 @@ export interface ReviewFileRenderContext {
 export interface ReviewFilesProps {
     /** Hosts key this component by the complete owner and comparison identity. */
     identity: string;
+    /** Mutable comparisons can guard navigation while an editor holds unsaved text. */
+    beforeNavigate?: (proceed: () => void) => void;
+    retainSelection?: boolean;
+    /** Mutable changes do not have persisted review progress. */
+    reviewEnabled?: boolean;
     defaultView?: 'groups' | 'tree' | 'flat';
     files: ReviewFile[];
     selectedPath?: string | null;
@@ -43,7 +48,7 @@ export interface ReviewFilesProps {
 }
 
 export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onRetry, reviewedFiles, onToggleReviewed,
-    identity, defaultView = 'groups', header, initialHunkTarget, renderFile, renderEmpty, rowDetails, rowDrag, isFileDimmed }: ReviewFilesProps) {
+    identity, beforeNavigate, retainSelection = false, reviewEnabled = true, defaultView = 'groups', header, initialHunkTarget, renderFile, renderEmpty, rowDetails, rowDrag, isFileDimmed }: ReviewFilesProps) {
     const [query, setQuery] = useState('');
     const [kind, setKind] = useState<ReviewFileKind>('all');
     const [status, setStatus] = useState('all');
@@ -96,25 +101,25 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
         }
         return viewMode === 'flat' ? visible : viewMode === 'tree' ? flatten(tree) : groups.flatMap(group => group.files);
     }, [groups, visible, viewMode, tree]);
-    const paths = useMemo(() => ordered.map(file => file.path), [ordered]);
-    const selected = ordered.find(file => file.path === selection)
+    const paths = useMemo(() => ordered.map(reviewFileKey), [ordered]);
+    const selected = (retainSelection ? files.find(file => reviewFileKey(file) === selection) : undefined) ?? ordered.find(file => reviewFileKey(file) === selection)
         ?? (hideViewed && selection && selection === retainedPath && viewed.has(selection)
-            ? filterReviewFiles(files, query, kind, status, false, viewed).find(file => file.path === selection) : undefined)
+            ? filterReviewFiles(files, query, kind, status, false, viewed).find(file => reviewFileKey(file) === selection) : undefined)
         ?? ordered[0];
     const index = selected ? ordered.indexOf(selected) : -1;
     const onSelectRef = useRef(onSelect);
     onSelectRef.current = onSelect;
-    const viewedCount = files.filter(file => viewed.has(file.path)).length;
+    const viewedCount = files.filter(file => viewed.has(reviewFileKey(file))).length;
     useEffect(() => { if (selectedPath) {
         setSelection(selectedPath); setOverview(false); setTarget(initialHunkTarget ?? 'first');
-        if (!visible.some(file => file.path === selectedPath)) clear();
+        if (!visible.some(file => reviewFileKey(file) === selectedPath)) clear();
         setCollapsed(previous => new Set([...previous].filter(directory => !selectedPath.startsWith(`${directory}/`))));
     } }, [selectedPath, initialHunkTarget]);
     useEffect(() => {
-        if (!loading && !error && selected && selected.path !== selection) {
-            setSelection(selected.path); setTarget('first'); onSelectRef.current?.(selected.path, 'first');
+        if (!loading && !error && selected && reviewFileKey(selected) !== selection) {
+            setSelection(reviewFileKey(selected)); setTarget('first'); onSelectRef.current?.(reviewFileKey(selected), 'first');
         }
-    }, [selected?.path, selection, ordered, loading, error]);
+    }, [selected && reviewFileKey(selected), selection, ordered, loading, error]);
     useEffect(() => {
         if (!drawer) return;
         const previous = document.activeElement as HTMLElement | null;
@@ -124,18 +129,19 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
     useEffect(() => {
         const row = navRef.current?.querySelector<HTMLElement>('[aria-current="true"]');
         row?.scrollIntoView?.({ block: 'nearest' });
-    }, [selected?.path]);
+    }, [selected && reviewFileKey(selected)]);
     function select(path: string, hunk: 'first' | 'last' = 'first') {
-        setSelection(path); setTarget(hunk); setOverview(false); setDrawer(false); onSelect?.(path, hunk);
+        const proceed = () => { setSelection(path); setTarget(hunk); setOverview(false); setDrawer(false); onSelect?.(path, hunk); };
+        if (beforeNavigate) beforeNavigate(proceed); else proceed();
     }
     function clear() { setQuery(''); setKind('all'); setStatus('all'); setHideViewed(false); }
     function updateViewed(path: string) {
-        if (hideViewed && path === selected?.path && !viewed.has(path) && index === ordered.length - 1) setRetainedPath(path);
+        if (hideViewed && path === (selected && reviewFileKey(selected)) && !viewed.has(path) && index === ordered.length - 1) setRetainedPath(path);
         if (onToggleReviewed) return onToggleReviewed(path);
         else setLocalViewed(previous => { const next = new Set(previous); if (next.has(path)) next.delete(path); else next.add(path); return next; });
     }
     const toggleViewed = useReviewFileNavigation({
-        identity, selectedPath: overview ? null : selected?.path,
+        identity, selectedPath: overview || !selected ? null : reviewFileKey(selected),
         paths, reviewedFiles: viewed, toggleReviewed: updateViewed,
         navigate: select,
     });
@@ -143,27 +149,27 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
         const { name, directory } = reviewFileParts(file.path);
         const code = reviewFileStatus(file.status);
         const payload = rowDrag?.(file);
-        return <button type="button" key={file.path} className={`git-review-file${selected?.path === file.path && !scan ? ' selected' : ''}`}
+        return <button type="button" key={reviewFileKey(file)} className={`git-review-file${(selected && reviewFileKey(selected)) === reviewFileKey(file) && !scan ? ' selected' : ''}`}
             style={isFileDimmed?.(file.path) ? { opacity: 0.4 } : undefined}
-            aria-current={selected?.path === file.path && !scan ? 'true' : undefined} title={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
-            aria-label={`${file.path}, ${STATUS_LABELS[code] ?? file.status}${viewed.has(file.path) ? ", viewed" : ""}`}
+            aria-current={(selected && reviewFileKey(selected)) === reviewFileKey(file) && !scan ? 'true' : undefined} title={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
+            aria-label={`${file.path}${file.label ? `, ${file.label}` : ''}, ${STATUS_LABELS[code] ?? file.status}${viewed.has(reviewFileKey(file)) ? ", viewed" : ""}`}
             draggable={!!payload}
             data-session-context-source={payload ? 'true' : undefined}
             data-session-context-kind={payload ? 'git-file' : undefined}
             onDragStart={payload ? event => writePointerContextDragData(event.dataTransfer, payload) : undefined}
-            onClick={() => select(file.path)} data-file-path={file.path}>
+            onClick={() => select(reviewFileKey(file))} data-file-path={reviewFileKey(file)}>
             <span className={`git-review-status status-${code}`} title={STATUS_LABELS[code] ?? file.status}>{code}</span>
             <span className="git-review-file-name"><strong>{name}</strong><small>{file.oldPath ? `${file.oldPath} → ${directory}` : directory}</small></span>
             <span className="git-review-counts"><span className="git-review-add">{file.additions == null ? '' : `+${file.additions}`}</span><span className="git-review-del">{file.deletions == null ? '' : `−${file.deletions}`}</span></span>
             {rowDetails?.(file)}
-            {viewed.has(file.path) && <span aria-label="Viewed" className="git-review-add">✓</span>}
+            {viewed.has(reviewFileKey(file)) && <span aria-label="Viewed" className="git-review-add">✓</span>}
         </button>;
     }
     function toggleDirectory(directory: string) {
         setCollapsed(previous => { const next = new Set(previous); if (next.has(directory)) next.delete(directory); else next.add(directory); return next; });
     }
     function treeRows(nodes: FileTreeNode[], depth = 0): ReactNode {
-        return nodes.map(node => node.kind === 'file' ? <div key={node.path} style={{ paddingLeft: depth * 10 }}>{row(node.file)}</div>
+        return nodes.map(node => node.kind === 'file' ? <div key={reviewFileKey(node.file)} style={{ paddingLeft: depth * 10 }}>{row(node.file)}</div>
             : <section key={node.path}>
                 <button type="button" className="git-review-directory" style={{ paddingLeft: 7 + depth * 10 }}
                     aria-label={node.path} aria-expanded={!collapsed.has(node.path)} onClick={() => toggleDirectory(node.path)}>
@@ -172,27 +178,27 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
             </section>);
     }
     return <div className="git-file-review" data-testid="git-file-review">
-        <GitReviewToolbar header={header} progress={{ viewed: viewedCount, total: files.length }}>
+        <GitReviewToolbar header={header} progress={reviewEnabled ? { viewed: viewedCount, total: files.length } : undefined}>
             <button type="button" className="git-review-drawer-trigger" ref={drawerTrigger} aria-expanded={drawer} aria-controls={navId} onClick={() => setDrawer(value => !value)}>Files · {files.length}</button>
-            <button type="button" className="git-review-icon" aria-pressed={overview} aria-label={overview ? 'Read diff' : 'Overview'} title={overview ? 'Read diff' : 'Overview'} onClick={() => setOverview(value => !value)}>
+            <button type="button" className="git-review-icon" aria-pressed={overview} aria-label={overview ? 'Read diff' : 'Overview'} title={overview ? 'Read diff' : 'Overview'} onClick={() => { const proceed = () => setOverview(value => !value); if (beforeNavigate) beforeNavigate(proceed); else proceed(); }}>
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></svg>
                 <span className="git-review-wide">{overview ? 'Read diff' : 'Overview'}</span>
             </button>
             <div className="git-review-file-nav" role="group" aria-label="File navigation">
-                <button type="button" aria-label="Previous file" title="Previous file" disabled={index <= 0} onClick={() => select(ordered[index - 1].path)}>←</button>
+                <button type="button" aria-label="Previous file" title="Previous file" disabled={index <= 0} onClick={() => select(reviewFileKey(ordered[index - 1]))}>←</button>
                 <span className="git-review-muted" title={selected && !overview ? selected.path : undefined} data-testid="git-review-file-index">{selected && !overview ? `${index + 1}/${ordered.length}` : `${visible.length} files`}</span>
-                <button type="button" aria-label="Next file" title="Next file" disabled={index < 0 || index >= ordered.length - 1} onClick={() => select(ordered[index + 1].path)}>→</button>
+                <button type="button" aria-label="Next file" title="Next file" disabled={index < 0 || index >= ordered.length - 1} onClick={() => select(reviewFileKey(ordered[index + 1]))}>→</button>
             </div>
             {selected && !overview && <span className="git-review-change git-review-md" data-testid="git-review-change-stats"
                 title={`${STATUS_LABELS[reviewFileStatus(selected.status)] ?? selected.status} · ${selected.additions ?? 0} additions, ${selected.deletions ?? 0} deletions`}>
                 <span className="git-review-status">{reviewFileStatus(selected.status)}</span>
                 <span className="git-review-counts"><span className="git-review-add">{selected.additions == null ? '' : `+${selected.additions}`}</span><span className="git-review-del">{selected.deletions == null ? '' : `−${selected.deletions}`}</span></span></span>}
             <span className="git-review-spacer" />
-            {files.length > 0 && <span className="git-review-muted git-review-md git-review-reviewed" title={`${viewedCount} of ${files.length} files reviewed`} data-testid="git-review-reviewed-count">
+            {reviewEnabled && files.length > 0 && <span className="git-review-muted git-review-md git-review-reviewed" title={`${viewedCount} of ${files.length} files reviewed`} data-testid="git-review-reviewed-count">
                 {viewedCount}/{files.length}<span className="git-review-wide"> reviewed</span></span>}
-            {selected && <button type="button" className="git-review-viewed" aria-pressed={viewed.has(selected.path)} aria-label={viewed.has(selected.path) ? 'Viewed' : 'Mark viewed'}
-                title={viewed.has(selected.path) ? 'Viewed — click to unmark' : 'Mark viewed'} onClick={() => toggleViewed(selected.path)}>
-                <span aria-hidden="true">{viewed.has(selected.path) ? '✓' : '○'}</span><span className="git-review-label-sm">{viewed.has(selected.path) ? 'Viewed' : 'Mark viewed'}</span>
+            {reviewEnabled && selected && <button type="button" className="git-review-viewed" aria-pressed={viewed.has(reviewFileKey(selected))} aria-label={viewed.has(reviewFileKey(selected)) ? 'Viewed' : 'Mark viewed'}
+                title={viewed.has(reviewFileKey(selected)) ? 'Viewed — click to unmark' : 'Mark viewed'} onClick={() => toggleViewed(reviewFileKey(selected))}>
+                <span aria-hidden="true">{viewed.has(reviewFileKey(selected)) ? '✓' : '○'}</span><span className="git-review-label-sm">{viewed.has(reviewFileKey(selected)) ? 'Viewed' : 'Mark viewed'}</span>
             </button>}
         </GitReviewToolbar>
         <div className="git-review-body" ref={bodyRef} style={{ '--git-review-nav-width': `${navWidth}px` } as CSSProperties}>
@@ -213,7 +219,7 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                     if (next >= 0 && next < buttons.length) {
                         event.preventDefault();
                         const path = buttons[next].dataset.filePath!;
-                        setSelection(path); setOverview(false); setTarget('first'); onSelect?.(path, 'first'); buttons[next].focus();
+                        select(path); buttons[next].focus();
                     }
                 }}>
                 <div className="git-review-filters">
@@ -225,7 +231,7 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                     </div>
                     <input ref={searchRef} aria-label="Search changed files by name or path" placeholder="Search files or path…" value={query} onChange={event => setQuery(event.target.value)} />
                     <div className="git-review-filter-row">{(['all', 'source', 'tests', 'docs'] as const).map(value => <button type="button" key={value} aria-pressed={kind === value} onClick={() => setKind(value)}>{value === 'all' ? 'All' : value === 'source' ? 'Source' : value === 'tests' ? 'Tests' : 'Docs'} <span className="git-review-muted">{kindCounts[value]}</span></button>)}</div>
-                    <div className="git-review-filter-row"><label><input type="checkbox" checked={hideViewed} onChange={event => setHideViewed(event.target.checked)} /> Hide viewed</label>
+                    <div className="git-review-filter-row">{reviewEnabled && <label><input type="checkbox" checked={hideViewed} onChange={event => setHideViewed(event.target.checked)} /> Hide viewed</label>}
                         <select aria-label="Change status filter" value={status} onChange={event => setStatus(event.target.value)}><option value="all">All statuses</option>{['A', 'M', 'D', 'R', 'C', 'T'].map(code => <option key={code} value={code}>{STATUS_LABELS[code] ?? code}</option>)}</select></div>
                 </div>
                 <div className="git-review-file-list">{viewMode === 'flat' ? visible.map(file => row(file)) : viewMode === 'tree' ? treeRows(tree) : groups.map(group => <section key={group.directory}>
@@ -233,7 +239,7 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                         <span>{collapsed.has(group.directory) ? '▸' : '▾'}</span><span title={group.directory}>{group.directory}</span><small>{group.files.length}</small>
                     </button>{!collapsed.has(group.directory) && group.files.map(file => row(file))}
                 </section>)}{!loading && !visible.length && <div className="git-review-empty">{files.length ? 'No matching files.' : 'No file changes.'}<button type="button" onClick={clear}>Clear filters</button></div>}</div>
-                <div className="git-review-progress">{viewedCount} / {files.length} viewed · {visible.length} shown<progress aria-label="Files viewed" value={viewedCount} max={files.length || 1} /></div>
+                {reviewEnabled && <div className="git-review-progress">{viewedCount} / {files.length} viewed · {visible.length} shown<progress aria-label="Files viewed" value={viewedCount} max={files.length || 1} /></div>}
             </aside>
             <div className={`git-review-resizer${navSize.isDragging ? ' dragging' : ''}`} role="separator" aria-orientation="vertical" tabIndex={0}
                 aria-label="Resize changed files list" aria-controls={navId} aria-valuemin={NAV_MIN_WIDTH} aria-valuemax={navMax} aria-valuenow={navWidth}
@@ -241,10 +247,10 @@ export function ReviewFiles({ files, selectedPath, onSelect, loading, error, onR
                 onMouseDown={navSize.handleMouseDown} onTouchStart={navSize.handleTouchStart} onDoubleClick={navSize.resetWidth} onKeyDown={resizeNav} />
             <main className="git-review-content" aria-label="Focused file diff">
                 {loading ? <div role="status" className="git-review-empty">Loading files…</div> : error ? <div role="alert" className="git-review-empty">{error}<button type="button" onClick={onRetry}>Retry</button></div> : overview ? <div className="git-review-overview">
-                    <div className="git-review-overview-summary">{visible.length} files · {groups.length} directories · {viewedCount} viewed <span className="git-review-add">+{visible.reduce((sum, file) => sum + (file.additions ?? 0), 0)}</span> <span className="git-review-del">−{visible.reduce((sum, file) => sum + (file.deletions ?? 0), 0)}</span></div>
+                    <div className="git-review-overview-summary">{visible.length} files · {groups.length} directories {reviewEnabled ? `· ${viewedCount} viewed` : ''} <span className="git-review-add">+{visible.reduce((sum, file) => sum + (file.additions ?? 0), 0)}</span> <span className="git-review-del">−{visible.reduce((sum, file) => sum + (file.deletions ?? 0), 0)}</span></div>
                     {groups.map(group => <section key={group.directory}><div className="git-review-directory">{group.directory} · {group.files.length}</div>{group.files.map(file => row(file, true))}</section>)}
                 </div> : selected ? renderFile({ file: selected, paths, select, target,
-                    toggleViewed: () => toggleViewed(selected.path) })
+                    toggleViewed: () => toggleViewed(reviewFileKey(selected)) })
                     : renderEmpty ?? <div className="git-review-empty">{files.length ? 'No matching files.' : 'No file changes.'}{!!files.length && <button type="button" onClick={clear}>Clear filters</button>}</div>}
             </main>
         </div>
