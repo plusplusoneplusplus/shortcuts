@@ -161,9 +161,9 @@ both names when enabled; disabled drafts may be incomplete. Workspace IDs exclud
 remote selectors, and dispatcher values identify a skill by name, not a path.
 The strict namespace accepts neither permission/source selectors nor provider/model
 overrides. Connections -> Teams presents one registry group with the experimental
-toggle, local execution workspace and dispatcher skill selectors. `AdminSkillSelect`
+toggle, local execution workspace (repo or repo group) and dispatcher skill selectors. `AdminSkillSelect`
 uses ordinary workspace skill listing and filters workspace/global disabled names.
-`adminWorkspaceSkills.ts` checks physical registration and enabled skills on the
+`adminWorkspaceSkills.ts` checks repo/group registration and enabled skills on the
 selected Admin server; enabled UI saves re-read these before persisting. Failures
 preserve drafts; disabled drafts remain saveable without live lookups. Late skill
 results cannot cross workspace/machine changes. The server's independent reaction
@@ -172,8 +172,10 @@ refusal/Crossmark reporting, server-account GitHub approval verification before
 Checkmark, unverified other positive claims and links to the bound local dashboard.
 `messaging/teams-reaction-dispatcher.ts` provides uncached dispatch-time binding
 resolution through `resolveSkillConfig` strict mode and Forge's skill reader.
-It verifies a physical local execution root, normal source precedence and both
-disabled-name sets, rejecting unreadable policy and missing/empty selected skill
+It verifies an existing local execution root, normal source precedence and both
+disabled-name sets. Repo groups execute in their own root, inheriting live members'
+`.github/skills` in membership order before global sources. It rejects unreadable
+group membership or policy and missing/empty selected skill
 instructions. An invalid higher-priority dispatcher cannot fall through to another
 copy. Admission must invoke it with current configuration and cancellation.
 
