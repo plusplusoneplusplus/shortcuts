@@ -727,13 +727,18 @@ Writes need no discovery/custom emoji, retain a ten-second deadline and never re
 Transport success proves no task outcome; acknowledgment failures log safely without
 discarding commands. Channel Likes remain independent.
 
-Memory-only pending replies capture source identity before enqueue and consume it
-on queue terminal events. Delivery serializes within each conversation; different
+Memory-only pending replies capture source identity and original message ID/text
+before enqueue and consume it on queue terminal events. Delivery serializes within each conversation; different
 chats deliver independently. Shutdown drains all active reply chains; reconfiguration
 revokes their authority without blocking the new generation. Shared answer extraction
 returns only the matching request's answer; fixed notices replace raw failures.
-`teams-ic3-own-command-reply.ts` reuses HTML
-chunking and `Ic3DirectMessageClient.sendToSourceChat`, preserving exact
+`teams-ic3-own-command-reply.ts` prefixes every answer part with a native
+`schema.skype.com/Reply` blockquote whose `itemid` identifies the original mention.
+Its escaped plain-text preview is bounded to 200 code points. HTML chunking reserves
+the quote's UTF-8 bytes within the 20,000-byte total; compliance evaluates the complete
+quoted parts. Follow-ups quote their own mention, and fixed notices use the same path.
+These are linked chat quotes, separate from channel reply threads.
+`Ic3DirectMessageClient.sendToSourceChat` preserves exact
 `48:notes`, `19:...@thread.v2` or `19:...@unq.gbl.spaces` IDs. Each part pins the
 account and rechecks access through the captured native reader; Graph/MCP are excluded.
 Source replies allow 70 seconds total for preparation and 10 seconds from dispatch;

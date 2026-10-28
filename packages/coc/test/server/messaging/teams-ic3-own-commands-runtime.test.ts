@@ -765,7 +765,7 @@ describe('basic IC3 own-command launcher', () => {
     }
 
     async function launched(chatId = 'direct') {
-        histories.set(chatId, [message('command', chatId)]);
+        histories.set(chatId, [message('1790000000000', chatId)]);
         start();
         await vi.advanceTimersByTimeAsync(0);
         return launch.mock.calls[0][1];
@@ -784,7 +784,7 @@ describe('basic IC3 own-command launcher', () => {
             const evaluate = vi.spyOn(decisionService, 'evaluate');
             const send = vi.spyOn(Ic3DirectMessageClient.prototype, 'sendToSourceChat').mockResolvedValue('sent');
             sendReply.mockImplementation(sendTeamsIc3OwnCommandReply);
-            const original = message('command', '48:notes', { untrustedHtml: '<p>@coc explain this</p>' });
+            const original = message('1790000000000', '48:notes', { untrustedHtml: '<p>@coc explain this</p>' });
             histories.set('48:notes', [original]);
             start();
             await vi.advanceTimersByTimeAsync(0);
@@ -808,7 +808,7 @@ describe('basic IC3 own-command launcher', () => {
                 expect.objectContaining({
                     backend: 'copilot',
                     state: expect.objectContaining({
-                        trigger: { type: 'mention', messageId: 'command', text: original.text,
+                        trigger: { type: 'mention', messageId: original.messageId, text: original.text,
                             untrustedHtml: original.untrustedHtml },
                         chunks: send.mock.calls.map(call => call[1]),
                         destination: { ...account, chatId: '48:notes', region },
@@ -855,7 +855,7 @@ describe('basic IC3 own-command launcher', () => {
             expect(sendReply).toHaveBeenCalledOnce();
             expect(react).toHaveBeenCalledTimes(outcome === 'block' ? 1 : 0);
             if (outcome === 'block') {
-                expect(react).toHaveBeenCalledExactlyOnceWith('48:notes', 'command', 'crossmark', expect.any(AbortSignal));
+                expect(react).toHaveBeenCalledExactlyOnceWith('48:notes', '1790000000000', 'crossmark', expect.any(AbortSignal));
             }
             expect(vi.mocked(getLogger().info).mock.calls.some(([, text]) =>
                 text.includes('"stage":"delivered"'))).toBe(outcome === 'disabled');
@@ -941,7 +941,8 @@ describe('basic IC3 own-command launcher', () => {
         events.emit('taskCompleted', terminal(id));
         await vi.advanceTimersByTimeAsync(0);
         expect(sendReply).toHaveBeenCalledExactlyOnceWith(
-            expect.objectContaining({ account, chatId, region, verifyAccess: expect.any(Function) }),
+            expect.objectContaining({ account, chatId, region, verifyAccess: expect.any(Function),
+                replyTo: { messageId: '1790000000000', text: '@coc explain this' } }),
             id, 'The initial answer', expect.any(AbortSignal));
         const readCount = reader.readHistory.mock.calls.length;
         const source = sendReply.mock.calls[0][0];
@@ -970,7 +971,8 @@ describe('basic IC3 own-command launcher', () => {
         events.emit('taskCompleted', task);
         await vi.advanceTimersByTimeAsync(0);
         expect(sendReply).toHaveBeenCalledExactlyOnceWith(
-            expect.objectContaining({ chatId: 'direct' }), id, 'Follow-up answer', expect.any(AbortSignal));
+            expect.objectContaining({ chatId: 'direct',
+                replyTo: { messageId: 'second', text: '@coc explain this' } }), id, 'Follow-up answer', expect.any(AbortSignal));
     });
 
     it.each(['delivered', 'failed'])('keeps same-chat reply order without blocking another chat when the first reply is %s', async outcome => {

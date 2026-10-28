@@ -8,7 +8,7 @@ import type { createTeamsIc3OwnCommandLaunch } from './teams-ic3-own-command-lau
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import { onTaskTerminal } from './chat-target';
 import { findRequestAnswer, findRequestTurn, isTerminalStatus, RELAY_ANSWER_TEXT } from './relay-answer';
-import { sendTeamsIc3OwnCommandReply, type TeamsIc3CommandSource } from './teams-ic3-own-command-reply';
+import { sendTeamsIc3OwnCommandReply, type TeamsIc3OwnCommandSource } from './teams-ic3-own-command-reply';
 import { getTeamsOutboundComplianceFailure, type TeamsOutboundCompliance, type TeamsOutboundComplianceFailure } from './teams-outbound-compliance';
 import type { Route } from '../types';
 import type { TeamsMessagingManager } from './teams-messaging-manager';
@@ -55,7 +55,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
     const replies = new Set<Promise<void>>();
     let trouter: ReturnType<NonNullable<Options['createTrouter']>> | undefined;
     let stoppingTrouter = Promise.resolve();
-    const pending = new Map<string, { workspaceId: string; conversationId: string; source: TeamsIc3CommandSource;
+    const pending = new Map<string, { workspaceId: string; conversationId: string; source: TeamsIc3OwnCommandSource;
         signal: AbortSignal; detectedAt: number }>();
     let stopped = false;
     let status: Omit<TeamsIc3ConnectivityStatus, 'trouter'> = { state: 'disabled' };
@@ -297,6 +297,7 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                                 }
                                 pending.set(id, { workspaceId: target.workspaceId, conversationId,
                                     source: { account: owner, chatId: chat.chatId, region,
+                                        replyTo: { messageId: message.messageId, text: message.text },
                                         compliance: {
                                             decisionService: options.decisionService,
                                             workspaceId: target.workspaceId, workingDirectory,

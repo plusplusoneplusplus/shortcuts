@@ -1,8 +1,8 @@
 import { Ic3DirectMessageClient, Ic3ReactionClient, TeamsOperationError } from '@plusplusoneplusplus/coc-connector/teams';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { TeamsIc3Account, TeamsIc3SessionOptions } from '@plusplusoneplusplus/coc-native';
-import { formatTeamsAnswerChunks } from './teams-answer-format';
-import { formatTeamsOutbound } from './teams-outbound-format';
+import { formatTeamsAnswerChunks, TEAMS_ANSWER_MAX_BYTES } from './teams-answer-format';
+import { escapeTeamsHtml, formatTeamsOutbound } from './teams-outbound-format';
 import { checkTeamsOutboundCompliance, TeamsOutboundComplianceFailed, TeamsOutboundComplianceRejected, type TeamsOutboundCompliance } from './teams-outbound-compliance';
 
 export interface TeamsIc3CommandSource {
@@ -13,12 +13,26 @@ export interface TeamsIc3CommandSource {
     compliance?: TeamsOutboundCompliance;
 }
 
+export interface TeamsIc3OwnCommandSource extends TeamsIc3CommandSource {
+    replyTo: { messageId: string; text: string };
+}
+
 /** Reuse connector protocols; replies never create a chat or change the source account. */
 export async function sendTeamsIc3OwnCommandReply(
-    source: TeamsIc3CommandSource, requestId: string, answer: string, signal: AbortSignal,
+    source: TeamsIc3OwnCommandSource, requestId: string, answer: string, signal: AbortSignal,
 ): Promise<void> {
     signal.throwIfAborted();
-    const parts = formatTeamsAnswerChunks(answer, requestId.slice(-12)).map(part => formatTeamsOutbound(part, 'html'));
+    const replyTo = source.replyTo;
+    if (!replyTo || !/^\d{1,20}$/.test(replyTo.messageId)
+        || typeof replyTo.text !== 'string' || !replyTo.text.trim()) {
+        throw new TypeError('Teams mention replies require the original message ID and text');
+    }
+    const preview = Array.from(replyTo.text).slice(0, 200).join('');
+    const quote = `<blockquote itemscope="" itemtype="http://schema.skype.com/Reply" itemid="${replyTo.messageId}">`
+        + `<p>${escapeTeamsHtml(preview)}${preview.length < replyTo.text.length ? '...' : ''}</p></blockquote>`;
+    const parts = formatTeamsAnswerChunks(answer, requestId.slice(-12), undefined, undefined, 'compact',
+        TEAMS_ANSWER_MAX_BYTES - Buffer.byteLength(quote))
+        .map(part => quote + formatTeamsOutbound(part, 'html'));
     await sendTeamsIc3SourceReply(source, parts, signal);
 }
 
