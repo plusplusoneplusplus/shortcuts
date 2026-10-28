@@ -442,13 +442,88 @@ describe('Sentinel Refrains', () => {
         await screen.findByText('Autopilot');
         await openActions();
         fireEvent.click(screen.getByText('History (2)'));
-        expect(screen.getByText('#2 · schedule · skipped: overlap')).toBeInTheDocument();
-        expect(screen.getByText('Duration: 1.0s')).toBeInTheDocument();
+        expect(screen.getByLabelText('Details for run #2: skipped: overlap (schedule)')).toBeVisible();
+        const details = screen.getByLabelText('Details for run #1: completed (manual)');
+        expect(screen.getByText('Finished')).not.toBeVisible();
+        fireEvent.click(details);
+        expect(screen.getByText('Finished')).toBeVisible();
+        expect(screen.getAllByText('1.0s').length).toBeGreaterThan(0);
         const link = screen.getByRole('link', { name: 'Job turn' });
         expect(link).toHaveAttribute('href', '#repos/remote%3Aserver%3Aws-a/chats/queue_job?turn=2');
         fireEvent.click(link);
         expect(follow).toHaveBeenCalledWith(expect.anything(), 'sentinel-job:queue_job:?turn=2');
         expect(screen.queryByRole('link', { name: 'Sentinel follow-up' })).not.toBeInTheDocument();
+    });
+    it('keeps newest-first rows concise and exposes exact metadata and complete errors independently', async () => {
+        const diagnostic = 'Full diagnostic ' + 'long-unbroken-error/'.repeat(60) + '\nLast diagnostic line';
+        const createdAt = '2026-10-28T08:47:01.123Z';
+        const startedAt = '2026-10-28T08:47:02.456Z';
+        const finishedAt = '2026-10-28T08:48:53.789Z';
+        mock.list.mockResolvedValue({ jobs: [job({ provider: 'copilot', effortTier: 'medium', cron: '0 14 * * *', nextRunAt: '2026-10-29T14:00:00Z', runs: [
+            run({ id: 'r3', runNumber: 3, status: 'failed', error: diagnostic, createdAt, startedAt, finishedAt, durationMs: 112100, jobTurnHref: '#repos/ws-a/chats/queue_job?turn=3&entry=run' }),
+            run({ id: 'r1', runNumber: 1, status: 'cancelled' }),
+            run({ id: 'r2', runNumber: 2, status: 'skipped', skipReason: 'gate-unavailable', createdAt }),
+        ] })] });
+        render(<SentinelRefrains owner={{ ...owner, ownerRoutingRef: 'remote:server:group-a' }} items={[]} onFollowLink={follow} />);
+        const history = await screen.findByText('History (3)');
+        fireEvent.click(history);
+        await waitFor(() => expect(screen.queryByLabelText('Last run #3: failed. Show full error')).toBeNull());
+        const list = screen.getByRole('list', { name: 'Run history for Daily review' });
+        expect(within(list).getAllByRole('listitem').map(row => row.getAttribute('aria-label'))).toEqual(['Run #3', 'Run #2', 'Run #1']);
+        const failed = within(list).getByRole('listitem', { name: 'Run #3' });
+        const skipped = within(list).getByRole('listitem', { name: 'Run #2' });
+        expect(within(failed).getByLabelText(`Finished: ${new Date(finishedAt).toLocaleString()}`)).toBeVisible();
+        expect(within(failed).getByLabelText('Duration: 112.1s')).toBeVisible();
+        expect(within(failed).getByText(createdAt)).not.toBeVisible();
+        const error = within(failed).getByRole('region', { name: 'Error for run #3' });
+        expect(error).not.toBeVisible();
+        fireEvent.click(within(failed).getByLabelText('Details for run #3: failed (manual)'));
+        fireEvent.click(within(skipped).getByLabelText('Details for run #2: skipped: gate unavailable (tool scripting off) (manual)'));
+        for (const timestamp of [createdAt, startedAt, finishedAt]) expect(within(failed).getByText(timestamp)).toBeVisible();
+        expect(error.textContent).toBe(diagnostic);
+        expect(error).toHaveAttribute('tabindex', '0');
+        expect(within(skipped).getByText('Skipped: gate unavailable (tool scripting off)')).toBeVisible();
+        const link = within(failed).getByRole('link', { name: 'Job turn' });
+        expect(link).toHaveAttribute('href', '#repos/remote%3Aserver%3Agroup-a/chats/queue_job?turn=3&entry=run');
+        fireEvent.click(link);
+        expect(follow).toHaveBeenCalledWith(expect.anything(), 'sentinel-job:queue_job:?turn=3&entry=run');
+        fireEvent.keyDown(error, { key: 'Escape' });
+        expect(within(failed).getByLabelText('Details for run #3: failed (manual)')).toHaveFocus();
+        expect(error).not.toBeVisible();
+        expect(within(skipped).getByText('Skipped: gate unavailable (tool scripting off)')).toBeVisible();
+        expect(history.parentElement).toHaveAttribute('open');
+        expect(screen.getByText(/copilot \/ medium effort tier/)).toHaveTextContent('Next');
+        fireEvent.click(history);
+        await screen.findByLabelText('Last run #3: failed. Show full error');
+        for (const mutation of [mock.start, mock.cancel, mock.update, mock.delete, mock.testGate, mock.resumeGate]) expect(mutation).not.toHaveBeenCalled();
+    });
+    it.each(['queued', 'running', 'completed', 'failed', 'cancelled', 'interrupted', 'skipped'] as const)(
+        'keeps %s explicit in history with a created timestamp for unstarted runs', async status => {
+            const createdAt = '2026-10-28T08:00:00Z';
+            mock.list.mockResolvedValue({ jobs: [job({ runs: [run({ status, createdAt })] })] });
+            view();
+            fireEvent.click(await screen.findByText('History (1)'));
+            const list = screen.getByRole('list', { name: 'Run history for Daily review' });
+            expect(within(list).getByText(status, { exact: true })).toBeVisible();
+            expect(within(list).getByLabelText(`Created: ${new Date(createdAt).toLocaleString()}`)).toBeVisible();
+            expect(within(list).queryByRole('link', { name: 'Job turn' })).toBeNull();
+            fireEvent.click(within(list).getByLabelText(`Details for run #1: ${status} (manual)`));
+            expect(within(list).getByText(createdAt)).toBeVisible();
+            expect(within(list).queryByText('Started')).toBeNull();
+            expect(within(list).queryByText('Duration')).toBeNull();
+        },
+    );
+    it('keeps active status visible alongside history and an empty history accessible without More', async () => {
+        mock.list.mockResolvedValue({ jobs: [job({ activeRun: run({ status: 'queued' }) })] });
+        view();
+        const history = await screen.findByText('History (0)');
+        expect(history).toBeVisible();
+        expect(screen.getByRole('button', { name: 'Edit' })).not.toBeVisible();
+        fireEvent.click(history);
+        expect(screen.getByText('No runs yet.')).toBeVisible();
+        expect(screen.getByText('Run #1 queued')).toBeVisible();
+        expect(screen.getByRole('button', { name: 'Run now' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
     });
     it('uses owning-server feature policy even when local jobs are off', async () => {
         applyRuntimeConfigPatch({ sentinelEnabled: false, sentinelTodoJobsEnabled: false });
@@ -656,9 +731,9 @@ describe('Sentinel Refrains', () => {
             expect(await screen.findByText('Last run #3: skipped: gate unavailable (tool scripting off)')).toBeInTheDocument();
             await openActions();
             fireEvent.click(screen.getByText('History (3)'));
-            expect(screen.getByText('#2 · schedule · skipped: gate result empty')).toBeInTheDocument();
-            expect(screen.getByText('#1 · schedule · skipped: overlap')).toBeInTheDocument();
-            expect(screen.getByText('#3 · schedule · skipped: gate unavailable (tool scripting off)')).toBeInTheDocument();
+            expect(screen.getByLabelText('Details for run #2: skipped: gate result empty (schedule)')).toBeVisible();
+            expect(screen.getByLabelText('Details for run #1: skipped: overlap (schedule)')).toBeVisible();
+            expect(screen.getByLabelText('Details for run #3: skipped: gate unavailable (tool scripting off) (schedule)')).toBeVisible();
         });
     });
     describe('effort tiers', () => {

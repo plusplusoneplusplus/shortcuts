@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import type { CocClient, RuntimeDashboardConfig, SentinelRefrain, SentinelRefrainGateTest, SentinelRefrainRun,
     SentinelRefrainInput } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
@@ -218,6 +218,7 @@ function JobRow({ job, owner, onFollowLink, disabled, onEdit, onDelete, onRun, o
     onEdit: () => void; onDelete: () => void; onRun: () => void; onCancel: () => void; onToggle: () => void;
 }) {
     const last = job.runs[0];
+    const [historyOpen, setHistoryOpen] = useState(false);
     return <article aria-label={job.name} className={CARD} data-testid={`sentinel-refrain-${job.id}`}>
         <div className="sentinel-automation-header">
             <div className="sentinel-automation-title">
@@ -232,34 +233,65 @@ function JobRow({ job, owner, onFollowLink, disabled, onEdit, onDelete, onRun, o
                 <Button size="sm" variant="ghost" disabled={disabled || !!job.activeRun} onClick={onEdit}>Edit</Button>
                 <Button size="sm" variant="ghost" disabled={disabled || !!job.activeRun} onClick={onDelete}>Delete</Button>
                 {job.processId && <JobChatLink owner={owner} processId={job.processId} onFollowLink={onFollowLink}>Open chat</JobChatLink>}
-                <details>
-                    <summary className="cursor-pointer">History ({job.runs.length})</summary>
-                    {!job.runs.length && <p className={MUTED}>No runs yet.</p>}
-                    <ol className="mt-2 flex max-h-64 flex-col gap-2 overflow-auto">
-                        {job.runs.map(run => <li key={run.id} className="border-t border-[#e0e0e0] pt-1 dark:border-[#3c3c3c]">
-                            <p>#{run.runNumber} · {run.trigger} · {runOutcome(run)}</p>
-                            <RunTime label="Created" value={run.createdAt} />
-                            <RunTime label="Started" value={run.startedAt} />
-                            <RunTime label="Finished" value={run.finishedAt} />
-                            {run.durationMs !== undefined && <p>Duration: {(run.durationMs / 1000).toFixed(1)}s</p>}
-                            {run.error && <p className={ERROR}>{run.error}</p>}
-                            <div className="flex flex-wrap gap-2">
-                                {job.processId && run.jobTurnHref && <JobChatLink owner={owner} processId={job.processId}
-                                    href={run.jobTurnHref} onFollowLink={onFollowLink}>Job turn</JobChatLink>}
-                            </div>
-                        </li>)}
-                    </ol>
-                </details>
             </AutomationActions>
+            <RefrainRunHistory job={job} owner={owner} onFollowLink={onFollowLink} onOpenChange={setHistoryOpen} />
         </div>
         <p className={MUTED}>{job.provider} / {job.effortTier ? `${job.effortTier} effort tier` : job.model}{job.effort && ` / ${job.effort}`} · {job.cron ? describeCron(job.cron) || job.cron : 'Manual only'}
             {job.enabled && job.nextRunAt && <> · Next <time dateTime={job.nextRunAt}>{new Date(job.nextRunAt).toLocaleString()}</time></>}
         </p>
         {job.gateScript && <RefrainGate job={job} disabled={disabled} onTestGate={onTestGate} onResumeGate={onResumeGate} />}
         {job.activeRun ? <div role="status" className="flex items-center gap-1"><Spinner size="sm" /> Run #{job.activeRun.runNumber} {job.activeRun.status}</div>
-            : last && (last.error ? <AutomationError label={`Last run #${last.runNumber}: ${runOutcome(last)}`} error={last.error} />
+            : !historyOpen && last && (last.error ? <AutomationError label={`Last run #${last.runNumber}: ${runOutcome(last)}`} error={last.error} />
                 : <p className={last.status === 'failed' || last.status === 'interrupted' ? ERROR : MUTED}>Last run #{last.runNumber}: {runOutcome(last)}</p>)}
     </article>;
+}
+/** History is read-only; links retain the job owner's generated turn suffix. */
+function RefrainRunHistory({ job, owner, onFollowLink, onOpenChange }: {
+    job: SentinelRefrain; owner: SentinelTodoOwner; onFollowLink: JobsProps['onFollowLink']; onOpenChange: (open: boolean) => void;
+}) {
+    return <details className="sentinel-refrain-history" onKeyDown={closeHistoryOnEscape} onToggle={event => {
+        if (event.target === event.currentTarget) onOpenChange(event.currentTarget.open);
+    }}>
+        <summary>History ({job.runs.length})</summary>
+        {!job.runs.length && <p className={MUTED}>No runs yet.</p>}
+        <ol aria-label={`Run history for ${job.name}`} className="sentinel-refrain-runs">
+            {[...job.runs].sort((a, b) => b.runNumber - a.runNumber).map(run => {
+                const timestamp = run.finishedAt ?? run.startedAt ?? run.createdAt;
+                const timestampLabel = run.finishedAt ? 'Finished' : run.startedAt ? 'Started' : 'Created';
+                const duration = run.durationMs !== undefined ? `${(run.durationMs / 1000).toFixed(1)}s` : undefined;
+                return <li key={run.id} aria-label={`Run #${run.runNumber}`} className="sentinel-refrain-run">
+                    <details onKeyDown={closeHistoryOnEscape}>
+                        <summary aria-label={`Details for run #${run.runNumber}: ${runOutcome(run)} (${run.trigger})`}>
+                            <span className="sentinel-refrain-run-state">#{run.runNumber} <span className={run.status === 'failed' || run.status === 'interrupted' ? ERROR : undefined}>{run.status}</span> <span className={MUTED}>· {run.trigger}</span></span>
+                            <span className={`sentinel-refrain-run-meta ${MUTED}`}>
+                                <time dateTime={timestamp} aria-label={`${timestampLabel}: ${new Date(timestamp).toLocaleString()}`}>{new Date(timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time>
+                                {duration && <span aria-label={`Duration: ${duration}`}> · {duration}</span>}
+                            </span>
+                        </summary>
+                        <div className="sentinel-refrain-run-detail">
+                            <dl>
+                                <RunTime label="Created" value={run.createdAt} />
+                                <RunTime label="Started" value={run.startedAt} />
+                                <RunTime label="Finished" value={run.finishedAt} />
+                                {duration && <div><dt>Duration</dt><dd>{duration}</dd></div>}
+                            </dl>
+                            {run.skipReason && <p>Skipped: {SKIP_REASONS[run.skipReason] ?? run.skipReason}</p>}
+                            {run.error && <pre role="region" tabIndex={0} aria-label={`Error for run #${run.runNumber}`} className={ERROR}>{run.error}</pre>}
+                        </div>
+                    </details>
+                    {job.processId && run.jobTurnHref && <JobChatLink owner={owner} processId={job.processId}
+                        href={run.jobTurnHref} onFollowLink={onFollowLink}>Job turn</JobChatLink>}
+                </li>;
+            })}
+        </ol>
+    </details>;
+}
+function closeHistoryOnEscape(event: KeyboardEvent<HTMLDetailsElement>) {
+    if (event.key === 'Escape') {
+        event.stopPropagation();
+        event.currentTarget.open = false;
+        event.currentTarget.querySelector('summary')?.focus();
+    }
 }
 const SKIP_REASONS: Record<NonNullable<SentinelRefrainRun['skipReason']>, string> = {
     overlap: 'overlap', 'gate-empty': 'gate result empty', 'gate-unavailable': 'gate unavailable (tool scripting off)',
@@ -309,7 +341,7 @@ function preview(json: string) {
     return json.length > 160 ? `${json.slice(0, 160)}\u2026` : json;
 }
 function RunTime({ label, value }: { label: string; value?: string }) {
-    return value ? <p>{label}: <time dateTime={value}>{new Date(value).toLocaleString()}</time></p> : null;
+    return value ? <div><dt>{label}</dt><dd><time dateTime={value}>{value}</time></dd></div> : null;
 }
 function JobChatLink({ owner, processId, href, children, onFollowLink }: {
     owner: SentinelTodoOwner; processId: string; href?: string; children: ReactNode; onFollowLink: JobsProps['onFollowLink'];

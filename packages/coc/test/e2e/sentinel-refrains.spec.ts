@@ -24,6 +24,16 @@ test.beforeAll(async () => {
                 { id: 'seed-2', name: 'Implement feature or bug fix', enabled: false, runs: [{ id: 'failed', runNumber: 1, status: 'failed', error: diagnostic, createdAt: '2026-10-18T12:00:00Z', trigger: 'manual' }] },
                 { id: 'seed-3', name: 'LongRefrainName'.repeat(30), enabled: true, activeRun: { id: 'active', runNumber: 2, status: 'running' }, runs: [], gateScript: 'return []', gatePaused: true },
             ].map(job => ({ revision: 1, provider: 'copilot', effortTier: 'medium', mode: 'autopilot', gateConsecutiveFailures: 0, processId: 'queue_job', ...job })) : [];
+            if (state.history) {
+                const makeRun = (runNumber, status, extra = {}) => ({ id: 'history-' + runNumber, runNumber, status, trigger: runNumber % 2 ? 'schedule' : 'manual',
+                    createdAt: '2026-10-28T08:47:01.123Z', startedAt: '2026-10-28T08:47:02.456Z', finishedAt: '2026-10-28T08:48:53.789Z', durationMs: 112100,
+                    jobTurnHref: '#repos/ws-owner/chats/queue_job?turn=' + runNumber + '&source=history', ...extra });
+                jobs.splice(0, jobs.length, { id: 'history', name: 'New stable revision release', provider: 'copilot', effortTier: 'medium', mode: 'autopilot', enabled: true,
+                    cron: '0 14 * * *', nextRunAt: '2026-10-29T14:00:00Z', revision: 1, processId: 'queue_job', gateConsecutiveFailures: 0,
+                    runs: [makeRun(7, 'failed', { error: diagnostic }), makeRun(6, 'completed'), makeRun(5, 'cancelled'),
+                        makeRun(4, 'skipped', { skipReason: 'gate-unavailable', error: diagnostic }), makeRun(3, 'interrupted'),
+                        makeRun(2, 'running', { finishedAt: undefined, durationMs: undefined }), makeRun(1, 'queued', { startedAt: undefined, finishedAt: undefined, durationMs: undefined })] });
+            }
             const calls = state.calls;
             const at = '2026-10-18T12:00:00Z';
             const scrub = { enabled: true, cron: '0 9 * * *', paused: false, consecutiveFailures: 0, revision: 1 };
@@ -68,7 +78,7 @@ test.beforeAll(async () => {
             applyRuntimeConfigPatch({ ...policy, triggersEnabled: false });
             const owner = { ownerWorkspaceId: 'ws-owner', ownerRoutingRef: state.remote ? 'ws-owner' : null, processId: 'queue_sentinel' };
             createRoot(document.getElementById('fixture')).render(state.seeded
-                ? <SentinelRefrains owner={owner} items={[]} onFollowLink={event => event.preventDefault()} />
+                ? <SentinelRefrains owner={owner} items={[]} onFollowLink={(event, key) => { event.preventDefault(); state.followed = key; }} />
                 : <UnifiedTodoTab scopeWorkspaceId="ws-owner" chatId="queue_sentinel" owner={owner} />);
         ` },
         bundle: true, write: false, jsx: 'automatic', format: 'iife', platform: 'browser', loader: { '.css': 'empty' },
@@ -89,7 +99,7 @@ test.beforeAll(async () => {
     });
     script = result.outputFiles[0].text;
 });
-async function mount(page: Page, { dark = false, width = 800, enabled = true, remote = false, seeded = false } = {}) {
+async function mount(page: Page, { dark = false, width = 800, enabled = true, remote = false, seeded = false, history = false } = {}) {
     await page.route('http://jobs.fixture.test/**', route => route.fulfill({ contentType: 'text/html', body: '<html><body></body></html>' }));
     await page.routeWebSocket(/.*/, () => {});
     await page.goto('http://jobs.fixture.test/');
@@ -99,7 +109,7 @@ async function mount(page: Page, { dark = false, width = 800, enabled = true, re
         <div id="fixture" style="width:${width}px;height:820px;margin:8px"></div></body></html>`);
     await page.evaluate(values => {
         Object.assign(window, { jobsFixture: { ...values, calls: [], refs: [] } });
-    }, { enabled, remote, seeded });
+    }, { enabled, remote, seeded, history });
     await page.addStyleTag({ content: css });
     await page.addScriptTag({ content: script });
     if (!seeded) {
@@ -231,7 +241,7 @@ for (const dark of [false, true]) {
             await expect(history.locator('..')).not.toHaveAttribute('open', '');
             await history.focus();
             await page.keyboard.press('Enter');
-            await expect(job.getByText('#1 · manual · failed')).toBeVisible();
+            await expect(job.getByLabel('Details for run #1: failed (manual)')).toBeVisible();
             await history.press('Enter');
             await more.press('Escape');
             for (const card of [job, coda]) {
@@ -263,6 +273,83 @@ for (const dark of [false, true]) {
             await expect(codaMore).toBeFocused();
             await coda.scrollIntoViewIfNeeded();
             await page.screenshot({ path: info.outputPath('compact-refrains.png'), fullPage: true });
+            const calls = await page.evaluate(() => (window as Window & { jobsFixture: { calls: string[][] } }).jobsFixture.calls);
+            expect(calls.every(call => call[0] === 'list')).toBe(true);
+            expect(errors).toEqual([]);
+        });
+    }
+}
+
+for (const dark of [false, true]) {
+    for (const width of [280, 800]) {
+        test(`dense run history and multiple details fit ${width}px ${dark ? 'dark' : 'light'}`, async ({ page }, info) => {
+            const errors: string[] = [];
+            page.on('pageerror', error => errors.push(error.message));
+            page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+            await mount(page, { dark, width, seeded: true, history: true, remote: true });
+            const job = page.getByRole('article', { name: 'New stable revision release' });
+            const history = job.getByText('History (7)', { exact: true });
+            await history.focus();
+            await history.press('Enter');
+            const list = job.getByRole('list', { name: 'Run history for New stable revision release' });
+            const rows = list.getByRole('listitem');
+            await expect(rows).toHaveCount(7);
+            for (const row of await rows.all()) {
+                const summary = row.locator('summary');
+                expect((await row.boundingBox())!.height).toBeLessThanOrEqual(width === 800 ? 40 : 48);
+                expect((await summary.boundingBox())!.height).toBeGreaterThanOrEqual(width === 800 ? 32 : 44);
+                expect(await row.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+                const link = row.getByRole('link', { name: 'Job turn' });
+                await expect(link).toBeVisible();
+                expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(width === 800 ? 32 : 44);
+            }
+            await expect(job.getByLabel('Last run #7: failed. Show full error')).toHaveCount(0);
+            await expect(job.getByText(/copilot \/ medium effort tier/)).toContainText('Next');
+            await page.screenshot({ path: info.outputPath('compact-run-history.png'), fullPage: true });
+            const failed = list.getByRole('listitem', { name: 'Run #7', exact: true });
+            const completed = list.getByRole('listitem', { name: 'Run #6', exact: true });
+            const skipped = list.getByRole('listitem', { name: 'Run #4', exact: true });
+            const firstSummary = failed.locator('summary');
+            await firstSummary.focus();
+            await firstSummary.press('Space');
+            const error = failed.getByRole('region', { name: 'Error for run #7', exact: true });
+            await expect(error).toBeVisible();
+            await expect(error).toContainText('Full error ending');
+            for (const timestamp of ['2026-10-28T08:47:01.123Z', '2026-10-28T08:47:02.456Z', '2026-10-28T08:48:53.789Z']) await expect(failed.getByText(timestamp)).toBeVisible();
+            await firstSummary.press('Tab');
+            await expect(error).toBeFocused();
+            expect(await error.evaluate(el => {
+                const range = document.createRange(); range.selectNodeContents(el);
+                const selection = window.getSelection(); if (!selection) return false;
+                selection.removeAllRanges(); selection.addRange(range);
+                return selection.toString() === el.textContent;
+            })).toBe(true);
+            await completed.locator('summary').focus();
+            await completed.locator('summary').press('Enter');
+            await expect(completed.getByText('Finished', { exact: true })).toBeVisible();
+            await expect(failed.locator('details')).toHaveAttribute('open', '');
+            for (const row of [failed, completed]) expect(await row.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+            await page.screenshot({ path: info.outputPath('multiple-run-details.png'), fullPage: true });
+            const link = completed.getByRole('link', { name: 'Job turn' });
+            await expect(link).toHaveAttribute('href', '#repos/ws-owner/chats/queue_job?turn=6&source=history');
+            await link.focus();
+            await link.press('Enter');
+            expect(await page.evaluate(() => (window as Window & { jobsFixture: { followed: string } }).jobsFixture.followed)).toBe('sentinel-job:queue_job:?turn=6&source=history');
+            await firstSummary.focus();
+            await firstSummary.press('Escape');
+            await expect(firstSummary).toBeFocused();
+            await expect(error).toBeHidden();
+            await expect(completed.locator('details')).toHaveAttribute('open', '');
+            await skipped.locator('summary').focus();
+            await skipped.locator('summary').press('Enter');
+            await expect(skipped.getByText('Skipped: gate unavailable (tool scripting off)')).toBeVisible();
+            await expect(skipped.getByRole('region', { name: 'Error for run #4', exact: true })).toContainText('Full error ending');
+            expect(await job.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+            expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+            await history.focus();
+            await history.press('Space');
+            await expect(list).toBeHidden();
+            await expect(job.getByLabel('Last run #7: failed. Show full error')).toBeVisible();
             const calls = await page.evaluate(() => (window as Window & { jobsFixture: { calls: string[][] } }).jobsFixture.calls);
             expect(calls.every(call => call[0] === 'list')).toBe(true);
             expect(errors).toEqual([]);
