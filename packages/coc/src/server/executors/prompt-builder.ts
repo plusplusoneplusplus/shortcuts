@@ -33,7 +33,7 @@ import type { OwnerScriptRunner } from './owner-script-runner';
 import { createKustoTools } from '../llm-tools/kusto-tools';
 import type { KustoToolsRuntime } from '../kusto/kusto-client-runtime';
 import { createSystemOneTool, type SystemOneToolDeps } from '../llm-tools/system-one-tool';
-import { createSentinelTodosTool, createSentinelTodoTracking, MANUAL_TRACKING_GUIDANCE, SENTINEL_PR_OUTCOME_REVIEW_GUIDANCE, type SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
+import { createSentinelTodosTool, createSentinelTodoTracking, MANUAL_TRACKING_GUIDANCE, SENTINEL_PR_OUTCOME_REVIEW_GUIDANCE, SENTINEL_REFRAIN_LIST_GUIDANCE, type SentinelTodosToolDeps } from '../llm-tools/sentinel-todos-tool';
 import { SENTINEL_COMPLETION_GUIDANCE, SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE, SENTINEL_SHALLOW_RESULT_CHECK_GUIDANCE } from '../delegation/sentinel-job-review-instructions';
 import { createSendToConversationTool, type EnqueueChatFn, type SendMessageFn, type SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { createListWorkspacesTool } from '../llm-tools/list-workspaces-tool';
@@ -825,6 +825,7 @@ export function buildSentinelTodosAddon(
 
 export const SENTINEL_TODO_LEDGER_GUIDANCE = [
     'This chat keeps a to-do ledger through `sentinel_todos` (bookkeeping only; it never runs or controls jobs).',
+    '- ' + SENTINEL_REFRAIN_LIST_GUIDANCE,
     '- Track concrete work requests and agreed next actions. Do not track quick questions or uncommitted brainstorm ideas.',
     '- Before creating an item, `list` the ledger and update a matching item instead of adding a duplicate.',
     '- For normal items, track the intended feature/outcome, with a completion condition covering the final deliverable, not just ' +

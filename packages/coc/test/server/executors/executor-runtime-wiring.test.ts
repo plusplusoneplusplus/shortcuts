@@ -219,7 +219,14 @@ describe('Executor runtime capability wiring', () => {
             runtime.getTriggerInfra.mockReturnValue({ sentinelOvertures: triggers } as any);
             for (const chat of [parts.chatExecutor, parts.followUpExecutor]) {
                 expect(chat.buildSentinelTodoDeps('owner-chat', 'owner-workspace', 'sentinel'))
-                    .toEqual({ service, triggers, owner: { processId: 'owner-chat', workspaceId: 'owner-workspace' } });
+                    .toEqual({ service, triggers, getRefrains: expect.any(Function), owner: { processId: 'owner-chat', workspaceId: 'owner-workspace' } });
+                const deps = chat.buildSentinelTodoDeps('owner-chat', 'owner-workspace', 'sentinel');
+                expect(deps.getRefrains()).toBeUndefined();
+                const jobs = { list: vi.fn() };
+                runtime.getSentinelRefrainCommands.mockReturnValue({ jobs } as any);
+                expect(deps.getRefrains()).toBe(jobs);
+                runtime.getSentinelRefrainCommands.mockReturnValue(undefined);
+                expect(deps.getRefrains()).toBeUndefined();
                 expect(chat.buildSentinelTodoDeps('owner-chat', 'owner-workspace', 'ask')).toBeUndefined();
                 runtime.getTriggerInfra.mockReturnValue(undefined);
                 expect(chat.buildSentinelTodoDeps('owner-chat', 'owner-workspace', 'sentinel')?.triggers).toBeUndefined();

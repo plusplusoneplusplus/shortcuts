@@ -173,7 +173,16 @@ Offered to every Sentinel chat (first turn and follow-ups): the route layer
 publishes `getSentinelTodos`, which returns the shared `SentinelTodoService`.
 Not in `LLM_TOOL_REGISTRY`. Standalone executors may omit this server capability.
 The owner is the invoking chat (`workspaceId`, `processId`),
-never a tool argument, and the service re-proves Sentinel ownership on every call. Actions:
+never a tool argument, and the service re-proves Sentinel ownership on every call.
+`list` also returns a separate `refrains: { availability, items }` summary, independent
+of To-do filters and pagination. The executor late-binds the owning server's native
+`SentinelRefrainCommands.list`; live gates and exact Sentinel/workspace checks include
+repo groups. Missing, disabled or failed reads report unavailable without fallback.
+Each custom Refrain includes name and latest actual run status/time/generated
+`jobTurnHref` when available. Native `latestRun` excludes skips and includes active
+runs outside the 20-row history view; `runHistoryTruncated` prevents expired actual
+history from being called never-run. Response guidance keeps runs separate from
+To-dos and grants no execution, assessment or parent-chat posting authority. Actions:
 `list` (all unarchived non-Done items first, then recently updated Done within a
 50-item budget; active counts above 50 stay complete. `includeArchived` adds history
 after Done. `limit` sets the budget, `nextOffset`/`offset` page remaining history, `itemId` reads an exact item;

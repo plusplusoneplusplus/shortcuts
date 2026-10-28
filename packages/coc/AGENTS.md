@@ -615,7 +615,13 @@ references before editing. Paths are package-relative.
   start, retry, or cancel jobs. Every Sentinel chat has a persistent ledger.
   Sentinel Mode and Coda are independently default-off. The
   `sentinel_todos` tool is bound to the invoking Sentinel chat via the late-bound
-  `getSentinelTodos` runtime capability. The opt-in `sentinel_jobs` tool reuses the
+  `getSentinelTodos` runtime capability. Its `list` includes separate compact custom
+  Refrain latest-run summaries through the late-bound, read-only native commands on
+  the owning server. Exact Sentinel/workspace ownership includes repo groups; disabled
+  or failed reads stay unavailable without fallback. Native `latestRun` excludes skips
+  and covers active runs outside the history window; expired history is never called
+  never-run. Reuse generated run links; listing changes no items, assessments or authority.
+  The opt-in `sentinel_jobs` tool reuses the
   REST refrain/Coda command objects (`getSentinelRefrainCommands`), bound to the owning
   Sentinel's attended turns only; gate notices, reviews and automation turns never get it.
   Every tool action, including Coda actions, rechecks live refrain availability and
