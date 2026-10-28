@@ -16,6 +16,7 @@ import { test as base, expect, type Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { buildSync } from 'esbuild';
 import { createE2EMockSDKService, type E2EMockAIControls } from './mock-ai';
 import { E2E_SERVER_CONFIG_YAML } from './e2e-server-config';
 import { safeRmSync } from '../../helpers/safe-rm';
@@ -26,6 +27,8 @@ const { createExecutionServer, resolveTaskRoot } = require('../../../dist/server
 const { FileProcessStore, SqliteProcessStore } = require('@plusplusoneplusplus/forge');
 
 type ExecutionServer = Awaited<ReturnType<typeof createExecutionServer>>;
+
+let highlightScript: string | undefined;
 
 /** Resolve the repo-scoped task root path from dataDir + workspaceId. */
 export function getTaskRoot(dataDir: string, workspaceId: string): string {
@@ -72,14 +75,24 @@ export interface ServerFixture {
  * Requests WITH query params (e.g. workspace filter) pass through unchanged
  * because the repos code expects `{ processes: [...] }`.
  *
- * CDN scripts: highlight.js and the lazily loaded mermaid/d3 pass through to
- * the network; every other CDN request gets an empty stub.
+ * Serve highlight.js from the installed package so its parser-blocking script
+ * cannot delay startup on a slow CDN. The package includes PowerShell support.
+ * Lazy mermaid/d3 scripts pass through; other CDN requests get an empty stub.
  */
 async function patchApiResponses(page: Page): Promise<void> {
     await page.route('**://cdnjs.cloudflare.com/**', async route => {
         const url = route.request().url();
         if (/highlight\.min\.js/.test(url)) {
-            return route.continue();
+            highlightScript ??= buildSync({
+                entryPoints: [require.resolve('highlight.js')],
+                bundle: true,
+                format: 'iife',
+                globalName: 'hljs',
+                platform: 'browser',
+                minify: true,
+                write: false,
+            }).outputFiles[0].text;
+            return route.fulfill({ status: 200, body: highlightScript, contentType: 'text/javascript' });
         }
         return route.fulfill({ status: 200, body: '// cdn stub', contentType: 'text/javascript' });
     });
