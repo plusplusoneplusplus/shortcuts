@@ -150,7 +150,9 @@ describe('Workflows Handler', () => {
 
     async function startServer(): Promise<ExecutionServer> {
         const store = new FileProcessStore({ dataDir });
-        server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+        server = await createExecutionServer({ port: 0, host: '127.0.0.1', store, dataDir });
+        // The display URL uses localhost; keep test requests on the bound family.
+        server.url = `http://127.0.0.1:${server.port}`;
         return server;
     }
 
@@ -193,6 +195,14 @@ reduce:
 `;
 
     const INVALID_YAML = '{ bad: [yaml:';
+
+    it('uses the same numeric loopback address for the listener and HTTP requests', async () => {
+        const srv = await startServer();
+        expect(srv.server.address()).toMatchObject({ address: '127.0.0.1', family: 'IPv4' });
+        expect(new URL(srv.url).hostname).toBe('127.0.0.1');
+        // Exercise a real request through the fixture's advertised URL.
+        await registerWorkspace(srv, workspaceDir);
+    });
 
     // ========================================================================
     // GET /api/workspaces/:id/pipelines/:name/content — Read content
