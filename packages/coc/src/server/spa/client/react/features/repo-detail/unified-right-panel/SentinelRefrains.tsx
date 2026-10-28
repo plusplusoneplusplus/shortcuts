@@ -10,12 +10,13 @@ import { Dialog } from '../../../ui/Dialog';
 import { Spinner } from '../../../ui/Spinner';
 import { SentinelRefrainDialog } from './SentinelRefrainDialog';
 import { SentinelCoda, type SentinelCodaProps } from './SentinelCoda';
+import { AutomationActions, AutomationError } from './SentinelAutomationCard';
 import { SentinelAutomationInfo } from './SentinelAutomationInfo';
 import { sentinelTodoOwnerKey, type SentinelTodoOwner } from './sentinelTodoPanelModel';
 
 const MUTED = 'text-[#616161] dark:text-[#9d9d9d]';
 const ERROR = 'text-[#c72e2e] dark:text-[#f48771]';
-const CARD = 'flex min-w-0 flex-col gap-2 rounded border border-[#e0e0e0] p-2 dark:border-[#3c3c3c]';
+const CARD = 'sentinel-automation-card rounded border border-[#e0e0e0] dark:border-[#3c3c3c]';
 function subscribeConfig(listener: () => void) {
     window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, listener);
     return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, listener);
@@ -218,44 +219,46 @@ function JobRow({ job, owner, onFollowLink, disabled, onEdit, onDelete, onRun, o
 }) {
     const last = job.runs[0];
     return <article aria-label={job.name} className={CARD} data-testid={`sentinel-refrain-${job.id}`}>
-        <div className="flex flex-wrap items-center gap-1">
-            <strong className="mr-auto break-words">{job.name}</strong>
-            {job.mode === 'autopilot' && <span className="rounded bg-[#e8912d]/15 px-1.5 text-[#b5650f] dark:text-[#cca700]" title="Can change files and run commands">Autopilot</span>}
-            {!job.enabled && <span className={MUTED}>Paused</span>}
-        </div>
-        <p className={MUTED}>{job.provider} / {job.effortTier ? `${job.effortTier} effort tier` : job.model}{job.effort && ` / ${job.effort}`} · {job.cron ? describeCron(job.cron) || job.cron : 'Manual only'}</p>
-        {job.enabled && job.nextRunAt && <p className={MUTED}>Next <time dateTime={job.nextRunAt}>{new Date(job.nextRunAt).toLocaleString()}</time></p>}
-        {job.gateScript && <RefrainGate job={job} disabled={disabled} onTestGate={onTestGate} onResumeGate={onResumeGate} />}
-        {job.activeRun ? <div role="status" className="flex items-center gap-1"><Spinner size="sm" /> Run #{job.activeRun.runNumber} {job.activeRun.status}</div>
-            : last && <p className={last.status === 'failed' || last.status === 'interrupted' ? ERROR : MUTED}>
-                Last run #{last.runNumber}: {runOutcome(last)}{last.error && `: ${last.error}`}
-            </p>}
-        <div className="flex flex-wrap items-center gap-1">
+        <div className="sentinel-automation-header">
+            <div className="sentinel-automation-title">
+                <strong>{job.name}</strong>
+                {job.mode === 'autopilot' && <span className="rounded bg-[#e8912d]/15 px-1.5 text-[#b5650f] dark:text-[#cca700]" title="Can change files and run commands">Autopilot</span>}
+                {!job.enabled && <span className={MUTED}>Paused</span>}
+            </div>
             <Button size="sm" disabled={disabled || !!job.activeRun} onClick={onRun}>Run now</Button>
             {job.activeRun && <Button size="sm" variant="secondary" disabled={disabled} onClick={onCancel}>Cancel</Button>}
             <Button size="sm" variant="secondary" disabled={disabled} onClick={onToggle}>{job.enabled ? 'Pause' : 'Resume'}</Button>
-            <Button size="sm" variant="ghost" disabled={disabled || !!job.activeRun} onClick={onEdit}>Edit</Button>
-            <Button size="sm" variant="ghost" disabled={disabled || !!job.activeRun} onClick={onDelete}>Delete</Button>
-            {job.processId && <JobChatLink owner={owner} processId={job.processId} onFollowLink={onFollowLink}>Open chat</JobChatLink>}
+            <AutomationActions name={job.name}>
+                <Button size="sm" variant="ghost" disabled={disabled || !!job.activeRun} onClick={onEdit}>Edit</Button>
+                <Button size="sm" variant="ghost" disabled={disabled || !!job.activeRun} onClick={onDelete}>Delete</Button>
+                {job.processId && <JobChatLink owner={owner} processId={job.processId} onFollowLink={onFollowLink}>Open chat</JobChatLink>}
+                <details>
+                    <summary className="cursor-pointer">History ({job.runs.length})</summary>
+                    {!job.runs.length && <p className={MUTED}>No runs yet.</p>}
+                    <ol className="mt-2 flex max-h-64 flex-col gap-2 overflow-auto">
+                        {job.runs.map(run => <li key={run.id} className="border-t border-[#e0e0e0] pt-1 dark:border-[#3c3c3c]">
+                            <p>#{run.runNumber} · {run.trigger} · {runOutcome(run)}</p>
+                            <RunTime label="Created" value={run.createdAt} />
+                            <RunTime label="Started" value={run.startedAt} />
+                            <RunTime label="Finished" value={run.finishedAt} />
+                            {run.durationMs !== undefined && <p>Duration: {(run.durationMs / 1000).toFixed(1)}s</p>}
+                            {run.error && <p className={ERROR}>{run.error}</p>}
+                            <div className="flex flex-wrap gap-2">
+                                {job.processId && run.jobTurnHref && <JobChatLink owner={owner} processId={job.processId}
+                                    href={run.jobTurnHref} onFollowLink={onFollowLink}>Job turn</JobChatLink>}
+                            </div>
+                        </li>)}
+                    </ol>
+                </details>
+            </AutomationActions>
         </div>
-        <details>
-            <summary className="cursor-pointer">History ({job.runs.length})</summary>
-            {!job.runs.length && <p className={MUTED}>No runs yet.</p>}
-            <ol className="mt-2 flex max-h-64 flex-col gap-2 overflow-auto">
-                {job.runs.map(run => <li key={run.id} className="border-t border-[#e0e0e0] pt-1 dark:border-[#3c3c3c]">
-                    <p>#{run.runNumber} · {run.trigger} · {runOutcome(run)}</p>
-                    <RunTime label="Created" value={run.createdAt} />
-                    <RunTime label="Started" value={run.startedAt} />
-                    <RunTime label="Finished" value={run.finishedAt} />
-                    {run.durationMs !== undefined && <p>Duration: {(run.durationMs / 1000).toFixed(1)}s</p>}
-                    {run.error && <p className={ERROR}>{run.error}</p>}
-                    <div className="flex flex-wrap gap-2">
-                        {job.processId && run.jobTurnHref && <JobChatLink owner={owner} processId={job.processId}
-                            href={run.jobTurnHref} onFollowLink={onFollowLink}>Job turn</JobChatLink>}
-                    </div>
-                </li>)}
-            </ol>
-        </details>
+        <p className={MUTED}>{job.provider} / {job.effortTier ? `${job.effortTier} effort tier` : job.model}{job.effort && ` / ${job.effort}`} · {job.cron ? describeCron(job.cron) || job.cron : 'Manual only'}
+            {job.enabled && job.nextRunAt && <> · Next <time dateTime={job.nextRunAt}>{new Date(job.nextRunAt).toLocaleString()}</time></>}
+        </p>
+        {job.gateScript && <RefrainGate job={job} disabled={disabled} onTestGate={onTestGate} onResumeGate={onResumeGate} />}
+        {job.activeRun ? <div role="status" className="flex items-center gap-1"><Spinner size="sm" /> Run #{job.activeRun.runNumber} {job.activeRun.status}</div>
+            : last && (last.error ? <AutomationError label={`Last run #${last.runNumber}: ${runOutcome(last)}`} error={last.error} />
+                : <p className={last.status === 'failed' || last.status === 'interrupted' ? ERROR : MUTED}>Last run #{last.runNumber}: {runOutcome(last)}</p>)}
     </article>;
 }
 const SKIP_REASONS: Record<NonNullable<SentinelRefrainRun['skipReason']>, string> = {
@@ -288,7 +291,7 @@ function RefrainGate({ job, disabled, onTestGate, onResumeGate }: GateTestProps 
         <p className={job.gatePaused ? ERROR : MUTED}>{job.gatePaused
             ? `Gate paused after ${job.gateConsecutiveFailures} failures in a row. Scheduled runs and Run now are blocked until you resume it.`
             : `Gate active${job.gateConsecutiveFailures ? ` · ${job.gateConsecutiveFailures} failed in a row` : ''}`}</p>
-        {job.gateLastError && <p className={ERROR}>Last gate error (<time dateTime={job.gateLastError.at}>{new Date(job.gateLastError.at).toLocaleString()}</time>): {job.gateLastError.message}</p>}
+        {job.gateLastError && <AutomationError label={`Last gate error (${new Date(job.gateLastError.at).toLocaleString()})`} error={job.gateLastError.message} />}
         {job.gateLastResult !== undefined && <p className={`${MUTED} break-all`} title={job.gateLastResult}>Last gate result: <code>{preview(job.gateLastResult)}</code></p>}
         <div className="flex flex-wrap items-center gap-1">
             <Button size="sm" variant="secondary" disabled={!!test && 'running' in test} onClick={() => void runTest()}>

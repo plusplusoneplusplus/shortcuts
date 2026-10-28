@@ -7,16 +7,23 @@ let script: string;
 let css: string;
 test.beforeAll(async () => {
     css = await readFile(path.resolve('src/server/spa/client/dist/bundle.css'), 'utf8');
+    css += await readFile(path.resolve('src/server/spa/client/react/features/repo-detail/unified-right-panel/sentinelAutomationCard.css'), 'utf8');
     const result = await build({
         stdin: { resolveDir: process.cwd(), loader: 'tsx', contents: `
             import React from 'react';
             import { createRoot } from 'react-dom/client';
+            import { SentinelRefrains } from './src/server/spa/client/react/features/repo-detail/unified-right-panel/SentinelRefrains';
             import { UnifiedTodoTab } from './src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedTodoTab';
             import { applyRuntimeConfigPatch } from './src/server/spa/client/react/utils/config';
             import { registerCloneBaseUrls } from './src/server/spa/client/react/repos/cloneRegistry';
             const state = window.jobsFixture;
             const policy = { sentinelEnabled: true, sentinelTodoJobsEnabled: state.enabled, sentinelTodoScrubberEnabled: true };
-            const jobs = [];
+            const diagnostic = 'Unsupported reasoning effort "medium" requested. ' + 'long-unbroken-diagnostic/'.repeat(80) + '\\nFull error ending';
+            const jobs = state.seeded ? [
+                { id: 'seed-1', name: 'New stable revision release', enabled: false, runs: [] },
+                { id: 'seed-2', name: 'Implement feature or bug fix', enabled: false, runs: [{ id: 'failed', runNumber: 1, status: 'failed', error: diagnostic, createdAt: '2026-10-18T12:00:00Z', trigger: 'manual' }] },
+                { id: 'seed-3', name: 'LongRefrainName'.repeat(30), enabled: true, activeRun: { id: 'active', runNumber: 2, status: 'running' }, runs: [], gateScript: 'return []', gatePaused: true },
+            ].map(job => ({ revision: 1, provider: 'copilot', effortTier: 'medium', mode: 'autopilot', gateConsecutiveFailures: 0, processId: 'queue_job', ...job })) : [];
             const calls = state.calls;
             const at = '2026-10-18T12:00:00Z';
             const scrub = { enabled: true, cron: '0 9 * * *', paused: false, consecutiveFailures: 0, revision: 1 };
@@ -27,6 +34,7 @@ test.beforeAll(async () => {
             const find = id => jobs.find(job => job.id === id);
             window.fakeClient = {
                 request: async () => ({ features: policy }),
+                triggers: { listSentinelTodo: async () => ({ triggers: [] }) },
                 agentProviders: { getEffortTiers: async () => ({ effortTiers: {}, defaults: {} }) },
                 events: { connect: () => ({ close() {} }) },
                 sentinelTodos: {
@@ -50,7 +58,7 @@ test.beforeAll(async () => {
                             return { ok: true, empty: false, result: JSON.stringify({ items: Array.from({ length: 120 }, (_, i) => 'item-' + i) }) }; },
                     },
                     scrubber: {
-                        get: async () => ({ config: { ...scrub }, runs: [] }),
+                        get: async () => ({ config: { ...scrub }, runs: state.seeded ? [{ id: 'coda-failed', status: 'failed', error: diagnostic, childProcessId: 'queue_coda', createdAt: at, deferredCount: 0, awaitingReviewCount: 0, counts: { done: 0, proposals: 0, unverified: 0 } }] : [] }),
                         updateConfig: async (ws, process, input) => { record('scrubber-config', ws, process); Object.assign(scrub, input); return scrub; },
                         start: async (ws, process) => { record('scrubber-start', ws, process); return { runId: 'scrub' }; },
                     },
@@ -58,8 +66,10 @@ test.beforeAll(async () => {
             };
             registerCloneBaseUrls(state.remote ? [{ workspaceId: 'ws-owner', baseUrl: 'https://owner.example.test' }] : []);
             applyRuntimeConfigPatch({ ...policy, triggersEnabled: false });
-            createRoot(document.getElementById('fixture')).render(<UnifiedTodoTab scopeWorkspaceId="ws-owner" chatId="queue_sentinel"
-                owner={{ ownerWorkspaceId: 'ws-owner', ownerRoutingRef: state.remote ? 'ws-owner' : null, processId: 'queue_sentinel' }} />);
+            const owner = { ownerWorkspaceId: 'ws-owner', ownerRoutingRef: state.remote ? 'ws-owner' : null, processId: 'queue_sentinel' };
+            createRoot(document.getElementById('fixture')).render(state.seeded
+                ? <SentinelRefrains owner={owner} items={[]} onFollowLink={event => event.preventDefault()} />
+                : <UnifiedTodoTab scopeWorkspaceId="ws-owner" chatId="queue_sentinel" owner={owner} />);
         ` },
         bundle: true, write: false, jsx: 'automatic', format: 'iife', platform: 'browser', loader: { '.css': 'empty' },
         plugins: [{ name: 'jobs-fixture-client', setup(builder) {
@@ -79,21 +89,23 @@ test.beforeAll(async () => {
     });
     script = result.outputFiles[0].text;
 });
-async function mount(page: Page, { dark = false, width = 800, enabled = true, remote = false } = {}) {
+async function mount(page: Page, { dark = false, width = 800, enabled = true, remote = false, seeded = false } = {}) {
     await page.route('http://jobs.fixture.test/**', route => route.fulfill({ contentType: 'text/html', body: '<html><body></body></html>' }));
     await page.routeWebSocket(/.*/, () => {});
     await page.goto('http://jobs.fixture.test/');
     await page.setViewportSize({ width: Math.max(360, width + 32), height: 900 });
     await page.setContent(`<html class="${dark ? 'dark' : ''}"><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
-        <body style="margin:0;background:${dark ? '#1e1e1e' : 'white'}">
+        <body style="margin:0;background:${dark ? '#1e1e1e' : 'white'};color:${dark ? '#cccccc' : '#1e1e1e'}">
         <div id="fixture" style="width:${width}px;height:820px;margin:8px"></div></body></html>`);
     await page.evaluate(values => {
         Object.assign(window, { jobsFixture: { ...values, calls: [], refs: [] } });
-    }, { enabled, remote });
+    }, { enabled, remote, seeded });
     await page.addStyleTag({ content: css });
     await page.addScriptTag({ content: script });
-    await expect(page.getByTestId('sentinel-todo-row-item')).toBeVisible();
-    expect(await page.getByTestId('sentinel-todo-tab').evaluate(element => getComputedStyle(element).display)).toBe('flex');
+    if (!seeded) {
+        await expect(page.getByTestId('sentinel-todo-row-item')).toBeVisible();
+        expect(await page.getByTestId('sentinel-todo-tab').evaluate(element => getComputedStyle(element).display)).toBe('flex');
+    }
 }
 for (const dark of [false, true]) {
     for (const width of [320, 800]) {
@@ -127,6 +139,7 @@ for (const dark of [false, true]) {
             await job.getByRole('button', { name: 'Pause', exact: true }).click();
             await expect(job.getByText('Paused', { exact: true })).toBeVisible();
             await page.screenshot({ path: info.outputPath('sentinel-jobs.png'), fullPage: true });
+            await job.getByLabel('More actions for Browser audit').click();
             await job.getByRole('button', { name: 'Delete', exact: true }).click();
             await page.getByRole('dialog', { name: 'Delete refrain' }).getByRole('button', { name: 'Delete refrain', exact: true }).click();
             await expect(jobs.getByText(/No refrains yet/)).toBeVisible();
@@ -179,3 +192,80 @@ test('gated job requires a schedule and shows Test gate results inline at 320px'
     expect(calls.some(call => call[0] === 'start')).toBe(false);
     expect(errors).toEqual([]);
 });
+
+for (const dark of [false, true]) {
+    for (const width of [280, 800]) {
+        test(`compact cards, keyboard disclosures and full errors fit ${width}px ${dark ? 'dark' : 'light'}`, async ({ page }, info) => {
+            const errors: string[] = [];
+            page.on('pageerror', error => errors.push(error.message));
+            page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+            await mount(page, { dark, width, seeded: true });
+            const coda = page.getByTestId('sentinel-coda-strip');
+            const job = page.getByTestId('sentinel-refrain-seed-2');
+            await expect(job.getByRole('button', { name: 'Run now' })).toBeVisible();
+            await expect(job.getByText('Paused', { exact: true })).toBeVisible();
+            await expect(page.getByText('Gate paused after', { exact: false })).toBeVisible();
+            for (const card of [coda, ...await page.getByRole('article').all()]) {
+                expect(await card.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+            }
+            await info.attach('card-bounds', { body: JSON.stringify({ coda: await coda.boundingBox(), refrain: await job.boundingBox() }), contentType: 'application/json' });
+            if (width === 800) {
+                expect((await coda.boundingBox())!.height).toBeLessThan(120);
+                expect((await job.boundingBox())!.height).toBeLessThan(120);
+            }
+            const more = job.getByLabel('More actions for Implement feature or bug fix');
+            for (const control of [job.getByRole('button', { name: 'Run now' }), job.getByRole('button', { name: 'Resume', exact: true }), more]) {
+                expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(width < 768 ? 44 : 32);
+            }
+            await expect(job.getByRole('button', { name: 'Edit', exact: true })).toBeHidden();
+            await more.focus();
+            await page.keyboard.press('Enter');
+            await expect(job.getByRole('button', { name: 'Edit', exact: true })).toBeVisible();
+            await page.keyboard.press('Tab');
+            await expect(job.getByRole('button', { name: 'Edit', exact: true })).toBeFocused();
+            await page.keyboard.press('Escape');
+            await expect(more).toBeFocused();
+            await expect(job.getByRole('button', { name: 'Edit', exact: true })).toBeHidden();
+            await page.keyboard.press('Space');
+            const history = job.getByText('History (1)', { exact: true });
+            await expect(history.locator('..')).not.toHaveAttribute('open', '');
+            await history.focus();
+            await page.keyboard.press('Enter');
+            await expect(job.getByText('#1 · manual · failed')).toBeVisible();
+            await history.press('Enter');
+            await more.press('Escape');
+            for (const card of [job, coda]) {
+                const summary = card.locator('.sentinel-automation-error > summary');
+                await summary.focus();
+                await summary.press('Enter');
+                const full = card.getByLabel('Full error', { exact: true });
+                await expect(full).toBeVisible();
+                await expect(full).toContainText('Full error ending');
+                await page.keyboard.press('Tab');
+                await expect(full).toBeFocused();
+                // The whole diagnostic can be selected for native Copy, including its ending.
+                expect(await full.evaluate(el => {
+                    const range = document.createRange(); range.selectNodeContents(el);
+                    const selection = window.getSelection(); if (!selection) return false;
+                    selection.removeAllRanges(); selection.addRange(range);
+                    return selection.toString() === el.textContent;
+                })).toBe(true);
+                expect(await card.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+                await summary.press('Space');
+                await expect(full).toBeHidden();
+            }
+            const codaMore = coda.getByLabel('More actions for Coda');
+            await codaMore.focus();
+            await codaMore.press('Space');
+            for (const name of ['Schedule ▾', 'Select items', 'History (1)']) await expect(coda.getByRole('button', { name, exact: true })).toBeVisible();
+            await expect(coda.getByRole('link', { name: 'Open chat' })).toBeVisible();
+            await codaMore.press('Escape');
+            await expect(codaMore).toBeFocused();
+            await coda.scrollIntoViewIfNeeded();
+            await page.screenshot({ path: info.outputPath('compact-refrains.png'), fullPage: true });
+            const calls = await page.evaluate(() => (window as Window & { jobsFixture: { calls: string[][] } }).jobsFixture.calls);
+            expect(calls.every(call => call[0] === 'list')).toBe(true);
+            expect(errors).toEqual([]);
+        });
+    }
+}

@@ -28,6 +28,10 @@ function deferred<T>() {
     const promise = new Promise<T>(r => { resolve = r; });
     return { promise, resolve };
 }
+async function openActions() {
+    const summary = await screen.findByLabelText('More actions for Coda');
+    if (!(summary.parentElement as HTMLDetailsElement).open) fireEvent.click(summary);
+}
 beforeEach(() => {
     vi.clearAllMocks();
     mock.get.mockReset().mockResolvedValue(response());
@@ -44,6 +48,26 @@ beforeEach(() => {
 afterEach(() => { cleanup(); applyRuntimeConfigPatch({ sentinelTodoScrubberEnabled: false }); });
 
 describe('Coda strip', () => {
+    it('keeps Coda secondary actions collapsed and the full failure accessible', async () => {
+        const error = 'Unsupported reasoning effort ' + 'diagnostic/'.repeat(80) + '\nFull ending';
+        mock.get.mockResolvedValue(response({ runs: [{ id: 'r', status: 'failed', trigger: 'manual', createdAt: new Date().toISOString(), error,
+            itemCount: 0, deferredCount: 0, awaitingReviewCount: 0, counts: { done: 0, proposals: 0, unverified: 0 } }] }));
+        render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
+        await screen.findByLabelText('Last run failed. Show full error');
+        expect(screen.getByRole('button', { name: 'Schedule ▾' })).not.toBeVisible();
+        expect(screen.queryByRole('region', { name: 'Coda run history' })).toBeNull();
+        const full = screen.getByLabelText('Full error');
+        expect(full).not.toBeVisible();
+        fireEvent.click(screen.getByLabelText('Last run failed. Show full error'));
+        expect(full).toBeVisible();
+        expect(full.textContent).toBe(error);
+        await openActions();
+        expect(screen.getByRole('button', { name: 'Schedule ▾' })).toBeVisible();
+        fireEvent.keyDown(screen.getByRole('button', { name: 'Select items' }), { key: 'Escape' });
+        expect(screen.getByLabelText('More actions for Coda')).toHaveFocus();
+        expect(mock.start).not.toHaveBeenCalled();
+        expect(mock.updateConfig).not.toHaveBeenCalled();
+    });
     it('stays off when omitted and ignores the retired ledger flag when explicitly enabled', async () => {
         applyRuntimeConfigPatch({ sentinelTodoLedgerEnabled: undefined, sentinelTodoScrubberEnabled: undefined });
         render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
@@ -87,6 +111,7 @@ describe('Coda strip', () => {
         expect(screen.getByRole('button', { name: 'Run now' })).toBeDisabled();
         fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
         await waitFor(() => expect(mock.cancel).toHaveBeenCalledWith('ws-a', 'queue_parent', 'run-1'));
+        await openActions();
         const link = screen.getByRole('link', { name: 'Open chat' });
         expect(link).toHaveAttribute('href', '#repos/ws-a/chats/queue_child');
         fireEvent.click(link);
@@ -97,6 +122,7 @@ describe('Coda strip', () => {
         const props = { owner, onFollowLink: follow };
         const view = render(<SentinelCoda {...props} items={[item('a'), item('m', { type: 'manual' }), item('d', { status: 'done' }), item('x', { archived: true })]} />);
         await screen.findByText('Manual only');
+        await openActions();
         fireEvent.click(screen.getByRole('button', { name: 'Select items' }));
         expect(screen.queryByLabelText('Item d')).toBeNull();
         expect(screen.queryByLabelText('Item x')).toBeNull();
@@ -112,6 +138,7 @@ describe('Coda strip', () => {
         render(<SentinelCoda owner={{ ...owner, ownerRoutingRef: 'remote:srv:group-a' }} items={[]} onFollowLink={follow} />);
         await screen.findByText(/Queued/);
         expect(mock.refs).toContain('remote:srv:group-a');
+        await openActions();
         expect(screen.getByRole('link', { name: 'Open chat' })).toHaveAttribute('href', '#repos/remote%3Asrv%3Agroup-a/chats/queue_child');
         const options = mock.connect.mock.calls[0][0];
         expect(options.workspaceId).toBe('ws-a');
@@ -141,12 +168,14 @@ describe('Coda strip', () => {
             deferredCount: 0, awaitingReviewCount: 0, counts: { done: 2, proposals: 1, unverified: 1 } }] }));
         render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
         await screen.findByText(/2 done · 1 proposal · 1 unverified/);
+        await openActions();
         expect(screen.getByRole('link', { name: 'Open chat' })).toHaveAttribute('href', '#repos/ws-a/chats/queue_done');
     });
 
     it('opens and closes bounded history outside the pinned strip without extra reads until details are selected', async () => {
         setupFindings();
         render(<SentinelCoda owner={owner} items={[item('a')]} onFollowLink={follow} />);
+        await openActions();
         const toggle = await screen.findByRole('button', { name: 'History (1)' });
         await waitFor(() => expect(mock.getRun).toHaveBeenCalledOnce());
         fireEvent.click(toggle);
@@ -173,6 +202,7 @@ describe('Coda strip', () => {
     it('validates cron live, offers presets and saves an owner-bound revision snapshot', async () => {
         render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
         await screen.findByText('Manual only');
+        await openActions();
         fireEvent.click(screen.getByRole('button', { name: 'Schedule ▾' }));
         fireEvent.click(screen.getByLabelText('Enable schedule'));
         const cron = screen.getByLabelText('Custom cron (5 fields; at least 1h apart)');
@@ -191,6 +221,7 @@ describe('Coda strip', () => {
     it('retains the schedule draft revision through remote invalidation and reloads conflicts without retrying writes', async () => {
         render(<SentinelCoda owner={owner} items={[]} onFollowLink={follow} />);
         await screen.findByText('Manual only');
+        await openActions();
         fireEvent.click(screen.getByRole('button', { name: 'Schedule ▾' }));
         mock.get.mockResolvedValue(response({ config: { ...response().config, revision: 5 } }));
         await act(async () => mock.connect.mock.calls[0][0].onMessage({ type: 'sentinel-scrubber-changed', workspaceId: 'ws-a', processId: owner.processId }));
@@ -208,6 +239,7 @@ describe('Coda strip', () => {
         expect(screen.getByRole('button', { name: 'Run now' })).toBeDisabled();
         fireEvent.click(screen.getByRole('button', { name: 'Refresh Coda' }));
         await screen.findByText('Manual only');
+        await openActions();
         fireEvent.click(screen.getByRole('button', { name: 'Schedule ▾' }));
         mock.updateConfig.mockRejectedValueOnce(new Error('Save failed'));
         fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));

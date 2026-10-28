@@ -9,6 +9,7 @@ import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/Spinner';
 import { SCRUB_CRON_PRESETS, validateScrubCron } from '../../../../../../schedule/scrub-cron';
 import { AcceptAllCodaProposals, CodaFindingsContext } from './SentinelCodaFinding';
+import { AutomationActions, AutomationError } from './SentinelAutomationCard';
 import { CodaRunChatLink, SentinelCodaHistory } from './SentinelCodaHistory';
 import { SentinelAutomationInfo } from './SentinelAutomationInfo';
 import { sentinelTodoOwnerKey, type SentinelTodoOwner } from './sentinelTodoPanelModel';
@@ -217,17 +218,25 @@ function CodaStrip({ owner, items, onFollowLink, client, children, toolbar, onLe
         {toolbar}
         {place(children, <>
         <section aria-label="Coda" data-testid="sentinel-coda-strip"
-            className="flex min-w-0 flex-col gap-1 break-words rounded border border-[#e0e0e0] bg-white p-2 [overflow-wrap:anywhere] dark:border-[#3c3c3c] dark:bg-[#1e1e1e]">
-            <div className="flex flex-wrap items-center gap-1">
-                <span className="mr-auto inline-flex min-w-0 flex-wrap items-center gap-1">
+            className="sentinel-automation-card rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#1e1e1e]">
+            <div className="sentinel-automation-header">
+                <span className="sentinel-automation-title">
                     <strong>{builtInRow ? 'Coda · built-in' : 'Coda'}</strong>
                     <SentinelAutomationInfo term="Coda" />
+                    {builtInRow && config && !config.enabled && <span className="text-[#616161] dark:text-[#9d9d9d]">Paused</span>}
                 </span>
                 <AcceptAllCodaProposals />
                 <Button size="sm" disabled={!data || !!active || busy || !!loadError} onClick={() => { void start(); }}>Run now</Button>
                 {builtInRow && config && <Button size="sm" variant="secondary" disabled={busy || !!loadError}
                     onClick={() => { void saveConfig({ ...config, enabled: !config.enabled }); }}>{config.enabled ? 'Pause' : 'Resume'}</Button>}
-                <Button size="sm" variant="secondary" disabled={!config || busy || !!loadError} onClick={() => setSchedule(schedule ? null : { ...config! })}>Schedule ▾</Button>
+                <AutomationActions name="Coda">
+                    <Button size="sm" variant="secondary" disabled={!config || busy || !!loadError} onClick={() => setSchedule(schedule ? null : { ...config! })}>Schedule ▾</Button>
+                    <CodaRunChatLink owner={owner} childProcessId={chatId} onFollowLink={onFollowLink} />
+                    {data && <>
+                        <button type="button" className="rounded px-2 py-1 text-[#0078d4] dark:text-[#3794ff]" aria-expanded={historyOpen} onClick={() => setHistoryOpen(value => !value)}>{historyOpen ? 'Hide history' : 'History'} ({data.runs.length})</button>
+                        <button type="button" className="rounded px-2 py-1 text-[#0078d4] dark:text-[#3794ff]" aria-expanded={selecting} onClick={() => setSelecting(value => !value)}>{selecting ? 'Hide selection' : 'Select items'}</button>
+                    </>}
+                </AutomationActions>
             </div>
             {loadError && <p role="alert">{loadError} <Button size="sm" variant="secondary" onClick={() => { void load(); }}>Refresh Coda</Button></p>}
             {findingsError && <p role="alert">Could not load findings: {findingsError} <Button size="sm" variant="secondary" onClick={() => { void load(); }}>Refresh findings</Button></p>}
@@ -240,19 +249,16 @@ function CodaStrip({ owner, items, onFollowLink, client, children, toolbar, onLe
             {active ? <div role="status" className="flex flex-wrap items-center gap-1">
                 <Spinner size="sm" /> {active.status === 'queued' ? 'Queued' : `Checking ${active.snapshot.length} items…`} · {formatRelativeTime(active.startedAt ?? active.createdAt)}
                 <Button size="sm" variant="secondary" disabled={busy} onClick={() => { void mutate(() => api.cancel(owner.ownerWorkspaceId, owner.processId, active.id)); }}>Cancel</Button>
-            </div> : last && <div className={last.status === 'failed' || last.status === 'timed_out' ? 'text-[#c72e2e] dark:text-[#f48771]' : ''}>
-                {last.status === 'failed' || last.status === 'timed_out' ? <>Last run failed: {last.error ?? last.status} <Button size="sm" variant="secondary" disabled={busy || !!loadError} onClick={() => { void start(); }}>Retry</Button></>
+            </div> : last && <div className={last.status === 'failed' || last.status === 'timed_out' ? 'sentinel-automation-last-run flex min-w-0 flex-wrap items-center gap-1 text-[#c72e2e] dark:text-[#f48771]' : ''}>
+                {last.status === 'failed' || last.status === 'timed_out' ? <><AutomationError label="Last run failed" error={last.error ?? last.status} /><Button size="sm" variant="secondary" disabled={busy || !!loadError} onClick={() => { void start(); }}>Retry</Button></>
                     : <>Last run {formatRelativeTime(last.finishedAt ?? last.createdAt)} · {last.status} · ✓ {last.counts.done} done · {last.counts.proposals} proposal{last.counts.proposals === 1 ? '' : 's'} · {last.counts.unverified} unverified</>}
                 {last.deferredCount > 0 && <p>{last.deferredCount} deferred to next run</p>}
                 {last.awaitingReviewCount > 0 && <p>{last.awaitingReviewCount} awaiting Sentinel review</p>}
             </div>}
-            <CodaRunChatLink owner={owner} childProcessId={chatId} onFollowLink={onFollowLink} />
             {error && <p role="alert">{error}</p>}
             {batchResult && <p role="status">{batchResult}</p>}
-            {data && <div className="flex flex-wrap gap-1">
-                <Button size="sm" variant="ghost" aria-expanded={historyOpen} onClick={() => setHistoryOpen(value => !value)}>{historyOpen ? 'Hide history' : 'History'} ({data.runs.length})</Button>
-                <Button size="sm" variant="ghost" onClick={() => setSelecting(value => !value)}>{selecting ? 'Hide selection' : 'Select items'}</Button>
-                {selecting && <Button size="sm" variant="secondary" disabled={!!active || busy || !selectedIds.length || !!loadError} onClick={() => { void start(selectedIds); }}>Run on selected ({selectedIds.length})</Button>}
+            {data && selecting && <div className="flex flex-wrap gap-1">
+                <Button size="sm" variant="secondary" disabled={!!active || busy || !selectedIds.length || !!loadError} onClick={() => { void start(selectedIds); }}>Run on selected ({selectedIds.length})</Button>
             </div>}
             {selecting && <fieldset className="flex max-h-48 flex-col gap-1 overflow-auto"><legend>Select open items</legend>
                 {openItems.map(item => <label key={item.id} className="flex items-start gap-1"><input type="checkbox" checked={selected.has(item.id)} onChange={() => setSelected(previous => {
