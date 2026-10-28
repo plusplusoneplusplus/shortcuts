@@ -180,7 +180,8 @@ describe('basic IC3 own-command launcher', () => {
         expect(service.getStatus().trouter).toEqual({ state: 'registered', error: null });
     });
 
-    it('coalesces notifications and reads only the changed chat without trusting notification content', async () => {
+    it.each(['19:fixture@thread.v2', '19:meeting_fixture@thread.v2'])(
+        'coalesces notifications and reads only %s without trusting notification content', async notifiedChat => {
         const listener = await startNotifications();
         const discovery = reader.readChats.mock.calls.length;
         const reads = reader.readHistory.mock.calls.length;
@@ -197,7 +198,12 @@ describe('basic IC3 own-command launcher', () => {
         expect(reactions.acknowledgeSourceMessage).toHaveBeenCalledOnce();
     });
 
-    it.each(['48:notes', 'direct', 'group'])('acknowledges each new %s mention before initial and follow-up admission', async chatId => {
+    it.each(['48:notes', 'direct', 'group', '19:meeting_fixture@thread.v2'])('acknowledges each new %s mention before initial and follow-up admission', async chatId => {
+        if (chatId.startsWith('19:meeting_')) {
+            reader.readChats.mockResolvedValueOnce({ items: [{ chatId, kind: 'meeting' }], rawCount: 1 })
+                .mockResolvedValueOnce({ items: [{ chatId, kind: 'meeting' }], rawCount: 1 })
+                .mockResolvedValueOnce({ items: [{ chatId, kind: 'meeting' }], rawCount: 1 });
+        }
         histories.set(chatId, [message('first', chatId)]);
         start();
         await vi.advanceTimersByTimeAsync(0);
@@ -326,7 +332,7 @@ describe('basic IC3 own-command launcher', () => {
 
     it('discards unsupported notification targets without degrading health or blocking eligible wakes', async () => {
         const listener = await startNotifications();
-        const unsupported = '19:meeting@thread.v2';
+        const unsupported = '19:unsupported@thread.v2';
         const reads = reader.readHistory.mock.calls.length;
         reader.readHistory.mockRejectedValueOnce(new NativeTeamsError('Unsupported'));
         histories.set(notifiedChat, [message('eligible', notifiedChat)]);
@@ -918,7 +924,10 @@ describe('basic IC3 own-command launcher', () => {
         },
     );
 
-    it.each(['48:notes', 'direct', 'group'])('returns the final initial answer to the exact %s source once', async chatId => {
+    it.each(['48:notes', 'direct', 'group', '19:meeting_fixture@thread.v2'])('returns the final initial answer to the exact %s source once', async chatId => {
+        if (chatId.startsWith('19:meeting_')) {
+            reader.readChats.mockResolvedValueOnce({ items: [{ chatId, kind: 'meeting' }], rawCount: 1 });
+        }
         const id = await launched(chatId);
         const proc = result(id);
         proc.conversationTurns!.push(

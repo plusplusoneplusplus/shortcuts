@@ -39,6 +39,19 @@ pub struct VerifiedChat {
 pub trait ChatVerifier: Send + Sync {
     async fn verify(&self, account: &Account, chat: &ChatId) -> Result<VerifiedChat>;
 }
+
+pub(crate) fn chat_kind(properties: &Value) -> Option<ChatKind> {
+    match (
+        properties["threadType"].as_str(),
+        properties["productThreadType"].as_str(),
+    ) {
+        (Some("chat"), Some("OneToOneChat")) => Some(ChatKind::OneOnOne),
+        (Some("chat"), Some("Chat")) => Some(ChatKind::Group),
+        (Some("meeting"), Some("Meeting")) => Some(ChatKind::Meeting),
+        _ => None,
+    }
+}
+
 impl Session {
     pub(crate) async fn ic3_participants(
         &self,
@@ -128,12 +141,7 @@ impl Session {
         if chat.as_str() == SELF_CHAT_ID {
             return Ok(());
         }
-        if info["threadProperties"]["threadType"].as_str() != Some("chat")
-            || !matches!(
-                info["threadProperties"]["productThreadType"].as_str(),
-                Some("OneToOneChat" | "Chat")
-            )
-        {
+        if chat_kind(&info["threadProperties"]).is_none() {
             return Err(Error::new(ErrorCode::Unsupported));
         }
         Ok(())

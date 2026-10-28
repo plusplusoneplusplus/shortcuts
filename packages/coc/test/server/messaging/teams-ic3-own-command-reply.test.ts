@@ -166,7 +166,7 @@ describe('IC3 command reply through existing Teams clients', () => {
         expect(Ic3DirectMessageClient.prototype.sendToSourceChat).toHaveBeenCalledOnce();
     });
 
-    it.each(['19:fixture@thread.v2', '19:fixture@unq.gbl.spaces'])(
+    it.each(['19:fixture@thread.v2', '19:fixture@unq.gbl.spaces', '19:meeting_fixture@thread.v2'])(
         'posts safe attributed HTML to the exact source chat through IC3 only: %s', async chatId => {
         const dispose = vi.spyOn(Ic3DirectMessageClient.prototype, 'dispose');
         const signal = new AbortController().signal;

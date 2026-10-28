@@ -183,6 +183,8 @@ one-shot read whose cancellation is independent of other reads. Deadlines start
 at handle creation and cover dispatch through Node publication. Cursors are
 native-owned and session/collection-bound. The Node API exposes IC3 discovery
 and history only, without writes, notifications, credential callbacks or fallback.
+Discovery preserves direct/group/meeting kinds; history verifies the exact native
+thread type, including `meeting`/`Meeting`, before returning message content.
 Protocol, self-chat, transient-content and credential contracts belong in
 [`teams-sdk/AGENTS.md`](rust/teams-sdk/AGENTS.md). Tests in `rust/napi/src/teams/`
 inject Rust transports; `test/teams.test.ts` covers built-addon and wrapper behavior.

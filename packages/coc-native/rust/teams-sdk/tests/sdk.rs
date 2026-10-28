@@ -1247,6 +1247,63 @@ mod ic3_tests {
             .conversation(Backend::Ic3, Conversation::Chat(ChatId::new(id).unwrap()))
             .unwrap()
     }
+
+    #[tokio::test]
+    async fn ic3_meeting_discovery_history_and_detail_preserve_exact_source() {
+        let id = "19:meeting_fixture@thread.v2";
+        let info = json!({
+            "id": id,
+            "threadProperties": {"threadType": "meeting", "productThreadType": "Meeting"}
+        });
+        let (session, mock) = ic3_session(vec![
+            reply(json!({"conversations": [
+                info.clone(),
+                {"id": "channel", "threadProperties": {"threadType": "channel", "productThreadType": "Meeting"}}
+            ]})),
+            reply(info.clone()),
+            reply(json!({"messages": [ic3_message(id, "command", "8:orgid:sender")]})),
+            reply(info),
+            reply(ic3_message(id, "command", "8:orgid:sender")),
+        ]);
+        let ctx = OperationContext::default();
+        let chats = session.chats(Backend::Ic3, None, &ctx).await.unwrap();
+        assert_eq!(chats.raw_count, 2);
+        assert_eq!(chats.items.len(), 1);
+        assert_eq!(chats.items[0].kind, ChatKind::Meeting);
+        assert_eq!(chats.items[0].reference, ic3_chat(&session, id));
+        let history = session
+            .history(&chats.items[0].reference, None, &ctx)
+            .await
+            .unwrap();
+        assert_eq!(history.items.len(), 1);
+        let detail = session
+            .detail(&history.items[0].metadata.reference, &ctx)
+            .await
+            .unwrap();
+        assert_eq!(
+            detail.metadata.reference,
+            history.items[0].metadata.reference
+        );
+        let requests = mock.requests.lock().unwrap();
+        assert_eq!(requests.len(), 5);
+        assert!(requests.iter().all(|request| request.method == Method::GET));
+        for (request, suffix) in requests[1..].iter().zip([
+            id.to_owned(),
+            format!("{id}/messages"),
+            id.to_owned(),
+            format!("{id}/messages/command"),
+        ]) {
+            let url = url::Url::parse(&request.url).unwrap();
+            let path = percent_encoding::percent_decode_str(url.path())
+                .decode_utf8()
+                .unwrap();
+            assert_eq!(
+                path,
+                format!("/api/chatsvc/emea/v1/users/ME/conversations/{suffix}")
+            );
+        }
+    }
+
     #[tokio::test]
     async fn ic3_history_skips_call_artifacts_without_losing_messages_or_pagination() {
         for kind in [
@@ -1401,6 +1458,21 @@ mod ic3_tests {
             (
                 "ordinary",
                 json!({"id":"ordinary","threadProperties":{"threadType":"chat","productThreadType":"Unknown"}}),
+                ErrorCode::Unsupported,
+            ),
+            (
+                "19:meeting_fixture@thread.v2",
+                json!({"id":"19:meeting_fixture@thread.v2","threadProperties":{"threadType":"chat","productThreadType":"Meeting"}}),
+                ErrorCode::Unsupported,
+            ),
+            (
+                "19:meeting_fixture@thread.v2",
+                json!({"id":"19:meeting_fixture@thread.v2","threadProperties":{"threadType":"meeting","productThreadType":"Chat"}}),
+                ErrorCode::Unsupported,
+            ),
+            (
+                "19:meeting_fixture@thread.v2",
+                json!({"id":"19:meeting_fixture@thread.v2","threadProperties":{"threadType":"meeting","productThreadType":"Unknown"}}),
                 ErrorCode::Unsupported,
             ),
         ] {

@@ -470,13 +470,12 @@ impl Session {
         let mut items = Vec::new();
         for row in rows {
             let kind = if backend == Backend::Ic3 {
-                if row["threadProperties"]["threadType"].as_str() != Some("chat") {
-                    continue;
-                }
-                match row["threadProperties"]["productThreadType"].as_str() {
-                    Some("OneToOneChat") => ChatKind::OneOnOne,
-                    Some("Chat") => ChatKind::Group,
-                    _ => return Err(protocol()),
+                match crate::ic3::chat_kind(&row["threadProperties"]) {
+                    Some(kind) => kind,
+                    None if row["threadProperties"]["threadType"].as_str() == Some("chat") => {
+                        return Err(protocol());
+                    }
+                    None => continue,
                 }
             } else {
                 match row["chatType"].as_str() {

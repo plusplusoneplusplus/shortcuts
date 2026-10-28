@@ -1192,8 +1192,9 @@ references before editing. Paths are package-relative.
   and `resolveLocalTopic` share owner-qualified selection refs; cancelled or missing
   queued targets reject selection and delivery.
 - `features.teamsIc3OwnCommands` (default off) routes new own-user `@coc <prompt>`
-  messages to one Ask conversation per account, Teams chat and explicit local
-  `teamsIc3OwnCommands.workspaceId`, using the shared Teams connection `ic3Region`.
+  messages in self/direct/group/meeting chats to one Ask conversation per account,
+  Teams chat and explicit local `teamsIc3OwnCommands.workspaceId`, using the shared
+  Teams connection `ic3Region`.
   Stable hashed conversation IDs reuse saved chats across restarts. First turns use
   medium effort; ordered follow-ups retain conversation policy and correlate answers
   by request ID. Each new admitted mention attempts a standard Eyes acknowledgement

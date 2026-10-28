@@ -59,7 +59,7 @@ describe('IC3 replies to verified inbound source chats', () => {
     }
     afterEach(() => { clients.splice(0).forEach(client => client.dispose()); });
 
-    it.each(['48:notes', sourceChat, '19:source@thread.v2', '19:source-group@thread.v2'])('checks live source access and sends only through IC3: %s', async chatId => {
+    it.each(['48:notes', sourceChat, '19:source@thread.v2', '19:source-group@thread.v2', '19:meeting_fixture@thread.v2'])('checks live source access and sends only through IC3: %s', async chatId => {
         fetchMock.mockResolvedValue(success());
         const verify = vi.fn(async () => { expect(fetchMock).not.toHaveBeenCalled(); });
         expect(await create().sendToSourceChat(chatId, '<p>CoC answer</p>', verify)).toBe('1790000000123');

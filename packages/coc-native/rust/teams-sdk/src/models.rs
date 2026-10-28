@@ -77,6 +77,7 @@ pub enum Backend {
 pub enum ChatKind {
     OneOnOne,
     Group,
+    Meeting,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
