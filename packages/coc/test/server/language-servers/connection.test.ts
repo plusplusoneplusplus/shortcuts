@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { PassThrough } from 'stream';
+import { PassThrough, Writable } from 'stream';
 import { spawn } from 'child_process';
 import type { ChildProcessWithoutNullStreams } from 'child_process';
 import * as path from 'path';
@@ -275,6 +275,28 @@ describe('LanguageServerConnection over a stream pair', () => {
         expect(connection.isClosed).toBe(true);
     });
 
+    it('absorbs an asynchronous write failure after the final notification and disposal', async () => {
+        const writeError = new Error('write EPIPE');
+        // Drive the real Writable error/close lifecycle without relying on an OS
+        // pipe closing when a child calls closeSync(0), which differs on Windows.
+        const output = new Writable({
+            write(_chunk, _encoding, callback) {
+                setImmediate(callback, writeError);
+            },
+        });
+        const onError = vi.fn();
+        const connection = new LanguageServerConnection({ input: new PassThrough(), output, onError });
+        // Watching error here would itself hide a missing disposal listener.
+        const closed = new Promise<void>(resolve => output.once('close', resolve));
+
+        expect(connection.sendNotification('exit')).toBe(true);
+        connection.dispose();
+
+        await closed;
+        expect(output.errored).toBe(writeError);
+        expect(onError).not.toHaveBeenCalled();
+    });
+
     it('absorbs a stream error that arrives after disposal', () => {
         const { connection, errors, toClient, toServer } = createPair();
         connection.sendNotification('exit');
@@ -382,29 +404,6 @@ describe('LanguageServerConnection over a real fixture server process', () => {
         await expect(pending).rejects.toMatchObject({ failure: 'cancelled' });
         // The connection survives the cancellation and still serves requests.
         await expect(connection.sendRequest('echo', 'still here')).resolves.toBe('still here');
-    });
-
-    it('disposes right after notifying a server whose stdin is gone without an uncaught EPIPE', async () => {
-        // A live server that stopped reading: the client's next write fails with EPIPE.
-        const child = spawn(
-            process.execPath,
-            ['-e', "require('fs').closeSync(0); process.stdout.write('closed'); setInterval(() => {}, 1000);"],
-            { stdio: ['pipe', 'pipe', 'pipe'] },
-        );
-        children.push(child);
-        await new Promise((resolve) => child.stdout.once('data', resolve));
-        const connection = new LanguageServerConnection({ input: child.stdout, output: child.stdin });
-        connections.push(connection);
-        // Watch `close`, not `error`: an extra error listener would hide the bug.
-        const stdinClosed = new Promise((resolve) => child.stdin.once('close', resolve));
-
-        // Session teardown order: the final `exit` notification, then dispose.
-        expect(connection.sendNotification('exit')).toBe(true);
-        connection.dispose();
-
-        await stdinClosed;
-        // The write failed (EPIPE on POSIX) and nothing escaped as an uncaught error.
-        expect(child.stdin.errored).toBeInstanceOf(Error);
     });
 
     it('surfaces a server-reported error without closing the connection', async () => {
