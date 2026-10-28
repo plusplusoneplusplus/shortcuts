@@ -66,7 +66,7 @@ export function loadNativeTeams(): TeamsAddon {
     if (typeof session !== 'function'
         || !['connect', 'dispose', 'beginRead'].every(method => typeof Reflect.get(session.prototype, method) === 'function')
         || typeof read !== 'function'
-        || !['readChats', 'readHistory', 'cancel'].every(method => typeof Reflect.get(read.prototype, method) === 'function')) {
+        || !['readChats', 'readHistory', 'readThread', 'cancel'].every(method => typeof Reflect.get(read.prototype, method) === 'function')) {
         throw new NativeAddonLoadError(
             '@plusplusoneplusplus/coc-native: missing IC3 Teams session capability. ' +
             'Rebuild with `npm run build:native -w packages/coc-native`.',
@@ -128,6 +128,16 @@ export class TeamsIc3Session {
     /** Exact `48:notes` reads the account's self stream; discovery does not prove its availability. */
     async readHistory(chatId: string, options: TeamsIc3ReadOptions = {}): Promise<TeamsIc3Page<TeamsIc3Message>> {
         const page = await this.read(request => request.readHistory(chatId, options.cursor), options.signal);
+        for (const message of page.items) {
+            if (message.mentionedUserIds) Object.freeze(message.mentionedUserIds);
+        }
+        return freezePage(page);
+    }
+
+    /** Exact thread scope; the first page includes the root independently of reply pagination. */
+    async readThread(chatId: string, rootMessageId: string,
+        options: TeamsIc3ReadOptions = {}): Promise<TeamsIc3Page<TeamsIc3Message>> {
+        const page = await this.read(request => request.readThread(chatId, rootMessageId, options.cursor), options.signal);
         for (const message of page.items) {
             if (message.mentionedUserIds) Object.freeze(message.mentionedUserIds);
         }

@@ -53,6 +53,74 @@ pub(crate) fn chat_kind(properties: &Value) -> Option<ChatKind> {
 }
 
 impl Session {
+    /// Read one exact chat thread, retaining its root even when it is outside the reply page.
+    pub async fn ic3_thread_history(
+        &self,
+        reference: &ConversationRef,
+        root: &MessageId,
+        cursor: Option<&Cursor>,
+        ctx: &OperationContext,
+    ) -> Result<Page<MessageDetail>> {
+        self.validate_ref(reference)?;
+        let Conversation::Chat(chat) = &reference.conversation else {
+            return Err(Error::new(ErrorCode::Unsupported));
+        };
+        if reference.backend != Backend::Ic3
+            || chat.as_str() == SELF_CHAT_ID
+            || root.as_str().len() > 20
+            || !root.as_str().bytes().all(|b| b.is_ascii_digit())
+        {
+            return Err(Error::new(ErrorCode::InvalidTarget));
+        }
+        let kind = self.ic3_validate_chat(reference, ctx).await?;
+        let scoped = format!("{};messageid={}", chat.as_str(), root.as_str());
+        let mut url = self.url(Backend::Ic3, &["conversations", &scoped, "messages"])?;
+        url.query_pairs_mut().append_pair("pageSize", "50");
+        let (value, next) = self.get_page(Backend::Ic3, url, cursor, ctx).await?;
+        let rows = crate::session::rows(&value, "messages")?;
+        let mut items = Vec::new();
+        for row in rows {
+            if let Some(mut item) = normalize(row, reference, self)? {
+                if item.metadata.reference.id() != root
+                    && item.root_message_id.as_ref() != Some(root)
+                {
+                    return Err(protocol());
+                }
+                item.chat_kind = kind;
+                items.push(item);
+            }
+        }
+        let mut raw_count = rows.len();
+        if cursor.is_none()
+            && !items
+                .iter()
+                .any(|item| item.metadata.reference.id() == root)
+        {
+            let url = self.url(
+                Backend::Ic3,
+                &["conversations", chat.as_str(), "messages", root.as_str()],
+            )?;
+            let value = self.get(Backend::Ic3, url, ctx).await?;
+            let mut item = normalize(&value, reference, self)?.ok_or_else(protocol)?;
+            if item.metadata.reference.id() != root
+                || item
+                    .root_message_id
+                    .as_ref()
+                    .is_some_and(|parent| parent != root)
+            {
+                return Err(protocol());
+            }
+            item.chat_kind = kind;
+            items.push(item);
+            raw_count += 1;
+        }
+        Ok(Page {
+            items,
+            next,
+            raw_count,
+        })
+    }
+
     pub(crate) async fn ic3_participants(
         &self,
         reference: &ConversationRef,
