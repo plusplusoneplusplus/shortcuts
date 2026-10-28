@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { createContext, useContext, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { CocClient, RuntimeDashboardConfig, SentinelRefrain, SentinelRefrainGateTest, SentinelRefrainRun,
     SentinelRefrainInput } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled } from '../../../utils/config';
 import { describeCron } from '../../../utils/cron';
+import { useContainerWidth } from '../../chat/hooks/useContainerWidth';
 import { Button } from '../../../ui/Button';
 import { Dialog } from '../../../ui/Dialog';
 import { Spinner } from '../../../ui/Spinner';
@@ -13,6 +15,12 @@ import { SentinelCoda, type SentinelCodaProps } from './SentinelCoda';
 import { AutomationActions, AutomationError } from './SentinelAutomationCard';
 import { SentinelAutomationInfo } from './SentinelAutomationInfo';
 import { sentinelTodoOwnerKey, type SentinelTodoOwner } from './sentinelTodoPanelModel';
+
+/** The hosted To-do view supplies its existing detail column; standalone cards measure their own width. */
+export const RefrainHistoryHostContext = createContext<{
+    target: HTMLDivElement | null; wide: boolean; activeJobId: string | null; detailOpen: boolean;
+    select: (jobId: string) => void; leave: (jobId: string, clear: boolean) => void;
+} | null>(null);
 
 const MUTED = 'text-[#616161] dark:text-[#9d9d9d]';
 const ERROR = 'text-[#c72e2e] dark:text-[#f48771]';
@@ -245,46 +253,124 @@ function JobRow({ job, owner, onFollowLink, disabled, onEdit, onDelete, onRun, o
                 : <p className={last.status === 'failed' || last.status === 'interrupted' ? ERROR : MUTED}>Last run #{last.runNumber}: {runOutcome(last)}</p>)}
     </article>;
 }
-/** History is read-only; links retain the job owner's generated turn suffix. */
+/** History follows the To-do panel's measured split, pressed rows and narrow Back navigation. */
 function RefrainRunHistory({ job, owner, onFollowLink, onOpenChange }: {
     job: SentinelRefrain; owner: SentinelTodoOwner; onFollowLink: JobsProps['onFollowLink']; onOpenChange: (open: boolean) => void;
 }) {
+    const host = useContext(RefrainHistoryHostContext);
+    const bodyRef = useRef<HTMLDivElement>(null);
+    const listRef = useRef<HTMLOListElement>(null);
+    const detailRef = useRef<HTMLElement>(null);
+    const headingRef = useRef<HTMLHeadingElement>(null);
+    // Match To-do's 280px list + 360px detail allowance, including padding/separator.
+    const { width } = useContainerWidth(bodyRef, { throttleMs: 0, wideThreshold: 660 });
+    const wide = host?.wide ?? width >= 660;
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [detailOpen, setDetailOpen] = useState(false);
+    const active = !host || host.activeJobId === job.id;
+    const showingDetail = host ? active && host.detailOpen : detailOpen;
+    const detailId = useId();
+    const runs = [...job.runs].sort((a, b) => b.runNumber - a.runNumber);
+    const selected = runs.find(run => run.id === selectedId);
+    const focusRow = (id: string | null) => {
+        const row = [...(listRef.current?.querySelectorAll<HTMLButtonElement>('[data-run-select]') ?? [])]
+            .find(button => button.dataset.runSelect === id);
+        if (row) row.focus({ preventScroll: true });
+        else listRef.current?.focus({ preventScroll: true });
+    };
+    const leaveDetails = (clear: boolean) => {
+        setDetailOpen(false);
+        if (clear) setSelectedId(null);
+        host?.leave(job.id, clear);
+        requestAnimationFrame(() => focusRow(selectedId));
+    };
+    useLayoutEffect(() => {
+        const active = document.activeElement;
+        if (!wide && showingDetail && selected && listRef.current?.contains(active)) {
+            headingRef.current?.focus({ preventScroll: true });
+        }
+        // Resizing can hide the narrow Back control while it owns keyboard focus.
+        if (wide && detailRef.current?.contains(active) && active?.closest('[hidden]')) {
+            headingRef.current?.focus({ preventScroll: true });
+        }
+        if (selectedId && !selected && showingDetail) {
+            setDetailOpen(false);
+            host?.leave(job.id, true);
+            requestAnimationFrame(() => focusRow(null));
+        }
+    }, [wide, showingDetail, selectedId, selected?.id]);
+    const leaveHost = host?.leave;
+    useEffect(() => () => leaveHost?.(job.id, true), [leaveHost, job.id]);
+    const details = <section ref={detailRef} id={detailId} hidden={!wide && (!showingDetail || !selected)}
+                aria-label={`Run details for ${job.name}`} className="sentinel-refrain-run-detail"
+                onKeyDown={event => {
+                    if (event.key !== 'Escape') return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    leaveDetails(true);
+                }}>
+                {!selected ? <p role="status" className={MUTED}>Select a run to view its details.</p> : <>
+                    <div hidden={wide}><Button size="sm" variant="secondary" onClick={() => leaveDetails(false)}>Back to runs</Button></div>
+                    <div className="sentinel-refrain-detail-header">
+                        <h4 ref={headingRef} tabIndex={-1} className="font-semibold">Run #{selected.runNumber}: {selected.status}</h4>
+                        <Button size="sm" variant="ghost" aria-label="Close run details" onClick={() => leaveDetails(true)}>×</Button>
+                    </div>
+                    <p className={MUTED}>Trigger: {selected.trigger}</p>
+                    {job.processId && selected.jobTurnHref && <JobChatLink owner={owner} processId={job.processId}
+                        href={selected.jobTurnHref} onFollowLink={onFollowLink}>Job turn</JobChatLink>}
+                    <dl>
+                        <RunTime label="Created" value={selected.createdAt} />
+                        <RunTime label="Started" value={selected.startedAt} />
+                        <RunTime label="Finished" value={selected.finishedAt} />
+                        {selected.durationMs !== undefined && <div><dt>Duration</dt><dd>{runDuration(selected.durationMs)}</dd></div>}
+                    </dl>
+                    {selected.skipReason && <p>Skipped: {SKIP_REASONS[selected.skipReason] ?? selected.skipReason}</p>}
+                    {selected.error && <pre role="region" tabIndex={0} aria-label={`Error for run #${selected.runNumber}`} className={ERROR}>{selected.error}</pre>}
+                </>}
+            </section>;
     return <details className="sentinel-refrain-history" onKeyDown={closeHistoryOnEscape} onToggle={event => {
-        if (event.target === event.currentTarget) onOpenChange(event.currentTarget.open);
+        if (event.target !== event.currentTarget) return;
+        onOpenChange(event.currentTarget.open);
+        if (!event.currentTarget.open) { setSelectedId(null); setDetailOpen(false); host?.leave(job.id, true); }
     }}>
         <summary>History ({job.runs.length})</summary>
         {!job.runs.length && <p className={MUTED}>No runs yet.</p>}
-        <ol aria-label={`Run history for ${job.name}`} className="sentinel-refrain-runs">
-            {[...job.runs].sort((a, b) => b.runNumber - a.runNumber).map(run => {
-                const timestamp = run.finishedAt ?? run.startedAt ?? run.createdAt;
-                const timestampLabel = run.finishedAt ? 'Finished' : run.startedAt ? 'Started' : 'Created';
-                const duration = run.durationMs !== undefined ? `${(run.durationMs / 1000).toFixed(1)}s` : undefined;
-                return <li key={run.id} aria-label={`Run #${run.runNumber}`} className="sentinel-refrain-run">
-                    <details onKeyDown={closeHistoryOnEscape}>
-                        <summary aria-label={`Details for run #${run.runNumber}: ${runOutcome(run)} (${run.trigger})`}>
+        {selectedId && !selected && <p role="status" className={MUTED}>This run is no longer in retained history. Select another run.</p>}
+        <div ref={bodyRef} hidden={!runs.length} className={runs.length ? 'sentinel-refrain-history-body' : undefined} data-layout={wide ? 'split' : 'single'} data-hosted={!!host}>
+            <ol ref={listRef} tabIndex={-1} hidden={!host && !wide && detailOpen && !!selected}
+                aria-label={`Run history for ${job.name}`} className="sentinel-refrain-runs"
+                style={wide && !host ? { flex: '0 0 43%' } : undefined} onKeyDown={event => {
+                    if (!(event.target instanceof HTMLButtonElement) || !event.target.matches('[data-run-select]')) return;
+                    const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[data-run-select]')];
+                    const index = buttons.indexOf(event.target);
+                    const next = event.key === 'ArrowDown' ? Math.min(index + 1, buttons.length - 1)
+                        : event.key === 'ArrowUp' ? Math.max(index - 1, 0) : event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : -1;
+                    if (next < 0) return;
+                    event.preventDefault();
+                    buttons[next]?.focus();
+                }}>
+                {runs.map(run => {
+                    const timestamp = run.finishedAt ?? run.startedAt ?? run.createdAt;
+                    const timestampLabel = run.finishedAt ? 'Finished' : run.startedAt ? 'Started' : 'Created';
+                    return <li key={run.id} aria-label={`Run #${run.runNumber}`} className="sentinel-refrain-run" data-selected={active && run.id === selectedId}>
+                        <button type="button" data-run-select={run.id} aria-pressed={active && run.id === selectedId} aria-controls={detailId}
+                            aria-label={`Select run #${run.runNumber}: ${runOutcome(run)} (${run.trigger})`}
+                            onClick={() => { setSelectedId(run.id); setDetailOpen(true); host?.select(job.id); }}>
                             <span className="sentinel-refrain-run-state">#{run.runNumber} <span className={run.status === 'failed' || run.status === 'interrupted' ? ERROR : undefined}>{run.status}</span> <span className={MUTED}>· {run.trigger}</span></span>
-                            <span className={`sentinel-refrain-run-meta ${MUTED}`}>
+                            <span className={MUTED}>
                                 <time dateTime={timestamp} aria-label={`${timestampLabel}: ${new Date(timestamp).toLocaleString()}`}>{new Date(timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time>
-                                {duration && <span aria-label={`Duration: ${duration}`}> · {duration}</span>}
+                                {run.durationMs !== undefined && <span aria-label={`Duration: ${runDuration(run.durationMs)}`}> · {runDuration(run.durationMs)}</span>}
                             </span>
-                        </summary>
-                        <div className="sentinel-refrain-run-detail">
-                            <dl>
-                                <RunTime label="Created" value={run.createdAt} />
-                                <RunTime label="Started" value={run.startedAt} />
-                                <RunTime label="Finished" value={run.finishedAt} />
-                                {duration && <div><dt>Duration</dt><dd>{duration}</dd></div>}
-                            </dl>
-                            {run.skipReason && <p>Skipped: {SKIP_REASONS[run.skipReason] ?? run.skipReason}</p>}
-                            {run.error && <pre role="region" tabIndex={0} aria-label={`Error for run #${run.runNumber}`} className={ERROR}>{run.error}</pre>}
-                        </div>
-                    </details>
-                    {job.processId && run.jobTurnHref && <JobChatLink owner={owner} processId={job.processId}
-                        href={run.jobTurnHref} onFollowLink={onFollowLink}>Job turn</JobChatLink>}
-                </li>;
-            })}
-        </ol>
+                        </button>
+                    </li>;
+                })}
+            </ol>
+            {host ? active && host.target && selected ? createPortal(details, host.target) : null : details}
+        </div>
     </details>;
+}
+function runDuration(durationMs: number) {
+    return `${(durationMs / 1000).toFixed(1)}s`;
 }
 function closeHistoryOnEscape(event: KeyboardEvent<HTMLDetailsElement>) {
     if (event.key === 'Escape') {

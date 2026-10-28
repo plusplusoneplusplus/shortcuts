@@ -7,10 +7,11 @@ import type { SentinelRefrain, SentinelRefrainGateTest, SentinelRefrainInput, Se
 const mock = vi.hoisted(() => ({
     list: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(), start: vi.fn(), cancel: vi.fn(), testGate: vi.fn(), resumeGate: vi.fn(),
     connect: vi.fn(), request: vi.fn(), scrubGet: vi.fn(), scrubStart: vi.fn(), scrubUpdate: vi.fn(),
-    refs: [] as unknown[], route: { kind: 'local' } as { kind: string; baseUrl?: string },
+    width: 800, refs: [] as unknown[], route: { kind: 'local' } as { kind: string; baseUrl?: string },
     tierReads: [] as unknown[][], tiersLoading: false,
     tiers: {} as Record<string, Record<string, { model: string; reasoningEffort: string; source: 'config' | 'default' }>>,
 }));
+vi.mock('../../../src/server/spa/client/react/features/chat/hooks/useContainerWidth', () => ({ useContainerWidth: () => ({ width: mock.width }) }));
 vi.mock('../../../src/server/spa/client/react/repos/cloneRouting', () => ({ useCocClient: (ref: unknown) => { mock.refs.push(ref); return client; } }));
 vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({ resolveCloneRoute: () => mock.route }));
 vi.mock('../../../src/server/spa/client/react/hooks/useProviderModels', () => ({
@@ -63,6 +64,7 @@ beforeEach(() => {
     mock.scrubStart.mockReset().mockResolvedValue({ runId: 'scrub-1' });
     mock.scrubUpdate.mockReset().mockResolvedValue({});
     mock.route = { kind: 'local' };
+    mock.width = 800;
     mock.refs.length = 0;
     mock.tierReads.length = 0;
     mock.tiersLoading = false;
@@ -431,7 +433,7 @@ describe('Sentinel Refrains', () => {
         await screen.findByText(/No refrains yet/);
         expect(screen.getByRole('button', { name: 'New refrain' })).not.toBeDisabled();
     });
-    it('renders bounded history with timings, failure/overlap and an owner-qualified job-turn link', async () => {
+    it('keeps compact history and owner-qualified job-turn links in the selected detail pane', async () => {
         mock.route = { kind: 'remote', baseUrl: 'https://example.invalid' };
         mock.list.mockResolvedValue({ jobs: [job({ mode: 'autopilot', runs: [
             run({ status: 'completed', startedAt: '2026-10-18T12:00:01Z', finishedAt: '2026-10-18T12:00:02Z', durationMs: 1000,
@@ -439,22 +441,20 @@ describe('Sentinel Refrains', () => {
             run({ id: 'r2', runNumber: 2, status: 'skipped', trigger: 'schedule', skipReason: 'overlap' }),
         ] })] });
         render(<SentinelRefrains owner={{ ...owner, ownerRoutingRef: 'remote:server:ws-a' }} items={[]} onFollowLink={follow} />);
-        await screen.findByText('Autopilot');
-        await openActions();
-        fireEvent.click(screen.getByText('History (2)'));
-        expect(screen.getByLabelText('Details for run #2: skipped: overlap (schedule)')).toBeVisible();
-        const details = screen.getByLabelText('Details for run #1: completed (manual)');
-        expect(screen.getByText('Finished')).not.toBeVisible();
-        fireEvent.click(details);
-        expect(screen.getByText('Finished')).toBeVisible();
-        expect(screen.getAllByText('1.0s').length).toBeGreaterThan(0);
-        const link = screen.getByRole('link', { name: 'Job turn' });
+        fireEvent.click(await screen.findByText('History (2)'));
+        expect(screen.getByLabelText('Select run #2: skipped: overlap (schedule)')).toBeVisible();
+        expect(screen.queryByText('Finished')).toBeNull();
+        fireEvent.click(screen.getByLabelText('Select run #1: completed (manual)'));
+        const detail = screen.getByRole('region', { name: 'Run details for Daily review' });
+        expect(within(detail).getByText('Finished')).toBeVisible();
+        expect(within(detail).getByText('1.0s')).toBeVisible();
+        const link = within(detail).getByRole('link', { name: 'Job turn' });
         expect(link).toHaveAttribute('href', '#repos/remote%3Aserver%3Aws-a/chats/queue_job?turn=2');
         fireEvent.click(link);
         expect(follow).toHaveBeenCalledWith(expect.anything(), 'sentinel-job:queue_job:?turn=2');
         expect(screen.queryByRole('link', { name: 'Sentinel follow-up' })).not.toBeInTheDocument();
     });
-    it('keeps newest-first rows concise and exposes exact metadata and complete errors independently', async () => {
+    it('shows exact metadata and selectable errors for one stable selection beside newest-first rows', async () => {
         const diagnostic = 'Full diagnostic ' + 'long-unbroken-error/'.repeat(60) + '\nLast diagnostic line';
         const createdAt = '2026-10-28T08:47:01.123Z';
         const startedAt = '2026-10-28T08:47:02.456Z';
@@ -470,27 +470,26 @@ describe('Sentinel Refrains', () => {
         await waitFor(() => expect(screen.queryByLabelText('Last run #3: failed. Show full error')).toBeNull());
         const list = screen.getByRole('list', { name: 'Run history for Daily review' });
         expect(within(list).getAllByRole('listitem').map(row => row.getAttribute('aria-label'))).toEqual(['Run #3', 'Run #2', 'Run #1']);
-        const failed = within(list).getByRole('listitem', { name: 'Run #3' });
-        const skipped = within(list).getByRole('listitem', { name: 'Run #2' });
-        expect(within(failed).getByLabelText(`Finished: ${new Date(finishedAt).toLocaleString()}`)).toBeVisible();
-        expect(within(failed).getByLabelText('Duration: 112.1s')).toBeVisible();
-        expect(within(failed).getByText(createdAt)).not.toBeVisible();
-        const error = within(failed).getByRole('region', { name: 'Error for run #3' });
-        expect(error).not.toBeVisible();
-        fireEvent.click(within(failed).getByLabelText('Details for run #3: failed (manual)'));
-        fireEvent.click(within(skipped).getByLabelText('Details for run #2: skipped: gate unavailable (tool scripting off) (manual)'));
-        for (const timestamp of [createdAt, startedAt, finishedAt]) expect(within(failed).getByText(timestamp)).toBeVisible();
+        expect(within(list).getByLabelText(`Finished: ${new Date(finishedAt).toLocaleString()}`)).toBeVisible();
+        expect(within(list).getByLabelText('Duration: 112.1s')).toBeVisible();
+        expect(screen.queryByText(createdAt)).toBeNull();
+        const failed = within(list).getByLabelText('Select run #3: failed (manual)');
+        fireEvent.click(failed);
+        const detail = screen.getByRole('region', { name: 'Run details for Daily review' });
+        for (const timestamp of [createdAt, startedAt, finishedAt]) expect(within(detail).getByText(timestamp)).toBeVisible();
+        const error = within(detail).getByRole('region', { name: 'Error for run #3' });
         expect(error.textContent).toBe(diagnostic);
         expect(error).toHaveAttribute('tabindex', '0');
-        expect(within(skipped).getByText('Skipped: gate unavailable (tool scripting off)')).toBeVisible();
-        const link = within(failed).getByRole('link', { name: 'Job turn' });
+        const link = within(detail).getByRole('link', { name: 'Job turn' });
         expect(link).toHaveAttribute('href', '#repos/remote%3Aserver%3Agroup-a/chats/queue_job?turn=3&entry=run');
         fireEvent.click(link);
         expect(follow).toHaveBeenCalledWith(expect.anything(), 'sentinel-job:queue_job:?turn=3&entry=run');
         fireEvent.keyDown(error, { key: 'Escape' });
-        expect(within(failed).getByLabelText('Details for run #3: failed (manual)')).toHaveFocus();
-        expect(error).not.toBeVisible();
-        expect(within(skipped).getByText('Skipped: gate unavailable (tool scripting off)')).toBeVisible();
+        await waitFor(() => expect(failed).toHaveFocus());
+        expect(screen.queryByRole('region', { name: 'Error for run #3' })).toBeNull();
+        const skipped = within(list).getByLabelText('Select run #2: skipped: gate unavailable (tool scripting off) (manual)');
+        fireEvent.click(skipped);
+        expect(within(detail).getByText('Skipped: gate unavailable (tool scripting off)')).toBeVisible();
         expect(history.parentElement).toHaveAttribute('open');
         expect(screen.getByText(/copilot \/ medium effort tier/)).toHaveTextContent('Next');
         fireEvent.click(history);
@@ -506,11 +505,12 @@ describe('Sentinel Refrains', () => {
             const list = screen.getByRole('list', { name: 'Run history for Daily review' });
             expect(within(list).getByText(status, { exact: true })).toBeVisible();
             expect(within(list).getByLabelText(`Created: ${new Date(createdAt).toLocaleString()}`)).toBeVisible();
-            expect(within(list).queryByRole('link', { name: 'Job turn' })).toBeNull();
-            fireEvent.click(within(list).getByLabelText(`Details for run #1: ${status} (manual)`));
-            expect(within(list).getByText(createdAt)).toBeVisible();
-            expect(within(list).queryByText('Started')).toBeNull();
-            expect(within(list).queryByText('Duration')).toBeNull();
+            fireEvent.click(within(list).getByLabelText(`Select run #1: ${status} (manual)`));
+            const detail = screen.getByRole('region', { name: 'Run details for Daily review' });
+            expect(within(detail).getByText(createdAt)).toBeVisible();
+            expect(within(detail).queryByRole('link', { name: 'Job turn' })).toBeNull();
+            expect(within(detail).queryByText('Started')).toBeNull();
+            expect(within(detail).queryByText('Duration')).toBeNull();
         },
     );
     it('keeps active status visible alongside history and an empty history accessible without More', async () => {
@@ -524,6 +524,92 @@ describe('Sentinel Refrains', () => {
         expect(screen.getByText('Run #1 queued')).toBeVisible();
         expect(screen.getByRole('button', { name: 'Run now' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
+    });
+    it('uses To-do arrow/Home/End focus navigation without selecting until activation', async () => {
+        mock.list.mockResolvedValue({ jobs: [job({ runs: [run({ id: 'r2', runNumber: 2 }), run()] })] });
+        view();
+        fireEvent.click(await screen.findByText('History (2)'));
+        const buttons = within(screen.getByRole('list', { name: 'Run history for Daily review' })).getAllByRole('button');
+        buttons[0].focus();
+        fireEvent.keyDown(buttons[0], { key: 'ArrowDown' });
+        expect(buttons[1]).toHaveFocus();
+        fireEvent.keyDown(buttons[1], { key: 'Home' });
+        expect(buttons[0]).toHaveFocus();
+        fireEvent.keyDown(buttons[0], { key: 'End' });
+        expect(buttons[1]).toHaveFocus();
+        fireEvent.keyDown(buttons[1], { key: 'ArrowUp' });
+        expect(buttons[0]).toHaveFocus();
+        for (const button of buttons) expect(button).toHaveAttribute('aria-pressed', 'false');
+        fireEvent.click(buttons[0]);
+        expect(buttons[0]).toHaveAttribute('aria-pressed', 'true');
+    });
+    it('uses narrow Back navigation with focus restoration and preserves selection across resizing', async () => {
+        mock.width = 280;
+        mock.list.mockResolvedValue({ jobs: [job({ runs: [run()] })] });
+        const page = view();
+        fireEvent.click(await screen.findByText('History (1)'));
+        const list = screen.getByRole('list', { name: 'Run history for Daily review' });
+        const button = within(list).getByRole('button');
+        button.focus();
+        fireEvent.click(button);
+        const detail = screen.getByRole('region', { name: 'Run details for Daily review' });
+        expect(list).not.toBeVisible();
+        expect(within(detail).getByRole('heading')).toHaveFocus();
+        fireEvent.click(within(detail).getByRole('button', { name: 'Back to runs' }));
+        await waitFor(() => expect(button).toHaveFocus());
+        expect(list).toBeVisible();
+        expect(button).toHaveAttribute('aria-pressed', 'true');
+        expect(detail).not.toBeVisible();
+        fireEvent.click(button);
+        mock.width = 800;
+        page.rerender(<SentinelRefrains owner={owner} items={[]} onFollowLink={follow} />);
+        expect(list).toBeVisible();
+        expect(detail).toBeVisible();
+        expect(within(detail).getByRole('button', { name: 'Back to runs', hidden: true })).not.toBeVisible();
+        button.focus();
+        mock.width = 280;
+        page.rerender(<SentinelRefrains owner={owner} items={[]} onFollowLink={follow} />);
+        expect(within(detail).getByRole('heading')).toHaveFocus();
+        fireEvent.click(within(detail).getByRole('button', { name: 'Close run details' }));
+        await waitFor(() => expect(button).toHaveFocus());
+        expect(list).toBeVisible();
+        expect(button).toHaveAttribute('aria-pressed', 'false');
+    });
+    it('retains the selected ID and refreshes its details when newer runs arrive, without selecting a pruned run', async () => {
+        const first = run({ id: 'r1', status: 'failed', error: 'First error' });
+        mock.list.mockResolvedValue({ jobs: [job({ runs: [first] })] });
+        view();
+        fireEvent.click(await screen.findByText('History (1)'));
+        fireEvent.click(screen.getByLabelText('Select run #1: failed (manual)'));
+        const options = mock.connect.mock.calls[0][0];
+        const newer = run({ id: 'r2', runNumber: 2, status: 'completed' });
+        mock.list.mockResolvedValue({ jobs: [job({ runs: [newer, { ...first, error: 'Updated error' }] })] });
+        await act(async () => options.onMessage({ type: 'sentinel-jobs-changed', workspaceId: 'ws-a', processId: 'queue_sentinel' }));
+        await screen.findByLabelText('Select run #2: completed (manual)');
+        expect(screen.getByLabelText('Select run #1: failed (manual)')).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('region', { name: 'Error for run #1' })).toHaveTextContent('Updated error');
+        mock.list.mockResolvedValue({ jobs: [job({ runs: [newer] })] });
+        await act(async () => options.onMessage({ type: 'sentinel-jobs-changed', workspaceId: 'ws-a', processId: 'queue_sentinel' }));
+        await screen.findByText('This run is no longer in retained history. Select another run.');
+        expect(screen.getByLabelText('Select run #2: completed (manual)')).toHaveAttribute('aria-pressed', 'false');
+        expect(screen.queryByRole('region', { name: 'Error for run #1' })).toBeNull();
+    });
+    it.each(['workspace', 'process', 'server'] as const)('resets run selection when the %s owner changes', async change => {
+        mock.route = { kind: 'remote', baseUrl: 'https://owner.test' };
+        mock.list.mockResolvedValue({ jobs: [job({ runs: [run({ status: 'failed', error: 'Owner error' })] })] });
+        const own = { ...owner, ownerRoutingRef: 'remote:server-a:ws-a' };
+        const page = view(own);
+        fireEvent.click(await screen.findByText('History (1)'));
+        fireEvent.click(screen.getByLabelText('Select run #1: failed (manual)'));
+        const next = change === 'workspace' ? { ...own, ownerWorkspaceId: 'ws-b', ownerRoutingRef: 'remote:server-a:ws-b' }
+            : change === 'process' ? { ...own, processId: 'queue_other' } : { ...own, ownerRoutingRef: 'remote:server-b:ws-a' };
+        page.rerender(<SentinelRefrains owner={next} items={[]} onFollowLink={follow} />);
+        const history = await screen.findByText('History (1)');
+        expect(history.parentElement).not.toHaveAttribute('open');
+        fireEvent.click(history);
+        expect(screen.getByLabelText('Select run #1: failed (manual)')).toHaveAttribute('aria-pressed', 'false');
+        expect(screen.getByText('Select a run to view its details.')).toBeVisible();
+        expect(screen.queryByRole('region', { name: 'Error for run #1' })).toBeNull();
     });
     it('uses owning-server feature policy even when local jobs are off', async () => {
         applyRuntimeConfigPatch({ sentinelEnabled: false, sentinelTodoJobsEnabled: false });
@@ -731,9 +817,9 @@ describe('Sentinel Refrains', () => {
             expect(await screen.findByText('Last run #3: skipped: gate unavailable (tool scripting off)')).toBeInTheDocument();
             await openActions();
             fireEvent.click(screen.getByText('History (3)'));
-            expect(screen.getByLabelText('Details for run #2: skipped: gate result empty (schedule)')).toBeVisible();
-            expect(screen.getByLabelText('Details for run #1: skipped: overlap (schedule)')).toBeVisible();
-            expect(screen.getByLabelText('Details for run #3: skipped: gate unavailable (tool scripting off) (schedule)')).toBeVisible();
+            expect(screen.getByLabelText('Select run #2: skipped: gate result empty (schedule)')).toBeVisible();
+            expect(screen.getByLabelText('Select run #1: skipped: overlap (schedule)')).toBeVisible();
+            expect(screen.getByLabelText('Select run #3: skipped: gate unavailable (tool scripting off) (schedule)')).toBeVisible();
         });
     });
     describe('effort tiers', () => {

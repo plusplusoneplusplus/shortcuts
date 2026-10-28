@@ -55,7 +55,7 @@ import { openUnifiedPanelTab } from './unifiedPanelOpen';
 import { resourcePathName } from './unifiedPanelOpenMenuModel';
 import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
 import { AcceptAllCodaProposals, CodaFindingsContext, SentinelCodaFinding } from './SentinelCodaFinding';
-import { SentinelRefrains } from './SentinelRefrains';
+import { RefrainHistoryHostContext, SentinelRefrains } from './SentinelRefrains';
 import { sentinelTodoRecentPage } from './sentinelTodoStatusModel';
 import { useScopedFindShortcut } from '../../../hooks/useScopedFindShortcut';
 import {
@@ -359,6 +359,25 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(restored.expandedIds));
     const [selectedId, setSelectedId] = useState<string | null>(restored.selectedId ?? null);
     const [detailOpen, setDetailOpen] = useState(restored.detailOpen ?? restored.selectedId != null);
+    const [historyJobId, setHistoryJobId] = useState<string | null>(null);
+    const [historyTarget, setHistoryTarget] = useState<HTMLDivElement | null>(null);
+    const historyJobRef = useRef(historyJobId);
+    historyJobRef.current = historyJobId;
+    const selectHistory = useCallback((jobId: string) => {
+        setHistoryJobId(jobId);
+        setSelectedId(null);
+        setDetailOpen(true);
+    }, []);
+    const leaveHistory = useCallback((jobId: string, clear: boolean) => {
+        if (historyJobRef.current !== jobId) return;
+        if (clear) setHistoryJobId(null);
+        setDetailOpen(false);
+    }, []);
+    useEffect(() => {
+        if (selectedId) setHistoryJobId(null);
+    }, [selectedId]);
+    const historyHost = useMemo(() => ({ target: historyTarget, wide, activeJobId: historyJobId, detailOpen,
+        select: selectHistory, leave: leaveHistory }), [historyTarget, wide, historyJobId, detailOpen, selectHistory, leaveHistory]);
     const [menuAction, setMenuAction] = useState<TodoMenuAction | null>(null);
     const consumeMenuAction = useCallback(() => setMenuAction(null), []);
     const [blockedMenus, setBlockedMenus] = useState<ReadonlySet<string>>(() => new Set());
@@ -713,6 +732,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
             .find(button => button.dataset.todoSelect === id)?.focus({ preventScroll: true });
     };
     const selectItem = (id: string) => {
+        setHistoryJobId(null);
         setSelectedId(id);
         setDetailOpen(true);
         setExpanded(previous => new Set([...previous, id]));
@@ -896,6 +916,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
     );
 
     return (
+        <RefrainHistoryHostContext.Provider value={historyHost}>
         <div ref={panelRef}
             className="flex h-full min-h-0 flex-col gap-2 overflow-auto p-2 text-xs text-[#1e1e1e] dark:text-[#cccccc]"
             data-testid="sentinel-todo-tab" data-layout={wide ? 'split' : 'single'}>
@@ -999,7 +1020,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                 tabIndex={-1}
                 onScroll={event => { if (!searchSnapshotRef.current) scrollTop.current = event.currentTarget.scrollTop; }}
                 style={wide ? { flex: '0 0 43%' } : undefined}
-                hidden={!wide && detailOpen && !!selected}
+                hidden={!wide && detailOpen && (historyJobId !== null || !!selected)}
                 className="min-w-0 flex-1 overflow-auto"
                 data-testid="sentinel-todo-list"
                 onKeyDown={event => {
@@ -1157,7 +1178,7 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                 </>
             )}
             </div>
-            <section hidden={!wide && (!detailOpen || !selected)}
+            <section hidden={historyJobId !== null || (!wide && (!detailOpen || !selected))}
                 className={cn('min-w-0 flex-1 overflow-auto', wide && 'border-l border-[#e0e0e0] pl-2 dark:border-[#3c3c3c]')}
                 aria-label={selected ? undefined : 'Item details'} aria-labelledby={selected ? `${detailId}-${selected.id}` : undefined}
                 data-testid="sentinel-todo-details">
@@ -1175,10 +1196,14 @@ function TodoTab({ owner, scopeWorkspaceId, chatId = null, onErrorChange, client
                             menuAction={menuAction?.itemId === item.id ? menuAction : null} onMenuBlocked={blockMenu} onMenuActionConsumed={consumeMenuAction} />)}
                 </ul>
             </section>
+            <div ref={setHistoryTarget} hidden={historyJobId === null || (!wide && !detailOpen)}
+                className={cn('min-w-0 flex-1 overflow-auto', wide && 'border-l border-[#e0e0e0] pl-2 dark:border-[#3c3c3c]')}
+                data-testid="sentinel-refrain-details-host" />
             </div>
             </>}
             </SentinelRefrains>
         </div>
+        </RefrainHistoryHostContext.Provider>
     );
 }
 

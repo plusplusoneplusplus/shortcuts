@@ -1062,10 +1062,16 @@ retain their admission lock until the authoritative reload settles. Dialog
 drafts retain captured revisions on errors. Create/edit thresholds use K-token
 drafts with up to three decimals through `utils/autoCompactThreshold.ts`; API and
 storage values stay positive safe integer tokens, preserving non-round thresholds.
-Refrain history carries run timing
-and a clone-qualified job-turn link; run results stay in the job chat. Model catalogs and effort tiers use
-the same owner client. When the owning server's `effortLevelsEnabled` is on and the
-provider has tiers, the dialog shows the shared `EffortTierSelector` and saves only
+
+Hosted Refrain history shares To-do's detail column through `RefrainHistoryHostContext`;
+standalone history measures its own list/detail split with `useContainerWidth`.
+Selection binds a run ID across refreshes and resizing and resets per owner mount.
+Details read the current retained record; pruning reports its absence without
+selecting another run. Exact timing, full errors and clone-qualified job-turn
+links stay read-only; run results stay in the job chat.
+
+Model catalogs and effort tiers use the same owner client. When the owning
+server's `effortLevelsEnabled` is on and the provider has tiers, the dialog shows the shared `EffortTierSelector` and saves only
 `effortTier`; otherwise it keeps explicit Model/Effort and clears a stored tier.
 Autopilot displays a permission warning. The optional Gate script field needs a
 cron (inline error, Create/Save disabled) and is sent as typed, so an unchanged
