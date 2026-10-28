@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import type { CLIConfig } from '../../../src/config';
 import { resolveTeamsReactionDispatcher } from '../../../src/server/messaging/teams-reaction-dispatcher';
 import { createMockProcessStore } from '../helpers/mock-process-store';
+import { createRepoGroup } from '../../../src/server/workspaces/repo-group-workspace';
 
 describe('resolveTeamsReactionDispatcher', () => {
     let root: string;
@@ -53,6 +54,68 @@ describe('resolveTeamsReactionDispatcher', () => {
         expect(await resolve()).toEqual({
             workspaceId: 'workspace-a', workingDirectory: repo, dispatcherSkill: 'dispatcher', dispatcherSkillPath: file,
         });
+    });
+
+    async function selectGroup(members = ['workspace-a', 'workspace-b']) {
+        const group = await createRepoGroup(dataDir, store, { name: 'Team', members });
+        config.teamsReactionDelegation!.workspaceId = group.id;
+        return group;
+    }
+
+    it('executes in the group root with member skill precedence ahead of global skills', async () => {
+        const group = await selectGroup();
+        const first = skill(path.join(repo, '.github', 'skills'));
+        const second = skill(path.join(root, 'other', '.github', 'skills'));
+        const global = skill(path.join(dataDir, 'skills'));
+        for (const file of [first, second, global]) {
+            expect(await resolve()).toEqual({
+                workspaceId: group.id, workingDirectory: group.rootPath,
+                dispatcherSkill: 'dispatcher', dispatcherSkillPath: file,
+            });
+            fs.rmSync(path.dirname(file), { recursive: true });
+        }
+        await expect(resolve()).rejects.toThrow('unavailable');
+    });
+
+    it('supports an empty repo group with a managed global dispatcher', async () => {
+        const group = await selectGroup([]);
+        const file = skill(path.join(dataDir, 'skills'));
+        expect(await resolve()).toMatchObject({
+            workspaceId: group.id, workingDirectory: group.rootPath, dispatcherSkillPath: file,
+        });
+    });
+
+    it('honors group-specific disabled skills for inherited dispatchers', async () => {
+        const group = await selectGroup();
+        skill(path.join(repo, '.github', 'skills'));
+        const workspaces = await store.getWorkspaces();
+        vi.mocked(store.getWorkspaces).mockResolvedValue(workspaces.map(workspace =>
+            workspace.id === group.id ? { ...workspace, disabledSkills: ['dispatcher'] } : workspace));
+        await expect(resolve()).rejects.toThrow('skill is disabled');
+    });
+
+    it.each(['missing', 'malformed', 'invalid-member'])('rejects %s group membership without global fallback', async kind => {
+        const group = await selectGroup();
+        skill(path.join(dataDir, 'skills'));
+        const file = path.join(group.rootPath, 'group.json');
+        if (kind === 'missing') fs.unlinkSync(file);
+        else fs.writeFileSync(file, kind === 'malformed' ? '{invalid' : '{"name":"Team","members":[42]}');
+        await expect(resolve()).rejects.toThrow('membership is unavailable');
+    });
+
+    it('rejects an invalid inherited skill source without global fallback', async () => {
+        await selectGroup();
+        fs.mkdirSync(path.join(repo, '.github'));
+        fs.writeFileSync(path.join(repo, '.github', 'skills'), 'not a directory');
+        skill(path.join(dataDir, 'skills'));
+        await expect(resolve()).rejects.toThrow('not a directory');
+    });
+
+    it('rejects an empty inherited dispatcher without global fallback', async () => {
+        await selectGroup();
+        skill(path.join(repo, '.github', 'skills'), '');
+        skill(path.join(dataDir, 'skills'));
+        await expect(resolve()).rejects.toThrow('empty');
     });
 
     it('preserves ordinary repo, managed global, global extra and workspace extra precedence', async () => {

@@ -402,14 +402,17 @@ async function updateRepoGroupUnlocked(
  * Resolve a group's members against the live workspace registry. Members
  * whose workspace was removed, or whose root path no longer exists on disk,
  * are returned marked stale so callers can skip them for context injection
- * and surface them in the edit dialog.
+ * and surface them in the edit dialog. Strict reads reject missing or malformed
+ * membership files.
  */
 export async function resolveRepoGroupMembers(
     dataDir: string,
     store: ProcessStore,
     groupId: string,
+    options: { strict?: boolean } = {},
 ): Promise<RepoGroupMember[]> {
-    const file = readRepoGroup(dataDir, groupId);
+    const file = readRepoGroup(dataDir, groupId, { strictMembers: options.strict });
+    if (!file && options.strict) throw new Error('Repo group membership is unavailable.');
     if (!file) return [];
     const registered = new Map((await store.getWorkspaces()).map(w => [w.id, w]));
     return file.members.map((workspaceId): RepoGroupMember => {

@@ -765,8 +765,8 @@ replay protection; timestamp-distinct re-additions get stable account/source-qua
 request IDs. Live completeness and timestamp semantics require protocol verification.
 
 `teams-reaction-launch.ts` creates separate first-turn Ask jobs with medium effort,
-runtime-default timeout and normal queue/provider/pause policy. It checks physical
-workspace/dispatcher bindings before and after preparation and verifies queued/saved
+runtime-default timeout and normal queue/provider/pause policy. It checks local
+repo or repo-group workspace/dispatcher bindings before and after preparation and verifies queued/saved
 ownership before deduplicating. Prompts reference the exact skill path; JSON-encoded
 Teams data cannot enable slash-command capabilities. Context caps at 512 KiB UTF-8;
 questions stay dashboard-only and automatic merging is prohibited.

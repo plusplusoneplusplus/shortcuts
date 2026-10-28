@@ -1215,8 +1215,9 @@ references before editing. Paths are package-relative.
 - Teams reaction delegation defaults off (`features.teamsReactionDelegation`).
   Enabled configuration requires `teamsReactionDelegation.workspaceId` and
   `dispatcherSkill`; reject permission/source/provider/model overrides. Resolve
-  uncached physical workspace and enabled skill bindings strictly, rechecking after
-  preparation; missing, unreadable or changed policy fails without fallback.
+  uncached local repo or repo-group workspace and enabled skill bindings strictly,
+  rechecking after preparation. Groups run in their own root and inherit member
+  skills in membership order; unreadable membership or policy fails without fallback.
   Admin selection stays on its owning server and rejects stale reads.
   Admit only fresh, complete native Robot membership for the pinned own account;
   never substitute receipt time, scan historical reactions or replay ambiguous

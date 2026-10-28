@@ -3,6 +3,7 @@ import { isAbsolute, join } from 'node:path';
 import { resolvePathForHostFilesystem, resolveSkillWithDetails, type ProcessStore } from '@plusplusoneplusplus/forge';
 import type { CLIConfig } from '../../config';
 import { resolveSkillConfig } from '../executors/skill-config-resolver';
+import { isRepoGroupWorkspaceId } from '../workspaces/repo-group-workspace';
 
 export interface TeamsReactionDispatcher {
     workspaceId: string;
@@ -30,7 +31,7 @@ export async function resolveTeamsReactionDispatcher(
     }
     const workspace = (await store.getWorkspaces()).find(item => item.id === workspaceId);
     signal.throwIfAborted();
-    if (!workspace || workspace.virtual || !isAbsolute(workspace.rootPath)
+    if (!workspace || (workspace.virtual && !isRepoGroupWorkspaceId(workspaceId)) || !isAbsolute(workspace.rootPath)
         || !(await fs.stat(workspace.rootPath)).isDirectory()) {
         throw new Error('Teams reaction execution workspace is unavailable.');
     }

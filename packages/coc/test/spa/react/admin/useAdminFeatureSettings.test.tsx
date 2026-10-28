@@ -156,6 +156,26 @@ describe('useAdminFeatureSettings', () => {
         },
     );
 
+    it.each(['tab', 'all'])('saves an enabled repo-group binding with %s settings', async scope => {
+        listWorkspaces.mockResolvedValue({ workspaces: [
+            { id: 'group-team', rootPath: 'fixture-group', virtual: true },
+        ] });
+        const { view } = renderController();
+        act(() => view.result.current.hydrate({
+            ...binding, teamsReactionDelegation: { workspaceId: 'group-team', dispatcherSkill: 'dispatcher' },
+        }));
+        await act(async () => {
+            if (scope === 'tab') await view.result.current.handleSaveTab('teams');
+            else await view.result.current.handleSaveFeatures();
+        });
+        expect(listSkills).toHaveBeenCalledWith('group-team');
+        expect(workspaceConfig).toHaveBeenCalledWith('group-team');
+        expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+            'teamsReactionDelegation.workspaceId': 'group-team',
+            'teamsReactionDelegation.dispatcherSkill': 'dispatcher',
+        }));
+    });
+
     it('allows disabling a removed binding without requiring working skill reads', async () => {
         const { view } = renderController();
         act(() => view.result.current.hydrate(binding));
