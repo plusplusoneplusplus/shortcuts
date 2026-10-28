@@ -5,6 +5,7 @@ import {
     ConversationMetadataPopover,
     getSessionIdFromProcess,
     buildRows,
+    formatMetadataText,
     buildSummaryItems,
     buildCompactRows,
 } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover';
@@ -48,6 +49,80 @@ function renderPopover(process: any = BASE_PROCESS, turnsCount?: number) {
 }
 
 describe('ConversationMetadataPopover', () => {
+    it.each(['local', 'remote', 'remote-group'])('copies the displayed %s owner with the context-menu contract using the keyboard', async owner => {
+        const user = userEvent.setup();
+        const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+        const process = {
+            ...BASE_PROCESS,
+            workspaceId: `${owner}-workspace`,
+            sdkSessionId: `${owner}-session`,
+            metadata: { ...BASE_PROCESS.metadata, systemPrompt: 'private full prompt', credentials: 'private token' },
+        };
+        render(<ConversationMetadataPopover process={process} turnsCount={99} extraRows={[{ label: 'Private extra', value: 'private extra' }]} />);
+        await user.click(screen.getByRole('button', { name: 'Show conversation metadata' }));
+        const copy = screen.getByRole('button', { name: 'Copy metadata' });
+        expect(copy.title).toBe('Copy metadata');
+        expect(copy.parentElement?.className).toContain('min-w-0');
+        expect(copy.className).toContain('shrink-0');
+        expect(screen.getByText('Conversation metadata').className).toContain('truncate');
+        copy.focus();
+        await user.keyboard('{Enter}');
+        expect(writeText).toHaveBeenCalledExactlyOnceWith(formatMetadataText(process));
+        expect(writeText.mock.calls[0][0]).toBe(buildRows(process).map(row => `${row.label}: ${row.value}`).join('\n'));
+        expect(writeText.mock.calls[0][0]).toContain(`${owner}-session`);
+        expect(writeText.mock.calls[0][0]).not.toContain('private');
+        expect(writeText.mock.calls[0][0]).not.toContain('Turns: 99');
+        expect(screen.getByRole('status').textContent).toBe('Metadata copied');
+    });
+
+    it('copies from the mobile sheet with Space and keeps the heading on one row', async () => {
+        vi.stubGlobal('matchMedia', (query: string) => ({
+            matches: query === '(max-width: 767px)',
+            media: query, onchange: null, addListener: vi.fn(), removeListener: vi.fn(),
+            addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
+        }));
+        const user = userEvent.setup();
+        const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+        renderPopover();
+        await user.click(screen.getByRole('button', { name: 'Show conversation metadata' }));
+        const copy = screen.getByRole('button', { name: 'Copy metadata' });
+        expect(copy.parentElement?.className).not.toContain('flex-wrap');
+        copy.focus();
+        await user.keyboard(' ');
+        expect(writeText).toHaveBeenCalledWith(formatMetadataText(BASE_PROCESS));
+        expect(screen.getByRole('status').textContent).toBe('Metadata copied');
+    });
+
+    it('reports clipboard rejection without success and permits retry', async () => {
+        const user = userEvent.setup();
+        const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValueOnce(new Error('denied')).mockResolvedValueOnce();
+        renderPopover();
+        await user.click(screen.getByRole('button', { name: 'Show conversation metadata' }));
+        await user.click(screen.getByRole('button', { name: 'Copy metadata' }));
+        expect(screen.getByRole('alert').textContent).toBe('Could not copy metadata. Try again.');
+        expect(screen.queryByText('Metadata copied')).toBeNull();
+        await user.click(screen.getByRole('button', { name: 'Copy metadata' }));
+        expect(writeText).toHaveBeenCalledTimes(2);
+        expect(screen.getByRole('status').textContent).toBe('Metadata copied');
+    });
+
+    it('does not show late success for a replacement owner with the same process id', async () => {
+        const user = userEvent.setup();
+        let finish!: () => void;
+        const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; })).mockResolvedValueOnce();
+        const local = { ...BASE_PROCESS, sdkSessionId: 'local-session' };
+        const remote = { ...BASE_PROCESS, sdkSessionId: 'remote-session' };
+        const view = renderPopover(local);
+        await user.click(screen.getByRole('button', { name: 'Show conversation metadata' }));
+        await user.click(screen.getByRole('button', { name: 'Copy metadata' }));
+        expect((screen.getByRole('button', { name: 'Copy metadata' }) as HTMLButtonElement).disabled).toBe(true);
+        view.rerender(<ConversationMetadataPopover process={remote} />);
+        await act(async () => finish());
+        expect(screen.queryByText('Metadata copied')).toBeNull();
+        await user.click(screen.getByRole('button', { name: 'Copy metadata' }));
+        expect(writeText).toHaveBeenLastCalledWith(formatMetadataText(remote));
+    });
+
     it.each(['teams', 'whatsapp'] as const)('shows safe %s control rows in the shared metadata popover', source => {
         const sourceLabel = source === 'teams' ? 'Teams' : 'WhatsApp';
         renderPopover({ ...BASE_PROCESS, botControl: { state: 'active', source, controllerLabel: `${sourceLabel} bridge` } });

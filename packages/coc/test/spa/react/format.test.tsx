@@ -124,6 +124,23 @@ describe('escapeHtml', () => {
 });
 
 describe('copyToClipboard', () => {
+    it.each([false, 'throw'])('rejects failed fallback copy (%s) and removes its temporary element', async outcome => {
+        const clipboard = navigator.clipboard;
+        const execCommand = document.execCommand;
+        Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true, writable: true });
+        document.execCommand = vi.fn(() => {
+            if (outcome === 'throw') throw new Error('denied');
+            return false;
+        });
+        try {
+            await expect(copyToClipboard('metadata')).rejects.toThrow();
+            expect(document.querySelector('textarea')).toBeNull();
+        } finally {
+            Object.defineProperty(navigator, 'clipboard', { value: clipboard, configurable: true, writable: true });
+            document.execCommand = execCommand;
+        }
+    });
+
     it('uses navigator.clipboard when available', async () => {
         const writeText = vi.fn().mockResolvedValue(undefined);
         Object.defineProperty(navigator, 'clipboard', {

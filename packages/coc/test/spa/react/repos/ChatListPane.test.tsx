@@ -37,6 +37,8 @@ import {
     getTaskModeKey,
     getTaskModeLabel,
 } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
+import { copyToClipboard } from '../../../../src/server/spa/client/react/utils/format';
+import { formatMetadataText } from '../../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover';
 import { POINTER_CONTEXT_DRAG_MIME, SESSION_CONTEXT_DRAG_MIME } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 import { readSessionContextDropPayloads } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrop';
 import { groupBySpawnedTree, type SpawnedTreeEntry } from '../../../../src/server/spa/client/react/features/chat/spawned-tree-grouping';
@@ -174,10 +176,6 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     statusLabel: (status: string, _type?: string) => status,
     typeLabel: (type: string) => type,
     repoName: (path: string) => path,
-}));
-
-vi.mock('../../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover', () => ({
-    buildRows: () => [{ label: 'Type', value: 'chat' }],
 }));
 
 // ── Swipeable wrapper — passthrough ──
@@ -1917,6 +1915,14 @@ describe('ChatListPane', () => {
     // ── Context menus ──────────────────────────────────────────────────
     describe('Context menus', () => {
         describe('Running task menu', () => {
+            it('copies the same standard payload as the metadata heading', () => {
+                const task = makeRunningTask({ workspaceId: 'remote-group-owner', sdkSessionId: 'owner-session' });
+                renderPane({ running: [task] });
+                fireEvent.contextMenu(document.querySelector('[data-task-id="run-1"]')!);
+                fireEvent.click(screen.getByText(/Copy metadata/));
+                expect(copyToClipboard).toHaveBeenCalledWith(formatMetadataText(task));
+            });
+
             it('right-click opens context menu', () => {
                 renderPane({ running: [makeRunningTask()] });
                 const card = document.querySelector('[data-task-id="run-1"]')!;

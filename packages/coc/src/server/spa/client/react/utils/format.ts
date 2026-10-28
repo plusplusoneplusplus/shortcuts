@@ -48,7 +48,7 @@ export function escapeHtml(str: string | null | undefined): string {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-export function copyToClipboard(text: string): Promise<void> {
+export async function copyToClipboard(text: string): Promise<void> {
     if (navigator.clipboard && navigator.clipboard.writeText) {
         return navigator.clipboard.writeText(text);
     }
@@ -57,10 +57,12 @@ export function copyToClipboard(text: string): Promise<void> {
     ta.style.position = 'fixed';
     ta.style.left = '-9999px';
     document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    return Promise.resolve();
+    try {
+        ta.select();
+        if (!document.execCommand('copy')) throw new Error('Could not copy to clipboard');
+    } finally {
+        document.body.removeChild(ta);
+    }
 }
 
 /**
