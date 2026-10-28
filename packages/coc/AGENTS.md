@@ -682,7 +682,10 @@ references before editing. Paths are package-relative.
   item in `CocApiError.body.current`. Route composition
   shares the native ledger database, publishes the live flag-gated `getSentinelCoda`
   executor capability, and returns `codaReady`; server startup awaits recovery before
-  activating restored queues. Coda ask turns are unattended; enabled shell guards
+  activating restored queues. Manual and scheduled Coda children request `effortTier: 'medium'`
+  through the owning server/workspace queue; shared tier resolution selects the routed
+  provider's configured model and reasoning effort after Auto routing. Queue priority stays low.
+  Coda ask turns are unattended; enabled shell guards
   auto-deny without offering user approval. Coda events carry workspace/process ownership and use
   workspace WebSocket filtering; ledger invalidations may omit `itemId` for a whole run.
   Runs persist a caller-supplied child task id before queue admission, so early

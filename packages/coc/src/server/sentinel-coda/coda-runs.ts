@@ -386,8 +386,8 @@ function buildChildTask(owner: SentinelTodoOwner, run: CodaRunRecord, snapshotPa
             workspaceId: owner.workspaceId,
             context: { sentinelScrub: context },
         },
-        // Pin only reasoning effort; keep provider/model routing workspace-owned.
-        config: { reasoningEffort: 'medium' },
+        // Resolve both model and effort through the routed provider's Medium tier.
+        config: { effortTier: 'medium' } as CreateTaskInput['config'] & { effortTier: string },
         displayName: `[Coda] ${run.snapshot.length} to-do${run.snapshot.length === 1 ? '' : 's'}`,
     };
 }

@@ -29,8 +29,12 @@ filters `scheduleWakeup`, the canvas tools (`CANVAS_LLM_TOOL_NAMES`), `kusto_que
 `getSentinelCoda` is a late-bound executor capability published by route composition
 and gated by `sentinelTodoScrubber`. Ask tasks carrying
 `context.sentinelScrub` mark their run running and receive only `submit_scrub_findings`
-from the CoC tool bundle. A missing capability rejects the turn. Ordinary chat tools,
-ledger writers and `send_to_conversation` are excluded. Coda turns are unattended:
+from the CoC tool bundle. A missing capability rejects the turn. Manual and scheduled
+children submit `effortTier: 'medium'` through the owning server/workspace queue.
+Shared tier resolution supplies the selected provider's configured model and reasoning
+effort after Auto routing; queue priority remains low and model/effort validation stays strict.
+
+Ordinary chat tools, ledger writers and `send_to_conversation` are excluded. Coda turns are unattended:
 ask-user wiring is noninteractive and enabled dangerous-command guards omit approval
 callbacks, preserving auto-deny with audit reporting. Findings remain pending until
 queue completion; cancellation, failure and timeout apply nothing. Submission must
