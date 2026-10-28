@@ -1194,7 +1194,9 @@ references before editing. Paths are package-relative.
 - `features.teamsIc3OwnCommands` (default off) routes new own-user `@coc <prompt>`
   messages in self/direct/group/meeting chats to one Ask conversation per account,
   Teams chat and explicit local `teamsIc3OwnCommands.workspaceId`, using the shared
-  Teams connection `ic3Region`.
+  Teams connection `ic3Region`. Command workspace accepts physical repos and
+  registered repo groups, not other virtual scopes. Group jobs run at the group
+  root and use normal member context and access policy on initial and follow-up turns.
   Stable hashed conversation IDs reuse saved chats across restarts. First turns use
   medium effort; ordered follow-ups retain conversation policy and correlate answers
   by request ID. Each new admitted mention attempts a standard Eyes acknowledgement

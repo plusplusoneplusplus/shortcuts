@@ -13,6 +13,7 @@ import { getTeamsOutboundComplianceFailure, type TeamsOutboundCompliance, type T
 import type { Route } from '../types';
 import type { TeamsMessagingManager } from './teams-messaging-manager';
 import { sendJSON } from '../core/api-handler';
+import { isRepoGroupWorkspaceId } from '../workspaces/repo-group-workspace';
 import { Ic3ReactionClient, TeamsOperationError, TrouterClient, type Ic3DirectMessageOptions, type TrouterStatus, type TrouterWake } from '@plusplusoneplusplus/coc-connector/teams';
 
 function isCommandChat(chatId: string): boolean {
@@ -229,9 +230,9 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                 signal.throwIfAborted();
                 const target = config.teamsIc3OwnCommands;
                 const workspace = workspaces.find(workspace => workspace.id === target.workspaceId
-                    && !workspace.virtual && isAbsolute(workspace.rootPath));
+                    && (!workspace.virtual || isRepoGroupWorkspaceId(workspace.id)) && isAbsolute(workspace.rootPath));
                 if (!configuredRegion || !workspace) {
-                    throw new Error('Configure a local IC3 workspace and region.');
+                    throw new Error('Configure a local IC3 workspace or repo group and region.');
                 }
                 const region = configuredRegion;
                 const { rootPath: workingDirectory } = workspace;

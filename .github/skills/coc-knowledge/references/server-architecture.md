@@ -710,7 +710,10 @@ or `meeting` with `Meeting`. Channels and unknown thread types remain excluded.
 Only the newest 30 messages per chat are inspected. Admission excludes pre-start
 messages, edits, quotes, attachments and foreign senders. Own-user `@coc <prompt>`
 messages share one Ask conversation per tenant/user, Teams chat and configured local
-workspace. A stable hashed first-task ID resolves queued or saved conversations
+workspace or repo group. Group jobs run at the registered group root; normal chat
+execution supplies member context and access policy on initial and follow-up turns.
+Other virtual scopes and non-absolute roots reject without dashboard fallback.
+A stable hashed first-task ID resolves queued or saved conversations
 across restarts. First turns use medium effort and normal Auto provider resolution;
 follow-ups retain conversation policy and use queue process ordering. Admission
 serializes by conversation. Account/chat/message hashes, queue evidence and persisted

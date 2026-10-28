@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminWorkspaceSelect } from '../../../../src/server/spa/client/react/admin/AdminWorkspaceSelect';
+import { getAdminSettingDefinition } from '../../../../src/config/admin-setting-definitions';
 
 const { list } = vi.hoisted(() => ({ list: vi.fn() }));
 vi.mock('../../../../src/server/spa/client/react/admin/adminTarget', () => {
@@ -43,6 +44,22 @@ describe('IC3 Admin workspace selection', () => {
         await waitFor(() => expect(screen.getByRole('option', { name: 'Team [Repo group] (group-team)' })).toBeDefined());
         expect(screen.getByRole('option', { name: 'Alpha (alpha)' })).toBeDefined();
         expect(screen.queryByRole('option', { name: /My Work|Missing/ })).toBeNull();
+        fireEvent.change(screen.getByTestId('workspace'), { target: { value: 'group-team' } });
+        expect(onChange).toHaveBeenCalledWith('group-team');
+    });
+
+    it('uses the Command workspace registry control to select a saved repo group', async () => {
+        list.mockResolvedValue({ workspaces: [
+            { id: 'group-team', name: 'Team', rootPath: 'fixture-group', virtual: true },
+            { id: 'my_work', name: 'My Work', rootPath: 'fixture-work', virtual: true },
+        ] });
+        const definition = getAdminSettingDefinition('teamsIc3OwnCommands.workspaceId')!;
+        if (definition.ui?.control?.type !== 'workspace') throw new Error('Expected workspace control');
+        const { onChange } = show('group-team', definition.ui.control.includeRepoGroups);
+        await screen.findByRole('option', { name: 'Team [Repo group] (group-team)' });
+        expect((screen.getByTestId('workspace') as HTMLSelectElement).value).toBe('group-team');
+        expect(screen.queryByRole('alert')).toBeNull();
+        expect(screen.queryByRole('option', { name: /My Work/ })).toBeNull();
         fireEvent.change(screen.getByTestId('workspace'), { target: { value: 'group-team' } });
         expect(onChange).toHaveBeenCalledWith('group-team');
     });

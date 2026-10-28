@@ -1169,6 +1169,11 @@ describe('feature toggle settings-tab placement', () => {
         expect(uiDefs.filter(d => getFeatureSettingTab(d) === 'integrations').some(d => /teams/i.test(d.key))).toBe(false);
     });
 
+    it('allows repo groups in the Teams command workspace selector', () => {
+        expect(getAdminSettingDefinition('teamsIc3OwnCommands.workspaceId')?.ui?.control)
+            .toEqual({ type: 'workspace', includeRepoGroups: true });
+    });
+
     // Browser-related settings live on Admin → Browser; moving them must not
     // change their keys, defaults, opt-in absent fallbacks, live runtime,
     // runtime flags or badges, and no browser setting may stay elsewhere.
