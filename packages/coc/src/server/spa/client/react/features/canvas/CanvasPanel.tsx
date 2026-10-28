@@ -48,6 +48,8 @@ import { CanvasCommentsPanel } from './components/CanvasCommentsPanel';
 import type { CanvasUpdatedEvent } from '../chat/hooks/useChatSSE';
 
 export interface CanvasPanelProps {
+    /** Concrete owner route; null pins this resource to the page-origin server. */
+    routingRef?: string | null;
     workspaceId: string;
     canvasId: string;
     /** Latest live canvas event from the chat SSE stream (AI edits). */
@@ -86,12 +88,12 @@ export interface CanvasPanelProps {
 }
 
 export function CanvasPanel({
-    workspaceId, canvasId, liveEvent, onClose, onAskAi, onSendToAi, onFullscreenChange,
+    workspaceId, routingRef, canvasId, liveEvent, onClose, onAskAi, onSendToAi, onFullscreenChange,
     onPopOut, availableCanvases = [], onSelectCanvas, titleAccessory, onCanvasCreated, reloadNonce,
     onDirtyChange, onRegisterSave,
 }: CanvasPanelProps) {
     // AC-07: canvas get/save/versions/comments + save-to-notes target the clone.
-    const client = useCocClient(workspaceId);
+    const client = useCocClient(routingRef === null ? undefined : routingRef ?? workspaceId);
     const [mode, setMode] = useState<ViewMode>('preview');
     const [isFullscreen, setIsFullscreen] = useState(false);
     // Right-click "Copy image" menu for inline preview images (position + resolved src).
@@ -239,6 +241,7 @@ export function CanvasPanel({
 
                 <div className="h-full overflow-y-auto">
                     <CanvasBodyRenderer
+                        routingRef={routingRef}
                         workspaceId={workspaceId}
                         canvasId={canvasId}
                         loading={record.loading}

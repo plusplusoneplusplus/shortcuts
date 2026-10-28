@@ -229,7 +229,13 @@ export function applyInlineMarkdown(text: string, options?: MarkdownRenderInline
     // Match any Unix absolute path with ≥2 components and Windows drive-letter paths.
     // Lookbehind (?<![:/\w]) prevents matching path tails inside URLs.
     const FILE_PATH_RE = /(?:(?<![:/\w])\/[a-zA-Z][a-zA-Z0-9_.-]*(?:\/[^\s&"'<>()]+)+|(?<![/\w])[A-Za-z]:[/\\][\w./@\\-]+)/g;
+    // Explicit Markdown destinations belong to the link/image renderer. Bare
+    // path detection must not consume a relative tail or rewrite its href.
+    const linkRanges = Array.from(html.matchAll(/!?\[[^\]]*\]\([^\n)]*\)/g), match => ({
+        start: match.index!, end: match.index! + match[0].length,
+    }));
     html = html.replace(FILE_PATH_RE, function(match: string, offset: number) {
+        if (linkRanges.some(range => offset >= range.start && offset < range.end)) return match;
         // Skip if inside a <span class="md-inline-code"> tag
         const before = html.substring(0, offset);
         const opens = (before.match(/<span class="md-inline-code">/g) || []).length;

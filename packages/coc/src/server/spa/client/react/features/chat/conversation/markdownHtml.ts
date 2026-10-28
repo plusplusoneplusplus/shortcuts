@@ -1,7 +1,7 @@
 import { parseTargetHref } from '../../../../../../shared/sentinel-target-reference';
 import { Marked } from 'marked';
 import { mathMarkedExtension } from '../../../../shared/math/mathMarkedExtension';
-import { linkifyFilePaths } from '../../../shared/file-path-utils';
+import { linkifyFilePaths, parseFilePathRef } from '../../../shared/file-path-utils';
 import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { renderMermaidContainer, type CodeBlock } from '@plusplusoneplusplus/forge/editor/parsing';
 import { DEFAULT_HTML_EMBED_HEIGHT, isEmbeddableHtmlPath } from '@plusplusoneplusplus/forge/editor/rendering';
@@ -89,8 +89,11 @@ function rewriteBareExcalidrawLinks(html: string): string {
  */
 export function getLocalFileLinkKind(href: string | null | undefined): 'html' | 'source' | null {
     const trimmed = (href ?? '').trim();
-    if (!trimmed || trimmed.startsWith('#')) return null;
-    if (/^[a-z][a-z0-9+.-]+:/i.test(trimmed) && !/^file:/i.test(trimmed)) return null;
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) return null;
+    if (/^[a-z][a-z0-9+.-]+:/i.test(trimmed) && !/^file:/i.test(trimmed)) {
+        const ref = parseFilePathRef(trimmed);
+        if (ref.line === undefined || ref.path.includes(':') || !ref.path.includes('.')) return null;
+    }
     return isEmbeddableHtmlPath(trimmed) ? 'html' : 'source';
 }
 

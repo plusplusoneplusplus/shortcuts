@@ -79,7 +79,7 @@ interface CacheEntry {
     timestamp: number;
 }
 
-interface FileReference {
+export interface FileReference {
     /** Bare path used by the source canvas; excludes any trailing line suffix. */
     filePath: string;
     /** Original path-like reference used by the legacy review dialog fallback. */
@@ -291,6 +291,10 @@ async function openHtmlPageOrSource(ref: FileReference, bridge: DesktopHtmlPageB
             // A repo-group relative ref needs the server's ordered member probe.
             const preview = await getCocClientForWorkspace(ownerId)
                 .tasks.previewWorkspaceFile(ownerId, filePath) as PreviewResponse;
+            if (!('path' in preview)) {
+                dispatchOpenSourceCanvas(ref);
+                return;
+            }
             filePath = preview.path;
             ownerId = preview.resolvedWorkspaceId ?? ownerId;
         }
@@ -352,6 +356,11 @@ function dispatchOpenMarkdownReview(ref: FileReference): void {
  */
 function openFileReference(sourceEl: HTMLElement, ref: FileReference): void {
     hideTooltip();
+    // A preview owns its file context even when it is outside the transcript.
+    // Let that host use the same resolver before the chat/dialog fallback.
+    if (!sourceEl.dispatchEvent(new CustomEvent('coc-open-file-reference', {
+        bubbles: true, cancelable: true, detail: ref,
+    }))) return;
     const chat = sourceEl.closest('.chat-message,[data-chat-id]');
 
     if (SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS) {
@@ -393,12 +402,13 @@ function openFilePathLink(link: HTMLElement): void {
     const fullPath = link.getAttribute('data-full-path');
     if (!fullPath) return;
 
+    const parsed = parseFilePathRef(fullPath);
     openFileReference(link, {
-        filePath: fullPath,
+        filePath: parsed.path,
         reviewFilePath: fullPath,
         wsId: readWorkspaceId(link),
-        line: readLineAttr(link, 'data-line'),
-        endLine: readLineAttr(link, 'data-end-line'),
+        line: readLineAttr(link, 'data-line') ?? parsed.line,
+        endLine: readLineAttr(link, 'data-end-line') ?? parsed.endLine,
         sourceFilePath: readSourceFilePath(link),
         chatId: link.closest('[data-chat-id]')?.getAttribute('data-chat-id') || undefined,
     });
@@ -417,31 +427,31 @@ function findMdLink(target: EventTarget | null): HTMLElement | null {
         : target.closest<HTMLElement>('.md-link');
     if (!link) return null;
     // Skip anchor links (handled separately for ToC navigation)
-    if (link.classList.contains('md-anchor-link')) return null;
+    if (link.classList.contains('md-anchor-link') || link.hasAttribute('download')) return null;
     return link;
 }
 
-function findChatMarkdownAnchor(target: EventTarget | null): HTMLAnchorElement | null {
+function findLocalMarkdownAnchor(target: EventTarget | null): HTMLAnchorElement | null {
     if (!(target instanceof HTMLElement)) return null;
     const link = target.closest<HTMLAnchorElement>('a[href]');
     if (!link) return null;
     if (link.hasAttribute('download')) return null;
-    const chatMessage = link.closest('.chat-message,[data-chat-id]');
-    if (!chatMessage) return null;
+    const markdown = link.closest('.chat-message,[data-chat-id],.markdown-body,[data-markdown-file-links]');
+    if (!markdown) return null;
     const href = link.getAttribute('href') || '';
     if (!getLocalFileLinkKind(href)) return null;
     return link;
 }
 
 function findMarkdownReferenceLink(target: EventTarget | null): HTMLElement | null {
-    return findMdLink(target) ?? findChatMarkdownAnchor(target);
+    return findMdLink(target) ?? findLocalMarkdownAnchor(target);
 }
 
 /**
  * Match any `<a href>` markdown link inside a conversation bubble
  * (`.chat-message`) for the lightweight hover *source hint* — a small tooltip
  * that reveals the link's raw target. Applies to BOTH internal note/file
- * anchors and external URLs; unlike {@link findChatMarkdownAnchor} it does not
+ * anchors and external URLs; unlike {@link findLocalMarkdownAnchor} it does not
  * filter by kind because the hint shows the bare href for everything.
  *
  * `.file-path-link` spans keep their own rich content preview and are skipped
@@ -480,10 +490,14 @@ function readMarkdownHref(link: HTMLElement): string {
     return link.getAttribute('data-href') || link.getAttribute('href') || '';
 }
 
+function decodeMarkdownPath(path: string): string {
+    try { return decodeURIComponent(path); } catch { return path; }
+}
+
 function fileReferenceFromMarkdownHref(link: HTMLElement, href: string): FileReference {
     const { path, line, endLine } = parseFilePathRef(toForwardSlashes(href));
     return {
-        filePath: path,
+        filePath: /^file:/i.test(href) ? path : decodeMarkdownPath(path),
         reviewFilePath: href,
         wsId: readWorkspaceId(link),
         line,
@@ -890,7 +904,7 @@ function initFilePathPreviewDelegation(): void {
         if (!target) return;
         // Let browser handle Ctrl/Cmd+Click natively (open in new tab)
         const me = event as MouseEvent;
-        if (me.ctrlKey || me.metaKey || me.shiftKey || me.button === 1) return;
+        if (me.ctrlKey || me.metaKey || me.shiftKey || me.altKey || me.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
 
@@ -963,7 +977,7 @@ function initFilePathPreviewDelegation(): void {
         if (!target) return;
         // Let browser handle Ctrl/Cmd+Click natively (open in new tab)
         const me = event as MouseEvent;
-        if (me.ctrlKey || me.metaKey || me.shiftKey || me.button === 1) return;
+        if (me.ctrlKey || me.metaKey || me.shiftKey || me.altKey || me.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
 
