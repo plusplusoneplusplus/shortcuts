@@ -39,6 +39,11 @@ describe('isStreamDestroyedError', () => {
         expect(isStreamDestroyedError('read ECONNRESET')).toBe(true);
     });
 
+    it('detects Windows broken-pipe "write EOF" but not other EOF errors', () => {
+        expect(isStreamDestroyedError('write EOF')).toBe(true);
+        expect(isStreamDestroyedError('Unexpected EOF while parsing')).toBe(false);
+    });
+
     it('returns false for unrelated errors', () => {
         expect(isStreamDestroyedError('some other error')).toBe(false);
         expect(isStreamDestroyedError('Network timeout')).toBe(false);

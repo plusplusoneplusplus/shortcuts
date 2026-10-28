@@ -20,6 +20,8 @@ const STREAM_DESTROYED_PATTERNS = [
     'ERR_STREAM_DESTROYED',
     'cannot call write after a stream was destroyed',
     'EPIPE',
+    // Windows reports a broken pipe as EOF (libuv maps ERROR_BROKEN_PIPE to UV_EOF).
+    'write EOF',
     'ECONNRESET',
 ];
 
