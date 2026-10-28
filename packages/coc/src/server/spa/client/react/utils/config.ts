@@ -134,6 +134,10 @@ interface DashboardConfig {
     panelTabReorderingEnabled?: boolean;
     /** Whether fixed inline right-panel tab groups are enabled. Default false. */
     panelTabGroupsEnabled?: boolean;
+    /** Whether right-panel binary placeholders offer "Open in Explorer". Default false. */
+    binaryFileRevealEnabled?: boolean;
+    /** Whether Ctrl/Cmd+1–9 switch right-panel browser tabs and held-modifier hints show. Default false. */
+    browserTabShortcutsEnabled?: boolean;
     /** Whether the owning server allows confirmed permanent Explorer deletion. Default true. */
     explorerDeleteEnabled?: boolean;
     /** Desktop: whether local .html/.htm chat links open as a rendered page tab. Default true. */
@@ -354,6 +358,16 @@ export function isPanelTabReorderingEnabled(): boolean {
 
 export function isPanelTabGroupsEnabled(): boolean {
     return getConfig().panelTabGroupsEnabled === true;
+}
+
+/** "Open in Explorer" under right-panel binary placeholders (`features.binaryFileReveal`); off unless the server says on. */
+export function isBinaryFileRevealEnabled(): boolean {
+    return getConfig().binaryFileRevealEnabled === true;
+}
+
+/** Ctrl/Cmd+number browser-tab switching and hints (`features.browserTabShortcuts`); off unless the server says on. */
+export function isBrowserTabShortcutsEnabled(): boolean {
+    return getConfig().browserTabShortcutsEnabled === true;
 }
 
 /** Rendered Markdown in unified right-panel file tabs (`features.markdownPanelPreview`); on unless the server says off. */

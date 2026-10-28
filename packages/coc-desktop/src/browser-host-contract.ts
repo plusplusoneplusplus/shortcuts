@@ -53,6 +53,8 @@ export interface BrowserEventSink {
     openMenuRequested(): void;
     focusAddressRequested?(): void;
     reopenClosedRequested?(): void;
+    /** Ctrl/Cmd+1–9 (`digit`) or the platform modifier going down/up (`held`) while the page has focus. */
+    tabShortcut?(event: { digit: number } | { held: boolean }): void;
     /** The host expired or lost its guest; remove the manager handle as well. */
     closed?(): void;
     controlPopoutOpened?(viewId: string, view: BrowserHostedView): void;
@@ -103,6 +105,8 @@ export interface BrowserHostedView {
     setNavigationGate?(enabled: boolean): void | Promise<void>;
     /** Web content only; file previews deliberately omit this capability. */
     setPageZoom?(percent: number): void | Promise<void>;
+    /** Forward Ctrl/Cmd+1–9 and modifier holds to `tabShortcut` instead of the page. Web content only. */
+    setTabShortcuts?(enabled: boolean): void | Promise<void>;
     setBounds(bounds: HtmlPageBounds | null): void | Promise<void>;
     /** Background browser control: keep a hidden view rendering at its last size without showing or focusing it. */
     setBackgroundControl?(enabled: boolean): void | Promise<void>;

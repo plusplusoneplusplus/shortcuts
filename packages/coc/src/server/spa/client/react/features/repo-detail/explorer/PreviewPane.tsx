@@ -61,6 +61,7 @@ import {
 } from '../../language-servers/editorNavigation';
 import { TRUSTED_PATH_PREFIX } from './ExactOpen';
 import { explorerApi } from './explorerApi';
+import { BinaryRevealAction } from './BinaryRevealAction';
 import { WORKSPACE_PREVIEW_PREFIX, readWorkspacePreview, workspacePreviewClient, workspacePreviewUrl } from '../../../shared/file-viewer/workspacePreview';
 import { resolveLineRange, toLines } from '../../../shared/file-viewer/lineRange';
 import { parseRemoteCloneKey } from '../../../repos/cloneIdentity';
@@ -84,6 +85,8 @@ export interface PreviewPaneProps {
     fileName: string;
     /** Unified right-panel opt-in; standalone Explorer keeps its Monaco view. */
     markdownPreview?: boolean;
+    /** Unified right-panel opt-in: an "Open in Explorer" action under the binary placeholder. */
+    revealBinary?: boolean;
     /**
      * One-based line to scroll to and highlight once the content is loaded. Set
      * when the file is opened from a content-search hit.
@@ -200,7 +203,7 @@ function RenderedMarkdown({ content }: { content: string }) {
     );
 }
 
-export function PreviewPane({ editingScope, repoId, routingRef, definitionPreviewOwners, filePath, fileName, markdownPreview = false, revealLine, endLine, revealColumn, revealNonce, symbolCandidate, onClose, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate, onNavigateExternal, onNavigationMount, onNavigationLocation, onModelShare, onReloadControlChange }: PreviewPaneProps) {
+export function PreviewPane({ editingScope, repoId, routingRef, definitionPreviewOwners, filePath, fileName, markdownPreview = false, revealBinary = false, revealLine, endLine, revealColumn, revealNonce, symbolCandidate, onClose, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate, onNavigateExternal, onNavigationMount, onNavigationLocation, onModelShare, onReloadControlChange }: PreviewPaneProps) {
     const [identityFailure, setIdentityFailure] = useState<{ message: string; retry(): void } | null>(null);
     const identityFailureRef = useRef(identityFailure);
     identityFailureRef.current = identityFailure;
@@ -831,6 +834,15 @@ export function PreviewPane({ editingScope, repoId, routingRef, definitionPrevie
                     markers={languageEnabled ? languageDocument.markers : undefined}
                     onModelMount={mountSharedModel}
                     codeTestId="monaco-container"
+                    binaryActions={revealBinary ? (
+                        <BinaryRevealAction
+                            key={`${ownerKey}:${actualPath}`}
+                            repoId={repoId}
+                            routingRef={routingRef}
+                            path={actualPath}
+                            available={!readOnly}
+                        />
+                    ) : undefined}
                 />
             ) : null}
             {!loading && !error && isOversized && (

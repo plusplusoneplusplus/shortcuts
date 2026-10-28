@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 const mocks = vi.hoisted(() => ({ run: vi.fn(), save: vi.fn(), sendMessage: vi.fn() }));
 
@@ -66,6 +67,111 @@ describe('parseKustoContent', () => {
 
         const fallback = parseKustoContent('not json');
         expect(fallback).toMatchObject({ query: '', columns: [], rows: [], truncated: false });
+    });
+});
+
+describe('KustoView word wrap', () => {
+    it.each([false, true])('uses the shared accessible toggle (compact=%s)', async compact => {
+        const user = userEvent.setup();
+        const longText = 'long_unbroken_value_'.repeat(60);
+        const canvas = makeCanvas({ ...SUCCESS_STATE, rows: [[longText, 100], ['Kansas', 55]] });
+        const { container } = render(<KustoView workspaceId="ws-1" canvas={canvas} compact={compact} />);
+        const toggle = screen.getByRole('button', { name: 'Wrap text' });
+        const table = container.querySelector('.interactive-table')!;
+        expect(toggle).toHaveAttribute('aria-pressed', 'false');
+        expect(table).not.toHaveClass('interactive-table-wrapped');
+        expect(container.querySelector('colgroup')).not.toBeNull();
+
+        toggle.focus();
+        await user.keyboard('{Enter}');
+        expect(toggle).toHaveFocus();
+        expect(toggle).toHaveAttribute('aria-pressed', 'true');
+        expect(table).toHaveClass('interactive-table-wrapped');
+        expect(container.querySelector('colgroup')).toBeNull();
+        expect(screen.getByText(longText).closest('td')).toHaveAttribute('title', longText);
+        expect(container.querySelectorAll('tbody tr')).toHaveLength(2);
+
+        await user.keyboard(' ');
+        expect(toggle).toHaveAttribute('aria-pressed', 'false');
+        expect(table).not.toHaveClass('interactive-table-wrapped');
+        expect(container.querySelector('colgroup')).not.toBeNull();
+        expect(screen.getByText(longText)).toHaveTextContent(longText);
+        expect(mocks.save).not.toHaveBeenCalled();
+        expect(mocks.run).not.toHaveBeenCalled();
+    });
+
+    it('retains wrap across result revisions and chart switches, and resets on canvas/workspace changes', () => {
+        const canvas = makeCanvas(SUCCESS_STATE);
+        const { rerender } = render(<KustoView workspaceId="ws-1" canvas={canvas} readOnly />);
+        const toggle = () => screen.getByRole('button', { name: 'Wrap text' });
+        fireEvent.click(toggle());
+        rerender(<KustoView workspaceId="ws-1" canvas={makeCanvas({ ...SUCCESS_STATE, rows: [['Updated', 1]] }, { revision: 2 })} readOnly />);
+        expect(toggle()).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByText('Updated')).toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('kusto-view-chart'));
+        expect(screen.queryByRole('button', { name: 'Wrap text' })).toBeNull();
+        fireEvent.click(screen.getByTestId('kusto-view-table'));
+        expect(toggle()).toHaveAttribute('aria-pressed', 'true');
+
+        rerender(<KustoView workspaceId="ws-1" canvas={makeCanvas(SUCCESS_STATE, { id: 'another-canvas' })} />);
+        expect(toggle()).toHaveAttribute('aria-pressed', 'false');
+        fireEvent.click(toggle());
+        rerender(<KustoView workspaceId="remote:ws-1" canvas={makeCanvas(SUCCESS_STATE, { id: 'another-canvas' })} />);
+        expect(toggle()).toHaveAttribute('aria-pressed', 'false');
+        expect(mocks.save).not.toHaveBeenCalled();
+    });
+
+    it('preserves sorting and filters when wrapping changes', () => {
+        const { container } = render(<KustoView workspaceId="ws-1" canvas={makeCanvas(SUCCESS_STATE)} />);
+        fireEvent.click(screen.getByText('State'));
+        expect(container.querySelector('tbody tr td')).toHaveTextContent('Kansas');
+        fireEvent.click(screen.getByTitle('Show filters'));
+        const filter = container.querySelector('input.interactive-table-filter-input')!;
+        fireEvent.change(filter, { target: { value: 'Texas' } });
+        const toggle = screen.getByRole('button', { name: 'Wrap text' });
+        for (const pressed of ['true', 'false']) {
+            fireEvent.click(toggle);
+            expect(toggle).toHaveAttribute('aria-pressed', pressed);
+            expect(container.querySelectorAll('tbody tr')).toHaveLength(1);
+            expect(container.querySelector('tbody tr td')).toHaveTextContent('Texas');
+            expect(container.querySelector('thead th .interactive-table-sort-indicator')).toHaveTextContent('▲');
+            expect(filter).toHaveValue('Texas');
+            expect(screen.getByTitle('Copy as CSV')).toBeInTheDocument();
+            expect(screen.getByTestId('kusto-csv')).toBeInTheDocument();
+        }
+    });
+
+    it('preserves pagination, resized widths, and full CSV values when toggled', async () => {
+        userEvent.setup(); // Install the clipboard stub independently of other tests.
+        const rows = Array.from({ length: 30 }, (_, i) => [`value-${i}-${'x'.repeat(100)}`, i]);
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        const clipboard = vi.spyOn(navigator, 'clipboard', 'get').mockReturnValue({ writeText } as unknown as Clipboard);
+        const rect = vi.spyOn(HTMLTableCellElement.prototype, 'getBoundingClientRect')
+            .mockReturnValue({ width: 140, height: 20 } as DOMRect);
+        try {
+            const { container } = render(<KustoView workspaceId="ws-1" canvas={makeCanvas({ ...SUCCESS_STATE, rows })} />);
+            fireEvent.pointerEnter(screen.getByTestId('interactive-table-resizer-col_0'));
+            fireEvent.click(screen.getByRole('button', { name: '›' }));
+            expect(screen.getByText('Page 2 of 2')).toBeInTheDocument();
+            const toggle = screen.getByRole('button', { name: 'Wrap text' });
+            for (const pressed of ['true', 'false']) {
+                fireEvent.click(toggle);
+                expect(toggle).toHaveAttribute('aria-pressed', pressed);
+                expect(screen.getByText('Page 2 of 2')).toBeInTheDocument();
+                expect(container.querySelectorAll('tbody tr')).toHaveLength(5);
+                expect(container.querySelector('tbody td')).toHaveTextContent(rows[25][0]);
+                expect(container.querySelector('table')).toHaveStyle({ width: '280px' });
+                expect(container.querySelector('thead th')).toHaveStyle({ width: '140px' });
+            }
+            fireEvent.click(screen.getByTitle('Copy as CSV'));
+            await waitFor(() => expect(writeText).toHaveBeenCalled());
+            const csv = writeText.mock.calls[0][0];
+            expect(csv).toContain(rows[0][0]);
+            expect(csv).toContain(rows[29][0]);
+        } finally {
+            rect.mockRestore();
+            clipboard.mockRestore();
+        }
     });
 });
 

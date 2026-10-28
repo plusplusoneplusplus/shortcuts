@@ -79,6 +79,13 @@ interface PendingRequest {
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
+/**
+ * Stands in for the stream error handler after disposal. A write such as the
+ * final `exit` notification reports EPIPE asynchronously; a stream with no
+ * `error` listener would turn that into an uncaught exception.
+ */
+const ignoreLateStreamError = (): void => {};
+
 export class LanguageServerConnection {
     private readonly input: Readable;
     private readonly output: Writable;
@@ -241,8 +248,10 @@ export class LanguageServerConnection {
         this.input.off('end', this.handleEnd);
         this.input.off('close', this.handleEnd);
         this.input.off('error', this.handleStreamError);
+        this.input.on('error', ignoreLateStreamError);
         if (this.output !== (this.input as unknown as Writable)) {
             this.output.off('error', this.handleStreamError);
+            this.output.on('error', ignoreLateStreamError);
         }
         this.reader.reset();
         this.requestHandlers.clear();

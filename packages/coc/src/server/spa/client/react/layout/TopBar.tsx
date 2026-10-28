@@ -2,7 +2,7 @@
  * TopBar — top navigation bar with tab switching and the status/action cluster.
  *
  * Right-side layout (the cluster itself lives in `StatusActions`):
- *   [+ New?] [Connected pill] [NotificationBell] [Quota] [Admin] [Theme]
+ *   [Right-panel toggle?] [Connected pill] [NotificationBell] [Quota] [Admin] [Theme]
  *
  * In the remote-first shell (desktop), the cluster moves to a global bottom
  * status bar spanning every tab (see `GlobalStatusDock` → `StatusActions`
@@ -16,7 +16,6 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { useQueue } from '../contexts/QueueContext';
 import { useRepos } from '../contexts/ReposContext';
 import { StatusActions } from './StatusActions';
 import { WorkspaceDockToggle } from '../features/repo-detail/WorkspaceDockToggle';
@@ -52,7 +51,6 @@ export interface TopBarProps {
 
 export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const { state, dispatch } = useApp();
-    const { dispatch: queueDispatch } = useQueue();
     const { repos, fetchRepos, remoteGroupWorkspaces } = useRepos();
     const { navigateToWorkspace } = useWorkspaceNavigation();
     const { breakpoint } = useBreakpoint();
@@ -241,17 +239,6 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                 ))}
             </div>
             <div className="flex flex-shrink-0 items-center gap-1.5" data-testid="topbar-actions">
-                {showRemoteHeader && !!selectedRepo && (
-                    <button
-                        data-testid="header-new-btn"
-                        title={`Queue a task on ${selectedRepo.workspace.name}`}
-                        onClick={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: String(selectedRepo.workspace.id) })}
-                        className="hidden md:inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[12px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:border-[#1f883d] dark:hover:border-[#2ea043] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2a2a] transition-colors"
-                    >
-                        <span className="text-[#1f883d] dark:text-[#3fb950] text-[15px] leading-none">+</span>
-                        <span>New</span>
-                    </button>
-                )}
                 {/* The shared right panel owns its Search / Explorer controls. */}
                 {!!selectedRepo && (
                     <WorkspaceDockToggle workspaceId={String(selectedRepo.workspace.id)} />

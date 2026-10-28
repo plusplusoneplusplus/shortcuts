@@ -171,6 +171,10 @@ export interface DesktopBrowserBridge {
     onOpenMenuRequested?(callback: (event: { viewId: string }) => void): () => void;
     onCloseRequested?(callback: (event: { viewId: string }) => void): () => void;
     onReopenClosedRequested?(callback: (event: { viewId: string }) => void): () => void;
+    /** Opt this window's pages in to forwarding Ctrl/Cmd+1–9 and modifier holds; absent on older desktops. */
+    setTabShortcuts?(enabled: boolean): void;
+    /** A focused page's Ctrl/Cmd+1–9 (`digit`) or platform-modifier hold (`held`). */
+    onTabShortcut?(callback: (event: { viewId: string; digit?: number; held?: boolean }) => void): () => void;
     onClosed(callback: (event: { viewId: string; engine: BrowserEngine }) => void): () => void;
 }
 

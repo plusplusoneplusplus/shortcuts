@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { PassThrough } from 'stream';
+import { PassThrough, Writable } from 'stream';
 import { spawn } from 'child_process';
 import type { ChildProcessWithoutNullStreams } from 'child_process';
 import * as path from 'path';
@@ -273,6 +273,53 @@ describe('LanguageServerConnection over a stream pair', () => {
         });
         expect(errors.map(error => error.message)).toEqual(['write EPIPE']);
         expect(connection.isClosed).toBe(true);
+    });
+
+    it('absorbs an asynchronous write failure after the final notification and disposal', async () => {
+        const writeError = new Error('write EPIPE');
+        // Drive the real Writable error/close lifecycle without relying on an OS
+        // pipe closing when a child calls closeSync(0), which differs on Windows.
+        const output = new Writable({
+            write(_chunk, _encoding, callback) {
+                setImmediate(callback, writeError);
+            },
+        });
+        const onError = vi.fn();
+        const connection = new LanguageServerConnection({ input: new PassThrough(), output, onError });
+        // Watching error here would itself hide a missing disposal listener.
+        const closed = new Promise<void>(resolve => output.once('close', resolve));
+
+        expect(connection.sendNotification('exit')).toBe(true);
+        connection.dispose();
+
+        await closed;
+        expect(output.errored).toBe(writeError);
+        expect(onError).not.toHaveBeenCalled();
+    });
+
+    it('absorbs a stream error that arrives after disposal', () => {
+        const { connection, errors, toClient, toServer } = createPair();
+        connection.sendNotification('exit');
+        connection.dispose();
+
+        // A write to a dead server reports EPIPE after the caller disposed.
+        expect(() => toServer.emit('error', new Error('write EPIPE'))).not.toThrow();
+        expect(() => toClient.emit('error', new Error('read ECONNRESET'))).not.toThrow();
+        expect(errors).toEqual([]);
+    });
+
+    it('keeps one late-error listener when a shared duplex stream is disposed twice', () => {
+        const stream = new PassThrough();
+        const onError = vi.fn();
+        const connection = new LanguageServerConnection({ input: stream, output: stream, onError });
+
+        connection.dispose();
+        connection.dispose();
+
+        expect(stream.listenerCount('error')).toBe(1);
+        expect(stream.listenerCount('data')).toBe(0);
+        expect(() => stream.emit('error', new Error('late duplex error'))).not.toThrow();
+        expect(onError).not.toHaveBeenCalled();
     });
 
     it('returns false for a notification sent after disposal', () => {

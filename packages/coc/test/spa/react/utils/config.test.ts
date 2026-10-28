@@ -19,6 +19,7 @@ import {
     isPanelSourceSplitEnabled,
     isPanelTabReorderingEnabled,
     isPanelTabGroupsEnabled,
+    isBrowserTabShortcutsEnabled,
     isPullRequestsAutoClassifyTeamEnabled,
     isRailManualRefreshEnabled,
     isRailStatusActionsEnabled,
@@ -353,5 +354,20 @@ describe('removed Notes / panel-Settings availability accessors', () => {
         const config = await import('../../../../src/server/spa/client/react/utils/config');
         expect(config).not.toHaveProperty('isNotesEnabled');
         expect(config).not.toHaveProperty('isPanelSettingsEnabled');
+    });
+});
+
+describe('browser tab shortcuts runtime flag', () => {
+    it('defaults off, rejects non-true values and follows live updates', () => {
+        expect(isBrowserTabShortcutsEnabled()).toBe(false);
+        Object.defineProperty(window, '__DASHBOARD_CONFIG__', {
+            configurable: true,
+            value: { features: { browserTabShortcutsEnabled: 'true' } },
+        });
+        expect(isBrowserTabShortcutsEnabled()).toBe(false);
+        applyRuntimeConfigPatch({ browserTabShortcutsEnabled: true });
+        expect(isBrowserTabShortcutsEnabled()).toBe(true);
+        applyRuntimeConfigPatch({ browserTabShortcutsEnabled: false });
+        expect(isBrowserTabShortcutsEnabled()).toBe(false);
     });
 });

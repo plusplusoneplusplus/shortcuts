@@ -713,6 +713,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.sentinelTodoInlineNotes', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoInlineNotesEnabled',
+        ui: {
+            tab: 'sentinel', group: 'sentinelTodos', order: 32.595, label: 'Sentinel To-do inline Notes editing', badge: 'experimental',
+            hint: 'Click a To-do\'s Notes in its details to edit them in place. Saves only Notes, checks for concurrent changes and grants no execution authority. Disabled by default.',
+            testId: 'toggle-sentinel-todo-inline-notes-enabled',
+        },
+    }),
+    bool({
         key: 'features.sentinelTodoScrubber', default: false, runtime: 'live', runtimeFlag: 'sentinelTodoScrubberEnabled',
         ui: {
             tab: 'sentinel', group: 'sentinelTodos', order: 32.6, label: 'Sentinel Coda', badge: 'experimental',
@@ -1410,11 +1418,27 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.binaryFileReveal', default: false, runtime: 'live', runtimeFlag: 'binaryFileRevealEnabled',
+        ui: {
+            tab: 'appearance', group: 'editorFiles', order: 47, label: 'Open binary files in Explorer', badge: 'experimental',
+            hint: 'Adds an "Open in Explorer" button to a right-panel file tab that cannot preview a binary file. It shows the file in the owning server\'s system file manager and never opens the file. Disabled by default.',
+            testId: 'toggle-binary-file-reveal-enabled',
+        },
+    }),
+    bool({
         key: 'features.htmlPageTab', default: true, runtime: 'live', runtimeFlag: 'htmlPageTabEnabled',
         ui: {
             tab: 'browser', group: 'browserPages', order: 10, label: 'HTML page tabs',
             hint: 'Desktop app only: clicking a local .html/.htm link in a chat response opens the rendered page in a right-panel tab. When off, the link opens in the source viewer.',
             testId: 'toggle-html-page-tab-enabled',
+        },
+    }),
+    bool({
+        key: 'features.browserTabShortcuts', default: false, runtime: 'live', runtimeFlag: 'browserTabShortcutsEnabled',
+        ui: {
+            tab: 'browser', group: 'browserPages', order: 20, label: 'Browser tab shortcuts', badge: 'experimental',
+            hint: 'Ctrl+1–8 (Cmd on macOS) switch to that right-panel browser tab and Ctrl+9 to the last one. Hold the key to show each tab\'s shortcut. Disabled by default.',
+            testId: 'toggle-browser-tab-shortcuts-enabled',
         },
     }),
 

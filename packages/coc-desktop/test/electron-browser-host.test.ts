@@ -42,6 +42,7 @@ const mocks = vi.hoisted(() => ({
         setZoomFactor: vi.fn(),
         setBackgroundThrottling: vi.fn(),
         sendInputEvent: vi.fn(), insertText: vi.fn().mockResolvedValue(undefined), selectAll: vi.fn(),
+        reload: vi.fn(), reloadIgnoringCache: vi.fn(),
         getURL: () => 'https://example.test/', getTitle: () => 'Fixture', isLoading: () => false,
         navigationHistory: { canGoBack: () => true, canGoForward: () => false },
     },
@@ -210,6 +211,7 @@ async function view() {
     const sink: BrowserEventSink = {
         state: vi.fn(), newTab: vi.fn(), download: vi.fn(),
         closeRequested: vi.fn(), openMenuRequested: vi.fn(), focusAddressRequested: vi.fn(), reopenClosedRequested: vi.fn(),
+        tabShortcut: vi.fn(),
         visited: vi.fn(), titleUpdated: vi.fn(), navigationStarted: vi.fn(),
         documentCommitted: vi.fn(), documentTitleUpdated: vi.fn(),
     };
@@ -448,6 +450,87 @@ describe('Electron browser add-menu forwarding', () => {
         expect(mocks.revoke).toHaveBeenCalledOnce();
         await hosted.close();
         expect(mocks.revoke).toHaveBeenCalledOnce();
+    });
+
+    it('reloads only its own focused visible guest, with Shift bypassing the cache', async () => {
+        const { hosted, press } = await view();
+        const { reload, reloadIgnoringCache } = mocks.contents;
+        reload.mockClear(); reloadIgnoringCache.mockClear();
+        // A hidden guest (another tab, pane or workspace) never claims the key.
+        expect(press({ key: 'r' }).preventDefault).not.toHaveBeenCalled();
+        await hosted.setBounds({ x: 0, y: 0, width: 300, height: 200 });
+        expect(press({ key: 'R' }).preventDefault).toHaveBeenCalledOnce();
+        expect(reload).toHaveBeenCalledOnce();
+        expect(press({ key: 'r', isAutoRepeat: true }).preventDefault).toHaveBeenCalledOnce();
+        expect(reload).toHaveBeenCalledOnce();
+        expect(press({ key: 'R', shift: true }).preventDefault).toHaveBeenCalledOnce();
+        expect(reloadIgnoringCache).toHaveBeenCalledOnce();
+        for (const input of [{ alt: true }, { control: false, meta: false }, { type: 'keyUp' }]) {
+            expect(press({ key: 'r', ...input }).preventDefault).not.toHaveBeenCalled();
+        }
+        await hosted.setBounds(null);
+        expect(press({ key: 'r' }).preventDefault).not.toHaveBeenCalled();
+        expect(reload).toHaveBeenCalledOnce();
+        expect(reloadIgnoringCache).toHaveBeenCalledOnce();
+        await hosted.close();
+    });
+
+    it('forwards Ctrl/Cmd+1–9 and modifier holds only while enabled, visible and live', async () => {
+        const { hosted, sink, press } = await view();
+        const tabShortcut = vi.mocked(sink.tabShortcut!);
+        const modifierKey = process.platform === 'darwin' ? 'Meta' : 'Control';
+        const digit = (code: string, overrides: Record<string, unknown> = {}) => press({ key: code.slice(-1), code, ...overrides });
+        await hosted.setBounds({ x: 0, y: 0, width: 300, height: 200 });
+        // Off by default: the page keeps its own Ctrl/Cmd+digits and modifier keys.
+        expect(digit('Digit1').preventDefault).not.toHaveBeenCalled();
+        press({ key: modifierKey });
+        expect(tabShortcut).not.toHaveBeenCalled();
+
+        await hosted.setTabShortcuts!(true);
+        const focusCalls = mocks.owner.focus.mock.calls.length;
+        expect(digit('Digit2').preventDefault).toHaveBeenCalledOnce();
+        expect(tabShortcut).toHaveBeenLastCalledWith({ digit: 2 });
+        // Host focus returns to the SPA so key-up reaches its document after the switch.
+        expect(mocks.owner.focus.mock.calls.length).toBe(focusCalls + 1);
+        // Repeats and key-up are swallowed without switching again.
+        expect(digit('Digit2', { isAutoRepeat: true }).preventDefault).toHaveBeenCalledOnce();
+        expect(digit('Digit2', { type: 'keyUp' }).preventDefault).toHaveBeenCalledOnce();
+        expect(tabShortcut).toHaveBeenCalledTimes(1);
+        // Shift, Alt/AltGr, Digit0, the numpad and the other platform's modifier stay with the page.
+        for (const input of [
+            { code: 'Digit3', shift: true }, { code: 'Digit3', alt: true }, { code: 'Digit0' }, { code: 'Numpad3' },
+            { code: 'Digit3', control: false, meta: false },
+            process.platform === 'darwin' ? { code: 'Digit3', control: true } : { code: 'Digit3', meta: true },
+        ]) {
+            expect(press({ key: '3', ...input }).preventDefault).not.toHaveBeenCalled();
+        }
+        expect(tabShortcut).toHaveBeenCalledTimes(1);
+
+        // A hold reports once, never blocks the key, and another chord or release ends it.
+        tabShortcut.mockClear();
+        expect(press({ key: modifierKey }).preventDefault).not.toHaveBeenCalled();
+        press({ key: modifierKey, isAutoRepeat: true });
+        expect(tabShortcut.mock.calls).toEqual([[{ held: true }]]);
+        press({ key: 'c', code: 'KeyC' });
+        press({ key: modifierKey, type: 'keyUp' });
+        expect(tabShortcut.mock.calls).toEqual([[{ held: true }], [{ held: false }]]);
+        press({ key: modifierKey });
+        press({ key: modifierKey, type: 'keyUp' });
+        expect(tabShortcut.mock.calls.slice(2)).toEqual([[{ held: true }], [{ held: false }]]);
+
+        // Disabling mid-hold releases the hint; hidden and disabled guests forward nothing.
+        tabShortcut.mockClear();
+        press({ key: modifierKey });
+        await hosted.setTabShortcuts!(false);
+        expect(tabShortcut.mock.calls).toEqual([[{ held: true }], [{ held: false }]]);
+        expect(digit('Digit1').preventDefault).not.toHaveBeenCalled();
+        await hosted.setTabShortcuts!(true);
+        await hosted.setBounds(null);
+        tabShortcut.mockClear();
+        expect(digit('Digit1').preventDefault).not.toHaveBeenCalled();
+        press({ key: modifierKey });
+        expect(tabShortcut).not.toHaveBeenCalled();
+        await hosted.close();
     });
 
     it('returns owner focus for the address shortcut, preserving other chords and hidden views', async () => {

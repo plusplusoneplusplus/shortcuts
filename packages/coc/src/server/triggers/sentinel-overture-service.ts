@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { z } from 'zod';
-import { dateTimeCandidates, type SentinelOvertureCapabilities } from '@plusplusoneplusplus/coc-client';
+import { dateTimeCandidates, isDeliveredSentinelOverture, type SentinelOvertureCapabilities } from '@plusplusoneplusplus/coc-client';
 import type { SentinelTodoService } from '../sentinel-todos/sentinel-todo-service';
 import type { SentinelTodoOwner, SentinelTodoStore } from '../sentinel-todos/sentinel-todo-store';
 import type { TriggerManager, TriggerEventEmit, OneShotFirer } from './trigger-manager';
@@ -63,10 +63,12 @@ export class SentinelOvertureService {
         return { dateTime: this.isDateTimeEnabled() };
     }
 
+    /** Cleared and successfully delivered overtures stay stored as dedupe receipts but are not listed. */
     async list(owner: SentinelTodoOwner): Promise<Trigger[]> {
         await this.assertOwner(owner);
         return this.deps.triggers.getByWorkspace(owner.workspaceId).filter(trigger =>
-            trigger.processId === owner.processId && trigger.binding && !trigger.binding.delegatedPr && !trigger.binding.removedAt);
+            trigger.processId === owner.processId && trigger.binding && !trigger.binding.delegatedPr && !trigger.binding.removedAt
+            && !isDeliveredSentinelOverture(trigger));
     }
 
     async preview(owner: SentinelTodoOwner, input: unknown): Promise<{ pr: PrIdentity; snapshot: PrStatusSnapshot }> {

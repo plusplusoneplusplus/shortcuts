@@ -32,6 +32,7 @@ import { SentinelTodoJobPreview } from './SentinelTodoJobPreview';
 import { SentinelTodoConversationReferences } from './SentinelTodoConversationReferences';
 import { SentinelTodoNotes } from './SentinelTodoNotes';
 import { SentinelTodoOrganizeNotes } from './SentinelTodoOrganizeNotes';
+import { EditableNotesArea, NotesActionButton, SentinelTodoNotesEditor, useSentinelTodoInlineNotesEnabled } from './SentinelTodoNotesEditor';
 import { Button } from '../../../ui/Button';
 import { Spinner } from '../../../ui/Spinner';
 import { cn } from '../../../ui/cn';
@@ -116,6 +117,8 @@ type FollowLink = (event: MouseEvent<HTMLAnchorElement>, linkKey: string, href?:
 type DraftFieldsValue = { title: string; completionCondition: string; notes: string; priority: SentinelTodoPriority };
 type Draft = DraftFieldsValue & {
     titleOnly?: boolean;
+    /** Inline Notes editing: saves only `notes`. */
+    notesOnly?: boolean;
     /** Undefined leaves the category alone (automatic on create); null is Uncategorized. */
     categoryId?: string | null;
     externalReferences?: SentinelTodoExternalReference[]; externalReferencesChanged?: boolean;
@@ -1437,6 +1440,21 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
     }, [editing?.titleOnly, hidden]);
     const [statusDraft, setStatusDraft] = useState<{ status: SentinelTodoStatus; reason: string } | null>(restoredDraft?.statusDraft ?? null);
     const [error, setError] = useState<string | null>(restoredDraft?.error ?? null);
+    const inlineNotes = useSentinelTodoInlineNotesEnabled();
+    const notesInput = useRef<HTMLTextAreaElement>(null);
+    const notesEditButton = useRef<HTMLButtonElement>(null);
+    const wasEditingNotes = useRef(false);
+    const [notesSaved, setNotesSaved] = useState(false);
+    useLayoutEffect(() => {
+        if (!hidden) {
+            const input = notesInput.current;
+            if (editing?.notesOnly && !wasEditingNotes.current && input) {
+                input.focus();
+                input.setSelectionRange(input.value.length, input.value.length);
+            } else if (!editing?.notesOnly && wasEditingNotes.current) notesEditButton.current?.focus();
+        }
+        wasEditingNotes.current = editing?.notesOnly === true;
+    }, [editing?.notesOnly, hidden]);
     const { canAttach, attach, attachError, drag } = useTodoAttachment(owner, item);
     const [busy, setBusy] = useState(false);
     const [dependenciesBusy, setDependenciesBusy] = useState(false);
@@ -1474,8 +1492,32 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
         await attempt();
     };
 
+    // Notes edited elsewhere since this draft began; never save over them silently.
+    const notesConflict = editing?.notesOnly && item.notes !== (editing.initialFields?.notes ?? item.notes)
+        && editing.notes !== item.notes ? item.notes : null;
+
+    const saveNotes = () => {
+        if (!editing?.notesOnly || busy || item.archived || notesConflict !== null) return;
+        const draft = editing;
+        if (draft.notes === item.notes) { setEditing(null); setError(null); return; }
+        // Only notes are written and nobody else changed them, so other fields' revisions are safe to accept.
+        void run(() => onSave(item, { notes: draft.notes }, item.revision),
+            () => { setEditing(null); setNotesSaved(true); });
+    };
+    const rebaseNotes = (useLatest: boolean) => setEditing(prev => prev && {
+        ...prev, ...(useLatest ? { notes: item.notes } : {}), baseRevision: item.revision,
+        initialFields: { ...(prev.initialFields ?? prev), notes: item.notes },
+    });
+    const cancelNotes = (fromKeyboard: boolean) => {
+        if (busy || !editing?.notesOnly) return;
+        const dirty = editing.notes !== (editing.initialFields?.notes ?? item.notes);
+        if (fromKeyboard && dirty && !window.confirm('Discard your unsaved Notes changes?')) return;
+        cancelEdit();
+    };
+
     const saveEdit = (event: FormEvent) => {
         event.preventDefault();
+        if (editing?.notesOnly) { saveNotes(); return; }
         if (!editing || busy || !editing.title.trim() || (editing.titleOnly && item.archived)) return;
         const draft = editing;
         const initial = draft.initialFields ?? { title: item.title, completionCondition: item.completionCondition,
@@ -1500,11 +1542,12 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
         current => setEditing(prev => prev && { ...prev, baseRevision: current?.revision ?? prev.baseRevision }));
     };
 
-    const startEdit = (titleOnly = false) => {
+    const startEdit = (mode?: 'title' | 'notes') => {
         setError(null);
+        setNotesSaved(false);
         const fields = { title: item.title, completionCondition: item.completionCondition, notes: item.notes,
             priority: sentinelTodoPriority(item) };
-        setEditing({ ...fields, titleOnly, baseRevision: item.revision,
+        setEditing({ ...fields, ...(mode === 'title' ? { titleOnly: true } : mode === 'notes' ? { notesOnly: true } : {}), baseRevision: item.revision,
             externalReferences: externalReferences(item), initialFields: fields,
             ...(categories ? { categoryId: knownCategoryId(item, categories) } : {}) });
     };
@@ -1545,6 +1588,9 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
     const high = sentinelTodoPriority(item) === 'high';
     const displayStatus = sentinelTodoDisplayStatus(item);
     const foldNotes = sentinelTodoFoldNotes(item.notes);
+    const canStartNotes = inlineNotes && !item.archived;
+    const notesStartBlocked = closeBlocked || editing !== null || statusDraft !== null;
+    const startNotes = () => { if (canStartNotes && !notesStartBlocked) startEdit('notes'); };
     // Every row reserves the band's gutter, so changing priority never shifts content.
     return (
         <li hidden={hidden} className="relative select-text rounded border border-[#e0e0e0] pl-1 dark:border-[#3c3c3c]"
@@ -1574,7 +1620,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                         </> : <>
                             <span className="min-w-0 [overflow-wrap:anywhere]">{item.title}</span>
                             {!item.archived && <button ref={titleEditButton} type="button" aria-label="Edit title" title="Edit title"
-                                disabled={closeBlocked || editing !== null || statusDraft !== null} onClick={() => startEdit(true)}
+                                disabled={closeBlocked || editing !== null || statusDraft !== null} onClick={() => startEdit('title')}
                                 className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[#848484] hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4] disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/[0.04]">
                                 <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                                     <path d="m10 2 4 4-8 8H2v-4Z M8 4l4 4" />
@@ -1623,7 +1669,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
             <SentinelTodoDependencies owner={owner} item={item} items={items} ledgerRevision={ledgerRevision}
                 expanded onLedgerChange={onLedgerChange} onItemLink={onItemLink} onArtifactLink={onArtifactLink} onBusyChange={setDependenciesBusy} />
             <div id={`${domId}-details`} className="flex flex-col gap-1.5 border-t border-[#e0e0e0] px-2 py-1.5 dark:border-[#3c3c3c]">
-                    {error && (
+                    {error && !editing?.notesOnly && (
                         <Notice tone="error" testId={`sentinel-todo-row-error-${item.id}`}
                             onRetry={lastAction.current ? () => { void lastAction.current?.(); } : undefined}>{error}</Notice>
                     )}
@@ -1633,7 +1679,7 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                             Saved status: {SENTINEL_TODO_STATUS_LABELS[item.status]}.
                         </div>
                     )}
-                    {editing && !editing.titleOnly ? (
+                    {editing && !editing.titleOnly && !editing.notesOnly ? (
                         <form className="flex flex-col gap-1" onSubmit={saveEdit} data-testid={`sentinel-todo-edit-form-${item.id}`}>
                             <DraftFields draft={editing} onChange={draft => setEditing({ ...editing, ...draft })} idPrefix={`${domId}-edit`}
                                 manual={sentinelTodoType(item) === 'manual'} categories={categories} />
@@ -1653,10 +1699,21 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                                         {item.outcome.summary} <span className={MUTED}>({item.outcome.recordedBy === 'user' ? 'you' : item.outcome.recordedBy})</span>
                                     </dd></>
                             )}
-                            {item.notes && (
+                            {editing?.notesOnly ? (
+                                <><dt className={MUTED} aria-hidden="true">Notes</dt>
+                                    <dd className="min-w-0">
+                                        <SentinelTodoNotesEditor ref={notesInput} id={`${domId}-notes-input`} itemId={item.id}
+                                            value={editing.notes} latest={notesConflict} busy={busy} error={error} archived={item.archived}
+                                            onChange={notes => setEditing({ ...editing, notes })} onSave={saveNotes} onCancel={cancelNotes}
+                                            onKeepDraft={() => rebaseNotes(false)} onUseLatest={() => rebaseNotes(true)} />
+                                    </dd></>
+                            ) : item.notes ? (
                                 <><dt className={MUTED}>Notes</dt>
                                     <dd className="min-w-0">
                                         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                                            {canStartNotes && <NotesActionButton ref={notesEditButton} label="Edit notes"
+                                                disabled={notesStartBlocked} title={notesStartBlocked ? 'Finish the pending change first.' : undefined}
+                                                onClick={startNotes} />}
                                             {foldNotes && (
                                                 <button type="button" aria-expanded={notesOpen} aria-controls={`${domId}-notes`}
                                                     onClick={() => setNotesOpen(open => !open)} data-testid={`sentinel-todo-notes-toggle-${item.id}`}
@@ -1667,10 +1724,20 @@ function TodoDetail({ item, owner, currentWorkspaceId, onSave, onFollowLink, ite
                                             {!item.archived && <SentinelTodoOrganizeNotes owner={owner} item={item} active={!hidden}
                                                 blocked={busy || dependenciesBusy || outcomesBusy || codaBusy || editing !== null || statusDraft !== null}
                                                 onBusyChange={setOrganizeNotesBusy} />}
+                                            {notesSaved && <span role="status" className={cn('text-[11px]', MUTED)}>Notes saved.</span>}
                                         </div>
                                         {(!foldNotes || notesOpen) && (
-                                            <SentinelTodoNotes id={`${domId}-notes`} notes={item.notes} owner={owner} itemId={item.id} onFollowLink={onFollowLink} />
+                                            <EditableNotesArea editable={canStartNotes && !notesStartBlocked} onEdit={startNotes}>
+                                                <SentinelTodoNotes id={`${domId}-notes`} notes={item.notes} owner={owner} itemId={item.id} onFollowLink={onFollowLink} />
+                                            </EditableNotesArea>
                                         )}
+                                    </dd></>
+                            ) : canStartNotes && (
+                                <><dt className={MUTED}>Notes</dt>
+                                    <dd className="min-w-0">
+                                        <NotesActionButton ref={notesEditButton} label="Add notes" disabled={notesStartBlocked}
+                                            title={notesStartBlocked ? 'Finish the pending change first.' : undefined} onClick={startNotes} />
+                                        {notesSaved && <span role="status" className={cn('ml-2 text-[11px]', MUTED)}>Notes saved.</span>}
                                     </dd></>
                             )}
                         </dl>

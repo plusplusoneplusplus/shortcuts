@@ -281,6 +281,64 @@ describe('SentinelOvertureService', () => {
         expect(triggers.getById(rule.id)?.delivery).toMatchObject({ deliveryId: pending.delivery?.deliveryId, state: 'delivered' });
     });
 
+    it.each(['pr', 'date-time'] as const)('auto-clears a delivered %s wake from the list but keeps its receipt', async kind => {
+        firer = new SentinelOvertureFirer({ triggers, todos, processes: { getProcess }, executor: { execute }, emit, dateTimeEnabled: () => true });
+        service = build(true);
+        const rule = kind === 'pr' ? await create({ idempotencyKey: 'draft' }) : await createDate(dateEvent, { idempotencyKey: 'draft' });
+        const waiting = await create({ itemId: todos.create(owner, { title: 'Other' }, { actor: 'user' }).item.id });
+        await service.runNow(owner, rule.id, { expectedRevision: 1, confirmed: true });
+        const stored = triggers.getById(rule.id)!;
+        expect(stored).toMatchObject({ outcome: 'fired', status: 'disarmed', delivery: { state: 'delivered' } });
+        expect(stored.binding?.removedAt).toBeUndefined();
+        expect((await service.list(owner)).map(trigger => trigger.id)).toEqual([waiting.id]);
+        // Dedupe evidence survives: replays return the receipt and nothing refires.
+        const replay = kind === 'pr' ? await create({ idempotencyKey: 'draft' }) : await createDate(dateEvent, { idempotencyKey: 'draft' });
+        expect(replay).toEqual(stored);
+        await firer.fire(rule.id, 'run-now');
+        await firer.deliverPending(rule.id);
+        expect(execute).toHaveBeenCalledTimes(1);
+        await expect(service.runNow(owner, rule.id, { expectedRevision: stored.revision, confirmed: true })).rejects.toThrow('Terminal');
+    });
+
+    it('keeps pending, failed, skipped and error wakes listed until delivery succeeds', async () => {
+        const rule = await create();
+        execute.mockRejectedValueOnce(new Error('Queue unavailable'));
+        await expect(service.runNow(owner, rule.id, { expectedRevision: 1, confirmed: true })).rejects.toThrow('Queue unavailable');
+        const pending = (await service.list(owner))[0];
+        expect(pending).toMatchObject({ id: rule.id, outcome: 'fired', outcomeReason: 'Queue unavailable', delivery: { state: 'pending' } });
+        const base = triggers.getById(rule.id)!;
+        for (const [id, outcome, delivery] of [
+            ['failed', 'error', { ...base.delivery!, deliveryId: 'd-failed', state: 'failed' }],
+            ['skipped', 'skipped', undefined],
+            ['error', 'error', undefined],
+        ] as const) triggers.insert({ ...base, id, outcome, delivery });
+        expect((await service.list(owner)).map(trigger => trigger.id).sort()).toEqual(['error', 'failed', rule.id, 'skipped'].sort());
+        await firer.deliverPending(rule.id);
+        expect((await service.list(owner)).map(trigger => trigger.id).sort()).toEqual(['error', 'failed', 'skipped']);
+        // Startup reconciliation may reopen a delivered wake; it then shows again.
+        const delivered = triggers.getById(rule.id)!;
+        triggers.update({ ...delivered, delivery: { ...delivered.delivery!, state: 'pending' } });
+        expect((await service.list(owner)).map(trigger => trigger.id)).toContain(rule.id);
+    });
+
+    it('hides already-delivered persisted wakes after reload, isolated per owner', async () => {
+        const rule = await create();
+        const delivered: Trigger = {
+            ...rule, status: 'disarmed', outcome: 'fired', nextTickAt: null, revision: 2,
+            delivery: { deliveryId: 'd1', firedAt: timestamp, deliveredAt: timestamp, reason: 'merged', state: 'delivered' },
+        };
+        triggers.update(delivered);
+        const otherOwner = { workspaceId: 'ws-other', processId: 'sentinel-other' };
+        triggers.insert({ ...delivered, ...otherOwner, id: 'foreign-delivered', action: { ...delivered.action, processId: otherOwner.processId } });
+        triggers.insert({ ...rule, id: 'still-waiting', revision: 1 });
+        triggers.insert({ ...delivered, id: 'delegated', binding: { ...delivered.binding!, delegatedPr: { jobId: 'j', receiptId: 'r' } } });
+        service = build();
+        expect((await service.list(owner)).map(trigger => trigger.id)).toEqual(['still-waiting']);
+        expect(triggers.getById(rule.id)).toEqual(delivered);
+        expect(triggers.getById('foreign-delivered')).toMatchObject({ ...otherOwner, delivery: { state: 'delivered' } });
+        expect(triggers.getById('delegated')?.delivery?.state).toBe('delivered');
+    });
+
     it.each(['create', 'edit'] as const)('rejects item-state races during %s preflight', async operation => {
         const rule = operation === 'edit' ? await create() : undefined;
         fetchPr.mockImplementationOnce(async () => {

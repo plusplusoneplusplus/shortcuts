@@ -74,6 +74,8 @@ pub struct Command {
     pub navigation_gate: Option<bool>,
     /// `navigate`: resume a navigation the gate held after the user approved it.
     pub approved: Option<bool>,
+    /// `open`/`tab-shortcuts`: forward Ctrl+1–9 and Ctrl holds to the owning panel.
+    pub tab_shortcuts: Option<bool>,
 }
 
 pub const CDP_EVENTS: &[&str] = &[
@@ -356,6 +358,22 @@ pub fn focus_address_shortcut(
     shift: bool,
 ) -> bool {
     key == u32::from(b'L') && key_down && control && !alt && !shift
+}
+
+const VK_CONTROL: u32 = 0x11;
+
+/// Ctrl+1–9 on the top row; Alt (including AltGr) and Shift leave the key with the page.
+pub fn tab_shortcut_digit(key: u32, control: bool, alt: bool, shift: bool) -> Option<u32> {
+    (control && !alt && !shift && (u32::from(b'1')..=u32::from(b'9')).contains(&key))
+        .then(|| key - u32::from(b'0'))
+}
+
+/// The next Ctrl-hold report: Ctrl changing state, or another chord cancelling a reported hold.
+pub fn tab_modifier_report(key: u32, key_down: bool, held: bool) -> Option<bool> {
+    if key == VK_CONTROL {
+        return (key_down != held).then_some(key_down);
+    }
+    (key_down && held).then_some(false)
 }
 
 pub fn allowed_url(value: &str, allow_blank: bool) -> bool {
@@ -769,6 +787,38 @@ mod tests {
         ] {
             assert!(!reopen_closed_shortcut(u32::from(key), down, control, alt, shift));
         }
+    }
+
+    #[test]
+    fn tab_shortcut_digit_takes_plain_ctrl_digits_only() {
+        for digit in 1..=9u32 {
+            assert_eq!(
+                tab_shortcut_digit(u32::from(b'0') + digit, true, false, false),
+                Some(digit)
+            );
+        }
+        for (key, control, alt, shift) in [
+            (b'0', true, false, false),
+            (b'1', false, false, false),
+            (b'1', true, true, false),
+            (b'1', true, false, true),
+            (b'T', true, false, false),
+        ] {
+            assert_eq!(tab_shortcut_digit(u32::from(key), control, alt, shift), None);
+        }
+        // Numpad 1 (VK_NUMPAD1) stays with the page.
+        assert_eq!(tab_shortcut_digit(0x61, true, false, false), None);
+    }
+
+    #[test]
+    fn tab_modifier_report_tracks_ctrl_and_cancels_on_other_chords() {
+        assert_eq!(tab_modifier_report(VK_CONTROL, true, false), Some(true));
+        assert_eq!(tab_modifier_report(VK_CONTROL, true, true), None);
+        assert_eq!(tab_modifier_report(VK_CONTROL, false, true), Some(false));
+        assert_eq!(tab_modifier_report(VK_CONTROL, false, false), None);
+        assert_eq!(tab_modifier_report(u32::from(b'C'), true, true), Some(false));
+        assert_eq!(tab_modifier_report(u32::from(b'C'), true, false), None);
+        assert_eq!(tab_modifier_report(u32::from(b'C'), false, true), None);
     }
 
     #[test]

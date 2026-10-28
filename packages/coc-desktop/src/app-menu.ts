@@ -316,6 +316,29 @@ export function buildEditMenu(
 }
 
 /**
+ * The standard View menu with Reload / Force Reload kept as clickable items but
+ * without their Ctrl/Cmd+R and Ctrl/Cmd+Shift+R accelerators. A menu accelerator
+ * fires for whatever owns focus — chat, editor, terminal — and reloads the whole
+ * SPA, which also restarts every hosted browser page. The key belongs to content
+ * routing instead: a focused browser page or its toolbar reloads that page only.
+ */
+export const VIEW_MENU: MenuItemConstructorOptions = {
+    role: 'viewMenu',
+    submenu: [
+        // null/undefined would restore Electron's default accelerators.
+        { role: 'reload', accelerator: '', registerAccelerator: false },
+        { role: 'forceReload', accelerator: '', registerAccelerator: false },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+    ],
+};
+
+/**
  * Build the full application-menu template for the given platform.
  *
  * On both macOS and Windows the menu carries a "Check for Updates…" item placed
@@ -405,7 +428,7 @@ export function buildAppMenuTemplate(
                 ],
             },
             buildEditMenu(platform, handlers.onCopy),
-            { role: 'viewMenu' },
+            VIEW_MENU,
             { role: 'windowMenu' },
         ];
         // Fix 3: a top-level Debug menu, after Window, when handlers are provided.
@@ -435,7 +458,7 @@ export function buildAppMenuTemplate(
     const template: MenuItemConstructorOptions[] = [
         { role: 'fileMenu' },
         buildEditMenu(platform, handlers.onCopy),
-        { role: 'viewMenu' },
+        VIEW_MENU,
         {
             role: 'windowMenu',
             // Electron's default submenu binds Close Window to Ctrl+W. Keep

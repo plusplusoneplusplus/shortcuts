@@ -74,7 +74,7 @@ export interface OpenMenuActionsInput {
  *
  * Explorer is omitted (not disabled) when the target has no single file tree: a
  * repo group's own root is the synthetic `~/.coc/repos/group-<name>` directory,
- * so a tree there would be meaningless. Selecting it toggles the panel's
+ * so a tree there would be meaningless. Selecting it opens the panel's
  * file-tree column rather than opening a tab — the entry keeps its position and
  * label, but the Explorer is no longer a tab kind. Notes stays enabled even for
  * an unavailable target: notes belong to the panel's workspace, not to the repo

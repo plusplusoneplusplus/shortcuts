@@ -191,6 +191,10 @@ export const BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL = 'coc-desktop:browser
 export const BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL = 'coc-desktop:browser-view-open-menu-requested';
 /** main → SPA: native reopen-closed-tab shortcut; the active owning panel restores its newest closed web tab. */
 export const BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL = 'coc-desktop:browser-view-reopen-closed-requested';
+/** main → SPA: a focused page's Ctrl/Cmd+1–9 (`{ viewId, digit }`) or platform-modifier hold (`{ viewId, held }`). */
+export const BROWSER_VIEW_TAB_SHORTCUT_CHANNEL = 'coc-desktop:browser-view-tab-shortcut';
+/** SPA → main: whether this window's pages forward Ctrl/Cmd+1–9 and modifier holds `(enabled)`. */
+export const BROWSER_TAB_SHORTCUTS_SET_CHANNEL = 'coc-desktop:browser-tab-shortcuts-set';
 export const BROWSER_VIEW_CLOSED_CHANNEL = 'coc-desktop:browser-view-closed';
 export const BROWSER_VIEW_FOCUS_CHANNEL = 'coc-desktop:browser-view-focus';
 export const BROWSER_HOST_FOCUS_CHANNEL = 'coc-desktop:browser-host-focus';
@@ -198,6 +202,25 @@ export const BROWSER_HOST_FOCUS_CHANNEL = 'coc-desktop:browser-host-focus';
 export const BROWSER_VIEW_OPEN_EXTERNAL_CHANNEL = 'coc-desktop:browser-view-open-external';
 
 export type BrowserEngine = 'electron' | 'webview2';
+
+/** The key that reveals tab-shortcut hints and forms Ctrl/Cmd+1–9: Command on macOS, Control elsewhere. */
+export function browserTabShortcutModifierKey(platform: NodeJS.Platform): 'Meta' | 'Control' {
+    return platform === 'darwin' ? 'Meta' : 'Control';
+}
+
+/**
+ * The digit of a Ctrl/Cmd+1–9 tab shortcut (top-row digits, platform modifier only), else null.
+ * Shift, Alt/AltGr and the other platform's modifier leave the key with the page.
+ */
+export function browserTabShortcutDigit(
+    input: { code?: string; control: boolean; meta: boolean; alt: boolean; shift: boolean },
+    platform: NodeJS.Platform,
+): number | null {
+    const mac = platform === 'darwin';
+    if (input.alt || input.shift || (mac ? !input.meta || input.control : !input.control || input.meta)) return null;
+    const match = /^Digit([1-9])$/.exec(input.code ?? '');
+    return match ? Number(match[1]) : null;
+}
 export function isBrowserEngine(value: unknown): value is BrowserEngine {
     return value === 'electron' || value === 'webview2';
 }

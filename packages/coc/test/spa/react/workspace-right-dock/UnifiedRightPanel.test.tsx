@@ -178,10 +178,21 @@ describe('UnifiedRightPanel', () => {
         act(() => window.dispatchEvent(new CustomEvent('coc-open-panel-directory', { detail })));
         expect(detail.handled).toBe(true);
         expect(dock.setTarget).toHaveBeenCalledWith(WS);
-        expect(dock.selectMode).toHaveBeenCalledWith('explorer');
+        // Already open in Explorer mode: selecting it again would toggle the panel closed.
+        expect(dock.selectMode).not.toHaveBeenCalled();
         expect(screen.getByTestId('mock-explorer')).toHaveAttribute('data-reveal-path', 'src');
         expect(screen.getByTestId('mock-explorer')).toHaveAttribute('data-reveal-directory', 'true');
         expect(readUnifiedPanelState(WS).chatTabs['chat-1']).toBeUndefined();
+    });
+
+    it('switches a Search-mode panel to Explorer for directory clicks', () => {
+        const dock = dockStub({ mode: 'search', setTarget: vi.fn(() => true) });
+        renderPanel({ chatId: 'chat-1', dock });
+        const detail = { scopeWorkspaceId: WS, chatId: 'chat-1', ownerWorkspaceId: WS,
+            ownerRoutingRef: null, path: 'src', handled: false };
+        act(() => window.dispatchEvent(new CustomEvent('coc-open-panel-directory', { detail })));
+        expect(dock.selectMode).toHaveBeenCalledTimes(1);
+        expect(dock.selectMode).toHaveBeenCalledWith('explorer');
     });
 
     it('ignores directory requests for another chat or clone owner', () => {

@@ -95,6 +95,8 @@ const BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL = 'coc-desktop:browser-view-close-req
 const BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL = 'coc-desktop:browser-view-focus-address-requested';
 const BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL = 'coc-desktop:browser-view-open-menu-requested';
 const BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL = 'coc-desktop:browser-view-reopen-closed-requested';
+const BROWSER_VIEW_TAB_SHORTCUT_CHANNEL = 'coc-desktop:browser-view-tab-shortcut';
+const BROWSER_TAB_SHORTCUTS_SET_CHANNEL = 'coc-desktop:browser-tab-shortcuts-set';
 const BROWSER_VIEW_CLOSED_CHANNEL = 'coc-desktop:browser-view-closed';
 const BROWSER_VIEW_FOCUS_CHANNEL = 'coc-desktop:browser-view-focus';
 const BROWSER_HOST_FOCUS_CHANNEL = 'coc-desktop:browser-host-focus';
@@ -349,6 +351,9 @@ const browser = {
     onOpenMenuRequested: (callback: (event: { viewId: string }) => void) => subscribe(BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, callback),
     onCloseRequested: (callback: (event: { viewId: string }) => void) => subscribe(BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, callback),
     onReopenClosedRequested: (callback: (event: { viewId: string }) => void) => subscribe(BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL, callback),
+    /** Pages forward Ctrl/Cmd+1–9 and modifier holds only after the SPA enables it for this window. */
+    setTabShortcuts: (enabled: boolean) => ipcRenderer.send(BROWSER_TAB_SHORTCUTS_SET_CHANNEL, enabled),
+    onTabShortcut: (callback: (event: { viewId: string; digit?: number; held?: boolean }) => void) => subscribe(BROWSER_VIEW_TAB_SHORTCUT_CHANNEL, callback),
     onClosed: (callback: (event: { viewId: string; engine: BrowserEngine }) => void) => subscribe(BROWSER_VIEW_CLOSED_CHANNEL, callback),
 };
 

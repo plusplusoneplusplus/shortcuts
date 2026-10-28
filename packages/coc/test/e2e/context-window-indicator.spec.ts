@@ -14,7 +14,9 @@
  * legacy `ContextWindowIndicator` element only renders inside the
  * (closed-by-default) metadata popover. These tests therefore assert on
  * the composer fuel-gauge testids:
- *   data-testid="composer-ctx-fuel" — wrapper (visible when tokenLimit > 0)
+ *   data-testid="composer-ctx-fuel" — wrapper (also visible before token data
+ *                                      arrives, because every chat passes
+ *                                      auto-compact state; the label shows "?")
  *   data-testid="composer-ctx-bar"  — bar background
  *   data-testid="composer-ctx-fill" — fill (carries `style="width: X%"`)
  *   data-testid="composer-ctx-pct"  — percentage label
@@ -191,9 +193,10 @@ test.describe('ContextWindowIndicator – Token data via SSE', () => {
             await mockRunningTaskWithTokens(page, serverUrl, taskId, 200_000, 10_000);
             await gotoTaskChat(page, serverUrl, wsId, taskId);
 
-            // After the token-usage SSE event, the composer fuel gauge should
-            // become visible (rendered only when sessionTokenLimit > 0).
+            // The gauge renders with "?" before the token-usage SSE event; the
+            // percentage proves the limit arrived.
             await expect(page.locator('[data-testid="composer-ctx-fuel"]')).toBeVisible({ timeout: 8_000 });
+            await expect(page.locator('[data-testid="composer-ctx-pct"]')).toHaveText('5%', { timeout: 8_000 });
         } finally {
             cleanup();
         }
@@ -207,10 +210,8 @@ test.describe('ContextWindowIndicator – Token data via SSE', () => {
             await mockRunningTaskWithTokens(page, serverUrl, taskId, 200_000, 50_000);
             await gotoTaskChat(page, serverUrl, wsId, taskId);
 
-            await expect(page.locator('[data-testid="composer-ctx-pct"]')).toBeVisible({ timeout: 8_000 });
-            const labelText = await page.locator('[data-testid="composer-ctx-pct"]').textContent();
-            expect(labelText).toBeTruthy();
-            expect(labelText).toMatch(/\d/);
+            // Retry until the SSE event replaces the "?" placeholder.
+            await expect(page.locator('[data-testid="composer-ctx-pct"]')).toHaveText('25%', { timeout: 8_000 });
         } finally {
             cleanup();
         }
@@ -241,8 +242,7 @@ test.describe('ContextWindowIndicator – Token data via SSE', () => {
             await expect(page.locator('[data-testid="composer-ctx-bar"]')).toBeVisible({ timeout: 8_000 });
 
             // The width style lives on the inner fill element, not the bar wrapper.
-            const fillStyle = await page.locator('[data-testid="composer-ctx-fill"]').getAttribute('style');
-            expect(fillStyle).toMatch(/width\s*:/);
+            await expect(page.locator('[data-testid="composer-ctx-fill"]')).toHaveAttribute('style', /width:\s*50%/, { timeout: 8_000 });
         } finally {
             cleanup();
         }
@@ -258,6 +258,8 @@ test.describe('ContextWindowIndicator – Token data via SSE', () => {
 
             await expect(page.locator('[data-testid="composer-ctx-fuel"]')).toBeVisible({ timeout: 8_000 });
             await expect(page.locator('[data-testid="composer-ctx-bar"]')).toBeVisible();
+            await expect(page.locator('[data-testid="composer-ctx-pct"]')).toHaveText('90%', { timeout: 8_000 });
+            await expect(page.locator('[data-testid="composer-ctx-fill"]')).toHaveClass(/bg-\[#f14c4c\]/);
         } finally {
             cleanup();
         }

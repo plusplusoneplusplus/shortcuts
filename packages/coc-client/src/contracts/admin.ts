@@ -129,6 +129,7 @@ export interface AdminResolvedConfig {
     queryPullRequestTool?: boolean;
     sentinelTodoCategories?: boolean;
     sentinelTodoExternalReferences?: boolean;
+    sentinelTodoInlineNotes?: boolean;
     sentinelPrOutcomeWake?: boolean;
     sentinelTodoDateTimeTriggers?: boolean;
     sentinelFollowUpResults?: boolean;
@@ -236,6 +237,7 @@ export interface AdminConfigUpdate {
   'features.queryPullRequestTool'?: boolean;
   'features.sentinelTodoCategories'?: boolean;
   'features.sentinelTodoExternalReferences'?: boolean;
+  'features.sentinelTodoInlineNotes'?: boolean;
   'features.sentinelPrOutcomeWake'?: boolean;
   'features.sentinelTodoDateTimeTriggers'?: boolean;
   'features.sentinelFollowUpResults'?: boolean;
@@ -312,6 +314,8 @@ export interface RuntimeDashboardConfig {
     sentinelTodoDependenciesEnabled: boolean;
     sentinelTodoCategoriesEnabled: boolean;
     sentinelTodoExternalReferencesEnabled: boolean;
+    /** Inline Notes editing in Sentinel To-do details (`features.sentinelTodoInlineNotes`); defaults off. */
+    sentinelTodoInlineNotesEnabled: boolean;
     sentinelTodoScrubberEnabled: boolean;
     sentinelTodoJobsEnabled: boolean;
     sentinelAdditionalInstructionsEnabled: boolean;
@@ -361,6 +365,10 @@ export interface RuntimeDashboardConfig {
     panelTabReorderingEnabled: boolean;
     /** Fixed inline right-panel tab groups (`features.panelTabGroups`); defaults off. */
     panelTabGroupsEnabled: boolean;
+    /** "Open in Explorer" under a right-panel file tab's binary placeholder (`features.binaryFileReveal`); defaults off. */
+    binaryFileRevealEnabled: boolean;
+    /** Ctrl/Cmd+1–9 right-panel browser-tab switching and hints (`features.browserTabShortcuts`); defaults off. */
+    browserTabShortcutsEnabled: boolean;
     /** Desktop: open local .html/.htm chat links as a rendered page tab (`features.htmlPageTab`). */
     htmlPageTabEnabled: boolean;
     /**

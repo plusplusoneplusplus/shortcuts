@@ -123,6 +123,42 @@ describe('renderer-owned file previews', () => {
     });
 });
 
+describe('HTML preview native reload shortcut', () => {
+    it.each(['linux', 'win32', 'darwin'])('reloads only its own focused visible preview on %s', async platform => {
+        vi.stubGlobal('process', { ...process, platform });
+        try {
+            const { view } = await create();
+            mocks.attach!(mocks.guest);
+            mocks.guest.reload.mockClear();
+            const press = (patch = {}) => {
+                const event = { preventDefault: vi.fn() };
+                mocks.guest.emit('before-input-event', event, {
+                    key: 'r', control: platform !== 'darwin', meta: platform === 'darwin',
+                    alt: false, shift: false, type: 'keyDown', isAutoRepeat: false, ...patch,
+                });
+                return event;
+            };
+            // The app menu binds no reload key; a hidden preview swallows it without reloading.
+            expect(press().preventDefault).toHaveBeenCalledOnce();
+            expect(mocks.guest.reload).not.toHaveBeenCalled();
+            await view.setBounds({ x: 0, y: 0, width: 200, height: 100 });
+            expect(press({ key: 'R' }).preventDefault).toHaveBeenCalledOnce();
+            expect(mocks.guest.reload).toHaveBeenCalledOnce();
+            press({ isAutoRepeat: true });
+            press({ type: 'keyUp' });
+            expect(mocks.guest.reload).toHaveBeenCalledOnce();
+            for (const patch of [{ alt: true }, { control: false, meta: false }]) {
+                expect(press(patch).preventDefault).not.toHaveBeenCalled();
+            }
+            await view.close();
+            press();
+            expect(mocks.guest.reload).toHaveBeenCalledOnce();
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+});
+
 describe('HTML preview native close shortcut', () => {
     it.each(['linux', 'win32', 'darwin'])('routes %s native input to its tab, never directly closes a window', async platform => {
         vi.stubGlobal('process', { ...process, platform });

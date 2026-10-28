@@ -1194,6 +1194,7 @@ timeout: 300
                 '  sentinelTodoCategories: true',
                 '  sentinelTodoDependencies: true',
                 '  sentinelTodoExternalReferences: true',
+                '  sentinelTodoInlineNotes: true',
                 '  sentinelTodoJobs: true',
                 '  sentinelAdditionalInstructions: true',
                 '  sentinelTodoScrubber: true',
@@ -1229,6 +1230,8 @@ timeout: 300
                 '  panelSourceSplit: false',
                 '  panelTabReordering: true',
                 '  panelTabGroups: true',
+                '  binaryFileReveal: true',
+                '  browserTabShortcuts: true',
                 '  htmlPageTab: false',
                 '  chatStyleSelector: true',
                 '  defaultChatStyle: direct',
@@ -1274,8 +1277,8 @@ timeout: 300
 
         describe.each([
             'sentinelTodoDependencies', 'sentinelResultCards', 'sentinelPrOutcomeWake', 'sentinelFollowUpResults', 'sentinelRemoteResults',
-            'sentinelTodoExternalReferences', 'railManualRefresh', 'railStatusActions',
-            'explorerDelete', 'panelTabReordering', 'panelTabGroups',
+            'sentinelTodoExternalReferences', 'sentinelTodoInlineNotes', 'railManualRefresh', 'railStatusActions',
+            'explorerDelete', 'panelTabReordering', 'panelTabGroups', 'binaryFileReveal', 'browserTabShortcuts',
         ] as const)('%s', feature => {
             it.each([undefined, false, true])('resolves its value and source (%s)', value => {
                 const configPath = path.join(tmpDir, `${feature}.yaml`);
@@ -1542,7 +1545,9 @@ timeout: 300
                     "arxivPaperIngest": false,
                     "autoAgentProviderRouting": false,
                     "autoMemoryPromotion": true,
+                    "binaryFileReveal": false,
                     "botManagedConversations": false,
+                    "browserTabShortcuts": false,
                     "canvasHostApis": false,
                     "canvasToolScripts": false,
                     "chatFolders": false,
@@ -1591,6 +1596,7 @@ timeout: 300
                     "sentinelTodoDateTimeTriggers": false,
                     "sentinelTodoDependencies": false,
                     "sentinelTodoExternalReferences": false,
+                    "sentinelTodoInlineNotes": false,
                     "sentinelTodoJobs": false,
                     "sentinelTodoScrubber": false,
                     "sessionContextAttachments": true,
@@ -1800,7 +1806,9 @@ timeout: 300
                   "features.arxivPaperIngest": "default",
                   "features.autoAgentProviderRouting": "default",
                   "features.autoMemoryPromotion": "file",
+                  "features.binaryFileReveal": "default",
                   "features.botManagedConversations": "default",
+                  "features.browserTabShortcuts": "default",
                   "features.canvasHostApis": "default",
                   "features.canvasToolScripts": "default",
                   "features.chatFolders": "default",
@@ -1848,6 +1856,7 @@ timeout: 300
                   "features.sentinelTodoDateTimeTriggers": "default",
                   "features.sentinelTodoDependencies": "default",
                   "features.sentinelTodoExternalReferences": "default",
+                  "features.sentinelTodoInlineNotes": "default",
                   "features.sentinelTodoJobs": "default",
                   "features.sentinelTodoScrubber": "default",
                   "features.sessionContextAttachments": "default",

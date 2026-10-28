@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { CocClient, SentinelTodoItem, Trigger } from '@plusplusoneplusplus/coc-client';
-import { zonedTriggerTime } from '@plusplusoneplusplus/coc-client';
+import { isDeliveredSentinelOverture, zonedTriggerTime } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { resolveCloneRoute } from '../../../repos/cloneRegistry';
 import { Button } from '../../../ui/Button';
@@ -111,7 +111,7 @@ function TriggerSection({ owner, items, client, onItemLink }: {
         }
     };
     const sorted = rules.filter(rule => rule.workspaceId === owner.ownerWorkspaceId && rule.processId === owner.processId
-        && rule.binding?.kind === 'sentinel-todo' && !rule.binding.delegatedPr
+        && rule.binding?.kind === 'sentinel-todo' && !rule.binding.delegatedPr && !isDeliveredSentinelOverture(rule)
         && (rule.event.monitor === 'pr-merged' || rule.event.type === 'date-time' && dateTimeEnabled))
         .sort((a, b) => Number(isTerminalTrigger(a)) - Number(isTerminalTrigger(b)) || b.createdAt.localeCompare(a.createdAt));
     const add = <Button size="sm" variant="secondary" disabled={busy || eligibleTriggerItems(items).length === 0} onClick={() => setEditor('new')}>+ Add overture</Button>;

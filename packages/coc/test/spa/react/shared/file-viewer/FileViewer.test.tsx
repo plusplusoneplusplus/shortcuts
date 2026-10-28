@@ -94,7 +94,29 @@ describe('FileViewer', () => {
                 fileName="a.bin"
             />,
         );
-        expect(getByTestId('preview-binary').textContent).toContain('2.0 KB');
+        expect(getByTestId('preview-binary').textContent).toContain('Binary file — 2.0 KB');
+        expect(getByTestId('preview-binary').textContent).not.toContain('KB bytes');
+    });
+
+    it('renders host binary actions only in the binary placeholder', () => {
+        const action = <button type="button">Host action</button>;
+        const { getByTestId, queryByRole, rerender } = render(
+            <FileViewer
+                blob={{ content: 'AAAA', encoding: 'base64', mimeType: 'application/octet-stream' }}
+                fileName="a.bin"
+                binaryActions={action}
+            />,
+        );
+        expect(getByTestId('preview-binary').querySelector('button')?.textContent).toBe('Host action');
+
+        rerender(<FileViewer blob={{ content: 'AAA', encoding: 'base64', mimeType: 'image/png' }} fileName="a.png" binaryActions={action} />);
+        expect(queryByRole('button', { name: 'Host action' })).toBeNull();
+
+        rerender(<FileViewer blob={text('# hi')} fileName="a.md" markdown="toggle" binaryActions={action} />);
+        expect(queryByRole('button', { name: 'Host action' })).toBeNull();
+
+        rerender(<FileViewer blob={text('x')} fileName="a.ts" binaryActions={action} />);
+        expect(queryByRole('button', { name: 'Host action' })).toBeNull();
     });
 
     it('puts the host-supplied test id on the Monaco container', () => {

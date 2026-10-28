@@ -109,23 +109,25 @@ describe('TopBar remote-shell header', () => {
         expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
     });
 
-    it('places + New before the connection indicator and opens the queue dialog for the active clone', () => {
+    it.each(['repos', 'stats', 'admin'])('never renders the header + New button on the %s tab', (tab) => {
+        mockAppState = { ...mockAppState, activeTab: tab };
         render(<TopBar />);
 
-        const actions = screen.getByTestId('topbar-actions');
-        expect(actions.firstElementChild?.getAttribute('data-testid')).toBe('header-new-btn');
-        fireEvent.click(screen.getByTestId('header-new-btn'));
-        expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'OPEN_DIALOG', workspaceId: 'a' });
+        // The topbar "+ New" (queue dialog) was removed; the right-panel toggle
+        // is now the first right-side action.
+        expect(screen.queryByTestId('header-new-btn')).toBeNull();
+        expect(screen.queryByRole('button', { name: /^\+?\s*New$/ })).toBeNull();
+        expect(screen.getByTestId('topbar-actions').firstElementChild?.getAttribute('data-testid')).toBe('workspace-dock-toggle');
+        expect(mockQueueDispatch).not.toHaveBeenCalled();
     });
 
     it('keeps the RemoteShellHeader off the repos tab (e.g. Stats) when a clone is selected', () => {
         mockAppState = { ...mockAppState, activeTab: 'stats' };
         render(<TopBar />);
 
-        // The workspace-specific header (and its + New) stay put on the top-level
-        // pages so the top row matches the workspace views...
+        // The workspace-specific header stays put on the top-level pages so the
+        // top row matches the workspace views...
         expect(screen.getByTestId('remote-shell-header')).toBeTruthy();
-        expect(screen.getByTestId('header-new-btn')).toBeTruthy();
         // ...and the plain repo strip does not take over.
         expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
     });
@@ -135,7 +137,6 @@ describe('TopBar remote-shell header', () => {
         render(<TopBar />);
 
         expect(screen.getByTestId('remote-shell-header')).toBeTruthy();
-        expect(screen.getByTestId('header-new-btn')).toBeTruthy();
         expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
     });
 
@@ -147,8 +148,8 @@ describe('TopBar remote-shell header', () => {
         // without a concrete clone; the unselected picker fills the left cluster.
         expect(screen.getByTestId('remote-shell-header')).toBeTruthy();
         expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
-        // + New and dock toggle require a concrete clone.
-        expect(screen.queryByTestId('header-new-btn')).toBeNull();
+        // The dock toggle requires a concrete clone.
+        expect(screen.queryByTestId('workspace-dock-toggle')).toBeNull();
     });
 
     it('renders the unselected remote picker on Admin cold load (no clone selected)', () => {
@@ -158,7 +159,6 @@ describe('TopBar remote-shell header', () => {
         // No selection + Admin tab → remote-first shell still holds; no strip swap.
         expect(screen.getByTestId('remote-shell-header')).toBeTruthy();
         expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
-        expect(screen.queryByTestId('header-new-btn')).toBeNull();
     });
 
     it('renders the virtual-workspace header for the My Work virtual workspace', () => {
@@ -169,10 +169,9 @@ describe('TopBar remote-shell header', () => {
         const header = screen.getByTestId('virtual-workspace-shell-header');
         expect(header).toBeTruthy();
         expect(header.getAttribute('data-workspace')).toBe('my_work');
-        // Neither the repo strip nor the repo-scoped remote header / + New apply.
+        // Neither the repo strip nor the repo-scoped remote header apply.
         expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
         expect(screen.queryByTestId('remote-shell-header')).toBeNull();
-        expect(screen.queryByTestId('header-new-btn')).toBeNull();
     });
 
     it('renders the virtual-workspace header for the My Life virtual workspace', () => {
@@ -213,14 +212,13 @@ describe('TopBar remote-shell header', () => {
 });
 
 describe('TopBar remote-shell — workspace dock toggle', () => {
-    it('renders one right-panel toggle immediately after + New when splitWorkspacePanel is on', () => {
+    it('renders one right-panel toggle as the first right-side action when splitWorkspacePanel is on', () => {
         render(<TopBar />);
 
         const actions = screen.getByTestId('topbar-actions');
         const kids = Array.from(actions.children).map(c => c.getAttribute('data-testid'));
-        // Order: [+ New][right-panel toggle][…status cluster]
-        expect(kids[0]).toBe('header-new-btn');
-        expect(kids[1]).toBe('workspace-dock-toggle');
+        // Order: [right-panel toggle][…status cluster]
+        expect(kids[0]).toBe('workspace-dock-toggle');
         expect(screen.getByRole('button', { name: 'Show right panel' }).getAttribute('title')).toBe('Show right panel; Ctrl+\\ shows/hides right panel');
         expect(screen.queryByRole('button', { name: 'Show Search' })).toBeNull();
     });

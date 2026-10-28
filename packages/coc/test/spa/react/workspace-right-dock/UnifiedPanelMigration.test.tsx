@@ -187,7 +187,19 @@ describe('unified panel — codec v2 migration', () => {
         fireEvent.click(screen.getByTestId('unified-panel-open-explorer'));
 
         await waitFor(() => expect(screen.getByTestId('mock-explorer')).toBeInTheDocument());
-        expect(dock.selectMode).toHaveBeenCalledWith('explorer');
+        // The stub is already open in Explorer mode, where `selectMode` would close the panel.
+        expect(dock.selectMode).not.toHaveBeenCalled();
         expect(screen.getByTestId('unified-panel-tab-list').querySelectorAll('[role="tab"]')).toHaveLength(0);
+    });
+
+    it('switches a Search-mode panel to Explorer from the "+" menu', async () => {
+        const dock = dockStub({ mode: 'search' });
+        renderPanel({ dock });
+
+        fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+        fireEvent.click(screen.getByTestId('unified-panel-open-explorer'));
+
+        expect(dock.selectMode).toHaveBeenCalledTimes(1);
+        expect(dock.selectMode).toHaveBeenCalledWith('explorer');
     });
 });

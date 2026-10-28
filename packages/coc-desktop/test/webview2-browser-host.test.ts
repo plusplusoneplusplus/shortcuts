@@ -749,6 +749,46 @@ describe('WebView2 native focus handoff', () => {
         expect(sink.reopenClosedRequested).toHaveBeenCalledOnce();
     });
 
+    it('forwards Ctrl+1–9 and Ctrl holds only for an opted-in, visible source view', async () => {
+        const tabShortcut = vi.fn();
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: 'https://example.test' }, { ...sink, tabShortcut });
+        await view.setBounds(bounds);
+        // Not opted in: a stray helper event is dropped.
+        mocks.onEvent({ event: 'tab-shortcut-requested', viewId: '7:tab:1', digit: 1 });
+        mocks.onEvent({ event: 'tab-modifier', viewId: '7:tab:1', held: true });
+        await Promise.resolve();
+        expect(tabShortcut).not.toHaveBeenCalled();
+
+        await view.setTabShortcuts!(true);
+        expect(mocks.request).toHaveBeenCalledWith('tab-shortcuts', { viewId: '7:tab:1', tabShortcuts: true });
+        mocks.request.mockClear();
+        await view.setTabShortcuts!(true);
+        expect(mocks.request).not.toHaveBeenCalledWith('tab-shortcuts', expect.anything());
+
+        mocks.onEvent({ event: 'tab-modifier', viewId: '7:tab:1', held: true });
+        expect(tabShortcut).toHaveBeenLastCalledWith({ held: true });
+        for (const digit of [0, 10, 1.5, '2']) mocks.onEvent({ event: 'tab-shortcut-requested', viewId: '7:tab:1', digit });
+        mocks.onEvent({ event: 'tab-shortcut-requested', viewId: '8:tab:1', digit: 3 });
+        mocks.onEvent({ event: 'tab-shortcut-requested', viewId: '7:tab:1', digit: 3 });
+        await vi.waitFor(() => expect(tabShortcut).toHaveBeenLastCalledWith({ digit: 3 }));
+        expect(tabShortcut).toHaveBeenCalledTimes(2);
+        // Native focus returns to the SPA before the switch.
+        expect(mocks.request).toHaveBeenCalledWith('focus-host', { viewId: '7:tab:1' });
+        expect(mocks.owner.focus.mock.invocationCallOrder.at(-1)).toBeLessThan(tabShortcut.mock.invocationCallOrder.at(-1)!);
+
+        // A hidden view does not switch tabs.
+        await view.setBounds(null);
+        mocks.onEvent({ event: 'tab-shortcut-requested', viewId: '7:tab:1', digit: 4 });
+        await Promise.resolve();
+        expect(tabShortcut).toHaveBeenCalledTimes(2);
+        await view.setTabShortcuts!(false);
+        expect(mocks.request).toHaveBeenCalledWith('tab-shortcuts', { viewId: '7:tab:1', tabShortcuts: false });
+        mocks.onEvent({ event: 'tab-modifier', viewId: '7:tab:1', held: true });
+        expect(tabShortcut).toHaveBeenCalledTimes(2);
+        await view.close();
+    });
+
     it('does not start a helper when no browser view is present', async () => {
         const host = new WebView2BrowserHost('profile');
         await host.focusOwner(1);

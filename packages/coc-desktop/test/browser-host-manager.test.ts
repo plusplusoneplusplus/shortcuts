@@ -5,7 +5,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { BrowserHostManager } from '../src/browser-host-manager';
 import { BrowserHistoryStore } from '../src/browser-history';
 import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserSiteFacts, type BrowserViewRequest, type FilePreviewHost, type FileViewRequest } from '../src/browser-host-contract';
-import { BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL, type BrowserEngine, type BrowserViewState } from '../src/browser-view-policy';
+import { BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL, BROWSER_VIEW_TAB_SHORTCUT_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL, type BrowserEngine, type BrowserViewState } from '../src/browser-view-policy';
 import { htmlPageFileUrl, toHtmlPageLoadState, toHtmlPageOpenResult } from '../src/html-page-policy';
 import { BROWSER_CONTROL_ACTIVITY_CHANNEL, BROWSER_CONTROL_REVEAL_CHANNEL, BROWSER_CONTROL_STOP_CHANNEL } from '../src/browser-control-command';
 import { ClickOnceError, type ClickOncePolicy } from '../src/browser-clickonce';
@@ -31,7 +31,7 @@ function harness(defaultEngine: BrowserEngine = 'electron', history: Pick<Browse
             const view: BrowserHostedView = {
                 snapshot: () => ({ viewId: request.viewId, engine, url: request.url, title: 'Fixture', loading: false, canGoBack: true, canGoForward: false }),
                 navigate: vi.fn(), nav: vi.fn(), setBounds: vi.fn(), focus: vi.fn(), close: vi.fn(),
-                setPageZoom: vi.fn(),
+                setPageZoom: vi.fn(), setTabShortcuts: vi.fn(),
             };
             created.push({ request, sink, view, engine });
             return view;
@@ -764,6 +764,41 @@ describe.each<BrowserEngine>(['electron', 'webview2'])('%s shared browser manage
         expect(h.send).not.toHaveBeenCalled();
         h.created[1].sink.reopenClosedRequested!();
         expect(h.send).toHaveBeenCalledExactlyOnceWith(2, BROWSER_VIEW_REOPEN_CLOSED_REQUESTED_CHANNEL, { viewId: 'same-id' });
+    });
+
+    it('scopes tab-shortcut forwarding to opted-in windows and their live web views', async () => {
+        const h = harness(engine);
+        await h.manager.open(1, 'web', 'https://example.test/', 'workspace');
+        await h.manager.open(2, 'web', 'https://example.test/', 'workspace');
+        expect(h.created[0].view.setTabShortcuts).not.toHaveBeenCalled();
+        h.manager.setTabShortcuts(1, true);
+        await vi.waitFor(() => expect(h.created[0].view.setTabShortcuts).toHaveBeenCalledExactlyOnceWith(true));
+        expect(h.created[1].view.setTabShortcuts).not.toHaveBeenCalled();
+        h.manager.setTabShortcuts(1, true);
+        // A view created later in an opted-in window starts forwarding.
+        await h.manager.open(1, 'later', 'https://example.test/', 'workspace');
+        expect(h.created[2].view.setTabShortcuts).toHaveBeenCalledExactlyOnceWith(true);
+        expect(h.created[0].view.setTabShortcuts).toHaveBeenCalledOnce();
+
+        h.send.mockClear();
+        h.created[0].sink.tabShortcut!({ digit: 2 });
+        h.created[0].sink.tabShortcut!({ held: true });
+        h.created[1].sink.tabShortcut!({ digit: 2 });
+        expect(h.send.mock.calls).toEqual([
+            [1, BROWSER_VIEW_TAB_SHORTCUT_CHANNEL, { viewId: 'web', digit: 2 }],
+            [1, BROWSER_VIEW_TAB_SHORTCUT_CHANNEL, { viewId: 'web', held: true }],
+        ]);
+
+        h.manager.setTabShortcuts(1, false);
+        await vi.waitFor(() => expect(h.created[0].view.setTabShortcuts).toHaveBeenLastCalledWith(false));
+        h.send.mockClear();
+        h.created[0].sink.tabShortcut!({ digit: 1 });
+        expect(h.send).not.toHaveBeenCalled();
+        // A reloaded window must opt in again.
+        h.manager.setTabShortcuts(2, true);
+        await h.manager.reloadOwner(2);
+        await h.manager.open(2, 'again', 'https://example.test/', 'workspace');
+        expect(h.created.at(-1)!.view.setTabShortcuts).not.toHaveBeenCalled();
     });
 
     it('reports partial cleanup failure, unblocks the engine and permits explicit retry', async () => {

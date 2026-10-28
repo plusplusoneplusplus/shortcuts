@@ -733,6 +733,9 @@ test.describe('Explorer deterministic LSP completion', () => {
             await openCompletionEditor(page, serverUrl, tmpDir, 'ts');
             const widget = page.locator(`${APP_PANEL} .suggest-widget`);
             await page.keyboard.insertText('srv');
+            // Quick suggest opens asynchronously; Escape before it opens is a
+            // no-op and the late widget would leak into the Ctrl/Cmd+Space step.
+            await expect(widget.getByText('srvWidget', { exact: true })).toBeVisible();
             await page.keyboard.press('Escape');
             await expect(widget).toBeHidden();
             await page.keyboard.press('ControlOrMeta+Space');

@@ -55,6 +55,10 @@ component; do not grow `CanvasPanel.tsx` back.
   bumps only on a **successful** load; kernels skip fetching at `0`.
 - **History views are read-only.** With `viewingVersion` set, no edit branch is
   reachable and the selection toolbar is hidden.
+- **Kusto wrapping is view-local.** Use `InteractiveTable`'s shared Wrap text
+  control and styles. Default off; retain through result revisions and chart
+  switches, reset on workspace/canvas changes or remount, and never save it into
+  canvas content. Native table rows handle changing heights without virtualization.
 - **The CanvasHost bridge stays backwards compatible.** `invoke`/`setState`
   return promises settled by a correlated `{ type: 'response', id, ok,
   result | error }` reply, but a message that arrives with **no `id`** is a

@@ -52,6 +52,8 @@ performs the LSP initialize handshake, preserves bounded stderr, and reports
 `starting`, `indexing`, `ready`, `reconnecting`, `unavailable`, `timeout`, or
 `failed`. Readable and writable transport errors both close the connection so
 broken server pipes reject in-flight work and enter the normal restart lifecycle.
+Disposal detaches connection handlers and retains stateless stream error listeners
+so asynchronous write failures during shutdown cannot escape as uncaught errors.
 A successful handshake clears prior failure detail.
 
 An executable that cannot be spawned is `unavailable`. A process that rejects or

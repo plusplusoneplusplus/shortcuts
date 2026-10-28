@@ -23,6 +23,7 @@ import {
     BROWSER_VIEW_OPEN_CHANNEL, BROWSER_VIEW_ADOPT_CHANNEL, BROWSER_VIEW_SET_BOUNDS_CHANNEL,
     BROWSER_VIEW_FOCUS_CHANNEL,
     BROWSER_HOST_FOCUS_CHANNEL,
+    BROWSER_TAB_SHORTCUTS_SET_CHANNEL,
     BROWSER_VIEW_OPEN_EXTERNAL_CHANNEL,
     isBrowserEngine, isBrowserNavAction, validateBrowserUrl,
 } from './browser-view-policy';
@@ -326,6 +327,11 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     });
     ipcMain.on(BROWSER_VIEW_FOCUS_CHANNEL, (event, id: unknown) => {
         if (ownWindow(event.sender)) { void manager!.command(event.sender.id, id, view => view.focus()); }
+    });
+    ipcMain.on(BROWSER_TAB_SHORTCUTS_SET_CHANNEL, (event, enabled: unknown) => {
+        if (typeof enabled === 'boolean' && event.senderFrame === event.sender.mainFrame && isBrowserEmbedder(event.sender) && ownWindow(event.sender)) {
+            manager!.setTabShortcuts(event.sender.id, enabled);
+        }
     });
     ipcMain.on(BROWSER_HOST_FOCUS_CHANNEL, event => {
         const window = ownWindow(event.sender);

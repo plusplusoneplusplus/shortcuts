@@ -69,6 +69,14 @@ describe('explorerApi clone routing', () => {
         expect(mocks.deleteEntry).not.toHaveBeenCalled();
     });
 
+    it('never reveals a path on the local server when a concrete remote owner is unresolved', async () => {
+        mocks.resolve.mockReturnValue({ kind: 'unresolved-remote' });
+        await expect(explorerApi.reveal(WORKSPACE_ID, 'assets/logo.bin', ROUTING_REF)).rejects.toThrow(/owning server is unavailable/);
+        expect(mocks.resolve).toHaveBeenCalledWith(ROUTING_REF);
+        expect(mocks.getClient).not.toHaveBeenCalled();
+        expect(mocks.reveal).not.toHaveBeenCalled();
+    });
+
     it('pins explicit local deletion to the page-origin owner rather than a same-id remote', async () => {
         mocks.resolve.mockReturnValue({ kind: 'local' });
         await explorerApi.deleteEntry(WORKSPACE_ID, 'src/app.ts', null);

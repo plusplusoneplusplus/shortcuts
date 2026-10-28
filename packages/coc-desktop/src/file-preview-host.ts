@@ -84,6 +84,12 @@ function wireView(entry: FileEntry): void {
     // A guest's native input never reaches the SPA's document key listener.
     wc.on('before-input-event', (event, input) => {
         const modifier = process.platform === 'darwin' ? input.meta : input.control;
+        // The app menu binds no reload key, so only a focused preview reloads.
+        if (modifier && !input.alt && input.key.toLowerCase() === 'r') {
+            event.preventDefault();
+            if (!entry.closed && entry.shown && input.type === 'keyDown' && !input.isAutoRepeat) { runNav(entry, 'reload'); }
+            return;
+        }
         if (!modifier || input.alt || input.key.toLowerCase() !== 'w') return;
         event.preventDefault();
         if (!entry.closed && entry.shown && input.type === 'keyDown' && !input.isAutoRepeat) {

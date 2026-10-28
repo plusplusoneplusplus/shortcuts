@@ -95,9 +95,8 @@ describe('TopBar status cluster placement', () => {
     it('hides the topbar cluster in the remote-first shell on desktop (chat sub-tab)', () => {
         render(<TopBar />);
         expect(clusterPresent()).toBe(false);
-        // The topbar still shows the remote header + New button.
+        // The topbar still shows the remote header.
         expect(screen.getByTestId('remote-shell-header')).toBeTruthy();
-        expect(screen.getByTestId('header-new-btn')).toBeTruthy();
     });
 
     it('hides the topbar cluster on every repo sub-tab, not just chat/activity (dock is global)', () => {

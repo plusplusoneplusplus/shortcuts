@@ -4,6 +4,7 @@
  * or Monaco. Every capability is opt-in by prop, so a host renders exactly what
  * it rendered before moving here. Loading/error chrome stays with the host.
  */
+import type { ReactNode } from 'react';
 import type { editor as monacoEditor } from 'monaco-editor';
 import { MarkdownFileView, isMarkdownFile } from './MarkdownFileView';
 import { MonacoFileEditor, getMonacoLanguage, type EditorModelMountContext, type MonacoFileEditorProps } from './MonacoFileEditor';
@@ -54,6 +55,8 @@ export interface FileViewerProps {
     markdown?: 'off' | 'toggle';
     /** Test id for the Monaco container, which differs per host. */
     codeTestId?: string;
+    /** Host actions shown under the binary placeholder's message; no other branch renders them. */
+    binaryActions?: ReactNode;
 }
 
 /** Human-readable byte count for the binary placeholder. */
@@ -65,7 +68,7 @@ export function formatFileSize(bytes: number): string {
 
 export function FileViewer({
     selectionContext, blob, fileName, language, onChange, onSave, readOnly,
-    highlightRange, revealLine, revealColumn, revealNonce, markdown = 'off', codeTestId, markers, onModelMount,
+    highlightRange, revealLine, revealColumn, revealNonce, markdown = 'off', codeTestId, markers, onModelMount, binaryActions,
 }: FileViewerProps) {
     if (blob.encoding === 'base64') {
         return blob.mimeType.startsWith('image/') ? (
@@ -79,7 +82,8 @@ export function FileViewer({
         ) : (
             <div className="flex flex-col items-center justify-center gap-2 h-full text-sm text-[#848484]" data-testid="preview-binary">
                 <span className="text-2xl">📄</span>
-                <span>Binary file — {formatFileSize(blob.content.length)} bytes</span>
+                <span>Binary file — {formatFileSize(blob.content.length)}</span>
+                {binaryActions}
             </div>
         );
     }

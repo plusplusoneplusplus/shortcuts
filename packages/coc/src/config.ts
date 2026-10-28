@@ -339,6 +339,8 @@ export interface CLIConfig {
         sentinelTodoCategories?: boolean;
         /** Typed display-only external references on Sentinel items. Disabled by default. */
         sentinelTodoExternalReferences?: boolean;
+        /** Inline Notes editing in Sentinel To-do details. Disabled by default. */
+        sentinelTodoInlineNotes?: boolean;
         /** Sentinel Coda, the built-in to-do review (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber?: boolean;
         /** Sentinel Refrains: scheduled and on-demand prompts. Disabled by default. */
@@ -402,6 +404,10 @@ export interface CLIConfig {
         panelSourceSplit?: boolean;
         panelTabReordering?: boolean;
         panelTabGroups?: boolean;
+        /** "Open in Explorer" under a right-panel file tab's binary placeholder. Disabled by default. */
+        binaryFileReveal?: boolean;
+        /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Disabled by default. */
+        browserTabShortcuts?: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab?: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
@@ -782,6 +788,8 @@ export interface ResolvedCLIConfig {
         sentinelTodoDependencies: boolean;
         sentinelTodoCategories: boolean;
         sentinelTodoExternalReferences: boolean;
+        /** Inline Notes editing in Sentinel To-do details. Disabled by default. */
+        sentinelTodoInlineNotes: boolean;
         /** Sentinel Coda, the built-in to-do review (visible evidence checks, cron). Disabled by default. */
         sentinelTodoScrubber: boolean;
         /** Sentinel Refrains: scheduled and on-demand prompts. Disabled by default. */
@@ -843,6 +851,10 @@ export interface ResolvedCLIConfig {
         panelSourceSplit: boolean;
         panelTabReordering: boolean;
         panelTabGroups: boolean;
+        /** "Open in Explorer" under a right-panel file tab's binary placeholder. Disabled by default. */
+        binaryFileReveal: boolean;
+        /** Ctrl/Cmd+1–9 browser-tab switching with held-modifier hints in the right panel. Disabled by default. */
+        browserTabShortcuts: boolean;
         /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
         htmlPageTab: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
@@ -1137,6 +1149,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         sentinelTodoDependencies: false,
         sentinelTodoCategories: false,
         sentinelTodoExternalReferences: false,
+        sentinelTodoInlineNotes: false,
         sentinelTodoScrubber: false,
         sentinelTodoJobs: false,
         sentinelAdditionalInstructions: true,
@@ -1172,6 +1185,8 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         panelSourceSplit: true,
         panelTabReordering: true,
         panelTabGroups: false,
+        binaryFileReveal: false,
+        browserTabShortcuts: false,
         htmlPageTab: true,
         chatStyleSelector: true,
         chatProviderSwitching: false,

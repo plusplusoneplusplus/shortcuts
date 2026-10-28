@@ -1,0 +1,75 @@
+.sentinel-automation-card {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+    overflow-wrap: anywhere;
+}
+.sentinel-automation-header {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+.sentinel-automation-title {
+    display: flex;
+    flex: 1 1 140px;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+.sentinel-automation-title strong { min-width: 0; }
+.sentinel-automation-card button,
+.sentinel-automation-card summary,
+.sentinel-automation-secondary a {
+    min-height: 32px;
+    max-width: 100%;
+}
+.sentinel-automation-card summary {
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 6px 4px;
+}
+.sentinel-automation-card button:focus-visible,
+.sentinel-automation-card summary:focus-visible,
+.sentinel-automation-card pre:focus-visible,
+.sentinel-automation-secondary a:focus-visible {
+    outline: 2px solid #0078d4;
+    outline-offset: 1px;
+}
+.sentinel-automation-actions { min-width: 0; }
+.sentinel-automation-actions[open] { flex-basis: 100%; }
+.sentinel-automation-actions > summary { width: fit-content; list-style: none; }
+.sentinel-automation-actions > summary::-webkit-details-marker { display: none; }
+.sentinel-automation-secondary {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+.sentinel-automation-secondary a { display: inline-flex; align-items: center; padding: 4px; }
+.sentinel-automation-error { min-width: 0; color: #c72e2e; }
+.dark .sentinel-automation-error { color: #f48771; }
+.sentinel-automation-error > summary { display: flex; align-items: center; gap: 4px; }
+.sentinel-automation-error > summary::before { content: '▸'; flex-shrink: 0; }
+.sentinel-automation-error[open] > summary::before { content: '▾'; }
+.sentinel-automation-error > summary > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sentinel-automation-error pre {
+    max-height: 160px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font: inherit;
+    user-select: text;
+}
+@media (max-width: 767px), (pointer: coarse) {
+    .sentinel-automation-card button,
+    .sentinel-automation-card summary,
+    .sentinel-automation-secondary a { min-height: 44px; }
+}
+.sentinel-automation-last-run > .sentinel-automation-error { flex: 1 1 140px; }
+.sentinel-automation-secondary > details { flex-basis: 100%; }

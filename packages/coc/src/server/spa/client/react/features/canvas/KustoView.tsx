@@ -188,6 +188,15 @@ export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false,
     // applied on first open by defaulting the view to 'chart' when one exists.
     const [view, setView] = useState<'table' | 'chart'>(parsed.chartConfig ? 'chart' : 'table');
     const [chartConfig, setChartConfig] = useState<KustoChartConfig | undefined>(parsed.chartConfig);
+    // Like markdown tables, wrapping is view-local, never saved into the canvas.
+    // Keep it through result revisions, but reset when this view changes owner.
+    const wrapScope = JSON.stringify([workspaceId, canvas.id]);
+    const [wrapOwner, setWrapOwner] = useState(wrapScope);
+    const [wrapText, setWrapText] = useState(false);
+    if (wrapOwner !== wrapScope) {
+        setWrapOwner(wrapScope);
+        setWrapText(false);
+    }
     // Track which canvas revision the local drafts were seeded from so a live
     // AI update (new content) re-seeds the editors instead of clobbering them.
     const [seededFrom, setSeededFrom] = useState(canvas.content);
@@ -578,6 +587,8 @@ export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false,
                                 rows={stringRows}
                                 originalMarkdown=""
                                 fillHeight
+                                wrapText={wrapText}
+                                onWrapTextChange={setWrapText}
                             />
                         )}
                     </div>

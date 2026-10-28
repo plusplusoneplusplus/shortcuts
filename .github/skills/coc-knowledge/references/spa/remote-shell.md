@@ -27,7 +27,8 @@ clone. That memory is `AppContextState.lastCloneByRemote` — keyed by
 per-device. `ScopeSlideSwitcher` records it (deciding the cluster needs the full
 repo list and the grouping pass, which the reducer lacks). `WorkspaceTabsCluster` carries the
 clone switcher, clone popover, clone-scoped tabs, overflow menu, and repo info/remove
-dialogs. `header-new-btn` is the first right-side action, enqueuing for the active clone.
+dialogs. The right-panel `WorkspaceDockToggle` is the first right-side action; the topbar
+has no `+ New` queue button.
 `WorkspaceCloneLabel` presents repository and selected-clone machine identity in
 both selectors and the active repository pin, using `getRemoteCloneKey` and
 `getServerName` from the concrete clone (local: `Local`). Repository text shrinks

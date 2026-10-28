@@ -543,7 +543,10 @@ not last is moved to the end. A `preview` bit on any kind but `file` is
 discarded: only the tree's single click creates the slot, and it opens files.
 
 The `+` menu keeps its **Explorer** entry, in place and with its label. The action
-selects Explorer mode and opens the navigator instead of opening a tab.
+selects Explorer mode and opens the navigator instead of opening a tab. Like
+directory links, it calls `dock.selectMode` only when the panel is closed or in
+Search mode, because selecting the current open mode closes the whole panel —
+the state To-do leaves after hiding the tree.
 
 ## File write permissions
 
@@ -568,6 +571,13 @@ API, with no write route, live language document, or selection attachment.
 Images retain MIME/encoding; CSV is text, not a table viewer. Preview failures,
 oversized content, and binary blobs offer an owner-routed Download action.
 Concrete unresolved remote routes fail visibly without local fallback.
+
+Default-off `features.binaryFileReveal` (Admin → Appearance, editor files) makes
+`UnifiedTabView` pass `revealBinary` to `PreviewPane`. Only the binary placeholder
+renders `BinaryRevealAction`, which sends the exact workspace id, repo-relative
+path and clone route to `explorerApi.reveal` (the owning server's OS file-manager
+route) and never opens the file. Trusted and workspace-preview paths get a
+disabled button with a visible reason; failures show an alert, not success.
 
 ## Keep-alive and terminals
 
@@ -628,6 +638,25 @@ without creating tabs. Native browser pages forward `onOpenMenuRequested` with
 the source view id after returning host focus; only the matching active,
 visible browser tab creates a new tab. The `+` and empty-state Open buttons
 open `UnifiedPanelOpenMenu`.
+
+## Browser-tab number shortcuts
+
+Default-off `features.browserTabShortcuts` (Admin → Browser, Pages & Previews)
+makes Ctrl+1–9 (Cmd on macOS; top-row digits, no Shift/Alt) switch web
+(`browser`) tabs. `browserTabShortcuts.ts` owns the browser convention over the
+strip's rendered web tabs: 1–8 by position, 9 the last; past nine tabs, tabs
+9…n-1 carry no hint. The strip marks each numbered tab with
+`data-browser-shortcut` and `aria-keyshortcuts`, and the panel resolves a digit
+from those rendered tabs, so reorder, close, folded groups and other tab kinds
+never disagree with the hints. Ownership is the Ctrl/Cmd+T rule
+(`ownsBrowserTabShortcut`): editors, Monaco and terminals keep their keys. A
+switch activates the tab and focuses its strip button. Holding the modifier
+alone for `BROWSER_TAB_HINT_DELAY_MS` shows aria-hidden pills absolutely
+positioned over the label tail before the close slot, so no tab box moves;
+release, another chord, window blur, a hidden document, collapse and a
+workspace/route/chat change hide them. The panel calls
+`setTabShortcuts(enabled)` so focused native pages forward `onTabShortcut`
+digits and modifier holds; only the active, visible browser view's events count.
 
 ## Reopen-closed-tab shortcut
 
@@ -942,6 +971,14 @@ on drop and send (see the composer knowledge reference). Details list every job 
 notes over two lines or 160 characters have an optional collapse toggle
 (`sentinelTodoFoldNotes`). Visibility is remembered with each item's drafts in the
 owner-scoped, in-memory `SentinelTodoView` across refreshes and remounts.
+Default-off live `sentinelTodoInlineNotesEnabled` adds inline Notes editing on
+non-archived items (normal and manual): Edit/Add notes actions or a click on note
+text (links and text selections excluded) open `SentinelTodoNotesEditor` as a
+`notesOnly` edit draft, sharing the item's draft memory, menu/Organize blocking and
+owner-routed `onSave`. Saves are explicit and send only `notes`; blur never saves.
+A draft whose base notes differ from the live item shows the latest notes and
+disables Save until the user keeps the draft or takes the latest; with unchanged
+notes, the save uses the live revision.
 The footer shows Created, a `Status` button group of the four
 stored statuses (active items only; the saved one is `aria-pressed`, pressing it is a no-op, In review is
 never offered), and ghost Edit/Reopen/Archive or Restore buttons. Manual tracking's header carries a
@@ -1081,7 +1118,9 @@ Tests use isolated mock clients in
 ### Overtures
 
 `SentinelOvertures` lists intact, nondelegated To-do bindings through the ledger
-owner's typed `client.triggers` API. Overture status and delivery stay separate from
+owner's typed `client.triggers` API. Fired overtures with delivered wakes leave the
+rows and count automatically (shared `isDeliveredSentinelOverture`, also applied to
+older owner servers); pending, failed, skipped and error results stay until Clear. Overture status and delivery stay separate from
 item/job/review states. Rows link the canonical PR or show a zoned date with UTC
 tooltip.
 

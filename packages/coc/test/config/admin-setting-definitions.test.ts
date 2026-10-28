@@ -879,6 +879,60 @@ describe('Features card UI metadata', () => {
         })).panelTabGroupsEnabled).toBe(true);
     });
 
+    it('exposes binary-file Open in Explorer as a live, experimental default-off Appearance toggle', () => {
+        const def = getAdminSettingDefinition('features.binaryFileReveal')!;
+        expect(def.value).toEqual({ kind: 'boolean' });
+        expect(def.default).toBe(false);
+        expect(def.runtime).toBe('live');
+        expect(def.runtimeFlag).toBe('binaryFileRevealEnabled');
+        expect(def.ui).toMatchObject({
+            tab: 'appearance', group: 'editorFiles', badge: 'experimental',
+            testId: 'toggle-binary-file-reveal-enabled',
+        });
+        expect(DEFAULT_CONFIG.features.binaryFileReveal).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).binaryFileRevealEnabled).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).binaryFileRevealEnabled).toBe(false);
+        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
+            features: { binaryFileReveal: true },
+        })).binaryFileRevealEnabled).toBe(true);
+    });
+
+    it('exposes Sentinel To-do inline Notes editing as a live, experimental default-off Sentinel toggle', () => {
+        const def = getAdminSettingDefinition('features.sentinelTodoInlineNotes')!;
+        expect(def.value).toEqual({ kind: 'boolean' });
+        expect(def.default).toBe(false);
+        expect(def.runtime).toBe('live');
+        expect(def.runtimeFlag).toBe('sentinelTodoInlineNotesEnabled');
+        expect(def.ui).toMatchObject({
+            tab: 'sentinel', group: 'sentinelTodos', badge: 'experimental',
+            testId: 'toggle-sentinel-todo-inline-notes-enabled',
+        });
+        expect(DEFAULT_CONFIG.features.sentinelTodoInlineNotes).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).sentinelTodoInlineNotesEnabled).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).sentinelTodoInlineNotesEnabled).toBe(false);
+        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
+            features: { sentinelTodoInlineNotes: true },
+        })).sentinelTodoInlineNotesEnabled).toBe(true);
+    });
+
+    it('exposes browser tab shortcuts as a live, experimental default-off Browser page toggle', () => {
+        const def = getAdminSettingDefinition('features.browserTabShortcuts')!;
+        expect(def.value).toEqual({ kind: 'boolean' });
+        expect(def.default).toBe(false);
+        expect(def.runtime).toBe('live');
+        expect(def.runtimeFlag).toBe('browserTabShortcutsEnabled');
+        expect(def.ui).toMatchObject({
+            tab: 'browser', group: 'browserPages', badge: 'experimental',
+            testId: 'toggle-browser-tab-shortcuts-enabled',
+        });
+        expect(DEFAULT_CONFIG.features.browserTabShortcuts).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).browserTabShortcutsEnabled).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).browserTabShortcutsEnabled).toBe(false);
+        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
+            features: { browserTabShortcuts: true },
+        })).browserTabShortcutsEnabled).toBe(true);
+    });
+
     // Repo-group aggregated chats: a default-off live toggle that gates the
     // group's combined chat list; the read-only feed route ships regardless.
     it('exposes repo-group aggregated chats as a default-off experimental feature', () => {
@@ -937,6 +991,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.sentinelTodoDependencies': 'sentinel',
         'features.sentinelTodoCategories': 'sentinel',
         'features.sentinelTodoExternalReferences': 'sentinel',
+        'features.sentinelTodoInlineNotes': 'sentinel',
         'features.sentinelTodoScrubber': 'sentinel',
         'features.sentinelTodoJobs': 'sentinel',
         'features.sentinelAdditionalInstructions': 'sentinel',
@@ -966,7 +1021,9 @@ describe('feature toggle settings-tab placement', () => {
         'features.explorerDelete': 'appearance',
         'features.panelTabReordering': 'appearance',
         'features.panelTabGroups': 'appearance',
+        'features.binaryFileReveal': 'appearance',
         'features.htmlPageTab': 'browser',
+        'features.browserTabShortcuts': 'browser',
         'scratchpad.layout': 'appearance',
         // Editors (functional editor behavior only)
         'features.arxivPaperIngest': 'editors',
@@ -1121,6 +1178,7 @@ describe('feature toggle settings-tab placement', () => {
             ['browserControl.humanTakeoverEnabled', 'browserAutomation', false, undefined, 'live', 'browserHumanTakeoverEnabled', 'experimental', 'toggle-browser-human-takeover-enabled'],
             ['browserControl.navigationApprovalEnabled', 'browserAutomation', true, undefined, 'live', 'browserNavigationApprovalEnabled', 'experimental', 'toggle-browser-navigation-approval-enabled'],
             ['features.htmlPageTab', 'browserPages', true, undefined, 'live', 'htmlPageTabEnabled', undefined, 'toggle-html-page-tab-enabled'],
+            ['features.browserTabShortcuts', 'browserPages', false, undefined, 'live', 'browserTabShortcutsEnabled', 'experimental', 'toggle-browser-tab-shortcuts-enabled'],
             ['features.sensitiveInput', 'browserAutomation', false, undefined, 'live', undefined, 'experimental', 'toggle-sensitive-input-enabled'],
         ]);
         expect(getFeatureCardSettings('browserAutomation').map(d => d.key)).toEqual(['browserControl.enabled', 'browserControl.framesEnabled', 'browserControl.richPasteEnabled', 'browserControl.backgroundEnabled', 'browserControl.navigationApprovalEnabled', 'browserControl.humanTakeoverEnabled', 'features.sensitiveInput']);
@@ -1128,7 +1186,7 @@ describe('feature toggle settings-tab placement', () => {
         expect(getAdminSettingDefinition('browserControl.backgroundEnabled')?.ui?.dependsOn).toBe('browserControl.enabled');
         expect(getAdminSettingDefinition('browserControl.navigationApprovalEnabled')?.ui?.dependsOn).toBe('browserControl.enabled');
         expect(getAdminSettingDefinition('browserControl.humanTakeoverEnabled')?.ui?.dependsOn).toBe('browserControl.enabled');
-        expect(getFeatureCardSettings('browserPages').map(d => d.key)).toEqual(['features.htmlPageTab']);
+        expect(getFeatureCardSettings('browserPages').map(d => d.key)).toEqual(['features.htmlPageTab', 'features.browserTabShortcuts']);
         expect(buildRuntimeFeatureFlags({ features: { panelReopenClosedTab: false } } as never)).not.toHaveProperty('panelReopenClosedTabEnabled');
         expect(FEATURE_CARD_GROUPS.filter(g => g.id.startsWith('browser')).map(g => g.heading)).toEqual(['AI Browser Control', 'Pages & Previews']);
         expect(uiDefs.filter(d => getFeatureSettingTab(d) !== 'browser' && /browser/i.test(`${d.key} ${d.ui!.label}`)).map(d => d.key)).toEqual([]);

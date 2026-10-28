@@ -286,6 +286,9 @@ Optional `browser.showAddressMenu` opens native Cut/Copy/Paste/Select All throug
 registered-main-frame IPC; actions target the requesting SPA's web contents.
 Native Copy and the Edit menu dispatch the input's ordinary copy event. The
 page title belongs in the tab label; the site icon replaces the tab's globe.
+Browser tabs ignore title length: `UnifiedPanelTabStrip` gives each a 160px basis
+that shrinks evenly to 96px before the row scrolls, ellipsizing the label; other
+kinds stay content-sized (max 180px) and non-shrinking.
 Icons travel as `BrowserViewState.favicon`, a `data:image/...` URL whose bytes
 match a known image signature (at most 64 KiB, `browser-favicon.ts`). Electron
 loads the first of three page-declared HTTP(S)/data candidates from
@@ -473,6 +476,16 @@ The browser toolbar handles Ctrl+L (Cmd+L on macOS); native engines forward
 `onFocusAddressRequested` to the owning renderer after returning host keyboard
 focus. Only the matching active, visible browser tab focuses and selects its
 complete editable address, including unsent edits.
+
+Reload keys belong to the focused browser surface, never the app menu. The
+desktop View menu keeps Reload/Force Reload as items without Ctrl/Cmd+R or
+Ctrl/Cmd+Shift+R accelerators, since a full SPA reload closes every hosted
+view. A focused, visible Electron URL guest reloads itself on Ctrl/Cmd+R
+(Shift bypasses the cache); a focused HTML preview guest reloads on Ctrl/Cmd+R;
+WebView2 keeps its native browser accelerators, which act only with native
+focus. The browser toolbar (address bar and buttons, not portaled popovers)
+reloads its active, visible tab on plain Ctrl/Cmd+R. Focus anywhere else leaves
+the key to that surface.
 
 Both tabs hide on unmount and close with their tab; entry-point `onClosed` reaches inactive stores and removes guest hosts via `closeBrowserPanelView`. Window teardown and full SPA reload (`manager.reloadOwner`) close all views. Persisted HTML descriptors reopen files from disk with fresh history, scroll and form state; URL tabs remain session-only.
 Live desktop `test/e2e/browser-engines.e2e.test.ts` uses `COC_DESKTOP_E2E=1` and `--fileParallelism=false`; headless Linux needs Xvfb/`COC_DESKTOP_E2E_NO_SANDBOX=1`.
@@ -693,6 +706,7 @@ features default off.
 | `features.explorerEditorTabs` | `isExplorerEditorTabsEnabled()` | on |
 | `features.schedulerDelayHint` | `isSchedulerDelayHintEnabled()` | on |
 | `features.htmlPageTab` | `htmlPageTabEnabled` | on |
+| `features.binaryFileReveal` | `isBinaryFileRevealEnabled()` | off |
 | `features.quickAskSidenotes` | live server flag | — |
 ### Unified right panel
 
@@ -719,6 +733,16 @@ Restores reopen the last URL and title through `browserOpenInput` with a fresh
 view id and drop entries whose owner is no longer a target; native hosts forward
 source-qualified `onReopenClosedRequested` like the add-tab request. Each
 keypress restores at most one tab; repeats restore nothing.
+Default-off `features.browserTabShortcuts` adds Ctrl/Cmd+1–9 web-tab
+switching (1–8 by visible strip position, 9 the last; other tab kinds are not
+numbered) with the Ctrl/Cmd+T focus ownership. Holding the platform modifier
+reveals trailing, aria-hidden `Ctrl+N`/`⌘N` pills overlaid on the label tail;
+tab boxes never move. Hints hide on release, another chord, blur, a hidden
+document, collapse and owner changes. Desktop windows opt in through
+`browser.setTabShortcuts`; focused Electron guests (`before-input-event`) and
+WebView2 views (`AcceleratorKeyPressed`) then swallow those digits, return host
+focus, and send `onTabShortcut` digits plus unhandled modifier holds to the
+owning window. Other windows and HTML previews keep the keys.
 Repository-group mode stays scoped to the group while panel requests use the
 selected dock target.
 
@@ -885,7 +909,8 @@ store and edit raw Markdown but display inline Markdown through `SentinelTodoNot
 (the AskUser safe renderer: raw HTML escaped, non-http(s)/mailto/relative/hash URLs
 become `#`); links stop row propagation, http(s) opens the panel browser, in-app hash
 links join the excursion, and a remote ledger qualifies bare `#repos/<ws>` links with
-its server. Normal tracking
+its server. Default-off live `sentinelTodoInlineNotesEnabled` adds in-place Notes
+editing in details (see the unified-right-panel AGENTS.md). Normal tracking
 comes first, then an always-visible Manual tracking
 section with its own add form and separate Done/Archived groups. Following an in-app To-do
 Job/Ref link starts a per-window, in-memory excursion: visited hosted chats show an origin
@@ -969,7 +994,8 @@ Run now confirms a one-shot wake and never launches jobs directly.
 Lifecycle and pending delivery stay separate from item/job/review state; typed
 writes carry owner identity and saved revisions. Owner changes isolate async
 reads and dialogs. Item links reveal only the target and its containing groups,
-preserving unrelated expansion and lazy previews. Terminal Clear retains receipts.
+preserving unrelated expansion and lazy previews. Terminal Clear retains receipts;
+delivered fired wakes leave rows and count automatically, falling back to the empty entry.
 
 Ctrl/Cmd+F focuses the Explorer file filter only while focus is inside the
 visible Explorer navigator column. Content tabs keep their own find behavior,
