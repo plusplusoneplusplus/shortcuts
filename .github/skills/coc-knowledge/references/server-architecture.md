@@ -727,17 +727,20 @@ Writes need no discovery/custom emoji, retain a ten-second deadline and never re
 Transport success proves no task outcome; acknowledgment failures log safely without
 discarding commands. Channel Likes remain independent.
 
-Memory-only pending replies capture source identity and original message ID/text
-before enqueue and consume it on queue terminal events. Delivery serializes within each conversation; different
+Memory-only pending replies capture source identity, verified native chat kind,
+original message ID/text and existing root before enqueue. Queue terminal events
+consume them. Delivery serializes within each conversation; different
 chats deliver independently. Shutdown drains all active reply chains; reconfiguration
 revokes their authority without blocking the new generation. Shared answer extraction
 returns only the matching request's answer; fixed notices replace raw failures.
-`teams-ic3-own-command-reply.ts` prefixes every answer part with a native
-`schema.skype.com/Reply` blockquote whose `itemid` identifies the original mention.
-Its escaped plain-text preview is bounded to 200 code points. HTML chunking reserves
-the quote's UTF-8 bytes within the 20,000-byte total; compliance evaluates the complete
-quoted parts. Follow-ups quote their own mention, and fixed notices use the same path.
-These are linked chat quotes, separate from channel reply threads.
+`teams-ic3-own-command-reply.ts` threads direct/group answers using the existing
+`rootMessageId` or the originating mention ID. The connector appends
+`;messageid=<root>` only to the chatsvc request route, preserving the base source
+identity in the envelope, access checks and compliance destination. Self/meeting
+answers carry a native `schema.skype.com/Reply` blockquote whose `itemid` identifies
+the mention. Its escaped preview is bounded to 200 code points; chunking reserves
+its UTF-8 bytes within the 20,000-byte total. Compliance evaluates complete HTML.
+Follow-ups and fixed notices share this policy; channel routing is independent.
 `Ic3DirectMessageClient.sendToSourceChat` preserves exact
 `48:notes`, `19:...@thread.v2` or `19:...@unq.gbl.spaces` IDs. Each part pins the
 account and rechecks access through the captured native reader; Graph/MCP are excluded.

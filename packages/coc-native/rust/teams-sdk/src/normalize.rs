@@ -194,6 +194,8 @@ pub(crate) fn graph(
         }
     };
     Ok(Some(MessageDetail {
+        chat_kind: None,
+        root_message_id: None,
         metadata: MessageMetadata {
             reference: MessageRef {
                 conversation: conversation.clone(),

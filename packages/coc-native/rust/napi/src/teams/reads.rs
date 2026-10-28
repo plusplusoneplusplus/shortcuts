@@ -39,6 +39,8 @@ pub struct TeamsIc3Chat {
 #[napi(object)]
 pub struct TeamsIc3Message {
     pub chat_id: String,
+    pub chat_kind: Option<String>,
+    pub root_message_id: Option<String>,
     pub message_id: String,
     pub created_at: String,
     pub modified_at: String,
@@ -197,6 +199,15 @@ impl ReadState {
                 };
                 TeamsIc3Message {
                     chat_id: chat.as_str().to_owned(),
+                    chat_kind: message.chat_kind.map(|kind| {
+                        match kind {
+                            ChatKind::OneOnOne => "oneOnOne",
+                            ChatKind::Group => "group",
+                            ChatKind::Meeting => "meeting",
+                        }
+                        .to_owned()
+                    }),
+                    root_message_id: message.root_message_id.map(|id| id.as_str().to_owned()),
                     message_id: metadata.reference.id().as_str().to_owned(),
                     created_at: metadata.created_at.to_rfc3339(),
                     modified_at: metadata.modified_at.to_rfc3339(),

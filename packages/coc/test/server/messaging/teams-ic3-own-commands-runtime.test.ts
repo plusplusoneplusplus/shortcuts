@@ -67,6 +67,7 @@ describe('basic IC3 own-command launcher', () => {
         const createdAt = new Date(Date.now() + 1000).toISOString();
         return {
             messageId, chatId, createdAt, modifiedAt: createdAt, authorKind: 'user',
+            chatKind: chatId.startsWith('19:meeting_') ? 'meeting' : chatId === 'direct' ? 'oneOnOne' : 'group',
             authorId: account.userId, text: '@coc explain this', textTruncated: false,
             htmlTruncated: false, deleted: false, ...patch,
         };
@@ -198,6 +199,35 @@ describe('basic IC3 own-command launcher', () => {
         await vi.advanceTimersByTimeAsync(0);
         expect(launch).toHaveBeenCalledOnce();
         expect(reactions.acknowledgeSourceMessage).toHaveBeenCalledOnce();
+    });
+
+    it.each(['oneOnOne', 'group', 'meeting'])(
+        'uses authoritative %s metadata for notified chats without inferring kind from the ID', async chatKind => {
+            const listener = await startNotifications();
+            const chatId = '19:opaque@thread.v2';
+            histories.set(chatId, [message('1790000000001', chatId, { chatKind, rootMessageId: '1790000000000' })]);
+            listener.onWake({ cause: 'message', conversationId: chatId });
+            await vi.advanceTimersByTimeAsync(0);
+            const id = launch.mock.calls[0][1];
+            store.getProcess.mockResolvedValue(result(id));
+            events.emit('taskCompleted', terminal(id));
+            await vi.advanceTimersByTimeAsync(0);
+            expect(sendReply).toHaveBeenCalledWith(
+                expect.objectContaining({ chatId, replyTo: {
+                    kind: chatKind === 'meeting' ? 'quote' : 'thread',
+                    messageId: '1790000000001', text: '@coc explain this', rootMessageId: '1790000000000',
+                } }), id, 'The initial answer', expect.any(AbortSignal));
+        },
+    );
+
+    it.each([undefined, 'unknown', 'channel'])('rejects missing or unsupported native kind %s without guessing', async chatKind => {
+        const listener = await startNotifications();
+        histories.set(notifiedChat, [message('1790000000001', notifiedChat, { chatKind })]);
+        listener.onWake({ cause: 'message', conversationId: notifiedChat });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(launch).not.toHaveBeenCalled();
+        expect(sendReply).not.toHaveBeenCalled();
+        expect(service.getStatus().state).toBe('degraded');
     });
 
     it.each(['48:notes', 'direct', 'group', '19:meeting_fixture@thread.v2'])('acknowledges each new %s mention before initial and follow-up admission', async chatId => {
@@ -942,7 +972,8 @@ describe('basic IC3 own-command launcher', () => {
         await vi.advanceTimersByTimeAsync(0);
         expect(sendReply).toHaveBeenCalledExactlyOnceWith(
             expect.objectContaining({ account, chatId, region, verifyAccess: expect.any(Function),
-                replyTo: { messageId: '1790000000000', text: '@coc explain this' } }),
+                replyTo: { kind: chatId === '48:notes' || chatId.startsWith('19:meeting_') ? 'quote' : 'thread',
+                    messageId: '1790000000000', text: '@coc explain this' } }),
             id, 'The initial answer', expect.any(AbortSignal));
         const readCount = reader.readHistory.mock.calls.length;
         const source = sendReply.mock.calls[0][0];
@@ -972,7 +1003,7 @@ describe('basic IC3 own-command launcher', () => {
         await vi.advanceTimersByTimeAsync(0);
         expect(sendReply).toHaveBeenCalledExactlyOnceWith(
             expect.objectContaining({ chatId: 'direct',
-                replyTo: { messageId: 'second', text: '@coc explain this' } }), id, 'Follow-up answer', expect.any(AbortSignal));
+                replyTo: { kind: 'thread', messageId: 'second', text: '@coc explain this' } }), id, 'Follow-up answer', expect.any(AbortSignal));
     });
 
     it.each(['delivered', 'failed'])('keeps same-chat reply order without blocking another chat when the first reply is %s', async outcome => {

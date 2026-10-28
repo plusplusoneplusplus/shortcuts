@@ -1297,6 +1297,8 @@ export interface TeamsIc3HistoryPage {
 
 export interface TeamsIc3Message {
   chatId: string
+  chatKind?: string
+  rootMessageId?: string
   messageId: string
   createdAt: string
   modifiedAt: string

@@ -128,7 +128,7 @@ impl Session {
         &self,
         reference: &ConversationRef,
         ctx: &OperationContext,
-    ) -> Result<()> {
+    ) -> Result<Option<ChatKind>> {
         let Conversation::Chat(chat) = &reference.conversation else {
             return Err(Error::new(ErrorCode::Unsupported));
         };
@@ -139,12 +139,11 @@ impl Session {
         }
         // Notes is an account-scoped stream, not an ordinary chat thread.
         if chat.as_str() == SELF_CHAT_ID {
-            return Ok(());
+            return Ok(None);
         }
-        if chat_kind(&info["threadProperties"]).is_none() {
-            return Err(Error::new(ErrorCode::Unsupported));
-        }
-        Ok(())
+        chat_kind(&info["threadProperties"])
+            .map(Some)
+            .ok_or_else(|| Error::new(ErrorCode::Unsupported))
     }
     /// Explicit intended-recipient contract for private-protocol 1:1 writes.
     pub async fn send_to_existing_one_on_one(
@@ -455,11 +454,24 @@ pub(crate) fn normalize(
             })
             .collect::<Vec<_>>()
     });
-    normalize::graph(
+    let mut detail = normalize::graph(
         &json!({"id":id,"createdDateTime":created,"lastModifiedDateTime":modified.to_rfc3339(),
         "deletedDateTime":if deleted { json!(modified.to_rfc3339()) } else { Value::Null },
         "from":from,"body":{"content":raw["content"],"contentType":if kind == "RichText/Html" { "html" } else { "text" }},
         "mentions":mentions}),
         reference,
-    )
+    )?;
+    if let Some(detail) = &mut detail {
+        detail.root_message_id = match raw.get("rootMessageId").filter(|value| !value.is_null()) {
+            None => None,
+            Some(value) => {
+                let id = value.as_str().ok_or_else(protocol)?;
+                if id.is_empty() || id.len() > 20 || !id.bytes().all(|b| b.is_ascii_digit()) {
+                    return Err(protocol());
+                }
+                Some(MessageId::new(id).map_err(|_| protocol())?)
+            }
+        };
+    }
+    Ok(detail)
 }

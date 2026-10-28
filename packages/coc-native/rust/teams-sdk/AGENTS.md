@@ -129,6 +129,8 @@ collection scoped. Text is UTF-8 bounded; oversized HTML is omitted rather than 
 IC3 discovery and history/detail share exact native type pairs: `chat` with
 `OneToOneChat`/`Chat`, and `meeting` with `Meeting`. History/detail verifies exact IDs
 through the region-pinned `users/ME` endpoint; channels and unknown pairs reject.
+History/detail expose this verified `chat_kind` on transient message details and
+preserve numeric `root_message_id` values; malformed explicit roots reject the read.
 Only exact `48:notes` bypasses thread type checks; callers bind this
 account-scoped self stream explicitly, independently of discovery. History skips
 live call-recording/transcript artifacts and system events, retaining raw counts

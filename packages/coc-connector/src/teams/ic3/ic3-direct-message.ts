@@ -49,7 +49,8 @@ export class Ic3DirectMessageClient {
 
     /** Trusted inbound owners recheck exact source access on their pinned reader before each reply. */
     async sendToSourceChat(chatId: string, text: string,
-        verifyAccess: (signal: AbortSignal) => Promise<void>, caller?: AbortSignal): Promise<string> {
+        verifyAccess: (signal: AbortSignal) => Promise<void>, caller?: AbortSignal,
+        threadRootId?: string): Promise<string> {
         if (!this.options.expectedAccount || typeof verifyAccess !== 'function') {
             throw new TeamsIc3SendError('source replies require a pinned account and a live source access check',
                 'authentication', 'not-attempted');
@@ -57,12 +58,15 @@ export class Ic3DirectMessageClient {
         if (chatId !== IC3_SELF_CHAT && !/^19:[^\s/\\?#]+@(?:thread\.v2|unq\.gbl\.spaces)$/.test(chatId)) {
             throw new TeamsIc3SendError('invalid source chat', 'invalid-target', 'not-attempted');
         }
-        return this.sendMessage(chatId, text, undefined, caller, verifyAccess);
+        if (threadRootId !== undefined && (chatId === IC3_SELF_CHAT || !/^\d{1,20}$/.test(threadRootId))) {
+            throw new TeamsIc3SendError('invalid source thread root', 'invalid-target', 'not-attempted');
+        }
+        return this.sendMessage(chatId, text, undefined, caller, verifyAccess, threadRootId);
     }
 
     private async sendMessage(target: string | Extract<TeamsDestination, { kind: 'chat' }>, text: string,
         opts?: TransportSendOptions, caller?: AbortSignal,
-        sourceAccess?: (signal: AbortSignal) => Promise<void>): Promise<string> {
+        sourceAccess?: (signal: AbortSignal) => Promise<void>, threadRootId?: string): Promise<string> {
         const destination = typeof target === 'string' ? undefined : { ...target };
         const conversationId = typeof target === 'string' ? target : target.chatId;
         if (opts?.replyToId !== undefined || opts?.mentions !== undefined
@@ -145,7 +149,8 @@ export class Ic3DirectMessageClient {
                 });
                 attempt.startWrite();
                 const response = await boundedIc3(fetch(
-                    `https://teams.cloud.microsoft/api/chatsvc/${this.credentials.region}/v1/users/ME/conversations/${encodeURIComponent(conversationId)}/messages`,
+                    `https://teams.cloud.microsoft/api/chatsvc/${this.credentials.region}/v1/users/ME/conversations/${encodeURIComponent(
+                        threadRootId === undefined ? conversationId : `${conversationId};messageid=${threadRootId}`)}/messages`,
                     {
                         method: 'POST',
                         headers: {

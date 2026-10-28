@@ -584,11 +584,11 @@ impl Session {
         ctx: &OperationContext,
     ) -> Result<Page<MessageDetail>> {
         self.validate_ref(conversation)?;
-        match conversation.backend {
+        let chat_kind = match conversation.backend {
             Backend::Ic3 => self.ic3_validate_chat(conversation, ctx).await?,
             Backend::Mcp => return self.mcp_history(conversation, cursor, ctx).await,
-            Backend::Graph => {}
-        }
+            Backend::Graph => None,
+        };
         let mut url = self.message_url(conversation)?;
         url.query_pairs_mut().append_pair(
             if conversation.backend == Backend::Ic3 {
@@ -611,7 +611,8 @@ impl Session {
         )?;
         let mut items = Vec::new();
         for row in rows {
-            if let Some(item) = self.normalize(row, conversation)? {
+            if let Some(mut item) = self.normalize(row, conversation)? {
+                item.chat_kind = chat_kind;
                 items.push(item);
             }
         }
@@ -650,22 +651,23 @@ impl Session {
         ctx: &OperationContext,
     ) -> Result<MessageDetail> {
         self.validate_ref(&reference.conversation)?;
-        match reference.conversation.backend {
+        let chat_kind = match reference.conversation.backend {
             Backend::Ic3 => self.ic3_validate_chat(&reference.conversation, ctx).await?,
             Backend::Mcp => return self.mcp_detail(reference, ctx).await,
-            Backend::Graph => {}
-        }
+            Backend::Graph => None,
+        };
         let mut url = self.message_url(&reference.conversation)?;
         url.path_segments_mut()
             .map_err(|_| protocol())?
             .push(reference.id.as_str());
         let value = self.get(reference.conversation.backend, url, ctx).await?;
-        let detail = self
+        let mut detail = self
             .normalize(&value, &reference.conversation)?
             .ok_or_else(|| Error::new(ErrorCode::NotFound))?;
         if detail.metadata.reference.id != reference.id {
             return Err(protocol());
         }
+        detail.chat_kind = chat_kind;
         Ok(detail)
     }
     pub async fn participants(
