@@ -2,10 +2,11 @@ import type { TeamsIc3Cursor, TeamsIc3Message, TeamsIc3Session } from '@plusplus
 
 const maxContextBytes = 48 * 1024;
 const maxPreceding = 20;
+const maxChatPreceding = 10;
 
 /** Source messages are evidence for the request, never instructions or admission authority. */
 export async function buildTeamsIc3CommandPrompt(
-    reader: Pick<TeamsIc3Session, 'readThread'>,
+    reader: Pick<TeamsIc3Session, 'readThread' | 'readHistory'>,
     trigger: TeamsIc3Message,
     prompt: string,
     signal: AbortSignal,
@@ -67,6 +68,50 @@ export async function buildTeamsIc3CommandPrompt(
     if (!root || Date.parse(root.createdAt) > triggerTime) {
         throw new Error('Teams thread root is unavailable in context.');
     }
+    const chatMessages = new Map<string, TeamsIc3Message>();
+    let chatCoverage: 'not-applicable' | 'exhausted' | 'window' | 'page-limit' = 'not-applicable';
+    const rootTime = Date.parse(root.createdAt);
+    const chatPreceding = () => [...chatMessages.values()]
+        .filter(item => !messages.has(item.messageId)
+            && (!item.rootMessageId || item.rootMessageId === item.messageId)
+            && Date.parse(item.createdAt) < rootTime)
+        .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)
+            || a.messageId.localeCompare(b.messageId)).slice(-maxChatPreceding);
+    if (trigger.chatKind === 'oneOnOne' || trigger.chatKind === 'group') {
+        chatCoverage = 'page-limit';
+        cursor = undefined;
+        seen.clear();
+        for (let index = 0; index < 5; index++) {
+            readSignal.throwIfAborted();
+            const page = await reader.readHistory(trigger.chatId, { cursor, signal: readSignal });
+            readSignal.throwIfAborted();
+            if (!Number.isSafeInteger(page.rawCount) || page.rawCount < page.items.length
+                || page.rawCount > 50 || page.items.length > 50) {
+                throw new Error('Invalid Teams chat context page.');
+            }
+            for (const item of page.items) {
+                if (item.chatId !== trigger.chatId || item.chatKind !== trigger.chatKind
+                    || !item.messageId.trim()
+                    || !Number.isFinite(Date.parse(item.createdAt))
+                    || !Number.isFinite(Date.parse(item.modifiedAt))) {
+                    throw new Error('Teams chat context ownership mismatch.');
+                }
+                const previous = chatMessages.get(item.messageId) ?? messages.get(item.messageId);
+                if (previous && JSON.stringify(previous) !== JSON.stringify(item)) {
+                    throw new Error('Teams chat context changed during collection.');
+                }
+                chatMessages.set(item.messageId, item);
+            }
+            if (!page.next) { chatCoverage = 'exhausted'; break; }
+            if (chatPreceding().length === maxChatPreceding) { chatCoverage = 'window'; break; }
+            if (seen.has(page.next)) {
+                throw new Error('Teams chat context cursor did not advance.');
+            }
+            seen.add(page.next);
+            cursor = page.next;
+        }
+    }
+    readSignal.throwIfAborted();
     const project = (item: TeamsIc3Message) => ({
         messageId: item.messageId, createdAt: item.createdAt,
         modifiedAt: item.modifiedAt,
@@ -75,14 +120,23 @@ export async function buildTeamsIc3CommandPrompt(
         truncated: item.textTruncated,
     });
     const context = {
+        chatPreceding: chatPreceding().map(project),
         root: project(root),
         preceding: preceding().map(project),
+        chatHistory: { coverage: chatCoverage, omittedForSize: 0, maxPreceding: maxChatPreceding,
+            order: 'oldest-first; strictly before the thread root',
+            selection: 'nearest top-level chat messages observed in bounded backward history; thread replies excluded' },
         history: { coverage, omittedForSize: 0, maxPreceding,
             order: 'oldest-first; strictly before the request',
             selection: 'root plus nearest preceding replies observed in bounded backward history' },
     };
     const encode = () => JSON.stringify(context).replace(/</g, '\\u003c');
     let encoded = encode();
+    while (Buffer.byteLength(encoded) > maxContextBytes && context.chatPreceding.length) {
+        context.chatPreceding.shift();
+        context.chatHistory.omittedForSize++;
+        encoded = encode();
+    }
     while (Buffer.byteLength(encoded) > maxContextBytes && context.preceding.length) {
         context.preceding.shift();
         context.history.omittedForSize++;

@@ -1210,10 +1210,13 @@ references before editing. Paths are package-relative.
   previews are escaped and bounded, with their bytes reserved within the 20,000-byte
   limit. Outbound compliance checks the complete HTML. Channel routing is separate.
   Mentions inside a thread collect its root and up to 20 strictly earlier replies
-  before acknowledgement/admission. `teams-ic3-command-context.ts` wraps this
-  exact-thread data as untrusted JSON, separately from the request; fresh reads
-  apply to every follow-up. Context uses at most five native pages, 30 seconds and
-  48 KiB, marks incomplete/deleted content, and never reads unrelated threads.
+  before acknowledgement/admission. Direct/group chats also include up to 10
+  top-level chat messages strictly before the root, excluding other thread replies
+  and duplicates. `teams-ic3-command-context.ts` keeps chat/thread sections separate
+  in untrusted JSON and refreshes both per follow-up. Each collection reads at most
+  five pages under one 30-second deadline and shared 48 KiB budget; supplemental
+  chat context is dropped before thread content. Missing coverage and deleted or
+  truncated text stay explicit. Meeting context remains thread-only.
   A context-read failure logs safely and prevents context-free admission.
   Acknowledgements are bounded, deduplicated and best-effort; failures log safely
   and still admit the request, while cancellation prevents late admission.

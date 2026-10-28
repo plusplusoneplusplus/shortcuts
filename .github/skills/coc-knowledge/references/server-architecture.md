@@ -723,11 +723,14 @@ outcomes never retry.
 `teams-ic3-command-context.ts` enriches a mention inside a thread before marking
 admission or attempting Eyes. The native `readThread` collection supplies the root
 independently of reply pagination; account/session/chat/root-bound cursors keep
-other threads out. At most five pages and 30 seconds select the root plus up to
-20 strictly earlier replies, ordered oldest-first. JSON context is capped at
-48 KiB, escapes envelope delimiters and labels omitted/deleted/truncated content.
-It is untrusted reference data, separate from the user request and refreshed per
-follow-up. Read failures prevent context-free jobs and leave admission retryable.
+other threads out. The root and up to 20 strictly earlier replies form thread-local
+context. Direct/group chats also read up to 10 top-level chat messages strictly
+before the root; other thread replies and duplicate IDs are excluded. Meeting
+context stays thread-only. Both collections use at most five pages each under one
+30-second deadline. Separate oldest-first JSON sections share a 48 KiB budget;
+chat messages are dropped before thread content. Coverage, omissions and deleted/
+truncated bodies are explicit. Escaped context is untrusted reference data, refreshed
+per follow-up. Read failures prevent context-free jobs and leave admission retryable.
 
 Each eligible mention, including follow-ups, attempts Eyes before admission.
 `Ic3ReactionClient.acknowledgeSourceMessage` wraps account-pinned

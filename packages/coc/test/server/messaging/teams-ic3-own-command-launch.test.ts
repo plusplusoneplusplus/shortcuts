@@ -212,6 +212,7 @@ describe('IC3 Ask queue admission', () => {
         const chatId = '19:source-group@thread.v2';
         const createdAt = new Date(Date.now() + 1000).toISOString();
         let messageId = '1790000000001';
+        let chatContextText = 'The service failed after a traffic burst.';
         let wake!: () => void;
         const fetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
             if (init?.method === 'PUT') return new Response(null, { status: 200 });
@@ -249,7 +250,13 @@ describe('IC3 Ask queue admission', () => {
                     rootMessageId: '1790000000000',
                     authorKind: 'user', authorId: account.userId, text: '@coc what does this mean',
                     deleted: false, textTruncated: false, htmlTruncated: false,
-                }] : [], rawCount: source === chatId ? 1 : 0 }),
+                }, {
+                    chatId, chatKind: 'group', messageId: '1789999999999',
+                    createdAt: new Date(Date.parse(createdAt) - 2000).toISOString(),
+                    modifiedAt: new Date(Date.parse(createdAt) - 2000).toISOString(),
+                    authorKind: 'user', authorId: 'fixture-other-user', text: chatContextText,
+                    deleted: false, textTruncated: false, htmlTruncated: false,
+                }] : [], rawCount: source === chatId ? 2 : 0 }),
                 readThread: async () => ({ items: [{
                     chatId, chatKind: 'group', messageId: '1790000000000',
                     createdAt: new Date(Date.parse(createdAt) - 1000).toISOString(),
@@ -267,6 +274,8 @@ describe('IC3 Ask queue admission', () => {
             expect(task.payload.workingDirectory).toBe(group?.rootPath ?? root());
             expect(task.payload.mode).toBe('ask');
             expect(task.payload.prompt).toContain('HTTP 429 means too many requests.');
+            expect(task.payload.prompt).toContain('The service failed after a traffic burst.');
+            expect(task.payload.prompt).toContain('"chatPreceding":[');
             expect(task.payload.prompt).toContain('untrusted Teams thread context');
             expect(task.config).toMatchObject({ afterEffortTier: 'medium' });
             bridge.activateQueueProcessing();
@@ -281,6 +290,9 @@ describe('IC3 Ask queue admission', () => {
             expect(sdk.mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
                 prompt: expect.stringContaining('HTTP 429 means too many requests.'),
             }));
+            expect(sdk.mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+                prompt: expect.stringContaining('The service failed after a traffic burst.'),
+            }));
             expect(proc?.metadata?.workspaceId).toBe(commandWorkspaceId);
             if (group) {
                 expect(sdk.mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
@@ -294,6 +306,7 @@ describe('IC3 Ask queue admission', () => {
             expect(proc?.metadata?.queueTaskId).toBe(task.id);
             expect(proc?.conversationTurns?.[0].relayRequestId).toBe(task.payload.relayRequestId);
             messageId = '1790000000002';
+            chatContextText = 'The traffic burst lasted five minutes.';
             wake();
             await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(4), { timeout: 10_000 });
             expect(fetch.mock.calls[2][1]?.method).toBe('PUT');
@@ -305,6 +318,9 @@ describe('IC3 Ask queue admission', () => {
             expect(continued?.conversationTurns?.find(turn => turn.relayRequestId === followUp.id)?.role).toBe('user');
             expect(tasks().filter(item => !item.payload.processId)).toHaveLength(1);
             expect(sdk.mockSendMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({ sessionId: 'session-123' }));
+            expect(sdk.mockSendMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({
+                prompt: expect.stringContaining('The traffic burst lasted five minutes.'),
+            }));
             if (group) {
                 expect(sdk.mockSendMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({
                     workingDirectory: group.rootPath, additionalDirectories: [root(), path.join(directory, 'beta')],
