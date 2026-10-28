@@ -7,7 +7,7 @@ import { admitTeamsIc3OwnCommand } from '../../../src/server/messaging/teams-ic3
 const source: TeamsIc3OwnCommandSource = {
     account: { tenantId: '11111111-1111-4111-8111-111111111111', userId: '22222222-2222-4222-8222-222222222222' },
     chatId: '19:fixture@thread.v2', region: 'amer', verifyAccess: vi.fn(async () => {}),
-    replyTo: { messageId: '1790000000000', text: '@coc explain this' },
+    replyTo: { kind: 'quote', messageId: '1790000000000', text: '@coc explain this' },
 };
 const id = 'ic3-command-fixture';
 
@@ -28,6 +28,73 @@ describe('IC3 command reply through existing Teams clients', () => {
         });
     });
     afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+    it.each(['19:direct@unq.gbl.spaces', '19:direct@thread.v2', '19:group@thread.v2'])(
+        'threads every answer part under the originating direct/group message: %s', async chatId => {
+            await sendTeamsIc3OwnCommandReply({
+                ...source, chatId, replyTo: { ...source.replyTo, kind: 'thread' },
+            }, id, 'answer\n'.repeat(5000), new AbortController().signal);
+            expect(fetch.mock.calls.length).toBeGreaterThan(1);
+            for (const [url, init] of fetch.mock.calls) {
+                expect(url).toBe(`https://teams.cloud.microsoft/api/chatsvc/amer/v1/users/ME/conversations/${
+                    encodeURIComponent(chatId + ';messageid=1790000000000')}/messages`);
+                const body = JSON.parse(String(init?.body));
+                expect(body.conversationid).toBe(chatId);
+                expect(body.content).not.toContain('<blockquote');
+                expect(body.content).toContain('CoC');
+                expect(Buffer.byteLength(body.content)).toBeLessThanOrEqual(20_000);
+            }
+        },
+    );
+
+    it('replies within the existing root when the mention is already a thread reply', async () => {
+        await sendTeamsIc3OwnCommandReply({
+            ...source, replyTo: { ...source.replyTo, kind: 'thread', rootMessageId: '1780000000000' },
+        }, id, 'answer', new AbortController().signal);
+        expect(fetch.mock.calls[0][0]).toContain(encodeURIComponent(';messageid=1780000000000'));
+        expect(fetch.mock.calls[0][0]).not.toContain(encodeURIComponent(';messageid=1790000000000'));
+    });
+
+    it.each(['48:notes', '19:meeting_fixture@thread.v2', '19:opaque-meeting@thread.v2'])(
+        'keeps native quoted replies for self/meeting sources: %s', async chatId => {
+            await sendTeamsIc3OwnCommandReply({
+                ...source, chatId, replyTo: { ...source.replyTo, rootMessageId: '1780000000000' },
+            }, id, 'answer', new AbortController().signal);
+            expect(fetch.mock.calls[0][0]).toBe(
+                `https://teams.cloud.microsoft/api/chatsvc/amer/v1/users/ME/conversations/${encodeURIComponent(chatId)}/messages`);
+            expect(JSON.parse(String(fetch.mock.calls[0][1]?.body)).content)
+                .toContain('itemid="1790000000000"');
+        },
+    );
+
+    it('retains the exact thread route across a definitive retry without fallback', async () => {
+        vi.useFakeTimers();
+        fetch.mockResolvedValueOnce(new Response(null, { status: 401 }));
+        const sending = sendTeamsIc3OwnCommandReply({
+            ...source, replyTo: { ...source.replyTo, kind: 'thread', rootMessageId: '1780000000000' },
+        }, id, 'answer', new AbortController().signal);
+        await vi.advanceTimersByTimeAsync(1000);
+        await sending;
+        expect(fetch).toHaveBeenCalledTimes(2);
+        expect(fetch.mock.calls[0][0]).toBe(fetch.mock.calls[1][0]);
+        expect(fetch.mock.calls[0][0]).toContain(encodeURIComponent(';messageid=1780000000000'));
+        expect(source.verifyAccess).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not fall back to a flat post or quote after an uncertain threaded send', async () => {
+        fetch.mockRejectedValueOnce(new Error('Private transport failure'));
+        await expect(sendTeamsIc3OwnCommandReply({
+            ...source, replyTo: { ...source.replyTo, kind: 'thread' },
+        }, id, 'answer\n'.repeat(5000), new AbortController().signal)).rejects.toMatchObject({ outcome: 'unknown' });
+        expect(fetch).toHaveBeenCalledOnce();
+    });
+
+    it.each(['', 'root', '123;messageid=456'])('rejects invalid existing root %s without sending', async rootMessageId => {
+        await expect(sendTeamsIc3OwnCommandReply({
+            ...source, replyTo: { ...source.replyTo, kind: 'thread', rootMessageId },
+        }, id, 'answer', new AbortController().signal)).rejects.toThrow('original message ID and text');
+        expect(fetch).not.toHaveBeenCalled();
+    });
 
     it('refreshes authentication and rechecks the source after a definitive HTTP 401', async () => {
         vi.useFakeTimers();
@@ -218,7 +285,7 @@ describe('IC3 command reply through existing Teams clients', () => {
 
     it('escapes and bounds the original message preview without copying untrusted HTML', async () => {
         await sendTeamsIc3OwnCommandReply({
-            ...source, replyTo: { messageId: '1790000000001', text: '@coc <script>&"\n' + '\u{1f600}'.repeat(400) },
+            ...source, replyTo: { kind: 'quote', messageId: '1790000000001', text: '@coc <script>&"\n' + '\u{1f600}'.repeat(400) },
         }, id, 'answer\n'.repeat(5000), new AbortController().signal);
         for (const [, init] of fetch.mock.calls) {
             const html = JSON.parse(String(init?.body)).content;

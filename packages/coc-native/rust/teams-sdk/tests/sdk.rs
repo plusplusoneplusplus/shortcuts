@@ -1276,10 +1276,12 @@ mod ic3_tests {
             .await
             .unwrap();
         assert_eq!(history.items.len(), 1);
+        assert_eq!(history.items[0].chat_kind, Some(ChatKind::Meeting));
         let detail = session
             .detail(&history.items[0].metadata.reference, &ctx)
             .await
             .unwrap();
+        assert_eq!(detail.chat_kind, Some(ChatKind::Meeting));
         assert_eq!(
             detail.metadata.reference,
             history.items[0].metadata.reference
@@ -1300,6 +1302,65 @@ mod ic3_tests {
             assert_eq!(
                 path,
                 format!("/api/chatsvc/emea/v1/users/ME/conversations/{suffix}")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn ic3_history_preserves_root_and_verified_kind_independent_of_identifier_shape() {
+        for (thread_type, product, expected) in [
+            ("chat", "OneToOneChat", ChatKind::OneOnOne),
+            ("chat", "Chat", ChatKind::Group),
+            ("meeting", "Meeting", ChatKind::Meeting),
+        ] {
+            let id = "19:opaque@thread.v2";
+            let mut message = ic3_message(id, "1790000000001", "8:orgid:sender");
+            message["rootMessageId"] = json!("1790000000000");
+            let (session, _) = ic3_session(vec![
+                reply(
+                    json!({"id":id,"threadProperties":{"threadType":thread_type,"productThreadType":product}}),
+                ),
+                reply(json!({"messages":[message]})),
+            ]);
+            let page = session
+                .history(&ic3_chat(&session, id), None, &OperationContext::default())
+                .await
+                .unwrap();
+            assert_eq!(page.items[0].chat_kind, Some(expected));
+            assert_eq!(
+                page.items[0].root_message_id.as_ref().unwrap().as_str(),
+                "1790000000000"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn ic3_history_rejects_malformed_thread_roots() {
+        for root in [
+            json!(""),
+            json!("root"),
+            json!("123;messageid=456"),
+            json!(123),
+            json!("1".repeat(21)),
+        ] {
+            let mut message = ic3_message("chat", "1790000000001", "8:orgid:sender");
+            message["rootMessageId"] = root;
+            let (session, _) = ic3_session(vec![
+                chat_info("chat"),
+                reply(json!({"messages":[message]})),
+            ]);
+            assert_eq!(
+                session
+                    .history(
+                        &ic3_chat(&session, "chat"),
+                        None,
+                        &OperationContext::default()
+                    )
+                    .await
+                    .err()
+                    .unwrap()
+                    .code,
+                ErrorCode::Protocol
             );
         }
     }

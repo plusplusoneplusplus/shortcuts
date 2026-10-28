@@ -146,6 +146,7 @@ async fn ordinary_group_meeting_and_explicit_self_history_preserve_author_edit_d
         edited["messagetype"] = json!("RichText/Html");
         edited["content"] =
             json!("<p>@coc synthetic prompt</p><blockquote>ignored quote</blockquote>");
+        edited["rootMessageId"] = json!("1790000000000");
         let (owner, _) = setup(
             vec![
                 if id == "48:notes" {
@@ -176,6 +177,16 @@ async fn ordinary_group_meeting_and_explicit_self_history_preserve_author_edit_d
         let own = &page.items[0];
         assert_eq!(own.chat_id, id);
         assert_eq!(own.message_id, "edited");
+        assert_eq!(own.root_message_id.as_deref(), Some("1790000000000"));
+        assert_eq!(
+            own.chat_kind.as_deref(),
+            match id {
+                "ordinary" => Some("oneOnOne"),
+                "group" => Some("group"),
+                "meeting" => Some("meeting"),
+                _ => None,
+            }
+        );
         assert_eq!((&*own.author_kind, own.author_id.as_deref()), ("user", Some("fixture-user")));
         assert!(own.modified_at > own.created_at);
         assert!(own.untrusted_html.as_ref().unwrap().contains("<blockquote>"));

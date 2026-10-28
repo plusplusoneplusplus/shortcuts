@@ -264,7 +264,11 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                         checked();
                         for (const message of page.items.slice(0, 30).reverse()) {
                             if (Date.parse(message.createdAt) <= cutoff) continue;
-                            const admission = admitTeamsIc3OwnCommand({ account: owner, chat }, message);
+                            const kind = chat.chatId === '48:notes' ? 'self' : message.chatKind;
+                            if (!kind || !['self', 'oneOnOne', 'group', 'meeting'].includes(kind)) {
+                                throw new Error('IC3 source chat kind is unavailable; rebuild the native Teams reader.');
+                            }
+                            const admission = admitTeamsIc3OwnCommand({ account: owner, chat: { ...chat, kind } }, message);
                             if (admission.kind !== 'command') continue;
                             const id = 'ic3-command-' + createHash('sha256').update(JSON.stringify([
                                 owner.tenantId, owner.userId, chat.chatId, message.messageId,
@@ -297,7 +301,9 @@ export function createTeamsIc3OwnCommandsRuntime(options: Options) {
                                 }
                                 pending.set(id, { workspaceId: target.workspaceId, conversationId,
                                     source: { account: owner, chatId: chat.chatId, region,
-                                        replyTo: { messageId: message.messageId, text: message.text },
+                                        replyTo: { kind: kind === 'self' || kind === 'meeting' ? 'quote' : 'thread',
+                                            messageId: message.messageId, text: message.text,
+                                            ...(message.rootMessageId ? { rootMessageId: message.rootMessageId } : {}) },
                                         compliance: {
                                             decisionService: options.decisionService,
                                             workspaceId: target.workspaceId, workingDirectory,

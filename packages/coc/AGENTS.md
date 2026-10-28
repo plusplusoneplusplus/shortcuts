@@ -1202,11 +1202,13 @@ references before editing. Paths are package-relative.
   by request ID. Each new admitted mention attempts a standard Eyes acknowledgement
   (`1f440_eyes`) on its original message before queue admission, without extra
   history reads or custom emoji configuration.
-  Answer parts carry a native linked quote of that mention, including follow-ups
-  and fixed failure notices. Capture its message ID and plain text before enqueue;
-  escape and bound the preview, reserve quote bytes within the 20,000-byte limit,
-  and include the complete quoted HTML in outbound compliance checks. Chat quotes
-  link to messages in the source chat; channel threads retain their separate routing.
+  Answer parts use native thread replies for direct/group chats and linked quotes
+  for self/meeting chats, including follow-ups and fixed failure notices. Capture
+  the native reader's verified chat kind, original message ID/text and existing
+  thread root before enqueue; never infer kind from IDs or notification hints.
+  Thread replies retain the existing root or start under the mention. Quote
+  previews are escaped and bounded, with their bytes reserved within the 20,000-byte
+  limit. Outbound compliance checks the complete HTML. Channel routing is separate.
   Acknowledgements are bounded, deduplicated and best-effort; failures log safely
   and still admit the request, while cancellation prevents late admission.
   Reply chains serialize per conversation, not across chats; shutdown drains every
