@@ -7,6 +7,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } 
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { PassThrough } from 'stream';
 import { setColorEnabled } from '../../src/logger';
 import { EXIT_CODES, createProgram } from '../../src/cli';
 import { mergeConfig, DEFAULT_CONFIG } from '../../src/config';
@@ -286,6 +287,44 @@ describe('Serve Command', () => {
 
             expect(exitCode).toBe(EXIT_CODES.SUCCESS);
             expect(mockClose.mock.calls.length).toBeGreaterThanOrEqual(2);
+        });
+
+        describe('Windows stdin', () => {
+            const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform')!;
+            const stdinDescriptor = Object.getOwnPropertyDescriptor(process, 'stdin')!;
+
+            afterEach(() => {
+                Object.defineProperty(process, 'platform', platformDescriptor);
+                Object.defineProperty(process, 'stdin', stdinDescriptor);
+            });
+
+            async function serveOnWindows(isTTY: boolean) {
+                const { executeServe } = await import('../../src/commands/serve');
+                const stdin = Object.assign(new PassThrough(), { isTTY });
+                Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+                Object.defineProperty(process, 'stdin', { value: stdin, configurable: true });
+                const result = executeServe({ dataDir: tmpDir, open: false, logDir: suiteLogDir });
+                await vi.waitFor(() => expect(process.listenerCount('SIGINT')).toBeGreaterThan(0));
+                return { stdin, result };
+            }
+
+            it('should keep serving when stdin without a console reaches EOF', async () => {
+                const { stdin, result } = await serveOnWindows(false);
+                stdin.end();
+                await new Promise(resolve => setTimeout(resolve, 100));
+                expect(mockClose).not.toHaveBeenCalled();
+
+                process.emit('SIGINT', 'SIGINT');
+                expect(await result).toBe(EXIT_CODES.SUCCESS);
+                expect(mockClose).toHaveBeenCalledTimes(1);
+            });
+
+            it('should shut down when the console closes stdin', async () => {
+                const { stdin, result } = await serveOnWindows(true);
+                stdin.end();
+                expect(await result).toBe(EXIT_CODES.SUCCESS);
+                expect(mockClose).toHaveBeenCalledTimes(1);
+            });
         });
     });
 
