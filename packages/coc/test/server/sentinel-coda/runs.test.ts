@@ -1,4 +1,4 @@
-import { SENTINEL_COMPLETION_GUIDANCE } from '../../../src/server/delegation/sentinel-job-review-instructions';
+import { SENTINEL_COMPLETION_GUIDANCE, SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE } from '../../../src/server/delegation/sentinel-job-review-instructions';
 import * as fs from 'node:fs';
 import { EventEmitter } from 'node:events';
 import * as path from 'node:path';
@@ -610,6 +610,16 @@ it('replaces queue subscriptions on reattach and removes them on disposal', asyn
 });
 
 describe('Coda run prompt', () => {
+    it('shares issue and research completion boundaries without adding a todo verdict or write authority', () => {
+        const prompt = buildCodaPrompt({ id: 'run-1' } as Parameters<typeof buildCodaPrompt>[0], '/tmp/snapshot.json');
+        expect(prompt).toContain(SENTINEL_COMPLETION_GUIDANCE);
+        expect(prompt).toContain(SENTINEL_DESIGN_ONLY_COMPLETION_GUIDANCE);
+        expect(prompt).toContain('If the appropriate ledger state is `todo`, report `unchanged` with that recommendation and the findings/next steps for the parent');
+        expect(prompt).toContain('Coda has no `todo` verdict and never updates the ledger directly');
+        expect(prompt).toContain('This chat is read-only');
+        expect(prompt).toContain('Never auto-apply a status change to them');
+    });
+
     it('introduces the run as Coda and keeps the wire tool name', () => {
         const prompt = buildCodaPrompt({ id: 'run-1' } as Parameters<typeof buildCodaPrompt>[0], '/tmp/snapshot.json');
         expect(prompt).toMatch(/^You are Coda, this Sentinel's built-in to-do review \(run run-1\)\./);
