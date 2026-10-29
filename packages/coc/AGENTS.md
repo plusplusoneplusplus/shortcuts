@@ -208,6 +208,10 @@ references before editing. Paths are package-relative.
   `src/server/canvas-extensions/discovery.ts` and checks the flag before I/O.
   Resolve group membership live; preserve member ownership and repository cwd.
   User extensions come from the real home, independent of `COPILOT_HOME`.
+  `extension-host.ts` starts flag-gated, conversation-bound stdio runtimes with
+  owning cwd and isolated `<dataDir>/canvas-ext/home`. Keep the SDK resolver in
+  the package build; it forces root/subpath imports to CoC's pinned SDK. Bound
+  startup/RPC calls, stop children on transport failure, and await disposal.
 
 - Server composition provisions one UUID in `<dataDir>/server-identity.json` and
   exposes `serverIdentity` through `/api/health`. It identifies the installation

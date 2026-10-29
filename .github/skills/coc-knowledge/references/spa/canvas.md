@@ -123,7 +123,7 @@ base64 raster `data:` URIs; internal paint references like `fill="url(#gradient)
 valid. **Any surface mounting the sanitized result must use a shadow root** so allowed SVG
 `<style>` rules cannot reach the surrounding document.
 
-### Copilot canvas extension discovery
+### Copilot canvas extension discovery and runtime
 
 `server/canvas-extensions/discovery.ts` reads `.github/extensions/*/extension.mjs`
 under registered repository roots and `.copilot/extensions/*/extension.mjs` under
@@ -134,6 +134,21 @@ Results carry the entry path, owning repository cwd (extension folder for global
 optional package description and a SHA-256 hash of entry bytes and package metadata.
 Discovery never imports code; malformed optional JSON is ignored, while unexpected
 filesystem errors propagate.
+
+`extension-host.ts` provides the flag-gated stdio runtime. It starts
+`process.execPath --import <resolver file URL> <extension.mjs>` with owning cwd,
+conversation `SESSION_ID`, isolated `<dataDir>/canvas-ext/home` and Electron's
+Node-mode environment when needed. The packaged `coc-sdk-resolver.mjs` resolves SDK
+root/subpath imports from CoC, overriding extension-local installations.
+
+The host uses `vscode-jsonrpc` and the installed SDK's protocol version. It captures
+`session.resume` declarations and dispatches canvas open/action/close requests.
+`session.send` and ephemeral queries use required conversation-bound callbacks;
+session IDs are checked before dispatch. Session logs and stderr carry the extension
+key. Unsupported methods return MethodNotFound and log once per extension/method.
+Startup and RPC deadlines default to 60 seconds. Timeouts and transport failures
+terminate the child; idempotent disposal waits for exit with forced termination
+after two seconds.
 
 ### Extension canvases
 

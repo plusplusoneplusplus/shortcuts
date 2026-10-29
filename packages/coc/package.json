@@ -15,7 +15,7 @@
     "build:copy-client": "node -e \"const fs=require('fs');const p=require('path');const s=p.join('src','server','spa','client','dist'),d=p.join('dist','server','spa','client','dist');fs.mkdirSync(d,{recursive:true});fs.cpSync(s,d,{recursive:true});\"",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "prebuild": "node scripts/prebuild.mjs",
-    "build": "npm run clean && npm run build:client && tsc && npm run build:copy-client && node -e \"require('fs').copyFileSync('src/server/openapi.yaml','dist/server/openapi.yaml')\" && node -e \"const fs=require('fs');try{fs.chmodSync('dist/index.js',0o755);}catch(e){if(process.platform!=='win32')throw e;}\"",
+    "build": "npm run clean && npm run build:client && tsc && npm run build:copy-client && node -e \"const fs=require('fs');fs.copyFileSync('src/server/openapi.yaml','dist/server/openapi.yaml');fs.copyFileSync('src/server/canvas-extensions/coc-sdk-resolver.mjs','dist/server/canvas-extensions/coc-sdk-resolver.mjs')\" && node -e \"const fs=require('fs');try{fs.chmodSync('dist/index.js',0o755);}catch(e){if(process.platform!=='win32')throw e;}\"",
     "test": "vitest",
     "test:run": "node scripts/run-vitest.mjs",
     "coverage": "vitest run --coverage",
@@ -95,6 +95,7 @@
     "turndown": "^7.2.4",
     "typescript-language-server": "^6.0.0",
     "underscore": "^1.13.8",
+    "vscode-jsonrpc": "^8.2.1",
     "ws": "^8.21.1",
     "zod": "^4.6.6"
   },
