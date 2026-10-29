@@ -17,6 +17,16 @@ import { createCanvasExtensionTools } from '../../../src/server/llm-tools/canvas
 import { CANVAS_EXTENSION_LLM_TOOL_NAMES } from '../../../src/server/llm-tools/llm-tool-registry';
 import recorded from '../../fixtures/canvas-extensions/copilot-cli-1.0.78-tools.json';
 
+vi.mock('node:child_process', async importOriginal => {
+    const actual = await importOriginal<typeof import('node:child_process')>();
+    return { ...actual, execFileSync: vi.fn(actual.execFileSync) };
+});
+
+vi.mock('../../../../coc-agent-sdk/src/sdk-client-factory', async importOriginal => {
+    const actual = await importOriginal<typeof import('../../../../coc-agent-sdk/src/sdk-client-factory')>();
+    return { ...actual, findCopilotNativeCliPath: vi.fn(actual.findCopilotNativeCliPath) };
+});
+
 vi.mock('os', async importOriginal => {
     const actual = await importOriginal<typeof import('os')>();
     return { ...actual, homedir: vi.fn(actual.homedir) };
@@ -78,6 +88,7 @@ describe('Copilot native canvas loader ownership', () => {
             }, { timeout: 5000 });
         } finally {
             vi.restoreAllMocks();
+            vi.unstubAllEnvs();
             fs.rmSync(root, { recursive: true, force: true });
         }
     });
@@ -85,7 +96,9 @@ describe('Copilot native canvas loader ownership', () => {
     function runtimeClient(copilotHome = path.join(home, '.copilot')) {
         const executable = findCopilotNativeCliPath();
         if (!executable) throw new Error('Pinned Copilot executable unavailable; use the recorded tool-list test in CI');
-        expect(execFileSync(executable, ['--version'], { encoding: 'utf8' })).toContain('1.0.78');
+        expect(execFileSync(executable, ['--version'], {
+            encoding: 'utf8', env: { ...process.env, COPILOT_AUTO_UPDATE: 'false' },
+        })).toContain('1.0.78');
         const client = new CopilotClient({
             connection: RuntimeConnection.forStdio({ path: executable, args: [] }),
             workingDirectory: repo,
@@ -113,6 +126,24 @@ describe('Copilot native canvas loader ownership', () => {
         }
         expect(inventory.tools.some(tool => tool.name.startsWith('extensions_'))).toBe(false);
     }
+
+    it.each([undefined, 'true'])('disables updates for the version probe when the shell value is %s', shellValue => {
+        vi.stubEnv('COPILOT_AUTO_UPDATE', shellValue);
+        vi.stubEnv('COPILOT_PROBE_SENTINEL', 'preserved');
+        const executable = path.join(root, 'copilot');
+        vi.mocked(findCopilotNativeCliPath).mockReturnValueOnce(executable);
+        vi.mocked(execFileSync).mockImplementationOnce((_file, _args, options) =>
+            options && typeof options === 'object' && options.env?.COPILOT_AUTO_UPDATE === 'false'
+                ? '1.0.78' : '1.0.96-2');
+
+        runtimeClient();
+
+        expect(execFileSync).toHaveBeenLastCalledWith(executable, ['--version'], {
+            encoding: 'utf8',
+            env: expect.objectContaining({ COPILOT_AUTO_UPDATE: 'false', COPILOT_PROBE_SENTINEL: 'preserved' }),
+        });
+        expect(process.env.COPILOT_AUTO_UPDATE).toBe(shellValue);
+    });
 
     it('replays the recorded pinned tool list with one real CoC extension process', async () => {
         const session = {
