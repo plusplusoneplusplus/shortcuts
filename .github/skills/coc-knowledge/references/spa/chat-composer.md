@@ -296,6 +296,12 @@ and target repo. Draft changes invalidate pending reads; failed sends retain chi
 and text. Context grants no execution/delegation authority, especially for manual
 tracking. Missing items and unavailable owners surface inline errors.
 
+`SentinelTodoMessageDialog` is a controlled, in-memory composer surface for one
+fixed To-do and ledger owner. Its caller owns the draft, destination labels,
+context readiness and admission. The shared modal traps/restores focus; loading
+blocks submission and pending admission blocks editing and dismissal. Inline
+errors retain text. The surface performs no routing, context reads or message I/O.
+
 ### Session-context attachments
 
 With `features.sessionContextAttachments` enabled, chat/process rows, Ralph

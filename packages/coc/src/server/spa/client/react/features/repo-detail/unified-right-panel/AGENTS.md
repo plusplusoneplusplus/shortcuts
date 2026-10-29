@@ -966,7 +966,12 @@ card text selection leave details closed; keyboard activation opens details.
 Menu interactions stay isolated from row selection and dragging. Payloads contain
 the stable item reference and owner, not notes or job data; attaching never writes
 the ledger or starts a job. The shared composer reads authoritative details
-on drop and send (see the composer knowledge reference). Details list every job and explain when the displayed status is derived
+on drop and send (see the composer knowledge reference).
+`SentinelTodoMessageDialog` provides a controlled message surface for a fixed item
+and owner; the caller supplies draft, context readiness, destination labels and
+admission state. It traps/restores focus and retains text through inline failures.
+The component performs no navigation or I/O and has no list-menu wiring.
+Details list every job and explain when the displayed status is derived
 (`Saved status: …`), then Reason, Done when, Outcome and Notes. Notes start expanded;
 notes over two lines or 160 characters have an optional collapse toggle
 (`sentinelTodoFoldNotes`). Visibility is remembered with each item's drafts in the
